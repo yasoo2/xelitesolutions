@@ -260,6 +260,36 @@ function runtimeGuidanceFor(contract: RuntimeContract | null): string {
     return `\nVERIFIED PROJECT RUNTIME CONTRACT:\n- Project root: ${contract.root}\n- Detected stack: ${stack}\n- Declared packages only: ${contract.packageNames.join(', ') || '(none)'}\n- Preserve this stack. Do not switch frameworks or import a package absent from package.json.\n- For a web React project, use browser/React DOM APIs; never emit react-native, Expo, or React Navigation imports unless they are declared in this manifest.\n`;
 }
 
+/**
+ * Repair context can contain a filesystem-proven local-import correction. Make
+ * that evidence explicit to the author instead of relying on a model to infer
+ * it from a large JSON ticket. The validator remains authoritative: this only
+ * narrows the generation request and never edits the artifact itself.
+ */
+function evidenceBoundLocalImportGuidance(rawContext: unknown): string {
+    const raw = String(rawContext || '').trim();
+    if (!raw) return '';
+    let parsed: any;
+    try {
+        parsed = JSON.parse(raw);
+    } catch {
+        return '';
+    }
+    const entries = Array.isArray(parsed?.localRuntimeImports)
+        ? parsed.localRuntimeImports.filter((item: any) => item && typeof item.importer === 'string' && typeof item.specifier === 'string')
+        : [];
+    const importerMissing = parsed?.importerMissing && typeof parsed.importerMissing === 'object'
+        ? parsed.importerMissing
+        : null;
+    if (!entries.length && !importerMissing) return '';
+
+    const lines = entries.slice(0, 12).map((item: any) => `- Observed importer: ${item.importer}; rejected specifier: ${item.specifier}`);
+    if (importerMissing?.importer && importerMissing?.find && importerMissing?.replace) {
+        lines.push(`- Exact repair: generate ${importerMissing.importer}; replace only ${importerMissing.find} with ${importerMissing.replace}.`);
+    }
+    return `\nEVIDENCE-BOUND LOCAL IMPORT REPAIR:\n${lines.join('\n')}\n- Do not introduce any other relative import unless it resolves from the generated file against the verified filesystem.\n- Do not substitute a guessed path such as ./App, ./styles, or another sibling; the listed replacement is the only approved correction for the rejected token.\n`;
+}
+
 function runtimeArtifactMismatch(filePath: string, content: string, contract: RuntimeContract | null): string | null {
     if (!contract || !/\.(?:js|mjs|cjs|ts|tsx|jsx)$/iu.test(filePath) || path.basename(filePath).toLowerCase() === 'package.json') return null;
     const imports = importedPackageNames(content);
@@ -439,6 +469,9 @@ export class AIGeneratorTool implements ToolDefinition {
         // package that is declared by the time the candidate is actually checked.
         let runtimeContract = runtimeContractForTarget(filePath, context?.projectRoot, contextWorkspaceId);
         const runtimeGuidance = runtimeGuidanceFor(runtimeContract);
+        const localImportRepairGuidance = isRepair
+            ? evidenceBoundLocalImportGuidance(input.context)
+            : '';
         const artifact = artifactProfileFor(filePath);
         const frontendGuidance = artifact.kind === 'frontend_asset'
             ? `\nFRONTEND QUALITY RULES:\n- Use accessible, responsive implementation only where the requirements call for a user interface.\n- Follow the selected style direction if supplied; otherwise favour clear, maintainable UI over decorative effects.\n- Support ${input.language === 'ar' ? 'Arabic with RTL layout' : 'the requested language'} when user-facing text is required.\n`
@@ -451,7 +484,7 @@ export class AIGeneratorTool implements ToolDefinition {
 ARTIFACT CONTRACT (${artifact.kind}):
 ${artifact.instructions}
 ${isRepair ? `\nREPAIR MODE ACTIVE:\n- Fix only the documented defect using the supplied repair evidence.\n- Preserve the existing architecture and avoid unrelated changes.\n` : ''}
-${frontendGuidance}${runtimePathGuidance}${runtimeGuidance}
+${frontendGuidance}${runtimePathGuidance}${runtimeGuidance}${localImportRepairGuidance}
 GENERAL RULES:
 - Treat the supplied requirements as authoritative; do not invent a product, framework, build command, or visual interface.
 - Do not use placeholders. Write concrete content, and mark genuinely unresolved decisions as explicit assumptions only in documentation artifacts.
@@ -469,7 +502,7 @@ ${input.description}
 Verified project and requirements context:
 ${input.context || 'No additional project context was provided. Do not assume a web development environment.'}
 ${artifact.kind === 'frontend_asset' ? `\nVisual direction (use only if relevant):\n${input.aestheticMode || 'Use a clear, maintainable visual style consistent with the requirements.'}` : ''}
-${runtimePathGuidance}${runtimeGuidance}
+${runtimePathGuidance}${runtimeGuidance}${localImportRepairGuidance}
 
 Primary language for user-facing content: ${input.language === 'ar' ? 'Arabic (RTL where applicable)' : 'English (LTR where applicable)'}
 
@@ -483,7 +516,7 @@ Return the complete file content now.`;
                 const retryInstruction = retryKind === 'syntax'
                     ? `SYNTAX RETRY REQUIRED:\nThe previous completion was rejected by the parser for the destination extension. Return the complete file again with valid ${path.extname(filePath).toLowerCase() || 'source'} syntax. Preserve the requested behavior and all imports, close every JSX tag/bracket, and emit no Markdown fences or explanatory prose.`
                     : retryKind === 'imports'
-                        ? `IMPORT PATH RETRY REQUIRED:\nThe previous completion referenced a local file that does not exist from the importing file. Re-read the verified project layout in context and return the complete file again with every relative import resolving from this file. Do not invent or duplicate folders, do not change package.json, and emit no Markdown fences or explanatory prose.`
+                        ? `IMPORT PATH RETRY REQUIRED:\nThe previous completion referenced a local file that does not exist from the importing file. Re-read the verified project layout in context and return the complete file again with every relative import resolving from this file.\nRejected import evidence:\n${retryReason || '(see the validator error above)'}\n${localImportRepairGuidance}\nDo not invent or duplicate folders, do not change package.json, and emit no Markdown fences or explanatory prose.`
                         : retryKind === 'runtime'
                             ? `RUNTIME CONTRACT RETRY REQUIRED:\nThe previous completion imported package(s) that are not declared in the nearest verified package.json: ${retryReason || '(see the rejected runtime contract error)'}. Treat the manifest package list as a hard allowlist. Return the complete file again using only packages already declared in that manifest, React/browser APIs, and local imports proven by the supplied project context. Do not add or edit package.json, do not switch frameworks, and do not replace a rejected package with any other undeclared package. Rejected package attempts listed above are forbidden; implement the requested behavior with the allowlisted stack instead. Emit no Markdown fences or explanatory prose.`
                             : `FORMAT RETRY REQUIRED:\nThe previous completion violated the destination artifact contract. Return the complete file again, with no Markdown fences or explanatory prose. For JSON, return strict parseable JSON only. Do not omit, truncate, or replace any content.`;
@@ -576,7 +609,7 @@ Return the complete file content now.`;
             let validation = validationErrorFor(finalContent);
             const retrySource = async (kind: 'imports' | 'syntax', reason: string) => {
                 logs.push(`${kind === 'imports' ? 'import path' : 'syntax'} retry requested for ${filePath}: ${reason}`);
-                content = await callForArtifact(kind);
+                content = await callForArtifact(kind, reason);
                 if (isProviderFailure(content)) return { providerFailure: String(content) };
                 prepared = prepareArtifactContent(filePath, content);
                 if (prepared.error) return { artifactError: prepared.error };
@@ -607,8 +640,16 @@ Return the complete file content now.`;
                 finalContent = prepared.content;
                 validation = validationErrorFor(finalContent);
             }
-            if (validation?.kind === 'imports') {
-                const retried = await retrySource('imports', validation.error);
+            // A repair completion can fix one local import while inventing a
+            // different unresolved import. Permit two bounded import retries,
+            // carrying every rejected path forward as a hard evidence history;
+            // never write a candidate until the final filesystem validator passes.
+            let importRetryCount = 0;
+            const importRejectionHistory: string[] = [];
+            while (validation?.kind === 'imports' && importRetryCount < 2) {
+                importRetryCount += 1;
+                importRejectionHistory.push(validation.error);
+                const retried = await retrySource('imports', importRejectionHistory.join('\\n'));
                 if (retried.providerFailure) {
                     return { ok: false, error: retried.providerFailure, logs: [...logs, 'import path retry received no LLM provider answer; nothing was written'] };
                 }

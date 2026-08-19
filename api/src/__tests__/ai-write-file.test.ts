@@ -305,6 +305,38 @@ describe('verified runtime contracts keep generated source on the project stack'
         expect(fs.readFileSync(landsAt(rel), 'utf-8')).toMatch(/\.\.\/styles\/app\.css/);
     });
 
+    it('keeps an evidence-bound missing importer on the approved path across a second import retry', async () => {
+        fs.mkdirSync(path.join(projectRoot, 'src', 'styles'), { recursive: true });
+        fs.writeFileSync(path.join(projectRoot, 'src', 'styles', 'app.css'), '.app { color: red; }', 'utf8');
+        const importer = path.join(projectRoot, 'src', 'components', 'MissingWeatherApp.jsx');
+        const target = path.join(projectRoot, 'src', 'styles', 'app.css');
+        callLLM
+            .mockResolvedValueOnce("import React from 'react';\nimport './styles/app.css';\nexport default function WeatherApp() { return <main>Weather</main>; }")
+            .mockResolvedValueOnce("import React from 'react';\nimport './App';\nexport default function WeatherApp() { return <main>Weather</main>; }")
+            .mockResolvedValueOnce("import React from 'react';\nimport '../styles/app.css';\nexport default function WeatherApp() { return <main>Weather</main>; }");
+        const rel = path.join(projectRel, 'src/components/MissingWeatherApp.jsx');
+        const repairContext = JSON.stringify({
+            localRuntimeImports: [{ importer, specifier: './styles/app.css' }],
+            importerMissing: { importer, find: './styles/app.css', replace: '../styles/app.css', target },
+            repairTicket: { type: 'phase_repair_ticket' },
+        });
+
+        const res: any = await tool.execute({
+            path: rel,
+            description: 'Regenerate the missing weather component importer using the evidence-bound stylesheet path.',
+            context: repairContext,
+        }, { projectRoot, engineeringPipeline: true });
+
+        expect(res.ok).toBe(true);
+        expect(callLLM).toHaveBeenCalledTimes(3);
+        expect(callLLM.mock.calls[0][0]).toMatch(/EVIDENCE-BOUND LOCAL IMPORT REPAIR/);
+        expect(callLLM.mock.calls[0][0]).toMatch(/\.\.\/styles\/app\.css/);
+        expect(callLLM.mock.calls[1][0]).toMatch(/Rejected import evidence/);
+        expect(callLLM.mock.calls[1][0]).toMatch(/\.\/App/);
+        expect(fs.readFileSync(importer, 'utf8')).toMatch(/\.\.\/styles\/app\.css/);
+        expect(fs.readFileSync(importer, 'utf8')).not.toMatch(/\.\/App/);
+    });
+
     it('allows an import of a file planned for a later task in the same phase', async () => {
         callLLM.mockResolvedValue("import React from 'react';\nimport { getWeather } from '../services/weatherService';\nexport default function WeatherApp() { return <main>{getWeather()}</main>; }");
         const rel = path.join(projectRel, 'src/components/WeatherApp.jsx');
