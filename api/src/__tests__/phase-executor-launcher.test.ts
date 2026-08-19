@@ -127,6 +127,26 @@ describe('PhaseExecutor manifest-aware npm launcher recovery', () => {
         }
     });
 
+    it('replaces a conceptual npm cwd with the runtime-bound artifact root', () => {
+        const projectRoot = path.join(workspaceRoot, 'react-weathergo-bad8');
+        fs.mkdirSync(projectRoot, { recursive: true });
+        const planned: Record<string, any> = {
+            command: 'install',
+            cwd: 'WeatherGo',
+            projectPath: 'WeatherGo',
+        };
+        const logs: string[] = [];
+        inheritRuntimeProjectArguments('npm_manager', planned, {
+            projectRoot,
+            projectName: 'WeatherGo',
+            projectRootRuntimeBound: true,
+        }, logs);
+
+        expect(planned).toMatchObject({ command: 'install', cwd: projectRoot });
+        expect(planned.projectPath).toBeUndefined();
+        expect(logs.join('\\n')).toContain('npm_manager: replaced stale cwd');
+    });
+
     it('maps runtime-bound source file arguments onto the artifact root', () => {
         const context = {
             projectRoot: '/workspace/react-weathergo-a7c8',

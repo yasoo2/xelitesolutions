@@ -208,9 +208,39 @@ export function inheritRuntimeProjectArguments(
     }
 
     const cwdInheritedTools = new Set(['npm_manager', 'shell_execute', 'terminal_manager', 'auto_tester']);
-    if (cwdInheritedTools.has(toolName) && !String(planned.cwd || planned.projectPath || '').trim()) {
-        planned.cwd = runtimeProjectRoot;
-        logs?.push(`[PhaseExecutor] ${toolName}: inherited cwd from runtime-bound project root (${runtimeProjectRoot.slice(0, 240)})`);
+    if (cwdInheritedTools.has(toolName)) {
+        const explicitCwd = String(planned.cwd || planned.projectPath || '').trim();
+        // npm always operates on the package-bearing runtime artifact. A model
+        // may leave the conceptual project label (for example `WeatherGo`) in
+        // cwd after react_project has rebound the real artifact. Passing that
+        // label through reaches safePath as a missing directory and produces
+        // the misleading `/bin/sh ENOENT` seen in a live repair rerun.
+        if (toolName === 'npm_manager' && runtimeProjectRoot) {
+            if (!explicitCwd || path.resolve(explicitCwd) !== path.resolve(runtimeProjectRoot)) {
+                planned.cwd = runtimeProjectRoot;
+                delete planned.projectPath;
+                logs?.push(explicitCwd
+                    ? `[PhaseExecutor] ${toolName}: replaced stale cwd with runtime-bound project root (${runtimeProjectRoot.slice(0, 240)})`
+                    : `[PhaseExecutor] ${toolName}: inherited cwd from runtime-bound project root (${runtimeProjectRoot.slice(0, 240)})`);
+            } else {
+                planned.cwd = runtimeProjectRoot;
+            }
+        } else if (!explicitCwd) {
+            planned.cwd = runtimeProjectRoot;
+            logs?.push(`[PhaseExecutor] ${toolName}: inherited cwd from runtime-bound project root (${runtimeProjectRoot.slice(0, 240)})`);
+        } else if (runtimeProjectRoot) {
+            let resolvedExplicit = '';
+            try {
+                resolvedExplicit = path.isAbsolute(explicitCwd)
+                    ? path.resolve(explicitCwd)
+                    : path.resolve(runtimeProjectRoot, explicitCwd);
+            } catch { /* fall through to the trusted artifact root */ }
+            if (!resolvedExplicit || !isWithinRoot(resolvedExplicit, runtimeProjectRoot) || !fs.existsSync(resolvedExplicit)) {
+                planned.cwd = runtimeProjectRoot;
+                delete planned.projectPath;
+                logs?.push(`[PhaseExecutor] ${toolName}: replaced stale or missing cwd with runtime-bound project root (${runtimeProjectRoot.slice(0, 240)})`);
+            }
+        }
     }
     return planned;
 }
