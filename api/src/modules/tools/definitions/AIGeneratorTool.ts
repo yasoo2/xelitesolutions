@@ -1,6 +1,7 @@
 import { ToolDefinition, ToolPermission } from '../types';
 import { isWithinRoot, resolveToolPath } from '../utils';
 import { isProviderFailure } from '../../../core/llm/intelligent-router';
+import { workspaceService } from '../../services/WorkspaceService';
 import fs from 'fs';
 import path from 'path';
 import { prepareArtifactContent } from '../artifact-validation';
@@ -243,14 +244,36 @@ function runtimeContractForTarget(
         directory = path.dirname(absolutePath);
     }
 
+    // Absolute artifact paths are allowed anywhere under the configured external
+    // projects root, but a manifest above that boundary belongs to Joe's source
+    // repository rather than to the artifact being assembled. If the target is
+    // already inside an explicit absolute projectRoot, that root is the tighter
+    // and more truthful boundary; otherwise stop at externalRoot.
+    const absoluteFallbackRoot = trustedFallbackRoot && path.isAbsolute(trustedFallbackRoot)
+        ? path.resolve(trustedFallbackRoot)
+        : null;
+    const externalProjectsRoot = path.resolve(workspaceService.externalRoot);
+    const searchBoundary = path.isAbsolute(filePath) && absoluteFallbackRoot
+        && isWithinRoot(absolutePath, absoluteFallbackRoot)
+        ? absoluteFallbackRoot
+        : externalProjectsRoot;
+
     while (true) {
         const targetContract = runtimeContractFor(directory, workspaceId);
         if (targetContract) return targetContract;
+        if (directory === searchBoundary) break;
         const parent = path.dirname(directory);
-        if (parent === directory) break;
+        if (parent === directory || !isWithinRoot(parent, searchBoundary)) break;
         directory = parent;
     }
-    return runtimeContractFor(fallbackRoot, workspaceId);
+    // An absolute path is already bound to a concrete artifact. If its own
+    // manifest has not been created yet, do not apply the pipeline/API root's
+    // unrelated package allow-list and falsely reject framework core imports
+    // such as react and react-dom. The phase that owns the artifact remains
+    // responsible for creating package.json before launch verification.
+    return path.isAbsolute(filePath)
+        ? null
+        : runtimeContractFor(fallbackRoot, workspaceId);
 }
 
 function runtimeGuidanceFor(contract: RuntimeContract | null): string {

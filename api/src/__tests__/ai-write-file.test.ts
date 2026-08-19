@@ -526,6 +526,35 @@ describe('verified runtime contracts keep generated source on the project stack'
         expect(res.output.path).toBe(path.join('src', 'services', 'forecast.ts'));
     });
 
+    it('does not apply an unrelated fallback manifest to an absolute artifact before its manifest exists', async () => {
+        const fallbackRoot = path.join(landsAt(DIR), 'runtime-fallback-root');
+        const orphanRoot = path.join(workspaceService.externalRoot, '__ai_write_file_orphan_artifact__');
+        const target = path.join(orphanRoot, 'src', 'App.jsx');
+        fs.mkdirSync(path.dirname(target), { recursive: true });
+        fs.mkdirSync(fallbackRoot, { recursive: true });
+        fs.writeFileSync(path.join(fallbackRoot, 'package.json'), JSON.stringify({
+            name: 'joe-api-fallback',
+            dependencies: { express: '^4.19.0' },
+        }), 'utf8');
+        callLLM.mockResolvedValue("import React from 'react';\nexport default function App() { return <main>orphan-artifact</main>; }");
+
+        const res: any = await tool.execute({
+            path: target,
+            description: 'Write the browser entry while the artifact manifest is being created by another phase.',
+        }, {
+            projectRoot: fallbackRoot,
+            engineeringPipeline: true,
+        });
+
+        try {
+            expect(res.ok).toBe(true);
+            expect(fs.readFileSync(target, 'utf8')).toContain('orphan-artifact');
+            expect(res.error || '').not.toMatch(/runtime_contract_mismatch/);
+        } finally {
+            fs.rmSync(orphanRoot, { recursive: true, force: true });
+        }
+    });
+
     it('uses the absolute artifact target even when a stale conceptual fallback is supplied', async () => {
         const artifactRoot = path.join(projectRoot, 'absolute-artifact-target');
         const target = path.join(artifactRoot, 'src', 'components', 'Search.jsx');
