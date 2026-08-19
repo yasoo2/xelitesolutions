@@ -343,10 +343,24 @@ function evidenceBoundLocalImportGuidance(rawContext: unknown): string {
     return `\nEVIDENCE-BOUND LOCAL IMPORT REPAIR:\n${lines.join('\n')}\n- Do not introduce any other relative import unless it resolves from the generated file against the verified filesystem.\n- Do not substitute a guessed path such as ./App, ./styles, or another sibling; the listed replacement is the only approved correction for the rejected token.\n`;
 }
 
+function isImplicitWebPeerPackage(name: string, contract: RuntimeContract): boolean {
+    // React DOM projects can briefly expose a partial manifest while the
+    // scaffold/package phase is still settling. React is the peer runtime of
+    // react-dom, but arbitrary libraries must never be inferred from that fact.
+    return name === 'react'
+        && contract.kind === 'web'
+        && (contract.declaredPackages.has('react-dom')
+            || contract.declaredPackages.has('vite')
+            || contract.declaredPackages.has('next')
+            || contract.declaredPackages.has('react-scripts'));
+}
+
 function runtimeArtifactMismatch(filePath: string, content: string, contract: RuntimeContract | null): string | null {
     if (!contract || !/\.(?:js|mjs|cjs|ts|tsx|jsx)$/iu.test(filePath) || path.basename(filePath).toLowerCase() === 'package.json') return null;
     const imports = importedPackageNames(content);
-    const undeclared = imports.filter(name => !contract.declaredPackages.has(name) && !NODE_BUILTINS.has(name));
+    const undeclared = imports.filter(name => !contract.declaredPackages.has(name)
+        && !NODE_BUILTINS.has(name)
+        && !isImplicitWebPeerPackage(name, contract));
     const nativeImports = imports.filter(name => /^(?:react-native|expo|@react-navigation)(?:$|[\/])/iu.test(name));
     const webImports = imports.filter(name => /^(?:react-dom|vite|next|react-scripts)(?:$|[\/])/iu.test(name));
     const stackMismatch = (contract.kind === 'web' && nativeImports.length > 0)

@@ -385,6 +385,49 @@ describe('verified runtime contracts keep generated source on the project stack'
         expect(fs.readFileSync(landsAt(rel), 'utf8')).toMatch(/react-dom\/client/);
     });
 
+    it('uses the nearest manifest for an absolute nested target during runtime validation', async () => {
+        const absoluteTarget = path.join(projectRoot, 'src/components/Search.jsx');
+        callLLM.mockResolvedValue("import React from 'react';\nimport { BrowserRouter } from 'react-router-dom';\nexport default function Search() { return <BrowserRouter><main>Search</main></BrowserRouter>; }");
+
+        const res: any = await tool.execute({
+            path: absoluteTarget,
+            description: 'Write the browser search component for the verified React project.',
+        }, { projectRoot, engineeringPipeline: true });
+
+        expect(res.ok).toBe(false);
+        expect(res.error).toMatch(/runtime_contract_mismatch/);
+        expect(res.error).toMatch(/react-router-dom/);
+        expect(res.error).not.toMatch(/undeclared package\(s\): react(?:,|\s|\])/);
+        expect(fs.existsSync(absoluteTarget)).toBe(false);
+    });
+
+    it('does not misclassify the React core peer when a web manifest is momentarily partial', async () => {
+        const manifestPath = path.join(projectRoot, 'package.json');
+        const originalManifest = fs.readFileSync(manifestPath, 'utf8');
+        fs.writeFileSync(manifestPath, JSON.stringify({
+            name: 'verified-web-partial',
+            dependencies: { 'react-dom': '^18.2.0' },
+            devDependencies: { vite: '^5.0.0' },
+        }), 'utf8');
+        try {
+            const absoluteTarget = path.join(projectRoot, 'src/components/PartialSearch.jsx');
+            callLLM.mockResolvedValue("import React from 'react';\nimport { BrowserRouter } from 'react-router-dom';\nexport default function PartialSearch() { return <BrowserRouter><main>Search</main></BrowserRouter>; }");
+
+            const res: any = await tool.execute({
+                path: absoluteTarget,
+                description: 'Write the browser search component for the verified React project.',
+            }, { projectRoot, engineeringPipeline: true });
+
+            expect(res.ok).toBe(false);
+            expect(res.error).toMatch(/runtime_contract_mismatch/);
+            expect(res.error).toMatch(/react-router-dom/);
+            expect(res.error).not.toMatch(/undeclared package\(s\): react(?:,|\]|\s|$)/);
+            expect(fs.existsSync(absoluteTarget)).toBe(false);
+        } finally {
+            fs.writeFileSync(manifestPath, originalManifest, 'utf8');
+        }
+    });
+
     it('uses one bounded runtime retry to remove undeclared packages before writing', async () => {
         const rel = path.join(projectRel, 'src/runtime-retry/App.jsx');
         callLLM
