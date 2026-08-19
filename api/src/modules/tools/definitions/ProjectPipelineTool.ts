@@ -45,6 +45,36 @@ function appendBoundedPipelineLogs(logs: string[], values: unknown): void {
     for (const value of values) appendBoundedPipelineLog(logs, value);
 }
 
+/**
+ * Keep bounded scope-repair failures actionable. The UI report intentionally
+ * stays concise, but the pipeline log must retain enough structured evidence
+ * to distinguish planner failure, phase failure, and self-fix failure without
+ * dumping the full prompt or model transcript.
+ */
+export function summarizeScopeRepairPipeline(scopePipeline: any): string {
+    const results = Array.isArray(scopePipeline?.results) ? scopePipeline.results : [];
+    const summarize = (value: any) => ({
+        phaseName: String(value?.phaseName || value?.name || '').slice(0, 180),
+        status: String(value?.status || '').slice(0, 80),
+        ok: value?.ok === true,
+        primaryError: String(value?.primaryError || value?.error || '').slice(0, 420),
+        verificationFailed: value?.verificationFailed === true,
+        honestBlocker: value?.honestBlocker === true,
+        completedTasks: Number.isFinite(Number(value?.completedTasks)) ? Number(value.completedTasks) : undefined,
+        totalTasks: Number.isFinite(Number(value?.totalTasks)) ? Number(value.totalTasks) : undefined,
+    });
+    return JSON.stringify({
+        ok: scopePipeline?.ok === true,
+        completedPhases: Number(scopePipeline?.completedPhases || 0),
+        error: String(scopePipeline?.error || '').slice(0, 420),
+        honestBlocker: scopePipeline?.honestBlocker === true,
+        results: results.slice(-8).map(summarize),
+        selfFixExecution: scopePipeline?.selfFixExecution
+            ? String(scopePipeline.selfFixExecution?.error || scopePipeline.selfFixExecution?.status || '').slice(0, 420)
+            : undefined,
+    }).slice(0, 3_600);
+}
+
 function boundedPipelineLogs(...sources: unknown[]): string[] {
     const logs: string[] = [];
     for (const source of sources) appendBoundedPipelineLogs(logs, source);
@@ -1368,6 +1398,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                 if (scopePipeline?.ok !== true) {
                     scopeRepairStatus = 'scope_repair_pipeline_failed';
                     appendBoundedPipelineLog(logs, '[pipeline] scope repair phases did not verify successfully');
+                    appendBoundedPipelineLog(logs, `[pipeline] scope repair evidence: ${summarizeScopeRepairPipeline(scopePipeline)}`);
                     return;
                 }
                 const scopeRetryResult = await executeTool(
