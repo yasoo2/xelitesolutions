@@ -2142,6 +2142,7 @@ export class ReactProjectTool extends BaseTool {
             request: { type: 'string', description: 'What the app is about, in the user\'s words' },
             projectName: { type: 'string', description: 'Canonical artifact identity supplied by the project pipeline' },
             skipInstall: { type: 'boolean', description: 'Scaffold only — do not run npm install/build' },
+            resumeExisting: { type: 'boolean', description: 'Resume an existing project after a bounded repair while preserving its manifest and generated files' },
         },
         required: ['request'],
     };
@@ -2209,8 +2210,12 @@ export class ReactProjectTool extends BaseTool {
          */
         const { saysNoInstall, asksFor } = require('../../../core/design/subject-phrase');
         const noInstall = !!input?.skipInstall || saysNoInstall(request);
+        const resumeExisting = input?.resumeExisting === true;
         if (noInstall && !input?.skipInstall) {
             term('policy: the request says not to install packages — skipping npm install and the build that needs it');
+        }
+        if (resumeExisting) {
+            term('recovery: resuming the existing project and preserving its installed manifest before regeneration');
         }
 
         const shell = openTerminal(term);
@@ -2416,12 +2421,19 @@ export class ReactProjectTool extends BaseTool {
         // compatibility with sessions created before this handoff existed.
         const ownedScaffoldDir = typeof activeProject?.scaffoldDir === 'string'
             ? activeProject.scaffoldDir
-            : activeProject?.type === 'scaffold' && typeof activeProject?.dir === 'string'
+            : (activeProject?.type === 'react' || activeProject?.type === 'scaffold') && typeof activeProject?.dir === 'string'
                 ? activeProject.dir : '';
         const activeDir = ownedScaffoldDir ? path.resolve(ownedScaffoldDir) : '';
         const workspaceRoot = path.resolve(root);
         const activeInsideRoot = !!activeDir && (activeDir === workspaceRoot || activeDir.startsWith(workspaceRoot + path.sep));
-        const reusableScaffold = activeInsideRoot && isReactViteProjectDir(activeDir) ? activeDir : '';
+        const reusableScaffold = activeInsideRoot && (
+            isReactViteProjectDir(activeDir)
+            // A bounded dependency repair may resume before the first build has
+            // produced a complete Vite shape. Ownership plus an existing
+            // manifest is the explicit recovery contract; normal builds keep
+            // the stricter structural guard above.
+            || (resumeExisting && fs.existsSync(path.join(activeDir, 'package.json')))
+        ) ? activeDir : '';
         let proj = reusableScaffold || path.join(root, dirName);
         if (reusableScaffold) {
             term(`project identity: reusing this session's React scaffold at ${proj}`);
@@ -2827,6 +2839,24 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
         }
         // The multi-page app swaps in a Navbar of real page Links.
         if (!appBp && multiPage) files['src/components/Navbar.jsx'] = fileMultiPageNavbarJsx();
+        if (resumeExisting && fs.existsSync(path.join(proj, 'package.json'))) {
+            try {
+                const existingManifest = JSON.parse(fs.readFileSync(path.join(proj, 'package.json'), 'utf8'));
+                const generatedManifest = JSON.parse(files['package.json']);
+                files['package.json'] = JSON.stringify({
+                    ...generatedManifest,
+                    ...existingManifest,
+                    scripts: { ...(generatedManifest.scripts || {}), ...(existingManifest.scripts || {}) },
+                    dependencies: { ...(generatedManifest.dependencies || {}), ...(existingManifest.dependencies || {}) },
+                    devDependencies: { ...(generatedManifest.devDependencies || {}), ...(existingManifest.devDependencies || {}) },
+                    optionalDependencies: { ...(generatedManifest.optionalDependencies || {}), ...(existingManifest.optionalDependencies || {}) },
+                }, null, 2);
+                term('recovery: preserved existing package.json dependencies and scripts while refreshing generated application files');
+            } catch (error: any) {
+                term(`recovery: existing package.json could not be merged — ${String(error?.message || error)}`);
+                return { ok: false, error: 'resume_manifest_invalid', logs };
+            }
+        }
         // THE FILES, LIVE. Every file this build writes is streamed to the
         // Logs panel the moment it exists on disk — the same `file_stream`
         // event the page builder emits. Without it the panel opened on a

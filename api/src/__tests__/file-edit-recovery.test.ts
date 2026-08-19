@@ -341,7 +341,7 @@ describe('evidence-aware file edit recovery', () => {
     expect(JSON.stringify(plan)).not.toContain('src/index.ts');
   });
 
-  it('preserves the generated project after a dependency repair and reruns verification tasks', () => {
+  it('resumes react_project after a dependency repair so request-driven domain files are regenerated', () => {
     const phase = {
       phaseNumber: 1,
       name: 'Project Setup',
@@ -354,8 +354,9 @@ describe('evidence-aware file edit recovery', () => {
 
     const resumed = phaseAfterRepair(phase, '/workspace/WeatherGo/package.json');
 
-    expect(resumed.skipped).toEqual(['Create the React project']);
-    expect(resumed.phase.tasks.map((task: any) => task.tool)).toEqual(['shell_execute', 'project_run']);
+    expect(resumed.skipped).toEqual([]);
+    expect(resumed.phase.tasks.map((task: any) => task.tool)).toEqual(['react_project', 'shell_execute', 'project_run']);
+    expect(resumed.phase.tasks[0].args).toEqual(expect.objectContaining({ projectName: 'WeatherGo', resumeExisting: true }));
   });
 
   it('builds one bounded advanced-edit recovery from preserved file evidence', () => {
@@ -390,7 +391,7 @@ describe('evidence-aware file edit recovery', () => {
     });
   });
 
-  it('replaces a single scaffold task with bounded post-repair verification', () => {
+  it('resumes a single react_project task instead of dropping request-driven authoring', () => {
     const phase = {
       phaseNumber: 1,
       name: 'Project Setup',
@@ -401,11 +402,13 @@ describe('evidence-aware file edit recovery', () => {
 
     const resumed = phaseAfterRepair(phase, '/workspace/WeatherGo/package.json');
 
-    expect(resumed.skipped).toEqual(['Create the React project']);
-    expect(resumed.phase.name).toContain('post-repair verification');
+    expect(resumed.skipped).toEqual([]);
+    expect(resumed.phase.name).toBe('Project Setup');
     expect(resumed.phase.tasks).toEqual([
-      expect.objectContaining({ tool: 'shell_execute', command: 'npm run build', cwd: '/workspace/WeatherGo' }),
-      expect.objectContaining({ tool: 'project_run', cwd: '/workspace/WeatherGo' }),
+      expect.objectContaining({
+        tool: 'react_project',
+        args: expect.objectContaining({ projectName: 'WeatherGo', resumeExisting: true }),
+      }),
     ]);
   });
 });

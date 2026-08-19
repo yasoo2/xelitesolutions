@@ -105,18 +105,35 @@ export function phaseAfterRepair(phase: any, repairedFile?: unknown): { phase: a
   const manifestRepair = /(?:^|\/)package\.json$/u.test(file);
   const isScaffoldTask = (task: any): boolean => {
     const tool = String(task?.tool || task?.name || '').trim().toLowerCase();
-    return manifestRepair && (tool === 'react_project' || tool === 'scaffold_project');
+    const resumedReactProject = tool === 'react_project' && task?.args?.resumeExisting === true;
+    return manifestRepair && (tool === 'scaffold_project' || (tool === 'react_project' && !resumedReactProject));
   };
 
   const skipped: string[] = [];
-  const tasks = phase.tasks.filter((task: any) => {
-    const matches = taskPaths(task).some((candidate) => pathsReferToSameFile(candidate, file));
-    const preserveScaffold = isScaffoldTask(task);
-    if (matches || preserveScaffold) {
-      skipped.push(String(task.task || task.description || task.tool || 'repaired task'));
-    }
-    return !matches && !preserveScaffold;
-  });
+  const tasks = phase.tasks
+    .map((task: any) => {
+      const tool = String(task?.tool || task?.name || '').trim().toLowerCase();
+      // react_project owns both the initial scaffold and the request-driven
+      // domain authoring step. After npm repairs, skipping it wholesale leaves
+      // App.jsx importing a missing WeatherApp.jsx. Resume the same task in
+      // place, preserving the repaired manifest while regenerating the domain.
+      if (manifestRepair && tool === 'react_project') {
+        return {
+          ...task,
+          args: { ...(task.args || {}), resumeExisting: true },
+          ...(task.input ? { input: { ...task.input, resumeExisting: true } } : {}),
+        };
+      }
+      return task;
+    })
+    .filter((task: any) => {
+      const matches = taskPaths(task).some((candidate) => pathsReferToSameFile(candidate, file));
+      const preserveScaffold = isScaffoldTask(task);
+      if (matches || preserveScaffold) {
+        skipped.push(String(task.task || task.description || task.tool || 'repaired task'));
+      }
+      return !matches && !preserveScaffold;
+    });
 
   // A greenfield phase can contain only react_project: the dependency guard
   // may fail while that tool is writing the engine, before planner-added build
@@ -155,7 +172,9 @@ export function phaseAfterRepair(phase: any, repairedFile?: unknown): { phase: a
   // failure by PhaseExecutorTool. If this was the only task and no bounded
   // project root was evidenced, keep the original phase rather than guessing.
   if (tasks.length === 0) return { phase, skipped: [] };
-  return { phase: tasks.length === phase.tasks.length ? phase : { ...phase, tasks }, skipped };
+  const phaseUnchanged = tasks.length === phase.tasks.length
+    && tasks.every((task: any, index: number) => task === phase.tasks[index]);
+  return { phase: phaseUnchanged ? phase : { ...phase, tasks }, skipped };
 }
 
 export interface SelfFixExecutionInput {

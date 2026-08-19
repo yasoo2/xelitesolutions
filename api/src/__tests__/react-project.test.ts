@@ -68,6 +68,39 @@ describe('the scaffold: complete, RTL, tokenized, honest', () => {
         expect(pkg.dependencies.react).toBeTruthy();
         expect(pkg.devDependencies['@vitejs/plugin-react']).toBeTruthy();
     });
+    it('resumeExisting preserves a repaired dependency while reusing the session scaffold', async () => {
+        const sessionId = 'jest-resume-manifest';
+        const tmpResume = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-resume-manifest-'));
+        try {
+            const tool = new ReactProjectTool();
+            const first = await tool.execute({
+                request: 'build me a React app for a small business dashboard',
+                root: tmpResume,
+                skipInstall: true,
+            }, { sessionId });
+            expect(first.ok).toBe(true);
+            const projectPath = first.output.path;
+            const manifestPath = path.join(projectPath, 'package.json');
+            const repairedManifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+            repairedManifest.dependencies['react-redux'] = '^9.2.0';
+            fs.writeFileSync(manifestPath, JSON.stringify(repairedManifest, null, 2));
+
+            const resumed = await tool.execute({
+                request: 'build me a React app for a small business dashboard',
+                root: tmpResume,
+                skipInstall: true,
+                resumeExisting: true,
+            }, { sessionId });
+
+            expect(resumed.ok).toBe(true);
+            expect(resumed.output.path).toBe(projectPath);
+            const preserved = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+            expect(preserved.dependencies['react-redux']).toBe('^9.2.0');
+        } finally {
+            delete (global as any).joeProjects?.[sessionId];
+            fs.rmSync(tmpResume, { recursive: true, force: true });
+        }
+    });
     it('index.html is Arabic RTL and vite.config uses base ./ (publishable)', () => {
         expect(fs.readFileSync(path.join(out.output.path, 'index.html'), 'utf-8')).toContain('dir="rtl"');
         expect(fs.readFileSync(path.join(out.output.path, 'vite.config.js'), 'utf-8')).toContain("base: './'");
