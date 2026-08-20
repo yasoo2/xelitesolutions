@@ -77,3 +77,55 @@ export function pruneEnvBackups(keep = 10): number {
     for (const f of drop) { try { fs.unlinkSync(path.join(dir, f)); } catch { } }
     return drop.length;
 }
+
+/* ── the file as a LIST, for the panel that now shows all of it ──────────── */
+
+export interface EnvFileEntry { key: string; value: string; }
+
+/**
+ * The actual assignments in .env, in file order. Commented-out lines are the
+ * operator's deliberate choice and stay invisible here, exactly as they are
+ * invisible to the process.
+ */
+export function readEnvEntries(): EnvFileEntry[] {
+    const file = envFilePath();
+    if (!fs.existsSync(file)) return [];
+    const out: EnvFileEntry[] = [];
+    for (const line of fs.readFileSync(file, 'utf-8').split(/\r?\n/)) {
+        const m = line.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/);
+        if (!m) continue;
+        let v = m[2].trim();
+        if (v.startsWith('"') && v.endsWith('"') && v.length >= 2) v = v.slice(1, -1).replace(/\\"/g, '"');
+        else if (v.startsWith("'") && v.endsWith("'") && v.length >= 2) v = v.slice(1, -1);
+        else {
+            const hash = v.search(/\s#/);
+            if (hash >= 0) v = v.slice(0, hash).trim();
+        }
+        if (!out.some(e => e.key === m[1])) out.push({ key: m[1], value: v });
+        else out[out.findIndex(e => e.key === m[1])] = { key: m[1], value: v }; // last assignment wins, like dotenv
+    }
+    return out;
+}
+
+/**
+ * Delete assignments in place. Only the assignment lines go; comments and
+ * everything else keep their exact positions. Same backup discipline as a
+ * write — a deletion is an edit.
+ */
+export function removeEnvKeys(keys: string[]): { removed: string[]; backup: string | null } {
+    const file = envFilePath();
+    const before = fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '';
+    if (!before || !keys.length) return { removed: [], backup: null };
+    const removed: string[] = [];
+    const kept = before.split(/\r?\n/).filter(line => {
+        const hit = keys.find(k => new RegExp(`^\\s*(?:export\\s+)?${k}\\s*=`).test(line));
+        if (hit) { if (!removed.includes(hit)) removed.push(hit); return false; }
+        return true;
+    });
+    if (!removed.length) return { removed, backup: null };
+    const backup = `${file}.backup-${Date.now()}`;
+    fs.writeFileSync(backup, before, { mode: 0o600 });
+    fs.writeFileSync(file, kept.join('\n'), { mode: 0o600 });
+    try { fs.chmodSync(file, 0o600); } catch { /* windows has no mode bits */ }
+    return { removed, backup };
+}

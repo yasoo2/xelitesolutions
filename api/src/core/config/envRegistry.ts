@@ -159,3 +159,54 @@ export function maskEnvValue(setting: EnvSetting, value: string | undefined): { 
     if (!isSecretSetting(setting)) return { set: true, preview: v.length > 120 ? `${v.slice(0, 120)}…` : v };
     return { set: true, preview: `••••${v.slice(-4)}` };
 }
+
+/* ── CUSTOM VARIABLES: the owner's names, behind a narrow gate ───────────── */
+
+/**
+ * The closed registry above stays the safe default, but the owner asked to add
+ * his OWN variables from the panel (any integration Joe's code reads via
+ * process.env). Opening a free key field re-opens the RCE this file warns
+ * about, so the gate is double: a strict name shape, and a refusal list of the
+ * names that steer the PROCESS or its child interpreters rather than configure
+ * an application — those stay hand-edit only, forever.
+ */
+export const FORBIDDEN_CUSTOM_KEYS = new Set([
+    // Node loads code from these before Joe runs a single line.
+    'NODE_OPTIONS', 'NODE_EXTRA_CA_CERTS', 'NODE_REPL_EXTERNAL_MODULE',
+    // Dynamic linker injection.
+    'LD_PRELOAD', 'LD_LIBRARY_PATH', 'LD_AUDIT', 'DYLD_INSERT_LIBRARIES', 'DYLD_LIBRARY_PATH',
+    // Which binary answers to a bare name.
+    'PATH', 'PATHEXT', 'COMSPEC', 'PSMODULEPATH', 'SYSTEMROOT', 'WINDIR',
+    // Interpreters that execute a file named by their environment.
+    'PYTHONPATH', 'PYTHONSTARTUP', 'BASH_ENV', 'ENV', 'PROMPT_COMMAND', 'SHELL', 'IFS',
+    // Things Joe itself spawns as commands.
+    'JOE_UPDATE_SCRIPT', 'GIT_SSH_COMMAND', 'GIT_ASKPASS', 'SSH_ASKPASS',
+]);
+
+/** Null when the name may be written from the panel; an Arabic reason otherwise. */
+export function customKeyProblem(rawKey: string): string | null {
+    const key = String(rawKey || '').trim();
+    if (!/^[A-Z][A-Z0-9_]{1,63}$/.test(key)) {
+        return 'اسم المتغير يجب أن يبدأ بحرف لاتيني كبير ويحتوي حروفاً كبيرة وأرقاماً و«_» فقط (حتى 64 محرفاً).';
+    }
+    if (FORBIDDEN_CUSTOM_KEYS.has(key)) {
+        return `«${key}» يوجّه عملية التشغيل نفسها لا إعدادات جو — يُعدَّل يدوياً في الملف فقط.`;
+    }
+    return null;
+}
+
+/** Same injection rules a registry value obeys; a custom value has no kind. */
+export function validateCustomValue(raw: string): string | null {
+    const v = String(raw ?? '');
+    if (/[\r\n]/.test(v)) return 'القيمة لا يمكن أن تحتوي سطراً جديداً.';
+    if (v.length > 2000) return 'القيمة أطول من الحدّ المسموح (2000 محرف).';
+    return null;
+}
+
+/**
+ * A custom variable whose NAME says it holds a credential is served masked and
+ * written-only, exactly like a registry secret — the panel cannot know the
+ * variable, but it can respect what the name announces.
+ */
+export const isSecretLikeName = (key: string): boolean =>
+    /(^|_)(KEY|SECRET|TOKEN|PASSWORD|PASSWD|PAT|AUTH|CREDENTIALS?|PRIVATE)(_|$)/.test(String(key || ''));

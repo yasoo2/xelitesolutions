@@ -11,8 +11,8 @@ import mongoose from 'mongoose';
 import fs from 'fs';
 import path from 'path';
 import { SystemConfig } from '../../shared/models/systemConfig';
-import { ENV_SETTINGS, ENV_BY_KEY, isSettableEnvKey, validateEnvValue, maskEnvValue, isSecretSetting } from '../../core/config/envRegistry';
-import { writeEnvChanges, pruneEnvBackups, envFilePath } from '../../core/config/envFile';
+import { ENV_SETTINGS, ENV_BY_KEY, isSettableEnvKey, validateEnvValue, maskEnvValue, isSecretSetting, customKeyProblem, validateCustomValue, isSecretLikeName } from '../../core/config/envRegistry';
+import { writeEnvChanges, pruneEnvBackups, envFilePath, readEnvEntries, removeEnvKeys } from '../../core/config/envFile';
 import { superAdminEmails } from '../middleware/auth';
 
 const router = Router();
@@ -162,6 +162,25 @@ const requireOwner = (req: any, res: any, next: any) => {
 };
 
 router.get('/env', requireOwner, (_req, res) => {
+    /**
+     * Everything the panel shows in one answer: the registry rows as before,
+     * plus every assignment ALREADY in .env that the registry does not know —
+     * so the owner sees his real environment without retyping a single line.
+     * A custom value rides back in the clear only when its name does not
+     * announce a credential; KEY/SECRET/TOKEN/… names stay write-only.
+     */
+    const registryKeys = new Set(ENV_SETTINGS.map(s => s.key));
+    const custom = readEnvEntries()
+        .filter(e => !registryKeys.has(e.key))
+        .map(e => {
+            const secret = isSecretLikeName(e.key);
+            return {
+                key: e.key, secret, set: !!e.value,
+                preview: !e.value ? '' : secret ? `••••${e.value.slice(-4)}`
+                    : e.value.length > 120 ? `${e.value.slice(0, 120)}…` : e.value,
+                ...(secret ? {} : { value: e.value }),
+            };
+        });
     res.json({
         ok: true,
         file: envFilePath(),
@@ -171,28 +190,49 @@ router.get('/env', requireOwner, (_req, res) => {
             confirm: s.confirm,
             ...maskEnvValue(s, process.env[s.key]),
         })),
+        custom,
     });
 });
 
 router.post('/env', requireOwner, (req, res) => {
     const changes = (req.body && typeof req.body.changes === 'object' && req.body.changes) || {};
     const confirm = String(req.body?.confirm || '');
+    const removeRaw = Array.isArray(req.body?.remove) ? req.body.remove.map((k: any) => String(k || '').trim()).filter(Boolean) : [];
     const entries = Object.entries(changes as Record<string, any>);
-    if (!entries.length) return res.status(400).json({ ok: false, error: 'no_changes' });
+    if (!entries.length && !removeRaw.length) return res.status(400).json({ ok: false, error: 'no_changes' });
 
-    // 1) names — the closed list, refused by name and not by shape
-    const unknown = entries.map(([k]) => k).filter(k => !isSettableEnvKey(k));
-    if (unknown.length) {
-        logger.warn(`[AdminAPI] refused unknown env keys: ${unknown.join(', ')}`);
-        return res.status(400).json({
-            ok: false, error: 'unknown_key', keys: unknown,
-            message: `مفاتيح غير معروفة ومرفوضة: ${unknown.join(', ')} — لا يمكن ضبط متغيّر خارج القائمة.`,
-        });
+    /**
+     * 1) names. Registry names pass as before. Any OTHER name is a custom
+     * variable and faces the narrow gate: strict shape, and never one of the
+     * process-steering names — with a free key field, `NODE_OPTIONS` is
+     * remote code execution on the next boot, which is why the list of
+     * refusals lives in the registry next to that warning.
+     */
+    const registryEntries = entries.filter(([k]) => isSettableEnvKey(k));
+    const customEntries = entries.filter(([k]) => !isSettableEnvKey(k));
+    for (const [key] of customEntries) {
+        const bad = customKeyProblem(key);
+        if (bad) {
+            logger.warn(`[AdminAPI] refused custom env key: ${key}`);
+            return res.status(400).json({ ok: false, error: 'unknown_key', keys: [key], message: bad });
+        }
+    }
+    // Deletion is for custom names only; a registry setting is cleared, not
+    // removed, so the screen keeps showing that it exists and is blank.
+    for (const key of removeRaw) {
+        if (isSettableEnvKey(key)) {
+            return res.status(400).json({
+                ok: false, error: 'registry_key_not_removable', key,
+                message: `«${key}» من إعدادات جو الأساسية — امسح قيمته بدل حذفه.`,
+            });
+        }
+        const bad = customKeyProblem(key);
+        if (bad) return res.status(400).json({ ok: false, error: 'invalid_key', key, message: bad });
     }
 
     // 2) values
     const clean: Record<string, string> = {};
-    for (const [key, value] of entries) {
+    for (const [key, value] of registryEntries) {
         const setting = ENV_BY_KEY.get(key)!;
         const v = String(value ?? '').trim();
         const bad = validateEnvValue(setting, v);
@@ -204,6 +244,13 @@ router.post('/env', requireOwner, (req, res) => {
             });
         }
         clean[key] = v;
+    }
+    const cleanCustom: Record<string, string> = {};
+    for (const [key, value] of customEntries) {
+        const v = String(value ?? '').trim();
+        const bad = validateCustomValue(v);
+        if (bad) return res.status(400).json({ ok: false, error: 'invalid_value', key, message: `${key}: ${bad}` });
+        cleanCustom[key] = v;
     }
 
     // 3) the two doors that lock the owner out
@@ -226,8 +273,10 @@ router.post('/env', requireOwner, (req, res) => {
         });
     }
 
-    // 4) write, then apply the ones Joe re-reads per use
-    const result = writeEnvChanges(clean);
+    // 4) write and delete, then apply the ones Joe re-reads per use
+    const allWrites = { ...clean, ...cleanCustom };
+    const result = Object.keys(allWrites).length ? writeEnvChanges(allWrites) : { file: envFilePath(), updated: [], added: [], backup: null };
+    const removal = removeEnvKeys(removeRaw);
     pruneEnvBackups(10);
     const appliedNow: string[] = [];
     const needsRestart: string[] = [];
@@ -236,13 +285,19 @@ router.post('/env', requireOwner, (req, res) => {
         if (setting.live) { process.env[key] = clean[key]; appliedNow.push(key); }
         else needsRestart.push(key);
     }
+    // A custom variable is applied to the running process at once; whether the
+    // code that reads it does so per use or only at boot is that code's
+    // business, and «أعد التشغيل عند الشك» is the honest advice on screen.
+    for (const key of Object.keys(cleanCustom)) { process.env[key] = cleanCustom[key]; appliedNow.push(key); }
+    for (const key of removal.removed) { delete process.env[key]; }
     // Names only. A settings log that prints values is a second copy of every
     // secret, in a file nobody remembers to protect.
-    logger.info(`[AdminAPI] env updated by ${me || '(unknown)'}: ${Object.keys(clean).join(', ')}`);
+    logger.info(`[AdminAPI] env updated by ${me || '(unknown)'}: ${[...Object.keys(allWrites), ...removal.removed.map(k => `-${k}`)].join(', ')}`);
 
     res.json({
         ok: true,
-        updated: result.updated, added: result.added, backup: !!result.backup,
+        updated: result.updated, added: result.added, removed: removal.removed,
+        backup: !!(result.backup || removal.backup),
         appliedNow, needsRestart,
         message: needsRestart.length
             ? `حُفظ. ${appliedNow.length} سرى فوراً، و${needsRestart.length} يحتاج إعادة تشغيل جو.`

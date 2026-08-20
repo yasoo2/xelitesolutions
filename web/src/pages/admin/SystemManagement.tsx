@@ -9,6 +9,7 @@ import {
     Rocket, Search, UserPlus, UserMinus,
     Terminal, Loader2, Trash2, Copy,
     RotateCcw, XCircle, ShieldAlert, AlertTriangle,
+    Eye, EyeOff, Plus, Info,
 } from 'lucide-react';
 import { API_URL } from '../../config';
 import { SocketService } from '../../services/socket';
@@ -85,6 +86,15 @@ interface EnvSetting {
     preview: string;
 }
 
+/** A variable that lives in .env but not in the registry — the owner's own. */
+interface EnvCustomVar {
+    key: string;
+    secret: boolean;
+    set: boolean;
+    preview: string;
+    value?: string;
+}
+
 type Tab = 'dashboard' | 'deployments' | 'admins' | 'settings' | 'sentinel';
 
 export default function SystemManagement() {
@@ -125,6 +135,16 @@ export default function SystemManagement() {
     const [envSaving, setEnvSaving] = useState(false);
     const [envMsg, setEnvMsg] = useState<{ ok: boolean; text: string } | null>(null);
     const [envForbidden, setEnvForbidden] = useState(false);
+    // The Render-style single table: custom vars, staged deletions, new rows,
+    // per-row reveal, search, and the save split-menu.
+    const [envCustom, setEnvCustom] = useState<EnvCustomVar[]>([]);
+    const [envRemovals, setEnvRemovals] = useState<string[]>([]);
+    const [envAdds, setEnvAdds] = useState<Array<{ id: number; key: string; value: string; show: boolean }>>([]);
+    const [envReveal, setEnvReveal] = useState<Record<string, boolean>>({});
+    const [envSearch, setEnvSearch] = useState('');
+    const [envMenuOpen, setEnvMenuOpen] = useState(false);
+    const [envRedeploying, setEnvRedeploying] = useState(false);
+    const envAddSeq = useRef(1);
     const [isOwner, setIsOwner] = useState(false);
     const [autoDeployStatus, setAutoDeployStatus] = useState<{
         pollerActive: boolean;
@@ -279,28 +299,61 @@ export default function SystemManagement() {
             if (res.ok) {
                 const data = await res.json();
                 setEnvSettings(data.settings || []);
+                setEnvCustom(data.custom || []);
                 setEnvFile(data.file || '');
+                setEnvRemovals([]);
+                setEnvAdds([]);
             }
         } catch (e) { console.error(e); }
     }, [token]);
 
-    const saveEnv = async (keys: string[], confirm?: string) => {
-        const changes: Record<string, string> = {};
-        for (const k of keys) if (k in envDrafts) changes[k] = envDrafts[k];
-        if (!Object.keys(changes).length) { setEnvMsg({ ok: false, text: 'لا تغييرات لحفظها.' }); return; }
+    /**
+     * ONE save for the whole table: edited rows, added rows, staged deletions.
+     * `redeploy` additionally asks the self-updater to restart Joe afterwards
+     * — the same path the update button uses, so there is exactly one way Joe
+     * restarts itself and it is already battle-tested.
+     */
+    const saveEnv = async (redeploy: boolean) => {
+        const changes: Record<string, string> = { ...envDrafts };
+        for (const a of envAdds) {
+            const k = a.key.trim().toUpperCase();
+            if (k) changes[k] = a.value;
+        }
+        const remove = envRemovals;
+        for (const k of remove) delete changes[k];   // a deleted row's edits die with it
+        if (!Object.keys(changes).length && !remove.length) { setEnvMsg({ ok: false, text: 'لا تغييرات لحفظها.' }); return; }
+        const needs = (envSettings || []).find(r => r.confirm && r.key in changes && changes[r.key]);
+        if (needs && !window.confirm(`${needs.label}: ${needs.hint}\n\nهل تريد المتابعة؟`)) return;
         setEnvSaving(true);
         setEnvMsg(null);
         try {
             const res = await fetch(`${API_URL}/admin/env`, {
                 method: 'POST',
                 headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ changes, confirm }),
+                body: JSON.stringify({ changes, remove, confirm: needs?.confirm }),
             });
             const data = await res.json().catch(() => null);
             if (res.ok) {
-                setEnvMsg({ ok: true, text: data?.message || 'حُفظ.' });
-                setEnvDrafts(prev => { const next = { ...prev }; for (const k of keys) delete next[k]; return next; });
+                setEnvDrafts({});
+                setEnvReveal({});
                 await fetchEnv();
+                if (redeploy) {
+                    setEnvRedeploying(true);
+                    setEnvMsg({ ok: true, text: `${data?.message || 'حُفظ.'} تبدأ الآن إعادة النشر…` });
+                    const up = await fetch(`${API_URL}/system/update`, {
+                        method: 'POST',
+                        headers: { Authorization: `Bearer ${token}` },
+                    }).catch(() => null);
+                    if (up && up.ok) {
+                        setEnvMsg({ ok: true, text: 'حُفظ وبدأت إعادة النشر — سيتوقف جو لحظات ثم يعود بالقيم الجديدة. حدّث الصفحة بعد عودته (Ctrl+Shift+R).' });
+                    } else {
+                        const ud = up ? await up.json().catch(() => null) : null;
+                        setEnvMsg({ ok: false, text: `حُفظ، لكن تعذّر بدء إعادة النشر${ud?.message ? `: ${ud.message}` : up ? ` (${up.status})` : ''} — أعد تشغيل جو يدوياً.` });
+                    }
+                    setEnvRedeploying(false);
+                } else {
+                    setEnvMsg({ ok: true, text: data?.message || 'حُفظ.' });
+                }
             } else {
                 setEnvMsg({ ok: false, text: data?.message || `تعذّر الحفظ (${res.status}).` });
             }
@@ -873,12 +926,20 @@ export default function SystemManagement() {
      * secret can be written but never read back; and each row says honestly
      * whether saving it takes effect now or waits for a restart.
      */
-    const GROUP_TITLES: Record<string, { title: string; note: string }> = {
-        ownership: { title: '🔐 الملكية والأمان', note: 'من يملك هذا التنصيب، ومن يُسمح له بالتسجيل.' },
-        ai: { title: '🧠 مفاتيح الذكاء', note: 'تُكتب ولا تُقرأ: بعد الحفظ لا يعيدها الخادم لأي متصفّح.' },
-        'local-brain': { title: '💻 الدماغ المحلّي', note: 'نماذج تعمل على جهازك بلا إنترنت وبلا تكلفة.' },
-        storage: { title: '🗄️ التخزين', note: 'أين تعيش بياناتك ومشاريعك.' },
-        runtime: { title: '⚙️ التشغيل', note: 'المنفذ والعنوان العام والمتصفّح.' },
+    /**
+     * THE SETTINGS SCREEN, second design. The five stacked cards with five
+     * save buttons read as five separate forms; the owner asked for the shape
+     * every deploy panel taught him: ONE flat table of variables, one search
+     * box, one save button — with a menu that can also redeploy. The server
+     * contract is unchanged and still the narrow one: registry names typed and
+     * validated, custom names behind the strict gate, secrets write-only.
+     */
+    const GROUP_TITLES: Record<string, string> = {
+        ownership: 'الملكية والأمان',
+        ai: 'مفاتيح الذكاء',
+        'local-brain': 'الدماغ المحلّي',
+        storage: 'التخزين',
+        runtime: 'التشغيل',
     };
 
     const renderSettings = () => {
@@ -895,15 +956,145 @@ export default function SystemManagement() {
                 </motion.div>
             );
         }
+        const q = envSearch.trim().toLowerCase();
+        const rowMatches = (key: string, label = '', hint = '') =>
+            !q || key.toLowerCase().includes(q) || label.toLowerCase().includes(q) || hint.toLowerCase().includes(q);
         const groups = ['ownership', 'ai', 'local-brain', 'storage', 'runtime'] as const;
+        const dirtyCount = Object.keys(envDrafts).length + envRemovals.length + envAdds.filter(a => a.key.trim()).length;
+        const busy = envSaving || envRedeploying;
+
+        const undoBtn = (key: string) => (
+            <button className="envx-icon" title="تراجع عن التعديل"
+                onClick={() => setEnvDrafts(prev => { const n = { ...prev }; delete n[key]; return n; })}>
+                <RotateCcw size={14} />
+            </button>
+        );
+        const eyeBtn = (key: string) => (
+            <button className="envx-icon" title={envReveal[key] ? 'إخفاء' : 'إظهار'}
+                onClick={() => setEnvReveal(prev => ({ ...prev, [key]: !prev[key] }))}>
+                {envReveal[key] ? <EyeOff size={14} /> : <Eye size={14} />}
+            </button>
+        );
+
+        const registryRow = (r: EnvSetting) => {
+            const dirty = r.key in envDrafts;
+            const shown = dirty ? envDrafts[r.key] : (r.secret ? '' : r.preview);
+            return (
+                <div className="envx-row" key={r.key}>
+                    <div className="envx-name">
+                        <code>{r.key}</code>
+                        <span className="envx-label" title={r.hint}>{r.label} {r.hint ? <Info size={11} /> : null}</span>
+                        <span className="envx-chips">
+                            {r.secret && <span className="env-badge secret">سرّي</span>}
+                            {!r.live && <span className="env-badge restart">إعادة تشغيل</span>}
+                            {r.set && !dirty && <span className="env-badge set">مضبوط</span>}
+                        </span>
+                    </div>
+                    <div className="envx-value">
+                        {r.kind === 'choice' || r.kind === 'boolean' ? (
+                            <select value={shown} onChange={e => setEnvDrafts(p => ({ ...p, [r.key]: e.target.value }))}>
+                                <option value="">—</option>
+                                {r.kind === 'boolean'
+                                    ? [<option key="t" value="true">مفعّل (true)</option>, <option key="f" value="false">معطّل (false)</option>]
+                                    : (r.choices || []).map(c => <option key={c} value={c}>{c}</option>)}
+                            </select>
+                        ) : (
+                            <input
+                                type={r.secret && !envReveal[r.key] ? 'password' : 'text'}
+                                dir="ltr"
+                                value={shown}
+                                placeholder={r.secret && r.set && !dirty ? r.preview : (r.placeholder || '')}
+                                onChange={e => setEnvDrafts(p => ({ ...p, [r.key]: e.target.value }))}
+                            />
+                        )}
+                    </div>
+                    <div className="envx-actions">
+                        {r.secret && r.kind !== 'choice' && eyeBtn(r.key)}
+                        {dirty ? undoBtn(r.key) : (r.set ? (
+                            <button className="envx-icon" title="مسح القيمة (تصبح فارغة عند الحفظ)"
+                                onClick={() => setEnvDrafts(p => ({ ...p, [r.key]: '' }))}>
+                                <XCircle size={14} />
+                            </button>
+                        ) : <span className="envx-icon-slot" />)}
+                    </div>
+                </div>
+            );
+        };
+
+        const customRow = (r: EnvCustomVar) => {
+            const removed = envRemovals.includes(r.key);
+            const dirty = r.key in envDrafts;
+            const shown = dirty ? envDrafts[r.key] : (r.secret ? '' : (r.value ?? r.preview));
+            return (
+                <div className={`envx-row${removed ? ' envx-removed' : ''}`} key={r.key}>
+                    <div className="envx-name">
+                        <code>{r.key}</code>
+                        <span className="envx-chips">
+                            {r.secret && <span className="env-badge secret">سرّي</span>}
+                            {removed && <span className="env-badge remove">سيُحذف</span>}
+                        </span>
+                    </div>
+                    <div className="envx-value">
+                        <input
+                            type={r.secret && !envReveal[r.key] ? 'password' : 'text'}
+                            dir="ltr"
+                            value={shown}
+                            disabled={removed}
+                            placeholder={r.secret && r.set && !dirty ? r.preview : ''}
+                            onChange={e => setEnvDrafts(p => ({ ...p, [r.key]: e.target.value }))}
+                        />
+                    </div>
+                    <div className="envx-actions">
+                        {r.secret && !removed && eyeBtn(r.key)}
+                        {dirty && !removed && undoBtn(r.key)}
+                        <button className={`envx-icon${removed ? '' : ' danger'}`}
+                            title={removed ? 'تراجع عن الحذف' : 'حذف المتغير من الملف'}
+                            onClick={() => setEnvRemovals(prev => removed
+                                ? prev.filter(k => k !== r.key)
+                                : [...prev, r.key])}>
+                            {removed ? <RotateCcw size={14} /> : <Trash2 size={14} />}
+                        </button>
+                    </div>
+                </div>
+            );
+        };
+
         return (
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="tab-pane">
                 <div className="env-intro">
                     <div>
                         <strong>إعدادات البيئة</strong>
-                        <div>تُكتب في <code>{envFile || '.env'}</code> بصلاحية 0600، مع نسخة احتياطية قبل كل تعديل. التعليقات وبقيّة المفاتيح لا تُمَسّ.</div>
+                        <div>تُكتب في <code>{envFile || '.env'}</code> بصلاحية 0600، مع نسخة احتياطية قبل كل تعديل. التعليقات وبقيّة الملف لا تُمَسّ، والقيم السرّية تُكتب ولا تُقرأ.</div>
                     </div>
-                    <button className="dep-log-btn" onClick={fetchEnv}><RefreshCw size={14} /> تحديث</button>
+                    <div className="envx-toolbar">
+                        <div className="envx-search">
+                            <Search size={14} />
+                            <input value={envSearch} placeholder="ابحث عن متغيّر…" onChange={e => setEnvSearch(e.target.value)} />
+                        </div>
+                        <button className="dep-log-btn" title="إعادة تحميل من الملف" onClick={fetchEnv}><RefreshCw size={14} /></button>
+                        <div className="envx-savewrap">
+                            <button className="btn-deploy-refined envx-save" disabled={!dirtyCount || busy} onClick={() => saveEnv(false)}>
+                                {busy ? <Loader2 size={15} className="spinning" /> : null}
+                                حفظ{dirtyCount ? ` (${dirtyCount})` : ''}
+                            </button>
+                            <button className="btn-deploy-refined envx-caret" disabled={!dirtyCount || busy}
+                                onClick={() => setEnvMenuOpen(o => !o)} title="خيارات الحفظ">
+                                <ChevronDown size={15} />
+                            </button>
+                            {envMenuOpen && !busy && (
+                                <div className="envx-menu" onMouseLeave={() => setEnvMenuOpen(false)}>
+                                    <button onClick={() => { setEnvMenuOpen(false); saveEnv(false); }}>
+                                        حفظ فقط
+                                        <span>يكتب الملف ويسري ما يقبل السريان فوراً.</span>
+                                    </button>
+                                    <button onClick={() => { setEnvMenuOpen(false); saveEnv(true); }}>
+                                        حفظ ثم إعادة نشر
+                                        <span>يحفظ ثم يعيد تشغيل جو كاملاً بالقيم الجديدة.</span>
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    </div>
                 </div>
 
                 {envMsg && (
@@ -916,84 +1107,65 @@ export default function SystemManagement() {
                     <div className="section-card" style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>
                         <Loader2 size={20} className="spinning" /> يُحمَّل…
                     </div>
-                ) : groups.map(g => {
-                    const rows = envSettings.filter(x => x.group === g);
-                    if (!rows.length) return null;
-                    const dirty = rows.filter(r => r.key in envDrafts).map(r => r.key);
-                    return (
-                        <div className="section-card" key={g}>
-                            <div className="section-header">
-                                <div className="section-header-left">
-                                    <span className="section-title">{GROUP_TITLES[g].title}</span>
-                                    <span className="env-note">{GROUP_TITLES[g].note}</span>
+                ) : (
+                    <div className="section-card envx-table">
+                        {groups.map(g => {
+                            const rows = envSettings.filter(x => x.group === g && rowMatches(x.key, x.label, x.hint));
+                            if (!rows.length) return null;
+                            return (
+                                <div key={g}>
+                                    <div className="envx-group">{GROUP_TITLES[g]}</div>
+                                    {rows.map(registryRow)}
                                 </div>
-                                <button
-                                    className="btn-deploy-refined env-save"
-                                    disabled={!dirty.length || envSaving}
-                                    onClick={() => {
-                                        const needs = rows.find(r => dirty.includes(r.key) && r.confirm && envDrafts[r.key]);
-                                        if (needs && !window.confirm(
-                                            `${needs.label}: ${needs.hint}\n\nهل تريد المتابعة؟`)) return;
-                                        saveEnv(dirty, needs?.confirm);
-                                    }}
-                                >
-                                    {envSaving ? <Loader2 size={16} className="spinning" /> : null}
-                                    حفظ{dirty.length ? ` (${dirty.length})` : ''}
-                                </button>
-                            </div>
-                            <div className="section-body env-rows">
-                                {rows.map(r => (
-                                    <div className="env-row" key={r.key}>
-                                        <div className="env-label">
-                                            <div className="env-title">
-                                                {r.label}
-                                                {!r.live && <span className="env-badge restart">يحتاج إعادة تشغيل</span>}
-                                                {r.secret && <span className="env-badge secret">سرّي</span>}
-                                                {r.set && <span className="env-badge set">مضبوط</span>}
-                                            </div>
-                                            <code className="env-key">{r.key}</code>
-                                            <div className="env-hint">{r.hint}</div>
+                            );
+                        })}
+                        {(envCustom.filter(c => rowMatches(c.key)).length > 0 || envAdds.length > 0 || !q) && (
+                            <div>
+                                <div className="envx-group">متغيرات إضافية <span className="envx-group-note">كل ما في الملف خارج القائمة المعروفة — ولك أن تضيف غيرها.</span></div>
+                                {envCustom.filter(c => rowMatches(c.key)).map(customRow)}
+                                {envAdds.map(a => (
+                                    <div className="envx-row envx-new" key={a.id}>
+                                        <div className="envx-name">
+                                            <input
+                                                className="envx-keyinput"
+                                                dir="ltr"
+                                                value={a.key}
+                                                placeholder="VARIABLE_NAME"
+                                                onChange={e => {
+                                                    const v = e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, '_');
+                                                    setEnvAdds(prev => prev.map(x => x.id === a.id ? { ...x, key: v } : x));
+                                                }}
+                                            />
                                         </div>
-                                        <div className="env-input">
-                                            {r.kind === 'choice' ? (
-                                                <select
-                                                    value={r.key in envDrafts ? envDrafts[r.key] : (r.secret ? '' : r.preview)}
-                                                    onChange={e => setEnvDrafts(p => ({ ...p, [r.key]: e.target.value }))}
-                                                >
-                                                    <option value="">—</option>
-                                                    {(r.choices || []).map(c => <option key={c} value={c}>{c}</option>)}
-                                                </select>
-                                            ) : r.kind === 'boolean' ? (
-                                                <select
-                                                    value={r.key in envDrafts ? envDrafts[r.key] : (r.preview || '')}
-                                                    onChange={e => setEnvDrafts(p => ({ ...p, [r.key]: e.target.value }))}
-                                                >
-                                                    <option value="">—</option>
-                                                    <option value="true">مفعّل</option>
-                                                    <option value="false">معطّل</option>
-                                                </select>
-                                            ) : (
-                                                <input
-                                                    type="text"
-                                                    dir="ltr"
-                                                    value={r.key in envDrafts ? envDrafts[r.key] : (r.secret ? '' : r.preview)}
-                                                    placeholder={r.secret && r.set ? r.preview : (r.placeholder || '')}
-                                                    onChange={e => setEnvDrafts(p => ({ ...p, [r.key]: e.target.value }))}
-                                                />
-                                            )}
-                                            {r.key in envDrafts && (
-                                                <button className="dep-log-btn" title="تراجع"
-                                                    onClick={() => setEnvDrafts(p => { const n = { ...p }; delete n[r.key]; return n; })}>
-                                                    <RotateCcw size={13} />
-                                                </button>
-                                            )}
+                                        <div className="envx-value">
+                                            <input
+                                                type={a.show ? 'text' : 'password'}
+                                                dir="ltr"
+                                                value={a.value}
+                                                placeholder="القيمة"
+                                                onChange={e => setEnvAdds(prev => prev.map(x => x.id === a.id ? { ...x, value: e.target.value } : x))}
+                                            />
+                                        </div>
+                                        <div className="envx-actions">
+                                            <button className="envx-icon" title={a.show ? 'إخفاء' : 'إظهار'}
+                                                onClick={() => setEnvAdds(prev => prev.map(x => x.id === a.id ? { ...x, show: !x.show } : x))}>
+                                                {a.show ? <EyeOff size={14} /> : <Eye size={14} />}
+                                            </button>
+                                            <button className="envx-icon danger" title="إلغاء هذا السطر"
+                                                onClick={() => setEnvAdds(prev => prev.filter(x => x.id !== a.id))}>
+                                                <XCircle size={14} />
+                                            </button>
                                         </div>
                                     </div>
                                 ))}
+                                <button className="envx-add"
+                                    onClick={() => setEnvAdds(prev => [...prev, { id: envAddSeq.current++, key: '', value: '', show: true }])}>
+                                    <Plus size={14} /> إضافة متغيّر
+                                </button>
                             </div>
-                        </div>
-                    );
-                })}
+                        )}
+                    </div>
+                )}
             </motion.div>
         );
     };
@@ -1215,31 +1387,99 @@ export default function SystemManagement() {
                 .env-msg.ok { background: rgba(16,185,129,0.10); color: #10b981; border: 1px solid rgba(16,185,129,0.3); }
                 .env-msg.bad { background: rgba(239,68,68,0.10); color: #ef4444; border: 1px solid rgba(239,68,68,0.3); }
                 .env-note { font-size: 12px; color: var(--text-muted); margin-right: 12px; font-weight: 500; }
-                .env-save { padding: 8px 20px !important; font-size: 13px !important; border-radius: 10px !important; }
-                .env-save:disabled { opacity: 0.35; cursor: not-allowed; }
-                .env-rows { display: flex; flex-direction: column; gap: 4px; padding: 12px 24px 24px !important; }
-                .env-row {
-                    display: grid; grid-template-columns: minmax(220px, 1fr) minmax(240px, 1fr);
-                    gap: 24px; align-items: center; padding: 14px 0;
+                .env-badge.remove { background: rgba(239,68,68,0.12); color: #ef4444; }
+
+                /* ── the flat variables table ─────────────────────────── */
+                .envx-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+                .envx-search {
+                    display: flex; align-items: center; gap: 6px; padding: 7px 12px;
+                    border: 1px solid var(--border-color); border-radius: 10px;
+                    background: var(--sm-inset); color: var(--text-muted);
+                }
+                .envx-search input {
+                    border: none; background: none; outline: none; color: var(--text-primary);
+                    font-size: 13px; width: 150px;
+                }
+                .envx-savewrap { position: relative; display: flex; }
+                .envx-save {
+                    padding: 9px 18px !important; font-size: 13px !important;
+                    border-radius: 10px 0 0 10px !important; display: flex; align-items: center; gap: 6px;
+                }
+                .envx-caret {
+                    padding: 9px 8px !important; border-radius: 0 10px 10px 0 !important;
+                    border-right: 1px solid rgba(0,0,0,0.25) !important;
+                }
+                .envx-save:disabled, .envx-caret:disabled { opacity: 0.35; cursor: not-allowed; }
+                .envx-menu {
+                    position: absolute; top: calc(100% + 6px); left: 0; z-index: 30; min-width: 260px;
+                    background: var(--bg-secondary, #1c1c24); border: 1px solid var(--border-color);
+                    border-radius: 12px; padding: 6px; box-shadow: 0 12px 32px rgba(0,0,0,0.35);
+                    display: flex; flex-direction: column; gap: 2px;
+                }
+                .envx-menu button {
+                    display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+                    width: 100%; text-align: right; padding: 9px 12px; border: none; cursor: pointer;
+                    background: none; color: var(--text-primary); font-size: 13px; font-weight: 700;
+                    border-radius: 8px;
+                }
+                .envx-menu button:hover { background: var(--sm-tint-2, rgba(127,127,127,0.12)); }
+                .envx-menu button span { font-size: 11px; font-weight: 500; color: var(--text-muted); }
+                .envx-table { padding: 6px 0 14px !important; overflow: visible; }
+                .envx-group {
+                    padding: 14px 20px 8px; font-size: 12px; font-weight: 800;
+                    color: var(--text-muted); letter-spacing: 0.3px;
                     border-bottom: 1px solid var(--border-color);
                 }
-                .env-row:last-child { border-bottom: none; }
-                .env-title { font-size: 14px; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-                .env-key { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); display: block; margin: 4px 0; }
-                .env-hint { font-size: 12px; color: var(--text-muted); line-height: 1.7; }
-                .env-badge { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 6px; }
-                .env-badge.restart { background: rgba(245,158,11,0.12); color: #f59e0b; }
-                .env-badge.secret { background: rgba(139,92,246,0.12); color: #8b5cf6; }
-                .env-badge.set { background: rgba(16,185,129,0.12); color: #10b981; }
-                .env-input { display: flex; align-items: center; gap: 8px; }
-                .env-input input, .env-input select {
-                    flex: 1; min-width: 0; padding: 10px 14px; border-radius: 10px;
+                .envx-group-note { font-weight: 500; margin-right: 8px; opacity: 0.8; }
+                .envx-row {
+                    display: grid; grid-template-columns: minmax(220px, 340px) 1fr auto;
+                    gap: 12px; align-items: center; padding: 8px 20px;
+                    border-bottom: 1px solid var(--border-color);
+                }
+                .envx-row:hover { background: var(--sm-tint-2, rgba(127,127,127,0.05)); }
+                .envx-name { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+                .envx-name code {
+                    font-family: 'JetBrains Mono', monospace; font-size: 12.5px; font-weight: 700;
+                    color: var(--text-primary); direction: ltr; text-align: left;
+                    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+                }
+                .envx-label {
+                    font-size: 11px; color: var(--text-muted); display: inline-flex;
+                    align-items: center; gap: 4px; cursor: help; width: fit-content;
+                }
+                .envx-chips { display: flex; gap: 4px; flex-wrap: wrap; }
+                .envx-value input, .envx-value select {
+                    width: 100%; min-width: 0; padding: 8px 12px; border-radius: 9px;
                     border: 1px solid var(--border-color); background: var(--sm-inset);
                     color: var(--text-primary); font-size: 13px;
                     font-family: 'JetBrains Mono', monospace;
                 }
-                .env-input input:focus, .env-input select:focus { outline: none; border-color: var(--accent-primary); }
-                @media (max-width: 900px) { .env-row { grid-template-columns: 1fr; gap: 10px; } }
+                .envx-value input:focus, .envx-value select:focus { outline: none; border-color: var(--accent-primary); }
+                .envx-value input:disabled { opacity: 0.4; text-decoration: line-through; }
+                .envx-actions { display: flex; gap: 4px; align-items: center; min-width: 66px; justify-content: flex-end; }
+                .envx-icon {
+                    display: inline-flex; align-items: center; justify-content: center;
+                    width: 30px; height: 30px; border-radius: 8px; cursor: pointer;
+                    border: 1px solid var(--border-color); background: none; color: var(--text-muted);
+                }
+                .envx-icon:hover { color: var(--text-primary); border-color: var(--accent-primary); }
+                .envx-icon.danger:hover { color: #ef4444; border-color: #ef4444; }
+                .envx-icon-slot { width: 30px; height: 30px; }
+                .envx-removed { opacity: 0.55; }
+                .envx-removed .envx-name code { text-decoration: line-through; }
+                .envx-new .envx-keyinput {
+                    width: 100%; padding: 8px 12px; border-radius: 9px;
+                    border: 1px dashed var(--accent-primary); background: var(--sm-inset);
+                    color: var(--text-primary); font-size: 12.5px; font-weight: 700;
+                    font-family: 'JetBrains Mono', monospace;
+                }
+                .envx-add {
+                    display: inline-flex; align-items: center; gap: 6px; margin: 12px 20px 4px;
+                    padding: 8px 16px; border-radius: 10px; cursor: pointer; font-size: 13px; font-weight: 700;
+                    border: 1px dashed var(--border-color); background: none; color: var(--text-muted);
+                }
+                .envx-add:hover { color: var(--text-primary); border-color: var(--accent-primary); }
+                @media (max-width: 900px) { .envx-row { grid-template-columns: 1fr; gap: 8px; } .envx-actions { justify-content: flex-start; } }
 
                 .section-header.clickable { cursor: pointer; user-select: none; }
                 .section-header.clickable:hover { background: var(--sm-tint-2); }
