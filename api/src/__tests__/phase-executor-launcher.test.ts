@@ -73,6 +73,31 @@ describe('PhaseExecutor manifest-aware npm launcher recovery', () => {
         expect(explicit.path).toBe('/workspace/other-project');
     });
 
+    it('late-binds deploy_project to the trusted artifact root and contains conceptual paths', () => {
+        const context = {
+            projectRoot: '/workspace/react-weathergo-a7c8',
+            projectName: 'WeatherGo',
+            projectRootRuntimeBound: true,
+        };
+        const logs: string[] = [];
+        const missing: Record<string, any> = { action: 'build_static' };
+        inheritRuntimeProjectArguments('deploy_project', missing, context, logs);
+        expect(missing.projectPath).toBe('/workspace/react-weathergo-a7c8');
+        expect(logs.join('\\n')).toContain('deploy_project: inherited projectPath');
+
+        const conceptual: Record<string, any> = { action: 'build_static', projectPath: 'WeatherGo/dist' };
+        inheritRuntimeProjectArguments('deploy_project', conceptual, context, logs);
+        expect(conceptual.projectPath).toBe('/workspace/react-weathergo-a7c8/dist');
+
+        const explicit: Record<string, any> = { action: 'build_static', projectPath: '/workspace/other-project' };
+        inheritRuntimeProjectArguments('deploy_project', explicit, context, logs);
+        expect(explicit.projectPath).toBe('/workspace/other-project');
+
+        const escape: Record<string, any> = { action: 'build_static', projectPath: '../outside' };
+        inheritRuntimeProjectArguments('deploy_project', escape, context, logs);
+        expect(escape.projectPath).toBe('../outside');
+    });
+
     it('maps conceptual project paths to the runtime-bound artifact for discovery and analysis', () => {
         const context = {
             projectRoot: '/workspace/react-weathergo-a7c8',

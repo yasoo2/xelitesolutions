@@ -544,6 +544,58 @@ describe('model-written tool arguments are checked before execution', () => {
         expect(qualityTask?.args.path).toBeUndefined();
         expect(allowed.notes.join('\\n')).not.toMatch(/quality_run يحتاج الحقل الإلزامي «path»/);
     });
+
+    it('late-binds deploy_project only after an artifact-producing task', () => {
+        expect(plannedArgsIssue('deploy_project', { action: 'build_static' })).toMatch(/projectPath/);
+
+        const blocked = sanitisePlanPhases([{
+            phaseNumber: 1,
+            name: 'Deploy before build',
+            tasks: [{ task: 'Deploy the project', tool: 'deploy_project', args: { action: 'build_static' } }],
+        }], 'weathergo');
+        expect(blocked.phases[0].deliveryStatus).toBe('blocked');
+        expect(blocked.phases[0].blocker?.code).toBe('tool_contract_invalid');
+        expect(blocked.notes.join('\\n')).toMatch(/deploy_project يحتاج الحقل الإلزامي «projectPath»/);
+
+        const allowed = sanitisePlanPhases([{
+            phaseNumber: 1,
+            name: 'Build and deploy',
+            tasks: [
+                { task: 'Build the React application', tool: 'react_project', args: { projectName: 'WeatherGo' } },
+                { task: 'Deploy the project', tool: 'deploy_project', args: { action: 'build_static' } },
+            ],
+        }], 'weathergo');
+        const allowedTools = allowed.phases[0].tasks.map((task: any) => task.tool);
+        expect(allowedTools).toEqual(expect.arrayContaining(['react_project', 'deploy_project']));
+        const deployTask = allowed.phases[0].tasks.find((task: any) => task.tool === 'deploy_project');
+        expect(deployTask?.args.projectPath).toBeUndefined();
+        expect(allowed.phases[0].deliveryStatus).not.toBe('blocked');
+
+        const explicit = sanitisePlanPhases([{
+            phaseNumber: 1,
+            name: 'Build and deploy explicit path',
+            tasks: [
+                { task: 'Build the React application', tool: 'react_project', args: { projectName: 'WeatherGo' } },
+                { task: 'Deploy the project', tool: 'deploy_project', args: { action: 'build_static', projectPath: 'WeatherGo' } },
+            ],
+        }], 'weathergo');
+        expect(explicit.phases[0].tasks[1].args.projectPath).toBe('WeatherGo');
+    });
+
+    it('does not let an unregistered late-bound field become permissive after a builder', () => {
+        const plan = sanitisePlanPhases([{
+            phaseNumber: 1,
+            name: 'Build and syntax test',
+            tasks: [
+                { task: 'Build the React application', tool: 'react_project', args: { projectName: 'WeatherGo' } },
+                { task: 'Run syntax checks', tool: 'auto_tester', args: { testType: 'syntax', files: ['src/index.ts'] } },
+            ],
+        }], 'weathergo', { evidencedPaths: ['src/index.ts'] });
+        expect(plan.phases[0].deliveryStatus).toBe('blocked');
+        expect(plan.phases[0].blocker?.code).toBe('tool_contract_invalid');
+        expect(plan.notes.join('\\n')).toMatch(/auto_tester يحتاج projectPath/);
+        expect(plan.phases[0].tasks.map((task: any) => task.tool)).not.toContain('auto_tester');
+    });
 });
 
 describe('the planner is told the vocabulary', () => {

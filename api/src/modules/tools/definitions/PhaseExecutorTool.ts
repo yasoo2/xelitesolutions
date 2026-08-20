@@ -8,7 +8,7 @@ import { recoverMissingNpmLauncher } from '../npm-launcher-recovery';
 export { recoverMissingNpmLauncher } from '../npm-launcher-recovery';
 import { executeTool } from '../../services/ToolService';
 import { resolveToolPath } from '../utils';
-import { resolvePlannedTool, unrunnableShellStep, adaptPlannedArgs, adaptPlannedArgsFromDescription, plannedArgsIssue } from '../../../core/orchestrator/plan-tools';
+import { resolvePlannedTool, unrunnableShellStep, adaptPlannedArgs, adaptPlannedArgsFromDescription, plannedArgsIssue, LATE_BOUND_PLAN_FIELDS } from '../../../core/orchestrator/plan-tools';
 
 /**
  * Add only trusted project evidence to a phase-level project_run call.
@@ -123,14 +123,40 @@ export function inheritRuntimeProjectArguments(
 
     if (projectContext?.projectRootRuntimeBound !== true || !runtimeProjectRoot) return planned;
 
-    // quality_run's real contract names the project as `path`, not `cwd` or
-    // `projectPath`. A phase plan often omits it because the builder has only
-    // established the root at runtime. Carry the trusted runtime-bound root
-    // into the tool's own vocabulary before schema validation; never guess a
-    // workspace root and never overwrite an explicit path.
+    // quality_run and deploy_project may omit their project root in the plan
+    // because the builder establishes it only at runtime. Carry the trusted
+    // root into each tool's own vocabulary before schema validation; never
+    // guess a workspace root and never overwrite an explicit path.
     if (toolName === 'quality_run' && !String(planned.path || '').trim()) {
         planned.path = runtimeProjectRoot;
         logs?.push(`[PhaseExecutor] quality_run: inherited path from runtime-bound project root (${runtimeProjectRoot.slice(0, 240)})`);
+    }
+    const deployProjectPathField = LATE_BOUND_PLAN_FIELDS.deploy_project?.[0];
+    if (toolName === 'deploy_project' && deployProjectPathField) {
+        const existingProjectPath = String(planned[deployProjectPathField] || '').trim();
+        if (!existingProjectPath) {
+            planned[deployProjectPathField] = runtimeProjectRoot;
+            logs?.push(`[PhaseExecutor] deploy_project: inherited ${deployProjectPathField} from runtime-bound project root (${runtimeProjectRoot.slice(0, 240)})`);
+        } else if (!path.isAbsolute(existingProjectPath)) {
+            const normaliseSegment = (value: string) => value
+                .replace(/\\/g, '/')
+                .replace(/^\.\//u, '')
+                .replace(/[-_]+/g, ' ')
+                .replace(/\s+/g, ' ')
+                .trim()
+                .toLocaleLowerCase();
+            const projectName = String(projectContext?.projectName || '').trim();
+            const rawSegments = existingProjectPath.replace(/\\/g, '/').split('/').filter(Boolean);
+            const firstSegment = rawSegments[0] || '';
+            const projectSegmentMatches = !!projectName && !!firstSegment
+                && normaliseSegment(firstSegment) === normaliseSegment(projectName);
+            const relativeSegments = projectSegmentMatches ? rawSegments.slice(1) : rawSegments;
+            const candidate = path.resolve(runtimeProjectRoot, relativeSegments.join(path.sep) || '.');
+            if (isWithinRoot(candidate, runtimeProjectRoot)) {
+                planned[deployProjectPathField] = candidate;
+                logs?.push(`[PhaseExecutor] deploy_project: resolved ${deployProjectPathField} under runtime-bound root (${candidate.slice(0, 240)})`);
+            }
+        }
     }
 
     if (runtimePathTools.has(toolName)) {

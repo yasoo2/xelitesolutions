@@ -33,6 +33,18 @@ import { TOOL_ALIASES } from '../../modules/services/ToolService';
 import { syntaxFileKind } from '../../shared/syntax-contract';
 
 /**
+ * Runtime-bound fields are the small, explicit exception to the planner's
+ * strict schema contract. They may be omitted only while a prior task proves
+ * the artifact root; PhaseExecutor supplies the trusted value later. Keep
+ * this registry tool-specific so a new tool never inherits permissiveness by
+ * accident.
+ */
+export const LATE_BOUND_PLAN_FIELDS: Record<string, readonly string[]> = {
+    quality_run: ['path'],
+    deploy_project: ['projectPath'],
+};
+
+/**
  * The registry is read LAZILY and cached.
  *
  * registry → tool definitions → PhaseExecutorTool → this file → registry is a
@@ -631,27 +643,25 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
                 const shellIssue = r.tool === 'shell_execute'
                     ? unprovenProjectCheckIssue(adaptedArgs?.command, candidateCheckCommands)
                     : null;
-                // quality_run has one deliberately late-bound argument: its
-                // project path is supplied by PhaseExecutor after a builder has
-                // produced the runtime artifact.  Allow only that exact missing
-                // field, and only when an earlier task in this phase or an
-                // earlier phase proves such an artifact.  All other required
-                // fields remain hard planner errors; the tool schema stays
-                // strict at execution time.
-                const qualityRunPathCanBeLateBound = r.tool === 'quality_run'
-                    && !String(adaptedArgs?.path || '').trim()
-                    && (priorArtifactReady || kept.some(taskProducesArtifact));
-                const lateBoundQualityRunIssue = qualityRunPathCanBeLateBound
+                // A small registry, not a growing list of copied exceptions,
+                // defines fields supplied by the trusted runtime after an earlier
+                // builder has produced the artifact. Every other schema-required
+                // field remains a hard planner error.
+                const lateBoundField = (LATE_BOUND_PLAN_FIELDS[r.tool] || [])
+                    .find(field => !String(adaptedArgs?.[field] || '').trim());
+                const lateBindingProven = priorArtifactReady || kept.some(taskProducesArtifact);
+                const lateBoundIssue = lateBoundField
+                    && lateBindingProven
                     && argsIssue
-                    && /quality_run يحتاج الحقل الإلزامي «path»/.test(argsIssue)
+                    && argsIssue.startsWith(`${r.tool} يحتاج الحقل الإلزامي «${lateBoundField}»`)
                     ? null
                     : argsIssue;
-                if (lateBoundQualityRunIssue || shellIssue) {
-                    const issue = lateBoundQualityRunIssue || shellIssue;
+                if (lateBoundIssue || shellIssue) {
+                    const issue = lateBoundIssue || shellIssue;
                     // A missing schema-required field is a hard plan-contract
                     // defect. It must not be disguised as an informational
                     // documentation phase when this was the only requested work.
-                    if (argsIssue && /الحقل الإلزامي|واحداً من/.test(argsIssue)) {
+                    if (argsIssue && (argsIssue.includes('يحتاج') || /الحقل الإلزامي|واحداً من/.test(argsIssue))) {
                         hadHardContractDrop = true;
                         phaseBlockers.push({
                             code: 'tool_contract_invalid',
