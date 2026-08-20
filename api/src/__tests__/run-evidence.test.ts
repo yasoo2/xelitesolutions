@@ -8,6 +8,7 @@ import {
   runEvidenceStore,
   saveRunReceipt,
 } from '../shared/run-evidence-store';
+import { extractRunReceiptEvidence } from '../modules/services/AgentLoopService';
 
 process.env.PERSISTENCE_MODE = 'JSON';
 process.env.MOCK_DB = 'true';
@@ -106,6 +107,12 @@ describe('048b durable run evidence contract', () => {
     await expect(createRunEvidence(`${runId}-disk-failure`, { status: 'running' })).resolves.toBeUndefined();
     create.mockRestore();
     await cleanup(`${runId}-disk-failure`);
+  });
+
+  test('extractRunReceiptEvidence marks an empty {ok,result} envelope as an extraction miss', () => {
+    const receipt = extractRunReceiptEvidence({ ok: true, result: null }, 'run-empty-envelope', 'session-empty-envelope', 'failed');
+    expect(receipt.extractionMiss).toBe(true);
+    expect(receipt.envelopeKeys).toEqual(['ok', 'result']);
   });
 
   test('GET /:id/receipt returns the structural receipt for a textual runId', async () => {

@@ -168,6 +168,10 @@ export function extractRunReceiptEvidence(source: any, runId: string, sessionId:
     ).slice(0, MAX_PHASE_RECEIPT_STRING_CHARS);
     const completedSource = objects.find(value => Number.isFinite(Number(value.completedPhases)));
     const honestBlocker = objects.some(value => value.honestBlocker === true || value.requiresUserDecision === true);
+    const extractionMiss = taskReceipts.length === 0 && !root && fidelityVerdict === null;
+    const envelopeKeys = extractionMiss && source && typeof source === 'object'
+        ? Object.keys(source).slice(0, 20)
+        : undefined;
     return {
         runId,
         sessionId,
@@ -178,6 +182,7 @@ export function extractRunReceiptEvidence(source: any, runId: string, sessionId:
         selfFixReason: selfFixReason || undefined,
         completedPhases: completedSource?.completedPhases,
         honestBlocker,
+        ...(extractionMiss ? { extractionMiss: true, envelopeKeys } : {}),
         ...extra,
     };
 }

@@ -85,6 +85,20 @@ describe('the schema follows the app, not a fixed guess', () => {
         expect(maskNegatedSpans('Build an app, not a weather dashboard')).not.toMatch(/weather/i);
     });
 
+    it('049b detects the full canonical WeatherGo prompt by score, not first keyword', () => {
+        const fullPrompt = 'Build a production-ready React + TypeScript + Vite application called WeatherGo, not a brochure or static mockup. Create a polished responsive mobile-first weather experience with live data from the Open-Meteo geocoding and forecast APIs, requiring no API key or account. Include a visible city search field with a Search button and Enter-key submission, reject empty input, show loading state, and show clear invalid-city, network-failure, and API-error states. Add a working Use my current location action using browser geolocation. For the selected city show current temperature, feels-like temperature, humidity, wind speed, weather condition and a meaningful weather icon. Request and render a real seven-day daily forecast, including sunrise and sunset values from the daily API response, and keep daily data distinct from current data. Add saved/favorite cities with no duplicates, persist favorites and settings in namespaced localStorage, and restore them after a full reload. Add Celsius/Fahrenheit and 12/24-hour display settings, plus a user-controlled light/dark mode. Make the interface accessible, visually coherent, responsive on mobile and desktop, and use smooth but restrained transitions. Do not use fake API responses, random placeholder images, TODOs, unexplained claims, or packages absent from package.json. Keep the existing Joe app shell contract and build the actual app from this request. After implementation, run the real build and quality checks, open the live result in the browser, exercise search, Enter, empty input, invalid city, current location handling, unit/theme/settings persistence, and verify the delivered app honestly reports any remaining limitation.';
+        expect(fullPrompt.length).toBe(1697);
+        expect(detectAppKind(fullPrompt)).toBe('weather');
+    });
+
+    it('049b keeps a weather request with geolocation in the weather engine', () => {
+        expect(detectAppKind('build a weather app that uses geolocation to detect user location')).toBe('weather');
+    });
+
+    it('049b keeps navigation requests in the maps engine', () => {
+        expect(detectAppKind('build a maps navigation app')).toBe('maps');
+    });
+
     it('049 treats Arabic negation markers as standalone words, not substrings', () => {
         expect(maskNegatedSpans('نظام إدارة علاقات العملاء')).toContain('علاقات');
         expect(maskNegatedSpans('نظام إدارة صلاحيات المستخدمين')).toContain('صلاحيات');

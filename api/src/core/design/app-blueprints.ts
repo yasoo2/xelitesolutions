@@ -178,7 +178,7 @@ export interface AppBlueprint {
 
 /** Ordered: the specific archetypes are tested before the broad ones. */
 export const APP_KIND_SIGNALS: Array<[AppKind, RegExp]> = [
-    ['maps', /خرائط|خريطة|خارطة|مواقع\s*جغرافي|ملاحة|تتبع\s*(المواقع|الموقع)|جي\s*بي\s*اس|\bmaps?\b|\bgps\b|navigation|geolocation|geo\s*app/i],
+    ['maps', /خرائط|خريطة|خارطة|مواقع\s*جغرافي|ملاحة|تتبع\s*(المواقع|الموقع)|جي\s*بي\s*اس|\bmaps?\b|\bgps\b|navigation|geo\s*app/i],
     ['weather', /طقس|الجو|درجات?\s*الحرارة|أحوال\s*جوية|weather|forecast|temperature app|open[- ]?meteo/i],
     // A calculator is a distinct interaction contract, not a records page.
     // Detect it before generic app/manage fallbacks so a request such as
@@ -315,7 +315,26 @@ export function detectAppKind(requestRaw: string): AppKind | null {
     // self-audit or planner context happened to mention a conversation.
     if (TASK_BOARD_CONTRACT.test(intentRequest)) return 'tasks';
     if (FINANCE_CONTRACT.test(intentRequest)) return 'finance';
-    for (const [kind, re] of APP_KIND_SIGNALS) if (re.test(intentRequest)) return kind;
+    /**
+     * Score every registered archetype instead of returning the first keyword
+     * that happens to occur in a long request. A real request often names the
+     * subject and several executable capabilities; the strongest signal set is
+     * the most honest domain, while ties retain the deliberate registry order.
+     * Rebuilding the matcher with `g` avoids state leaking from RegExp.test and
+     * counts repeated evidence without making any domain special-cased.
+     */
+    let bestKind: AppKind | null = null;
+    let bestScore = 0;
+    for (const [kind, signal] of APP_KIND_SIGNALS) {
+        const flags = `${signal.flags.replace(/[gy]/g, '')}g`;
+        const matches = intentRequest.match(new RegExp(signal.source, flags));
+        const score = matches?.length || 0;
+        if (score > bestScore) {
+            bestScore = score;
+            bestKind = kind;
+        }
+    }
+    if (bestKind) return bestKind;
     // Nothing named, but «نظام إدارة …» / «تطبيق لتتبع …» is unmistakably an
     // application that owns records. It gets the records engine with an entity
     // named after the request itself.

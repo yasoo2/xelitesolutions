@@ -187,3 +187,15 @@ POS-049-048C-PUSH: `b02d63de` منشور على `origin/main` بعد rebase آم
 POS-049-048C-POST-REBASE-TSC: 0
 POS-049-048C-POST-REBASE-FULL-JEST: 22/22 batches green; FULL_JEST_BATCHES_EXIT:0
 POS-049-048C-LIVE: pending; Joe rebuild and independent WeatherGo round 10 next
+
+
+## سجل إصلاح 049b — الكشف score-based وreceipt extractionMiss
+
+| المعرّف | المهمة | الحالة | معيار الإغلاق |
+|---|---|---|---|
+| 049b | تعميم `detectAppKind` باحتساب score لكل سجل إشارات، إزالة `geolocation` من إشارات `maps`، وإظهار فشل استخراج receipt من الغلاف `{ok,result}` | **الكود والـregressions منجزان؛ البوابات خضراء؛ الدفع والجولة 12 قيد التنفيذ** | اختيار النوع الأعلى دليلاً مع تعادل ثابت، طقس+geolocation يبقى weather، maps navigation يبقى maps، prompt WeatherGo القانوني بطول 1697 يعطي weather، و`extractRunReceiptEvidence` يعلن `extractionMiss` و`envelopeKeys` عند غياب الدليل؛ focused=5 suites/91 tests، TSC=0، Jest=22/22 دفعة خضراء؛ لا تعديل يدوي على WeatherGo، ولا تضمين package manifests أو zz-* |
+| PR82-049b | توثيق الاستشارة والإقرار والختام على قناة الوكلاء | **الإقرار 031 قيد الإعداد؛ الدفع إلى main والجولة 12 بعده** | ملف `to-claude/031` يقر تعليمات Claude، يذكر البوابات، يثبت SHA المنشور، ويسجل الملفات المفتوحة؛ تعليق ختامي بعد الدفع |
+
+**POS-049B-STATUS:** 2026-08-20 — 049b اجتاز focused وTypeScript و22 دفعة Jest؛ لا يُعلن Level 4 مقبولاً قبل إعادة بناء Joe من SHA المدفوع وتشغيل الجولة 12 بدليل يبدأ بـ`JOE_BUILD_SHA` ثم greps علامات 048a الثلاث، مع عدم لمس ملفات WeatherGo الناتجة يدوياً.
+
+**POS-049B-W50-ORDER:** W50 يبقى آخر مهمة في القائمة ولا يبدأ قبل قبول Level 4 بتحقق حي مستقل.
