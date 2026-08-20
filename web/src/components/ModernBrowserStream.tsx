@@ -654,7 +654,7 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
 
   return (
     <div data-testid="browser-stream-root" style={{ width: '100%', height: '100%', overflow: 'hidden', background: '#0b0b0b', display: 'flex', flexDirection: 'column' }}>
-      <div ref={rootRef} style={{ flex: 1, minHeight: 0, position: 'relative', overflow: 'hidden', background: '#fff' }}>
+      <div ref={rootRef} className="joe-screen" style={{ flex: 1, minHeight: 0, position: 'relative', overflow: 'hidden' }}>
         <div className="browser-control-rail" data-testid="browser-control-rail" dir="rtl" aria-label="أدوات البث الحي">
           <span
             className={`browser-quality-signal is-${qualitySignal}`}
@@ -793,7 +793,7 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
           }}
           style={{ width: '100%', height: '100%', display: 'block', outline: 'none' }}
         />
-        {(waitingForPage || browserUnavailable) ? (
+        {browserUnavailable ? (
           <div
             data-testid="browser-empty-state"
             role="status"
@@ -811,22 +811,11 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
           >
             <div style={{ maxWidth: 420, padding: '18px 20px', borderRadius: 14, border: '1px solid rgba(255,255,255,0.14)', background: 'rgba(18,18,18,0.86)', color: '#fff', textAlign: 'center', boxShadow: '0 14px 42px rgba(0,0,0,0.28)' }}>
               <strong style={{ display: 'block', fontSize: 14, marginBottom: 8 }}>
-                {browserUnavailable ? 'تعذر الاتصال ببث المتصفح' : 'المتصفح جاهز وينتظر مهمة Joe'}
+                تعذر الاتصال ببث المتصفح
               </strong>
               <span style={{ display: 'block', color: 'rgba(255,255,255,0.72)', fontSize: 12, lineHeight: 1.6 }}>
-                {browserUnavailable ? 'تحقق من تشغيل API وWebSocket ثم أعد المحاولة.' : 'أرسل مهمة تستخدم المتصفح من محادثة Joe لفتح الصفحة، أو ابدأ جلسة معاينة حقيقية الآن. لن تُعلن الجودة ناجحة قبل وصول إطار فعلي.'}
+                تحقق من تشغيل API وWebSocket ثم أعد المحاولة.
               </span>
-              {!browserUnavailable ? (
-                <button
-                  type="button"
-                  data-testid="browser-start-session-button"
-                  onClick={() => void startBrowserSession()}
-                  disabled={startPending}
-                  style={{ marginTop: 14, padding: '8px 14px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.18)', background: startPending ? 'rgba(255,255,255,0.08)' : 'rgba(59,130,246,0.76)', color: '#fff', fontSize: 12, cursor: startPending ? 'wait' : 'pointer', opacity: startPending ? 0.72 : 1, pointerEvents: 'auto' }}
-                >
-                  {startPending ? 'جارٍ بدء الجلسة…' : 'بدء جلسة المتصفح'}
-                </button>
-              ) : null}
               {startError ? <div style={{ marginTop: 10, color: '#fca5a5', fontSize: 11, lineHeight: 1.5 }}>{startError}</div> : null}
             </div>
           </div>

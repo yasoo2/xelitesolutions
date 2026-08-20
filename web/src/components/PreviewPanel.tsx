@@ -183,21 +183,10 @@ export default function PreviewPanel({
                 gap: 8
             }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
-                    {/* Mode Switcher */}
-                    <div style={{ display: 'flex', gap: 2, background: 'rgba(0,0,0,0.2)', padding: 2, borderRadius: 6 }}>
-                        <PreviewButton
-                            icon={Eye}
-                            tooltip={t('previewWebMode')}
-                            onClick={() => setMode('web')}
-                            active={mode === 'web'}
-                        />
-                        <PreviewButton
-                            icon={Code}
-                            tooltip={t('previewCodeMode')}
-                            onClick={() => setMode('code')}
-                            active={mode === 'code'}
-                        />
-                    </div>
+                    {/* The manual web/code switcher was removed at the owner's
+                        request; the mode still changes programmatically (a file
+                        opened from the explorer shows code, preview_ready
+                        returns to web). */}
 
                     {/* URL/Path Input */}
                     <div style={{
@@ -294,14 +283,13 @@ export default function PreviewPanel({
             </div>
 
             {/* Preview Container */}
-            <div style={{
+            <div className="joe-screen" style={{
                 flex: 1,
                 overflow: 'hidden',
                 display: 'flex',
                 justifyContent: 'center',
                 alignItems: mode === 'web' && device !== 'desktop' ? 'flex-start' : 'stretch',
                 padding: mode === 'web' && device !== 'desktop' ? 16 : 0,
-                background: mode === 'web' && device !== 'desktop' ? 'var(--bg-card)' : 'transparent',
                 position: 'relative',
                 minHeight: 0,
             }}>

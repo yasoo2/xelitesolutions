@@ -609,7 +609,8 @@ export default function WorkspacePanel({
         { id: 'terminal', label: 'Terminal', icon: <TerminalIcon size={16} /> },
         { id: 'preview', label: 'Preview', icon: <Eye size={16} /> },
         { id: 'logs', label: 'Logs', icon: <FileOutput size={16} />, badge: (logs.length + liveFiles.length) > 0 ? logs.length + liveFiles.length : undefined },
-        { id: 'problems', label: 'Problems', icon: <AlertTriangle size={16} />, badge: problems.length > 0 ? problems.length : undefined },
+        // The Problems tab was removed at the owner's request — its findings
+        // already reach the chat and the logs, so the extra tab was noise.
     ];
 
     const LoadingFallback = () => (
@@ -737,7 +738,7 @@ export default function WorkspacePanel({
                 </div>
 
                 {/* Problems Tab */}
-                {activeTab === 'problems' && (
+                {false && (
                     <EnhancedProblemsPanel problems={problems} />
                 )}
 

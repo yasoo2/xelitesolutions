@@ -150,4 +150,14 @@
     0 1px 3px rgba(0, 0, 0, 0.30);
 }
 .joe-screen .log-entry { border-bottom-color: rgba(255, 255, 255, 0.045) !important; }
+/* Descendants that paint with theme tokens must read the SCREEN's light ink,
+   not the light theme's dark ink — the surface is dark in both themes. */
+.joe-screen {
+  --joe-text-primary: #e8ecf1;
+  --joe-text-secondary: #c3cbd6;
+  --joe-text-muted: #8b95a3;
+  --text-primary: #e8ecf1;
+  --text-muted: #8b95a3;
+  --bg-card: rgba(255, 255, 255, 0.04);
+}
 [data-theme="light"] .joe-screen { border-color: rgba(0, 0, 0, 0.25); }
