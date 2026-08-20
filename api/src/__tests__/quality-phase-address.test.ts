@@ -139,9 +139,10 @@ describe('and when it cannot, it says which of the three it was', () => {
     it('cannot return ok when requested features or acceptance criteria are missing', () => {
         const src = fs.readFileSync(
             path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ReactProjectTool.ts'), 'utf-8');
-        expect(src).toMatch(/const deliveryBlocked = qualityDeliveryBlocked \|\| askedButMissing\.length > 0 \|\| acceptanceBlocked/);
+        expect(src).toMatch(/const deliveryBlocked = qualityDeliveryBlocked \|\| askedButMissing\.length > 0 \|\| acceptanceBlocked \|\| fidelityMismatch/);
         expect(src).toMatch(/ok: !deliveryBlocked/);
-        expect(src).toMatch(/error: deliveryBlocked[\s\S]{0,260}requested_features_not_proven/);
+        expect(src).toContain('error: deliveryBlocked');
+        expect(src).toContain("'requested_features_not_proven'");
     });
 });
 

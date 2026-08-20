@@ -19,6 +19,9 @@ import { ProjectPlannerTool } from '../modules/tools/definitions/ProjectPlannerT
 import { ProjectPipelineTool } from '../modules/tools/definitions/ProjectPipelineTool';
 import { canBindRuntimeProjectEvidence, classifyStructuredRuntimeEvidence, projectRootFromWrittenFile } from '../modules/tools/definitions/PhaseExecutorTool';
 import { resolveRunnableProject } from '../modules/tools/definitions/ProjectRunTool';
+import { requestFidelityMismatch } from '../modules/tools/definitions/ReactProjectTool';
+import { hasRequestFidelityMismatch } from '../modules/tools/definitions/ProjectPipelineTool';
+import { blueprintFor, detectAppKind } from '../core/design/app-blueprints';
 
 describe('every defined tool is reachable', () => {
     // The REAL registry — not a source grep.
@@ -382,8 +385,10 @@ describe('partial phases preserve verified blockers instead of guessing a repair
 describe('pipeline preserves an honest verification verdict for its caller', () => {
     it('forwards phase verification failure instead of reducing it to an opaque partial result', () => {
         const pipeline = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ProjectPipelineTool.ts'), 'utf-8');
-        expect(pipeline).toContain('const verificationFailed = Array.isArray(pipeline?.results)');
+        expect(pipeline).toContain('const requestFidelityMismatch = hasRequestFidelityMismatch(pipeline?.results)');
+        expect(pipeline).toContain('const verificationFailed = requestFidelityMismatch || (Array.isArray(pipeline?.results)');
         expect(pipeline).toContain('result?.verificationFailed === true');
+        expect(pipeline).toContain('const partialDelivery = !requestFidelityMismatch &&');
         expect(pipeline).toContain('const honestBlocker = pipeline?.honestBlocker === true || verificationFailed');
         expect(pipeline).toContain('...(verificationFailed ? { verificationFailed: true } : {})');
         expect(pipeline).toContain('let finalHonestBlocker = honestBlocker');
@@ -449,6 +454,64 @@ describe('planner provider and requirements-boundary contracts', () => {
     });
 });
 
+
+describe('request fidelity blocks a silent engine fallback', () => {
+    const weatherRequest = 'Build WeatherGo, a real weather application with city search and a live Open-Meteo forecast.';
+
+    it('accepts a weather blueprint only when the generated source proves a weather engine', () => {
+        const kind = detectAppKind(weatherRequest);
+        const blueprint = kind ? blueprintFor(kind, weatherRequest, false) : null;
+        expect(blueprint?.engine).toBe('weather');
+        expect(requestFidelityMismatch(blueprint, [
+            'export default function WeatherApp({ content }) {',
+            '  const forecast = fetch("https://api.open-meteo.com/v1/forecast");',
+            '  return <section>{temperature}</section>;',
+            '}',
+        ].join('\n'))).toBe(false);
+    });
+
+    it('keeps a deterministic records engine admissible when providers are unavailable', () => {
+        const request = 'Build a complete inventory management application with searchable records and CSV export.';
+        const kind = detectAppKind(request);
+        const blueprint = kind ? blueprintFor(kind, request, false) : null;
+        expect(blueprint?.engine).toBe('records');
+        expect(requestFidelityMismatch(blueprint, [
+            'export default function RecordsApp({ rows }) {',
+            '  return <table aria-label="Inventory records">{rows.map(renderRow)}</table>;',
+            '}',
+        ].join('\n'))).toBe(false);
+    });
+
+    it('keeps a generic landing-page request permissive when no app engine was requested', () => {
+        const request = 'Build a polished landing page for a design studio with a hero, testimonials, and contact form.';
+        expect(detectAppKind(request)).toBeNull();
+        expect(requestFidelityMismatch(null, [
+            'export default function LandingPage() {',
+            '  return <main><h1>Welcome to our beautiful brand</h1></main>;',
+            '}',
+        ].join('\n'))).toBe(false);
+    });
+
+    it('blocks a brochure source and prevents it from riding partial delivery', () => {
+        const kind = detectAppKind(weatherRequest);
+        const blueprint = kind ? blueprintFor(kind, weatherRequest, false) : null;
+        expect(requestFidelityMismatch(blueprint, [
+            'export default function LandingPage() {',
+            '  return <main><h1>Welcome to our beautiful brand</h1></main>;',
+            '}',
+        ].join('\n'))).toBe(true);
+        expect(hasRequestFidelityMismatch([{
+            ok: false,
+            error: 'request_fidelity_mismatch',
+            output: { delivery: { fidelityMismatch: true } },
+        }])).toBe(true);
+        expect(hasRequestFidelityMismatch([{
+            ok: false,
+            error: 'requested_features_not_proven',
+            output: { delivery: { fidelityMismatch: false } },
+        }])).toBe(false);
+    });
+});
 
 describe('planner portability recovery preserves executable npm contracts', () => {
     it('removes native package specs without putting prose into npm_manager commands', () => {

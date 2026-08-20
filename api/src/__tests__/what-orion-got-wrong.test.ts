@@ -88,7 +88,8 @@ describe('a missing interpreter is a skipped check, never a manufactured failure
         // discovery is still the first thing that runs.
         expect(pipeline).toContain("executeTool('engineering_discovery',");
         expect(pipeline).toContain('projectPath ? { request: productRequest, path: projectPath } : { request: productRequest }');
-        expect(pipeline).toContain('const verificationFailed = Array.isArray(pipeline?.results)');
+        expect(pipeline).toContain('const requestFidelityMismatch = hasRequestFidelityMismatch(pipeline?.results)');
+        expect(pipeline).toContain('const verificationFailed = requestFidelityMismatch || (Array.isArray(pipeline?.results)');
         expect(pipeline).toContain('...(verificationFailed ? { verificationFailed: true } : {})');
         expect(pipeline).toContain('evidence is incomplete — blocking writes honestly');
     });

@@ -51,6 +51,21 @@ export function projectDirNameForTest(projectName: string, brand: string): strin
 }
 
 /**
+ * Compare the requested blueprint with the source that is actually about to be
+ * delivered. This is deliberately conservative: unknown engines and missing
+ * evidence remain permissive, while a known weather request whose production
+ * source has no weather-engine signature is blocked rather than relabelled.
+ */
+export function requestFidelityMismatch(appBp: Pick<AppBlueprint, 'engine'> | null, projectEvidence: string): boolean {
+    if (!appBp) return false;
+    if (!projectEvidence || projectEvidence.trim().length < 50) return false;
+    const engineEvidence = appBp.engine === 'weather'
+        ? /open.?meteo|forecast|temperature|WeatherApp/i.test(projectEvidence)
+        : true;
+    return !engineEvidence;
+}
+
+/**
  * A React builder may reuse only a scaffold that is both owned by this
  * session and structurally a Vite project.  A directory name alone is not
  * ownership evidence: another session (or an old workspace artifact) may
@@ -3750,6 +3765,10 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
         const askedButMissing: string[] = appBp
             ? uncoveredFeatures(request, appBp.engine, !!apiLink, projectEvidence)
             : [];
+        const fidelityMismatch = requestFidelityMismatch(appBp, projectEvidence);
+        if (fidelityMismatch) {
+            term(`request_fidelity_mismatch: requested ${appBp?.engine} engine but generated source does not contain its signature — delivery blocked`);
+        }
         /**
          * AND THE CAPABILITIES HE NAMED IN PROSE.
          *
@@ -4028,7 +4047,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
         // A named request is a contract, not commentary. Do not report a green
         // delivery when the engine has no evidence for one of the requested
         // capabilities or when the acceptance ledger contains an unmet item.
-        const deliveryBlocked = qualityDeliveryBlocked || askedButMissing.length > 0 || acceptanceBlocked;
+        const deliveryBlocked = qualityDeliveryBlocked || askedButMissing.length > 0 || acceptanceBlocked || fidelityMismatch;
         if (askedButMissing.length) {
             term(`delivery: BLOCKED — requested capabilities not proven: ${askedButMissing.join(', ')}`);
         }
@@ -4095,11 +4114,13 @@ ${built ? '✅ npm install + vite build succeeded — the production build is in
             error: deliveryBlocked
                 ? (visualAuditUnavailable
                     ? 'required_visual_audit_not_completed'
-                    : askedButMissing.length
-                        ? 'requested_features_not_proven'
-                        : acceptanceBlocked
-                            ? 'acceptance_criteria_unmet'
-                            : 'react_delivery_quality_gate_failed')
+                    : fidelityMismatch
+                        ? 'request_fidelity_mismatch'
+                        : askedButMissing.length
+                            ? 'requested_features_not_proven'
+                            : acceptanceBlocked
+                                ? 'acceptance_criteria_unmet'
+                                : 'react_delivery_quality_gate_failed')
                 : undefined,
             output: { message, acceptance,
                 path: proj,
@@ -4128,6 +4149,7 @@ ${built ? '✅ npm install + vite build succeeded — the production build is in
                     accepted: !deliveryBlocked,
                     blockers: blockers.map((f: any) => f.id),
                     askedButMissing,
+                    fidelityMismatch,
                     acceptanceBlocked,
                     acceptanceUnmet: acceptance.criteria.filter((c: any) => c.verdict !== 'met').map((c: any) => c.id),
                     requestedVisualAudit,
