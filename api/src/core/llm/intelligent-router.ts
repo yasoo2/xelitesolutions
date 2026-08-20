@@ -2062,14 +2062,17 @@ export async function routeToModel(
         let lastTimeoutUsed = 0;
         if (meshAttempt > 0 && attemptedProvidersThisCall.has(p.name)) {
             console.info(`[IntelligentRouter] ⏭️ skipping ${p.name} — already attempted in this route call; a later call may retry it.`);
+            recordProviderAttempt(p.name, false, 'skipped: already attempted in this route call');
             continue;
         }
         if (rateLimitedProvidersThisCall.has(p.name)) {
             console.info(`[IntelligentRouter] ⏭️ skipping ${p.name} — rate-limited earlier in this route call; a later call may retry it.`);
+            recordProviderAttempt(p.name, false, 'skipped: rate-limited earlier in this route call');
             continue;
         }
         if (p.name === llm7Name && !llm7Provider.isAvailable() && !llm7EngineeringProbe) {
             console.info('[IntelligentRouter] ⏭️ skipping LLM7 (Keyless) — its gateway cooldown is still active.');
+            recordProviderAttempt(p.name, false, 'skipped: gateway cooldown is active');
             continue;
         }
         attemptedProvidersThisCall.add(p.name);
@@ -2077,6 +2080,7 @@ export async function routeToModel(
             if (p.name === 'Local (Auto)' && isLocalBrainOpen()) {
                 const left = Math.max(1, Math.round((localCircuitUntil - Date.now()) / 1000));
                 console.info(`[IntelligentRouter] ⏭️ skipping the local brain (paused ${left}s more) — going straight to the mesh.`);
+                recordProviderAttempt(p.name, false, `skipped: local circuit paused for ${left}s`);
                 continue;
             }
             console.info(`[IntelligentRouter] 🔄 Attempting provider: ${p.name}...`);

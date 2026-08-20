@@ -310,8 +310,8 @@ export async function initLocalBrain(): Promise<string> {
     await detectLocalModels();
     if (!isLocalBrainReady()) {
         return state.host
-            ? `Local brain: no Ollama models detected at ${state.host} (using keyless free AI mesh).`
-            : 'Local brain: LOCAL_LLM_BASE_URL not set (using keyless free AI mesh).';
+            ? `Local brain unavailable: no Ollama models detected at ${state.host} (using keyless free AI mesh).`
+            : 'Local brain unavailable: no reachable Ollama host detected (using keyless free AI mesh).';
     }
     // Warm up in the background — don't block server readiness.
     void warmUpLocalBrain();
