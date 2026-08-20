@@ -18,7 +18,7 @@ import { worthRepairing, REPAIRABLE_FINDINGS, collectSources } from '../core/qua
 import { RepairTicketService } from '../modules/services/RepairTicketService';
 import { SelfFixService } from '../modules/services/SelfFixService';
 import { SelfFixExecutionService } from '../modules/services/SelfFixExecutionService';
-import { acceptanceFailureDisposition, acceptanceFidelityVerdict } from '../modules/services/AgentLoopService';
+import { acceptanceFailureDisposition, acceptanceFidelityVerdict, surfaceAcceptanceFidelity } from '../modules/services/AgentLoopService';
 
 const read = (...p: string[]) => fs.readFileSync(path.join(__dirname, '..', ...p), 'utf-8');
 
@@ -132,6 +132,20 @@ describe('structured request-fidelity recovery', () => {
             error: 'acceptance_criteria_unmet: generic evidence only',
             output: { delivery: { acceptanceUnmet: ['weather_engine'] }, results: [] },
         })).toEqual({ label: null, diagnostic: null });
+    });
+
+    it('carries the active fidelity verdict into the visible failure text', () => {
+        const verdict = acceptanceFidelityVerdict({
+            error: 'acceptance_criteria_unmet: weather engine was not proven',
+            output: {
+                delivery: { fidelityEvidenceUnavailable: true },
+                results: [],
+            },
+        });
+        const visible = surfaceAcceptanceFidelity('acceptance_criteria_unmet: weather engine was not proven', verdict);
+        expect(visible).toContain('fidelity_unverifiable');
+        expect(visible).toContain('الناتج ليس من فئة المطلوب لأن المؤلف القادر غائب');
+        expect(surfaceAcceptanceFidelity('ordinary failure', { label: null, diagnostic: null })).toBe('ordinary failure');
     });
 
     it('only treats canonical acceptance evidence as repairable', () => {

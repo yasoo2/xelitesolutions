@@ -144,6 +144,16 @@ export function acceptanceFidelityVerdict(phaseResult: any): AcceptanceFidelityV
 }
 
 /**
+ * Carries the already-computed acceptance verdict into the user-visible
+ * failure surface. This is presentation plumbing only: it never changes the
+ * acceptance disposition or the repair decision.
+ */
+export function surfaceAcceptanceFidelity(primaryError: string, verdict: AcceptanceFidelityVerdict): string {
+    if (!verdict.label || !verdict.diagnostic) return primaryError;
+    return [primaryError, verdict.diagnostic].filter(Boolean).join(' — ');
+}
+
+/**
  * AgentLoopService - Dynamic Runtime Gateway
  *
  * Provides two execution paths:
@@ -695,12 +705,14 @@ export class AgentLoopService {
             // verification flag is never enough to authorize a repair.
             const acceptanceDisposition = acceptanceFailureDisposition(phaseResult);
             const acceptanceFidelity = acceptanceFidelityVerdict(phaseResult);
+            const surfacedPrimaryError = surfaceAcceptanceFidelity(primaryError, acceptanceFidelity);
             if (acceptanceFidelity.label && /acceptance_criteria_unmet/i.test([
                 phaseResult?.error,
                 phaseResult?.output?.error,
                 phaseResult?.output?.primaryError,
             ].map(value => String(value || '')).join(' '))) {
                 console.warn(acceptanceFidelity.diagnostic);
+                voice(acceptanceFidelity.diagnostic || '');
             }
             const acceptanceUnmet = Array.isArray(phaseResult?.output?.delivery?.acceptanceUnmet)
                 ? phaseResult.output.delivery.acceptanceUnmet.filter((id: unknown) => String(id || '').trim()).map((id: unknown) => String(id).trim())
@@ -763,9 +775,12 @@ export class AgentLoopService {
                 (phaseResult?.output?.verificationFailed === true && !actionableVerificationFailure);
             if (isHonestBlocker) {
                 voice(pick(isAr,
-                    `⛔ توقفتُ عند عائق موثق — ${primaryError || 'يتطلب قراراً من المستخدم'}`,
-                    `⛔ Stopped at a documented blocker — ${primaryError || 'requires user decision'}`));
-                results.push(compactPhaseReceipt(phaseResult?.output, phaseResult?.logs, status, { honestBlocker: true }));
+                    `⛔ توقفتُ عند عائق موثق — ${surfacedPrimaryError || 'يتطلب قراراً من المستخدم'}`,
+                    `⛔ Stopped at a documented blocker — ${surfacedPrimaryError || 'requires user decision'}`));
+                results.push(compactPhaseReceipt(phaseResult?.output, phaseResult?.logs, status, {
+                    honestBlocker: true,
+                    primaryError: surfacedPrimaryError,
+                }));
                 return { ok: false, completedPhases, results, honestBlocker: true };
             }
 
@@ -806,7 +821,11 @@ export class AgentLoopService {
             const selfFixPlan = SelfFixService.plan(repairTicket);
 
             if (!selfFixPlan.allowed) {
-                results.push(compactPhaseReceipt(phaseResult?.output, phaseResult?.logs, status, { repairTicket, selfFixPlan }));
+                results.push(compactPhaseReceipt(phaseResult?.output, phaseResult?.logs, status, {
+                    repairTicket,
+                    selfFixPlan,
+                    primaryError: surfacedPrimaryError,
+                }));
                 return { ok: false, completedPhases, results, repairTicket: compactReceiptValue(repairTicket), selfFixPlan: compactReceiptValue(selfFixPlan) };
             }
 
@@ -840,7 +859,12 @@ export class AgentLoopService {
             voice(pick(isAr,
                 `⛔ لم ينجح الإصلاح الذاتي — أتوقف بصدق عند ${completedPhases}/${totalPhases} مراحل`,
                 `⛔ Self-healing did not work — stopping honestly at ${completedPhases}/${totalPhases} phases`));
-            results.push(compactPhaseReceipt(phaseResult?.output, phaseResult?.logs, status, { repairTicket, selfFixPlan, selfFixExecution }));
+            results.push(compactPhaseReceipt(phaseResult?.output, phaseResult?.logs, status, {
+                repairTicket,
+                selfFixPlan,
+                selfFixExecution,
+                primaryError: surfacedPrimaryError,
+            }));
             return {
                 ok: false,
                 completedPhases,
