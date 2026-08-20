@@ -24,6 +24,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { DownloadCloud, Copy, Check } from 'lucide-react';
 import { API_URL } from '../config';
+import { isRunBusy, subscribeRunBusy } from '../lib/run-activity';
 
 export type UpdatePhase = 'idle' | 'starting' | 'working' | 'restarting' | 'failed' | 'stalled';
 
@@ -120,13 +121,20 @@ export function subscribeSelfUpdate(l: (s: UpdateState) => void): () => void {
  * server, cached there, and re-asked every ten minutes — so the marker means
  * «there really are commits you do not have», never «probably».
  */
-export function useUpdateAvailable(): { available: boolean; behind: number; known: boolean } {
-    const [state, setState] = useState({ available: false, behind: 0, known: false });
+export function useUpdateAvailable(): { available: boolean; behind: number; known: boolean; latest: string } {
+    const [state, setState] = useState({ available: false, behind: 0, known: false, latest: '' });
     useEffect(() => {
         let alive = true;
         const ask = () => fetch(`${apiBase()}/system/update/check`)
             .then(r => r.json())
-            .then(d => { if (alive) setState({ available: !!d?.available, behind: Number(d?.behind || 0), known: !!d?.known }); })
+            .then(d => {
+                if (alive) setState({
+                    available: !!d?.available,
+                    behind: Number(d?.behind || 0),
+                    known: !!d?.known,
+                    latest: String(d?.latest || ''),
+                });
+            })
             .catch(() => { /* offline, or an older server: no claim either way */ });
         ask();
         const id = window.setInterval(ask, 10 * 60 * 1000);
@@ -196,6 +204,99 @@ export default function UpdateJoeItem({ onBefore }: { onBefore?: () => void }) {
             <span>{label}</span>
             {available ? <span className="joe-update-dot" aria-label="تحديث جديد" /> : null}
         </button>
+    );
+}
+
+/**
+ * THE AUTOPILOT — «لماذا التحديث التلقائي لا يعمل في جو».
+ *
+ * It never did: what existed was a dot on the avatar and a row inside a
+ * dropdown — an update that waits to be discovered is a manual update with
+ * extra steps. This banner is the automatic half. When the server confirms
+ * commits are waiting, it appears on its own, counts down, and starts the
+ * SAME startSelfUpdate the menu row uses — one updater, two doors.
+ *
+ * Three rules keep it safe:
+ *   - it never fires while a task is running (run-activity says busy);
+ *   - «ليس الآن» silences THIS version only — a new commit brings it back;
+ *   - the countdown only ever starts when the page is truly idle, and any
+ *     busy signal resets it, so a restart cannot land mid-thought.
+ */
+const AUTO_PREF_KEY = 'joe-auto-update';
+const DISMISS_KEY = 'joe-update-dismissed';
+const AUTO_DELAY_S = 45;
+
+function autoUpdateEnabled(): boolean {
+    try { return localStorage.getItem(AUTO_PREF_KEY) !== '0'; } catch { return true; }
+}
+
+export function UpdateAutoPilot() {
+    const allowed = useSelfUpdateAllowed();
+    const { available, behind, known, latest } = useUpdateAvailable();
+    const [busy, setBusy] = useState(isRunBusy());
+    const [phase, setPhase] = useState<UpdatePhase>(state.phase);
+    const [auto, setAuto] = useState(autoUpdateEnabled());
+    const [dismissed, setDismissed] = useState('');
+    const [left, setLeft] = useState(AUTO_DELAY_S);
+
+    useEffect(() => subscribeRunBusy(setBusy), []);
+    useEffect(() => subscribeSelfUpdate(s => setPhase(s.phase)), []);
+    useEffect(() => { try { setDismissed(localStorage.getItem(DISMISS_KEY) || ''); } catch { /* no storage, no memory */ } }, []);
+
+    const show = allowed && known && available && phase === 'idle' && (!latest || latest !== dismissed);
+
+    // The countdown lives only while the banner is visible, auto is on and Joe
+    // is idle — any busy flicker starts it over from the top.
+    useEffect(() => {
+        if (!show || !auto || busy) { setLeft(AUTO_DELAY_S); return; }
+        setLeft(AUTO_DELAY_S);
+        const id = window.setInterval(() => {
+            setLeft(prev => {
+                if (prev <= 1) {
+                    window.clearInterval(id);
+                    void startSelfUpdate();
+                    return 0;
+                }
+                return prev - 1;
+            });
+        }, 1000);
+        return () => window.clearInterval(id);
+    }, [show, auto, busy, latest]);
+
+    if (!show) return null;
+
+    const dismiss = () => {
+        try { localStorage.setItem(DISMISS_KEY, latest || String(Date.now())); } catch { /* best effort */ }
+        setDismissed(latest || String(Date.now()));
+    };
+    const toggleAuto = () => {
+        const next = !auto;
+        setAuto(next);
+        try { localStorage.setItem(AUTO_PREF_KEY, next ? '1' : '0'); } catch { /* best effort */ }
+    };
+
+    return createPortal(
+        <div className="joe-autoupdate-banner" role="status" data-testid="autoupdate-banner">
+            <DownloadCloud size={16} />
+            <span className="joe-autoupdate-text">
+                {`تحديث جديد لجو${behind > 1 ? ` (${behind} تحديثات)` : ''}${latest ? ` — ${latest}` : ''}`}
+                {busy ? ' · ينتظر انتهاء المهمة الجارية'
+                    : auto ? ` · يبدأ تلقائياً بعد ${left} ثانية`
+                        : ''}
+            </span>
+            <button type="button" className="joe-autoupdate-now" data-testid="autoupdate-now"
+                onClick={() => void startSelfUpdate()} disabled={busy}>
+                حدّث الآن
+            </button>
+            <button type="button" className="joe-autoupdate-later" onClick={dismiss}>
+                ليس الآن
+            </button>
+            <button type="button" className="joe-autoupdate-toggle" onClick={toggleAuto}
+                title="عند الإيقاف يبقى الإشعار ويصبح التحديث بضغطة يدوية">
+                {auto ? 'التلقائي: مفعّل' : 'التلقائي: موقف'}
+            </button>
+        </div>,
+        document.body,
     );
 }
 

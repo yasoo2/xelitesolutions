@@ -8,6 +8,7 @@ import { useTranslation } from 'react-i18next';
 import i18next from 'i18next';
 import { API_URL as API, WS_URL as WS } from '../config';
 import { resolveIdentity } from '../lib/userIdentity';
+import { setRunBusy } from '../lib/run-activity';
 import { SocketService } from '../services/socket';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -2587,6 +2588,11 @@ export default function CommandComposer({
 
   /** The composer is free to start a new run right now. */
   const composerIdle = status === 'idle' && !approval && !secretPrompt;
+
+  // Published for anyone outside the composer who must not act while a task
+  // runs — today that is the self-update autopilot, which would otherwise
+  // restart Joe under a live build.
+  useEffect(() => { setRunBusy(!composerIdle); }, [composerIdle]);
 
   /** Park the current draft (text + uploaded files) to send after the run. */
   function queueCurrentDraft() {

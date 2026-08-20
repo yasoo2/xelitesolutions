@@ -247,6 +247,65 @@ html[data-theme="light"] {
   line-height: 1.65;
 }
 
+/* Self-update autopilot: announces a waiting update without being asked */
+.joe-autoupdate-banner {
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(92vw, 640px);
+  padding: 9px 14px;
+  border: 1px solid var(--accent-primary);
+  border-radius: 999px;
+  background: var(--bg-card);
+  color: var(--text-primary);
+  font-size: 13px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.3);
+}
+
+.joe-autoupdate-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.joe-autoupdate-now,
+.joe-autoupdate-later,
+.joe-autoupdate-toggle {
+  flex: 0 0 auto;
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border-color);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.joe-autoupdate-now {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+  font-weight: 600;
+}
+
+.joe-autoupdate-now:hover:not(:disabled),
+.joe-autoupdate-later:hover,
+.joe-autoupdate-toggle:hover {
+  color: var(--text-primary);
+  border-color: var(--accent-primary);
+}
+
+.joe-autoupdate-now:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 /* Pending queue: messages parked while a run is busy, sent when it ends */
 .pending-queue-strip {
   display: flex;

@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Bot, MessageSquare, Settings, Moon, Sun, PanelLeft, PanelRight, Columns2, Rocket, Activity, Shield, ChevronDown } from 'lucide-react';
 import { resolveIdentity, nameFromEmail, initialsFrom, ROLE_KEY, isPrivileged, type UserRole } from '../lib/userIdentity';
 import JoeMark from './JoeMark';
-import UpdateJoeItem, { SelfUpdateOverlay, useUpdateAvailable } from './UpdateJoeItem';
+import UpdateJoeItem, { SelfUpdateOverlay, UpdateAutoPilot, useUpdateAvailable } from './UpdateJoeItem';
 
 interface JoeHeaderProps {
     userAvatar?: string;
@@ -216,6 +216,10 @@ export default function JoeHeader({
                 {/* Outside the dropdown on purpose: the update must survive the
                     menu closing. */}
                 <SelfUpdateOverlay />
+                {/* The automatic half: announces a waiting update on its own and
+                    starts it when Joe is idle — the dropdown row stays as the
+                    manual door. */}
+                <UpdateAutoPilot />
             </div>
         </header>
     );
