@@ -62,6 +62,8 @@ export default function Joe() {
     // State
     // [WAKIL REFACTOR] Mode is always 'agent' now. Toggle removed.
     const [messages, setMessages] = useState<Message[]>([]);
+    // Prompts echoed locally at send time, awaiting their server twin.
+    const pendingEchoRef = useRef<Map<string, number>>(new Map());
     const [inputValue, setInputValue] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     /**
@@ -352,6 +354,21 @@ export default function Joe() {
                 // line used to keep only the text, which is EXACTLY why the
                 // user's attached image never appeared in the chat.
                 const files = msg.type === 'user_input' && Array.isArray(msg.data?.files) ? msg.data.files : undefined;
+
+                // The composer injects the user's prompt locally the instant
+                // Enter is pressed; the SERVER's echo of the same prompt lands
+                // seconds later with a different id. Consume exactly one
+                // pending local echo per matching content so the prompt shows
+                // once, immediately — never twice.
+                if (msg.type === 'user_input') {
+                    const key = typeof content === 'string' ? content : JSON.stringify(content ?? '');
+                    if (String(id).startsWith('local-')) {
+                        pendingEchoRef.current.set(key, Date.now());
+                    } else if (pendingEchoRef.current.has(key)) {
+                        pendingEchoRef.current.delete(key);
+                        return;
+                    }
+                }
 
                 setMessages(prev => {
                     // Avoid duplicates

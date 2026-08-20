@@ -708,6 +708,16 @@ export const SocketService = {
     if (!socket && !isConnecting) connect();
     return release;
   },
+  /**
+   * Deliver a locally-born event to the message subscribers as if the server
+   * had sent it. The user's own prompt must appear in the chat the instant
+   * Enter is pressed; the server's echo lands seconds later, once the run has
+   * actually initialized, and the chat list only ever listened to that echo.
+   */
+  injectLocal(event: any) {
+    const sid = String(event?.sessionId || event?.data?.sessionId || '');
+    forSession(listeners, sid, (cb: any) => cb(event));
+  },
   subscribeStatus(cb: (status: { state: string; detail?: string }) => void) {
     statusListeners.add(cb);
     if (!socket && !isConnecting) connect();

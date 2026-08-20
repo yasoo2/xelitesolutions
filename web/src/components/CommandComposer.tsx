@@ -2261,6 +2261,15 @@ export default function CommandComposer({
         seq: lastLiveSeqRef.current + 0.1
       }
     ]);
+    // And the SAME echo onto the shared bus, so the chat list renders it NOW
+    // instead of waiting out the server's run initialization (measured 7-15s).
+    SocketService.injectLocal({
+      type: 'user_input',
+      sessionId,
+      id: `local-${Date.now()}`,
+      ts: Date.now(),
+      data: { text: inputText, files: [...filesForRun], sessionId },
+    });
     if (overrideText === undefined) setText('');
     // setAttachedFiles([]) moved to after payload construction
 
