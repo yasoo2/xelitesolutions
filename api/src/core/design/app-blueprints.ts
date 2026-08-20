@@ -961,8 +961,8 @@ const BACKEND_COVERS = /login|sign\s*in|account|auth|password|database|db\b|api\
  * template name or a prose claim.
  */
 const WEATHER_FEATURE_RULES: Array<{ asked: RegExp; evidence: RegExp }> = [
-    { asked: /7[-\s]?day.*forecast|seven[-\s]?day.*forecast|daily.*forecast|forecast.*7[-\s]?day|forecast.*seven[-\s]?day/i, evidence: /daily\s*:\s*['\"`]|dailyForecast|forecastDays|7[-\s]?day|seven[-\s]?day/i },
-    { asked: /hourly.*forecast|forecast.*hourly|hourly\s+data/i, evidence: /hourly\s*:\s*['\"`]|hourlyForecast|hourlyData/i },
+    { asked: /7[-\s]?day[^.]{0,40}forecast|seven[-\s]?day[^.]{0,40}forecast|daily[^.]{0,40}forecast|forecast[^.]{0,40}7[-\s]?day|forecast[^.]{0,40}seven[-\s]?day/i, evidence: /daily\s*:\s*['\"`]|dailyForecast|forecastDays|7[-\s]?day|seven[-\s]?day/i },
+    { asked: /hourly[^.]{0,40}forecast|forecast[^.]{0,40}hourly|hourly\s+data/i, evidence: /hourly\s*:\s*['\"`]|hourlyForecast|hourlyData/i },
     // These prose forms are emitted by one-line product requirements. They are
     // proven by executable shapes, not by the words "search" or "weather" alone.
     { asked: /(?:clear\s+)?responsive\s+interface\s+for\s+searching\s+cities|searching\s+cities/i,
@@ -1006,11 +1006,13 @@ const FEATURE_RULES_BY_ENGINE: Partial<Record<AppEngine, Array<{ asked: RegExp; 
 function ruleDerivedFeatures(request: string, engine: AppEngine | null): string[] {
     const rules = engine ? FEATURE_RULES_BY_ENGINE[engine] : undefined;
     if (!rules) return [];
+    const trimmedRequest = String(request || '')
+        .replace(/\n+\[(STANDING USER INSTRUCTIONS|ENGINEERING DISCIPLINE|ATTACHED FILES|RESPONSE LANGUAGE)[\s\S]*$/i, '');
     const out: string[] = [];
     for (const rule of rules) {
-        const match = request.match(rule.asked);
+        const match = trimmedRequest.match(rule.asked);
         const feature = match?.[0]?.trim();
-        if (!feature || out.some(existing => existing.toLowerCase() === feature.toLowerCase())) continue;
+        if (!feature || feature.length > 80 || out.some(existing => existing.toLowerCase() === feature.toLowerCase())) continue;
         out.push(feature);
     }
     return out;

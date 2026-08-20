@@ -215,3 +215,11 @@ POS-049-048C-LIVE: pending; Joe rebuild and independent WeatherGo round 10 next
 **POS-050-NEXT:** بعد الدفع وإعادة البناء، تُشغّل الجولة 13 فقط بدليل يبدأ بـ`JOE_BUILD_SHA=<SHA>` ثم greps `phaseReceiptExtras` و`authored files never landed` و`deriveFidelityVerdict`; لا يُعلن Level 4 مقبولاً قبل artifact حقيقي، `finalVerified=true`، `liveUrl` غير فارغ، وQA مستقل.
 
 **POS-050-W50-ORDER:** W50 يبقى آخر مهمة في القائمة ولا يبدأ قبل قبول Level 4 بتحقق حي مستقل.
+
+## سجل إصلاح 050a — قتل الجشع في قواعد weather وحزام 80 حرفاً
+| المعرّف | المهمة | الحالة | معيار الإغلاق |
+|---|---|---|---|
+| 050a | تضييق بدائل `seven-day/hourly` إلى حدود الجملة، إسقاط المطابقات الأطول من 80 حرفاً، وتشذيب `STANDING` قبل اشتقاق الميزات | **الكود والـregression والبوابات منجزة محلياً؛ الدفع وإعادة بناء Joe والجولة 13 قيد التنفيذ** | قواعد `seven-day` و`hourly` لا تعبر النقطة ولا تلتقط فقرة كاملة؛ `ruleDerivedFeatures` يسقط أي match أطول من 80 حرفاً ويزيل ذيل `STANDING USER INSTRUCTIONS`؛ مسمار canonical يفرض `gap.length <= 80`؛ focused = 5 suites/95 tests؛ TSC = 0؛ Jest = 22/22 دفعة، كل دفعة EXIT 0 |
+**POS-050A-GATES:** 2026-08-20 — focused 5 suites / 95 tests / EXIT 0؛ TSC EXIT 0؛ full Jest 22/22 batches، كل دفعة EXIT 0، `FULL_JEST_BATCHES_EXIT:0`. لم تُلمس ملفات WeatherGo الناتجة أو package manifests أو `zz-*`.
+**POS-050A-NEXT:** بعد staging والدفع إلى `main` فقط، يُعاد البناء من SHA المدفوع وتُشغّل الجولة 13 بدليل يبدأ بـ`JOE_BUILD_SHA=<SHA>` ثم greps علامات 048a الثلاث؛ لا قبول Level 4 قبل artifact حقيقي و`finalVerified=true` و`liveUrl` غير فارغ وQA مستقل.
+**POS-050A-W50-ORDER:** W50 يبقى آخر مهمة في القائمة ولا يبدأ قبل قبول Level 4 بتحقق حي مستقل.
