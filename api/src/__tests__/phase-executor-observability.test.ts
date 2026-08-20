@@ -811,3 +811,27 @@ describe('PhaseExecutorTool observable trusted context', () => {
         }
     });
 });
+
+/**
+ * 055 — a phase without a number still says WHICH phase it was.
+ *
+ * Measured in the cloud round of 2026-08-20: the pipeline's two-phase plan
+ * carries names but no `phaseNumber`, and every log line read «Phase
+ * undefined completed: 1/1». The evidence of the runs we most need to read
+ * was the evidence that named nothing.
+ */
+describe('055 phase identity in logs', () => {
+    const SOURCE = require('fs').readFileSync(
+        require('path').join(__dirname, '../modules/tools/definitions/PhaseExecutorTool.ts'),
+        'utf8',
+    );
+
+    it('never interpolates a bare phaseNumber into a log line', () => {
+        expect(SOURCE).not.toMatch(/appendLog\(`\[PhaseExecutor\][^`]*\$\{phase\.phaseNumber\}/);
+    });
+
+    it('derives a label that falls back to the phase name', () => {
+        expect(SOURCE).toMatch(/const phaseTag = phaseNo \|\| `«\$\{String\(phase\?\.name \|\| 'unnamed'\)/);
+        expect(SOURCE).toMatch(/Phase \$\{phaseTag\} \$\{status\}/);
+    });
+});

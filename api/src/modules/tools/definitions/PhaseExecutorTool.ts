@@ -1060,7 +1060,22 @@ export class PhaseExecutorTool implements ToolDefinition {
             if (!executionContext.workspaceId) appendLog('[PhaseExecutor] Warning: missing workspaceId in execution context');
             if (!executionContext.userId) appendLog('[PhaseExecutor] Warning: missing userId in execution context');
 
-            appendLog(`[PhaseExecutor] Starting Phase ${phase.phaseNumber}: ${phase.name} (${totalTasks} tasks)`);
+            /**
+             * A PHASE IS IDENTIFIED BY WHAT THE PLAN ACTUALLY GAVE IT.
+             *
+             * The pipeline's own two-phase plan («Data service and schema» /
+             * «Interface on the service») carries names but no numbers, so
+             * every line read «Phase undefined completed: 1/1» — unreadable
+             * in exactly the runs whose evidence we most need to read. The
+             * number is used when it exists; the name stands in when it does
+             * not, and neither is ever the word "undefined".
+             */
+            const phaseNo = Number.isFinite(Number(phase?.phaseNumber)) && String(phase?.phaseNumber ?? '').trim() !== ''
+                ? String(phase.phaseNumber)
+                : '';
+            const phaseTag = phaseNo || `«${String(phase?.name || 'unnamed').slice(0, 60)}»`;
+
+            appendLog(`[PhaseExecutor] Starting Phase ${phaseNo ? `${phaseNo}: ${phase.name}` : phaseTag} (${totalTasks} tasks)`);
 
             for (let i = 0; i < tasks.length; i++) {
                 const task = tasks[i];
@@ -1492,7 +1507,7 @@ export class PhaseExecutorTool implements ToolDefinition {
             // a phase whose explicit acceptance check disproved delivery.
             let verificationFailed = false;
 
-            appendLog(`[PhaseExecutor] Phase ${phase.phaseNumber} ${status}: ${completedCount}/${totalTasks} tasks completed`);
+            appendLog(`[PhaseExecutor] Phase ${phaseTag} ${status}: ${completedCount}/${totalTasks} tasks completed`);
 
             if (phase.verificationTask && allOk) {
                 const vTask = phase.verificationTask;
@@ -1539,7 +1554,7 @@ export class PhaseExecutorTool implements ToolDefinition {
                         const vResult = await executeTool(vToolName, verificationArgs, executionContext);
 
                         if (vResult.ok) {
-                        appendLog(`[PhaseExecutor] ✅ Verification passed for Phase ${phase.phaseNumber}`);
+                        appendLog(`[PhaseExecutor] ✅ Verification passed for Phase ${phaseTag}`);
                         results.push({ task: vTaskDesc, tool: vToolName, ok: true });
                         } else {
                             const vErr = String(vResult.error || 'Verification failed');
