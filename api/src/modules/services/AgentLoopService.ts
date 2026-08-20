@@ -111,6 +111,77 @@ export function compactPhaseReceipt(output: any, logs: any, status?: string, ext
     return receipt;
 }
 
+type ReceiptObject = Record<string, any>;
+
+function collectReceiptObjects(value: any, output: ReceiptObject[] = [], seen = new Set<any>(), depth = 0): ReceiptObject[] {
+    if (!value || typeof value !== 'object' || seen.has(value) || depth > 7 || output.length >= 256) return output;
+    seen.add(value);
+    if (!Array.isArray(value)) output.push(value as ReceiptObject);
+    const children = Array.isArray(value)
+        ? value
+        : ['result', 'output', 'pipelineResult', 'steps', 'results', 'data', 'phaseResult', 'rerunResult', 'selfFixExecution']
+            .flatMap(key => Object.prototype.hasOwnProperty.call(value, key) ? [value[key]] : []);
+    for (const child of children) {
+        if (Array.isArray(child)) {
+            for (const item of child) collectReceiptObjects(item, output, seen, depth + 1);
+        } else {
+            collectReceiptObjects(child, output, seen, depth + 1);
+        }
+    }
+    return output;
+}
+
+function isPhaseReceipt(value: any): value is ReceiptObject {
+    return !!value && typeof value === 'object' && !Array.isArray(value) && (
+        Object.prototype.hasOwnProperty.call(value, 'phaseNumber') ||
+        Object.prototype.hasOwnProperty.call(value, 'phaseName') ||
+        Array.isArray(value.taskReceipts) ||
+        (Object.prototype.hasOwnProperty.call(value, 'completedTasks') && Object.prototype.hasOwnProperty.call(value, 'totalTasks'))
+    );
+}
+
+/**
+ * Extracts the canonical engineering receipt from the nested result shapes
+ * emitted by the planner, orchestrator, execution memory, and phase pipeline.
+ * It is intentionally source-agnostic: no project, domain, or tool name is
+ * used to decide whether an object is evidence.
+ */
+export function extractRunReceiptEvidence(source: any, runId: string, sessionId: string, status: string, extra: Record<string, unknown> = {}) {
+    const objects = collectReceiptObjects(source);
+    const phaseReceipts = objects.filter(isPhaseReceipt);
+    const taskReceipts = phaseReceipts.flatMap(phase => Array.isArray(phase.taskReceipts)
+        ? phase.taskReceipts
+        : Array.isArray(phase.results) ? compactTaskReceipts(phase.results) : []
+    ).slice(0, MAX_PHASE_RECEIPT_RESULTS);
+    const boundedRoot = objects.find(value => value.projectRootRuntimeBound === true && String(value.projectRoot || '').trim());
+    const anyRoot = objects.find(value => String(value.projectRoot || '').trim());
+    const root = String((boundedRoot || anyRoot)?.projectRoot || '').trim();
+    const fidelitySource = objects.find(value => value.fidelityVerdict != null || value.acceptanceFidelity != null);
+    const fidelityVerdict = fidelitySource?.fidelityVerdict ?? fidelitySource?.acceptanceFidelity ?? null;
+    const reasonSource = objects.find(value => String(
+        value.selfFixFailureReason || value.selfFixReason || value.selfFixExecution?.reason ||
+        value.selfFixExecution?.error || value.selfFixExecution?.message || extra.selfFixReason || ''
+    ).trim());
+    const selfFixReason = String(
+        reasonSource?.selfFixFailureReason || reasonSource?.selfFixReason || reasonSource?.selfFixExecution?.reason ||
+        reasonSource?.selfFixExecution?.error || reasonSource?.selfFixExecution?.message || extra.selfFixReason || ''
+    ).slice(0, MAX_PHASE_RECEIPT_STRING_CHARS);
+    const completedSource = objects.find(value => Number.isFinite(Number(value.completedPhases)));
+    const honestBlocker = objects.some(value => value.honestBlocker === true || value.requiresUserDecision === true);
+    return {
+        runId,
+        sessionId,
+        status,
+        ...(root ? { projectRoot: root } : {}),
+        taskReceipts,
+        fidelityVerdict,
+        selfFixReason: selfFixReason || undefined,
+        completedPhases: completedSource?.completedPhases,
+        honestBlocker,
+        ...extra,
+    };
+}
+
 export type AcceptanceFailureDisposition = 'repairable' | 'honest_blocker';
 
 /**
@@ -335,37 +406,8 @@ export class AgentLoopService {
             void appendRunEvidenceEvent(runId, event);
         });
 
-        const makeRunReceipt = (source: any, status: string, extra: Record<string, unknown> = {}) => {
-            const payload = source?.result && typeof source.result === 'object' ? source.result : source;
-            const phaseResults = Array.isArray(payload?.results) ? payload.results : [];
-            const root = String(
-                (payload?.projectRootRuntimeBound === true ? payload?.projectRoot : '') ||
-                phaseResults.find((phase: any) => String(phase?.projectRoot || '').trim())?.projectRoot || ''
-            ).trim();
-            const taskReceipts = phaseResults.flatMap((phase: any) => Array.isArray(phase?.taskReceipts)
-                ? phase.taskReceipts
-                : Array.isArray(phase?.results) ? compactTaskReceipts(phase.results) : []
-            ).slice(0, MAX_PHASE_RECEIPT_RESULTS);
-            const fidelityVerdict = payload?.fidelityVerdict || payload?.acceptanceFidelity ||
-                phaseResults.find((phase: any) => phase?.fidelityVerdict || phase?.acceptanceFidelity)?.fidelityVerdict || null;
-            const selfFixReason = String(
-                payload?.selfFixFailureReason || payload?.selfFixExecution?.reason || payload?.selfFixExecution?.error ||
-                phaseResults.find((phase: any) => String(phase?.selfFixFailureReason || '').trim())?.selfFixFailureReason ||
-                extra?.selfFixReason || ''
-            ).slice(0, MAX_PHASE_RECEIPT_STRING_CHARS);
-            return {
-                runId,
-                sessionId,
-                status,
-                ...(root ? { projectRoot: root } : {}),
-                taskReceipts,
-                fidelityVerdict,
-                selfFixReason: selfFixReason || undefined,
-                completedPhases: payload?.completedPhases,
-                honestBlocker: payload?.honestBlocker === true,
-                ...extra,
-            };
-        };
+        const makeRunReceipt = (source: any, status: string, extra: Record<string, unknown> = {}) =>
+            extractRunReceiptEvidence(source, runId, sessionId, status, extra);
 
         // WHOSE RUN IS THIS? Both owner registries existed and neither was ever
         // called, so every event this run emits — Joe's replies included —

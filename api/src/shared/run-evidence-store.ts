@@ -2,6 +2,7 @@ import { JsonStore } from './lib/jsondb';
 
 export const MAX_EVENTS_PER_RUN = 500;
 export const MAX_EVENT_BYTES = 64 * 1024;
+const HEAD_EVENTS_PER_RUN = 4;
 export const MAX_RECORD_BYTES = 2 * 1024 * 1024;
 export const MAX_RUN_RECORDS = 100;
 
@@ -96,7 +97,12 @@ function boundRecord(record: RunEvidenceRecord): RunEvidenceRecord {
         startedAt: trimString(record.startedAt, 64),
         updatedAt: trimString(record.updatedAt, 64),
         status: trimString(record.status, 120) || undefined,
-        events: (Array.isArray(record.events) ? record.events : []).slice(-MAX_EVENTS_PER_RUN).map(compactEvent),
+        events: (() => {
+            const events = (Array.isArray(record.events) ? record.events : []).map(compactEvent);
+            if (events.length <= MAX_EVENTS_PER_RUN) return events;
+            const tailCount = MAX_EVENTS_PER_RUN - HEAD_EVENTS_PER_RUN;
+            return [...events.slice(0, HEAD_EVENTS_PER_RUN), ...events.slice(-tailCount)];
+        })(),
         receipt: record.receipt ? compactValue(record.receipt) as RunReceiptPayload : undefined,
     };
     while (Buffer.byteLength(JSON.stringify(next), 'utf8') > MAX_RECORD_BYTES && next.events.length > 0) {

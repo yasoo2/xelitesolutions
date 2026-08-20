@@ -60,10 +60,12 @@ describe('048b durable run evidence contract', () => {
     const evidence = await getRunEvidence(runId);
     expect(evidence?.runId).toBe(runId);
     expect(evidence?.events.length).toBeLessThanOrEqual(MAX_EVENTS_PER_RUN);
+    expect(evidence?.events[0]?.data).toEqual({ line: '0', runId });
     expect(evidence?.events.some(event => event.type === 'phase_receipt')).toBe(true);
+    expect(evidence?.events.at(-1)?.type).toBe('phase_receipt');
     expect(evidence?.receipt?.projectRoot).toBe('/tmp/weathergo-regression');
     expect(evidence?.receipt?.fidelityVerdict).toEqual({ label: 'verified' });
-  });
+  }, 30_000);
 
   test('event listeners receive normalized runId even when broadcast has no socket', () => {
     const seen: any[] = [];

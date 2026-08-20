@@ -177,9 +177,9 @@ export interface AppBlueprint {
 /* ── which domain the request belongs to ─────────────────────────────────── */
 
 /** Ordered: the specific archetypes are tested before the broad ones. */
-const KIND_DETECTORS: Array<[AppKind, RegExp]> = [
+export const APP_KIND_SIGNALS: Array<[AppKind, RegExp]> = [
     ['maps', /خرائط|خريطة|خارطة|مواقع\s*جغرافي|ملاحة|تتبع\s*(المواقع|الموقع)|جي\s*بي\s*اس|\bmaps?\b|\bgps\b|navigation|geolocation|geo\s*app/i],
-    ['weather', /طقس|الجو|درجات?\s*الحرارة|أحوال\s*جوية|weather|forecast|temperature app/i],
+    ['weather', /طقس|الجو|درجات?\s*الحرارة|أحوال\s*جوية|weather|forecast|temperature app|open[- ]?meteo/i],
     // A calculator is a distinct interaction contract, not a records page.
     // Detect it before generic app/manage fallbacks so a request such as
     // "Build a calculator" never becomes Hero + Features + Contact.
@@ -243,6 +243,22 @@ const CLINIC_SIGNAL = /عياد|طبيب|أطباء|اطباء|طبّي|مرضى
 const PAGE_SIGNAL = /صفحة\s*(?:هبوط|تعريف(?:ية)?|تسويقية)|لاندنج|بورتفوليو|معرض\s*أعمال|سيرة\s*ذاتية|landing\s*page|portfolio|one\s*-?\s*pager|brochure/i;
 
 /**
+ * Masks bounded spans governed by a negation marker before intent detection.
+ * The same rule is shared by page and application signals, so a phrase such
+ * as "not a brochure" or "requiring no API key or account" cannot create a
+ * false subject while an affirmative "brochure for my bakery" remains visible.
+ */
+export function maskNegatedSpans(text: string): string {
+    return String(text || '').replace(
+        // JS `\\b` is ASCII-oriented and therefore unsafe for Arabic. Require
+        // the marker to be outside every Unicode letter/number/identifier word
+        // on the left, and followed by whitespace/end-of-input on the right.
+        /(?<![\p{L}\p{N}_-])(?:not|no|never|without|ليس|ليست|لا|بدون|غير)(?=\s|$)(?:(?:\s+)[\p{L}\p{N}_-]+){0,8}/giu,
+        span => span.replace(/[^\r\n]/gu, ' '),
+    );
+}
+
+/**
  * A release/task-board contract names concrete program surfaces, rather than
  * merely a business subject. It therefore outranks incidental words inherited
  * from a planner or prior conversation (for example «محادثة») — but only
@@ -285,24 +301,25 @@ export function detectAppKind(requestRaw: string): AppKind | null {
     const request = String(requestRaw || '')
         .replace(/\n+\[(STANDING USER INSTRUCTIONS|ENGINEERING DISCIPLINE|ATTACHED FILES|RESPONSE LANGUAGE)[\s\S]*$/i, '');
     if (!request.trim()) return null;
+    const intentRequest = maskNegatedSpans(request);
     // «صفحة هبوط لتطبيق خرائط» is a page about an app — the document the user
     // named wins, exactly as classifyBuildScope decides it.
-    if (PAGE_SIGNAL.test(request)) return null;
+    if (PAGE_SIGNAL.test(intentRequest)) return null;
     // Two named collections are a stronger contract than either word alone.
     // This prevents «notes and tasks» from becoming only a task table or a
     // React-Native-shaped scaffold; the builder receives both surfaces.
-    if (PRODUCTIVITY_CONTRACT.test(request) && APP_SIGNAL.test(request)) return 'productivity';
+    if (PRODUCTIVITY_CONTRACT.test(intentRequest) && APP_SIGNAL.test(intentRequest)) return 'productivity';
     // Explicit interaction surfaces are a stronger contract than a stray
     // domain word that may have been appended to a long execution context.
     // This prevents a release board from becoming ChatApp merely because its
     // self-audit or planner context happened to mention a conversation.
-    if (TASK_BOARD_CONTRACT.test(request)) return 'tasks';
-    if (FINANCE_CONTRACT.test(request)) return 'finance';
-    for (const [kind, re] of KIND_DETECTORS) if (re.test(request)) return kind;
+    if (TASK_BOARD_CONTRACT.test(intentRequest)) return 'tasks';
+    if (FINANCE_CONTRACT.test(intentRequest)) return 'finance';
+    for (const [kind, re] of APP_KIND_SIGNALS) if (re.test(intentRequest)) return kind;
     // Nothing named, but «نظام إدارة …» / «تطبيق لتتبع …» is unmistakably an
     // application that owns records. It gets the records engine with an entity
     // named after the request itself.
-    if (APP_SIGNAL.test(request) && MANAGE_SIGNAL.test(request)) return 'generic';
+    if (APP_SIGNAL.test(intentRequest) && MANAGE_SIGNAL.test(intentRequest)) return 'generic';
     return null;
 }
 

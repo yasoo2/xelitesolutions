@@ -156,3 +156,28 @@ POS-048B-TSC: 0 (final gate after wiring regression update)
 POS-048B-FULL-JEST: 22/22 batches green; FULL_JEST_BATCHES_EXIT:0
 POS-048B-PUSHED: 378b9f9b (local=remote origin/main)
 POS-048B-NO-WEATHERGO-MANUAL-EDIT: confirmed
+
+
+## 049 و048c — بعد قياس M11 وإصلاح «لا» الحشوية
+
+| البند | الحالة | معيار الإغلاق |
+|---|---|---|
+| 049 — سجل إشارات عام وقارئ نفي Unicode | **منفذ محلياً؛ regression أخضر** | `maskNegatedSpans` لا يمحو «علاقات» أو «صلاحيات» أو «إعلانات»، ويحجب أداة النفي القائمة بذاتها قبل جميع كواشف النية |
+| 048c — receipt nested evidence وhead/tail bounded retention | **منفذ محلياً؛ regression أخضر** | استخراج `projectRoot` و`taskReceipts` و`fidelityVerdict` و`selfFixReason` و`honestBlocker` من الأغلفة الفعلية، مع بقاء أول أحداث الهوية وآخر `phase_receipt` |
+| 049/048c — الدفعة 15 | **خضراء** | 14 tests، `RELATIONS_EXIT:0` |
+| 049/048c — focused | **خضراء** | 7 suites / 103 tests / `FOCUSED_EXIT:0` |
+| 049/048c — TSC | **خضراء** | `TSC_EXIT:0` |
+| 049/048c — Jest الكاملة | **خضراء** | 22/22 batches، `FULL_JEST_BATCHES_EXIT:0` |
+| PR82-049-048c | **إقرار 030 محلي؛ الدفع التالي** | فحص Claude ميكانيكي، staging صريح، push إلى `main`، ثم تعليق ختامي بعد الجولة الحية |
+| L4 WeatherGo | **مفتوح** | لا قبول قبل جولة Joe عاشرة مستقلة ببصمة build مطابقة و`finalVerified=true` و`liveUrl` وQA مستقل |
+| W50 | **مؤجل** | يبدأ فقط بعد قبول L4، خمسون تحديثاً منفرداً مع اختبار حي بعد كل طلب |
+
+### سجل البوابات 049/048c
+
+أثبتت الجولة المحلية الأخيرة عدم وجود فشل في suite: الدفعة 15 التي كانت حمراء أصبحت خضراء، ثم نجحت 7 suites / 103 tests المركزة، و`tsc --noEmit` بصفر أخطاء، والـJest الكاملة 22/22 بدفعاتها مع `FULL_JEST_BATCHES_EXIT:0`. لم ألمس ملفات WeatherGo الناتجة يدوياً، ولم أدخل `package.json` أو `package-lock.json` أو `zz-*` في نطاق التغيير.
+
+POS-049-048C-FOCUSED: 7 suites / 103 tests / EXIT 0
+POS-049-048C-TSC: 0
+POS-049-048C-FULL-JEST: 22/22 batches green; FULL_JEST_BATCHES_EXIT:0
+POS-049-048C-PUSH: pending after final mechanical Claude check
+POS-049-048C-LIVE: pending; round 10 only after push

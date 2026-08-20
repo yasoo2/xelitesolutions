@@ -12,7 +12,8 @@
  * The columns now come from the same blueprint the interface renders from.
  */
 import { apiColumnsForRequest, apiPrimaryColumnsForApp, CATALOGUE_COLUMNS } from '../modules/tools/definitions/ApiProjectTool';
-import { blueprintFor, detectAppKind } from '../core/design/app-blueprints';
+import { blueprintFor, detectAppKind, APP_KIND_SIGNALS, maskNegatedSpans } from '../core/design/app-blueprints';
+import { extractRunReceiptEvidence } from '../modules/services/AgentLoopService';
 import { designDataModel } from '../core/design/schema-designer';
 import { fileFinanceAppJsx } from '../modules/tools/definitions/react-app-templates';
 import { transform } from 'esbuild';
@@ -77,7 +78,49 @@ describe('the schema follows the app, not a fixed guess', () => {
         expect(result.code).toContain('function FinanceApp');
     });
 
-    it('and an online store stores price, image, category and stock', () => {
+    it('049 uses the exported signal registry and masks negated domain spans', () => {
+        expect(APP_KIND_SIGNALS.find(([kind]) => kind === 'weather')?.[1].test('open-meteo forecast')).toBe(true);
+        expect(detectAppKind('Build a records dashboard, not a weather app, with search and CSV export')).toBe('generic');
+        expect(detectAppKind('Build a live open-meteo weather forecast app')).toBe('weather');
+        expect(maskNegatedSpans('Build an app, not a weather dashboard')).not.toMatch(/weather/i);
+    });
+
+    it('049 treats Arabic negation markers as standalone words, not substrings', () => {
+        expect(maskNegatedSpans('نظام إدارة علاقات العملاء')).toContain('علاقات');
+        expect(maskNegatedSpans('نظام إدارة صلاحيات المستخدمين')).toContain('صلاحيات');
+        expect(maskNegatedSpans('نظام إدارة لوحة إعلانات')).toContain('إعلانات');
+        expect(detectAppKind('نظام إدارة علاقات العملاء')).toBe('crm');
+        expect(detectAppKind('نظام إدارة صلاحيات المستخدمين')).toBe('generic');
+        expect(detectAppKind('نظام إدارة لوحة إعلانات')).toBe('generic');
+        expect(maskNegatedSpans('لا أريد كتيّباً، ابنِ تطبيقاً حقيقياً')).not.toMatch(/كتيّب/);
+        expect(maskNegatedSpans('Build a real app, not a brochure')).not.toMatch(/brochure/i);
+        expect(detectAppKind('Build a brochure for my bakery')).toBeNull();
+    });
+
+    it('048c extracts structural evidence from nested orchestrator and phase envelopes', () => {
+        const receipt = extractRunReceiptEvidence({
+            result: {
+                steps: [{
+                    output: {
+                        results: [{
+                            phaseName: 'Project Setup',
+                            projectRoot: '/tmp/weathergo',
+                            projectRootRuntimeBound: true,
+                            results: [{ tool: 'ai_write_file', ok: false, error: 'authored files never landed' }],
+                            honestBlocker: true,
+                            selfFixFailureReason: 'self-fix exhausted',
+                        }],
+                    },
+                }],
+            },
+        }, 'run-048c', 'session-048c', 'failed');
+        expect(receipt.projectRoot).toBe('/tmp/weathergo');
+        expect(receipt.taskReceipts).toEqual([{ tool: 'ai_write_file', ok: false, error: 'authored files never landed' }]);
+        expect(receipt.selfFixReason).toBe('self-fix exhausted');
+        expect(receipt.honestBlocker).toBe(true);
+    });
+
+    it('an online store stores price, image, category and stock', () => {
         const keys = apiColumnsForRequest('متجر إلكتروني لبيع العطور مع سلة').map(c => c.key);
         expect(keys).toEqual(expect.arrayContaining(['name', 'price', 'category', 'image', 'stock']));
     });
