@@ -389,21 +389,21 @@ function EnhancedLogsPanel({ logs, liveFiles = [], buildStatus = null }: { logs:
                 {liveFiles.length > 0 && (
                     <div style={{ paddingBottom: 4 }}>
                         <SectionHeading
-                            label={`الملفات (${liveFiles.length})`}
-                            note={`${liveFiles.filter(f => f.done).length} مكتمل`}
+                            label={t('wsFilesCount', { n: liveFiles.length })}
+                            note={t('wsDoneCount', { n: liveFiles.filter(f => f.done).length })}
                         />
                         {liveFiles.map(f => <LiveFileCard key={f.file} f={f} />)}
                     </div>
                 )}
                 {liveFiles.length > 0 && filtered.length > 0 && (
-                    <SectionHeading label={`السجل (${filtered.length})`} />
+                    <SectionHeading label={t('wsLogCount', { n: filtered.length })} />
                 )}
                 {filtered.length === 0 && liveFiles.length === 0 ? (
                     <div style={{
                         padding: 24, textAlign: 'center',
                         color: 'var(--joe-text-muted)', fontSize: 13,
                     }}>
-                        لا توجد سجلات
+                        {t('wsNoLogs')}
                     </div>
                 ) : (
                     filtered.map((log, i) => (
@@ -444,7 +444,7 @@ function EnhancedLogsPanel({ logs, liveFiles = [], buildStatus = null }: { logs:
                     }}
                 >
                     <ArrowDownToLine size={12} />
-                    <span className="hide-mobile">تمرير تلقائي</span>
+                    <span className="hide-mobile">{t('wsAutoScroll')}</span>
                 </button>
             </div>
         </div>
@@ -667,7 +667,7 @@ export default function WorkspacePanel({
                     <button
                         className="joe-header-btn hide-mobile"
                         onClick={toggleSplit}
-                        title={splitView ? 'عرض مفرد' : 'السجلات + المعاينة معاً'}
+                        title={splitView ? t('wsSingleView') : t('wsSplitView')}
                         style={{
                             border: 'none',
                             background: splitActive ? 'rgba(52,196,139,0.12)' : 'transparent',
