@@ -33,8 +33,17 @@ describe('write_file — visible in the live Logs panel', () => {
 describe('the Logs panel consumes file_stream for any file', () => {
     const ui = fs.readFileSync(
         path.join(__dirname, '..', '..', '..', 'web', 'src', 'components', 'JoeIDELayout.tsx'), 'utf-8');
+    const ownership = fs.readFileSync(
+        path.join(__dirname, '..', '..', '..', 'web', 'src', 'lib', 'panel-event-ownership.ts'), 'utf-8');
     test('a file_stream event with a file feeds liveFiles regardless of source', () => {
         expect(ui).toMatch(/event\.type === 'file_stream' && event\.data\?\.file/);
+    });
+    test('ownership accepts nested session ids and deduplicates one event across envelopes', () => {
+        expect(ownership).toContain('event?.data?.data?.sessionId');
+        expect(ownership).toContain('event?.eventId');
+        expect(ownership).toContain('event?.data?.eventId');
+        expect(ui).toContain('acceptPanelEventOnce');
+        expect(ui).toContain('panelEventSessionId(event)');
     });
 });
 

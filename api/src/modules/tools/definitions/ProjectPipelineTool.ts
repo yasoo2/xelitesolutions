@@ -13,6 +13,68 @@ import { auditBuiltApp, AppAudit } from '../../../core/quality/app-audit';
 const MAX_PIPELINE_LOGS = 192;
 const MAX_PIPELINE_LOG_CHARS = 2_000;
 
+export interface PipelineDecisionEvidence {
+    finalVerified: boolean;
+    browserQaFailed: boolean;
+    scopeCoverageFailed: boolean;
+    liveUrl: string | null;
+    done: number;
+    total: number;
+    honestBlocker: string | null;
+}
+
+/**
+ * Additive, current-run decision evidence for the delivery boundary. This
+ * function never changes a verdict; it only names the facts already computed
+ * by the pipeline so a report cannot collapse into an unexplained 0/N.
+ */
+export function buildPipelineDecisionEvidence(input: {
+    finalVerified: boolean;
+    browserQaFailed: boolean;
+    scopeCoverageFailed: boolean;
+    liveUrl?: string;
+    done: number;
+    total: number;
+    finalHonestBlocker: boolean;
+    verificationFailed?: boolean;
+    liveRunVerificationFailed?: boolean;
+    liveRunError?: string;
+    scopeAudit?: { built?: number; requested?: number; missing?: string[] };
+    phaseResults?: any[];
+}): PipelineDecisionEvidence {
+    const results = Array.isArray(input.phaseResults) ? input.phaseResults : [];
+    const failedPhase = results.find((result: any) => (
+        result?.verificationFailed === true
+        || result?.ok === false
+        || (result?.status && result.status !== 'completed')
+    ));
+    const phaseName = String(failedPhase?.phaseName || failedPhase?.name || failedPhase?.phaseNumber || '').trim();
+    const phaseError = String(failedPhase?.primaryError || failedPhase?.error || '').trim();
+    let honestBlocker: string | null = null;
+    if (input.liveRunError) {
+        honestBlocker = `live_run: ${String(input.liveRunError).slice(0, 420)}`;
+    } else if (input.browserQaFailed) {
+        honestBlocker = 'browser_qa_failed';
+    } else if (input.scopeCoverageFailed && input.scopeAudit?.requested) {
+        honestBlocker = `scope_coverage: ${Number(input.scopeAudit.built || 0)}/${Number(input.scopeAudit.requested)}`;
+    } else if (phaseName || phaseError) {
+        honestBlocker = [phaseName, phaseError].filter(Boolean).join(': ').slice(0, 520);
+    } else if (input.verificationFailed || input.liveRunVerificationFailed) {
+        honestBlocker = 'verification_failed';
+    } else if (input.finalHonestBlocker) {
+        honestBlocker = 'pipeline_marked_honest_blocker';
+    }
+    return {
+        finalVerified: input.finalVerified,
+        browserQaFailed: input.browserQaFailed,
+        scopeCoverageFailed: input.scopeCoverageFailed,
+        liveUrl: String(input.liveUrl || '').trim() || null,
+        done: Number(input.done || 0),
+        total: Number(input.total || 0),
+        honestBlocker,
+    };
+}
+
 /**
  * Preserve the exact importer/specifier pairs emitted by ProjectRunTool. The
  * repair planner must receive these as obligations, not as vague prose, so it
@@ -1852,11 +1914,25 @@ export class ProjectPipelineTool implements ToolDefinition {
         const finalExecutionStatus = finalVerified ? 'completed' : done > 0 ? 'partial' : 'failed';
         const finalVerificationStatus = finalVerified ? 'passed' : browserQaFailed ? 'browser_qa_failed' : String(pipeline?.verificationStatus || 'failed');
         const finalDeliveryStatus = finalVerified ? 'delivered' : (partialDelivery || done > 0) ? 'partial' : 'blocked';
+        const decisionEvidence = buildPipelineDecisionEvidence({
+            finalVerified,
+            browserQaFailed,
+            scopeCoverageFailed,
+            liveUrl,
+            done,
+            total,
+            finalHonestBlocker,
+            verificationFailed,
+            liveRunVerificationFailed,
+            liveRunError,
+            scopeAudit,
+            phaseResults: pipeline?.results,
+        });
 
         const summary = this.buildDeliveryReport({
             language: isAr ? 'ar' : 'en',
             projectName: String(plannerResult.output.projectName || 'project'),
-            phases, pipeline, done, total, verified: finalVerified, liveUrl, liveRunError, liveRepairStatus, scopeAudit, scopeRepairStatus, browserQa,
+            phases, pipeline, done, total, verified: finalVerified, liveUrl, liveRunError, liveRepairStatus, scopeAudit, scopeRepairStatus, browserQa, decisionEvidence,
         });
         say(`[pipeline] ${finalVerified ? `✅ ${done}/${total}` : `⚠️ ${done}/${total}`} — delivery report ready`);
 
@@ -1871,6 +1947,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                 executionStatus: finalExecutionStatus,
                 verificationStatus: finalVerificationStatus,
                 deliveryStatus: finalDeliveryStatus,
+                decisionEvidence,
                 ...(verificationFailed ? { verificationFailed: true } : {}),
                 ...(liveRunVerificationFailed ? { verificationFailed: true } : {}),
                 ...(browserQaFailed ? { browserQaFailed: true } : {}),
@@ -2088,8 +2165,9 @@ export class ProjectPipelineTool implements ToolDefinition {
         scopeAudit?: ScopeGateOutcome['scopeAudit'];
         scopeRepairStatus?: string;
         browserQa?: AppAudit | null;
+        decisionEvidence?: PipelineDecisionEvidence;
     }): string {
-        const { language: lang, projectName, phases, pipeline, done, total, verified, liveUrl, liveRunError, liveRepairStatus, scopeAudit, scopeRepairStatus, browserQa } = args;
+        const { language: lang, projectName, phases, pipeline, done, total, verified, liveUrl, liveRunError, liveRepairStatus, scopeAudit, scopeRepairStatus, browserQa, decisionEvidence } = args;
         const ar = lang === 'ar';
         const lines: string[] = [];
         const phaseResults: any[] = Array.isArray(pipeline?.results) ? pipeline.results : [];
@@ -2127,6 +2205,17 @@ export class ProjectPipelineTool implements ToolDefinition {
         lines.push(ar
             ? `**المراحل:** ${done}/${total} نُفِّذت وتحقَّقت (تنفيذ فعلي + فحوص، لا مجرد كتابة ملفات).`
             : `**Phases:** ${done}/${total} executed and verified (real execution + checks, not just written files).`);
+
+        if (decisionEvidence) {
+            lines.push('');
+            lines.push(ar ? '### قرار الجولة الحالي (دليل قابل للقراءة)' : '### Current run decision evidence');
+            lines.push(ar
+                ? `- finalVerified: \`${decisionEvidence.finalVerified}\`؛ browserQaFailed: \`${decisionEvidence.browserQaFailed}\`؛ scopeCoverageFailed: \`${decisionEvidence.scopeCoverageFailed}\``
+                : `- finalVerified: \`${decisionEvidence.finalVerified}\`; browserQaFailed: \`${decisionEvidence.browserQaFailed}\`; scopeCoverageFailed: \`${decisionEvidence.scopeCoverageFailed}\``);
+            lines.push(ar
+                ? `- liveUrl: \`${decisionEvidence.liveUrl || 'null'}\`؛ done/total: \`${decisionEvidence.done}/${decisionEvidence.total}\`؛ honestBlocker: \`${decisionEvidence.honestBlocker || 'null'}\``
+                : `- liveUrl: \`${decisionEvidence.liveUrl || 'null'}\`; done/total: \`${decisionEvidence.done}/${decisionEvidence.total}\`; honestBlocker: \`${decisionEvidence.honestBlocker || 'null'}\``);
+        }
 
         if (browserQa) {
             lines.push('');

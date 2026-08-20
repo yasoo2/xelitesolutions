@@ -22,6 +22,7 @@ import {
     interactiveAppNeedsReactBuilder,
     planContainsReactBuilder,
     planContainsUnrequestedApiBuilder,
+    buildPipelineDecisionEvidence,
 } from '../modules/tools/definitions/ProjectPipelineTool';
 import { applyPhaseExecutionEvidence } from '../modules/tools/definitions/PhaseExecutorTool';
 
@@ -389,6 +390,45 @@ describe('the bridge tool — plan, execute phases, report honestly', () => {
         expect(src).toMatch(/ok: finalVerified/);
         // The honest partial-delivery message exists in Arabic.
         expect(src).toMatch(/توقف البناء بصدق/);
+    });
+
+    test('current-run decision evidence names the six gate facts without changing the verdict', () => {
+        const blocked = buildPipelineDecisionEvidence({
+            finalVerified: false,
+            browserQaFailed: false,
+            scopeCoverageFailed: true,
+            liveUrl: 'http://localhost:4173/weather',
+            done: 0,
+            total: 8,
+            finalHonestBlocker: true,
+            scopeAudit: { built: 0, requested: 8, missing: ['weather search'] },
+            phaseResults: [{ status: 'completed' }],
+        });
+        expect(Object.keys(blocked).sort()).toEqual([
+            'browserQaFailed', 'done', 'finalVerified', 'honestBlocker', 'liveUrl', 'scopeCoverageFailed', 'total',
+        ].sort());
+        expect(blocked).toMatchObject({
+            finalVerified: false,
+            browserQaFailed: false,
+            scopeCoverageFailed: true,
+            liveUrl: 'http://localhost:4173/weather',
+            done: 0,
+            total: 8,
+            honestBlocker: 'scope_coverage: 0/8',
+        });
+
+        const delivered = buildPipelineDecisionEvidence({
+            finalVerified: true,
+            browserQaFailed: false,
+            scopeCoverageFailed: false,
+            liveUrl: 'http://localhost:4173/weather',
+            done: 8,
+            total: 8,
+            finalHonestBlocker: false,
+            phaseResults: [{ status: 'completed', ok: true }],
+        });
+        expect(delivered.finalVerified).toBe(true);
+        expect(delivered.honestBlocker).toBeNull();
     });
 
     test('the chat gets a delivery REPORT, not a terse line', () => {

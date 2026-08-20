@@ -11,7 +11,7 @@
  * vite refused the bundle, and the failure surfaced three layers away as «the
  * app did not compile». This gate puts the failure where the mistake is.
  */
-import { buildAppFiles } from '../modules/tools/definitions/react-app-templates';
+import { buildAppFiles, guardRequiredInput } from '../modules/tools/definitions/react-app-templates';
 import { syntaxOk } from '../modules/tools/definitions/ProjectEditTool';
 import { blueprintFor, uncoveredFeatures, type AppKind } from '../core/design/app-blueprints';
 import { normalizeReactScaffoldStructure } from '../modules/tools/definitions/SystemTools';
@@ -136,6 +136,38 @@ describe('the generated application is syntactically real', () => {
         expect(uncoveredFeatures(request, 'weather', false, searchOnly)).toEqual([
             'viewing weather details',
         ]);
+    });
+
+    it('interactive search engines share a real empty-input contract', () => {
+        const weather = filesFor('weather', false)['src/components/WeatherApp.jsx'];
+        const maps = filesFor('maps', false)['src/components/MapApp.jsx'];
+        const message: string[] = [];
+        let fetchCalls = 0;
+        const canRequest = guardRequiredInput('   ', (text) => message.push(text), 'Enter a city before searching.');
+        if (canRequest) fetchCalls += 1;
+
+        expect(canRequest).toBe(false);
+        expect(fetchCalls).toBe(0);
+        expect(message).toEqual(['Enter a city before searching.']);
+        expect(guardRequiredInput('Istanbul', () => undefined, 'Enter a city before searching.')).toBe(true);
+
+        for (const [name, source, needle, alertText] of [
+            ['weather', weather, 'EMPTY_CITY_MESSAGE', 'role="alert"'],
+            ['maps', maps, 'EMPTY_PLACE_MESSAGE', 'role="alert"'],
+        ] as const) {
+            expect(syntaxOk(`src/components/${name === 'weather' ? 'WeatherApp' : 'MapApp'}.jsx`, source).ok).toBe(true);
+            const findCitiesStart = source.indexOf('const findCities =');
+            const searchStart = findCitiesStart >= 0 ? findCitiesStart : source.indexOf('const search =');
+            const guard = source.indexOf('guardRequiredInput(', searchStart);
+            const request = source.indexOf('fetch(', searchStart);
+            expect(searchStart).toBeGreaterThan(-1);
+            expect(guard).toBeGreaterThan(searchStart);
+            expect(guard).toBeLessThan(request);
+            expect(source).toContain(`if (!guardRequiredInput(`);
+            expect(source).toContain(needle);
+            expect(source).toContain(alertText);
+            expect(source).toMatch(/onEmpty\(message\);[\s\S]*?return false;/);
+        }
     });
 
     it('weather includes the real forecast contract and negative-state surfaces', () => {

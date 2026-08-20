@@ -14,6 +14,7 @@ import '../styles/joe-premium.css';
 import '../styles/accents.css';
 import { useAutoOpen, PanelType } from '../services/AutoOpenManager';
 import { ErrorBoundary } from './ErrorBoundary';
+import { panelEventKey, panelEventSessionId } from '../lib/panel-event-ownership';
 interface Session {
     id: string;
     title: string;
@@ -333,6 +334,7 @@ export default function JoeIDELayout({
      * here rather than painted over the one you are reading.
      */
     const sessionRef = useRef<string | undefined>(sessionId);
+    const seenPanelEventKeys = useRef<Map<string, Set<string>>>(new Map());
     const panelArchive = useRef<Map<string, {
         liveFiles: import('./WorkspacePanel').LiveFile[];
         logs: string[];
@@ -346,7 +348,7 @@ export default function JoeIDELayout({
      * are the live files, the log lines and the build status.
      */
     const recordForBackgroundSession = useCallback((event: any) => {
-        const sid = String(event?.sessionId || event?.data?.sessionId || '');
+        const sid = panelEventSessionId(event);
         if (!sid || /^panel-/.test(sid) || sid === 'local_terminal') return;
         const cur = panelArchive.current.get(sid)
             || { liveFiles: [] as any[], logs: [] as string[], problems: [] as any[], buildStatus: null as any };
@@ -403,15 +405,30 @@ export default function JoeIDELayout({
          * a session workspace. Other sessions are archived by their own id.
          */
         const belongsHere = (event: any): boolean => {
-            const sid = String(event?.sessionId || event?.data?.sessionId || '').trim();
+            const sid = panelEventSessionId(event);
             const active = String(sessionRef.current || '').trim();
             return Boolean(active && sid && sid === active);
+        };
+
+        const acceptPanelEventOnce = (event: any): boolean => {
+            const key = panelEventKey(event);
+            if (!key) return true;
+            const sid = panelEventSessionId(event) || '__unscoped__';
+            const keys = seenPanelEventKeys.current.get(sid) || new Set<string>();
+            if (keys.has(key)) return false;
+            keys.add(key);
+            if (keys.size > 1000) {
+                const oldest = keys.values().next().value;
+                if (oldest) keys.delete(oldest);
+            }
+            seenPanelEventKeys.current.set(sid, keys);
+            return true;
         };
 
         // Subscribe to socket events for logs
         const unsubscribe = import('../services/socket').then(({ SocketService }) => {
             return SocketService.subscribe((event: any) => {
-                if (!event) return;
+                if (!event || !acceptPanelEventOnce(event)) return;
                 /**
                  * A BACKGROUND RUN IS RECORDED, NOT DISCARDED.
                  *

@@ -24,6 +24,28 @@ import { ROLES } from '../../../core/design/roles';
 /** Escape for a JS single-quoted literal inside generated source. */
 const q = (s: string) => String(s ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, ' ');
 
+/**
+ * Shared request guard emitted into interactive engines. It deliberately uses
+ * trim() rather than a regex: the generated source must remain safe from
+ * template-literal backslash cooking while still making the two promises that
+ * matter — no request for empty input, and a named visible error via onEmpty.
+ */
+export function guardRequiredInput(value: unknown, onEmpty: (message: string) => void, message: string): boolean {
+    if (!String(value ?? '').trim()) {
+        onEmpty(message);
+        return false;
+    }
+    return true;
+}
+
+const GENERATED_REQUIRED_INPUT_GUARD = `const guardRequiredInput = (value, onEmpty, message) => {
+  if (!String(value ?? '').trim()) {
+    onEmpty(message);
+    return false;
+  }
+  return true;
+};`;
+
 export interface AppBuildOptions {
     brand: string;
     isArabic: boolean;
@@ -1382,6 +1404,8 @@ import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
 import markerShadow from 'leaflet/dist/images/marker-shadow.png';
 import { createStore, uid } from '../app/store.js';
 
+${GENERATED_REQUIRED_INPUT_GUARD}
+
 // Bundlers rewrite the icon URLs Leaflet builds by hand — without this the
 // markers render as broken images in the production build.
 delete L.Icon.Default.prototype._getIconUrl;
@@ -1445,6 +1469,7 @@ export default function MapApp({ content }) {
   const [pendingName, setPendingName] = useState('');
   const [me, setMe] = useState(null);
   const [tileError, setTileError] = useState(false);
+  const EMPTY_PLACE_MESSAGE = ${T('أدخل اسم المكان قبل البحث.', 'Enter a place before searching.')};
   // Directions: two endpoints, a real road route, and the two numbers people
   // actually want — how far, and how long.
   const [fromText, setFromText] = useState('');
@@ -1501,7 +1526,7 @@ export default function MapApp({ content }) {
   const search = async (e) => {
     e.preventDefault();
     const term = query.trim();
-    if (!term) return;
+    if (!guardRequiredInput(term, setNote, EMPTY_PLACE_MESSAGE)) { setResults([]); return; }
     setBusy(true); setNote(''); setResults([]);
     try {
       const url = 'https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6&accept-language=${lang}&q=' + encodeURIComponent(term);
@@ -1725,7 +1750,7 @@ export default function MapApp({ content }) {
           <button className="btn" type="submit" disabled={busy}>{busy ? ${T('...', '…')} : ${T('ابحث', 'Search')}}</button>
           <button className="btn ghost" type="button" onClick={locate}>{${T('موقعي', 'My location')}}</button>
         </form>
-        {note ? <p className="err" role="status">{note}</p> : null}
+        {note ? <p className="err" role="alert">{note}</p> : null}
 
         {/* Directions — from, to, a real road route, distance and duration. */}
         <form className="trip" onSubmit={route}>
@@ -2003,11 +2028,14 @@ export function fileWeatherAppJsx(isAr: boolean): string {
     return `import React, { useEffect, useMemo, useState } from 'react';
 import { createStore, uid } from '../app/store.js';
 
+${GENERATED_REQUIRED_INPUT_GUARD}
+
 const CODES = ${codes};
 const describe = (c) => CODES[c] || ${T('—', '—')};
 const ICONS = { 0: '☀️', 1: '🌤️', 2: '⛅', 3: '☁️', 45: '🌫️', 48: '🌫️', 51: '🌦️', 53: '🌦️', 55: '🌧️', 61: '🌦️', 63: '🌧️', 65: '🌧️', 71: '🌨️', 73: '🌨️', 75: '❄️', 80: '🌦️', 81: '🌧️', 82: '⛈️', 95: '⛈️', 96: '⛈️', 99: '⛈️' };
 const FORECAST_API = 'https://api.open-meteo.com/v1/forecast';
 const GEOCODING_API = 'https://geocoding-api.open-meteo.com/v1/search';
+const EMPTY_CITY_MESSAGE = ${T('أدخل اسم المدينة قبل البحث.', 'Enter a city before searching.')};
 
 const readSetting = (key, fallback) => {
   try { return localStorage.getItem(key) || fallback; } catch { return fallback; }
@@ -2077,7 +2105,7 @@ export default function WeatherApp({ content }) {
 
   const findCities = async (term) => {
     const value = String(term || '').trim();
-    if (!value) { setHits([]); return; }
+    if (!guardRequiredInput(value, setNote, EMPTY_CITY_MESSAGE)) { setHits([]); return; }
     setBusy(true); setNote('');
     try {
       if (!GEOCODING_API) throw new Error('missing_geocoding_configuration');
