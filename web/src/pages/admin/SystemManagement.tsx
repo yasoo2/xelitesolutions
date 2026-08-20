@@ -73,7 +73,7 @@ interface User {
 
 interface EnvSetting {
     key: string;
-    group: 'ownership' | 'ai' | 'local-brain' | 'storage' | 'runtime';
+    group: 'ownership' | 'ai' | 'google' | 'local-brain' | 'storage' | 'runtime';
     kind: string;
     label: string;
     hint: string;
@@ -937,6 +937,7 @@ export default function SystemManagement() {
     const GROUP_TITLES: Record<string, string> = {
         ownership: 'الملكية والأمان',
         ai: 'مفاتيح الذكاء',
+        google: 'ربط Google (OAuth) — يسري فوراً بلا إعادة تشغيل',
         'local-brain': 'الدماغ المحلّي',
         storage: 'التخزين',
         runtime: 'التشغيل',
@@ -959,7 +960,7 @@ export default function SystemManagement() {
         const q = envSearch.trim().toLowerCase();
         const rowMatches = (key: string, label = '', hint = '') =>
             !q || key.toLowerCase().includes(q) || label.toLowerCase().includes(q) || hint.toLowerCase().includes(q);
-        const groups = ['ownership', 'ai', 'local-brain', 'storage', 'runtime'] as const;
+        const groups = ['ownership', 'ai', 'google', 'local-brain', 'storage', 'runtime'] as const;
         const dirtyCount = Object.keys(envDrafts).length + envRemovals.length + envAdds.filter(a => a.key.trim()).length;
         const busy = envSaving || envRedeploying;
 

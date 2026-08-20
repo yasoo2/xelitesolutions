@@ -28,7 +28,7 @@ export type EnvKind = 'text' | 'secret' | 'boolean' | 'number' | 'url' | 'emails
 
 export interface EnvSetting {
     key: string;
-    group: 'ownership' | 'ai' | 'local-brain' | 'storage' | 'runtime';
+    group: 'ownership' | 'ai' | 'google' | 'local-brain' | 'storage' | 'runtime';
     kind: EnvKind;
     /** Arabic, because the owner reads this screen. */
     label: string;
@@ -79,6 +79,27 @@ export const ENV_SETTINGS: EnvSetting[] = [
     { key: 'GOOGLE_API_KEY', group: 'ai', kind: 'secret', live: true, label: 'مفتاح Google/Gemini', hint: 'اختياري.' },
     { key: 'CEREBRAS_API_KEY', group: 'ai', kind: 'secret', live: true, label: 'مفتاح Cerebras', hint: 'مزوّد مجاني سريع جداً.' },
     { key: 'MISTRAL_API_KEY', group: 'ai', kind: 'secret', live: true, label: 'مفتاح Mistral', hint: 'اختياري.' },
+
+    // ── ربط Google (OAuth) ────────────────────────────────────────────────
+    // These are LIVE: the auth routes read process.env on every request, so a
+    // save from the panel takes effect on the very next «Connect Google» —
+    // no restart, no .env-versus-secrets-script precedence puzzle.
+    {
+        key: 'GOOGLE_CLIENT_ID', group: 'google', kind: 'text', live: true,
+        label: 'معرّف عميل Google',
+        hint: 'من Google Console ← Credentials. ينتهي بـ .apps.googleusercontent.com — يسري فوراً.',
+        placeholder: '1234567890-xxxx.apps.googleusercontent.com',
+    },
+    {
+        key: 'GOOGLE_CLIENT_SECRET', group: 'google', kind: 'secret', live: true,
+        label: 'سرّ عميل Google',
+        hint: 'من نفس العميل حرفياً (يبدأ بـ GOCSPX-). الحفظ يسري فوراً بلا إعادة تشغيل.',
+    },
+    {
+        key: 'GOOGLE_REDIRECT_URI', group: 'google', kind: 'url', live: true,
+        label: 'عنوان الرجوع (اختياري)',
+        hint: 'اتركه فارغاً ليستنتجه جو من العنوان الحالي. يُضبط فقط عند دومين مخصص.',
+    },
 
     // ── الدماغ المحلّي ─────────────────────────────────────────────────────
     {

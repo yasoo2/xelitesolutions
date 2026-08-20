@@ -285,13 +285,28 @@ function resolveGoogleClientId(req: Request): string {
 }
 
 function resolveGoogleClientSecret(): string {
-  return String(
-    process.env.GOOGLE_CLIENT_SECRET ||
-    process.env.GOOGLE_OAUTH_CLIENT_SECRET ||
-    process.env.GOOGLE_OAUTH_SECRET ||
-    process.env.GOOGLE_SECRET ||
-    ''
-  ).trim();
+  return resolveGoogleClientSecretWithSource().value;
+}
+
+/**
+ * The same resolution, but it also SAYS where the winning value came from.
+ * Three sources can hold this secret on one machine (the panel/.env, the
+ * secrets script, a shell export) and «invalid_client» told the owner nothing
+ * about WHICH one the process was actually using — that question cost a full
+ * evening of guessing. Now the failure names its own input.
+ */
+function resolveGoogleClientSecretWithSource(): { value: string; source: string } {
+  const candidates: Array<[string, string | undefined]> = [
+    ['GOOGLE_CLIENT_SECRET', process.env.GOOGLE_CLIENT_SECRET],
+    ['GOOGLE_OAUTH_CLIENT_SECRET', process.env.GOOGLE_OAUTH_CLIENT_SECRET],
+    ['GOOGLE_OAUTH_SECRET', process.env.GOOGLE_OAUTH_SECRET],
+    ['GOOGLE_SECRET', process.env.GOOGLE_SECRET],
+  ];
+  for (const [name, raw] of candidates) {
+    const value = String(raw || '').trim();
+    if (value) return { value, source: name };
+  }
+  return { value: '', source: 'unset' };
 }
 
 function resolveReturnTo(req: Request): string {
@@ -534,12 +549,20 @@ router.get('/callback', async (req: Request, res: Response) => {
     // for the real reason. Carry a bounded, secret-free detail to the login
     // page so the surface says WHAT failed (e.g. `invalid_client`,
     // `redirect_uri_mismatch`, a DB error message) — never tokens or codes.
-    const detail = String(
+    let detail = String(
       error?.response?.data?.error_description
       || error?.response?.data?.error
       || error?.message
       || '',
     ).replace(/[\r\n]+/g, ' ').slice(0, 160);
+    // «invalid_client» keeps arguing about WHICH secret was sent. Name it:
+    // last 4 characters + length + the variable it was read from — the same
+    // exposure the settings panel already grants the owner, nothing more.
+    if (/invalid_client|client secret/i.test(detail)) {
+      const { value, source } = resolveGoogleClientSecretWithSource();
+      const tail = value ? `••••${value.slice(-4)} (${value.length} حرفاً من ${source})` : 'لا سرّ مضبوط إطلاقاً';
+      detail = `${detail} — السرّ المستعمل الآن: ${tail}`.slice(0, 220);
+    }
     return finishRedirect(`error=google_callback_failed${detail ? `&detail=${encodeURIComponent(detail)}` : ''}`);
   }
 });
