@@ -20,6 +20,7 @@ import path from 'path';
 import {
     CAPABILITIES,
     formatScope,
+    hasSearchEvidence,
     readProjectSource,
     requestedCapabilities,
     scopeReport,
@@ -116,6 +117,42 @@ describe('what was built is read from the code, never from optimism', () => {
         });
         expect(readProjectSource([dir])).not.toMatch(/setQuery|onSearch/);
         expect(scopeReport('Build a task dashboard with search.', [dir]).built.map(c => c.id)).not.toContain('search');
+    });
+
+    it('recognizes executable search shapes for weather and product apps, not words alone', () => {
+        const weather = mk({
+            'src/WeatherApp.jsx': [
+                "const [city, setCity] = useState('');",
+                'const [weatherData, setWeatherData] = useState(null);',
+                'const handleSearch = async (e) => { e.preventDefault(); await fetch(geoUrl); setWeatherData(data); };',
+                '<form onSubmit={handleSearch}><input value={city} onChange={e => setCity(e.target.value)} /></form>',
+            ].join('\\n'),
+        });
+        expect(scopeReport('Build a weather app with search.', [weather]).built.map(c => c.id))
+            .toContain('search');
+        expect(hasSearchEvidence(readProjectSource([weather]))).toBe(true);
+
+        const products = mk({
+            'src/ProductSearch.jsx': [
+                'const [query, setQuery] = useState(\'\');',
+                'const onSearch = () => setResults(products.filter(p => p.name.includes(query)));',
+                '<form onSubmit={onSearch}><input type="search" value={query} /></form>',
+            ].join('\\n'),
+        });
+        expect(scopeReport('Build a product catalogue with search.', [products]).built.map(c => c.id))
+            .toContain('search');
+
+        const wordsOnly = mk({
+            'src/App.jsx': "export default function App() { return <p>Search results will appear here.</p>; }",
+        });
+        expect(scopeReport('Build a task dashboard with search.', [wordsOnly]).built.map(c => c.id))
+            .not.toContain('search');
+
+        const namedShape = mk({
+            'src/App.jsx': 'const setQuery = value => value; const onSearch = () => true;',
+        });
+        expect(scopeReport('Build a task dashboard with search.', [namedShape]).built.map(c => c.id))
+            .toContain('search');
     });
 
     it('an isolated analytics helper is not an integrated analytics feature', () => {

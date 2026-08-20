@@ -32,12 +32,27 @@ export interface Capability {
     ask: RegExp;
     /** The code shows it. */
     evidence: RegExp;
+    /** Optional shape-aware evidence for capabilities whose runtime form matters. */
+    evidenceCheck?: (source: string) => boolean;
 }
 
 /**
  * The vocabulary of the things people actually ask a builder for. Each entry
  * carries both languages in one pattern — his prompts mix them freely.
  */
+const SEARCH_INTERACTION = /<form\b[^>]*(?:onSubmit|onsubmit)\s*=|type\s*=\s*["']search["']|onKey(?:Down|Press)\s*=|event\.key\s*===?\s*["']Enter["']/i;
+const SEARCH_STATE_OR_IO = /\b(?:useState|set[A-Z][A-Za-z0-9_]*|fetch|axios|XMLHttpRequest|query|searchTerm|results?|filtered|handleSearch|findCities|onSearch)\b/i;
+
+/**
+ * Search is a runtime interaction, not merely a variable name. Accept the
+ * established names as a supporting alternative, or require an interaction
+ * shape paired with state, a handler, or a data fetch/update.
+ */
+export function hasSearchEvidence(source: string): boolean {
+    return /setQuery|searchTerm|onSearch|sortBy|\[query,/i.test(source)
+        || (SEARCH_INTERACTION.test(source) && SEARCH_STATE_OR_IO.test(source));
+}
+
 export const CAPABILITIES: Capability[] = [
     {
         id: 'catalog', ar: 'كتالوج المنتجات', en: 'product catalogue',
@@ -135,6 +150,7 @@ export const CAPABILITIES: Capability[] = [
         id: 'search', ar: 'البحث والفرز', en: 'search and sorting',
         ask: /\bsearch\b|\bfilter\b|\bsort\b|بحث|تصفية|فرز/i,
         evidence: /setQuery|searchTerm|onSearch|sortBy|\[query,/i,
+        evidenceCheck: hasSearchEvidence,
     },
     {
         id: 'wishlist', ar: 'قائمة الرغبات', en: 'wishlist',
@@ -213,12 +229,17 @@ export interface ScopeReport {
     missing: Capability[];
 }
 
+/** Evaluate ordinary and shape-aware evidence without asking a model to infer intent. */
+export function capabilityEvidence(capability: Capability, source: string): boolean {
+    return capability.evidence.test(source) || Boolean(capability.evidenceCheck?.(source));
+}
+
 /** The comparison itself: named against evidenced. */
 export function scopeReport(request: string, projectDirs: string[]): ScopeReport {
     const requested = requestedCapabilities(request);
     if (!requested.length) return { requested: [], built: [], missing: [] };
     const src = readProjectSource(projectDirs);
-    const built = requested.filter(c => c.evidence.test(src));
+    const built = requested.filter(c => capabilityEvidence(c, src));
     const missing = requested.filter(c => !built.includes(c));
     return { requested, built, missing };
 }
