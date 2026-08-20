@@ -121,24 +121,49 @@ export function subscribeSelfUpdate(l: (s: UpdateState) => void): () => void {
  * server, cached there, and re-asked every ten minutes — so the marker means
  * «there really are commits you do not have», never «probably».
  */
-export function useUpdateAvailable(): { available: boolean; behind: number; known: boolean; latest: string } {
-    const [state, setState] = useState({ available: false, behind: 0, known: false, latest: '' });
+/**
+ * ONE shared answer to «is a newer Joe waiting?» — polled at MODULE level,
+ * never per component. The dropdown row used to run its own fetch on every
+ * mount: the menu opened with nothing, the answer arrived a second later,
+ * and closing the menu threw it away («وبعد ثانية يظهر... واذا اغلقنا
+ * اختفى»). Now the avatar dot, the menu row and the autopilot all read the
+ * same live state, it outlives every mount, and the poll starts the moment
+ * the app loads — so the menu shows the truth instantly on open.
+ */
+type UpdateCheckState = { available: boolean; behind: number; known: boolean; latest: string };
+let updateCheck: UpdateCheckState = { available: false, behind: 0, known: false, latest: '' };
+const updateCheckListeners = new Set<(s: UpdateCheckState) => void>();
+let updateCheckTimer: number | null = null;
+
+async function refreshUpdateCheckState(): Promise<void> {
+    try {
+        const r = await fetch(`${apiBase()}/system/update/check`);
+        const d = await r.json();
+        updateCheck = {
+            available: !!d?.available,
+            behind: Number(d?.behind || 0),
+            known: !!d?.known,
+            latest: String(d?.latest || ''),
+        };
+        updateCheckListeners.forEach(l => { try { l(updateCheck); } catch { /* one bad listener must not stop the rest */ } });
+    } catch { /* offline, or an older server: keep the last honest answer */ }
+}
+
+function ensureUpdateCheckLoop(): void {
+    if (updateCheckTimer !== null) return;
+    void refreshUpdateCheckState();
+    // The server caches its own git fetch for ten minutes, so a two-minute
+    // client poll is cheap and keeps the dot at most ~12 minutes behind.
+    updateCheckTimer = window.setInterval(() => { void refreshUpdateCheckState(); }, 2 * 60 * 1000);
+}
+
+export function useUpdateAvailable(): UpdateCheckState {
+    const [state, setState] = useState(updateCheck);
     useEffect(() => {
-        let alive = true;
-        const ask = () => fetch(`${apiBase()}/system/update/check`)
-            .then(r => r.json())
-            .then(d => {
-                if (alive) setState({
-                    available: !!d?.available,
-                    behind: Number(d?.behind || 0),
-                    known: !!d?.known,
-                    latest: String(d?.latest || ''),
-                });
-            })
-            .catch(() => { /* offline, or an older server: no claim either way */ });
-        ask();
-        const id = window.setInterval(ask, 10 * 60 * 1000);
-        return () => { alive = false; window.clearInterval(id); };
+        ensureUpdateCheckLoop();
+        updateCheckListeners.add(setState);
+        setState(updateCheck);
+        return () => { updateCheckListeners.delete(setState); };
     }, []);
     return state;
 }
@@ -162,15 +187,31 @@ function stepClass(key: string, s: UpdateState): string {
     return '';
 }
 
+/**
+ * «May this installation update itself?» is a fact about the machine, not
+ * about a mount: asked once, remembered at module level, so the menu row
+ * renders on the first frame of every open instead of appearing a beat late.
+ */
+let selfUpdateAllowed: boolean | null = null;
+const allowedListeners = new Set<(b: boolean) => void>();
+
+function ensureSelfUpdateAllowed(): void {
+    fetch(`${apiBase()}/system/update/status`)
+        .then(r => r.json())
+        .then(d => {
+            selfUpdateAllowed = !!d?.allowed;
+            allowedListeners.forEach(l => { try { l(!!selfUpdateAllowed); } catch { /* keep notifying */ } });
+        })
+        .catch(() => { /* stays unknown; the next consumer asks again */ });
+}
+
 export function useSelfUpdateAllowed(): boolean {
-    const [allowed, setAllowed] = useState(false);
+    const [allowed, setAllowed] = useState(!!selfUpdateAllowed);
     useEffect(() => {
-        let alive = true;
-        fetch(`${apiBase()}/system/update/status`)
-            .then(r => r.json())
-            .then(d => { if (alive) setAllowed(!!d?.allowed); })
-            .catch(() => { /* an older server, or none: simply no button */ });
-        return () => { alive = false; };
+        if (selfUpdateAllowed !== null) { setAllowed(selfUpdateAllowed); return; }
+        allowedListeners.add(setAllowed);
+        ensureSelfUpdateAllowed();
+        return () => { allowedListeners.delete(setAllowed); };
     }, []);
     return allowed;
 }

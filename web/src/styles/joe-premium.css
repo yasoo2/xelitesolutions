@@ -3627,7 +3627,26 @@ body:not(.rtl) .joe-user-info {
    chip so the user sees it without opening the menu. */
 .joe-user-menu-item.has-update { color: #10b981; }
 .joe-update-dot { width: 7px; height: 7px; border-radius: 999px; background: #10b981; margin-inline-start: auto; flex: none; }
-.joe-user-trigger .joe-update-dot { position: absolute; top: 4px; inset-inline-end: 4px; margin: 0; box-shadow: 0 0 0 2px var(--joe-surface, #0f172a); }
+/* The trigger must anchor its own dot: without position:relative the badge
+   attaches to an ancestor and can land outside the visible button. */
+.joe-user-trigger { position: relative; }
+.joe-user-trigger .joe-update-dot {
+    position: absolute;
+    top: 2px;
+    inset-inline-end: 2px;
+    width: 9px;
+    height: 9px;
+    margin: 0;
+    box-shadow: 0 0 0 2px var(--joe-surface, #0f172a);
+    animation: joe-update-dot-pulse 2s ease-in-out infinite;
+}
+@keyframes joe-update-dot-pulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.25); opacity: 0.75; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .joe-user-trigger .joe-update-dot { animation: none; }
+}
 
 /* The named steps of a running update. */
 .joe-update-steps { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
