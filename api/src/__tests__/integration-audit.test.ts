@@ -470,16 +470,18 @@ describe('planner provider and requirements-boundary contracts', () => {
 describe('request fidelity blocks a silent engine fallback', () => {
     const weatherRequest = 'Build WeatherGo, a real weather application with city search and a live Open-Meteo forecast.';
 
-    it('accepts a weather blueprint only when the generated source proves a weather engine', () => {
+    it('A2: allows the real WeatherGo source through the 035 guard before project setup can proceed', () => {
         const kind = detectAppKind(weatherRequest);
         const blueprint = kind ? blueprintFor(kind, weatherRequest, false) : null;
         expect(blueprint?.engine).toBe('weather');
-        expect(requestFidelityMismatch(blueprint, [
+        const weatherSource = [
             'export default function WeatherApp({ content }) {',
             '  const forecast = fetch("https://api.open-meteo.com/v1/forecast");',
             '  return <section>{temperature}</section>;',
             '}',
-        ].join('\n'))).toBe(false);
+        ].join('\n');
+        expect(requestFidelityMismatch(blueprint, weatherSource)).toBe(false);
+        expect(hasRequestFidelityMismatch([{ ok: true, output: { fidelityMismatch: false } }])).toBe(false);
     });
 
     it('keeps a deterministic records engine admissible when providers are unavailable', () => {
@@ -504,14 +506,15 @@ describe('request fidelity blocks a silent engine fallback', () => {
         ].join('\n'))).toBe(false);
     });
 
-    it('blocks a brochure source and prevents it from riding partial delivery', () => {
+    it('A1: blocks a brochure source at the 035 boundary before partial delivery or Project Setup can be accepted', () => {
         const kind = detectAppKind(weatherRequest);
         const blueprint = kind ? blueprintFor(kind, weatherRequest, false) : null;
-        expect(requestFidelityMismatch(blueprint, [
+        const brochureSource = [
             'export default function LandingPage() {',
             '  return <main><h1>Welcome to our beautiful brand</h1></main>;',
             '}',
-        ].join('\n'))).toBe(true);
+        ].join('\n');
+        expect(requestFidelityMismatch(blueprint, brochureSource)).toBe(true);
         expect(hasRequestFidelityMismatch([{
             ok: false,
             error: 'request_fidelity_mismatch',

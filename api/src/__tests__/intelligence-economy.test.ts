@@ -40,6 +40,25 @@ describe('the router understands internal vs answer', () => {
         expect(router()).toContain('if (hasFastCloud && !internalCall)');
     });
 
+    it('039 records every provider attempt and reserves Ollama before keyless Offline fallbacks', () => {
+        const src = router();
+        expect(src).toContain('export interface ProviderAttempt');
+        expect(src).toContain('const providerAttempts: ProviderAttempt[] = [];');
+        expect(src).toContain('context.providerAttempts = providerAttempts');
+        expect(src).toContain("recordProviderAttempt(p.name, false, e?.message || e)");
+        expect(src).toContain("recordProviderAttempt(p.name, true)");
+        expect(src).toContain("p.name === 'LLM7 (Keyless)'");
+        expect(src).toContain("p.name === 'Local (Auto)'");
+        expect(src).toContain('Ollama/Local (Auto) is reserved before keyless');
+        expect(src).toContain('providerAttempts=${JSON.stringify(providerAttempts)}');
+    });
+
+    it('039 keeps Gemini explicitly in the configured provider chain', () => {
+        const src = router();
+        expect(src).toContain("name: 'Gemini (Free)'");
+        expect(src).toContain('geminiProvider.chatComplete');
+    });
+
     it('a quota 429 pauses the custom route for the window the error names', () => {
         const src = router();
         expect(src).toContain('export const customRouteCooldownUntil');

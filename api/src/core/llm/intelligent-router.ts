@@ -1213,6 +1213,12 @@ export function isProviderFailure(text: any): boolean {
     return typeof text === 'string' && text.trimStart().startsWith(PROVIDER_FAILURE_PREFIX);
 }
 
+export interface ProviderAttempt {
+    provider: string;
+    success: boolean;
+    error?: string;
+}
+
 export async function routeToModel(
     messages: any[],
     analysis?: TaskAnalysis,
@@ -1223,6 +1229,15 @@ export async function routeToModel(
     tools?: any[],
     context?: any
 ): Promise<string> {
+    // A run-scoped ledger makes provider routing falsifiable: the caller can see
+    // every real attempt, its outcome, and the bounded reason for a failure. Do
+    // not infer Offline from a prose line when this record is available.
+    const providerAttempts: ProviderAttempt[] = [];
+    if (context && typeof context === 'object') context.providerAttempts = providerAttempts;
+    const recordProviderAttempt = (provider: string, success: boolean, error?: unknown) => {
+        const message = error == null ? undefined : String(error).slice(0, 240);
+        providerAttempts.push(message ? { provider, success, error: message } : { provider, success });
+    };
 
     // [INTELLIGENCE ECONOMY] context.purpose === 'internal' marks the calls
     // the user never reads directly — intent parsing, planning, tool
@@ -1924,6 +1939,7 @@ export async function routeToModel(
             const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 15000));
             const rawAns = await Promise.race([callGroq(selectedModel.model, effectiveMessages, onPartial, tools), timeoutPromise]) as string;
             const ans = cleanOutput(rawAns);
+            recordProviderAttempt('Groq (Free)', true);
             releaseFailureLatch(latchScope); // the brain is alive — release the scoped latch
             markProviderOk('Groq (Free)'); // it worked — clear any cooldown
             if (!cacheDisabled && !hasSensitive && ans && ans.length > 20) {
@@ -1934,6 +1950,7 @@ export async function routeToModel(
 
         // If not Groq or Groq fails, fall through to the Chain of Steel
     } catch (e: any) {
+        recordProviderAttempt(selectedModel.name || 'Selected model', false, e?.message || e);
         console.warn(`[IntelligentRouter] Primary choice ${selectedModel.name} failed: ${e.message} `);
         // A 429 means the QUOTA is spent — cool the provider down for the window
         // the error itself names.
@@ -1955,13 +1972,10 @@ export async function routeToModel(
     }
 
     // 2. The Chain of Steel (Fallback Mesh)
-    // PRIMARY-BRAIN ORDERING: the mesh is built with Local (Auto) FIRST, which is
-    // right for an OFFLINE machine — but when a fast CLOUD brain is configured
-    // (Groq/Gemini/Cerebras/Mistral key present) the local CPU model is only the
-    // offline backup. Leaving it first makes a weak laptop grind through the slow
-    // local model (up to LOCAL_LLM_TIMEOUT, minutes) before ever reaching Groq —
-    // which is exactly why "Groq feels slow/fake": the system is really running
-    // Local, not Groq. So push Local to the END whenever a cloud brain exists.
+    // User-facing calls prefer configured cloud brains, but Ollama is a real
+    // fallback, not an optional afterthought: when a cloud call fails it must be
+    // attempted before keyless gateways and before the honest Offline result.
+    // Internal calls retain Local-first because their quota belongs to the user.
     const hasFastCloud = hasGroqKey || geminiProvider.isAvailable() || cerebrasProvider.isAvailable() || mistralProvider.isAvailable();
     // [INTELLIGENCE ECONOMY] …but INTERNAL reasoning keeps Local FIRST even
     // when a cloud brain exists: qwen answers intent/planning JSON fine, and
@@ -1971,7 +1985,16 @@ export async function routeToModel(
         const localIdx = meshProviders.findIndex(p => p.name === 'Local (Auto)');
         if (localIdx >= 0) {
             const [local] = meshProviders.splice(localIdx, 1);
-            meshProviders.push(local); // offline backup, tried only after cloud/keyless
+            const firstKeyless = meshProviders.findIndex(p =>
+                p.name === 'LLM7 (Keyless)'
+                || p.name === 'DuckAI (Keyless)'
+                || p.name === 'DeepSeek (Pollinations)'
+                || p.name === 'Pollinations (Backup)'
+            );
+            // OpenAI/Groq/Gemini and other configured providers remain ahead;
+            // Ollama is inserted immediately before keyless/offline gateways.
+            meshProviders.splice(firstKeyless >= 0 ? firstKeyless : meshProviders.length, 0, local);
+            console.info('[IntelligentRouter] 🧭 Ollama/Local (Auto) is reserved before keyless and Offline fallbacks.');
         }
     }
 
@@ -2165,6 +2188,7 @@ export async function routeToModel(
             const ans = cleanOutput(rawAns);
 
             if (isUsableAnswer(ans)) {
+                recordProviderAttempt(p.name, true);
                 console.info(`[IntelligentRouter] ✅ Success via ${p.name} `);
                 releaseFailureLatch(latchScope); // the brain is alive — release the scoped latch
                 markProviderOk(p.name); // clear any prior cooldown — it works again
@@ -2193,11 +2217,14 @@ export async function routeToModel(
              *
              * A failure that does not name itself cannot be fixed by anyone.
              */
+            const emptyReason = `${rawAns == null ? 'null' : `${String(rawAns).length} raw → ${ans.length} clean`} chars: ${JSON.stringify(ans.slice(0, 40))}`;
+            recordProviderAttempt(p.name, false, `empty response (${emptyReason})`);
             console.warn(`[IntelligentRouter] ${p.name} answered but the reply carried no words at all `
-                + `(${rawAns == null ? 'null' : `${String(rawAns).length} raw → ${ans.length} clean`} chars: ${JSON.stringify(ans.slice(0, 40))}) `
+                + `(${emptyReason}) `
                 + `— counted as a failure and cooled down.`);
             markProviderFailed(p.name);
         } catch (e: any) {
+            recordProviderAttempt(p.name, false, e?.message || e);
             console.warn(`[IntelligentRouter] ${p.name} failed or timed out: ${e.message} `);
             // A rate-limit error that names its own window cools the provider
             // for that window, not for the default 60 seconds.
@@ -2327,7 +2354,7 @@ export async function routeToModel(
     // fabricate decisions. (An earlier "emergency offline routing" here turned
     // the words "افتح/اكتب" in a dead-brain prompt into real browser_run and
     // write_file commands — that is how a browser once opened out of nowhere.)
-    console.error(`[IntelligentRouter] CRITICAL: All LLM providers failed. Returning honest error.`);
+    console.error(`[IntelligentRouter] CRITICAL: All LLM providers failed. providerAttempts=${JSON.stringify(providerAttempts)}. Returning honest error.`);
     const failureAt = Date.now();
     failureLatchByScope.set(latchScope, failureAt);
     lastTotalFailureAt = Date.now(); // compatibility marker and legacy observability; scoped reads use the map
