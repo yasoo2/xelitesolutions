@@ -17,6 +17,7 @@ import { blueprintFor, uncoveredFeatures, type AppKind } from '../core/design/ap
 import { normalizeReactScaffoldStructure } from '../modules/tools/definitions/SystemTools';
 import { undefinedJsxComponentMismatch } from '../core/quality/source-contract';
 import { unparenthesizedLogicalTernaryError } from '../modules/tools/definitions/AIGeneratorTool';
+import { repairCapabilityGapsOnce } from '../modules/tools/definitions/ReactProjectTool';
 
 const KINDS: AppKind[] = ['store', 'booking', 'tasks', 'social', 'chat', 'maps', 'weather', 'crm', 'inventory', 'calculator', 'productivity'];
 
@@ -137,6 +138,79 @@ describe('the generated application is syntactically real', () => {
 
         const generatedWeather = filesFor('weather', false)['src/components/WeatherApp.jsx'];
         expect(uncoveredFeatures(request, 'weather', false, generatedWeather)).toEqual([]);
+    });
+
+    it('053: repairs one named capability gap and rechecks the same evidence contract', async () => {
+        const fs = require('fs');
+        const os = require('os');
+        const path = require('path');
+        const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-capability-repair-'));
+        const generatedPath = 'src/DomainApp.jsx';
+        fs.mkdirSync(path.join(projectRoot, 'src'), { recursive: true });
+        fs.writeFileSync(path.join(projectRoot, generatedPath), 'export default function DomainApp(){ return null; }');
+        let calls = 0;
+        let repairDescription = '';
+        const result = await repairCapabilityGapsOnce({
+            request: 'A useful interface\\nFeatures:\\n- weather icons',
+            engine: 'weather',
+            apiLinked: false,
+            projectRoot,
+            generatedPath,
+            authorDescription: 'Author the requested domain file.',
+            language: 'en',
+            aestheticMode: 'Preserve the current interface.',
+            context: 'The existing artifact is on disk.',
+            executionContext: { projectRoot },
+            readEvidence: () => fs.readFileSync(path.join(projectRoot, generatedPath), 'utf8'),
+            authorExecute: async (payload: any) => {
+                calls += 1;
+                repairDescription = payload.description;
+                fs.writeFileSync(path.join(projectRoot, generatedPath), 'const weatherIcon = getWeatherIcon(weather_code);');
+                return { ok: true };
+            },
+        });
+        expect(result.ok).toBe(true);
+        expect(result.attempted).toBe(true);
+        expect(result.gaps).toEqual(['weather icons']);
+        expect(result.remaining).toEqual([]);
+        expect(calls).toBe(1);
+        expect(repairDescription).toContain('Missing capability: "weather icons"');
+        expect(repairDescription).not.toContain('WeatherGo');
+        fs.rmSync(projectRoot, { recursive: true, force: true });
+    });
+
+    it('053: blocks honestly after the single repair leaves a named gap unresolved', async () => {
+        const fs = require('fs');
+        const os = require('os');
+        const path = require('path');
+        const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-capability-block-'));
+        const generatedPath = 'src/DomainApp.jsx';
+        fs.mkdirSync(path.join(projectRoot, 'src'), { recursive: true });
+        fs.writeFileSync(path.join(projectRoot, generatedPath), 'export default function DomainApp(){ return null; }');
+        let calls = 0;
+        const result = await repairCapabilityGapsOnce({
+            request: 'A useful interface\\nFeatures:\\n- weather icons',
+            engine: 'weather',
+            apiLinked: false,
+            projectRoot,
+            generatedPath,
+            authorDescription: 'Author the requested domain file.',
+            language: 'en',
+            aestheticMode: 'Preserve the current interface.',
+            context: 'The existing artifact is on disk.',
+            executionContext: { projectRoot },
+            readEvidence: () => fs.readFileSync(path.join(projectRoot, generatedPath), 'utf8'),
+            authorExecute: async () => {
+                calls += 1;
+                return { ok: true };
+            },
+        });
+        expect(result.ok).toBe(false);
+        expect(result.attempted).toBe(true);
+        expect(result.remaining).toEqual(['weather icons']);
+        expect(result.error).toBe('capability_gap_unresolved: weather icons');
+        expect(calls).toBe(1);
+        fs.rmSync(projectRoot, { recursive: true, force: true });
     });
 
     it('weather prose capabilities require executable search and detail shapes', () => {

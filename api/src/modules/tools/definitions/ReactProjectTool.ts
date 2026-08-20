@@ -21,7 +21,7 @@ import { ToolPermission, ToolExecutionResult } from '../types';
 import { buildPalette, paletteCss, darkTokenBlock, lightTokenBlock } from '../../../core/design/design-system';
 import { brandFrom, brandFallback } from '../../../core/design/page-head';
 import { detectPageKind, type PageKind } from '../../../core/design/blueprints';
-import { detectAppKind, blueprintFor, type AppBlueprint } from '../../../core/design/app-blueprints';
+import { detectAppKind, blueprintFor, uncoveredFeatures, type AppBlueprint } from '../../../core/design/app-blueprints';
 import { buildAppFiles, fileAppCss } from './react-app-templates';
 import { familyFor, familyCss, familyFonts, FAMILY_LABEL_AR, type DesignFamily } from '../../../core/design/families';
 import { resolveImages, sanitizeContentImages } from '../../../core/design/images';
@@ -106,6 +106,101 @@ export function deriveRequestFidelity(
         evidenceUnavailable,
         mismatch,
         diagnostic: `acceptance fidelity verdict: ${label} — engine=${fidelityBp?.engine || 'unknown'} chars=${String(projectEvidence || '').trim().length}`,
+    };
+}
+
+export interface CapabilityGapRepairResult {
+    ok: boolean;
+    attempted: boolean;
+    gaps: string[];
+    remaining: string[];
+    error?: string;
+}
+
+/**
+ * Give the author one bounded, evidence-driven chance to repair named
+ * capabilities after the complete domain artifact exists. The helper is
+ * deliberately engine-agnostic: it neither edits the artifact itself nor
+ * treats a successful author call as proof until the same capability audit
+ * passes again.
+ */
+export async function repairCapabilityGapsOnce(input: {
+    request: string;
+    engine: AppBlueprint['engine'];
+    apiLinked: boolean;
+    projectRoot: string;
+    generatedPath: string;
+    authorExecute: (payload: any, executionContext: any) => Promise<any>;
+    authorDescription: string;
+    language: string;
+    aestheticMode: string;
+    context: string;
+    executionContext: any;
+    readEvidence?: () => string;
+    onEvent?: (message: string) => void;
+}): Promise<CapabilityGapRepairResult> {
+    const readEvidence = input.readEvidence || (() => {
+        try {
+            const { readProjectSource } = require('../../../core/quality/scope-audit');
+            return readProjectSource([input.projectRoot]) || '';
+        } catch {
+            return '';
+        }
+    });
+    const evidence = () => {
+        try { return String(readEvidence() || ''); } catch { return ''; }
+    };
+    const gaps = uncoveredFeatures(input.request, input.engine, input.apiLinked, evidence());
+    if (!gaps.length) return { ok: true, attempted: false, gaps: [], remaining: [] };
+
+    const gapBrief = gaps.map(g => `- Missing capability: "${g}"`).join('\n');
+    const authoredPath = path.join(input.projectRoot, input.generatedPath);
+    let currentSource = '';
+    try { currentSource = fs.readFileSync(authoredPath, 'utf8'); } catch { currentSource = ''; }
+    input.onEvent?.(`capability repair: attempting (${gaps.join(', ')})`);
+    let repaired: any;
+    try {
+        repaired = await input.authorExecute({
+            path: path.join(input.projectRoot, input.generatedPath),
+            description: `${input.authorDescription}\n\nCAPABILITY GAP REPAIR — the previous file compiled and passed export validation, but evidence-based capability audit found these named gaps. Preserve all working behaviour and add only what is missing:\n${gapBrief}\n\nCURRENT FILE SOURCE — this is the complete artifact to preserve and repair; return the complete corrected file, not a fresh unrelated implementation:\n${currentSource}`,
+            language: input.language,
+            aestheticMode: `${input.aestheticMode} Preserve the current interface; add only the missing capability.`,
+            context: `${input.context}\nPrevious authored source passed export validation but failed capability audit. Return the complete corrected file.`,
+        }, input.executionContext);
+    } catch (error: any) {
+        input.onEvent?.(`capability repair: still missing (${gaps.join(', ')})`);
+        return {
+            ok: false,
+            attempted: true,
+            gaps,
+            remaining: gaps,
+            error: String(error?.message || error || 'capability repair failed'),
+        };
+    }
+
+    if (!repaired?.ok || !fs.existsSync(authoredPath)) {
+        input.onEvent?.(`capability repair: still missing (${gaps.join(', ')})`);
+        return {
+            ok: false,
+            attempted: true,
+            gaps,
+            remaining: gaps,
+            error: String(repaired?.error || 'capability repair did not produce the requested file'),
+        };
+    }
+
+    // Recheck only the named gaps from the first audit; unrelated evidence is
+    // still evaluated by the normal final delivery gate below.
+    const remaining = uncoveredFeatures(input.request, input.engine, input.apiLinked, evidence())
+        .filter(g => gaps.includes(g));
+    if (remaining.length) input.onEvent?.(`capability repair: still missing (${remaining.join(', ')})`);
+    else input.onEvent?.(`capability repair: resolved (${gaps.join(', ')})`);
+    return {
+        ok: remaining.length === 0,
+        attempted: true,
+        gaps,
+        remaining,
+        ...(remaining.length ? { error: `capability_gap_unresolved: ${remaining.join(', ')}` } : {}),
     };
 }
 
@@ -3079,6 +3174,34 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                     broadcast({ type: 'file_stream', sessionId, data: { file: generatedEnginePath, chunk: authored, done: true, bytes: Buffer.byteLength(authored), at: Date.now(), label: 'مؤلّف بالطلب' } } as any);
                 } catch { /* UI optional — the file is already on disk */ }
                 term(`domain generation: authored ${generatedEnginePath} from the request and validated its export`);
+
+                // A successful author call and export check are not capability
+                // evidence. Give Joe one bounded, engine-agnostic repair pass
+                // for the named gaps, then recheck only those same gaps. The
+                // final delivery audit below remains the authoritative gate.
+                const capabilityRepair = await repairCapabilityGapsOnce({
+                    request,
+                    engine: appBp ? appBp.engine : runBp.engine,
+                    apiLinked: !!apiLink,
+                    projectRoot: proj,
+                    generatedPath: generatedEnginePath,
+                    authorExecute: (payload, executionContext) => author.execute(payload, executionContext),
+                    authorDescription,
+                    language: isAr ? 'ar' : 'en',
+                    aestheticMode: 'Use the existing app.css and design tokens.',
+                    context: authorContext,
+                    executionContext: { ...context, projectRoot: proj, workspaceId: context?.workspaceId },
+                    onEvent: term,
+                });
+                if (capabilityRepair.attempted) {
+                    if (!capabilityRepair.ok) {
+                        const reason = capabilityRepair.error || `capability_gap_unresolved: ${capabilityRepair.remaining.join(', ')}`;
+                        term(`domain capability gap: BLOCKED — ${capabilityRepair.remaining.join(', ') || reason}`);
+                        return { ok: false, error: reason, output: authoringFailureOutput(), logs };
+                    }
+                    authored = fs.readFileSync(path.join(proj, generatedEnginePath), 'utf8');
+                    term(`domain capability gap: repaired and independently rechecked — ${capabilityRepair.gaps.join(', ')}`);
+                }
             } catch (error: any) {
                 const reason = String(error?.message || error);
                 term(`domain generation: BLOCKED — ${reason}`);

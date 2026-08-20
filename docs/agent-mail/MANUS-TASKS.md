@@ -102,7 +102,7 @@
 
 ---
 
-*آخر تحديث لهذا السجل مرتبط بإصلاح 047؛ لا يُعد 047 منجزاً نهائياً قبل البوابات الكاملة والدفع والتحقق الحي المستقل.*
+*آخر تحديث لهذا السجل مرتبط بإصلاح 053؛ لا يُعد Level 4 منجزاً نهائياً قبل الجولة 16 والتحقق الحي المستقل.*
 
 POS-047-TASKS-UPDATED: 2026-08-20
 POS-047-W50-QUEUE-REQUIREMENTS: recorded
@@ -282,3 +282,26 @@ POS-052-TSC: 0
 POS-052-FULL-JEST: 22/22 batches EXIT 0
 POS-052-NO-WEATHERGO-MANUAL-EDIT: confirmed
 POS-052-NEXT-LIVE: round 15 required
+
+
+## سجل إصلاح 053 — ترميم عام موجّه بفجوات القدرات
+
+| المعرّف | المهمة | الحالة | معيار الإغلاق |
+|---|---|---|---|
+| 053 | ترميم عام داخلي بعد authoring في `ReactProjectTool` لفجوات capabilities المسماة | **منفّذ محلياً؛ الدفع إلى `main` قيد التنفيذ** | تمريرة مؤلف واحدة فقط تحمل المصدر الكامل والفجوات بكلمات الطلب؛ إعادة فحص بمصدر المشروع نفسه؛ سجل `capability repair: attempting/resolved/still missing`؛ حجب صادق عند بقاء الفجوة؛ regression عام؛ `tsc=0`؛ Jest الكاملة 22/22 دفعة؛ ثم الجولة 16 |
+| PR82-053 | استشارة Claude وإقراره لقيود 053 | **الإقرار 036 مكتوب؛ التعليق الختامي بعد الدفع مطلوب** | قيد المصدر الكامل، تكافؤ evidence، وأثر السجل الدائم مثبتة في `to-claude/036-*` |
+| LIVE-16 | جولة القبول 16 لـWeatherGo بعد إصلاح 053 | **مطلوبة — الجولة 15 فشلت عند `weather icons` غير المثبتة** | `JOE_BUILD_SHA` أول سطر في الدليل الخام، greps علامات 048a الثلاث، `finalVerified=true`، `liveUrl` غير فارغ، وQA مستقل؛ لا تعديل يدوي على artifact |
+
+### بوابات إصلاح 053
+
+أثبت `generated-app-parses` نجاح regression العام والحجب الصادق بنتيجة **1 suite / 27 tests / EXIT 0**. وأثبتت المجموعة المركزة **10 suites / 158 tests / EXIT 0**. وأثبت `npx tsc --noEmit` النتيجة **TSC:0**. وبعد آخر تعديل إنتاجي أُعيدت suite الكاملة عبر **22 دفعة**، وكل دفعة `EXIT 0`، مع `FULL_JEST_BATCHES_EXIT:0`.
+
+لم تُلمس ملفات WeatherGo الناتجة يدوياً. الترميم يمر عبر المؤلف فقط، ويظل قبول Level 4 مفتوحاً إلى أن تنجح الجولة 16 بتحقق حي مستقل. تبقى W50 آخر مهمة بعد قبول L4، كما تبقى ديون ENTITY-CHOP و`Starting Phase undefined` وRUN-EVIDENCE-WRITE-AMPLIFICATION وFLAKE-RUNEVIDENCE-TIMEOUT خارج نطاق 053.
+
+POS-053-TASKS-UPDATED: 2026-08-21
+POS-053-FOCUSED: 10 suites / 158 tests / EXIT 0
+POS-053-GENERATED-APP: 1 suite / 27 tests / EXIT 0
+POS-053-TSC: 0
+POS-053-FULL-JEST: 22/22 batches EXIT 0
+POS-053-NO-WEATHERGO-MANUAL-EDIT: confirmed
+POS-053-LIVE-16: required after push
