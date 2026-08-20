@@ -22,7 +22,7 @@ class AgentExecutionFirewall {
      */
     public context = new AsyncLocalStorage<{
         isOrchestrator: boolean; isSystem?: boolean; traceId?: string;
-        userId?: string; sessionId?: string;
+        userId?: string; sessionId?: string; runId?: string;
     }>();
 
     private constructor() {}
@@ -37,7 +37,7 @@ class AgentExecutionFirewall {
     /**
      * Executes a function within the authorized Orchestrator context
      */
-    public runInContext<T>(traceId: string | undefined, fn: () => T, owner?: { userId?: string; sessionId?: string }): T {
+    public runInContext<T>(traceId: string | undefined, fn: () => T, owner?: { userId?: string; sessionId?: string; runId?: string }): T {
         const parent = this.context.getStore();
         return this.context.run({
             isOrchestrator: true,
@@ -45,6 +45,7 @@ class AgentExecutionFirewall {
             traceId,
             userId: owner?.userId || parent?.userId,
             sessionId: owner?.sessionId || parent?.sessionId,
+            runId: owner?.runId || parent?.runId,
         }, fn);
     }
 
@@ -54,16 +55,22 @@ class AgentExecutionFirewall {
         return { userId: String(s?.userId || ''), sessionId: String(s?.sessionId || '') };
     }
 
+    /** The canonical run address carried by the current execution context. */
+    public currentRunId(): string {
+        return String(this.context.getStore()?.runId || '');
+    }
+
     /**
      * Executes a function as a trusted system background task
      */
-    public runAsSystem<T>(fn: () => T, owner?: { userId?: string; sessionId?: string }): T {
+    public runAsSystem<T>(fn: () => T, owner?: { userId?: string; sessionId?: string; runId?: string }): T {
         const parent = this.context.getStore();
         return this.context.run({
             isOrchestrator: true,
             isSystem: true,
             userId: owner?.userId || parent?.userId,
             sessionId: owner?.sessionId || parent?.sessionId,
+            runId: owner?.runId || parent?.runId,
         }, fn);
     }
 

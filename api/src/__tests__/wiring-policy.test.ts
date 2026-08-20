@@ -794,7 +794,7 @@ describe('the planner is offered the whole toolbox, not a frozen list of seven',
         expect(ws).toContain('executionFirewall.currentOwner?.()');
         // and the entry points declare whose run it is
         expect(SRC('orchestration', 'AgentOrchestrator.ts'))
-            .toMatch(/\}, \{ userId: goal\.context\?\.userId, sessionId: goal\.context\?\.sessionId \|\| goal\.id \}\)/);
+            .toMatch(/\}, \{ userId: goal\.context\?\.userId, sessionId: goal\.context\?\.sessionId \|\| goal\.id, runId: goal\.id \}\)/);
         expect(SRC('api', 'routes', 'tools.ts')).toMatch(/\}, \{ userId, sessionId \}\)/);
     });
 

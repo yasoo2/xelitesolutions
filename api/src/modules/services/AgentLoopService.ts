@@ -1,6 +1,6 @@
 import { Run } from '../../shared/models/run';
 import { AgentOrchestrator } from '../../orchestration/AgentOrchestrator';
-import { broadcastThinkingDetail, broadcast, registerRunOwner, registerSessionOwner } from '../../api/ws';
+import { broadcastThinkingDetail, broadcast, registerRunOwner, registerSessionOwner, addRunEventListener, removeRunEventListener, registerRunSession, unregisterRunSession } from '../../api/ws';
 // [ARCHITECTURE] Required connections for self-healing pipeline (AGENTS.md)
 import { RepairTicketService, type RepairTicket } from './RepairTicketService';
 import { SelfFixService } from './SelfFixService';
@@ -18,6 +18,7 @@ import { clarifyGate } from '../../core/orchestrator/clarify';
 import { composeAnswer, composeFailure } from '../../core/orchestrator/answerComposer';
 import { compactRuntimeValue } from '../../core/orchestrator/ExecutionMemory';
 import { hasRequestFidelityMismatch, hasRequestFidelityEvidenceUnavailable } from '../tools/definitions/ProjectPipelineTool';
+import { appendRunEvidenceEvent, createRunEvidence, saveRunReceipt } from '../../shared/run-evidence-store';
 
 /**
  * Lessons Joe applies to every system HE builds — each line was paid for by a
@@ -188,7 +189,7 @@ export class AgentLoopService {
      * Unified Autonomous Execution Entry Point
      * Everything is now dynamic and agent-driven at runtime.
      */
-    static async execute(goal: string, options: { sessionId?: string; browserSessionId?: string; workspaceId?: string; userId?: string; userName?: string; systemInstructions?: string; attachments?: import('../../shared/attachments').AttachmentInput[]; traceId?: string; modelConfig?: any; language?: string } = {}) {
+    static async execute(goal: string, options: { sessionId?: string; browserSessionId?: string; workspaceId?: string; userId?: string; userName?: string; systemInstructions?: string; attachments?: import('../../shared/attachments').AttachmentInput[]; traceId?: string; modelConfig?: any; language?: string; runId?: string } = {}) {
         const sessionId = options.sessionId || `session-${Date.now()}`;
         const userId = options.userId || 'anonymous';
         const userName = String(options.userName || '').trim();
@@ -312,16 +313,59 @@ export class AgentLoopService {
         console.log(`[AgentLoopService] REAL-TIME Execution Request: ${goal} (traceId=${traceId})`);
         broadcastThinkingDetail(sessionId, "🧠 Activating Dynamic Agent Runtime...");
 
-        // Create Run record for observability
-        let runId = `run-${Date.now()}`;
+        // Create Run record for observability. The HTTP boundary may already have
+        // issued a run-* id; that id is canonical and must not be replaced by a
+        // second timestamp or by Mongo's ObjectId.
+        const requestedRunId = String(options.runId || '').trim();
+        let runId = requestedRunId || `run-${Date.now()}`;
         try {
             if (process.env.PERSISTENCE_MODE !== 'JSON' && process.env.OFFLINE_MODE !== 'true') {
-                const run = await Run.create({ sessionId, status: 'running', steps: [] });
-                runId = run._id.toString();
+                const run = await Run.create({ sessionId, status: 'running', steps: [], ...(requestedRunId ? { runId: requestedRunId } : {}) } as any);
+                if (!requestedRunId) runId = run._id.toString();
             }
         } catch (e) {
             console.warn('[AgentLoopService] DB Persistence unavailable, using memory runId');
         }
+
+        // Evidence is a secondary sink. It observes the same canonical run and
+        // must never become a prerequisite for the live wire.
+        await createRunEvidence(runId, { sessionId, status: 'running' });
+        registerRunSession(runId, sessionId);
+        addRunEventListener(runId, (event) => {
+            void appendRunEvidenceEvent(runId, event);
+        });
+
+        const makeRunReceipt = (source: any, status: string, extra: Record<string, unknown> = {}) => {
+            const payload = source?.result && typeof source.result === 'object' ? source.result : source;
+            const phaseResults = Array.isArray(payload?.results) ? payload.results : [];
+            const root = String(
+                (payload?.projectRootRuntimeBound === true ? payload?.projectRoot : '') ||
+                phaseResults.find((phase: any) => String(phase?.projectRoot || '').trim())?.projectRoot || ''
+            ).trim();
+            const taskReceipts = phaseResults.flatMap((phase: any) => Array.isArray(phase?.taskReceipts)
+                ? phase.taskReceipts
+                : Array.isArray(phase?.results) ? compactTaskReceipts(phase.results) : []
+            ).slice(0, MAX_PHASE_RECEIPT_RESULTS);
+            const fidelityVerdict = payload?.fidelityVerdict || payload?.acceptanceFidelity ||
+                phaseResults.find((phase: any) => phase?.fidelityVerdict || phase?.acceptanceFidelity)?.fidelityVerdict || null;
+            const selfFixReason = String(
+                payload?.selfFixFailureReason || payload?.selfFixExecution?.reason || payload?.selfFixExecution?.error ||
+                phaseResults.find((phase: any) => String(phase?.selfFixFailureReason || '').trim())?.selfFixFailureReason ||
+                extra?.selfFixReason || ''
+            ).slice(0, MAX_PHASE_RECEIPT_STRING_CHARS);
+            return {
+                runId,
+                sessionId,
+                status,
+                ...(root ? { projectRoot: root } : {}),
+                taskReceipts,
+                fidelityVerdict,
+                selfFixReason: selfFixReason || undefined,
+                completedPhases: payload?.completedPhases,
+                honestBlocker: payload?.honestBlocker === true,
+                ...extra,
+            };
+        };
 
         // WHOSE RUN IS THIS? Both owner registries existed and neither was ever
         // called, so every event this run emits — Joe's replies included —
@@ -432,9 +476,16 @@ export class AgentLoopService {
                 });
             } catch { /* non-fatal */ }
 
-            // Update run status upon completion
+            await saveRunReceipt(runId, makeRunReceipt(result, result.ok ? 'done' : 'failed', { finalText }), result.ok ? 'done' : 'failed');
+            removeRunEventListener(runId);
+            unregisterRunSession(runId, sessionId);
+
+            // Update run status upon completion. A caller-issued textual runId is
+            // stored in the runId field; legacy runs still use Mongo _id.
             if (process.env.PERSISTENCE_MODE !== 'JSON' && process.env.OFFLINE_MODE !== 'true') {
-                await Run.findByIdAndUpdate(runId, { $set: { status: result.ok ? 'done' : 'failed' } }).catch(() => {});
+                const update = { $set: { status: result.ok ? 'done' : 'failed' } };
+                if (requestedRunId) await Run.findOneAndUpdate({ runId: requestedRunId }, update).catch(() => {});
+                else await Run.findByIdAndUpdate(runId, update).catch(() => {});
             }
 
             return result;
@@ -450,8 +501,12 @@ export class AgentLoopService {
             // Still tell the UI so it stops "thinking" and shows what went wrong.
             broadcast({ type: 'text', sessionId, data: { text: failText, sessionId }, runId } as any);
             broadcast({ type: 'run_finished', runId, data: { runId, ok: false, sessionId } } as any);
+            await saveRunReceipt(runId, makeRunReceipt({}, 'failed', { selfFixReason: failText, error: String(error?.message || error || '') }), 'failed');
+            removeRunEventListener(runId);
+            unregisterRunSession(runId, sessionId);
             if (process.env.PERSISTENCE_MODE !== 'JSON' && process.env.OFFLINE_MODE !== 'true') {
-                await Run.findByIdAndUpdate(runId, { $set: { status: 'failed' } }).catch(() => {});
+                if (requestedRunId) await Run.findOneAndUpdate({ runId: requestedRunId }, { $set: { status: 'failed' } }).catch(() => {});
+                else await Run.findByIdAndUpdate(runId, { $set: { status: 'failed' } }).catch(() => {});
             }
             throw error;
         }
@@ -564,7 +619,11 @@ export class AgentLoopService {
         }
 
         // Wrap in firewall context so ToolService recognizes this as authorized orchestration
-        return executionFirewall.runInContext(undefined, () => this._executePhases(opts));
+        return executionFirewall.runInContext(undefined, () => this._executePhases(opts), {
+            userId: opts.userId,
+            sessionId: opts.sessionId,
+            runId: opts.runId,
+        });
     }
 
     private static async _executePhases(opts: {

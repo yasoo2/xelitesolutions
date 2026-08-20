@@ -18,6 +18,9 @@ const runOwnerByRunId = new Map<string, OwnerEntry>();
 const sessionOwnerBySessionId = new Map<string, OwnerEntry>();
 const terminalOwnerById = new Map<string, OwnerEntry>();
 const terminalSessionById = new Map<string, { sessionId: string; at: number }>();
+type RunEventHandler = (event: LiveEvent) => void;
+const runEventListeners = new Map<string, Set<RunEventHandler>>();
+const runIdBySessionId = new Map<string, string>();
 
 const OWNER_TTL_MS = 24 * 60 * 60 * 1000;
 const OWNER_MAX_ENTRIES = 5000;
@@ -98,6 +101,57 @@ export function registerTerminalSessionOwner(terminalId: string, sessionId: stri
 
 export function terminalSessionOwnerOf(terminalId: string): string {
   return terminalSessionById.get(trimId(terminalId))?.sessionId || '';
+}
+
+export function registerRunSession(runId: string, sessionId: string): void {
+  const rid = trimId(runId);
+  const sid = trimId(sessionId);
+  if (rid && sid) runIdBySessionId.set(sid, rid);
+}
+
+export function unregisterRunSession(runId: string, sessionId?: string): void {
+  const rid = trimId(runId);
+  const sid = trimId(sessionId);
+  if (sid && runIdBySessionId.get(sid) === rid) runIdBySessionId.delete(sid);
+  else if (rid) {
+    for (const [mappedSession, mappedRun] of runIdBySessionId) {
+      if (mappedRun === rid) runIdBySessionId.delete(mappedSession);
+    }
+  }
+}
+
+export function addRunEventListener(runId: string, handler: RunEventHandler): () => void {
+  const rid = trimId(runId);
+  if (!rid || typeof handler !== 'function') return () => {};
+  const listeners = runEventListeners.get(rid) || new Set<RunEventHandler>();
+  listeners.add(handler);
+  runEventListeners.set(rid, listeners);
+  return () => {
+    const current = runEventListeners.get(rid);
+    if (!current) return;
+    current.delete(handler);
+    if (current.size === 0) runEventListeners.delete(rid);
+  };
+}
+
+export function removeRunEventListener(runId: string, handler?: RunEventHandler): void {
+  const rid = trimId(runId);
+  const listeners = runEventListeners.get(rid);
+  if (!listeners) return;
+  if (handler) listeners.delete(handler);
+  else listeners.clear();
+  if (listeners.size === 0) runEventListeners.delete(rid);
+}
+
+function notifyRunEventListeners(event: LiveEvent): void {
+  const sid = trimId(event.sessionId || (event as any)?.data?.sessionId);
+  const rid = trimId(event.runId || (event as any)?.data?.runId || (sid ? runIdBySessionId.get(sid) : ''));
+  if (!rid) return;
+  const listeners = runEventListeners.get(rid);
+  if (!listeners) return;
+  for (const listener of listeners) {
+    try { listener({ ...event, runId: rid }); } catch { /* evidence observers never break the wire */ }
+  }
 }
 
 function resolveEventUserId(ev: LiveEvent) {
@@ -444,10 +498,6 @@ export function broadcast(
   // Observers see EVERY event, including the ones sent before a socket exists
   // — a proof that measures a build must not depend on a client being there.
   for (const o of broadcastObservers) { try { o(event); } catch { /* an observer never breaks the wire */ } }
-  if (!liveWssRef) {
-    console.warn('[WS] broadcast called but liveWssRef is null');
-    return;
-  }
   const authBypass = process.env.ENABLE_AUTH_BYPASS === 'true';
   const normalized: LiveEvent = {
     ...(event as any),
@@ -458,8 +508,15 @@ export function broadcast(
         ? (event as any).runId
         : typeof (event as any)?.data?.runId === 'string'
           ? (event as any).data.runId
-          : undefined,
+          : ((event as any)?.sessionId || (event as any)?.data?.sessionId
+              ? runIdBySessionId.get(trimId((event as any)?.sessionId || (event as any)?.data?.sessionId))
+              : undefined),
   };
+  notifyRunEventListeners(normalized);
+  if (!liveWssRef) {
+    console.warn('[WS] broadcast called but liveWssRef is null');
+    return;
+  }
   const payload = JSON.stringify(normalized);
   const eventSessionId = liveEventSessionId(normalized);
 

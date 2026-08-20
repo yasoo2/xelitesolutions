@@ -10,6 +10,7 @@ import { Artifact } from '../../shared/models/artifact';
 import { Session } from '../../shared/models/session';
 import { traceManager } from '../../modules/services/TraceManager';
 import { broadcast } from '../ws';
+import { getRunEvidence } from '../../shared/run-evidence-store';
 
 const router = Router();
 
@@ -206,6 +207,10 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         }
     } catch { /* non-fatal */ }
 
+    // Canonical run id is created before the first frame so every visible and
+    // persisted event addresses the same execution.
+    const tempRunId = `run-${Date.now()}`;
+
     // OWNERSHIP AT THE DOOR. The very first frames of a run — the echo of what
     // the user typed, and the run_started the panels wait for — used to be
     // emitted before anyone had claimed the session, so they resolved to
@@ -220,19 +225,16 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     // conversation. The composer that posts here does not add it client-side, so
     // without this only Joe's reply would appear.
     try {
-        broadcast({ type: 'user_input', sessionId, data: { text, sessionId, files: attachmentMeta() }, id: `uin-${Date.now()}` } as any);
+        broadcast({ type: 'user_input', sessionId, runId: tempRunId, data: { text, sessionId, runId: tempRunId, files: attachmentMeta() }, id: `uin-${Date.now()}` } as any);
         // The panels listen for the RUN starting — that is when the workspace
         // reveals itself and the live file list clears. They were listening
         // for an event the server never sent; the auto-open only happened
         // later, by luck, on the first tool.
-        broadcast({ type: 'run_started', sessionId, data: { sessionId, text: String(text || '').slice(0, 200) }, id: `run-${Date.now()}` } as any);
+        broadcast({ type: 'run_started', sessionId, runId: tempRunId, data: { sessionId, runId: tempRunId, text: String(text || '').slice(0, 200) }, id: `run-${Date.now()}` } as any);
     } catch { /* non-fatal */ }
 
     try {
         const traceId = traceManager.startTrace(sessionId || 'anonymous', text);
-        
-        // Generate a runId immediately so we can return it
-        const tempRunId = `run-${Date.now()}`;
         
         // [ELITE FIX] Make execution non-blocking to prevent Nginx timeouts and frontend hang
         // The background process will handle its own errors and broadcast status via WS
@@ -249,6 +251,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             systemInstructions,
             attachments,
             traceId,
+            runId: tempRunId,
             language: uiLanguage,
             modelConfig: {
                 provider,
@@ -280,13 +283,35 @@ router.get('/', async (req, res) => {
     res.json(runs);
 });
 
+router.get('/:id/receipt', async (req, res) => {
+    const evidence = await getRunEvidence(req.params.id);
+    if (!evidence) return res.status(404).json({ error: 'No receipt for this run' });
+    res.json({ ...evidence, ...(evidence.receipt || {}) });
+});
+
 router.get('/:id', async (req, res) => {
-    const run = await Run.findById(req.params.id).lean();
+    const id = String(req.params.id || '').trim();
+    const jsonMode = process.env.PERSISTENCE_MODE === 'JSON' || process.env.MOCK_DB === 'true' || String(process.env.MOCK_DB) === '1';
+    if (jsonMode) {
+        const evidence = await getRunEvidence(id);
+        if (!evidence) return res.status(404).json({ error: 'Run not found' });
+        return res.json({
+            run: { _id: evidence.id || id, runId: evidence.runId, sessionId: evidence.sessionId, status: evidence.status, createdAt: evidence.startedAt, updatedAt: evidence.updatedAt },
+            execs: evidence.events || [],
+            artifacts: [],
+        });
+    }
+
+    const query = mongoose.Types.ObjectId.isValid(id)
+        ? { $or: [{ _id: id }, { runId: id }] }
+        : { runId: id };
+    const run = await Run.findOne(query).lean();
     if (!run) return res.status(404).json({ error: 'Run not found' });
-    
-    const execs = await ToolExecution.find({ runId: req.params.id }).lean();
-    const artifacts = await Artifact.find({ runId: req.params.id }).lean();
-    
+
+    const runKeys = [id, String((run as any)._id || '')].filter(Boolean);
+    const execs = await ToolExecution.find({ runId: { $in: runKeys } }).lean();
+    const artifacts = await Artifact.find({ runId: { $in: runKeys } }).lean();
+
     res.json({ run, execs, artifacts });
 });
 

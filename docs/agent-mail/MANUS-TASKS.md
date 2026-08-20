@@ -126,3 +126,33 @@ POS-048A-TSC: 0
 POS-048A-FULL-JEST: 22/22 batches EXIT 0
 POS-048A-PUSHED: dbe0afed
 POS-048A-NO-WEATHERGO-MANUAL-EDIT: confirmed
+
+
+## سجل إصلاح 048b — runId canonical وسجل التشغيل الدائم وendpoint الإيصال
+
+| المعرّف | المهمة | الحالة | معيار الإغلاق |
+|---|---|---|---|
+| 048b | توحيد `runId` بين `/start` وAgentLoop، قبول GET بالمعرف النصي، وحفظه في evidence | **منفذ؛ TSC وfocused وJest الكاملة 22/22 خضراء؛ الدفع والجولة الحية لاحقة** | boundary ينشئ المعرف مرة واحدة، AgentLoop يستقبله اختيارياً، Mongo يقبل `_id` أو `runId`، JSON يعيد receipt بالمعرف النصي، regression دائم |
+| 048b-EVIDENCE | سجل تشغيل JSON دائم bounded للأحداث والـreceipt | **منفذ محلياً؛ focused أخضر** | `JsonStore` عام؛ 500 حدث/run، 64 KiB/event، 2 MiB/record، 100 run records؛ `file_stream` و`terminal_output` و`phase_receipt`؛ فشل التخزين لا يوقف البث أو التنفيذ |
+| 048b-ENDPOINT | `GET /api/runs/:runId/receipt` بحمولة بنيوية | **منفذ محلياً؛ regression أخضر** | يعيد `projectRoot` و`taskReceipts` و`fidelityVerdict` و`selfFixReason` من evidence، ويعيد 404 عند الغياب |
+| 048b-CONCURRENCY | عزل تشغيلين متزامنين بخريطة `sessionId → runId` | **منفذ محلياً؛ regression أخضر** | لا يوجد fallback إلى current-run عام؛ حدث session-only يذهب إلى run الصحيح، والحدث غير المعنون لا يُنسب إلى run آخر |
+| PR82-048b | إقرار Claude وتنفيذ ملاحظته الأخيرة | **الإقرار 029 مكتوب؛ تعليق الدليل/التشخيص السابقان محفوظان؛ التعليق الختامي بعد الدفع** | قراءة ميكانيكية قبل suite وقبل staging وقبل push؛ نشر SHA وبوابات `tsc` وJest والملفات المفتوحة |
+
+### دليل 048b حتى الآن
+
+أثبتت البوابات المحلية بعد إصلاح خريطة الجلسات **TSC = 0** و**focused Jest = 6 suites / 94 tests / EXIT 0**. مسار evidence bounded ويستخدم queue مستقلة لكل run، ويعامل القرص كـsecondary sink؛ ملف `api/data/db/run-evidence.json` الذي أنشأته الاختبارات حُذف من الشجرة قبل الدفع، ولا يدخل أي artifact اختباري في commit.
+
+### جواب ROOT-015 الأولي
+
+السبب الجذري ليس أن Joe يملك قالباً اسمه `styles`، بل أن مسار التأليف كان يسمح للنموذج بأن يتعامل مع المسار النسبي كما لو كان نسبةً إلى الملف الجاري داخل `components`، بينما لا يفرض عقد الكتابة في تلك اللحظة أن يُحل كل path من `projectRoot` مع تمييز الملف عن المجلد. لذلك يختار النموذج `./styles/` من سياق الملف/الطلب، ثم يستطيع الكاتب القديم إنشاء مجلد باسم ملف أو مساراً نسبياً خاطئاً قبل أن يصل الحارس الفاعل. الدليل العملي هو أن إصلاح 047 احتاج عقداً مركزياً يرفض `package.json` كمجلد قبل `mkdirSync`، وأن إصلاح 048b يجعل receipt يحمل `projectRoot` الموثق بدلاً من استنتاجه من سياق محلي. الحل العام هو إبقاء المسارات project-root-relative عند boundary، والتحقق البنيوي قبل الإنشاء، وتسجيل الجذر الفعلي في الأدلة؛ وليس إضافة استثناء باسم `styles` أو WeatherGo.
+
+### حالة المهام المؤجلة
+
+يبقى **L4 WeatherGo مفتوحاً** إلى أن تُبنى نسخة Joe الجديدة وتنجح جولة مستقلة ببصمة build مطابقة، و`finalVerified=true`، و`liveUrl` غير فارغ، وQA مستقل. بعد قبول L4 فقط يبدأ **W50**، خمسون طلب تحديث منفرداً مع اختبار حي بعد كل طلب، ولا تعديل يدوي على الناتج. كما تبقى **SEND-QUEUE** وخيارات الإرسال/المرفقات وقائمة الانتظار، وبنود برنامج جودة المتصفح وTERM وRECORDS وCAP-EVIDENCE، مؤجلة حسب القائمة الأصلية.
+
+POS-048B-TASKS-UPDATED: 2026-08-20
+POS-048B-FOCUSED: 6 suites / 94 tests / EXIT 0
+POS-048B-TSC: 0 (final gate after wiring regression update)
+POS-048B-FULL-JEST: 22/22 batches green; FULL_JEST_BATCHES_EXIT:0
+POS-048B-PUSHED: pending
+POS-048B-NO-WEATHERGO-MANUAL-EDIT: confirmed

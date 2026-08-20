@@ -2,6 +2,7 @@ import mongoose, { Schema, Document, Types } from 'mongoose';
 
 export interface IRun extends Document {
   sessionId: string;
+  runId?: string;
   status: 'pending' | 'running' | 'done' | 'blocked' | 'failed';
   steps: Array<{
     name: string;
@@ -16,6 +17,7 @@ export interface IRun extends Document {
 const RunSchema = new Schema<IRun>(
   {
     sessionId: { type: String, ref: 'Session', index: true, required: true },
+    runId: { type: String, index: true, sparse: true },
     status: { type: String, enum: ['pending', 'running', 'done', 'blocked', 'failed'], default: 'pending' },
     steps: [
       {
