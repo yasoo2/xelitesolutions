@@ -7,6 +7,59 @@ import { workspaceService } from '../../services/WorkspaceService';
 import { recoverMissingNpmLauncher } from '../npm-launcher-recovery';
 export { recoverMissingNpmLauncher } from '../npm-launcher-recovery';
 import { executeTool } from '../../services/ToolService';
+
+type PhaseDeliveryEvidence = {
+    accepted?: boolean;
+    blockers?: string[];
+    askedButMissing?: string[];
+    fidelityMismatch?: boolean;
+    acceptanceBlocked?: boolean;
+    acceptanceUnmet?: string[];
+    requestedVisualAudit?: boolean;
+    visualAuditUnavailable?: boolean;
+};
+
+/**
+ * Carry only the bounded acceptance/fidelity contract across the executor
+ * boundary. Builder messages, file lists, and arbitrary output remain at the
+ * tool boundary; the orchestrator receives the exact verdict fields needed for
+ * a controlled repair or an honest blocker.
+ */
+function compactPhaseDeliveryEvidence(value: unknown): PhaseDeliveryEvidence | undefined {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+    const raw = value as Record<string, unknown>;
+    const out: PhaseDeliveryEvidence = {};
+    const copyList = (key: 'blockers' | 'askedButMissing' | 'acceptanceUnmet') => {
+        if (!Array.isArray(raw[key])) return;
+        const items = raw[key]
+            .map(item => String(item ?? '').trim())
+            .filter(Boolean)
+            .slice(0, 20);
+        if (items.length) out[key] = items;
+    };
+    copyList('blockers');
+    copyList('askedButMissing');
+    copyList('acceptanceUnmet');
+    for (const key of ['accepted', 'fidelityMismatch', 'acceptanceBlocked', 'requestedVisualAudit', 'visualAuditUnavailable'] as const) {
+        if (typeof raw[key] === 'boolean') out[key] = raw[key] as boolean;
+    }
+    return Object.keys(out).length ? out : undefined;
+}
+
+function mergePhaseDeliveryEvidence(
+    current: PhaseDeliveryEvidence | undefined,
+    next: PhaseDeliveryEvidence | undefined,
+): PhaseDeliveryEvidence | undefined {
+    if (!current) return next;
+    if (!next) return current;
+    const merged: PhaseDeliveryEvidence = { ...current, ...next };
+    for (const key of ['blockers', 'askedButMissing', 'acceptanceUnmet'] as const) {
+        const values = [...(current[key] || []), ...(next[key] || [])];
+        if (values.length) merged[key] = Array.from(new Set(values)).slice(0, 20);
+    }
+    return merged;
+}
+
 import { resolveToolPath } from '../utils';
 import { resolvePlannedTool, unrunnableShellStep, adaptPlannedArgs, adaptPlannedArgsFromDescription, plannedArgsIssue, LATE_BOUND_PLAN_FIELDS } from '../../../core/orchestrator/plan-tools';
 
@@ -891,8 +944,13 @@ export class PhaseExecutorTool implements ToolDefinition {
             evidenceStatus?: 'current_run' | 'stale_run_dropped';
             /** Bounded audit-only copy of stale diagnostic text; never a repair path. */
             staleEvidence?: string;
+            /** Bounded acceptance/fidelity verdict copied from a trusted builder. */
+            delivery?: PhaseDeliveryEvidence;
+            acceptanceUnmet?: string[];
+            fidelityMismatch?: boolean;
         }> = [];
         let completedCount = 0;
+        let phaseDelivery: PhaseDeliveryEvidence | undefined;
 
         const executionContext = {
             runId: context?.runId || projectContext?.runId,
@@ -1213,6 +1271,8 @@ export class PhaseExecutorTool implements ToolDefinition {
                         syncRuntimeProjectContext(projectContext, logs);
                         const errMsg = String(toolResult.error || 'Unknown error');
                         const failedOutput = (toolResult as any)?.output || {};
+                        const deliveryEvidence = compactPhaseDeliveryEvidence(failedOutput.delivery);
+                        phaseDelivery = mergePhaseDeliveryEvidence(phaseDelivery, deliveryEvidence);
                         const failureText = `${errMsg}\n${String(failedOutput.stderr || '')}\n${String(failedOutput.stdout || '')}`;
                         const runEvidenceId = String(executionContext.runId || projectContext?.runId || '').trim();
                         const runEvidenceRoot = projectContext?.projectRootRuntimeBound === true && String(projectContext?.projectRoot || '').trim()
@@ -1303,6 +1363,11 @@ export class PhaseExecutorTool implements ToolDefinition {
                                 ? { background: toolArgs.background }
                                 : {}),
                             ...(!staleRunEvidenceDropped ? fileFailureEvidence(toolName, toolArgs, projectContext) : {}),
+                            ...(deliveryEvidence ? {
+                                delivery: deliveryEvidence,
+                                ...(deliveryEvidence.acceptanceUnmet ? { acceptanceUnmet: deliveryEvidence.acceptanceUnmet } : {}),
+                                ...(typeof deliveryEvidence.fidelityMismatch === 'boolean' ? { fidelityMismatch: deliveryEvidence.fidelityMismatch } : {}),
+                            } : {}),
                             ...(repairDescription ? { description: repairDescription } : {}),
                             ...(repairContext ? { artifactContext: repairContext } : {}),
                         });
@@ -1528,7 +1593,8 @@ export class PhaseExecutorTool implements ToolDefinition {
                     nextPhase: phase.phaseNumber + 1,
                     deliverables: phase.deliverables || [],
                     estimatedTime: phase.estimatedTime || 'unknown',
-                    ...(verificationFailed ? { verificationFailed: true } : {})
+                    ...(verificationFailed ? { verificationFailed: true } : {}),
+                    ...(phaseDelivery ? { delivery: phaseDelivery } : {})
                 },
                 logs
             };
@@ -1550,7 +1616,8 @@ export class PhaseExecutorTool implements ToolDefinition {
                     completedTasks: completedCount,
                     totalTasks: Array.isArray(phase?.tasks) ? phase.tasks.length : 0,
                     results,
-                    nextPhase: phase?.phaseNumber
+                    nextPhase: phase?.phaseNumber,
+                    ...(phaseDelivery ? { delivery: phaseDelivery } : {})
                 },
                 logs
             };
