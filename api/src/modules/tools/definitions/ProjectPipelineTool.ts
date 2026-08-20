@@ -34,6 +34,16 @@ export function hasRequestFidelityMismatch(results: unknown): boolean {
     ));
 }
 
+/** Missing evidence for a known engine is also final evidence, not a partial. */
+export function hasRequestFidelityEvidenceUnavailable(results: unknown): boolean {
+    if (!Array.isArray(results)) return false;
+    return results.some((result: any) => (
+        result?.error === 'fidelity_unverifiable'
+        || result?.primaryError === 'fidelity_unverifiable'
+        || result?.output?.delivery?.fidelityEvidenceUnavailable === true
+    ));
+}
+
 /**
  * Additive, current-run decision evidence for the delivery boundary. This
  * function never changes a verdict; it only names the facts already computed
@@ -1289,7 +1299,9 @@ export class ProjectPipelineTool implements ToolDefinition {
         const total = Number(plannerResult.output.totalPhases || phases.length);
         const done = Number(pipeline?.completedPhases || 0);
         const requestFidelityMismatch = hasRequestFidelityMismatch(pipeline?.results);
-        const verified = pipeline?.ok === true && !requestFidelityMismatch;
+        const requestFidelityEvidenceUnavailable = hasRequestFidelityEvidenceUnavailable(pipeline?.results);
+        const requestFidelityBlocked = requestFidelityMismatch || requestFidelityEvidenceUnavailable;
+        const verified = pipeline?.ok === true && !requestFidelityBlocked;
         let finalVerified = verified;
         // `ok` is retained as the compatibility success signal, but the report
         // must not force a reader to infer whether code ran, verification ran,
@@ -1297,7 +1309,7 @@ export class ProjectPipelineTool implements ToolDefinition {
         // A pipeline-level failure can already be a final, evidence-backed
         // verdict from phase execution. Carry the machine-readable marker out
         // to AgentOrchestrator so it cannot reopen a generative recovery loop.
-        const verificationFailed = requestFidelityMismatch || (Array.isArray(pipeline?.results)
+        const verificationFailed = requestFidelityBlocked || (Array.isArray(pipeline?.results)
             && pipeline.results.some((result: any) => result?.verificationFailed === true));
         let liveRunVerificationFailed = false;
         let browserQaFailed = false;
@@ -1306,17 +1318,23 @@ export class ProjectPipelineTool implements ToolDefinition {
         let finalHonestBlocker = honestBlocker;
         // Compatibility facts for phase execution; live-run may still veto delivery.
         const executionStatus = verified ? 'completed' : done > 0 ? 'partial' : 'failed';
-        const verificationStatus = requestFidelityMismatch
-            ? 'request_fidelity_mismatch'
+        const verificationStatus = requestFidelityBlocked
+            ? requestFidelityEvidenceUnavailable ? 'fidelity_unverifiable' : 'request_fidelity_mismatch'
             : verified ? 'passed' : String(pipeline?.verificationStatus || 'failed');
-        const deliveryStatus = requestFidelityMismatch
+        const deliveryStatus = requestFidelityBlocked
             ? 'blocked'
             : verified ? 'delivered' : done > 0 ? 'partial' : 'blocked';
-        if (requestFidelityMismatch) {
-            appendBoundedPipelineLog(logs, '[pipeline] request_fidelity_mismatch is final delivery evidence; partial delivery disabled');
+        if (requestFidelityBlocked) {
+            appendBoundedPipelineLog(logs, requestFidelityEvidenceUnavailable
+                ? '[pipeline] fidelity_unverifiable is final delivery evidence; partial delivery disabled'
+                : '[pipeline] request_fidelity_mismatch is final delivery evidence; partial delivery disabled');
             say(pick(isAr,
-                '⛔ أوقفْتُ التسليم: المصدر المولّد لا يطابق محرك التطبيق المطلوب، ولن أصفه كتسليم جزئي.',
-                '⛔ Delivery blocked: the generated source does not match the requested application engine; it will not be labelled partial.'));
+                requestFidelityEvidenceUnavailable
+                    ? '⛔ أوقفتُ التسليم: دليل وفاء التطبيق المطلوب غير قابل للتحقق، ولن أصفه كتسليم جزئي.'
+                    : '⛔ أوقفْتُ التسليم: المصدر المولّد لا يطابق محرك التطبيق المطلوب، ولن أصفه كتسليم جزئي.',
+                requestFidelityEvidenceUnavailable
+                    ? '⛔ Delivery blocked: requested application fidelity could not be verified; it will not be labelled partial.'
+                    : '⛔ Delivery blocked: the generated source does not match the requested application engine; it will not be labelled partial.'));
         }
 
         // 3 — The last mile: a VERIFIED system is RUN, not left inert on disk.
@@ -1926,7 +1944,7 @@ export class ProjectPipelineTool implements ToolDefinition {
          * finding, and the ONLY failure is named scope coverage. `verified`
          * stays false — the missing list is the headline, never a footnote.
          */
-        const partialDelivery = !requestFidelityMismatch && !finalVerified && scopeCoverageFailed && !browserQaFailed && !!liveUrl;
+        const partialDelivery = !requestFidelityBlocked && !finalVerified && scopeCoverageFailed && !browserQaFailed && !!liveUrl;
         if (partialDelivery) {
             const missingText = (scopeAudit?.missing || []).slice(0, 8).join(', ');
             say(pick(isAr,
@@ -1934,10 +1952,10 @@ export class ProjectPipelineTool implements ToolDefinition {
                 `📦 Partial delivery: the system runs live and passed QA; not yet built: ${missingText}`));
         }
         const finalExecutionStatus = finalVerified ? 'completed' : done > 0 ? 'partial' : 'failed';
-        const finalVerificationStatus = requestFidelityMismatch
-            ? 'request_fidelity_mismatch'
+        const finalVerificationStatus = requestFidelityBlocked
+            ? requestFidelityEvidenceUnavailable ? 'fidelity_unverifiable' : 'request_fidelity_mismatch'
             : finalVerified ? 'passed' : browserQaFailed ? 'browser_qa_failed' : String(pipeline?.verificationStatus || 'failed');
-        const finalDeliveryStatus = requestFidelityMismatch
+        const finalDeliveryStatus = requestFidelityBlocked
             ? 'blocked'
             : finalVerified ? 'delivered' : (partialDelivery || done > 0) ? 'partial' : 'blocked';
         const decisionEvidence = buildPipelineDecisionEvidence({
@@ -1976,6 +1994,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                 decisionEvidence,
                 ...(verificationFailed ? { verificationFailed: true } : {}),
                 ...(requestFidelityMismatch ? { requestFidelityMismatch: true } : {}),
+                ...(requestFidelityEvidenceUnavailable ? { fidelityUnverifiable: true } : {}),
                 ...(liveRunVerificationFailed ? { verificationFailed: true } : {}),
                 ...(browserQaFailed ? { browserQaFailed: true } : {}),
                 ...(finalHonestBlocker ? { honestBlocker: true } : {}),

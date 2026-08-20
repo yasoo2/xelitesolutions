@@ -52,9 +52,9 @@ export function projectDirNameForTest(projectName: string, brand: string): strin
 
 /**
  * Compare the requested blueprint with the source that is actually about to be
- * delivered. This is deliberately conservative: unknown engines and missing
- * evidence remain permissive, while a known weather request whose production
- * source has no weather-engine signature is blocked rather than relabelled.
+ * delivered. This deliberately keeps the boolean mismatch check separate from
+ * evidence availability: a missing source is not proof of a mismatch, but it is
+ * still unsafe to report a known engine as verified.
  */
 export function requestFidelityMismatch(appBp: Pick<AppBlueprint, 'engine'> | null, projectEvidence: string): boolean {
     if (!appBp) return false;
@@ -63,6 +63,11 @@ export function requestFidelityMismatch(appBp: Pick<AppBlueprint, 'engine'> | nu
         ? /open.?meteo|forecast|temperature|WeatherApp/i.test(projectEvidence)
         : true;
     return !engineEvidence;
+}
+
+/** A known engine cannot be accepted when its generated source was not readable. */
+export function requestFidelityEvidenceUnavailable(appBp: Pick<AppBlueprint, 'engine'> | null, projectEvidence: string): boolean {
+    return !!appBp && String(projectEvidence || '').trim().length < 50;
 }
 
 /**
@@ -3765,8 +3770,15 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
         const askedButMissing: string[] = appBp
             ? uncoveredFeatures(request, appBp.engine, !!apiLink, projectEvidence)
             : [];
+        const fidelityEvidenceLength = projectEvidence.trim().length;
+        const fidelityEvidenceUnavailable = requestFidelityEvidenceUnavailable(appBp, projectEvidence);
         const fidelityMismatch = requestFidelityMismatch(appBp, projectEvidence);
-        if (fidelityMismatch) {
+        if (appBp) {
+            term(`fidelity_evidence: engine=${appBp.engine} path=${proj} chars=${fidelityEvidenceLength} available=${!fidelityEvidenceUnavailable} mismatch=${fidelityMismatch}`);
+        }
+        if (fidelityEvidenceUnavailable) {
+            term(`fidelity_unverifiable: requested ${appBp?.engine} engine but generated source evidence is unavailable or too short (${fidelityEvidenceLength} chars) — delivery blocked`);
+        } else if (fidelityMismatch) {
             term(`request_fidelity_mismatch: requested ${appBp?.engine} engine but generated source does not contain its signature — delivery blocked`);
         }
         /**
@@ -3842,6 +3854,11 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             ? (isAr
                 ? `\n🧠 هذا تطبيق يعمل، لا صفحة تتحدث عنه — «${appBp.title}»:\n${appAbilities.map(a => `   • ${a}`).join('\n')}\n${screensLine}${unmetBlock}`
                 : `\n🧠 A working application, not a page about one — "${appBp.title}":\n${appAbilities.map(a => `   • ${a}`).join('\n')}\n${screensLine}${unmetBlock}`)
+            : '';
+        const fidelityBlock = fidelityEvidenceUnavailable
+            ? (isAr
+                ? `\n⛔ تعذّر التحقق من وفاء التطبيق المطلوب: دليل المصدر غير متاح أو أقصر من الحد الآمن (${fidelityEvidenceLength} حرفاً)، لذلك حُجب التسليم.\n`
+                : `\n⛔ Requested application fidelity could not be verified: source evidence is unavailable or below the safe threshold (${fidelityEvidenceLength} chars), so delivery is blocked.\n`)
             : '';
         /**
          * «ولكن جو لم يصنع أي شيء ظاهر من هذه الخطوات نهائياً».
@@ -4047,7 +4064,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
         // A named request is a contract, not commentary. Do not report a green
         // delivery when the engine has no evidence for one of the requested
         // capabilities or when the acceptance ledger contains an unmet item.
-        const deliveryBlocked = qualityDeliveryBlocked || askedButMissing.length > 0 || acceptanceBlocked || fidelityMismatch;
+        const deliveryBlocked = qualityDeliveryBlocked || askedButMissing.length > 0 || acceptanceBlocked || fidelityEvidenceUnavailable || fidelityMismatch;
         if (askedButMissing.length) {
             term(`delivery: BLOCKED — requested capabilities not proven: ${askedButMissing.join(', ')}`);
         }
@@ -4087,7 +4104,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
 
         const message = isAr
             ? `⚛️ ${deliveryBlocked ? (blockers.length ? 'بُني مشروع React وتجمّع — لكنه سُلّم بعيوب باقية' : 'بُني مشروع React، لكن رُفض تسليمه نهائياً حتى ينجح تدقيق الجودة المطلوب') : built ? 'بُني مشروع React كاملاً وتُحقق من تجميعه' : installed ? 'أُنشئ مشروع React وثُبتت حزمه' : 'أُنشئ مشروع React كاملاً'} — «${content.brand}».
-${scopeBlock}${appBlock}
+${scopeBlock}${fidelityBlock}${appBlock}
 ${qaBlock}${shellBlock}${acceptBlock}🎨 الطراز: ${FAMILY_LABEL_AR[family]} — قل «غيّر الطراز إلى فاخر/جريء/دافئ/بسيط» لتبديله.
 📂 المسار: ${proj}
 ${fileList}
@@ -4103,7 +4120,7 @@ ${buildDiagnosis ? (buildDiagnosis.healed
    • «شغّل خادم التطوير» → معاينة تطوير بتحديث حي
    • «انشر المشروع» → نسخة الإنتاج بصورها على رابط دائم`
             : `⚛️ ${deliveryBlocked ? (blockers.length ? 'A React project that compiles — delivered WITH open defects' : 'A React project was built, but final delivery is blocked until the required quality audit passes') : built ? 'A full React project, scaffolded AND verified to compile' : 'A full React project scaffolded'} — "${content.brand}".
-${scopeBlock}${appBlock}
+${scopeBlock}${fidelityBlock}${appBlock}
 ${qaBlock}${shellBlock}${acceptBlock}📂 Path: ${proj}
 ${fileList}
 
@@ -4114,9 +4131,11 @@ ${built ? '✅ npm install + vite build succeeded — the production build is in
             error: deliveryBlocked
                 ? (visualAuditUnavailable
                     ? 'required_visual_audit_not_completed'
-                    : fidelityMismatch
-                        ? 'request_fidelity_mismatch'
-                        : askedButMissing.length
+                    : fidelityEvidenceUnavailable
+                        ? 'fidelity_unverifiable'
+                        : fidelityMismatch
+                            ? 'request_fidelity_mismatch'
+                            : askedButMissing.length
                             ? 'requested_features_not_proven'
                             : acceptanceBlocked
                                 ? 'acceptance_criteria_unmet'
@@ -4151,6 +4170,8 @@ ${built ? '✅ npm install + vite build succeeded — the production build is in
                     blockers: blockers.map((f: any) => f.id),
                     askedButMissing,
                     fidelityMismatch,
+                    fidelityEvidenceUnavailable,
+                    fidelityEvidenceLength,
                     acceptanceBlocked,
                     acceptanceUnmet: acceptance.criteria.filter((c: any) => c.verdict !== 'met').map((c: any) => c.id),
                     requestedVisualAudit,

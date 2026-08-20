@@ -230,6 +230,6 @@ describe('and the message says it plainly', () => {
         expect(R).toMatch(/const scopeBlock = \(\) => \{|const scopeBlock = \(\(\) => \{/);
         expect(R).toMatch(/scopeReport\(request, dirs\)/);
         // Both languages carry it, and it comes before the path.
-        expect((R.match(/\$\{scopeBlock\}\$\{appBlock\}/g) || []).length).toBe(2);
+        expect((R.match(/\$\{scopeBlock\}\$\{fidelityBlock\}\$\{appBlock\}/g) || []).length).toBe(2);
     });
 });

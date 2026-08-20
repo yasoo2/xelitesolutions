@@ -19,8 +19,8 @@ import { ProjectPlannerTool } from '../modules/tools/definitions/ProjectPlannerT
 import { ProjectPipelineTool } from '../modules/tools/definitions/ProjectPipelineTool';
 import { canBindRuntimeProjectEvidence, classifyStructuredRuntimeEvidence, projectRootFromWrittenFile } from '../modules/tools/definitions/PhaseExecutorTool';
 import { resolveRunnableProject } from '../modules/tools/definitions/ProjectRunTool';
-import { requestFidelityMismatch } from '../modules/tools/definitions/ReactProjectTool';
-import { hasRequestFidelityMismatch } from '../modules/tools/definitions/ProjectPipelineTool';
+import { requestFidelityEvidenceUnavailable, requestFidelityMismatch } from '../modules/tools/definitions/ReactProjectTool';
+import { hasRequestFidelityEvidenceUnavailable, hasRequestFidelityMismatch } from '../modules/tools/definitions/ProjectPipelineTool';
 import { blueprintFor, detectAppKind } from '../core/design/app-blueprints';
 
 describe('every defined tool is reachable', () => {
@@ -398,9 +398,10 @@ describe('pipeline preserves an honest verification verdict for its caller', () 
     it('forwards phase verification failure instead of reducing it to an opaque partial result', () => {
         const pipeline = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ProjectPipelineTool.ts'), 'utf-8');
         expect(pipeline).toContain('const requestFidelityMismatch = hasRequestFidelityMismatch(pipeline?.results)');
-        expect(pipeline).toContain('const verificationFailed = requestFidelityMismatch || (Array.isArray(pipeline?.results)');
+        expect(pipeline).toContain('const requestFidelityBlocked = requestFidelityMismatch || requestFidelityEvidenceUnavailable');
+        expect(pipeline).toContain('const verificationFailed = requestFidelityBlocked || (Array.isArray(pipeline?.results)');
         expect(pipeline).toContain('result?.verificationFailed === true');
-        expect(pipeline).toContain('const partialDelivery = !requestFidelityMismatch &&');
+        expect(pipeline).toContain('const partialDelivery = !requestFidelityBlocked &&');
         expect(pipeline).toContain('const honestBlocker = pipeline?.honestBlocker === true || verificationFailed');
         expect(pipeline).toContain('...(verificationFailed ? { verificationFailed: true } : {})');
         expect(pipeline).toContain('let finalHonestBlocker = honestBlocker');
@@ -504,6 +505,24 @@ describe('request fidelity blocks a silent engine fallback', () => {
             '  return <main><h1>Welcome to our beautiful brand</h1></main>;',
             '}',
         ].join('\n'))).toBe(false);
+    });
+
+    it('blocks unverifiable evidence without relabelling it as a proven mismatch', () => {
+        const kind = detectAppKind(weatherRequest);
+        const blueprint = kind ? blueprintFor(kind, weatherRequest, false) : null;
+        expect(blueprint?.engine).toBe('weather');
+        expect(requestFidelityMismatch(blueprint, '')).toBe(false);
+        expect(requestFidelityEvidenceUnavailable(blueprint, '')).toBe(true);
+        expect(hasRequestFidelityEvidenceUnavailable([{
+            ok: false,
+            error: 'fidelity_unverifiable',
+            output: { delivery: { fidelityEvidenceUnavailable: true } },
+        }])).toBe(true);
+        expect(hasRequestFidelityEvidenceUnavailable([{
+            ok: false,
+            error: 'request_fidelity_mismatch',
+            output: { delivery: { fidelityMismatch: true } },
+        }])).toBe(false);
     });
 
     it('A1: blocks a brochure source at the 035 boundary before partial delivery or Project Setup can be accepted', () => {

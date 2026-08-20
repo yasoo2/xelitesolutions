@@ -139,7 +139,8 @@ describe('and when it cannot, it says which of the three it was', () => {
     it('cannot return ok when requested features or acceptance criteria are missing', () => {
         const src = fs.readFileSync(
             path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ReactProjectTool.ts'), 'utf-8');
-        expect(src).toMatch(/const deliveryBlocked = qualityDeliveryBlocked \|\| askedButMissing\.length > 0 \|\| acceptanceBlocked \|\| fidelityMismatch/);
+        // 044: deliveryBlocked يحرس fidelity_unverifiable والـmismatch معاً بصيغة ReactProjectTool الفعلية
+        expect(src).toMatch(/const deliveryBlocked = qualityDeliveryBlocked \|\| askedButMissing\.length > 0 \|\| acceptanceBlocked \|\| fidelityEvidenceUnavailable \|\| fidelityMismatch/);
         expect(src).toMatch(/ok: !deliveryBlocked/);
         expect(src).toContain('error: deliveryBlocked');
         expect(src).toContain("'requested_features_not_proven'");

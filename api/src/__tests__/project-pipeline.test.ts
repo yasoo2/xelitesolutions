@@ -385,8 +385,10 @@ describe('the bridge tool — plan, execute phases, report honestly', () => {
     test('success and verification are earned, with explicit execution and delivery states', () => {
         expect(src).toMatch(/const verified = pipeline\?\.ok === true/);
         expect(src).toMatch(/const executionStatus = verified/);
-        expect(src).toMatch(/const verificationStatus = requestFidelityMismatch/);
-        expect(src).toMatch(/const deliveryStatus = requestFidelityMismatch/);
+        // 044: verificationStatus/deliveryStatus تُشتقان من requestFidelityBlocked (يشمل mismatch + unverifiable)
+        expect(src).toMatch(/const requestFidelityBlocked = requestFidelityMismatch \|\| requestFidelityEvidenceUnavailable/);
+        expect(src).toMatch(/const verificationStatus = requestFidelityBlocked/);
+        expect(src).toMatch(/const deliveryStatus = requestFidelityBlocked/);
         expect(src).toMatch(/ok: finalVerified/);
         // The honest partial-delivery message exists in Arabic.
         expect(src).toMatch(/توقف البناء بصدق/);
