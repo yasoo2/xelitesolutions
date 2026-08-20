@@ -17,6 +17,7 @@ import { persistChatStores } from '../../api/chat-store';
 import { clarifyGate } from '../../core/orchestrator/clarify';
 import { composeAnswer, composeFailure } from '../../core/orchestrator/answerComposer';
 import { compactRuntimeValue } from '../../core/orchestrator/ExecutionMemory';
+import { hasRequestFidelityMismatch, hasRequestFidelityEvidenceUnavailable } from '../tools/definitions/ProjectPipelineTool';
 
 /**
  * Lessons Joe applies to every system HE builds — each line was paid for by a
@@ -106,6 +107,40 @@ export function acceptanceFailureDisposition(phaseResult: any): AcceptanceFailur
     return unmet.length > 0 && /acceptance_criteria_unmet/i.test(errorText)
         ? 'repairable'
         : 'honest_blocker';
+}
+
+export type AcceptanceFidelityLabel = 'request_fidelity_mismatch' | 'fidelity_unverifiable';
+
+export interface AcceptanceFidelityVerdict {
+    label: AcceptanceFidelityLabel | null;
+    diagnostic: string | null;
+}
+
+/**
+ * Reuses the delivery-boundary fidelity predicates at the active acceptance
+ * layer. The phase output is included as a receipt envelope because
+ * PhaseExecutor carries the bounded delivery flags there while task results
+ * remain in output.results; the predicates themselves remain single-source.
+ */
+export function acceptanceFidelityVerdict(phaseResult: any): AcceptanceFidelityVerdict {
+    const results = phaseResult?.output?.delivery?.results ?? phaseResult?.output?.results;
+    const fidelityEvidence = [
+        ...(Array.isArray(results) ? results : []),
+        ...(Array.isArray(results) ? results.map(result => ({ output: result })) : []),
+        ...(phaseResult?.output ? [{ output: phaseResult.output }] : []),
+    ];
+    const fidelityMismatch = hasRequestFidelityMismatch(fidelityEvidence);
+    const fidelityEvidenceUnavailable = hasRequestFidelityEvidenceUnavailable(fidelityEvidence);
+    if (!fidelityMismatch && !fidelityEvidenceUnavailable) {
+        return { label: null, diagnostic: null };
+    }
+    const label: AcceptanceFidelityLabel = fidelityEvidenceUnavailable
+        ? 'fidelity_unverifiable'
+        : 'request_fidelity_mismatch';
+    return {
+        label,
+        diagnostic: `[AgentLoop] acceptance fidelity verdict: ${label} — الناتج ليس من فئة المطلوب لأن المؤلف القادر غائب`,
+    };
 }
 
 /**
@@ -659,6 +694,14 @@ export class AgentLoopService {
             // ticket, and SelfFixService consume the same evidence. A bare
             // verification flag is never enough to authorize a repair.
             const acceptanceDisposition = acceptanceFailureDisposition(phaseResult);
+            const acceptanceFidelity = acceptanceFidelityVerdict(phaseResult);
+            if (acceptanceFidelity.label && /acceptance_criteria_unmet/i.test([
+                phaseResult?.error,
+                phaseResult?.output?.error,
+                phaseResult?.output?.primaryError,
+            ].map(value => String(value || '')).join(' '))) {
+                console.warn(acceptanceFidelity.diagnostic);
+            }
             const acceptanceUnmet = Array.isArray(phaseResult?.output?.delivery?.acceptanceUnmet)
                 ? phaseResult.output.delivery.acceptanceUnmet.filter((id: unknown) => String(id || '').trim()).map((id: unknown) => String(id).trim())
                 : [];

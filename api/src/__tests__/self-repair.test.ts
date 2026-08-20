@@ -18,7 +18,7 @@ import { worthRepairing, REPAIRABLE_FINDINGS, collectSources } from '../core/qua
 import { RepairTicketService } from '../modules/services/RepairTicketService';
 import { SelfFixService } from '../modules/services/SelfFixService';
 import { SelfFixExecutionService } from '../modules/services/SelfFixExecutionService';
-import { acceptanceFailureDisposition } from '../modules/services/AgentLoopService';
+import { acceptanceFailureDisposition, acceptanceFidelityVerdict } from '../modules/services/AgentLoopService';
 
 const read = (...p: string[]) => fs.readFileSync(path.join(__dirname, '..', ...p), 'utf-8');
 
@@ -99,6 +99,41 @@ describe('the build only claims an improvement it measured', () => {
 });
 
 describe('structured request-fidelity recovery', () => {
+    it('labels fidelity at the active acceptance layer when a WeatherGo phase has only generic evidence', () => {
+        const phaseResult = {
+            error: 'acceptance_criteria_unmet: weather engine was not proven',
+            output: {
+                phaseName: 'Project Setup',
+                verificationFailed: true,
+                delivery: {
+                    fidelityEvidenceUnavailable: true,
+                    acceptanceUnmet: ['weather_engine'],
+                },
+                results: [{
+                    task: 'Build the requested WeatherGo app',
+                    tool: 'project_pipeline',
+                    ok: false,
+                    error: 'acceptance_criteria_unmet: weather_engine was not proven',
+                }],
+            },
+        };
+        expect(acceptanceFidelityVerdict(phaseResult)).toEqual({
+            label: 'fidelity_unverifiable',
+            diagnostic: '[AgentLoop] acceptance fidelity verdict: fidelity_unverifiable — الناتج ليس من فئة المطلوب لأن المؤلف القادر غائب',
+        });
+        expect(acceptanceFidelityVerdict({
+            error: 'acceptance_criteria_unmet: weather engine was not delivered',
+            output: { delivery: { fidelityMismatch: true }, results: [] },
+        })).toEqual({
+            label: 'request_fidelity_mismatch',
+            diagnostic: '[AgentLoop] acceptance fidelity verdict: request_fidelity_mismatch — الناتج ليس من فئة المطلوب لأن المؤلف القادر غائب',
+        });
+        expect(acceptanceFidelityVerdict({
+            error: 'acceptance_criteria_unmet: generic evidence only',
+            output: { delivery: { acceptanceUnmet: ['weather_engine'] }, results: [] },
+        })).toEqual({ label: null, diagnostic: null });
+    });
+
     it('only treats canonical acceptance evidence as repairable', () => {
         expect(acceptanceFailureDisposition({
             output: {
