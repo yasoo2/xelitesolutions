@@ -360,7 +360,8 @@ function EnhancedLogsPanel({ logs, liveFiles = [], buildStatus = null }: { logs:
         if (log.includes('WARNING') || log.includes('WARN')) return '#eab308';
         if (log.includes('Step Started')) return '#3b82f6';
         if (log.includes('Step Done') || log.includes('Run Finished')) return '#22c55e';
-        return 'var(--joe-text-secondary, #ccc)';
+        // On the screen surface the pane's own light ink applies.
+        return 'inherit';
     };
 
     return (
@@ -377,6 +378,7 @@ function EnhancedLogsPanel({ logs, liveFiles = [], buildStatus = null }: { logs:
 
             <div
                 ref={scrollRef}
+                className="joe-screen"
                 style={{
                     flex: 1, overflow: 'auto', padding: '4px 0',
                     fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
