@@ -134,6 +134,32 @@ function sourceSyntaxMismatch(filePath: string, content: string): string | null 
     }
 }
 
+/**
+ * Catch the valid-but-ambiguous JavaScript form `a || condition ? x : y`.
+ * JavaScript parses it as `(a || condition) ? x : y`, while generated code
+ * almost always intends `a || (condition ? x : y)`. This is deliberately a
+ * validator, not an auto-fixer: the model must re-emit the complete file with
+ * the intended grouping preserved.
+ */
+export function unparenthesizedLogicalTernaryError(filePath: string, content: string): string | null {
+    const lines = String(content || '').split(/\r?\n/u);
+    for (let index = 0; index < lines.length; index += 1) {
+        // Ignore quoted text and line comments so a prose/string example does
+        // not reject an otherwise valid source file. The rule is intentionally
+        // line-local, matching the authored defect class and its repair brief.
+        const code = lines[index]
+            .replace(/(["'`])(?:\\.|(?!\1)[^\\\r\n])*\1/gu, (match) => ' '.repeat(match.length))
+            .replace(/\/\/.*$/u, '');
+        const logicalIndex = code.indexOf('||');
+        if (logicalIndex < 0) continue;
+        const afterLogical = code.slice(logicalIndex + 2);
+        if (/^\s*\(/u.test(afterLogical)) continue;
+        if (!/^[^?;\n]*\?/u.test(afterLogical)) continue;
+        return `operator_precedence_ambiguity: ${filePath}:${index + 1}: unparenthesized mix of || and ternary operator; parenthesize the ternary branch as a || (condition ? x : y)`;
+    }
+    return null;
+}
+
 type RuntimeContract = {
     root: string;
     manifestPath: string;
@@ -690,8 +716,10 @@ Return the complete file content now.`;
                 ? { ...context, purpose: 'internal', engineeringPipeline: true }
                 : undefined;
             let runtimeRetryCandidate = '';
-            const callForArtifact = (retryKind: 'format' | 'syntax' | 'imports' | 'runtime' | 'component' | null = null, retryReason = '') => {
-                const retryInstruction = retryKind === 'syntax'
+            const callForArtifact = (retryKind: 'format' | 'syntax' | 'imports' | 'runtime' | 'component' | 'precedence' | null = null, retryReason = '') => {
+                const retryInstruction = retryKind === 'precedence'
+                    ? `OPERATOR PRECEDENCE RETRY REQUIRED:\nThe previous completion contains an unparenthesized mixture of || and a ternary operator. Re-emit the complete file with the intended grouping, for example: a || (condition ? x : y). Do not silently change the intended values, do not emit Markdown fences or explanatory prose, and preserve all requested behavior.\nRepair brief:\n${retryReason || '(see the validator error above)'}`
+                    : retryKind === 'syntax'
                     ? `SYNTAX RETRY REQUIRED:\nThe previous completion was rejected by the parser for the destination extension. Return the complete file again with valid ${path.extname(filePath).toLowerCase() || 'source'} syntax. Preserve the requested behavior and all imports, close every JSX tag/bracket, and emit no Markdown fences or explanatory prose.`
                     : retryKind === 'imports'
                         ? `IMPORT PATH RETRY REQUIRED:\nThe previous completion referenced a local file that does not exist from the importing file. Re-read the verified project layout in context and return the complete file again with every relative import resolving from this file.\nRejected import evidence:\n${retryReason || '(see the validator error above)'}\n${localImportRepairGuidance}\nDo not invent or duplicate folders, do not change package.json, and emit no Markdown fences or explanatory prose.`
@@ -700,8 +728,10 @@ Return the complete file content now.`;
                             : retryKind === 'component'
                                 ? `JSX COMPONENT CONTRACT RETRY REQUIRED:\nThe previous completion rendered a capitalised JSX component that is not imported or declared in the destination module. Return the complete file again with every capitalised JSX component either imported from a proven local/package path or declared in this same file. Do not invent a component, do not add a package, do not change package.json, and do not emit Markdown fences or explanatory prose.\nRejected component evidence:\n${retryReason || '(see the validator error above)'}`
                                 : `FORMAT RETRY REQUIRED:\nThe previous completion violated the destination artifact contract. Return the complete file again, with no Markdown fences or explanatory prose. For JSON, return strict parseable JSON only. Do not omit, truncate, or replace any content.`;
-                const retryLabel = retryKind === 'syntax'
-                    ? 'SYNTAX RETRY'
+                const retryLabel = retryKind === 'precedence'
+                    ? 'OPERATOR PRECEDENCE RETRY'
+                    : retryKind === 'syntax'
+                        ? 'SYNTAX RETRY'
                     : retryKind === 'imports'
                         ? 'IMPORT PATH RETRY'
                         : retryKind === 'runtime'
@@ -779,7 +809,7 @@ Return the complete file content now.`;
                 return normalized.content;
             };
             let finalContent = normalizeCandidateLocalAssets(prepared.content);
-            const validationErrorFor = (candidate: string): { error: string; kind: 'artifact' | 'runtime' | 'imports' | 'syntax' | 'component' } | null => {
+            const validationErrorFor = (candidate: string): { error: string; kind: 'artifact' | 'runtime' | 'imports' | 'syntax' | 'component' | 'precedence' } | null => {
                 const artifactError = artifactMismatch(filePath, candidate);
                 if (artifactError) return { error: artifactError, kind: 'artifact' };
                 // The manifest is mutable during an engineering phase. Re-read the
@@ -801,14 +831,16 @@ Return the complete file content now.`;
                 if (importsError) return { error: importsError, kind: 'imports' };
                 const syntaxError = sourceSyntaxMismatch(filePath, candidate);
                 if (syntaxError) return { error: syntaxError, kind: 'syntax' };
+                const precedenceError = unparenthesizedLogicalTernaryError(filePath, candidate);
+                if (precedenceError) return { error: precedenceError, kind: 'precedence' };
                 const componentError = undefinedJsxComponentMismatch(filePath, candidate);
                 if (componentError) return { error: componentError, kind: 'component' };
                 return null;
             };
 
             let validation = validationErrorFor(finalContent);
-            const retrySource = async (kind: 'imports' | 'syntax' | 'component', reason: string) => {
-                const retryLabel = kind === 'imports' ? 'import path' : kind === 'component' ? 'JSX component contract' : 'syntax';
+            const retrySource = async (kind: 'imports' | 'syntax' | 'component' | 'precedence', reason: string) => {
+                const retryLabel = kind === 'imports' ? 'import path' : kind === 'component' ? 'JSX component contract' : kind === 'precedence' ? 'operator precedence' : 'syntax';
                 logs.push(`${retryLabel} retry requested for ${filePath}: ${reason}`);
                 content = await callForArtifact(kind, reason);
                 if (isProviderFailure(content)) return { providerFailure: String(content) };
@@ -859,13 +891,13 @@ Return the complete file content now.`;
                     return { ok: false, error: retried.artifactError, logs: [...logs, 'import path retry violated the destination artifact contract; nothing was written'] };
                 }
             }
-            if (validation?.kind === 'syntax' || validation?.kind === 'component') {
+            if (validation?.kind === 'syntax' || validation?.kind === 'component' || validation?.kind === 'precedence') {
                 const retried = await retrySource(validation.kind, validation.error);
                 if (retried.providerFailure) {
-                    return { ok: false, error: retried.providerFailure, logs: [...logs, `${validation?.kind === 'component' ? 'component' : 'syntax'} retry received no LLM provider answer; nothing was written`] };
+                    return { ok: false, error: retried.providerFailure, logs: [...logs, `${validation?.kind === 'component' ? 'component' : validation?.kind === 'precedence' ? 'operator precedence' : 'syntax'} retry received no LLM provider answer; nothing was written`] };
                 }
                 if (retried.artifactError) {
-                    return { ok: false, error: retried.artifactError, logs: [...logs, `${validation?.kind === 'component' ? 'component' : 'syntax'} retry violated the destination artifact contract; nothing was written`] };
+                    return { ok: false, error: retried.artifactError, logs: [...logs, `${validation?.kind === 'component' ? 'component' : validation?.kind === 'precedence' ? 'operator precedence' : 'syntax'} retry violated the destination artifact contract; nothing was written`] };
                 }
             }
             if (validation) {
@@ -877,14 +909,16 @@ Return the complete file content now.`;
                             ? 'generated source failed the destination-extension syntax contract after bounded retry; nothing was written'
                             : validation.kind === 'component'
                                 ? 'generated source referenced an undefined JSX component after bounded retry; nothing was written'
-                                : 'generated content violated the destination artifact contract; nothing was written';
+                                : validation.kind === 'precedence'
+                                    ? 'generated source contained an ambiguous ||/ternary expression after bounded retry; nothing was written'
+                                    : 'generated content violated the destination artifact contract; nothing was written';
                 return {
                     ok: false,
                     // The bounded syntax retry has already been spent. Keep the
                     // rejected completion off disk, but let PhaseExecutor carry
                     // the exact file evidence into the existing self-fix path
                     // instead of stopping before downstream verification runs.
-                    ...(validation.kind === 'syntax' || validation.kind === 'component' ? { recoverable: true } : {}),
+                    ...(validation.kind === 'syntax' || validation.kind === 'component' || validation.kind === 'precedence' ? { recoverable: true } : {}),
                     error: validation.error,
                     logs: [...logs, logMessage],
                 };

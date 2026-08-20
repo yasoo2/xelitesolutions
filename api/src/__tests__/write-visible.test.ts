@@ -5,6 +5,7 @@
  */
 import fs from 'fs';
 import path from 'path';
+import { acceptPanelEventOnce, panelEventSessionId } from '../../../web/src/lib/panel-event-ownership';
 
 describe('write_file — visible in the live Logs panel', () => {
     const src = fs.readFileSync(
@@ -44,6 +45,19 @@ describe('the Logs panel consumes file_stream for any file', () => {
         expect(ownership).toContain('event?.data?.eventId');
         expect(ui).toContain('acceptPanelEventOnce');
         expect(ui).toContain('panelEventSessionId(event)');
+    });
+
+    test('foreign-session events are rejected while the same wrapped event is accepted once', () => {
+        const activeSession = 'run-current';
+        const foreignEvent = { data: { data: { sessionId: 'run-foreign', eventId: 'evt-foreign', type: 'terminal_output' } } };
+        expect(panelEventSessionId(foreignEvent)).toBe('run-foreign');
+        expect(panelEventSessionId(foreignEvent)).not.toBe(activeSession);
+
+        const seen = new Map<string, Set<string>>();
+        const firstEnvelope = { data: { data: { sessionId: activeSession, eventId: 'evt-1', type: 'terminal_output' } } };
+        const secondEnvelope = { data: { sessionId: activeSession, eventId: 'evt-1', type: 'terminal_output' } };
+        expect(acceptPanelEventOnce(firstEnvelope, seen)).toBe(true);
+        expect(acceptPanelEventOnce(secondEnvelope, seen)).toBe(false);
     });
 });
 

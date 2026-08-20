@@ -14,7 +14,7 @@ import '../styles/joe-premium.css';
 import '../styles/accents.css';
 import { useAutoOpen, PanelType } from '../services/AutoOpenManager';
 import { ErrorBoundary } from './ErrorBoundary';
-import { panelEventKey, panelEventSessionId } from '../lib/panel-event-ownership';
+import { acceptPanelEventOnce, panelEventSessionId } from '../lib/panel-event-ownership';
 interface Session {
     id: string;
     title: string;
@@ -410,25 +410,10 @@ export default function JoeIDELayout({
             return Boolean(active && sid && sid === active);
         };
 
-        const acceptPanelEventOnce = (event: any): boolean => {
-            const key = panelEventKey(event);
-            if (!key) return true;
-            const sid = panelEventSessionId(event) || '__unscoped__';
-            const keys = seenPanelEventKeys.current.get(sid) || new Set<string>();
-            if (keys.has(key)) return false;
-            keys.add(key);
-            if (keys.size > 1000) {
-                const oldest = keys.values().next().value;
-                if (oldest) keys.delete(oldest);
-            }
-            seenPanelEventKeys.current.set(sid, keys);
-            return true;
-        };
-
         // Subscribe to socket events for logs
         const unsubscribe = import('../services/socket').then(({ SocketService }) => {
             return SocketService.subscribe((event: any) => {
-                if (!event || !acceptPanelEventOnce(event)) return;
+                if (!event || !acceptPanelEventOnce(event, seenPanelEventKeys.current)) return;
                 /**
                  * A BACKGROUND RUN IS RECORDED, NOT DISCARDED.
                  *

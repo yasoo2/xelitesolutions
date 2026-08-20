@@ -16,6 +16,7 @@ import { syntaxOk } from '../modules/tools/definitions/ProjectEditTool';
 import { blueprintFor, uncoveredFeatures, type AppKind } from '../core/design/app-blueprints';
 import { normalizeReactScaffoldStructure } from '../modules/tools/definitions/SystemTools';
 import { undefinedJsxComponentMismatch } from '../core/quality/source-contract';
+import { unparenthesizedLogicalTernaryError } from '../modules/tools/definitions/AIGeneratorTool';
 
 const KINDS: AppKind[] = ['store', 'booking', 'tasks', 'social', 'chat', 'maps', 'weather', 'crm', 'inventory', 'calculator', 'productivity'];
 
@@ -168,6 +169,21 @@ describe('the generated application is syntactically real', () => {
             expect(source).toContain(alertText);
             expect(source).toMatch(/onEmpty\(message\);[\s\S]*?return false;/);
         }
+    });
+
+    it('catalogues unparenthesized logical/ternary precedence defects before writing authored files', () => {
+        const authoredLine = "return descriptions[code] || isArabic ? 'غير معروف' : 'Unknown';";
+        const rejection = unparenthesizedLogicalTernaryError('src/components/WeatherApp.jsx', authoredLine);
+        expect(rejection).toMatch(/operator_precedence_ambiguity/);
+        expect(rejection).toMatch(/WeatherApp\.jsx:1/);
+        expect(rejection).toMatch(/parenthesize the ternary branch/);
+        expect(unparenthesizedLogicalTernaryError(
+            'src/components/WeatherApp.jsx',
+            "return descriptions[code] || (isArabic ? 'غير معروف' : 'Unknown');",
+        )).toBeNull();
+        expect(unparenthesizedLogicalTernaryError('src/App.jsx', "return ok ? 'yes' : 'no';")).toBeNull();
+        expect(unparenthesizedLogicalTernaryError('src/App.jsx', "return value || fallback;")).toBeNull();
+        expect(unparenthesizedLogicalTernaryError('src/App.jsx', "const example = '|| condition ? x : y';")).toBeNull();
     });
 
     it('weather includes the real forecast contract and negative-state surfaces', () => {
