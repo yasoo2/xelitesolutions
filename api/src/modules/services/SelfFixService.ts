@@ -10,7 +10,7 @@ export interface SelfFixPlan {
   allowed: boolean;
   reason: string;
   maxAttempts: number;
-  strategy: 'missing_file_fix' | 'dependency_fix' | 'launcher_fix' | 'build_fix' | 'code_fix' | 'regenerate_engine' | 'permission_stop' | 'manual_review';
+  strategy: 'missing_file_fix' | 'dependency_fix' | 'launcher_fix' | 'build_fix' | 'code_fix' | 'regenerate_engine' | 'acceptance_fix' | 'permission_stop' | 'manual_review';
   /** Present only for an evidence-bound code_fix; engine regeneration has none. */
   repairFile?: string;
   suggestedTool?: string;
@@ -96,6 +96,22 @@ function extractNpmInvalidVersionEvidence(ticket: RepairTicket): NpmInvalidVersi
     cwd: failed?.cwd || '.',
     explicitSpecifier: !!failed?.command?.split(/\s+/u).includes(token),
   };
+}
+
+function extractAcceptanceEvidence(ticket: RepairTicket) {
+  const failed = ticket.failedTasks.find(task =>
+    Array.isArray(task.acceptanceUnmet)
+    && task.acceptanceUnmet.length > 0
+    && /acceptance_criteria_unmet/i.test(String(task.error || '')),
+  );
+  if (!failed) return null;
+  const criteria = failed.acceptanceUnmet!
+    .map(id => String(id || '').trim())
+    .filter(Boolean)
+    .slice(0, 20);
+  return criteria.length > 0
+    ? { criteria, task: failed.task, error: failed.error }
+    : null;
 }
 
 function extractArtifactValidationFailure(ticket: RepairTicket) {
@@ -628,6 +644,19 @@ export class SelfFixService {
         maxAttempts: 1,
         strategy: 'regenerate_engine',
         repairFile: undefined,
+        safety: this.safety(),
+        sourceTicket: ticket,
+      };
+    }
+
+    const acceptanceEvidence = extractAcceptanceEvidence(ticket);
+    if (acceptanceEvidence) {
+      return {
+        type: 'self_fix_plan',
+        allowed: true,
+        reason: `The acceptance gate identified unmet criteria (${acceptanceEvidence.criteria.join(', ')}). Re-run the original request-driven phase once so the authoring path can repair the generated engine, then judge it again with the same acceptance gate; no file is guessed or edited directly.`,
+        maxAttempts: 1,
+        strategy: 'acceptance_fix',
         safety: this.safety(),
         sourceTicket: ticket,
       };

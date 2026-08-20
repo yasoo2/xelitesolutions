@@ -18,6 +18,7 @@
 import fs from 'fs';
 import path from 'path';
 import { retryAfterMsFrom, customRouteCooldownUntil } from '../core/llm/intelligent-router';
+import { detectLocalModels } from '../core/llm/local-brain';
 
 const read = (...p: string[]) => fs.readFileSync(path.join(__dirname, '..', ...p), 'utf-8');
 
@@ -66,6 +67,67 @@ describe('the router understands internal vs answer', () => {
         expect(src).toContain('customRouteCooldownUntil.set(routeKey, Date.now() + waitMs)');
         // …and the entry gate actually honours the pause.
         expect(src).toContain('quotaPausedUntil > Date.now()');
+    });
+});
+
+describe('local Ollama discovery is explicit and portable', () => {
+    const savedEnv = () => ({
+        baseUrl: process.env.LOCAL_LLM_BASE_URL,
+        ollamaHost: process.env.OLLAMA_HOST,
+        model: process.env.LOCAL_LLM_MODEL,
+    });
+    const restoreEnv = (env: ReturnType<typeof savedEnv>) => {
+        if (env.baseUrl === undefined) delete process.env.LOCAL_LLM_BASE_URL;
+        else process.env.LOCAL_LLM_BASE_URL = env.baseUrl;
+        if (env.ollamaHost === undefined) delete process.env.OLLAMA_HOST;
+        else process.env.OLLAMA_HOST = env.ollamaHost;
+        if (env.model === undefined) delete process.env.LOCAL_LLM_MODEL;
+        else process.env.LOCAL_LLM_MODEL = env.model;
+    };
+
+    it('discovers the standard local daemon when Joe-specific variables are absent', async () => {
+        const env = savedEnv();
+        const originalFetch = global.fetch;
+        delete process.env.LOCAL_LLM_BASE_URL;
+        delete process.env.OLLAMA_HOST;
+        delete process.env.LOCAL_LLM_MODEL;
+        const fetchMock = jest.fn(async (url: string) => {
+            if (url === 'http://127.0.0.1:11434/api/tags') {
+                return { ok: true, json: async () => ({ models: [{ name: 'qwen2.5-coder:3b' }] }) } as any;
+            }
+            return { ok: false, json: async () => ({}) } as any;
+        });
+        global.fetch = fetchMock as any;
+        try {
+            const state = await detectLocalModels(50);
+            expect(state.available).toBe(true);
+            expect(state.host).toBe('http://127.0.0.1:11434');
+            expect(state.codeModel).toBe('qwen2.5-coder:3b');
+            expect(process.env.LOCAL_LLM_BASE_URL).toBe('http://127.0.0.1:11434');
+            expect(fetchMock).toHaveBeenCalledWith('http://127.0.0.1:11434/api/tags', expect.anything());
+        } finally {
+            global.fetch = originalFetch;
+            restoreEnv(env);
+        }
+    });
+
+    it('returns an explicit unavailable state when no candidate daemon responds', async () => {
+        const env = savedEnv();
+        const originalFetch = global.fetch;
+        delete process.env.LOCAL_LLM_BASE_URL;
+        delete process.env.OLLAMA_HOST;
+        const fetchMock = jest.fn(async () => { throw new Error('connection refused'); });
+        global.fetch = fetchMock as any;
+        try {
+            const state = await detectLocalModels(10);
+            expect(state.available).toBe(false);
+            expect(state.host).toBe('http://127.0.0.1:11434');
+            expect(state.models).toEqual([]);
+            expect(fetchMock).toHaveBeenCalledWith('http://127.0.0.1:11434/api/tags', expect.anything());
+        } finally {
+            global.fetch = originalFetch;
+            restoreEnv(env);
+        }
     });
 });
 

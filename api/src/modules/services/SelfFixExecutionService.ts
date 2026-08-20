@@ -300,6 +300,30 @@ export class SelfFixExecutionService {
       };
     }
 
+    // Acceptance-only failures carry no safe file target. Re-run the original
+    // request-driven phase once so its authoring path can repair the generated
+    // engine, then let the same acceptance gate judge the result. This is a
+    // bounded phase retry, not a guessed write and not an offline success.
+    if (selfFixPlan.strategy === 'acceptance_fix') {
+      const rerunResult = await executeTool('phase_executor', { phase, projectContext }, {
+        ...executionContext,
+        onProgress: (m: string) => executionContext.onProgress?.(`[self-fix:acceptance-rerun] ${m}`),
+      });
+      const rerunStatus = String(rerunResult?.output?.status || 'unknown');
+      const rerunPassed = !!rerunResult?.ok && rerunStatus === 'completed';
+      return {
+        attempted: true,
+        allowed: true,
+        ok: rerunPassed,
+        reason: rerunPassed
+          ? 'The request-driven phase was rerun once and the acceptance gate completed.'
+          : `Acceptance rerun did not complete (status=${rerunStatus}); stopping honestly.`,
+        repairTool: 'phase_executor',
+        rerunResult,
+        stopped: !rerunPassed,
+      };
+    }
+
     if (!selfFixPlan.suggestedTool) {
       return {
         attempted: false,

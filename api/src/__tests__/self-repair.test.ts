@@ -18,6 +18,7 @@ import { worthRepairing, REPAIRABLE_FINDINGS, collectSources } from '../core/qua
 import { RepairTicketService } from '../modules/services/RepairTicketService';
 import { SelfFixService } from '../modules/services/SelfFixService';
 import { SelfFixExecutionService } from '../modules/services/SelfFixExecutionService';
+import { acceptanceFailureDisposition } from '../modules/services/AgentLoopService';
 
 const read = (...p: string[]) => fs.readFileSync(path.join(__dirname, '..', ...p), 'utf-8');
 
@@ -98,6 +99,27 @@ describe('the build only claims an improvement it measured', () => {
 });
 
 describe('structured request-fidelity recovery', () => {
+    it('only treats canonical acceptance evidence as repairable', () => {
+        expect(acceptanceFailureDisposition({
+            output: {
+                primaryError: 'acceptance_criteria_unmet: preview is not proven',
+                delivery: { acceptanceUnmet: ['preview'] },
+            },
+        })).toBe('repairable');
+        expect(acceptanceFailureDisposition({
+            output: {
+                verificationFailed: true,
+                primaryError: 'acceptance_criteria_unmet: criteria were not proven',
+            },
+        })).toBe('honest_blocker');
+        expect(acceptanceFailureDisposition({
+            output: {
+                delivery: { acceptanceUnmet: ['preview'] },
+                primaryError: 'verification failed for an unknown reason',
+            },
+        })).toBe('honest_blocker');
+    });
+
     function fidelityTicket() {
         return RepairTicketService.build({
             phase: { phaseNumber: 1, name: 'Application' },
@@ -132,16 +154,69 @@ describe('structured request-fidelity recovery', () => {
     });
 
     it('stops regenerate_engine before trusted file-tool execution', async () => {
-        const plan = SelfFixService.plan(fidelityTicket());
-        const result = await SelfFixExecutionService.executeOnce({
-            phase: { tasks: [] },
-            projectContext: {},
-            selfFixPlan: plan,
-            executionContext: {},
-        });
-        expect(result.attempted).toBe(false);
-        expect(result.stopped).toBe(true);
-        expect(result.reason).toContain('regenerate');
+      const plan = SelfFixService.plan(fidelityTicket());
+      const result = await SelfFixExecutionService.executeOnce({
+        phase: { tasks: [] },
+        projectContext: {},
+        selfFixPlan: plan,
+        executionContext: {},
+      });
+      expect(result.attempted).toBe(false);
+      expect(result.stopped).toBe(true);
+      expect(result.reason).toContain('regenerate');
+    });
+
+    it('routes structured acceptance gaps to one bounded phase rerun', () => {
+      const ticket = RepairTicketService.build({
+        phase: { phaseNumber: 1, name: 'Project Setup' },
+        projectName: 'WeatherGo',
+        workspaceId: 'workspace-test',
+        phaseResult: {
+          output: {
+            status: 'partial',
+            verificationFailed: true,
+            results: [{
+              task: 'Judge the generated WeatherGo against the request',
+              tool: 'react_project',
+              ok: false,
+              error: 'acceptance_criteria_unmet: preview and browser_check are not proven',
+              acceptanceUnmet: ['preview', 'browser_check'],
+            }],
+          },
+        },
+      });
+      expect(ticket.failedTasks[0]).toEqual(expect.objectContaining({
+        acceptanceUnmet: ['preview', 'browser_check'],
+      }));
+      const plan = SelfFixService.plan(ticket);
+      expect(plan.allowed).toBe(true);
+      expect(plan.strategy).toBe('acceptance_fix');
+      expect(plan.maxAttempts).toBe(1);
+      expect(plan.safety?.runOnlyOnce).toBe(true);
+      expect(plan.suggestedTool).toBeUndefined();
+    });
+
+    it('keeps an unstructured acceptance stop honest and non-repairable', () => {
+      const ticket = RepairTicketService.build({
+        phase: { phaseNumber: 1, name: 'Project Setup' },
+        projectName: 'WeatherGo',
+        workspaceId: 'workspace-test',
+        phaseResult: {
+          output: {
+            status: 'partial',
+            verificationFailed: true,
+            results: [{
+              task: 'Judge the generated WeatherGo against the request',
+              tool: 'react_project',
+              ok: false,
+              error: 'acceptance_criteria_unmet: criteria were not proven',
+            }],
+          },
+        },
+      });
+      const plan = SelfFixService.plan(ticket);
+      expect(plan.allowed).toBe(false);
+      expect(plan.strategy).toBe('manual_review');
     });
 
     it('keeps an ordinary failed task without repairKind on the evidence-bound build path', () => {

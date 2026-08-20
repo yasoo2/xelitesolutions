@@ -40,17 +40,38 @@ const state: LocalBrainState = {
     detectedAt: 0,
 };
 
-/** Derive Ollama's native host (http://localhost:11434) from LOCAL_LLM_BASE_URL. */
-function ollamaHost(): string | null {
-    const raw = String(process.env.LOCAL_LLM_BASE_URL || '').trim();
-    if (!raw) return null;
+/** Normalize an Ollama URL or host into the native root used by /api/tags. */
+function normalizeOllamaHost(raw: string): string | null {
+    const value = String(raw || '').trim();
+    if (!value) return null;
+    const withProtocol = /^[a-z][a-z\d+.-]*:\/\//i.test(value) ? value : `http://${value}`;
     try {
-        const u = new URL(raw.endsWith('/') ? raw.slice(0, -1) : raw);
+        const u = new URL(withProtocol.endsWith('/') ? withProtocol.slice(0, -1) : withProtocol);
+        if (!/^https?:$/i.test(u.protocol) || !u.host) return null;
         // Strip any /v1 (or other) path — /api/tags lives at the root.
         return `${u.protocol}//${u.host}`;
     } catch {
         return null;
     }
+}
+
+/**
+ * Candidate Ollama endpoints, ordered from explicit configuration to the
+ * standard local daemon. The last candidate makes local discovery work on a
+ * clean install where no Joe-specific environment variable was exported.
+ */
+function ollamaCandidates(): string[] {
+    const candidates = [
+        normalizeOllamaHost(process.env.LOCAL_LLM_BASE_URL || ''),
+        normalizeOllamaHost(process.env.OLLAMA_HOST || ''),
+        'http://127.0.0.1:11434',
+    ].filter((host): host is string => Boolean(host));
+    return [...new Set(candidates)];
+}
+
+/** Derive the first configured Ollama host without probing the network. */
+function ollamaHost(): string | null {
+    return ollamaCandidates()[0] || null;
 }
 
 /** True once we've detected a running Ollama with at least one model. */
@@ -94,27 +115,41 @@ function chatScore(name: string): number {
  * at a model that actually exists.
  */
 export async function detectLocalModels(timeoutMs = 4000): Promise<LocalBrainState> {
-    const host = ollamaHost();
-    state.host = host;
-    if (!host) { state.available = false; return getLocalBrainState(); }
+    const candidates = ollamaCandidates();
+    state.host = candidates[0] || null;
+    state.available = false;
+    state.models = [];
+    state.chatModel = null;
+    state.codeModel = null;
+    state.detectedAt = Date.now();
 
-    try {
+    for (const host of candidates) {
         const ctrl = new AbortController();
-        const t = setTimeout(() => ctrl.abort(), timeoutMs);
-        const res = await fetch(`${host}/api/tags`, { signal: ctrl.signal }).catch(() => null);
-        clearTimeout(t);
-        if (!res || !res.ok) { state.available = false; return getLocalBrainState(); }
+        const timer = setTimeout(() => ctrl.abort(), Math.max(1, timeoutMs));
+        try {
+            const res = await fetch(`${host}/api/tags`, { signal: ctrl.signal }).catch(() => null);
+            if (!res || !res.ok) continue;
 
-        const data: any = await res.json().catch(() => ({}));
-        const models: string[] = Array.isArray(data?.models)
-            ? data.models.map((m: any) => String(m?.name || m?.model || '')).filter(Boolean)
-            : [];
+            const data: any = await res.json().catch(() => ({}));
+            const models: string[] = Array.isArray(data?.models)
+                ? data.models.map((m: any) => String(m?.name || m?.model || '')).filter(Boolean)
+                : [];
 
-        state.models = models;
-        state.available = models.length > 0;
-        state.detectedAt = Date.now();
+            // A responding daemon is still useful diagnostic state even when it
+            // has no models; keep probing only when the endpoint is unavailable.
+            state.host = host;
+            state.models = models;
+            state.available = models.length > 0;
+            state.detectedAt = Date.now();
+            if (models.length === 0) continue;
 
-        if (models.length > 0) {
+            // Make the discovered daemon visible to LocalProvider. Explicit
+            // LOCAL_LLM_BASE_URL always wins; otherwise use the native root and
+            // let LocalProvider append /v1 for its OpenAI-compatible client.
+            if (!String(process.env.LOCAL_LLM_BASE_URL || '').trim()) {
+                process.env.LOCAL_LLM_BASE_URL = host;
+            }
+
             // Strongest coding model (auto-upgrades to e.g. qwen2.5-coder:32b on a GPU box).
             state.codeModel = [...models].sort((a, b) => codeScore(b) - codeScore(a))[0] || null;
             // Fastest reasonable chat model.
@@ -124,10 +159,15 @@ export async function detectLocalModels(timeoutMs = 4000): Promise<LocalBrainSta
             if (!String(process.env.LOCAL_LLM_MODEL || '').trim() && state.codeModel) {
                 process.env.LOCAL_LLM_MODEL = state.codeModel;
             }
+            return getLocalBrainState();
+        } catch {
+            // Try the next candidate; unavailable local inference must remain a
+            // recorded diagnostic state, never a reason to skip the whole mesh.
+        } finally {
+            clearTimeout(timer);
         }
-    } catch {
-        state.available = false;
     }
+
     return getLocalBrainState();
 }
 

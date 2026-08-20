@@ -37,6 +37,8 @@ export interface RepairTicket {
     artifactContext?: string;
     /** Structured repair routing emitted by a trusted tool result. */
     repairKind?: 'regenerate_engine' | 'code_fix';
+    /** Exact acceptance criterion IDs emitted by the trusted acceptance gate. */
+    acceptanceUnmet?: string[];
     /** Evidence-bound file target; valid only for code_fix repairs. */
     repairFile?: string;
     runId?: string;
@@ -179,6 +181,12 @@ export class RepairTicketService {
         const repairFile = repairKind === 'code_fix' && typeof t?.repairFile === 'string'
           ? t.repairFile
           : undefined;
+        const acceptanceUnmet = Array.isArray(t?.acceptanceUnmet)
+          ? t.acceptanceUnmet
+            .map((id: unknown) => String(id || '').trim())
+            .filter(Boolean)
+            .slice(0, 20)
+          : [];
         return {
           task: truncate(t.task || 'unknown task', 500),
           tool: truncate(t.tool || 'unknown tool', 100),
@@ -192,6 +200,7 @@ export class RepairTicketService {
           ...(description ? { description } : {}),
           ...(artifactContext ? { artifactContext } : {}),
           ...(repairKind ? { repairKind } : {}),
+          ...(acceptanceUnmet.length ? { acceptanceUnmet } : {}),
           ...(repairFile ? { repairFile: truncate(repairFile, 1000) } : {}),
           ...(taskRunId ? { runId: taskRunId } : {}),
           ...(taskProjectRoot ? { projectRoot: truncate(taskProjectRoot, 1000) } : {}),

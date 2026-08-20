@@ -86,6 +86,28 @@ function compactPhaseReceipt(output: any, logs: any, status?: string, extras: Re
     return receipt;
 }
 
+export type AcceptanceFailureDisposition = 'repairable' | 'honest_blocker';
+
+/**
+ * An acceptance verdict is repairable only when the delivery tool provides
+ * both the canonical error and the exact unmet criterion IDs. A bare
+ * verificationFailed flag must remain a truthful blocker: without structured
+ * evidence SelfFix would be guessing what to change.
+ */
+export function acceptanceFailureDisposition(phaseResult: any): AcceptanceFailureDisposition {
+    const unmet = Array.isArray(phaseResult?.output?.delivery?.acceptanceUnmet)
+        ? phaseResult.output.delivery.acceptanceUnmet.filter((id: unknown) => String(id || '').trim())
+        : [];
+    const errorText = [
+        phaseResult?.error,
+        phaseResult?.output?.error,
+        phaseResult?.output?.primaryError,
+    ].map(value => String(value || '')).join(' ');
+    return unmet.length > 0 && /acceptance_criteria_unmet/i.test(errorText)
+        ? 'repairable'
+        : 'honest_blocker';
+}
+
 /**
  * AgentLoopService - Dynamic Runtime Gateway
  *
@@ -636,13 +658,32 @@ export class AgentLoopService {
             // errorMessage/stderr. Normalize once so the decision gate, repair
             // ticket, and SelfFixService consume the same evidence. A bare
             // verification flag is never enough to authorize a repair.
+            const acceptanceDisposition = acceptanceFailureDisposition(phaseResult);
+            const acceptanceUnmet = Array.isArray(phaseResult?.output?.delivery?.acceptanceUnmet)
+                ? phaseResult.output.delivery.acceptanceUnmet.filter((id: unknown) => String(id || '').trim()).map((id: unknown) => String(id).trim())
+                : [];
             const normalizedPhaseResults = rawPhaseResults.map((r: any) =>
                 r && r.ok === false ? normalizeFailureEvidence(r) : r
             );
+            // A structured acceptance verdict is actionable evidence, not a
+            // generic retry: preserve the exact criterion IDs and receipt so
+            // RepairTicket/SelfFix can make a bounded repair and the rerun is
+            // judged by the same acceptance gate again.
+            if (acceptanceDisposition === 'repairable') {
+                normalizedPhaseResults.push({
+                    task: `Acceptance criteria: ${acceptanceUnmet.join(', ')}`,
+                    tool: 'acceptance_gate',
+                    ok: false,
+                    error: `acceptance_criteria_unmet: ${acceptanceUnmet.join(', ')}`,
+                    acceptanceUnmet,
+                    acceptance: compactReceiptValue(phaseResult?.output?.acceptance),
+                    evidenceStatus: 'current_run',
+                });
+            }
             const failedEvidence = normalizedPhaseResults.filter((r: any) => r && r.ok === false);
             const evidenceText = [
                 primaryError,
-                ...failedEvidence.map((r: any) => `${r?.tool || ''} ${r?.error || ''} ${r?.command || ''} ${r?.cwd || ''} ${r?.message || ''}`),
+                ...failedEvidence.map((r: any) => `${r?.tool || ''} ${r?.error || ''} ${r?.command || ''} ${r?.cwd || ''} ${r?.message || ''} ${Array.isArray(r?.acceptanceUnmet) ? r.acceptanceUnmet.join(' ') : ''}`),
             ].join(' ');
             // A failed acceptance/build/lint command is actionable evidence: it
             // must reach RepairTicket -> SelfFix -> phase rerun. Only evidence
@@ -668,9 +709,10 @@ export class AgentLoopService {
                 Boolean(primaryError) &&
                 /lint|build|npm\s+(?:install|run)|eslint|tsc|typescript|vite|jest|vitest|mocha|test|unresolved_local_import|runtime_contract_mismatch/i.test(evidenceText)
             );
+            const hasActionableAcceptanceEvidence = acceptanceDisposition === 'repairable';
             const actionableVerificationFailure =
                 phaseResult?.output?.verificationFailed === true &&
-                hasActionableEvidence &&
+                (hasActionableEvidence || hasActionableAcceptanceEvidence) &&
                 !nonRepairableEvidence;
             const isHonestBlocker =
                 phaseResult?.output?.requiresUserDecision === true ||
