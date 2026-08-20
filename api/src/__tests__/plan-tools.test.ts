@@ -513,8 +513,36 @@ describe('model-written tool arguments are checked before execution', () => {
         const { phases, notes } = sanitisePlanPhases([phase], 'evidence-workspace');
         expect(phases[0].tasks.map((task: any) => task.tool)).toEqual(['write_file', 'code_reviewer']);
         expect(phases[0].tasks[1].args.files).toEqual(['src/core.ts']);
-        expect(notes.join('\n')).toMatch(/code_reviewer يحتاج files/);
-        expect(notes.join('\n')).toMatch(/src\/invented\.ts/);
+        expect(notes.join('\\n')).toMatch(/code_reviewer يحتاج files/);
+        expect(notes.join('\\n')).toMatch(/src\/invented\.ts/);
+    });
+
+    it('keeps quality_run strict without an artifact and late-binds only after a builder task', () => {
+        expect(plannedArgsIssue('quality_run', {})).toMatch(/path/);
+
+        const blocked = sanitisePlanPhases([{
+            phaseNumber: 1,
+            name: 'Quality before build',
+            tasks: [{ task: 'Run the quality gate', tool: 'quality_run', args: {} }],
+        }], 'weathergo');
+        expect(blocked.phases[0].deliveryStatus).toBe('blocked');
+        expect(blocked.phases[0].blocker?.code).toBe('tool_contract_invalid');
+        expect(blocked.notes.join('\\n')).toMatch(/quality_run يحتاج الحقل الإلزامي «path»/);
+
+        const allowed = sanitisePlanPhases([{
+            phaseNumber: 1,
+            name: 'Build and quality',
+            tasks: [
+                { task: 'Build the React application', tool: 'react_project', args: { projectName: 'WeatherGo' } },
+                { task: 'Run the quality gate', tool: 'quality_run', args: {} },
+            ],
+        }], 'weathergo');
+        const allowedTools = allowed.phases[0].tasks.map((task: any) => task.tool);
+        expect(allowedTools).toEqual(expect.arrayContaining(['react_project', 'quality_run']));
+        expect(allowed.phases[0].deliveryStatus).not.toBe('blocked');
+        const qualityTask = allowed.phases[0].tasks.find((task: any) => task.tool === 'quality_run');
+        expect(qualityTask?.args.path).toBeUndefined();
+        expect(allowed.notes.join('\\n')).not.toMatch(/quality_run يحتاج الحقل الإلزامي «path»/);
     });
 });
 

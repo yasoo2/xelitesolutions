@@ -435,7 +435,29 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
         }
         return /(?:^|\/)(?:index\.html|server\.js|app\.py|main\.py|index\.js)$/i.test(normalised);
     };
+    // A quality gate is a late-bound operation: its project root is supplied by
+    // PhaseExecutor only after a prior phase has produced an artifact. Keep the
+    // planner's dependency proof semantic and tool-agnostic instead of inventing
+    // a root from projectDir or from diagnostic text.
+    const artifactProducingTools = new Set([
+        'react_project', 'api_project', 'web_page_builder', 'scaffold_full_stack', 'mobile_builder',
+    ]);
+    const taskProducesArtifact = (task: any): boolean => {
+        const tool = String(task?.tool || '');
+        if (artifactProducingTools.has(tool)) return true;
+        if (tool === 'scaffold_project') {
+            const structure = task?.args?.structure || task?.input?.structure;
+            return !!structure && typeof structure === 'object' && Object.keys(structure).some(isRunnableContractPath);
+        }
+        if (!['write_file', 'ai_write_file', 'file_edit', 'file_edit_advanced'].includes(tool)) return false;
+        const candidate = normaliseEvidencePath(
+            task?.args?.path || task?.args?.filePath || task?.args?.filename
+            || task?.input?.path || task?.input?.filePath || task?.input?.filename,
+        );
+        return isRunnableContractPath(candidate);
+    };
 
+    let priorArtifactReady = false;
     const out = (Array.isArray(phases) ? phases : []).map((phase: any, pi: number) => {
         const phaseName = String(phase?.name || `Phase ${pi + 1}`);
         const tasks = Array.isArray(phase?.tasks) ? phase.tasks : [];
@@ -609,8 +631,23 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
                 const shellIssue = r.tool === 'shell_execute'
                     ? unprovenProjectCheckIssue(adaptedArgs?.command, candidateCheckCommands)
                     : null;
-                if (argsIssue || shellIssue) {
-                    const issue = argsIssue || shellIssue;
+                // quality_run has one deliberately late-bound argument: its
+                // project path is supplied by PhaseExecutor after a builder has
+                // produced the runtime artifact.  Allow only that exact missing
+                // field, and only when an earlier task in this phase or an
+                // earlier phase proves such an artifact.  All other required
+                // fields remain hard planner errors; the tool schema stays
+                // strict at execution time.
+                const qualityRunPathCanBeLateBound = r.tool === 'quality_run'
+                    && !String(adaptedArgs?.path || '').trim()
+                    && (priorArtifactReady || kept.some(taskProducesArtifact));
+                const lateBoundQualityRunIssue = qualityRunPathCanBeLateBound
+                    && argsIssue
+                    && /quality_run يحتاج الحقل الإلزامي «path»/.test(argsIssue)
+                    ? null
+                    : argsIssue;
+                if (lateBoundQualityRunIssue || shellIssue) {
+                    const issue = lateBoundQualityRunIssue || shellIssue;
                     // A missing schema-required field is a hard plan-contract
                     // defect. It must not be disguised as an informational
                     // documentation phase when this was the only requested work.
@@ -734,6 +771,11 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
             producedPaths.add(candidate);
             generatedPaths.add(candidate);
         });
+        // Builder tools can establish a runnable artifact without exposing a
+        // model-written file path (for example react_project). Carry that proof
+        // across phases so a later quality_run may receive its path from the
+        // runtime-bound artifact rather than inventing one in the plan.
+        if (kept.some(taskProducesArtifact)) priorArtifactReady = true;
         for (const candidate of phaseProducedPaths) {
             if (/(?:^|\/)package\.json$/i.test(candidate)
                 && generatedPackageLaunchEvidence(candidate, kept)) {
