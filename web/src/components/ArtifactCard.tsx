@@ -85,7 +85,7 @@ export const ArtifactCard: React.FC<{ meta: ArtifactMeta; isArabic?: boolean }> 
                     style={{
                         display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer',
                         fontSize: 12.5, fontWeight: 650, fontFamily: 'inherit',
-                        color: '#08130d', background: 'linear-gradient(135deg, var(--joe-gold-primary, #34c48b), var(--joe-gold-dark, #1f7d5c))',
+                        color: 'var(--joe-on-accent, #08130d)', background: 'linear-gradient(135deg, var(--joe-gold-primary, #34c48b), var(--joe-gold-dark, #1f7d5c))',
                         border: 'none', borderRadius: 9, padding: '8px 13px',
                     }}
                 >👁 {t('artifactOpenInPreview')}</button>

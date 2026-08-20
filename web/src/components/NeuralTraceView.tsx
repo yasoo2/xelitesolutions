@@ -16,6 +16,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { RTL_LANGUAGES } from '../i18n';
 import { Copy, Check, ChevronDown, Brain } from 'lucide-react';
+import { stripPictographs } from '../lib/plainText';
 import {
     type NeuralTrace,
     type TracePhase,
@@ -27,10 +28,15 @@ import {
     traceToText,
 } from '../lib/neuralTrace';
 
+/**
+ * «أريد ألواناً رسمية راكزة» — the owner found the saturated green/amber
+ * timeline loud and informal. The phases now share one desaturated, office-
+ * calm family: same lightness, low chroma, still distinguishable, never neon.
+ */
 export const PHASE_COLOR: Record<TracePhase, string> = {
-    analyzing: '#34c48b',
-    synthesizing: '#3bb2f6',
-    executing: '#f0a83b',
+    analyzing: '#5c7f74',
+    synthesizing: '#5c6f88',
+    executing: '#87775c',
     idle: '#8b93a1',
 };
 
@@ -94,7 +100,7 @@ const TRACE_CSS = `
   border-radius: 999px; padding: 1px 6px;
 }
 .jt-step.now { color: var(--joe-text-primary, #eceef0); font-weight: 600; }
-.jt-step.now::before { background: var(--jt-phase); box-shadow: 0 0 7px var(--jt-phase); }
+.jt-step.now::before { background: var(--jt-phase); }
 
 /* ── the proportional phase ribbon ──────────────────────────────── */
 .jt-ribbon { display: flex; height: 3px; border-radius: 999px; overflow: hidden; gap: 1.5px; margin-top: 8px; }
@@ -220,7 +226,7 @@ export function TraceTimeline({ trace, live = false }: TimelineProps) {
                             >
                                 {/* dir="auto" per LINE — the whole card carrying one
                                     direction is what scrambled his mixed lines. */}
-                                <span className="jt-text" dir="auto">{step.text}</span>
+                                <span className="jt-text" dir="auto">{stripPictographs(step.text)}</span>
                                 {(!live || !isLast) && span >= 1000 && (
                                     <span className="jt-ms">{formatDuration(span, sec)}</span>
                                 )}

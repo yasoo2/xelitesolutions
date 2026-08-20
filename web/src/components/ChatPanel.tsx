@@ -1,3 +1,4 @@
+import { stripPictographs } from '../lib/plainText';
 import React, { useRef, useEffect, useState } from 'react';
 import { Sparkles, Send, Mic, User, Bot, Copy, Check, Paperclip } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -318,7 +319,7 @@ export default function ChatPanel({
                                             }
                                         }}
                                     >
-                                        {unescapeStoredNewlines(msg.content)}
+                                        {msg.role === 'assistant' ? stripPictographs(unescapeStoredNewlines(msg.content)) : unescapeStoredNewlines(msg.content)}
                                     </ReactMarkdown>
                                 </div>
                                 {msg.role === 'assistant' && (

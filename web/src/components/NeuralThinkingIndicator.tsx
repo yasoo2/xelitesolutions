@@ -15,6 +15,7 @@
  * when the run ends — so this card disappearing no longer destroys the record.
  */
 
+import { stripPictographs } from '../lib/plainText';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { SocketService } from '../services/socket';
 import { useTranslation } from 'react-i18next';
@@ -34,10 +35,11 @@ interface NeuralThinkingIndicatorProps {
 // { text, textAr } pair of which only the Arabic half was ever rendered, so this
 // indicator stayed Arabic in every language.
 const phaseLabels: Record<string, { key: string; color: string }> = {
-  analyzing: { key: 'thinkingAnalyzing', color: '#34c48b' },
-  synthesizing: { key: 'thinkingPlanning', color: '#3bb2f6' },
-  executing: { key: 'thinkingExecuting', color: '#f0a83b' },
-  idle: { key: 'thinkingAnalyzing', color: '#34c48b' },
+  // Muted, office-calm phase family — matches NeuralTraceView's PHASE_COLOR.
+  analyzing: { key: 'thinkingAnalyzing', color: '#5c7f74' },
+  synthesizing: { key: 'thinkingPlanning', color: '#5c6f88' },
+  executing: { key: 'thinkingExecuting', color: '#87775c' },
+  idle: { key: 'thinkingAnalyzing', color: '#5c7f74' },
 };
 
 /**
@@ -117,7 +119,7 @@ export default function NeuralThinkingIndicator({ phase = 'analyzing', visible, 
   const sec = t('traceSecond', 's');
   const elapsed = liveTrace ? Math.max(0, liveTrace.endedAt - liveTrace.startedAt) : 0;
   // The single line shows the newest thing Joe said, whichever stream said it.
-  const headline = status || (steps.length ? steps[steps.length - 1].text : '') || t(current.key);
+  const headline = stripPictographs(status || (steps.length ? steps[steps.length - 1].text : '')) || t(current.key);
   const canExpand = steps.length > 0;
 
   return (

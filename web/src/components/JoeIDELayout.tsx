@@ -830,7 +830,7 @@ export default function JoeIDELayout({
                         borderRadius: '50%',
                         border: '2px solid var(--joe-gold-primary, #34c48b)',
                         background: 'linear-gradient(135deg, #34c48b 0%, #1f7d5c 100%)',
-                        color: '#0a0c10',
+                        color: 'var(--joe-on-accent, #0a0c10)',
                         alignItems: 'center',
                         justifyContent: 'center',
                         cursor: 'pointer',

@@ -1,3 +1,4 @@
+import { stripPictographs } from '../lib/plainText';
 import React, { Suspense, lazy, useState, useRef, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -244,7 +245,7 @@ function LiveFileCard({ f }: { f: LiveFile }) {
                         wordBreak: 'break-word', color: 'var(--joe-text-secondary, #cbd5e1)',
                         borderTop: '1px solid rgba(255,255,255,.05)',
                     }}
-                >{f.content}{!f.done && <span className="joe-live-caret">▌</span>}</pre>
+                >{stripPictographs(f.content)}{!f.done && <span className="joe-live-caret">▌</span>}</pre>
             )}
         </div>
     );
@@ -278,7 +279,7 @@ function BuildStatusStrip({ status }: { status: BuildStatusState }) {
             {!status.done && (
                 <span className="joe-live-caret" aria-hidden style={{ fontWeight: 700 }}>●</span>
             )}
-            {status.done && <span aria-hidden style={{ color: '#10b981', fontWeight: 700 }}>✓</span>}
+            {status.done && <span aria-hidden style={{ color: 'var(--joe-text-muted, #6e7178)', fontWeight: 700 }}>·</span>}
             <span style={{ fontWeight: 600, color: 'var(--joe-text, #e4e4e7)' }}>
                 {status.current.labelAr}
             </span>
@@ -400,7 +401,7 @@ function EnhancedLogsPanel({ logs, liveFiles = [], buildStatus = null }: { logs:
                         padding: 24, textAlign: 'center',
                         color: 'var(--joe-text-muted)', fontSize: 13,
                     }}>
-                        ✓ لا توجد سجلات
+                        لا توجد سجلات
                     </div>
                 ) : (
                     filtered.map((log, i) => (
@@ -414,7 +415,7 @@ function EnhancedLogsPanel({ logs, liveFiles = [], buildStatus = null }: { logs:
                                 transition: 'background 0.1s',
                             }}
                         >
-                            <span style={{ flex: 1, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{log}</span>
+                            <span style={{ flex: 1, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{stripPictographs(log)}</span>
                             <CopyBtn text={log} />
                         </div>
                     ))
@@ -435,7 +436,7 @@ function EnhancedLogsPanel({ logs, liveFiles = [], buildStatus = null }: { logs:
                         background: autoScroll ? 'var(--joe-gold-primary, #2ba179)' : 'transparent',
                         border: autoScroll ? 'none' : '1px solid var(--joe-text-muted)',
                         borderRadius: 4, padding: '2px 6px', cursor: 'pointer',
-                        color: autoScroll ? '#000' : 'var(--joe-text-muted)',
+                        color: autoScroll ? 'var(--joe-on-accent, #08130d)' : 'var(--joe-text-muted)',
                         display: 'flex', alignItems: 'center', gap: 4, fontSize: 11,
                         transition: 'all 0.2s',
                     }}

@@ -70,6 +70,7 @@ html {
    is deep green-black rather than pure black so the page stays in one colour
    family. */
 html[data-theme="light"] {
+  --joe-on-accent: #ffffff;
   --accent-primary: #0E7A5F;
   /* Emerald ink — 5.3:1 on white, safe for text and icons */
   --accent-secondary: #0A5643;

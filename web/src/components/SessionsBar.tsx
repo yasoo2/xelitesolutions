@@ -196,7 +196,7 @@ export default function SessionsBar({
                         gap: 6,
                         padding: '6px 14px',
                         background: 'linear-gradient(135deg, var(--joe-gold-primary, var(--accent-primary)), var(--joe-gold-dark, var(--accent-primary)))',
-                        color: '#08130d',
+                        color: 'var(--joe-on-accent, #08130d)',
                         border: 'none',
                         borderRadius: 999,
                         fontSize: 12,

@@ -1515,7 +1515,7 @@ export default function SystemManagement() {
                 .btn-deploy-refined {
                     padding: 14px 28px;
                     background: var(--brand-gradient);
-                    color: #000;
+                    color: var(--joe-on-accent, #000);
                     border: none;
                     border-radius: 14px;
                     font-size: 15px;

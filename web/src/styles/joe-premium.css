@@ -28,6 +28,8 @@
 
     /* Text Colors — soft, not harsh white */
     --joe-text-primary: #eceef0;
+    /* Readable ink on accent-filled controls; light mode overrides below. */
+    --joe-on-accent: #08130d;
     --joe-text-secondary: #a2a5ad;
     --joe-text-muted: #6e7178;
     --joe-text-gold: #34c48b;
