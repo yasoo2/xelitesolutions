@@ -576,6 +576,17 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
                     notes.push(`[plan] أسقطتُ «${desc}» — المسار «${unsafeFileArgument}» ليس مساراً نسبياً آمناً داخل مساحة العمل؛ لن أُمرّره إلى أداة الملفات.`);
                     continue;
                 }
+                // Every source reference is provenance-bound. Keep this one
+                // shared gate in front of all source-consuming tools so a model
+                // cannot smuggle an invented path through `file`, `filename`,
+                // or a plural `files` field after `path` itself was guarded.
+                const taskReferencePaths = [
+                    adaptedArgs?.path,
+                    adaptedArgs?.filePath,
+                    adaptedArgs?.file,
+                    adaptedArgs?.filename,
+                    ...(Array.isArray(adaptedArgs?.files) ? adaptedArgs.files : []),
+                ].map(normaliseEvidencePath).filter(Boolean);
                 const sourcePath = normaliseEvidencePath(
                     adaptedArgs?.path
                     || adaptedArgs?.filePath
@@ -596,6 +607,9 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
                     : (r.tool === 'auto_tester' ? [] : (sourcePath ? [sourcePath] : []));
                 const knownPhaseOutputs = new Set(taskOutputPaths(kept));
                 const unprovenSource = sourcePaths.find((candidate: string) => !knownPhaseOutputs.has(candidate) && !producedPaths.has(candidate) && !evidencedPaths.has(candidate));
+                const unprovenTaskReference = taskReferencePaths.find((candidate: string) =>
+                    !knownPhaseOutputs.has(candidate) && !producedPaths.has(candidate) && !evidencedPaths.has(candidate),
+                );
                 // Bounded live repair may reconcile an existing runnable contract
                 // whose manifest/entrypoint was discovered on disk by the repair
                 // rediscovery, even when that particular path was omitted from the
@@ -635,8 +649,9 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
                     notes.push(`[plan] أسقطتُ «${desc}» — auto_tester من نوع ${requestedTestType} ${reason}.`);
                     continue;
                 }
-                if (sourceDependentTools.has(r.tool) && unprovenSource && !boundedRunnableRepair && !boundedScopeRepair) {
-                    notes.push(`[plan] أسقطتُ «${desc}» — ${r.tool} يحتاج ملفاً مصدرياً أنتجته مهمة سابقة أو سجّل الاستكشاف؛ «${unprovenSource}» غير مثبت، لذا لن أحوّل اسماً متخيلاً إلى إصلاح ذاتي.`);
+                if (sourceDependentTools.has(r.tool) && (unprovenSource || unprovenTaskReference) && !boundedRunnableRepair && !boundedScopeRepair) {
+                    const unproven = unprovenTaskReference || unprovenSource;
+                    notes.push(`[plan] أسقطتُ «${desc}» — ${r.tool} يحتاج كل مرجع ملفي مثبتاً في الاستكشاف أو ناتجاً من مهمة سابقة؛ «${unproven}» غير مثبت، لذا لن أحوّل اسماً متخيلاً إلى إصلاح ذاتي.`);
                     continue;
                 }
                 const argsIssue = plannedArgsIssue(r.tool, adaptedArgs);
@@ -824,6 +839,18 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
             const verificationArgs = verificationTool
                 ? adaptPlannedArgs(verificationTool, rawVerificationArgs)
                 : rawVerificationArgs;
+            const verificationReferencePaths = [
+                verificationArgs?.path,
+                verificationArgs?.filePath,
+                verificationArgs?.file,
+                verificationArgs?.filename,
+                ...(Array.isArray(verificationArgs?.files) ? verificationArgs.files : []),
+            ].map(normaliseEvidencePath).filter(Boolean);
+            const unprovenVerificationReference = verificationReferencePaths.find((candidate: string) =>
+                !phaseProducedPaths.includes(candidate)
+                && !producedPaths.has(candidate)
+                && !evidencedPaths.has(candidate),
+            );
             const requestedReadPath = String(
                 verificationArgs?.path || verificationArgs?.filePath || verificationArgs?.sourceFile || ''
             ).trim().replace(/^\.\//, '');
@@ -836,6 +863,7 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
             const readsUnprovenPhaseOutput = verificationTool === 'read_file'
                 && !!requestedReadPath
                 && !observedOutputPaths.some((candidate: string) => candidate.replace(/^\.\//, '') === requestedReadPath);
+            const referencesUnprovenFile = Boolean(unprovenVerificationReference);
             const runsBeforeRunnableArtifact = verificationTool === 'project_run' && !runHasRunnableEvidence;
             const verificationTestType = norm(verificationArgs?.testType);
             const verificationProjectPath = verificationArgs?.projectPath || verificationArgs?.path || '';
@@ -858,7 +886,7 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
                     ? 'لا يوجد script تكاملي معلن وقابل للتشغيل لهذا المشروع'
                     : 'لا يوجد ملف اختبار مثبت داخل مسار المشروع أو test_generator سابق';
                 notes.push(`[plan] أزلتُ تحقق auto_tester من نوع ${verificationTestType} غير المدعوم — ${reason}؛ لن أدّعي نجاح اختبار غير موجود.`);
-            } else if (!verificationTool || generatesInsteadOfObserving.has(verificationTool) || readsUnprovenPhaseOutput || runsBeforeRunnableArtifact) {
+            } else if (!verificationTool || generatesInsteadOfObserving.has(verificationTool) || readsUnprovenPhaseOutput || referencesUnprovenFile || runsBeforeRunnableArtifact) {
                 verification = observedOutputPath
                     ? {
                         task: `Verify phase output exists: ${observedOutputPath}`,
@@ -870,8 +898,8 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
                         tool: 'project_detect',
                         args: {},
                     };
-                const reason = readsUnprovenPhaseOutput
-                    ? 'تحققاً يقرأ ملفاً غير مثبت'
+                const reason = readsUnprovenPhaseOutput || referencesUnprovenFile
+                    ? 'تحققاً مولّداً يشير إلى ملفاً غير مثبت'
                     : runsBeforeRunnableArtifact
                         ? 'تشغيلاً حياً قبل إنتاج artifact قابل للتشغيل'
                         : 'تحققاً مولّداً';

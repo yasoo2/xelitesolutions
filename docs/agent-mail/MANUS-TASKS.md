@@ -305,3 +305,26 @@ POS-053-TSC: 0
 POS-053-FULL-JEST: 22/22 batches EXIT 0
 POS-053-NO-WEATHERGO-MANUAL-EDIT: confirmed
 POS-053-LIVE-16: required after push
+
+
+## سجل إصلاح 054 — حارس provenance ومنع self-fix التخميني
+
+| المعرّف | المهمة | الحالة | معيار الإغلاق |
+|---|---|---|---|
+| 054 | تعميم حارس provenance على مراجع الملفات في `sanitisePlanPhases` ومنع `missing_file_fix` التخميني في `SelfFixService` | **منفذ محلياً؛ البوابات خضراء؛ الدفع إلى `main` قيد التنفيذ** | لا يُنشأ ملف من اسم وارد في prose أو ENOENT وحده؛ تُقبل فقط `file`/`repairFile` المثبتة أو المراجع الموجودة في evidence/artifact؛ حارس مشترك لـ`path` و`filePath` و`file` و`filename` و`files` و`verificationTask`؛ regressions عامة؛ TSC=0؛ Jest الكاملة 22/22 دفعة؛ ثم جولة 17 مستقلة |
+| PR82-054 | إقرار Claude وتعليق الإغلاق | **الإقرار 037 مكتوب؛ التعليق الختامي بعد الدفع مطلوب** | إقرار البنود الخمسة في `to-claude/037-*`، تعليق الدليل الخام والتشخيص للجولة 16 محفوظان، ثم تعليق ختامي مع SHA الجديد |
+| LIVE-17 | إعادة اختبار WeatherGo بعد 054 | **مطلوبة — الجولة 16 فشلت عند `runtime_contract_mismatch` بسبب مرجع `Search.tsx` غير المثبت** | `JOE_BUILD_SHA` أول سطر في الدليل الخام، greps علامات 048a الثلاث، `finalVerified=true`، `liveUrl` غير فارغ، وQA مستقل؛ لا تعديل يدوي على artifact |
+
+### بوابات إصلاح 054
+
+أثبت focused إصلاح 054 نجاح **3 suites / 120 tests / EXIT 0**، وأثبت `npx tsc --noEmit` النتيجة **TSC:0**. بعد تصحيح توافق صياغة سجل verification، اجتازت suite Jest الكاملة **22/22 دفعة، كل دفعة EXIT 0، `FULL_JEST_054:0`**. أضيفت regressions في `file-edit-recovery.test.ts` و`a-plan-states-its-dependencies.test.ts`؛ لا توجد ملفات WeatherGo معدلة يدوياً، ولا manifests أو `zz-*.test.ts` ضمن نطاق الدفع.
+
+إصلاح 054 عام ومحدود بالدليل: لا يذكر WeatherGo أو `Search.tsx` في الإنتاج، ولا يسمح بإنشاء ملف لمجرد أن اسمه ظهر في prose أو رسالة `File not found`. تبقى الجولة 16 فاشلة ولا يُعلن Level 4 مقبولاً؛ بعد الدفع وإعادة بناء Joe تُجرى الجولة 17 بنفس prompt وبReceipt مستقل. تبقى W50 آخر مهمة بعد قبول L4، كما تبقى ديون ENTITY-CHOP و`Starting Phase undefined` وRUN-EVIDENCE-WRITE-AMPLIFICATION وFLAKE-RUNEVIDENCE-TIMEOUT خارج نطاق 054.
+
+POS-054-TASKS-UPDATED: 2026-08-21
+POS-054-FOCUSED: 3 suites / 120 tests / EXIT 0
+POS-054-TSC: 0
+POS-054-FULL-JEST: 22/22 batches EXIT 0
+POS-054-NO-WEATHERGO-MANUAL-EDIT: confirmed
+POS-054-LIVE-17: required after push
+POS-054-CLAUDE-ACK: to-claude/037

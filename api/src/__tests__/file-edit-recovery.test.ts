@@ -691,6 +691,82 @@ describe('evidence-aware file edit recovery', () => {
     expect(JSON.stringify(plan)).not.toContain('src/index.ts');
   });
 
+  it('refuses speculative missing-file repair from prose but accepts preserved file provenance', () => {
+    const proseOnly = SelfFixService.plan({
+      type: 'phase_repair_ticket',
+      projectName: 'DemoProject',
+      phaseNumber: 3,
+      phaseName: 'Testing',
+      status: 'partial',
+      severity: 'high',
+      primaryError: 'ENOENT: no such file or directory, open \'src/Search.tsx\'',
+      failedTasks: [{
+        task: 'Run the generated test suite',
+        tool: 'test_generator',
+        error: 'missing file: src/Search.tsx',
+        cwd: '/workspace/DemoProject',
+      }],
+      suggestedNextAction: 'repair the missing file',
+      retryPolicy: { maxRepairAttempts: 1, continueOnlyIfPhaseStatusBecomes: 'completed' },
+      context: { workspaceId: 'workspace-test' },
+      createdAt: new Date().toISOString(),
+    });
+
+    expect(proseOnly.allowed).toBe(false);
+    expect(proseOnly.strategy).toBe('manual_review');
+    expect(proseOnly.suggestedTool).toBeUndefined();
+    expect(String(proseOnly.reason)).toContain('failedTasks.file');
+
+    const evidenceBound = SelfFixService.plan({
+      type: 'phase_repair_ticket',
+      projectName: 'DemoProject',
+      phaseNumber: 3,
+      phaseName: 'Testing',
+      status: 'partial',
+      severity: 'high',
+      primaryError: 'ENOENT: no such file or directory, open \'src/Search.tsx\'',
+      failedTasks: [{
+        task: 'Run the generated test suite',
+        tool: 'test_generator',
+        error: 'missing file: src/Search.tsx',
+        file: 'src/Search.tsx',
+        cwd: '/workspace/DemoProject',
+      }],
+      suggestedNextAction: 'repair the missing file',
+      retryPolicy: { maxRepairAttempts: 1, continueOnlyIfPhaseStatusBecomes: 'completed' },
+      context: { workspaceId: 'workspace-test' },
+      createdAt: new Date().toISOString(),
+    });
+
+    expect(evidenceBound.allowed).toBe(true);
+    expect(evidenceBound.suggestedTool).toBe('write_file');
+    expect(evidenceBound.suggestedInput).toEqual(expect.objectContaining({ filename: 'src/Search.tsx' }));
+
+    const repairFileBound = SelfFixService.plan({
+      type: 'phase_repair_ticket',
+      projectName: 'DemoProject',
+      phaseNumber: 3,
+      phaseName: 'Testing',
+      status: 'partial',
+      severity: 'high',
+      primaryError: 'missing file: src/Widget.tsx',
+      failedTasks: [{
+        task: 'Run the generated test suite',
+        tool: 'test_generator',
+        error: 'missing file: src/Widget.tsx',
+        repairFile: 'src/Widget.tsx',
+        cwd: '/workspace/DemoProject',
+      }],
+      suggestedNextAction: 'repair the missing file',
+      retryPolicy: { maxRepairAttempts: 1, continueOnlyIfPhaseStatusBecomes: 'completed' },
+      context: { workspaceId: 'workspace-test' },
+      createdAt: new Date().toISOString(),
+    });
+
+    expect(repairFileBound.allowed).toBe(true);
+    expect(repairFileBound.suggestedInput).toEqual(expect.objectContaining({ filename: 'src/Widget.tsx' }));
+  });
+
   it('resumes react_project after a dependency repair so request-driven domain files are regenerated', () => {
     const phase = {
       phaseNumber: 1,

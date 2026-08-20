@@ -20,6 +20,32 @@ const phase = (name: string, tool: string) => ({ name, tasks: [{ tool, task: nam
 const toolsOf = (phases: any[]) => phases.map(p => String(p.tasks?.[0]?.tool));
 
 describe('a plan states its own dependencies', () => {
+    test('054 binds every file reference to discovered or phase-produced provenance', () => {
+        const out = sanitisePlanPhases([
+            {
+                name: 'Untrusted checks',
+                tasks: [
+                    { task: 'Generate tests for an invented source', tool: 'test_generator', args: { filePath: 'src/Search.tsx' } },
+                    { task: 'Review invented files', tool: 'code_reviewer', args: { files: ['src/Widget.tsx'] } },
+                ],
+            },
+            {
+                name: 'Trusted source work',
+                tasks: [
+                    { task: 'Create source', tool: 'write_file', args: { path: 'src/App.tsx', content: 'export default function App() { return null; }' } },
+                    { task: 'Review created source', tool: 'code_reviewer', args: { files: ['src/App.tsx'] } },
+                ],
+            },
+        ], 'DemoProject', { mode: 'greenfield' });
+
+        expect(out.notes.some(note => note.includes('src/Search.tsx') && note.includes('غير مثبت'))).toBe(true);
+        expect(out.notes.some(note => note.includes('src/Widget.tsx') && note.includes('غير مثبت'))).toBe(true);
+        expect(out.phases[0].tasks.map((task: any) => task.tool)).not.toContain('test_generator');
+        expect(out.phases[0].tasks.map((task: any) => task.tool)).not.toContain('code_reviewer');
+        expect(out.phases[1].tasks.map((task: any) => task.tool)).toContain('write_file');
+        expect(out.phases[1].tasks.map((task: any) => task.tool)).toContain('code_reviewer');
+    });
+
     test('an interface planned after a data service depends on it', () => {
         const out = stampPlanDependencies([phase('Data service', 'api_project'), phase('Interface', 'react_project')]);
         expect(toolsOf(out)).toEqual(['api_project', 'react_project']);

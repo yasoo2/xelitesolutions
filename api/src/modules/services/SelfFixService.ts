@@ -353,27 +353,15 @@ interface EvidenceBoundRepairTarget {
  * caller must stop instead of guessing.
  */
 function extractEvidenceBoundRepairTarget(ticket: RepairTicket): EvidenceBoundRepairTarget | null {
-  const fileTask = ticket.failedTasks.find(task => typeof task.file === 'string' && task.file.trim().length > 0);
-  if (fileTask?.file) return { path: fileTask.file, cwd: fileTask.cwd };
-
-  const candidates = [
-    ...ticket.failedTasks.map(task => task.error),
-    ticket.primaryError,
-  ];
-  const sourceFilePattern = /(?:^|[\s'"`(])((?:[A-Za-z]:[\\/]|\/|\.\.?[\\/]|[A-Za-z0-9_.-]+[\\/])[^\s'"`):,)]*\.(?:[cm]?[jt]sx?|json|css|html|md|ya?ml|env))(?=$|[\s'"`):,])/i;
-  const bareFilePattern = /(?:^|[\s'"`(])([A-Za-z0-9_.-]+\.(?:[cm]?[jt]sx?|json|css|html|md|ya?ml|env))(?=$|[\s'"`):,])/i;
-
-  for (const candidate of candidates) {
-    const value = String(candidate || '');
-    const match = value.match(sourceFilePattern) || value.match(bareFilePattern);
-    if (match?.[1]) {
-      const path = match[1].replace(/\\/g, '/');
-      const task = ticket.failedTasks.find(item => String(item.error || '').includes(match[1])) || fileTask;
-      return { path, cwd: task?.cwd };
-    }
-  }
-
-  return null;
+  const task = ticket.failedTasks.find(item =>
+    (typeof item.repairFile === 'string' && item.repairFile.trim().length > 0)
+    || (typeof item.file === 'string' && item.file.trim().length > 0),
+  );
+  if (!task) return null;
+  const target = typeof task.repairFile === 'string' && task.repairFile.trim().length > 0
+    ? task.repairFile
+    : task.file;
+  return target ? { path: target, cwd: task.cwd } : null;
 }
 
 function extractMissingLauncher(ticket: RepairTicket) {
@@ -1033,16 +1021,24 @@ export class SelfFixService {
 
     const missingFilename = extractMissingFilename(ticket, text);
     if (missingFilename && /missing file|enoent|existssync|not found|missing asset|missing config|process\.exit\(1\)/i.test(text)) {
+      const evidenceTarget = extractEvidenceBoundRepairTarget(ticket);
+      if (!evidenceTarget?.path) {
+        return this.stop(
+          ticket,
+          `Missing file wording named ${missingFilename}, but no failedTasks.file or failedTasks.repairFile preserved that target. Refusing to create a speculative file.`,
+          'manual_review',
+        );
+      }
       return {
         type: 'self_fix_plan',
         allowed: true,
-        reason: `Missing file detected: ${missingFilename}. Create a minimal placeholder and rerun the failed phase.`,
+        reason: `Missing file detected at the evidence-bound target ${evidenceTarget.path}; create it once and rerun the failed phase.`,
         maxAttempts: 1,
         strategy: 'missing_file_fix',
         suggestedTool: 'write_file',
         suggestedInput: {
-          filename: missingFilename,
-          content: `Created by JOE self-healing to satisfy missing file check: ${missingFilename}\n`,
+          filename: evidenceTarget.path,
+          content: `Created by JOE self-healing to satisfy missing file check: ${evidenceTarget.path}\n`,
         },
         rememberedCure: cureNote || undefined,
         safety: this.safety(),
