@@ -71,6 +71,44 @@ export function requestFidelityEvidenceUnavailable(appBp: Pick<AppBlueprint, 'en
     return !!appBp && String(projectEvidence || '').trim().length < 50;
 }
 
+export interface RequestFidelityVerdictForTest {
+    engine: string | null;
+    label: 'verified' | 'request_fidelity_mismatch' | 'fidelity_unverifiable' | 'no_known_engine';
+    evidenceUnavailable: boolean;
+    mismatch: boolean;
+    diagnostic: string;
+}
+
+/**
+ * The acceptance source derives the requested engine independently of the
+ * selected template. This keeps a missing appBp from hiding a known request.
+ */
+export function deriveRequestFidelity(
+    request: string,
+    isAr: boolean,
+    appBp: AppBlueprint | null,
+    projectEvidence: string,
+): RequestFidelityVerdictForTest {
+    const fidelityKind = detectAppKind(request) || appBp?.kind;
+    const fidelityBp: AppBlueprint | null = appBp || (fidelityKind ? blueprintFor(fidelityKind, request, isAr) : null);
+    const evidenceUnavailable = requestFidelityEvidenceUnavailable(fidelityBp, projectEvidence);
+    const mismatch = requestFidelityMismatch(fidelityBp, projectEvidence);
+    const label = evidenceUnavailable
+        ? 'fidelity_unverifiable'
+        : mismatch
+            ? 'request_fidelity_mismatch'
+            : fidelityBp
+                ? 'verified'
+                : 'no_known_engine';
+    return {
+        engine: fidelityBp?.engine || null,
+        label,
+        evidenceUnavailable,
+        mismatch,
+        diagnostic: `acceptance fidelity verdict: ${label} — engine=${fidelityBp?.engine || 'unknown'} chars=${String(projectEvidence || '').trim().length}`,
+    };
+}
+
 /**
  * A React builder may reuse only a scaffold that is both owned by this
  * session and structurally a Vite project.  A directory name alone is not
@@ -2942,12 +2980,25 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
         // rewrites the failed domain file; otherwise validation falls back to
         // the logical project label (for example workspace/WeatherGo) and
         // checks an unrelated manifest.
-        const authoringFailureOutput = () => ({
-            path: proj,
-            projectDir: proj,
-            dir: dirName,
-            files: Object.keys(files),
-        });
+        const authoringFailureOutput = () => {
+            const authoredPath = generatedEnginePath ? path.join(proj, generatedEnginePath) : '';
+            let authoredFilesLanded = false;
+            try {
+                authoredFilesLanded = Boolean(authoredPath && fs.existsSync(authoredPath) && fs.statSync(authoredPath).isFile() && fs.statSync(authoredPath).size > 0);
+            } catch {
+                authoredFilesLanded = false;
+            }
+            return {
+                path: proj,
+                projectDir: proj,
+                dir: dirName,
+                files: Object.keys(files),
+                authoredFiles: generatedEnginePath ? [generatedEnginePath] : [],
+                authoredFilesLanded,
+                honestBlocker: generatedEnginePath && !authoredFilesLanded ? 'authored files never landed' : undefined,
+                diagnostic: generatedEnginePath && !authoredFilesLanded ? 'الناتج ليس من فئة المطلوب لأن المؤلف القادر غائب' : undefined,
+            };
+        };
         if (generatedEnginePath) {
             term(`ai_write_file: authoring ${generatedEnginePath} from the user's requirements`);
             try {
@@ -3788,15 +3839,14 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             ? uncoveredFeatures(request, appBp.engine, !!apiLink, projectEvidence)
             : [];
         const fidelityEvidenceLength = projectEvidence.trim().length;
-        const fidelityEvidenceUnavailable = requestFidelityEvidenceUnavailable(appBp, projectEvidence);
-        const fidelityMismatch = requestFidelityMismatch(appBp, projectEvidence);
-        if (appBp) {
-            term(`fidelity_evidence: engine=${appBp.engine} path=${proj} chars=${fidelityEvidenceLength} available=${!fidelityEvidenceUnavailable} mismatch=${fidelityMismatch}`);
-        }
+        const fidelity = deriveRequestFidelity(request, isAr, appBp, projectEvidence);
+        const fidelityEvidenceUnavailable = fidelity.evidenceUnavailable;
+        const fidelityMismatch = fidelity.mismatch;
+        term(`${fidelity.diagnostic} — path=${proj} available=${!fidelityEvidenceUnavailable} mismatch=${fidelityMismatch}`);
         if (fidelityEvidenceUnavailable) {
-            term(`fidelity_unverifiable: requested ${appBp?.engine} engine but generated source evidence is unavailable or too short (${fidelityEvidenceLength} chars) — delivery blocked`);
+            term(`fidelity_unverifiable: requested ${fidelity.engine || 'known'} engine but generated source evidence is unavailable or too short (${fidelityEvidenceLength} chars) — delivery blocked`);
         } else if (fidelityMismatch) {
-            term(`request_fidelity_mismatch: requested ${appBp?.engine} engine but generated source does not contain its signature — delivery blocked`);
+            term(`request_fidelity_mismatch: requested ${fidelity.engine || 'known'} engine but generated source does not contain its signature — delivery blocked`);
         }
         /**
          * AND THE CAPABILITIES HE NAMED IN PROSE.

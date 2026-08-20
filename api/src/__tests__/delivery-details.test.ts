@@ -20,9 +20,69 @@ import path from 'path';
 import { findingText, type AppAuditFinding } from '../core/quality/app-audit';
 import { brandFallback, brandFrom } from '../core/design/page-head';
 import { ProjectPipelineTool } from '../modules/tools/definitions/ProjectPipelineTool';
+import { compactPhaseReceipt } from '../modules/services/AgentLoopService';
+import { deriveRequestFidelity } from '../modules/tools/definitions/ReactProjectTool';
 
 const SRC = path.join(__dirname, '..');
 const read = (...p: string[]) => fs.readFileSync(path.join(SRC, ...p), 'utf-8');
+
+describe('048a provenance survives compaction and delivery reporting', () => {
+    it('keeps the bound project root, task receipts, and literal rerun failure reason', () => {
+        const receipt = compactPhaseReceipt(
+            { phaseNumber: 1, results: [{ tool: 'write_file', ok: false, error: 'compiler failed' }] },
+            [],
+            'failed',
+            {
+                projectRoot: '/tmp/weathergo-bound',
+                taskReceipts: [{ tool: 'write_file', ok: false, error: 'compiler failed' }],
+                selfFixFailureReason: 'rerun failed: npm run build exited 1',
+            },
+        );
+        expect(receipt.projectRoot).toBe('/tmp/weathergo-bound');
+        expect(receipt.taskReceipts).toEqual([{ tool: 'write_file', ok: false, error: 'compiler failed' }]);
+        expect(receipt.selfFixFailureReason).toBe('rerun failed: npm run build exited 1');
+    });
+
+    it('derives the weather verdict when appBp is absent and always emits the source diagnostic', () => {
+        const verdict = deriveRequestFidelity(
+            'Build a real WeatherGo weather app with forecast and saved cities',
+            false,
+            null,
+            'manual scaffold only',
+        );
+        expect(verdict.engine).toBe('weather');
+        expect(verdict.label).toBe('fidelity_unverifiable');
+        expect(verdict.diagnostic).toContain('acceptance fidelity verdict: fidelity_unverifiable');
+    });
+
+    it('lists files observed on the artifact disk and exposes the literal rerun reason', () => {
+        const root = fs.mkdtempSync('/tmp/joe-delivery-');
+        try {
+            fs.mkdirSync(path.join(root, 'src'), { recursive: true });
+            fs.writeFileSync(path.join(root, 'src', 'Favorites.tsx'), 'export default function Favorites(){ return null; }');
+            fs.writeFileSync(path.join(root, 'src', 'main.tsx'), 'export default {};');
+            const report = (new ProjectPipelineTool() as any).buildDeliveryReport({
+                language: 'en',
+                projectName: 'WeatherGo',
+                phases: [{ tasks: [{ tool: 'write_file', args: { path: 'src/PlannedOnly.tsx' } }] }],
+                pipeline: {
+                    results: [{
+                        projectRoot: root,
+                        selfFixFailureReason: 'literal rerun failure: npm run build exited 1',
+                    }],
+                },
+                done: 0,
+                total: 1,
+                verified: false,
+            });
+            expect(report).toContain('src/Favorites.tsx');
+            expect(report).not.toContain('src/PlannedOnly.tsx');
+            expect(report).toContain('Rerun failure reason: `literal rerun failure: npm run build exited 1`');
+        } finally {
+            fs.rmSync(root, { recursive: true, force: true });
+        }
+    });
+});
 
 describe('pipeline delivery preserves the one-time test credential handoff', () => {
     it('surfaces credentials before a long QA report can truncate them', () => {

@@ -74,7 +74,7 @@ describe('the delivery report relays what was measured', () => {
 
     it('and it sits before the file list, where a reader looks first', () => {
         expect(PIPE.indexOf('const spoken: string[] = [];'))
-            .toBeLessThan(PIPE.indexOf('// Files the PLAN wrote'));
+            .toBeLessThan(PIPE.indexOf("lines.push(ar ? '### الملفات' : '### Files');"));
     });
 
     /**

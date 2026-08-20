@@ -107,3 +107,20 @@
 POS-047-TASKS-UPDATED: 2026-08-20
 POS-047-W50-QUEUE-REQUIREMENTS: recorded
 POS-047-OUTPUTS: no WeatherGo files edited manually
+
+## سجل إصلاح 048a — provenance وإيصالات Project Setup وسبب rerun
+| المعرّف | المهمة | الحالة | معيار الإغلاق |
+|---|---|---|---|
+| 048a | حفظ `projectRoot` الفعلي وإيصالات المهام `{tool, ok, error}` وسبب فشل rerun الحرفي في receipts، ثم جعل تقرير التسليم يقرأ ملفات القرص الفعلية مع fallback `unverified` | **التنفيذ المحلي مكتمل؛ focused أخضر؛ البوابات الكاملة والدفع والجولة الحية لاحقة** | TSC=0؛ regression دائم؛ Jest الكاملة 22/22 دفعة؛ دفع إلى `main`؛ جولة WeatherGo مستقلة ببصمة جديدة |
+| 048a-fidelity | اشتقاق حكم الوفاء من الطلب عند غياب `appBp` وطباعة `acceptance fidelity verdict` دائماً عند المصدر | **منفّذ محلياً ومثبت باختبار WeatherGo + appBp=null** | استمرار TSC=0؛ focused أخضر؛ Jest الكاملة؛ تحقق حي في الجولة الثامنة |
+
+### دليل 048a الحالي
+أثبت focused بعد التعديل **8 suites / 128 tests / EXIT 0**، وأثبت TypeScript **TSC=0**. لا تُعد الدفعة منجزة نهائياً قبل تشغيل suite Jest الكاملة بالدفعات، الدفع إلى `main`، ثم إعادة بناء Joe وتنفيذ الجولة الثامنة على WeatherGo دون تعديل يدوي على ناتجه. ملفات هذه الدفعة العامة هي `AgentLoopService.ts` و`ProjectPipelineTool.ts` و`ReactProjectTool.ts` واختبار `delivery-details.test.ts` وإقرار Claude 028.
+
+### الالتزامات المؤجلة
+يبقى **W50** آخر مهمة: يرسل Joe تحديثاً واحداً فقط في كل دورة على WeatherGo، يختبره حياً بعد كل طلب، ويصلح نظام Joe العام عند الفشل قبل الانتقال للطلب التالي؛ لا تعديل يدوي على الناتج. كما تبقى **قائمة انتظار الإرسال والمرفقات**: المهمة المنتظرة لا تبدأ قبل اكتمال الحالية، ثم تُسحب تلقائياً مع حفظ الترتيب والمرفقات والحالة المرئية. لا ينتقل W50 قبل قبول Level 4 بتحقق مستقل حقيقي.
+
+POS-048A-TASKS-UPDATED: 2026-08-20
+POS-048A-FOCUSED: 8 suites / 128 tests / EXIT 0
+POS-048A-TSC: 0
+POS-048A-NO-WEATHERGO-MANUAL-EDIT: confirmed

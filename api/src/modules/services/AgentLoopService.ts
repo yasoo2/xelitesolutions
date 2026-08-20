@@ -67,7 +67,30 @@ function compactPhaseLogs(logs: any): string[] {
     return [`[AgentLoop] ... ${logs.length - MAX_PHASE_RECEIPT_LOGS} older phase log entries truncated ...`, ...recent];
 }
 
-function compactPhaseReceipt(output: any, logs: any, status?: string, extras: Record<string, any> = {}): any {
+function compactTaskReceipts(results: any): Array<{ tool: string; ok: boolean; error: string }> {
+    if (!Array.isArray(results)) return [];
+    return results.slice(0, MAX_PHASE_RECEIPT_RESULTS).map((result: any) => ({
+        tool: String(result?.tool || result?.toolName || result?.name || result?.operation || 'unknown tool').slice(0, 240),
+        ok: result?.ok === true,
+        error: String(result?.error || result?.errorMessage || result?.stderr || result?.output?.stderr || result?.message || result?.output?.message || '').slice(0, MAX_PHASE_RECEIPT_STRING_CHARS),
+    }));
+}
+function phaseReceiptExtras(projectContext: any, taskResults: any, extras: Record<string, any> = {}): Record<string, any> {
+    const receiptExtras: Record<string, any> = {
+        ...extras,
+        taskReceipts: compactTaskReceipts(taskResults),
+    };
+    const projectRoot = projectContext?.projectRootRuntimeBound === true
+        ? String(projectContext?.projectRoot || '').trim()
+        : '';
+    if (projectRoot) receiptExtras.projectRoot = projectRoot;
+    return receiptExtras;
+}
+function selfFixFailureReason(selfFixExecution: any): string {
+    return String(selfFixExecution?.reason || selfFixExecution?.error || selfFixExecution?.message || '').trim();
+}
+
+export function compactPhaseReceipt(output: any, logs: any, status?: string, extras: Record<string, any> = {}): any {
     const source = output && typeof output === 'object' ? output : {};
     const receipt: Record<string, any> = {};
     const retainedKeys = [
@@ -665,7 +688,12 @@ export class AgentLoopService {
                 voice(pick(isAr,
                     `✅ اكتملت المرحلة ${n}/${totalPhases} وتحقَّقت`,
                     `✅ Phase ${n}/${totalPhases} completed and verified`));
-                results.push(compactPhaseReceipt(phaseResult.output, phaseResult.logs, 'completed'));
+                results.push(compactPhaseReceipt(
+                    phaseResult.output,
+                    phaseResult.logs,
+                    'completed',
+                    phaseReceiptExtras(projectContext, phaseResult?.output?.results),
+                ));
                 completedPhases++;
                 continue;
             }
@@ -777,10 +805,12 @@ export class AgentLoopService {
                 voice(pick(isAr,
                     `⛔ توقفتُ عند عائق موثق — ${surfacedPrimaryError || 'يتطلب قراراً من المستخدم'}`,
                     `⛔ Stopped at a documented blocker — ${surfacedPrimaryError || 'requires user decision'}`));
-                results.push(compactPhaseReceipt(phaseResult?.output, phaseResult?.logs, status, {
-                    honestBlocker: true,
-                    primaryError: surfacedPrimaryError,
-                }));
+                results.push(compactPhaseReceipt(phaseResult?.output, phaseResult?.logs, status,
+                    phaseReceiptExtras(projectContext, phaseResult?.output?.results, {
+                        honestBlocker: true,
+                        primaryError: surfacedPrimaryError,
+                    }),
+                ));
                 return { ok: false, completedPhases, results, honestBlocker: true };
             }
 
@@ -821,11 +851,13 @@ export class AgentLoopService {
             const selfFixPlan = SelfFixService.plan(repairTicket);
 
             if (!selfFixPlan.allowed) {
-                results.push(compactPhaseReceipt(phaseResult?.output, phaseResult?.logs, status, {
-                    repairTicket,
-                    selfFixPlan,
-                    primaryError: surfacedPrimaryError,
-                }));
+                results.push(compactPhaseReceipt(phaseResult?.output, phaseResult?.logs, status,
+                    phaseReceiptExtras(projectContext, phaseResult?.output?.results, {
+                        repairTicket,
+                        selfFixPlan,
+                        primaryError: surfacedPrimaryError,
+                    }),
+                ));
                 return { ok: false, completedPhases, results, repairTicket: compactReceiptValue(repairTicket), selfFixPlan: compactReceiptValue(selfFixPlan) };
             }
 
@@ -849,7 +881,11 @@ export class AgentLoopService {
                     selfFixExecution.rerunResult?.output || phaseResult?.output,
                     selfFixExecution.rerunResult?.logs || phaseResult?.logs || [],
                     'completed',
-                    { selfFixPlan, selfFixExecution },
+                    phaseReceiptExtras(
+                        projectContext,
+                        selfFixExecution.rerunResult?.output?.results || phaseResult?.output?.results,
+                        { selfFixPlan, selfFixExecution },
+                    ),
                 ));
                 completedPhases++;
                 continue;
@@ -859,12 +895,15 @@ export class AgentLoopService {
             voice(pick(isAr,
                 `⛔ لم ينجح الإصلاح الذاتي — أتوقف بصدق عند ${completedPhases}/${totalPhases} مراحل`,
                 `⛔ Self-healing did not work — stopping honestly at ${completedPhases}/${totalPhases} phases`));
-            results.push(compactPhaseReceipt(phaseResult?.output, phaseResult?.logs, status, {
-                repairTicket,
-                selfFixPlan,
-                selfFixExecution,
-                primaryError: surfacedPrimaryError,
-            }));
+            results.push(compactPhaseReceipt(phaseResult?.output, phaseResult?.logs, status,
+                phaseReceiptExtras(projectContext, phaseResult?.output?.results, {
+                    repairTicket,
+                    selfFixPlan,
+                    selfFixExecution,
+                    selfFixFailureReason: selfFixFailureReason(selfFixExecution),
+                    primaryError: surfacedPrimaryError,
+                }),
+            ));
             return {
                 ok: false,
                 completedPhases,

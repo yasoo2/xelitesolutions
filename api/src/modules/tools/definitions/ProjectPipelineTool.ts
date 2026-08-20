@@ -12,6 +12,36 @@ import { auditBuiltApp, AppAudit } from '../../../core/quality/app-audit';
 
 const MAX_PIPELINE_LOGS = 192;
 const MAX_PIPELINE_LOG_CHARS = 2_000;
+const MAX_DELIVERY_FILES = 120;
+const MAX_DELIVERY_FILE_DEPTH = 6;
+
+function listSourceFiles(projectRoot: string): string[] {
+    const root = path.resolve(String(projectRoot || ''));
+    if (!root || !fs.existsSync(root)) return [];
+    const sourceRoot = fs.existsSync(path.join(root, 'src')) ? path.join(root, 'src') : root;
+    const files: string[] = [];
+    const walk = (directory: string, depth: number) => {
+        if (depth > MAX_DELIVERY_FILE_DEPTH || files.length >= MAX_DELIVERY_FILES) return;
+        let entries: fs.Dirent[];
+        try {
+            entries = fs.readdirSync(directory, { withFileTypes: true });
+        } catch {
+            return;
+        }
+        for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+            if (files.length >= MAX_DELIVERY_FILES || entry.name.startsWith('.') || entry.name === 'node_modules') continue;
+            const fullPath = path.join(directory, entry.name);
+            if (entry.isDirectory()) {
+                walk(fullPath, depth + 1);
+                continue;
+            }
+            if (!entry.isFile()) continue;
+            files.push(path.relative(root, fullPath).split(path.sep).join('/'));
+        }
+    };
+    walk(sourceRoot, 0);
+    return files;
+}
 
 export interface PipelineDecisionEvidence {
     finalVerified: boolean;
@@ -2327,27 +2357,42 @@ export class ProjectPipelineTool implements ToolDefinition {
             for (const m of spoken) { lines.push(''); lines.push(m); }
         }
 
-        // Files the PLAN wrote — the paths are in the plan itself, so this list
-        // is exact, not guessed.
+        // The delivery report must describe the artifact on disk, not only the
+        // planner's intended paths. Runtime-bound roots are evidence propagated
+        // by PhaseExecutor/AgentLoop; a plan-only fallback is explicitly marked.
         const writeTools = new Set(['write_file', 'ai_write_file', 'file_write', 'create_file', 'write_to_file']);
-        const files: string[] = [];
+        const planFiles: string[] = [];
         for (const ph of phases) {
             for (const t of (Array.isArray(ph?.tasks) ? ph.tasks : [])) {
                 if (!writeTools.has(String(t?.tool || ''))) continue;
                 const p = String(t?.args?.path || t?.args?.filename || t?.input?.path || t?.input?.filename || '').trim();
-                if (p && !files.includes(p)) files.push(p);
+                if (p && !planFiles.includes(p)) planFiles.push(p);
             }
         }
-        if (files.length) {
+        const artifactCandidates = phaseResults.flatMap((result: any) => [
+            result?.projectRoot,
+            result?.extras?.projectRoot,
+            result?.output?.projectRoot,
+            result?.output?.extras?.projectRoot,
+            ...(Array.isArray(result?.results) ? result.results.flatMap((task: any) => [task?.projectRoot, task?.extras?.projectRoot]) : []),
+        ]).map((candidate: any) => String(candidate || '').trim()).filter(Boolean);
+        const artifactRoot = artifactCandidates.find(candidate => fs.existsSync(candidate)) || '';
+        const files = artifactRoot
+            ? listSourceFiles(artifactRoot)
+            : planFiles.map(file => `${file} *(unverified)*`);
+        if (files.length || artifactRoot) {
             lines.push('');
             lines.push(ar ? '### الملفات' : '### Files');
+            if (artifactRoot) lines.push(ar ? `- جذر الناتج الفعلي: \`${artifactRoot}\`` : `- Actual artifact root: \`${artifactRoot}\``);
             for (const f of files.slice(0, 15)) lines.push(`- \`${f}\``);
             if (files.length > 15) lines.push(ar ? `- … و${files.length - 15} ملفات أخرى` : `- … and ${files.length - 15} more`);
+            if (!artifactRoot && planFiles.length) lines.push(ar ? '- ملاحظة: هذه مسارات الخطة فقط — لم يتحقق وجودها على القرص.' : '- Note: these are plan paths only — disk presence is unverified.');
         }
 
-        // A run hint ONLY when the plan really wrote an entry file.
-        const entry = files.find(f => /(^|\/)(index|main|app|server)\.(js|mjs|cjs|ts)$/i.test(f));
-        const wrotePackageJson = files.some(f => /(^|\/)package\.json$/i.test(f));
+        // Run hints retain the existing plan contract; only the Files evidence
+        // block above is changed to distinguish observed from unverified paths.
+        const entry = planFiles.find(f => /(^|\/)(index|main|app|server)\.(js|mjs|cjs|ts)$/i.test(f));
+        const wrotePackageJson = planFiles.some(f => /(^|\/)package\.json$/i.test(f));
         if (verified && (entry || wrotePackageJson)) {
             lines.push('');
             lines.push(ar ? '### التشغيل' : '### Run it');
@@ -2390,8 +2435,16 @@ export class ProjectPipelineTool implements ToolDefinition {
                     ? '- حالة إصلاح النطاق المحدود: `' + String(scopeRepairStatus).slice(0, 180) + '`'
                     : '- Bounded scope-repair status: `' + String(scopeRepairStatus).slice(0, 180) + '`');
             }
+            const sfFailureReason = phaseResults.map((result: any) => (
+                result?.selfFixFailureReason
+                || result?.extras?.selfFixFailureReason
+                || result?.output?.selfFixFailureReason
+                || result?.output?.extras?.selfFixFailureReason
+            )).map((value: any) => String(value || '').trim()).find(Boolean);
             const sfReason = pipeline?.selfFixExecution?.reason || pipeline?.selfFixPlan?.reason;
-            if (sfReason) {
+            if (sfFailureReason) {
+                lines.push((ar ? '- سبب فشل إعادة التشغيل: ' : '- Rerun failure reason: ') + '`' + sfFailureReason.slice(0, 220) + '`');
+            } else if (sfReason) {
                 lines.push((ar ? '- محاولة الإصلاح الذاتي: ' : '- Self-fix attempt: ') + String(sfReason).slice(0, 220));
             }
             lines.push(ar
