@@ -2576,11 +2576,12 @@ i18n
   .init({
     resources,
     lng: (() => {
+      // English is the system's PRIMARY language by the owner's decision:
+      // only an explicit choice the user saved in the language switcher
+      // overrides it. The browser's locale no longer decides — sniffing it
+      // made every Arabic-locale machine open an Arabic UI by default.
       const saved = localStorage.getItem('lang');
       if (saved && resources[saved as keyof typeof resources]) return saved;
-      const nav = typeof navigator !== 'undefined' ? String((navigator as any).language || (navigator as any).userLanguage || '') : '';
-      const base = nav.toLowerCase().split('-')[0];
-      if (base && resources[base as keyof typeof resources]) return base;
       return 'en';
     })(),
     fallbackLng: 'en',

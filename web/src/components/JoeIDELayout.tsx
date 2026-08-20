@@ -8,6 +8,7 @@ import FileExplorerPanel from './FileExplorerPanel';
 import GitHubPanel from './GitHubPanel';
 import SessionsBar from './SessionsBar';
 import CommandPalette, { Command } from './CommandPalette';
+import { subscribeRunBusy } from '../lib/run-activity';
 import { GitHubRepo, GitHubCommit, GitHubUser } from '../services/githubService';
 import { FolderOpen } from 'lucide-react';
 import '../styles/joe-premium.css';
@@ -207,6 +208,14 @@ export default function JoeIDELayout({
         return () => window.removeEventListener('resize', handleResize);
     }, []);
 
+    // AUTO-CLOSE bookkeeping — «وعند عدم اللزوم لها تغلق بشكل تلقائي». The
+    // canvas opens itself for work, so it must also excuse itself when the
+    // work is over. Only a canvas that opened AUTOMATICALLY may close
+    // automatically; a manual open belongs to the user and is never touched.
+    const autoOpenedRef = useRef(false);
+    const [runBusy, setRunBusyState] = useState(false);
+    useEffect(() => subscribeRunBusy(setRunBusyState), []);
+
     // Auto-open is disabled for the first moment after load, so the terminal's
     // idle "Connected" banner and initial tool wiring don't pop the canvas over the
     // full-page chat. Real tasks (which happen after the user acts) still open it.
@@ -218,7 +227,7 @@ export default function JoeIDELayout({
 
     // When a live preview URL arrives, reveal the canvas so the user sees the result.
     useEffect(() => {
-        if (previewUrl) setIsWorkspaceCollapsed(false);
+        if (previewUrl) { autoOpenedRef.current = true; setIsWorkspaceCollapsed(false); }
     }, [previewUrl]);
 
     // A real browser session is a direct visibility contract: the live stream must
@@ -227,6 +236,7 @@ export default function JoeIDELayout({
     // or a new browser-tab selection arrives.
     useEffect(() => {
         if (browserSessionId || workspaceTab === 'browser') {
+            autoOpenedRef.current = true;
             setIsWorkspaceCollapsed(false);
         }
     }, [browserSessionId, workspaceTab]);
@@ -238,13 +248,20 @@ export default function JoeIDELayout({
     const firstTabRender = useRef(true);
     useEffect(() => {
         if (firstTabRender.current) { firstTabRender.current = false; return; }
-        if (canAutoOpen.current && workspaceTab) setIsWorkspaceCollapsed(false);
+        if (canAutoOpen.current && workspaceTab) { autoOpenedRef.current = true; setIsWorkspaceCollapsed(false); }
     }, [workspaceTab]);
     useEffect(() => {
-        const openCanvas = () => setIsWorkspaceCollapsed(false);
+        const openCanvas = () => { autoOpenedRef.current = true; setIsWorkspaceCollapsed(false); };
         window.addEventListener('preview:ready', openCanvas);
         return () => window.removeEventListener('preview:ready', openCanvas);
     }, []);
+
+    // A new chat (or switching conversations) is a fresh main page: the canvas
+    // of the previous conversation folds away with it and reopens on demand.
+    useEffect(() => {
+        autoOpenedRef.current = false;
+        setIsWorkspaceCollapsed(true);
+    }, [sessionId]);
 
     // Force uncollapse when an explicit action requires it (e.g. from Joe.tsx tools or CommandComposer icons)
     useEffect(() => {
@@ -286,7 +303,29 @@ export default function JoeIDELayout({
     const [internalWorkspaceTab, setInternalWorkspaceTab] = useState<WorkspaceTab>('logs');
 
     const activeWorkspaceTab = workspaceTab ?? internalWorkspaceTab;
+
+    // AUTO-CLOSE — the other half of the auto-open contract. When the session
+    // settles into idle, a canvas that opened itself over a TRANSIENT work view
+    // (logs/problems/terminal) folds away after a short grace period, giving
+    // the chat back its full page. Result views (preview/browser) stay open:
+    // closing what Joe just delivered would hide the deliverable. Any resumed
+    // activity, tab change or manual collapse cancels the pending close.
+    useEffect(() => {
+        if (runBusy) return;
+        if (isWorkspaceCollapsed) return;
+        if (!autoOpenedRef.current) return;
+        if (activeWorkspaceTab === 'preview' || activeWorkspaceTab === 'browser') return;
+        const id = window.setTimeout(() => {
+            autoOpenedRef.current = false;
+            setIsWorkspaceCollapsed(true);
+        }, 8000);
+        return () => window.clearTimeout(id);
+    }, [runBusy, isWorkspaceCollapsed, activeWorkspaceTab]);
+
     const handleWorkspaceTabChange = useCallback((tab: WorkspaceTab) => {
+        // A clicked tab is the user's own open: the auto-close contract lets
+        // go of the canvas — it stays until the user closes it.
+        autoOpenedRef.current = false;
         // Activating a tab reveals the canvas (in case it was collapsed).
         setIsWorkspaceCollapsed(false);
         if (onWorkspaceTabChange) {
@@ -580,7 +619,12 @@ export default function JoeIDELayout({
 
     const toggleChat = useCallback(() => setIsChatCollapsed(prev => !prev), []);
     const toggleExplorer = useCallback(() => setIsExplorerCollapsed(prev => !prev), []);
-    const toggleWorkspace = useCallback(() => setIsWorkspaceCollapsed(prev => !prev), []);
+    const toggleWorkspace = useCallback(() => {
+        // The header toggle is always a manual act — in either direction it
+        // takes the canvas out of the auto-close contract's hands.
+        autoOpenedRef.current = false;
+        setIsWorkspaceCollapsed(prev => !prev);
+    }, []);
 
     // ⌘K / Ctrl+K Command Palette
     const [isPaletteOpen, setIsPaletteOpen] = useState(false);
