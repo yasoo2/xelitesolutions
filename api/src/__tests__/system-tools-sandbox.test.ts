@@ -149,6 +149,43 @@ describe('scaffold_project contains every key, not just the base directory', () 
         expect(res.logs.join(' ')).toMatch(/reset stale greenfield product root/);
     });
 
+    it('rejects a structural directory entry before writing any sibling', async () => {
+        const base = path.join(DIR, 'preflight-structural-directory');
+        const res: any = await new ScaffoldProjectTool().execute({
+            baseDir: base,
+            structure: {
+                'package.json': null,
+                'src/main.ts': 'export default 1;',
+            },
+        });
+
+        expect(res.ok).toBe(false);
+        expect(res.error).toMatch(/^authored_path_structure_conflict:target_is_directory:package\.json/);
+        expect(res).toMatchObject({
+            path: 'package.json',
+            projectRoot: path.resolve(landsAt(base)),
+            reason: 'target_is_directory',
+        });
+        expect(res.output.created).toEqual([]);
+        expect(fs.existsSync(landsAt(path.join(base, 'package.json')))).toBe(false);
+        expect(fs.existsSync(landsAt(path.join(base, 'src/main.ts')))).toBe(false);
+    });
+
+    it('allows an explicit non-structural directory entry', async () => {
+        const base = path.join(DIR, 'preflight-legal-directory');
+        const res: any = await new ScaffoldProjectTool().execute({
+            baseDir: base,
+            structure: {
+                'src/components': null,
+                'src/components/App.tsx': 'export default function App() { return null; }',
+            },
+        });
+
+        expect(res.ok).toBe(true);
+        expect(fs.statSync(landsAt(path.join(base, 'src/components'))).isDirectory()).toBe(true);
+        expect(fs.readFileSync(landsAt(path.join(base, 'src/components/App.tsx')), 'utf-8')).toContain('function App');
+    });
+
     it('refuses a structure key that climbs out, and still writes the ones that do not', async () => {
         // Containing the base is not enough: each key of `structure` is a path
         // fragment the model chose, and they are joined onto the base one by one.

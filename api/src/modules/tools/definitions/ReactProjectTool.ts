@@ -32,6 +32,7 @@ import { publicUrlFor } from '../../../shared/utils/publicUrl';
 import { repairAndRebuild, worthRepairing } from '../../../core/quality/self-repair';
 import { inspectWeatherEngineSource, formatWeatherSemanticRepair } from '../../../core/quality/weather-contract';
 import { isProviderFailure } from '../../../core/llm/intelligent-router';
+import { validateFileWriteBatch } from '../../../shared/file-write-contract';
 
 // Combining marks are not letters: «كِفاح» is ك + ◌ِ + فاح to this regex, so
 // the kasra became a hyphen and the project folder shipped as «react-ك-فاح»
@@ -2893,6 +2894,22 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 term(`recovery: existing package.json could not be merged — ${String(error?.message || error)}`);
                 return { ok: false, error: 'resume_manifest_invalid', logs };
             }
+        }
+        const structureCheck = validateFileWriteBatch(proj, files);
+        if (!structureCheck.ok) {
+            term(`authoring_path_guard: ${structureCheck.error} path=${structureCheck.path} projectRoot=${structureCheck.projectRoot}`);
+            return {
+                ok: false,
+                error: structureCheck.error,
+                output: {
+                    path: structureCheck.path,
+                    projectRoot: structureCheck.projectRoot,
+                    reason: structureCheck.reason,
+                    conflictPath: structureCheck.conflictPath,
+                    repairHint: structureCheck.repairHint,
+                },
+                logs,
+            };
         }
         // THE FILES, LIVE. Every file this build writes is streamed to the
         // Logs panel the moment it exists on disk — the same `file_stream`

@@ -11,6 +11,7 @@ import { broadcast, broadcastTerminalLine } from '../../../api/ws';
 import { handleShellCommand } from '../handlers';
 import { prepareArtifactContent } from '../artifact-validation';
 import { executionEngine } from '../../../kernel/ExecutionEngine';
+import { validateFileWriteBatch } from '../../../shared/file-write-contract';
 
 // Background Process Store
 const backgroundProcesses = new Map<string, { pid: number, command: string, cwd: string, startTime: number, process: any }>();
@@ -85,21 +86,59 @@ export function reconcileNpmManifest(workDir: string): {
     removedDependencies?: string[];
     renamedPackage?: { from: string; to: string };
     recursiveScripts?: string[];
+    structuralPath?: string;
+    projectRoot?: string;
     error?: string;
 } {
-    const packageJsonPath = path.join(workDir, 'package.json');
+    const projectRoot = path.resolve(workDir);
+    const packageJsonPath = path.join(projectRoot, 'package.json');
     if (!fs.existsSync(packageJsonPath)) {
-        return { ok: true, changed: false, packageJsonPath };
+        return { ok: true, changed: false, packageJsonPath, projectRoot };
+    }
+    try {
+        if (fs.statSync(packageJsonPath).isDirectory()) {
+            return {
+                ok: false,
+                changed: false,
+                packageJsonPath,
+                structuralPath: packageJsonPath,
+                projectRoot,
+                error: 'invalid_package_json:package_json_is_directory',
+            };
+        }
+    } catch (error: any) {
+        return {
+            ok: false,
+            changed: false,
+            packageJsonPath,
+            structuralPath: packageJsonPath,
+            projectRoot,
+            error: `invalid_package_json:${String(error?.message || error)}`,
+        };
     }
 
     let manifest: any;
     try {
         manifest = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
     } catch (error: any) {
-        return { ok: false, changed: false, packageJsonPath, error: `invalid_package_json:${String(error?.message || error)}` };
+        return {
+            ok: false,
+            changed: false,
+            packageJsonPath,
+            structuralPath: packageJsonPath,
+            projectRoot,
+            error: `invalid_package_json:${String(error?.message || error)}`,
+        };
     }
     if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) {
-        return { ok: false, changed: false, packageJsonPath, error: 'invalid_package_json:manifest must be an object' };
+        return {
+            ok: false,
+            changed: false,
+            packageJsonPath,
+            structuralPath: packageJsonPath,
+            projectRoot,
+            error: 'invalid_package_json:manifest must be an object',
+        };
     }
 
     const removedDependencies: string[] = [];
@@ -1101,7 +1140,17 @@ export class NpmManagerTool extends BaseTool {
                 const manifest = reconcileNpmManifest(workDir);
                 if (!manifest.ok) {
                     logs.push(`npm.manifest_error=${manifest.error || 'invalid_package_json'}`);
-                    return { ok: false, error: manifest.error || 'invalid_package_json', logs };
+                    if (manifest.structuralPath) logs.push(`npm.manifest_structural_path=${manifest.structuralPath}`);
+                    if (manifest.projectRoot) logs.push(`npm.manifest_project_root=${manifest.projectRoot}`);
+                    return {
+                        ok: false,
+                        error: manifest.error || 'invalid_package_json',
+                        output: manifest.structuralPath ? {
+                            path: manifest.structuralPath,
+                            projectRoot: manifest.projectRoot || workDir,
+                        } : undefined,
+                        logs,
+                    };
                 }
                 if (manifest.changed) {
                     logs.push(`npm.manifest_reconciled=${(manifest.removedDependencies || []).join(',')}`);
@@ -1223,6 +1272,22 @@ export class ScaffoldProjectTool extends BaseTool {
             fs.rmSync(resolvedProduct, { recursive: true, force: true });
             logs.push(`scaffold_project: reset stale greenfield product root ${resolvedProduct.slice(0, 240)}`);
         }
+        const structureCheck = validateFileWriteBatch(resolvedBase, structure, { allowDirectories: true });
+        if (!structureCheck.ok && structureCheck.reason !== 'invalid_path') {
+            logs.push(`scaffold_project: ${structureCheck.repairHint}`);
+            return {
+                ok: false,
+                error: structureCheck.error,
+                path: structureCheck.path,
+                projectRoot: structureCheck.projectRoot,
+                reason: structureCheck.reason,
+                ...(structureCheck.conflictPath ? { conflictPath: structureCheck.conflictPath } : {}),
+                repairHint: structureCheck.repairHint,
+                output: { created: [], errors: [structureCheck.error] },
+                logs,
+            };
+        }
+
         const created: string[] = [];
         const errors: string[] = [];
 

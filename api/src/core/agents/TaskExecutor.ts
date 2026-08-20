@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { validateFileWriteBatch } from '../../shared/file-write-contract';
 import { tools } from '../../modules/tools/registry';
 import { handleShellCommand } from '../../modules/tools/handlers';
 
@@ -7,6 +8,17 @@ export interface TaskStep {
     name: string;
     tool: string;
     args: any;
+}
+
+export interface TaskStepResult {
+    success: boolean;
+    output: string;
+    error?: string;
+    path?: string;
+    projectRoot?: string;
+    reason?: string;
+    conflictPath?: string;
+    repairHint?: string;
 }
 
 export class TaskExecutor {
@@ -24,7 +36,7 @@ export class TaskExecutor {
         return resolved;
     }
 
-    async executeStep(step: TaskStep): Promise<{ success: boolean; output: string }> {
+    async executeStep(step: TaskStep): Promise<TaskStepResult> {
         console.log(`[TaskExecutor] Executing ${step.name} (${step.tool})...`);
 
         try {
@@ -44,12 +56,32 @@ export class TaskExecutor {
             }
         } catch (e: any) {
             console.error(`[TaskExecutor] Failed ${step.name}: ${e.message}`);
-            return { success: false, output: e.message };
+            return {
+                success: false,
+                output: e.message,
+                error: e.message,
+                path: typeof e?.path === 'string' ? e.path : undefined,
+                projectRoot: typeof e?.projectRoot === 'string' ? e.projectRoot : undefined,
+                reason: typeof e?.reason === 'string' ? e.reason : undefined,
+                conflictPath: typeof e?.conflictPath === 'string' ? e.conflictPath : undefined,
+                repairHint: typeof e?.repairHint === 'string' ? e.repairHint : undefined,
+            };
         }
     }
 
     private async scaffoldProject(args: { name: string; structure?: Record<string, string> }) {
         const targetDir = this.rootDir;
+        const structure = args.structure || {};
+        const structureCheck = validateFileWriteBatch(targetDir, structure);
+        if (!structureCheck.ok) {
+            throw Object.assign(new Error(structureCheck.error), {
+                path: structureCheck.path,
+                projectRoot: structureCheck.projectRoot,
+                reason: structureCheck.reason,
+                conflictPath: structureCheck.conflictPath,
+                repairHint: structureCheck.repairHint,
+            });
+        }
         if (!fs.existsSync(targetDir)) {
             fs.mkdirSync(targetDir, { recursive: true });
         }
@@ -63,7 +95,6 @@ export class TaskExecutor {
         }
 
         // 2. Write structure files
-        const structure = args.structure || {};
         let writtenCount = 0;
 
         for (const [filename, content] of Object.entries(structure)) {
@@ -83,6 +114,16 @@ export class TaskExecutor {
 
     private async writeFile(args: { path: string; content: string }) {
         const filePath = this.resolveSafePath(args.path);
+        const structureCheck = validateFileWriteBatch(this.rootDir, { [args.path]: args.content });
+        if (!structureCheck.ok) {
+            throw Object.assign(new Error(structureCheck.error), {
+                path: structureCheck.path,
+                projectRoot: structureCheck.projectRoot,
+                reason: structureCheck.reason,
+                conflictPath: structureCheck.conflictPath,
+                repairHint: structureCheck.repairHint,
+            });
+        }
         const dir = path.dirname(filePath);
 
         if (!fs.existsSync(dir)) {
