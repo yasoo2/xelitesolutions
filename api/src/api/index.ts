@@ -39,6 +39,7 @@ import { attachWebSocket } from './ws';
 import { User } from '../shared/models/user';
 import { executeTool } from '../modules/services/ToolService';
 import { initLocalBrain } from '../core/llm/local-brain';
+import { resolveBuildSha } from '../shared/build-info';
 import path from 'path';
 import fs from 'fs';
 
@@ -89,6 +90,8 @@ async function main() {
   installCrashRecorder(logger);
   noteActivity('startup');
 
+  const buildSha = resolveBuildSha();
+  logger.info({ buildSha }, 'JOE_BUILD_SHA');
   logger.info('🚀 JOE API STARTUP INITIATED...');
 
   const app = createApp();
