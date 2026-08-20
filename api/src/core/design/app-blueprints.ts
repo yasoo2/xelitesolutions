@@ -915,9 +915,17 @@ export function requestedFeatures(requestRaw: string): string[] {
         }
     }
     // «… with A, B and C» — the one-line form of the same list.
-    if (out.length < 3) {
+    // A one-line list is valid for short list-shaped requests only. A long
+    // prose paragraph after "with" is not a feature list.
+    const sentenceCount = (request.match(/[.!?؟]/g) || []).length;
+    if (out.length < 3 && sentenceCount <= 2) {
         const m = request.match(/\b(?:with|including|features?:?)\s+([^.\n]{10,300})/i);
-        if (m) for (const part of m[1].split(/,| and | و /i)) push(part);
+        if (m) {
+            for (const part of m[1].split(/,| and | و /i)) {
+                if (/^(?:requiring|using|including|from|without|ensuring|plus)\b/i.test(part.trim())) continue;
+                push(part);
+            }
+        }
     }
     return out.slice(0, 30);
 }
@@ -953,8 +961,8 @@ const BACKEND_COVERS = /login|sign\s*in|account|auth|password|database|db\b|api\
  * template name or a prose claim.
  */
 const WEATHER_FEATURE_RULES: Array<{ asked: RegExp; evidence: RegExp }> = [
-    { asked: /7[-\s]?day.*forecast|daily.*forecast|forecast.*7[-\s]?day/i, evidence: /daily\s*:\s*['\"`]|dailyForecast|forecastDays|7[-\s]?day/i },
-    { asked: /hourly.*forecast|forecast.*hourly|24[-\s]?hour/i, evidence: /hourly\s*:\s*['\"`]|hourlyForecast|24[-\s]?hour/i },
+    { asked: /7[-\s]?day.*forecast|seven[-\s]?day.*forecast|daily.*forecast|forecast.*7[-\s]?day|forecast.*seven[-\s]?day/i, evidence: /daily\s*:\s*['\"`]|dailyForecast|forecastDays|7[-\s]?day|seven[-\s]?day/i },
+    { asked: /hourly.*forecast|forecast.*hourly|hourly\s+data/i, evidence: /hourly\s*:\s*['\"`]|hourlyForecast|hourlyData/i },
     // These prose forms are emitted by one-line product requirements. They are
     // proven by executable shapes, not by the words "search" or "weather" alone.
     { asked: /(?:clear\s+)?responsive\s+interface\s+for\s+searching\s+cities|searching\s+cities/i,
@@ -962,9 +970,11 @@ const WEATHER_FEATURE_RULES: Array<{ asked: RegExp; evidence: RegExp }> = [
     { asked: /viewing\s+weather\s+details|weather\s+details/i,
         evidence: /(?=[\s\S]*(?:current-weather|weather-details|renderCurrentWeather|currentWeather|row-meta|className=["']now["']))(?=[\s\S]*(?:temperature|temperature_2m|temp))(?=[\s\S]*(?:humidity|relative_humidity_2m))(?=[\s\S]*(?:wind(?:_speed| speed)|windSpeed))(?=[\s\S]*(?:weather_code|describe|description|feels[-\s]?like|apparent_temperature))/i },
     { asked: /search\s+by\s+city|city\s+search|بحث\s+(?:عن|بالـ?)?\s*المدن?/i, evidence: /geocoding-api\.open-meteo|searchCity|citySearch|search.*city/i },
+    { asked: /current\s+temperature|\btemperature\b/i, evidence: /temperature_2m|currentWeather|currentTemperature|temperature/i },
+    { asked: /\bhumidity\b/i, evidence: /relative_humidity_2m|humidity/i },
     { asked: /current\s+location|geolocation|موقع(?:ي|ك)?\s+الحالي/i, evidence: /navigator\.geolocation|currentLocation|getCurrentPosition/i },
     { asked: /favorite\s+cities|saved\s+cities|المدن\s+المفضلة/i, evidence: /favoriteCities|savedCities|favo[u]?rites?|toggleFavorite/i },
-    { asked: /feels\s+like/i, evidence: /apparent_temperature|feelsLike|feels-like/i },
+    { asked: /feels[-\s]+like/i, evidence: /apparent_temperature|feelsLike|feels-like/i },
     { asked: /wind\s+speed/i, evidence: /wind_speed|windSpeed/i },
     { asked: /weather\s+condition/i, evidence: /weather_code|weatherCondition|condition/i },
     { asked: /sunrise/i, evidence: /sunrise/i },
@@ -972,8 +982,12 @@ const WEATHER_FEATURE_RULES: Array<{ asked: RegExp; evidence: RegExp }> = [
     { asked: /loading/i, evidence: /loading|isLoading|setLoading/i },
     { asked: /api\s+errors?|network\s+failures?|invalid\s+cities?|missing\s+api\s+configuration/i, evidence: /catch|error|failed|invalid|not\s+found|configuration/i },
     { asked: /celsius|fahrenheit|temperature\s+units?/i, evidence: /celsius|fahrenheit|temperatureUnit|unit|°[CF]/i },
+    { asked: /12\/24[-\s]?hour|12[-\s]?hour|24[-\s]?hour|hour\s+format|time\s+format/i, evidence: /12|24|hour(?:12|24)?|timeFormat|hourFormat|use24Hour/i },
+    { asked: /persist(?:s|ed|ence)?\s+(?:favorites|settings)|restore\s+(?:favorites|settings)|localStorage|full\s+reload/i, evidence: /localStorage|storage|persist|restore/i },
+    { asked: /reject\s+empty\s+input|empty\s+input/i, evidence: /trim\(\)|empty|length|!.*(?:city|query|input)/i },
+    { asked: /enter[-\s]?key\s+submission|enter\s+key|on\s+enter/i, evidence: /onKeyDown|onKeyPress|onKeyUp|Enter/i },
     { asked: /light\s+mode|dark\s+mode/i, evidence: /dark|light|theme/i },
-    { asked: /responsive\s+mobile\s+ui/i, evidence: /@media|responsive|mobile/i },
+    { asked: /responsive\s+mobile(?:[-\s]first)?\s+(?:ui|weather|experience)|mobile[-\s]first/i, evidence: /@media|responsive|mobile/i },
     { asked: /weather\s+icons?/i, evidence: /weather.*icon|icon.*weather|weather_code/i },
     { asked: /smooth\s+transitions?/i, evidence: /transition/i },
 ];
@@ -984,6 +998,24 @@ function weatherFeatureCovered(feature: string, evidence: string): boolean {
     return ENGINE_COVERS.weather.test(feature);
 }
 
+/** Rule registries are capability contracts, not saved app bodies. */
+const FEATURE_RULES_BY_ENGINE: Partial<Record<AppEngine, Array<{ asked: RegExp; evidence: RegExp }>>> = {
+    weather: WEATHER_FEATURE_RULES,
+};
+
+function ruleDerivedFeatures(request: string, engine: AppEngine | null): string[] {
+    const rules = engine ? FEATURE_RULES_BY_ENGINE[engine] : undefined;
+    if (!rules) return [];
+    const out: string[] = [];
+    for (const rule of rules) {
+        const match = request.match(rule.asked);
+        const feature = match?.[0]?.trim();
+        if (!feature || out.some(existing => existing.toLowerCase() === feature.toLowerCase())) continue;
+        out.push(feature);
+    }
+    return out;
+}
+
 /**
  * The features the delivery does NOT cover — named exactly as the user wrote
  * them. An empty list means everything asked for is in the build. `evidence`
@@ -992,7 +1024,11 @@ function weatherFeatureCovered(feature: string, evidence: string): boolean {
  * judged by implementation evidence rather than by a stock engine keyword.
  */
 export function uncoveredFeatures(request: string, engine: AppEngine | null, hasBackend: boolean, evidence = ''): string[] {
-    const asked = requestedFeatures(request);
+    const extracted = requestedFeatures(request);
+    // If extraction found no explicit list, inspect the full prose request via
+    // the engine's rule registry. This preserves honesty without manufacturing
+    // features from a long clause after "with".
+    const asked = extracted.length ? extracted : ruleDerivedFeatures(request, engine);
     if (!asked.length) return [];
     const covers = engine ? ENGINE_COVERS[engine] : null;
     return asked.filter(f => {

@@ -199,3 +199,19 @@ POS-049-048C-LIVE: pending; Joe rebuild and independent WeatherGo round 10 next
 **POS-049B-STATUS:** 2026-08-20 — 049b اجتاز focused وTypeScript و22 دفعة Jest؛ لا يُعلن Level 4 مقبولاً قبل إعادة بناء Joe من SHA المدفوع وتشغيل الجولة 12 بدليل يبدأ بـ`JOE_BUILD_SHA` ثم greps علامات 048a الثلاث، مع عدم لمس ملفات WeatherGo الناتجة يدوياً.
 
 **POS-049B-W50-ORDER:** W50 يبقى آخر مهمة في القائمة ولا يبدأ قبل قبول Level 4 بتحقق حي مستقل.
+
+
+## سجل إصلاح 050 — حارس النثر العام واشتقاق ميزات WeatherGo
+
+| المعرّف | المهمة | الحالة | معيار الإغلاق |
+|---|---|---|---|
+| 050 | منع محلل `with` من تحويل شظايا النثر إلى ميزات مطلوبة، مع إبقاء تحليل القوائم القصيرة، وإضافة registry عام لاشتقاق الميزات من النص الكامل وإثباتها من المصدر | **الكود والـregressions والبوابات منجزة محلياً؛ الدفع والجولة 13 قيد التنفيذ** | `with` يعمل فقط للنثر القصير ذي جملة أو جملتين ويسقط لواحق `requiring/using/including/from/without/ensuring/plus`؛ `asked=[]` لا يلغي تدقيق النطاق؛ `WEATHER_FEATURE_RULES` وقواعد الأيام السبعة/الساعي/الحرارة والرطوبة/الوحدات تثبت الميزات من النص والمصدر؛ الدبابيس الخمسة و049b خضراء؛ focused = 6 suites/119 tests؛ TSC = 0؛ Jest = 22/22 دفعة؛ لا تعديل يدوي على WeatherGo |
+| PR82-050 | إقرار تعليمات Claude وتوثيق الجولة 12 والتشخيص المزدوج | **الدليل الخام والتشخيص منشوران؛ إقرار 050 منشور؛ الدفع إلى `main` والجولة 13 بعده** | الدليل الخام يثبت `engine=weather` و`extractionMiss=true` الصادقين؛ الجولة 12 لا تُقبل لغياب `JOE_BUILD_SHA`؛ تعليق Claude اشترط الجولة 13 ببصمة البناء أولاً وgreps 048a الثلاثة؛ ملف 032 يذكر البوابات والملفات المفتوحة |
+
+**POS-050-STATUS:** 2026-08-20 — أصلح 050 طبقة الكشف العامة بعد قياس الجولة 12: لم يعد `with` يلتقط ثلاث عبارات نثرية مثل `live data from ...` و`forecast APIs` و`requiring no API key or account` كميزات مستقلة، بينما بقيت صيغة القوائم الاجتماعية خضراء. عند فراغ `asked` يستمر حارس النطاق عبر registry القواعد، ولا يتحول إلى قبول صامت. الجولة 12 أثبتت نجاح 049b ميدانياً (`detectAppKind=weather` و`extractionMiss=true` مع envelope keys) لكنها بقيت ساقطة كجولة قبول بسبب غياب `JOE_BUILD_SHA` من أول الدليل وبسبب فجوة parser المقاسة. لا توجد تغييرات يدوية على WeatherGo، ولا package manifests، ولا `zz-*` في نطاق الدفعة.
+
+**POS-050-GATES:** focused 6 suites / 119 tests / EXIT 0؛ TSC EXIT 0؛ full Jest 22/22 batches، كل دفعة EXIT 0، `FULL_JEST_BATCHES_EXIT:0`.
+
+**POS-050-NEXT:** بعد الدفع وإعادة البناء، تُشغّل الجولة 13 فقط بدليل يبدأ بـ`JOE_BUILD_SHA=<SHA>` ثم greps `phaseReceiptExtras` و`authored files never landed` و`deriveFidelityVerdict`; لا يُعلن Level 4 مقبولاً قبل artifact حقيقي، `finalVerified=true`، `liveUrl` غير فارغ، وQA مستقل.
+
+**POS-050-W50-ORDER:** W50 يبقى آخر مهمة في القائمة ولا يبدأ قبل قبول Level 4 بتحقق حي مستقل.
