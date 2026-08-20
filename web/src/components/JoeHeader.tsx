@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Bot, MessageSquare, Settings, Moon, Sun, PanelLeft, PanelRight, Columns2, Rocket, Activity, Shield, ChevronDown } from 'lucide-react';
-import { resolveIdentity, nameFromEmail, initialsFrom, ROLE_KEY, isPrivileged, type UserRole } from '../lib/userIdentity';
+import { resolveIdentity, nameFromEmail, initialsFrom, gravatarUrlFor, ROLE_KEY, isPrivileged, type UserRole } from '../lib/userIdentity';
 import JoeMark from './JoeMark';
 import UpdateJoeItem, { SelfUpdateOverlay, UpdateAutoPilot, useUpdateAvailable } from './UpdateJoeItem';
 
@@ -53,7 +53,18 @@ export default function JoeHeader({
     const displayName = id.name || userName || nameFromEmail(email);
     const initials = id.initials || initialsFrom(displayName, email);
     const role = (id.role || String(userRole || '').toUpperCase()) as UserRole | '';
-    const photo = id.picture || userAvatar || '';
+    // Photo precedence: a locally-known picture (Google claim / cached avatar)
+    // first; otherwise the email's own Gravatar — resolved async because the
+    // hash is computed with WebCrypto. `d=404` + the broken-image fallback
+    // below mean an account with no photo anywhere still gets clean initials.
+    const [gravatar, setGravatar] = useState('');
+    useEffect(() => {
+        let alive = true;
+        if (id.picture || userAvatar || !email) { setGravatar(''); return; }
+        void gravatarUrlFor(email).then(url => { if (alive) setGravatar(url); });
+        return () => { alive = false; };
+    }, [id.picture, userAvatar, email]);
+    const photo = id.picture || userAvatar || gravatar || '';
     const roleLabel = role ? t(ROLE_KEY[role as UserRole]) : '';
     const roleClass = role ? `role-${role.toLowerCase().replace('_', '-')}` : '';
     // If the photo cannot be loaded (no cached copy yet and no internet) fall
