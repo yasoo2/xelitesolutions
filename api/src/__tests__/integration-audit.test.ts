@@ -347,6 +347,18 @@ describe('partial phases preserve verified blockers instead of guessing a repair
         expect(executor).toContain('...(verificationFailed ? { verificationFailed: true } : {})');
     });
 
+    it('carries structured fidelity repair routing without inventing a file target', () => {
+        const react = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ReactProjectTool.ts'), 'utf-8');
+        const executor = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'PhaseExecutorTool.ts'), 'utf-8');
+        const ticket = fs.readFileSync(path.join(__dirname, '..', 'modules', 'services', 'RepairTicketService.ts'), 'utf-8');
+        expect(react).toContain("repairKind: 'regenerate_engine'");
+        expect(react).toContain('fidelityMismatch ?');
+        expect(executor).toContain("failedOutput.repairKind === 'regenerate_engine'");
+        expect(executor).toContain("repairKind === 'code_fix' && typeof failedOutput.repairFile === 'string'");
+        expect(ticket).toContain("repairKind?: 'regenerate_engine' | 'code_fix'");
+        expect(ticket).toContain('repairKind === \'code_fix\' && typeof t?.repairFile === \'string\'');
+    });
+
     it('passes compact requirements evidence into builder requests without duplicating it', () => {
         const executor = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'PhaseExecutorTool.ts'), 'utf-8');
         expect(executor).toContain("['api_project', 'react_project'].includes(toolName)");

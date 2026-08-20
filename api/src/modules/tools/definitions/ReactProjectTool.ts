@@ -4145,6 +4145,7 @@ ${built ? '✅ npm install + vite build succeeded — the production build is in
                  * blindly» — now covers the delivery gate that reuses its shape.
                  */
                 verificationFailed: deliveryBlocked,
+                ...(fidelityMismatch ? { repairKind: 'regenerate_engine' as const } : {}),
                 delivery: {
                     accepted: !deliveryBlocked,
                     blockers: blockers.map((f: any) => f.id),

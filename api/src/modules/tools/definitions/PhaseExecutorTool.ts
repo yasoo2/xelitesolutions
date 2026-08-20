@@ -1265,6 +1265,16 @@ export class PhaseExecutorTool implements ToolDefinition {
                         // preview link and the precise QA evidence. Keep that
                         // report visible instead of reducing it to one error line.
                         const failedMessage = String(failedOutput.message || '').trim();
+                        // Carry only the structured repair routing contract emitted by
+                        // the tool. In particular, a fidelity mismatch is an engine
+                        // regeneration handoff, not permission to invent a file target.
+                        const repairKind = failedOutput.repairKind === 'regenerate_engine'
+                            || failedOutput.repairKind === 'code_fix'
+                            ? failedOutput.repairKind
+                            : undefined;
+                        const repairFile = repairKind === 'code_fix' && typeof failedOutput.repairFile === 'string'
+                            ? failedOutput.repairFile.slice(0, 1000)
+                            : undefined;
                         appendLog(`[PhaseExecutor] ❌ Task ${i + 1} failed: ${toolName} — ${errMsg}`);
                         results.push({
                             task: taskDesc,
@@ -1273,6 +1283,8 @@ export class PhaseExecutorTool implements ToolDefinition {
                             error: currentRunError,
                             ...((toolResult as any)?.recoverable === true ? { recoverable: true } : {}),
                             ...(failedMessage ? { message: failedMessage.slice(0, 8000) } : {}),
+                            ...(repairKind ? { repairKind } : {}),
+                            ...(repairFile ? { repairFile } : {}),
                             ...(runEvidenceId ? { runId: runEvidenceId } : {}),
                             ...(runEvidenceRoot ? { projectRoot: runEvidenceRoot } : {}),
                             ...(staleRunEvidenceDropped

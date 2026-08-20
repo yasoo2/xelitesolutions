@@ -10,7 +10,9 @@ export interface SelfFixPlan {
   allowed: boolean;
   reason: string;
   maxAttempts: number;
-  strategy: 'missing_file_fix' | 'dependency_fix' | 'launcher_fix' | 'build_fix' | 'code_fix' | 'permission_stop' | 'manual_review';
+  strategy: 'missing_file_fix' | 'dependency_fix' | 'launcher_fix' | 'build_fix' | 'code_fix' | 'regenerate_engine' | 'permission_stop' | 'manual_review';
+  /** Present only for an evidence-bound code_fix; engine regeneration has none. */
+  repairFile?: string;
   suggestedTool?: string;
   suggestedInput?: Record<string, unknown>;
   /** A cure proven on this same error class in a past run — context, not a script. */
@@ -25,7 +27,7 @@ export interface SelfFixPlan {
 }
 
 function rawTextOf(ticket: RepairTicket) {
-  return `${ticket.status}\n${ticket.primaryError}\n${ticket.failedTasks.map(t => `${t.task}\n${t.tool}: ${t.error}${t.command ? `\ncommand: ${t.command}` : ''}${t.cwd ? `\ncwd: ${t.cwd}` : ''}${t.file ? `\nfile: ${t.file}` : ''}${t.find ? `\nfind: ${t.find}` : ''}${t.replace !== undefined ? `\nreplace: ${t.replace}` : ''}`).join('\n')}`;
+  return `${ticket.status}\n${ticket.primaryError}\n${ticket.failedTasks.map(t => `${t.task}\n${t.tool}: ${t.error}${t.command ? `\ncommand: ${t.command}` : ''}${t.cwd ? `\ncwd: ${t.cwd}` : ''}${t.file ? `\nfile: ${t.file}` : ''}${t.repairKind ? `\nrepairKind: ${t.repairKind}` : ''}${t.repairFile ? `\nrepairFile: ${t.repairFile}` : ''}${t.find ? `\nfind: ${t.find}` : ''}${t.replace !== undefined ? `\nreplace: ${t.replace}` : ''}`).join('\n')}`;
 }
 
 function extractFailedEdit(ticket: RepairTicket) {
@@ -610,6 +612,25 @@ export class SelfFixService {
 
     if (ticket.severity === 'critical') {
       return this.stop(ticket, 'Critical/security-related issue requires explicit review before repair.', 'permission_stop');
+    }
+
+    // A fidelity mismatch means the requested engine was absent from the
+    // generated artifact. There is no evidence-bound source file to edit: the
+    // safe recovery is to hand control back to the request-driven engine
+    // authoring path, not to let a generic fixer rewrite brochure source into
+    // weather code. Keep this before every file-target extraction below.
+    const hasFidelityMismatch = ticket.failedTasks.some(task => task.repairKind === 'regenerate_engine');
+    if (hasFidelityMismatch) {
+      return {
+        type: 'self_fix_plan',
+        allowed: true,
+        reason: 'The generated artifact failed request fidelity; regenerate the requested engine from the original brief. No evidence-bound repair file exists, so no file repair will be attempted.',
+        maxAttempts: 1,
+        strategy: 'regenerate_engine',
+        repairFile: undefined,
+        safety: this.safety(),
+        sourceTicket: ticket,
+      };
     }
 
     // Scar tissue: a cure proven on this same error class in a past run.

@@ -35,6 +35,10 @@ export interface RepairTicket {
     /** Original generation brief/context for bounded ai_write_file recovery. */
     description?: string;
     artifactContext?: string;
+    /** Structured repair routing emitted by a trusted tool result. */
+    repairKind?: 'regenerate_engine' | 'code_fix';
+    /** Evidence-bound file target; valid only for code_fix repairs. */
+    repairFile?: string;
     runId?: string;
     projectRoot?: string;
     evidenceStatus?: 'current_run' | 'stale_run_dropped';
@@ -169,6 +173,12 @@ export class RepairTicketService {
             : undefined;
         const taskRunId = String(t?.runId || ticketRunId || '').trim() || undefined;
         const taskProjectRoot = String(t?.projectRoot || ticketProjectRoot || '').trim() || undefined;
+        const repairKind = t?.repairKind === 'regenerate_engine' || t?.repairKind === 'code_fix'
+          ? t.repairKind
+          : undefined;
+        const repairFile = repairKind === 'code_fix' && typeof t?.repairFile === 'string'
+          ? t.repairFile
+          : undefined;
         return {
           task: truncate(t.task || 'unknown task', 500),
           tool: truncate(t.tool || 'unknown tool', 100),
@@ -181,6 +191,8 @@ export class RepairTicketService {
           ...(replace !== undefined ? { replace: truncate(replace, 4000) } : {}),
           ...(description ? { description } : {}),
           ...(artifactContext ? { artifactContext } : {}),
+          ...(repairKind ? { repairKind } : {}),
+          ...(repairFile ? { repairFile: truncate(repairFile, 1000) } : {}),
           ...(taskRunId ? { runId: taskRunId } : {}),
           ...(taskProjectRoot ? { projectRoot: truncate(taskProjectRoot, 1000) } : {}),
           ...(t?.evidenceStatus === 'current_run' ? { evidenceStatus: 'current_run' as const } : {}),

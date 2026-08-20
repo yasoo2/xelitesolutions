@@ -287,6 +287,19 @@ export class SelfFixExecutionService {
       };
     }
 
+    // Engine regeneration is a structured handoff, not a file repair. Stop
+    // before tool allowlisting, path rebinding, or any guessed write target;
+    // the caller can report the honest regeneration requirement explicitly.
+    if (selfFixPlan.strategy === 'regenerate_engine') {
+      return {
+        attempted: false,
+        allowed: true,
+        ok: false,
+        reason: selfFixPlan.reason,
+        stopped: true,
+      };
+    }
+
     if (!selfFixPlan.suggestedTool) {
       return {
         attempted: false,

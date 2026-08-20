@@ -15,6 +15,9 @@
 import fs from 'fs';
 import path from 'path';
 import { worthRepairing, REPAIRABLE_FINDINGS, collectSources } from '../core/quality/self-repair';
+import { RepairTicketService } from '../modules/services/RepairTicketService';
+import { SelfFixService } from '../modules/services/SelfFixService';
+import { SelfFixExecutionService } from '../modules/services/SelfFixExecutionService';
 
 const read = (...p: string[]) => fs.readFileSync(path.join(__dirname, '..', ...p), 'utf-8');
 
@@ -91,6 +94,80 @@ describe('the build only claims an improvement it measured', () => {
 
     it('the delivery message prints both numbers, not a promise', () => {
         expect(R()).toMatch(/\$\{selfRepair\.before\}\/100 ← \$\{selfRepair\.after\}\/100/);
+    });
+});
+
+describe('structured request-fidelity recovery', () => {
+    function fidelityTicket() {
+        return RepairTicketService.build({
+            phase: { phaseNumber: 1, name: 'Application' },
+            projectName: 'WeatherGo',
+            workspaceId: 'workspace-test',
+            phaseResult: {
+                output: {
+                    status: 'partial',
+                    verificationFailed: true,
+                    primaryError: 'request_fidelity_mismatch: requested weather engine was not delivered',
+                    results: [{
+                        task: 'Generate the requested weather engine',
+                        tool: 'react_project',
+                        ok: false,
+                        error: 'request_fidelity_mismatch: requested weather engine was not delivered',
+                        repairKind: 'regenerate_engine',
+                    }],
+                },
+            },
+        });
+    }
+
+    it('routes fidelity mismatch to regenerate_engine without a repairFile', () => {
+        const ticket = fidelityTicket();
+        expect(ticket.failedTasks[0]).toEqual(expect.objectContaining({ repairKind: 'regenerate_engine' }));
+        expect(ticket.failedTasks[0]).not.toHaveProperty('repairFile');
+        const plan = SelfFixService.plan(ticket);
+        expect(plan.allowed).toBe(true);
+        expect(plan.strategy).toBe('regenerate_engine');
+        expect(plan.repairFile).toBeUndefined();
+        expect(plan.suggestedTool).toBeUndefined();
+    });
+
+    it('stops regenerate_engine before trusted file-tool execution', async () => {
+        const plan = SelfFixService.plan(fidelityTicket());
+        const result = await SelfFixExecutionService.executeOnce({
+            phase: { tasks: [] },
+            projectContext: {},
+            selfFixPlan: plan,
+            executionContext: {},
+        });
+        expect(result.attempted).toBe(false);
+        expect(result.stopped).toBe(true);
+        expect(result.reason).toContain('regenerate');
+    });
+
+    it('keeps an ordinary failed task without repairKind on the evidence-bound build path', () => {
+        const file = '/workspace/WeatherGo/src/components/WeatherApp.jsx';
+        const ticket = RepairTicketService.build({
+            phase: { phaseNumber: 1, name: 'Application' },
+            projectName: 'WeatherGo',
+            workspaceId: 'workspace-test',
+            phaseResult: {
+                output: {
+                    status: 'partial',
+                    results: [{
+                        task: 'Build the generated project',
+                        tool: 'shell_execute',
+                        ok: false,
+                        error: `unresolved_local_import: ${file} imports "./styles/app.css" but no file resolves`,
+                        file,
+                        cwd: '/workspace/WeatherGo',
+                    }],
+                },
+            },
+        });
+        const plan = SelfFixService.plan(ticket);
+        expect(plan.strategy).toBe('code_fix');
+        expect(plan.repairKind).toBeUndefined();
+        expect(plan.suggestedInput?.path).toContain('WeatherApp.jsx');
     });
 });
 
