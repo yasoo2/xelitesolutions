@@ -528,9 +528,19 @@ router.get('/callback', async (req: Request, res: Response) => {
     );
 
     return finishRedirect(`token=${encodeURIComponent(appToken)}`);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Google OAuth Callback Error:', error);
-    return finishRedirect('error=google_callback_failed');
+    // The generic code alone sent the owner hunting through console windows
+    // for the real reason. Carry a bounded, secret-free detail to the login
+    // page so the surface says WHAT failed (e.g. `invalid_client`,
+    // `redirect_uri_mismatch`, a DB error message) — never tokens or codes.
+    const detail = String(
+      error?.response?.data?.error_description
+      || error?.response?.data?.error
+      || error?.message
+      || '',
+    ).replace(/[\r\n]+/g, ' ').slice(0, 160);
+    return finishRedirect(`error=google_callback_failed${detail ? `&detail=${encodeURIComponent(detail)}` : ''}`);
   }
 });
 

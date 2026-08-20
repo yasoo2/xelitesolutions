@@ -87,6 +87,10 @@ export default function Login() {
         }
 
         if (err) {
+            // The server now forwards the underlying reason (bounded, no
+            // secrets) — show it, so a failed callback names its cause
+            // instead of a generic code nobody can act on.
+            const detail = String(params.get('detail') || '').trim();
             const msg =
                 err === 'google_client_id_missing'
                     ? t('googleNoClientId')
@@ -94,7 +98,7 @@ export default function Login() {
                         ? t('googleNoClientSecret')
                         : err === 'access_denied'
                             ? t('googleCancelled')
-                            : `Google OAuth error: ${err}`;
+                            : `Google OAuth error: ${err}${detail ? ` — ${detail}` : ''}`;
             setError(msg);
             window.location.hash = '';
         }
