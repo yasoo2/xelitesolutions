@@ -152,6 +152,58 @@ describe('PhaseExecutor manifest-aware npm launcher recovery', () => {
         }
     });
 
+    it('normalizes present conceptual path fields for any tool without inventing missing fields', () => {
+        const context = {
+            projectRoot: '/workspace/react-weathergo-a7c8',
+            projectName: 'WeatherGo',
+            projectRootRuntimeBound: true,
+        };
+        const logs: string[] = [];
+
+        const inspect: Record<string, any> = { path: 'WeatherGo' };
+        inheritRuntimeProjectArguments('inspect_directory', inspect, context, logs);
+        expect(inspect.path).toBe('/workspace/react-weathergo-a7c8');
+
+        const shell: Record<string, any> = { command: 'ls', cwd: 'WeatherGo' };
+        inheritRuntimeProjectArguments('shell_execute', shell, context, logs);
+        expect(shell.cwd).toBe('/workspace/react-weathergo-a7c8');
+
+        const generic: Record<string, any> = { projectPath: 'WeatherGo' };
+        inheritRuntimeProjectArguments('generic_tool', generic, context, logs);
+        expect(generic.projectPath).toBe('/workspace/react-weathergo-a7c8');
+
+        const absent: Record<string, any> = { command: 'ls' };
+        inheritRuntimeProjectArguments('generic_tool', absent, context, logs);
+        expect(absent.path).toBeUndefined();
+        expect(absent.cwd).toBeUndefined();
+        expect(absent.projectPath).toBeUndefined();
+
+        const explicit: Record<string, any> = { path: '/workspace/other' };
+        inheritRuntimeProjectArguments('inspect_directory', explicit, context, logs);
+        expect(explicit.path).toBe('/workspace/other');
+    });
+
+    it('does not consult the active workspace root for runtime-bound fallback without workspaceId', () => {
+        const context = {
+            projectRoot: '/workspace/react-weathergo-a7c8',
+            projectName: 'WeatherGo',
+            projectRootRuntimeBound: true,
+        };
+        const logs: string[] = [];
+        const activeRootSpy = jest.spyOn(workspaceService, 'getActiveRoot');
+        const planned: Record<string, any> = { path: 'WeatherGo' };
+
+        try {
+            inheritRuntimeProjectArguments('generic_tool', planned, context, logs);
+
+            expect(planned.path).toBe('/workspace/react-weathergo-a7c8');
+            expect(activeRootSpy).not.toHaveBeenCalled();
+            expect(logs.join('\\n')).toContain('generic_tool: normalized conceptual path');
+        } finally {
+            activeRootSpy.mockRestore();
+        }
+    });
+
     it('replaces a conceptual npm cwd with the runtime-bound artifact root', () => {
         const projectRoot = path.join(workspaceRoot, 'react-weathergo-bad8');
         fs.mkdirSync(projectRoot, { recursive: true });

@@ -223,3 +223,27 @@ POS-049-048C-LIVE: pending; Joe rebuild and independent WeatherGo round 10 next
 **POS-050A-GATES:** 2026-08-20 — focused 5 suites / 95 tests / EXIT 0؛ TSC EXIT 0؛ full Jest 22/22 batches، كل دفعة EXIT 0، `FULL_JEST_BATCHES_EXIT:0`. لم تُلمس ملفات WeatherGo الناتجة أو package manifests أو `zz-*`.
 **POS-050A-NEXT:** بعد staging والدفع إلى `main` فقط، يُعاد البناء من SHA المدفوع وتُشغّل الجولة 13 بدليل يبدأ بـ`JOE_BUILD_SHA=<SHA>` ثم greps علامات 048a الثلاث؛ لا قبول Level 4 قبل artifact حقيقي و`finalVerified=true` و`liveUrl` غير فارغ وQA مستقل.
 **POS-050A-W50-ORDER:** W50 يبقى آخر مهمة في القائمة ولا يبدأ قبل قبول Level 4 بتحقق حي مستقل.
+
+
+## سجل إصلاح 051 — تطبيع عام لمسارات الأدوات عند runtime-bound
+
+| المعرّف | المهمة | الحالة | معيار الإغلاق |
+|---|---|---|---|
+| 051 | جعل `PhaseExecutor` يطبّع الحقول العامة الموجودة `path`/`cwd`/`projectPath` من جذر artifact الموثوق عند `projectRootRuntimeBound=true`، مع إبقاء العقود الخاصة وحماية المسارات المطلقة | **منجز محلياً؛ البوابات الخضراء؛ الدفع إلى `main` والجولة 14 قيد التنفيذ** | fallback عام محصور في runtime-bound، لا يخلق حقولاً غائبة، يطبع المسار المفاهيمي/النسبي المناسب، لا يستبدل مطلقاً صريحاً، ولا يستدعي `getActiveRoot` عند غياب `workspaceId`؛ regressions دائمة؛ focused=9 suites/131 tests؛ TSC=0؛ Jest=22/22 دفعة وكل دفعة `EXIT 0` |
+| PR82-051 | تنفيذ اعتماد Claude وإثبات سبب فشل batch 16 قبل الدفع | **الاعتماد والقياسات مكتملة؛ الدفع إلى `main` بعد staging** | نُشر الدليل الخام M1–M3 ثم تشخيص مستقل؛ أثبت M1 قائمة 10 suites، وM2 نجاح 106/106 و92/92، وM3 نجاح 198/198؛ Claude حكم أن الفشل رجفة حمل؛ regression spy يثبت عدم استدعاء `getActiveRoot` بلا `workspaceId` |
+| FLAKE-RUNEVIDENCE-TIMEOUT | توسيع مهلة اختبار IO الحقيقي في `run-evidence.test.ts` إلى 120 ثانية | **دين منفصل مؤجل، خارج نطاق 051** | لا يُخلط مع إصلاح PhaseExecutor؛ يُنفذ لاحقاً مع regression/بوابات مستقلة بعد قبول L4 أو وفق أولوية القناة |
+
+### بوابات 051
+
+أثبتت بوابة focused الأخيرة **9 suites / 131 tests / `FOCUSED_EXIT:0`**، وأثبت TypeScript **`TSC_EXIT:0`**، ثم اجتازت suite Jest الكاملة **22/22 دفعة، كل دفعة `EXIT 0`، `FULL_JEST_BATCHES_EXIT:0`**. فشل batch 16 السابق أُعيد إنتاجه ثلاثياً بنجاح كامل في M1–M3، ولذلك لم تُعدّل ضحية `run-evidence.test.ts` ولم تُلمس أدوات resolver المشتركة.
+
+### القيود المحفوظة
+
+لا توجد ملفات WeatherGo ناتجة أو `package.json` أو `package-lock.json` أو `zz-*.test.ts` ضمن نطاق 051. بعد الدفع فقط تُعاد بناء Joe من SHA المدفوع، ويُشغّل الدليل الخام للجولة 14 بحيث يكون `JOE_BUILD_SHA=<SHA>` أول سطر، ثم greps علامات 048a الثلاث، ثم يُشترط artifact حقيقي و`finalVerified=true` و`liveUrl` غير فارغ وQA مستقل قبل إعلان Level 4 مقبولاً. يبقى W50 آخر مهمة ولا يبدأ قبل قبول L4.
+
+POS-051-FOCUSED: 9 suites / 131 tests / EXIT 0
+POS-051-TSC: 0
+POS-051-FULL-JEST: 22/22 batches green; FULL_JEST_BATCHES_EXIT:0
+POS-051-M1-M3: M1=10 files; M2=106/106 + 92/92; M3=198/198; all EXIT 0
+POS-051-PUSH: pending final staging and push to main
+POS-051-NO-WEATHERGO-MANUAL-EDIT: confirmed

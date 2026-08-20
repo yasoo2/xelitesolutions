@@ -321,6 +321,46 @@ export function inheritRuntimeProjectArguments(
             }
         }
     }
+
+    // 051: General fallback normalization for fields not handled by a tool's
+    // established contract. The fallback never invents a missing field and
+    // never rewrites a source path whose owner resolves relative paths itself.
+    if (projectContext?.projectRootRuntimeBound === true && projectContext?.projectRoot) {
+        const root = String(projectContext.projectRoot).trim();
+        if (root) {
+            let workspaceRoot = '';
+            const workspaceId = String(projectContext?.workspaceId || '').trim();
+            if (workspaceId) {
+                try {
+                    workspaceRoot = path.resolve(workspaceService.getActiveRoot(workspaceId));
+                } catch { /* use the trusted runtime root below */ }
+            }
+            for (const field of ['path', 'cwd', 'projectPath'] as const) {
+                if (!Object.prototype.hasOwnProperty.call(planned, field)) continue;
+                const current = String(planned[field] || '').trim();
+                if (!current || path.isAbsolute(current)) continue;
+                if (field === 'path' && runtimeLogicalSourceTools.has(toolName)) continue;
+                if (current === '..' || current.startsWith('../') || current.startsWith('..\\')) continue;
+                if (toolName === 'deploy_project' && field === 'projectPath') continue;
+
+                const candidateUnderRoot = path.resolve(root, current);
+                let resolvesOnDisk = false;
+                try {
+                    resolvesOnDisk = fs.existsSync(candidateUnderRoot)
+                        || (!!workspaceRoot && fs.existsSync(path.resolve(workspaceRoot, current)));
+                } catch { /* keep false */ }
+                if (resolvesOnDisk) continue;
+
+                // A multi-segment relative path is an intentional source or
+                // nested target for the owning tool; only a single conceptual
+                // path label (for example "WeatherGo") is safe to normalize.
+                if (field === 'path' && /[\\/]/u.test(current)) continue;
+                planned[field] = root;
+                logs?.push(`[PhaseExecutor] ${toolName}: normalized conceptual ${field} onto runtime-bound artifact root (${root.slice(0, 120)})`);
+            }
+        }
+    }
+
     return planned;
 }
 
