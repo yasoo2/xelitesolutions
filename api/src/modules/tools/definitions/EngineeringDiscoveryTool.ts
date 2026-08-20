@@ -139,6 +139,23 @@ export class EngineeringDiscoveryTool extends BaseTool {
          * at an existing/current project, select an existing target. Read-only
          * verbs such as inspect/analyze/verify remain evidence gathering.
          */
+        /**
+         * A new build may preserve an existing shell or infrastructure contract
+         * in its prose without targeting that artifact for writes. Treat the
+         * directed build request as the intent signal, not an incidental noun in
+         * the specification. This distinction is what keeps a crowded workspace
+         * greenfield-safe after earlier runs have left same-named projects behind.
+         */
+        const explicitNewBuildIntent = request
+            .split(/[.!?\n]+/)
+            .some((sentence) => {
+                const buildVerb = /\b(?:build|create|develop|implement|generate|scaffold|make)\b/i.test(sentence)
+                    || /(?:ابن|أنشئ|انشئ|طوّر|طور|نفّذ|نفذ|اصنع)/i.test(sentence);
+                const continuationOrEdit = /\b(?:continue|resume|finish|complete|extend|modify|update|fix|repair|refactor|improve|edit)\b/i.test(sentence)
+                    || /(?:أكمل|اكمل|استأنف|عدّل|عدل|حدّث|حدث|أصلح|اصلح)/i.test(sentence);
+                const existingDestination = /\b(?:in|into|on|within|inside|for)\s+(?:the\s+)?(?:existing|current|this|active|last)\s+(?:project|codebase|workspace|application|system|app|build|artifact)\b/i.test(sentence);
+                return buildVerb && !continuationOrEdit && !existingDestination;
+            });
         const explicitExistingMutation = request
             .split(/[.!?\n]+/)
             .some((sentence) => {
@@ -158,7 +175,12 @@ export class EngineeringDiscoveryTool extends BaseTool {
                 // Keep the distinction evidence-bound so a quality brief cannot
                 // turn a crowded workspace into an ambiguity blocker.
                 const genericCategoryReference = /\bthis\s+(?:class|type|kind|sort|category|family|form)\s+of\s+/i.test(sentence);
-                const target = !genericCategoryReference && /(?:\b(?:existing|current|this|active|last)\s+(?:[A-Za-z0-9_-]+\s+){0,2}(?:project|codebase|workspace|application|system|app|build|artifact)\b|\b(?:repo(?:sitory)?|github)\b)/i.test(sentence);
+                // Phrases such as “keep the existing Joe app shell contract” are
+                // preservation constraints on the host system, not write-target
+                // declarations for the new application. Do not let that noun
+                // override an explicit build intent in another sentence.
+                const preservedExistingReference = /\b(?:keep|preserve|retain|reuse|respect|follow)\b[^.!?\n]{0,100}\b(?:existing|current|this|active|last)\b[^.!?\n]{0,80}\b(?:shell|contract|infrastructure|architecture|runtime|framework|stack|tooling)\b/i.test(sentence);
+                const target = !genericCategoryReference && !preservedExistingReference && /(?:\b(?:existing|current|this|active|last)\s+(?:[A-Za-z0-9_-]+\s+){0,2}(?:project|codebase|workspace|application|system|app|build|artifact)\b|\b(?:repo(?:sitory)?|github)\b)/i.test(sentence);
                 // "Do not modify the existing project" is a safety boundary,
                 // not an existing-project operation. Remove the negated action
                 // from intent classification so a greenfield request can name
@@ -224,7 +246,7 @@ export class EngineeringDiscoveryTool extends BaseTool {
         // a crowded workspace can turn "current generated project" into a new
         // greenfield scaffold or an ambiguity blocker.
         const targetsKnownArtifact = !!knownArtifactRoot && (continuesKnownArtifact || explicitExistingMutation);
-        const buildsSomethingNew = PlanningEngine.looksLikeBuild(request)
+        const buildsSomethingNew = (explicitNewBuildIntent || PlanningEngine.looksLikeBuild(request))
             && !explicitExistingMutation
             && !remoteUrl
             && !targetsKnownArtifact

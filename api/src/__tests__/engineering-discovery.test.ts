@@ -233,6 +233,37 @@ describe('evidence-first engineering discovery', () => {
     ]);
   });
 
+  test('treats the live shell-contract phrase as a greenfield constraint, not a stale write target', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-live-shell-contract-'));
+    roots.push(root);
+    const staleRoots = ['react-weathergo', 'react-weathergo-266a'].map((name) => path.join(root, name));
+    for (const stale of staleRoots) {
+      fs.mkdirSync(path.join(stale, 'src'), { recursive: true });
+      fs.writeFileSync(path.join(stale, 'package.json'), JSON.stringify({ name: path.basename(stale), scripts: { build: 'vite build' } }));
+      fs.writeFileSync(path.join(stale, 'src', 'main.tsx'), `export const stale = ${JSON.stringify(path.basename(stale))};\\n`);
+    }
+    const before = staleRoots.map((stale) => fs.readFileSync(path.join(stale, 'src', 'main.tsx'), 'utf8'));
+
+    const result: any = await new EngineeringDiscoveryTool().execute({
+      request: [
+        'Build a production-ready React TypeScript weather application called WeatherGo.',
+        'Keep the existing Joe app shell contract and use the existing runtime infrastructure as a compatibility constraint.',
+        'Do not silently select or modify any discovered project; create the new app in a fresh directory.',
+      ].join(' '),
+    }, { workspaceRoot: root, sessionId: 'live-shell-contract-chat' });
+
+    expect(result.ok).toBe(true);
+    expect(result.output.evidence.mode).toBe('greenfield');
+    expect(result.output.evidence.constraints.createsNewProject).toBe(true);
+    expect(result.output.evidence.constraints.userRequestedExistingProject).toBe(false);
+    expect(result.output.evidence.selectedProject).toBeUndefined();
+    expect(result.output.evidence.blockers).toEqual([]);
+    expect(result.output.evidence.referenceProjects).toEqual(expect.arrayContaining(
+      staleRoots.map((stale) => expect.objectContaining({ root: stale })),
+    ));
+    expect(staleRoots.map((stale) => fs.readFileSync(path.join(stale, 'src', 'main.tsx'), 'utf8'))).toEqual(before);
+  });
+
   test('keeps an explicit mutation of an existing project decision-bound', async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-existing-multi-'));
     roots.push(root);
