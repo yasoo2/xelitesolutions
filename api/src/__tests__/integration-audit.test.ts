@@ -17,7 +17,7 @@ import os from 'os';
 import path from 'path';
 import { ProjectPlannerTool } from '../modules/tools/definitions/ProjectPlannerTool';
 import { ProjectPipelineTool } from '../modules/tools/definitions/ProjectPipelineTool';
-import { canBindRuntimeProjectEvidence, projectRootFromWrittenFile } from '../modules/tools/definitions/PhaseExecutorTool';
+import { canBindRuntimeProjectEvidence, classifyStructuredRuntimeEvidence, projectRootFromWrittenFile } from '../modules/tools/definitions/PhaseExecutorTool';
 import { resolveRunnableProject } from '../modules/tools/definitions/ProjectRunTool';
 
 describe('every defined tool is reachable', () => {
@@ -101,6 +101,40 @@ describe('greenfield runtime evidence binds the artifact before its manifest', (
 
     it('resolves the same source-entrypoint project by its explicit name', () => {
         expect(resolveRunnableProject(tmp, '"TaskFlow AI"')).toMatchObject({ cwd: project, matched: true });
+    });
+});
+
+describe('stale runtime evidence stays metadata-only', () => {
+    it('preserves a runtime-contract diagnostic while classifying stale evidence structurally', () => {
+        const projectRoot = '/workspace/WeatherGo';
+        const manifest = `${projectRoot}/package.json`;
+        const diagnostic = `runtime_contract_mismatch: ${projectRoot}/src/App.jsx imports undeclared package(s): react [verified root: ${projectRoot}; manifest: ${manifest}]. Update the project manifest only when necessary.`;
+        const classification = classifyStructuredRuntimeEvidence(
+            { error: diagnostic, evidenceStatus: 'stale_run_dropped' },
+            {},
+            { projectRoot, projectRootRuntimeBound: true, runId: 'run-current', workspaceId: 'workspace-test' },
+            'run-current',
+        );
+
+        expect(classification.evidenceStatus).toBe('stale_run_dropped');
+        expect(classification.staleEvidence).toBe(diagnostic);
+        expect(classification.staleEvidence).toContain('imports undeclared package(s): react');
+        expect(classification.staleEvidence).toContain(`manifest: ${manifest}`);
+        expect(classification.staleEvidence).not.toContain('STALE_RUN_EVIDENCE_DROPPED');
+
+        const fresh = classifyStructuredRuntimeEvidence(
+            { error: diagnostic },
+            { runId: 'run-current' },
+            { projectRoot, projectRootRuntimeBound: true, runId: 'run-current', workspaceId: 'workspace-test' },
+            'run-current',
+        );
+        expect(fresh).toEqual({ evidenceStatus: 'current_run' });
+    });
+
+    it('does not retain the old prose rewriter in the phase failure path', () => {
+        const phaseExecutor = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'PhaseExecutorTool.ts'), 'utf8');
+        expect(phaseExecutor).toContain('const currentRunError = errMsg;');
+        expect(phaseExecutor).not.toContain('rebaseStaleRuntimeEvidenceText(');
     });
 });
 
@@ -333,7 +367,8 @@ describe('partial phases preserve verified blockers instead of guessing a repair
         expect(loop).toContain('const isLocalImportError = /unresolved_local_import/i.test(evidenceText);');
         expect(loop).toContain('const explicitNonRepairableEvidence =');
         expect(loop).toContain('\\btoken\\b');
-        expect(loop).toContain('const staleRunEvidence = /stale_run_evidence_dropped|STALE_RUN_EVIDENCE_DROPPED/i.test(evidenceText);');
+        expect(loop).toContain("const staleRunEvidence = failedEvidence.some((r: any) => r?.evidenceStatus === 'stale_run_dropped')");
+        expect(loop).toContain('/stale_run_evidence_dropped|STALE_RUN_EVIDENCE_DROPPED/i.test(evidenceText)');
         expect(loop).toContain('const nonRepairableEvidence = staleRunEvidence || explicitNonRepairableEvidence || (!isLocalImportError && permissionEvidence);');
         expect(loop).toContain('unresolved_local_import|runtime_contract_mismatch');
         expect(loop).toContain('r?.toolName || r?.name || r?.operation');

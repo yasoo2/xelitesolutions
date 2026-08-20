@@ -653,7 +653,8 @@ export class AgentLoopService {
             const isLocalImportError = /unresolved_local_import/i.test(evidenceText);
             const explicitNonRepairableEvidence = /EVIDENCE_BLOCKER|requires?\s+user\s+decision|\boutside_workspace\b|\bpath_outside\b|\bunauthorized\b|\bforbidden\b|\bcredential\b|\bsecret\b|\btoken\b|native\s+addon|\btoolchain\b/i.test(evidenceText);
             const permissionEvidence = /permission/i.test(evidenceText);
-            const staleRunEvidence = /stale_run_evidence_dropped|STALE_RUN_EVIDENCE_DROPPED/i.test(evidenceText);
+            const staleRunEvidence = failedEvidence.some((r: any) => r?.evidenceStatus === 'stale_run_dropped')
+                || /stale_run_evidence_dropped|STALE_RUN_EVIDENCE_DROPPED/i.test(evidenceText);
             // Evidence from a previous run is not actionable repair input. It must
             // never reach SelfFix, even if its text also contains build/import
             // keywords. The next controlled attempt must establish fresh evidence.

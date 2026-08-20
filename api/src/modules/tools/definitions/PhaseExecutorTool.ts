@@ -551,36 +551,70 @@ function rebaseStaleRuntimeEvidencePath(value: unknown, projectContext?: Record<
 }
 
 /**
- * Never rewrite a stale diagnostic path into the current artifact. Replace
- * workspace paths outside the bound root with an explicit marker so the
- * orchestrator can discard the repair evidence and run a fresh preflight.
+ * Stale-run classification belongs to structured evidence, never to prose.
+ *
+ * Older code scanned the complete diagnostic and replaced any absolute path
+ * outside the current artifact with `[STALE_RUN_EVIDENCE_DROPPED]`. That
+ * silently corrupted runtime-contract diagnostics such as `manifest:` paths,
+ * which then made a valid package manifest look unreadable and produced a
+ * false undeclared-`react` failure. Keep the original diagnostic untouched;
+ * classify stale evidence only when a tool/result explicitly supplies a
+ * status, mismatched run identity, or a separately structured project root.
  */
-function rebaseStaleRuntimeEvidenceText(value: unknown, projectContext?: Record<string, any>): string {
-    const raw = String(value ?? '');
-    const runtimeRoot = String(projectContext?.projectRoot || '').trim();
-    if (!raw || !runtimeRoot || projectContext?.projectRootRuntimeBound !== true) return raw;
+export function classifyStructuredRuntimeEvidence(
+    toolResult: any,
+    toolArgs: Record<string, any> = {},
+    projectContext?: Record<string, any>,
+    currentRunId?: unknown,
+): {
+    evidenceStatus: 'current_run' | 'stale_run_dropped';
+    staleEvidence?: string;
+} {
+    const output = toolResult?.output && typeof toolResult.output === 'object'
+        ? toolResult.output
+        : {};
+    const explicitStatus = String(toolResult?.evidenceStatus || output.evidenceStatus || '').trim().toLowerCase();
+    const runId = String(currentRunId || projectContext?.runId || '').trim();
+    const structuredRunIds = [toolResult?.runId, output.runId, toolArgs?.runId]
+        .map(value => String(value || '').trim())
+        .filter(Boolean);
+    const mismatchedRun = !!runId && structuredRunIds.some(candidate => candidate !== runId);
 
     let workspaceRoot = '';
-    try { workspaceRoot = path.resolve(workspaceService.getActiveRoot(projectContext?.workspaceId)); } catch { return raw; }
-    if (!workspaceRoot || !fs.existsSync(workspaceRoot)) return raw;
-
-    const boundRoot = path.resolve(runtimeRoot);
-    const workspacePrefix = workspaceRoot.replace(/\\/g, '/');
-    const escapedWorkspace = workspacePrefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const absolutePathPattern = new RegExp(`${escapedWorkspace}/[^\\s"']+`, 'gu');
-    let dropped = false;
-    const sanitized = raw.replace(absolutePathPattern, (match) => {
-        const trailing = match.match(/[),.;:]+$/u)?.[0] || '';
-        const candidate = trailing ? match.slice(0, -trailing.length) : match;
+    try { workspaceRoot = path.resolve(workspaceService.getActiveRoot(projectContext?.workspaceId)); } catch { /* no workspace evidence */ }
+    const runtimeRoot = projectContext?.projectRootRuntimeBound === true
+        ? String(projectContext?.projectRoot || '').trim()
+        : '';
+    const boundRoot = runtimeRoot ? path.resolve(runtimeRoot) : '';
+    const structuredRoots = [
+        toolResult?.projectRoot,
+        output.projectRoot,
+        toolArgs?.projectRoot,
+        toolArgs?.cwd,
+        toolArgs?.projectPath,
+    ].map(value => String(value || '').trim())
+        .filter(value => !!value && path.isAbsolute(value));
+    const staleRoot = !!workspaceRoot && !!boundRoot && structuredRoots.some(candidate => {
         try {
-            if (!isWithinRoot(path.resolve(candidate), boundRoot)) {
-                dropped = true;
-                return `${trailing}[STALE_RUN_EVIDENCE_DROPPED]`;
-            }
-        } catch { /* leave malformed diagnostic text unchanged */ }
-        return match;
+            const resolved = path.resolve(candidate);
+            return isWithinRoot(resolved, workspaceRoot) && !isWithinRoot(resolved, boundRoot);
+        } catch {
+            return false;
+        }
     });
-    return dropped ? `${sanitized} [stale_run_evidence_dropped]` : sanitized;
+    const stale = explicitStatus === 'stale_run_dropped'
+        || mismatchedRun
+        || staleRoot;
+    if (!stale) return { evidenceStatus: 'current_run' };
+
+    const staleDiagnostic = boundedRepairEvidence(
+        toolResult?.error || output.error || toolResult?.message || output.message || '',
+        4000,
+    );
+    return {
+        evidenceStatus: 'stale_run_dropped',
+        ...(staleDiagnostic ? { staleEvidence: staleDiagnostic } : {}),
+    };
 }
 
 function fileFailureEvidence(toolName: string, args: Record<string, any>, projectContext?: Record<string, any>): Record<string, string> {
@@ -829,6 +863,8 @@ export class PhaseExecutorTool implements ToolDefinition {
             runId?: string;
             projectRoot?: string;
             evidenceStatus?: 'current_run' | 'stale_run_dropped';
+            /** Bounded audit-only copy of stale diagnostic text; never a repair path. */
+            staleEvidence?: string;
         }> = [];
         let completedCount = 0;
 
@@ -1014,6 +1050,10 @@ export class PhaseExecutorTool implements ToolDefinition {
                     appendLog(`[PhaseExecutor] react_project: inherited canonical project identity (${planned.projectName})`);
                 }
 
+                // Preserve the planner's structured evidence before runtime
+                // rebasing normalizes stale cwd/projectPath values. This snapshot
+                // is metadata only; it is never used as an execution path.
+                const originalPlannedEvidence = { ...planned };
                 applyPhaseExecutionEvidence(toolName, planned, projectContext, logs);
 
                 // Builder tools establish the artifact identity for the rest of
@@ -1152,8 +1192,17 @@ export class PhaseExecutorTool implements ToolDefinition {
                         const runEvidenceRoot = projectContext?.projectRootRuntimeBound === true && String(projectContext?.projectRoot || '').trim()
                             ? path.resolve(String(projectContext.projectRoot))
                             : '';
-                        const currentRunError = rebaseStaleRuntimeEvidenceText(errMsg, projectContext);
-                        const staleRunEvidenceDropped = /stale_run_evidence_dropped/i.test(currentRunError);
+                        const evidenceClassification = classifyStructuredRuntimeEvidence(
+                            toolResult,
+                            originalPlannedEvidence,
+                            projectContext,
+                            runEvidenceId,
+                        );
+                        // Preserve the tool's diagnostic verbatim. Stale status is
+                        // structured metadata; it must never rewrite a runtime
+                        // contract's verified root or manifest prose.
+                        const currentRunError = errMsg;
+                        const staleRunEvidenceDropped = evidenceClassification.evidenceStatus === 'stale_run_dropped';
                         // Evidence-aware launcher recovery. Do not invent a
                         // `server` script and do not rewrite arbitrary npm
                         // commands: inspect the manifest and retry only when
@@ -1203,6 +1252,9 @@ export class PhaseExecutorTool implements ToolDefinition {
                             ...(staleRunEvidenceDropped
                                 ? { evidenceStatus: 'stale_run_dropped' as const }
                                 : { evidenceStatus: 'current_run' as const }),
+                            ...(evidenceClassification.staleEvidence
+                                ? { staleEvidence: evidenceClassification.staleEvidence }
+                                : {}),
                             ...(toolName === 'shell_execute' && typeof toolArgs.command === 'string'
                                 ? { command: toolArgs.command.slice(0, 1000) }
                                 : {}),
@@ -1247,8 +1299,14 @@ export class PhaseExecutorTool implements ToolDefinition {
                     const runEvidenceRoot = projectContext?.projectRootRuntimeBound === true && String(projectContext?.projectRoot || '').trim()
                         ? path.resolve(String(projectContext.projectRoot))
                         : '';
-                    const currentRunError = rebaseStaleRuntimeEvidenceText(errMsg, projectContext);
-                    const staleRunEvidenceDropped = /stale_run_evidence_dropped/i.test(currentRunError);
+                    const evidenceClassification = classifyStructuredRuntimeEvidence(
+                        { error: errMsg },
+                        originalPlannedEvidence,
+                        projectContext,
+                        runEvidenceId,
+                    );
+                    const currentRunError = errMsg;
+                    const staleRunEvidenceDropped = evidenceClassification.evidenceStatus === 'stale_run_dropped';
                     appendLog(`[PhaseExecutor] ❌ Task ${i + 1} threw: ${currentRunError}`);
                     results.push({
                         task: taskDesc,
@@ -1260,6 +1318,9 @@ export class PhaseExecutorTool implements ToolDefinition {
                         ...(staleRunEvidenceDropped
                             ? { evidenceStatus: 'stale_run_dropped' as const }
                             : { evidenceStatus: 'current_run' as const }),
+                        ...(evidenceClassification.staleEvidence
+                            ? { staleEvidence: evidenceClassification.staleEvidence }
+                            : {}),
                         ...(toolName === 'shell_execute' && typeof toolArgs.command === 'string'
                             ? { command: toolArgs.command.slice(0, 1000) }
                             : {}),

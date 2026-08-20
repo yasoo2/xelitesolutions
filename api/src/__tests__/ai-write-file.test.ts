@@ -427,6 +427,30 @@ describe('verified runtime contracts keep generated source on the project stack'
         expect(fs.readFileSync(landsAt(rel), 'utf8')).toMatch(/react-dom\/client/);
     });
 
+    it('keeps the real manifest contract when repair context contains stale evidence', async () => {
+        const rel = path.join(projectRel, 'src/stale-evidence/App.jsx');
+        const staleRoot = path.join(path.dirname(projectRoot), 'WeatherGo');
+        const staleContext = JSON.stringify({
+            evidenceStatus: 'stale_run_dropped',
+            staleEvidence: `runtime_contract_mismatch: ${staleRoot}/src/App.jsx imports undeclared package(s): react [verified root: ${staleRoot}; manifest: ${staleRoot}/package.json]`,
+            projectRoot: `${staleRoot}[STALE_RUN_EVIDENCE_DROPPED]`,
+            repairTicket: { type: 'phase_repair_ticket' },
+        });
+        callLLM.mockResolvedValue("import React from 'react';\nimport { createRoot } from 'react-dom/client';\nexport function App() { return <main>manifest-bound</main>; }\nvoid createRoot;");
+
+        const res: any = await tool.execute({
+            path: rel,
+            description: 'Regenerate the browser React screen using current-run evidence only.',
+            context: staleContext,
+        }, { projectRoot, engineeringPipeline: true });
+
+        expect(res.ok).toBe(true);
+        expect(res.error || '').not.toMatch(/runtime_contract_mismatch/);
+        expect(callLLM.mock.calls[0][0]).toContain(`- Project root: ${projectRoot}`);
+        expect(callLLM.mock.calls[0][0]).toContain('Declared packages only: react, react-dom, vite');
+        expect(fs.readFileSync(path.join(projectRoot, rel.replace(`${projectRel}${path.sep}`, '')), 'utf8')).toContain('manifest-bound');
+    });
+
     it('uses the nearest manifest for an absolute nested target during runtime validation', async () => {
         const absoluteTarget = path.join(projectRoot, 'src/components/Search.jsx');
         callLLM.mockResolvedValue("import React from 'react';\nimport { BrowserRouter } from 'react-router-dom';\nexport default function Search() { return <BrowserRouter><main>Search</main></BrowserRouter>; }");

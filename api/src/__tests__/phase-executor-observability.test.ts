@@ -338,11 +338,13 @@ describe('PhaseExecutorTool observable trusted context', () => {
                 projectRoot: runtimeRoot,
                 evidenceStatus: 'stale_run_dropped',
             }));
-            expect(result.output.results[0].error).toContain('[STALE_RUN_EVIDENCE_DROPPED]');
-            expect(result.output.results[0].error).toContain('[stale_run_evidence_dropped]');
+            expect(result.output.results[0].error).toContain(staleFile);
+            expect(result.output.results[0].error).not.toContain('[STALE_RUN_EVIDENCE_DROPPED]');
+            expect(result.output.results[0].error).not.toContain('[stale_run_evidence_dropped]');
             expect(result.output.results[0]).not.toHaveProperty('file');
             expect(result.output.results[0]).not.toHaveProperty('cwd');
-            expect(result.output.results[0].error).not.toContain(staleRoot);
+            expect(result.output.results[0].staleEvidence).toContain(staleFile);
+            expect(JSON.stringify(result.output.results[0])).not.toContain('STALE_RUN_EVIDENCE_DROPPED');
         } finally {
             fs.rmSync(runtimeRoot, { recursive: true, force: true });
             fs.rmSync(staleRoot, { recursive: true, force: true });
