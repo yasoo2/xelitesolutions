@@ -1,5 +1,24 @@
 # Joe Enterprise - Production Deployment Guide
 
+## ⚠️ عند الانتقال إلى دومين جديد — Google OAuth أولاً (تذكير المالك)
+
+كل انتقال لدومين/منفذ جديد يكسر ربط Google حتى تُحدَّث عناوين العودة في
+Google Cloud Console — الخطأ المرئي حينها: `Error 400: redirect_uri_mismatch`
+(حدث فعلياً على localhost يوم 2026-08-20 وضاعت ساعة في تشخيصه).
+
+**القائمة الإلزامية عند كل دومين جديد**
+(console.cloud.google.com → APIs & Services → Credentials → OAuth client «joe»):
+
+1. **Authorized redirect URIs** — أضف للدومين الجديد (وأبقِ القديمة حتى انتهاء الانتقال):
+   - `https://<الدومين-الجديد>/api/auth/callback` ← زر «Connect Google» في الإعدادات
+   - `https://<الدومين-الجديد>/api/oauth/google/callback` ← تدفق ربط الحساب الثاني
+2. **Authorized JavaScript origins**: `https://<الدومين-الجديد>`
+3. متغيرات البيئة على الخادم: حدّث `PUBLIC_URL`، وإن كان `GOOGLE_REDIRECT_URI`
+   مضبوطاً صراحةً فحدّثه أيضاً (وإلا يُشتق تلقائياً من host الطلب).
+4. إضافة المتصفح: أضف الدومين إلى `content_scripts[0].matches` في
+   `extension/manifest.json` (التفاصيل في `extension/README.md`).
+5. انتظر حتى ~5 دقائق لسريان تغييرات Google، ثم اختبر «Connect Google» حياً.
+
 ## 🚀 Quick Deploy
 
 ### On Your Server:
