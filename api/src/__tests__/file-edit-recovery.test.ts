@@ -372,6 +372,59 @@ describe('evidence-aware file edit recovery', () => {
     expect(plan.strategy).toBe('build_fix');
   });
 
+  it('scopes repair tickets to the current run and drops stale evidence', () => {
+    const currentRoot = '/workspace/WeatherGo-current';
+    const currentFile = `${currentRoot}/src/components/WeatherApp.jsx`;
+    const ticket = RepairTicketService.build({
+      projectName: 'WeatherGo',
+      phase: { phaseNumber: 1, name: 'Application' },
+      runId: 'run-weathergo-current',
+      sessionId: 'chat-weathergo',
+      workspaceId: 'workspace-test',
+      projectRoot: currentRoot,
+      phaseResult: {
+        output: {
+          status: 'failed',
+          results: [
+            {
+              task: 'Write WeatherApp',
+              tool: 'ai_write_file',
+              ok: false,
+              error: 'current build evidence',
+              runId: 'run-weathergo-current',
+              projectRoot: currentRoot,
+              evidenceStatus: 'current_run',
+              file: currentFile,
+            },
+            {
+              task: 'Repair stale Search',
+              tool: 'ai_write_file',
+              ok: false,
+              error: 'stale failure from efb3',
+              runId: 'run-weathergo-old',
+              projectRoot: '/workspace/WeatherGo-old',
+              evidenceStatus: 'stale_run_dropped',
+              file: '/workspace/WeatherGo-old/src/components/Search.jsx',
+            },
+          ],
+        },
+      },
+    });
+
+    expect(ticket.context).toEqual(expect.objectContaining({
+      runId: 'run-weathergo-current',
+      projectRoot: currentRoot,
+    }));
+    expect(ticket.failedTasks).toHaveLength(1);
+    expect(ticket.failedTasks[0]).toEqual(expect.objectContaining({
+      runId: 'run-weathergo-current',
+      projectRoot: currentRoot,
+      file: currentFile,
+      evidenceStatus: 'current_run',
+    }));
+    expect(JSON.stringify(ticket)).not.toContain('WeatherGo-old');
+  });
+
   it('regenerates an undeclared runtime import under the verified project contract', () => {
     const file = '/workspace/WeatherGo/src/components/Favorites.jsx';
     const plan = SelfFixService.plan({

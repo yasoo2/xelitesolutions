@@ -289,7 +289,7 @@ describe('PhaseExecutorTool observable trusted context', () => {
         }));
     });
 
-    it('rebases stale absolute file evidence onto the bound runtime artifact', async () => {
+    it('keeps current-run evidence and drops stale absolute evidence instead of rebasing it', async () => {
         const workspaceId = `workspace-stale-evidence-${process.pid}`;
         const sessionId = `chat-stale-evidence-${process.pid}`;
         const workspaceRoot = workspaceService.getActiveRoot(workspaceId);
@@ -328,18 +328,21 @@ describe('PhaseExecutorTool observable trusted context', () => {
                     sessionId,
                     workspaceId,
                 },
-            }, { sessionId, workspaceId });
+            }, { sessionId, workspaceId, runId: 'run-stale-evidence-test' });
 
             expect(result.ok).toBe(false);
             expect(result.output.results[0]).toEqual(expect.objectContaining({
                 tool: 'ai_write_file',
                 ok: false,
-                cwd: runtimeRoot,
-                file: 'src/components/Search.jsx',
-                error: `unresolved_local_import: ${path.join(runtimeRoot, 'src', 'components', 'Search.jsx')}`,
+                runId: 'run-stale-evidence-test',
+                projectRoot: runtimeRoot,
+                evidenceStatus: 'stale_run_dropped',
             }));
+            expect(result.output.results[0].error).toContain('[STALE_RUN_EVIDENCE_DROPPED]');
+            expect(result.output.results[0].error).toContain('[stale_run_evidence_dropped]');
+            expect(result.output.results[0]).not.toHaveProperty('file');
+            expect(result.output.results[0]).not.toHaveProperty('cwd');
             expect(result.output.results[0].error).not.toContain(staleRoot);
-            expect(result.output.results[0].cwd).not.toBe(staleRoot);
         } finally {
             fs.rmSync(runtimeRoot, { recursive: true, force: true });
             fs.rmSync(staleRoot, { recursive: true, force: true });

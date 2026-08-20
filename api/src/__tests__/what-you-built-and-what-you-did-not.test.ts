@@ -52,7 +52,11 @@ describe('the builder\'s own words survive the phase', () => {
         for (const block of failures) {
             if (/message:/.test(block)) expect(block.indexOf('error:')).toBeLessThan(block.indexOf('message:'));
         }
-        expect(PHASE).toMatch(/task:\s*taskDesc,\s*tool:\s*toolName,\s*ok:\s*false,\s*error:\s*errMsg,/);
+        expect(PHASE).toMatch(/task:\s*taskDesc,\s*tool:\s*toolName,\s*ok:\s*false,\s*error:\s*(?:errMsg|currentRunError),/);
+        expect(PHASE).toMatch(/runId:\s*runEvidenceId/);
+        expect(PHASE).toMatch(/projectRoot:\s*runEvidenceRoot/);
+        expect(PHASE).toMatch(/evidenceStatus:\s*['"]stale_run_dropped['"]/);
+        expect(PHASE).toMatch(/evidenceStatus:\s*['"]current_run['"]/);
     });
 });
 

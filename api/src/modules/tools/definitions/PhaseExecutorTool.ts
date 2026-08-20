@@ -534,6 +534,12 @@ function boundedRepairEvidence(value: unknown, max = 6000): string {
  * paths outside the active workspace or paths without an exact project-label
  * segment: those are not proven to belong to this run.
  */
+/**
+ * Return only an absolute path already proven to belong to this run's bound
+ * artifact. Older code rebased a path from a previous project onto the new
+ * root, which made an efb3 failure look like evidence from the current run.
+ * That is unsafe: the path may describe a different source file entirely.
+ */
 function rebaseStaleRuntimeEvidencePath(value: unknown, projectContext?: Record<string, any>): string {
     const raw = String(value ?? '').trim();
     const runtimeRoot = String(projectContext?.projectRoot || '').trim();
@@ -541,54 +547,40 @@ function rebaseStaleRuntimeEvidencePath(value: unknown, projectContext?: Record<
 
     const boundRoot = path.resolve(runtimeRoot);
     const resolved = path.resolve(raw);
-    if (isWithinRoot(resolved, boundRoot)) return resolved;
-
-    let workspaceRoot = '';
-    try { workspaceRoot = path.resolve(workspaceService.getActiveRoot(projectContext?.workspaceId)); } catch { return raw; }
-    if (!workspaceRoot || !fs.existsSync(workspaceRoot) || !isWithinRoot(resolved, workspaceRoot)) return raw;
-
-    const projectName = String(projectContext?.projectName || '').trim();
-    if (!projectName) return raw;
-    const normaliseLabel = (value: string) => value
-        .replace(/\\/g, '/')
-        .replace(/[-_]+/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim()
-        .toLocaleLowerCase();
-    const segments = resolved.split(path.sep).filter(Boolean);
-    const requestedLabel = normaliseLabel(projectName);
-    let projectIndex = -1;
-    segments.forEach((segment, index) => {
-        if (normaliseLabel(segment) === requestedLabel) projectIndex = index;
-    });
-    if (projectIndex < 0) return raw;
-
-    const relative = segments.slice(projectIndex + 1).join(path.sep);
-    const candidate = path.resolve(boundRoot, relative || '.');
-    return isWithinRoot(candidate, boundRoot) ? candidate : raw;
+    return isWithinRoot(resolved, boundRoot) ? resolved : '';
 }
 
-/** Rebase only the proven old project-root prefix inside diagnostic text. */
+/**
+ * Never rewrite a stale diagnostic path into the current artifact. Replace
+ * workspace paths outside the bound root with an explicit marker so the
+ * orchestrator can discard the repair evidence and run a fresh preflight.
+ */
 function rebaseStaleRuntimeEvidenceText(value: unknown, projectContext?: Record<string, any>): string {
     const raw = String(value ?? '');
     const runtimeRoot = String(projectContext?.projectRoot || '').trim();
-    const projectName = String(projectContext?.projectName || '').trim();
-    if (!raw || !runtimeRoot || !projectName || projectContext?.projectRootRuntimeBound !== true) return raw;
+    if (!raw || !runtimeRoot || projectContext?.projectRootRuntimeBound !== true) return raw;
 
     let workspaceRoot = '';
     try { workspaceRoot = path.resolve(workspaceService.getActiveRoot(projectContext?.workspaceId)); } catch { return raw; }
     if (!workspaceRoot || !fs.existsSync(workspaceRoot)) return raw;
-    const staleRoot = path.resolve(workspaceRoot, projectName);
+
     const boundRoot = path.resolve(runtimeRoot);
-    const prefixes = new Map<string, string>([
-        [staleRoot, boundRoot],
-        [staleRoot.replace(/\\/g, '/'), boundRoot.replace(/\\/g, '/')],
-    ]);
-    let rebased = raw;
-    for (const [from, to] of prefixes) {
-        if (from) rebased = rebased.split(from).join(to);
-    }
-    return rebased;
+    const workspacePrefix = workspaceRoot.replace(/\\/g, '/');
+    const escapedWorkspace = workspacePrefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const absolutePathPattern = new RegExp(`${escapedWorkspace}/[^\\s"']+`, 'gu');
+    let dropped = false;
+    const sanitized = raw.replace(absolutePathPattern, (match) => {
+        const trailing = match.match(/[),.;:]+$/u)?.[0] || '';
+        const candidate = trailing ? match.slice(0, -trailing.length) : match;
+        try {
+            if (!isWithinRoot(path.resolve(candidate), boundRoot)) {
+                dropped = true;
+                return `${trailing}[STALE_RUN_EVIDENCE_DROPPED]`;
+            }
+        } catch { /* leave malformed diagnostic text unchanged */ }
+        return match;
+    });
+    return dropped ? `${sanitized} [stale_run_evidence_dropped]` : sanitized;
 }
 
 function fileFailureEvidence(toolName: string, args: Record<string, any>, projectContext?: Record<string, any>): Record<string, string> {
@@ -834,6 +826,9 @@ export class PhaseExecutorTool implements ToolDefinition {
             cwd?: string;
             background?: boolean;
             recoverable?: boolean;
+            runId?: string;
+            projectRoot?: string;
+            evidenceStatus?: 'current_run' | 'stale_run_dropped';
         }> = [];
         let completedCount = 0;
 
@@ -1153,6 +1148,12 @@ export class PhaseExecutorTool implements ToolDefinition {
                         const errMsg = String(toolResult.error || 'Unknown error');
                         const failedOutput = (toolResult as any)?.output || {};
                         const failureText = `${errMsg}\n${String(failedOutput.stderr || '')}\n${String(failedOutput.stdout || '')}`;
+                        const runEvidenceId = String(executionContext.runId || projectContext?.runId || '').trim();
+                        const runEvidenceRoot = projectContext?.projectRootRuntimeBound === true && String(projectContext?.projectRoot || '').trim()
+                            ? path.resolve(String(projectContext.projectRoot))
+                            : '';
+                        const currentRunError = rebaseStaleRuntimeEvidenceText(errMsg, projectContext);
+                        const staleRunEvidenceDropped = /stale_run_evidence_dropped/i.test(currentRunError);
                         // Evidence-aware launcher recovery. Do not invent a
                         // `server` script and do not rewrite arbitrary npm
                         // commands: inspect the manifest and retry only when
@@ -1194,19 +1195,24 @@ export class PhaseExecutorTool implements ToolDefinition {
                             task: taskDesc,
                             tool: toolName,
                             ok: false,
-                            error: rebaseStaleRuntimeEvidenceText(errMsg, projectContext),
+                            error: currentRunError,
                             ...((toolResult as any)?.recoverable === true ? { recoverable: true } : {}),
                             ...(failedMessage ? { message: failedMessage.slice(0, 8000) } : {}),
+                            ...(runEvidenceId ? { runId: runEvidenceId } : {}),
+                            ...(runEvidenceRoot ? { projectRoot: runEvidenceRoot } : {}),
+                            ...(staleRunEvidenceDropped
+                                ? { evidenceStatus: 'stale_run_dropped' as const }
+                                : { evidenceStatus: 'current_run' as const }),
                             ...(toolName === 'shell_execute' && typeof toolArgs.command === 'string'
                                 ? { command: toolArgs.command.slice(0, 1000) }
                                 : {}),
-                            ...(typeof (toolArgs.cwd || toolArgs.projectPath || failedOutput.cwd || failedOutput.projectPath) === 'string'
+                            ...(!staleRunEvidenceDropped && typeof (toolArgs.cwd || toolArgs.projectPath || failedOutput.cwd || failedOutput.projectPath) === 'string'
                                 ? { cwd: String(toolArgs.cwd || toolArgs.projectPath || failedOutput.cwd || failedOutput.projectPath).slice(0, 1000) }
                                 : {}),
                             ...(toolName === 'shell_execute' && typeof toolArgs.background === 'boolean'
                                 ? { background: toolArgs.background }
                                 : {}),
-                            ...fileFailureEvidence(toolName, toolArgs, projectContext),
+                            ...(!staleRunEvidenceDropped ? fileFailureEvidence(toolName, toolArgs, projectContext) : {}),
                             ...(repairDescription ? { description: repairDescription } : {}),
                             ...(repairContext ? { artifactContext: repairContext } : {}),
                         });
@@ -1237,22 +1243,33 @@ export class PhaseExecutorTool implements ToolDefinition {
                     }
                 } catch (toolError: any) {
                     const errMsg = String(toolError?.message || toolError || 'Execution error');
-                    appendLog(`[PhaseExecutor] ❌ Task ${i + 1} threw: ${errMsg}`);
+                    const runEvidenceId = String(executionContext.runId || projectContext?.runId || '').trim();
+                    const runEvidenceRoot = projectContext?.projectRootRuntimeBound === true && String(projectContext?.projectRoot || '').trim()
+                        ? path.resolve(String(projectContext.projectRoot))
+                        : '';
+                    const currentRunError = rebaseStaleRuntimeEvidenceText(errMsg, projectContext);
+                    const staleRunEvidenceDropped = /stale_run_evidence_dropped/i.test(currentRunError);
+                    appendLog(`[PhaseExecutor] ❌ Task ${i + 1} threw: ${currentRunError}`);
                     results.push({
                         task: taskDesc,
                         tool: toolName,
                         ok: false,
-                        error: errMsg,
+                        error: currentRunError,
+                        ...(runEvidenceId ? { runId: runEvidenceId } : {}),
+                        ...(runEvidenceRoot ? { projectRoot: runEvidenceRoot } : {}),
+                        ...(staleRunEvidenceDropped
+                            ? { evidenceStatus: 'stale_run_dropped' as const }
+                            : { evidenceStatus: 'current_run' as const }),
                         ...(toolName === 'shell_execute' && typeof toolArgs.command === 'string'
                             ? { command: toolArgs.command.slice(0, 1000) }
                             : {}),
-                        ...(typeof (toolArgs.cwd || toolArgs.projectPath) === 'string'
+                        ...(!staleRunEvidenceDropped && typeof (toolArgs.cwd || toolArgs.projectPath) === 'string'
                             ? { cwd: String(toolArgs.cwd || toolArgs.projectPath).slice(0, 1000) }
                             : {}),
                         ...(toolName === 'shell_execute' && typeof toolArgs.background === 'boolean'
                             ? { background: toolArgs.background }
                             : {}),
-                        ...fileFailureEvidence(toolName, toolArgs, projectContext),
+                        ...(!staleRunEvidenceDropped ? fileFailureEvidence(toolName, toolArgs, projectContext) : {}),
                         ...(repairDescription ? { description: repairDescription } : {}),
                         ...(repairContext ? { artifactContext: repairContext } : {}),
                     });

@@ -333,7 +333,8 @@ describe('partial phases preserve verified blockers instead of guessing a repair
         expect(loop).toContain('const isLocalImportError = /unresolved_local_import/i.test(evidenceText);');
         expect(loop).toContain('const explicitNonRepairableEvidence =');
         expect(loop).toContain('\\btoken\\b');
-        expect(loop).toContain('const nonRepairableEvidence = explicitNonRepairableEvidence || (!isLocalImportError && permissionEvidence);');
+        expect(loop).toContain('const staleRunEvidence = /stale_run_evidence_dropped|STALE_RUN_EVIDENCE_DROPPED/i.test(evidenceText);');
+        expect(loop).toContain('const nonRepairableEvidence = staleRunEvidence || explicitNonRepairableEvidence || (!isLocalImportError && permissionEvidence);');
         expect(loop).toContain('unresolved_local_import|runtime_contract_mismatch');
         expect(loop).toContain('r?.toolName || r?.name || r?.operation');
         expect(loop).toContain('r?.errorMessage ||');

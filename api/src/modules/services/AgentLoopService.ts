@@ -515,6 +515,7 @@ export class AgentLoopService {
         const projectContext = {
             projectName: plannerResult.output.projectName || 'Unknown',
             totalPhases: plannerResult.output.totalPhases || phases.length,
+            runId,
             sessionId,
             browserSessionId,
             workspaceId,
@@ -536,6 +537,7 @@ export class AgentLoopService {
             projectRootRuntimeBound: false,
         };
         const executionContext = {
+            runId,
             sessionId,
             browserSessionId,
             workspaceId,
@@ -651,10 +653,14 @@ export class AgentLoopService {
             const isLocalImportError = /unresolved_local_import/i.test(evidenceText);
             const explicitNonRepairableEvidence = /EVIDENCE_BLOCKER|requires?\s+user\s+decision|\boutside_workspace\b|\bpath_outside\b|\bunauthorized\b|\bforbidden\b|\bcredential\b|\bsecret\b|\btoken\b|native\s+addon|\btoolchain\b/i.test(evidenceText);
             const permissionEvidence = /permission/i.test(evidenceText);
+            const staleRunEvidence = /stale_run_evidence_dropped|STALE_RUN_EVIDENCE_DROPPED/i.test(evidenceText);
+            // Evidence from a previous run is not actionable repair input. It must
+            // never reach SelfFix, even if its text also contains build/import
+            // keywords. The next controlled attempt must establish fresh evidence.
             // A stale `permission_stop` status can ride along with a deterministic
             // local-import failure. Ignore that inherited word only for this
             // evidence class; explicit security/portability blockers still stop.
-            const nonRepairableEvidence = explicitNonRepairableEvidence || (!isLocalImportError && permissionEvidence);
+            const nonRepairableEvidence = staleRunEvidence || explicitNonRepairableEvidence || (!isLocalImportError && permissionEvidence);
             const hasActionableEvidence = failedEvidence.some((r: any) =>
                 String(r?.tool || '').trim() && String(r?.error || '').trim()
             ) || (
@@ -703,8 +709,12 @@ export class AgentLoopService {
                 phase,
                 phaseResult: phaseResultForRepair,
                 projectName: projectContext.projectName,
+                runId,
                 sessionId,
                 workspaceId,
+                projectRoot: projectContext.projectRootRuntimeBound === true
+                    ? projectContext.projectRoot
+                    : undefined,
             });
 
             const selfFixPlan = SelfFixService.plan(repairTicket);

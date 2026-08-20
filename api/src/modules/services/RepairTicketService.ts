@@ -9,6 +9,7 @@ export interface RepairTicketInput {
   runId?: string;
   sessionId?: string;
   workspaceId?: string;
+  projectRoot?: string;
 }
 
 export interface RepairTicket {
@@ -34,6 +35,9 @@ export interface RepairTicket {
     /** Original generation brief/context for bounded ai_write_file recovery. */
     description?: string;
     artifactContext?: string;
+    runId?: string;
+    projectRoot?: string;
+    evidenceStatus?: 'current_run' | 'stale_run_dropped';
   }>;
   suggestedNextAction: string;
   retryPolicy: {
@@ -44,6 +48,7 @@ export interface RepairTicket {
     runId?: string;
     sessionId?: string;
     workspaceId?: string;
+    projectRoot?: string;
   };
   createdAt: string;
 }
@@ -81,9 +86,14 @@ export class RepairTicketService {
     const phase = input.phase || {};
     const phaseResult = input.phaseResult || {};
     const status = truncate(input.phaseStatus || phaseResult?.output?.status || 'unknown', 100);
+    const ticketRunId = String(input.runId || phaseResult?.output?.runId || '').trim() || undefined;
+    const ticketProjectRoot = String(
+      input.projectRoot || phaseResult?.output?.projectRoot || '',
+    ).trim() || undefined;
     const failedTasks = Array.isArray(phaseResult?.output?.results)
       ? phaseResult.output.results.filter((r: any) => r && r.ok === false)
       : [];
+    const repairableTasks = failedTasks.filter((r: any) => r?.evidenceStatus !== 'stale_run_dropped');
 
     // The failed task is the narrowest evidence boundary. Some phase
     // adapters put a mixed stdout/log transcript in phaseResult.error; using
@@ -92,7 +102,7 @@ export class RepairTicketService {
     // security stop. Classify the normalized task error first, and only fall
     // back to phase-level fields when no failed task carried an error.
     const primaryError = truncate(
-      failedTasks.find((task: any) => String(task?.error || '').trim())?.error ||
+      repairableTasks.find((task: any) => String(task?.error || '').trim())?.error ||
       phaseResult?.output?.error ||
       phaseResult?.error ||
       `Phase ended with status ${status}`,
@@ -107,7 +117,7 @@ export class RepairTicketService {
       status,
       severity: inferSeverity(status, primaryError),
       primaryError,
-      failedTasks: failedTasks.slice(0, 5).map((t: any) => {
+      failedTasks: repairableTasks.slice(0, 5).map((t: any) => {
         const rawArgs = t?.args && typeof t.args === 'object'
           ? t.args
           : t?.input && typeof t.input === 'object'
@@ -157,6 +167,8 @@ export class RepairTicketService {
           : typeof rawArgs.context === 'string'
             ? repairEvidence(rawArgs.context, 6000)
             : undefined;
+        const taskRunId = String(t?.runId || ticketRunId || '').trim() || undefined;
+        const taskProjectRoot = String(t?.projectRoot || ticketProjectRoot || '').trim() || undefined;
         return {
           task: truncate(t.task || 'unknown task', 500),
           tool: truncate(t.tool || 'unknown tool', 100),
@@ -169,6 +181,9 @@ export class RepairTicketService {
           ...(replace !== undefined ? { replace: truncate(replace, 4000) } : {}),
           ...(description ? { description } : {}),
           ...(artifactContext ? { artifactContext } : {}),
+          ...(taskRunId ? { runId: taskRunId } : {}),
+          ...(taskProjectRoot ? { projectRoot: truncate(taskProjectRoot, 1000) } : {}),
+          ...(t?.evidenceStatus === 'current_run' ? { evidenceStatus: 'current_run' as const } : {}),
         };
       }),
       suggestedNextAction: 'Run one controlled repair pass, then re-run the failed phase and continue only if it becomes completed.',
@@ -177,9 +192,10 @@ export class RepairTicketService {
         continueOnlyIfPhaseStatusBecomes: 'completed',
       },
       context: {
-        runId: input.runId,
+        runId: ticketRunId,
         sessionId: input.sessionId,
         workspaceId: input.workspaceId,
+        projectRoot: ticketProjectRoot,
       },
       createdAt: new Date().toISOString(),
     };
