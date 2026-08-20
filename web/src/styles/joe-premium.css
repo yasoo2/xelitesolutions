@@ -623,62 +623,10 @@ body:not(.rtl) .joe-user-info {
     padding-left: max(24px, calc((100% - var(--joe-chat-col)) / 2)) !important;
     padding-right: max(24px, calc((100% - var(--joe-chat-col)) / 2)) !important;
 }
-.joe-chat-header {
-    padding-left: max(24px, calc((100% - var(--joe-chat-col)) / 2)) !important;
-    padding-right: max(24px, calc((100% - var(--joe-chat-col)) / 2)) !important;
-}
 .joe-chat-input-area > * {
     max-width: var(--joe-chat-col);
     margin-left: auto !important;
     margin-right: auto !important;
-}
-
-.joe-chat-header {
-    padding: 9px 16px;
-    border-bottom: 1px solid var(--joe-border);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex-shrink: 0;
-    position: relative;
-    z-index: 1;
-}
-
-.joe-chat-title {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 15px;
-    font-weight: 600;
-    color: var(--joe-text-primary);
-}
-
-.joe-chat-title-icon {
-    color: var(--joe-gold-primary);
-}
-
-.joe-chat-header-actions {
-    display: flex;
-    gap: 6px;
-}
-
-.joe-chat-header-btn {
-    width: 28px;
-    height: 28px;
-    border-radius: 8px;
-    border: none;
-    background: transparent;
-    color: var(--joe-text-muted);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: all 0.2s ease;
-}
-
-.joe-chat-header-btn:hover {
-    background: var(--joe-bg-hover);
-    color: var(--joe-gold-primary);
 }
 
 .joe-chat-messages {
@@ -3631,9 +3579,8 @@ body:not(.rtl) .joe-user-info {
     }
     .joe-canvas-close { width: 34px; height: 34px; font-size: 15px; }
 
-    /* Full-width chat on phones (header + messages aligned) */
-    .joe-chat-messages,
-    .joe-chat-header {
+    /* Full-width chat on phones */
+    .joe-chat-messages {
         padding-left: 12px !important;
         padding-right: 12px !important;
     }
@@ -3645,8 +3592,6 @@ body:not(.rtl) .joe-user-info {
 @media (max-width: 560px) {
     .joe-header-actions { gap: 2px; }
     .joe-header-btn { width: 32px; height: 32px; }
-    .joe-chat-header { padding: 10px 12px; }
-    .joe-chat-title span { font-size: 12px; }
     .joe-department-card { font-size: 11px; }
 }
 

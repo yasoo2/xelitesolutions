@@ -139,15 +139,10 @@ export default function ChatPanel({
 
     return (
         <aside className={`joe-chat-panel ${isCollapsed ? 'collapsed' : ''}`}>
-            {/* Header */}
-            <div className="joe-chat-header">
-                <div className="joe-chat-title">
-                    <JoeMark size={19} />
-                    <span>Joe</span>
-                </div>
-            </div>
-
-            {/* Messages */}
+            {/* Messages — the panel needs no header of its own: the app header
+                above it already carries the brand, and a second small "Joe"
+                right under it was pure repetition (removed at the owner's
+                request). */}
             <div className="joe-chat-messages">
                 {messages.length === 0 ? (
                     /**
@@ -445,17 +440,6 @@ export default function ChatPanel({
 
 .joe-chat-panel {
     background: var(--joe-bg-panel);
-}
-
-.joe-chat-header {
-    background: transparent;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.joe-chat-header .joe-chat-title span {
-    letter-spacing: 0.2px;
-    font-size: 14px;
-    font-weight: 650;
 }
 
 /* ========== Welcome screen — fits EVERY screen, never crushed ========== */

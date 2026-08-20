@@ -31,16 +31,11 @@
   text-align: right;
 }
 
-[dir="rtl"] .joe-chat-header,
 [dir="rtl"] .joe-files-header {
   flex-direction: row-reverse;
 }
 
 [dir="rtl"] .joe-workspace-tabs {
-  flex-direction: row-reverse;
-}
-
-[dir="rtl"] .joe-chat-title {
   flex-direction: row-reverse;
 }
 
