@@ -52,6 +52,7 @@ import {
   Zap,
   ArrowUp,
   Square,
+  ListPlus,
   Send,
   Copy,
   RotateCcw,
@@ -824,6 +825,17 @@ export default function CommandComposer({
     uploadSuccess?: boolean;
   }>>([]);
   const [isUploading, setIsUploading] = useState(false);
+  // Pending queue: a message (text and/or already-uploaded files) composed
+  // while a run is busy waits here and is dispatched in order once the
+  // session is truly idle. UI-level only — the server never sees a queue;
+  // each dispatch is an ordinary run(). A manual Stop pauses auto-dispatch:
+  // interrupting a run is a statement that the next step needs review.
+  const [pendingQueue, setPendingQueue] = useState<Array<{
+    id: string;
+    text: string;
+    files: Array<{ id: string; name: string; size?: number; type?: string; preview?: string; uploadSuccess?: boolean }>;
+  }>>([]);
+  const [queuePaused, setQueuePaused] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const [events, setEvents] = useState<Array<{ type: string; data: any; duration?: number; expanded?: boolean }>>([]);
@@ -2117,11 +2129,14 @@ export default function CommandComposer({
     return () => window.removeEventListener('joe:quick-prompt', onQuickPrompt);
   }, []);
 
-  async function run(overrideText?: string) {
-    const inputText = overrideText || text;
+  async function run(overrideText?: string, overrideFiles?: Array<{ id: string; name: string; size?: number; type?: string; preview?: string; uploadSuccess?: boolean }>) {
+    // ?? not ||: a queued files-only message passes text '' on purpose and
+    // must not fall back to whatever draft is sitting in the input box.
+    const inputText = overrideText ?? text;
+    const filesForRun = overrideFiles ?? attachedFiles;
 
     // ALLOW empty text if files are attached
-    if (!inputText.trim() && attachedFiles.length === 0) return;
+    if (!inputText.trim() && filesForRun.length === 0) return;
 
     if (isUploading) {
       alert(t('waitUpload', 'Please wait for files to finish uploading...'));
@@ -2180,8 +2195,8 @@ export default function CommandComposer({
         { type: 'user_input', data: t('secretSentMask', '🔐 [token sent]'), id: Date.now().toString(), ts: Date.now(), seq: lastLiveSeqRef.current + 0.1 }
       ]);
 
-      if (!overrideText) setText('');
-      setAttachedFiles([]);
+      if (overrideText === undefined) setText('');
+      if (!overrideFiles) setAttachedFiles([]);
 
       const token = localStorage.getItem('token');
       try {
@@ -2213,8 +2228,8 @@ export default function CommandComposer({
         ...prev,
         { type: 'user_input', data: inputText, id: Date.now().toString(), ts: Date.now(), seq: lastLiveSeqRef.current + 0.1 }
       ]);
-      if (!overrideText) setText('');
-      setAttachedFiles([]);
+      if (overrideText === undefined) setText('');
+      if (!overrideFiles) setAttachedFiles([]);
       if (!decision) {
         setEvents(prev => [...prev, { type: 'text', data: t('approvalGateOnlyHint', 'Please type only "approve" or "deny".'), ts: Date.now() }]);
         return;
@@ -2239,13 +2254,13 @@ export default function CommandComposer({
       ...prev,
       {
         type: 'user_input',
-        data: { text: inputText, files: [...attachedFiles] },
+        data: { text: inputText, files: [...filesForRun] },
         id: Date.now().toString(),
         ts: Date.now(),
         seq: lastLiveSeqRef.current + 0.1
       }
     ]);
-    if (!overrideText) setText('');
+    if (overrideText === undefined) setText('');
     // setAttachedFiles([]) moved to after payload construction
 
     const isLikelyCodeFile = (v: string) => {
@@ -2439,7 +2454,7 @@ export default function CommandComposer({
         text: inputText,
         sessionId,
         browserSessionId: effectiveBrowserSessionId || undefined,
-        fileIds: attachedFiles.map(f => f.id),
+        fileIds: filesForRun.map(f => f.id),
         provider: providerToSend,
         model: providerCfgToSend?.model,
         apiKey: providerCfgToSend?.apiKey,
@@ -2462,7 +2477,7 @@ export default function CommandComposer({
       if (standingInstructions) {
         payload.systemInstructions = standingInstructions;
       }
-      console.log('[DEBUG-SEND] attachedFiles:', attachedFiles);
+      console.log('[DEBUG-SEND] attachedFiles:', filesForRun);
       console.log('[DEBUG-SEND] payload.fileIds:', payload.fileIds);
 
       const res = await fetch(`${API}/runs/start`, {
@@ -2547,18 +2562,22 @@ export default function CommandComposer({
           });
         }
       }
-      setAttachedFiles([]);
+      if (!overrideFiles) setAttachedFiles([]);
     } catch (e) {
       console.error(e);
       const msg = String((e as any)?.message || e || '').trim();
       const finalMsg = msg ? `${t('error')}: ${msg}` : t('error');
       setEvents(prev => [...prev, { type: 'error', data: finalMsg }]);
-      if (!overrideText) setText(inputText);
+      if (overrideText === undefined) setText(inputText);
       clearToolTimers();
       clearDraftTimer();
       setDraftActive(false);
       setDraftText('');
-      setAttachedFiles([]);
+      if (!overrideFiles) setAttachedFiles([]);
+      // A failed run is not a green light for what was queued on top of it:
+      // the waiting messages may assume this run's outcome. Hold the queue
+      // until the user resumes it explicitly.
+      if (pendingQueue.length > 0) setQueuePaused(true);
       setStatus('idle');
       setIsThinking(false);
       setActiveToolName(null);
@@ -2566,7 +2585,57 @@ export default function CommandComposer({
     }
   }
 
+  /** The composer is free to start a new run right now. */
+  const composerIdle = status === 'idle' && !approval && !secretPrompt;
+
+  /** Park the current draft (text + uploaded files) to send after the run. */
+  function queueCurrentDraft() {
+    if (!text.trim() && attachedFiles.length === 0) return;
+    if (isUploading) return;
+    setPendingQueue(prev => [...prev, {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      text: text.trim(),
+      files: [...attachedFiles],
+    }]);
+    setText('');
+    setAttachedFiles([]);
+  }
+
+  /** Manual "send now" on one waiting card — only meaningful when idle. */
+  function dispatchQueuedItem(id: string) {
+    if (!composerIdle || isUploading) return;
+    const item = pendingQueue.find(q => q.id === id);
+    if (!item) return;
+    setPendingQueue(prev => prev.filter(q => q.id !== id));
+    void run(item.text, item.files);
+  }
+
+  // Auto-dispatch: once the session settles into a real idle (no approval or
+  // secret gate, no upload in flight), the oldest waiting message is sent.
+  // The 1.2s delay lets transient status flickers between phases cancel the
+  // timer instead of firing the queue into a run that is not actually over.
+  useEffect(() => {
+    if (!composerIdle || isUploading || queuePaused) return;
+    if (pendingQueue.length === 0) return;
+    const timer = window.setTimeout(() => {
+      const next = pendingQueue[0];
+      if (!next) return;
+      setPendingQueue(prev => prev.slice(1));
+      void run(next.text, next.files);
+    }, 1200);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [composerIdle, isUploading, queuePaused, pendingQueue]);
+
+  // An empty queue has nothing to pause.
+  useEffect(() => {
+    if (pendingQueue.length === 0 && queuePaused) setQueuePaused(false);
+  }, [pendingQueue.length, queuePaused]);
+
   async function stopCurrentRun() {
+    // Interrupting a run by hand is a statement that the plan changed —
+    // whatever was queued behind it must wait for an explicit resume.
+    if (pendingQueue.length > 0) setQueuePaused(true);
     const token = (() => {
       try {
         return localStorage.getItem('token');
@@ -3781,6 +3850,49 @@ export default function CommandComposer({
             </div>
           )}
           <div className="input-container">
+            {pendingQueue.length > 0 && (
+              <div className="pending-queue-strip">
+                <span className="pending-queue-title">
+                  <Clock size={12} /> {t('queueTitle', 'قيد الانتظار')} ({pendingQueue.length})
+                </span>
+                {pendingQueue.map((item) => (
+                  <div key={item.id} className="pending-queue-card">
+                    <span className="pending-queue-text" dir="auto">
+                      {item.text || t('queueFilesOnly', 'مرفقات فقط')}
+                    </span>
+                    {item.files.length > 0 && (
+                      <span className="pending-queue-files"><Paperclip size={11} /> {item.files.length}</span>
+                    )}
+                    <button
+                      type="button"
+                      className="pending-queue-btn"
+                      title={t('queueSendNow', 'أرسل الآن')}
+                      disabled={!composerIdle || isUploading}
+                      onClick={() => dispatchQueuedItem(item.id)}
+                    >
+                      <ArrowUp size={12} />
+                    </button>
+                    <button
+                      type="button"
+                      className="pending-queue-btn pending-queue-remove"
+                      title={t('queueRemove', 'حذف من الانتظار')}
+                      onClick={() => setPendingQueue(prev => prev.filter(q => q.id !== item.id))}
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                ))}
+                {queuePaused && (
+                  <button
+                    type="button"
+                    className="pending-queue-resume"
+                    onClick={() => setQueuePaused(false)}
+                  >
+                    {t('queueResume', 'استئناف الإرسال التلقائي')}
+                  </button>
+                )}
+              </div>
+            )}
             {(attachedFiles.length > 0 || isUploading) && (
               <div className="attached-files">
                 {attachedFiles.map((file, i) => (
@@ -4146,6 +4258,19 @@ export default function CommandComposer({
                 </button>
               </div>
 
+              {/* While a run is busy the send button can only stop it — this
+                  companion parks the typed draft in the waiting queue so it
+                  goes out the moment the current task finishes. */}
+              {!composerIdle && (text.trim() || attachedFiles.length > 0) && !isUploading && (
+                <button
+                  type="button"
+                  className="action-btn queue-add-btn"
+                  onClick={queueCurrentDraft}
+                  title={t('queueAdd', 'أضف إلى الانتظار — يُرسل بعد انتهاء المهمة الجارية')}
+                >
+                  <ListPlus size={14} />
+                </button>
+              )}
               {/* Send Button - Pushed to right via CSS space-between */}
               <button
                 className={`send-btn ${status !== 'idle' || !!approval || !!secretPrompt ? 'is-busy' : ''}`}
