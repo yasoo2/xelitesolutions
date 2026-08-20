@@ -247,3 +247,38 @@ POS-051-FULL-JEST: 22/22 batches green; FULL_JEST_BATCHES_EXIT:0
 POS-051-M1-M3: M1=10 files; M2=106/106 + 92/92; M3=198/198; all EXIT 0
 POS-051-PUSH: pending final staging and push to main
 POS-051-NO-WEATHERGO-MANUAL-EDIT: confirmed
+
+
+## سجل إصلاح 052 — توسيع مراسي إثبات WeatherGo ونظافة run-evidence
+
+| المعرّف | المهمة | الحالة | معيار الإغلاق |
+|---|---|---|---|
+| 052 | تصحيح مراسي إثبات ميزتي التوقع اليومي والحالة الجوية في `WEATHER_FEATURE_RULES`، مع إبقاء الكشف عاماً لا قالباً قطاعياً | **منجز محلياً؛ البوابات خضراء؛ الدفع التالي إلى `main`** | مراسي API والسلوك تغطي `forecastData.daily` و`weathercode/weather_code`؛ regression يعتمد مقتطفات WeatherApp الواقعية؛ لا تعديل يدوي على WeatherGo |
+| 052-TEST-HYGIENE | منع تضخم مخزن `run-evidence` من تلويث اختبار IO الكثيف | **منجز محلياً؛ البوابات خضراء؛ الدفع التالي إلى `main`** | تنظيف مجموعة `run-evidence` في `beforeAll`، ورفع مهلة اختبار IO الكثيف فقط إلى 120 ثانية؛ لا تغيير في الإنتاج |
+| PR82-052 | قناة الوكلاء لإصلاح 052 ونظافة الاختبار | **اعتماد Claude منشور؛ الدليل الخام والتشخيص والقياس منشورة؛ التعليق الختامي والدفع التاليان** | ثلاث إعادات خضراء لـbatch 16، ثم TSC=0 وJest=22/22 دفعة؛ نشر SHA والملفات المفتوحة قبل الجولة 15 |
+
+### دليل 052 والبوابات الحالية
+
+فشل الجولة 14 السابق كان `requested_features_not_proven` رغم أن WeatherGo الناتج احتوى السلوك المطلوب؛ القياسات M14-6/7 عزلت الفجوة في مرساتي التوقع اليومي والحالة الجوية. أُصلحت القاعدتان فقط، وأضيف regression إلى `generated-app-parses.test.ts` يعتمد مراسي WeatherApp الحقيقية. كما عولجت رجفة batch 16 في الاختبار فقط بتنظيف سجل `run-evidence` قبل التشغيل ورفع مهلة اختبار IO المحدد؛ لم يُعدّل مخزن الإنتاج أو ناتج WeatherGo.
+
+| البوابة | النتيجة |
+|---|---|
+| batch 16 بعد النظافة | **3/3 تشغيلات خضراء؛ 10 suites و198 tests في الإعادة الثالثة؛ الزمن 16.4 ثانية في القياس الأخير** |
+| TypeScript | **`npx tsc --noEmit` — `TSC_EXIT=0`** |
+| Jest الكاملة | **22/22 دفعة، كل دفعة `EXIT 0`، `FULL_JEST_BATCHES_EXIT=0`** |
+| الملفات الممنوعة | **لا `package.json` أو `package-lock.json` أو `zz-*.test.ts` أو تعديل يدوي على WeatherGo** |
+
+### حالة القبول الحي
+
+الجولة 14 على Joe المبني من `116ca500` فشلت عند `requested_features_not_proven` بسبب قصور مراسي الإثبات، لا بسبب فشل إنشاء artifact. بعد دفع 052 وإعادة بناء Joe ببصمة جديدة، يجب إعادة تشغيل نفس البرومبت كجولة 15 مستقلة. لا يُعلن Level 4 مقبولاً قبل `finalVerified=true` و`liveUrl` غير فارغ وQA مستقل، مع بدء الدليل الخام بسطر `JOE_BUILD_SHA=<SHA>` ثم greps علامات 048a الثلاث.
+
+### الالتزامات المفتوحة بعد 052
+
+تبقى جولة 15 شرط الإغلاق المباشر لـL4. بعد قبول L4 فقط يبدأ بروتوكول W50: خمسون طلب تحديث منفرداً على WeatherGo، مع اختبار حي بعد كل طلب، وإصلاح نظام Joe العام فقط عند الفشل. تبقى ديون `FLAKE-RUNEVIDENCE-TIMEOUT` و`RUN-EVIDENCE-WRITE-AMPLIFICATION` مسجلة كديون صيانة مستقلة، ولا تُخلط بإصلاح 052.
+
+POS-052-TASKS-UPDATED: 2026-08-20
+POS-052-BATCH16-TRIPLE: 3/3 EXIT 0
+POS-052-TSC: 0
+POS-052-FULL-JEST: 22/22 batches EXIT 0
+POS-052-NO-WEATHERGO-MANUAL-EDIT: confirmed
+POS-052-NEXT-LIVE: round 15 required

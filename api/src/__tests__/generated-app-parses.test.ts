@@ -117,6 +117,28 @@ describe('the generated application is syntactically real', () => {
         expect(provenGap).not.toContain('Hourly forecast');
     });
 
+    it('052: weather evidence recognizes Open-Meteo daily and weathercode source shapes from the field', () => {
+        const request = `WeatherGo\nFeatures:\n- 7-day forecast\n- weather condition`;
+        const round14Source = [
+            'const [forecastData, setForecastData] = useState(null);',
+            'fetch(`https://api.open-meteo.com/v1/forecast?...&daily=weathercode,temperature_2m_max,temperature_2m_min,sunrise,sunset&timezone=auto`);',
+            '{forecastData && forecastData.daily && (',
+            '{forecastData.daily.time.map((day, index) => (',
+            'weatherData.current_weather.weathercode',
+            'getWeatherIcon(weatherData.current_weather.weathercode)',
+        ].join('\\n');
+
+        expect(uncoveredFeatures(request, 'weather', false, round14Source)).toEqual([]);
+        expect(uncoveredFeatures(request, 'weather', false, '<h2>7-Day Forecast</h2> current_weather.weathercode')).toEqual([]);
+        expect(uncoveredFeatures(request, 'weather', false, 'const unrelated = true;')).toEqual([
+            '7-day forecast',
+            'weather condition',
+        ]);
+
+        const generatedWeather = filesFor('weather', false)['src/components/WeatherApp.jsx'];
+        expect(uncoveredFeatures(request, 'weather', false, generatedWeather)).toEqual([]);
+    });
+
     it('weather prose capabilities require executable search and detail shapes', () => {
         const request = `WeatherGo\nFeatures:\n- a clear responsive interface for searching cities\n- viewing weather details`;
         expect(uncoveredFeatures(request, 'weather', false)).toEqual([

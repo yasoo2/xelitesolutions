@@ -37,6 +37,13 @@ describe('048b durable run evidence contract', () => {
   const runId = `run-regression-${process.pid}-${Date.now()}`;
   const concurrentRunId = `${runId}-concurrent`;
 
+  beforeAll(async () => {
+    const records = await runEvidenceStore.find();
+    for (const record of records) {
+      await runEvidenceStore.deleteOne({ runId: record.runId });
+    }
+  });
+
   afterAll(async () => {
     await cleanup(runId);
     await cleanup(concurrentRunId);
@@ -66,7 +73,7 @@ describe('048b durable run evidence contract', () => {
     expect(evidence?.events.at(-1)?.type).toBe('phase_receipt');
     expect(evidence?.receipt?.projectRoot).toBe('/tmp/weathergo-regression');
     expect(evidence?.receipt?.fidelityVerdict).toEqual({ label: 'verified' });
-  }, 30_000);
+  }, 120_000);
 
   test('event listeners receive normalized runId even when broadcast has no socket', () => {
     const seen: any[] = [];

@@ -961,7 +961,7 @@ const BACKEND_COVERS = /login|sign\s*in|account|auth|password|database|db\b|api\
  * template name or a prose claim.
  */
 const WEATHER_FEATURE_RULES: Array<{ asked: RegExp; evidence: RegExp }> = [
-    { asked: /7[-\s]?day[^.]{0,40}forecast|seven[-\s]?day[^.]{0,40}forecast|daily[^.]{0,40}forecast|forecast[^.]{0,40}7[-\s]?day|forecast[^.]{0,40}seven[-\s]?day/i, evidence: /daily\s*:\s*['\"`]|dailyForecast|forecastDays|7[-\s]?day|seven[-\s]?day/i },
+    { asked: /7[-\s]?day[^.]{0,40}forecast|seven[-\s]?day[^.]{0,40}forecast|daily[^.]{0,40}forecast|forecast[^.]{0,40}7[-\s]?day|forecast[^.]{0,40}seven[-\s]?day/i, evidence: /daily\s*:\s*['\"`]|[?&]daily=|\.daily\b|dailyForecast|forecastDays|7[-\s]?day|seven[-\s]?day/i },
     { asked: /hourly[^.]{0,40}forecast|forecast[^.]{0,40}hourly|hourly\s+data/i, evidence: /hourly\s*:\s*['\"`]|hourlyForecast|hourlyData/i },
     // These prose forms are emitted by one-line product requirements. They are
     // proven by executable shapes, not by the words "search" or "weather" alone.
@@ -976,7 +976,7 @@ const WEATHER_FEATURE_RULES: Array<{ asked: RegExp; evidence: RegExp }> = [
     { asked: /favorite\s+cities|saved\s+cities|المدن\s+المفضلة/i, evidence: /favoriteCities|savedCities|favo[u]?rites?|toggleFavorite/i },
     { asked: /feels[-\s]+like/i, evidence: /apparent_temperature|feelsLike|feels-like/i },
     { asked: /wind\s+speed/i, evidence: /wind_speed|windSpeed/i },
-    { asked: /weather\s+condition/i, evidence: /weather_code|weatherCondition|condition/i },
+    { asked: /weather\s+condition/i, evidence: /weather[-_]?code|weatherCondition|condition/i },
     { asked: /sunrise/i, evidence: /sunrise/i },
     { asked: /sunset/i, evidence: /sunset/i },
     { asked: /loading/i, evidence: /loading|isLoading|setLoading/i },
