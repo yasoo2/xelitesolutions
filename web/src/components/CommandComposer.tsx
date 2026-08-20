@@ -3137,22 +3137,6 @@ export default function CommandComposer({
                 <p className="hero-subtitle">
                   {t('heroSubtitle', 'Describe what you want and Joe designs, builds, tests and delivers it.')}
                 </p>
-
-                {/* Real starting points: each chip submits an actual prompt. */}
-                <div className="hero-chips">
-                  {[t('heroChip1'), t('heroChip2'), t('heroChip3'), t('heroChip4')]
-                    .filter(Boolean)
-                    .map((chip) => (
-                      <button
-                        key={chip}
-                        type="button"
-                        className="hero-chip"
-                        onClick={() => run(chip)}
-                      >
-                        {chip}
-                      </button>
-                    ))}
-                </div>
               </div>
             )}
 

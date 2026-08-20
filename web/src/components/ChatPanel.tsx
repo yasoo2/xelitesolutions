@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { Sparkles, Send, Mic, User, Bot, Copy, Check, Rocket, UtensilsCrossed, LayoutDashboard, BriefcaseBusiness, Paperclip } from 'lucide-react';
+import { Sparkles, Send, Mic, User, Bot, Copy, Check, Paperclip } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -34,12 +34,6 @@ function unescapeStoredNewlines(text: string): string {
         .split('```')
         .map((seg, i) => (i % 2 === 0 ? seg.replace(/\\n/g, '\n') : seg))
         .join('```');
-}
-
-// Quick-start chips submit a REAL prompt: CommandComposer owns the run loop,
-// so the chip hands the text over via a window event it listens for.
-function sendQuickPrompt(text: string) {
-    window.dispatchEvent(new CustomEvent('joe:quick-prompt', { detail: text }));
 }
 
 interface ChatPanelProps {
@@ -175,24 +169,6 @@ export default function ChatPanel({
 
                         <h2 className="joe-empty-title">{greeting.salute}</h2>
                         <p className="joe-empty-question">{greeting.question}</p>
-                        <div className="joe-suggest-grid">
-                            {[
-                                { icon: <Rocket size={17} />, label: t('heroChip1') },
-                                { icon: <UtensilsCrossed size={17} />, label: t('heroChip2') },
-                                { icon: <LayoutDashboard size={17} />, label: t('heroChip3') },
-                                { icon: <BriefcaseBusiness size={17} />, label: t('heroChip4') },
-                            ].filter(c => c.label).map((c) => (
-                                <button
-                                    key={c.label}
-                                    type="button"
-                                    onClick={() => sendQuickPrompt(c.label)}
-                                    className="joe-suggest-card"
-                                >
-                                    <span className="joe-suggest-icon">{c.icon}</span>
-                                    <span className="joe-suggest-label">{c.label}</span>
-                                </button>
-                            ))}
-                        </div>
                     </div>
                 ) : (
                     <>
@@ -534,10 +510,9 @@ export default function ChatPanel({
     line-height: 1.7;
     max-width: 460px;
 }
-/* Short screens: tighten what remains so the chips stay reachable. */
+/* Short screens: tighten what remains so the composer stays reachable. */
 @media (max-height: 620px) {
     .joe-chat-empty { gap: 7px; padding-top: 8px; padding-bottom: 8px; }
-    .joe-suggest-card { padding: 9px 12px; }
 }
 
 /* ========== Attachments inside a sent message ========== */
@@ -615,57 +590,6 @@ export default function ChatPanel({
     .joe-chat-hello-q { display: none; } /* the salute alone carries it on a phone */
 }
 
-/* Quick-start: a 2x2 grid of real suggestion cards (each submits a prompt) */
-.joe-suggest-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 10px;
-    width: 100%;
-    max-width: 520px;
-    margin-top: 6px;
-}
-@media (max-width: 640px) {
-    .joe-suggest-grid { grid-template-columns: 1fr; }
-}
-.joe-suggest-card {
-    display: flex;
-    align-items: center;
-    gap: 11px;
-    padding: 12px 14px;
-    border-radius: 14px;
-    border: 1px solid var(--joe-border);
-    background: var(--joe-bg-card);
-    color: var(--joe-text-secondary);
-    font-family: inherit;
-    font-size: 13px;
-    line-height: 1.4;
-    text-align: start;
-    cursor: pointer;
-    transition: border-color 0.18s ease, color 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
-}
-.joe-suggest-card:hover {
-    border-color: var(--joe-border-strong);
-    color: var(--joe-text-primary);
-    transform: translateY(-2px);
-    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.25);
-}
-.joe-suggest-icon {
-    display: grid;
-    place-items: center;
-    width: 32px;
-    height: 32px;
-    border-radius: 10px;
-    flex: 0 0 auto;
-    color: var(--joe-gold-primary);
-    background: rgba(52, 196, 139, 0.10);
-    border: 1px solid rgba(52, 196, 139, 0.18);
-}
-.joe-suggest-label {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
       `}</style>
         </aside>
     );
