@@ -31,6 +31,17 @@
 import fs from 'fs';
 import path from 'path';
 
+/**
+ * Gate062's fixed acceptance input: four source-backed UI criteria.
+ * Keep this separate from the live-run input below, which also asks for a
+ * verified preview and therefore yields five criteria.
+ */
+export const GATE062_ACCEPTANCE_PROMPT =
+    'Build a small project called Gate062. Create one polished page titled Gate 062 with a heading, a short status message, and a button that increments a visible counter.';
+
+export const GATE062_LIVE_PROMPT =
+    GATE062_ACCEPTANCE_PROMPT + ' Run the real build and open the live preview. Do not modify existing projects.';
+
 export type CriterionKind = 'feature' | 'artifact' | 'verification';
 export type Verdict = 'met' | 'unmet' | 'unprovable';
 
@@ -94,7 +105,7 @@ const CATALOGUE: Array<Criterion & { asked: RegExp }> = [
     },
     {
         id: 'title', kind: 'feature',
-        asked: /(عنوان|العنوان|\btitle\b|\bheading\b|\bheadline\b)/iu,
+        asked: /(عنوان|العنوان|\btitle\b|\btitled\b|\bheading\b|\bheadline\b)/iu,
         ar: 'عنوان أو رأس صفحة', en: 'a title or heading',
         markers: [/<h[1-6]\b/i, /<title\b/i],
     },
@@ -172,13 +183,18 @@ function extractRequestedTitle(request: string): string | undefined {
     return undefined;
 }
 
+/** The named, regression-tested title extractor used by acceptanceFor. */
+export function titleTextFrom(request: string): string | undefined {
+    return extractRequestedTitle(request);
+}
+
 /** The criteria THIS brief actually asks for — never a fixed checklist. */
 export function acceptanceFor(request: string): Criterion[] {
     const t = String(request || '');
     return CATALOGUE.filter(c => c.asked.test(t))
         .map(({ asked, ...rest }) => rest)
         .map(c => c.id === 'title'
-            ? { ...c, expectedText: extractRequestedTitle(t) }
+            ? { ...c, expectedText: titleTextFrom(t) }
             : c);
 }
 
@@ -211,26 +227,44 @@ function sourceOf(dir: string): string {
     return out.join('\n');
 }
 
+interface StateBinding {
+    value: string;
+    setter: string;
+}
+
+function stateBindings(src: string): StateBinding[] {
+    const bindings: StateBinding[] = [];
+    const pattern = /\b(?:const|let)\s*\[\s*([A-Za-z_$][\w$]*)\s*,\s*(set[A-Za-z_$][\w$]*)\s*\]\s*=\s*(?:React\.)?use(?:State|Reducer)\s*\(/gi;
+    for (const match of src.matchAll(pattern)) {
+        bindings.push({ value: match[1], setter: match[2] });
+    }
+    return bindings;
+}
+
 function hasCounterEvidence(src: string): boolean {
-    const hasState = /\b(?:useState|useReducer)\s*\(/i.test(src);
-    const hasUpdate = /\bset[A-Z_$][\w$]*\s*\([^)]*(?:\+\s*1|-\s*1|\bprev\w*\b)/i.test(src);
-    const hasAction = /\b(?:onClick|onChange|onSubmit)\s*=/i.test(src);
-    const hasVisibleValue = /(?:aria-live\s*=|data-(?:count|total)\s*=|>\s*\{\s*(?:count|total)\s*\}\s*<)/i.test(src);
-    return hasState && hasUpdate && hasAction && hasVisibleValue;
+    return stateBindings(src).some(({ value, setter }) => {
+        const setterCall = new RegExp(`\\b${escapeRegExp(setter)}\\s*\\([\\s\\S]{0,180}?(?:\\+\\s*1|-\\s*1|\\bprev[A-Za-z_$]*\\b)`, 'i').test(src);
+        const visibleValue = new RegExp(`(?:data-(?:count|total)\\s*=\\s*\\{\\s*${escapeRegExp(value)}\\s*\\}|>\\s*\\{\\s*${escapeRegExp(value)}\\s*\\}\\s*<)`, 'i').test(src);
+        const action = new RegExp(`\\b(?:onClick|onChange|onSubmit)\\s*=\\s*[\\s\\S]{0,220}?\\b${escapeRegExp(setter)}\\s*\\(`, 'i').test(src);
+        return setterCall && visibleValue && action;
+    });
 }
 
 function hasActionBoundButtonEvidence(src: string): boolean {
     const clickButton = /<button\b[^>]*\bonClick\s*=/i.test(src)
         || /\brole=["']button["'][^>]*\bonClick\s*=/i.test(src);
-    const submitButton = /<form\b[^>]*\bonSubmit\s*=[\s\S]*?<button\b[\s\S]*?<\/form>/i.test(src)
+    const submitButton = /<form\b[^>]*\bonSubmit\s*=\s*[\s\S]*?<button\b[\s\S]*?<\/form>/i.test(src)
         || /<button\b[^>]*\btype=["']submit["']/i.test(src);
     return clickButton || submitButton;
 }
 
 function hasStatusMessageEvidence(src: string): boolean {
-    const semanticNode = /<(?:p|div|span|output|section)\b[^>]*(?:role=["']status["']|aria-live=["'][^"']+["'])[^>]*>[\s\S]*?\S[\s\S]*?<\/\w+>/i.test(src);
-    const namedMessage = /\b(?:status|success|error)Message\s*=\s*["'`][^"'`]{2,}/i.test(src);
-    return semanticNode || namedMessage;
+    return stateBindings(src).some(({ value, setter }) => {
+        if (!/(?:status|message|notice|feedback|success|error|toast|result|alert)/i.test(value)) return false;
+        const setterCall = new RegExp(`\\b${escapeRegExp(setter)}\\s*\\([\\s\\S]{0,180}?\\)`, 'i').test(src);
+        const semanticNode = new RegExp(`<(?:(?:p|div|span|output|section))\\b[^>]*(?:role=["']status["']|aria-live=["'][^"']+["']|className=["'][^"']*(?:status|message|notice|feedback)[^"']*["'])[^>]*>[\\s\\S]*?\\{\\s*${escapeRegExp(value)}\\s*\\}[\\s\\S]*?<\\/\\w+>`, 'i').test(src);
+        return setterCall && semanticNode;
+    });
 }
 
 function escapeRegExp(value: string): string {

@@ -21,7 +21,14 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { acceptanceFor, judgeAcceptance, acceptanceBlock } from '../core/quality/acceptance';
+import {
+    acceptanceFor,
+    judgeAcceptance,
+    acceptanceBlock,
+    GATE062_ACCEPTANCE_PROMPT,
+    GATE062_LIVE_PROMPT,
+    titleTextFrom,
+} from '../core/quality/acceptance';
 
 const REACT = fs.readFileSync(
     path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ReactProjectTool.ts'), 'utf-8');
@@ -64,6 +71,15 @@ describe('the criteria come from HIS brief, never from a fixed checklist', () =>
         ].sort());
     });
 
+    it('freezes the Gate062 acceptance input separately from the live input', () => {
+        expect(acceptanceFor(GATE062_ACCEPTANCE_PROMPT).map(c => c.id).sort()).toEqual([
+            'button', 'counter', 'status_message', 'title',
+        ].sort());
+        expect(acceptanceFor(GATE062_LIVE_PROMPT).map(c => c.id).sort()).toEqual([
+            'button', 'counter', 'preview', 'status_message', 'title',
+        ].sort());
+    });
+
     it('does not invent a record-add criterion from Create alone', () => {
         expect(acceptanceFor('Create a polished product landing page').map(c => c.id))
             .not.toContain('add_row');
@@ -83,14 +99,15 @@ describe('a criterion is met by EVIDENCE, or it is not met', () => {
             `import { useState } from 'react';
             export default function App(){
               const [count, setCount] = useState(6);
-              function save(event){ event.preventDefault(); }
+              const [statusMessage, setStatusMessage] = useState('جاهز');
+              function save(event){ event.preventDefault(); setStatusMessage('تم الحفظ'); }
               return <div dir="rtl">
                 <h1>لوحة الحجوزات</h1>
                 <span data-count={count}>{count}</span>
-                <p role="status" aria-live="polite">تم الحفظ</p>
+                <p role="status" aria-live="polite">{statusMessage}</p>
                 <input type="search" />
                 <select><option>الحالة</option></select>
-                <form onSubmit={save}><button type="submit" onClick={() => setCount(count + 1)}>إضافة</button></form>
+                <form onSubmit={save}><button type="submit" onClick={() => { setCount(count + 1); setStatusMessage('تم الحفظ'); }}>إضافة</button></form>
                 <a download="rows.csv" href={URL.createObjectURL(blob)}>تصدير</a>
                 <p>لا توجد حجوزات بعد</p>
               </div>;
@@ -103,6 +120,28 @@ describe('a criterion is met by EVIDENCE, or it is not met', () => {
         for (const id of ['search', 'filter', 'add_row', 'export', 'empty_state', 'rtl']) {
             expect(by(id).verdict).toBe('met');
         }
+        expect(a.met).toBe(7);
+        expect(a.unmet).toBe(4);
+        expect(a.accepted).toBe(false);
+    });
+
+    it('does not accept a generic XELITE landing page as the five-part Gate062 run', () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-xelite-gate062-'));
+        fs.mkdirSync(path.join(dir, 'src'), { recursive: true });
+        fs.writeFileSync(path.join(dir, 'src', 'App.jsx'), `
+          export default function App(){
+            return <main>
+              <h1>Gate062 — TypeScript + Vite</h1>
+              <p>Build beautiful apps.</p>
+              <button>Get started</button>
+            </main>;
+          }
+        `);
+        const a = judgeAcceptance(acceptanceFor(GATE062_LIVE_PROMPT), { dir }, true);
+        expect(a.met).toBe(0);
+        expect(a.unmet).toBe(5);
+        expect(a.accepted).toBe(false);
+        expect(a.criteria.every(c => c.verdict === 'unmet')).toBe(true);
     });
 
     it('counts each named UI shape independently from the generated source', () => {
@@ -119,6 +158,7 @@ describe('a criterion is met by EVIDENCE, or it is not met', () => {
     it('extracts only a safe requested title and proves the exact heading', () => {
         const english = acceptanceFor('Create one polished page titled Gate 062 with a heading, a short status message, and a button.');
         const arabic = acceptanceFor('ابنِ صفحة بعنوان متجر الأمل فيها قائمة المنتجات');
+        expect(titleTextFrom(GATE062_ACCEPTANCE_PROMPT)).toBe('Gate 062');
         expect(english.find(c => c.id === 'title')!.expectedText).toBe('Gate 062');
         expect(arabic.find(c => c.id === 'title')!.expectedText).toBe('متجر الأمل');
 
@@ -149,6 +189,47 @@ describe('a criterion is met by EVIDENCE, or it is not met', () => {
         expect(by('button').verdict).toBe('unmet');
         expect(by('status_message').verdict).toBe('unmet');
         expect(by('title').verdict).toBe('met');
+    });
+
+    it('rejects unrelated state from counter and status evidence', () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-unrelated-state-'));
+        fs.mkdirSync(path.join(dir, 'src'), { recursive: true });
+        fs.writeFileSync(path.join(dir, 'src', 'App.jsx'), `
+          import { useState } from 'react';
+          export default function App(){
+            const [name, setName] = useState('Ada');
+            return <>
+              <span data-count={name}>{name}</span>
+              <p role="status" aria-live="polite">{name}</p>
+              <button onClick={() => setName('Grace')}>Rename</button>
+            </>;
+          }
+        `);
+        const request = 'Build a page with a counter and status message.';
+        const a = judgeAcceptance(acceptanceFor(request), { dir }, true);
+        expect(a.criteria.find(c => c.id === 'counter')!.verdict).toBe('unmet');
+        expect(a.criteria.find(c => c.id === 'status_message')!.verdict).toBe('unmet');
+    });
+
+    it('rejects state that is rendered but never updated by an action', () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-never-updated-'));
+        fs.mkdirSync(path.join(dir, 'src'), { recursive: true });
+        fs.writeFileSync(path.join(dir, 'src', 'App.jsx'), `
+          import { useState } from 'react';
+          export default function App(){
+            const [count, setCount] = useState(6);
+            const [statusMessage, setStatusMessage] = useState('Ready');
+            return <>
+              <span data-count={count}>{count}</span>
+              <p role="status" aria-live="polite">{statusMessage}</p>
+              <button>Open</button>
+            </>;
+          }
+        `);
+        const request = 'Build a page with a counter and status message.';
+        const a = judgeAcceptance(acceptanceFor(request), { dir }, true);
+        expect(a.criteria.find(c => c.id === 'counter')!.verdict).toBe('unmet');
+        expect(a.criteria.find(c => c.id === 'status_message')!.verdict).toBe('unmet');
     });
 
     it('does not accept a requested title when the generated heading differs', () => {
