@@ -485,7 +485,11 @@ POS-062-NEXT-GATE: Claude must read this file from origin/main and confirm befor
 | `UNJUDGEABLE-CRITERION-FALLS-THROUGH` | فرع معيار بلا علامات أو دالّة موجود لكنه غير قابل للوصول من الباب الأمامي حالياً؛ يجب ألا يمر طلب غير قابل للحكم بصمت | **مفتوح؛ لا يُفتح الآن** | تسجيل الدين فقط؛ لا تعديل في `acceptance.ts` قبل قرار النطاق |
 | `CATALOGUE-DECIDES-WHAT-COUNTS` | `CATALOGUE` ذات 15 مدخلاً تختار المعايير بمطابقة `asked` بدلاً من استخراج عناصر الطلب، ما قد ينتج صفر معايير وحاجباً صامتاً | **مفتوح؛ قرار النطاق مطلوب** | تنفيذ D فقط؛ انتظار اختيار Claude للمسار العام |
 | `MARKER-MET-BY-BOILERPLATE` | بعض العلامات قد تُطابق ضجيجاً عاماً مثل `useState` أو `status` أو `.filter(` بدلاً من إثبات الميزة المطلوبة | **مفتوح؛ قرار النطاق مطلوب** | تسجيل الدين فقط؛ لا إصلاح موضعي أو توسيع كتالوج |
+| `APP-KIND-IS-A-CATALOGUE` | `detectAppKind` لا يغطي كل طلبات التطبيقات؛ قياس D أعاد `null` لـ`GATE062_ACCEPTANCE_PROMPT`، فيسقط الطلب إلى `generic-react` قبل البناء | **مفتوح؛ إصلاح D جارٍ، وتوسيع الكتالوج مؤجل** | إعلان `appKind` مبكراً قبل `buildAppFiles` مع تسجيل `declared_app_kind` في `run-evidence` واختبار ترتيب الإعلان؛ لا تعديل `acceptance.ts` أو `detectAppKind` في هذه الدفعة |
+| `REFUSAL-ARRIVES-WITHOUT-ITS-REASONS` | تصل الشاشة حالة `Stopped`، لكن كتلة القبول لا تحمل أسباب الرفض المقيسة | **مفتوح؛ خارج دفعة D** | تسجيل الدين فقط؛ استشارة نطاق مستقلة بعد EARLY-DECLARATION |
+| `RUN-LEAVES-NO-RECEIPT` | دليل Claude 133: `/api/runs/<id>` أعاد `404` و`/api/runs` أعاد `500` بعد الجولة، فلا تبقى إيصال قابل لإعادة القراءة | **مفتوح؛ خارج دفعة D** | تسجيل الدين فقط؛ لا تعديل مسار الجولات الآن |
+| `EVIDENCE-BINDS-TO-ANY-ACTION-NOT-THE-ASKED-ONE` | دليل Claude 133: زر الوضع الليلي أرضى معيار الزر، أي أن الدليل قد يرتبط بفعل موجود لا بالفعل المطلوب | **مفتوح؛ قصور وصفي، خارج دفعة D** | تسجيل الدين بصياغته الصريحة؛ لا تغيير لمعايير القبول في هذه الدفعة |
 
-**قرار Claude 127 المعلّق:** المسار المفضّل هو قلب الاتجاه (استخراج عناصر الطلب ثم إعلان العناصر التي لا يملك النظام حاكماً لها) بدلاً من توسيع الكتالوج. أُحيل القرار إليه مباشرةً وفق قانون المالك، ولا يبدأ أي كود حتى يثبّت الاختيار صراحةً.
+**قرار Claude 135 المثبّت:** المسار المعتمد في المهمة اللاحقة هو قلب الاتجاه (استخراج عناصر الطلب أولاً، ثم إعلان العناصر التي لا يملك النظام حاكماً لها)؛ لا توسيع للكتالوج ولا إضافة مدخل واحد في هذه الدفعة. لهذا القرار استشارة نطاق مستقلة بعد EARLY-DECLARATION.
 
-POS-062-CLAUDE-127-DEBTS: REGISTERED 2026-08-21; D-only remains permitted; source code remains frozen pending explicit scope decision
+POS-062-CLAUDE-135-DEBTS: REGISTERED 2026-08-21; all seven debts are recorded; Claude 129/132/135 authorized EARLY-DECLARATION-D only, with catalogue expansion and acceptance-chain changes deferred

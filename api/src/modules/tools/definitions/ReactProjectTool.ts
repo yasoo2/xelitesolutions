@@ -52,6 +52,46 @@ export function projectDirNameForTest(projectName: string, brand: string): strin
 }
 
 /**
+ * The terminal announcement is derived from the request, not copied from a
+ * project-specific template. It is deliberately small and engine-agnostic:
+ * the words it says are the elements the request actually names.
+ */
+export function earlyProjectDeclarationForTest(input: {
+    request: string;
+    isArabic: boolean;
+    appKind: string | null;
+    generatedEnginePath?: string;
+}): string | null {
+    const request = String(input.request || '');
+    if (input.appKind) {
+        return input.generatedEnginePath
+            ? (input.isArabic
+                ? 'سأؤلّف محرّك هذا التطبيق بدلاً من استعمال محرّك جاهز، والنتيجة غير مضمونة.'
+                : "I will author this app's engine instead of using a ready-made engine; the result is not guaranteed.")
+            : null;
+    }
+
+    const elements = input.isArabic
+        ? [
+            { matches: /عدّاد|عداد|counter|count/i, label: 'عدّاد أو إجمالي' },
+            { matches: /زر|button|control/i, label: 'زر تفاعلي' },
+            { matches: /عنوان|رأس|heading|title/i, label: 'عنوان أو رأس صفحة' },
+            { matches: /حالة|رسالة|نتيجة|status|message|result/i, label: 'رسالة حالة أو نتيجة' },
+        ]
+        : [
+            { matches: /counter|count|total|sum/i, label: 'counter or total' },
+            { matches: /button|control/i, label: 'interactive button' },
+            { matches: /heading|title|header/i, label: 'heading or title' },
+            { matches: /status|message|result/i, label: 'status message or result' },
+        ];
+    const understood = elements.filter(element => element.matches.test(request)).map(element => element.label);
+    if (input.isArabic) {
+        return `لا أعرف نوع هذا التطبيق، ولا أملك محرّكاً جاهزاً له — ما سأبنيه هيكلٌ عامّ. وهذا ما فهمتُه من طلبك: ${understood.length ? understood.join(' · ') : 'لم أحدد عنصراً تفاعلياً واضحاً'}.`;
+    }
+    return `I don't know this app type and have no ready engine — I'll build a generic structure. From your request I understood: ${understood.length ? understood.join(' · ') : 'no clear interactive element'}.`;
+}
+
+/**
  * Compare the requested blueprint with the source that is actually about to be
  * delivered. This deliberately keeps the boolean mismatch check separate from
  * evidence availability: a missing source is not proof of a mismatch, but it is
@@ -2442,6 +2482,15 @@ export class ReactProjectTool extends BaseTool {
         // سجّل قرار القالب نفسه، لا وعداً عاماً بالنجاح؛ هذا يكشف فوراً أي
         // تحوير لوسيط الطلب بين الخطة وأداة البناء في الاختبارات الحية.
         term(`template classification: page=${kind || 'generic'} · app=${appKind || 'none'} · mode=${appBp ? 'interactive' : 'presentation'}`);
+        // The owner needs a truthful, understandable announcement. A known
+        // stock engine stays silent; an authored engine is explicitly
+        // non-deterministic; an unknown kind explains the generic fallback and
+        // names only the request elements Joe actually understood.
+        const plannedGeneratedEnginePath = appKind === 'weather' ? 'src/components/WeatherApp.jsx' : '';
+        const declaration = earlyProjectDeclarationForTest({
+            request, isArabic: isAr, appKind, generatedEnginePath: plannedGeneratedEnginePath,
+        });
+        if (declaration) term(declaration);
         const family = familyFor(request, kind);
         const multiPage = wantsMultiPage(request);
         const pages = pagesForKind(kind);

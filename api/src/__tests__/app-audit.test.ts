@@ -7,6 +7,8 @@
 import fs from 'fs';
 import path from 'path';
 import { scoreOf, formatAudit } from '../core/quality/app-audit';
+import { earlyProjectDeclarationForTest } from '../modules/tools/definitions/ReactProjectTool';
+import { GATE062_ACCEPTANCE_PROMPT } from '../core/quality/acceptance';
 
 describe('the audit arithmetic', () => {
     it('the same finding always costs the same; the floor is 0', () => {
@@ -88,5 +90,64 @@ describe('the wiring — every green build gets measured', () => {
     it('labels a proven authenticated pass in the chat verdict', () => {
         const verdict = formatAudit({ score: 100, findings: [], authenticated: true }, true);
         expect(verdict).toContain('دخول محمي مثبت');
+    });
+});
+
+describe('the early project-kind declaration is a request-level terminal behavior', () => {
+    const arabicRequest = 'ابنِ تطبيقاً بعنوان Gate 062 يحتوي على عداد ظاهر وزر تفاعلي ورسالة حالة قصيرة.';
+
+    it('generic fallback names only the elements actually understood from the request', () => {
+        const announcement = earlyProjectDeclarationForTest({
+            request: arabicRequest,
+            isArabic: true,
+            appKind: null,
+        });
+        expect(announcement).toContain('لا أعرف نوع هذا التطبيق');
+        expect(announcement).toContain('عدّاد أو إجمالي');
+        expect(announcement).toContain('زر تفاعلي');
+        expect(announcement).toContain('عنوان أو رأس صفحة');
+        expect(announcement).toContain('رسالة حالة أو نتيجة');
+    });
+
+    it('generic fallback reads the exact Gate062 acceptance prompt in the request language', () => {
+        const announcement = earlyProjectDeclarationForTest({
+            request: GATE062_ACCEPTANCE_PROMPT,
+            isArabic: false,
+            appKind: null,
+        });
+        expect(announcement).toContain('counter or total');
+        expect(announcement).toContain('interactive button');
+        expect(announcement).toContain('heading or title');
+        expect(announcement).toContain('status message or result');
+    });
+
+    it('authored engines explain the practical uncertainty in the request language while stock engines stay silent', () => {
+        expect(earlyProjectDeclarationForTest({
+            request: 'ابنِ تطبيق طقس', isArabic: true, appKind: 'weather',
+            generatedEnginePath: 'src/components/WeatherApp.jsx',
+        })).toContain('سأؤلّف محرّك هذا التطبيق بدلاً من استعمال محرّك جاهز، والنتيجة غير مضمونة.');
+        expect(earlyProjectDeclarationForTest({
+            request: 'Build a weather app', isArabic: false, appKind: 'weather',
+            generatedEnginePath: 'src/components/WeatherApp.jsx',
+        })).toContain("I will author this app's engine instead of using a ready-made engine; the result is not guaranteed.");
+        expect(earlyProjectDeclarationForTest({
+            request: 'Build a finance app', isArabic: false, appKind: 'finance',
+        })).toBeNull();
+    });
+
+    it('removing the counter word removes only the counter understanding', () => {
+        const withoutCounter = earlyProjectDeclarationForTest({
+            request: arabicRequest.replace('عداد ', ''),
+            isArabic: true,
+            appKind: null,
+        });
+        expect(withoutCounter).not.toContain('عدّاد أو إجمالي');
+        expect(withoutCounter).toContain('زر تفاعلي');
+        expect(withoutCounter).toContain('رسالة حالة أو نتيجة');
+    });
+
+    it('is wired to the terminal after template classification', () => {
+        const src = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ReactProjectTool.ts'), 'utf-8');
+        expect(src).toContain('if (declaration) term(declaration);');
     });
 });
