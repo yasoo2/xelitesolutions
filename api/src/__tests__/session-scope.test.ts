@@ -157,8 +157,15 @@ describe('INVARIANT: no panel keeps another conversation’s state', () => {
 
     it('an attachment never rides from one chat into the next', () => {
         const C = read('components', 'CommandComposer.tsx');
-        // inside the session-switch branch, both the files and the draft go
-        const branch = C.slice(C.indexOf('if (prev && prev !== sessionId)'), C.indexOf('if (prev && prev !== sessionId)') + 900);
+        // Inside the session-switch branch, both the files and the draft go.
+        //
+        // The bound is the branch's own `return;`, not a character count. A
+        // fixed 900-char window meant that writing a comment inside the branch
+        // pushed the last assertion out of view and reported a reset that is
+        // still there as missing — a red test for prose.
+        const at = C.indexOf('if (prev && prev !== sessionId)');
+        expect(at).toBeGreaterThan(0);
+        const branch = C.slice(at, C.indexOf('return;', at));
         expect(branch).toMatch(/setAttachedFiles\(\[\]\)/);
         // `text` is the box the user actually types in; `draftText` is the
         // draft-mode buffer. The first fix cleared only the latter and the

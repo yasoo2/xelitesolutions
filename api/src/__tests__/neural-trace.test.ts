@@ -187,10 +187,26 @@ describe('the three defects behind the complaint are closed in the UI', () => {
         const socket = read('services', 'socket.ts');
         const at = socket.indexOf("msgType === 'run_finished' || msgType === 'text'");
         expect(at).toBeGreaterThan(0);
-        const block = socket.slice(at, at + 900);
-        // The `if (quietMode) { … emitPhase('idle') }` guard is what left the
-        // card on screen after the answer arrived.
-        expect(block).toMatch(/runtime\.quietMode = false;\s*\n\s*runtime\.thinkingStatus = '';\s*\n\s*emitPhase\('idle'\);/);
+
+        /**
+         * The `if (quietMode) { … emitPhase('idle') }` guard is what left the
+         * card on screen after the answer arrived — so what this pin defends is
+         * that NOTHING guards the return to idle.
+         *
+         * It used to say that by demanding the three statements be adjacent,
+         * which is a proxy, not the property: adding one more field to the same
+         * reset turned it red while the behaviour it guards was untouched. The
+         * bound is the reset itself now, and the assertion is the real one.
+         */
+        const from = socket.indexOf('runtime.quietMode = false;', at);
+        const to = socket.indexOf("emitPhase('idle');", from);
+        expect(from).toBeGreaterThan(at);
+        expect(to).toBeGreaterThan(from);
+        const reset = socket.slice(from, to + "emitPhase('idle');".length);
+
+        expect(reset).toMatch(/runtime\.thinkingStatus = '';/);
+        expect(reset).not.toMatch(/\bif\s*\(/);      // no guard between the reset and idle
+        expect(reset).not.toMatch(/\breturn\b/);     // and no early exit before it
     });
 });
 
