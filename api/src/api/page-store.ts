@@ -94,6 +94,19 @@ export function samePipelineRun(current: unknown, previous: unknown): boolean {
     return currentId !== null && currentId === previousId;
 }
 
+/**
+ * Read a session project without allowing a pipeline run to adopt stale state.
+ * Calls without a run id are conversation/preview reads and intentionally keep
+ * the legacy session-memory behavior; calls inside a run require an explicit
+ * matching pipeline identity.
+ */
+export function readJoeProjectForRun(key: string, runId: unknown): Record<string, any> | null {
+    const entry = (global as any).joeProjects?.[String(key)];
+    if (!entry) return null;
+    if (normalizePipelineRunId(runId) === null) return entry;
+    return samePipelineRun(runId, entry.pipelineRunId) ? entry : null;
+}
+
 /** The only boundary allowed to write an item into global.joeProjects. */
 export function writeJoeProject(key: string, entry: Record<string, any>, pipelineRunId: unknown = null): Record<string, any> {
     const g: any = global as any;

@@ -9,6 +9,7 @@ import { scopeReport } from '../../../core/quality/scope-audit';
 import { verifyProviderDirect } from '../../../core/llm/intelligent-router';
 import { detectStart, missingRuntimeDependencies, reconcileMissingRuntimeTarget } from './ProjectRunTool';
 import { auditBuiltApp, AppAudit } from '../../../core/quality/app-audit';
+import { readJoeProjectForRun } from '../../../api/page-store';
 
 const MAX_PIPELINE_LOGS = 192;
 const MAX_PIPELINE_LOG_CHARS = 2_000;
@@ -223,9 +224,9 @@ function deliveryCredentialFromMessage(message: unknown): { email: string; passw
     return null;
 }
 
-function trustedRuntimeProjectRoot(sessionId: unknown, workspaceId: unknown): string {
+function trustedRuntimeProjectRoot(sessionId: unknown, workspaceId: unknown, runId: unknown): string {
     const key = String(sessionId || '').trim().replace(/[^a-zA-Z0-9._-]/g, '_') || 'default';
-    const candidateRaw = String((global as any).joeProjects?.[key]?.dir || '').trim();
+    const candidateRaw = String(readJoeProjectForRun(key, runId)?.dir || '').trim();
     if (!candidateRaw) return '';
     const workspaceRoot = path.resolve(workspaceService.getActiveRoot(String(workspaceId || '')));
     const candidate = path.resolve(candidateRaw);
@@ -1273,6 +1274,7 @@ export class ProjectPipelineTool implements ToolDefinition {
         const runtimeProjectRoot = trustedRuntimeProjectRoot(
             context?.sessionId,
             context?.workspaceId || context?.sessionId || 'default',
+            context?.runId,
         );
         if (pipeline?.ok === true && !String(plannerResult?.output?.projectRoot || '').trim() && runtimeProjectRoot) {
             plannerResult.output.projectRoot = runtimeProjectRoot;

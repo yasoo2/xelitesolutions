@@ -2,7 +2,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 
-import { loadJoeProjects, samePipelineRun, writeJoeProject } from '../api/page-store';
+import { loadJoeProjects, readJoeProjectForRun, samePipelineRun, writeJoeProject } from '../api/page-store';
 import { canSyncRuntimeProjectContext } from '../modules/tools/definitions/PhaseExecutorTool';
 
 describe('joeProjects pipeline-run identity boundary', () => {
@@ -39,6 +39,23 @@ describe('joeProjects pipeline-run identity boundary', () => {
         expect(samePipelineRun('run-a', null)).toBe(false);
         expect(samePipelineRun(null, null)).toBe(false);
         expect(samePipelineRun(undefined, 'run-a')).toBe(false);
+    });
+
+    it('guards project readers by run identity without breaking no-run reads', () => {
+        writeJoeProject('session-reader', { dir: '/tmp/other-run' }, 'run-other');
+        expect(readJoeProjectForRun('session-reader', 'run-current')).toBeNull();
+
+        writeJoeProject('session-reader', { dir: '/tmp/legacy' }, null);
+        expect(readJoeProjectForRun('session-reader', 'run-current')).toBeNull();
+
+        const current = writeJoeProject('session-reader', { dir: '/tmp/current-run' }, 'run-current');
+        expect(readJoeProjectForRun('session-reader', 'run-current')).toBe(current);
+
+        writeJoeProject('session-reader', { dir: '/tmp/conversation' }, null);
+        expect(readJoeProjectForRun('session-reader', null)).toEqual({
+            dir: '/tmp/conversation',
+            pipelineRunId: null,
+        });
     });
 
     it('rejects cross-run and legacy active roots, while accepting the same run', () => {

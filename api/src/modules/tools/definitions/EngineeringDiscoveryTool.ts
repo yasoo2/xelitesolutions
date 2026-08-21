@@ -3,6 +3,7 @@ import path from 'path';
 import { BaseTool } from '../base';
 import { ToolPermission } from '../types';
 import { isWithinRoot, resolveToolPath } from '../utils';
+import { readJoeProjectForRun } from '../../../api/page-store';
 
 export type VerificationStatus = 'passed' | 'failed' | 'blocked' | 'not_run' | 'not_applicable';
 export type ExecutionStatus = 'succeeded' | 'failed' | 'blocked' | 'not_started';
@@ -236,7 +237,7 @@ export class EngineeringDiscoveryTool extends BaseTool {
          */
         const bareContinuation = /^\s*(?:اكمل|أكمل|كمل|كمّل|تابع|استمر|واصل|استأنف|continue|resume|proceed|finish(?:\s+it)?|keep\s+going)[\s!.،؟]*(?:من\s+حيث\s+توقفت|ما\s+تبق[ىي]|التنفيذ|العمل|المشروع|البناء|the\s+(?:work|project|build)|where\s+you\s+left\s+off)?[\s!.،؟]*$/i.test(request);
         const sessionArtifactKey = String(context?.sessionId || 'default').replace(/[^a-zA-Z0-9._-]/g, '_');
-        const sessionArtifact = (global as any).joeProjects?.[sessionArtifactKey];
+        const sessionArtifact = readJoeProjectForRun(sessionArtifactKey, context?.runId);
         const knownArtifactRoot = sessionArtifact?.dir && fs.existsSync(String(sessionArtifact.dir))
             ? String(sessionArtifact.dir) : '';
         const continuesKnownArtifact = bareContinuation && !!knownArtifactRoot;

@@ -7,7 +7,7 @@ import { isArabicReply, say as pick } from '../../../shared/reply-language';
 import * as fs from 'fs';
 import * as path from 'path';
 import { builtinModules } from 'module';
-import { persistJoeProjects, writeJoeProject } from '../../../api/page-store';
+import { persistJoeProjects, readJoeProjectForRun, writeJoeProject } from '../../../api/page-store';
 
 /**
  * project_run / project_stop — actually RUN a built system, not just render a
@@ -1031,7 +1031,10 @@ export class ProjectRunTool implements ToolDefinition {
         // used to start the WORKSPACE ROOT, not the project the session just
         // created — the two stores never talked. The session's active
         // project is the default now; an explicit cwd still wins.
-        const activeProj = (global as any).joeProjects?.[String(context?.sessionId || 'default').replace(/[^a-zA-Z0-9._-]/g, '_')];
+        const activeProj = readJoeProjectForRun(
+            String(context?.sessionId || 'default').replace(/[^a-zA-Z0-9._-]/g, '_'),
+            context?.runId,
+        );
         const namedProjectQuery = requestedProjectLabel(input?.projectQuery);
         const activeProjectLabel = activeProj?.dir
             ? projectLabel(String(activeProj.dir))
