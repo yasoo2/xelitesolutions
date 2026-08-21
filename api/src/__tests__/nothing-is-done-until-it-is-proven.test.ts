@@ -80,16 +80,21 @@ describe('a criterion is met by EVIDENCE, or it is not met', () => {
     beforeAll(() => {
         fs.mkdirSync(path.join(tmp, 'src'), { recursive: true });
         fs.writeFileSync(path.join(tmp, 'src', 'App.jsx'),
-            `export default function App(){ return <div dir="rtl">
-              <h1>لوحة الحجوزات</h1>
-              <span data-count="6">6</span>
-              <p role="status" aria-live="polite">تم الحفظ</p>
-              <input type="search" />
-              <select><option>الحالة</option></select>
-              <form onSubmit={save}><button>إضافة</button></form>
-              <a download="rows.csv" href={URL.createObjectURL(blob)}>تصدير</a>
-              <p>لا توجد حجوزات بعد</p>
-            </div>; }`);
+            `import { useState } from 'react';
+            export default function App(){
+              const [count, setCount] = useState(6);
+              function save(event){ event.preventDefault(); }
+              return <div dir="rtl">
+                <h1>لوحة الحجوزات</h1>
+                <span data-count={count}>{count}</span>
+                <p role="status" aria-live="polite">تم الحفظ</p>
+                <input type="search" />
+                <select><option>الحالة</option></select>
+                <form onSubmit={save}><button type="submit" onClick={() => setCount(count + 1)}>إضافة</button></form>
+                <a download="rows.csv" href={URL.createObjectURL(blob)}>تصدير</a>
+                <p>لا توجد حجوزات بعد</p>
+              </div>;
+            }`);
     });
 
     it('a feature really present in the source is met, and says where from', () => {
@@ -109,6 +114,50 @@ describe('a criterion is met by EVIDENCE, or it is not met', () => {
         }
         expect(a.met).toBe(4);
         expect(a.unmet).toBe(0);
+    });
+
+    it('extracts only a safe requested title and proves the exact heading', () => {
+        const english = acceptanceFor('Create one polished page titled Gate 062 with a heading, a short status message, and a button.');
+        const arabic = acceptanceFor('ابنِ صفحة بعنوان متجر الأمل فيها قائمة المنتجات');
+        expect(english.find(c => c.id === 'title')!.expectedText).toBe('Gate 062');
+        expect(arabic.find(c => c.id === 'title')!.expectedText).toBe('متجر الأمل');
+
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-title-positive-'));
+        fs.mkdirSync(path.join(dir, 'src'), { recursive: true });
+        fs.writeFileSync(path.join(dir, 'src', 'App.jsx'), '<h1>Gate 062</h1>');
+        const title = judgeAcceptance(english.filter(c => c.id === 'title'), { dir }, true).criteria[0];
+        expect(title.verdict).toBe('met');
+        expect(title.why).toContain('Gate 062');
+    });
+
+    it('does not prove action-bound shapes from generic markup alone', () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-negative-shapes-'));
+        fs.mkdirSync(path.join(dir, 'src'), { recursive: true });
+        fs.writeFileSync(path.join(dir, 'src', 'App.jsx'), `
+          const count = 6;
+          export default function App(){ return <>
+            <span data-count={count}>{count}</span>
+            <button>Open</button>
+            <p>Ready</p>
+            <h1>Other title</h1>
+          </>; }
+        `);
+        const request = 'Build a page with a counter, button, title, and status message.';
+        const a = judgeAcceptance(acceptanceFor(request), { dir }, true);
+        const by = (id: string) => a.criteria.find(c => c.id === id)!;
+        expect(by('counter').verdict).toBe('unmet');
+        expect(by('button').verdict).toBe('unmet');
+        expect(by('status_message').verdict).toBe('unmet');
+        expect(by('title').verdict).toBe('met');
+    });
+
+    it('does not accept a requested title when the generated heading differs', () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-title-negative-'));
+        fs.mkdirSync(path.join(dir, 'src'), { recursive: true });
+        fs.writeFileSync(path.join(dir, 'src', 'App.jsx'), '<h1>Other title</h1>');
+        const criteria = acceptanceFor('Create one polished page titled Gate 062 with a heading.');
+        const title = judgeAcceptance(criteria.filter(c => c.id === 'title'), { dir }, true).criteria[0];
+        expect(title.verdict).toBe('unmet');
     });
 
     it('a build that did not happen is unmet — the flag comes from a real process', () => {

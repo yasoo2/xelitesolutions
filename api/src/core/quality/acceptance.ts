@@ -41,6 +41,8 @@ export interface Criterion {
     en: string;
     /** Source markers that prove a FEATURE was really generated. */
     markers?: RegExp[];
+    /** Exact user-requested title text, when it can be extracted safely. */
+    expectedText?: string;
 }
 
 export interface JudgedCriterion extends Criterion {
@@ -82,25 +84,25 @@ const CATALOGUE: Array<Criterion & { asked: RegExp }> = [
         id: 'counter', kind: 'feature',
         asked: /(عداد|العدد|إجمالي|المجموع|\bcounter\b|\bcount\b|\btotal\b|\bbadge\b)/iu,
         ar: 'عداد أو إجمالي', en: 'a counter or total',
-        markers: [/\b(?:count|total|itemCount|rowCount)\b/i, /عداد|إجمالي|المجموع/u, /aria-live/i, /data-(?:count|total)=/i],
+        markers: [],
     },
     {
         id: 'button', kind: 'feature',
         asked: /(زر|أزرار|\bbutton\b|\bcta\b|call[- ]?to[- ]?action)/iu,
         ar: 'زر تفاعلي', en: 'an interactive button',
-        markers: [/<button\b/i, /role=["']button["']/i, /onClick/i],
+        markers: [],
     },
     {
         id: 'title', kind: 'feature',
         asked: /(عنوان|العنوان|\btitle\b|\bheading\b|\bheadline\b)/iu,
         ar: 'عنوان أو رأس صفحة', en: 'a title or heading',
-        markers: [/<h[1-6]\b/i, /<title\b/i, /\bheading\b/i],
+        markers: [/<h[1-6]\b/i, /<title\b/i],
     },
     {
         id: 'status_message', kind: 'feature',
         asked: /(رسالة\s*(?:حالة|نجاح|خطأ)|حالة\s*(?:نجاح|خطأ)|status\s*message|success\s*message|error\s*message|\btoast\b)/iu,
         ar: 'رسالة حالة أو نتيجة', en: 'a status or result message',
-        markers: [/aria-live/i, /role=["']status["']/i, /(?:status|success|error)Message/i, /نجاح|خطأ|تم/u],
+        markers: [],
     },
     {
         id: 'add_row', kind: 'feature',
@@ -154,11 +156,30 @@ const CATALOGUE: Array<Criterion & { asked: RegExp }> = [
     },
 ];
 
+/** Extract a literal title only when the request gives a safe structural boundary. */
+function extractRequestedTitle(request: string): string | undefined {
+    const patterns = [
+        /\btitled\s+(.+?)(?=\s+(?:with|that|which|containing|including|and)\b|[,.;]|$)/iu,
+        /بعنوان\s+(.+?)(?=\s+(?:فيها|يحتوي|تحتوي|مع|وبها|والتي|و)(?=\s|[،,؛.;]|$)|[،,؛.;]|$)/u,
+    ];
+    for (const pattern of patterns) {
+        const match = pattern.exec(request);
+        if (!match) continue;
+        const value = match[1].trim().replace(/["'`]+$/g, '').trim();
+        const words = value.split(/\s+/u).filter(Boolean);
+        if (words.length > 0 && words.length <= 4) return value;
+    }
+    return undefined;
+}
+
 /** The criteria THIS brief actually asks for — never a fixed checklist. */
 export function acceptanceFor(request: string): Criterion[] {
     const t = String(request || '');
     return CATALOGUE.filter(c => c.asked.test(t))
-        .map(({ asked, ...rest }) => rest);
+        .map(({ asked, ...rest }) => rest)
+        .map(c => c.id === 'title'
+            ? { ...c, expectedText: extractRequestedTitle(t) }
+            : c);
 }
 
 export interface Evidence {
@@ -188,6 +209,32 @@ function sourceOf(dir: string): string {
     };
     walk(dir);
     return out.join('\n');
+}
+
+function hasCounterEvidence(src: string): boolean {
+    const hasState = /\b(?:useState|useReducer)\s*\(/i.test(src);
+    const hasUpdate = /\bset[A-Z_$][\w$]*\s*\([^)]*(?:\+\s*1|-\s*1|\bprev\w*\b)/i.test(src);
+    const hasAction = /\b(?:onClick|onChange|onSubmit)\s*=/i.test(src);
+    const hasVisibleValue = /(?:aria-live\s*=|data-(?:count|total)\s*=|>\s*\{\s*(?:count|total)\s*\}\s*<)/i.test(src);
+    return hasState && hasUpdate && hasAction && hasVisibleValue;
+}
+
+function hasActionBoundButtonEvidence(src: string): boolean {
+    const clickButton = /<button\b[^>]*\bonClick\s*=/i.test(src)
+        || /\brole=["']button["'][^>]*\bonClick\s*=/i.test(src);
+    const submitButton = /<form\b[^>]*\bonSubmit\s*=[\s\S]*?<button\b[\s\S]*?<\/form>/i.test(src)
+        || /<button\b[^>]*\btype=["']submit["']/i.test(src);
+    return clickButton || submitButton;
+}
+
+function hasStatusMessageEvidence(src: string): boolean {
+    const semanticNode = /<(?:p|div|span|output|section)\b[^>]*(?:role=["']status["']|aria-live=["'][^"']+["'])[^>]*>[\s\S]*?\S[\s\S]*?<\/\w+>/i.test(src);
+    const namedMessage = /\b(?:status|success|error)Message\s*=\s*["'`][^"'`]{2,}/i.test(src);
+    return semanticNode || namedMessage;
+}
+
+function escapeRegExp(value: string): string {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 /**
@@ -237,10 +284,27 @@ export function judgeAcceptance(criteria: Criterion[], ev: Evidence, isAr = true
                 ? 'لا مصدر أستطيع قراءته لأثبت هذا'
                 : 'no source to read, so nothing can be proven');
         }
-        const hit = (c.markers || []).some(re => re.test(src));
-        return hit
-            ? say('met', isAr ? 'موجود في مصدر المشروع' : 'present in the generated source')
-            : say('unmet', isAr ? 'لا أثر له في المصدر المولَّد' : 'no trace of it in the generated source');
+        let hit: boolean;
+        if (c.id === 'counter') {
+            hit = hasCounterEvidence(src);
+        } else if (c.id === 'button') {
+            hit = hasActionBoundButtonEvidence(src);
+        } else if (c.id === 'status_message') {
+            hit = hasStatusMessageEvidence(src);
+        } else if (c.id === 'title' && c.expectedText) {
+            const expected = escapeRegExp(c.expectedText);
+            hit = new RegExp(`<h[1-6]\\b[^>]*>\\s*${expected}\\s*</h[1-6]>`, 'iu').test(src)
+                || new RegExp(`<title\\b[^>]*>\\s*${expected}\\s*</title>`, 'iu').test(src);
+        } else {
+            hit = (c.markers || []).some(re => re.test(src));
+        }
+        if (hit) {
+            const why = c.id === 'title' && c.expectedText
+                ? (isAr ? `العنوان المطلوب «${c.expectedText}» موجود في مصدر المشروع` : `requested title “${c.expectedText}” is present in the generated source`)
+                : (isAr ? 'موجود في مصدر المشروع' : 'present in the generated source');
+            return say('met', why);
+        }
+        return say('unmet', isAr ? 'لا يوجد دليل فعلي كافٍ في المصدر المولَّد' : 'no sufficient behavioral evidence in the generated source');
     });
 
     const met = judged.filter(c => c.verdict === 'met').length;
