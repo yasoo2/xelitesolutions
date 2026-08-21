@@ -1791,6 +1791,9 @@ export default function CommandComposer({
     }
   };
 
+  /** Set by the session-change effect below; consumed by the restore effect. */
+  const restoreLiveStateRef = useRef<string | null>(null);
+
   useEffect(() => {
     const prev = prevSessionIdRef.current;
     prevSessionIdRef.current = sessionId;
@@ -1810,6 +1813,14 @@ export default function CommandComposer({
 
     if (prev && prev !== sessionId) {
       setEvents([]);
+      // RESTORING A CHAT THAT NEVER STOPPED WORKING.
+      //
+      // Measured by the owner: start a build, switch chats, come back — the
+      // composer looked idle (no Stop, no progress) while the server was still
+      // running the whole time. Everything below resets local state, and
+      // nothing used to ask the socket whether THIS chat still had a live run.
+      // It does now, right after the reset.
+      restoreLiveStateRef.current = sessionId;
       // THE ATTACHMENT AND THE HALF-TYPED LINE BELONG TO THE CHAT THEY WERE
       // MADE IN. They survived a session switch, so a photo attached in one
       // conversation was still riding the composer in the next one and would
@@ -1836,6 +1847,23 @@ export default function CommandComposer({
     if (!prev && events.length === 0) {
       loadHistory(sessionId);
     }
+  }, [sessionId]);
+
+  /**
+   * The live half of a session switch: a chat whose run is still in flight
+   * comes back showing that it is working, with a Stop button that stops the
+   * right run. The socket keeps this per session, so the truth survives the
+   * unmount that wiped the composer's own state.
+   */
+  useEffect(() => {
+    const sid = restoreLiveStateRef.current;
+    restoreLiveStateRef.current = null;
+    if (!sid || sid !== sessionId) return;
+    if (!SocketService.isSessionRunning(sid)) return;
+    setStatus('thinking');
+    setIsThinking(true);
+    const runId = SocketService.getActiveRunId(sid);
+    if (runId) setActiveRunId(runId);
   }, [sessionId]);
 
   async function loadHistory(id: string) {

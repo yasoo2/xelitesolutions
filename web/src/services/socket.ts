@@ -26,6 +26,14 @@ type SessionRuntimeState = {
   taskTrackerData: any[];
   quietMode: boolean;
   lastPreviewUrl: string;
+  /**
+   * The run currently in flight for THIS session, or ''. Switching chats
+   * unmounts the composer and wipes its local state; without this the app
+   * forgot that the chat it came back to still had work running, showed an
+   * idle composer with no Stop button, and left the run invisible until it
+   * happened to emit its next event.
+   */
+  activeRunId: string;
 };
 
 const DEFAULT_SCOPE = '__unscoped__';
@@ -43,6 +51,11 @@ function eventSessionId(event: any): string {
   );
 }
 
+/** Event kinds that prove a run is still in flight (not its closing word). */
+function msgTypeIsLive(type: string): boolean {
+  return type !== 'run_finished' && type !== 'text' && type !== 'error';
+}
+
 function getSessionRuntime(sessionId?: string): SessionRuntimeState {
   const key = normalizeSessionId(sessionId) || DEFAULT_SCOPE;
   let state = sessionRuntime.get(key);
@@ -58,6 +71,7 @@ function getSessionRuntime(sessionId?: string): SessionRuntimeState {
       taskTrackerData: [],
       quietMode: false,
       lastPreviewUrl: '',
+      activeRunId: '',
     };
     sessionRuntime.set(key, state);
   }
@@ -373,6 +387,11 @@ async function connect() {
       // into a named session by the frontend.
       const evSid = eventSessionId(data);
       const runtime = getSessionRuntime(evSid);
+      // Any event of a live run names it; the first one that does adopts the id
+      // for the session, so a chat switched away from and back to still knows
+      // which run to stop.
+      const evRunId = normalizeSessionId(data?.runId || data?.data?.runId);
+      if (evRunId && msgTypeIsLive(String(data?.type || ''))) runtime.activeRunId = evRunId;
       if (msgType === 'terminal_output' && typeof data?.data === 'string') {
         runtime.terminalHistory += data.data;
         if (runtime.terminalHistory.length > TERMINAL_HISTORY_CAP) {
@@ -439,6 +458,7 @@ async function connect() {
         // on screen saying «جو ينفّذ» after the answer had already arrived.
         runtime.quietMode = false;
         runtime.thinkingStatus = '';
+        runtime.activeRunId = '';
         emitPhase('idle');
         forSession(thinkingStatusListeners, evSid, cb => cb('', evSid));
         // Sealed on the way out, whatever ended the run. The steps were about to
@@ -459,6 +479,7 @@ async function connect() {
         sealTrace(evSid);
         runtime.runStartedAt = Date.now();
         runtime.runSessionId = evSid;
+        if (evRunId) runtime.activeRunId = evRunId;
         runtime.thinkingDetails = [];
         runtime.thinkingStatus = '';
         runtime.taskTrackerData = [];
@@ -752,6 +773,15 @@ export const SocketService = {
   },
   getRunStartedAt(sessionId?: string) {
     return getSessionRuntime(sessionId).runStartedAt;
+  },
+  /** The run still in flight for this session, or '' when it is idle. */
+  getActiveRunId(sessionId?: string) {
+    return getSessionRuntime(sessionId).activeRunId;
+  },
+  /** True while this session has a run the server has not finished yet. */
+  isSessionRunning(sessionId?: string) {
+    const state = getSessionRuntime(sessionId);
+    return state.runStartedAt > 0 && state.thinkingPhase !== 'idle';
   },
   subscribeThinkingStatus(cb: (status: string, sessionId?: string) => void, sessionId?: string) {
     cb(getSessionRuntime(sessionId).thinkingStatus, normalizeSessionId(sessionId));
