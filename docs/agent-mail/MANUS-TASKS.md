@@ -392,8 +392,8 @@ POS-059-RUN-ID-LIVE: superseded by the 060 reader-guard live validation
 
 | المعرّف | المهمة | الحالة | معيار الإغلاق |
 |---|---|---|---|
-| 060-READER-RUN-ID | جعل `ProjectRunTool` و`ProjectPipelineTool` و`EngineeringDiscoveryTool` تقرأ `joeProjects` عبر `readJoeProjectForRun(key, runId)`، مع رفض cross-run وlegacy-null داخل الجولة والحفاظ على القراءة بلا جولة | **منجز محلياً؛ البوابات خضراء؛ الدفع إلى `main` قيد التنفيذ** | عقد قارئ موحد في `api/src/api/page-store.ts`؛ الشروط الأربعة مثبتة كلٌّ في توكيد مستقل؛ القرّاء الثلاثة لا يقرأون الخريطة عارياً؛ `tsc --noEmit = 0`؛ الاختبارات المرتبطة 5 suites/132 tests خضراء؛ Jest الكاملة 22/22 دفعة وكلها `EXIT 0`؛ دفع إلى `main`؛ ثم إعادة بناء Joe وتشغيل البرومبت القانوني والتحقق المستقل |
-| PR82-060 | قناة الوكلاء لإصلاح قرّاء الجولة | **إقرار 074 منشور؛ البوابات مكتملة؛ الدفع والختام قيد التنفيذ** | عدم لمس ملفات Claude المحجوزة؛ عدم تضمين `package.json` أو `package-lock.json` أو `zz-*.test.ts`؛ تحديث هذه القائمة مع الدفع؛ تعليق ختامي يتضمن SHA وأرقام البوابات والملفات المفتوحة |
+| 060-READER-RUN-ID | جعل `ProjectRunTool` و`ProjectPipelineTool` و`EngineeringDiscoveryTool` تقرأ `joeProjects` عبر `readJoeProjectForRun(key, runId)`، مع رفض cross-run وlegacy-null داخل الجولة والحفاظ على القراءة بلا جولة | **منجز ومدفوع في `78689930`؛ التحقق الحي المستقل قيد التنفيذ** | عقد قارئ موحد في `api/src/api/page-store.ts`؛ الشروط الأربعة مثبتة كلٌّ في توكيد مستقل؛ القرّاء الثلاثة لا يقرأون الخريطة عارياً؛ `tsc --noEmit = 0`؛ الاختبارات المرتبطة 5 suites/132 tests خضراء؛ Jest الكاملة 22/22 دفعة وكلها `EXIT 0`؛ دفع إلى `main`؛ ثم إعادة بناء Joe وتشغيل البرومبت القانوني والتحقق المستقل |
+| PR82-060 | قناة الوكلاء لإصلاح قرّاء الجولة | **إقرار 074 منشور؛ الكود مدفوع في `78689930`؛ التعليق الختامي 075 بعد التحقق الحي** | عدم لمس ملفات Claude المحجوزة؛ عدم تضمين `package.json` أو `package-lock.json` أو `zz-*.test.ts`؛ تحديث هذه القائمة مع الدفع؛ تعليق ختامي يتضمن SHA وأرقام البوابات والملفات المفتوحة |
 
 ### دليل وبوابات إصلاح 060
 
@@ -404,8 +404,8 @@ POS-060-RELATED-JEST: 5 suites / 132 tests / EXIT 0
 POS-060-TSC: 0
 POS-060-FULL-JEST: 22/22 batches EXIT 0; FULL_JEST_BATCHES_EXIT=0
 POS-060-NO-WEATHERGO-MANUAL-EDIT: confirmed
-POS-060-PUSH: pending final staging and commit
-POS-060-LIVE: required after push
+POS-060-PUSH: `78689930` منشور على `origin/main`; local=remote verified
+POS-060-LIVE: required and now next gate after rebuild
 
 ## حالة القبول بعد إصلاح 060
 
