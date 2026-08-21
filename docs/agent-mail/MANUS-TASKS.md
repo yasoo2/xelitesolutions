@@ -450,3 +450,29 @@ POS-062-L4: OPEN; no W50 or next level before a new independent canonical build 
 ## حالة القبول بعد إصلاح 060
 
 لا يزال **Level 4 WeatherGo مفتوحاً**. لا يُقبل المستوى قبل دفع إصلاح 060، إعادة بناء Joe من SHA المنشور، تشغيل البرومبت القانوني على Joe الحقيقي، والتحقق المستقل من `finalVerified=true` و`liveUrl` غير الفارغ ونتيجة QA حقيقية مرتبطة بجذر الجولة نفسها. عولجت حدود الكتابة في 059 وحدود القراءة داخل الجولة في 060، لكن الدليل الحي الجديد هو شرط الإغلاق لا وصف الكود. تبقى ديون `PROJECT-MAP-HAS-NO-RUN` و`PROJECT-MAP-INHERITED-RUN-ID` مرتبطة بإثبات الجولة الحية وعدم تسرب legacy، بينما تبقى `RECEIPT-BELONGS-TO-ITS-RUN` و`TOOL-DONE-DROPS-OUTPUT` و`ORPHAN-SCAFFOLDS` و`VERIFY-WHAT-THE-PHASE-WROTE` و`LIVE-URL-ADDRESS-FAMILY` وW50 مؤجلة حسب شروطها.
+
+
+## بند Claude 116 — EARLY-DECLARATION
+
+| المعرّف | المهمة | الحالة | معيار الإغلاق |
+|---|---|---|---|
+| EARLY-DECLARATION | مقارنة عناصر الطلب بقدرات التوليد قبل بدء scaffold، والإعلان للمستخدم مبكراً عن `counter` و`title` إذا لم يوجد لهما مسار حتمي | **موثّق؛ الكود مؤجل إلى استشارة نطاق مستقلة وقراءة Claude من `origin/main`** | على `GATE062_ACCEPTANCE_PROMPT` يظهر إعلان مفهوم للمستخدم قبل سطر `react_project: scaffolded`; يسمّي العدّاد والعنوان؛ لا يظهر على طلب يتقنه المولّد؛ لا يغيّر الحكم النهائي ولا يحجب الجولة؛ ثم `tsc = 0` وJest الكاملة خضراء ودليل حي مستقل |
+
+**حدود التنفيذ:** المطلوب في الدفعة التالية إعلان صادق مبكر فقط، وليس حاجباً جديداً. لا تعديل للناتج المولّد، ولا لملفات WeatherGo أو ORBIT، ولا إعادة تشغيل قبل استشارة النطاق التالية واعتمادها.
+
+## ديون مفتوحة مرتبطة بالجولة الحية الأخيرة
+
+| الدين | الحالة الحالية |
+|---|---|
+| `POLISH-BEFORE-ACCEPTANCE` | مفتوح؛ درجة الصقل والمعاينة ظهرتا قبل حكم الوفاء |
+| `REJECTED-BUT-STILL-ON-SCREEN` | مفتوح؛ يجب فصل النتيجة المرفوضة عن واجهة القبول المرئي |
+| `QA-SCORES-CRAFT-NOT-FIDELITY` | مفتوح؛ `97/100` تقيس الحرفة لا وفاء عناصر الطلب |
+| طبقة العنوان (`titled` مع الاقتباس) | مفتوحة؛ العنوان المطلوب يجب أن يُستخرج ويُثبت بنص الطلب لا من قالب عام |
+| `SCAFFOLD-FALLBACK-UNGUARDED` | مفتوح؛ لا يجوز أن يتحول فشل فهم الطلب إلى scaffold تسويقي غير مطلوب بلا إعلان |
+| اختبار دوام القرص من 058 | مفتوح؛ يجب اختبار `flushJoeProjects → قراءة الملف → loadJoeProjects` |
+
+**آخر دليل حي:** `GATE062_LIVE_PROMPT` على `b59a40d7` — `2/5`، `accepted=false`، `counter/title/preview` غير مثبتة، والتسليم محجوب بصدق. لذلك يبقى Level 4 WeatherGo وORBIT غير مقبولين، ولا يبدأ W50.
+
+POS-062-EARLY-DECLARATION: TASK REGISTERED 2026-08-21; source code intentionally untouched pending Claude confirmation
+POS-062-DEBTS-CARRIED: POLISH-BEFORE-ACCEPTANCE, REJECTED-BUT-STILL-ON-SCREEN, QA-SCORES-CRAFT-NOT-FIDELITY, title extraction, SCAFFOLD-FALLBACK-UNGUARDED, disk-persistence test 058
+POS-062-NEXT-GATE: Claude must read this file from origin/main and confirm before any code
