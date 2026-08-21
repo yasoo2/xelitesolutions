@@ -456,9 +456,9 @@ POS-062-L4: OPEN; no W50 or next level before a new independent canonical build 
 
 | المعرّف | المهمة | الحالة | معيار الإغلاق |
 |---|---|---|---|
-| EARLY-DECLARATION | مقارنة عناصر الطلب بقدرات التوليد قبل بدء scaffold، والإعلان للمستخدم مبكراً عن `counter` و`title` إذا لم يوجد لهما مسار حتمي | **موثّق؛ الكود مؤجل إلى استشارة نطاق مستقلة وقراءة Claude من `origin/main`** | على `GATE062_ACCEPTANCE_PROMPT` يظهر إعلان مفهوم للمستخدم قبل سطر `react_project: scaffolded`; يسمّي العدّاد والعنوان؛ لا يظهر على طلب يتقنه المولّد؛ لا يغيّر الحكم النهائي ولا يحجب الجولة؛ ثم `tsc = 0` وJest الكاملة خضراء ودليل حي مستقل |
+| EARLY-DECLARATION | مقارنة عناصر الطلب بقدرات التوليد قبل بدء scaffold، والإعلان للمستخدم مبكراً عن عناصر القبول التي لا يملك لها النظام مساراً حتمياً | **مغلقة — منفذة ومثبتة حياً على `b7bc9ba5`** | في `run-1787350252115` أعلن Joe العناصر الخمسة في terminal seq 18 قبل `react_project: scaffolded` في seq 39؛ العناصر الخمسة مطابقة لعناصر الحكم لأن الإعلان والحكم يقرآن `acceptanceFor` كمصدر واحد؛ regression account السلبي وfake-criterion أخضرا؛ الجولة الحية بقيت صادقة عند `3/5`, `accepted=false` من محطتين مستقلتين |
 
-**حدود التنفيذ:** المطلوب في الدفعة التالية إعلان صادق مبكر فقط، وليس حاجباً جديداً. لا تعديل للناتج المولّد، ولا لملفات WeatherGo أو ORBIT، ولا إعادة تشغيل قبل استشارة النطاق التالية واعتمادها.
+**حدود التنفيذ المغلقة:** أُنجز الإعلان الصادق المبكر دون إضافة حاجب جديد ودون تعديل الناتج المولّد أو ملفات WeatherGo أو ORBIT. لا يُفتح إصلاح فجوة القدرة في هذه الدفعة؛ الجبهة التالية تحتاج استشارة Claude مستقلة.
 
 ## ديون مفتوحة مرتبطة بالجولة الحية الأخيرة
 
@@ -471,11 +471,11 @@ POS-062-L4: OPEN; no W50 or next level before a new independent canonical build 
 | `SCAFFOLD-FALLBACK-UNGUARDED` | مفتوح؛ لا يجوز أن يتحول فشل فهم الطلب إلى scaffold تسويقي غير مطلوب بلا إعلان |
 | اختبار دوام القرص من 058 | مفتوح؛ يجب اختبار `flushJoeProjects → قراءة الملف → loadJoeProjects` |
 
-**آخر دليل حي:** `GATE062_LIVE_PROMPT` على `b59a40d7` — `2/5`، `accepted=false`، `counter/title/preview` غير مثبتة، والتسليم محجوب بصدق. لذلك يبقى Level 4 WeatherGo وORBIT غير مقبولين، ولا يبدأ W50.
+**آخر دليل حي:** `GATE062_LIVE_PROMPT` على `b7bc9ba5` — terminal seq 18 أعلن العناصر الخمسة قبل seq 39 الذي بنى 19 ملفاً؛ الحكم القانوني المستقل من محطتين هو `3/5`, `accepted=false`، حيث تحققت `button`, `status_message`, و`preview` ولم تتحقق `counter` و`title`. لذلك يبقى Level 4 WeatherGo وORBIT غير مقبولين، ولا يبدأ W50.
 
-POS-062-EARLY-DECLARATION: TASK REGISTERED 2026-08-21; source code intentionally untouched pending Claude confirmation
+POS-062-EARLY-DECLARATION: CLOSED 2026-08-22 on b7bc9ba5; live seq 18/39 and two-station 3/5 evidence recorded
 POS-062-DEBTS-CARRIED: POLISH-BEFORE-ACCEPTANCE, REJECTED-BUT-STILL-ON-SCREEN, QA-SCORES-CRAFT-NOT-FIDELITY, title extraction, SCAFFOLD-FALLBACK-UNGUARDED, disk-persistence test 058
-POS-062-NEXT-GATE: Claude must read this file from origin/main and confirm before any code
+POS-062-NEXT-GATE: EARLY-DECLARATION-D مغلق على `b7bc9ba5`; الجبهة التالية تحتاج اعتماد Claude مستقل قبل أي تعديل قدرة أو توسيع كتالوج
 
 
 ## ديون Claude 127 — قبول الإعلان المبكر
@@ -485,9 +485,11 @@ POS-062-NEXT-GATE: Claude must read this file from origin/main and confirm befor
 | `UNJUDGEABLE-CRITERION-FALLS-THROUGH` | فرع معيار بلا علامات أو دالّة موجود لكنه غير قابل للوصول من الباب الأمامي حالياً؛ يجب ألا يمر طلب غير قابل للحكم بصمت | **مفتوح؛ لا يُفتح الآن** | تسجيل الدين فقط؛ لا تعديل في `acceptance.ts` قبل قرار النطاق |
 | `CATALOGUE-DECIDES-WHAT-COUNTS` | `CATALOGUE` ذات 15 مدخلاً تختار المعايير بمطابقة `asked` بدلاً من استخراج عناصر الطلب، ما قد ينتج صفر معايير وحاجباً صامتاً | **مفتوح؛ قرار النطاق مطلوب** | تنفيذ D فقط؛ انتظار اختيار Claude للمسار العام |
 | `MARKER-MET-BY-BOILERPLATE` | بعض العلامات قد تُطابق ضجيجاً عاماً مثل `useState` أو `status` أو `.filter(` بدلاً من إثبات الميزة المطلوبة | **مفتوح؛ قرار النطاق مطلوب** | تسجيل الدين فقط؛ لا إصلاح موضعي أو توسيع كتالوج |
-| `APP-KIND-IS-A-CATALOGUE` | `detectAppKind` لا يغطي كل طلبات التطبيقات؛ قياس D أعاد `null` لـ`GATE062_ACCEPTANCE_PROMPT`، فيسقط الطلب إلى `generic-react` قبل البناء | **مفتوح؛ إصلاح D جارٍ، وتوسيع الكتالوج مؤجل** | إعلان `appKind` مبكراً قبل `buildAppFiles` مع تسجيل `declared_app_kind` في `run-evidence` واختبار ترتيب الإعلان؛ لا تعديل `acceptance.ts` أو `detectAppKind` في هذه الدفعة |
+| `APP-KIND-IS-A-CATALOGUE` | `detectAppKind` لا يغطي كل طلبات التطبيقات؛ قياس D أعاد `null` لـ`GATE062_ACCEPTANCE_PROMPT`، فيسقط الطلب إلى `generic-react` قبل البناء | **مغلق كجزء من EARLY-DECLARATION-D؛ فجوة القدرة التالية مفتوحة** | الإعلان المبكر صار قبل `buildAppFiles` مع اختبار ترتيب الإعلان ومصدر قبول واحد؛ لا يُعد ذلك قبولاً لـGate062 ولا تفويضاً لتوسيع `detectAppKind` في هذه الدفعة |
 | `REFUSAL-ARRIVES-WITHOUT-ITS-REASONS` | تصل الشاشة حالة `Stopped`، لكن كتلة القبول لا تحمل أسباب الرفض المقيسة | **مفتوح؛ خارج دفعة D** | تسجيل الدين فقط؛ استشارة نطاق مستقلة بعد EARLY-DECLARATION |
-| `RUN-LEAVES-NO-RECEIPT` | دليل Claude 133: `/api/runs/<id>` أعاد `404` و`/api/runs` أعاد `500` بعد الجولة، فلا تبقى إيصال قابل لإعادة القراءة | **مفتوح؛ خارج دفعة D** | تسجيل الدين فقط؛ لا تعديل مسار الجولات الآن |
+| `RUN-LEAVES-NO-RECEIPT` | دليل Claude 133: `/api/runs/<id>` أعاد `404` و`/api/runs` أعاد `500` بعد الجولة، فلا تبقى إيصال قابل لإعادة القراءة | **مفتوح ومشروط بالبيئة** | صندوق الاختبار الحالي يكتب `run-evidence.json` ويترك الدليل قابلاً للقراءة، بينما جهاز المالك لم يُظهر الإيصالات نفسها؛ يجب إعادة القياس على بيئة المالك قبل فتح إصلاح عام، ولا تعديل مسار الجولات الآن |
+| `COUNT-3660` | مطابقة عدد اختبارات بوابة الدفع المسجل مع القمة المدفوعة قبل إغلاق EARLY-DECLARATION | **مفتوح للتوثيق النهائي** | يجب أن يثبت التعليق الختامي والملف أن بوابة `b7bc9ba5` هي `3660/3660` اختباراً، مع TSC=0 و19 دفعة ناجحة؛ لا يُستخدم العدد لقبول Gate062 الحي |
+| `CAPABILITY-GAP-BLOCKS-ON-A-CAPABILITY-THAT-SHIPPED` | الجبهة التالية بعد إغلاق الإعلان المبكر: منع البناء العام من إسقاط قدرة مطلوبة إلى قالب لا يحققها | **مفتوح — يحتاج استشارة Claude مستقلة** | لا تعديل `detectAppKind` أو `acceptance.ts` قبل اعتماد النطاق؛ يثبت الإصلاح بقدرة عامة قابلة للقياس، لا بإضافة قالب Gate062 محفوظ |
 | `EVIDENCE-BINDS-TO-ANY-ACTION-NOT-THE-ASKED-ONE` | دليل Claude 133: زر الوضع الليلي أرضى معيار الزر، أي أن الدليل قد يرتبط بفعل موجود لا بالفعل المطلوب | **مفتوح؛ قصور وصفي، خارج دفعة D** | تسجيل الدين بصياغته الصريحة؛ لا تغيير لمعايير القبول في هذه الدفعة |
 
 **قرار Claude 135 المثبّت:** المسار المعتمد في المهمة اللاحقة هو قلب الاتجاه (استخراج عناصر الطلب أولاً، ثم إعلان العناصر التي لا يملك النظام حاكماً لها)؛ لا توسيع للكتالوج ولا إضافة مدخل واحد في هذه الدفعة. لهذا القرار استشارة نطاق مستقلة بعد EARLY-DECLARATION.
