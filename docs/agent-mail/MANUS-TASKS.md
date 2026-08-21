@@ -392,8 +392,8 @@ POS-059-RUN-ID-LIVE: superseded by the 060 reader-guard live validation
 
 | المعرّف | المهمة | الحالة | معيار الإغلاق |
 |---|---|---|---|
-| 060-READER-RUN-ID | جعل `ProjectRunTool` و`ProjectPipelineTool` و`EngineeringDiscoveryTool` تقرأ `joeProjects` عبر `readJoeProjectForRun(key, runId)`، مع رفض cross-run وlegacy-null داخل الجولة والحفاظ على القراءة بلا جولة | **منجز ومدفوع في `78689930`؛ التحقق الحي المستقل قيد التنفيذ** | عقد قارئ موحد في `api/src/api/page-store.ts`؛ الشروط الأربعة مثبتة كلٌّ في توكيد مستقل؛ القرّاء الثلاثة لا يقرأون الخريطة عارياً؛ `tsc --noEmit = 0`؛ الاختبارات المرتبطة 5 suites/132 tests خضراء؛ Jest الكاملة 22/22 دفعة وكلها `EXIT 0`؛ دفع إلى `main`؛ ثم إعادة بناء Joe وتشغيل البرومبت القانوني والتحقق المستقل |
-| PR82-060 | قناة الوكلاء لإصلاح قرّاء الجولة | **إقرار 074 منشور؛ الكود مدفوع في `78689930`؛ التعليق الختامي 075 بعد التحقق الحي** | عدم لمس ملفات Claude المحجوزة؛ عدم تضمين `package.json` أو `package-lock.json` أو `zz-*.test.ts`؛ تحديث هذه القائمة مع الدفع؛ تعليق ختامي يتضمن SHA وأرقام البوابات والملفات المفتوحة |
+| 060-READER-RUN-ID | جعل `ProjectRunTool` و`ProjectPipelineTool` و`EngineeringDiscoveryTool` تقرأ `joeProjects` عبر `readJoeProjectForRun(key, runId)`، مع رفض cross-run وlegacy-null داخل الجولة والحفاظ على القراءة بلا جولة | **منجز ومدفوع في `78689930`؛ التحقق الحي وبوابة المتصفح 062 مكتملان؛ Level 4 ما زال مفتوحاً بسبب فشل المطابقة في مسار البناء** | عقد قارئ موحد في `api/src/api/page-store.ts`؛ الشروط الأربعة مثبتة كلٌّ في توكيد مستقل؛ القرّاء الثلاثة لا يقرأون الخريطة عارياً؛ `tsc --noEmit = 0`؛ الاختبارات المرتبطة 5 suites/132 tests خضراء؛ Jest الكاملة 22/22 دفعة وكلها `EXIT 0`؛ دفع إلى `main`؛ تشغيل حي مستقل وبوابة متصفح موثقة |
+| PR82-060 | قناة الوكلاء لإصلاح قرّاء الجولة | **إقرار 074 منشور؛ الكود مدفوع في `78689930`؛ التعليق الختامي 075؛ إقرار 099 بعد بوابة 062** | عدم لمس ملفات Claude المحجوزة؛ عدم تضمين `package.json` أو `package-lock.json` أو `zz-*.test.ts`؛ تحديث هذه القائمة مع الدفع؛ تعليق ختامي يتضمن SHA وأرقام البوابات والملفات المفتوحة |
 
 ### دليل وبوابات إصلاح 060
 
@@ -404,8 +404,37 @@ POS-060-RELATED-JEST: 5 suites / 132 tests / EXIT 0
 POS-060-TSC: 0
 POS-060-FULL-JEST: 22/22 batches EXIT 0; FULL_JEST_BATCHES_EXIT=0
 POS-060-NO-WEATHERGO-MANUAL-EDIT: confirmed
-POS-060-PUSH: `78689930` منشور على `origin/main`; local=remote verified
-POS-060-LIVE: required and now next gate after rebuild
+POS-060-PUSH: كود إصلاح 060 في `78689930`; أحدث `origin/main` هو `708cd8a9` بعد دفع Claude لتحديثه؛ تحديث هذا السجل ينتظر دفعاً توثيقياً منفصلاً
+POS-060-LIVE: جولة WeatherGo 28 وبوابة المتصفح 062 منفذتان؛ مسار البناء فشل المطابقة، لذلك Level 4 مفتوح
+
+## سجل بوابة المتصفح 062 — التحقق الحي بعد إصلاح 060
+
+| المسار | الحكم | الدليل الخام | النتيجة |
+|---|---|---|---|
+| الإقلاع `JOE_OPEN` | **PASS بعد القياس المصحح** | `/tmp/pr82-098-round28-joe-open-raw.md` | الضغط الفعلي على `Launch Joe` أوصل إلى `/joe`؛ بعد انتظار محدد حقيقي ظهر DOM غير فارغ بعنوان `Joe AI Software Engineer` ومحددات الدردشة والجلسات؛ لا يُعاد تصنيف القياس المصحح إلى `BLOCKED` |
+| الدخول | **PASS — خطأ معلَن** | `/tmp/pr82-088-browser-gate-062-google-raw.md` | الضغط الفعلي على `Google Account` أبقى الصفحة على `/login` وأظهر خطأ OAuth معلناً بلا استثناء console |
+| المحادثة | **PASS** | `/tmp/pr82-089-browser-gate-062-chat-logs-raw.md` | أُرسلت `Reply with exactly READY.` وظهرت فقاعة `READY` |
+| السجلات | **PASS** | `/tmp/pr82-089-browser-gate-062-chat-logs-raw.md` | ظهرت أربعة أحداث حيّة في اللوحة |
+| البناء | **FAIL — توقف صادق عند عدم المطابقة** | `/tmp/pr82-090-browser-gate-062-build-progress-raw.md` و`/tmp/pr82-091-browser-gate-062-final-raw.md` و`/tmp/pr82-096-round28-browser-gate-062-counter-raw.md` | قالب تسويقي عام بدلاً من طلب Gate 062، لا عنوان/رسالة حالة/زر عدّاد مطلوب؛ انتهى Joe بـ`acceptance_criteria_unmet` و`0/4`، ولا تُعد المعاينة الأولية نجاح قبول |
+
+أثبتت بوابة 062 أن أربعة مسارات أساسية في واجهة Joe تعمل عند القياس الحقيقي، لكنها أثبتت أيضاً أن مسار البناء لا يحقق المطابقة النهائية. لذلك لا يُقبل Level 4 ولا يبدأ W50. لم تُعدّل ملفات WeatherGo الناتجة يدوياً.
+
+### الديون المفتوحة من بوابة 062
+
+1. **`QA-SCORES-CRAFT-NOT-FIDELITY`**: درجة 97/100 تقيس الحرفة ولا تثبت وفاء الناتج لطلب المستخدم.
+2. **`POLISH-BEFORE-ACCEPTANCE`**: ظهرت المعاينة ودرجة الجودة قبل حكم المطابقة النهائي.
+3. **`REQUESTED-BUT-NOT-BUILT / BUILT-BUT-NOT-REQUESTED`**: الطلب سقط إلى قالب تسويقي عام بدلاً من تنفيذ العناصر المطلوبة.
+4. **`REJECTED-BUT-STILL-ON-SCREEN`**: بقيت معاينة مرفوضة معروضة بعد إعلان `acceptance_criteria_unmet`، ويجب ألا تُعرض النتيجة المرفوضة كأنها مقبولة.
+
+POS-062-TASKS-UPDATED: 2026-08-21
+POS-062-BOOT: PASS after corrected JOE_OPEN measurement; real `/joe` DOM and selectors
+POS-062-AUTH: PASS with declared OAuth error and no console exception
+POS-062-CHAT: PASS; visible `READY` response
+POS-062-LOGS: PASS; four live events visible
+POS-062-BUILD: FAIL; `acceptance_criteria_unmet`, `0/4`, `liveUrl: null`
+POS-062-DEBTS: four policy debts recorded; no source repair opened
+POS-062-CODE-CHANGES: none during browser gate; no manual WeatherGo edits
+POS-062-L4: OPEN; no W50 or next level before a new independent canonical build meeting final verification and live URL criteria
 
 ## حالة القبول بعد إصلاح 060
 
