@@ -137,22 +137,44 @@ export function composeAnswer(steps: RunStep[], language?: string): string {
  * but it arrives inside a sentence that names the step it belongs to, above a
  * list of what survived.
  */
+/**
+ * A STEP NAME IS A LABEL, NOT THE REQUEST IT CARRIES.
+ *
+ * Measured on a real WeatherGo run: the pipeline names its step «استكشف السياق
+ * ثم خطط ونفّذ تطبيق React المطلوب بأدلة واختبارات: <the whole 1700-character
+ * prompt>». The failure line then read the entire prompt back to the person who
+ * had just typed it — twice, once here and once in the surrounding report —
+ * and buried the one sentence that mattered under it.
+ *
+ * A colon that introduces a payload longer than the label is not punctuation in
+ * a title; it is a seam. Cut there, then cap. Nothing is lost: the request is
+ * on screen already, two lines above, in his own words.
+ */
+export function stepLabel(raw: string, max = 70): string {
+    const text = String(raw || '').replace(/\s+/g, ' ').trim();
+    if (!text) return '';
+    const at = text.indexOf(':');
+    const head = at > 0 && text.length - at > at ? text.slice(0, at).trim() : text;
+    return head.length > max ? `${head.slice(0, max - 1).trimEnd()}…` : head;
+}
+
 export function composeFailure(steps: RunStep[], rawError: string, language?: string): string {
     const ar = String(language || '').startsWith('ar');
     const detail = String(rawError || '').trim().slice(0, 400);
     const list = (steps || []).filter(s => s && s.status === 'completed');
     const failed = (steps || []).find(s => s && s.status === 'failed');
 
+    const name = failed ? stepLabel(failed.task || failed.id) : '';
     const head = failed
-        ? (ar ? `توقّفت عند الخطوة «${failed.task || failed.id}»${detail ? ` — ${detail}` : ''}`
-              : `Stopped at step “${failed.task || failed.id}”${detail ? ` — ${detail}` : ''}`)
+        ? (ar ? `توقّفت عند الخطوة «${name}»${detail ? ` — ${detail}` : ''}`
+              : `Stopped at step “${name}”${detail ? ` — ${detail}` : ''}`)
         : detail;
     if (!list.length) return head;
 
     const lines = list.map(s => {
         const p = proseOf(s.result);
         const extra = p && !isStatusLine(p) ? `\n  ${p.split('\n')[0].slice(0, 200)}` : '';
-        return `- ${s.task || s.tool || s.id}${extra}`;
+        return `- ${stepLabel(s.task || s.tool || s.id, 90)}${extra}`;
     }).join('\n');
     return `${head}\n\n${ar ? 'وما أُنجز قبل التوقّف — وهو باقٍ:' : 'Completed before stopping — and it is still there:'}\n${lines}`;
 }

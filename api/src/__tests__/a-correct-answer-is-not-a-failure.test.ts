@@ -185,3 +185,52 @@ describe('a declared table list outranks a recognised keyword', () => {
         expect(DESIGNER.slice(declaredAt, knownAt)).toContain('validateDesign(declared)');
     });
 });
+
+/**
+ * WHAT THE FAILURE MESSAGE PUTS FIRST.
+ *
+ * His words, on a real WeatherGo stop: «انظر ما هي الرسائل التي تظهر جو .. أريد
+ * إعادة الترتيب للناتج الذي يظهر الذي يعطي الفائدة للمستخدم وليس كل ما هبّ
+ * ودبّ». Two things were wrong and both were about ORDER, not truth:
+ *
+ *   1. the failing step's NAME was the whole 1700-character prompt, so the
+ *      message read his own request back to him before saying anything;
+ *   2. six internal gate booleans sat directly under the headline — three of
+ *      them `false`, i.e. «nothing wrong here» printed as news — while the
+ *      section that says WHY it stopped came eleventh, behind a 3500-character
+ *      cap that cut it off mid-path.
+ */
+describe('a stop tells him the reason before it tells him the internals', () => {
+    const { stepLabel } = require('../core/orchestrator/answerComposer');
+
+    it('a step name that carries a whole prompt is cut at the seam, not shown whole', () => {
+        const carried = 'استكشف السياق ثم خطط ونفّذ تطبيق React المطلوب بأدلة واختبارات: '
+            + 'Build a production-ready React + TypeScript + Vite application called WeatherGo, '
+            + 'not a brochure or static mockup. Create a polished responsive mobile-first weather experience.';
+        const label = stepLabel(carried);
+        expect(label.length).toBeLessThanOrEqual(70);
+        expect(label).not.toMatch(/production-ready|brochure|mobile-first/);
+        expect(label).toContain('استكشف السياق');
+    });
+
+    it('but an ordinary name — colon and all — is left exactly as written', () => {
+        expect(stepLabel('Install dependencies')).toBe('Install dependencies');
+        expect(stepLabel('Phase 2: UI')).toBe('Phase 2: UI');
+    });
+
+    it('the report puts the reason above the internals, and the internals last', () => {
+        const src = fs.readFileSync(
+            path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ProjectPipelineTool.ts'), 'utf-8');
+        // The two blocks are collected apart from the narrative…
+        expect(src).toMatch(/const whatHappened: string\[\] = \[\];/);
+        expect(src).toMatch(/const techDetails: string\[\] = \[\];/);
+        // …the gate booleans no longer go straight into the visible body…
+        expect(src).toMatch(/techDetails\.push\(ar[\s\S]{0,80}finalVerified/);
+        expect(src).not.toMatch(/lines\.push\(ar[\s\S]{0,80}finalVerified/);
+        // …and the composition is reason-first, internals-last.
+        const at = src.indexOf('lines.splice(reasonAt, 0, ...whatHappened)');
+        const tail = src.indexOf('lines.push(...techDetails)');
+        expect(at).toBeGreaterThan(0);
+        expect(tail).toBeGreaterThan(at);
+    });
+});

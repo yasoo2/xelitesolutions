@@ -2246,6 +2246,23 @@ export class ProjectPipelineTool implements ToolDefinition {
         const { language: lang, projectName, phases, pipeline, done, total, verified, liveUrl, liveRunError, liveRepairStatus, scopeAudit, scopeRepairStatus, browserQa, decisionEvidence } = args;
         const ar = lang === 'ar';
         const lines: string[] = [];
+        /**
+         * ORDER IS THE MESSAGE.
+         *
+         * His words: «اريد اعادة الترتيب للناتج الذي يظهر الذي يعطي الفائدة
+         * للمستخدم وليس كل ما هب ودب». The report was assembled in the order
+         * the code happened to compute things, and it showed: six internal gate
+         * booleans sat directly under the headline — three of them `false`,
+         * which is to say «nothing wrong here» printed as if it were news —
+         * while «ماذا حدث», the only section that says WHY the build stopped,
+         * was eleventh, behind a 3500-character cap that cut it off mid-path.
+         *
+         * So the two are collected apart from the narrative and placed by
+         * value, not by computation order: the reason first, the internals
+         * last, where a person who wants them can still find them.
+         */
+        const whatHappened: string[] = [];
+        const techDetails: string[] = [];
         const phaseResults: any[] = Array.isArray(pipeline?.results) ? pipeline.results : [];
         const credentials: Array<{ email: string; password: string }> = [];
         for (const phase of phaseResults) {
@@ -2281,14 +2298,17 @@ export class ProjectPipelineTool implements ToolDefinition {
         lines.push(ar
             ? `**المراحل:** ${done}/${total} نُفِّذت وتحقَّقت (تنفيذ فعلي + فحوص، لا مجرد كتابة ملفات).`
             : `**Phases:** ${done}/${total} executed and verified (real execution + checks, not just written files).`);
+        // Everything the reader needs first is inserted here at the end, once
+        // the sections below have been computed.
+        const reasonAt = lines.length;
 
         if (decisionEvidence) {
-            lines.push('');
-            lines.push(ar ? '### قرار الجولة الحالي (دليل قابل للقراءة)' : '### Current run decision evidence');
-            lines.push(ar
+            techDetails.push('');
+            techDetails.push(ar ? '### تفاصيل تقنية (للمراجعة)' : '### Technical details (for review)');
+            techDetails.push(ar
                 ? `- finalVerified: \`${decisionEvidence.finalVerified}\`؛ browserQaFailed: \`${decisionEvidence.browserQaFailed}\`؛ scopeCoverageFailed: \`${decisionEvidence.scopeCoverageFailed}\``
                 : `- finalVerified: \`${decisionEvidence.finalVerified}\`; browserQaFailed: \`${decisionEvidence.browserQaFailed}\`; scopeCoverageFailed: \`${decisionEvidence.scopeCoverageFailed}\``);
-            lines.push(ar
+            techDetails.push(ar
                 ? `- liveUrl: \`${decisionEvidence.liveUrl || 'null'}\`؛ done/total: \`${decisionEvidence.done}/${decisionEvidence.total}\`؛ honestBlocker: \`${decisionEvidence.honestBlocker || 'null'}\``
                 : `- liveUrl: \`${decisionEvidence.liveUrl || 'null'}\`; done/total: \`${decisionEvidence.done}/${decisionEvidence.total}\`; honestBlocker: \`${decisionEvidence.honestBlocker || 'null'}\``);
         }
@@ -2405,33 +2425,33 @@ export class ProjectPipelineTool implements ToolDefinition {
         if (!verified) {
             const failedPhase = phaseResults.find(p => p?.status !== 'completed');
             const ticket = pipeline?.repairTicket;
-            lines.push('');
-            lines.push(ar ? '### ماذا حدث' : '### What happened');
+            whatHappened.push('');
+            whatHappened.push(ar ? '### ماذا حدث' : '### What happened');
             if (failedPhase) {
-                lines.push(ar
+                whatHappened.push(ar
                     ? `- المرحلة المتعثرة: **${failedPhase.phaseName || failedPhase.phaseNumber}**`
                     : `- Failed phase: **${failedPhase.phaseName || failedPhase.phaseNumber}**`);
             }
             if (ticket?.primaryError) {
-                lines.push((ar ? '- الخطأ: ' : '- Error: ') + '`' + String(ticket.primaryError).slice(0, 220) + '`');
+                whatHappened.push((ar ? '- الخطأ: ' : '- Error: ') + '`' + String(ticket.primaryError).slice(0, 220) + '`');
             }
             if (liveRunError) {
-                lines.push(ar
+                whatHappened.push(ar
                     ? '- دليل فشل التشغيل الحي: `' + String(liveRunError).slice(0, 420) + '`'
                     : '- Live-run evidence: `' + String(liveRunError).slice(0, 420) + '`');
             }
             if (liveRepairStatus && liveRepairStatus !== 'not_attempted') {
-                lines.push(ar
+                whatHappened.push(ar
                     ? '- حالة محاولة إصلاح التشغيل المحدودة: `' + String(liveRepairStatus).slice(0, 180) + '`'
                     : '- Bounded live-repair status: `' + String(liveRepairStatus).slice(0, 180) + '`');
             }
             if (scopeAudit && scopeAudit.requested > 0) {
-                lines.push(ar
+                whatHappened.push(ar
                     ? `- تدقيق نطاق الطلب: ${scopeAudit.built}/${scopeAudit.requested} (${Math.round(scopeAudit.coverage * 100)}%)${scopeAudit.missing.length ? `؛ المتبقي: ${scopeAudit.missing.slice(0, 6).join('، ')}` : ''}`
                     : `- Requested-scope audit: ${scopeAudit.built}/${scopeAudit.requested} (${Math.round(scopeAudit.coverage * 100)}%)${scopeAudit.missing.length ? `; remaining: ${scopeAudit.missing.slice(0, 6).join(', ')}` : ''}`);
             }
             if (scopeRepairStatus && scopeRepairStatus !== 'not_attempted') {
-                lines.push(ar
+                whatHappened.push(ar
                     ? '- حالة إصلاح النطاق المحدود: `' + String(scopeRepairStatus).slice(0, 180) + '`'
                     : '- Bounded scope-repair status: `' + String(scopeRepairStatus).slice(0, 180) + '`');
             }
@@ -2443,15 +2463,19 @@ export class ProjectPipelineTool implements ToolDefinition {
             )).map((value: any) => String(value || '').trim()).find(Boolean);
             const sfReason = pipeline?.selfFixExecution?.reason || pipeline?.selfFixPlan?.reason;
             if (sfFailureReason) {
-                lines.push((ar ? '- سبب فشل إعادة التشغيل: ' : '- Rerun failure reason: ') + '`' + sfFailureReason.slice(0, 220) + '`');
+                whatHappened.push((ar ? '- سبب فشل إعادة التشغيل: ' : '- Rerun failure reason: ') + '`' + sfFailureReason.slice(0, 220) + '`');
             } else if (sfReason) {
-                lines.push((ar ? '- محاولة الإصلاح الذاتي: ' : '- Self-fix attempt: ') + String(sfReason).slice(0, 220));
+                whatHappened.push((ar ? '- محاولة الإصلاح الذاتي: ' : '- Self-fix attempt: ') + String(sfReason).slice(0, 220));
             }
-            lines.push(ar
+            whatHappened.push(ar
                 ? `- ما اكتمل قبل التوقف (${done}/${total}) سليمٌ ومتحقَّق منه.`
                 : `- Everything completed before the stop (${done}/${total}) is verified and intact.`);
         }
 
+        // The reason first — right under the phase count, where the eye lands —
+        // and the internals last. Both were computed above; only the order changed.
+        if (whatHappened.length) lines.splice(reasonAt, 0, ...whatHappened);
+        lines.push(...techDetails);
         return lines.join('\n').slice(0, 3500);
     }
 }
