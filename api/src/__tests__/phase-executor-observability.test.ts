@@ -763,6 +763,52 @@ describe('PhaseExecutorTool observable trusted context', () => {
         });
     });
 
+    it('binds an acceptance review to the selected runtime artifact before execution', async () => {
+        mockedExecuteTool.mockResolvedValue({ ok: true, output: {} } as any);
+        const workspaceId = 'workspace-4';
+        const sessionId = 'chat-4';
+        const projectName = `Widgetry-review-${process.pid}`;
+        const workspaceRoot = workspaceService.getActiveRoot(workspaceId);
+        const projectRoot = path.join(workspaceRoot, projectName);
+
+        const result: any = await new PhaseExecutorTool().execute({
+            phase: {
+                phaseNumber: 3,
+                name: 'Review a produced artifact',
+                tasks: [{ task: 'Create the artifact', tool: 'write_file', args: { path: `${projectName}/architecture.md`, content: '# architecture' } }],
+                verificationTask: {
+                    task: 'Review the produced artifact',
+                    tool: 'code_reviewer',
+                    args: { files: [`${projectName}/architecture.md`], reviewType: 'quick' },
+                },
+            },
+            projectContext: {
+                projectName,
+                projectRoot,
+                projectRootRuntimeBound: true,
+                workspaceId,
+                sessionId,
+                userId: 'user-4',
+            },
+        }, { sessionId, workspaceId, userId: 'user-4' });
+
+        expect(result.ok).toBe(true);
+        expect(mockedExecuteTool).toHaveBeenCalledTimes(2);
+        expect(mockedExecuteTool.mock.calls[1][0]).toBe('code_reviewer');
+        expect(mockedExecuteTool.mock.calls[1][1]).toMatchObject({
+            files: [path.join(projectRoot, 'architecture.md')],
+            workspaceId,
+            sessionId,
+            minimumScore: 70,
+            failOnCritical: true,
+        });
+        expect(mockedExecuteTool.mock.calls[1][2]).toMatchObject({
+            workspaceId,
+            sessionId,
+            userId: 'user-4',
+        });
+    });
+
     it('promotes a direct Node TypeScript browser launch to project_run', async () => {
         const workspaceId = `workspace-browser-start-${process.pid}`;
         const sessionId = `chat-browser-start-${process.pid}`;

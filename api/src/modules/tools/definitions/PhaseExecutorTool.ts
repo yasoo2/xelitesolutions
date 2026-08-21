@@ -1542,6 +1542,7 @@ export class PhaseExecutorTool implements ToolDefinition {
                     // same accepted project identity used by ordinary tasks so a
                     // live check never falls back silently to the workspace root.
                     applyPhaseExecutionEvidence(vToolName, plannedVerification, projectContext, logs);
+                    inheritRuntimeProjectArguments(vToolName, plannedVerification, projectContext, logs);
                     const adaptedVerification = adaptPlannedArgs(vToolName, plannedVerification);
                     const verificationArgs = adaptPlannedArgsFromDescription(vToolName, adaptedVerification, vTaskDesc);
                     const verificationArgsIssue = plannedArgsIssue(vToolName, verificationArgs);
