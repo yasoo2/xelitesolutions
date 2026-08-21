@@ -133,6 +133,9 @@ describe('the early project-kind declaration is a request-level terminal behavio
         expect(earlyProjectDeclarationForTest({
             request: 'Build a finance app', isArabic: false, appKind: 'finance',
         })).toBeNull();
+        expect(earlyProjectDeclarationForTest({
+            request: 'Build an account app', isArabic: false, appKind: 'account',
+        })).toBeNull();
     });
 
     it('removing the counter word removes only the counter understanding', () => {
@@ -146,8 +149,14 @@ describe('the early project-kind declaration is a request-level terminal behavio
         expect(withoutCounter).toContain('رسالة حالة أو نتيجة');
     });
 
-    it('is wired to the terminal after template classification', () => {
+    it('is wired to the terminal after the authoritative runBp and before app files are built', () => {
         const src = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ReactProjectTool.ts'), 'utf-8');
         expect(src).toContain('if (declaration) term(declaration);');
+        const runBpAt = src.indexOf('let runBp: any = appBp;');
+        const declarationAt = src.indexOf('const declaration = earlyProjectDeclarationForTest({', runBpAt);
+        const buildAt = src.indexOf('const appFiles = buildAppFiles(runBp, {', declarationAt);
+        expect(runBpAt).toBeGreaterThan(-1);
+        expect(declarationAt).toBeGreaterThan(runBpAt);
+        expect(buildAt).toBeGreaterThan(declarationAt);
     });
 });

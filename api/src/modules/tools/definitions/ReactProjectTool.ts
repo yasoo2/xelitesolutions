@@ -2482,15 +2482,6 @@ export class ReactProjectTool extends BaseTool {
         // سجّل قرار القالب نفسه، لا وعداً عاماً بالنجاح؛ هذا يكشف فوراً أي
         // تحوير لوسيط الطلب بين الخطة وأداة البناء في الاختبارات الحية.
         term(`template classification: page=${kind || 'generic'} · app=${appKind || 'none'} · mode=${appBp ? 'interactive' : 'presentation'}`);
-        // The owner needs a truthful, understandable announcement. A known
-        // stock engine stays silent; an authored engine is explicitly
-        // non-deterministic; an unknown kind explains the generic fallback and
-        // names only the request elements Joe actually understood.
-        const plannedGeneratedEnginePath = appKind === 'weather' ? 'src/components/WeatherApp.jsx' : '';
-        const declaration = earlyProjectDeclarationForTest({
-            request, isArabic: isAr, appKind, generatedEnginePath: plannedGeneratedEnginePath,
-        });
-        if (declaration) term(declaration);
         const family = familyFor(request, kind);
         const multiPage = wantsMultiPage(request);
         const pages = pagesForKind(kind);
@@ -2981,6 +2972,15 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 notes: appApi,
                 tasks: String(appApi).replace(/\/notes\/?$/i, '/tasks'),
             } : undefined;
+            // Declare only after the authoritative runBp is resolved. This is
+            // a terminal message for the owner, not a second evidence system.
+            const declaration = earlyProjectDeclarationForTest({
+                request,
+                isArabic: isAr,
+                appKind,
+                generatedEnginePath: runBp.kind === 'weather' ? 'src/components/WeatherApp.jsx' : '',
+            });
+            if (declaration) term(declaration);
             const appFiles = buildAppFiles(runBp, {
                 brand: content.brand, isArabic: isAr, api: appApi, apiResources,
                 storeKey: `${slug(content.brand)}-${runBp.kind}`,
@@ -3006,6 +3006,13 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 + (appFiles['src/styles/app.css'] || fileAppCss());
             fs.mkdirSync(path.join(proj, 'src', 'app'), { recursive: true });
             term(`application build: ${runBp.kind} — engine «${runBp.engine}»${Object.keys(runBp.deps || {}).length ? `, real dependencies: ${Object.keys(runBp.deps).join(', ')}` : ''}`);
+        } else {
+            // Generic projects have no runBp; the declaration still follows
+            // the classification decision and stays visible in Joe's terminal.
+            const declaration = earlyProjectDeclarationForTest({
+                request, isArabic: isAr, appKind, generatedEnginePath: '',
+            });
+            if (declaration) term(declaration);
         }
         // Only the components this KIND actually uses are written — a
         // restaurant carries Menu.jsx, a store carries Pricing.jsx, and no
