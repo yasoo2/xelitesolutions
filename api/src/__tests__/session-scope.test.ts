@@ -238,3 +238,46 @@ describe('INVARIANT: the server stores what the app talks about', () => {
         expect(apiResourceForKind('generic', true, 'تطبيق محادثة').seeds).toHaveLength(0);
     });
 });
+
+/**
+ * INVARIANT: a relative API base is never handed to `new URL()` alone.
+ *
+ * From the field — clicking «تسجيل الدخول بواسطة جوجل»:
+ *
+ *   Uncaught TypeError: Failed to construct 'URL': Invalid URL
+ *       at onClick (Login-….js)
+ *
+ * `API_URL` is `/api` on purpose: same origin, no CORS, proxied by Vite in
+ * development and Nginx in production. But a path is not a URL, and the URL
+ * constructor rejects one without an origin. `apiClient` had always
+ * absolutised before constructing; the login page reached for the raw constant
+ * and nothing in the build, the types, or the tests objected — the button
+ * simply threw on every click.
+ *
+ * The knowledge now lives in `config.apiUrl()`, and this sweep keeps it there:
+ * a `new URL()` fed from the API base, anywhere under web/src, without a base
+ * argument, fails here rather than in his console.
+ */
+describe('INVARIANT: an API endpoint is absolutised before it becomes a URL', () => {
+    const files = walk(WEB_SRC);
+
+    it('config exports the helper that owns this rule', () => {
+        const cfg = fs.readFileSync(path.join(WEB_SRC, 'config.ts'), 'utf-8');
+        expect(cfg).toMatch(/const apiUrl = \(path: string\): string =>/);
+        expect(cfg).toMatch(/window\.location\.origin/);
+        expect(cfg).toMatch(/export \{[^}]*apiUrl[^}]*\}/);
+    });
+
+    it.each(files.map(f => [rel(f), f]))('%s never builds a URL from the raw API base', (_name, file) => {
+        const src = fs.readFileSync(file as string, 'utf-8');
+        // `new URL(`${API}/x`)` / `new URL(API_URL + …)` with no second argument.
+        const offenders = [...src.matchAll(/new URL\(\s*(`[^`]*\$\{\s*(?:API|API_URL)\s*\}[^`]*`|API_URL[^,)]*)\s*\)/g)];
+        expect(offenders.map(m => m[0])).toEqual([]);
+    });
+
+    it('and the login page uses the helper for both Google endpoints', () => {
+        const login = fs.readFileSync(path.join(WEB_SRC, 'pages', 'Login.tsx'), 'utf-8');
+        expect(login).toMatch(/new URL\(apiUrl\('\/auth\/google'\)\)/);
+        expect(login).toMatch(/new URL\(apiUrl\('\/auth\/google\/config'\)\)/);
+    });
+});

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { API_URL as API, GOOGLE_CLIENT_ID } from '../config';
+import { API_URL as API, GOOGLE_CLIENT_ID, apiUrl } from '../config';
 import {
     LogIn, Mail, Lock, Eye, EyeOff, AlertCircle, Loader2
 } from 'lucide-react';
@@ -49,7 +49,7 @@ export default function Login() {
         let alive = true;
         const check = async () => {
             try {
-                const u = new URL(`${API}/auth/google/config`);
+                const u = new URL(apiUrl('/auth/google/config'));
                 if (GOOGLE_CLIENT_ID) u.searchParams.set('client_id', GOOGLE_CLIENT_ID);
                 const res = await fetch(u.toString(), { cache: 'no-store' });
                 const data = await res.json().catch(() => ({}));
@@ -402,7 +402,7 @@ export default function Login() {
                             );
                             return;
                         }
-                        const u = new URL(`${API}/auth/google`);
+                        const u = new URL(apiUrl('/auth/google'));
                         u.searchParams.set('returnTo', window.location.origin);
                         if (GOOGLE_CLIENT_ID) u.searchParams.set('client_id', GOOGLE_CLIENT_ID);
                         window.location.href = u.toString();

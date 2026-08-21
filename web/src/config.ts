@@ -59,4 +59,26 @@ const GOOGLE_CLIENT_ID = googleClientIdRaw;
 // mounted. A switch that turns nothing on is worse than no switch, because
 // somebody eventually flips it and reports that it does not work.
 
-export { API_URL, WS_URL, GOOGLE_CLIENT_ID };
+/**
+ * `API_URL` IS RELATIVE, AND `new URL()` REFUSES A RELATIVE STRING ALONE.
+ *
+ * Measured from the field: clicking «تسجيل الدخول بواسطة جوجل» threw
+ *
+ *   Uncaught TypeError: Failed to construct 'URL': Invalid URL
+ *
+ * because the page built `new URL('/api/auth/google')`. Same-origin is the
+ * right answer for the base (see above) — but a same-origin base is a PATH,
+ * and the URL constructor needs an origin to resolve one. `apiClient` already
+ * knew this and absolutised before constructing; the login page reached for
+ * the raw constant instead, and nothing stopped it.
+ *
+ * So the knowledge stops being private to one file. Anything that needs a real
+ * URL for an API endpoint asks here, and an absolute API_URL keeps working —
+ * `new URL(absolute, base)` ignores the base.
+ */
+const apiUrl = (path: string): string => {
+    const p = String(path || '');
+    return new URL(`${API_URL}${p.startsWith('/') ? p : `/${p}`}`, window.location.origin).toString();
+};
+
+export { API_URL, WS_URL, GOOGLE_CLIENT_ID, apiUrl };
