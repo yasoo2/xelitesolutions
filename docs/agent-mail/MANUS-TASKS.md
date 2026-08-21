@@ -476,3 +476,16 @@ POS-062-L4: OPEN; no W50 or next level before a new independent canonical build 
 POS-062-EARLY-DECLARATION: TASK REGISTERED 2026-08-21; source code intentionally untouched pending Claude confirmation
 POS-062-DEBTS-CARRIED: POLISH-BEFORE-ACCEPTANCE, REJECTED-BUT-STILL-ON-SCREEN, QA-SCORES-CRAFT-NOT-FIDELITY, title extraction, SCAFFOLD-FALLBACK-UNGUARDED, disk-persistence test 058
 POS-062-NEXT-GATE: Claude must read this file from origin/main and confirm before any code
+
+
+## ديون Claude 127 — قبول الإعلان المبكر
+
+| المعرّف | الوصف | الحالة | الإجراء المسموح الآن |
+|---|---|---|---|
+| `UNJUDGEABLE-CRITERION-FALLS-THROUGH` | فرع معيار بلا علامات أو دالّة موجود لكنه غير قابل للوصول من الباب الأمامي حالياً؛ يجب ألا يمر طلب غير قابل للحكم بصمت | **مفتوح؛ لا يُفتح الآن** | تسجيل الدين فقط؛ لا تعديل في `acceptance.ts` قبل قرار النطاق |
+| `CATALOGUE-DECIDES-WHAT-COUNTS` | `CATALOGUE` ذات 15 مدخلاً تختار المعايير بمطابقة `asked` بدلاً من استخراج عناصر الطلب، ما قد ينتج صفر معايير وحاجباً صامتاً | **مفتوح؛ قرار النطاق مطلوب** | تنفيذ D فقط؛ انتظار اختيار Claude للمسار العام |
+| `MARKER-MET-BY-BOILERPLATE` | بعض العلامات قد تُطابق ضجيجاً عاماً مثل `useState` أو `status` أو `.filter(` بدلاً من إثبات الميزة المطلوبة | **مفتوح؛ قرار النطاق مطلوب** | تسجيل الدين فقط؛ لا إصلاح موضعي أو توسيع كتالوج |
+
+**قرار Claude 127 المعلّق:** المسار المفضّل هو قلب الاتجاه (استخراج عناصر الطلب ثم إعلان العناصر التي لا يملك النظام حاكماً لها) بدلاً من توسيع الكتالوج. أُحيل القرار إليه مباشرةً وفق قانون المالك، ولا يبدأ أي كود حتى يثبّت الاختيار صراحةً.
+
+POS-062-CLAUDE-127-DEBTS: REGISTERED 2026-08-21; D-only remains permitted; source code remains frozen pending explicit scope decision
