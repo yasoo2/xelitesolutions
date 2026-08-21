@@ -1,7 +1,7 @@
 import { ToolDefinition, ToolPermission } from '../types';
 import fs from 'fs';
 import path from 'path';
-import { persistJoeProjects } from '../../../api/page-store';
+import { persistJoeProjects, samePipelineRun, writeJoeProject } from '../../../api/page-store';
 import { workspaceService } from '../../services/WorkspaceService';
 
 import { recoverMissingNpmLauncher } from '../npm-launcher-recovery';
@@ -556,6 +556,7 @@ function bindRuntimeProjectFromEvidence(
     toolArgs: Record<string, any>,
     toolResult: any,
     projectContext: Record<string, any>,
+    pipelineRunId: unknown,
     logs: string[],
 ): void {
     if (!projectContext || !['scaffold_project', 'react_project', 'api_project', 'scaffold_full_stack', 'write_file', 'ai_write_file', 'file_edit', 'file_edit_advanced'].includes(toolName)) return;
@@ -600,22 +601,30 @@ function bindRuntimeProjectFromEvidence(
     const key = sessionProjectKey(projectContext?.sessionId);
     const projects: Record<string, any> = (global as any).joeProjects || ((global as any).joeProjects = {});
     const previous = projects[key] || {};
-    projects[key] = {
+    writeJoeProject(key, {
         ...previous,
         dir: candidate,
         type: previous.type || 'scaffold',
         updatedAt: Date.now(),
         lastRequest: String(projectContext?.projectName || path.basename(candidate)).slice(0, 120),
-    };
+    }, pipelineRunId);
     try { persistJoeProjects(); } catch { /* binding remains useful for this run */ }
     projectContext.projectRoot = candidate;
     projectContext.projectRootRuntimeBound = true;
     logs.push(`[PhaseExecutor] runtime project evidence bound ${key} -> ${candidate}`);
 }
 
-function syncRuntimeProjectContext(projectContext: Record<string, any>, logs: string[]): void {
+export function canSyncRuntimeProjectContext(projectContext: Record<string, any>, active: Record<string, any> | undefined, pipelineRunId: unknown): boolean {
+    return samePipelineRun(pipelineRunId, active?.pipelineRunId);
+}
+
+function syncRuntimeProjectContext(projectContext: Record<string, any>, pipelineRunId: unknown, logs: string[]): void {
     const key = sessionProjectKey(projectContext?.sessionId);
     const active = (global as any).joeProjects?.[key];
+    if (!canSyncRuntimeProjectContext(projectContext, active, pipelineRunId)) {
+        logs.push('[PhaseExecutor] refused to synchronize active project root without a matching pipeline run');
+        return;
+    }
     const candidate = String(active?.dir || '').trim();
     if (!candidate || !fs.existsSync(candidate)) return;
     const workspaceRoot = path.resolve(workspaceService.getActiveRoot(projectContext?.workspaceId));
@@ -1280,8 +1289,8 @@ export class PhaseExecutorTool implements ToolDefinition {
 
                     if (toolResult.ok) {
                         appendLog(`[PhaseExecutor] ✅ Task ${i + 1} completed: ${toolName}`);
-                        bindRuntimeProjectFromEvidence(toolName, toolArgs, toolResult, projectContext, logs);
-                        syncRuntimeProjectContext(projectContext, logs);
+                        bindRuntimeProjectFromEvidence(toolName, toolArgs, toolResult, projectContext, executionContext.runId, logs);
+                        syncRuntimeProjectContext(projectContext, executionContext.runId, logs);
                         /**
                          * THE BUILDER'S OWN WORDS SURVIVE THE PHASE.
                          *
@@ -1322,8 +1331,8 @@ export class PhaseExecutorTool implements ToolDefinition {
                         // dependency/import failures. The evidence binder is deliberately
                         // strict: it accepts only a package-bearing child or bounded file
                         // evidence, so ordinary failed tools cannot relabel the workspace.
-                        bindRuntimeProjectFromEvidence(toolName, toolArgs, toolResult, projectContext, logs);
-                        syncRuntimeProjectContext(projectContext, logs);
+                        bindRuntimeProjectFromEvidence(toolName, toolArgs, toolResult, projectContext, executionContext.runId, logs);
+                        syncRuntimeProjectContext(projectContext, executionContext.runId, logs);
                         const errMsg = String(toolResult.error || 'Unknown error');
                         const failedOutput = (toolResult as any)?.output || {};
                         const deliveryEvidence = compactPhaseDeliveryEvidence(failedOutput.delivery);

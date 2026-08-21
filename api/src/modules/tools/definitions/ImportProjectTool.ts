@@ -14,7 +14,7 @@ import { BaseTool } from '../base';
 import { ToolPermission, ToolExecutionResult } from '../types';
 import { analyzeProject, formatAnalysis } from '../../../core/project/analyze';
 import { broadcast, broadcastThinkingDetail, broadcastTerminalLine } from '../../../api/ws';
-import { persistJoeProjects } from '../../../api/page-store';
+import { persistJoeProjects, writeJoeProject } from '../../../api/page-store';
 
 export function githubUrlFrom(text: string): string | null {
     const m = String(text || '').match(/https?:\/\/(?:www\.)?github\.com\/([\w.-]+)\/([\w.-]+?)(?:\.git)?(?:[\/#?\s]|$)/i)
@@ -307,11 +307,10 @@ export class ImportProjectTool extends BaseTool {
 
         // Register as the ACTIVE project: the surgical editor, run, and undo
         // now all point here.
-        const projects: Record<string, any> = (global as any).joeProjects || ((global as any).joeProjects = {});
-        projects[sessionKey] = {
+        writeJoeProject(sessionKey, {
             dir, type: 'imported', brand: analysis.name, stack: analysis.stack,
             updatedAt: Date.now(), lastRequest: request.slice(0, 80),
-        };
+        }, context?.runId);
         persistJoeProjects();
 
         const nextSteps = isAr

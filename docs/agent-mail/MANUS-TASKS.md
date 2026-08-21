@@ -9,6 +9,8 @@
 
 هذا الملف هو قائمة العمل المرئية. كل بند يملك حالة صريحة، ولا يُعد منجزاً إلا بعد اختبار مناسب ودفعه إلى `main`. يُحدَّث هذا الملف مع كل دفعة.
 
+**قاعدة الدليل للطرفين:** الملخص المحلي أو التشخيص السابق ليس دليلاً؛ الدليل المعتمد هو كائن الجولة الخام وسجلها القابل للمطابقة. لا تُفتح علة تسريب أو تُبنى جراحة على سلسلة نصية لا تظهر في كائن الجولة.
+
 ## الحالة الحالية
 
 | المعرّف | المهمة | الحالة | معيار الإغلاق |
@@ -63,8 +65,12 @@
 | RECEIPT-BELONGS-TO-ITS-RUN | ربط إيصال trace بالجولة الصحيحة ومنع اقتران receipt بعائق من جلسة أخرى | **مؤجلة بعد L4؛ سُجّلت بناءً على تصحيح Claude في 2026-08-21** | كل receipt يحمل runId/sessionId قابلين للمطابقة مع سجل الجولة، ولا تُقبل أدلة واجهة مختلطة؛ يبدأ التنفيذ بعد قبول L4 |
 | TOOL-DONE-DROPS-OUTPUT | منع فقدان مخرجات `tool_done` وحقول `projectRoot`/`projectRootRuntimeBound` أثناء حفظ receipt واستخراج الأدلة | **مؤجلة بعد L4؛ سُجّلت بناءً على قياس Claude في 2026-08-21** | يجب أن يحفظ `tool_done` مخرج الأداة كاملاً، وأن يحتفظ receipt بالحقول اللازمة للمطابقة والتحقق؛ regression تاريخي/حي يمنع `extractionMiss` الصامت |
 | ROOT-ORDER-RUNTIME-BOUND | إصلاح ترتيب احتواء المسار وإعادة ربط alias في `ToolService`/`ai_write_file`: لا يجوز أن يمر المسار المطلق خارج `projectRoot` المرتبط إلى AIGeneratorTool | **مفتوحة — مسبار الجولة 24 أعاد الإنتاج؛ الإصلاح ينتظر اعتماد Claude** | regression يمرر `WeatherGo/src/App.tsx` عبر `executeTool` بجذر runtime مختلف، ويثبت أن المسار النسبي النهائي يقع داخل الجذر المرتبط قبل التنفيذ؛ لا تغيير في `write_file` أو `shell` أو `react_project` بلا دليل |
-| VERIFY-WHAT-THE-PHASE-WROTE | جعل مرحلة التحقق تقرأ ما كتبته مرحلة authoring فعلياً، لا مساراً مشتقاً من اسم مشروع مختلف | **مفتوحة بعد قبول L4؛ كشفها قياس الجولات 20–23** | تحقق حي يربط الجذر المنتج فعلياً بالجذر المقروء في Testing، مع منع `File not found` الناتج عن اختلاف `WeatherGo`/`react-weathergo` |
-| TESTING-ROOT-SOURCE | تحديد مصدر `projectDirNameForTest` وربطه بعقد runtime-bound بدلاً من اسم ثابت أو brand غير مربوط | **مفتوحة بعد قبول L4؛ كشفها مسبار الجولة 23** | regression يثبت أن قيمة Testing root مشتقة من نفس هوية المشروع التي استخدمها authoring، وأن تغيير الاسم لا يخرج القراءة من الجذر المرتبط |
+| VERIFY-WHAT-THE-PHASE-WROTE | جعل مرحلة التحقق تقرأ ما كتبته مرحلة authoring فعلياً، لا مساراً مشتقاً من اسم مشروع مختلف | **مفتوحة بعد قبول L4؛ تأكدت مجدداً في الجولة 25** | تحقق حي يربط الجذر المنتج فعلياً بالجذر المقروء في Testing، مع منع `File not found` الناتج عن اختلاف `WeatherGo`/`react-weathergo`. تشمل الملاحظة أيضاً أن بوابة القدرات مرّرت `Humidity: %` الفارغة و`weather condition 3` الخام؛ يجب التحقق من القيمة والسلوك الناتج، لا وجود المرساة النصية فقط. لا إصلاح يدوي لـWeatherGo |
+| TESTING-ROOT-SOURCE | تحديد مصدر `projectDirNameForTest` وربطه بعقد runtime-bound بدلاً من اسم ثابت أو brand غير مربوط | **مفتوحة بعد قبول L4؛ كشفها مسبار الجولة 23 وتأكد أثرها في الجولة 25** | regression يثبت أن قيمة Testing root مشتقة من نفس هوية المشروع التي استخدمها authoring، وأن تغيير الاسم لا يخرج القراءة من الجذر المرتبط؛ يمنع رجوع `react-weathergo-ae99` من جلسة قديمة إلى Testing في جولة جديدة |
+| ROUND-STATE-LEAK | عزل حالة الجولات ومساحة المشاريع بين تشغيل Joe وآخر | **مغلقة بدليل سلبي في الجولة 26 — لا وجود لـ`react-weathergo-ae99` في كائن الجولة 25، وTesting حمل sessionId والجذر الحاليين؛ لا إصلاح تسريب يُنفَّذ** | لا يُعاد فتحها إلا بكائن جولة خام يثبت `runId`/`sessionId` أو root من جولة أخرى؛ تبقى هوية الجولة الصريحة في `PROJECT-MAP-HAS-NO-RUN` ديناً مستقلاً |
+| PROJECT-MAP-HAS-NO-RUN | جعل خريطة المشاريع تحمل هوية الجولة صراحةً | **مفتوحة — 9 كاتبين إنتاجيين وباعث page-store؛ اعتماد دالة كتابة واحدة ووسم `null` عند التحميل** | لا يُعتمد `joeProjects` أو أي receipt كدليل عزل ما لم يحمل `runId`/`pipelineRunId` قابلاً للمطابقة؛ يجب أن تمر كل الكتابات عبر حد واحد، وأن تُوسم الإدخالات القديمة المحمّلة من القرص بـ`pipelineRunId: null` صراحةً، مع مسح يثبت عدم وجود إسناد مباشر خارج الحد |
+| PROJECT-MAP-INHERITED-RUN-ID | منع ProjectEdit وسائر التحديثات من نشر `pipelineRunId` من إدخال سابق إلى جولة جديدة | **مفتوحة — كشفها Claude في 2026-08-21؛ الموروث قد يطابق handoff لجولة ليست جولته** | regression يثبت أن التحديث في جولة جديدة لا يرث هوية الجولة السابقة، وأن الإدخال غير المملوك للجولة يحمل `null` أو هوية الجولة الحالية المعلنة فقط؛ لا يكفي اختبار الحقل الغائب |
+| LIVE-URL-ADDRESS-FAMILY | منع إعلان `liveUrl=null` أو `finalVerified=false` بسبب اختلاف عائلة عنوان loopback | **مؤجلة للقياس قبل الإصلاح؛ مرشح عطل عام كشفته الجولة 25** | عند فحص الحياة يُجرّب العنوان كما أعلنه Joe ونظيره IPv4/IPv6، ويُسجل أي عنوان أجاب؛ إذا أجاب `[::1]` وحده يُضاف regression قبل أي إصلاح، دون تعديل WeatherGo الناتج |
 
 ## التزامات قناة الوكلاء
 
@@ -357,3 +363,31 @@ POS-056-FULL-JEST: 22/22 batches EXIT 0 on origin base 9104603
 POS-056-NO-WEATHERGO-MANUAL-EDIT: confirmed
 POS-056-LIVE-REQUIRED-AFTER-PUSH: confirmed
 POS-056-CLAUDE-ACK: 038
+
+
+## سجل إصلاح 059-RUN-ID — عزل خريطة المشاريع وحراسة تبنّي الجذر
+
+| المعرّف | المهمة | الحالة | معيار الإغلاق |
+|---|---|---|---|
+| 059-RUN-ID | منع انتقال `pipelineRunId` بين الجولات، وتوحيد كتابات `joeProjects` عبر `writeJoeProject`، ورفض `syncRuntimeProjectContext` عندما تكون هوية التشغيل مفقودة أو مختلفة | **منفذ محلياً؛ regression وTypeScript وJest الكاملة خضراء؛ الدفع إلى `main` قيد التنفيذ** | تسعة كتّاب إنتاجيين يمرون عبر حد واحد؛ الإدخالات القديمة تُوسم بـ`pipelineRunId: null`؛ `bind` و`sync` يستقبلان `executionContext.runId` صراحة؛ regression يثبت الرفض والقبول داخل الجولة؛ TSC=0؛ Jest الكاملة 22/22 دفعة وكلها `EXIT 0`؛ دفع إلى `main`؛ ثم إعادة بناء Joe وتشغيل الجولة القانونية والتحقق المستقل |
+| PR82-059 | قناة الوكلاء لإصلاح عزل هوية الجولة | **الأدلة الخام 048 و062 و065 والتشخيصات 049 و063 و066 منشورة؛ إقرارات Claude 047 و051 و053 و055 و056 و057 و064 منشورة؛ البوابات المحلية مكتملة؛ التعليق الختامي والدفع قيد التنفيذ** | التشخيص المزدوج محفوظ؛ لا تعديل على WeatherGo؛ لا تضمين `package.json` أو `package-lock.json` أو ملفات `zz-*`؛ فحص Claude قبل الدفع؛ staging صريح؛ push إلى `main` فقط |
+
+### أدلة وبوابات إصلاح 059-RUN-ID
+
+أثبت القياس أن `EngineeringDiscoveryTool` قد يعلن `projects=0` بينما كان مسار التبنّي يحتاج حارساً على هوية التشغيل نفسها. أضيفت دوال الحدّ في `page-store.ts` لتطبيع `pipelineRunId` إلى قيمة صريحة أو `null`، وتحويل الكتّاب الإنتاجيين التسعة إلى `writeJoeProject`. أضيف حارس `canSyncRuntimeProjectContext`، ثم مُرّرت قيمة `executionContext.runId` الفعلية إلى مساري `bindRuntimeProjectFromEvidence` و`syncRuntimeProjectContext`؛ وبذلك لا تُقبل مطابقة جذر إلا داخل الجولة نفسها.
+
+أثبت regression `project-store-run-identity-contract.test.ts` الرفض عند غياب الهوية أو اختلافها والقبول عند تطابقها، كما أثبت دبّوس `ProjectRun` المقترن أن حذف `persistJoeProjects` وحده يسقط توكيد الإدامة، وأن استبدال `writeJoeProject` وحده يسقط توكيد الكاتب؛ أُعيد المصدر كاملاً بعد كل تجربة. بوابة Jest الكاملة الأخيرة: **22/22 دفعة، `FULL_JEST_BATCHES_EXIT:0`، `FULL_JEST_059_RESULT:PASS`، `FULL_JEST_059_EXIT:0`**. وTypeScript: **0 أخطاء**.
+
+الملفات المعدلة في إصلاح 059-RUN-ID: `api/src/api/page-store.ts`، `api/src/modules/tools/definitions/ApiProjectTool.ts`، `ImportProjectTool.ts`، `PhaseExecutorTool.ts`، `ProjectEditTool.ts`، `ProjectRunTool.ts`، `ReactProjectTool.ts`، `SystemTools.ts`، `api/src/__tests__/project-run.test.ts`، `api/src/__tests__/project-store-run-identity-contract.test.ts`، و`docs/agent-mail/MANUS-TASKS.md`. ملفات `zz-*.test.ts` غير المتتبعة بقيت خارج الدفع عمداً، وملفات WeatherGo الناتجة لم تُعدّل يدوياً.
+
+POS-059-RUN-ID-TASKS-UPDATED: 2026-08-21
+POS-059-RUN-ID-REGRESSION: 6/6 tests green قبل البوابات؛ ProjectRun baseline 50/50 بعد الاستعادة
+POS-059-RUN-ID-TSC: 0
+POS-059-RUN-ID-FULL-JEST: 22/22 batches EXIT 0; FULL_JEST_059_RESULT=PASS
+POS-059-RUN-ID-NO-WEATHERGO-MANUAL-EDIT: confirmed
+POS-059-RUN-ID-PUSH: pending final staging and commit
+POS-059-RUN-ID-LIVE: required after push
+
+## حالة القبول بعد إصلاح 059-RUN-ID
+
+لا يزال **Level 4 WeatherGo مفتوحاً**. لا يُقبل المستوى قبل دفع الإصلاح، إعادة بناء Joe من SHA المنشور، تشغيل البرومبت القانوني على Joe الحقيقي، والتحقق المستقل من `finalVerified=true` و`liveUrl` غير الفارغ ونتيجة QA حقيقية مرتبطة بجذر الجولة نفسها. تبقى ديون `PROJECT-MAP-HAS-NO-RUN` و`PROJECT-MAP-INHERITED-RUN-ID` قيد الإغلاق مع هذا الدفع، بينما تبقى `RECEIPT-BELONGS-TO-ITS-RUN` و`TOOL-DONE-DROPS-OUTPUT` و`ORPHAN-SCAFFOLDS` و`VERIFY-WHAT-THE-PHASE-WROTE` و`LIVE-URL-ADDRESS-FAMILY` وW50 مؤجلة حسب شروطها.

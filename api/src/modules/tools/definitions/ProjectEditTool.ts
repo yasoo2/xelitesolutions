@@ -26,7 +26,7 @@ import { ToolPermission, ToolExecutionResult } from '../types';
 import { buildPalette, paletteCss, darkTokenBlock, lightTokenBlock } from '../../../core/design/design-system';
 import { routeToModel } from '../../../core/llm/intelligent-router';
 import { broadcast, broadcastThinkingDetail } from '../../../api/ws';
-import { persistJoeProjects } from '../../../api/page-store';
+import { persistJoeProjects, writeJoeProject } from '../../../api/page-store';
 import { publicUrlFor } from '../../../shared/utils/publicUrl';
 import { undefinedJsxComponentMismatch } from '../../../core/quality/source-contract';
 
@@ -249,7 +249,7 @@ export class ProjectEditTool extends BaseTool {
                 try { fs.writeFileSync(path.join(dir, h.file), h.before, 'utf-8'); restored.push(h.file); }
                 catch (e: any) { logs.push(`undo failed for ${h.file}: ${e?.message || e}`); }
             }
-            projects[sessionKey] = { ...(entry || {}), dir, updatedAt: Date.now(), history: kept };
+            writeJoeProject(sessionKey, { ...(entry || {}), dir, updatedAt: Date.now(), history: kept }, context?.runId ?? null);
             persistJoeProjects();
             logs.push(`undo: restored ${restored.length} file(s) from the last edit batch`);
             return {
@@ -355,7 +355,7 @@ export class ProjectEditTool extends BaseTool {
                     }
                 }
                 const history = (entry?.history || []).concat(changed.map(c => ({ file: c.file, before: c.before, at: Date.now() }))).slice(-20);
-                projects[sessionKey] = { ...(entry || {}), dir, updatedAt: Date.now(), history, lastRequest: request.slice(0, 80) };
+                writeJoeProject(sessionKey, { ...(entry || {}), dir, updatedAt: Date.now(), history, lastRequest: request.slice(0, 80) }, context?.runId ?? null);
                 persistJoeProjects();
                 if (buildVerified === true) {
                     const url = publicUrlFor(`/project-preview/${sessionKey}/index.html?v=${Date.now()}`);
@@ -1003,7 +1003,7 @@ Rules: the SEARCH text must be an exact quote of what is in the file. Keep edits
 
         // Per-file history so «تراجع» works on projects too.
         const history = (entry?.history || []).concat(touched.map(t => ({ file: t.file, before: t.before, at: Date.now() }))).slice(-20);
-        projects[sessionKey] = { ...(entry || {}), dir, updatedAt: Date.now(), history, lastRequest: request.slice(0, 80) };
+        writeJoeProject(sessionKey, { ...(entry || {}), dir, updatedAt: Date.now(), history, lastRequest: request.slice(0, 80) }, context?.runId ?? null);
         persistJoeProjects();
 
         // The verified change is VISIBLE the moment it lands — the preview

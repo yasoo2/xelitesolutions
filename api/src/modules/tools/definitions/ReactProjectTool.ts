@@ -27,7 +27,7 @@ import { familyFor, familyCss, familyFonts, FAMILY_LABEL_AR, type DesignFamily }
 import { resolveImages, sanitizeContentImages } from '../../../core/design/images';
 import { broadcast, broadcastThinkingDetail, broadcastTerminalLine } from '../../../api/ws';
 import { openTerminal, transcriptLine } from '../../../core/quality/terminal-session';
-import { persistJoeProjects } from '../../../api/page-store';
+import { persistJoeProjects, writeJoeProject } from '../../../api/page-store';
 import { publicUrlFor } from '../../../shared/utils/publicUrl';
 import { repairAndRebuild, worthRepairing } from '../../../core/quality/self-repair';
 import { inspectWeatherEngineSource, formatWeatherSemanticRepair } from '../../../core/quality/weather-contract';
@@ -3844,7 +3844,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
         // Remember the project so «عدل …» routes to the SURGICAL editor and
         // survives restarts like everything else Joe remembers.
         const projects: Record<string, any> = (global as any).joeProjects || ((global as any).joeProjects = {});
-        projects[sessionKey] = {
+        writeJoeProject(sessionKey, {
             dir: proj, type: 'react', brand: content.brand, updatedAt: Date.now(), lastRequest: request.slice(0, 80),
             // The API's url AND dir ride along: «اعرض الطلبات» reads the
             // database from disk, and the inbox bridge resolves the owner,
@@ -3873,7 +3873,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                         .map((f: any) => ({ severity: f.severity, message: String(f.message || f.what || '').slice(0, 200) })),
                 },
             } : {}),
-        };
+        }, currentPipelineRunId || null);
         persistJoeProjects();
 
         // The freshly built app opens in the preview panel on its own — the

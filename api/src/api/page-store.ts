@@ -81,13 +81,39 @@ export function persistJoePages(): void {
 const projectsFile = () => path.join(storeDir(), 'joe-projects.json');
 const MAX_PERSISTED_PROJECTS = 20;
 
-/** Remove ephemeral credentials before project state crosses the process boundary. */
+/** A project identity is explicit: a real pipeline id or null, never an absent field. */
+export function normalizePipelineRunId(value: unknown): string | null {
+    const id = String(value ?? '').trim();
+    return id || null;
+}
+
+/** A null/legacy entry is never a same-pipeline handoff. */
+export function samePipelineRun(current: unknown, previous: unknown): boolean {
+    const currentId = normalizePipelineRunId(current);
+    const previousId = normalizePipelineRunId(previous);
+    return currentId !== null && currentId === previousId;
+}
+
+/** The only boundary allowed to write an item into global.joeProjects. */
+export function writeJoeProject(key: string, entry: Record<string, any>, pipelineRunId: unknown = null): Record<string, any> {
+    const g: any = global as any;
+    if (!g.joeProjects || typeof g.joeProjects !== 'object' || Array.isArray(g.joeProjects)) g.joeProjects = {};
+    const normalized = {
+        ...(entry || {}),
+        pipelineRunId: normalizePipelineRunId(pipelineRunId),
+    };
+    g.joeProjects[String(key)] = normalized;
+    return normalized;
+}
+
+/** Remove ephemeral credentials and normalize project identity at the process boundary. */
 function persistedProjects(store: Record<string, any>): Record<string, any> {
     return Object.fromEntries(Object.entries(store || {}).map(([key, value]) => {
         const copy = { ...(value as any) };
         delete copy.runtimeAuth;
         delete copy.ownerEmail;
         delete copy.ownerPassword;
+        copy.pipelineRunId = normalizePipelineRunId(copy.pipelineRunId);
         return [key, copy];
     }));
 }

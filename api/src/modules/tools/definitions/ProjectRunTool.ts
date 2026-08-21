@@ -7,7 +7,7 @@ import { isArabicReply, say as pick } from '../../../shared/reply-language';
 import * as fs from 'fs';
 import * as path from 'path';
 import { builtinModules } from 'module';
-import { persistJoeProjects } from '../../../api/page-store';
+import { persistJoeProjects, writeJoeProject } from '../../../api/page-store';
 
 /**
  * project_run / project_stop — actually RUN a built system, not just render a
@@ -135,12 +135,12 @@ function rememberLiveProject(context: any, cwd: string, live: { url: string; por
     const sessionKey = sessionId.replace(/[^a-zA-Z0-9._-]/g, '_');
     const projects: Record<string, any> = (global as any).joeProjects || ((global as any).joeProjects = {});
     const previous = projects[sessionKey] || {};
-    projects[sessionKey] = {
+    writeJoeProject(sessionKey, {
         ...previous,
         ...(previous.dir ? {} : { dir: cwd, type: 'runtime' }),
         live: { url: live.url, port: live.port, pid: live.pid, cwd, at: Date.now() },
         updatedAt: Date.now(),
-    };
+    }, context?.runId ?? null);
     persistJoeProjects();
 }
 

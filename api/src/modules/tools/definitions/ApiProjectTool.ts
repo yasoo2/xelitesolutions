@@ -29,7 +29,7 @@ import { detectPageKind, type PageKind } from '../../../core/design/blueprints';
 import { ROLES, describeRoles } from '../../../core/design/roles';
 import { broadcast, broadcastThinkingDetail, broadcastTerminalLine } from '../../../api/ws';
 import { openTerminal } from '../../../core/quality/terminal-session';
-import { persistJoeProjects } from '../../../api/page-store';
+import { persistJoeProjects, writeJoeProject } from '../../../api/page-store';
 
 const slug = (s: string) => (String(s || '').toLowerCase()
     .replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '').slice(0, 32)) || 'api';
@@ -2730,10 +2730,9 @@ export class ApiProjectTool extends BaseTool {
          * primary.
          */
         const handedModel = promoted ? [promoted, ...model] : model;
-        projects[sessionKey] = {
+        writeJoeProject(sessionKey, {
             dir: proj, type: 'api', brand, resource, port: 4100, updatedAt: Date.now(),
             lastRequest: request.slice(0, 80),
-            ...(currentPipelineRunId ? { pipelineRunId: currentPipelineRunId } : {}),
             ...(inheritedScaffoldDir ? { scaffoldDir: inheritedScaffoldDir } : {}),
             ...(appKind ? { appKind } : {}),
             ...(handedModel.length ? { model: handedModel } : {}),
@@ -2747,7 +2746,7 @@ export class ApiProjectTool extends BaseTool {
                 tokenStorageKey: `joe-admin-token:${brand || 'app'}`,
                 route: '#/admin',
             },
-        };
+        }, currentPipelineRunId);
         persistJoeProjects();
 
         const fileList = Object.keys(files).map(f => `  • ${f}`).join('\n');

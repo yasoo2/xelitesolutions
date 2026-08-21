@@ -502,8 +502,14 @@ describe('named project discovery never falls back to the workspace repository',
     test('successful project_run persists the verified live preview for browser QA', () => {
         expect(runSrc).toContain('function rememberLiveProject');
         expect(runSrc).toContain('rememberLiveProject(context, cwd');
-        expect(runSrc).toContain('live: { url: live.url, port: live.port, pid: live.pid, cwd');
-        expect(runSrc).toContain("import { persistJoeProjects } from '../../../api/page-store'");
+        const remember = runSrc.slice(
+            runSrc.indexOf('function rememberLiveProject'),
+            runSrc.indexOf('\n}', runSrc.indexOf('function rememberLiveProject')),
+        );
+        expect(remember).toContain('live.url');
+        expect(remember).toMatch(/live:\s*\{[^}]*\burl\b[^}]*\bport\b[^}]*\bpid\b[^}]*\bcwd\b/);
+        expect(remember).toMatch(/\bwriteJoeProject\s*\(/);
+        expect(remember).toMatch(/\bpersistJoeProjects\s*\(/);
     });
 });
 

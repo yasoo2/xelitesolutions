@@ -4,7 +4,7 @@ import { ToolPermission } from '../types';
 import path from 'path';
 import fs from 'fs';
 import { workspaceService } from '../../services/WorkspaceService';
-import { persistJoeProjects } from '../../../api/page-store';
+import { persistJoeProjects, writeJoeProject } from '../../../api/page-store';
 import { resolveToolPath as sharedResolveToolPath } from '../utils';
 import { commandRouter } from '../../terminal/command-router';
 import { broadcast, broadcastTerminalLine } from '../../../api/ws';
@@ -1327,13 +1327,12 @@ export class ScaffoldProjectTool extends BaseTool {
             // API entry keep its type/resource/appKind: that made the next
             // api_project call believe no scaffold existed, and React then
             // created a sibling directory instead of reusing this one.
-            projects[sessionKey] = {
+            writeJoeProject(sessionKey, {
                 dir: resolvedBase,
                 type: 'scaffold',
                 updatedAt: Date.now(),
                 lastRequest: String(input?.projectName || input?.name || path.basename(resolvedBase)).slice(0, 80),
-                ...(String(context?.runId || '').trim() ? { pipelineRunId: String(context.runId).trim() } : {}),
-            };
+            }, context?.runId ?? null);
             persistJoeProjects();
             logs.push(`scaffold_project: registered active project ${sessionKey} -> ${resolvedBase}`);
         }
