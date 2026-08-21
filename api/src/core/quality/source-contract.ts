@@ -7,11 +7,15 @@
  * references without knowing a product, domain, or saved template.
  */
 
-const JSX_COMPONENT = /<([A-Z][A-Za-z0-9_$]*(?:\.[A-Za-z0-9_$]+)?)(?=\s|\/?>)/g;
+// A real JSX opening tag is not part of an identifier, call, or indexed access.
+// The negative lookbehind excludes TypeScript generic arguments such as
+// `createContext<Foo>()`, `useState<Bar>()`, and `React.FC<Props>` while keeping
+// nested JSX after `>` visible to the contract gate.
+const JSX_COMPONENT = /(?<![A-Za-z0-9_$)\]])<([A-Z][A-Za-z0-9_$]*(?:\.[A-Za-z0-9_$]+)?)(?=\s|\/?>)/g;
 const IMPORT_DEFAULT = /\bimport\s+([A-Z][A-Za-z0-9_$]*)\s+from\s*['"]/g;
 const IMPORT_NAMESPACE = /\bimport\s*\*\s+as\s+([A-Z][A-Za-z0-9_$]*)\s+from\s*['"]/g;
 const IMPORT_NAMED = /\bimport\s*\{([\s\S]*?)\}\s*from\s*['"]/g;
-const DECLARED_COMPONENT = /\b(?:function|class)\s+([A-Z][A-Za-z0-9_$]*)\b|\b(?:const|let|var)\s+([A-Z][A-Za-z0-9_$]*)\s*=/g;
+const DECLARED_COMPONENT = /\b(?:function|class|interface)\s+([A-Z][A-Za-z0-9_$]*)\b|\b(?:const|let|var)\s+([A-Z][A-Za-z0-9_$]*)\s*=|\btype\s+([A-Z][A-Za-z0-9_$]*)(?:\s*<[^>{}]*>)?\s*=/g;
 
 const collect = (source: string, pattern: RegExp): Set<string> => {
     const out = new Set<string>();

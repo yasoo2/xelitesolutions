@@ -328,3 +328,24 @@ POS-054-FULL-JEST: 22/22 batches EXIT 0
 POS-054-NO-WEATHERGO-MANUAL-EDIT: confirmed
 POS-054-LIVE-17: required after push
 POS-054-CLAUDE-ACK: to-claude/037
+
+
+## سجل إصلاح 056 — حارس source-contract لا يرفض TypeScript الصحيح
+
+| المعرّف | المهمة | الحالة | معيار الإغلاق |
+|---|---|---|---|
+| 056 | إصلاح الالتقاط الزائف لوسائط الأنواع العامة في `undefinedJsxComponentMismatch` مع إبقاء JSX المجهول مرفوضاً | **منفذ محلياً؛ البوابات النهائية خضراء؛ الدفع إلى `main` قيد التنفيذ** | مسبار فاشل قبل الإصلاح؛ تمييز موضع `<` بحسب السياق؛ دعم `interface` و`type` في declarations؛ regression دائم للحالة الصحيحة والحالة المجهولة؛ TSC=0؛ Jest الكاملة 22/22 دفعة وكلها `EXIT 0`؛ دفع إلى `main`؛ ثم تشغيل البرومبت القانوني حياً على Joe ومراقبته |
+| 057 | إيصال التشغيل يعترف بـ`extractionMiss` ولا يخرج `honestBlocker=false` فوق عائق نصّي موجود | **مؤجلة حتى إغلاق 056** | استخراج المظروف `ok/result/steps`، حمل `taskReceipts` و`fidelityVerdict` و`honestBlocker`، وعدم اختفاء العائق النصي من حكم القبول؛ regression دائم وبوابات كاملة ثم تحقق حي |
+| 058 | بتر مخزن الأدلة في `run-evidence-store.ts` بين الرأس والذيل | **مؤجلة خلف 056 و057** | إثبات البتر الصامت، إصلاح عام يحفظ السجل كاملاً، regression دائم، بوابات كاملة، ثم تحقق حي |
+
+### قاعدة تحقق حي مضافة من المالك
+
+بعد **كل تحديث مدفوع** إلى Joe، يُعاد بناء Joe من SHA المدفوع وتشغيل البرومبت القانوني على النظام الحقيقي، مع مراقبة التنفيذ والاختبارات والتسليم. أي خطأ حي يُوثّق بدليل خام أولاً وتشخيص منفصل ثانياً، ثم تُستشار قناة Claude قبل إصلاح Joe، وتُعاد الجولة نفسها بعد الإصلاح. لا يُعد التحديث ناجحاً ولا يُغلق أي مستوى دون هذا التحقق المستقل؛ ولا تُعدّل ملفات WeatherGo الناتجة يدوياً.
+
+POS-056-TASKS-UPDATED: 2026-08-21
+POS-056-TSC: 0
+POS-056-FOCUSED: green after 056 regression expansion
+POS-056-FULL-JEST: 22/22 batches EXIT 0 on origin base 9104603
+POS-056-NO-WEATHERGO-MANUAL-EDIT: confirmed
+POS-056-LIVE-REQUIRED-AFTER-PUSH: confirmed
+POS-056-CLAUDE-ACK: 038

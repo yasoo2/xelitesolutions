@@ -54,6 +54,26 @@ describe('the generated application is syntactically real', () => {
         expect(undefinedJsxComponentMismatch('src/App.jsx', source)).toMatch(/WishlistApp/);
     });
 
+    it('accepts valid TSX with generic type arguments and declared/global types', () => {
+        const source = `
+import React, { createContext, useState, useRef } from 'react';
+interface WeatherContextType { city: string }
+type WeatherData = { temp: number };
+type WeatherProviderProps = { children: React.ReactNode };
+const Ctx = createContext<WeatherContextType | undefined>(undefined);
+const WeatherProvider: React.FC<WeatherProviderProps> = ({ children }) => {
+    const [data, setData] = useState<WeatherData | null>(null);
+    const pos = useRef<GeolocationPosition | null>(null);
+    return <Ctx.Provider value={{ city: '' }}>{children}</Ctx.Provider>;
+}`;
+        expect(undefinedJsxComponentMismatch('src/context/WeatherContext.tsx', source)).toBeNull();
+    });
+
+    it('still rejects an unknown JSX component immediately after a JSX boundary', () => {
+        const source = "function Shell() {\n    return <section><MysteryPanel /></section>;\n}";
+        expect(undefinedJsxComponentMismatch('src/Shell.jsx', source)).toMatch(/MysteryPanel/);
+    });
+
     it('request-driven domain generation never receives the stock WeatherApp file', () => {
         const generated = buildAppFiles(
             blueprintFor('weather', 'WeatherGo', false),
