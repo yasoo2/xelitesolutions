@@ -930,6 +930,16 @@ Return the complete file content now.`;
             // the machine — proven, not theorised: the same pattern in the
             // unreachable twin of this tool created /etc/joe-owned.txt in a test.
             const absPath = resolveArtifactAwarePath(filePath, contextWorkspaceId, context?.projectRoot);
+            const runtimeProjectRoot = String(context?.projectRoot || '').trim();
+            if (runtimeProjectRoot && path.isAbsolute(runtimeProjectRoot)) {
+                const resolvedRoot = path.resolve(runtimeProjectRoot);
+                const resolvedArtifact = path.resolve(absPath);
+                if (!isWithinRoot(resolvedArtifact, resolvedRoot)) {
+                    const error = `path_outside_project_root: ${resolvedArtifact} (projectRoot: ${resolvedRoot})`;
+                    logs.push(error);
+                    return { ok: false, error, logs };
+                }
+            }
             fs.mkdirSync(path.dirname(absPath), { recursive: true });
             fs.writeFileSync(absPath, finalContent, 'utf-8');
 

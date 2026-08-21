@@ -577,7 +577,7 @@ describe('verified runtime contracts keep generated source on the project stack'
         expect(res.output.path).toBe(path.join('src', 'services', 'forecast.ts'));
     });
 
-    it('does not apply an unrelated fallback manifest to an absolute artifact before its manifest exists', async () => {
+    it('rejects an absolute artifact outside the bound project root before its manifest exists', async () => {
         const fallbackRoot = path.join(landsAt(DIR), 'runtime-fallback-root');
         const orphanRoot = path.join(workspaceService.externalRoot, '__ai_write_file_orphan_artifact__');
         const target = path.join(orphanRoot, 'src', 'App.jsx');
@@ -598,9 +598,9 @@ describe('verified runtime contracts keep generated source on the project stack'
         });
 
         try {
-            expect(res.ok).toBe(true);
-            expect(fs.readFileSync(target, 'utf8')).toContain('orphan-artifact');
-            expect(res.error || '').not.toMatch(/runtime_contract_mismatch/);
+            expect(res.ok).toBe(false);
+            expect(res.error).toMatch(/path_outside_project_root/);
+            expect(fs.existsSync(target)).toBe(false);
         } finally {
             fs.rmSync(orphanRoot, { recursive: true, force: true });
         }
@@ -665,7 +665,7 @@ describe('verified runtime contracts keep generated source on the project stack'
         }
     });
 
-    it('uses the nearest target-project manifest when the bound root belongs to another project', async () => {
+    it('rejects a nested absolute target outside the bound project root even when its manifest is valid', async () => {
         const outerRoot = path.join(projectRoot, 'outer-api');
         const nestedRoot = path.join(projectRoot, 'nested-react-product');
         const target = path.join(nestedRoot, 'src', 'App.jsx');
@@ -688,8 +688,9 @@ describe('verified runtime contracts keep generated source on the project stack'
                 description: 'Write the React browser entry for the nested product.',
             }, { projectRoot: outerRoot, engineeringPipeline: true });
 
-            expect(res.ok).toBe(true);
-            expect(fs.readFileSync(target, 'utf8')).toMatch(/react-dom\/client/);
+            expect(res.ok).toBe(false);
+            expect(res.error).toMatch(/path_outside_project_root/);
+            expect(fs.existsSync(target)).toBe(false);
         } finally {
             try { fs.rmSync(outerRoot, { recursive: true, force: true }); } catch { }
             try { fs.rmSync(nestedRoot, { recursive: true, force: true }); } catch { }

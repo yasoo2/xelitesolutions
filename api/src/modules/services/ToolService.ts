@@ -433,7 +433,15 @@ export async function executeTool(name: string, input: any, context?: ToolContex
     if (name === 'file_write' || name === 'write_to_file' || name === 'create_file' || name === 'ai_write_file') {
         effectiveName = name === 'ai_write_file' ? 'ai_write_file' : 'write_file';
         const fp = String((effectiveInput as any)?.path ?? (effectiveInput as any)?.filePath ?? (effectiveInput as any)?.filename ?? '');
-        if (fp) {
+        if (fp && name === 'ai_write_file') {
+            // ai_write_file receives a logical artifact path. It must resolve that
+            // path against the runtime-bound projectRoot inside AIGeneratorTool;
+            // applying workspace containment here first turns Project/src/x.tsx
+            // into the wrong absolute path before the artifact root is known.
+            (effectiveInput as any).path = fp;
+            delete (effectiveInput as any).filePath;
+            delete (effectiveInput as any).filename;
+        } else if (fp) {
             // The gate here was `abs.startsWith(root)`, which admits a SIBLING
             // that merely shares a prefix — a root of "/srv/joe" accepted
             // "/srv/joe-backup/anything" because the characters matched. It also
@@ -441,7 +449,8 @@ export async function executeTool(name: string, input: any, context?: ToolContex
             // write still left attacker-chosen directories on disk.
             //
             // Both are gone: one containment rule, applied before anything is
-            // created.
+            // created. Keep this path unchanged for file_write, write_to_file,
+            // and create_file; only ai_write_file has the runtime-bound contract.
             const abs = containPath(fp, contextWorkspaceId);
             if (!abs.ok) return { ok: false, error: abs.error, logs };
 
