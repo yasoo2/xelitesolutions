@@ -1,7 +1,7 @@
 import { StructuredIntent } from '../intelligence/IntentParser';
 import { catalogueFor, registeredToolNames, capabilityRoute, inputForTool } from './toolCatalog';
 import { routeToModel, TaskAnalysis } from '../llm/intelligent-router';
-import { normalizeIntentText, stripArabicDiacritics } from './promptNormalizer';
+import { normalizeIntentText, stripArabicDiacritics, foldChars } from './promptNormalizer';
 import { compactHistoryForPrompt } from './history-compact';
 import { enrichWorkspaceToolInput } from './workspace-evidence';
 import { findActiveBuiltProject } from './active-built-project';
@@ -192,6 +192,39 @@ export class PlanningEngine {
         const noun = /\b(platform|marketplace|storefront|e-?commerce|site|website|page|app|application|software|system|dashboard|panel|console|admin|store|shop|portal|api|backend|tool|service|saas|crm|erp|pos|blog|editor|tracker|game)\b/i.test(g)
             || /(موقع|صفحة|تطبيق|متجر|نظام|منصّ?ة|لوحة|واجهة|أداة|اداة|برنامج|بوابة|خدمة)/.test(bare);
         return verb && noun;
+    }
+
+    /**
+     * ASKING IS NOT ORDERING.
+     *
+     * Used by capabilityPlan to refuse a routing decision it has no business
+     * making. The order of the two tests matters and is deliberate: a deed is
+     * checked FIRST, because a request can be shaped like a question and still
+     * be an order — «هل يمكنك بناء موقع لي؟» asks permission to do a thing, and
+     * the thing is what must happen. Only a sentence that names no deed at all
+     * is treated as a question.
+     *
+     * The word lists below are written in FOLDED spelling — «متي» not «متى»,
+     * «انشي» not «أنشئ», «بنا» not «بناء» — because both sides of every
+     * comparison are folded first. Listing hamza and alef-maqsura variants by
+     * hand is how «أنشر» quietly stopped being a deed: measured here, the guard
+     * missed it until the folding was applied instead of a longer list.
+     */
+    static isKnowledgeQuestion(goalRaw: string): boolean {
+        const g = String(goalRaw || '').trim();
+        if (!g) return false;
+        const bare = foldChars(g);
+
+        // A deed outranks a question mark.
+        const ordersADeed =
+            /(?:^|[\s،:؛])(?:ابن|ابني|بن|انشي|انشا|اصنع|صمم|اصمم|طور|اعمل|برمج|بنا|تصميم|شغل|اوقف|انشر|عدل|احذف|اضف|اصلح|افتح|ابحث|نفذ|حلل|ارسل|حمل|ثبت)(?=$|[\s،:؛؟.])/.test(bare)
+            || /\b(build|create|make|develop|generate|scaffold|implement|deploy|publish|run|start|stop|edit|delete|remove|add|fix|open|search|execute|install|analyz|analys)\w*\b/i.test(g);
+        if (ordersADeed) return false;
+
+        return /(?:^|[\s،:؛])(?:ما|ماذا|هل|لماذا|كيف|متي|اين|كم|اي|ايهما)(?=$|[\s،:؛؟.])/.test(bare)
+            || /(?:^|[\s،:؛])(?:اشرح|وضح|فسر|قارن|عرف|علمني|اخبرني)(?=$|[\s،:؛])/.test(bare)
+            || /\b(what|why|how|when|which|who|explain|compare|difference|versus|vs)\b/i.test(g)
+            || /[؟?]\s*$/.test(g);
     }
 
     /**
@@ -424,6 +457,43 @@ Rules:
             // Keeping this guard here is essential because capabilityPlan is also
             // called before the later routing guards.
             if (PlanningEngine.looksLikeBuild(goal)) return null;
+
+            /**
+             * A QUESTION IS NOT AN ORDER, AND A TECHNOLOGY'S NAME IS NOT A
+             * REQUEST TO USE IT.
+             *
+             * This function asks one thing: «which tool PERFORMS this?» That
+             * question only has an answer when something is being ordered. The
+             * only guard above it was `looksLikeBuild`, so the world was sorted
+             * into two boxes — build, and everything else — while it actually
+             * has three: build, order, and question. A question fell into
+             * «everything else» and was handed to keyword matching, where a
+             * bare product name outranked the fact that nobody had asked for
+             * anything to be done.
+             *
+             * Measured on the planner itself, before this guard:
+             *
+             *   «اشرح لي ما هو الفرق بين React و Vue»   → react_project
+             *   «اشرح لي ما هو الفرق بين Python و Java» → execute_python → java_builder
+             *
+             * The second one is the whole defect in one line: asked to explain
+             * two languages, Joe ran Python and then built a Java project.
+             *
+             * The rule «product names never decide an engineering route» was
+             * already written elsewhere in this class — but it lives in the
+             * later routing guards, and capabilityPlan runs BEFORE them (see the
+             * comment above). Two correct layers in the wrong order, again.
+             *
+             * Questions that legitimately need a tool are not lost here: they
+             * are claimed by their own earlier routes. Measured — «كم عدد
+             * الطلبات الجديدة؟» and «أرني الطلبات» both reach orders_read while
+             * capabilityPlan returns null for them, so returning null earlier
+             * changes nothing for either.
+             */
+            if (PlanningEngine.isKnowledgeQuestion(goal)) {
+                console.log('[PlanningEngine] a question, not an order → no capability route (answer it)');
+                return null;
+            }
 
             /**
              * A SENTENCE WITH FOUR VERBS IS FOUR STEPS — AND THEY FLOW.

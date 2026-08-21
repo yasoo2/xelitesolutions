@@ -117,7 +117,7 @@ export function stripArabicDiacritics(raw: string): string {
     return String(raw || '').replace(AR_DIACRITICS, '');
 }
 
-function foldChars(s: string): string {
+export function foldChars(s: string): string {
     let out = String(s || '').normalize('NFKC');
     out = out.replace(AR_DIACRITICS, '');
     out = out.replace(/[أإآٱ]/g, 'ا').replace(/ى/g, 'ي');
