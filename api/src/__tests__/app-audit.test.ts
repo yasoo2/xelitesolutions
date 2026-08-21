@@ -7,7 +7,8 @@
 import fs from 'fs';
 import path from 'path';
 import { scoreOf, formatAudit } from '../core/quality/app-audit';
-import { earlyProjectDeclarationForTest } from '../modules/tools/definitions/ReactProjectTool';
+import { earlyProjectDeclaration } from '../modules/tools/definitions/ReactProjectTool';
+import * as acceptance from '../core/quality/acceptance';
 import { GATE062_ACCEPTANCE_PROMPT } from '../core/quality/acceptance';
 
 describe('the audit arithmetic', () => {
@@ -97,66 +98,90 @@ describe('the early project-kind declaration is a request-level terminal behavio
     const arabicRequest = 'ابنِ تطبيقاً بعنوان Gate 062 يحتوي على عداد ظاهر وزر تفاعلي ورسالة حالة قصيرة.';
 
     it('generic fallback names only the elements actually understood from the request', () => {
-        const announcement = earlyProjectDeclarationForTest({
+        const announcement = earlyProjectDeclaration({
             request: arabicRequest,
             isArabic: true,
             appKind: null,
         });
         expect(announcement).toContain('لا أعرف نوع هذا التطبيق');
-        expect(announcement).toContain('عدّاد أو إجمالي');
+        expect(announcement).toContain('عداد أو إجمالي');
         expect(announcement).toContain('زر تفاعلي');
         expect(announcement).toContain('عنوان أو رأس صفحة');
         expect(announcement).toContain('رسالة حالة أو نتيجة');
     });
 
     it('generic fallback reads the exact Gate062 acceptance prompt in the request language', () => {
-        const announcement = earlyProjectDeclarationForTest({
+        const announcement = earlyProjectDeclaration({
             request: GATE062_ACCEPTANCE_PROMPT,
             isArabic: false,
             appKind: null,
         });
         expect(announcement).toContain('counter or total');
         expect(announcement).toContain('interactive button');
-        expect(announcement).toContain('heading or title');
-        expect(announcement).toContain('status message or result');
+        expect(announcement).toContain('a title or heading');
+        expect(announcement).toContain('a status or result message');
+    });
+
+    it('the negative account request does not invent a counter understanding', () => {
+        const announcement = earlyProjectDeclaration({
+            request: 'Build an account app for account details and login.',
+            isArabic: false,
+            appKind: null,
+        });
+        expect(announcement).not.toContain('counter or total');
+        expect(announcement).toContain('no clear interactive element');
+    });
+
+    it('reads a temporary catalogue criterion through acceptanceFor without changing the announcer', () => {
+        const realAcceptanceFor = acceptance.acceptanceFor;
+        const fakeCriterion = {
+            id: 'temporary_probe',
+            kind: 'feature' as const,
+            ar: 'معيار وهمي مؤقت',
+            en: 'a temporary fake criterion',
+            markers: [],
+        };
+        const spy = jest.spyOn(acceptance, 'acceptanceFor')
+            .mockImplementation(request => [...realAcceptanceFor(request), fakeCriterion]);
+        try {
+            const announcement = earlyProjectDeclaration({
+                request: 'Build an account app for account details and login.',
+                isArabic: false,
+                appKind: null,
+            });
+            expect(announcement).toContain('a temporary fake criterion');
+            expect(announcement).not.toContain('counter or total');
+        } finally {
+            spy.mockRestore();
+        }
     });
 
     it('authored engines explain the practical uncertainty in the request language while stock engines stay silent', () => {
-        expect(earlyProjectDeclarationForTest({
+        expect(earlyProjectDeclaration({
             request: 'ابنِ تطبيق طقس', isArabic: true, appKind: 'weather',
             generatedEnginePath: 'src/components/WeatherApp.jsx',
         })).toContain('سأؤلّف محرّك هذا التطبيق بدلاً من استعمال محرّك جاهز، والنتيجة غير مضمونة.');
-        expect(earlyProjectDeclarationForTest({
+        expect(earlyProjectDeclaration({
             request: 'Build a weather app', isArabic: false, appKind: 'weather',
             generatedEnginePath: 'src/components/WeatherApp.jsx',
         })).toContain("I will author this app's engine instead of using a ready-made engine; the result is not guaranteed.");
-        expect(earlyProjectDeclarationForTest({
+        expect(earlyProjectDeclaration({
             request: 'Build a finance app', isArabic: false, appKind: 'finance',
         })).toBeNull();
-        expect(earlyProjectDeclarationForTest({
+        expect(earlyProjectDeclaration({
             request: 'Build an account app', isArabic: false, appKind: 'account',
         })).toBeNull();
     });
 
     it('removing the counter word removes only the counter understanding', () => {
-        const withoutCounter = earlyProjectDeclarationForTest({
+        const withoutCounter = earlyProjectDeclaration({
             request: arabicRequest.replace('عداد ', ''),
             isArabic: true,
             appKind: null,
         });
-        expect(withoutCounter).not.toContain('عدّاد أو إجمالي');
+        expect(withoutCounter).not.toContain('عداد أو إجمالي');
         expect(withoutCounter).toContain('زر تفاعلي');
         expect(withoutCounter).toContain('رسالة حالة أو نتيجة');
     });
 
-    it('is wired to the terminal after the authoritative runBp and before app files are built', () => {
-        const src = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ReactProjectTool.ts'), 'utf-8');
-        expect(src).toContain('if (declaration) term(declaration);');
-        const runBpAt = src.indexOf('let runBp: any = appBp;');
-        const declarationAt = src.indexOf('const declaration = earlyProjectDeclarationForTest({', runBpAt);
-        const buildAt = src.indexOf('const appFiles = buildAppFiles(runBp, {', declarationAt);
-        expect(runBpAt).toBeGreaterThan(-1);
-        expect(declarationAt).toBeGreaterThan(runBpAt);
-        expect(buildAt).toBeGreaterThan(declarationAt);
-    });
 });

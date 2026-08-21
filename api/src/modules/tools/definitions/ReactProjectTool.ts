@@ -22,6 +22,7 @@ import { buildPalette, paletteCss, darkTokenBlock, lightTokenBlock } from '../..
 import { brandFrom, brandFallback } from '../../../core/design/page-head';
 import { detectPageKind, type PageKind } from '../../../core/design/blueprints';
 import { detectAppKind, blueprintFor, uncoveredFeatures, type AppBlueprint } from '../../../core/design/app-blueprints';
+import { acceptanceFor as acceptanceCriteriaFor } from '../../../core/quality/acceptance';
 import { buildAppFiles, fileAppCss } from './react-app-templates';
 import { familyFor, familyCss, familyFonts, FAMILY_LABEL_AR, type DesignFamily } from '../../../core/design/families';
 import { resolveImages, sanitizeContentImages } from '../../../core/design/images';
@@ -56,7 +57,7 @@ export function projectDirNameForTest(projectName: string, brand: string): strin
  * project-specific template. It is deliberately small and engine-agnostic:
  * the words it says are the elements the request actually names.
  */
-export function earlyProjectDeclarationForTest(input: {
+export function earlyProjectDeclaration(input: {
     request: string;
     isArabic: boolean;
     appKind: string | null;
@@ -71,20 +72,8 @@ export function earlyProjectDeclarationForTest(input: {
             : null;
     }
 
-    const elements = input.isArabic
-        ? [
-            { matches: /عدّاد|عداد|counter|count/i, label: 'عدّاد أو إجمالي' },
-            { matches: /زر|button|control/i, label: 'زر تفاعلي' },
-            { matches: /عنوان|رأس|heading|title/i, label: 'عنوان أو رأس صفحة' },
-            { matches: /حالة|رسالة|نتيجة|status|message|result/i, label: 'رسالة حالة أو نتيجة' },
-        ]
-        : [
-            { matches: /counter|count|total|sum/i, label: 'counter or total' },
-            { matches: /button|control/i, label: 'interactive button' },
-            { matches: /heading|title|header/i, label: 'heading or title' },
-            { matches: /status|message|result/i, label: 'status message or result' },
-        ];
-    const understood = elements.filter(element => element.matches.test(request)).map(element => element.label);
+    const understood = acceptanceCriteriaFor(request)
+        .map(criterion => input.isArabic ? criterion.ar : criterion.en);
     if (input.isArabic) {
         return `لا أعرف نوع هذا التطبيق، ولا أملك محرّكاً جاهزاً له — ما سأبنيه هيكلٌ عامّ. وهذا ما فهمتُه من طلبك: ${understood.length ? understood.join(' · ') : 'لم أحدد عنصراً تفاعلياً واضحاً'}.`;
     }
@@ -2974,7 +2963,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             } : undefined;
             // Declare only after the authoritative runBp is resolved. This is
             // a terminal message for the owner, not a second evidence system.
-            const declaration = earlyProjectDeclarationForTest({
+            const declaration = earlyProjectDeclaration({
                 request,
                 isArabic: isAr,
                 appKind,
@@ -3009,7 +2998,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
         } else {
             // Generic projects have no runBp; the declaration still follows
             // the classification decision and stays visible in Joe's terminal.
-            const declaration = earlyProjectDeclarationForTest({
+            const declaration = earlyProjectDeclaration({
                 request, isArabic: isAr, appKind, generatedEnginePath: '',
             });
             if (declaration) term(declaration);
