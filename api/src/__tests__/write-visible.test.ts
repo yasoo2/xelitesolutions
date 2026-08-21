@@ -111,14 +111,38 @@ describe('the Logs panel shows the build it is watching', () => {
     });
 });
 
+/**
+ * The headings used to be Arabic literals in the component, and this test
+ * pinned the literals. Then the panel was translated and the literals moved
+ * into i18n — which broke the pin without breaking anything a user sees.
+ *
+ * A pin that only knows one spelling of a sentence is guarding the sentence,
+ * not the behaviour. What matters is that each section still carries a sticky
+ * heading whose count comes from the list it heads. So the pin now follows the
+ * count to its source, and — because the words live in a catalogue now — also
+ * checks BOTH locales still carry the placeholder. That is something the old
+ * hard-coded assertion could not check at all.
+ */
 describe('the panel reads as two ORDERED sections', () => {
-    const panel = fs.readFileSync(
-        path.join(__dirname, '..', '..', '..', 'web', 'src', 'components', 'WorkspacePanel.tsx'), 'utf-8');
+    const webSrc = path.join(__dirname, '..', '..', '..', 'web', 'src');
+    const panel = fs.readFileSync(path.join(webSrc, 'components', 'WorkspacePanel.tsx'), 'utf-8');
+    const i18n = fs.readFileSync(path.join(webSrc, 'i18n.ts'), 'utf-8');
+
     test('files and log lines each carry a sticky heading with a count', () => {
         expect(panel).toMatch(/function SectionHeading/);
-        expect(panel).toMatch(/الملفات \(\$\{liveFiles\.length\}\)/);
-        expect(panel).toMatch(/السجل \(\$\{filtered\.length\}\)/);
+        expect(panel).toMatch(/t\(\s*'wsFilesCount'\s*,\s*\{\s*n:\s*liveFiles\.length\s*\}\s*\)/);
+        expect(panel).toMatch(/t\(\s*'wsLogCount'\s*,\s*\{\s*n:\s*filtered\.length\s*\}\s*\)/);
         expect(panel).toMatch(/position: 'sticky'/);
+    });
+
+    test('every locale keeps the count in the heading it translates', () => {
+        for (const key of ['wsFilesCount', 'wsLogCount']) {
+            const spellings = [...i18n.matchAll(new RegExp(`${key}:\\s*'([^']*)'`, 'g'))].map(m => m[1]);
+            // one per locale — a heading that exists in only one language is a
+            // heading that renders as its own key for everyone else.
+            expect(spellings.length).toBeGreaterThanOrEqual(2);
+            for (const spelling of spellings) expect(spelling).toContain('{{n}}');
+        }
     });
 });
 
