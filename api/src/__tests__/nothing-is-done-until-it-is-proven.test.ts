@@ -28,6 +28,7 @@ const REACT = fs.readFileSync(
 
 const BRIEF = 'أنشئ لوحة حجوزات عربية RTL لورشة تصوير. المطلوب: لوحة مؤشرات، ستة حجوزات، بحث،'
     + ' مرشح حالة، إضافة حجز، حالات فراغ، تصدير محلي، README عربي، بناء إنتاج، ومعاينة عبر المتصفح.';
+const SHAPE_BRIEF = 'Build an app with a counter, button, title, and status message.';
 
 describe('the criteria come from HIS brief, never from a fixed checklist', () => {
     it('a wide brief yields every thing it asked for', () => {
@@ -56,6 +57,21 @@ describe('the criteria come from HIS brief, never from a fixed checklist', () =>
     it('nothing is invented: a criterion he never mentioned is never judged', () => {
         expect(acceptanceFor('ابنِ صفحة هبوط بسيطة').map(c => c.id)).not.toContain('search');
     });
+
+    it('reads exactly the four general UI shapes named by the request', () => {
+        expect(acceptanceFor(SHAPE_BRIEF).map(c => c.id).sort()).toEqual([
+            'button', 'counter', 'status_message', 'title',
+        ].sort());
+    });
+
+    it('does not invent a record-add criterion from Create alone', () => {
+        expect(acceptanceFor('Create a polished product landing page').map(c => c.id))
+            .not.toContain('add_row');
+        expect(acceptanceFor('Create a new customer record').map(c => c.id))
+            .toContain('add_row');
+        expect(acceptanceFor('ابن لي موقع لمطعمي فيه قائمة الطعام والأسعار').map(c => c.id))
+            .not.toContain('list');
+    });
 });
 
 describe('a criterion is met by EVIDENCE, or it is not met', () => {
@@ -65,6 +81,9 @@ describe('a criterion is met by EVIDENCE, or it is not met', () => {
         fs.mkdirSync(path.join(tmp, 'src'), { recursive: true });
         fs.writeFileSync(path.join(tmp, 'src', 'App.jsx'),
             `export default function App(){ return <div dir="rtl">
+              <h1>لوحة الحجوزات</h1>
+              <span data-count="6">6</span>
+              <p role="status" aria-live="polite">تم الحفظ</p>
               <input type="search" />
               <select><option>الحالة</option></select>
               <form onSubmit={save}><button>إضافة</button></form>
@@ -79,6 +98,17 @@ describe('a criterion is met by EVIDENCE, or it is not met', () => {
         for (const id of ['search', 'filter', 'add_row', 'export', 'empty_state', 'rtl']) {
             expect(by(id).verdict).toBe('met');
         }
+    });
+
+    it('counts each named UI shape independently from the generated source', () => {
+        const a = judgeAcceptance(acceptanceFor(SHAPE_BRIEF), { dir: tmp }, true);
+        const by = (id: string) => a.criteria.find(c => c.id === id)!;
+        for (const id of ['counter', 'button', 'title', 'status_message']) {
+            expect(by(id).verdict).toBe('met');
+            expect(by(id).why).toContain('مصدر المشروع');
+        }
+        expect(a.met).toBe(4);
+        expect(a.unmet).toBe(0);
     });
 
     it('a build that did not happen is unmet — the flag comes from a real process', () => {

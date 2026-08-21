@@ -79,8 +79,32 @@ const CATALOGUE: Array<Criterion & { asked: RegExp }> = [
         markers: [/status/i, /الحالة/u, /<select/i],
     },
     {
+        id: 'counter', kind: 'feature',
+        asked: /(عداد|العدد|إجمالي|المجموع|\bcounter\b|\bcount\b|\btotal\b|\bbadge\b)/iu,
+        ar: 'عداد أو إجمالي', en: 'a counter or total',
+        markers: [/\b(?:count|total|itemCount|rowCount)\b/i, /عداد|إجمالي|المجموع/u, /aria-live/i, /data-(?:count|total)=/i],
+    },
+    {
+        id: 'button', kind: 'feature',
+        asked: /(زر|أزرار|\bbutton\b|\bcta\b|call[- ]?to[- ]?action)/iu,
+        ar: 'زر تفاعلي', en: 'an interactive button',
+        markers: [/<button\b/i, /role=["']button["']/i, /onClick/i],
+    },
+    {
+        id: 'title', kind: 'feature',
+        asked: /(عنوان|العنوان|\btitle\b|\bheading\b|\bheadline\b)/iu,
+        ar: 'عنوان أو رأس صفحة', en: 'a title or heading',
+        markers: [/<h[1-6]\b/i, /<title\b/i, /\bheading\b/i],
+    },
+    {
+        id: 'status_message', kind: 'feature',
+        asked: /(رسالة\s*(?:حالة|نجاح|خطأ)|حالة\s*(?:نجاح|خطأ)|status\s*message|success\s*message|error\s*message|\btoast\b)/iu,
+        ar: 'رسالة حالة أو نتيجة', en: 'a status or result message',
+        markers: [/aria-live/i, /role=["']status["']/i, /(?:status|success|error)Message/i, /نجاح|خطأ|تم/u],
+    },
+    {
         id: 'add_row', kind: 'feature',
-        asked: /(إضافة|اضافة|أضف|\badd\b|\bcreate\b)\s*(حجز|صف|عنصر|سجل|row|record|entry|item|booking)?/iu,
+        asked: /(?:إضافة|اضافة|أضف|\badd\b|\bcreate\b)\s+(?:(?:a|an|the)\s+)?(?:new\s+)?(?:حجز|صف|عنصر|سجل|بيان|مهمة|مشروع|عميل|جهة|منتج|طلب|تذكرة|ملاحظة|row|record|entry|item|booking|task|project|customer|contact|product|order|ticket|note)(?:\s+(?:record|entry|item))?/iu,
         ar: 'إضافة سجلّ جديد', en: 'adding a new record',
         markers: [/<form/i, /onSubmit/i, /\bcreate\b/i, /إضافة/u],
     },
