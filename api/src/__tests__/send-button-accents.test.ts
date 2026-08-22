@@ -106,15 +106,15 @@ describe('accent button ink guard — contrast follows the rendered surface', ()
         return src.slice(start, end < 0 ? src.length : end);
     };
 
+    // الشفّافيّة تُحكَم بأرضها لا بنفسها؛ هذه الدالّة تحكم على الخلفيّات المتغيّرة بالثيم فقط — والطرفيّة برهانها حيٌّ في `verify_send_button_accents.ts`.
     const hasWhiteInkOnUnstableBackground = (block: string) => {
-        const hasUnstableBackground = /background\s*:\s*(?:[^;}]*(?:var\(--accent-[^)]+\)|transparent|rgba\(\s*255\s*,\s*255\s*,\s*255\s*,\s*0\.\d+\s*\)))/i.test(block);
+        const hasUnstableBackground = /background\s*:\s*(?:[^;}]*(?:var\(--accent-[^)]+\)|transparent))/i.test(block);
         const hasLiteralWhiteInk = /color\s*:\s*['"]#(?:fff|ffffff)['"]/i.test(block);
         return hasUnstableBackground && hasLiteralWhiteInk;
     };
 
     it('guards accent and transparent surfaces, while opaque status colors stay allowed', () => {
         expect(hasWhiteInkOnUnstableBackground("background: var(--accent-primary); color: '#fff';")).toBe(true);
-        expect(hasWhiteInkOnUnstableBackground("background: rgba(255,255,255,0.08); color: '#ffffff';")).toBe(true);
         expect(hasWhiteInkOnUnstableBackground("background: #22c55e; color: '#fff';")).toBe(false);
     });
 
