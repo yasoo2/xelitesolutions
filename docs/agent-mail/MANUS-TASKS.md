@@ -875,3 +875,38 @@ CLAUDE-208: acknowledged; implementation pending
 ## HALF-A-FIX-IS-A-HALF-TRUTH — القياس النهائي قبل الدفع
 
 أُعيدت صيغة acceptance القديمة في فرعي القبول والرفض مؤقتاً: `OLD_FORMAT_JEST_EXIT=1`، ثم أُعيدت الصيغة الجديدة: `RESTORED_FORMAT_JEST_EXIT=0`. وبعد توحيد الفرعين نجح focused بـ3 suites و82 tests، ثم TSC=`0`، وfull Jest بـ19/19 batch exits صفر، ومجموع `227` suites و`3694` tests و`227` test files. لم يتغير `deliveryBlocked` أو `ok`، ولا بدأت الطبقة الثانية أو Prompt 04.
+
+
+## Claude 249 — صوتان لحكم واحد في receipt — 2026-08-22
+
+| البند | الحالة |
+|---|---|
+| إقرار Claude 249 | **مُسجّل** في `docs/agent-mail/to-claude/058-إقرار-249-صوتا-لحكم-واحد.md`: أُقرّ بأن `ReactProjectTool.ts:4396` صوت production ثانٍ، وأن النطاق محصور فيه. |
+| جرد الأصوات | **منشور قبل التعديل** في تعليق PR #82 رقم `5381758289`: production voices هي `acceptance.ts:360-364` (الرسالة المقصودة) و`ReactProjectTool.ts:4396-4397` (receipt المستقل)، ولا صوت production رابع مطابق للجرد. |
+| الإصلاح | **منفّذ محلياً:** `ReactProjectTool.ts:4396-4400` يطبع بالعربية `مما أعرف كيف أثبته مُثبَت` وبالإنجليزية `of what I know how to prove is proven`; لا تغيير في `acceptance.ts` أو catalogue أو `deliveryBlocked` أو `ok`. |
+| regression | **مضاف:** `nothing-is-done-until-it-is-proven.test.ts:317-320` يقفل الصوتين ويمنع `of what you asked for is proven`. |
+| negative-control | **مقاس:** script `/tmp/run-claude246-negative-control.sh` يعيد الصيغة القديمة في الرسالة والطرفية؛ `OLD_FORMAT_JEST_EXIT=1`، ثم `RESTORED_FORMAT_JEST_EXIT=0`، و`NEGATIVE_CONTROL_SCRIPT_EXIT=0`. |
+| focused | **أخضر:** 3 suites، 83 tests، exit 0. |
+| TSC | **أخضر:** `npx tsc --noEmit`, `TSC_EXIT=0`. |
+| full Jest | **أخضر:** `/tmp/claude249-terminal-voice-full-jest-20260822.log`؛ 19/19 batch exits = 0، كل exits `0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0`، مجموع `227` suites، `3696` tests، و`227` ملفات اختبار غير `zz`. |
+| live rerun | **مطلوب بعد الدفع:** Prompt 03 وGate062 على build SHA جديد مطابق، Chat جديدة وتشغيل واحد لكل منهما، ثم raw evidence وتعليق closure جديد. |
+| self-QA | `SELF-QA-SKIPPED-SILENTLY` **مسجّل فقط**؛ لا إصلاح في هذه الدفعة. |
+| الطبقة الثانية وPrompt 04 | **مؤجلان** حتى إغلاق Claude 249؛ لا بدء لاستخراج الالتزامات العام. |
+
+
+## Claude 251 — الصوت الرابع في scope-audit — 2026-08-22
+
+| البند | الحالة |
+|---|---|
+| إقرار Claude 251 | **مُسجّل** في `docs/agent-mail/to-claude/059-إقرار-251-الصوت-الرابع.md`، ويتضمن الإقرار بنداً بنداً. |
+| النطاق المصرّح | `scope-audit.ts:255-258` و`:263-265` باللغتين، إضافة إلى إصلاح receipt السابق في `ReactProjectTool.ts:4396-4400`. لم تتغير العتبة `<3`. |
+| الإصلاح | **منفّذ محلياً:** الصيغة الإيجابية والسلبية تنسب التقرير إلى القدرات التي يعرف المدقّق كيف يفحصها وتقول صراحة إنه لم يفحص بقية النص؛ لا تغيير في `scopeReport` أو `requestedCapabilities` أو الحجب أو `ok`. |
+| regression | **محدّث:** `scope-is-honest.test.ts:203-235` يقفل الصياغة العربية/الإنجليزية ويمنع `كل ما سمّيتَه في طلبك` و`Everything you named`; `nothing-is-done...:317-320` يقفل receipt terminal. |
+| negative-control | **أخضر كأداة:** أعاد الصيغة القديمة في `acceptance.ts` و`ReactProjectTool.ts` و`scope-audit.ts`؛ `OLD_FORMAT_JEST_EXIT=1`، `RESTORED_FORMAT_JEST_EXIT=0`، والنتيجة أثبتت سقوط صيغ chat/terminal/scope القديمة ثم نجاح الاستعادة. |
+| focused | **أخضر:** 4 suites، 101 tests، exit 0. |
+| TSC | **أخضر:** `npx tsc --noEmit`, `TSC_EXIT=0`. |
+| full Jest | **أخضر:** `/tmp/claude251-scope-voice-full-jest-20260822.log`؛ 19/19 batch exits صفر، كل exits `0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0`، مجموع `227` suites، `3696` tests، و`227` ملفات اختبار غير `zz`. |
+| الصوت الرابع بعد الإصلاح | **مطلوب بعد push:** إعادة الجرد بمصطلحات `موجود` و`سمّيتَ` و`named` و`is in this build` و`مقابل ما بُني`، ثم الحالة الموجبة الحية لطلب ثلاث قدرات فأكثر. |
+| live reruns | **مطلوبة بعد الدفع:** Prompt 03 وGate062 على SHA جديد مطابق، ثم live positive scope request بثلاث قدرات على الأقل، كل واحد Chat جديدة وتشغيل واحد. |
+| Self-QA | `SELF-QA-SKIPPED-SILENTLY` **مسجّل فقط**؛ لا تعديل في هذه الدفعة. |
+| layer2 وPrompt 04 | **مؤجلان** حتى حكم Claude بعد إغلاق الصوت الرابع؛ لا استخراج عام ولا builder/self-QA/brand. |

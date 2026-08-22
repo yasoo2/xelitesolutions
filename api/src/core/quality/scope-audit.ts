@@ -256,13 +256,13 @@ export function formatScope(r: ScopeReport, isAr: boolean): string {
     const name = (c: Capability) => (isAr ? c.ar : c.en);
     if (!r.missing.length) {
         return isAr
-            ? `📋 كل ما سمّيتَه في طلبك (${r.requested.length}) موجود في هذا البناء.\n`
-            : `📋 Everything you named (${r.requested.length}) is in this build.\n`;
+            ? `📋 القدرات التي أعرف كيف أتحقق منها وسمّيتَها (${r.requested.length}) موجودة في هذا البناء — ولم أفحص بقية نص طلبك.\n`
+            : `📋 The capabilities I know how to check and you named (${r.requested.length}) are in this build — I did not inspect the rest of your request.\n`;
     }
     const lines: string[] = [];
     lines.push(isAr
-        ? `📋 ما طلبتَه مقابل ما بُني — سمّيتَ ${r.requested.length} قدرة:`
-        : `📋 What you asked for vs what was built — you named ${r.requested.length} capabilities:`);
+        ? `📋 القدرات التي أعرف كيف أتحقق منها وسمّيتَها — ${r.requested.length} في التقرير؛ ولم أفحص بقية نص طلبك:`
+        : `📋 The capabilities I know how to check and you named — ${r.requested.length} in this report; I did not inspect the rest of your request:`);
     if (r.built.length) {
         lines.push(isAr
             ? `   ✅ بُنيت ${r.built.length}: ${r.built.map(name).join(' · ')}`

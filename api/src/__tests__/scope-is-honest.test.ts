@@ -208,12 +208,14 @@ describe('and the message says it plainly', () => {
             missing: CAPABILITIES.filter(c => ['payments', 'shipping', 'loyalty'].includes(c.id)),
         };
         const ar = formatScope(r, true);
-        expect(ar).toMatch(/ما طلبتَه مقابل ما بُني — سمّيتَ 4 قدرة/);
+        expect(ar).toMatch(/القدرات التي أعرف كيف أتحقق منها وسمّيتَها — 4 في التقرير؛ ولم أفحص بقية نص طلبك/);
+        expect(ar).not.toContain('كل ما سمّيتَه في طلبك');
         expect(ar).toMatch(/✅ بُنيت 1: كتالوج المنتجات/);
         expect(ar).toMatch(/❌ لم تُبنَ 3: المدفوعات · الشحن · برنامج الولاء/);
         expect(ar).toMatch(/قل «ابنِ المدفوعات»/);
         const en = formatScope(r, false);
-        expect(en).toMatch(/What you asked for vs what was built — you named 4 capabilities/);
+        expect(en).toMatch(/The capabilities I know how to check and you named — 4 in this report; I did not inspect the rest of your request/);
+        expect(en).not.toContain('Everything you named');
         expect(en).toMatch(/❌ Not built \(3\): payments · shipping · loyalty program/);
         expect(en).toMatch(/Say "build payments"/);
     });
@@ -221,8 +223,12 @@ describe('and the message says it plainly', () => {
     it('and says so in one line when nothing is missing', () => {
         const all = CAPABILITIES.filter(c => ['catalog', 'orders', 'accounts'].includes(c.id));
         const r = { requested: all, built: all, missing: [] };
-        expect(formatScope(r, true)).toMatch(/كل ما سمّيتَه في طلبك \(3\) موجود/);
-        expect(formatScope(r, false)).toMatch(/Everything you named \(3\) is in this build/);
+        const ar = formatScope(r, true);
+        expect(ar).toMatch(/القدرات التي أعرف كيف أتحقق منها وسمّيتَها \(3\) موجودة في هذا البناء — ولم أفحص بقية نص طلبك/);
+        expect(ar).not.toContain('كل ما سمّيتَه في طلبك');
+        const en = formatScope(r, false);
+        expect(en).toMatch(/The capabilities I know how to check and you named \(3\) are in this build — I did not inspect the rest of your request/);
+        expect(en).not.toContain('Everything you named');
     });
 
     it('and the builder puts it in the message, above the file list', () => {

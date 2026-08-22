@@ -4393,8 +4393,11 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             audit: audit || null,
         }, isAr);
         if (acceptance.criteria.length) {
-            term(`acceptance: ${acceptance.met}/${acceptance.criteria.length} of what you asked for is proven`
-                + (acceptance.unmet ? ` — unmet: ${acceptance.criteria.filter((c: any) => c.verdict === 'unmet').map((c: any) => c.id).join(', ')}` : ''));
+            term(isAr
+                ? `acceptance: ${acceptance.met}/${acceptance.criteria.length} مما أعرف كيف أثبته مُثبَت`
+                    + (acceptance.unmet ? ` — unmet: ${acceptance.criteria.filter((c: any) => c.verdict === 'unmet').map((c: any) => c.id).join(', ')}` : '')
+                : `acceptance: ${acceptance.met}/${acceptance.criteria.length} of what I know how to prove is proven`
+                    + (acceptance.unmet ? ` — unmet: ${acceptance.criteria.filter((c: any) => c.verdict === 'unmet').map((c: any) => c.id).join(', ')}` : ''));
         }
         const acceptBlock = acceptance.criteria.length ? `${acceptanceBlock(acceptance, isAr)}\n` : '';
         const acceptanceBlocked = acceptance.criteria.length > 0 && !acceptance.accepted;

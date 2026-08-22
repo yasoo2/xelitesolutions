@@ -314,6 +314,12 @@ describe('the ledger is published, in his language', () => {
         expect(block).not.toContain('0 of 3 proven');
     });
 
+    it('the terminal receipt uses the same bounded judge vocabulary in both languages', () => {
+        expect(REACT).toContain('acceptance: ${acceptance.met}/${acceptance.criteria.length} مما أعرف كيف أثبته مُثبَت');
+        expect(REACT).toContain('acceptance: ${acceptance.met}/${acceptance.criteria.length} of what I know how to prove is proven');
+        expect(REACT).not.toContain('of what you asked for is proven');
+    });
+
     it('a complete catalogue subset declares its boundary instead of claiming the whole request', () => {
         const prompt03 = 'اصنع صفحة فيها قائمة بأسماء ثلاث مدن، وعنوان في أعلاها.';
         const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-partial-ar-'));
