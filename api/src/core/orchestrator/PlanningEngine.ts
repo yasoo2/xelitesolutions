@@ -188,7 +188,26 @@ export class PlanningEngine {
             // analysis → security → API-test workflows as project builds.
             || /(?:^|[\s،:؛])(?:ابن|ابني|انشئ|أنشئ|اصنع|صمم|طور|اعمل|اصمم|سو|برمج|شيّ?د|أقم|اقم)(?=$|[\s،:؛])/.test(bare)
             || /(^|\s)بنِ?\s/.test(g)
-            || /(?:^|[\s،:؛])بن(?=$|[\s،:؛])/.test(bare);
+            || /(?:^|[\s،:؛])بن(?=$|[\s،:؛])/.test(bare)
+            /**
+             * PEOPLE ASK. THEY DO NOT ISSUE COMMANDS.
+             *
+             * Every verb above is an imperative — ابنِ, اصنع, اعمل, صمّم, build,
+             * create. Measured: «اعمل لي صفحة فيها جدول» → true, and the same
+             * request phrased the way its owner actually typed it,
+             * «بدي صفحة أسجل فيها كل قطعة …», → FALSE. So did «I want a page
+             * where I record every part».
+             *
+             * A build gate that only hears orders does not hear its user. And
+             * because `buildRequest` guards several other routes, one missing
+             * dialect let an undo fast-path swallow a whole construction brief.
+             *
+             * Desire is admitted, but not loosely: the wish has to reach a build
+             * noun within two words, so «بدي أعرف شيئاً عن الموقع» stays a
+             * question and «بدي صفحة» becomes a build.
+             */
+            || /(?:^|[\s،:؛])(?:بدي|بدى|ودي|ابغي|ابغى|اريد|عايز|عاوز|محتاج|نبي)(?:\s+\S+){0,2}\s+\S*(?:موقع|صفح|تطبيق|متجر|نظام|منص|لوح|واجه|اداه|برنامج|بوابه|خدمه|جدول|قائم)/.test(bare)
+            || /\b(?:i\s+(?:want|need)|can\s+you\s+(?:make|build|create)|could\s+you\s+(?:make|build|create)|please\s+(?:make|build|create))\b(?:\s+\S+){0,3}\s+(?:a|an|the|my)?\s*\S*(?:site|website|page|app|application|system|dashboard|panel|store|shop|portal|tool|tracker|table|list)/i.test(g);
         const noun = /\b(platform|marketplace|storefront|e-?commerce|site|website|page|app|application|software|system|dashboard|panel|console|admin|store|shop|portal|api|backend|tool|service|saas|crm|erp|pos|blog|editor|tracker|game)\b/i.test(g)
             || /(موقع|صفحة|تطبيق|متجر|نظام|منصّ?ة|لوحة|واجهة|أداة|اداة|برنامج|بوابة|خدمة)/.test(bare);
         return verb && noun;
@@ -1371,7 +1390,28 @@ Rules:
          * own now, taken before every edit and every self-repair.
          */
         {
-            const undoVerb = /(تراجع|ارجع|أرجع|رجّع|استرجع|\bundo\b|\brollback\b|\brevert\b)/i.test(probe);
+            /**
+             * «أرجع» IS «I COME BACK». IT IS ALSO «REVERT». ONE WORD, TWO ACTS.
+             *
+             * Measured on the owner's machine, from a request he typed himself:
+             *
+             *     «… لما أسكر الصفحة وأرجع أفتحها …»   (when I close the page and come back to open it)
+             *
+             * A bare match on «أرجع» read that as an instruction to roll the
+             * active project back. The whole 308-character brief — five fields,
+             * persistence, search, two totals, a colour rule — was replaced by a
+             * single `project_undo` step, and nothing was ever built. The
+             * contract names this class by name and says what to do about it:
+             * «أيّ مطابقةٍ على اسمٍ مجرّدٍ من هذه ستعطي معياراً خاطئاً. اشترط سياقاً.»
+             *
+             * So the ambiguous verbs now need an object that only an undo has:
+             * a version, a release, an edit, a change, «الوراء». The verbs that
+             * mean nothing else — «تراجع», «استرجع», undo, rollback, revert —
+             * still stand alone, because they are not ambiguous.
+             */
+            const undoAlone = /(تراجع|استرجع|\bundo\b|\brollback\b|\brevert\b)/i.test(probe);
+            const undoWithObject = /(ارجع|أرجع|رجّع|رجع)\s+(?:\S+\s+){0,2}?\S*(نسخ|اصدار|إصدار|تعديل|تغيير|وراء|خلف|سابق)/i.test(probe);
+            const undoVerb = undoAlone || undoWithObject;
             const listVerb = /(اعرض|أظهر|اظهر|ما\s*هي)\s*(النسخ|الإصدارات|الاصدارات)|\bversions?\b|version\s*history/i.test(probe);
             const sessionKey = String(context?.sessionId || 'default').replace(/[^a-zA-Z0-9._-]/g, '_');
             const active = ((global as any).joeProjects || {})[sessionKey];
