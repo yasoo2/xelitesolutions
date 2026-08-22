@@ -8,6 +8,8 @@
  * Run:  JWT_SECRET=x npx tsx src/tests/manual/verify_bidi.ts
  */
 import fs from 'fs';
+import os from 'os';
+import path from 'path';
 
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'x';
 process.env.NODE_ENV = process.env.NODE_ENV || 'development';
@@ -19,7 +21,8 @@ const check = (name: string, ok: boolean, detail = '') => {
     if (ok) { pass++; console.log(`  ✅ ${name}`); }
     else { fail++; console.error(`  ❌ ${name}${detail ? ` — ${detail}` : ''}`); }
 };
-const SHOTS = '/tmp/claude-0/-home-user-xelitesolutions/8962b13f-0dd0-5c41-a133-41e7fbb8d1d2/scratchpad';
+const SHOTS = process.env.SHOTS_DIR || path.join(os.tmpdir(), 'joe-shots');
+fs.mkdirSync(SHOTS, { recursive: true });
 
 const MIXED_AR = 'مرحباً يا Younes، لقد قمت بتحليل الصورة التي رفعتها عبر أداة moondream المحلية بنجاح.';
 const MIXED_EN = 'Hello! I analyzed لقطة الشاشة and the layout looks fine.';
@@ -44,7 +47,8 @@ async function main() {
     const token = jwt.sign({ sub: 'bidi', role: 'OWNER', email: 'y@example.com', name: 'Younes', exp: Math.floor(Date.now() / 1000) + 3600 }, 'x');
 
     const { chromium } = require('playwright-core');
-    const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+    const exe = process.env.BROWSER_EXECUTABLE_PATH || '/opt/pw-browsers/chromium';
+    const browser = await chromium.launch(fs.existsSync(exe) ? { executablePath: exe } : {});
     const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
     await ctx.addInitScript(`try { localStorage.setItem('token', ${JSON.stringify(token)}); localStorage.setItem('joe-theme', 'dark'); } catch (e) {}`);
     const page = await ctx.newPage();

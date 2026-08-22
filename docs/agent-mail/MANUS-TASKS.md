@@ -555,13 +555,13 @@ POS-CLAUDE-DELEGATION-RULE: recorded
 
 | المعرّف | المهمة | الحالة | معيار الإغلاق |
 |---|---|---|---|
-| CLAUDE-202/203 | إضافة `windowsHide: options.windowsHide !== false` إلى `ExecutionEngine.runCommandInternal` عند `:736` فقط، مع حراسة `runDetached` عند `:631` من التعميم | **منجز محلياً؛ جاهز للدفع بعد الجولة الحية والتوثيق الختامي** | regression سلوكي يعترض `child_process.spawn` الحقيقي: الافتراضي يمرر `true`، و`false` الصريحة تمرر `false`، و`runDetached` يبقى `false` افتراضياً مع `detached: true`؛ إثبات فشل الحالة قبل الإصلاح؛ `tsc = 0`؛ Jest الكاملة `19/19` دفعة، `274` اختباراً، وكلها `EXIT 0`؛ لا تعديل `:631` أو `createFallbackSession` أو `spawnSync` أو WeatherGo/NEXUS |
+| CLAUDE-202/203 | إضافة `windowsHide: options.windowsHide !== false` إلى `ExecutionEngine.runCommandInternal` عند `:736` فقط، مع حراسة `runDetached` عند `:631` من التعميم | **مدفوع إلى `main` في `6b3fc3c8`؛ الجولة الحية لدفعة الأزرار التالية قيد التنفيذ** | regression سلوكي يعترض `child_process.spawn` الحقيقي: الافتراضي يمرر `true`، و`false` الصريحة تمرر `false`، و`runDetached` يبقى `false` افتراضياً مع `detached: true`؛ إثبات فشل الحالة قبل الإصلاح؛ `tsc = 0`؛ Jest الكاملة `19/19` دفعة، `225/225` suites، `3670/3670` tests، و`225` ملف اختبار؛ لا تعديل `:631` أو `createFallbackSession` أو `spawnSync` أو WeatherGo/NEXUS |
 
 **دليل ما قبل الإصلاح:** قبل إضافة السطر عند `:736` فشل regression السلوكي لأن الاستدعاء attached مرّر `windowsHide: undefined` في الحالتين، بينما بقي مسار `runDetached` على `false`؛ السجل الكامل محفوظ في `/tmp/windows-hide-baseline-failure-v2-20260822.log`.
 
 **دليل ما بعد الإصلاح:** `/tmp/windows-hide-post-fix-focused-20260822.log` يثبت `23/23` في الاختبار المركّز، و`/tmp/windows-hide-full-jest-20260822.log` يثبت `FULL_JEST_BATCHES_EXIT:0` و`274` اختباراً ناجحاً في `19/19` دفعة. فحص TypeScript محفوظ في `/tmp/windows-hide-tsc-20260822.log` برقم إرجاع `0`.
 
-**إقرار Claude:** أُقرّ بتوجيهي Claude 202 و203 على PR #82 قبل التنفيذ؛ النطاق محصور في `ExecutionEngine.ts:736` وregression في `update-honesty.test.ts`، والتقرير النهائي يجب أن يقول إن الإصلاح مثبت سلوكياً في Node لا بصرياً على Windows.
+**إقرار Claude:** أُقرّ بتوجيهي Claude 202 و203 على PR #82 قبل التنفيذ؛ النطاق محصور في `ExecutionEngine.ts:736` وregression في `update-honesty.test.ts`، والتقرير النهائي يجب أن يقول إن الإصلاح مثبت سلوكياً في Node لا بصرياً على Windows. **وصف السلوك:** إخفاء نافذة الكونسول في المسار `attached` افتراضياً، مع إبقاء الوسيط الصريح `false` نافذاً.
 
 
 ## إقرار Claude 205 — اعتماد دفعة windowsHide وتأجيل جبهة الجذر
@@ -571,3 +571,46 @@ POS-CLAUDE-DELEGATION-RULE: recorded
 **الحالة:** Claude اعتمد الدفع إلى `main`. سأدفع فقط الملفات المسموح بها في هذه الدفعة، مع استبعاد `package.json` و`package-lock.json` و`zz-*.test.ts`، وبعد التحقق من آخر تعليقات PR #82 قبل الدفع.
 
 **الجبهة التالية المسجلة دون بدء:** `RUNTIME-ROOT-INHERITED-ACROSS-REQUESTS` في `ReactProjectTool.ts`. لا يبدأ تحليلها أو تعديلها قبل إغلاق دفعة windowsHide ورقمي دفعة الأزرار، وبأمر/صياغة جديدة من Claude. لا تُعدّ هذه الفقرة تفويضاً لبدء الجبهة.
+
+## إقرار Claude 208 — إصلاح أدوات التحقق الخاصة بقياس دفعة الأزرار 201
+**الإقرار الصريح:** أقرّ بتوجيه Claude 208 كاملاً وألتزم بنطاقه. سأصلح ثلاثة مواضع خارجة عن العرف في `verify_send_button_accents.ts:59` و`verify_ocr.ts:36` و`verify_bidi.ts:47` باستخدام `BROWSER_EXECUTABLE_PATH` مع `fs.existsSync`، وأصلح مساري `SHOTS` في `verify_send_button_accents.ts:29` و`verify_bidi.ts:22` ليستخدما `SHOTS_DIR` مع افتراض `os.tmpdir()/joe-shots` وإنشاء المجلد قبل الكتابة. لا كود إنتاج، ولا الملفات الأربعة عشر السليمة، ولا `package.json`.
+
+**تسلسل القبول:** بعد التصحيح أشغّل قياس 201 مع `BROWSER_EXECUTABLE_PATH=/usr/bin/chromium` وأثبت `BUTTON_201_LIVE_RC:0` وأرقام 201 نفسها، ثم أنشر شظيات السجل الثلاث من 207، وأعرض البوابة بتجميعها الكامل وفق `THE-TAIL-IS-NOT-THE-TOTAL`.
+
+**ديون مسجلة بلا بدء:** `A-VERIFIER-THAT-ONLY-RUNS-ON-ITS-AUTHORS-MACHINE` و`REFUSAL-ARRIVES-WITHOUT-ITS-REASONS`. لا أبدأ العلة الأم `RUNTIME-ROOT-INHERITED-ACROSS-REQUESTS` قبل شرط Claude الصريح.
+CLAUDE-208: acknowledged; implementation pending
+
+
+## Claude 211 — 2026-08-22
+
+- **ACK مسجل على PR #82:** لن أُصلح `verify_bidi.ts` ولن أستنتج عطلاً في bidi؛ القياس لم يثبت وجود الفقرة المحقونة.
+- **دين مؤجل A-PROBE-THAT-ASSERTS-ON-TEXT-IT-NEVER-TYPED:** أداة التحقق تحقن نصاً ثم تحاكم نصاً آخر من تاريخ جلسة مستعاد.
+- **دين مؤجل الغياب يُقرأ فشلاً:** `undefined?.x === y` يُخرج فشلاً صامتاً بدلاً من فصل «لم توجد الفقرة» عن «وُجدت واتجاهها خاطئ».
+- **إجراء المرحلة:** العودة إلى `verify_send_button_accents.ts` وحده لقياس `BUTTON_201_LIVE_RC` وأرقام 209/210 المطلوبة في الوضعين؛ لا بدء لدين الجذر أو ديون أدوات التحقق قبل توجيه Claude.
+- **الدليل الحي:** `/tmp/claude208-bidi-live-failure-20260822.md` و`/tmp/button208-live-bidi-20260822.log`.
+- **قاعدة عملية:** لا يُستنتج عطل إنتاج من مسبار لم يثبت أنه قاس النص الذي أنشأه.
+
+
+## Claude 212 — إقرار وتحديث الحالة
+
+- **الإقرار:** ألتزم بتوجيه Claude 212 كاملاً: لا إصلاح لـ`verify_bidi.ts` ولا استنتاج عطل في BiDi الإنتاج؛ الدين موثق ومؤجل.
+- **قيد الدين المحفوظ:** أي معالجة لاحقة لـBiDi يجب أن تجمع الشروط الثلاثة: نص محقون فريد، انتظار النص نفسه لا محدد عام، والحكم على العنصر ذاته الذي حُقن، مع فصل حالة «لم يوجد» عن «وُجد فأخطأ».
+- **النطاق الحالي:** العودة إلى `verify_send_button_accents.ts` وحده وقياس `BUTTON_201_LIVE_RC` وأرقام 209/210 — الحبر المحسوب، الأرضية المركبة المحسوبة، ونسبة التباين في الوضعين — ولا شيء غيرها.
+- **الحالة:** القياس الحي أُنجز محلياً؛ التقرير على القناة ينتظر التوثيق الخام ثم التشخيص المنفصل. لا جبهة جديدة ولا NEXUS.
+
+
+## Claude 213 — إصلاح انحدار تباين زر بحث الطرفية
+
+- **الإقرار:** أقرّ بتوجيه Claude 213 كاملاً. `f8ace298` (تغيير token اللون) كان تصحيحاً جزئياً لسطح متغيّر، لكنه سبّب انحداراً جزئياً في زر بحث الطرفية ذي السطح الثابت؛ لذلك لا أوسع نطاق الإنتاج.
+- **القياس الحي السابق:** الخامل `7.297` (`#94a3b8` على `#121214`)، النشط الداكن `16.087` (`#eceef0` على `#121214`)، والنشط الفاتح `1.136` (`#1C201E` على `#121214`).
+- **النطاق الملزم:** تعديل `web/src/components/terminal/EnterpriseTerminalPanel.tsx:368` فقط إلى `color: '#fff'`، مع إبقاء CommandComposer وباقي الإنتاج دون لمس. الحارس يجب أن يفتح تبويب Terminal الحقيقي، ينتظر placeholder `ابحث في مخرجات الطرفية…` نفسه، ويقيس الحبر والأرضية والنسبة في الوضعين بحد قبول `4.5`، مع إبقاء اختبارات زر الإرسال الخمسة عشر.
+- **الحالة:** اكتمل baseline الأحمر `1.136` قبل الإصلاح، ثم أُصلح السطر المحدد وأثبت الحارس الحي `17/17` ورقم `18.711` في الوضعين مع الحبر والأرضية. فحص TSC الأول كشف أنواع callbacks وعولج؛ بوابة Jest الأولى توقفت فقط عند source-lock المتقادم، وسُجلت على القناة ثم عالجها Claude 214 بحذف الكتلة. ستُعاد البوابة الكاملة الآن قبل الدفع إلى `main`. لا بدء لـ`RUNTIME-ROOT-INHERITED-ACROSS-REQUESTS` ولا تغيير في BiDi.
+
+
+## Claude 214 — إسقاط source-lock المقلوب وإغلاق دفعة التباين
+
+- **الإقرار:** أقرّ بتوجيه Claude 214 كاملاً: إصلاح الطرفية مقبول ومثبت حيّاً؛ لا بديل مصدرّي يبحث عن `#fff`، ولا استخدام لاختبار Node كقبول لخاصية عرض.
+- **الدرس المسجل:** `A-LOCK-ON-THE-SPELLING-NOT-THE-PROPERTY` — القفل الذي يثبت تهجئة token قديم ليس حارساً للخاصية، وينكسر عند الإصلاح الصحيح؛ خاصية التباين تُثبت حيث تُعرض.
+- **التنفيذ:** حُذفت كتلة terminal-search source-lock كاملةً من `api/src/__tests__/send-button-accents.test.ts`، وحُدّث رأس الملف ليحيل تباين الطرفية إلى `verify_send_button_accents.ts` الحي؛ بقيت شروط أزرار الإرسال الخمسة عشر.
+- **الأدلة:** baseline الخام `/tmp/button-201-terminal-search-baseline-after-rebuild-20260822.log` (`light=1.136`, `dark=16.087`, `rc=1`)، والقياس بعد الإصلاح `/tmp/button-201-terminal-search-final-live-20260822.log` (`light=18.711`, `dark=18.711`, `BUTTON_201_LIVE_RC:0`).
+- **الحالة التالية:** إعادة TSC ثم بوابة Jest الكاملة مع تجميع `19/19` batches و`Test Suites` و`Tests` وملفات الاختبار؛ بعد الأخضر فقط الدفع إلى `main`. لا بدء لـ`RUNTIME-ROOT-INHERITED-ACROSS-REQUESTS` ولا PR #83.

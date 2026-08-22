@@ -365,7 +365,7 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded, sessionId
                             else { setSearchQuery(''); setSearchResults(null); searchAddonRef.current?.clearDecorations(); }
                         }}
                         className="joe-term-btn"
-                        style={{ ...ghostBtn, ...(searchOpen ? { background: 'rgba(255,255,255,0.08)', color: 'var(--joe-text-primary, #e2e8f0)' } : {}) }}
+                        style={{ ...ghostBtn, ...(searchOpen ? { background: 'rgba(255,255,255,0.08)', color: '#fff' } : {}) }}
                         title="بحث في السجل (Ctrl+F)"
                     >
                         <Search size={14} />

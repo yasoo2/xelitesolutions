@@ -33,7 +33,8 @@ async function main() {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-ocr-'));
     const shot = path.join(tmp, 'settings-screen.png');
     const { chromium } = require('playwright-core');
-    const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+    const exe = process.env.BROWSER_EXECUTABLE_PATH || '/opt/pw-browsers/chromium';
+    const browser = await chromium.launch(fs.existsSync(exe) ? { executablePath: exe } : {});
     const page = await (await browser.newContext({ viewport: { width: 900, height: 500 } })).newPage();
     await page.setContent(`
         <div style="background:#fff;color:#000;font-family:Arial;padding:40px">

@@ -14,6 +14,8 @@
  * Run:  JWT_SECRET=x npx tsx src/tests/manual/verify_send_button_accents.ts
  */
 import fs from 'fs';
+import os from 'os';
+import path from 'path';
 
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'x';
 process.env.NODE_ENV = process.env.NODE_ENV || 'development';
@@ -26,7 +28,37 @@ const check = (name: string, ok: boolean, detail = '') => {
     else { fail++; console.error(`  ❌ ${name}${detail ? ` — ${detail}` : ''}`); }
 };
 
-const SHOTS = '/tmp/claude-0/-home-user-xelitesolutions/8962b13f-0dd0-5c41-a133-41e7fbb8d1d2/scratchpad';
+const SHOTS = process.env.SHOTS_DIR || path.join(os.tmpdir(), 'joe-shots');
+fs.mkdirSync(SHOTS, { recursive: true });
+
+type Rgb = { r: number; g: number; b: number };
+
+const parseCssRgb = (css: string): Rgb | null => {
+    const match = css.match(/rgba?\(([^)]+)\)/i);
+    if (!match) return null;
+    const channels = match[1].split(',').map(part => Number.parseFloat(part.trim()));
+    if (channels.length < 3 || channels.slice(0, 3).some(channel => !Number.isFinite(channel))) return null;
+    return { r: channels[0], g: channels[1], b: channels[2] };
+};
+
+const relativeLuminance = ({ r, g, b }: Rgb) => {
+    const linear = [r, g, b].map(channel => {
+        const normalized = channel / 255;
+        return normalized <= 0.03928 ? normalized / 12.92 : ((normalized + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
+};
+
+const contrastRatio = (ink: Rgb, ground: Rgb) => {
+    const lighter = Math.max(relativeLuminance(ink), relativeLuminance(ground));
+    const darker = Math.min(relativeLuminance(ink), relativeLuminance(ground));
+    return (lighter + 0.05) / (darker + 0.05);
+};
+
+const colorHex = (color: Rgb) => `#${[color.r, color.g, color.b]
+    .map(channel => Math.round(channel).toString(16).padStart(2, '0'))
+    .join('')
+    .toUpperCase()}`;
 
 async function main() {
     const jwt = require('jsonwebtoken');
@@ -56,7 +88,7 @@ async function main() {
 
     let chromium: any;
     try { ({ chromium } = require('playwright-core')); } catch { ({ chromium } = require('playwright')); }
-    const exe = '/opt/pw-browsers/chromium';
+    const exe = process.env.BROWSER_EXECUTABLE_PATH || '/opt/pw-browsers/chromium';
     const browser = await chromium.launch(fs.existsSync(exe) ? { executablePath: exe } : {});
     const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
     // Headless Chromium reports prefers-color-scheme: light — pin the dark
@@ -84,6 +116,76 @@ async function main() {
     const shoot = async (name: string) => {
         const el = await page.$('.joe-chat-input-area');
         if (el) await el.screenshot({ path: `${SHOTS}/${name}` });
+    };
+
+    const measureTerminalSearch = async () => {
+        const raw = await page.evaluate(() => {
+            const button = document.querySelector('button[title="بحث في السجل (Ctrl+F)"]') as HTMLElement | null;
+            if (!button) return null;
+            const computed = getComputedStyle(button);
+            let ground = '';
+            // The terminal toolbar sits on a fixed #121214 header. Ignore the
+            // button's translucent hover/active wash and find that opaque
+            // rendered underlay, matching the live measurement contract.
+            for (let ancestor = button.parentElement; ancestor; ancestor = ancestor.parentElement) {
+                const background = getComputedStyle(ancestor).backgroundColor;
+                const match = background.match(/rgba?\(([^)]+)\)/i);
+                if (!match) continue;
+                const channels = match[1].split(',').map(part => Number.parseFloat(part.trim()));
+                const alpha = channels.length >= 4 ? channels[3] : 1;
+                if (channels.length >= 3 && alpha > 0.99) {
+                    ground = background;
+                    break;
+                }
+            }
+            return { ink: computed.color, ground, buttonBackground: computed.backgroundColor };
+        });
+        if (!raw) return null;
+        const ink = parseCssRgb(raw.ink);
+        const ground = parseCssRgb(raw.ground);
+        if (!ink || !ground) return null;
+        return {
+            ...raw,
+            ink,
+            ground,
+            inkCss: raw.ink,
+            groundCss: raw.ground,
+            ratio: contrastRatio(ink, ground),
+            inkHex: colorHex(ink),
+            groundHex: colorHex(ground),
+        };
+    };
+
+    const verifyTerminalSearchContrast = async (theme: 'light' | 'dark') => {
+        await page.evaluate((nextTheme: string) => localStorage.setItem('joe-theme', nextTheme), theme);
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        await page.waitForFunction((expected: string) => document.documentElement.getAttribute('data-theme') === expected, theme, { timeout: 10000 });
+        await page.waitForSelector('.joe-workspace-tab', { timeout: 10000 });
+        await page.evaluate(() => document.querySelectorAll('.dialog-overlay').forEach(d => ((d as HTMLElement).style.display = 'none')));
+
+        // Drive the actual workspace tab, rather than mounting the terminal by
+        // selector or inspecting source text.
+        const terminalTab = page.locator('.joe-workspace-tab').filter({ hasText: 'Terminal' });
+        await terminalTab.waitFor({ state: 'visible', timeout: 10000 });
+        await terminalTab.evaluate((element: HTMLElement) => element.click());
+        await page.waitForFunction(() => Array.from(document.querySelectorAll('.joe-workspace-tab.active'))
+            .some((element: Element) => /Terminal/i.test(element.textContent || '')), undefined, { timeout: 10000 });
+        const searchButton = page.locator('button[title="بحث في السجل (Ctrl+F)"]');
+        await searchButton.waitFor({ state: 'visible', timeout: 10000 });
+
+        const inactive = await measureTerminalSearch();
+        if (!inactive) throw new Error(`Could not measure inactive terminal search button in ${theme} theme`);
+        console.log(`TERMINAL_SEARCH_INACTIVE theme=${theme} ink=${inactive.inkHex} ground=${inactive.groundHex} ratio=${inactive.ratio.toFixed(3)} background=${inactive.buttonBackground}`);
+
+        await searchButton.evaluate((element: HTMLElement) => element.click());
+        // This exact placeholder proves the search surface opened; a generic
+        // input selector would allow a false positive from another control.
+        await page.waitForSelector('input[placeholder="ابحث في مخرجات الطرفية…"]', { state: 'visible', timeout: 10000 });
+        const active = await measureTerminalSearch();
+        if (!active) throw new Error(`Could not measure active terminal search button in ${theme} theme`);
+        const detail = `ink=${active.inkHex} (${active.inkCss}) ground=${active.groundHex} (${active.groundCss}) ratio=${active.ratio.toFixed(3)} threshold=4.5 background=${active.buttonBackground}`;
+        console.log(`TERMINAL_SEARCH_CONTRAST theme=${theme} ${detail}`);
+        check(`terminal search active contrast is >= 4.5 (${theme})`, active.ratio >= 4.5, detail);
     };
 
     // ── 1. Idle, dark, emerald ─────────────────────────────────────────
@@ -186,6 +288,11 @@ async function main() {
     await page.waitForTimeout(800);
     const back = await page.evaluate(() => document.documentElement.getAttribute('data-accent'));
     check('dark mode remembered ITS gold across reloads', back === 'gold', String(back));
+
+    // ── 5. Terminal search contrast: real tab, real open state, both themes ─
+    console.log('\n[5] terminal search — active contrast on the fixed #121214 toolbar');
+    await verifyTerminalSearchContrast('light');
+    await verifyTerminalSearchContrast('dark');
 
     await browser.close();
     server.close();
