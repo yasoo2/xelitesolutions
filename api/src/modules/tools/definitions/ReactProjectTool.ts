@@ -52,25 +52,33 @@ export function projectDirNameForTest(projectName: string, brand: string): strin
         : `react-${slug(brand)}`;
 }
 
+export const PROJECT_DIR_NAME_MAX_LENGTH = 80;
 let fallbackProjectDisambiguatorSequence = 0;
 
 /**
  * A greenfield project is owned by an execution, not merely by its chat
- * session. Keep the full run identity (bounded at both ends for filesystem
- * safety) and make the no-runId fallback carry both session identity and a
- * monotonic/process-time component.
+ * session. Use a short, readable part of that execution identity. The
+ * collision loop below remains the last line of defence when a caller gives
+ * us a low-entropy or repeated id.
  */
 function projectDisambiguator(runId: string, sessionKey: string): string {
-    const bounded = (value: string): string => value.length <= 96
-        ? value
-        : `${value.slice(0, 48)}-${value.slice(-47)}`;
     if (runId) {
-        const encodedRun = Buffer.from(runId, 'utf8').toString('base64url');
-        if (encodedRun) return bounded(encodedRun);
+        const body = runId.trim()
+            .replace(/^(?:run|trace|exec|execution)[-_]+/i, '')
+            .split(/[^a-zA-Z0-9]+/)
+            .filter(Boolean)
+            .join('');
+        if (body) {
+            const readable = /^\d+$/.test(body) ? body.slice(-8) : body.slice(0, 8);
+            if (readable) return readable.toLowerCase();
+        }
     }
     fallbackProjectDisambiguatorSequence += 1;
-    const encodedSession = Buffer.from(sessionKey || 'session', 'utf8').toString('base64url') || 'session';
-    return bounded(`${encodedSession}-${Date.now().toString(36)}-${fallbackProjectDisambiguatorSequence}`);
+    const sessionPart = (sessionKey || 'session')
+        .replace(/[^a-zA-Z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 16) || 'session';
+    return `${sessionPart}-${Date.now().toString(36)}-${fallbackProjectDisambiguatorSequence}`;
 }
 
 /**
@@ -2710,11 +2718,15 @@ export class ReactProjectTool extends BaseTool {
         // The session that OWNS the directory may rebuild in place.
         if (fs.existsSync(proj) && path.resolve(proj) !== activeDir) {
             const suffix = projectDisambiguator(currentPipelineRunId, sessionKey);
-            proj = path.join(root, `${dirName}-${suffix}`);
+            const boundedFolderName = (extra: string): string => {
+                const available = Math.max(8, PROJECT_DIR_NAME_MAX_LENGTH - dirName.length - 1);
+                return `${dirName}-${extra.slice(0, available)}`;
+            };
+            proj = path.join(root, boundedFolderName(suffix));
             let collisionAttempt = 0;
             while (fs.existsSync(proj) && path.resolve(proj) !== activeDir && collisionAttempt < 8) {
                 collisionAttempt += 1;
-                proj = path.join(root, `${dirName}-${suffix}-${collisionAttempt}`);
+                proj = path.join(root, boundedFolderName(`${suffix}-${collisionAttempt}`));
             }
             if (fs.existsSync(proj) && path.resolve(proj) !== activeDir) {
                 const collisionPath = path.resolve(proj);

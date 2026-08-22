@@ -10,7 +10,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
-import { ReactProjectTool } from '../modules/tools/definitions/ReactProjectTool';
+import { ReactProjectTool, PROJECT_DIR_NAME_MAX_LENGTH } from '../modules/tools/definitions/ReactProjectTool';
 import { ApiProjectTool } from '../modules/tools/definitions/ApiProjectTool';
 import { ScaffoldProjectTool } from '../modules/tools/definitions/SystemTools';
 import { workspaceService } from '../modules/services/WorkspaceService';
@@ -759,6 +759,7 @@ describe('project identity: React builds reuse only their session-owned scaffold
     it('allocates a distinct runtime root for each greenfield request in one session', async () => {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-run-root-'));
         const sessionId = 'run-root-same-session-t';
+        fs.mkdirSync(path.join(root, 'react-gate062'), { recursive: true });
         try {
             const first: any = await new ReactProjectTool().execute(
                 { request: 'Build a small React app called Gate062', root, projectName: 'Gate062', skipInstall: true },
@@ -773,6 +774,10 @@ describe('project identity: React builds reuse only their session-owned scaffold
             expect(path.resolve(first.output.path)).not.toBe(path.resolve(second.output.path));
             expect(path.resolve(first.output.path).startsWith(path.resolve(root) + path.sep)).toBe(true);
             expect(path.resolve(second.output.path).startsWith(path.resolve(root) + path.sep)).toBe(true);
+            expect(path.basename(first.output.path)).toBe('react-gate062-rootfirs');
+            expect(path.basename(second.output.path)).toBe('react-gate062-rootseco');
+            expect(path.basename(first.output.path).length).toBeLessThanOrEqual(PROJECT_DIR_NAME_MAX_LENGTH);
+            expect(path.basename(second.output.path).length).toBeLessThanOrEqual(PROJECT_DIR_NAME_MAX_LENGTH);
             expect(second.logs.join('\\n')).not.toContain('project identity: reusing');
         } finally {
             delete (global as any).joeProjects?.[sessionId];
@@ -800,11 +805,11 @@ describe('project identity: React builds reuse only their session-owned scaffold
             expect(first.ok).toBe(true);
             expect(secondSameSession.ok).toBe(true);
             expect(secondSession.ok).toBe(true);
-            expect(new Set([
-                first.output.path,
-                secondSameSession.output.path,
-                secondSession.output.path,
-            ]).size).toBe(3);
+            const outputs = [first.output.path, secondSameSession.output.path, secondSession.output.path];
+            expect(new Set(outputs).size).toBe(3);
+            for (const outputPath of outputs) {
+                expect(path.basename(outputPath).length).toBeLessThanOrEqual(PROJECT_DIR_NAME_MAX_LENGTH);
+            }
         } finally {
             delete (global as any).joeProjects?.[sessionA];
             delete (global as any).joeProjects?.[sessionB];
@@ -816,11 +821,12 @@ describe('project identity: React builds reuse only their session-owned scaffold
         const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-root-collision-'));
         const sessionId = 'root-collision-t';
         const runId = 'run-root-collision-20260822-abcdef0123456789';
-        const encodedRun = Buffer.from(runId, 'utf8').toString('base64url');
+        const readableSuffix = 'rootcoll';
+
         try {
             fs.mkdirSync(path.join(root, 'react-gate062'), { recursive: true });
             for (let i = 0; i <= 8; i += 1) {
-                const suffix = i === 0 ? encodedRun : `${encodedRun}-${i}`;
+                const suffix = i === 0 ? readableSuffix : `${readableSuffix}-${i}`;
                 fs.mkdirSync(path.join(root, `react-gate062-${suffix}`), { recursive: true });
             }
             const result: any = await new ReactProjectTool().execute(

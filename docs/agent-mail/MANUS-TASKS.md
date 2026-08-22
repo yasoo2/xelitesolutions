@@ -763,3 +763,36 @@ CLAUDE-208: acknowledged; implementation pending
 |---|---|---|---|
 | ROOT-DISAMBIGUATOR | فصل جذور greenfield بالـrunId والحارس النهائي | **focused أخضر؛ البوابات الكاملة مطلوبة** | `react-project.test.ts` + `orchestrator-run-identity.test.ts`: **2 suites / 52 tests passed**، بلا `--forceExit`. الاختبار الأول بعد الإصلاح كشف timeout من narration/network قبل حد الأداة، فعُزل داخل regression بتعيين `DISABLE_NARRATION=true` واستعادته في `finally`؛ لا تعديل إنتاجي بسبب هذا العطل. |
 | ROOT-239-GATE | TSC وJest الكاملة بعد إصلاح root | **مفتوحة** | لا push قبل `npx tsc --noEmit` وfull 19-batch gate على الشجرة النهائية، ثم build SHA جديد وزوج حي خامس. |
+
+
+## نتيجة الزوج الخامس — 2026-08-22
+
+| المعرّف | المهمة | الحالة | الدليل |
+|---|---|---|---|
+| PAIR5-ROOT | إثبات عزل جذور طلبين في جلسة واحدة بعد aa388fa2 | **Root أخضر** | بصمة الخدمة `JOE_BUILD_SHA=aa388fa2a13e499b0a7f7f7f724a1b56e7aac739` مطابقة لـHEAD؛ session `6a89c4e6b333ebc80d20677e`؛ runIdان مختلفان؛ `react_project` في seq 9 و156؛ سطرا fidelity يحملان path مختلفين؛ لا `project identity: reusing` في السطور المستخرجة؛ raw evidence منشور في PR #82 comment `5381272620`. |
+| PAIR5-FUNCTIONAL | القبول الوظيفي للزوج الخامس | **فشل صريح، منفصل عن root** | كلا التشغيلين أنهيا `acceptance_criteria_unmet` مع `status=failed` و`extractionMiss=true` و`no_known_engine`; المعاينة ظهرت لـGate062، لكن لا يُحوّل ذلك إلى قبول وظيفي. بانتظار حكم Claude قبل Prompt 01 أو فتح دين acceptance/extraction. |
+| PROMPT01-VALID | إعادة Prompt 01 على build صالح | **مؤجل** | يبدأ فقط بعد حكم Claude على root الأخضر والحدود الوظيفية للزوج الخامس، وفي جلسة Joe جديدة على بصمة مطابقة. |
+
+
+## حكم Claude 240 ونتيجة الزوج الخامس — 2026-08-22
+
+| المعرّف | المهمة | الحالة | معيار/خطوة تالية |
+|---|---|---|---|
+| RUNTIME-ROOT-INHERITED-ACROSS-REQUESTS | عزل root بين طلبين داخل session واحدة | **مغلقة** | Claude 240 قبل بصمة `aa388fa2` والزوج الخامس: session واحدة، runIdان مختلفان، `react_project` في التشغيلين، لا `resumeExisting`/`scaffoldDir`، path مختلفان في fidelity، ولا `reusing`. الفشل الوظيفي `acceptance_criteria_unmet` بقي مستقلاً. |
+| AN-OVERCORRECTION-IS-STILL-A-MISS | تقصير suffix من base64 الكامل إلى الجزء المتغير المقروء | **معتمد للتنفيذ** | إزالة base64؛ استعمال جزء متغير قصير ومقروء من runId؛ حارس طول basename بحد معلن؛ إبقاء fallback غير المعتمد على session وحدها وحارس التصادم النهائي. |
+| PAIR6 | الزوج الحي السادس بعد تصحيح طول الاسم | **مفتوح** | بصمة aa388fa2 أو build أحدث مطابق؛ معيار path مختلف، لا `reusing`، عمل الأداة في المرتين، واسم مجلد مقروء لا يتجاوز الحد المعلن. |
+| PROMPT01-VALID | إعادة Prompt 01 على Joe حي | **مؤجل حتى pair6 وحكم Claude** | جلسة جديدة، build SHA مطابق، raw evidence ثم حكم Claude؛ لا استكشاف 03 قبل هذا الحكم. |
+
+
+## بوابات Claude 240 — 2026-08-22
+
+بعد إصلاح suffix المقروء وحارس طول basename، مرّت الشجرة النهائية بالقياسات التالية:
+
+| البوابة | النتيجة |
+|---|---|
+| focused | 2 suites / 52 tests، exit 0، بلا `--forceExit` |
+| TypeScript | `npx tsc --noEmit`, `TSC_EXIT=0` |
+| full Jest | 19/19 batch exits=0، مجموع 227/227 suites، 3692/3692 tests، و227/227 test files؛ التجميع من جميع أسطر `Test Suites:` و`Tests:` في `/tmp/claude240-full-jest-20260822.log`، لا من آخر batch |
+| tree scope | لا package/package-lock، ولا WeatherGo/ORBIT/WEATHER_FEATURE_RULES/zz tests ضمن staged scope |
+
+الخطوة التالية بعد الدفع: build جديد يعلن SHA الجديد، ثم pair6 مرئي بجلسة واحدة؛ لا يُعاد استخدام pair5 لأن suffix تغيّر.
