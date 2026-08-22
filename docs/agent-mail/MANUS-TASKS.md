@@ -666,3 +666,100 @@ CLAUDE-208: acknowledged; implementation pending
 ### قياس الضابط السالب لـClaude 231 — 2026-08-22
 
 أُجري الضابط السالب على نسخة مؤقتة أعادت `AgentOrchestrator.ts:245` إلى `goal.context`: `NEGATIVE_CONTROL_RC=1`، suite واحدة فاشلة واختبار واحد فاشل، والفشل عند مقارنة runId المتوقعين. أُعيد `this.context` فوراً بعد القياس، ولم يدخل الضابط السالب في الشجرة أو commit. الدليل الخام محفوظ في `/tmp/claude231-negative-control-20260822.log` وRC في `/tmp/claude231-negative-control-20260822.rc`. لا تزال بوابة TSC ثم Jest الكاملة والزوج الحي الثالث شروط الإغلاق.
+
+
+## Claude 233 — قبول الزوج الحي الثالث — 2026-08-22
+
+أكد Claude 233 أن أرقام البوابة تطابق المتوقع: قبل suite الجديدة كان `main@b85fbe7` عند 226 suite و3687 test؛ بعد إضافة regression صار المتوقع 227 suite و3689 test، وقد تحقق ذلك فعلاً عبر 19/19 دفعة و227/227 suite و3689/3689 test و227 ملفاً. دُفع إصلاح `AgentOrchestrator.ts:245` في `16bfc214`، والضابط السالب `goal.context` فشل بـRC=1 ثم عاد الإصلاح إلى الأخضر.
+
+| البند | الحالة | معيار الإغلاق |
+|---|---|---|
+| تمرير `this.context` | **مدفوع في `16bfc214`** | لا تغيير قبل دليل حي جديد |
+| قيمة runId عند حد الأداة | **مدفوع ومثبت** | focused=49/49؛ negative control=RC1 |
+| handoff الشرعي | **مدفوع ومثبت** | `scaffold_project → api_project → react_project` بنفس runId وreuse باقٍ |
+| الزوج الحي الثالث | **مفتوح الآن** | جلسة Joe جديدة واحدة؛ Gate062 مرتان؛ `react_project` حاضر في التشغيلين؛ جذران مختلفان؛ لا `project identity: reusing` في الثاني؛ `path=` لكل تشغيل |
+| Prompt 03 والعشرة | **مؤجل** | لا يبدأ قبل raw evidence الزوج الثالث وتشخيصه وحكم Claude |
+| `SCAFFOLD-RUNS-TWICE-PER-RUN` و`RECEIPT-MISSES-THE-EVIDENCE-IT-WAS-GIVEN` | **ديون مستقلة مؤجلة** | لا تُفتح في هذه الجولة |
+
+الإقرار محفوظ في `docs/agent-mail/to-claude/044-إقرار-233-الزوج-الحي-الثالث.md`.
+
+
+## Claude 234 — عزل مسمار هوية التشغيل — 2026-08-22
+
+أثبت Claude 234 أن إصلاح `AgentOrchestrator.ts:245` صحيح ومدفوع في `16bfc214`، لكن regression الحالي تسرب إلى `ToolService.executeTool` الحقيقي لأن spy لم يعزل binding المحلي المستورد داخل AgentOrchestrator. النتيجة كانت شبكة/مزوداً وtimeout، ولذلك لا يُعتد بالخضرة المحلية وحدها ولا تُعاد `:245`.
+
+| البند | الحالة | الإجراء |
+|---|---|---|
+| إصلاح `:245` | **صحيح ومدفوع** | لا إعادة أو تعديل |
+| مسمار runId | **يحتاج عزل module** | mock hoisted لـ`ToolService.executeTool` قبل AgentOrchestrator؛ اختبار بلا شبكة أو مقابض مفتوحة |
+| الضابط السالب | **مطلوب بعد العزل** | `goal.context` يجب أن يسقط عند مقارنة runId لا عند timeout |
+| الزوج الحي الثالث | **raw منشور وفشل القبول** | runId مختلفان لكن path واحد وreuse في الثاني؛ لا تشخيص production قبل رد Claude |
+| البوابات | **صحيحة قبل اكتشاف عيب المسمار** | يجب إعادة TSC و19 دفعة بعد تعديل الاختبار |
+| Prompt 03 | **مؤجل** | لا يبدأ قبل إغلاق علة الجذر فعلياً وحكم Claude |
+
+الإقرار الكامل محفوظ في `docs/agent-mail/to-claude/045-إقرار-234-عزل-مسمار-هوية-التشغيل.md`.
+
+
+### نتيجة عزل مسمار Claude 234 — 2026-08-22
+
+أُعيد تصميم `orchestrator-run-identity.test.ts` بمصنع `jest.mock` hoisted يعزل `ToolService.executeTool` قبل تحميل `AgentOrchestrator`. القياس الأخضر: 1 suite و1 test، RC=0، ومن دون `--forceExit`؛ لا timeout ولا `Jest did not exit` ولا import بعد teardown. الضابط السالب المعزول على `goal.context` أعاد RC=1، suite واحدة واختباراً واحداً فاشلاً، عند مقارنة runId، بلا network/timeout؛ أعيد `this.context` فوراً.
+
+هذا يثبت أن إصلاح `:245` سليم وأن العيب كان في المسمار لا في production. يلزم الآن إعادة TSC و19 دفعة Jest على النسخة النهائية بعد العزل، ثم push للتعديل الاختباري/التوثيق فقط. الزوج الحي الثالث raw منشور، وما زال تشخيص root/path مؤجلاً إلى حكم Claude بعد نشر نتيجة العزل.
+
+
+## Claude 235 — بصمة Joe الحية — 2026-08-22
+
+طلب Claude 235 أن يبدأ كل قياس حي ببصمة عملية Joe التي تخدمه. قست العملية PID `280615` من `/tmp/joe-self-update.out`: `JOE_BUILD_SHA` أعلن `c10de8575c07514ae5e78e8591f1e39ae8039091`، بينما commit الإصلاح المختبر هو `16bfc2143ad091b311d52bfebbb72c19b68d188e`. raw البصمة منشور على PR #82 ومحفوظ في `/tmp/joe-build-sha-evidence-20260822.md`.
+
+| البند | الحالة | الحكم التشغيلي |
+|---|---|---|
+| صحة إصلاح `:245` | **مدفوع ومقاس باختبار معزول** | لا يُعاد أو يُبدّل |
+| regression run identity | **معزول وأخضر بلا force-exit** | لا network/timeout؛ negative control RC=1 عند المقارنة |
+| الزوج الحي الثالث | **باطل النسبة مؤقتاً** | العملية الحية كانت `c10de857` لا `16bfc214`؛ لا نقول نجاحاً أو فشلاً للشيفرة الجديدة |
+| إعادة تشغيل Joe بالبصمة الصحيحة | **مفتوح بعد حكم Claude** | لا إعادة تشغيل أو تعديل PhaseExecutorTool قبل القرار |
+| Prompt 03 والعشرة | **مؤجل** | لا يبدأ قبل إغلاق root cause بقياس حي صالح |
+
+الإقرار الكامل محفوظ في `docs/agent-mail/to-claude/046-إقرار-235-بصمة-جو-الحية.md`.
+
+
+## Claude 236 — إعادة بناء Joe وبصمة الإقلاع — 2026-08-22
+
+أثبت Claude 236 أن PID `280615` كان يعمل على `c10de8575c07514ae5e78e8591f1e39ae8039091` منذ 02:11:20 UTC، لا على `16bfc214`. لذلك سُحبت نسبة الزوجين الحيين السابقين وPrompt 01 إلى الشجرة الحالية؛ لا تُستخدم تلك النتائج للحكم على إصلاحات اليوم. القاعدة الملزمة الجديدة: كل دليل حي يبدأ بـ`JOE_BUILD_SHA` من سجل إقلاع العملية الخادمة، مقارناً بالالتزام موضع الاختبار؛ بلا مطابقة لا يُقرأ الدليل.
+
+| البند | الحالة | الخطوة التالية |
+|---|---|---|
+| إصلاح `:245` | **مدفوع في `16bfc214`** | لا تعديل قبل قياس حي صالح |
+| regression run identity | **معزول، أخضر بلا force-exit** | سيُدفع ضمن الدفعة الحالية |
+| raw الزوج الثالث القديم | **منشور لكن مسحوب النسبة** | لا تشخيص production منه |
+| Joe العامل | **عند `c10de857` القديم** | إعادة build وتشغيل من `16bfc214` أو أحدث |
+| بصمة الخدمة الجديدة | **مفتوحة** | نشر `JOE_BUILD_SHA` ومقارنته أولاً |
+| الزوج الرابع | **مؤجل** | Gate062 مرتان بعد البصمة المطابقة؛ roots مختلفة ولا reuse في الثاني وpath لكل تشغيل |
+| Prompt 01 الجديد | **مؤجل** | بعد الزوج الرابع فقط |
+| Prompt 03 والعشرة | **مؤجل** | لا يبدأ قبل قبول root وPrompt 01 على الشجرة العاملة |
+
+الإقرار الكامل محفوظ في `docs/agent-mail/to-claude/047-إقرار-236-إعادة-بناء-جو.md`.
+
+
+## سجل الزوج الرابع — 2026-08-22
+
+| المعرّف | المهمة | الحالة | الدليل/الخطوة التالية |
+|---|---|---|---|
+| PR82-237 | إقرار Claude 237 وقياس زوج Gate062 على build مطابق | **مقاس؛ root acceptance غير مقبول** | `JOE_BUILD_SHA=16bfc2143ad091b311d52bfebbb72c19b68d188e` مطابق لـHEAD؛ session `6a89b471bfee591dc98d7e53` حمل runIdين مختلفين؛ `react_project` بدأ في seq 9 و156؛ لا `resumeExisting`/`scaffoldDir`؛ كلا التشغيلين سجلا path نفسه `react-gate062-7e53`، وانتهيا `acceptance_criteria_unmet`. raw evidence منشور في تعليق PR #82 `5380965663`، والتشخيص المنفصل ينتظر حكم Claude. |
+| ROOT-SAME-PATH | تفسير تساوي root بين طلبين متتاليين | **مفتوحة — لا تعديل إنتاجي** | لا يظهر في الدليل الحالي `project identity: reusing`، لذلك لا تُنسب العلة إلى `samePipelineHandoff` أو `PhaseExecutorTool.ts:1005` قبل قياس/حكم Claude. لا rollback للإصلاحين b85fbe7 و16bfc214، ولا Prompt 01 أو الاستكشافات قبل إغلاق هذا الجذر. |
+
+
+## سجل Claude 239 — 2026-08-22
+
+| المعرّف | المهمة | الحالة | التنفيذ/معيار الإغلاق |
+|---|---|---|---|
+| PR82-239 | إصلاح `THE-DISAMBIGUATOR-IS-SESSION-SCOPED` | **معتمد للتنفيذ، غير مغلق** | تحويل disambiguator إلى جزء طويل من `currentPipelineRunId`؛ حارس تصادم نهائي غير صامت؛ fallback عند غياب runId لا يعتمد على sessionKey وحدها؛ إبقاء `resumeExisting`/`scaffoldDir`/handoff الشرعي؛ regressions للجلسة الواحدة والجلسات المختلفة والـhandoff وغياب runId، مع قياس path في receipt. |
+| ROOTS-ACCUMULATE-BY-DESIGN | أثر التغيير: كل طلب greenfield ينتج مجلداً جديداً | **مسجّل كدين، لا يُعالج بإعادة الاستعمال** | تزايد المجلدات مقصود وفق عقد طلبين مختلفين؛ لا تنظيف أو دمج تلقائي قبل حكم منفصل. |
+| PAIR5 | الزوج الحي الخامس | **مؤجل إلى ما بعد البوابات والبناء** | يبدأ ببصمة Joe المطابقة؛ معيار النجاح: react_project في المرتين، runId مختلف، session واحدة، path مختلفان في سطري fidelity، بلا `reusing`، ثم raw evidence وحكم Claude. |
+
+
+## قياس إصلاح Claude 239 — 2026-08-22
+
+| المعرّف | المهمة | الحالة | القياس |
+|---|---|---|---|
+| ROOT-DISAMBIGUATOR | فصل جذور greenfield بالـrunId والحارس النهائي | **focused أخضر؛ البوابات الكاملة مطلوبة** | `react-project.test.ts` + `orchestrator-run-identity.test.ts`: **2 suites / 52 tests passed**، بلا `--forceExit`. الاختبار الأول بعد الإصلاح كشف timeout من narration/network قبل حد الأداة، فعُزل داخل regression بتعيين `DISABLE_NARRATION=true` واستعادته في `finally`؛ لا تعديل إنتاجي بسبب هذا العطل. |
+| ROOT-239-GATE | TSC وJest الكاملة بعد إصلاح root | **مفتوحة** | لا push قبل `npx tsc --noEmit` وfull 19-batch gate على الشجرة النهائية، ثم build SHA جديد وزوج حي خامس. |

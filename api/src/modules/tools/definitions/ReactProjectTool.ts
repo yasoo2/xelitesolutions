@@ -52,6 +52,27 @@ export function projectDirNameForTest(projectName: string, brand: string): strin
         : `react-${slug(brand)}`;
 }
 
+let fallbackProjectDisambiguatorSequence = 0;
+
+/**
+ * A greenfield project is owned by an execution, not merely by its chat
+ * session. Keep the full run identity (bounded at both ends for filesystem
+ * safety) and make the no-runId fallback carry both session identity and a
+ * monotonic/process-time component.
+ */
+function projectDisambiguator(runId: string, sessionKey: string): string {
+    const bounded = (value: string): string => value.length <= 96
+        ? value
+        : `${value.slice(0, 48)}-${value.slice(-47)}`;
+    if (runId) {
+        const encodedRun = Buffer.from(runId, 'utf8').toString('base64url');
+        if (encodedRun) return bounded(encodedRun);
+    }
+    fallbackProjectDisambiguatorSequence += 1;
+    const encodedSession = Buffer.from(sessionKey || 'session', 'utf8').toString('base64url') || 'session';
+    return bounded(`${encodedSession}-${Date.now().toString(36)}-${fallbackProjectDisambiguatorSequence}`);
+}
+
 /**
  * The terminal announcement is derived from the request, not copied from a
  * project-specific template. It is deliberately small and engine-agnostic:
@@ -2688,8 +2709,30 @@ export class ReactProjectTool extends BaseTool {
         // families wire proof: two different stores landed in react-react).
         // The session that OWNS the directory may rebuild in place.
         if (fs.existsSync(proj) && path.resolve(proj) !== activeDir) {
-            const suffix = sessionKey.replace(/[^a-zA-Z0-9]/g, '').slice(-4).toLowerCase() || Date.now().toString(36).slice(-4);
+            const suffix = projectDisambiguator(currentPipelineRunId, sessionKey);
             proj = path.join(root, `${dirName}-${suffix}`);
+            let collisionAttempt = 0;
+            while (fs.existsSync(proj) && path.resolve(proj) !== activeDir && collisionAttempt < 8) {
+                collisionAttempt += 1;
+                proj = path.join(root, `${dirName}-${suffix}-${collisionAttempt}`);
+            }
+            if (fs.existsSync(proj) && path.resolve(proj) !== activeDir) {
+                const collisionPath = path.resolve(proj);
+                const reason = 'greenfield project path is already occupied by another execution';
+                term(`project identity: refusing occupied greenfield path=${collisionPath}`);
+                return {
+                    ok: false,
+                    error: 'project_path_collision',
+                    output: {
+                        path: collisionPath,
+                        projectRoot: workspaceRoot,
+                        reason,
+                        conflictPath: collisionPath,
+                        repairHint: 'choose a new project name or provide an explicit owned scaffoldDir/resumeExisting contract',
+                    },
+                    logs,
+                };
+            }
         }
         // The app's form delivers into Joe's inbox while it runs next to Joe.
         (content as any).inbox = publicUrlFor(`/api/public/forms/${path.basename(proj).replace(/[^a-zA-Z0-9._-]/g, '')}`);

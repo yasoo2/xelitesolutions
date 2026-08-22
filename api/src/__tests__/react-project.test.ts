@@ -756,6 +756,87 @@ describe('project identity: React builds reuse only their session-owned scaffold
         }
     });
 
+    it('allocates a distinct runtime root for each greenfield request in one session', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-run-root-'));
+        const sessionId = 'run-root-same-session-t';
+        try {
+            const first: any = await new ReactProjectTool().execute(
+                { request: 'Build a small React app called Gate062', root, projectName: 'Gate062', skipInstall: true },
+                { sessionId, runId: 'run-root-first-20260822-abcdef0123456789' },
+            );
+            const second: any = await new ReactProjectTool().execute(
+                { request: 'Build a small React app called Gate062', root, projectName: 'Gate062', skipInstall: true },
+                { sessionId, runId: 'run-root-second-20260822-9876543210fedcba' },
+            );
+            expect(first.ok).toBe(true);
+            expect(second.ok).toBe(true);
+            expect(path.resolve(first.output.path)).not.toBe(path.resolve(second.output.path));
+            expect(path.resolve(first.output.path).startsWith(path.resolve(root) + path.sep)).toBe(true);
+            expect(path.resolve(second.output.path).startsWith(path.resolve(root) + path.sep)).toBe(true);
+            expect(second.logs.join('\\n')).not.toContain('project identity: reusing');
+        } finally {
+            delete (global as any).joeProjects?.[sessionId];
+            fs.rmSync(root, { recursive: true, force: true });
+        }
+    });
+
+    it('uses a session-plus-unique fallback when runId is absent', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-no-run-root-'));
+        const sessionA = 'no-run-session-a';
+        const sessionB = 'no-run-session-b';
+        try {
+            const first: any = await new ReactProjectTool().execute(
+                { request: 'Build a small React app called Gate062', root, projectName: 'Gate062', skipInstall: true },
+                { sessionId: sessionA },
+            );
+            const secondSameSession: any = await new ReactProjectTool().execute(
+                { request: 'Build a small React app called Gate062', root, projectName: 'Gate062', skipInstall: true },
+                { sessionId: sessionA },
+            );
+            const secondSession: any = await new ReactProjectTool().execute(
+                { request: 'Build a small React app called Gate062', root, projectName: 'Gate062', skipInstall: true },
+                { sessionId: sessionB },
+            );
+            expect(first.ok).toBe(true);
+            expect(secondSameSession.ok).toBe(true);
+            expect(secondSession.ok).toBe(true);
+            expect(new Set([
+                first.output.path,
+                secondSameSession.output.path,
+                secondSession.output.path,
+            ]).size).toBe(3);
+        } finally {
+            delete (global as any).joeProjects?.[sessionA];
+            delete (global as any).joeProjects?.[sessionB];
+            fs.rmSync(root, { recursive: true, force: true });
+        }
+    });
+
+    it('refuses a collision after all runtime-root disambiguators are occupied', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-root-collision-'));
+        const sessionId = 'root-collision-t';
+        const runId = 'run-root-collision-20260822-abcdef0123456789';
+        const encodedRun = Buffer.from(runId, 'utf8').toString('base64url');
+        try {
+            fs.mkdirSync(path.join(root, 'react-gate062'), { recursive: true });
+            for (let i = 0; i <= 8; i += 1) {
+                const suffix = i === 0 ? encodedRun : `${encodedRun}-${i}`;
+                fs.mkdirSync(path.join(root, `react-gate062-${suffix}`), { recursive: true });
+            }
+            const result: any = await new ReactProjectTool().execute(
+                { request: 'Build a small React app called Gate062', root, projectName: 'Gate062', skipInstall: true },
+                { sessionId, runId },
+            );
+            expect(result.ok).toBe(false);
+            expect(result.error).toBe('project_path_collision');
+            expect(result.logs.join('\\n')).toContain('refusing occupied greenfield path=');
+            expect(fs.existsSync(path.join(root, 'react-gate062', 'src', 'App.jsx'))).toBe(false);
+        } finally {
+            delete (global as any).joeProjects?.[sessionId];
+            fs.rmSync(root, { recursive: true, force: true });
+        }
+    });
+
     it('does not reuse a non-React or cross-root artifact', async () => {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-no-reuse-'));
         const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-outside-'));

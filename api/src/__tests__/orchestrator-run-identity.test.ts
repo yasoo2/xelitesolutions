@@ -1,3 +1,8 @@
+jest.mock('../modules/services/ToolService', () => ({
+    ...jest.requireActual('../modules/services/ToolService'),
+    executeTool: jest.fn(),
+}));
+
 import * as ToolService from '../modules/services/ToolService';
 import { AgentOrchestrator } from '../orchestration/AgentOrchestrator';
 
@@ -20,12 +25,15 @@ const dagFor = () => ({
 describe('orchestrator canonical run identity reaches the tool boundary', () => {
     it('uses a distinct execution runId for two runs in one chat session', async () => {
         const seen: SeenContext[] = [];
-        const executeToolSpy = jest.spyOn(ToolService, 'executeTool').mockImplementation(
+        const executeToolMock = ToolService.executeTool as jest.MockedFunction<typeof ToolService.executeTool>;
+        executeToolMock.mockImplementation(
             async (_name: string, _input: any, context?: any) => {
                 seen.push({ runId: context?.runId, sessionId: context?.sessionId });
                 return { ok: true, output: 'ok', logs: [] } as any;
             },
         );
+        const previousDisableNarration = process.env.DISABLE_NARRATION;
+        process.env.DISABLE_NARRATION = 'true';
         const orchestrator: any = new AgentOrchestrator();
         orchestrator.plan = jest.fn(async () => dagFor());
         const sessionId = 'run-identity-chat';
@@ -58,7 +66,9 @@ describe('orchestrator canonical run identity reaches the tool boundary', () => 
             expect(seen[0].runId).not.toBe(seen[1].runId);
             expect(seen.every(x => x.sessionId === sessionId)).toBe(true);
         } finally {
-            executeToolSpy.mockRestore();
+            executeToolMock.mockReset();
+            if (previousDisableNarration === undefined) delete process.env.DISABLE_NARRATION;
+            else process.env.DISABLE_NARRATION = previousDisableNarration;
         }
     });
 });
