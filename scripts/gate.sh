@@ -17,11 +17,29 @@
 #  came out of it.
 #
 #  This is that gate, versioned, identical for everyone, and printing its
-#  aggregate rather than its tail. It runs the same checks `.github/ci.yml`
-#  declares, in the same order, and answers in numbers that can be copied
-#  into a report as they stand.
+#  aggregate rather than its tail.
 #
 #      bash scripts/gate.sh
+#
+#  WHAT IT COVERS, AND WHAT IT DOES NOT.
+#
+#  Covered — the blocking steps of ci.yml's `verify` job, in its order:
+#  install, type-check api, type-check web, build api, build web, jest.
+#
+#  NOT covered, deliberately and by name:
+#    · `npm audit` (ci.yml's «Dependency audit» job) — it reads the network,
+#      and a gate that fails because a registry is slow teaches people to
+#      re-run it until it passes.
+#    · the «Live harnesses» job — it needs Chromium and a provider key, and
+#      those runs are published as raw evidence per batch instead.
+#    · `web lint` — ci.yml itself marks it reported-not-blocking.
+#
+#  The first draft of this file claimed it ran «the same checks ci.yml
+#  declares» while skipping the web type-check and the api build. That claim
+#  was caught in review, not by the script. A gate that overstates its own
+#  reach is the same defect as a gate that does not run: both answer a
+#  question they never asked. So the list above is exhaustive, and anything
+#  added to ci.yml has to be added here or named here as excluded.
 #
 #  Every number it prints carries the command that produced it. Nothing here
 #  interprets a result: a failing step keeps its own exit code, and the last
@@ -49,6 +67,28 @@ echo "$ npx tsc --noEmit"
 ( cd "$ROOT/api" && npx tsc --noEmit )
 TSC_EXIT=$?
 echo "GATE_TSC_EXIT:$TSC_EXIT"
+
+say "type-check — web"
+if [ -d "$ROOT/web/node_modules" ] || npm --prefix "$ROOT/web" ci --no-audit --no-fund; then
+    echo "$ npm --prefix web run type-check"
+    npm --prefix "$ROOT/web" run type-check
+    WEB_TSC_EXIT=$?
+else
+    WEB_TSC_EXIT=1
+fi
+echo "GATE_WEB_TSC_EXIT:$WEB_TSC_EXIT"
+
+# --------------------------------------------------------------- 3. api build
+#
+#  esbuild bundles what actually ships. A file can type-check and still fail
+#  to bundle — an import that only resolves under ts paths, a package the
+#  bundler cannot externalise — so the build is its own question.
+#
+say "build — api"
+echo "$ npm --prefix api run build"
+npm --prefix "$ROOT/api" run build
+API_BUILD_EXIT=$?
+echo "GATE_API_BUILD_EXIT:$API_BUILD_EXIT"
 
 # ------------------------------------------------------------- 3. web build
 #
@@ -86,10 +126,12 @@ echo "GATE_JEST_EXIT:$JEST_EXIT"
 say "verdict"
 grep -E '^(Test Suites|Tests):' "$JEST_LOG" || echo "no jest summary — the run produced none, which is itself the finding"
 echo "GATE_TSC_EXIT:$TSC_EXIT"
+echo "GATE_WEB_TSC_EXIT:$WEB_TSC_EXIT"
+echo "GATE_API_BUILD_EXIT:$API_BUILD_EXIT"
 echo "GATE_JEST_EXIT:$JEST_EXIT"
 echo "jest log kept at: $JEST_LOG"
 
-if [ "$TSC_EXIT" -eq 0 ] && [ "$JEST_EXIT" -eq 0 ]; then
+if [ "$TSC_EXIT" -eq 0 ] && [ "$WEB_TSC_EXIT" -eq 0 ] && [ "$API_BUILD_EXIT" -eq 0 ] && [ "$JEST_EXIT" -eq 0 ]; then
     echo "GATE:PASS"
     exit 0
 fi
