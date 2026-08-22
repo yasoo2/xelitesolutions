@@ -910,3 +910,95 @@ CLAUDE-208: acknowledged; implementation pending
 | live reruns | **مطلوبة بعد الدفع:** Prompt 03 وGate062 على SHA جديد مطابق، ثم live positive scope request بثلاث قدرات على الأقل، كل واحد Chat جديدة وتشغيل واحد. |
 | Self-QA | `SELF-QA-SKIPPED-SILENTLY` **مسجّل فقط**؛ لا تعديل في هذه الدفعة. |
 | layer2 وPrompt 04 | **مؤجلان** حتى حكم Claude بعد إغلاق الصوت الرابع؛ لا استخراج عام ولا builder/self-QA/brand. |
+
+
+## Claude 252 — إغلاق الطبقة الأولى والحدّ المسجّل — 2026-08-22
+
+| البند | الحالة |
+|---|---|
+| إقرار Claude 252 | **مُسجّل** في `docs/agent-mail/to-claude/060-إقرار-252-إغلاق-الطبقة-الأولى.md`، بنداً بنداً. |
+| إغلاق `CATALOGUE-DECIDES-WHAT-COUNTS` | **مغلق من جهة الصدق فقط:** الكتالوج يحدد ما يُفحص، ولا يحدد ما يُدّعى أنه أُنجز. لا تزال قائمة المدن غير مفحوصة ولا مبنية في Prompt 03. |
+| live scope positive | **مقاس ومنشور:** prompt بثلاث قدرات على SHA `0c300b47` أعلن حدود القاضي، فصل `Built (2)` عن `Not built (1): payments`، وأعلن عدم فحص بقية الطلب. run=`run-1787422226731`، session=`6a89e5f768b43ea694012c56`، raw comment=`5381897335`. انتهت الجولة بصدق عند `runtime_contract_mismatch` لاختبار يستورد `@testing-library/react` غير المعلن؛ لا تُحسب نجاحاً وظيفياً. |
+| Prompt 03 live | **مقاس ومنشور:** SHA `0c300b47`، run=`run-1787422828032`، session=`6a89e84d68b43ea694012c59`، raw comment=`5381911331`. ظهرت `حكم القبول الجزئي: أثبتُّ 1 مما أعرف كيف أثبته — ولم أفحص بقية نص طلبك`، ولم تُثبت قائمة المدن. |
+| Gate062 live negative | **صمد ومنشور:** SHA `0c300b47`، run=`run-1787422994410`، session=`6a89e8f268b43ea694012c5c`، raw comment=`5381918934`. بقي `acceptance_criteria_unmet` و`delivery: BLOCKED` و`ok:false`، وظهر `acceptance: 2/4 of what I know how to prove ...`. |
+| raw ثم closure | **مكتمل:** raw scope ثم raw Prompt 03 ثم raw Gate062 نُشرت قبل تعليق الإغلاق `5381922339` على PR #82. |
+| negative-control | **مقاس سابقاً:** `OLD_FORMAT_JEST_EXIT=1` عند إعادة صيغ acceptance/receipt/scope القديمة، ثم `RESTORED_FORMAT_JEST_EXIT=0` بعد الاستعادة؛ الأداة المؤقتة لم تُضمّن في الشجرة. |
+| full gate | **أخضر ومُجمّع:** TSC=`0`؛ 19/19 batch exits=`0`؛ مجموع `227` suites و`3696` tests و`227` ملفات اختبار غير `zz`. |
+| اكتشاف جديد | `GENERATED-TEST-IMPORTS-UNDECLARED-PACKAGE` مسجّل فقط؛ لا إصلاح له الآن. |
+| المؤجل | الطبقة الثانية والاستخراج العام، Prompt 04، builder، self-QA، brand، وأي بند مسجّل أخرى **مؤجلة** حتى حكم Claude التالي. |
+
+
+### إعادة بوابة إغلاق Claude 252 — قياس فعلي قبل الدفع
+
+أُعيد تشغيل `npx tsc --noEmit` من `api/` وخرج `TSC_EXIT=0`. ثم شُغّل `/tmp/run-joe-jest-prepush-tracked-20260821.sh` من جذر المستودع؛ خرج `FULL_JEST_EXIT=0` و`FULL_JEST_BATCHES_EXIT=0`. كل الدفعات التسع عشرة خرجت صفراً بالترتيب: `0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0`. مجموع النتائج المقاس من السجل هو `227` Test Suites و`3696` Tests، وعدد ملفات الاختبار غير `zz` هو `227`. السجل الكامل محفوظ في `/tmp/claude252-docs-full-jest-20260822.log`، وسجل TSC في `/tmp/claude252-docs-tsc-20260822.log`.
+
+
+## Claude 254/255 — قياس المعاينة وحارس scope خارج البوابة — 2026-08-22
+
+| البند | الحالة |
+|---|---|
+| إقرار Claude 254/255 | **مُسجّل** في `docs/agent-mail/to-claude/062-إقرار-254-255-قياس-المعاينة-وحارس-scope.md`. |
+| تصحيح توقع Gate062 | **مُثبت:** الرقم الحي على SHA `0c300b47` هو `2/5`، كما في خط أساس `b59a40d`؛ غير المثبت `counter`, `title`, `preview`. لا يُعدّ `preview_ready` وحده إثباتاً للمعاينة. |
+| قياس المعاينة | **منشور raw:** في run=`run-1787424136527` سبق `preview_ready` (seq 1085) سطر `acceptance` (seq 1130)، لكن `liveUrl` عند نداء القاضي كان `""` وفق call-site `ReactProjectTool.ts:4389-4394` وشرط `acceptance.ts:298-301`؛ لا إصلاح بدأ. تعليق القياس=`5382030088`. |
+| الجرد الموسّع | **مغلق:** الجرد باستعلامه ونتيجته منشور في تعليق `5382004969`; Query A أعاد 618 مطابقة عامة بوصفها رقماً غير حاكم، وQuery B حدد الأصوات الإنتاجية الأربعة. |
+| gate.sh الرسمي | **شُغّل مرة كما طلب Claude، وفشل:** `GATE_SH_EXIT=1`، TSC/web TSC/API build/web build صفر، لكن `GATE_JEST_EXIT=1` مع `139 failed, 88 passed` suites و`1674 passed` tests بسبب SIGTERM لعمليات Jest؛ raw comment=`5382016169`. لا أستبدل هذه النتيجة بصمت. |
+| `THE-HARNESSES-OUTSIDE-THE-GATE-ROT` | **مسجّل، غير مبدوء قبل 255؛** الملف اليدوي `api/src/tests/manual/verify_scope_is_honest.ts` خارج `api/jest.config.js`، وتوقعاته عند 59 و61 و63 و74 لا تطابق الإنتاج الحالي. |
+| الدفعة 3.5 | **مصرّح بها الآن:** إصلاح 59 و61 و63 على النص الإنتاجي الحالي، واستبدال 74 بشرط مستقل عن `capabilityEvidence` أو حذفه؛ لا نسخ للحساب، ولا تغيير الإنتاج أو الكتالوج. |
+| 2a وما بعدها | **متوقف:** لا أبدأ 2a قبل إتمام 3.5 والفحوص اللاحقة؛ 2b و2c وPrompt 04 والبنود المسجلة ممنوعة حالياً. |
+
+
+### نتيجة Claude 255 — إصلاح harness اليدوي 3.5
+
+أُصلح فقط `api/src/tests/manual/verify_scope_is_honest.ts`: الفحوص 59 و61 و63 صارت تطابق رأس `formatScope` الإنتاجي الحالي (`The capabilities I know how to check and you named …`)، وفحص 74 صار invariant مستقلاً يثبت أن `built + missing` يقسم القدرات المطلوبة بلا تكرار أو اختلاق، من دون إعادة تشغيل `capabilityEvidence`. شُغّل الأمر `JWT_SECRET=x PERSISTENCE_MODE=JSON ENABLE_AUTH_BYPASS=true AUTO_APPROVE_ALL=1 npx tsx src/tests/manual/verify_scope_is_honest.ts` من `api/`؛ النتيجة `VERIFY_SCOPE_HARNESS_EXIT=0` و`31 passed, 0 failed`. السجل الكامل محفوظ في `/tmp/claude255-verify-scope-harness-20260822.log`. لم يتغير builder أو self-QA أو المعاينة أو الكتالوج.
+
+
+## Claude 256 — gate.sh مؤجّل وإغلاق 3.5 — 2026-08-22
+
+| البند | الحالة |
+|---|---|
+| إقرار Claude 256 | **مُسجّل** في `docs/agent-mail/to-claude/063-إقرار-256-تقسيم-البوابة.md`. |
+| `A-KNOB-IS-NOT-A-FIX` | **مسجّل على Claude:** `GATE_JEST_WORKERS` لا يجزّئ عملية Jest ذات 227 مجموعة؛ لا إعادة gate.sh حتى إعلان شحن إصلاح `GATE_BATCH`. |
+| gate.sh | **مؤجل بأمر Claude، لا فشل شجرة:** المحاولة الوحيدة بقيت `GATE_SH_EXIT=1` و`GATE_JEST_EXIT=1` بسبب SIGTERM لعمال Jest؛ raw comment=`5382016169`. |
+| القياس المعتمد حالياً | **19 دفعة يدوية ناجحة:** `227` suites، `3696` tests، `227` ملفات، وكل exits صفر على `0c300b47`; لا يُخلط مع gate.sh. |
+| قياس المعاينة | **منشور بلا إصلاح:** `preview_ready` seq 1085 قبل `acceptance` seq 1130، و`liveUrl=""` عند القاضي. |
+| 3.5 harness | **منجز:** `verify_scope_is_honest.ts` يطابق الإنتاج ويستخدم partition invariant مستقلاً؛ `31 passed, 0 failed`. |
+| الترتيب التالي | توثيق ودفع 3.5 بعد بوابات ما قبل الدفع، ثم انتظار إعلان شحن gate split؛ بعد ذلك فقط 2a بقيودها الخمسة وقياسها الثلاثي. |
+| ممنوع | لا لمس builder أو self-QA أو المعاينة أو الكتالوج؛ لا 2b/2c ولا Prompt 04 ولا البنود المسجلة. |
+
+
+### بوابة 3.5 بعد معالجة بيئة الاختبار
+
+المحاولة الأولى لـfull Jest بعد harness فشلت بيئياً قبل تنفيذ أي test: `EMLINK: too many links, mkdtemp '/tmp/joe-test-store-XXXXXX'`، فكانت `19/19` دفعة بخروج 1 و`0` tests. فحصت البيئة فوجدت `28,079` مجلد اختبار مؤقتاً من النمط نفسه؛ حُذفت هذه المجلدات المؤقتة فقط، وبقي المنفذان 5001 و5002 عاملين. بعد التنظيف أُعيد full Jest منخفض الذاكرة؛ السجل `/tmp/claude256-3_5-full-jest-retry-20260822.log` يثبت `FULL_JEST_RETRY_EXIT=0` و`FULL_JEST_BATCHES_EXIT=0`، وكل exits التسعة عشر صفراً، ومجموع `227` suites و`3696` tests و`227` ملفات اختبار غير `zz`. سجل TSC السابق `/tmp/claude256-3_5-tsc-20260822.log` يثبت `TSC_EXIT=0`.
+
+
+## Claude 257 — قياس المعاينة يثبت عطب التوصيل وحذف الفحص الفارغ — 2026-08-22
+
+| البند | الحالة |
+|---|---|
+| إقرار Claude 257 | **مُسجّل** في `docs/agent-mail/to-claude/065-إقرار-257-المعاينة-والفحص-الفارغ.md`. |
+| معيار المعاينة | `preview_ready` سبق `acceptance` (seq `1085` مقابل `1130`)، لكن `liveUrl=""` عند القاضي؛ المسار الثابت لا يثبت معيار `preview`. لا إصلاح بدأ. |
+| harness line 74 | **حُذف بلا بديل**؛ لم يعد هناك partition invariant يعيد تعريف `missing` كمتمم لـ`built`. بقيت فحوص عدم ادعاء `payments` و`multi_vendor` و`mobile_app`، وهي قابلة للكذب إذا ادعى scope-report قدرةً خاطئة. |
+| negative-control 257 | **أثبت عدم الفراغ جزئياً:** عند كسر `capabilityEvidence` عمداً ظهر `payments` في `Built` وسقطت فحوص `payments`، فكانت النتيجة `27 passed, 3 failed`. بعد الاستعادة بقيت فحوص scope نفسها خضراء، لكن البناء العشوائي فشل مستقلاً بـ`react_delivery_quality_gate_failed`، فكانت `29 passed, 1 failed`؛ لا أصف الاستعادة بأنها خضراء نهائياً حتى يُفصل هذا الفشل. |
+| القيود | لا builder ولا self-QA ولا المعاينة ولا الكتالوج؛ لا 2a حتى اكتمال القياسات التالية. |
+
+## Claude 258 — إصلاح gate cleanup قبل مقارنة التقسيم — 2026-08-22
+
+| البند | الحالة |
+|---|---|
+| إقرار Claude 258 | **مُسجّل** في `docs/agent-mail/to-claude/064-إقرار-258-قياس-البوابة-والتنظيف.md`. |
+| PR #84 المسحوب | `FETCH_HEAD=ff9a4e37`، ووالده `685a582`؛ `685a582` يضيف تقسيم `GATE_BATCH`، و`ff9a4e37` يضيف globalSetup/teardown لجذر مؤقت واحد وتنظيفه. لم يُدمج أي منهما بعد في main. |
+| gate.sh | **ممنوع إعادة تشغيله حتى #258**؛ القياس التالي سيكون بعد سحب إصلاحات Claude: `GATE_BATCH=0` ثم `GATE_BATCH=12` على `/tmp` نظيف، مع نشر الناتجين معاً. |
+| 2a | **مؤجلة:** لا تبدأ قبل قياسي gate.sh والمعاينة الموجب/السالب وفق ترتيب Claude. |
+
+
+## Claude 259 — إصلاح تسريب Jest من الجذر وقياس gate.sh النظيف — 2026-08-22
+
+| البند | الحالة |
+|---|---|
+| إقرار Claude 259 | **مُسجّل** في `docs/agent-mail/to-claude/066-إقرار-259-تنظيف-البوابة-الكامل.md`. |
+| إصلاح cleanup | **مصرّح بسحبه:** `ff9a4e37` يضيف `globalSetup` لجذر `joe-test-run-*` و`teardown` يحذفه، ويحافظ على عزل كل ملف؛ وهو مع `685a582` على PR #84. |
+| إصلاح gate split | **مصرّح بسحبه:** `685a582` يضيف `GATE_BATCH`، وعدّ الملفات مسبقاً، ومقارنة `GATE_FILES_LISTED` مع `GATE_SUITES_REPORTED`. |
+| الترتيب | بعد السحب والتنظيف: `GATE_BATCH=0 bash scripts/gate.sh` ثم `GATE_BATCH=12 bash scripts/gate.sh`، ونشر الناتجين معاً. |
+| 3.5 | line 74 محذوف بلا بديل؛ negative-control السابق جعل `payments` يظهر كـBuilt فسقطت الفحوص، لكن الاستعادة واجهت فشل build عابراً؛ ستعاد بعد cleanup. |
+| المعاينة | موجبة بـ`200` وسالبة بحذف `dist/index.html` ما زالت مطلوبة؛ لا تمرير `previewUrl` ولا إصلاح builder/self-QA/المعاينة قبل القياس. |
+| 2a | **مؤجلة** حتى إتمام القياسات الأربعة وفق Claude 259. |

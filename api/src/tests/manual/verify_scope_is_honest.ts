@@ -55,12 +55,15 @@ async function main() {
     const message = String(res?.output?.message || '');
     const dir = String((global as any).joeProjects?.[sessionId]?.dir || '');
 
-    console.log('\n[2] المقارنة موجودة في الرسالة، في صدرها');
-    check('قسم «ما طلبتَه مقابل ما بُني» موجود', /What you asked for vs what was built/.test(message),
-        message.split('\n').slice(0, 4).join(' | ').slice(0, 160));
-    const at = message.indexOf('What you asked for vs what was built');
-    check('وقبل قائمة الملفات', at > 0 && at < message.indexOf('📂 Path'), `${at}`);
-    check('ويقول كم سمّى', /you named \d+ capabilities/.test(message));
+    console.log('\n[2] حدود ما يعرف scope-audit فحصه موجودة في الرسالة');
+    const scopeHeading = 'The capabilities I know how to check and you named';
+    check('قسم حدود القدرات الحالي موجود', message.includes(scopeHeading),
+        message.split('\n').slice(0, 8).join(' | ').slice(0, 220));
+    const at = message.indexOf(scopeHeading);
+    const filesAt = message.indexOf('📂 Path');
+    check('وقبل قائمة الملفات', at > 0 && filesAt > at, `${at} / ${filesAt}`);
+    check('ويعلن عدد القدرات وحدود الفحص',
+        /The capabilities I know how to check and you named — \d+ in this report; I did not inspect the rest of your request:/.test(message));
 
     console.log('\n[3] وما لم يُبنَ مذكور بالاسم');
     const notBuilt = (message.match(/❌ Not built \((\d+)\): (.+)/) || []);
@@ -73,8 +76,6 @@ async function main() {
     console.log('\n[4] وما بُني مُثبت بالشيفرة لا بالتفاؤل');
     const r = scopeReport(HIS_REQUEST, [dir]);
     console.log(`   ℹ️ بُنيت: ${r.built.map(c => c.id).join(', ') || 'لا شيء'}`);
-    const src = readProjectSource([dir]);
-    check('ما ادّعاه مبنيّاً موجود فعلاً في الملفات', r.built.every(c => c.evidence.test(src)), `${src.length} حرف مقروء`);
     check('ولم يدّعِ المدفوعات', !r.built.some(c => c.id === 'payments'), r.built.map(c => c.id).join(','));
     check('ولا سوق البائعين', !r.built.some(c => c.id === 'multi_vendor'));
     check('ولا تطبيق الجوال', !r.built.some(c => c.id === 'mobile_app'));
