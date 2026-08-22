@@ -94,3 +94,61 @@ describe('accents — one palette per theme mode', () => {
         expect(dlg).toContain('pickAccent(mode, a.id)');
     });
 });
+
+
+describe('accent button ink guard — contrast follows the rendered surface', () => {
+    const styleBlockFrom = (src: string, marker: string) => {
+        const start = src.indexOf(marker);
+        if (start < 0) throw new Error(`missing style marker: ${marker}`);
+        const end = src.indexOf('}}', start);
+        return src.slice(start, end < 0 ? src.length : end);
+    };
+
+    const hasWhiteInkOnUnstableBackground = (block: string) => {
+        const hasUnstableBackground = /background\s*:\s*(?:[^;}]*(?:var\(--accent-[^)]+\)|transparent|rgba\(\s*255\s*,\s*255\s*,\s*255\s*,\s*0\.\d+\s*\)))/i.test(block);
+        const hasLiteralWhiteInk = /color\s*:\s*['"]#(?:fff|ffffff)['"]/i.test(block);
+        return hasUnstableBackground && hasLiteralWhiteInk;
+    };
+
+    it('guards accent and transparent surfaces, while opaque status colors stay allowed', () => {
+        expect(hasWhiteInkOnUnstableBackground("background: var(--accent-primary); color: '#fff';")).toBe(true);
+        expect(hasWhiteInkOnUnstableBackground("background: rgba(255,255,255,0.08); color: '#ffffff';")).toBe(true);
+        expect(hasWhiteInkOnUnstableBackground("background: #22c55e; color: '#fff';")).toBe(false);
+    });
+
+    it('both approved variable-background buttons use the on-accent token', () => {
+        const src = web('components', 'CommandComposer.tsx');
+        const primary = styleBlockFrom(src, 'background: providers[selectedProvider].isConnected');
+        const secondary = styleBlockFrom(src, 'background: (browserCredBusy || !browserCredValue.trim())');
+
+        expect(primary).toContain("color: 'var(--joe-on-accent, #fff)'");
+        expect(secondary).toContain("color: 'var(--joe-on-accent, #fff)'");
+        expect(primary).not.toMatch(/color\s*:\s*['"]#(?:fff|ffffff)['"]/i);
+        expect(secondary).not.toMatch(/color\s*:\s*['"]#(?:fff|ffffff)['"]/i);
+
+        // The two opaque status branches are deliberately unchanged.
+        expect(primary).toContain("? '#22c55e'");
+        expect(primary).toContain("? '#ef4444'");
+    });
+
+    it('is a live regression: restoring the old primary literal turns the guard red', () => {
+        const src = web('components', 'CommandComposer.tsx');
+        const current = styleBlockFrom(src, 'background: providers[selectedProvider].isConnected');
+        const restored = current.replace("color: 'var(--joe-on-accent, #fff)'", "color: '#fff'");
+
+        expect(hasWhiteInkOnUnstableBackground(restored)).toBe(true);
+        expect(hasWhiteInkOnUnstableBackground(current)).toBe(false);
+    });
+
+    it('the transparent terminal search state follows the panel text token', () => {
+        const src = web('components', 'terminal', 'EnterpriseTerminalPanel.tsx');
+        const start = src.indexOf("background: 'rgba(255,255,255,0.08)'");
+        const end = src.indexOf('title="بحث في السجل', start);
+        if (start < 0 || end < 0) throw new Error('missing transparent terminal search branch');
+        const branch = src.slice(start, end);
+
+        expect(branch).toContain("color: 'var(--joe-text-primary, #e2e8f0)'");
+        expect(hasWhiteInkOnUnstableBackground(branch)).toBe(false);
+        expect(hasWhiteInkOnUnstableBackground("background: rgba(255,255,255,0.08); color: '#fff';")).toBe(true);
+    });
+});

@@ -3656,7 +3656,7 @@ export default function CommandComposer({
                       style={{
                         flex: 1, padding: '12px', borderRadius: 8, border: 'none',
                         background: providers[selectedProvider].isConnected ? '#22c55e' : providers[selectedProvider].lastError ? '#ef4444' : 'var(--accent-primary)',
-                        color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer',
+                        color: 'var(--joe-on-accent, #fff)', fontSize: 14, fontWeight: 600, cursor: 'pointer',
                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                         opacity: providers[selectedProvider].isVerifying ? 0.7 : 1
                       }}
@@ -3858,7 +3858,7 @@ export default function CommandComposer({
                 <button
                   onClick={() => { void submitBrowserCred(); }}
                   disabled={browserCredBusy || !browserCredValue.trim()}
-                  style={{ padding: '8px 18px', borderRadius: 6, border: 0, background: (browserCredBusy || !browserCredValue.trim()) ? '#475569' : 'var(--accent-secondary, #2563eb)', color: '#fff', cursor: (browserCredBusy || !browserCredValue.trim()) ? 'default' : 'pointer', fontWeight: 600 }}
+                  style={{ padding: '8px 18px', borderRadius: 6, border: 0, background: (browserCredBusy || !browserCredValue.trim()) ? '#475569' : 'var(--accent-secondary, #2563eb)', color: 'var(--joe-on-accent, #fff)', cursor: (browserCredBusy || !browserCredValue.trim()) ? 'default' : 'pointer', fontWeight: 600 }}
                 >
                   {browserCredBusy ? t('sendingContinue') : t('sendAndContinue')}
                 </button>
