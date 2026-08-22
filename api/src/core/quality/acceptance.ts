@@ -357,8 +357,8 @@ export function acceptanceBlock(a: Acceptance, isAr: boolean): string {
     if (!a.criteria.length) return '';
     const head = a.accepted
         ? (isAr
-            ? `✅ حكم القبول: كل ما طلبتَه (${a.met}) مُثبَت بدليل.`
-            : `✅ Acceptance: every one of the ${a.met} things you asked for is proven.`)
+            ? `✅ حكم القبول الجزئي: أثبتُّ ${a.met} مما أعرف كيف أثبته — ولم أفحص بقية نص طلبك.`
+            : `✅ Partial acceptance: I proved ${a.met} of what I know how to prove — I did not inspect the rest of your request.`)
         : (isAr
             ? `⚠️ حكم القبول: ${a.met} من ${a.criteria.length} مُثبَت — و${a.unmet} لم أُثبته:`
             : `⚠️ Acceptance: ${a.met} of ${a.criteria.length} proven — ${a.unmet} not:`);

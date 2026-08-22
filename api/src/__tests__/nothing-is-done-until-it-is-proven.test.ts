@@ -298,11 +298,42 @@ describe('the ledger is published, in his language', () => {
         expect(block).toContain('README');
     });
 
-    it('a complete run says so plainly', () => {
+    it('a complete catalogue subset declares its boundary instead of claiming the whole request', () => {
+        const prompt03 = 'اصنع صفحة فيها قائمة بأسماء ثلاث مدن، وعنوان في أعلاها.';
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-partial-ar-'));
+        fs.mkdirSync(path.join(dir, 'src'), { recursive: true });
+        fs.writeFileSync(path.join(dir, 'src', 'App.jsx'), '<h1>صفحة المدن</h1>');
+        const block = acceptanceBlock(
+            judgeAcceptance(acceptanceFor(prompt03), { dir, built: true }, true),
+            true,
+        );
+        expect(block).toContain('حكم القبول الجزئي');
+        expect(block).toContain('أثبتُّ 1 مما أعرف كيف أثبته');
+        expect(block).toContain('ولم أفحص بقية نص طلبك');
+        expect(block).not.toContain('كل ما طلبتَه');
+        expect(block).not.toContain('كل ما طلبته');
+        expect(block).not.toContain('مُثبَت بدليل.');
+    });
+
+    it('the English catalogue subset also declares its boundary', () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-partial-en-'));
+        fs.mkdirSync(path.join(dir, 'src'), { recursive: true });
+        fs.writeFileSync(path.join(dir, 'src', 'App.jsx'), '<h1>City list</h1>');
+        const block = acceptanceBlock(
+            judgeAcceptance(acceptanceFor('Create a page with a title and a list of three cities.'), { dir }, false),
+            false,
+        );
+        expect(block).toContain('Partial acceptance');
+        expect(block).toContain('I did not inspect the rest of your request');
+        expect(block).not.toContain('every one of the');
+    });
+
+    it('a complete run says so plainly without restoring the old whole-request claim', () => {
         const only = acceptanceFor('ابنِ الموقع ثم ابنِ نسخة إنتاج');
         const block = acceptanceBlock(judgeAcceptance(only, { dir: '/x', built: true }, true), true);
         expect(block).toContain('✅');
         expect(block).not.toContain('❌');
+        expect(block).not.toContain('كل ما طلبتَه');
     });
 
     it('nothing asked for means nothing claimed', () => {
