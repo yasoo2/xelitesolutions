@@ -528,7 +528,24 @@ function PreviewButton({
                 borderRadius: 4,
                 border: 'none',
                 background: active ? 'var(--accent-primary)' : 'transparent',
-                color: active ? '#000' : disabled ? 'var(--text-muted)' : 'var(--text-secondary)',
+                /**
+                 * THE INK FOLLOWS THE GROUND, NOT A GUESS.
+                 *
+                 * Reported from the owner's screen: «الزر الذي لونه اسود ولم
+                 * يظهر شو المكتوب فيه» — the selected device button was a
+                 * black square with nothing visible in it.
+                 *
+                 * The ground is `--accent-primary`, which moves with the theme
+                 * AND the chosen accent; the ink was the literal `#000`. Under
+                 * the light «mono» accent that ground is #1B2620 — near-black —
+                 * so the pair measures 1.34:1. Two more light accents were
+                 * already under the line: ice 3.95, turquoise 4.28.
+                 *
+                 * `--joe-on-accent` is the ink each accent declares for itself,
+                 * per theme; ink-on-accent-is-readable.test.ts computes every
+                 * declared pair rather than matching this text.
+                 */
+                color: active ? 'var(--joe-on-accent, #fff)' : disabled ? 'var(--text-muted)' : 'var(--text-secondary)',
                 cursor: disabled ? 'not-allowed' : 'pointer',
                 display: 'flex',
                 alignItems: 'center',
