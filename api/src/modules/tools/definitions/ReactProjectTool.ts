@@ -2498,11 +2498,7 @@ export class ReactProjectTool extends BaseTool {
         // evidence for this build.
         const scaffoldEntry = (input?.resumeExisting === true || explicitScaffoldDir || samePipelineHandoff)
             ? prevEntry
-            : (prevEntry?.type === 'scaffold'
-                ? null
-                : prevEntry?.type === 'api' && typeof prevEntry?.scaffoldDir === 'string'
-                    ? { ...prevEntry, scaffoldDir: undefined }
-                    : prevEntry);
+            : null;
         // Carry the API builder's in-memory account into self-QA. The page-store
         // strips runtimeAuth, so a plaintext password never crosses to disk.
         const runtimeAuth = prevEntry?.type === 'api' && prevEntry?.runtimeAuth?.email && prevEntry?.runtimeAuth?.password

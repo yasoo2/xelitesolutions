@@ -519,6 +519,102 @@ describe('project identity: React builds reuse only their session-owned scaffold
         }
     });
 
+    it('does not reuse a stale React entry during a new greenfield build', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-greenfield-react-'));
+        const sessionId = 'greenfield-old-react-t';
+        const staleDir = path.join(root, 'OldReact');
+        fs.mkdirSync(path.join(staleDir, 'src'), { recursive: true });
+        fs.writeFileSync(path.join(staleDir, 'index.html'), '<!doctype html><div id="root"></div>');
+        fs.writeFileSync(path.join(staleDir, 'package.json'), JSON.stringify({
+            private: true, type: 'module',
+            scripts: { dev: 'vite', build: 'vite build' },
+            dependencies: { react: '^18.3.1', 'react-dom': '^18.3.1' },
+            devDependencies: { vite: '^5.4.11' },
+        }));
+        fs.writeFileSync(path.join(staleDir, 'src', 'stale-marker.txt'), 'must remain untouched');
+        const projects = ((global as any).joeProjects || ((global as any).joeProjects = {}));
+        projects[sessionId] = { dir: staleDir, type: 'react', brand: 'OldReact' };
+        try {
+            const result: any = await new ReactProjectTool().execute(
+                { request: 'Build a React productivity app for notes and tasks', root, skipInstall: true, projectName: 'FreshNotes' },
+                { sessionId, runId: 'new-greenfield-run' },
+            );
+            expect(result.ok).toBe(true);
+            expect(path.resolve(result.output.path)).not.toBe(path.resolve(staleDir));
+            expect(path.resolve(result.output.path).startsWith(path.resolve(root) + path.sep)).toBe(true);
+            expect(fs.readFileSync(path.join(staleDir, 'src', 'stale-marker.txt'), 'utf8')).toBe('must remain untouched');
+            expect(result.logs.join('\n')).not.toContain('project identity: reusing');
+        } finally {
+            delete projects[sessionId];
+            fs.rmSync(root, { recursive: true, force: true });
+        }
+    });
+
+    it('reuses a session-owned scaffold when scaffoldDir is explicit', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-explicit-scaffold-'));
+        const sessionId = 'explicit-scaffold-dir-t';
+        const scaffoldDir = path.join(root, 'QuickNotes');
+        fs.mkdirSync(path.join(scaffoldDir, 'src'), { recursive: true });
+        fs.writeFileSync(path.join(scaffoldDir, 'index.html'), '<!doctype html><div id="root"></div>');
+        fs.writeFileSync(path.join(scaffoldDir, 'package.json'), JSON.stringify({
+            private: true, type: 'module',
+            scripts: { dev: 'vite', build: 'vite build' },
+            dependencies: { react: '^18.3.1', 'react-dom': '^18.3.1' },
+            devDependencies: { vite: '^5.4.11' },
+        }));
+        const projects = ((global as any).joeProjects || ((global as any).joeProjects = {}));
+        projects[sessionId] = { dir: path.join(root, 'api'), type: 'api', scaffoldDir, resource: 'notes' };
+        try {
+            const result: any = await new ReactProjectTool().execute(
+                { request: 'Build a React productivity app for notes and tasks', root, skipInstall: true, scaffoldDir },
+                { sessionId, runId: 'new-explicit-run' },
+            );
+            expect(result.ok).toBe(true);
+            expect(path.resolve(result.output.path)).toBe(path.resolve(scaffoldDir));
+            expect(result.logs.join('\n')).toContain('project identity: reusing');
+        } finally {
+            delete projects[sessionId];
+            fs.rmSync(root, { recursive: true, force: true });
+        }
+    });
+
+    it('keeps API identity while refusing its stale scaffold root', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-api-identity-'));
+        const sessionId = 'api-identity-fresh-react-t';
+        const staleDir = path.join(root, 'OldApiReact');
+        const apiDir = path.join(root, 'ApiProject');
+        fs.mkdirSync(path.join(staleDir, 'src'), { recursive: true });
+        fs.writeFileSync(path.join(staleDir, 'index.html'), '<!doctype html><div id="root"></div>');
+        fs.writeFileSync(path.join(staleDir, 'package.json'), JSON.stringify({
+            private: true, type: 'module',
+            scripts: { dev: 'vite', build: 'vite build' },
+            dependencies: { react: '^18.3.1', 'react-dom': '^18.3.1' },
+            devDependencies: { vite: '^5.4.11' },
+        }));
+        const runtimeAuth = { email: 'owner@example.test', password: 'runtime-secret' };
+        const projects = ((global as any).joeProjects || ((global as any).joeProjects = {}));
+        projects[sessionId] = {
+            dir: apiDir, type: 'api', scaffoldDir: staleDir, resource: 'orders', appKind: 'finance', runtimeAuth,
+            pipelineRunId: 'old-api-run',
+        };
+        try {
+            const result: any = await new ReactProjectTool().execute(
+                { request: 'Build a React app for a customer ledger', root, skipInstall: true, projectName: 'FreshLedger' },
+                { sessionId, runId: 'new-react-run' },
+            );
+            expect(result.ok).toBe(true);
+            expect(path.resolve(result.output.path)).not.toBe(path.resolve(staleDir));
+            expect(path.resolve(result.output.path).startsWith(path.resolve(root) + path.sep)).toBe(true);
+            expect(result.logs.join('\n')).toContain('app=finance');
+            expect(projects[sessionId].linkedApi).toBe('/api/orders');
+            expect(projects[sessionId].linkedApiDir).toBe(apiDir);
+            expect(projects[sessionId].runtimeAuth).toEqual(runtimeAuth);
+        } finally {
+            delete projects[sessionId];
+            fs.rmSync(root, { recursive: true, force: true });
+        }
+    });
+
     it('does not reuse a registered scaffold during a new greenfield build', async () => {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-greenfield-'));
         const sessionId = 'greenfield-old-scaffold-t';
