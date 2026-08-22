@@ -17,7 +17,7 @@ import { blueprintFor, uncoveredFeatures, type AppKind } from '../core/design/ap
 import { normalizeReactScaffoldStructure } from '../modules/tools/definitions/SystemTools';
 import { undefinedJsxComponentMismatch } from '../core/quality/source-contract';
 import { unparenthesizedLogicalTernaryError } from '../modules/tools/definitions/AIGeneratorTool';
-import { repairCapabilityGapsOnce } from '../modules/tools/definitions/ReactProjectTool';
+import { capabilityEvidenceNotice, repairCapabilityGapsOnce } from '../modules/tools/definitions/ReactProjectTool';
 
 const KINDS: AppKind[] = ['store', 'booking', 'tasks', 'social', 'chat', 'maps', 'weather', 'crm', 'inventory', 'calculator', 'productivity'];
 
@@ -191,6 +191,7 @@ const WeatherProvider: React.FC<WeatherProviderProps> = ({ children }) => {
         });
         expect(result.ok).toBe(true);
         expect(result.attempted).toBe(true);
+        expect(result.evidenceStatus).toBe('available');
         expect(result.gaps).toEqual(['weather icons']);
         expect(result.remaining).toEqual([]);
         expect(calls).toBe(1);
@@ -227,10 +228,98 @@ const WeatherProvider: React.FC<WeatherProviderProps> = ({ children }) => {
         });
         expect(result.ok).toBe(false);
         expect(result.attempted).toBe(true);
+        expect(result.evidenceStatus).toBe('available');
         expect(result.remaining).toEqual(['weather icons']);
         expect(result.error).toBe('capability_gap_unresolved: weather icons');
         expect(calls).toBe(1);
         fs.rmSync(projectRoot, { recursive: true, force: true });
+    });
+
+    it('172: treats empty evidence as unverifiable and does not invoke repair', async () => {
+        const fs = require('fs');
+        const os = require('os');
+        const path = require('path');
+        const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-capability-empty-evidence-'));
+        const generatedPath = 'src/DomainApp.jsx';
+        fs.mkdirSync(path.join(projectRoot, 'src'), { recursive: true });
+        fs.writeFileSync(path.join(projectRoot, generatedPath), 'export default function DomainApp(){ return null; }');
+        let calls = 0;
+        const events: string[] = [];
+        const result = await repairCapabilityGapsOnce({
+            request: 'A useful interface\\nFeatures:\\n- weather icons',
+            engine: 'weather',
+            apiLinked: false,
+            projectRoot,
+            generatedPath,
+            authorDescription: 'Author the requested domain file.',
+            language: 'en',
+            aestheticMode: 'Preserve the current interface.',
+            context: 'The existing artifact is on disk.',
+            executionContext: { projectRoot },
+            readEvidence: () => '',
+            authorExecute: async () => { calls += 1; return { ok: true }; },
+            onEvent: (message) => events.push(message),
+        });
+        expect(result).toEqual({
+            ok: false,
+            attempted: false,
+            gaps: [],
+            remaining: [],
+            error: 'capability_evidence_unavailable',
+            evidenceStatus: 'unverifiable',
+            evidenceUnavailableReason: 'unavailable_empty',
+        });
+        expect(calls).toBe(0);
+        expect(events).toContain('capability audit: UNVERIFIABLE — evidence length=0; skipping feature classification and repair');
+        fs.rmSync(projectRoot, { recursive: true, force: true });
+    });
+
+    it('172: treats a reader exception as unverifiable and does not invoke repair', async () => {
+        const fs = require('fs');
+        const os = require('os');
+        const path = require('path');
+        const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-capability-reader-error-'));
+        const generatedPath = 'src/DomainApp.jsx';
+        fs.mkdirSync(path.join(projectRoot, 'src'), { recursive: true });
+        fs.writeFileSync(path.join(projectRoot, generatedPath), 'export default function DomainApp(){ return null; }');
+        let calls = 0;
+        const events: string[] = [];
+        const result = await repairCapabilityGapsOnce({
+            request: 'A useful interface\\nFeatures:\\n- weather icons',
+            engine: 'weather',
+            apiLinked: false,
+            projectRoot,
+            generatedPath,
+            authorDescription: 'Author the requested domain file.',
+            language: 'en',
+            aestheticMode: 'Preserve the current interface.',
+            context: 'The existing artifact is on disk.',
+            executionContext: { projectRoot },
+            readEvidence: () => { throw new Error('evidence read failed'); },
+            authorExecute: async () => { calls += 1; return { ok: true }; },
+            onEvent: (message) => events.push(message),
+        });
+        expect(result).toEqual({
+            ok: false,
+            attempted: false,
+            gaps: [],
+            remaining: [],
+            error: 'capability_evidence_unavailable',
+            evidenceStatus: 'unverifiable',
+            evidenceUnavailableReason: 'unavailable_read_error',
+        });
+        expect(calls).toBe(0);
+        expect(events).toContain('capability audit: UNVERIFIABLE — evidence read failed: evidence read failed; skipping feature classification and repair');
+        fs.rmSync(projectRoot, { recursive: true, force: true });
+    });
+
+    it('178: announces unverifiable capability evidence without treating it as success', () => {
+        expect(capabilityEvidenceNotice('unverifiable', false)).toBe(
+            'I could not read the project source to verify the requested capabilities — I did not inspect them, and I do not claim they are sound.',
+        );
+        expect(capabilityEvidenceNotice('unverifiable', true)).toContain('لم أستطع قراءة مصدر المشروع');
+        expect(capabilityEvidenceNotice('available', false)).toBeNull();
+        expect(capabilityEvidenceNotice(undefined, true)).toBeNull();
     });
 
     it('weather prose capabilities require executable search and detail shapes', () => {

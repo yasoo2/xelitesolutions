@@ -88,7 +88,7 @@ export function earlyProjectDeclaration(input: {
  */
 export function requestFidelityMismatch(appBp: Pick<AppBlueprint, 'engine'> | null, projectEvidence: string): boolean {
     if (!appBp) return false;
-    if (!projectEvidence || projectEvidence.trim().length < 50) return false;
+    if (!projectEvidence || projectEvidence.length === 0) return false;
     const engineEvidence = appBp.engine === 'weather'
         ? /open.?meteo|forecast|temperature|WeatherApp/i.test(projectEvidence)
         : true;
@@ -98,6 +98,16 @@ export function requestFidelityMismatch(appBp: Pick<AppBlueprint, 'engine'> | nu
 /** A known engine cannot be accepted when its generated source was not readable. */
 export function requestFidelityEvidenceUnavailable(appBp: Pick<AppBlueprint, 'engine'> | null, projectEvidence: string): boolean {
     return !!appBp && String(projectEvidence || '').trim().length < 50;
+}
+
+export function capabilityEvidenceNotice(
+    evidenceStatus: CapabilityGapRepairResult['evidenceStatus'],
+    isArabic: boolean,
+): string | null {
+    if (evidenceStatus !== 'unverifiable') return null;
+    return isArabic
+        ? 'لم أستطع قراءة مصدر المشروع للتحقق من القدرات المطلوبة — لم أفحصها، ولا أدّعي أنها سليمة.'
+        : 'I could not read the project source to verify the requested capabilities — I did not inspect them, and I do not claim they are sound.';
 }
 
 export interface RequestFidelityVerdictForTest {
@@ -134,7 +144,7 @@ export function deriveRequestFidelity(
         label,
         evidenceUnavailable,
         mismatch,
-        diagnostic: `acceptance fidelity verdict: ${label} — engine=${fidelityBp?.engine || 'unknown'} chars=${String(projectEvidence || '').trim().length}`,
+        diagnostic: `acceptance fidelity verdict: ${label} — engine=${fidelityBp?.engine || 'unknown'} chars=${String(projectEvidence || '').length}`,
     };
 }
 
@@ -144,6 +154,8 @@ export interface CapabilityGapRepairResult {
     gaps: string[];
     remaining: string[];
     error?: string;
+    evidenceStatus?: 'available' | 'unverifiable';
+    evidenceUnavailableReason?: 'unavailable_empty' | 'unavailable_read_error';
 }
 
 /**
@@ -169,18 +181,39 @@ export async function repairCapabilityGapsOnce(input: {
     onEvent?: (message: string) => void;
 }): Promise<CapabilityGapRepairResult> {
     const readEvidence = input.readEvidence || (() => {
+        const { readProjectSource } = require('../../../core/quality/scope-audit');
+        return readProjectSource([input.projectRoot]) || '';
+    });
+    let evidenceReadError = '';
+    const evidence = () => {
         try {
-            const { readProjectSource } = require('../../../core/quality/scope-audit');
-            return readProjectSource([input.projectRoot]) || '';
-        } catch {
+            evidenceReadError = '';
+            return String(readEvidence() || '');
+        } catch (error: any) {
+            evidenceReadError = String(error?.message || error || 'evidence read failed');
             return '';
         }
-    });
-    const evidence = () => {
-        try { return String(readEvidence() || ''); } catch { return ''; }
     };
-    const gaps = uncoveredFeatures(input.request, input.engine, input.apiLinked, evidence());
-    if (!gaps.length) return { ok: true, attempted: false, gaps: [], remaining: [] };
+    const evidenceSource = evidence();
+    if (evidenceSource.length === 0) {
+        const error = 'capability_evidence_unavailable';
+        const evidenceUnavailableReason = evidenceReadError ? 'unavailable_read_error' as const : 'unavailable_empty' as const;
+        const detail = evidenceReadError
+            ? `evidence read failed: ${evidenceReadError}`
+            : 'evidence length=0';
+        input.onEvent?.(`capability audit: UNVERIFIABLE — ${detail}; skipping feature classification and repair`);
+        return {
+            ok: false,
+            attempted: false,
+            gaps: [],
+            remaining: [],
+            error,
+            evidenceStatus: 'unverifiable',
+            evidenceUnavailableReason,
+        };
+    }
+    const gaps = uncoveredFeatures(input.request, input.engine, input.apiLinked, evidenceSource);
+    if (!gaps.length) return { ok: true, attempted: false, gaps: [], remaining: [], evidenceStatus: 'available' };
 
     const gapBrief = gaps.map(g => `- Missing capability: "${g}"`).join('\n');
     const authoredPath = path.join(input.projectRoot, input.generatedPath);
@@ -204,6 +237,7 @@ export async function repairCapabilityGapsOnce(input: {
             gaps,
             remaining: gaps,
             error: String(error?.message || error || 'capability repair failed'),
+            evidenceStatus: 'available',
         };
     }
 
@@ -215,12 +249,26 @@ export async function repairCapabilityGapsOnce(input: {
             gaps,
             remaining: gaps,
             error: String(repaired?.error || 'capability repair did not produce the requested file'),
+            evidenceStatus: 'available',
         };
     }
 
     // Recheck only the named gaps from the first audit; unrelated evidence is
     // still evaluated by the normal final delivery gate below.
-    const remaining = uncoveredFeatures(input.request, input.engine, input.apiLinked, evidence())
+    const repairedEvidence = evidence();
+    if (repairedEvidence.length === 0) {
+        input.onEvent?.(`capability audit: UNVERIFIABLE — evidence length=0 after repair; skipping final classification`);
+        return {
+            ok: false,
+            attempted: true,
+            gaps,
+            remaining: [],
+            error: 'capability_evidence_unavailable',
+            evidenceStatus: 'unverifiable',
+            evidenceUnavailableReason: evidenceReadError ? 'unavailable_read_error' : 'unavailable_empty',
+        };
+    }
+    const remaining = uncoveredFeatures(input.request, input.engine, input.apiLinked, repairedEvidence)
         .filter(g => gaps.includes(g));
     if (remaining.length) input.onEvent?.(`capability repair: still missing (${remaining.join(', ')})`);
     else input.onEvent?.(`capability repair: resolved (${gaps.join(', ')})`);
@@ -230,6 +278,7 @@ export async function repairCapabilityGapsOnce(input: {
         gaps,
         remaining,
         ...(remaining.length ? { error: `capability_gap_unresolved: ${remaining.join(', ')}` } : {}),
+        evidenceStatus: 'available',
     };
 }
 
@@ -3238,6 +3287,8 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                     executionContext: { ...context, projectRoot: proj, workspaceId: context?.workspaceId },
                     onEvent: term,
                 });
+                const capabilityUnverifiableNotice = capabilityEvidenceNotice(capabilityRepair.evidenceStatus, isAr);
+                if (capabilityUnverifiableNotice) term(capabilityUnverifiableNotice);
                 if (capabilityRepair.attempted) {
                     if (!capabilityRepair.ok) {
                         const reason = capabilityRepair.error || `capability_gap_unresolved: ${capabilityRepair.remaining.join(', ')}`;
@@ -4003,11 +4054,11 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 return readProjectSource([proj]);
             } catch { return ''; }
         })();
-        const askedButMissing: string[] = appBp
+        const fidelity = deriveRequestFidelity(request, isAr, appBp, projectEvidence);
+        const askedButMissing: string[] = appBp && !fidelity.evidenceUnavailable
             ? uncoveredFeatures(request, appBp.engine, !!apiLink, projectEvidence)
             : [];
-        const fidelityEvidenceLength = projectEvidence.trim().length;
-        const fidelity = deriveRequestFidelity(request, isAr, appBp, projectEvidence);
+        const fidelityEvidenceLength = projectEvidence.length;
         const fidelityEvidenceUnavailable = fidelity.evidenceUnavailable;
         const fidelityMismatch = fidelity.mismatch;
         term(`${fidelity.diagnostic} — path=${proj} available=${!fidelityEvidenceUnavailable} mismatch=${fidelityMismatch}`);
