@@ -189,6 +189,26 @@ echo "GATE_WEB_BUILD_EXIT:$WEB_BUILD_EXIT"
 #  So the gate now does what he was already doing by hand — which is the
 #  thing this file exists to stop him doing by hand. It batches.
 #
+#  AND THE BATCHING WAS THEN TESTED AGAINST ITS OWN PREMISE, on a machine
+#  cleaned of the 28,079 leaked temp directories that had been amplifying it:
+#
+#      GATE_BATCH=0    8 failed, 219 passed, 227 total · 3406 passed, 3406 total
+#      GATE_BATCH=12   0 failed, 227 passed, 227 total · 3696 passed, 3696 total
+#
+#  and the eight, every one of them:
+#
+#      ● Test suite failed to run
+#        A jest worker process (pid=357340) was terminated by another
+#        process: signal=SIGTERM, exitCode=null.
+#
+#  KILLED, NOT FAILED — zero failing assertions in either run. That matters
+#  because the opposite reading was live until this measurement: that batching
+#  was buying green by running less, and hiding eight real defects. It is not.
+#  What is NOT measured is WHICH resource ran out: no memory figure and no
+#  kernel message was captured, so this file does not name one. The fix is the
+#  same either way — one process does not carry the suite on that machine —
+#  and a gate is the last place to write down a cause nobody measured.
+#
 #  And because batching is precisely how a run silently covers less than the
 #  whole suite, the denominator is no longer read out of jest's own summary.
 #  It is `jest --listTests`, taken before anything runs, and a run whose
