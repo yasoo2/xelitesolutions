@@ -50,7 +50,41 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-HEAP="${GATE_NODE_HEAP:-4096}"
+#
+#  THE MACHINE IS NOT MINE.
+#
+#  Measured on the other agent's box, on a commit this gate calls green
+#  here: five suites reported «A jest worker process ... signal=SIGTERM»,
+#  and the run summarised as «5 failed, 221 passed» with «3621 passed,
+#  3621 total» — five suites dead and NOT ONE failing assertion, because
+#  the workers were killed before their tests could run.
+#
+#  The cause was in this file. It ran the whole suite in parallel with a
+#  4 GB heap per worker, on a box that has been batching for days precisely
+#  because it cannot afford that — and it silently discarded the operator's
+#  own NODE_OPTIONS while doing it. A tool written on generous hardware and
+#  run on narrow hardware produces a red that means nothing, and a false red
+#  is worse than no guard at all: it trains the eye to ignore red.
+#
+#  So the two knobs that decide whether the run fits in memory are settable,
+#  the operator's NODE_OPTIONS is honoured when they set one, and both are
+#  printed with the verdict — a number is not a measurement without the
+#  conditions that produced it.
+#
+#      GATE_JEST_WORKERS=2 GATE_NODE_HEAP=1536 bash scripts/gate.sh
+#
+#  Precedence, and it was measured the wrong way round first: asking for
+#  GATE_NODE_HEAP=1536 printed 8192, because an inherited NODE_OPTIONS won.
+#  The knob a person reaches for deliberately outranks the one their shell
+#  happens to carry — so an explicit GATE_NODE_HEAP wins, an inherited
+#  NODE_OPTIONS is honoured when no heap is named, and the default is last.
+if [ -n "${GATE_NODE_HEAP:-}" ]; then
+    JEST_NODE_OPTIONS="--max-old-space-size=$GATE_NODE_HEAP"
+else
+    JEST_NODE_OPTIONS="${NODE_OPTIONS:---max-old-space-size=4096}"
+fi
+WORKERS_ARG=()
+[ -n "${GATE_JEST_WORKERS:-}" ] && WORKERS_ARG=(--maxWorkers="$GATE_JEST_WORKERS")
 
 say() { printf '\n\033[1m== %s\033[0m\n' "$1"; }
 
@@ -138,8 +172,10 @@ SCOPE="full"
 [ "$#" -gt 0 ] && SCOPE="partial (selector: $*)"
 echo "GATE_SCOPE:$SCOPE"
 JEST_LOG="$(mktemp -t joe-gate-jest.XXXXXX)"
-echo "$ NODE_OPTIONS=--max-old-space-size=$HEAP npx jest"
-( cd "$ROOT/api" && NODE_OPTIONS="--max-old-space-size=$HEAP" npx jest "$@" 2>&1 | tee "$JEST_LOG" | grep -E '^(PASS|FAIL|Tests:|Test Suites:)' )
+echo "GATE_NODE_OPTIONS:$JEST_NODE_OPTIONS"
+echo "GATE_JEST_WORKERS:${GATE_JEST_WORKERS:-jest default}"
+echo "$ NODE_OPTIONS=$JEST_NODE_OPTIONS npx jest ${WORKERS_ARG[*]:-}"
+( cd "$ROOT/api" && NODE_OPTIONS="$JEST_NODE_OPTIONS" npx jest "${WORKERS_ARG[@]}" "$@" 2>&1 | tee "$JEST_LOG" | grep -E '^(PASS|FAIL|Tests:|Test Suites:)' )
 JEST_EXIT=${PIPESTATUS[0]}
 echo "GATE_JEST_EXIT:$JEST_EXIT"
 
@@ -155,6 +191,8 @@ SUITES="$(grep -E '^Test Suites:' "$JEST_LOG" | tail -1)"
 grep -E '^(Test Suites|Tests):' "$JEST_LOG" \
     || echo "no jest summary — the run produced none, which is itself the finding"
 echo "GATE_SCOPE:$SCOPE"
+echo "GATE_NODE_OPTIONS:$JEST_NODE_OPTIONS"
+echo "GATE_JEST_WORKERS:${GATE_JEST_WORKERS:-jest default}"
 echo "GATE_TSC_EXIT:$TSC_EXIT"
 echo "GATE_WEB_TSC_EXIT:$WEB_TSC_EXIT"
 echo "GATE_API_BUILD_EXIT:$API_BUILD_EXIT"
