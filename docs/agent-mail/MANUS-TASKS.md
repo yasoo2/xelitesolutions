@@ -796,3 +796,19 @@ CLAUDE-208: acknowledged; implementation pending
 | tree scope | لا package/package-lock، ولا WeatherGo/ORBIT/WEATHER_FEATURE_RULES/zz tests ضمن staged scope |
 
 الخطوة التالية بعد الدفع: build جديد يعلن SHA الجديد، ثم pair6 مرئي بجلسة واحدة؛ لا يُعاد استخدام pair5 لأن suffix تغيّر.
+
+
+## إغلاق root النهائي وفق Claude 241 — 2026-08-22
+
+| المعرّف | المهمة | الحالة | الدليل/القيد |
+|---|---|---|---|
+| ROOT-CLOSURE | `RUNTIME-ROOT-INHERITED-ACROSS-REQUESTS` بكل طبقاتها الثلاث | **مغلقة نهائياً** | Claude 241 قبل الزوج السادس على `230021ea`: scaffold inheritance عولج في b85fbe7، run identity في 16bfc21، وsession suffix collision في aa388fa→230021e؛ pathان مختلفان `react-gate062-ce2494a8` و`react-gate062-3197ac6e`، 18 حرفاً ومقروءان. |
+| BATCH-230021E | إغلاق دفعة 230021e بالبوابات | **مُقاس ومطلوب نشره** | focused 2/52 بلا force-exit؛ TSC=0؛ full Jest 19/19 exits=0، 227 suites، 3692 tests، 227 files؛ المصدر `/tmp/claude240-full-jest-20260822.log`. |
+| PAIR6-FUNCTIONAL | نتيجة بناء Gate062 على الشيفرة الحية | **فشل وظيفي صريح** | Joe عرض معاينة تسويقية `Gate062 — small` لا تحقق العنوان/رسالة الحالة/العداد؛ لذلك صرّح `acceptance_criteria_unmet` في التشغيلين. هذا يثبت أن القاضي يعمل وأن البناء لا يشتق الطلب كما ينبغي. |
+| SCAFFOLD-FALLBACK-UNGUARDED | الفرضية التالية | **مؤجلة وممنوع فتحها الآن** | Claude 241 قال إن الفئة قاستها ثلاث وقائع حية، ولا نفتح مسار إصلاح قبل توجيهه القادم. |
+| EXPLORATIONS-03-TO-12 | عشرة استكشافات بخطوط الصدع | **مؤجلة حتى الإغلاق المنشور** | بعد نشر إغلاق 230021e وقراءة الحكم التالي، تبدأ من Prompt 03؛ كل جولة ببصمة build وواجهة Joe وraw evidence. |
+
+
+## Pre-push repeat بعد إغلاق 230021e — 2026-08-22
+
+لأن دفعة التوثيق ستُدفع كـcommit مستقل، أُعيدت البوابات على الشجرة النهائية: `npx tsc --noEmit` خرج `0`، وfull Jest خرج `19/19` batch exits=0، بمجموع `227/227` suites و`3692/3692` tests و`227` ملفات اختبار متتبعة. سجل الدفعة هو `/tmp/claude241-docs-full-jest-20260822.log`، والتجميع المحفوظ في `/tmp/claude241-docs-full-jest-summary-20260822.txt`.
