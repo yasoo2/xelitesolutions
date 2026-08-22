@@ -17,6 +17,16 @@
  */
 import fs from 'fs';
 import path from 'path';
+jest.mock('child_process', () => {
+    const actual = jest.requireActual<typeof import('child_process')>('child_process');
+    return { ...actual, spawn: jest.fn(actual.spawn) };
+});
+
+import * as childProcess from 'child_process';
+import { executionEngine } from '../kernel/ExecutionEngine';
+
+const realChildProcess = jest.requireActual<typeof import('child_process')>('child_process');
+const spawnMock = childProcess.spawn as jest.MockedFunction<typeof childProcess.spawn>;
 
 const ROOT = path.resolve(__dirname, '..', '..', '..');
 const read = (...p: string[]) => fs.readFileSync(path.join(ROOT, ...p), 'utf-8');
@@ -60,6 +70,56 @@ describe('a spawn that fails is a failure, not a silence', () => {
         // parent, so the updater still outlives the server it is about to kill.
         expect(E).toMatch(/process\.platform !== 'win32'/);
         expect(E).toMatch(/detached: detach/);
+    });
+});
+
+describe('attached command window policy is explicit at the spawn boundary', () => {
+    beforeEach(() => {
+        spawnMock.mockClear();
+    });
+
+    afterEach(() => {
+        spawnMock.mockClear();
+    });
+
+    it('passes true by default and false when explicitly requested to runCommandInternal', async () => {
+        const calls: Array<{ windowsHide: unknown; detached: unknown }> = [];
+        spawnMock.mockImplementation(((...args: Parameters<typeof childProcess.spawn>) => {
+            const options = args[2] as childProcess.SpawnOptions;
+            calls.push({ windowsHide: options?.windowsHide, detached: options?.detached });
+            return realChildProcess.spawn(...args);
+        }) as typeof childProcess.spawn);
+
+        const cases: Array<{ windowsHide?: boolean }> = [{}, { windowsHide: false }];
+        for (const options of cases) {
+            const result = await executionEngine.execute({
+                id: `windows-hide-${String(options.windowsHide)}`,
+                type: 'shell',
+                payload: { command: `${process.execPath} -e \"\"`, options },
+                priority: 'normal',
+            });
+            expect(result.success).toBe(true);
+        }
+
+        expect(calls.slice(-2)).toEqual([
+            { windowsHide: true, detached: undefined },
+            { windowsHide: false, detached: undefined },
+        ]);
+    });
+
+    it('keeps runDetached on its existing true-only windowsHide policy', () => {
+        const child = realChildProcess.spawn(process.execPath, ['-e', 'setTimeout(() => {}, 50)'], { stdio: 'ignore' });
+        const calls: Array<{ windowsHide: unknown; detached: unknown }> = [];
+        spawnMock.mockImplementation(((...args: Parameters<typeof childProcess.spawn>) => {
+            const options = args[2] as childProcess.SpawnOptions;
+            calls.push({ windowsHide: options?.windowsHide, detached: options?.detached });
+            return child;
+        }) as typeof childProcess.spawn);
+
+        const result = executionEngine.runDetached(process.execPath, ['-e', ''], { detached: true });
+        expect(result.ok).toBe(true);
+        expect(calls.at(-1)).toEqual({ windowsHide: false, detached: true });
+        child.kill();
     });
 });
 

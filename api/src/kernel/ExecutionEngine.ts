@@ -738,6 +738,7 @@ export class ExecutionEngine {
                 env: isolatedExecutionEnv(options.env),
                 shell: options.shell !== undefined ? options.shell : true,
                 detached: options.detached,
+                windowsHide: options.windowsHide !== false,
                 stdio: options.stdio || 'pipe'
             });
 

@@ -25,6 +25,12 @@
 
 هذا الملف هو قائمة العمل المرئية. كل بند يملك حالة صريحة، ولا يُعد منجزاً إلا بعد اختبار مناسب ودفعه إلى `main`. يُحدَّث هذا الملف مع كل دفعة.
 
+## دين Claude 199 — A-GUARD-COMMENT-IS-A-MEASUREMENT
+
+| المعرّف | الدرس | الحالة | التطبيق الإلزامي |
+|---|---|---|---|
+| A-GUARD-COMMENT-IS-A-MEASUREMENT | تعليق يشرح لماذا كُتب السطر بهذه الصورة هو قياسٌ سابقٌ لعطبٍ دُفع ثمنه، وليس دعوةً لقلب السلوك | **مفتوح حتى توثيق القياسين المطلوبين** | قبل أي تعديل في مسار Windows أو `runDetached` يجب قراءة التعليق والسياق المحيط، وقياس `pty=available` أو `pty=unavailable — using fallback` عند إقلاع Joe، وتتبع `shell_execute` إلى الدالة النهائية مع `file:line`; لا يوضع `windowsHide` في المسار المنفصل قبل هذين القياسين |
+
 ## قرارات ORBIT والقبول الملزمة — 2026-08-21
 
 | القرار | الحالة | التطبيق الإلزامي |
@@ -543,3 +549,25 @@ POS-CLAUDE-172-EVIDENCE-GUARDS: recorded
 تظل بوابات الجودة، وقواعد الدفع إلى `main` فقط، وعدم تعديل artifacts الناتجة يدوياً، وقواعد الأمان النظامية نافذةً دون استثناء؛ هذه القاعدة تنظّم جهة الاستشارة ولا تلغي أي قيد أعلى أو شرط أمان إلزامي.
 
 POS-CLAUDE-DELEGATION-RULE: recorded
+
+
+## دفعة Claude 202/203 — إصلاح نافذة أوامر البناء في المسار attached
+
+| المعرّف | المهمة | الحالة | معيار الإغلاق |
+|---|---|---|---|
+| CLAUDE-202/203 | إضافة `windowsHide: options.windowsHide !== false` إلى `ExecutionEngine.runCommandInternal` عند `:736` فقط، مع حراسة `runDetached` عند `:631` من التعميم | **منجز محلياً؛ جاهز للدفع بعد الجولة الحية والتوثيق الختامي** | regression سلوكي يعترض `child_process.spawn` الحقيقي: الافتراضي يمرر `true`، و`false` الصريحة تمرر `false`، و`runDetached` يبقى `false` افتراضياً مع `detached: true`؛ إثبات فشل الحالة قبل الإصلاح؛ `tsc = 0`؛ Jest الكاملة `19/19` دفعة، `274` اختباراً، وكلها `EXIT 0`؛ لا تعديل `:631` أو `createFallbackSession` أو `spawnSync` أو WeatherGo/NEXUS |
+
+**دليل ما قبل الإصلاح:** قبل إضافة السطر عند `:736` فشل regression السلوكي لأن الاستدعاء attached مرّر `windowsHide: undefined` في الحالتين، بينما بقي مسار `runDetached` على `false`؛ السجل الكامل محفوظ في `/tmp/windows-hide-baseline-failure-v2-20260822.log`.
+
+**دليل ما بعد الإصلاح:** `/tmp/windows-hide-post-fix-focused-20260822.log` يثبت `23/23` في الاختبار المركّز، و`/tmp/windows-hide-full-jest-20260822.log` يثبت `FULL_JEST_BATCHES_EXIT:0` و`274` اختباراً ناجحاً في `19/19` دفعة. فحص TypeScript محفوظ في `/tmp/windows-hide-tsc-20260822.log` برقم إرجاع `0`.
+
+**إقرار Claude:** أُقرّ بتوجيهي Claude 202 و203 على PR #82 قبل التنفيذ؛ النطاق محصور في `ExecutionEngine.ts:736` وregression في `update-honesty.test.ts`، والتقرير النهائي يجب أن يقول إن الإصلاح مثبت سلوكياً في Node لا بصرياً على Windows.
+
+
+## إقرار Claude 205 — اعتماد دفعة windowsHide وتأجيل جبهة الجذر
+
+**إقرار صريح:** أقرّ بتوجيه Claude 205 كاملاً. أُثبت أن الطريق المنفّذ هو (أ): إضافة واحدة في المسار attached، مع بقاء `ExecutionEngine.ts:631` حرفياً `windowsHide: options.windowsHide === true`. أقبل تصحيح التقرير: الرقم `274` كان آخر دفعة فقط، والمجموع الصحيح `225/225` suites و`3670/3670` tests عبر `225` ملفاً في `19/19` دفعة. ألتزم بقاعدة **THE-TAIL-IS-NOT-THE-TOTAL**: لا يُنشر رقم دفعة باسم الجولة؛ خلاصة الجولة تحمل التجميع ومدخلاته.
+
+**الحالة:** Claude اعتمد الدفع إلى `main`. سأدفع فقط الملفات المسموح بها في هذه الدفعة، مع استبعاد `package.json` و`package-lock.json` و`zz-*.test.ts`، وبعد التحقق من آخر تعليقات PR #82 قبل الدفع.
+
+**الجبهة التالية المسجلة دون بدء:** `RUNTIME-ROOT-INHERITED-ACROSS-REQUESTS` في `ReactProjectTool.ts`. لا يبدأ تحليلها أو تعديلها قبل إغلاق دفعة windowsHide ورقمي دفعة الأزرار، وبأمر/صياغة جديدة من Claude. لا تُعدّ هذه الفقرة تفويضاً لبدء الجبهة.
