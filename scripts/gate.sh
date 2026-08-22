@@ -175,8 +175,25 @@ JEST_LOG="$(mktemp -t joe-gate-jest.XXXXXX)"
 echo "GATE_NODE_OPTIONS:$JEST_NODE_OPTIONS"
 echo "GATE_JEST_WORKERS:${GATE_JEST_WORKERS:-jest default}"
 echo "$ NODE_OPTIONS=$JEST_NODE_OPTIONS npx jest ${WORKERS_ARG[*]:-}"
-( cd "$ROOT/api" && NODE_OPTIONS="$JEST_NODE_OPTIONS" npx jest "${WORKERS_ARG[@]}" "$@" 2>&1 | tee "$JEST_LOG" | grep -E '^(PASS|FAIL|Tests:|Test Suites:)' )
-JEST_EXIT=${PIPESTATUS[0]}
+#
+#  THE EXIT CODE COMES FROM JEST, NOT FROM THE PIPE — AND IT SAYS SO.
+#
+#  This used to read `JEST_EXIT=${PIPESTATUS[0]}` after a SUBSHELL. That
+#  array holds one element there — the subshell's own status — so the line
+#  said «jest's exit» and delivered «whatever the pipeline returned». It
+#  worked, but only because `pipefail` happened to be set at the top of the
+#  file: measured, `( false | tee | grep -q "" )` gives 1 with pipefail and
+#  0 without. Anyone deleting one word from a `set` line three screens away
+#  would have flipped every verdict in this file to green, silently.
+#
+#  Jest's own status is captured directly now. The formatting pipe cannot
+#  speak for it, and no distant option decides whether the gate can fail.
+#
+JEST_RC_FILE="$(mktemp -t joe-gate-rc.XXXXXX)"
+( cd "$ROOT/api" && { NODE_OPTIONS="$JEST_NODE_OPTIONS" npx jest "${WORKERS_ARG[@]}" "$@" 2>&1; echo "$?" > "$JEST_RC_FILE"; } \
+    | tee "$JEST_LOG" | grep -E '^(PASS|FAIL|Tests:|Test Suites:)' )
+JEST_EXIT="$(cat "$JEST_RC_FILE" 2>/dev/null || echo 1)"
+rm -f "$JEST_RC_FILE"
 echo "GATE_JEST_EXIT:$JEST_EXIT"
 
 # -------------------------------------------------------------- 5. verdict
