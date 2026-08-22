@@ -50,7 +50,41 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-HEAP="${GATE_NODE_HEAP:-4096}"
+#
+#  THE MACHINE IS NOT MINE.
+#
+#  Measured on the other agent's box, on a commit this gate calls green
+#  here: five suites reported «A jest worker process ... signal=SIGTERM»,
+#  and the run summarised as «5 failed, 221 passed» with «3621 passed,
+#  3621 total» — five suites dead and NOT ONE failing assertion, because
+#  the workers were killed before their tests could run.
+#
+#  The cause was in this file. It ran the whole suite in parallel with a
+#  4 GB heap per worker, on a box that has been batching for days precisely
+#  because it cannot afford that — and it silently discarded the operator's
+#  own NODE_OPTIONS while doing it. A tool written on generous hardware and
+#  run on narrow hardware produces a red that means nothing, and a false red
+#  is worse than no guard at all: it trains the eye to ignore red.
+#
+#  So the two knobs that decide whether the run fits in memory are settable,
+#  the operator's NODE_OPTIONS is honoured when they set one, and both are
+#  printed with the verdict — a number is not a measurement without the
+#  conditions that produced it.
+#
+#      GATE_JEST_WORKERS=2 GATE_NODE_HEAP=1536 bash scripts/gate.sh
+#
+#  Precedence, and it was measured the wrong way round first: asking for
+#  GATE_NODE_HEAP=1536 printed 8192, because an inherited NODE_OPTIONS won.
+#  The knob a person reaches for deliberately outranks the one their shell
+#  happens to carry — so an explicit GATE_NODE_HEAP wins, an inherited
+#  NODE_OPTIONS is honoured when no heap is named, and the default is last.
+if [ -n "${GATE_NODE_HEAP:-}" ]; then
+    JEST_NODE_OPTIONS="--max-old-space-size=$GATE_NODE_HEAP"
+else
+    JEST_NODE_OPTIONS="${NODE_OPTIONS:---max-old-space-size=4096}"
+fi
+WORKERS_ARG=()
+[ -n "${GATE_JEST_WORKERS:-}" ] && WORKERS_ARG=(--maxWorkers="$GATE_JEST_WORKERS")
 
 say() { printf '\n\033[1m== %s\033[0m\n' "$1"; }
 
@@ -133,28 +167,145 @@ echo "GATE_WEB_BUILD_EXIT:$WEB_BUILD_EXIT"
 #  that was given a selector is reported as PARTIAL and never as PASS, no
 #  matter how green it is.
 #
+#
+#  AND IT RUNS IN BATCHES, BECAUSE ONE PROCESS DOES NOT SURVIVE THE SUITE.
+#
+#  Measured twice on the other agent's box — and the second time was AFTER
+#  this file had already been «fixed» for that box:
+#
+#      $ GATE_JEST_WORKERS=1 GATE_NODE_HEAP=2048 bash scripts/gate.sh
+#      Test Suites: 139 failed, 88 passed, 227 total
+#      Tests:       1674 passed, 1674 total
+#      «A jest worker process (pid=349740) was terminated by another
+#       process: signal=SIGTERM, exitCode=null»
+#
+#  A hundred and thirty-nine suites dead and NOT ONE failing assertion. The
+#  knobs added after the first false red were a knob, not a fix: they let an
+#  operator ask for less parallelism, and the run died anyway, because what
+#  does not fit is ONE jest process carrying 227 suites — not the worker
+#  count. A fix aimed at the wrong quantity is indistinguishable from no fix
+#  at all, and this one cost that operator a second false red to discover.
+#
+#  So the gate now does what he was already doing by hand — which is the
+#  thing this file exists to stop him doing by hand. It batches.
+#
+#  And because batching is precisely how a run silently covers less than the
+#  whole suite, the denominator is no longer read out of jest's own summary.
+#  It is `jest --listTests`, taken before anything runs, and a run whose
+#  batches do not add up to that number FAILS with the shortfall named. The
+#  old check — «did jest print a summary at all» — could not see the run
+#  above: it printed a perfectly well-formed summary about a suite that had
+#  largely been killed.
+#
+#      GATE_BATCH=12     test files per jest process (0 = one process, no batching)
+#
+#  Twelve is not a taste. It is the size that box has been surviving on for
+#  days, and a gate's default belongs on the NARROWEST machine that has to
+#  run it: a wide machine can afford nineteen extra process starts, and no
+#  machine can afford a green that was never measured.
+#
 say "jest — the whole suite"
 SCOPE="full"
 [ "$#" -gt 0 ] && SCOPE="partial (selector: $*)"
 echo "GATE_SCOPE:$SCOPE"
-JEST_LOG="$(mktemp -t joe-gate-jest.XXXXXX)"
-echo "$ NODE_OPTIONS=--max-old-space-size=$HEAP npx jest"
-( cd "$ROOT/api" && NODE_OPTIONS="--max-old-space-size=$HEAP" npx jest "$@" 2>&1 | tee "$JEST_LOG" | grep -E '^(PASS|FAIL|Tests:|Test Suites:)' )
-JEST_EXIT=${PIPESTATUS[0]}
-echo "GATE_JEST_EXIT:$JEST_EXIT"
+echo "GATE_NODE_OPTIONS:$JEST_NODE_OPTIONS"
+echo "GATE_JEST_WORKERS:${GATE_JEST_WORKERS:-jest default}"
+
+GATE_WORK="$(mktemp -d -t joe-gate.XXXXXX)"
+JEST_LOG="$GATE_WORK/jest.log"
+: > "$JEST_LOG"
+
+#  THE DENOMINATOR COMES FROM JEST, BEFORE ANYTHING RUNS.
+#
+#  `--listTests` applies the project's own testMatch and the same selector
+#  the run will use, so this is the file list jest itself would have run —
+#  not a glob written here that could drift from jest.config.js.
+TESTS_LIST="$GATE_WORK/files.txt"
+echo "$ npx jest --listTests ${*:-}"
+( cd "$ROOT/api" && npx jest --listTests "$@" 2>"$GATE_WORK/list.err" ) | sort > "$TESTS_LIST"
+FILES_TOTAL="$(wc -l < "$TESTS_LIST" | tr -d ' ')"
+echo "GATE_FILES_LISTED:$FILES_TOTAL"
+if [ "$FILES_TOTAL" -eq 0 ]; then
+    echo "GATE:FAIL — jest resolved no test files, so there is nothing to measure"
+    sed -n '1,20p' "$GATE_WORK/list.err" 2>/dev/null
+    exit 1
+fi
+
+#  Reads one number out of a jest summary line («139 failed, 88 passed, 227
+#  total») and yields 0 when the line, or that word in it, is absent — a
+#  batch that died before printing anything must contribute zero, not break
+#  the arithmetic.
+num_of() {
+    local v=""
+    v="$(printf '%s' "${1:-}" | grep -oE "[0-9]+ $2" | head -1 | grep -oE '^[0-9]+')" || v=""
+    printf '%s' "${v:-0}"
+}
+
+BATCH="${GATE_BATCH:-12}"
+[ "$BATCH" -eq 0 ] && BATCH="$FILES_TOTAL"
+split -l "$BATCH" -d -a 3 "$TESTS_LIST" "$GATE_WORK/batch-"
+echo "GATE_BATCH:$BATCH files per jest process"
+
+SUITES_SEEN=0; SUITES_FAILED=0; TESTS_SEEN=0; TESTS_FAILED=0
+BATCH_N=0; BATCHES_NONZERO=0; JEST_EXIT=0
+
+for BATCH_FILE in "$GATE_WORK"/batch-*; do
+    BATCH_N=$((BATCH_N + 1))
+    BLOG="$GATE_WORK/log-$BATCH_N"
+    mapfile -t BATCH_PATHS < "$BATCH_FILE"
+    printf '\n-- batch %d/%d · %d files\n' "$BATCH_N" \
+        "$(( (FILES_TOTAL + BATCH - 1) / BATCH ))" "${#BATCH_PATHS[@]}"
+
+    #  THE EXIT CODE COMES FROM JEST, NOT FROM THE PIPE — AND IT SAYS SO.
+    #
+    #  This used to read `JEST_EXIT=${PIPESTATUS[0]}` after a SUBSHELL. That
+    #  array holds one element there — the subshell's own status — so the
+    #  line said «jest's exit» and delivered «whatever the pipeline
+    #  returned». It worked, but only because `pipefail` happened to be set
+    #  at the top of the file: measured, `( false | tee | grep -q "" )` gives
+    #  1 with pipefail and 0 without. Anyone deleting one word from a `set`
+    #  line three screens away would have flipped every verdict in this file
+    #  to green, silently.
+    #
+    #  Jest's own status is captured directly. The formatting pipe cannot
+    #  speak for it, and no distant option decides whether the gate can fail.
+    RC_FILE="$GATE_WORK/rc-$BATCH_N"
+    #  `--runTestsByPath` takes the listed paths literally. Passed as bare
+    #  positionals they would be regexes, and a path is full of characters a
+    #  regex reads as instructions.
+    ( cd "$ROOT/api" && { NODE_OPTIONS="$JEST_NODE_OPTIONS" npx jest --runTestsByPath \
+            "${WORKERS_ARG[@]}" "${BATCH_PATHS[@]}" 2>&1; echo "$?" > "$RC_FILE"; } \
+        | tee "$BLOG" | grep -E '^(PASS|FAIL|Tests:|Test Suites:)' )
+    BATCH_EXIT="$(cat "$RC_FILE" 2>/dev/null || echo 1)"
+    cat "$BLOG" >> "$JEST_LOG"
+    echo "GATE_BATCH_${BATCH_N}_EXIT:$BATCH_EXIT"
+    [ "$BATCH_EXIT" -ne 0 ] && { BATCHES_NONZERO=$((BATCHES_NONZERO + 1)); JEST_EXIT=1; }
+
+    B_SUITES="$(grep -E '^Test Suites:' "$BLOG" | tail -1)"
+    B_TESTS="$(grep -E '^Tests:' "$BLOG" | tail -1)"
+    SUITES_SEEN=$((   SUITES_SEEN   + $(num_of "$B_SUITES" total) ))
+    SUITES_FAILED=$(( SUITES_FAILED + $(num_of "$B_SUITES" failed) ))
+    TESTS_SEEN=$((    TESTS_SEEN    + $(num_of "$B_TESTS"  total) ))
+    TESTS_FAILED=$((  TESTS_FAILED  + $(num_of "$B_TESTS"  failed) ))
+done
 
 # -------------------------------------------------------------- 5. verdict
 #
-#  THE TAIL IS NOT THE TOTAL. Jest's own summary already aggregates a single
-#  run, so it is quoted here verbatim rather than recomputed — and the suite
-#  count IS the covered-file count, which is the number that separates «zero
-#  failures» from «zero tests ran».
+#  THE TAIL IS NOT THE TOTAL — and with batches there is no tail that could
+#  even pretend to be. Every number below is a sum over every batch, printed
+#  beside the command and the conditions that produced it.
 #
 say "verdict"
-SUITES="$(grep -E '^Test Suites:' "$JEST_LOG" | tail -1)"
-grep -E '^(Test Suites|Tests):' "$JEST_LOG" \
-    || echo "no jest summary — the run produced none, which is itself the finding"
+echo "Test Suites: $SUITES_FAILED failed, $((SUITES_SEEN - SUITES_FAILED)) passed, $SUITES_SEEN total"
+echo "Tests:       $TESTS_FAILED failed, $((TESTS_SEEN - TESTS_FAILED)) passed, $TESTS_SEEN total"
 echo "GATE_SCOPE:$SCOPE"
+echo "GATE_NODE_OPTIONS:$JEST_NODE_OPTIONS"
+echo "GATE_JEST_WORKERS:${GATE_JEST_WORKERS:-jest default}"
+echo "GATE_BATCH:$BATCH"
+echo "GATE_BATCHES_RUN:$BATCH_N"
+echo "GATE_BATCHES_NONZERO:$BATCHES_NONZERO"
+echo "GATE_FILES_LISTED:$FILES_TOTAL"
+echo "GATE_SUITES_REPORTED:$SUITES_SEEN"
 echo "GATE_TSC_EXIT:$TSC_EXIT"
 echo "GATE_WEB_TSC_EXIT:$WEB_TSC_EXIT"
 echo "GATE_API_BUILD_EXIT:$API_BUILD_EXIT"
@@ -162,11 +313,14 @@ echo "GATE_WEB_BUILD_EXIT:$WEB_BUILD_EXIT"
 echo "GATE_JEST_EXIT:$JEST_EXIT"
 echo "jest log kept at: $JEST_LOG"
 
-#  ZERO FAILURES IS NOT ZERO TESTS. An exit code of 0 is also what a run
-#  that matched nothing returns, so the summary line has to exist before it
-#  is believed.
-if [ -z "$SUITES" ]; then
-    echo "GATE:FAIL — jest printed no summary, so nothing was measured"
+#  ZERO FAILURES IS NOT ZERO TESTS — AND A WELL-FORMED SUMMARY IS NOT
+#  COVERAGE. The run that prompted this check printed «227 total» while 139
+#  of those suites had been killed before executing an assertion. The only
+#  number that cannot be produced by a dead worker is the one taken before
+#  the workers existed: the file list. If the batches do not add up to it,
+#  something was not measured, and the gate says which.
+if [ "$SUITES_SEEN" -ne "$FILES_TOTAL" ]; then
+    echo "GATE:FAIL — $SUITES_SEEN of $FILES_TOTAL listed test files reached a verdict; $((FILES_TOTAL - SUITES_SEEN)) were never reported on"
     exit 1
 fi
 
