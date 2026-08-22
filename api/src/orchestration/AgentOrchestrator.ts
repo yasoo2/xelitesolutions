@@ -242,7 +242,7 @@ export class AgentOrchestrator {
         // 2. Adaptive Coordination Execution (Developer department)
         emitDepartment(goal.id, 'developer');
         const result = await executionFirewall.runInContext(goal.traceId, () => {
-            return this.coordinate(dag, runtimeMemory, goal.context, goal.traceId, goal.goal);
+            return this.coordinate(dag, runtimeMemory, this.context, goal.traceId, goal.goal);
         }, { userId: goal.context?.userId, sessionId: goal.context?.sessionId || goal.id, runId: goal.id });
 
         // [Departments] QA reviews the outcome, then it's delivered.

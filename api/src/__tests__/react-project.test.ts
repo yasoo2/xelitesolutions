@@ -11,6 +11,9 @@ import os from 'os';
 import path from 'path';
 import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
 import { ReactProjectTool } from '../modules/tools/definitions/ReactProjectTool';
+import { ApiProjectTool } from '../modules/tools/definitions/ApiProjectTool';
+import { ScaffoldProjectTool } from '../modules/tools/definitions/SystemTools';
+import { workspaceService } from '../modules/services/WorkspaceService';
 
 const FALLTHROUGH = 'llm-fallthrough';
 const route = async (goal: string): Promise<string> => {
@@ -703,6 +706,52 @@ describe('project identity: React builds reuse only their session-owned scaffold
             expect(fs.readFileSync(path.join(scaffoldDir, 'src', 'App.jsx'), 'utf8')).toContain('ProductivityApp');
         } finally {
             delete projects[sessionId];
+            fs.rmSync(root, { recursive: true, force: true });
+        }
+    });
+
+    it('preserves a real scaffold → API → React handoff inside one pipeline run', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-same-run-handoff-'));
+        const sessionId = 'same-run-api-react-handoff-t';
+        const runId = 'same-run-api-react-pipeline';
+        const scaffoldDir = path.join(root, 'QuickNotes');
+        const activeRootSpy = jest.spyOn(workspaceService, 'getActiveRoot').mockReturnValue(root);
+        const structure = {
+            'index.html': '<!doctype html><html><body><div id="root"></div></body></html>',
+            'package.json': JSON.stringify({
+                private: true, type: 'module',
+                scripts: { dev: 'vite', build: 'vite build' },
+                dependencies: { react: '^18.3.1', 'react-dom': '^18.3.1' },
+                devDependencies: { vite: '^5.4.11' },
+            }),
+            'src/App.jsx': 'export default function App() { return <main>QuickNotes</main>; }',
+        };
+        try {
+            const scaffold: any = await new ScaffoldProjectTool().execute(
+                { structure, baseDir: scaffoldDir },
+                { sessionId, runId, workspaceId: root },
+            );
+            expect(scaffold.ok).toBe(true);
+            expect(scaffold.output.projectDir).toBe(scaffoldDir);
+
+            const api: any = await new ApiProjectTool().execute(
+                { request: 'Build an API for a restaurant menu', root, skipInstall: true },
+                { sessionId, runId, workspaceId: root },
+            );
+            expect(api.ok).toBe(true);
+            expect((global as any).joeProjects[sessionId].pipelineRunId).toBe(runId);
+            expect((global as any).joeProjects[sessionId].scaffoldDir).toBe(scaffoldDir);
+
+            const react: any = await new ReactProjectTool().execute(
+                { request: 'Build a React app for a restaurant menu', root, skipInstall: true, projectName: 'QuickNotes' },
+                { sessionId, runId, workspaceId: root },
+            );
+            expect(react.ok).toBe(true);
+            expect(path.resolve(react.output.path)).toBe(path.resolve(scaffoldDir));
+            expect(react.logs.join('\\n')).toContain('project identity: reusing');
+        } finally {
+            activeRootSpy.mockRestore();
+            delete (global as any).joeProjects?.[sessionId];
             fs.rmSync(root, { recursive: true, force: true });
         }
     });

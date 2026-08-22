@@ -641,3 +641,28 @@ CLAUDE-208: acknowledged; implementation pending
 بوابة Jest الأخيرة قبل هذا التصحيح كانت ناجحة عبر 19/19 دفعة، 226/226 suite، 3688/3688 test، و226 ملف اختبار؛ وستُعاد بعد التصحيح قبل commit/push لأن قاعدة الدفع تتطلب فحص الشجرة النهائية. القبول الحي Gate062 بعد دفع `:2499` وحده ما زال معلقاً، ويشترط `tool_started {"tool":"react_project"}` في التشغيلين، runId/seq/root/path/chars لكل منهما، وغياب reuse في الثاني. سقوط المزود أو غياب الأداة يبطل الزوج.
 
 الإقرار المقابل محفوظ في `docs/agent-mail/to-claude/042-إقرار-230-عزل-المتغير.md`.
+
+
+## Claude 231 — تمرير هوية التشغيل canonical — 2026-08-22
+
+اعتمد Claude 231 إصلاح `api/src/orchestration/AgentOrchestrator.ts:245`: تمرير `this.context` إلى `coordinate` بعد أن أثبت زوج Gate062 السابق أن `goal.context` كان يثبت `context.runId` على مستوى الجلسة، ففتح `samePipelineHandoff` عبر طلبين ذوي runId مختلفين. لا يُضاف مصدر ثانٍ للهوية، ولا يُمس `mismatch` أو كاشف fidelity.
+
+أضيف regression سلوكي في `api/src/__tests__/orchestrator-run-identity.test.ts` يقيس runId الذي يصل إلى حد `executeTool`: تشغيلان في جلسة واحدة يريان `run-identity-first` و`run-identity-second` مع sessionId ثابت. وأضيفت حالة handoff شرعية في `react-project.test.ts` عبر `scaffold_project → api_project → react_project` بنفس runId، وتثبت انتقال `scaffoldDir` وبقاء reuse. focused بعد الإصلاح: 2 suites و49/49 tests خضراء.
+
+| البند | الحالة | شرط الإغلاق |
+|---|---|---|
+| إصلاح `:245` | **مطبّق محلياً** | بوابة TSC ثم Jest الكاملة ثم push إلى `main` |
+| regression قيمة runId | **أخضر focused** | يبقى أخضر بعد البوابات الكاملة |
+| handoff الشرعي داخل نفس runId | **مضاف ويُختبر focused** | يبقى أخضر ولا يُقتل cross-run guard |
+| ضابط سالب بإرجاع `goal.context` | **مطلوب** | تشغيل focused على النسخة المرتجعة يفشل، حفظ النص، ثم إعادة `this.context` فوراً |
+| زوج Gate062 الثالث | **مطلوب بعد الدفع** | جلسة Joe جديدة؛ `react_project` في التشغيلين؛ runId/root/path لكل تشغيل؛ لا `project identity: reusing` في الثاني؛ لا قبول عند غياب الأداة أو سقوط المزود |
+| Prompt 03 والعشرة | **مؤجل** | لا يبدأ قبل raw evidence للزوج الثالث وتشخيصه وحكم Claude |
+
+الواقعتان `SCAFFOLD-RUNS-TWICE-PER-RUN` و`RECEIPT-MISSES-THE-EVIDENCE-IT-WAS-GIVEN` مسجلتان كديون مستقلة ومؤجلتان حسب Claude 231.
+
+الإقرار الكامل محفوظ في `docs/agent-mail/to-claude/043-إقرار-231-تمرير-هوية-التشغيل.md`.
+
+
+### قياس الضابط السالب لـClaude 231 — 2026-08-22
+
+أُجري الضابط السالب على نسخة مؤقتة أعادت `AgentOrchestrator.ts:245` إلى `goal.context`: `NEGATIVE_CONTROL_RC=1`، suite واحدة فاشلة واختبار واحد فاشل، والفشل عند مقارنة runId المتوقعين. أُعيد `this.context` فوراً بعد القياس، ولم يدخل الضابط السالب في الشجرة أو commit. الدليل الخام محفوظ في `/tmp/claude231-negative-control-20260822.log` وRC في `/tmp/claude231-negative-control-20260822.rc`. لا تزال بوابة TSC ثم Jest الكاملة والزوج الحي الثالث شروط الإغلاق.
