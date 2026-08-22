@@ -2,12 +2,26 @@ import { Router, Request, Response } from 'express';
 import { ExecutionGateway } from '../../kernel/ExecutionGateway';
 import { logger } from '../../shared/utils/logger';
 import { executionFirewall } from '../../orchestration/AgentExecutionFirewall';
+import { assessAutoUpdateSafety, parseAheadCount } from '../../core/deploy/deployment-safety';
 
 const router = Router();
 const PROJECT_PATH = '/root/xelitesolutions';
 const API_PATH = `${PROJECT_PATH}/api`;
 
 let isUpdating = false;
+
+async function assertSafeAutomaticUpdate(): Promise<void> {
+    const worktreeStatus = await runCommand('git', ['status', '--porcelain', '--untracked-files=all'], PROJECT_PATH);
+    const relation = await runCommand('git', ['rev-list', '--left-right', '--count', 'HEAD...origin/main'], PROJECT_PATH);
+    const ahead = parseAheadCount(relation);
+    const decision = assessAutoUpdateSafety({
+        root: PROJECT_PATH,
+        runtimeMode: process.env.NODE_ENV,
+        worktreeStatus,
+        ahead: ahead ?? -1,
+    });
+    if (!decision.ok) throw new Error(decision.reason);
+}
 
 async function runCommand(command: string, args: string[], cwd: string): Promise<string> {
     return await executionFirewall.runAsSystem(async () => {
@@ -32,6 +46,19 @@ async function runCommand(command: string, args: string[], cwd: string): Promise
  */
 router.get('/ping-deploy', async (req: Request, res: Response) => {
     try {
+        const targetSafety = assessAutoUpdateSafety({
+            root: PROJECT_PATH,
+            runtimeMode: process.env.NODE_ENV,
+            worktreeStatus: '',
+            ahead: 0,
+        });
+        if (!targetSafety.ok) {
+            return res.status(409).json({
+                status: 'blocked',
+                message: targetSafety.reason,
+            });
+        }
+
         // Get current commits
         const localCommit = await runCommand('git', ['rev-parse', 'HEAD'], PROJECT_PATH);
         await runCommand('git', ['fetch', 'origin', 'main'], PROJECT_PATH);
@@ -78,7 +105,9 @@ async function performUpdate(targetCommit: string) {
     try {
         logger.info(`[PingDeploy] Updating to ${targetCommit}`);
 
-        // Update code
+        // Update code only after proving this is a safe, clean production checkout.
+        // Never erase the owner's files or local commits to make deployment convenient.
+        await assertSafeAutomaticUpdate();
         await runCommand('git', ['reset', '--hard', 'origin/main'], PROJECT_PATH);
         logger.info('[PingDeploy] Code updated');
 
