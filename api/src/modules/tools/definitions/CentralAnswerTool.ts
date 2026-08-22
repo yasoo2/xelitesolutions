@@ -3,6 +3,68 @@ import { routeToModel } from '../../../core/llm/intelligent-router';
 import { arabicShare } from '../../../shared/utils/language';
 
 /**
+ * ONE «NOW», NAMED ONCE.
+ *
+ * Measured on the owner's own machine, three consecutive turns inside forty
+ * seconds: «عصرٌ مناسب لإنجاز شيء جميل» · «الساعة الآن تقريبًا 12:00 ظهرًا» ·
+ * «مساء الخير». Three different times of day for one moment. Then «كم الساعة
+ * الآن؟» answered «تقريبًا 12:00» twice while his own clock read 14:00.
+ *
+ * Two causes, and neither was the model's reasoning — in the same session it
+ * counted 132 days to New Year correctly and refused a false Monday/Tuesday
+ * choice with the right answer:
+ *
+ *   1. THE PROMPT ANNOUNCED A BAND AND NEVER A CLOCK. It said «Local time of
+ *      day right now: midday». Asked for the time, the model had no value to
+ *      quote, so it produced the plausible centre of the band it was given —
+ *      and produced the same one again, which reads exactly like a frozen
+ *      clock. A band is not a time.
+ *
+ *   2. THE DAY-WORDS DISAGREED WITH EACH OTHER. The band labels cut at 15,
+ *      the greeting buckets cut at 18, and one bucket carried «مساء الخير»
+ *      beside «عصرٌ مناسب» while its own label was «الظهيرة». Worse, the
+ *      instruction offered the model a menu of two — صباح الخير or مساء
+ *      الخير — for a band called midday, which is in neither. Told to pick
+ *      the matching one from a list that had no match, it picked wrong.
+ *
+ * So: one function names the moment, every day-word in this file comes from
+ * it, and the actual clock is handed over as a value with an explicit ban on
+ * approximating one.
+ */
+export function dayPartFor(hour: number): { en: string; ar: string; greetAr: string; greetEn: string } {
+    if (hour < 5) return { en: 'late night', ar: 'وقت متأخر من الليل', greetAr: 'سهرة موفقة', greetEn: 'Good evening' };
+    if (hour < 12) return { en: 'morning', ar: 'الصباح', greetAr: 'صباح الخير', greetEn: 'Good morning' };
+    if (hour < 15) return { en: 'midday', ar: 'الظهيرة', greetAr: 'طاب يومك', greetEn: 'Good afternoon' };
+    if (hour < 18) return { en: 'afternoon', ar: 'العصر', greetAr: 'مساء الخير', greetEn: 'Good afternoon' };
+    return { en: 'evening', ar: 'المساء', greetAr: 'مساء الخير', greetEn: 'Good evening' };
+}
+
+const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+export function nowFacts(now: Date = new Date()) {
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const hour = now.getHours();
+    return {
+        hour,
+        part: dayPartFor(hour),
+        clock: `${pad(hour)}:${pad(now.getMinutes())}`,
+        date: `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`,
+        weekday: WEEKDAYS[now.getDay()],
+    };
+}
+
+/**
+ * Joe runs on the user's own machine, so the server clock IS his clock. That
+ * makes the value quotable — and makes inventing one inexcusable.
+ */
+export function buildTimeBlock(now: Date = new Date()): string {
+    const f = nowFacts(now);
+    return `- Right now it is ${f.weekday} ${f.date}, ${f.clock}, on the user's own machine (${f.part.en} — ${f.part.ar}).`
+        + ` This is the ONLY clock you have: quote it when the time or the date is asked, and NEVER approximate, round, or invent a time.`
+        + ` If a greeting fits, open with the one that matches this moment («${f.part.greetAr}» / «${f.part.greetEn}») and vary only the rest of the sentence.`;
+}
+
+/**
  * CentralAnswerTool - A simple Q&A tool for general questions
  * This tool is used when the agent needs to answer a question directly
  * without executing complex workflows.
@@ -75,16 +137,13 @@ Your goal is to build the extraordinary.`;
         // First name only — a greeting says «يا يونس», not the full legal name.
         const userName = /^(user|admin|anonymous|unknown|مستخدم)$/i.test(rawName)
             ? '' : (rawName.split(/\s+/)[0] || '');
-        const hour = new Date().getHours();
-        const dayPartEn = hour < 5 ? 'late night' : hour < 12 ? 'morning' : hour < 15 ? 'midday'
-            : hour < 18 ? 'afternoon' : 'evening';
-        const dayPartAr = hour < 5 ? 'وقت متأخر من الليل' : hour < 12 ? 'الصباح' : hour < 15 ? 'الظهيرة'
-            : hour < 18 ? 'العصر' : 'المساء';
+        const now = new Date();
+        const hour = now.getHours();
         const personalBlock = `\n\nPERSONAL TOUCH:\n`
             + (userName
                 ? `- The user's name is «${userName}». Address them by name naturally now and then (in Arabic: «يا ${userName}») — warm, never in every sentence.\n`
                 : `- The user's name is unknown — do NOT invent one.\n`)
-            + `- Local time of day right now: ${dayPartEn} (${dayPartAr}). If the user greets you or a greeting fits, use the matching one (صباح الخير/مساء الخير/Good ${dayPartEn === 'morning' ? 'morning' : 'evening'}) and vary your phrasing between conversations.`;
+            + buildTimeBlock(now);
 
         // Standing instructions from Settings — the user's permanent rules for
         // how Joe should work (e.g. terminal-first building).
@@ -143,18 +202,20 @@ Your goal is to build the extraordinary.`;
                 const nameAr = userName ? ` يا ${userName}` : '';
                 const nameEn = userName ? `, ${userName}` : '';
                 const day = Math.floor(Date.now() / 86_400_000);
-                const saluteAr = hour < 5
-                    ? [`سهرة موفقة${nameAr}!`, `ما زلنا مستيقظين${nameAr}؟ ممتاز — أفضل الأفكار تولد ليلاً.`]
-                    : hour < 12
-                        ? [`صباح الخير${nameAr}! ☀️`, `صباح النور${nameAr}! يوم جديد وفكرة جديدة؟`, `أسعد الله صباحك${nameAr}!`]
-                        : hour < 18
-                            ? [`مساء الخير${nameAr}!`, `أهلاً بك${nameAr}! عصرٌ مناسب لإنجاز شيء جميل.`]
-                            : [`مساء الخير${nameAr}! 🌙`, `مساء النور${nameAr}! ما الذي سنصنعه الليلة؟`, `أهلاً${nameAr}! الليل وقت الصنّاع.`];
-                const saluteEn = hour < 12
-                    ? [`Good morning${nameEn}! ☀️`, `Morning${nameEn} — fresh day, fresh ideas.`]
-                    : hour < 18
-                        ? [`Good afternoon${nameEn}!`, `Hello${nameEn}!`]
-                        : [`Good evening${nameEn}! 🌙`, `Evening${nameEn} — a maker's favorite hour.`];
+                // Every variant opens with the SAME day-word the prompt block
+                // above announces — see `dayPartFor`. The old buckets carried
+                // «مساء الخير» beside «عصرٌ مناسب» under a label that read
+                // «الظهيرة», which is how one moment got three names.
+                const part = dayPartFor(hour);
+                const tailAr = hour < 5 ? 'أفضل الأفكار تولد ليلاً.'
+                    : hour < 12 ? 'يوم جديد وفكرة جديدة؟'
+                        : hour < 18 ? 'وقتٌ مناسب لإنجاز شيء جميل.'
+                            : 'ما الذي سنصنعه الليلة؟';
+                const tailEn = hour < 12 ? 'fresh day, fresh ideas.'
+                    : hour < 18 ? 'a good stretch for building something.'
+                        : "a maker's favorite hour.";
+                const saluteAr = [`${part.greetAr}${nameAr}!`, `${part.greetAr}${nameAr} — ${tailAr}`];
+                const saluteEn = [`${part.greetEn}${nameEn}!`, `${part.greetEn}${nameEn} — ${tailEn}`];
                 const pick = (arr: string[]) => arr[day % arr.length];
                 return isAr
                     ? `${pick(saluteAr)} أنا **جو**، مهندسك البرمجي. أخبرني بما تريد بناءه.`
