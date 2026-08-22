@@ -528,7 +528,11 @@ function PreviewButton({
                 borderRadius: 4,
                 border: 'none',
                 background: active ? 'var(--accent-primary)' : 'transparent',
-                color: active ? '#000' : disabled ? 'var(--text-muted)' : 'var(--text-secondary)',
+                /**
+                 * The active ground follows the selected accent; its ink must
+                 * follow the same theme-aware contract instead of a literal.
+                 */
+                color: active ? 'var(--joe-on-accent, #fff)' : disabled ? 'var(--text-muted)' : 'var(--text-secondary)',
                 cursor: disabled ? 'not-allowed' : 'pointer',
                 display: 'flex',
                 alignItems: 'center',
