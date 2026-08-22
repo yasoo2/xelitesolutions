@@ -15,6 +15,8 @@
  * for real. `dev_server_start` (already in Joe) then serves it live.
  */
 import fs from 'fs';
+import http from 'http';
+import https from 'https';
 import path from 'path';
 import { BaseTool } from '../base';
 import { ToolPermission, ToolExecutionResult } from '../types';
@@ -34,6 +36,183 @@ import { repairAndRebuild, worthRepairing } from '../../../core/quality/self-rep
 import { inspectWeatherEngineSource, formatWeatherSemanticRepair } from '../../../core/quality/weather-contract';
 import { isProviderFailure } from '../../../core/llm/intelligent-router';
 import { validateFileWriteBatch } from '../../../shared/file-write-contract';
+
+type MeasuredAbility = {
+    ar: string;
+    en: string;
+    evidence: (source: string) => boolean;
+};
+type MeasuredAbilityReport = {
+    abilities: string[];
+    unmeasured: string[];
+    measured: boolean;
+};
+const hasAll = (...patterns: RegExp[]) => (source: string) => patterns.every(pattern => pattern.test(source));
+const hasAny = (...patterns: RegExp[]) => (source: string) => patterns.some(pattern => pattern.test(source));
+const ENGINE_SOURCE_MARKERS: Record<string, RegExp> = {
+    map: /(?:function|class|const|let|var)\s+MapApp\b/i,
+    chat: /(?:function|class|const|let|var)\s+ChatApp\b/i,
+    weather: /(?:function|class|const|let|var)\s+WeatherApp\b/i,
+    records: /(?:function|class|const|let|var)\s+RecordsApp\b/i,
+    social: /(?:function|class|const|let|var)\s+SocialApp\b/i,
+    shop: /(?:function|class|const|let|var)\s+ShopApp\b/i,
+    calculator: /(?:function|class|const|let|var)\s+CalculatorApp\b/i,
+    productivity: /(?:function|class|const|let|var)\s+ProductivityApp\b/i,
+    finance: /(?:function|class|const|let|var)\s+FinanceApp\b/i,
+};
+const MEASURED_ABILITIES: Record<string, MeasuredAbility[]> = {
+    map: [
+        { ar: 'خريطة حقيقية (Leaflet + OpenStreetMap) بتكبير وتحريك', en: 'a real Leaflet + OpenStreetMap map', evidence: hasAll(/Leaflet/i, /OpenStreetMap|tileLayer/i) },
+        { ar: 'بحث عن أي مكان بالاسم (Nominatim)', en: 'place search by name (Nominatim)', evidence: hasAny(/Nominatim/i, /geocod/i) },
+        { ar: 'زر «موقعي» بتحديد GPS', en: 'a working "my location" button', evidence: hasAny(/getCurrentPosition|geolocation/i) },
+        { ar: 'النقر على الخريطة يثبّت علامة باسمها', en: 'click the map to drop a named pin', evidence: hasAny(/drop.*pin|set.*marker|onClick.*map|marker/i) },
+        { ar: 'أماكن محفوظة تبقى بعد إغلاق المتصفح + المسافة عنك', en: 'saved places that survive a reload, with distance from you', evidence: hasAll(/localStorage|saved/i, /distance|haversine/i) },
+    ],
+    chat: [
+        { ar: 'غرف محادثة تُنشأ وتُحذف', en: 'rooms you create and remove', evidence: hasAll(/room/i, /create|delete|remove/i) },
+        { ar: 'رسائل محفوظة دائمة مع بحث', en: 'durable messages with search', evidence: hasAll(/message/i, /localStorage|persist|search/i) },
+        { ar: 'اسم المستخدم محفوظ على الجهاز', en: 'a display name kept on the device', evidence: hasAny(/displayName|userName|username/i) },
+        { ar: 'مزامنة حيّة مع الخادم إن وُجد — وإلا يقول بصراحة إنه محلي', en: 'live sync with the server when one exists — and an honest "local only" badge when not', evidence: hasAll(/fetch|WebSocket|server/i, /local|offline/i) },
+    ],
+    weather: [
+        { ar: 'طقس حيّ من open-meteo بلا مفتاح ولا حساب', en: 'live weather from open-meteo — no key, no account', evidence: hasAny(/open.?meteo/i) },
+        { ar: 'بحث عن المدن + تحديد الموقع', en: 'city search and geolocation', evidence: hasAll(/search/i, /geolocation|getCurrentPosition/i) },
+        { ar: 'توقّعات سبعة أيام', en: 'a seven-day forecast', evidence: hasAny(/seven.?day|7.?day|daily/i) },
+        { ar: 'تبديل مئوي/فهرنهايت ومدن محفوظة', en: 'a °C/°F switch and saved cities', evidence: hasAll(/Fahrenheit|Celsius|°C|°F/i, /localStorage|saved/i) },
+    ],
+    social: [
+        { ar: 'خيط منشورات حقيقي: نشر نصّ وصورة', en: 'a real feed: post text and a photo', evidence: hasAll(/post|feed/i, /image|photo/i) },
+        { ar: 'إعجاب وتعليقات تُحفظ', en: 'likes and comments that persist', evidence: hasAll(/like/i, /comment/i) },
+        { ar: 'متابعة تُصفّي الخيط', en: 'following that filters the feed', evidence: hasAll(/follow/i, /filter/i) },
+        { ar: 'ملف شخصي بمنشوراتك', en: 'a profile with your own posts', evidence: hasAll(/profile/i, /post/i) },
+        { ar: 'حفظ دائم + مزامنة مع الخادم إن وُجد', en: 'durable storage and server sync when one exists', evidence: hasAll(/localStorage|persist/i, /fetch|server/i) },
+    ],
+    records: [
+        { ar: 'إضافة وتعديل وحذف السجلات فعلياً', en: 'create, edit and delete records for real', evidence: hasAll(/setRows|add|create/i, /edit|update/i, /delete|remove/i) },
+        { ar: 'تحقّق من الحقول المطلوبة قبل الحفظ', en: 'required-field validation before saving', evidence: hasAny(/required|validate|invalid/i) },
+        { ar: 'بحث وتصفية وترتيب فوري', en: 'instant search, filter and sort', evidence: hasAll(/search/i, /filter/i, /sort/i) },
+        { ar: 'أرقام محسوبة من بياناتك أنت', en: 'numbers computed from YOUR rows', evidence: hasAny(/groupTotals|computeMetric|reduce\(|total/i) },
+        { ar: 'حفظ دائم + تصدير CSV + قراءة من خادم المشروع إن وُجد', en: 'durable storage, CSV export, and reads from the project API when one exists', evidence: hasAll(/localStorage|fetch|api/i, /toCsv|\\.csv|download/i) },
+    ],
+};
+
+/** Read the generated source and return only capabilities backed by their own evidence. */
+export function measuredAppAbilities(engine: string, isArabic: boolean, source: string): MeasuredAbilityReport {
+    const entries = MEASURED_ABILITIES[String(engine || '')];
+    if (!entries) return { abilities: [], unmeasured: [], measured: false };
+    const text = String(source || '');
+    if (!text.trim()) {
+        return { abilities: [], unmeasured: entries.map(entry => isArabic ? entry.ar : entry.en), measured: false };
+    }
+    // Reading a large project is not enough: a shared store can contain generic
+    // helpers for several engines. The engine component marker is the structural
+    // boundary that makes a claim belong to this app rather than to the haystack.
+    const marker = ENGINE_SOURCE_MARKERS[String(engine || '')];
+    if (marker && !marker.test(text)) {
+        return { abilities: [], unmeasured: entries.map(entry => isArabic ? entry.ar : entry.en), measured: true };
+    }
+    const abilities = entries.filter(entry => entry.evidence(text)).map(entry => isArabic ? entry.ar : entry.en);
+    const unmeasured = entries.filter(entry => !entry.evidence(text)).map(entry => isArabic ? entry.ar : entry.en);
+    return { abilities, unmeasured, measured: true };
+}
+
+type DeliveryTopic = 'crud' | 'required' | 'search' | 'filter' | 'sort' | 'computed' | 'storage' | 'csv' | 'api';
+const DELIVERY_TOPIC_RULES: Array<[DeliveryTopic, RegExp]> = [
+    ['crud', /create|edit|delete|add|update|record|إضافة|تعديل|حذف|سجل|السجلات/iu],
+    ['required', /required|validation|validate|invalid|الحقول\s*المطلوبة|تحقّق|تحقق/iu],
+    ['search', /search|بحث/iu],
+    ['filter', /filter|مرشّح|مرشح|تصفية/iu],
+    ['sort', /sort|sorting|ترتيب/iu],
+    ['computed', /computed|numbers?|total|metric|أرقام\s*محسوبة|إجمالي|مجموع/iu],
+    ['storage', /durable|persistent|storage|localStorage|حفظ\s*دائم|تخزين/iu],
+    ['csv', /csv|export|download|تصدير|تنزيل/iu],
+    ['api', /api|server|خادم|الخادم/iu],
+];
+const ACCEPTANCE_TOPIC_IDS: Record<string, DeliveryTopic[]> = {
+    search: ['search'],
+    filter: ['filter'],
+    export: ['csv'],
+};
+
+function deliveryTopics(value: string): DeliveryTopic[] {
+    return DELIVERY_TOPIC_RULES.filter(([, pattern]) => pattern.test(String(value || ''))).map(([topic]) => topic);
+}
+
+/** Return the non-empty topic intersection between two delivery voices. */
+export function deliveryVoiceOverlap(claimed: string[], declaredMissing: string[]): string[] {
+    const missingTopics = new Set(declaredMissing.flatMap(deliveryTopics));
+    return Array.from(new Set(claimed.flatMap(deliveryTopics).filter(topic => missingTopics.has(topic))));
+}
+
+export type ReconciledDeliveryVoices = {
+    abilities: string[];
+    unmet: string[];
+    unjudged: string[];
+    conflicts: string[];
+};
+
+/**
+ * Reconcile the reporters without allowing a weak positive voice to erase a
+ * requested item. A positive ability claim that overlaps the missing report is
+ * muted, because it is the weaker voice. A missing item that also has a
+ * catalogue `met` verdict is unresolved, not silently accepted and not silently
+ * called absent. It gets the third voice; the remaining agreed-missing items
+ * stay in `unmet`.
+ */
+export function reconcileDeliveryVoices(
+    claimed: string[],
+    declaredMissing: string[],
+    metAcceptanceIds: string[] = [],
+): ReconciledDeliveryVoices {
+    const metTopics = new Set(metAcceptanceIds.flatMap(id => ACCEPTANCE_TOPIC_IDS[String(id)] || []));
+    const unjudged = declaredMissing.filter(item => deliveryTopics(item).some(topic => metTopics.has(topic)));
+    const unmet = declaredMissing.filter(item => !unjudged.includes(item));
+    const conflicts = deliveryVoiceOverlap(claimed, declaredMissing);
+    const conflictTopics = new Set(conflicts);
+    const abilities = claimed.filter(item => !deliveryTopics(item).some(topic => conflictTopics.has(topic)));
+    return {
+        abilities,
+        unmet: unmet.filter((item, index, all) => all.indexOf(item) === index),
+        unjudged: unjudged.filter((item, index, all) => all.indexOf(item) === index),
+        conflicts,
+    };
+}
+
+/** A preview URL is evidence only when the URL itself answered HTTP 200. */
+export function previewUrlFromStatus(status: number | null | undefined, url: string): string {
+    const candidate = String(url || '').trim();
+    return status === 200 && candidate ? candidate : '';
+}
+
+async function httpStatusOf(url: string): Promise<number | null> {
+    try {
+        const parsed = new URL(url);
+        const client = parsed.protocol === 'https:' ? https : http;
+        return await new Promise<number | null>(resolve => {
+            let settled = false;
+            const finish = (status: number | null) => {
+                if (settled) return;
+                settled = true;
+                resolve(status);
+            };
+            const req = client.get(parsed, { headers: { 'cache-control': 'no-store' } }, res => {
+                res.resume();
+                finish(typeof res.statusCode === 'number' ? res.statusCode : null);
+            });
+            req.setTimeout(1500, () => {
+                req.destroy();
+                finish(null);
+            });
+            req.once('error', () => finish(null));
+        });
+    } catch {
+        return null;
+    }
+}
+
+export async function verifiedPreviewUrl(url: string): Promise<string> {
+    return previewUrlFromStatus(await httpStatusOf(url), url);
+}
 
 // Combining marks are not letters: «كِفاح» is ك + ◌ِ + فاح to this regex, so
 // the kasra became a hyphen and the project folder shipped as «react-ك-فاح»
@@ -4033,37 +4212,47 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
         // while the API-backed app was actually running on 4856.
         if (built && !liveServer) {
             previewUrl = publicUrlFor(`/project-preview/${sessionKey}/index.html?v=${Date.now()}`);
-            try { broadcast({ type: 'preview_ready', sessionId, data: { url: previewUrl, previewUrl, sessionId } } as any); } catch { /* UI optional */ }
         } else if (liveServer) {
             previewUrl = liveServer.url;
         }
+        const candidatePreviewUrl = previewUrl;
+        previewUrl = candidatePreviewUrl ? await verifiedPreviewUrl(candidatePreviewUrl) : '';
+        if (candidatePreviewUrl && !previewUrl) {
+            term('preview: BLOCKED — candidate URL did not answer HTTP 200');
+        }
+        if (previewUrl && built && !liveServer) {
+            try { broadcast({ type: 'preview_ready', sessionId, data: { url: previewUrl, previewUrl, sessionId } } as any); } catch { /* UI optional */ }
+        }
 
         const fileList = Object.keys(files).map(f => `  • ${f}`).join('\n');
-        // What the app can actually DO — stated as capabilities, because the
-        // last delivery described a maps app that contained no map.
-        const ABILITIES: Record<string, [string[], string[]]> = {
-            map: [
-                ['خريطة حقيقية (Leaflet + OpenStreetMap) بتكبير وتحريك', 'بحث عن أي مكان بالاسم (Nominatim)', 'زر «موقعي» بتحديد GPS', 'النقر على الخريطة يثبّت علامة باسمها', 'أماكن محفوظة تبقى بعد إغلاق المتصفح + المسافة عنك'],
-                ['a real Leaflet + OpenStreetMap map', 'place search by name (Nominatim)', 'a working "my location" button', 'click the map to drop a named pin', 'saved places that survive a reload, with distance from you'],
-            ],
-            chat: [
-                ['غرف محادثة تُنشأ وتُحذف', 'رسائل محفوظة دائمة مع بحث', 'اسم المستخدم محفوظ على الجهاز', 'مزامنة حيّة مع الخادم إن وُجد — وإلا يقول بصراحة إنه محلي'],
-                ['rooms you create and remove', 'durable messages with search', 'a display name kept on the device', 'live sync with the server when one exists — and an honest "local only" badge when not'],
-            ],
-            weather: [
-                ['طقس حيّ من open-meteo بلا مفتاح ولا حساب', 'بحث عن المدن + تحديد الموقع', 'توقّعات سبعة أيام', 'تبديل مئوي/فهرنهايت ومدن محفوظة'],
-                ['live weather from open-meteo — no key, no account', 'city search and geolocation', 'a seven-day forecast', 'a °C/°F switch and saved cities'],
-            ],
-            social: [
-                ['خيط منشورات حقيقي: نشر نصّ وصورة', 'إعجاب وتعليقات تُحفظ', 'متابعة تُصفّي الخيط', 'ملف شخصي بمنشوراتك', 'حفظ دائم + مزامنة مع الخادم إن وُجد'],
-                ['a real feed: post text and a photo', 'likes and comments that persist', 'following that filters the feed', 'a profile with your own posts', 'durable storage and server sync when one exists'],
-            ],
-            records: [
-                ['إضافة وتعديل وحذف السجلات فعلياً', 'تحقّق من الحقول المطلوبة قبل الحفظ', 'بحث وتصفية وترتيب فوري', 'أرقام محسوبة من بياناتك أنت', 'حفظ دائم + تصدير CSV + قراءة من خادم المشروع إن وُجد'],
-                ['create, edit and delete records for real', 'required-field validation before saving', 'instant search, filter and sort', 'numbers computed from YOUR rows', 'durable storage, CSV export, and reads from the project API when one exists'],
-            ],
-        };
-        const appAbilities = appBp ? (ABILITIES[appBp.engine] || ABILITIES.records)[isAr ? 0 : 1] : [];
+        const { judgeAcceptance, acceptanceBlock } = require('../../../core/quality/acceptance');
+        const acceptance = judgeAcceptance(acceptanceCriteriaFor(request), {
+            dir: proj,
+            built,
+            liveUrl: previewUrl,
+            audit: audit || null,
+        }, isAr);
+        const projectEvidence = (() => {
+            try {
+                const { readProjectSource } = require('../../../core/quality/scope-audit');
+                return readProjectSource([proj]);
+            } catch { return ''; }
+        })();
+        // What the app can actually DO — stated as capabilities only when each
+        // claim has evidence in the source that was really read.
+        const abilityReport = appBp
+            ? measuredAppAbilities(appBp.engine, isAr, projectEvidence)
+            : { abilities: [], unmeasured: [], measured: true };
+        const appAbilities = abilityReport.abilities;
+        const unmeasuredAbilitiesNotice = appBp && !abilityReport.measured
+            ? (isAr
+                ? `   • لم أقرأ مصدر المشروع، لذلك قست 0 قدرات للمحرّك «${appBp.engine}» ولا أدّعي له شيئاً.`
+                : `   • I could not read the project source, so I measured 0 capabilities for the "${appBp.engine}" engine and make no claims for it.`)
+            : abilityReport.unmeasured.length
+                ? (isAr
+                    ? `   ❌ غير مثبتة في مصدر المشروع (${abilityReport.unmeasured.length}): ${abilityReport.unmeasured.join(' · ')}`
+                    : `   ❌ Not proven in the project source (${abilityReport.unmeasured.length}): ${abilityReport.unmeasured.join(' · ')}`)
+                : '';
         /**
          * WHAT WAS ASKED FOR AND NOT BUILT — said out loud.
          *
@@ -4099,12 +4288,6 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
         // and reported verbatim; the table stays as a second source for the
         // technology stack, which is rarely written as a bullet list.
         const { uncoveredFeatures } = require('../../../core/design/app-blueprints');
-        const projectEvidence = (() => {
-            try {
-                const { readProjectSource } = require('../../../core/quality/scope-audit');
-                return readProjectSource([proj]);
-            } catch { return ''; }
-        })();
         const fidelity = deriveRequestFidelity(request, isAr, appBp, projectEvidence);
         const askedButMissing: string[] = appBp && !fidelity.evidenceUnavailable
             ? uncoveredFeatures(request, appBp.engine, !!apiLink, projectEvidence)
@@ -4162,16 +4345,35 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             ...(systemTables.length ? [/admin|portal|لوحة|بوابة/i] : []),
             ...(apiLink ? [/auth|login|sign[-\s]?in|jwt|تسجيل\s*دخول|مصادقة/i, /database|backend|قاعدة\s*بيانات|خادم/i] : []),
         ];
-        const unmet = appBp
+        const rawUnmet = appBp
             ? [...askedButMissing, ...spokenCapabilities,
                 ...UNMET.filter(([re]) => re.test(request)).map(u => (isAr ? u[1] : u[2]))]
                 .filter(v => !deliveredRe.some(re => re.test(v)))
                 .filter((v, i, a) => a.indexOf(v) === i).slice(0, 24)
             : [];
+        const reconciledVoices = reconcileDeliveryVoices(
+            appAbilities,
+            rawUnmet,
+            acceptance.criteria.filter((c: any) => c.verdict === 'met').map((c: any) => c.id),
+        );
+        const reconciledAppAbilities = reconciledVoices.abilities;
+        const unmet = reconciledVoices.unmet;
+        const unjudged = reconciledVoices.unjudged;
+        if (reconciledVoices.conflicts.length) {
+            term(`delivery reconciliation: silenced contradictory ability topics — ${reconciledVoices.conflicts.join(', ')}`);
+        }
+        if (deliveryVoiceOverlap(reconciledAppAbilities, [...unmet, ...unjudged]).length) {
+            throw new Error('delivery_message_voice_overlap');
+        }
         const unmetBlock = unmet.length
             ? (isAr
                 ? `\n⚠️ وطلبتَ أيضاً ما لم أبنِه في هذه الخطوة — أقولها بصراحة بدل ادّعاء الاكتمال:\n${unmet.map(u => `   • ${u}`).join('\n')}\nأستطيع بناء الخادم وقاعدة البيانات كخطوة مستقلة: قل «ابنِ الباك إند لهذا التطبيق».\n`
                 : `\n⚠️ You also asked for things this step did NOT build — stated plainly rather than claimed:\n${unmet.map(u => `   • ${u}`).join('\n')}\n`)
+            : '';
+        const unjudgedBlock = unjudged.length
+            ? (isAr
+                ? `\n⚖️ لم أستطع الحسم في: ${unjudged.join(' · ')} — لا أدّعي أنها بُنيت ولا أنها غائبة.\n`
+                : `\n⚖️ I could not settle: ${unjudged.join(' · ')} — I do not claim these are built or absent.\n`)
             : '';
         /**
          * THE SCREENS IT REALLY MADE, IN THE MESSAGE HE READS.
@@ -4187,11 +4389,12 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 ? `\n🗂️ شاشات إدارة لكل جدول: ${systemTables.join(' · ')}\n`
                 : `\n🗂️ An admin screen for every table: ${systemTables.join(' · ')}\n`)
             : '';
-        const appBlock = appBp
+        const abilityBlock = reconciledAppAbilities.length || unmeasuredAbilitiesNotice
             ? (isAr
-                ? `\n🧠 هذا تطبيق يعمل، لا صفحة تتحدث عنه — «${appBp.title}»:\n${appAbilities.map(a => `   • ${a}`).join('\n')}\n${screensLine}${unmetBlock}`
-                : `\n🧠 A working application, not a page about one — "${appBp.title}":\n${appAbilities.map(a => `   • ${a}`).join('\n')}\n${screensLine}${unmetBlock}`)
+                ? `\n🧠 هذا تطبيق يعمل، لا صفحة تتحدث عنه — «${appBp?.title || ''}»:\n${reconciledAppAbilities.map(a => `   • ${a}`).join('\n')}${unmeasuredAbilitiesNotice ? `\n${unmeasuredAbilitiesNotice}` : ''}`
+                : `\n🧠 A working application, not a page about one — "${appBp?.title || ''}":\n${reconciledAppAbilities.map(a => `   • ${a}`).join('\n')}${unmeasuredAbilitiesNotice ? `\n${unmeasuredAbilitiesNotice}` : ''}`)
             : '';
+        const appBlock = appBp ? `${abilityBlock}${screensLine}${unjudgedBlock}${unmetBlock}` : '';
         const fidelityBlock = fidelityEvidenceUnavailable
             ? (isAr
                 ? `\n⛔ تعذّر التحقق من وفاء التطبيق المطلوب: دليل المصدر غير متاح أو أقصر من الحد الآمن (${fidelityEvidenceLength} حرفاً)، لذلك حُجب التسليم.\n`
@@ -4385,13 +4588,6 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
          * unmet, and the unmet ones are named. That verdict is part of delivery:
          * writing files is not evidence that the requested system was completed.
          */
-        const { acceptanceFor, judgeAcceptance, acceptanceBlock } = require('../../../core/quality/acceptance');
-        const acceptance = judgeAcceptance(acceptanceFor(request), {
-            dir: proj,
-            built,
-            liveUrl: liveServer ? liveServer.url : '',
-            audit: audit || null,
-        }, isAr);
         if (acceptance.criteria.length) {
             term(isAr
                 ? `acceptance: ${acceptance.met}/${acceptance.criteria.length} مما أعرف كيف أثبته مُثبَت`
@@ -4399,7 +4595,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 : `acceptance: ${acceptance.met}/${acceptance.criteria.length} of what I know how to prove is proven`
                     + (acceptance.unmet ? ` — unmet: ${acceptance.criteria.filter((c: any) => c.verdict === 'unmet').map((c: any) => c.id).join(', ')}` : ''));
         }
-        const acceptBlock = acceptance.criteria.length ? `${acceptanceBlock(acceptance, isAr)}\n` : '';
+        const acceptBlock = `${acceptanceBlock(acceptance, isAr)}\n`;
         const acceptanceBlocked = acceptance.criteria.length > 0 && !acceptance.accepted;
         // A named request is a contract, not commentary. Do not report a green
         // delivery when the engine has no evidence for one of the requested

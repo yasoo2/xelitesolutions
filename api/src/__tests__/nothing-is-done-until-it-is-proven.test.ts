@@ -29,6 +29,13 @@ import {
     GATE062_LIVE_PROMPT,
     titleTextFrom,
 } from '../core/quality/acceptance';
+import {
+    measuredAppAbilities,
+    deliveryVoiceOverlap,
+    reconcileDeliveryVoices,
+    previewUrlFromStatus,
+    verifiedPreviewUrl,
+} from '../modules/tools/definitions/ReactProjectTool';
 
 const REACT = fs.readFileSync(
     path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ReactProjectTool.ts'), 'utf-8');
@@ -87,6 +94,79 @@ describe('the criteria come from HIS brief, never from a fixed checklist', () =>
             .toContain('add_row');
         expect(acceptanceFor('ابن لي موقع لمطعمي فيه قائمة الطعام والأسعار').map(c => c.id))
             .not.toContain('list');
+    });
+});
+
+describe('delivery voices cannot contradict one another', () => {
+    const claimed = [
+        'create, edit and delete records for real',
+        'instant search, filter and sort',
+        'durable storage, CSV export, and reads from the project API when one exists',
+    ];
+    const missing = ['edit', 'search', 'sorting', 'durable storage', 'CSV export'];
+
+    it('the old message shape is a real negative control', () => {
+        expect(deliveryVoiceOverlap(claimed, missing)).toEqual(expect.arrayContaining(['crud', 'search', 'sort', 'storage', 'csv']));
+    });
+
+    it('keeps disagreement as UNJUDGED instead of deleting it or calling it built', () => {
+        const reconciled = reconcileDeliveryVoices(claimed, missing, ['search', 'export']);
+        expect(reconciled.unmet).toEqual(['edit', 'sorting', 'durable storage']);
+        expect(reconciled.unjudged).toEqual(expect.arrayContaining(['search', 'CSV export']));
+        expect(reconciled.abilities).toEqual([]);
+        expect(deliveryVoiceOverlap(reconciled.abilities, [...reconciled.unmet, ...reconciled.unjudged])).toEqual([]);
+        expect(reconciled.conflicts).toEqual(expect.arrayContaining(['crud', 'sort', 'storage']));
+    });
+});
+
+describe('preview claims require a measured HTTP response', () => {
+    it('keeps the candidate URL only when the response is HTTP 200', () => {
+        const url = 'http://127.0.0.1:40127/project-preview/probe/index.html';
+        expect(previewUrlFromStatus(200, url)).toBe(url);
+        expect(previewUrlFromStatus(404, url)).toBe('');
+        expect(previewUrlFromStatus(null, url)).toBe('');
+        expect(previewUrlFromStatus(200, '')).toBe('');
+    });
+
+    it('turns an invalid or unavailable preview into an unmet-safe empty URL', async () => {
+        await expect(verifiedPreviewUrl('not-a-url')).resolves.toBe('');
+        await expect(verifiedPreviewUrl('http://127.0.0.1:65534/project-preview/missing/index.html')).resolves.toBe('');
+    });
+});
+
+describe('capability claims require a measured engine contract', () => {
+    it('returns only measured claims for a known engine with source evidence', () => {
+        const source = 'function RecordsApp(){ setRows add create edit update delete required validate search filter sort groupTotals localStorage fetch toCsv download }';
+        const report = measuredAppAbilities('records', true, source);
+        expect(report.measured).toBe(true);
+        expect(report.abilities).toContain('إضافة وتعديل وحذف السجلات فعلياً');
+        expect(report.abilities).toContain('حفظ دائم + تصدير CSV + قراءة من خادم المشروع إن وُجد');
+        expect(report.unmeasured).toEqual([]);
+    });
+
+    it('drops the CSV claim when a records source has no CSV evidence', () => {
+        const source = 'function RecordsApp(){ setRows add create edit update delete required validate search filter sort groupTotals localStorage }';
+        const report = measuredAppAbilities('records', false, source);
+        expect(report.measured).toBe(true);
+        expect(report.abilities).not.toContain('durable storage, CSV export, and reads from the project API when one exists');
+        expect(report.unmeasured).toContain('durable storage, CSV export, and reads from the project API when one exists');
+    });
+
+    it('does not claim any known-engine ability when its source cannot be read', () => {
+        const report = measuredAppAbilities('records', true, '');
+        expect(report).toEqual(expect.objectContaining({ abilities: [], measured: false }));
+        expect(report.unmeasured).toHaveLength(5);
+    });
+
+    it('does not inherit records claims for an unknown engine', () => {
+        const ar = measuredAppAbilities('future-engine', true, 'setRows toCsv');
+        const en = measuredAppAbilities('future-engine', false, 'setRows toCsv');
+        expect(ar).toEqual({ abilities: [], unmeasured: [], measured: false });
+        expect(en).toEqual({ abilities: [], unmeasured: [], measured: false });
+        expect(ar.abilities.join(' ')).not.toContain('السجلات');
+        expect(en.abilities.join(' ')).not.toContain('records');
+        expect(REACT).not.toContain('ABILITIES[appBp.engine] || ABILITIES.records');
+        expect(REACT).toContain('غير مثبتة في مصدر المشروع');
     });
 });
 
@@ -358,20 +438,32 @@ describe('the ledger is published, in his language', () => {
         expect(block).not.toContain('كل ما طلبتَه');
     });
 
-    it('nothing asked for means nothing claimed', () => {
-        expect(acceptanceBlock(judgeAcceptance([], {}, true), true)).toBe('');
+    it('nothing asked for announces that no acceptance judgment was issued', () => {
+        const ar = acceptanceBlock(judgeAcceptance([], {}, true), true);
+        const en = acceptanceBlock(judgeAcceptance([], {}, false), false);
+        expect(ar).toContain('لم أستخرج معياراً قابلاً للفحص');
+        expect(ar).toContain('لم أصدر حكم قبول');
+        expect(en).toContain('could not derive a checkable criterion');
+        expect(en).toContain('did not issue an acceptance judgment');
     });
 });
 
 describe('THE WIRING: the build is judged before it is delivered', () => {
     it('the judge runs on the real evidence of THIS build', () => {
-        expect(REACT).toMatch(/const acceptance = judgeAcceptance\(acceptanceFor\(request\), \{/);
-        expect(REACT).toMatch(/liveUrl: liveServer \? liveServer\.url : '',/);
+        expect(REACT).toMatch(/const acceptance = judgeAcceptance\(acceptanceCriteriaFor\(request\), \{/);
+        expect(REACT).toMatch(/liveUrl: previewUrl,/);
         expect(REACT).toMatch(/audit: audit \|\| null,/);
+        expect(REACT).toMatch(/const reconciledVoices = reconcileDeliveryVoices\(/);
+        expect(REACT).toContain("throw new Error('delivery_message_voice_overlap')");
+        expect(REACT).toMatch(/deliveryVoiceOverlap\(reconciledAppAbilities, \[\.\.\.unmet, \.\.\.unjudged\]\)/);
+        expect(REACT).toMatch(/const abilityBlock = reconciledAppAbilities\.length \|\| unmeasuredAbilitiesNotice/);
+        expect(REACT).toContain('${abilityBlock}${screensLine}${unjudgedBlock}${unmetBlock}');
     });
 
     it('the ledger reaches the message in both languages, and the caller', () => {
         expect((REACT.match(/\$\{qaBlock\}\$\{shellBlock\}\$\{acceptBlock\}/g) || []).length).toBe(2);
+        expect(REACT).toMatch(/const acceptBlock = `\$\{acceptanceBlock\(acceptance, isAr\)\}\\n`;/);
+        expect(REACT).toMatch(/const acceptanceBlocked = acceptance\.criteria\.length > 0 && !acceptance\.accepted;/);
         expect(REACT).toMatch(/output: \{ message, acceptance,/);
     });
 

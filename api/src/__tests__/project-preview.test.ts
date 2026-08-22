@@ -60,8 +60,9 @@ describe('the preview loop is WIRED, end to end', () => {
         // lines away and failed a wiring that had not changed at all.
         const at = src.indexOf('publicUrlFor(`/project-preview/');
         expect(at).toBeGreaterThan(0);
-        expect(src.slice(at - 400, at + 200)).toContain("type: 'preview_ready'");
-        expect(src.slice(at - 400, at + 200)).toContain('if (built && !liveServer)');   // an unbuilt scaffold and a packaged live server have no static preview to announce
+        expect(src.slice(at - 400, at + 900)).toContain("type: 'preview_ready'");
+        expect(src.slice(at - 400, at + 900)).toContain('if (built && !liveServer)');   // an unbuilt scaffold and a packaged live server have no static preview to announce
+        expect(src.slice(at - 400, at + 900)).toContain('await verifiedPreviewUrl(candidatePreviewUrl)');
     });
     it('a build-verified surgical edit refreshes the preview — and ONLY a verified one', () => {
         const src = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ProjectEditTool.ts'), 'utf-8');

@@ -1008,7 +1008,17 @@ CLAUDE-208: acknowledged; implementation pending
 |---|---|
 | `ONE-MESSAGE-THREE-VERDICTS` | **شُخّص وأُثبت سلباً** برسالة RecordsProbe حقيقية: `ABILITIES` و`askedButMissing` و`acceptanceBlock` أصدرت أحكاماً متناقضة على search/CSV. أضيفت مصالحة أولية وحارس تقاطع، لكن Claude 279 صحّح القاعدة: الاختلاف لا يحذف النقص ولا يدّعي القدرة، بل يطبع `UNJUDGED` مسمّى؛ كما يجب حذف ترويسة القدرات الفارغة. **العمل غير مغلق بعد.** |
 | حارس التقاطع | **موجود ومختبَر:** negative control قديم يحمرّ، والمصالحة الحالية تجعل التقاطع فارغاً. يلزم تعديلها وفق Claude 279 لتحتفظ بالعناصر المختلف عليها في سطر `لم أستطع الحسم`، ثم إعادة الحارس على الرسالة نفسها. |
-| PR #84 — الزر الأسود | **مُنجز محلياً ولم يُدفع بعد:** `PreviewPanel.tsx` يستعمل `var(--joe-on-accent, #fff)`، و`accents.css:81` يستعمل `#221806` للذهبي الفاتح، وحارس `ink-on-accent-is-readable.test.ts` مضاف. طفرة `#000` حمّرت، وطفرة `#ffffff` للذهبي حمّرت، والنسخة الصحيحة خضرت `5/5`. |
+| PR #84 — الزر الأسود | **منجز ومدفوع إلى `origin/main` في `be19d44b`:** `PreviewPanel.tsx` يستعمل `var(--joe-on-accent, #fff)`، و`accents.css:81` يستعمل `#221806` للذهبي الفاتح، وحارس `ink-on-accent-is-readable.test.ts` مضاف. طفرة `#000` حمّرت، وطفرة `#ffffff` للذهبي حمّرت، والنسخة الصحيحة خضرت `5/5`. |
 | بوابة ما بعد الزر | **خضراء:** `GATE_BATCH=12`، 19/19 دفعات بخروج 0، `228` suites، `3709` tests، `GATE_TSC_EXIT=0`، `GATE_WEB_TSC_EXIT=0`، `GATE_API_BUILD_EXIT=0`، `GATE_WEB_BUILD_EXIT=0`، `GATE_JEST_EXIT=0`، `GATE:PASS`، و`TMP_AFTER_GATE=0`. |
-| قيد الدفع | **قبل الدفع:** staging للثلاثة ملفات الخاصة بالزر مع هذا الدفتر فقط، مراجعة PR #82 و`to-manus`، ثم push إلى `main`. بعد الدفع أعود إلى إصلاح المصالحة، ثم تضييق `ABILITIES`، ثم الجولة الحية على نص المالك، ولا 2a قبل إغلاق Claude. |
+| حالة الدفعة الحالية | **إصلاح الزر دُفع في `be19d44b`؛ مصالحة أصوات التسليم الحالية غير مدفوعة ومعلّقة بقرار Claude.** بعد إغلاقها فقط أعود إلى تضييق `ABILITIES` ثم الجولة الحية على نص المالك، ولا 2a قبل إغلاق Claude. |
 | 2a/2b/2c/Prompt 04 | **مؤجلة:** لا بدء قبل إغلاق التناقض، الترويسة الفارغة، قاعدة `UNJUDGED`، ودليل `ABILITIES` بالاتجاهين وفق Claude. |
+
+## Claude 280 — UNJUDGED والترويسة والحارس النهائي — 2026-08-22
+| البند | الحالة |
+|---|---|
+| قاعدة المصالحة المصححة | **منفذة محلياً:** acceptance لا يحذف عناصر النقص المختلف عليها؛ `search` و`CSV export` ظهرا في سطر `⚖️ I could not settle`، بينما `edit` و`delete` و`required-field validation` و`sorting` و`computed numbers` و`durable storage` بقيت unmet. |
+| الترويسة الفارغة | **مغلقة محلياً:** `abilityBlock` لا يطبع ترويسة التطبيق عندما لا تبقى claims مصالحة ولا unmeasured notice. |
+| الحارس الدائم | **موسع محلياً:** runtime guard يفحص تقاطع claims مع `unmet` و`unjudged` ويرمي `delivery_message_voice_overlap`; negative-control القديم ما زال غير فارغ، وtargeted regression أخضر. |
+| الجولة الحية | **PROBE_EXIT=0:** RecordsProbe الحقيقي أخرج الرسالة المصالحة؛ `TEMP_DELIVERY_DIRS=0`، لا artifact باقٍ. raw في `/tmp/claude280-final-reconcile-delivery-raw.md` وPR comment `5382613497`. |
+| البوابة بعد guard | **خضراء محلياً:** `GATE_BATCH=12`، 19/19 exits=0، 228 suites، 3709 tests، TSC/API build/web TSC/web build/Jest exits كلها 0، `GATE:PASS`، `TMP_AFTER_GATE=0`. raw في `/tmp/claude280-final-reconcile-gate-raw.md` وPR comment `5382636536`. |
+| الدفع التالي | **معلّق بقرار Claude:** تغييرات `acceptance.ts` و`ReactProjectTool.ts` و`nothing-is-done...` و`project-preview.test.ts` غير staged بعد. لا 2a ولا الجولة المالك قبل اعتماد Claude. |
