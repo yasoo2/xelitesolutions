@@ -28,13 +28,21 @@ process.env.NODE_ENV = 'test';
  * right, and the test was reading a file it had no business reading.
  *
  * Each run now gets its own empty store. Tests that WANT a profile write one
- * through the module's own API, into this directory, and it goes away with the
- * process.
+ * through the module's own API, into this directory.
+ *
+ * IT DOES NOT GO AWAY WITH THE PROCESS. This comment used to end with the
+ * words «and it goes away with the process», and the directory never did —
+ * only the environment variable did. Measured: two directories per test file,
+ * 456 per full run, 28,079 on the machine that batches this suite all day,
+ * until `EMLINK: too many links` failed every batch with `0 total` tests. A
+ * comment that promises a cleanup nobody performs is worse than no comment at
+ * all: it is the reason nobody looked. `globalSetup.ts` now makes one root per
+ * run, these live inside it, and `teardown.ts` removes it.
  */
 if (!process.env.JOE_CHAT_STORE_DIR) {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const os = require('os'), fsx = require('fs'), p = require('path');
-    process.env.JOE_CHAT_STORE_DIR = fsx.mkdtempSync(p.join(os.tmpdir(), 'joe-test-store-'));
+    process.env.JOE_CHAT_STORE_DIR = fsx.mkdtempSync(p.join(process.env.JOE_TEST_TMP_ROOT || os.tmpdir(), 'joe-test-store-'));
 }
 
 /**
@@ -53,7 +61,7 @@ if (!process.env.JOE_CHAT_STORE_DIR) {
 if (!process.env.JOE_DATA_DIR) {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const os = require('os'), fsx = require('fs'), p = require('path');
-    process.env.JOE_DATA_DIR = fsx.mkdtempSync(p.join(os.tmpdir(), 'joe-test-data-'));
+    process.env.JOE_DATA_DIR = fsx.mkdtempSync(p.join(process.env.JOE_TEST_TMP_ROOT || os.tmpdir(), 'joe-test-data-'));
 }
 
 /**
