@@ -16,6 +16,10 @@ module.exports = {
     rootDir: 'src',
     testMatch: ['**/__tests__/**/*.test.ts'],
     setupFiles: ['<rootDir>/__tests__/setup.ts'],
+    // One temporary root for the whole run, so teardown has one thing to
+    // delete. Without it the suite left two directories per test file on the
+    // machine, forever — see globalSetup.ts.
+    globalSetup: '<rootDir>/__tests__/globalSetup.ts',
     // Closes the shared OCR worker after the last test. Without it the run
     // ends on a worker-process warning that would hide later leaks.
     globalTeardown: '<rootDir>/__tests__/teardown.ts',

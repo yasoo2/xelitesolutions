@@ -13,10 +13,25 @@
  *
  * So the suite closes it. `--forceExit` would also make the warning go away,
  * and would take every future leak with it.
+ *
+ * AND REMOVE WHAT THE SUITE WROTE TO THE MACHINE.
+ *
+ * `globalSetup.ts` makes one temporary root per run and every per-file store
+ * and data directory is created inside it. Deleting the root here is the whole
+ * cleanup — see globalSetup.ts for the 28,079 directories that made it
+ * necessary, and for why the per-file isolation is kept.
  */
 module.exports = async function globalTeardown(): Promise<void> {
     try {
         const { shutdownOcr } = require('../shared/ocr');
         await shutdownOcr();
     } catch { /* the reader was never opened in this run */ }
+
+    const root = process.env.JOE_TEST_TMP_ROOT;
+    // Only ever a directory this run created, and only under the system temp
+    // directory: a teardown that can be pointed at an arbitrary path by an
+    // environment variable is a rm -rf waiting for a typo.
+    if (root && root.startsWith(require('os').tmpdir()) && /joe-test-run-/.test(root)) {
+        require('fs').rmSync(root, { recursive: true, force: true });
+    }
 };
