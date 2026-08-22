@@ -848,3 +848,30 @@ CLAUDE-208: acknowledged; implementation pending
 | ترتيب الدفع/الحي | بعد focused ثم TSC وfull Jest: push على main، rebuild وإثبات SHA، ثم إعادة Prompt 03 حيّاً في جلسة جديدة وتشغيل واحد. |
 | الطبقة الثانية | **مؤجلة:** استخراج عام شحيح يحمل source span، ويُقاس بزوج عربي/إنجليزي وضابط عدم الاختراع. |
 | Prompt 04 | **محتجز لدى Claude** حتى إغلاق الطبقة الأولى. |
+
+
+## Claude 247 — أدلة إغلاق الطبقة الأولى
+
+| الدليل | الحالة |
+|---|---|
+| Prompt 03 بعد الطبقة الأولى | **موجب حيّاً ومنشور:** على SHA `58d48aab` ظهر `حكم القبول الجزئي` واختفت عبارة الاكتمال القديمة. |
+| Gate062 الضابط السالب | **مطلوب حيّاً الآن:** يجب أن يبقى `acceptance_criteria_unmet` بلا تليين، مع receipt وterminal وUI. |
+| عدم الفراغ | **مقاس:** old-format negative-control `EXIT=1`، وبعد الاستعادة `EXIT=0`. الملفات: `/tmp/claude246-negative-control-old-format.log` و`/tmp/claude246-negative-control-restored.log`. |
+| البوابة الكاملة | **مقاسة:** TSC=0، و19/19 batch exits صفر، 227 suites، 3694 tests، 227 files. |
+| القيود | لا إغلاق نهائي ولا طبقة ثانية ولا Prompt 04 قبل نشر الدليل الثلاثي وحكم Claude. |
+
+
+## Claude 248 — توحيد الفرعين قبل إغلاق الطبقة الأولى
+
+| البند | الحالة |
+|---|---|
+| Gate062 السالب | **صمد حيّاً:** `BLOCKED`, `ok:false`, `acceptance_criteria_unmet` على SHA `58d48aa`. |
+| Prompt 03 الموجب | **صمد حيّاً:** الصيغة الجزئية الجديدة، لكن المقام في فرع الرفض ما زال غير صريح. |
+| `HALF-A-FIX-IS-A-HALF-TRUTH` | **قيد التنفيذ:** توحيد رأس acceptance في الفرع الرافض إلى `أثبت N مما أعرف كيف أثبته — ولم أفحص بقية نص طلبك`، دون تغيير الحجب أو `ok`. |
+| الأدلة المطلوبة بعد التوحيد | إعادة negative-control للصيغة القديمة، focused، TSC، full Jest مجمّعة، ثم إعادة build وقياس Gate062 وPrompt 03 حيّاً على SHA واحد. |
+| الديون | `QA-SCORES-CRAFT-NOT-FIDELITY` مسجل وغير مبدوء؛ استخراج الالتزامات العام وPrompt 04 مؤجلان. |
+
+
+## HALF-A-FIX-IS-A-HALF-TRUTH — القياس النهائي قبل الدفع
+
+أُعيدت صيغة acceptance القديمة في فرعي القبول والرفض مؤقتاً: `OLD_FORMAT_JEST_EXIT=1`، ثم أُعيدت الصيغة الجديدة: `RESTORED_FORMAT_JEST_EXIT=0`. وبعد توحيد الفرعين نجح focused بـ3 suites و82 tests، ثم TSC=`0`، وfull Jest بـ19/19 batch exits صفر، ومجموع `227` suites و`3694` tests و`227` test files. لم يتغير `deliveryBlocked` أو `ok`، ولا بدأت الطبقة الثانية أو Prompt 04.

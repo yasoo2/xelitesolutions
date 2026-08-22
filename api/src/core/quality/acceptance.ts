@@ -360,8 +360,8 @@ export function acceptanceBlock(a: Acceptance, isAr: boolean): string {
             ? `✅ حكم القبول الجزئي: أثبتُّ ${a.met} مما أعرف كيف أثبته — ولم أفحص بقية نص طلبك.`
             : `✅ Partial acceptance: I proved ${a.met} of what I know how to prove — I did not inspect the rest of your request.`)
         : (isAr
-            ? `⚠️ حكم القبول: ${a.met} من ${a.criteria.length} مُثبَت — و${a.unmet} لم أُثبته:`
-            : `⚠️ Acceptance: ${a.met} of ${a.criteria.length} proven — ${a.unmet} not:`);
+            ? `⚠️ حكم القبول الجزئي: أثبتُّ ${a.met} مما أعرف كيف أثبته — و${a.unmet} مما أعرف كيف أثبته لم أُثبته، ولم أفحص بقية نص طلبك:`
+            : `⚠️ Partial acceptance: I proved ${a.met} things I know how to prove — ${a.unmet} things I know how to prove were not proven, and I did not inspect the rest of your request:`);
     const lines = a.criteria.map(c => {
         const mark = c.verdict === 'met' ? '✅' : c.verdict === 'unmet' ? '❌' : '⏭️';
         return `   ${mark} ${isAr ? c.ar : c.en} — ${c.why}`;

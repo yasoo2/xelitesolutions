@@ -290,12 +290,28 @@ describe('a criterion is met by EVIDENCE, or it is not met', () => {
 });
 
 describe('the ledger is published, in his language', () => {
-    it('an incomplete run leads with the count and names every gap', () => {
+    it('an incomplete run declares the judge boundary and names every known gap', () => {
         const a = judgeAcceptance(acceptanceFor(BRIEF), { dir: '/nope', built: false }, true);
         const block = acceptanceBlock(a, true);
-        expect(block).toContain('حكم القبول');
+        expect(block).toContain('حكم القبول الجزئي');
+        expect(block).toContain('أثبتُّ 0 مما أعرف كيف أثبته');
+        expect(block).toContain('ولم أفحص بقية نص طلبك');
+        expect(block).not.toContain('0 من 11');
         expect(block).toContain('❌');
         expect(block).toContain('README');
+    });
+
+    it('the rejected English branch also discloses the judge boundary', () => {
+        const a = judgeAcceptance(
+            acceptanceFor('Create a page with a counter, title, and production build.'),
+            { dir: '/nope', built: false },
+            false,
+        );
+        const block = acceptanceBlock(a, false);
+        expect(block).toContain('Partial acceptance');
+        expect(block).toContain('I proved 0 things I know how to prove');
+        expect(block).toContain('I did not inspect the rest of your request');
+        expect(block).not.toContain('0 of 3 proven');
     });
 
     it('a complete catalogue subset declares its boundary instead of claiming the whole request', () => {
