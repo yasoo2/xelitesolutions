@@ -98,3 +98,66 @@ describe('INVARIANT: a total computed from the rows and shown is a total', () =>
         expect(computedTotalEvidence('// shows the total at the bottom')).toBe(false);
     });
 });
+
+/**
+ * THE CASES THAT BROKE THE FIRST VERSION OF THIS PROOF.
+ *
+ * Every input below is copied from an adversarial review of the first commit —
+ * a reviewer ran the shipped functions against sources designed to fool them,
+ * and four of them did. They are kept verbatim, because a guard written from
+ * imagination is weaker than one written from a hit.
+ */
+const withDecoy = (decoy: string) => [
+    decoy,
+    "const content = { brand: 'مشترياتي' };",
+    '<h1>{content.brand}</h1>',
+].join(String.fromCharCode(10));
+
+describe('INVARIANT: the title proof follows the object, not the word', () => {
+    test('a different object carrying the same property does not prove it', () => {
+        expect(titleEvidence(withDecoy("const unrelated = { brand: 'مصاريفي' };"), 'مصاريفي')).toBe(false);
+    });
+
+    test('a comment does not prove it', () => {
+        expect(titleEvidence(withDecoy("// brand: 'مصاريفي'"), 'مصاريفي')).toBe(false);
+    });
+
+    test('a string that merely looks like a declaration does not prove it', () => {
+        expect(titleEvidence(withDecoy('const note = "brand: \'مصاريفي\'";'), 'مصاريفي')).toBe(false);
+    });
+
+    test('and the object it IS bound to still proves it', () => {
+        expect(titleEvidence(withDecoy("const unrelated = { brand: 'شيء آخر' };"), 'مشترياتي')).toBe(true);
+    });
+
+    test('deeper than one hop stays unproven rather than guessed', () => {
+        expect(titleEvidence([
+            "const content = { page: { brand: 'مصاريفي' } };",
+            '<h1>{content.page.brand}</h1>',
+        ].join(String.fromCharCode(10)), 'مصاريفي')).toBe(false);
+    });
+});
+
+describe('INVARIANT: a total adds numbers, or states that it sums a field', () => {
+    test('a string join is not a total, however many plus signs it has', () => {
+        expect(computedTotalEvidence([
+            "const total = rows.reduce((a, r) => a + r.label, '');",
+            '<b>{total}</b>',
+        ].join(String.fromCharCode(10)))).toBe(false);
+    });
+
+    test('the records engine contract counts: a declared sum that is rendered', () => {
+        expect(computedTotalEvidence([
+            "  metrics: [{ label: 'الإجمالي', kind: 'sum', field: 'amount' }],",
+            '  <b>{computeMetric(m, rows)}</b>',
+        ].join(String.fromCharCode(10)))).toBe(true);
+    });
+
+    test('IS NOT VACUOUS: a declared sum that nothing renders is a plan, not a total', () => {
+        expect(computedTotalEvidence("metrics: [{ label: 'الإجمالي', kind: 'sum', field: 'amount' }],")).toBe(false);
+    });
+
+    test('IS NOT VACUOUS: rendering the helper with nothing declared proves nothing', () => {
+        expect(computedTotalEvidence('<b>{computeMetric(m, rows)}</b>')).toBe(false);
+    });
+});

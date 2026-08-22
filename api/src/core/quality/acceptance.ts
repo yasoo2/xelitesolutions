@@ -275,77 +275,81 @@ function escapeRegExp(value: string): string {
 }
 
 /**
- * A TOTAL IS NOT A CLICK COUNTER, AND ARABIC SAYS BOTH WITH ONE WORD.
+ * PROOF THAT FOLLOWS THE EXPRESSION, NOT A WORD THAT LOOKS LIKE IT.
  *
- * The contract warns about exactly this pair: «الإجمالي» and «المجموع» mean
- * a computed total OR an incrementing counter, and the catalogue maps both to
- * `counter`. Proof, until now, was `hasCounterEvidence`: a state binding whose
- * setter adds one, wired to a click. A sum over rows has no setter and no
- * button — so a page that computed the total and displayed it was judged to
- * have no total at all.
+ * The first version of this proof was reviewed adversarially and it failed —
+ * three ways for the title, one for the total. Every case below is real output
+ * from that review, not a hypothetical:
  *
- * Measured live on the owner's machine: he asked for a page showing the total
- * of his expenses at the bottom, Joe built it, and delivery was BLOCKED with
- * `acceptance_criteria_unmet`. Correct work, refused — and the user was told
- * only that one English error code.
+ *     const unrelated = { brand: 'A' };  const content = { brand: 'B' };
+ *     <h1>{content.brand}</h1>        -> proof claimed A. The page renders B.
  *
- * So a fold that reaches the screen proves it too. It is held to the same
- * standard as the counter: TWO facts bound by ONE shared identifier — a value
- * accumulated with `+` inside a reduce, and that same name rendered. A bare
- * `.reduce(` proves nothing, and neither does the word «total» in a comment.
+ *     // brand: 'A'                   -> a comment proved a title
+ *     const note = "brand: 'A'";      -> a string proved a title
+ *
+ * One shortcut caused all three: content.brand was reduced to the tail brand,
+ * and the first line containing that word won. A hop that ignores which object
+ * it hopped from is not a hop — it is a search. So the object is resolved
+ * first, its literal sliced by balanced braces, comments removed, and only then
+ * is the property read. An expression deeper than one hop, or an object that is
+ * not a plain literal, resolves to nothing and stays unproven.
+ *
+ * The total failed the same way in its own dialect:
+ *
+ *     rows.reduce((a, r) => a + r.label, '')   -> a string join, called a total
+ *
+ * Plus is not addition when the seed is a string. And the deeper finding of
+ * that review: the generated records app does not fold in the view at all. It
+ * declares { kind: 'sum', field: 'amount' } and renders computeMetric(m, rows).
+ * The earlier proof matched a reduce belonging to a donut chart and called it
+ * the user's total — right by accident, which is a kind of wrong.
  */
-function foldedTotalBindings(src: string): string[] {
-    const names: string[] = [];
-    const declared = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=[^;]{0,200}?\.reduce\s*\(/g;
-    for (const match of src.matchAll(declared)) {
-        //  The fold must actually add. `reduce` alone also builds arrays, joins
-        //  strings, and picks maxima — none of which is a total.
-        const body = src.slice(match.index || 0, (match.index || 0) + 300);
-        if (body.includes('+')) names.push(match[1]);
+function withoutComments(text: string): string {
+    const kept: string[] = [];
+    let rest = text;
+    for (;;) {
+        const open = rest.indexOf('/' + '*');
+        if (open < 0) { kept.push(rest); break; }
+        const close = rest.indexOf('*' + '/', open + 2);
+        if (close < 0) { kept.push(rest.slice(0, open)); break; }
+        kept.push(rest.slice(0, open), ' ');
+        rest = rest.slice(close + 2);
     }
-    return names;
+    return kept.join('').split('\n').map(line => {
+        const at = line.indexOf('/' + '/');
+        return at < 0 ? line : line.slice(0, at);
+    }).join('\n');
 }
 
-export function computedTotalEvidence(src: string): boolean {
+/** The braces-balanced body of a plain object binding, or nothing. */
+function objectLiteralOf(src: string, objectName: string): string | undefined {
     const BS = String.fromCharCode(92);
-    return foldedTotalBindings(src).some(name => {
-        const n = escapeRegExp(name);
-        //  …and the same name reaches the page: {total} or {total.toLocaleString()}
-        const shown = new RegExp('[{]' + BS + 's*' + n + '(?:' + BS + '.[A-Za-z_$][' + BS + 'w$]*' + BS + 's*' + BS + '([^)]*' + BS + '))?' + BS + 's*[}]', 'u');
-        return shown.test(src);
-    });
+    const decl = new RegExp('(?:export' + BS + 's+)?(?:const|let|var)' + BS + 's+' + escapeRegExp(objectName) + '' + BS + 's*=' + BS + 's*[{]', 'u');
+    const found = decl.exec(src);
+    if (!found) return undefined;
+    const opens = src.indexOf('{', found.index);
+    let depth = 0;
+    for (let at = opens; at < src.length; at++) {
+        const ch = src.charAt(at);
+        if (ch === '{') depth++;
+        else if (ch === '}') { depth--; if (depth === 0) return src.slice(opens, at + 1); }
+    }
+    return undefined;
 }
 
-/**
- * THE TITLE THE PAGE SHOWS, NOT THE LETTERS THE FILE HAPPENS TO CONTAIN.
- *
- * Measured live on the owner's machine. He asked for a page under a quoted
- * Arabic name; Joe built exactly that, and the judge called it unmet:
- *
- *     <h1 className="app-name">{content.brand}</h1>   // what the page renders
- *     brand: '<the requested name>',                    // where the value lives
- *
- * The heading is right on screen and wrong in a grep, because the old proof
- * matched literal text inside the tag and a React page almost never puts it
- * there. A judge that refuses correct work is not strict — it is broken in the
- * expensive direction, and it blocked that delivery outright.
- *
- * So the proof follows the binding — ONE hop, and only to a string literal on
- * one line of the same generated source. Anything computed, concatenated, or
- * imported from elsewhere does not resolve and stays unproven: one hop is what
- * a page needs and what a guess would exceed.
- */
-function resolvedTitleText(src: string, expression: string): string | undefined {
-    const tail = expression.includes('.') ? String(expression.split('.').pop()) : expression;
-    for (const rawLine of src.split(String.fromCharCode(10))) {
+/** A quoted literal assigned to one name, on one line of decommented text. */
+function literalAssignedTo(text: string, name: string): string | undefined {
+    for (const rawLine of text.split('\n')) {
         const line = rawLine.trim();
-        const at = line.indexOf(tail);
+        const at = line.indexOf(name);
         if (at < 0) continue;
-        const after = line.slice(at + tail.length).trim();
+        const before = at === 0 ? '' : line.charAt(at - 1);
+        if (before && /[A-Za-z0-9_$]/u.test(before)) continue;
+        const after = line.slice(at + name.length).trim();
         if (!after.startsWith(':') && !after.startsWith('=')) continue;
         const rest = after.slice(1).trim();
         const quote = rest.charAt(0);
-        if (quote !== String.fromCharCode(39) && quote !== String.fromCharCode(34) && quote !== String.fromCharCode(96)) continue;
+        if (quote !== "'" && quote !== '"' && quote !== String.fromCharCode(96)) continue;
         const closes = rest.indexOf(quote, 1);
         if (closes < 1 || closes > 81) continue;
         return rest.slice(1, closes).trim();
@@ -353,21 +357,71 @@ function resolvedTitleText(src: string, expression: string): string | undefined 
     return undefined;
 }
 
+function resolvedTitleText(src: string, expression: string): string | undefined {
+    if (expression.includes('.')) {
+        const parts = expression.split('.');
+        //  One hop, and only one: a.b.c is deeper than this proof can follow, so
+        //  it stays unproven rather than guessing which object was meant.
+        if (parts.length !== 2) return undefined;
+        const body = objectLiteralOf(src, parts[0]);
+        if (!body) return undefined;
+        return literalAssignedTo(withoutComments(body), parts[1]);
+    }
+    return literalAssignedTo(withoutComments(src), expression);
+}
+
 export function titleEvidence(src: string, expected: string): boolean {
     const literal = escapeRegExp(expected);
-    //  Built from an explicit backslash: this file has been mangled once by an
-    //  escaping layer between an editor and disk, and a regex that silently
-    //  degrades to matching a backspace character is exactly the kind of guard
-    //  that passes review and proves nothing.
     const BS = String.fromCharCode(92);
-    const heading = new RegExp('<h[1-6]' + BS + 'b[^>]*>' + BS + 's*' + literal + BS + 's*</h[1-6]>', 'iu');
-    const docTitle = new RegExp('<title' + BS + 'b[^>]*>' + BS + 's*' + literal + BS + 's*</title>', 'iu');
+    const heading = new RegExp('<h[1-6]' + BS + 'b[^>]*>' + BS + 's*' + literal + '' + BS + 's*</h[1-6]>', 'iu');
+    const docTitle = new RegExp('<title' + BS + 'b[^>]*>' + BS + 's*' + literal + '' + BS + 's*</title>', 'iu');
     if (heading.test(src) || docTitle.test(src)) return true;
     const bound = /<(?:h[1-6]|title)\b[^>]*>\s*\{\s*([A-Za-z_$][\w$.]*)\s*\}\s*<\/(?:h[1-6]|title)>/giu;
     for (const match of src.matchAll(bound)) {
         if (resolvedTitleText(src, match[1]) === expected) return true;
     }
     return false;
+}
+
+/**
+ * The records engine STATES its totals instead of folding them in the view:
+ * { label: '…', kind: 'sum', field: 'amount' } declared, computeMetric(m, rows)
+ * rendered. Both halves are required — a declaration nothing renders is a plan,
+ * and a render with nothing declared is a call with no total behind it.
+ */
+function declaredSumMetric(src: string): boolean {
+    const clean = withoutComments(src);
+    const declares = /kind\s*:\s*['"]sum['"][^}]{0,120}field\s*:\s*['"]/u;
+    return declares.test(clean) && clean.includes('computeMetric(');
+}
+
+/** A fold that adds NUMBERS and reaches the screen under its own name. */
+function numericFoldBindings(src: string): string[] {
+    const clean = withoutComments(src);
+    const names: string[] = [];
+    const declared = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=[^;]{0,200}?\.reduce\s*\(/g;
+    const seedsNumber = /,\s*-?\d+(?:\.\d+)?\s*\)/u;
+    for (const match of clean.matchAll(declared)) {
+        const body = clean.slice(match.index || 0, (match.index || 0) + 320);
+        if (!body.includes('+')) continue;
+        //  A string seed means plus is concatenation: the first version of this
+        //  proof called a label join a total.
+        if (body.includes("''") || body.includes('""')) continue;
+        const coerces = body.includes('Number(') || body.includes('parseFloat(');
+        if (!coerces && !seedsNumber.test(body)) continue;
+        names.push(match[1]);
+    }
+    return names;
+}
+
+export function computedTotalEvidence(src: string): boolean {
+    if (declaredSumMetric(src)) return true;
+    return numericFoldBindings(src).some(name => {
+        const n = escapeRegExp(name);
+        const BS = String.fromCharCode(92);
+        const shown = new RegExp('[{]' + BS + 's*' + n + '(?:' + BS + '.[A-Za-z_$][' + BS + 'w$]*' + BS + 's*' + BS + '([^)]*' + BS + '))?' + BS + 's*[}]', 'u');
+        return shown.test(src);
+    });
 }
 
 /**
