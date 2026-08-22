@@ -170,8 +170,11 @@ const CATALOGUE: Array<Criterion & { asked: RegExp }> = [
 /** Extract a literal title only when the request gives a safe structural boundary. */
 function extractRequestedTitle(request: string): string | undefined {
     const patterns = [
+        // Quoted, in either language: the closing quote IS the boundary,
+        // so there is no lookahead and no guessing where the name stops.
+        /(?:titled|called|named|بعنوان|عنوانها|عنوانه|اسمها|إسمها|اسمه|إسمه)\s*[:：]?\s*[«"'`‘“]([^»"'`’”]{1,60})[»"'`’”]/iu,
         /\btitled\s+(.+?)(?=\s+(?:with|that|which|containing|including|and)\b|[,.;]|$)/iu,
-        /بعنوان\s+(.+?)(?=\s+(?:فيها|يحتوي|تحتوي|مع|وبها|والتي|و)(?=\s|[،,؛.;]|$)|[،,؛.;]|$)/u,
+        /(?:بعنوان|عنوانها|عنوانه|اسمها|إسمها|اسمه|إسمه)\s+(.+?)(?=\s+(?:فيها|يحتوي|تحتوي|مع|وبها|والتي|و)(?=\s|[،,؛.;]|$)|[،,؛.;]|$)/u,
     ];
     for (const pattern of patterns) {
         const match = pattern.exec(request);
@@ -272,6 +275,102 @@ function escapeRegExp(value: string): string {
 }
 
 /**
+ * A TOTAL IS NOT A CLICK COUNTER, AND ARABIC SAYS BOTH WITH ONE WORD.
+ *
+ * The contract warns about exactly this pair: «الإجمالي» and «المجموع» mean
+ * a computed total OR an incrementing counter, and the catalogue maps both to
+ * `counter`. Proof, until now, was `hasCounterEvidence`: a state binding whose
+ * setter adds one, wired to a click. A sum over rows has no setter and no
+ * button — so a page that computed the total and displayed it was judged to
+ * have no total at all.
+ *
+ * Measured live on the owner's machine: he asked for a page showing the total
+ * of his expenses at the bottom, Joe built it, and delivery was BLOCKED with
+ * `acceptance_criteria_unmet`. Correct work, refused — and the user was told
+ * only that one English error code.
+ *
+ * So a fold that reaches the screen proves it too. It is held to the same
+ * standard as the counter: TWO facts bound by ONE shared identifier — a value
+ * accumulated with `+` inside a reduce, and that same name rendered. A bare
+ * `.reduce(` proves nothing, and neither does the word «total» in a comment.
+ */
+function foldedTotalBindings(src: string): string[] {
+    const names: string[] = [];
+    const declared = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=[^;]{0,200}?\.reduce\s*\(/g;
+    for (const match of src.matchAll(declared)) {
+        //  The fold must actually add. `reduce` alone also builds arrays, joins
+        //  strings, and picks maxima — none of which is a total.
+        const body = src.slice(match.index || 0, (match.index || 0) + 300);
+        if (body.includes('+')) names.push(match[1]);
+    }
+    return names;
+}
+
+export function computedTotalEvidence(src: string): boolean {
+    const BS = String.fromCharCode(92);
+    return foldedTotalBindings(src).some(name => {
+        const n = escapeRegExp(name);
+        //  …and the same name reaches the page: {total} or {total.toLocaleString()}
+        const shown = new RegExp('[{]' + BS + 's*' + n + '(?:' + BS + '.[A-Za-z_$][' + BS + 'w$]*' + BS + 's*' + BS + '([^)]*' + BS + '))?' + BS + 's*[}]', 'u');
+        return shown.test(src);
+    });
+}
+
+/**
+ * THE TITLE THE PAGE SHOWS, NOT THE LETTERS THE FILE HAPPENS TO CONTAIN.
+ *
+ * Measured live on the owner's machine. He asked for a page under a quoted
+ * Arabic name; Joe built exactly that, and the judge called it unmet:
+ *
+ *     <h1 className="app-name">{content.brand}</h1>   // what the page renders
+ *     brand: '<the requested name>',                    // where the value lives
+ *
+ * The heading is right on screen and wrong in a grep, because the old proof
+ * matched literal text inside the tag and a React page almost never puts it
+ * there. A judge that refuses correct work is not strict — it is broken in the
+ * expensive direction, and it blocked that delivery outright.
+ *
+ * So the proof follows the binding — ONE hop, and only to a string literal on
+ * one line of the same generated source. Anything computed, concatenated, or
+ * imported from elsewhere does not resolve and stays unproven: one hop is what
+ * a page needs and what a guess would exceed.
+ */
+function resolvedTitleText(src: string, expression: string): string | undefined {
+    const tail = expression.includes('.') ? String(expression.split('.').pop()) : expression;
+    for (const rawLine of src.split(String.fromCharCode(10))) {
+        const line = rawLine.trim();
+        const at = line.indexOf(tail);
+        if (at < 0) continue;
+        const after = line.slice(at + tail.length).trim();
+        if (!after.startsWith(':') && !after.startsWith('=')) continue;
+        const rest = after.slice(1).trim();
+        const quote = rest.charAt(0);
+        if (quote !== String.fromCharCode(39) && quote !== String.fromCharCode(34) && quote !== String.fromCharCode(96)) continue;
+        const closes = rest.indexOf(quote, 1);
+        if (closes < 1 || closes > 81) continue;
+        return rest.slice(1, closes).trim();
+    }
+    return undefined;
+}
+
+export function titleEvidence(src: string, expected: string): boolean {
+    const literal = escapeRegExp(expected);
+    //  Built from an explicit backslash: this file has been mangled once by an
+    //  escaping layer between an editor and disk, and a regex that silently
+    //  degrades to matching a backspace character is exactly the kind of guard
+    //  that passes review and proves nothing.
+    const BS = String.fromCharCode(92);
+    const heading = new RegExp('<h[1-6]' + BS + 'b[^>]*>' + BS + 's*' + literal + BS + 's*</h[1-6]>', 'iu');
+    const docTitle = new RegExp('<title' + BS + 'b[^>]*>' + BS + 's*' + literal + BS + 's*</title>', 'iu');
+    if (heading.test(src) || docTitle.test(src)) return true;
+    const bound = /<(?:h[1-6]|title)\b[^>]*>\s*\{\s*([A-Za-z_$][\w$.]*)\s*\}\s*<\/(?:h[1-6]|title)>/giu;
+    for (const match of src.matchAll(bound)) {
+        if (resolvedTitleText(src, match[1]) === expected) return true;
+    }
+    return false;
+}
+
+/**
  * Judge what was asked against what exists.
  *
  * Every «met» points at something real: a file, a flag that came from a
@@ -319,21 +418,23 @@ export function judgeAcceptance(criteria: Criterion[], ev: Evidence, isAr = true
                 : 'no source to read, so nothing can be proven');
         }
         let hit: boolean;
+        let counterProvedByTotal = false;
         if (c.id === 'counter') {
             hit = hasCounterEvidence(src);
+            if (!hit && computedTotalEvidence(src)) { hit = true; counterProvedByTotal = true; }
         } else if (c.id === 'button') {
             hit = hasActionBoundButtonEvidence(src);
         } else if (c.id === 'status_message') {
             hit = hasStatusMessageEvidence(src);
         } else if (c.id === 'title' && c.expectedText) {
-            const expected = escapeRegExp(c.expectedText);
-            hit = new RegExp(`<h[1-6]\\b[^>]*>\\s*${expected}\\s*</h[1-6]>`, 'iu').test(src)
-                || new RegExp(`<title\\b[^>]*>\\s*${expected}\\s*</title>`, 'iu').test(src);
+            hit = titleEvidence(src, c.expectedText);
         } else {
             hit = (c.markers || []).some(re => re.test(src));
         }
         if (hit) {
-            const why = c.id === 'title' && c.expectedText
+            const why = counterProvedByTotal
+                ? (isAr ? 'مجموع محسوب من بياناتك ومعروض في الصفحة' : 'a total computed from your rows and shown on the page')
+                : c.id === 'title' && c.expectedText
                 ? (isAr ? `العنوان المطلوب «${c.expectedText}» موجود في مصدر المشروع` : `requested title “${c.expectedText}” is present in the generated source`)
                 : (isAr ? 'موجود في مصدر المشروع' : 'present in the generated source');
             return say('met', why);
