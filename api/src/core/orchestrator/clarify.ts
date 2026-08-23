@@ -12,7 +12,7 @@
  * toll booth.
  */
 
-import { asksForSomething, describesItsContents, looksLikeBuild, trackingVerbAt, tracksSomethingOfHis } from './buildIntent';
+import { asksForSomething, describesItsContents, tracksSomethingOfHis, trackingVerbAt, looksLikeBuild } from './buildIntent';
 
 interface PendingClarify { request: string; at: number }
 const TTL_MS = 30 * 60_000;
@@ -30,8 +30,27 @@ function userWords(goal: string): string {
 }
 
 const BUILD_VERB = /\b(build|create|make|design|develop|generate)\b|(ابنِ|ابني|ابن\s|انشئ|أنشئ|اصنع|صمم|اعمل|سوي?\s*لي)/i;
-const WEB_NOUN = /\b(page|site|website|app|store|dashboard|portfolio|landing)\b|(صفحة|موقع|تطبيق|متجر|لوحة|واجهة|بورتفوليو|هبوط)/i;
+/**
+ *  …AND A THING HE SAYS HE WILL KEEP TRACK OF.
+ *
+ *  Measured live. He wrote «بدي شي أتابع فيه ديوني» — a request to build,
+ *  with nothing to build from. This gate should have asked him what he
+ *  wanted to record. It did not fire, because it required a noun from its
+ *  own private list and he had written «شي».
+ *
+ *  So Joe fell through to a free answer and improvised a financial
+ *  adviser: he asked the man about his interest rates, his minimum
+ *  payments and his monthly income, and offered him «طريقة التلال» versus
+ *  «طريقة الثلج». Nothing was built and nothing was asked that would let
+ *  anything be built.
+ *
+ *  A tracking verb with an object is a build-shaped request whatever the
+ *  object is called — «أتابع ديوني», «أسجل شتلاتي», «track my shipments».
+ *  The verb is the closed class here; the object never is.
+ */
 const TRACKING = /(أتابع|اتابع|أسجل|اسجل|أدوّن|ادون|أحفظ|احفظ|أنظم|انظم|أرتب|ارتب|أدير|ادير|\btrack\b|\bmanage\b|\brecord\b|\blog\b|\bkeep\s+track\b|\borgani[sz]e\b)/i;
+
+const WEB_NOUN = /\b(page|site|website|app|store|dashboard|portfolio|landing)\b|(صفحة|موقع|تطبيق|متجر|لوحة|واجهة|بورتفوليو|هبوط)/i;
 const BYPASS = /(مباشرة|مباشره|بدون\s*أ?سئلة|بدون\s*اسئله|على\s*(راحتك|كيفك|ذوقك)|كما\s*تراه|اقترح\s*أنت|directly|no\s*questions|your\s*call|surprise\s*me)/i;
 
 /**
@@ -69,44 +88,87 @@ export function isVagueBuildRequest(goal: string, opts?: { hasActivePage?: boole
     if (!text || opts?.hasActivePage) return false;                 // edits are never questioned
     if (/\[ATTACHED FILES/i.test(String(goal)) || opts?.hasAttachments) return false; // the attachment IS the brief
     if (BYPASS.test(text)) return false;
-    // A request that already states its row contents is build-ready. Otherwise
-    // distinguish a thin site ask from a thing the user wants to track.
+    //  Two ways to be a build request: he names a thing to be made, or he
+    //  names something he will keep track of. Either way, if he has already
+    //  said what it will HOLD, there is nothing left to ask — that request
+    //  is complete and goes straight to the builder.
     if (describesItsContents(text)) return false;
-    const namesAThing = looksLikeBuild(text) || (BUILD_VERB.test(text) && WEB_NOUN.test(text));
+    /**
+     *  AND «بدي جدول» IS A REQUEST TOO.
+     *
+     *  Measured: the emptiest request a man can type — «بدي جدول» — was not
+     *  asked a single question. It went straight to the builder with nothing
+     *  to build from, and the builder invented a stock table for him.
+     *
+     *  This gate carried its OWN list of build verbs — ابنِ, انشئ, اعمل,
+     *  build, create — and «بدي» was not on it. A seventh private answer to
+     *  «is this a build?», in the one place whose whole job is to notice a
+     *  request too thin to build.
+     */
+    const namesAThing = looksLikeBuild(text);
     const namesSomethingToTrack = asksForSomething(text) && tracksSomethingOfHis(text, TRACKING);
     if (!namesAThing && !namesSomethingToTrack) return false;
-    // Site requests use descriptive words as their completeness measure. A
-    // tracking request is incomplete until the row contents are declared.
-    if (namesAThing) return descriptiveTokens(text).length < 2;
-    return true;
+    //  «Enough detail» means two different things for the two shapes.
+    //  For a named artefact it is descriptive words — «موقع لمطعم إيطالي»
+    //  needs no questions. For something he will track, the only detail
+    //  that counts is WHAT IT HOLDS, and that was already checked above:
+    //  «بدي شي أتابع فيه ديوني» has three descriptive words and not one
+    //  column, so counting words would call it complete and build him a
+    //  table out of thin air.
+    if (namesSomethingToTrack) return true;
+    //  «بدي جدول للمواعيد» and "I want a table" both named a thing and
+    //  nothing else about it. Two words was a low enough bar to let a
+    //  request through with a subject and no columns — and a table with no
+    //  columns can only be invented. Three.
+    return descriptiveTokens(text).length < 3;
 }
 
 /** The questions, deterministic, in the user's language. */
+/**
+ *  WHAT HE SAYS HE WILL TRACK IS WHAT THE QUESTION IS ABOUT.
+ *
+ *  Measured live, after the gate was taught to fire on «بدي شي أتابع فيه
+ *  ديوني». Joe stopped lecturing him about interest rates — and asked:
+ *
+ *      What is the site about? (a restaurant? a store? a portfolio?)
+ *      Which sections do you want? Any colours? One page or multi-page?
+ *
+ *  Four website questions for a man who wants to track his debts. Right
+ *  instinct, wrong questions — the question list was a fixed catalogue
+ *  that knew only one kind of request.
+ *
+ *  There is exactly one thing Joe cannot build without and cannot invent:
+ *  WHAT EACH ROW HOLDS. So that is the question, and it names his own word
+ *  back to him.
+ */
 function trackedObject(goal: string): string {
     const text = userWords(goal);
-    const match = trackingVerbAt(text, TRACKING);
-    if (!match) return '';
-    const after = text.slice(match.index + match.length).split(/[.،,؛;!؟?\n]/)[0] || '';
-    const lead = /^(?:فيه|فيها|به|بها|في|فى|كل|جميع|my|the|all|of|for|a|an)$/i;
+    //  The same reading as the gate — a verb we know, or one he invented
+    //  followed by something he says is his.
+    const m = trackingVerbAt(text, TRACKING);
+    if (!m) return '';
+    const after = text.slice(m.index + m.length).split(/[.،,؛;!؟?\n]/)[0] || '';
+    const LEAD = /^(?:فيه|فيها|به|بها|في|فى|كل|جميع|my|the|all|of|for|a|an)$/i;
     const words: string[] = [];
-    for (const word of after.trim().split(/\s+/)) {
-        if (!word) continue;
-        if (words.length === 0 && lead.test(word)) continue;
-        words.push(word);
+    for (const w of after.trim().split(/\s+/)) {
+        if (!w) continue;
+        if (words.length === 0 && LEAD.test(w)) continue;
+        words.push(w);
         if (words.length === 2) break;
     }
     return words.join(' ').trim();
 }
 
 export function clarifyQuestions(goal: string, language: string): string {
+    const isAr = String(language || 'ar').startsWith('ar');
+    //  A man who named something to track needs one question, not four,
+    //  and it must be about HIS thing — never about sections and colours.
     const tracked = trackedObject(goal);
     if (tracked) {
-        const isAr = String(language || 'ar').startsWith('ar');
         return isAr
             ? `سؤال واحد قبل أن أبدأ — ما الذي تريد تسجيله لكل واحد من «${tracked}»؟\n\nمثلاً: الاسم، المبلغ، التاريخ… اكتبها كما تريدها أن تظهر في الجدول، وسأبنيه بها.\n\nوإن أردت أن أختار أنا، قل «ابدأ مباشرة».`
             : `One question before I start — what do you want to record for each of your ${tracked}?\n\nFor example: name, amount, date… write them the way you want them to appear in the table, and I will build it with those.\n\nOr say "start now" and I will choose for you.`;
     }
-    const isAr = String(language || 'ar').startsWith('ar');
     const wantsApp = /(تطبيق|app)/i.test(userWords(goal));
     if (isAr) {
         return `سؤال قبل أن أبدأ — حتى أبني ما تريده فعلاً لا ما أتخيله 🎯

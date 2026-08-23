@@ -286,7 +286,7 @@ export class ProjectEditTool extends BaseTool {
                 const g = (k: string) => (src.match(new RegExp(`\\n\\s*${k}:\\s*'([^']*)'`)) || [])[1] || '';
                 const kind = g('kind'), engine = g('engine'), storeKey = g('storeKey');
                 if (!kind || !engine || !storeKey) return null;
-                return { kind, engine, storeKey, brand: g('brand'), title: g('title'), entityOne: g('entityOne'), entityMany: g('entityMany'), api: g('api'), isArabic: /isArabic:\s*true/.test(src) };
+                return { kind, engine, storeKey, brand: g('brand'), title: g('title'), entityOne: g('entityOne'), entityMany: g('entityMany'), api: g('api'), sourceRequest: g('sourceRequest'), isArabic: /isArabic:\s*true/.test(src) };
             } catch { return null; }
         })();
         /** What each engine can actually deliver — asked for in the user's own words. */
@@ -298,16 +298,52 @@ export class ProjectEditTool extends BaseTool {
             weather: /توقّع|توقع|أيام|رطوبة|رياح|فهرنهايت|مئوي|forecast|humidity|wind|fahrenheit|celsius/i,
         };
         if (appMeta && ENGINE_ABILITY[appMeta.engine]?.test(request)) {
-            const { blueprintFor } = require('../../../core/design/app-blueprints');
+            const { blueprintFor, columnEdit, applyColumnEdit } = require('../../../core/design/app-blueprints');
             const { buildAppFiles } = require('./react-app-templates');
-            const bp = blueprintFor(appMeta.kind, appMeta.title || request, appMeta.isArabic);
+            /**
+             *  AN EDIT MUST NOT REBUILD HIM A DIFFERENT TABLE.
+             *
+             *  This passed the app's TITLE where a REQUEST belongs, so the
+             *  regenerated blueprint knew nothing of the columns he had named.
+             *  Measured on his own clinic table:
+             *
+             *      from his request  [اسم المريض · رقم تلفونه · وقت الموعد …]
+             *      from the title    [الاسم · الهاتف · الخدمة · التاريخ …]
+             *
+             *  So «ضيف عمود الخصم» would have deleted every column he asked
+             *  for and replaced them with a stock set — an edit that destroys
+             *  the thing it edits.
+             *
+             *  The app now records the words it was built from, and the edit
+             *  re-derives from those. The title is the fallback only for apps
+             *  built before this existed.
+             */
+            const bp = blueprintFor(appMeta.kind, appMeta.sourceRequest || appMeta.title || request, appMeta.isArabic);
             // The app keeps the name it was delivered under.
             if (appMeta.title) bp.title = appMeta.title;
             if (appMeta.entityOne) bp.entityOne = appMeta.entityOne;
             if (appMeta.entityMany) bp.entityMany = appMeta.entityMany;
+            /**
+             *  AND THE ONE COLUMN HE ASKED FOR IS ADDED TO THE OTHERS.
+             *
+             *  «ضيف عمود الخصم» is not a new table and not a new app: it is
+             *  one column, named, on the table already in front of him. The
+             *  blueprint above re-derives his original columns; this puts the
+             *  new one beside them instead of hoping the regeneration guesses
+             *  it.
+             *
+             *  If he names no column, nothing is added — an edit that invents
+             *  a column called «عمود» is worse than an edit that does nothing.
+             */
+            const colEdit = columnEdit(request);
+            if (colEdit.add.length || colEdit.remove.length) {
+                bp.fields = applyColumnEdit(bp.fields, colEdit, appMeta.isArabic);
+                logs.push(`column edit: +[${colEdit.add.join(', ')}] -[${colEdit.remove.join(', ')}] → ${bp.fields.length} column(s)`);
+            }
             const slugName = String(JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf-8')).name || 'app');
             const fresh: Record<string, string> = buildAppFiles(bp, {
                 brand: appMeta.brand, isArabic: appMeta.isArabic, api: appMeta.api, storeKey: appMeta.storeKey,
+                sourceRequest: appMeta.sourceRequest || appMeta.title,
             }, slugName);
             // The real webfont faces at the head of app.css belong to THIS
             // build's design family — they are kept, not regenerated.

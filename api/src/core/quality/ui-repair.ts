@@ -646,6 +646,30 @@ export function repairFormValidation(code: string): RepairedFile {
     };
 }
 
+/**
+ *  WHAT THIS REPAIRER CAN ACTUALLY ANSWER.
+ *
+ *  Measured, and it is the defect he reported: the delivery kept printing
+ *  «Largest heading 17px against 14px body (ratio 1.21) — no visual
+ *  hierarchy» build after build, and the repair loop never ran once.
+ *
+ *  The gate that decides whether to repair kept its OWN hand-written list of
+ *  thirteen ids in self-repair.ts. This file answers eighteen. Eight fixes
+ *  were written, tested and reachable — and refused at the door, including
+ *  `type_scale_drift`, which is that heading finding by name.
+ *
+ *  Two lists for one question, and the stale one was in charge. The list
+ *  belongs where the fixes are, so adding a fix cannot forget to open the
+ *  gate for it.
+ */
+export const REPAIRS_THIS_FILE_CAN_MAKE: ReadonlySet<string> = new Set([
+    'contrast', 'low_contrast',
+    'small_targets', 'tap_targets', 'mobile_tap_targets',
+    'mobile_overflow', 'responsive',
+    'line_too_long', 'type_scale_drift',
+]);
+
+
 export function repairProjectFiles(
     files: Record<string, string>,
     opts: {

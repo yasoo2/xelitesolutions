@@ -2394,6 +2394,27 @@ export default function CommandComposer({
 
     const token = localStorage.getItem('token');
     try {
+      /**
+       *  A RUN CARRIES ITS BROWSER, EVEN WHEN THE MESSAGE DOES NOT MENTION ONE.
+       *
+       *  Measured end to end, with the eye reading the request the browser
+       *  actually sent:
+       *
+       *      POST_RUN browserSessionId=undefined  sessionId="6a8b3c32…"
+       *      [SelfQA] session=panel-browser watching=false ctxSid=absent
+       *      canvas 300x150 lit=0.0%
+       *
+       *  One missing field, and the whole chain follows it: the tool falls
+       *  back to a constant nobody watches, the audit runs on a stage with no
+       *  audience, and the panel he was told to watch stays black — while the
+       *  delivery says «in the Browser panel, in front of you».
+       *
+       *  It was left undefined because THIS MESSAGE did not need a browser.
+       *  But the build that follows it will: self-QA opens one at the end of
+       *  every build. The session belongs to the chat, not to the sentence —
+       *  «one browser session per Joe session», as the interface's own rule
+       *  already says one file away.
+       */
       let effectiveBrowserSessionId = browserSessionId || (sessionId ? `browser:${sessionId}` : undefined);
       // Allow auto-open in chat mode too. Skip if no sessionId yet (first message).
       if (sessionId && (sessionKind === 'agent' || sessionKind === 'chat') && !effectiveBrowserSessionId && needsBrowserForText(inputText)) {

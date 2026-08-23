@@ -1,4 +1,4 @@
-/**
+﻿/**
  * «ابنِ تطبيق مصاريف بفئات: طعام، مواصلات، فواتير» — the categories are the
  * request's OWN, and the engine used to answer with its five stock ones
  * regardless. The fishing law, applied to the data shape: declared options
@@ -43,6 +43,11 @@ describe('the request describes a records shape without a domain catalogue', () 
 
     it('does not treat a colon after a field as a column list', () => {
         expect(derivedColumns('متجر بفئات: قهوة، أدوات، حلويات')).toBeNull();
+    });
+
+    it('keeps the deliberate three-field floor explicit', () => {
+        expect(derivedColumns('بدي جدول أسجل فيه المواعيد: اسم المريض ورقم تلفونه')).toBeNull();
+        expect(derivedColumns('I want to track my clients: name and phone')).toBeNull();
     });
 });
 

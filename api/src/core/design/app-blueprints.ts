@@ -56,8 +56,8 @@ export interface AppMetric {
     label: string;
     kind: 'count' | 'sum' | 'sumProduct' | 'sumMargin' | 'avg' | 'countWhere' | 'todayCount' | 'todaySum' | 'topGroup';
     field?: string;
-    field2?: string;
     field3?: string;
+    field2?: string;
     equals?: string;
     /** For money-shaped metrics — appended to the value. */
     unit?: string;
@@ -169,14 +169,14 @@ export interface AppBlueprint {
     fields: AppField[];
     /** The select field that drives the status filter and the done state. */
     statusField?: string;
+    /** «إذا كمية قطعة صارت أقل من 3 يصير لونها أحمر» — his rule, in his numbers. */
+    lowStock?: { field: string; below: number };
     doneValue?: string;
     metrics: AppMetric[];
     /** The parent table this system's rows belong to, when it has one. */
     relation?: AppRelation;
     /** Extra npm dependencies this engine really needs. */
     deps: Record<string, string>;
-    /** Optional request-stated threshold for a numeric records field. */
-    lowStock?: { field: string; below: number };
     /** What the app says when it has no rows yet — never fabricated rows. */
     emptyHint: string;
 }
@@ -322,9 +322,15 @@ export function detectAppKind(requestRaw: string): AppKind | null {
     // self-audit or planner context happened to mention a conversation.
     if (TASK_BOARD_CONTRACT.test(intentRequest)) return 'tasks';
     if (FINANCE_CONTRACT.test(intentRequest)) return 'finance';
-    // Explicit user-listed columns are a stronger contract than an incidental
-    // domain noun such as «عيادة» or «مواعيد». Let the records engine read the
-    // request-shaped schema instead of silently restoring a stock relation.
+    //  A LIST HE WROTE OUTRANKS A NOUN HE HAPPENED TO USE.
+    //
+    //  «عندي عيادة أسنان … اسم المريض ورقم تلفونه …» carries the word
+    //  «عيادة» and a list of five columns. The word is incidental; the list
+    //  is the contract. Scoring archetypes first let a stock relation come
+    //  back and quietly replace what he wrote.
+    //
+    //  Ported from main (Manus, da586c92) — the same property this branch
+    //  argues everywhere: what he stated beats what we recognised.
     if (derivedColumns(intentRequest)?.length) return 'generic';
     /**
      * Score every registered archetype instead of returning the first keyword
@@ -350,6 +356,36 @@ export function detectAppKind(requestRaw: string): AppKind | null {
     // application that owns records. It gets the records engine with an entity
     // named after the request itself.
     if (APP_SIGNAL.test(intentRequest) && MANAGE_SIGNAL.test(intentRequest)) return 'generic';
+    /**
+     * WHAT THE PAGE MUST DO OUTRANKS WHAT THE USER CALLED IT.
+     *
+     * Measured live, from a request the owner typed himself:
+     *
+     *     «بدي صفحة أسجل فيها كل قطعة: اسمها ورقمها والكمية وسعر الشراء وسعر
+     *      البيع … وبدي أبحث عن القطعة … وبدي يطلع لي تحت مجموع رأس المال»
+     *
+     * Five named fields, a search, two totals, a stock rule. `detectAppKind`
+     * returned null, because the only door left open here demanded the words
+     * «نظام» or «تطبيق» beside «إدارة» — and he had written «صفحة أسجل فيها».
+     * With no kind, the builder fell through to the marketing scaffold and
+     * shipped him a storefront: Hero, Gallery, Testimonials, FAQ, «تسوق الآن».
+     * Nothing he asked for existed, and the acceptance ledger proved exactly
+     * one of his requirements.
+     *
+     * A category noun is a label. Recording rows, searching them and totalling
+     * them is WORK, and work is the stronger evidence. So a request that
+     * describes the work gets the records engine even when it never names an
+     * application — held to two independent signals, so that «سجّل دخولي» and
+     * «صفحة تعريفية» stay outside.
+     */
+    const RECORD_VERB = /(أسجل|اسجل|سجّل|أضيف|اضيف|أدخل|ادخل|احفظ|أحفظ|أدوّن|ادون|\brecord\b|\blog\b|\btrack\b|\benter\b)/i;
+    const RECORD_SURFACE = /(جدول|قائمة|قائمه|لائحة|كشف|\btable\b|\blist\b|\bregister\b|\bsheet\b|\binventory\b|مخزون)/i;
+    const RECORD_MATH = /(مجموع|إجمالي|اجمالي|ربح|\btotal\b|\bsum\b|\bprofit\b)/i;
+    const RECORD_FIND = /(أبحث|ابحث|بحث|فلتر|تصفية|\bsearch\b|\bfilter\b)/i;
+    if (RECORD_VERB.test(intentRequest)
+        && (RECORD_SURFACE.test(intentRequest) || RECORD_MATH.test(intentRequest) || RECORD_FIND.test(intentRequest))) {
+        return 'generic';
+    }
     return null;
 }
 
@@ -369,88 +405,8 @@ const f = (s: FieldSpec, isAr: boolean): AppField => ({
 
 const SELECT_AR_EN = (ar: string[], en: string[], isAr: boolean) => (isAr ? ar : en);
 
-type DerivedRole = 'money' | 'count' | 'scalar' | 'date' | 'time' | 'tel' | 'email' | 'note' | 'flag' | 'text';
-const ASKS_YES_OR_NO = /(?:^|[\s،:؛])هل(?=\s|$)|(?:^|\s)(?:is|are|has|have|did|was|were)(?=\s)|[?؟]|\b(?:done|completed|active|enabled|paid|sent|approved|ready|available)\b/iu;
-
-/** Closed vocabulary describes value shape, never the domain noun. */
-const TYPE_MARKS: Array<[RegExp, DerivedRole, FieldType]> = [
-    [ASKS_YES_OR_NO, 'flag', 'select'],
-    [/تلفون|هاتف|جوال|موبايل|واتس|\bphone\b|\bmobile\b|\btel\b|whatsapp/iu, 'tel', 'tel'],
-    [/ايميل|إيميل|بريد\s*الكتروني|بريد\s*إلكتروني|\bemail\b|\be-?mail\b/iu, 'email', 'email'],
-    [/تاريخ|يوم\s|\bdate\b|\bday\b/iu, 'date', 'date'],
-    [/وقت|ساعة|موعد|\btime\b|\bhour\b/iu, 'time', 'time'],
-    [/سعر|مبلغ|تكلفة|ثمن|قيمة|راتب|اجرة|أجرة|رسوم|دفع|مدفوع|\bprice\b|\bamount\b|\bcost\b|\bfee\b|\bsalary\b|\bpaid\b|\btotal\b/iu, 'money', 'number'],
-    [/سنة|عام|عمر|\byear\b|\bage\b/iu, 'scalar', 'number'],
-    [/كمي|عدد|وزن|طول|عرض|ارتفاع|مساحة|نسب|\bqty\b|\bquantity\b|\bcount\b|\bweight\b|\bsize\b/iu, 'count', 'number'],
-    [/ملاحظ|وصف|تفاصيل|شرح|تعليق|\bnote\b|\bdescription\b|\bdetails\b|\bcomment\b/iu, 'note', 'textarea'],
-];
-
-export interface DerivedField { label: string; key: string; type: FieldType; role: DerivedRole; options?: string[] }
-
-/** Read three to ten user-listed columns after an explicit recording phrase. */
-export function derivedColumns(requestRaw: string): DerivedField[] | null {
-    const request = String(requestRaw || '');
-    const RECORDING_LITERAL = /(أسجل|اسجل|سجّل|أضيف|اضيف|أدخل|ادخل|أدوّن|ادون|أتابع|اتابع|أدير|ادير|أنظم|انظم|فيها|فيه|تحتوي على|يحتوي على|\brecord\b|\btrack\b|\blog\b|\bmanage\b|\borgani[sz]e\b)/iu;
-    const DECLARED_LIST = /(الحقول|الأعمدة|الاعمدة|\bcolumns?\b|\bfields?\b)\s*(?::|：|هي|are\b|include(?:s)?\b)/iu;
-    const opener = RECORDING_LITERAL.exec(request) || DECLARED_LIST.exec(request);
-    if (!opener) return null;
-    let after = request.slice((opener.index || 0) + opener[0].length);
-    const colon = after.indexOf(':') >= 0 ? after.indexOf(':') : after.indexOf('：');
-    if (colon >= 0 && colon <= 40) after = after.slice(colon + 1);
-    const sentence = after.split(/[.؟!\n]/)[0] || '';
-    const parts = sentence
-        .split(/\s*[،,]\s*|\s+و(?=\S)|\s+and\s+|\s+&\s+/iu)
-        .map(p => p.trim().replace(/^(?:ال)?كل\s+/u, '').replace(/^[:：]\s*/u, '').trim())
-        .filter(p => p.length >= 2 && p.length <= 32);
-    if (parts.length < 3 || parts.length > 10) return null;
-    const seen = new Map<DerivedRole, number>();
-    return parts.map(label => {
-        let role: DerivedRole = 'text';
-        let type: FieldType = 'text';
-        for (const [mark, nextRole, nextType] of TYPE_MARKS) {
-            if (mark.test(label)) { role = nextRole; type = nextType; break; }
-        }
-        const n = (seen.get(role) || 0) + 1;
-        seen.set(role, n);
-        const options = role === 'flag'
-            ? (/^[\u0000-\u007F]*$/.test(label) ? ['Yes', 'No'] : ['نعم', 'لا'])
-            : undefined;
-        return { label, key: `${role}${n}`, type, role, ...(options ? { options } : {}) };
-    });
-}
-
-export function fieldsFromRequest(requestRaw: string, isAr: boolean): AppField[] | null {
-    const cols = derivedColumns(requestRaw);
-    if (!cols) return null;
-    return cols.map((c, i) => f(
-        [c.key, c.label, c.label, c.type, c.options,
-            i === 0 ? ['required', 'primary'] : (c.role === 'money' || c.role === 'count' ? ['required'] : undefined)],
-        isAr,
-    ));
-}
-
-/** The subject immediately before the user's explicit column list. */
-export function recordedSubject(requestRaw: string): string | null {
-    const request = String(requestRaw || '').trim();
-    const RECORDING_LITERAL = /(أسجل|اسجل|سجّل|أضيف|اضيف|أدخل|ادخل|أدوّن|ادون|أتابع|اتابع|أدير|ادير|أنظم|انظم|الحقول|تحتوي على|يحتوي على|\brecord\b|\btrack\b|\blog\b)/iu;
-    const opener = RECORDING_LITERAL.exec(request);
-    if (!opener) return null;
-    const after = request.slice((opener.index || 0) + opener[0].length);
-    const colon = after.indexOf(':') >= 0 ? after.indexOf(':') : after.indexOf('：');
-    if (colon < 0 || colon > 40) return null;
-    const lead = /^(?:فيه|فيها|به|بها|في|فى|the|my|our|a|an|all|of|for)$/i;
-    const words: string[] = [];
-    for (const word of after.slice(0, colon).trim().split(/\s+/)) {
-        if (words.length === 0 && lead.test(word)) continue;
-        if (word) words.push(word);
-        if (words.length === 3) break;
-    }
-    const subject = words.join(' ').trim();
-    return subject.length >= 3 ? subject : null;
-}
-
 /** The subject of the request, cleaned of the build verbs — used to name a
- * generic app after what the user actually asked to manage. */
+ *  generic app after what the user actually asked to manage. */
 export function subjectOf(request: string): string {
     /**
      * WHAT IT IS CALLED — NOT THE FIRST FORTY CHARACTERS OF THE REQUEST.
@@ -510,22 +466,102 @@ export function subjectOf(request: string): string {
 
 const STRICT_POSITIVE_CONSTRAINT = /non[-\s]?positive|strictly\s+positive|positive[-\s]?only|(?:must|should|need(?:s)?|require(?:s)?|validation(?:\s+that)?|validate|reject(?:s)?|disallow(?:s)?|not\s+accept)\s+(?:be\s+)?positive|(?:greater|more)\s+than\s+zero|above\s+zero|غير\s*(?:موجب|موجبة|موجبين)|(?:موجب|موجبة)\s+فقط|أكبر\s+من\s+الصفر|فوق\s+الصفر|(?:يرفض|لا\s+يقبل)\s+(?:الصفر|السالب)/iu;
 
-function requestNamesField(requestRaw: string, field: AppField): boolean {
-    const request = String(requestRaw || '').toLocaleLowerCase();
-    const names = [field.key, field.label]
-        .map(value => String(value || '').trim().toLocaleLowerCase())
-        .filter(Boolean);
-    return names.some(name => {
-        let from = 0;
-        while (from < request.length) {
-            const at = request.indexOf(name, from);
-            if (at < 0) return false;
-            const window = request.slice(Math.max(0, at - 96), at + name.length + 96);
-            if (STRICT_POSITIVE_CONSTRAINT.test(window)) return true;
-            from = at + Math.max(1, name.length);
+/**
+ * A BOUND IS A COMPARISON AND A NUMBER, NOT A PHRASE SOMEONE REMEMBERED.
+ *
+ * Measured. Six ways of saying the same constraint; two were understood:
+ *
+ *     «وارفض المبلغ إذا كان صفر أو أقل»               → no bound
+ *     «المبلغ يجب أن يكون موجباً فقط»                  → no bound
+ *     «الكمية لا تقل عن 1»                            → no bound
+ *     «المبلغ أكبر من الصفر»                          → min 0, exclusive
+ *     "rejects non-positive amounts"                  → min 0, exclusive
+ *
+ * The four that failed are the ones he is most likely to type. The cause was a
+ * list of remembered phrasings — and «موجباً فقط» failed against a pattern
+ * that knew «موجب فقط», which is the same word wearing a tanween.
+ *
+ * A bound is not a phrase. It is a COMPARISON and a NUMBER, and both are
+ * closed classes: there are only so many ways to say greater, smaller, at
+ * least, and only so many digits. What is open — the field, the trade, the
+ * wording around it — is exactly what this must not depend on.
+ *
+ * The one subtlety is which SIDE was named. «أكبر من ١٠» names what is
+ * allowed; «ارفض ما هو أقل من ١٠» names what is refused, and the same number
+ * means a different bound. So the rejection verb is read too, and it flips the
+ * reading — that is one closed class more, not a catalogue.
+ */
+const REJECTS = /(ارفض|أرفض|رفض|ترفض|لا\s*يقبل|لا\s*تقبل|امنع|\breject|\bdisallow|\bnot\s+accept|\bmust\s+not\s+be)/iu;
+const AR_DIGITS = /[\u0660-\u0669]/g;
+
+/** «صفر» and «zero» are numbers he wrote in words. */
+function numberIn(text: string): number | null {
+    const normalised = text.replace(AR_DIGITS, d => String(d.charCodeAt(0) - 0x0660));
+    const m = normalised.match(/-?\d+(?:[.,]\d+)?/);
+    if (m) return Number(String(m[0]).replace(',', '.'));
+    if (/(?:^|[^\u0621-\u064a])(?:صفر|الصفر)(?:$|[^\u0621-\u064a])|\bzero\b/iu.test(text)) return 0;
+    return null;
+}
+
+/** The lower bound a sentence states about a number, or null when it states none. */
+export function statedBound(window: string): { min: number; minExclusive: boolean } | null {
+    const text = String(window || '');
+    const rejecting = REJECTS.test(text);
+
+    //  «موجب» / positive names zero as the floor without naming a number.
+    if (/(موجب|موجبة|موجبا|موجباً|\bpositive\b)/iu.test(text) && !/(غير|non-?|لا)\s*(?:موجب|positive)/iu.test(text)) {
+        return { min: 0, minExclusive: true };
+    }
+    if (/(غير\s*(?:موجب|موجبة|موجبا|موجباً)|non-?positive)/iu.test(text) && rejecting) {
+        return { min: 0, minExclusive: true };
+    }
+
+    const n = numberIn(text);
+    if (n === null) return null;
+
+    const below = /(أقل|اقل|أصغر|اصغر|تحت|دون|less\s+than|below|under|smaller)/iu.test(text);
+    const above = /(أكبر|اكبر|أعلى|اعلى|فوق|greater\s+than|more\s+than|above|over)/iu.test(text);
+    const atLeast = /(لا\s*(?:يقل|تقل)\s*عن|على\s*الأقل|على\s*الاقل|at\s+least|no\s+less\s+than|minimum(?:\s+of)?)/iu.test(text);
+
+    if (atLeast) return { min: n, minExclusive: false };
+    //  A rejection names the refused side, so «ارفض ما هو أقل من ١٠» allows ١٠
+    //  while «أكبر من ١٠» does not.
+    //  «N أو أقل» refuses N itself; «أقل من N» refuses only what is under it.
+    //  Same number, different floor — and he says the first far more often.
+    const inclusiveOfN = /(أو\s*أقل|أو\s*اقل|أو\s*أدنى|أو\s*ادنى|أو\s*أصغر|or\s+less|or\s+lower|or\s+below|or\s+under)/iu.test(text);
+    if (rejecting && below) return { min: n, minExclusive: inclusiveOfN };
+    if (rejecting && above) return null;                       // he refused the HIGH side; not a floor
+    if (above) return { min: n, minExclusive: true };
+    if (rejecting && n === 0) return { min: 0, minExclusive: true };
+    return null;
+}
+
+
+/**
+ *  A SENTENCE OWNS ITS OWN CONSTRAINT.
+ *
+ *  Measured: «الكمية لا تقل عن 1» set a floor of one on «السعر» as well,
+ *  because the reader took ninety-six characters on either side of each field
+ *  name and asked whether a bound appeared anywhere inside. A window that
+ *  wide contains the neighbour's sentence — the haystack was big enough to
+ *  contain every needle.
+ *
+ *  He states a constraint in a sentence, and that sentence names the field it
+ *  is about. So the sentence is the unit: a bound applies to the fields named
+ *  IN IT, and to no others.
+ */
+function boundsByField(requestRaw: string, fields: AppField[]): Map<string, { min: number; minExclusive: boolean }> {
+    const out = new Map<string, { min: number; minExclusive: boolean }>();
+    for (const sentence of String(requestRaw || '').split(/[.؟!\n]/u)) {
+        const lower = sentence.toLocaleLowerCase();
+        const bound = statedBound(sentence) || (STRICT_POSITIVE_CONSTRAINT.test(sentence) ? { min: 0, minExclusive: true } : null);
+        if (!bound) continue;
+        for (const field of fields) {
+            const names = [field.key, field.label].map(v => String(v || '').trim().toLocaleLowerCase()).filter(Boolean);
+            if (names.some(n => lower.includes(n))) out.set(field.key, bound);
         }
-        return false;
-    });
+    }
+    return out;
 }
 
 /**
@@ -534,11 +570,14 @@ function requestNamesField(requestRaw: string, field: AppField): boolean {
  * and state the constraint in its own words.
  */
 export function applyRequestFieldConstraints(bp: AppBlueprint, request: string): AppBlueprint {
-    const fields = bp.fields.map(field => (
-        field.type === 'number' && requestNamesField(request, field)
-            ? { ...field, min: 0, minExclusive: true }
-            : field
-    ));
+    const bounds = boundsByField(request, bp.fields);
+    const fields = bp.fields.map(field => {
+        if (field.type !== 'number') return field;
+        //  The bound is whatever HE stated, not a fixed zero: «الكمية لا تقل
+        //  عن 1» is a floor of one, and «ارفض صفر أو أقل» excludes the zero.
+        const bound = bounds.get(field.key);
+        return bound ? { ...field, min: bound.min, minExclusive: bound.minExclusive } : field;
+    });
     return fields.some((field, index) => field !== bp.fields[index]) ? { ...bp, fields } : bp;
 }
 
@@ -551,47 +590,165 @@ export function violatesFieldConstraint(field: Pick<AppField, 'type' | 'min' | '
     return field.minExclusive ? value <= field.min : value < field.min;
 }
 
+/**
+ * WHAT HE SAYS HE IS RECORDING IS WHAT THE TABLE IS CALLED.
+ *
+ * Measured live. His five columns finally reached the generated app, and the
+ * page still called itself «الحجوزات», with «حجز» for a row and the lede
+ * «احجز، أكّد، وتابع مواعيد اليوم في لوحة واحدة». He had written «بدي جدول
+ * أسجل فيه المواعيد». His word existed, in the same sentence the columns came
+ * from, and the archetype's word was printed over it.
+ *
+ * derivedColumns already walks past this noun on its way to the list — the
+ * colon is what separates them: «أسجل فيه المواعيد: اسم المريض و…». So the
+ * subject is read the same way the columns are, from his sentence, and it
+ * needs no vocabulary of trades: a clinic, a nursery or a camel farm all name
+ * their own table.
+ */
+export function recordedSubject(requestRaw: string): string | null {
+    const request = String(requestRaw || '').trim();
+    if (!request) return null;
+    const RECORDING = /(أسجل|اسجل|سجّل|أضيف|اضيف|أدخل|ادخل|أدوّن|ادون|الحقول|تحتوي على|يحتوي على|أتابع|اتابع|أدير|ادير|أنظم|انظم|\brecord\b|\btrack\b|\blog\b|\bmanage\b|\borgani[sz]e\b)/iu;
+    const opener = RECORDING.exec(request);
+    if (!opener) return null;
+    const after = request.slice((opener.index || 0) + opener[0].length);
+    const colon = after.indexOf(':') >= 0 ? after.indexOf(':') : after.indexOf('：');
+    // No colon means the list starts immediately: there is no subject to read,
+    // and inventing one would be worse than keeping the archetype's word.
+    if (colon < 0 || colon > 40) return null;
+    //  «فيه», «فيها», «in», «my» are grammar between the verb and the subject.
+    const LEAD = /^(?:فيه|فيها|به|بها|في|فى|the|my|our|a|an|all|of|for)$/i;
+    const words: string[] = [];
+    for (const w of after.slice(0, colon).trim().split(/\s+/)) {
+        if (!w) continue;
+        if (words.length === 0 && LEAD.test(w)) continue;
+        words.push(w);
+        if (words.length === 3) break;
+    }
+    const subject = words.join(' ').trim();
+    if (subject.length >= 3) return subject;
+    /**
+     *  AND ARABIC OFTEN PUTS IT BEFORE THE VERB.
+     *
+     *  «بدي جدول للمواعيد أسجل فيه: اسم المريض…» names the table BEFORE the
+     *  recording verb, so reading forward finds only «فيه» and gives up. The
+     *  word he wants is the one immediately in front of the verb.
+     *
+     *  This runs only when reading forward found nothing, so «بدي جدول أسجل
+     *  فيه المواعيد: …» still yields «المواعيد» and never «جدول».
+     */
+    const before = request.slice(0, opener.index || 0).trim().split(/\s+/);
+    const tail = before.slice(-1)[0] || '';
+    const bare = tail.replace(/^(?:لل|ال|ل)/, '');
+    return bare.length >= 3 ? bare : null;
+}
+
 export function blueprintFor(kind: AppKind, request: string, isAr: boolean): AppBlueprint {
+    /**
+     * AN EXPLICIT LIST BEATS EVERY ARCHETYPE, WHATEVER THE DOMAIN LOOKS LIKE.
+     *
+     * Measured: «عندي عيادة أسنان. بدي جدول أسجل فيه المواعيد: اسم المريض ورقم
+     * تلفونه ووقت الموعد ونوع العلاج والمبلغ المدفوع» matched the bookings
+     * archetype on the word «مواعيد» and received its canned columns and its
+     * canned totals — «كل الحجوزات · مؤكّدة · حجوزات اليوم». He had just listed
+     * five columns of his own, and not one of them survived.
+     *
+     * Recognising a domain is useful when the user names no columns. When he
+     * DOES name them, the recognition has nothing left to add: he is the
+     * authority on his own table. So the archetype keeps its title, its engine
+     * and its copy, and his list replaces its columns, its totals and its
+     * threshold — for every kind, not only for `generic`.
+     */
+    const L = (ar: string, en: string) => (isAr ? ar : en);
     const explicitColumns = fieldsFromRequest(request, isAr);
     if (explicitColumns) {
-        const base = stockBlueprintFor(kind, request, isAr);
+        const base = blueprintForKind(kind, request, isAr);
         const cols = derivedColumns(request) || [];
         const subject = recordedSubject(request);
         const counts = cols.filter(c => c.role === 'count');
         const monies = cols.filter(c => c.role === 'money');
-        const wantsTotal = /مجموع|اجمالي|إجمالي|قيمة\\s*ال|كم\\s|\\btotal\\b|\\bsum\\b|how much/iu.test(request);
-        const lowMatch = /(?:اقل|أقل|تحت|دون|less\\s+than|under|below|<)\\s*(?:من\\s*)?(\\d{1,4})/iu.exec(request);
-        const wantsAlert = /(احمر|أحمر|بالاحمر|بالأحمر|\\bred\\b|تنبيه|انتبه|أنتبه|\\bwarn|\\balert)/iu.test(request);
+        const wantsTotal = /مجموع|اجمالي|إجمالي|قيمة\s*ال|كم\s|\btotal\b|\bsum\b|how much/iu.test(request);
+        const lowMatch = /(?:اقل|أقل|تحت|دون|less\s+than|under|below|<)\s*(?:من\s*)?(\d{1,4})/iu.exec(request);
+        const wantsAlert = /(احمر|أحمر|بالاحمر|بالأحمر|\bred\b|تنبيه|انتبه|أنتبه|\bwarn|\balert)/iu.test(request);
         const metrics: AppMetric[] = [
-            { label: isAr ? 'عدد السجلات' : 'Records', kind: 'count' },
+            { label: L('عدد السجلات', 'Records'), kind: 'count' },
             ...(wantsTotal && counts[0] && monies[0]
-                ? [{ label: `${isAr ? 'إجمالي' : 'Total'} ${counts[0].label} × ${monies[0].label}`, kind: 'sumProduct', field: counts[0].key, field2: monies[0].key } as AppMetric] : []),
+                ? [{ label: `${L('إجمالي', 'Total')} ${counts[0].label} × ${monies[0].label}`,
+                    kind: 'sumProduct', field: counts[0].key, field2: monies[0].key } as AppMetric] : []),
             ...(wantsTotal && counts[0] && monies[1]
-                ? [{ label: `${isAr ? 'الفرق بين' : 'Margin between'} ${monies[1].label} ${isAr ? 'و' : 'and'} ${monies[0].label}`, kind: 'sumMargin', field: counts[0].key, field2: monies[1].key, field3: monies[0].key } as AppMetric] : []),
+                ? [{ label: `${L('الفرق بين', 'Margin between')} ${monies[1].label} ${L('و', 'and')} ${monies[0].label}`,
+                    kind: 'sumMargin', field: counts[0].key, field2: monies[1].key, field3: monies[0].key } as AppMetric] : []),
             ...(wantsTotal && monies[0] && !counts[0]
-                ? [{ label: `${isAr ? 'مجموع' : 'Total'} ${monies[0].label}`, kind: 'sum', field: monies[0].key } as AppMetric] : []),
+                ? [{ label: `${L('مجموع', 'Total')} ${monies[0].label}`, kind: 'sum', field: monies[0].key } as AppMetric] : []),
             ...(counts[0]
-                ? [{ label: `${isAr ? 'مجموع' : 'Total'} ${counts[0].label}`, kind: 'sum', field: counts[0].key } as AppMetric] : []),
+                ? [{ label: `${L('مجموع', 'Total')} ${counts[0].label}`, kind: 'sum', field: counts[0].key } as AppMetric] : []),
         ];
-        const shaped: AppBlueprint = {
+        return {
             ...base,
             fields: explicitColumns,
             metrics,
-            statusField: explicitColumns.find(field => field.type === 'select' && field.options?.length === 2)?.key,
-            doneValue: explicitColumns.find(field => field.type === 'select' && field.options?.length === 2)?.options?.[0],
+            statusField: undefined,
+            doneValue: undefined,
+            /**
+             *  AND NO PARENT HE NEVER NAMED.
+             *
+             *  Measured live. His five columns finally reached the generated
+             *  app — and the booking archetype attached its own parent table
+             *  on top: «اسم الطبيب *», «التخصّص», «الهاتف», with a picker
+             *  «لا أطباء بعد — أضف أول طبيب ثم احجز له موعداً».
+             *
+             *  He never mentioned a doctor. Worse, the parent name was
+             *  REQUIRED, so the form refused every appointment until he
+             *  invented a doctor first. Two rows were typed into the live
+             *  preview and neither appeared:
+             *
+             *      ROWS_SAMI=0 ROWS_LAYLA=0
+             *
+             *  A man who lists his columns has described his table. Keeping
+             *  the archetype's title and copy is help; adding a second table
+             *  he must fill before his own will accept a row is the catalogue
+             *  overruling the request. A stock booking app — one where he
+             *  named no columns — keeps its «طبيب ← مواعيده» relation.
+             */
             relation: undefined,
+            /**
+             *  …AND A YES/NO COLUMN IS THE APP'S DONE-STATE.
+             *
+             *  He wrote «وهل تم السداد». That is not a fifth text box: it is
+             *  the state of the row, and the records engine already knows how
+             *  to draw a row as done. Naming it here is what connects the two,
+             *  so a settled debt looks settled instead of holding the word
+             *  «نعم» in a box.
+             */
+            ...(cols.find(c => c.role === 'flag')
+                ? { statusField: cols.find(c => c.role === 'flag')!.key,
+                    doneValue: (cols.find(c => c.role === 'flag')!.options || [])[0] }
+                : {}),
+            /**
+             *  …AND HIS WORD FOR THE THING, WHEN HE SAID IT.
+             *
+             *  The archetype titled his clinic table «الحجوزات» and told him
+             *  «احجز، أكّد، وتابع مواعيد اليوم» while his own sentence said
+             *  «أسجل فيه المواعيد». Its copy is a fallback for a man who
+             *  named nothing — never an overwrite of a man who did.
+             */
             ...(subject ? {
                 title: subject,
                 entityOne: subject,
                 entityMany: subject,
-                lede: isAr ? `أضف ${subject}، وابحث فيها، ورتّبها، وصدّرها.` : `Add ${subject}, search them, sort them and export them.`,
-                emptyHint: isAr ? `لا ${subject} بعد — أضف أول واحد من النموذج.` : `No ${subject} yet — add the first one from the form.`,
+                lede: isAr ? `أضف ${subject}، وابحث فيها، ورتّبها، وصدّرها.`
+                    : `Add ${subject}, search them, sort them and export them.`,
+                emptyHint: isAr ? `لا ${subject} بعد — أضف أول واحد من النموذج.`
+                    : `No ${subject} yet — add the first one from the form.`,
             } : {}),
-            lowStock: counts[0] && lowMatch && wantsAlert ? { field: counts[0].key, below: Number(lowMatch[1]) } : undefined,
+            lowStock: (counts[0] && lowMatch && wantsAlert)
+                ? { field: counts[0].key, below: Number(lowMatch[1]) } : undefined,
         };
-        return applyRequestFieldConstraints(shaped, request);
     }
+    return blueprintForKind(kind, request, isAr);
+}
 
+function blueprintForKind(kind: AppKind, request: string, isAr: boolean): AppBlueprint {
     let bp = stockBlueprintFor(kind, request, isAr);
     /**
      * The declared categories replace the stock ones — on whichever field
@@ -1004,13 +1161,66 @@ function stockBlueprintFor(kind: AppKind, request: string, isAr: boolean): AppBl
             emptyHint: L('لا عادات بعد — أضف أول عادة تريد الالتزام بها.', 'No habits yet — add the first one you want to keep.'),
         };
 
-        default: return {
+        default: {
+        /**
+         * THE COLUMNS HE NAMED, WHEN HE NAMED THEM.
+         *
+         * The canned five below are a starting point for a request that
+         * describes no schema. When the request DOES list its columns, that
+         * list wins — and the totals follow it: a quantity beside a price is a
+         * stock value, and saying so is arithmetic, not a guess.
+         */
+        const asked = fieldsFromRequest(request, isAr);
+        /**
+         * METRICS BIND TO ROLES, NOT TO NAMES.
+         *
+         * The first version matched keys it had invented — `qty`, `buyPrice`,
+         * `sellPrice` — which is the same disease as relabelling his columns:
+         * it worked for the request it was written from. A column's ROLE is
+         * what a total needs to know. «الكمية», «عدد النسخ» and «quantity» are
+         * all counts; «سعر الشراء», «المبلغ المدفوع» and «unit price» are all
+         * money. The arithmetic is the same in every shop, clinic and farm.
+         *
+         * And the label of each total is built from HIS words, so a clinic
+         * never reads «رأس المال» about its fees.
+         */
+        const cols = derivedColumns(request) || [];
+        const counts = cols.filter(c => c.role === 'count');
+        const monies = cols.filter(c => c.role === 'money');
+        const wantsTotal = /مجموع|اجمالي|إجمالي|قيمة\s*ال|كم\s|\btotal\b|\bsum\b|how much/iu.test(request);
+        const derivedMetrics: AppMetric[] = asked
+            ? [
+                { label: L('عدد السجلات', 'Records'), kind: 'count' },
+                ...(wantsTotal && counts[0] && monies[0]
+                    ? [{ label: `${L('إجمالي', 'Total')} ${counts[0].label} × ${monies[0].label}`,
+                        kind: 'sumProduct', field: counts[0].key, field2: monies[0].key } as AppMetric] : []),
+                ...(wantsTotal && counts[0] && monies[1]
+                    ? [{ label: `${L('الفرق بين', 'Margin between')} ${monies[1].label} ${L('و', 'and')} ${monies[0].label}`,
+                        kind: 'sumMargin', field: counts[0].key, field2: monies[1].key, field3: monies[0].key } as AppMetric] : []),
+                ...(wantsTotal && !counts[0] && monies[0]
+                    ? [{ label: `${L('مجموع', 'Total')} ${monies[0].label}`, kind: 'sum', field: monies[0].key } as AppMetric] : []),
+                ...(counts[0]
+                    ? [{ label: `${L('مجموع', 'Total')} ${counts[0].label}`, kind: 'sum', field: counts[0].key } as AppMetric] : []),
+            ]
+            : [];
+        /**
+         * «وإذا كمية قطعة صارت أقل من 3 يصير لونها أحمر عشان أنتبه»
+         *
+         * His threshold, his number, on whichever column counts — read from the
+         * sentence, never defaulted, and only when he also asked to be warned.
+         */
+        const lowStockMatch = /(?:اقل|أقل|تحت|دون|less\s+than|under|below|<)\s*(?:من\s*)?(\d{1,4})/iu.exec(request);
+        const wantsAlert = /(احمر|أحمر|بالاحمر|بالأحمر|\bred\b|تنبيه|انتبه|أنتبه|\bwarn|\balert)/iu.test(request);
+        const lowStock = (counts[0] && lowStockMatch && wantsAlert)
+            ? { field: counts[0].key, below: Number(lowStockMatch[1]) }
+            : undefined;
+        return {
             kind: 'generic', engine: 'records',
             title: subject || L('السجلات', 'Records'),
             lede: L('أضف، عدّل، ابحث، وصدّر — تطبيق يعمل فعلاً لا صفحة تتحدث عنه.',
                 'Add, edit, search and export — an app that works, not a page about one.'),
             entityOne: L('سجلّ', 'record'), entityMany: subject || L('السجلات', 'Records'),
-            fields: [
+            fields: asked || [
                 f(['title', 'العنوان', 'Title', 'text', undefined, ['required', 'primary']], isAr),
                 f(['details', 'التفاصيل', 'Details', 'textarea'], isAr),
                 f(['amount', 'قيمة', 'Value', 'number'], isAr),
@@ -1018,7 +1228,8 @@ function stockBlueprintFor(kind: AppKind, request: string, isAr: boolean): AppBl
                 f(['status', 'الحالة', 'Status', 'select', SELECT_AR_EN(['جديد', 'قيد العمل', 'منجز'], ['New', 'In progress', 'Done'], isAr)], isAr),
             ],
             statusField: 'status', doneValue: L('منجز', 'Done'),
-            metrics: [
+            lowStock,
+            metrics: derivedMetrics.length ? derivedMetrics : [
                 { label: L('كل السجلات', 'All records'), kind: 'count' },
                 { label: L('منجز', 'Done'), kind: 'countWhere', field: 'status', equals: L('منجز', 'Done') },
                 { label: L('أُضيف اليوم', 'Added today'), kind: 'todayCount', field: 'createdAt' },
@@ -1026,7 +1237,263 @@ function stockBlueprintFor(kind: AppKind, request: string, isAr: boolean): AppBl
             deps: {},
             emptyHint: L('لا سجلات بعد — أضف أول سجلّ من النموذج.', 'No records yet — add the first one in the form.'),
         };
+        }
     }
+}
+
+
+/* ── the schema the request itself dictates ────────────────────────────── */
+
+/**
+ * HIS WORDS, HIS COLUMNS — WHATEVER HE IS TALKING ABOUT.
+ *
+ * The first version of this reader carried a table of MEANINGS: «سعر الشراء»
+ * became `buyPrice` and was relabelled «سعر الشراء», «كمية» became `qty` and
+ * was relabelled «الكمية». It read the request that built it and degraded on
+ * every other one. Measured across three domains it had never seen:
+ *
+ *     عيادة أسنان   «اسم المريض» -> «الاسم»    «رقم تلفونه» -> «الرقم»
+ *                   «وقت الموعد» -> plain text  «المبلغ المدفوع» -> «السعر»
+ *     مكتبة        «اسم المؤلف» -> «الاسم»    «سنة الإصدار» -> plain text
+ *     مزرعة        «كمية الحليب» -> «الكمية»   «وزنها» -> plain text
+ *
+ * A phone number became a part number. A patient's name became «الاسم». That
+ * is a memorised prompt wearing the costume of understanding, and the owner
+ * named it as law: Joe builds ANY request, it does not rehearse a few.
+ *
+ * So the reader keeps exactly one thing from him and infers exactly one thing
+ * itself:
+ *
+ *   · THE LABEL IS HIS, always, unchanged. «كمية الحليب» stays «كمية الحليب».
+ *   · THE TYPE is inferred from a small CLOSED vocabulary — the input types a
+ *     form can have at all, not a list of things people might record. There
+ *     are nine of those and infinitely many of the other, which is exactly why
+ *     one of them can be a table and the other cannot.
+ *
+ * The key is mechanical, derived from the role its type implies, so metrics can
+ * bind to «the money column» without ever knowing what the money is for.
+ */
+type DerivedRole = 'money' | 'count' | 'scalar' | 'date' | 'time' | 'tel' | 'email' | 'flag' | 'note' | 'text';
+
+/** Closed vocabulary: what KIND of value this is, never what it is called. */
+/**
+ *  A COLUMN THAT ASKS A QUESTION IS A YES OR A NO.
+ *
+ *  Measured live. He answered Joe’s question with «اسم المدين والمبلغ
+ *  وتاريخ الدين وهل تم السداد» and got four columns — three right, and a
+ *  free-text box labelled «هل تم السداد». He would have had to type the
+ *  word «نعم» into it, and no total could ever count it.
+ *
+ *  The signal is grammatical and needs no list of states: a label that
+ *  OPENS WITH AN INTERROGATIVE — «هل», «is», «has», «did» — or ends in a
+ *  question mark is a question, and a column that asks a question holds an
+ *  answer of yes or no. A handful of past participles people write instead
+ *  of the question («مدفوع», «تم الدفع», `paid`, `done`) are the same
+ *  column with the question left implicit.
+ */
+const ASKS_YES_OR_NO = /^(?:هل|is|are|was|were|has|have|did|does)(?=$|\s)|[?؟]\s*$|^(?:تم|مدفوع|مدفوعة|مسدد|مسدّد|منجز|مكتمل|مغلق|paid|done|completed|settled|closed|shipped|delivered)(?=$|\s)/iu;
+
+const TYPE_MARKS: Array<[RegExp, DerivedRole, FieldType]> = [
+    [ASKS_YES_OR_NO, 'flag', 'select'],
+    [/تلفون|هاتف|جوال|موبايل|واتس|\bphone\b|\bmobile\b|\btel\b|whatsapp/iu, 'tel', 'tel'],
+    [/ايميل|إيميل|بريد\s*الكتروني|بريد\s*إلكتروني|\bemail\b|\be-?mail\b/iu, 'email', 'email'],
+    [/تاريخ|يوم\s|\bdate\b|\bday\b/iu, 'date', 'date'],
+    [/وقت|ساعة|موعد|\btime\b|\bhour\b/iu, 'time', 'time'],
+    [/سعر|مبلغ|تكلفة|ثمن|قيمة|راتب|اجرة|أجرة|رسوم|دفع|مدفوع|\bprice\b|\bamount\b|\bcost\b|\bfee\b|\bsalary\b|\bpaid\b|\btotal\b/iu, 'money', 'number'],
+    //  A year and an age are numbers you read, not quantities you add.
+    //  Summing «سنة الإصدار» yields a number that means nothing, and printing
+    //  it as a total is a confident lie about the user's own data.
+    [/سنة|عام|عمر|\byear\b|\bage\b/iu, 'scalar', 'number'],
+    [/كمي|عدد|وزن|طول|عرض|ارتفاع|مساحة|نسب|\bqty\b|\bquantity\b|\bcount\b|\bweight\b|\bsize\b/iu, 'count', 'number'],
+    [/ملاحظ|وصف|تفاصيل|شرح|تعليق|\bnote\b|\bdescription\b|\bdetails\b|\bcomment\b/iu, 'note', 'textarea'],
+];
+
+export interface DerivedField { label: string; key: string; type: FieldType; role: DerivedRole; options?: string[] }
+
+/** The columns a request enumerates, in his words and his order. */
+/**
+ * EVERY TABLE HE NAMED, NOT THE FIRST ONE.
+ *
+ * Measured. He wrote, in one breath:
+ *
+ *     «بدي جدول للمواعيد أسجل فيه: اسم المريض ووقت الموعد.
+ *      وبدي جدول ثاني للمصاريف أسجل فيه: البند والمبلغ والتاريخ.»
+ *
+ * and the reader returned NOTHING. The English twin returned the first table
+ * and dropped the second without a word — which is worse, because it looks
+ * like success.
+ *
+ * The cause is that derivedColumns stops at the first opener and reads to the
+ * end of that one sentence. A man who asks for two tables in two sentences is
+ * not asking for one.
+ *
+ * This walks every opener in the request and returns one group per table, in
+ * his order. What the builder then does with a second table is a separate
+ * question — but it can no longer pretend it never saw it.
+ */
+export interface DerivedTable { subject: string | null; columns: DerivedField[] }
+
+export function derivedTables(requestRaw: string): DerivedTable[] {
+    const request = String(requestRaw || '');
+    //  Sentences are the natural boundary between two asks — he ended one and
+    //  began another. Reading each on its own also stops a list from swallowing
+    //  the sentence after it.
+    const out: DerivedTable[] = [];
+    const seen = new Set<string>();
+    for (const piece of request.split(/(?<=[.؟!\n])/u)) {
+        const cols = derivedColumns(piece);
+        if (!cols) continue;
+        const key = cols.map(c => c.label).join('|');
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push({ subject: recordedSubject(piece), columns: cols });
+    }
+    //  A single table stated across two sentences must not become two: when the
+    //  whole request reads as one list and nothing split out, keep that reading.
+    if (out.length === 0) {
+        const whole = derivedColumns(request);
+        if (whole) out.push({ subject: recordedSubject(request), columns: whole });
+    }
+    return out;
+}
+
+
+export function derivedColumns(requestRaw: string): DerivedField[] | null {
+    const request = String(requestRaw || '');
+    /**
+     * A LIST OF COLUMNS IS INTRODUCED BY THE ACT OF RECORDING.
+     *
+     * A bare colon is not enough, and reading it as one broke a real case:
+     * «متجر بفئات: قهوة، أدوات، حلويات» enumerates the VALUES of one field, and
+     * this reader turned them into five columns and threw away the shop's own
+     * schema. «بفئات» is not the signal either — naming that one word would be
+     * the memorised-prompt disease again.
+     *
+     * What separates the two is who the list belongs to: columns follow the
+     * verb of recording — «أسجل فيه …:», «record students:», «فيها الحقول:».
+     * Values follow a field. So the enumeration is only read when a recording
+     * phrase stands in front of it.
+     */
+    /**
+     *  A VERB STANDS ALONE. A NOUN NEEDS TO BE INTRODUCED.
+     *
+     *  Manus attacked this and was right. The canonical WeatherGo prompt
+     *  contains «a visible city search FIELD with a Search button», and the
+     *  bare `field` opener turned the UI requirements that followed into
+     *  seven columns of a user record:
+     *
+     *      with a Search button · Enter-key submission · reject empty input
+     *      show loading state · and show clear invalid-city ·
+     *      network-failure · and API-error states
+     *
+     *  Seven columns nobody asked for, and worse: the false schema made the
+     *  app look `generic`, so the weather blueprint never got to run.
+     *
+     *  This is the law of «فخّ العربية» in English clothes — a bare noun
+     *  matched without context. «أسجل» and `record` are VERBS: a man who
+     *  writes one is doing the recording, and the list follows. «الحقول»,
+     *  `columns` and `fields` are NOUNS: they name the thing rather than
+     *  do it, and a noun means a declaration only when it is introduced —
+     *  by a colon, or by «هي»/`are`/`include`.
+     */
+    const RECORDING_VERB = /(أسجل|اسجل|سجّل|أضيف|اضيف|أدخل|ادخل|أدوّن|ادون|أتابع|اتابع|أدير|ادير|أنظم|انظم|فيها|فيه|تحتوي على|يحتوي على|\brecord\b|\btrack\b|\blog\b|\bmanage\b|\borgani[sz]e\b)/iu;
+    const DECLARED_LIST = /(الحقول|الأعمدة|الاعمدة|\bcolumns?\b|\bfields?\b)\s*(?::|：|هي|are\b|include(?:s)?\b)/iu;
+    const opener = RECORDING_VERB.exec(request) || DECLARED_LIST.exec(request);
+    if (!opener) return null;
+    let after = request.slice((opener.index || 0) + opener[0].length);
+    //  A colon further along is the real start of the list: «أسجل فيه المواعيد:
+    //  اسم المريض و…» — the noun before it is the subject, not a column.
+    const colon = after.indexOf(':') >= 0 ? after.indexOf(':') : after.indexOf('：');
+    if (colon >= 0 && colon <= 40) after = after.slice(colon + 1);
+    const sentence = after.split(/[.؟!\n]/)[0] || '';
+    const parts = sentence
+        //  Lists are joined differently in each language: «و» is a prefix on the
+        //  next word, «and» is a word of its own. A reader that knows only one of
+        //  them reads only one language's requests.
+        .split(/\s*[،,]\s*|\s+و(?=\S)|\s+and\s+|\s+&\s+/iu)
+        .map(p => p.trim().replace(/^(?:ال)?كل\s+/u, '').replace(/^[:：]\s*/u, '').trim())
+        .filter(p => p.length >= 2 && p.length <= 32);
+    if (parts.length < 3 || parts.length > 10) return null;
+
+    const seen = new Map<DerivedRole, number>();
+    const out: DerivedField[] = [];
+    for (const label of parts) {
+        let role: DerivedRole = 'text';
+        let type: FieldType = 'text';
+        for (const [mark, r, t] of TYPE_MARKS) {
+            if (mark.test(label)) { role = r; type = t; break; }
+        }
+        const n = (seen.get(role) || 0) + 1;
+        seen.set(role, n);
+        //  The answers are written in the language of his own label, so an
+        //  Arabic column offers «نعم/لا» and an English one Yes/No.
+        const options = role === 'flag'
+            ? (/[\u0600-\u06FF]/.test(label) ? ['نعم', 'لا'] : ['Yes', 'No'])
+            : undefined;
+        out.push({ label, key: `${role}${n}`, type, role, options });
+    }
+    return out.length >= 3 ? out : null;
+}
+
+/**
+ * A COLUMN HE ASKS TO ADD, AND ONE HE ASKS TO DROP.
+ *
+ * «ضيف عمود الخصم» is not a new table and not a new app: it is one column,
+ * named, on the table already in front of him. Reading it needs no vocabulary
+ * of columns — the ADD VERB introduces the noun, and the noun introduces the
+ * name, which is the same grammar that lets «الحقول: …» declare a list while a
+ * bare «field» does not.
+ *
+ * What it must never do is guess. If he names nothing after the noun, nothing
+ * is added and the edit says so rather than inventing a column called «عمود».
+ */
+export interface ColumnEdit { add: string[]; remove: string[] }
+
+const ADD_COLUMN = /(?:ضيف|أضف|اضف|اضافة|إضافة|زيد|حط|\badd\b)\s+(?:a|an|the)?\s*(?:عمود|العمود|خانة|الخانة|حقل|الحقل|column|field)\s+(?:اسمه\s+|باسم\s+|called\s+|named\s+|for\s+|the\s+)?([^\n،,.؛;]{2,32})/iu;
+const DROP_COLUMN = /(?:شيل|احذف|أحذف|امسح|الغِ?ي?|ألغِ|\bremove\b|\bdrop\b|\bdelete\b)\s+(?:a|an|the)?\s*(?:عمود|العمود|خانة|الخانة|حقل|الحقل|column|field)\s+(?:the\s+)?([^\n،,.؛;]{2,32})/iu;
+
+/** The one-column changes a follow-up message asks for, in his own words. */
+export function columnEdit(requestRaw: string): ColumnEdit {
+    const request = String(requestRaw || '');
+    const clean = (s: string): string => s.trim().replace(/^(?:ال)?(?=.{3,})/u, m => m).trim();
+    const add = ADD_COLUMN.exec(request);
+    const drop = DROP_COLUMN.exec(request);
+    return {
+        add: add && add[1].trim().length >= 2 ? [clean(add[1])] : [],
+        remove: drop && drop[1].trim().length >= 2 ? [clean(drop[1])] : [],
+    };
+}
+
+/** Apply those changes to a set of fields, keeping every other column as it is. */
+export function applyColumnEdit(fields: AppField[], edit: ColumnEdit, isAr: boolean): AppField[] {
+    let out = fields.slice();
+    for (const name of edit.remove) {
+        out = out.filter(f => f.label.trim() !== name && !f.label.includes(name));
+    }
+    for (const name of edit.add) {
+        if (out.some(f => f.label.trim() === name)) continue;
+        const derived = derivedColumns(`أسجل فيه: ${name} و${name} و${name}`)?.[0];
+        out.push({
+            key: `${derived?.role || 'text'}${out.length + 1}`,
+            label: name,
+            type: derived?.type || 'text',
+            ...(derived?.options ? { options: derived.options } : {}),
+        });
+    }
+    //  A table with no columns left is not an edit, it is a deletion he did not
+    //  ask for. The original stands.
+    return out.length ? out : fields;
+}
+
+
+export function fieldsFromRequest(requestRaw: string, isAr: boolean): AppField[] | null {
+    const cols = derivedColumns(requestRaw);
+    if (!cols) return null;
+    return cols.map((c, i) => f(
+        [c.key, c.label, c.label, c.type, c.options,
+            i === 0 ? ['required', 'primary'] : (c.role === 'money' || c.role === 'count' ? ['required'] : undefined)],
+        isAr,
+    ));
 }
 
 /* ── what was asked for, in the user's own words ─────────────────────────── */

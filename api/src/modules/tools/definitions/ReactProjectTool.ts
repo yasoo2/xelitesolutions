@@ -23,7 +23,7 @@ import { ToolPermission, ToolExecutionResult } from '../types';
 import { buildPalette, paletteCss, darkTokenBlock, lightTokenBlock } from '../../../core/design/design-system';
 import { brandFrom, brandFallback } from '../../../core/design/page-head';
 import { detectPageKind, type PageKind } from '../../../core/design/blueprints';
-import { applyRequestFieldConstraints, detectAppKind, blueprintFor, uncoveredFeatures, type AppBlueprint } from '../../../core/design/app-blueprints';
+import { applyRequestFieldConstraints, detectAppKind, blueprintFor, uncoveredFeatures, derivedTables, type AppBlueprint } from '../../../core/design/app-blueprints';
 import { acceptanceFor as acceptanceCriteriaFor } from '../../../core/quality/acceptance';
 import { buildAppFiles, fileAppCss } from './react-app-templates';
 import { familyFor, familyCss, familyFonts, FAMILY_LABEL_AR, type DesignFamily } from '../../../core/design/families';
@@ -2751,7 +2751,11 @@ export class ReactProjectTool extends BaseTool {
         const appBp: AppBlueprint | null = appKind ? blueprintFor(appKind, request, isAr) : null;
         // سجّل قرار القالب نفسه، لا وعداً عاماً بالنجاح؛ هذا يكشف فوراً أي
         // تحوير لوسيط الطلب بين الخطة وأداة البناء في الاختبارات الحية.
-        term(`template classification: page=${kind || 'generic'} · app=${appKind || 'none'} · mode=${appBp ? 'interactive' : 'presentation'}`);
+        // The language Joe SPEAKS is the interface's, not the prompt's — and a
+        // build that narrates in the wrong one is a defect the user sees
+        // before any test does. Record which signal decided it, so the next
+        // report says whether the switcher arrived or was lost on the way.
+        term(`template classification: page=${kind || 'generic'} · app=${appKind || 'none'} · mode=${appBp ? 'interactive' : 'presentation'} · lang=${isAr ? 'ar' : 'en'} (ui=${uiLang || 'absent'})`);
         const family = familyFor(request, kind);
         const multiPage = wantsMultiPage(request);
         const pages = pagesForKind(kind);
@@ -3282,6 +3286,9 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             if (declaration) term(declaration);
             const appFiles = buildAppFiles(runBp, {
                 brand: content.brand, isArabic: isAr, api: appApi, apiResources,
+                //  The app remembers the words it was built from, so an edit can
+                //  re-derive his columns instead of replacing them with a stock set.
+                sourceRequest: request,
                 storeKey: `${slug(content.brand)}-${runBp.kind}`,
                 brandColor: (palette as any).primary,
                 model: adminModel,
@@ -3633,7 +3640,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 try {
                     const { PANEL_BROWSER_SID } = require('./BrowserSmartTools');
                     const { warmBrowserSession } = require('../../browser/manager');
-                    warmBrowserSession(PANEL_BROWSER_SID);
+                    warmBrowserSession(String(context?.browserSessionId || '').trim() || PANEL_BROWSER_SID);
                     term('self-QA: warming the browser now so the audit has something to show from its first second');
                 } catch { /* the audit launches its own — exactly as before */ }
             }
@@ -3813,6 +3820,30 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
              * tab, and the tab is opened for him when the audit starts.
              */
             const { PANEL_BROWSER_SID } = require('./BrowserSmartTools');
+            /**
+             *  THE AUDIT MUST WATCH WHERE HE IS WATCHING.
+             *
+             *  Measured on his machine, with a screenshot taken at the exact
+             *  moment Joe printed «Watch it happen in the Browser panel»:
+             *
+             *      URL bar : No page loaded
+             *      canvas  : black
+             *      status  : connected · quality=unknown · 1280×720
+             *
+             *  And in the same run, 170 websocket frames went to
+             *  `panel-terminal` and ZERO to `panel-browser`.
+             *
+             *  Two names for one panel. The interface binds its Browser tab to
+             *  `browser:<sessionId>` — its own comment says «Never fall back to
+             *  a shared panel-browser surface» — while the audit borrowed the
+             *  constant PANEL_BROWSER_SID, which is that abandoned surface. So
+             *  the audit really did run in a real browser, really did press
+             *  controls, and did all of it on a stage nobody was pointed at.
+             *
+             *  The session comes from the RUN now. The constant remains only
+             *  for callers with no session at all — a script, a test — and
+             *  those are exactly the cases that should say «private».
+             */
             const auditSid = String(context?.browserSessionId || '').trim() || PANEL_BROWSER_SID;
             let auditWatching = false;
             try {
@@ -3833,6 +3864,13 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 const { waitForPanelWatcher } = require('../../browser/wsHub');
                 const watching = await waitForPanelWatcher(auditSid, 4000);
                 auditWatching = watching;
+                //  Name the session, not just the verdict: «no panel attached»
+                //  and «attached to a panel nobody is looking at» read the same
+                //  in a log and are entirely different defects.
+                //  In the server log too, not only the terminal panel: when the
+                //  Browser tab is the one on screen, the Terminal tab's text is
+                //  not in the DOM at all, so a measurement that lives only there
+                //  cannot be read at the moment it matters.
                 try {
                     const mgr = require('../../browser/manager');
                     const live = typeof mgr.liveBrowserSessionCount === 'function' ? mgr.liveBrowserSessionCount() : -1;
@@ -3906,6 +3944,18 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                     }
                 },
             });
+            /**
+             *  BORROWED IS NOT WATCHED.
+             *
+             *  Measured: `session=panel-browser watching=false` — the audit
+             *  borrowed a browser session that EXISTS and that nobody has
+             *  open, and the delivery still said «in the Browser panel, in
+             *  front of you».
+             *
+             *  A stage with no audience is a private browser by every measure
+             *  that matters to him. Borrowing proves a session was found; only
+             *  a watcher proves he could have seen it.
+             */
             if (audit && !someoneIsWatching) audit.visible = false;
             term(audit.skipped
                 ? `self-QA: skipped (${audit.skipped})`
@@ -4002,7 +4052,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 // His «لا تستخدم الشبكة» reaches the audit too: it still runs,
                 // it simply never downloads a browser to make itself possible.
                 offline: noInstall,
-                        timeoutMs: 30_000, watchSessionId: PANEL_BROWSER_SID,
+                        timeoutMs: 30_000, watchSessionId: auditSid,
                         ...(liveServer ? { serveUrl: liveServer.url } : {}),
                         ...(runtimeAuth ? { credentials: runtimeAuth } : {}),
                     });
@@ -4446,7 +4496,29 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 ? `\n🧠 هذا تطبيق يعمل، لا صفحة تتحدث عنه — «${appBp?.title || ''}»:\n${reconciledAppAbilities.map(a => `   • ${a}`).join('\n')}${unmeasuredAbilitiesNotice ? `\n${unmeasuredAbilitiesNotice}` : ''}`
                 : `\n🧠 A working application, not a page about one — "${appBp?.title || ''}":\n${reconciledAppAbilities.map(a => `   • ${a}`).join('\n')}${unmeasuredAbilitiesNotice ? `\n${unmeasuredAbilitiesNotice}` : ''}`)
             : '';
-        const appBlock = appBp ? `${abilityBlock}${screensLine}${unjudgedBlock}${unmetBlock}` : '';
+        /**
+         *  A TABLE HE ASKED FOR AND DID NOT GET MUST BE SAID OUT LOUD.
+         *
+         *  Measured. He asked for two in one message — «جدول للمواعيد …
+         *  وجدول ثاني للمصاريف …» — and the builder made one and said
+         *  nothing about the other. A half-built request that reports
+         *  success is the exact failure this branch exists to end, and it is
+         *  worse than an honest refusal because he only finds out later.
+         *
+         *  Building both is the right answer and it is not built yet. Until
+         *  it is, the delivery names what was left out, in his own words, so
+         *  the gap is his to see rather than his to discover.
+         */
+        const askedTables = derivedTables(request);
+        const unbuiltTables = askedTables.length > 1
+            ? askedTables.slice(1).map(t => t.subject).filter((s): s is string => !!s)
+            : [];
+        const unbuiltBlock = unbuiltTables.length
+            ? (isAr
+                ? `\n⚠️ طلبتَ أكثر من جدول. بنيتُ «${askedTables[0].subject || appBp?.title || ''}» فقط — ولم أبنِ: ${unbuiltTables.map(t => `«${t}»`).join(' · ')}. قل «أضف جدول ${unbuiltTables[0]}» وأبنيه.\n`
+                : `\n⚠️ You asked for more than one table. I built only «${askedTables[0].subject || appBp?.title || ''}» — and did not build: ${unbuiltTables.map(t => `«${t}»`).join(' · ')}. Say «add the ${unbuiltTables[0]} table» and I will.\n`)
+            : '';
+        const appBlock = appBp ? `${abilityBlock}${screensLine}${unbuiltBlock}${unjudgedBlock}${unmetBlock}` : '';
         const fidelityBlock = fidelityEvidenceUnavailable
             ? (isAr
                 ? `\n⛔ تعذّر التحقق من وفاء التطبيق المطلوب: دليل المصدر غير متاح أو أقصر من الحد الآمن (${fidelityEvidenceLength} حرفاً)، لذلك حُجب التسليم.\n`

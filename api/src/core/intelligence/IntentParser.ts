@@ -1,7 +1,7 @@
 import { analyzeContextualIntent, ConversationContext, buildConversationContext } from '../llm/context-engine';
+import { looksLikeBuild } from '../orchestrator/buildIntent';
 import intelligentRouter from '../llm/intelligent-router';
 import { normalizeIntentText } from '../orchestrator/promptNormalizer';
-import { looksLikeBuild } from '../orchestrator/buildIntent';
 
 export interface StructuredIntent {
     goal: string;
@@ -173,9 +173,30 @@ Return ONLY a JSON object:
         const interactUi = /(اضغط|انقر|اختر|اكتب|أدخل|مرّ?ر|انزل|عبّ?ئ|املأ|حدّ?د|click|press|scroll|select|type|fill)/i.test(probe)
             && /(زر|الزر|حقل|الحقل|خانة|القائمة|قائمة|رابط|مربع|صندوق|التبويب|button|field|link|menu|dropdown|checkbox|tab|box|input)/i.test(probe);
         /**
-         * A feature verb inside a build brief is not an instruction to Joe's
-         * browser. Keep an explicit URL or named site as a real web target, but
-         * let a domain-agnostic build shape reach the evidence-first pipeline.
+         *  A VERB HE WANTS INSIDE HIS APP IS NOT A COMMAND TO JOE.
+         *
+         *  Measured live. He wrote a dental-clinic brief — five columns, a
+         *  search, a total — and Joe opened a browser and typed «المريض باسمه
+         *  أو تلفونه» into a search box. Nothing was built.
+         *
+         *      [IntentParser] Deterministic fast intent (Browser)
+         *      [AgentOrchestrator] Executing node: browser_smart
+         *          (Search (live typing): المريض باسمه أو تلفونه)
+         *
+         *  «أبحث» is a STRONG web verb here — it qualifies alone. But in his
+         *  sentence it is not an instruction to Joe; it is the FEATURE he wants
+         *  in the thing he is asking for. The same trap as «مواعيد» reaching
+         *  for a calendar: a word lifted out of the request and read as if he
+         *  had addressed it to the machine.
+         *
+         *  The engineering-brief gate above should have caught it and did not,
+         *  because it demands 240 characters or a word like «حقيقي». Length is
+         *  a property of how wordy someone is, not of what he asked for — and
+         *  he writes short, plain sentences.
+         *
+         *  So: a request that describes something to be built, and names no web
+         *  target at all, is not a browser task. If he names a site or a URL,
+         *  the browser keeps it — he may well want both.
          */
         if (looksLikeBuild(raw) && !hasUrl && !knownSite) return null;
         // Unmistakable web request: URL, strong web verb, weak verb + noun, or UI interaction.

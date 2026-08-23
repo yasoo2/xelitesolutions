@@ -42,22 +42,6 @@ const STOP_WORDS = [
     'that', 'which', 'who', 'and', 'for', 'in', 'to', 'not', 'without', 'but', 'rather', 'specialis', 'specializ', 'working',
 ];
 
-/** Function words resume the sentence; they are not a product name. */
-const NAME_STOPS = /^(?:و|أو|او|ثم|فيه|فيها|به|بها|مع|من|في|على|الذي|التي|يحتوي|تحتوي|يكون|تكون|هو|هي|a|an|the|and|or|with|that|which|for|to|is|are|where|when|containing|including)$/i;
-
-/** Read a short name span without allowing the following clause into it. */
-function nameSpan(text: string): string {
-    const clause = String(text || '').split(/[،,؛;.!؟?\n:]/)[0] || '';
-    const words: string[] = [];
-    for (const w of clause.trim().split(/\s+/)) {
-        if (!w) continue;
-        if (NAME_STOPS.test(w.replace(/^[«"“]|[»"”]$/g, ''))) break;
-        words.push(w);
-        if (words.length === 4) break;
-    }
-    return words.join(' ').trim();
-}
-
 function trimBrand(raw: string): string {
     // Markdown emphasis/code markers are presentation syntax, not part of the
     // product identity.  A request such as `called **WeatherGo**, not a mockup`
@@ -98,6 +82,45 @@ function trimBrand(raw: string): string {
  * the caller falls back to the page kind — inventing a plausible-looking company
  * name and putting it in the title would be Joe making something up.
  */
+/**
+ * A NAME ENDS WHERE THE SENTENCE RESUMES.
+ *
+ * Measured live, twice, on two different requests:
+ *
+ *     «…وبدي أبحث عن المريض باسمه أو تلفونه، وبدي أعرف كم قبضت الإجمالي.»
+ *         → brand = «ه أو تلفونه وبدي»
+ *     «Build a project called SpendWise, a personal expense tracker…»
+ *         → brand = «SpendWise a personal expense»
+ *
+ * Neither is a name. Both came from one catch-all: after a naming marker the
+ * next SIXTY CHARACTERS were taken as the name, whatever they were. In the
+ * first case the marker itself was false — «باسمه» is «by his name», a
+ * possessive pronoun inside another word, not an introduction — and the same
+ * Arabic boundary discipline this repository already applies to verbs was
+ * never applied to it.
+ *
+ * A name is short and it stops. It stops at punctuation, and it stops when
+ * the sentence resumes with a connective — «فيه», «أو», «and», «that». Those
+ * are function words: a CLOSED class, finite in a way that nouns never are,
+ * so bounding a name by them consults no catalogue of things.
+ */
+const NAME_STOPS = /^(?:و|أو|او|ثم|فيه|فيها|به|بها|مع|من|في|على|الذي|التي|يحتوي|تحتوي|يكون|تكون|هو|هي|a|an|the|and|or|with|that|which|for|to|is|are|where|when|containing|including)$/i;
+
+/** The name-shaped span at the start of `text`: it ends at the first clause
+ *  boundary, at the first function word that resumes the sentence, or after
+ *  four words — whichever comes first. */
+function nameSpan(text: string): string {
+    const clause = String(text || '').split(/[،,؛;.!؟?\n:]/)[0] || '';
+    const words: string[] = [];
+    for (const w of clause.trim().split(/\s+/)) {
+        if (!w) continue;
+        if (NAME_STOPS.test(w.replace(/^[«"“]|[»"”]$/g, ''))) break;
+        words.push(w);
+        if (words.length === 4) break;
+    }
+    return words.join(' ').trim();
+}
+
 export function brandFrom(request: string, _isArabic?: boolean): string {
     const req = String(request || '');
 
@@ -115,9 +138,9 @@ export function brandFrom(request: string, _isArabic?: boolean): string {
      * folder name of a real field build. When the author quoted the name, the
      * quotes say exactly where it ends; take that span verbatim first.
      */
-    // The marker must be a complete word: «باسمه» is a possessive pronoun,
-    // not the introduction «باسم ...». Quoted names are already bounded;
-    // unquoted names stop at punctuation/function words via nameSpan.
+    // The marker must be a WORD, not a fragment inside one: «باسمه» is a
+    // possessive pronoun, and matching «اسمه» inside it named a whole project
+    // after the remainder of his sentence.
     const introduced = req.match(/(?:^|[\s،:؛.«»"])(?:اسمها|اسمه|إسمها|إسمه|تسمى|يسمى|باسم|called|named|by the name of)\s*:?[\s\r\n]*(?:["«“]([^"«»“”]{2,40})["»”]|(.{2,60}))/i);
     if (introduced) {
         const b = trimBrand(introduced[1] || nameSpan(introduced[2] || ''));
@@ -158,7 +181,21 @@ export function brandFrom(request: string, _isArabic?: boolean): string {
  * say what the thing IS. Deterministic, no model, and «MyApp» stays only for a
  * request that truly says nothing.
  */
-/** Possessive clauses state the subject without a domain vocabulary. */
+/**
+ * WHAT HE SAYS HE HAS IS WHAT THE PROJECT IS ABOUT.
+ *
+ * «عندي عيادة أسنان. بدي جدول أسجل فيه المواعيد…» produced «مشروع الأسجل».
+ * The subject patterns carried a BARE «ل» — a preposition that attaches to
+ * every kind of word, including the verb «أسجل» — and the first thing it
+ * touched became the name of his project.
+ *
+ * A bare «ل» cannot be told from the lam of a verb without morphology, so it
+ * is removed rather than patched. What replaces it is not another guess: he
+ * states his subject outright, in a shape any language has — «عندي X»,
+ * «أملك X», «I run a X». That is a possessive sentence, not a vocabulary of
+ * trades, so it works for a clinic, a nursery, a camel farm, or a business
+ * nobody has named yet.
+ */
 const OWNS_PATTERNS: RegExp[] = [
     /(?:^|[\s،:؛.])(?:عندي|عندنا|املك|أملك|امتلك|أمتلك|ادير|أدير|لدي|لدينا)\s+(?:ال)?([\u0600-\u06FF][\u0600-\u06FF\s]{2,28})/,
     /\bi\s+(?:have|run|own|manage)\s+(?:an?\s+|my\s+|the\s+)?([A-Za-z][A-Za-z' -]{2,28})\b/i,
@@ -168,6 +205,15 @@ const SUBJECT_PATTERNS: RegExp[] = [
     /\bfor\s+(?:an?\s+|my\s+|the\s+)?([A-Za-z][A-Za-z' -]{2,24})\b/i,
     /\b(?:selling|sells|that sells)\s+([A-Za-z][A-Za-z' -]{2,24})\b/i,
     /\b(?:store|shop|site|website|app|platform)\s+(?:for|about)\s+([A-Za-z][A-Za-z' -]{2,24})\b/i,
+    //  A BARE «ل» IS AMBIGUOUS. «لل» IS NOT.
+    //
+    //  Removing the bare lam was right — it attaches to verbs and produced
+    //  «مشروع الأسجل» from «بدي جدول أسجل فيه». But it took «للقهوة» with it,
+    //  and «ابنِ متجراً للقهوة المختصة» stopped being «متجر القهوة».
+    //
+    //  The two are not the same shape. «لل» is the preposition plus the
+    //  DEFINITE ARTICLE, and an article introduces a noun — never a verb. So
+    //  the article is the boundary the bare lam never had.
     /(?:لبيع|لـ|لل)\s*(?:ال)?([\u0600-\u06FF]{3,20})/,
     /(?:متجر|مطعم|موقع|تطبيق|منصة|منصّة)\s+(?:ال)?([\u0600-\u06FF]{3,20})/,
 ];
@@ -196,6 +242,8 @@ export function brandFallback(request: string, isArabic: boolean, kind = 'generi
     if (/\b(e-?commerce|marketplace)\b|تجارة إ?لكترونية|سوق إ?لكتروني/i.test(req)) {
         return isArabic ? 'سوق التجارة' : 'Commerce Hub';
     }
+    // He stated his own subject: use it verbatim. A man who says «عندي عيادة
+    // أسنان» has named the thing better than any pattern can.
     for (const re of OWNS_PATTERNS) {
         const m = req.match(re);
         const owned = (m?.[1] || '').trim().split(/\s+/).slice(0, 3)

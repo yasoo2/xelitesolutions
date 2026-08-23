@@ -1,11 +1,11 @@
 import { StructuredIntent } from '../intelligence/IntentParser';
 import { catalogueFor, registeredToolNames, capabilityRoute, inputForTool } from './toolCatalog';
 import { routeToModel, TaskAnalysis } from '../llm/intelligent-router';
-import { normalizeIntentText, foldChars } from './promptNormalizer';
-import { looksLikeBuild as sharedLooksLikeBuild } from './buildIntent';
+import { normalizeIntentText, stripArabicDiacritics, foldChars } from './promptNormalizer';
 import { compactHistoryForPrompt } from './history-compact';
 import { enrichWorkspaceToolInput } from './workspace-evidence';
 import { findActiveBuiltProject } from './active-built-project';
+import { looksLikeBuild } from './buildIntent';
 
 export interface ExecutionStep {
     id: string;
@@ -154,9 +154,11 @@ export class PlanningEngine {
     ]);
 
     /** Does this request ask for something to EXIST afterwards? */
-    static looksLikeBuild(goalRaw: string): boolean {
-        return sharedLooksLikeBuild(goalRaw);
-    }
+    /** Moved to ./buildIntent so the router can ask the same question the
+     *  planner asks. Kept as a static so every existing call site and test
+     *  keeps working unchanged. */
+    static looksLikeBuild = looksLikeBuild;
+
     /**
      * ASKING IS NOT ORDERING.
      *
@@ -1265,7 +1267,22 @@ Rules:
             || /قم\s*ب?(بناء|عمل|انشاء|إنشاء|تصميم|تطوير|صنع)/.test(probe)
             || /(اريد|أريد|ابغى|أبغى|بدي|ودي)\s*(ب?بناء|عمل|انشاء|إنشاء|تصميم|موقع|صفحة|تطبيق|متجر|نظام|منصّ?ة|لوحة|أداة|اداة)/.test(probe)
             || /\b(بناء|تصميم|إنشاء|انشاء)\s+(موقع|صفحة|تطبيق|متجر|واجهة|لوحة)/.test(probe)
-            || sharedLooksLikeBuild(String(intent.goal || '')));
+            /**
+             *  …AND A THIRD COPY OF THE SAME QUESTION.
+             *
+             *  Everything above answers «is this a build?» — and so does the
+             *  shared looksLikeBuild, and so did looksLikeEngineeringBrief.
+             *  Three answers to one question, and his clinic brief got a
+             *  different one from each: the shared test said yes, this list
+             *  said no, and because it said no, looksBrowser said yes and Joe
+             *  typed «المريض باسمه أو تلفونه» into a search engine.
+             *
+             *  The list above stays — it carries cases the shared test does
+             *  not, and every one of them was paid for. But it stops being the
+             *  last word. Ask the shared question too, so a request that is a
+             *  build anywhere is a build here.
+             */
+            || looksLikeBuild(String(intent.goal || '')));
         /**
          * THE ENGLISH LIST WAS NEVER BROUGHT UP TO THE ARABIC ONE.
          *
@@ -1335,7 +1352,28 @@ Rules:
          * own now, taken before every edit and every self-repair.
          */
         {
-            const undoVerb = /(تراجع|ارجع|أرجع|رجّع|استرجع|\bundo\b|\brollback\b|\brevert\b)/i.test(probe);
+            /**
+             * «أرجع» IS «I COME BACK». IT IS ALSO «REVERT». ONE WORD, TWO ACTS.
+             *
+             * Measured on the owner's machine, from a request he typed himself:
+             *
+             *     «… لما أسكر الصفحة وأرجع أفتحها …»   (when I close the page and come back to open it)
+             *
+             * A bare match on «أرجع» read that as an instruction to roll the
+             * active project back. The whole 308-character brief — five fields,
+             * persistence, search, two totals, a colour rule — was replaced by a
+             * single `project_undo` step, and nothing was ever built. The
+             * contract names this class by name and says what to do about it:
+             * «أيّ مطابقةٍ على اسمٍ مجرّدٍ من هذه ستعطي معياراً خاطئاً. اشترط سياقاً.»
+             *
+             * So the ambiguous verbs now need an object that only an undo has:
+             * a version, a release, an edit, a change, «الوراء». The verbs that
+             * mean nothing else — «تراجع», «استرجع», undo, rollback, revert —
+             * still stand alone, because they are not ambiguous.
+             */
+            const undoAlone = /(تراجع|استرجع|\bundo\b|\brollback\b|\brevert\b)/i.test(probe);
+            const undoWithObject = /(ارجع|أرجع|رجّع|رجع)\s+(?:\S+\s+){0,2}?\S*(نسخ|اصدار|إصدار|تعديل|تغيير|وراء|خلف|سابق)/i.test(probe);
+            const undoVerb = undoAlone || undoWithObject;
             const listVerb = /(اعرض|أظهر|اظهر|ما\s*هي)\s*(النسخ|الإصدارات|الاصدارات)|\bversions?\b|version\s*history/i.test(probe);
             const sessionKey = String(context?.sessionId || 'default').replace(/[^a-zA-Z0-9._-]/g, '_');
             const active = ((global as any).joeProjects || {})[sessionKey];
@@ -1680,7 +1718,30 @@ Rules:
             // «رسائل» alone sent a question about his own site to Google — and
             // the answer was a request to connect an account he never named.
             const siteInbox = SITE_INBOX.test(probe);
-            if ((gmailRead || calList || driveList || sendMail) && !(hasUrl && loginToSite) && !emailCompound && !pageInteraction && !siteInbox) {
+            //  A REQUEST TO BUILD IS NOT A REQUEST TO READ HIS GOOGLE ACCOUNT.
+            //
+            //  Measured live on the owner's machine. He wrote:
+            //
+            //      «عندي عيادة أسنان. بدي جدول أسجل فيه المواعيد: اسم المريض ورقم
+            //       تلفونه ووقت الموعد ونوع العلاج والمبلغ المدفوع …»
+            //
+            //  «مواعيد» matched the calendar verb, and two hundred characters of
+            //  brief — five columns, a search, a total — were replaced by one
+            //  line: «لم يتم ربط حساب Google بعد». Nothing was built, and he was
+            //  sent to a door his own order had frozen shut.
+            //
+            //  «مواعيد» there is the NOUN OF WHAT HE RECORDS, not an instruction
+            //  to open a calendar. The contract names this class and prescribes
+            //  the cure: «اشترط سياقاً». So the account verbs need to be about
+            //  HIS account — «تقويمي», «من جوجل», «افتح التقويم» — and a request
+            //  that describes something to build never routes here at all.
+            const buildsSomething = PlanningEngine.looksLikeBuild(userGoal);
+            const googleOwned = /(تقويمي|بريدي|ايميلي|إيميلي|درايفي|حسابي|من\s*(?:جوجل|قوقل|google)|في\s*(?:جوجل|قوقل|google)|my\s+(?:calendar|inbox|drive|mail)|\bgoogle\b)/iu.test(probe);
+            const googleImperative = /(افتح|اعرض|أعرض|هات|جيب|شوف|check|open|show|list|read)/iu.test(probe);
+            if ((gmailRead || calList || driveList || sendMail)
+                && !buildsSomething
+                && (sendMail || googleOwned || googleImperative)
+                && !(hasUrl && loginToSite) && !emailCompound && !pageInteraction && !siteInbox) {
                 const action = sendMail ? 'gmail_send' : calList ? 'calendar_list' : driveList ? 'drive_list' : 'gmail_list';
                 const input: any = { action, request: intent.goal };
                 if (action === 'gmail_list') { const q = g.match(/(?:عن|من|بخصوص|about|from)\s+(.+)$/i); if (q) input.query = q[1].trim(); }
@@ -1925,7 +1986,7 @@ Rules:
         // whole thing to a plain open, and it also corrupts names (نابلس->نبعلس). So
         // we resolve search deterministically FIRST, from the user's own words, and
         // send it to the VISIBLE search tool. Only when there's no explicit site URL.
-        if (looksBrowser && !urlMatch && PlanningEngine.hasSearchIntent(probe) && !buildVerb) {
+        if (looksBrowser && !urlMatch && PlanningEngine.hasSearchIntent(probe)) {
             const q = PlanningEngine.extractSearchQuery(goalRaw) || PlanningEngine.extractSearchQuery(goalNorm);
             if (q.length >= 2) {
                 console.log(`[PlanningEngine] search priority -> browser_search query="${q}"`);
@@ -2203,6 +2264,20 @@ Rules:
         // "افتح المتصفح وابحث عن X". The old (^|\s) anchor missed "وابحث", so the
         // request fell to the plain open-browser path and only showed Google.
         const searchIntent = PlanningEngine.hasSearchIntent(probe);
+        /**
+         *  A DOOR CLOSED IS NOT A WALL.
+         *
+         *  The search-priority gate above asks looksBrowser first, and
+         *  looksBrowser now refuses a build. This branch asks nothing but the
+         *  verb — so his clinic brief walked straight past the closed door and
+         *  through this one, and Joe typed «المريض باسمه أو تلفونه» into a
+         *  search engine anyway. Measured directly on the planner, twice: the
+         *  first fix moved nothing.
+         *
+         *  A defect fixed at one router is not fixed. Same property, stated
+         *  here too: what he describes building is not what he asked Joe to
+         *  search for.
+         */
         if (searchIntent && !urlMatch && !buildVerb) {
             // Extract the CLEAN topic from the user's own words (shared helper —
             // same logic used by the search-priority path above).

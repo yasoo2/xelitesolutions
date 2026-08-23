@@ -335,7 +335,8 @@ export class AgentLoopService {
          * مباشرة» pass straight through.
          */
         try {
-            const gateLang = messageLanguage(goal, options.language || 'ar');
+            // The interface decides what Joe says; see the note on language0 below.
+            const gateLang = replyLanguageCode(options.language, goal);
             const activeKey = String(sessionId).replace(/[^a-zA-Z0-9._-]/g, '_');
             const hasActivePage = !!((global as any).joePages && (global as any).joePages[activeKey]);
             const gate = clarifyGate(goal, sessionId, gateLang, {
@@ -381,6 +382,33 @@ export class AgentLoopService {
         // the field log carried «The user's language is English» over the goal
         // «حلل هذه الصوره» because the switcher said so. messageLanguage reads
         // the script of what the user actually wrote.
+        /**
+         * ONE QUESTION, TWO OPPOSITE ANSWERS, TWO LAYERS APART.
+         *
+         * Here the MESSAGE decided and the switcher only broke ties. Eleven
+         * hundred lines away, in ReactProjectTool, the comment says the exact
+         * opposite — the session's language decides and the prompt's script
+         * only breaks a tie — and shared/reply-language implements that one.
+         * So the same request got two different answers depending on which
+         * layer was asked, and the owner watched an English interface narrate
+         * his build in Arabic:
+         *
+         *     «النظام الان باللغه الانجليزية فلماذا تظهر بعض الكلمات
+         *      باللغه العربية»
+         *
+         * Measured end to end: the composer sent `SENT_LANGUAGE="en"`, and by
+         * the time the build ran the tool reported `lang=ar (ui=ar)`. The
+         * switcher arrived and this line overwrote it.
+         *
+         * Both rules were written after a real complaint, which is why neither
+         * was obviously wrong. The one that survives is the one he stated
+         * today: the interface he is looking at decides what Joe SAYS. His own
+         * words are still his own — the columns, the title and the brand come
+         * from his sentence whatever language the interface is in.
+         *
+         * The UI code is taken verbatim so a third language keeps working; the
+         * message's script decides only when no interface language arrived.
+         */
         const language0 = replyLanguageCode(options.language, goal);
         if ((options.attachments || []).some(a => /^image\//i.test(a.mimeType || '') && !String(a.content || '').trim())) {
             broadcastThinkingDetail(options.sessionId || '', language0 === 'ar' ? '👁️ أفحص الصور المرفقة بنموذج رؤية…' : '👁️ Reading the attached images with a vision model…');

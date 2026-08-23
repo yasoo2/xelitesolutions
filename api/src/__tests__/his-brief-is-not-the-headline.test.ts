@@ -25,6 +25,7 @@ import { formatAudit } from '../core/quality/app-audit';
 
 const read = (...p: string[]) => fs.readFileSync(path.join(__dirname, '..', ...p), 'utf-8');
 const REACT = read('modules', 'tools', 'definitions', 'ReactProjectTool.ts');
+const AUDIT = read('core', 'quality', 'app-audit.ts');
 
 /** The brief, verbatim, as it was sent. */
 const BRIEF = [
@@ -146,5 +147,25 @@ describe('nothing is claimed that is not running', () => {
         expect(en).toContain('npx playwright install chromium');
         expect(ar).not.toContain('100/100');
         expect(en).not.toContain('100/100');
+        expect(AUDIT).toMatch(/npx playwright install chromium/);
+        // The old text survives only inside the comment that explains why it
+        // went — so the check is on what the branch RETURNS, not on the file.
+        expect(AUDIT).not.toMatch(/return isAr \? `🔎 فحص الجودة الذاتي: تخطيته/);
+        /**
+         *  AND THE PIN IS ON THE BEHAVIOUR, NOT ON THE BRACES.
+         *
+         *  This line used to assert the literal source text `if (a.skipped) {`
+         *  followed by `return isAr`, and it went red the moment that code was
+         *  legitimately refactored — twice in one day, both times for changes
+         *  that were CORRECT. A test that fails on an honest refactor and
+         *  passes when the behaviour breaks is pointed the wrong way round.
+         *
+         *  What matters is what a skipped audit SAYS. So ask it.
+         */
+        const skippedFromReason = formatAudit({ score: 0, findings: [], skipped: 'playwright not installed' }, true);
+        expect(skippedFromReason).toMatch(/⚠️ لم أفحص الصفحة بصرياً/);
+        expect(skippedFromReason).toMatch(/npx playwright install chromium/);
+        expect(formatAudit({ score: 0, findings: [], skipped: 'playwright not installed' }, false))
+            .toMatch(/This page was NOT visually checked/);
     });
 });

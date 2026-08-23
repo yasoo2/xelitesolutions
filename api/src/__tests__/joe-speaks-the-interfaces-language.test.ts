@@ -1,4 +1,8 @@
+import fs from 'fs';
+import path from 'path';
 import { replyLanguageCode, isArabicReply } from '../shared/reply-language';
+
+const readSource = (relative: string) => fs.readFileSync(path.join(__dirname, relative), 'utf-8');
 
 describe('the interface decides what Joe says', () => {
     it.each([
@@ -15,6 +19,21 @@ describe('the interface decides what Joe says', () => {
         ['no UI, English request', '', 'Build me a table for my clients', 'en'],
     ])('%s → %s', (_label, ui, text, expected) => {
         expect(replyLanguageCode(ui as string | undefined, text)).toBe(expected);
+    });
+
+    it('the UI language reaches the run entrypoint and AgentLoop', () => {
+        const joe = readSource('../../../web/src/pages/Joe.tsx');
+        const route = readSource('../api/routes/run.ts');
+        const loop = readSource('../modules/services/AgentLoopService.ts');
+        const reactProject = readSource('../modules/tools/definitions/ReactProjectTool.ts');
+        expect(joe).toContain('language: i18n.language');
+        expect(route).toContain('const uiLanguage =');
+        expect(route).toContain('language: uiLanguage');
+        expect(loop).toContain('const gateLang = replyLanguageCode(options.language, goal);');
+        expect(loop).toContain('const language0 = replyLanguageCode(options.language, goal);');
+        expect(reactProject).toContain("import { replyLanguageCode } from '../../../shared/reply-language';");
+        expect(reactProject).toContain('template classification: page=');
+        expect(reactProject).toContain('lang=${replyLang} (ui=${uiLang || \'absent\'})');
     });
 
     it.each([

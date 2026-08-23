@@ -68,6 +68,20 @@ export interface AppBuildOptions {
     model?: Array<{ key: string; ar: string; en: string; fields: any[]; belongsTo?: { entity: string; key: string } | null }>;
     /** Relative engine file to be authored from the user's request by Joe's AI writer. */
     generatedEnginePath?: string;
+    /**
+     *  THE REQUEST THE APP WAS BUILT FROM.
+     *
+     *  Measured: an edit rebuilt the blueprint from the app TITLE, so
+     *  «ضيف عمود الخصم» on his clinic table would have regenerated it
+     *  with the stock booking columns and destroyed his five:
+     *
+     *      BUILT_FROM_REQUEST = [اسم المريض · رقم تلفونه · وقت الموعد …]
+     *      EDIT_REBUILDS_FROM = [الاسم · الهاتف · الخدمة · التاريخ …]
+     *
+     *  An app that cannot remember what it was asked for cannot be
+     *  edited without losing it. So it remembers, in its own file.
+     */
+    sourceRequest?: string;
 }
 
 /* ── content.js — the app's own shape, nothing borrowed from a brochure ──── */
@@ -96,6 +110,9 @@ export const content = {
   api: '${q(o.api || '')}',
   // Composite apps address each first-class collection explicitly.
   apiResources: ${JSON.stringify(apiResources)},
+  // The words this app was built from. An edit re-derives from these,
+  // so adding one column cannot silently replace all the others.
+  sourceRequest: '${q(o.sourceRequest || '')}',
   fields: [
 ${bp.fields.map(f => `    { key: '${q(f.key)}', label: '${q(f.label)}', type: '${q(f.type)}'${f.options ? `, options: [${f.options.map(x => `'${q(x)}'`).join(', ')}]` : ''}${f.required ? ', required: true' : ''}${f.min !== undefined ? `, min: ${f.min}` : ''}${f.minExclusive ? ', minExclusive: true' : ''}${f.primary ? ', primary: true' : ''} },`).join('\n')}
   ],
@@ -104,6 +121,7 @@ ${bp.metrics.map(m => `    { label: '${q(m.label)}', kind: '${q(m.kind)}'${m.fie
   ],
   statusField: '${q(bp.statusField || '')}',
   doneValue: '${q(bp.doneValue || '')}',
+  lowStock: ${bp.lowStock ? `{ field: '${q(bp.lowStock.field)}', below: ${Number(bp.lowStock.below)} }` : 'null'},
   // The parent this app's rows belong to — «طبيب ← مواعيده». Null for a
   // one-table app, and then the picker below simply never renders.
   relation: ${bp.relation ? `{
@@ -345,6 +363,7 @@ export function computeMetric(m, rows) {
     case 'countWhere': return String(list.filter(r => String(r[m.field] || '') === m.equals).length);
     case 'sum': return round(list.reduce((a, r) => a + num(r[m.field]), 0));
     case 'sumProduct': return round(list.reduce((a, r) => a + num(r[m.field]) * num(r[m.field2]), 0));
+    //  A margin is a quantity times what each unit gains: sell minus buy.
     case 'sumMargin': return round(list.reduce((a, r) => a + num(r[m.field]) * (num(r[m.field2]) - num(r[m.field3])), 0));
     case 'avg': {
       const vals = list.map(r => r[m.field]).filter(v => v !== '' && v != null).map(num);
@@ -992,9 +1011,6 @@ export default function RecordsApp({ content }) {
   const parentStore = useMemo(() => createStore(content.storeKey + ':parents'), [content.storeKey]);
 
   const [rows, setRows] = useState(() => store.read());
-  // A local-only app has nothing asynchronous to wait for. A server-backed
-  // records app does, so expose that real read instead of inventing a spinner.
-  const [loading, setLoading] = useState(() => !!content.api);
   const [draft, setDraft] = useState(() => blank(fields));
   const [editing, setEditing] = useState('');
   const [selected, setSelected] = useState(null);
@@ -1031,22 +1047,16 @@ export default function RecordsApp({ content }) {
   // A backend, if this project has one. Silence on failure: the local rows
   // are the truth, and the badge only claims a server that really answered.
   useEffect(() => {
-    if (!content.api) return undefined;
     let alive = true;
-    setLoading(true);
     (async () => {
-      try {
-        const remote = await apiList(content.api);
-        if (!alive || !remote) return;
-        setServer(true);
-        setRows(prev => {
-          const seen = new Set(prev.map(r => String(r.id)));
-          const extra = remote.filter(r => r && !seen.has(String(r.id)));
-          return extra.length ? [...extra.map(r => ({ ...r, id: String(r.id || uid()) })), ...prev] : prev;
-        });
-      } finally {
-        if (alive) setLoading(false);
-      }
+      const remote = await apiList(content.api);
+      if (!alive || !remote) return;
+      setServer(true);
+      setRows(prev => {
+        const seen = new Set(prev.map(r => String(r.id)));
+        const extra = remote.filter(r => r && !seen.has(String(r.id)));
+        return extra.length ? [...extra.map(r => ({ ...r, id: String(r.id || uid()) })), ...prev] : prev;
+      });
     })();
     return () => { alive = false; };
   }, [content.api]);
@@ -1154,13 +1164,10 @@ export default function RecordsApp({ content }) {
 
   return (
     <div className="wrap">
-      {loading ? (
-        <p className="empty" role="status" aria-live="polite">{${T('جارٍ تحميل السجلات…', 'Loading records…')}}</p>
-      ) : null}
       <section className="stats" aria-label={${T('الأرقام', 'Numbers')}}>
         {content.metrics.map((m, i) => (
           <div className="stat" key={i}>
-            <i className="stat-ico" aria-hidden="true">{({count:'🧾',sum:'💰',todaySum:'📅',todayCount:'📅',sumProduct:'📦',sumMargin:'📈',avg:'📈',countWhere:'✅'})[m.kind] || '📊'}</i>
+            <i className="stat-ico" aria-hidden="true">{({count:'🧾',sum:'💰',todaySum:'📅',todayCount:'📅',sumProduct:'📦',avg:'📈',countWhere:'✅'})[m.kind] || '📊'}</i>
             <div>
               <b>{computeMetric(m, rows)}</b>
               <span>{m.label}</span>
@@ -1351,8 +1358,10 @@ export default function RecordsApp({ content }) {
           <ul className="rows">
             {visible.map(row => {
               const done = statusField && content.doneValue && row[statusField.key] === content.doneValue;
+              //  His own threshold, in his own number — see content.lowStock.
+              const low = content.lowStock && Number(row[content.lowStock.field]) < Number(content.lowStock.below);
               return (
-                <li className={'row' + (done ? ' done' : '')} key={row.id}>
+                <li className={'row' + (done ? ' done' : '') + (low ? ' low' : '')} key={row.id}>
                   {imageField ? (
                     <img className="row-pic" loading="lazy"
                       src={imageOf(row, imageField.key, primary.key)}
@@ -2512,6 +2521,11 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--accent,#06c);out
   border:1px solid var(--border,#e5e5e5);border-radius:var(--radius,12px);padding:12px 14px;background:var(--bg,#fff)}
 .row.done{opacity:.62}
 .row.done h3{text-decoration:line-through}
+/*  A row under his threshold has to be seen from across the shop, and still
+    be readable: a red edge and a red-tinted ground, not red text on red.  */
+.row.low{border-color:#e5484d;background:color-mix(in srgb,#e5484d 8%,transparent)}
+.row.low h3{color:#b42318}
+@media (prefers-color-scheme:dark){.row.low h3{color:#ff9c9c}}
 .row-main{min-width:0;flex:1 1 260px}
 .row-open{cursor:pointer;border-radius:8px;padding:2px;transition:background .16s ease,outline-color .16s ease}
 .row-open:hover{background:var(--tint,#f6f6f6)}
@@ -4233,7 +4247,7 @@ export default function ShopApp({ content }) {
     <div className="wrap">
       <section className="stats" aria-label={${T('الأرقام', 'Numbers')}}>
         {content.metrics.map((m, i) => (
-          <div className="stat" key={i}><i className="stat-ico" aria-hidden="true">{({count:'🧾',sum:'💰',todaySum:'📅',todayCount:'📅',sumProduct:'📦',sumMargin:'📈',avg:'📈',countWhere:'✅'})[m.kind] || '📊'}</i><div><b>{computeMetric(m, products)}</b><span>{m.label}</span></div></div>
+          <div className="stat" key={i}><i className="stat-ico" aria-hidden="true">{({count:'🧾',sum:'💰',todaySum:'📅',todayCount:'📅',sumProduct:'📦',avg:'📈',countWhere:'✅'})[m.kind] || '📊'}</i><div><b>{computeMetric(m, products)}</b><span>{m.label}</span></div></div>
         ))}
         <div className="stat"><i className="stat-ico" aria-hidden="true">🛒</i><div><b>{count}</b><span>{${T('في السلة', 'In cart')}}</span></div></div>
       </section>
