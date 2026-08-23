@@ -128,10 +128,25 @@ const DELIVERY_TOPIC_RULES: Array<[DeliveryTopic, RegExp]> = [
     ['csv', /csv|export|download|تصدير|تنزيل/iu],
     ['api', /api|server|خادم|الخادم/iu],
 ];
+// Acceptance keys are generated identifiers, never words read from a user's domain.
+// Every criterion id must be present: a future criterion must fail loudly here
+// instead of silently becoming an unjudged delivery item.
 const ACCEPTANCE_TOPIC_IDS: Record<string, DeliveryTopic[]> = {
     search: ['search'],
     filter: ['filter'],
+    counter: ['computed'],
+    button: [],
+    title: [],
+    status_message: [],
+    add_row: ['crud'],
     export: ['csv'],
+    dashboard: [],
+    empty_state: [],
+    rtl: [],
+    readme: [],
+    production_build: [],
+    preview: [],
+    browser_check: [],
 };
 
 function deliveryTopics(value: string): DeliveryTopic[] {
@@ -163,11 +178,24 @@ export function reconcileDeliveryVoices(
     claimed: string[],
     declaredMissing: string[],
     metAcceptanceIds: string[] = [],
+    acceptanceIds: string[] = metAcceptanceIds,
 ): ReconciledDeliveryVoices {
-    const metTopics = new Set(metAcceptanceIds.flatMap(id => ACCEPTANCE_TOPIC_IDS[String(id)] || []));
-    const unjudged = declaredMissing.filter(item => deliveryTopics(item).some(topic => metTopics.has(topic)));
-    const unmet = declaredMissing.filter(item => !unjudged.includes(item));
-    const conflicts = deliveryVoiceOverlap(claimed, declaredMissing);
+    const idsToValidate = [...acceptanceIds, ...metAcceptanceIds].map(String);
+    const unmappedIds = [...new Set(idsToValidate.filter(id => !Object.prototype.hasOwnProperty.call(ACCEPTANCE_TOPIC_IDS, id)))];
+    if (unmappedIds.length) {
+        throw new Error(`delivery_acceptance_unmapped:${unmappedIds.join(',')}`);
+    }
+
+    const metTopics = new Set(metAcceptanceIds.flatMap(id => ACCEPTANCE_TOPIC_IDS[String(id)]));
+    const resolvedByAcceptance = declaredMissing.filter(item => deliveryTopics(item).some(topic => metTopics.has(topic)));
+    const hasMeasuredClaim = (item: string) => deliveryTopics(item).some(topic =>
+        metTopics.has(topic) && claimed.some(claim => deliveryTopics(claim).includes(topic)));
+    // A mapped, source-proven criterion resolves the weaker prose omission when
+    // the measured ability is present. If the criterion is met but no measured
+    // ability names that topic, we looked but cannot settle the two voices.
+    const unjudged = resolvedByAcceptance.filter(item => !hasMeasuredClaim(item));
+    const unmet = declaredMissing.filter(item => !resolvedByAcceptance.includes(item));
+    const conflicts = deliveryVoiceOverlap(claimed, unmet);
     const conflictTopics = new Set(conflicts);
     const abilities = claimed.filter(item => !deliveryTopics(item).some(topic => conflictTopics.has(topic)));
     return {
@@ -4347,6 +4375,11 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             ...(built ? [/react|واجهة/i] : []),
             ...(systemTables.length ? [/admin|portal|لوحة|بوابة/i] : []),
             ...(apiLink ? [/auth|login|sign[-\s]?in|jwt|تسجيل\s*دخول|مصادقة/i, /database|backend|قاعدة\s*بيانات|خادم/i] : []),
+            // Loading is a delivery claim only when this build has an async API
+            // read and the generated source actually exposes its state.
+            ...(apiLink && /(?:setLoading|\[loading[,\s]|loading\s*\?|role=["']status["'])/i.test(projectEvidence)
+                ? [/loading|تحميل|جارٍ/iu]
+                : []),
         ];
         const rawUnmet = appBp
             ? [...askedButMissing, ...spokenCapabilities,
@@ -4354,10 +4387,15 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 .filter(v => !deliveredRe.some(re => re.test(v)))
                 .filter((v, i, a) => a.indexOf(v) === i).slice(0, 24)
             : [];
+        const acceptanceIds = acceptance.criteria.map((c: any) => c.id);
+        const metAcceptanceIds = acceptance.criteria
+            .filter((c: any) => c.verdict === 'met')
+            .map((c: any) => c.id);
         const reconciledVoices = reconcileDeliveryVoices(
             appAbilities,
             rawUnmet,
-            acceptance.criteria.filter((c: any) => c.verdict === 'met').map((c: any) => c.id),
+            metAcceptanceIds,
+            acceptanceIds,
         );
         const reconciledAppAbilities = reconciledVoices.abilities;
         const unmet = reconciledVoices.unmet;

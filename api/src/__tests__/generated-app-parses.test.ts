@@ -126,6 +126,30 @@ const WeatherProvider: React.FC<WeatherProviderProps> = ({ children }) => {
         expect(silentAmount).not.toContain('minExclusive');
     });
 
+    it('emits an honest loading path only for a server-backed RecordsApp', () => {
+        const remote = buildAppFiles(
+            blueprintFor('expenses', 'Build a records app with loading and error states', false),
+            { isArabic: false, brand: 'Ledger', storeKey: 'ledger', api: 'http://localhost:4100/api/expenses' } as any,
+            'ledger',
+        );
+        const remoteRecords = remote['src/components/RecordsApp.jsx'];
+        expect(remoteRecords).toContain('const [loading, setLoading] = useState(() => !!content.api);');
+        expect(remoteRecords).toContain('if (!content.api) return undefined;');
+        expect(remoteRecords).toContain('const remote = await apiList(content.api);');
+        expect(remoteRecords).toContain('setLoading(false)');
+        expect(remoteRecords).toMatch(/loading \?/);
+        expect(remoteRecords).toContain('role="status"');
+
+        const local = buildAppFiles(
+            blueprintFor('expenses', 'Build a quiet local ledger with loading and error states', false),
+            { isArabic: false, brand: 'Local Ledger', storeKey: 'local-ledger', api: '' } as any,
+            'local-ledger',
+        );
+        const localRecords = local['src/components/RecordsApp.jsx'];
+        expect(localRecords).toContain('useState(() => !!content.api)');
+        expect(localRecords).toContain('if (!content.api) return undefined;');
+    });
+
     it('normalizes a proven React/Vite scaffold with a missing root index.html', () => {
         const result = normalizeReactScaffoldStructure({
             'package.json': JSON.stringify({

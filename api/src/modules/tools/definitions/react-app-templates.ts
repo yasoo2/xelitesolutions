@@ -991,6 +991,9 @@ export default function RecordsApp({ content }) {
   const parentStore = useMemo(() => createStore(content.storeKey + ':parents'), [content.storeKey]);
 
   const [rows, setRows] = useState(() => store.read());
+  // A local-only app has nothing asynchronous to wait for. A server-backed
+  // records app does, so expose that real read instead of inventing a spinner.
+  const [loading, setLoading] = useState(() => !!content.api);
   const [draft, setDraft] = useState(() => blank(fields));
   const [editing, setEditing] = useState('');
   const [selected, setSelected] = useState(null);
@@ -1027,16 +1030,22 @@ export default function RecordsApp({ content }) {
   // A backend, if this project has one. Silence on failure: the local rows
   // are the truth, and the badge only claims a server that really answered.
   useEffect(() => {
+    if (!content.api) return undefined;
     let alive = true;
+    setLoading(true);
     (async () => {
-      const remote = await apiList(content.api);
-      if (!alive || !remote) return;
-      setServer(true);
-      setRows(prev => {
-        const seen = new Set(prev.map(r => String(r.id)));
-        const extra = remote.filter(r => r && !seen.has(String(r.id)));
-        return extra.length ? [...extra.map(r => ({ ...r, id: String(r.id || uid()) })), ...prev] : prev;
-      });
+      try {
+        const remote = await apiList(content.api);
+        if (!alive || !remote) return;
+        setServer(true);
+        setRows(prev => {
+          const seen = new Set(prev.map(r => String(r.id)));
+          const extra = remote.filter(r => r && !seen.has(String(r.id)));
+          return extra.length ? [...extra.map(r => ({ ...r, id: String(r.id || uid()) })), ...prev] : prev;
+        });
+      } finally {
+        if (alive) setLoading(false);
+      }
     })();
     return () => { alive = false; };
   }, [content.api]);
@@ -1144,6 +1153,9 @@ export default function RecordsApp({ content }) {
 
   return (
     <div className="wrap">
+      {loading ? (
+        <p className="empty" role="status" aria-live="polite">{${T('جارٍ تحميل السجلات…', 'Loading records…')}}</p>
+      ) : null}
       <section className="stats" aria-label={${T('الأرقام', 'Numbers')}}>
         {content.metrics.map((m, i) => (
           <div className="stat" key={i}>

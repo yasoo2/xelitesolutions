@@ -11,10 +11,22 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { readDeclaredOptions, blueprintFor, violatesFieldConstraint } from '../core/design/app-blueprints';
+import { readDeclaredOptions, blueprintFor, detectAppKind, violatesFieldConstraint } from '../core/design/app-blueprints';
 
 const SRC = path.join(__dirname, '..');
 const read = (...p: string[]) => fs.readFileSync(path.join(SRC, ...p), 'utf-8');
+
+describe('classification follows request shape, not a domain-noun catalogue', () => {
+    it('an unseen nonsense domain keeps the same management shape on the generic records engine', () => {
+        const knownShape = 'ابنِ تطبيقاً لإدارة العملاء مع بحث وتصفية وإجمالي';
+        const unseenShape = 'ابنِ تطبيقاً لإدارة Zanbqa مع بحث وتصفية وإجمالي';
+        expect(detectAppKind(knownShape)).toBe('crm');
+        expect(detectAppKind(unseenShape)).toBe('generic');
+        const bp = blueprintFor('generic', unseenShape, false);
+        expect(bp.engine).toBe('records');
+        expect(bp.fields.length).toBeGreaterThan(0);
+    });
+});
 
 describe('the declared categories are read from the request', () => {
     it('Arabic, colon-separated', () => {

@@ -1116,3 +1116,16 @@ POS-2026-08-23-VALIDATION-PUSHED: `22f6f815917e0b629776a87391cae04a2cbc1a8f`; `H
 | 036-LIVE-DIAGNOSIS | عدم صدق/اكتمال delivery في الجولة الحية `b57e4523` | **مفتوح؛ ينتظر قرار Claude** | raw `5385865179` ثم diagnosis `5385893820`. المصدر المولّد يثبت search وrow-derived total وnumeric guard، لكن reconciliation أسكت claims بسبب غياب `counter -> computed` في `ACCEPTANCE_TOPIC_IDS`، بينما loading state غير موجود فعلاً في RecordsApp. QA سجل overflow متوسطاً وheading hierarchy منخفضة. لا production patch ولا acceptance قبل قرار Claude. |
 | Prompt 01 — SpendWise | قبول حي بعد fixture/diagnosis | **مفتوح؛ لا انتقال إلى Prompt 02** | لا direct UI test بعد delivery الأخيرة، ولا قبول من phase count/QA/preview. ينتظر قرار Claude على diagnosis، ثم يلزم fresh pair وNew Chat وdirect acceptance كاملة. |
 `POS-2026-08-23-PROMPT-FIXTURE`: fixture exact، focused 80/80، TSC=0، full `229/3752/20/20 GATE:PASS`; source files unchanged in this sub-step; no generated artifacts/package/lock/WeatherGo edits; Prompt 01 remains open.
+
+## سجل إصلاح 037-DELIVERY-RECONCILIATION-LOADING — 2026-08-23
+
+| المعرّف | المهمة | الحالة | الدليل ومعيار الإغلاق |
+|---|---|---|---|
+| 037-DELIVERY-RECONCILIATION | منع delivery reconciliation من إسكات claims مثبتة، وإجبار كل acceptance id على mapping معروف | **منفذ محلياً؛ full gate والدفع والجولة الحية ما زالت مطلوبة** | وفق قرار Claude `5386007757`/`5386047609`، أضيف `counter → computed` بهوية generated identifiers، وصار أي id غير معروف يفشل برسالة `delivery_acceptance_unmapped:<id>`؛ source-backed search وrow-total يبقيان positive، وUNJUDGED محفوظ للغموض الحقيقي فقط. regressions focused خضراء؛ لا domain catalogue. |
+| 037-RECORDS-LOADING | loading state عامة في RecordsApp حول optional API read | **منفذ محلياً؛ full gate والدفع والجولة الحية ما زالت مطلوبة** | يظهر `role=status` فقط عندما يوجد `content.api` وasync `apiList`، ويُغلق في `finally`؛ local-only app لا يبدأ loading مصطنعاً. generated-app regression خضراء؛ numeric bounds وlocalStorage/search/totals/CRUD لم تُزل. |
+| 037-TEST-DEBT | تحويل browser-audit test من brace/newline source assertion إلى behavioral `formatAudit` | **منفذ محلياً؛ full gate والدفع مطلوبان** | skipped audit يخرج warning عربياً/إنجليزياً بلا score؛ بقي دين `A-TEST-THAT-READS-SOURCE-INSTEAD-OF-BEHAVIOUR` فقط لأي source assertions لا يزال الوصول السلوكي إليها صعباً. |
+| 037-NONSENSE-CONTROL | unseen/nonsense-domain control عام | **أخضر محلياً؛ full gate والدفع مطلوبان** | طلبا إدارة متشابهان مع `Zanbqa` مقابل noun معروف؛ التصنيف يتجه إلى generic records دون domain-noun catalogue. |
+| PR82-037 | تنفيذ قرار Claude 037 | **القرار مُقرّ؛ التنفيذ المحلي مكتمل؛ الدفع قيد الشروط** | acknowledgment منشور في `5386047609` وبداية التنفيذ في `5386067978`؛ قبل الدفع يلزم focused، API TSC، full gate، listener، ثم push سريع إلى `main`. |
+| Prompt 01 — SpendWise | إعادة اختبار Joe المرئي بعد دفعة 037 | **مفتوح؛ لا انتقال إلى Prompt 02/W50** | لا reuse للـartifact `67053d21`. بعد SHA مدفوع أبني pair معزولاً جديداً، New Chat، prompt fixture exact، ثم direct acceptance كاملة؛ QA overflow/heading يبقيان خارج هذه الدفعة. |
+
+`POS-2026-08-23-037-LOCAL`: Claude 037 approved with amendment; focused = 4 suites / 111 tests / PASS; API TSC = 0; full gate, main push, fresh isolated Joe rerun, and direct Prompt 01 acceptance remain pending; no generated artifacts/package/lock/WeatherGo edits.

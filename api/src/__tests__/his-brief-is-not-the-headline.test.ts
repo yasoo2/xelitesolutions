@@ -21,10 +21,10 @@
 import fs from 'fs';
 import path from 'path';
 import { subjectPhrase, isInstructionClause, saysNoInstall } from '../core/design/subject-phrase';
+import { formatAudit } from '../core/quality/app-audit';
 
 const read = (...p: string[]) => fs.readFileSync(path.join(__dirname, '..', ...p), 'utf-8');
 const REACT = read('modules', 'tools', 'definitions', 'ReactProjectTool.ts');
-const AUDIT = read('core', 'quality', 'app-audit.ts');
 
 /** The brief, verbatim, as it was sent. */
 const BRIEF = [
@@ -136,13 +136,15 @@ describe('nothing is claimed that is not running', () => {
     });
 
     it('and a browser audit that never ran reads as a warning, not a footnote', () => {
-        expect(AUDIT).toMatch(/⚠️ لم أفحص الصفحة بصرياً/);
-        expect(AUDIT).toMatch(/This page was NOT visually checked/);
+        const skipped = { skipped: 'chromium_missing', score: 0, findings: [] };
+        const ar = formatAudit(skipped, true);
+        const en = formatAudit(skipped, false);
+        expect(ar).toContain('⚠️ لم أفحص الصفحة بصرياً');
+        expect(en).toContain('This page was NOT visually checked');
         // With the reason and the one command that fixes it.
-        expect(AUDIT).toMatch(/npx playwright install chromium/);
-        // The old text survives only inside the comment that explains why it
-        // went — so the check is on what the branch RETURNS, not on the file.
-        expect(AUDIT).not.toMatch(/return isAr \? `🔎 فحص الجودة الذاتي: تخطيته/);
-        expect(AUDIT).toMatch(/if \(a\.skipped\) \{\n\s+return isAr/);
+        expect(ar).toContain('npx playwright install chromium');
+        expect(en).toContain('npx playwright install chromium');
+        expect(ar).not.toContain('100/100');
+        expect(en).not.toContain('100/100');
     });
 });

@@ -109,13 +109,41 @@ describe('delivery voices cannot contradict one another', () => {
         expect(deliveryVoiceOverlap(claimed, missing)).toEqual(expect.arrayContaining(['crud', 'search', 'sort', 'storage', 'csv']));
     });
 
-    it('keeps disagreement as UNJUDGED instead of deleting it or calling it built', () => {
+    it('keeps unrelated disagreement unmet while resolving mapped delivery contradictions', () => {
         const reconciled = reconcileDeliveryVoices(claimed, missing, ['search', 'export']);
         expect(reconciled.unmet).toEqual(['edit', 'sorting', 'durable storage']);
-        expect(reconciled.unjudged).toEqual(expect.arrayContaining(['search', 'CSV export']));
+        expect(reconciled.unjudged).toEqual([]);
         expect(reconciled.abilities).toEqual([]);
         expect(deliveryVoiceOverlap(reconciled.abilities, [...reconciled.unmet, ...reconciled.unjudged])).toEqual([]);
         expect(reconciled.conflicts).toEqual(expect.arrayContaining(['crud', 'sort', 'storage']));
+    });
+
+    it('keeps source-backed search and row totals positive in the delivery voice', () => {
+        const sourceClaims = [
+            'instant search, filter and sort',
+            'numbers computed from YOUR rows',
+        ];
+        const reconciled = reconcileDeliveryVoices(
+            sourceClaims,
+            ['text search', 'a running total that updates from the actual rows'],
+            ['search', 'counter'],
+            ['search', 'counter'],
+        );
+        expect(reconciled.abilities).toEqual(sourceClaims);
+        expect(reconciled.unmet).toEqual([]);
+        expect(reconciled.unjudged).toEqual([]);
+        expect(reconciled.conflicts).toEqual([]);
+    });
+
+    it('uses UNJUDGED only when a mapped criterion has no measured delivery claim', () => {
+        const reconciled = reconcileDeliveryVoices([], ['text search'], ['search'], ['search']);
+        expect(reconciled.unjudged).toEqual(['text search']);
+        expect(reconciled.unmet).toEqual([]);
+    });
+
+    it('fails loudly by name when a criterion has no delivery mapping', () => {
+        expect(() => reconcileDeliveryVoices([], [], [], ['future_criterion']))
+            .toThrow(/delivery_acceptance_unmapped:future_criterion/);
     });
 });
 
