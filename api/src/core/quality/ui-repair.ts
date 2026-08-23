@@ -602,6 +602,54 @@ ${rules.join('\n')}
     };
 }
 
+/**
+ * Give the page a heading that is actually a heading.
+ *
+ * The audit's `flat_hierarchy`: «Largest heading 17px against 14px body
+ * (ratio 1.21) — no visual hierarchy». Below about 1.5 nothing on the page
+ * announces itself; everything shouts equally.
+ *
+ * He watched that exact line survive build after build at 97/100, and no
+ * repair existed for it — `type_scale_drift` pulls STRAY sizes back onto the
+ * scale, which is a different defect with a similar smell. I said otherwise
+ * in a comment before I had read it; this is the correction, in code.
+ *
+ * The fix is arithmetic on his own numbers: raise the heading to the first
+ * step of the page's scale that clears the ratio, and escalate with the round
+ * — 1.5, then 1.75, then 2.0 — because a round that repeats itself is not a
+ * round.
+ */
+export function repairFlatHierarchy(css: string, evidence: any[], round = 1): RepairedFile {
+    const text = String(css || '');
+    const m = (Array.isArray(evidence) ? evidence : []).find(x => x && Number(x.bodyPx) > 0 && Number(x.headingPx) > 0);
+    if (!m) return { text, repairs: [] };
+    const marker = 'إصلاح جو: تسلسل العناوين';
+    if (text.includes(marker)) return { text, repairs: [] };
+
+    const body = Number(m.bodyPx);
+    const want = [1.5, 1.75, 2][Math.min(2, Math.max(0, round - 1))];
+    const STEPS = [13, 15, 16, 18, 22, 28, 36, 48, 64];
+    const target = STEPS.find(px => px / body >= want) || Math.round(body * want);
+    if (target <= Number(m.headingPx)) return { text, repairs: [] };
+
+    return {
+        text: `${text}
+/* ── ${marker} ─────────────────────────────────────────────
+   ${m.headingPx}px على ${body}px = ${(Number(m.headingPx) / body).toFixed(2)} — لا تسلسل.
+   العنوان يرتفع إلى ${target}px، أي ${(target / body).toFixed(2)}. */
+h1 { font-size: ${target}px; line-height: 1.15; }
+h2 { font-size: ${Math.max(body + 2, Math.round(target * 0.78))}px; line-height: 1.2; }
+`,
+        repairs: [{
+            id: 'flat_hierarchy',
+            detail: `رفعتُ العنوان من ${m.headingPx}px إلى ${target}px ليصير هناك تسلسل`,
+            detailEn: `Raised the heading from ${m.headingPx}px to ${target}px so there is a hierarchy`,
+            count: 1,
+        }],
+    };
+}
+
+
 /* ── the whole project, in one pass ──────────────────────────────────────── */
 
 export interface ProjectRepairPlan {
@@ -656,7 +704,8 @@ export function repairFormValidation(code: string): RepairedFile {
  *  The gate that decides whether to repair kept its OWN hand-written list of
  *  thirteen ids in self-repair.ts. This file answers eighteen. Eight fixes
  *  were written, tested and reachable — and refused at the door, including
- *  `type_scale_drift`, which is that heading finding by name.
+ *  among them `flat_hierarchy` — «no visual hierarchy» — which had no
+ *  repair at all until this file grew one.
  *
  *  Two lists for one question, and the stale one was in charge. The list
  *  belongs where the fixes are, so adding a fix cannot forget to open the
@@ -666,7 +715,7 @@ export const REPAIRS_THIS_FILE_CAN_MAKE: ReadonlySet<string> = new Set([
     'contrast', 'low_contrast',
     'small_targets', 'tap_targets', 'mobile_tap_targets',
     'mobile_overflow', 'responsive',
-    'line_too_long', 'type_scale_drift',
+    'line_too_long', 'type_scale_drift', 'flat_hierarchy',
 ]);
 
 
@@ -753,6 +802,10 @@ export function repairProjectFiles(
                 // …and the design counts that have a deterministic answer.
                 (t: string) => repairMeasure(t, evidenceFor('line_too_long')),
                 (t: string) => repairTypeScale(t, evidenceFor('type_scale_drift')),
+                //  …and the heading that never became one. Round-aware: 1.5, then
+                //  1.75, then 2.0 — a second round that repeats the first is not a
+                //  round, and the loop would rightly roll it back.
+                (t: string) => repairFlatHierarchy(t, evidenceFor('flat_hierarchy'), round),
             ];
             for (const fix of surgical) {
                 const r = fix(text);
