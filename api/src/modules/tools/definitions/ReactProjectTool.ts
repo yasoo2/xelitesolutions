@@ -23,7 +23,7 @@ import { ToolPermission, ToolExecutionResult } from '../types';
 import { buildPalette, paletteCss, darkTokenBlock, lightTokenBlock } from '../../../core/design/design-system';
 import { brandFrom, brandFallback } from '../../../core/design/page-head';
 import { detectPageKind, type PageKind } from '../../../core/design/blueprints';
-import { detectAppKind, blueprintFor, uncoveredFeatures, type AppBlueprint } from '../../../core/design/app-blueprints';
+import { applyRequestFieldConstraints, detectAppKind, blueprintFor, uncoveredFeatures, type AppBlueprint } from '../../../core/design/app-blueprints';
 import { acceptanceFor as acceptanceCriteriaFor } from '../../../core/quality/acceptance';
 import { buildAppFiles, fileAppCss } from './react-app-templates';
 import { familyFor, familyCss, familyFonts, FAMILY_LABEL_AR, type DesignFamily } from '../../../core/design/families';
@@ -3226,7 +3226,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 const lead = tableModel[0];
                 const derived = blueprintFromEntity(effectiveBp, lead, isAr);
                 if (derived !== effectiveBp) {
-                    runBp = derived;
+                    runBp = applyRequestFieldConstraints(derived, request);
                     appApi = apiFor(apiLink, lead.key) || apiLink;
                     adminModel = tableModel.slice(1);          // never the same table twice
                     term(`application: managing «${lead.key}» itself — ${derived.fields.map((f: any) => f.key).join(', ')}`);
