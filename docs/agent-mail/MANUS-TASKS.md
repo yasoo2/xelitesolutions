@@ -1096,3 +1096,15 @@ POS-2026-08-23-W50: 0/50 closed; sequential rule preserved
 `POS-2026-08-23-VALIDATION`: red control قبل الإصلاح `17 passed + 1 failed / 18 total`; focused بعد الإصلاح `3 suites / 80 tests`; API `tsc=0`; full `229 suites / 3750 tests / 20 of 20 batches / GATE:PASS`; changed files: `app-blueprints.ts`, `ReactProjectTool.ts`, `react-app-templates.ts`, `the-request-shapes-the-data.test.ts`, `generated-app-parses.test.ts`, `MANUS-TASKS.md`; no package/lock/generated artifacts/WeatherGo edits.
 
 POS-2026-08-23-VALIDATION-PUSHED: `22f6f815917e0b629776a87391cae04a2cbc1a8f`; `HEAD == origin/main` بعد الدفع؛ Prompt 01 لا يزال مفتوحاً حتى rerun Joe المباشر.
+
+
+## سجل إصلاح 035-PRIMARY-HANDOFF — 2026-08-23
+
+| المعرّف | المهمة | الحالة | الدليل ومعيار الإغلاق |
+|---|---|---|---|
+| 035-PRIMARY-HANDOFF | منع ReactProjectTool من إسقاط primary resource إلى generic بسبب أن `builtKeys` كانت تقرأ child model فقط | **منفذ محلياً؛ focused وTSC وfull gate خضراء؛ الدفع وإعادة الجولة الحية مطلوبان** | وفق قرار Claude 295 `5385751995`، أصلحت `ReactProjectTool.ts:3184` بإضافة `prevEntry.resource` إلى المجموعة نفسها بلا branch حسب kind أو catalogue. `api-project.test.ts` = 33/33، focused validation = 80/80، API `tsc=0`، full = 229 suites/3752 tests/20 batches/`GATE:PASS`. Prompt 01 handoff وuncatalogued clinic regressions أخضرا؛ لا قبول حي بعد. |
+| 035-PRIMARY-HANDOFF-REGRESSION | إثبات الإصلاح على class لا instance | **أخضر محلياً** | `api-project.test.ts`: `33/33`؛ linked Prompt 01 يحافظ على `expenses/title/amount/category/date/note` ويرفض `price/quantity` في generated content، وbrief عيادة مشتق يحافظ على `patients/name/phone/email/notes` ويرفض fallback fields. |
+| A-GENERIC-FALLBACK-IS-STILL-A-CATALOGUE | إزالة fallback `descriptions`/`price`/`quantity` المعلّب الذي يُسمّى generic | **دين مفتوح مؤجل؛ لا يُصلح في هذه الدفعة** | سجّله Claude 295 في `5385751995`: fallback الحالي ما زال جواباً محفوظاً لا قراءةً للطلب. لا يُعتبر أخضر لمجرد أن primary demotion أُصلح؛ يحتاج استشارة ونطاقاً واختبارات مستقلّة بعد إغلاق Prompt 01. |
+| Prompt 01 — SpendWise | إعادة اختبار Joe المرئي بعد primary handoff repair | **مفتوح؛ لا انتقال إلى Prompt 02** | لا reuse للمشروع المعيب. بعد gate/push أبني pair جديداً من SHA المطابق، أرسل `/tmp/joe-prompt-01.md` في New Chat مرئي، ثم أختبر السلوك مباشرة؛ لا acceptance من phase count أو QA أو preview وحدها. |
+
+`POS-2026-08-23-PRIMARY-HANDOFF`: Claude approved formulation (b) `5385751995`; source `ReactProjectTool.ts`; `api-project.test.ts` = 33/33; focused validation = 80/80; API `tsc=0`; full = 229 suites/3752 tests/20 of 20 batches/`GATE:PASS`; push and fresh live rerun pending; no package/lock/generated artifacts/WeatherGo edits.

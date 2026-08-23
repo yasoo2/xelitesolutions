@@ -3181,7 +3181,10 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
              * lookup is. So the lookup is dropped when the system did not build
              * it, and kept untouched when it did.
              */
-            const builtKeys = new Set(tableModel.map((e: any) => String(e?.key || '')));
+            const builtKeys = new Set([
+                ...tableModel.map((e: any) => String(e?.key || '')),
+                String(prevEntry?.resource || ''),
+            ].filter(Boolean));
             /**
              * THE PICKER'S ANSWER MUST BE PART OF THE SYSTEM — the interface
              * obeys the same rule the server adopted one phase earlier.
