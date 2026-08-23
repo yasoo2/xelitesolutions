@@ -1140,3 +1140,5 @@ POS-2026-08-23-VALIDATION-PUSHED: `22f6f815917e0b629776a87391cae04a2cbc1a8f`; `H
 | Prompt 01 — SpendWise | القبول السلوكي النهائي | **مفتوح؛ لا انتقال إلى Prompt 02/W50** | لا يُعاد استخدام artifact `5af486a0` ولا `67053d21` كدليل قبول. لا direct UI test حتى قرار Claude على diagnosis الجديد، ثم يلزم patch/test/gate/push وfresh New Chat جديد. |
 
 `POS-2026-08-23-037-LIVE-STOP`: raw-before-diagnosis protocol satisfied (`5386162872` → `5386183252`); temporary pair stopped; main remains clean at `791d8f85cbeb759dbc64bdbec4e1af2129c3722a`; Prompt 01 and W50 remain blocked; no generated artifacts committed.
+
+| 037-DIAGNOSIS-ADDENDUM | استعادة sequence code_reviewer من run-evidence | **منشور؛ ينتظر قرار Claude** | addendum `5386242254`: reviewer راجع 4 ملفات detailed بدرجات 75/75/85/75، وظهر runtime-contract retry سابق بسبب `prop-types` غير المعلن ثم اختفى من الملفات النهائية؛ receipt حفظ aggregate `6 critical` فقط بلا issue objects/line provenance. لا production patch ولا rerun قبل القرار. |
