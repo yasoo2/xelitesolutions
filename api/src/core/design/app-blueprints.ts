@@ -339,6 +339,36 @@ export function detectAppKind(requestRaw: string): AppKind | null {
     // application that owns records. It gets the records engine with an entity
     // named after the request itself.
     if (APP_SIGNAL.test(intentRequest) && MANAGE_SIGNAL.test(intentRequest)) return 'generic';
+    /**
+     * WHAT THE PAGE MUST DO OUTRANKS WHAT THE USER CALLED IT.
+     *
+     * Measured live, from a request the owner typed himself:
+     *
+     *     «بدي صفحة أسجل فيها كل قطعة: اسمها ورقمها والكمية وسعر الشراء وسعر
+     *      البيع … وبدي أبحث عن القطعة … وبدي يطلع لي تحت مجموع رأس المال»
+     *
+     * Five named fields, a search, two totals, a stock rule. `detectAppKind`
+     * returned null, because the only door left open here demanded the words
+     * «نظام» or «تطبيق» beside «إدارة» — and he had written «صفحة أسجل فيها».
+     * With no kind, the builder fell through to the marketing scaffold and
+     * shipped him a storefront: Hero, Gallery, Testimonials, FAQ, «تسوق الآن».
+     * Nothing he asked for existed, and the acceptance ledger proved exactly
+     * one of his requirements.
+     *
+     * A category noun is a label. Recording rows, searching them and totalling
+     * them is WORK, and work is the stronger evidence. So a request that
+     * describes the work gets the records engine even when it never names an
+     * application — held to two independent signals, so that «سجّل دخولي» and
+     * «صفحة تعريفية» stay outside.
+     */
+    const RECORD_VERB = /(أسجل|اسجل|سجّل|أضيف|اضيف|أدخل|ادخل|احفظ|أحفظ|أدوّن|ادون|\brecord\b|\blog\b|\btrack\b|\benter\b)/i;
+    const RECORD_SURFACE = /(جدول|قائمة|قائمه|لائحة|كشف|\btable\b|\blist\b|\bregister\b|\bsheet\b|\binventory\b|مخزون)/i;
+    const RECORD_MATH = /(مجموع|إجمالي|اجمالي|ربح|\btotal\b|\bsum\b|\bprofit\b)/i;
+    const RECORD_FIND = /(أبحث|ابحث|بحث|فلتر|تصفية|\bsearch\b|\bfilter\b)/i;
+    if (RECORD_VERB.test(intentRequest)
+        && (RECORD_SURFACE.test(intentRequest) || RECORD_MATH.test(intentRequest) || RECORD_FIND.test(intentRequest))) {
+        return 'generic';
+    }
     return null;
 }
 
