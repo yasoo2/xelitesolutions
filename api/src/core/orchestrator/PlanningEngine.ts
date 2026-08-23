@@ -208,8 +208,8 @@ export class PlanningEngine {
              */
             || /(?:^|[\s،:؛])(?:بدي|بدى|ودي|ابغي|ابغى|اريد|عايز|عاوز|محتاج|نبي)(?:\s+\S+){0,2}\s+\S*(?:موقع|صفح|تطبيق|متجر|نظام|منص|لوح|واجه|اداه|برنامج|بوابه|خدمه|جدول|قائم)/.test(bare)
             || /\b(?:i\s+(?:want|need)|can\s+you\s+(?:make|build|create)|could\s+you\s+(?:make|build|create)|please\s+(?:make|build|create))\b(?:\s+\S+){0,3}\s+(?:a|an|the|my)?\s*\S*(?:site|website|page|app|application|system|dashboard|panel|store|shop|portal|tool|tracker|table|list)/i.test(g);
-        const noun = /\b(platform|marketplace|storefront|e-?commerce|site|website|page|app|application|software|system|dashboard|panel|console|admin|store|shop|portal|api|backend|tool|service|saas|crm|erp|pos|blog|editor|tracker|game)\b/i.test(g)
-            || /(موقع|صفحة|تطبيق|متجر|نظام|منصّ?ة|لوحة|واجهة|أداة|اداة|برنامج|بوابة|خدمة)/.test(bare);
+        const noun = /\b(platform|marketplace|storefront|e-?commerce|site|website|page|app|application|software|system|dashboard|panel|console|admin|store|shop|portal|api|backend|tool|service|saas|crm|erp|pos|blog|editor|tracker|game|table|spreadsheet|list|ledger|register)\b/i.test(g)
+            || /(موقع|صفحة|تطبيق|متجر|نظام|منصّ?ة|لوحة|واجهة|أداة|اداة|برنامج|بوابة|خدمة|جدول|قائمة|كشف)/.test(bare);
         return verb && noun;
     }
 
@@ -1756,7 +1756,30 @@ Rules:
             // «رسائل» alone sent a question about his own site to Google — and
             // the answer was a request to connect an account he never named.
             const siteInbox = SITE_INBOX.test(probe);
-            if ((gmailRead || calList || driveList || sendMail) && !(hasUrl && loginToSite) && !emailCompound && !pageInteraction && !siteInbox) {
+            //  A REQUEST TO BUILD IS NOT A REQUEST TO READ HIS GOOGLE ACCOUNT.
+            //
+            //  Measured live on the owner's machine. He wrote:
+            //
+            //      «عندي عيادة أسنان. بدي جدول أسجل فيه المواعيد: اسم المريض ورقم
+            //       تلفونه ووقت الموعد ونوع العلاج والمبلغ المدفوع …»
+            //
+            //  «مواعيد» matched the calendar verb, and two hundred characters of
+            //  brief — five columns, a search, a total — were replaced by one
+            //  line: «لم يتم ربط حساب Google بعد». Nothing was built, and he was
+            //  sent to a door his own order had frozen shut.
+            //
+            //  «مواعيد» there is the NOUN OF WHAT HE RECORDS, not an instruction
+            //  to open a calendar. The contract names this class and prescribes
+            //  the cure: «اشترط سياقاً». So the account verbs need to be about
+            //  HIS account — «تقويمي», «من جوجل», «افتح التقويم» — and a request
+            //  that describes something to build never routes here at all.
+            const buildsSomething = PlanningEngine.looksLikeBuild(userGoal);
+            const googleOwned = /(تقويمي|بريدي|ايميلي|إيميلي|درايفي|حسابي|من\s*(?:جوجل|قوقل|google)|في\s*(?:جوجل|قوقل|google)|my\s+(?:calendar|inbox|drive|mail)|\bgoogle\b)/iu.test(probe);
+            const googleImperative = /(افتح|اعرض|أعرض|هات|جيب|شوف|check|open|show|list|read)/iu.test(probe);
+            if ((gmailRead || calList || driveList || sendMail)
+                && !buildsSomething
+                && (sendMail || googleOwned || googleImperative)
+                && !(hasUrl && loginToSite) && !emailCompound && !pageInteraction && !siteInbox) {
                 const action = sendMail ? 'gmail_send' : calList ? 'calendar_list' : driveList ? 'drive_list' : 'gmail_list';
                 const input: any = { action, request: intent.goal };
                 if (action === 'gmail_list') { const q = g.match(/(?:عن|من|بخصوص|about|from)\s+(.+)$/i); if (q) input.query = q[1].trim(); }
