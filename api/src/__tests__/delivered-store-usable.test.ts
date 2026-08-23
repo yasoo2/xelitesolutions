@@ -29,15 +29,35 @@ const TPL = () => fs.readFileSync(
     path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'react-app-templates.ts'), 'utf-8');
 
 describe('the interface speaks the user\'s language, not the prompt\'s', () => {
-    it('the React builder asks the session, not the sentence', () => {
-        const src = REACT();
-        expect(src).toMatch(/const uiLang = String\(context\?\.language \|\| ''\)\.toLowerCase\(\);/);
-        expect(src).toMatch(/const isAr = uiLang \? uiLang\.startsWith\('ar'\) : \/\[؀-ۿ\]\/\.test\(request\);/);
+    it('the React builder consumes the shared interface language', () => {
+        expect(REACT()).toContain('replyLanguageCode');
     });
 
     it('and so does the API builder — one rule, both halves of a system', () => {
-        expect(API()).toMatch(/const isAr = uiLang \? uiLang\.startsWith\('ar'\) : \/\[؀-ۿ\]\/\.test\(request\);/);
+        expect(API()).toContain('replyLanguageCode');
     });
+
+    it('the real React builder reports both language decisions in its classification line', async () => {
+        const { ReactProjectTool } = require('../modules/tools/definitions/ReactProjectTool');
+        const request = 'ابنِ صفحة لمقهى';
+        const run = async (label: string, language?: string) => {
+            const root = fs.mkdtempSync(path.join(require('os').tmpdir(), `joe-language-${label}-`));
+            const sessionId = `delivered-language-${label}-${Date.now()}`;
+            try {
+                const result: any = await new ReactProjectTool().execute(
+                    { request, skipInstall: true, root },
+                    { sessionId, ...(language ? { language } : {}) },
+                );
+                expect(result.ok).toBe(true);
+                return (result.logs || []).find((line: string) => line.includes('template classification:')) || '';
+            } finally {
+                fs.rmSync(root, { recursive: true, force: true });
+                delete (global as any).joeProjects?.[sessionId];
+            }
+        };
+        expect(await run('english-ui', 'en')).toContain('lang=en (ui=en)');
+        expect(await run('no-ui')).toContain('lang=ar (ui=absent)');
+    }, 120000);
 
     it('the prompt\'s script still decides when the session says nothing', () => {
         // The fallback is intact: a fresh call with no language context keeps
