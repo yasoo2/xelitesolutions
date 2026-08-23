@@ -172,14 +172,14 @@
     font-size: 13.5px;
     font-weight: 650;
     color: var(--joe-text-primary);
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; unicode-bidi: plaintext; white-space: nowrap;
 }
 .joe-user-menu-email {
     font-size: 11px;
     color: var(--joe-text-muted);
     direction: ltr;
     text-align: end;
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; unicode-bidi: plaintext; white-space: nowrap;
 }
 .joe-user-menu-item {
     display: flex;
@@ -406,7 +406,7 @@ body:not(.rtl) .joe-user-info {
     line-height: 1.2;
     max-width: 180px;
     overflow: hidden;
-    text-overflow: ellipsis;
+    text-overflow: ellipsis; unicode-bidi: plaintext;
     white-space: nowrap;
 }
 
@@ -424,7 +424,7 @@ body:not(.rtl) .joe-user-info {
     line-height: 1.2;
     max-width: 150px;
     overflow: hidden;
-    text-overflow: ellipsis;
+    text-overflow: ellipsis; unicode-bidi: plaintext;
     white-space: nowrap;
     direction: ltr;
     unicode-bidi: plaintext;
@@ -2370,7 +2370,7 @@ body:not(.rtl) .joe-user-info {
     margin-top: 2px;
     white-space: nowrap;
     overflow: hidden;
-    text-overflow: ellipsis;
+    text-overflow: ellipsis; unicode-bidi: plaintext;
 }
 
 .stg-nav-arrow {
@@ -3173,7 +3173,7 @@ body:not(.rtl) .joe-user-info {
     -webkit-text-fill-color: currentColor;
     white-space: nowrap;
     overflow: hidden;
-    text-overflow: ellipsis;
+    text-overflow: ellipsis; unicode-bidi: plaintext;
 }
 
 .onboarding-modal .onboarding-card-desc {
@@ -3982,4 +3982,42 @@ body:not(.rtl) .joe-user-info {
 :fullscreen .browser-quality-popover {
     left: 18px;
     bottom: 56px;
+}
+
+/* ============================================================
+   A LABEL IS CUT FROM ITS OWN END
+
+   Measured on his screen with the interface in Arabic, reading the
+   session tabs straight off the pixels:
+
+       before:  «...انات الزبانن»   «...واعيد العيادة»   «... اليوم»
+       after:   «إدارة بيانات...»   «جدول مواعيد...»     «طقس ...»
+
+   Every Arabic name was being truncated from its BEGINNING, so he could
+   not read the name of a single one of his own sessions — only their
+   tails. His words: «الواجهه كلها تميل الى اليمين».
+
+   THE CAUSE, and it is a decision this repository made on purpose:
+   i18n.ts keeps `document.documentElement.dir = ltr` in every language,
+   because flipping the whole IDE chrome breaks the editor, the terminal
+   and the browser panes. That decision is sound. What it never carried
+   was its consequence — it toggles a `body.rtl` class, and a grep of
+   every stylesheet in this project found exactly ONE rule that mentions
+   that class, and it is a `:not(.rtl)`. The hook was added and never
+   used, so Arabic text lived inside boxes that were laid out for
+   English and truncated as if it were English.
+
+   `unicode-bidi: plaintext` is the cure and it is not a flip: it tells
+   the element to take its direction from ITS OWN first strong character
+   — Arabic text reads right to left inside the box, English text is
+   untouched, and the ellipsis lands at the end of whichever it holds.
+   The chrome around it stays exactly where it was.
+
+   The attribute selector is deliberate. Nineteen labels in twelve React
+   files declare this truncation inline, and one rule here reaches all of
+   them and every one written after today — where nineteen `dir="auto"`
+   attributes would be nineteen chances to forget the twentieth.
+   ============================================================ */
+[style*="ellipsis"] {
+    unicode-bidi: plaintext;
 }

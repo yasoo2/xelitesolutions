@@ -65,6 +65,11 @@ export default function NeuralThinkingIndicator({ phase = 'analyzing', visible, 
   const [now, setNow] = useState(() => Date.now());
   const bottomRef = useRef<HTMLDivElement>(null);
   const activeSessionRef = useRef(sessionId);
+  //  The detail line that is on its way out. Held in a ref and written in
+  //  an effect — never in the render body, because React can render twice
+  //  before it commits and the second pass would set the outgoing line to
+  //  the incoming one, rolling the same words up against themselves.
+  const leavingRef = useRef('');
   useEffect(() => { activeSessionRef.current = sessionId; }, [sessionId]);
 
   useEffect(() => {
@@ -112,14 +117,36 @@ export default function NeuralThinkingIndicator({ phase = 'analyzing', visible, 
     };
   }, [steps, now, sessionId]);
 
+  /**
+   *  TWO FACTS ON THE LINE, NOT ONE.
+   *
+   *  «وقت التفكير يكون جو يفكر وقت التخطيط جو يخطط» — his words, and the
+   *  card did not do it. The phase was shown only until the first step
+   *  arrived; after that the step text took the line for the rest of the
+   *  run, so a minute and a half could pass with nothing on screen naming
+   *  the phase he was in.
+   *
+   *  Now the phase holds its own place and stays. It is `t(phaseNow.key)`,
+   *  which resolves through i18n — «جو يخطّط», «Joe is planning», and the
+   *  four other languages already in i18n.ts. Not one string in this
+   *  component is written in a single language.
+   *
+   *  Computed above the early return, with its effect, because a hook
+   *  placed after `if (!visible) return null` is a hook that sometimes
+   *  does not run.
+   */
+  const phaseNow = phaseLabels[currentPhase] || phaseLabels.analyzing;
+  const phaseText = t(phaseNow.key);
+  const detail = stripPictographs(status || (steps.length ? steps[steps.length - 1].text : '')) || '';
+  const rollText = detail && detail !== phaseText ? detail : '';
+  useEffect(() => { leavingRef.current = rollText; }, [rollText]);
+
   // Single source of truth: the parent decides (per session) when to show us.
   if (!visible) return null;
 
-  const current = phaseLabels[currentPhase] || phaseLabels.analyzing;
+  const current = phaseNow;
   const sec = t('traceSecond', 's');
   const elapsed = liveTrace ? Math.max(0, liveTrace.endedAt - liveTrace.startedAt) : 0;
-  // The single line shows the newest thing Joe said, whichever stream said it.
-  const headline = stripPictographs(status || (steps.length ? steps[steps.length - 1].text : '')) || t(current.key);
   const canExpand = steps.length > 0;
 
   return (
@@ -162,32 +189,101 @@ export default function NeuralThinkingIndicator({ phase = 'analyzing', visible, 
            refuses to shrink and stretches the card past the chat. */
         .neural-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
 
-        /* soft breathing orb */
-        .nc-orb { position: relative; width: 16px; height: 16px; flex: none; }
-        .nc-orb::before, .nc-orb::after {
-          content: ""; position: absolute; inset: 0; border-radius: 50%;
-          background: radial-gradient(circle at 35% 35%, color-mix(in srgb, var(--nc) 95%, white), var(--nc));
+        /* ── a drop of water that settles into a cube and lets go ─────────
+           «والكره يجب ان تكون كره مائيه تتحرك تعمل اشكال مكعب وكره بشكل
+            منسق ومرتب»
+
+           One element carries the whole thing. nc-morph owns the shape
+           and the turn; nc-surface owns the highlight sliding across it.
+           They touch different properties on purpose — a second animation
+           writing transform is how a morph like this usually dies
+           silently, with the last declaration winning and the rest doing
+           nothing.
+
+           The cycle is slow and ORDERLY, as he asked: liquid sphere, a
+           wobble, a quarter turn tightening into a cube, held there long
+           enough to be read as a cube, then released back to water.
+
+           No colour is written here. It is var(--nc) — the phase colour
+           the rest of Joe already uses, sage while he thinks, slate while
+           he plans, ochre while he builds.
+         */
+        .nc-orb { position: relative; width: 18px; height: 18px; flex: none; }
+        .nc-orb::before {
+          content: ""; position: absolute; inset: -3px; border-radius: 50%;
+          background: rgba(47,134,214,.3);
+          filter: blur(4px); animation: nc-halo 2.8s ease-in-out infinite;
         }
-        .nc-orb::after { animation: nc-halo 1.8s ease-out infinite; opacity: .5; }
-        @keyframes nc-halo { 0% { transform: scale(1); opacity: .5; } 70%,100% { transform: scale(2.1); opacity: 0; } }
-        .nc-orb .core { position: absolute; inset: 3px; border-radius: 50%; background: var(--nc); animation: nc-breathe 1.6s ease-in-out infinite; }
-        @keyframes nc-breathe { 0%,100% { transform: scale(.82); } 50% { transform: scale(1.05); } }
+        @keyframes nc-halo { 0%,100% { opacity: .3; transform: scale(.9); } 50% { opacity: .68; transform: scale(1.1); } }
+        /*  WATER IS BLUE, IN EVERY PHASE AND AT EVERY MOMENT.
+
+            «يجب ان تكون الكره المائيه ازرق كالماء في جميع الحالات والاوقات»
+
+            The first version tinted the drop with var(--nc) so it changed
+            colour with the phase. That made it a status light, not water —
+            and a status light beside a phase name already written in the
+            phase colour says the same thing twice.
+
+            So the drop keeps its own palette and the SENTENCE carries the
+            phase. Two signals, two jobs.  */
+        .nc-orb { --water: #2f86d6; --water-deep: #0f4f8f; --water-pale: #b6e3ff; }
+        .nc-orb .skin {
+          position: absolute; inset: 0;
+          background:
+            radial-gradient(circle at 50% 30%, rgba(255,255,255,.95), rgba(255,255,255,0) 42%),
+            radial-gradient(circle at 72% 78%, var(--water-pale), rgba(182,227,255,0) 55%),
+            linear-gradient(158deg, var(--water-pale) 2%, var(--water) 46%, var(--water-deep) 100%);
+          background-size: 170% 170%, 150% 150%, 100% 100%;
+          background-position: 32% 18%, 70% 76%, 0 0;
+          box-shadow: inset 0 -2px 3px rgba(9,48,89,.55), inset 0 2px 2px rgba(255,255,255,.35);
+          animation: nc-morph 7.6s ease-in-out infinite, nc-surface 3.4s ease-in-out infinite;
+        }
+        @keyframes nc-morph {
+          0%   { border-radius: 50% 50% 50% 50% / 50% 50% 50% 50%; transform: rotate(0deg)   scale(1);    }
+          14%  { border-radius: 58% 42% 46% 54% / 44% 56% 44% 56%; transform: rotate(6deg)   scale(1.03); }
+          28%  { border-radius: 43% 57% 56% 44% / 57% 43% 57% 43%; transform: rotate(-5deg)  scale(.98);  }
+          44%  { border-radius: 22%;                               transform: rotate(45deg)  scale(.9);   }
+          58%  { border-radius: 14%;                               transform: rotate(45deg)  scale(.9);   }
+          72%  { border-radius: 32%;                               transform: rotate(22deg)  scale(.95);  }
+          88%  { border-radius: 53% 47% 45% 55% / 47% 53% 47% 53%; transform: rotate(4deg)   scale(1.02); }
+          100% { border-radius: 50% 50% 50% 50% / 50% 50% 50% 50%; transform: rotate(0deg)   scale(1);    }
+        }
+        @keyframes nc-surface {
+          0%,100% { background-position: 32% 18%, 70% 76%, 0 0; }
+          50%     { background-position: 62% 34%, 40% 62%, 0 0; }
+        }
 
         .nc-label {
-          font-size: 12px; font-weight: 700; color: var(--nc);
-          letter-spacing: .2px; min-width: 0; flex: 1 1 auto;
-          display: flex; align-items: baseline; gap: 6px;
+          font-size: 12px; letter-spacing: .2px; min-width: 0; flex: 1 1 auto;
+          display: flex; align-items: center; gap: 7px;
         }
-        /* The headline is REPLACED as Joe moves on; a cross-fade makes that a
-           transition rather than a flicker. */
-        .nc-line {
-          min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-          animation: nc-swap .28s ease-out;
+        /* The phase, in the phase's own colour, and it does not leave. */
+        .nc-phase { flex: none; font-weight: 700; color: var(--nc); white-space: nowrap; }
+        .nc-sep { flex: none; width: 3px; height: 3px; border-radius: 50%; background: color-mix(in srgb, var(--nc) 45%, transparent); }
+
+        /* ── the departures board ──────────────────────────────────────────
+           A step does not blink out while the next blinks in — the line
+           rides up and its successor arrives from below, the way a board
+           at a station changes.
+
+           The clip and the mover are two elements deliberately: putting
+           overflow: hidden on the element that is translated makes the
+           clip travel with it and clip nothing.
+
+           The mover RESTS at -1.4em — showing the second line — and the
+           keyframes run from 0 up to there. So when React remounts it on a
+           new key the roll plays and then the new text is simply where it
+           belongs, with no fill-mode to remember or forget.
+         */
+        .nc-roll { display: block; height: 1.4em; overflow: hidden; min-width: 0; flex: 1 1 auto; }
+        .nc-roll .mover { display: block; transform: translateY(-1.4em); animation: nc-roll .5s cubic-bezier(.65,0,.35,1); }
+        .nc-roll .ln {
+          display: block; height: 1.4em; line-height: 1.4em; font-weight: 500;
+          overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+          color: color-mix(in srgb, var(--nc) 70%, var(--joe-text, #2a2f2d));
         }
-        @keyframes nc-swap { from { opacity: 0; transform: translateY(-2px); } to { opacity: 1; transform: none; } }
-        .nc-dots i { animation: nc-blink 1.4s infinite both; }
-        .nc-dots i:nth-child(2){ animation-delay: .2s; } .nc-dots i:nth-child(3){ animation-delay: .4s; }
-        @keyframes nc-blink { 0%,80%,100% { opacity: .2; } 40% { opacity: 1; } }
+        .nc-roll .ln.leaving { opacity: .4; }
+        @keyframes nc-roll { from { transform: translateY(0); } to { transform: translateY(-1.4em); } }
 
         .nc-elapsed {
           flex: none; font-size: 10.5px; font-weight: 600; font-variant-numeric: tabular-nums;
@@ -227,18 +323,29 @@ export default function NeuralThinkingIndicator({ phase = 'analyzing', visible, 
         .nc-log::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--nc) 55%, transparent); }
 
         @media (prefers-reduced-motion: reduce) {
-          .nc-orb .core, .nc-orb::after, .nc-track > i, .nc-dots i, .nc-line, .neural-card { animation: none !important; }
+          .nc-orb .skin, .nc-orb::before, .nc-track > i, .nc-roll .mover, .neural-card { animation: none !important; }
+          /* And still a sphere when it cannot move: a blob frozen halfway
+             through the morph is worse than no motion at all. */
+          .nc-orb .skin { border-radius: 50%; transform: none; }
           .nc-chip svg { transition: none !important; }
         }
       `}</style>
 
       <div className="neural-head">
-        <span className="nc-orb"><span className="core" /></span>
+        <span className="nc-orb" aria-hidden="true"><span className="skin" /></span>
         <span className="nc-label">
-          {/* dir="auto" on the LINE, not on the card: a headline like
-              «جاري تنفيذ: react project» mixes scripts and used to reorder. */}
-          <span className="nc-line" dir="auto" key={headline}>{headline}</span>
-          {!showTimeline && <span className="nc-dots"><i>.</i><i>.</i><i>.</i></span>}
+          <span className="nc-phase">{phaseText}</span>
+          {rollText && <span className="nc-sep" aria-hidden="true" />}
+          {rollText && (
+            /* dir="auto" on the LINE, not on the card: a step like
+               «جاري تنفيذ: react project» mixes scripts and used to reorder. */
+            <span className="nc-roll" key={rollText} dir="auto">
+              <span className="mover">
+                <span className="ln leaving">{leavingRef.current}</span>
+                <span className="ln">{rollText}</span>
+              </span>
+            </span>
+          )}
         </span>
         {elapsed >= 1000 && <span className="nc-elapsed">{formatDuration(elapsed, sec)}</span>}
         {canExpand && (

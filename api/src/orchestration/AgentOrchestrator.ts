@@ -3,7 +3,8 @@ import { isArabicReply, say } from '../shared/reply-language';
 import { unrunnableShellStep } from '../core/orchestrator/plan-tools';
 import { IntentParser } from '../core/intelligence/IntentParser';
 import { executeTool } from '../modules/services/ToolService';
-import { broadcastThinkingDetail, broadcast } from '../api/ws';
+import { broadcastThinkingDetail, broadcast } from '../api/ws';
+import { announcePhase } from '../core/orchestrator/phaseAnnounce';
 import { narrate, narrationEnabled } from '../core/agents/narrator';
 import { routeToModel, isProviderFailure, PROVIDER_FAILURE_PREFIX } from '../core/llm/intelligent-router';
 import { emitDepartment } from './departments';
@@ -204,6 +205,10 @@ export class AgentOrchestrator {
   public async execute(goal: AgentGoal): Promise<{ ok: boolean; result: any; steps?: RunStep[] }> {
     console.log(`[AgentOrchestrator] Starting REAL-TIME orchestration for goal: ${goal.goal}`);
     broadcastThinkingDetail(goal.id, `🧠 Initializing Autonomous Brain for goal: ${goal.goal}`);
+    //  Say it rather than let the card assume it: the indicator defaults to
+    //  «analyzing» on mount, so for the whole first stretch of every run it
+    //  was showing a phase nobody had sent.
+    announcePhase(goal.id, 'analyzing', (goal.context as any)?.language);
 
     // goal.id IS the session — callers that pass no explicit context (the
     // REST /api/agent entry among them) must still plan WITH the session,
@@ -278,6 +283,11 @@ export class AgentOrchestrator {
     //  The history DOES reach the planner, through the `memory` argument below,
     //  which generatePlan renders into its prompt. The dead string is gone.)
 
+    //  The one moment that is actually planning — between understanding the
+    //  request and running anything. It was never announced on this path, so
+    //  «جو يخطّط» existed in six languages in the interface and was never
+    //  once reached.
+    announcePhase((this.context as any)?.sessionId, 'synthesizing', (this.context as any)?.language);
     const rawPlan = await PlanningEngine.generatePlan({ intent, memory: memory?.getHistory() }, traceId, this.context);
 
     // The graph the executor will actually schedule: unique ids, no dangling or
