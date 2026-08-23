@@ -3258,6 +3258,9 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             if (declaration) term(declaration);
             const appFiles = buildAppFiles(runBp, {
                 brand: content.brand, isArabic: isAr, api: appApi, apiResources,
+                //  The app remembers the words it was built from, so an edit can
+                //  re-derive his columns instead of replacing them with a stock set.
+                sourceRequest: request,
                 storeKey: `${slug(content.brand)}-${runBp.kind}`,
                 brandColor: (palette as any).primary,
                 model: adminModel,

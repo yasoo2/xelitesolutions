@@ -286,7 +286,7 @@ export class ProjectEditTool extends BaseTool {
                 const g = (k: string) => (src.match(new RegExp(`\\n\\s*${k}:\\s*'([^']*)'`)) || [])[1] || '';
                 const kind = g('kind'), engine = g('engine'), storeKey = g('storeKey');
                 if (!kind || !engine || !storeKey) return null;
-                return { kind, engine, storeKey, brand: g('brand'), title: g('title'), entityOne: g('entityOne'), entityMany: g('entityMany'), api: g('api'), isArabic: /isArabic:\s*true/.test(src) };
+                return { kind, engine, storeKey, brand: g('brand'), title: g('title'), entityOne: g('entityOne'), entityMany: g('entityMany'), api: g('api'), sourceRequest: g('sourceRequest'), isArabic: /isArabic:\s*true/.test(src) };
             } catch { return null; }
         })();
         /** What each engine can actually deliver — asked for in the user's own words. */
@@ -300,7 +300,25 @@ export class ProjectEditTool extends BaseTool {
         if (appMeta && ENGINE_ABILITY[appMeta.engine]?.test(request)) {
             const { blueprintFor } = require('../../../core/design/app-blueprints');
             const { buildAppFiles } = require('./react-app-templates');
-            const bp = blueprintFor(appMeta.kind, appMeta.title || request, appMeta.isArabic);
+            /**
+             *  AN EDIT MUST NOT REBUILD HIM A DIFFERENT TABLE.
+             *
+             *  This passed the app's TITLE where a REQUEST belongs, so the
+             *  regenerated blueprint knew nothing of the columns he had named.
+             *  Measured on his own clinic table:
+             *
+             *      from his request  [اسم المريض · رقم تلفونه · وقت الموعد …]
+             *      from the title    [الاسم · الهاتف · الخدمة · التاريخ …]
+             *
+             *  So «ضيف عمود الخصم» would have deleted every column he asked
+             *  for and replaced them with a stock set — an edit that destroys
+             *  the thing it edits.
+             *
+             *  The app now records the words it was built from, and the edit
+             *  re-derives from those. The title is the fallback only for apps
+             *  built before this existed.
+             */
+            const bp = blueprintFor(appMeta.kind, appMeta.sourceRequest || appMeta.title || request, appMeta.isArabic);
             // The app keeps the name it was delivered under.
             if (appMeta.title) bp.title = appMeta.title;
             if (appMeta.entityOne) bp.entityOne = appMeta.entityOne;
@@ -308,6 +326,7 @@ export class ProjectEditTool extends BaseTool {
             const slugName = String(JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf-8')).name || 'app');
             const fresh: Record<string, string> = buildAppFiles(bp, {
                 brand: appMeta.brand, isArabic: appMeta.isArabic, api: appMeta.api, storeKey: appMeta.storeKey,
+                sourceRequest: appMeta.sourceRequest || appMeta.title,
             }, slugName);
             // The real webfont faces at the head of app.css belong to THIS
             // build's design family — they are kept, not regenerated.

@@ -71,6 +71,20 @@ export interface AppAudit {
     authenticated?: boolean;
     /** Present only when credentials were supplied but login could not be proven. */
     authError?: string;
+    /**
+     *  WHERE IT RAN — and this is not a detail.
+     *
+     *  He watched a build report «Self-QA in a real browser (1 page, 2
+     *  controls pressed, 1 form filled, 3 viewports): 97/100» while nothing
+     *  moved on his screen, and asked what the sentence was worth.
+     *
+     *  It was true and it was useless: a private headless browser IS a real
+     *  browser. The sentence simply never said which one, so a number he
+     *  could not see read as a number he was shown.
+     *
+     *  A claim about a PLACE must carry its place.
+     */
+    visible?: boolean;
     pressed?: number;
     dead?: string[];
     /** …how many forms were really filled in and sent, and at how many widths. */
@@ -842,6 +856,7 @@ export async function auditBuiltApp(
 
         return {
             score: scoreOf(findings), findings,
+            visible: borrowed,
             authenticated,
             ...(authError ? { authError } : {}),
             routes: ['/', ...routes],
@@ -910,13 +925,17 @@ export function formatAudit(a: AppAudit, isAr: boolean): string {
         + `${a.fieldsFilled ? ` (${a.fieldsFilled} حقل)` : ''}${widths ? `، ${widths} مقاسات شاشة` : ''}${authNote})`
         : `(${pages} page(s), ${a.pressed || 0} control(s) pressed, ${a.formsFilled || 0} form(s) filled and submitted`
         + `${a.fieldsFilled ? ` (${a.fieldsFilled} fields)` : ''}${widths ? `, ${widths} viewport(s)` : ''}${authNote})`;
+    //  Named in the same breath as the score, never in a footnote.
+    const where = a.visible
+        ? (isAr ? 'في لوحة المتصفّح أمامك' : 'in the Browser panel, in front of you')
+        : (isAr ? 'في متصفّح خاصّ لم تره' : 'in a private browser you could not see');
     if (!a.findings.length) {
         return isAr
-            ? `🔎 فحص الجودة الذاتي في متصفح حقيقي ${scope}: 100/100 — صفر أخطاء، كل الصور مرسومة، وكل زر ضُغط استجاب.`
-            : `🔎 Self-QA in a real browser ${scope}: 100/100 — clean.`;
+            ? `🔎 فحص الجودة الذاتي ${where} ${scope}: 100/100 — صفر أخطاء، كل الصور مرسومة، وكل زر ضُغط استجاب.`
+            : `🔎 Self-QA ${where} ${scope}: 100/100 — clean.`;
     }
     const lines = a.findings.map(f => `   • ${findingText(f, isAr)}`).join('\n');
     return isAr
-        ? `🔎 فحص الجودة الذاتي في متصفح حقيقي ${scope}: ${a.score}/100 — وجدت:\n${lines}`
-        : `🔎 Self-QA ${scope}: ${a.score}/100:\n${lines}`;
+        ? `🔎 فحص الجودة الذاتي ${where} ${scope}: ${a.score}/100 — وجدت:\n${lines}`
+        : `🔎 Self-QA ${where} ${scope}: ${a.score}/100:\n${lines}`;
 }

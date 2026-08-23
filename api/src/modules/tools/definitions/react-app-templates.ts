@@ -68,6 +68,20 @@ export interface AppBuildOptions {
     model?: Array<{ key: string; ar: string; en: string; fields: any[]; belongsTo?: { entity: string; key: string } | null }>;
     /** Relative engine file to be authored from the user's request by Joe's AI writer. */
     generatedEnginePath?: string;
+    /**
+     *  THE REQUEST THE APP WAS BUILT FROM.
+     *
+     *  Measured: an edit rebuilt the blueprint from the app TITLE, so
+     *  «ضيف عمود الخصم» on his clinic table would have regenerated it
+     *  with the stock booking columns and destroyed his five:
+     *
+     *      BUILT_FROM_REQUEST = [اسم المريض · رقم تلفونه · وقت الموعد …]
+     *      EDIT_REBUILDS_FROM = [الاسم · الهاتف · الخدمة · التاريخ …]
+     *
+     *  An app that cannot remember what it was asked for cannot be
+     *  edited without losing it. So it remembers, in its own file.
+     */
+    sourceRequest?: string;
 }
 
 /* ── content.js — the app's own shape, nothing borrowed from a brochure ──── */
@@ -96,6 +110,9 @@ export const content = {
   api: '${q(o.api || '')}',
   // Composite apps address each first-class collection explicitly.
   apiResources: ${JSON.stringify(apiResources)},
+  // The words this app was built from. An edit re-derives from these,
+  // so adding one column cannot silently replace all the others.
+  sourceRequest: '${q(o.sourceRequest || '')}',
   fields: [
 ${bp.fields.map(f => `    { key: '${q(f.key)}', label: '${q(f.label)}', type: '${q(f.type)}'${f.options ? `, options: [${f.options.map(x => `'${q(x)}'`).join(', ')}]` : ''}${f.required ? ', required: true' : ''}${f.min !== undefined ? `, min: ${f.min}` : ''}${f.minExclusive ? ', minExclusive: true' : ''}${f.primary ? ', primary: true' : ''} },`).join('\n')}
   ],
