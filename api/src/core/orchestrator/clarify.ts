@@ -108,8 +108,49 @@ export function isVagueBuildRequest(goal: string, opts?: { hasActivePage?: boole
 }
 
 /** The questions, deterministic, in the user's language. */
+/**
+ *  WHAT HE SAYS HE WILL TRACK IS WHAT THE QUESTION IS ABOUT.
+ *
+ *  Measured live, after the gate was taught to fire on «بدي شي أتابع فيه
+ *  ديوني». Joe stopped lecturing him about interest rates — and asked:
+ *
+ *      What is the site about? (a restaurant? a store? a portfolio?)
+ *      Which sections do you want? Any colours? One page or multi-page?
+ *
+ *  Four website questions for a man who wants to track his debts. Right
+ *  instinct, wrong questions — the question list was a fixed catalogue
+ *  that knew only one kind of request.
+ *
+ *  There is exactly one thing Joe cannot build without and cannot invent:
+ *  WHAT EACH ROW HOLDS. So that is the question, and it names his own word
+ *  back to him.
+ */
+function trackedObject(goal: string): string {
+    const text = userWords(goal);
+    const m = TRACKING.exec(text);
+    if (!m) return '';
+    const after = text.slice((m.index || 0) + m[0].length).split(/[.،,؛;!؟?\n]/)[0] || '';
+    const LEAD = /^(?:فيه|فيها|به|بها|في|فى|كل|جميع|my|the|all|of|for|a|an)$/i;
+    const words: string[] = [];
+    for (const w of after.trim().split(/\s+/)) {
+        if (!w) continue;
+        if (words.length === 0 && LEAD.test(w)) continue;
+        words.push(w);
+        if (words.length === 2) break;
+    }
+    return words.join(' ').trim();
+}
+
 export function clarifyQuestions(goal: string, language: string): string {
     const isAr = String(language || 'ar').startsWith('ar');
+    //  A man who named something to track needs one question, not four,
+    //  and it must be about HIS thing — never about sections and colours.
+    const tracked = trackedObject(goal);
+    if (tracked) {
+        return isAr
+            ? `سؤال واحد قبل أن أبدأ — ما الذي تريد تسجيله لكل واحد من «${tracked}»؟\n\nمثلاً: الاسم، المبلغ، التاريخ… اكتبها كما تريدها أن تظهر في الجدول، وسأبنيه بها.\n\nوإن أردت أن أختار أنا، قل «ابدأ مباشرة».`
+            : `One question before I start — what do you want to record for each of your ${tracked}?\n\nFor example: name, amount, date… write them the way you want them to appear in the table, and I will build it with those.\n\nOr say "start now" and I will choose for you.`;
+    }
     const wantsApp = /(تطبيق|app)/i.test(userWords(goal));
     if (isAr) {
         return `سؤال قبل أن أبدأ — حتى أبني ما تريده فعلاً لا ما أتخيله 🎯

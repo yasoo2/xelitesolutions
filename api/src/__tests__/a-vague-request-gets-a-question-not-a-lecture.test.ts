@@ -27,7 +27,7 @@
  * one thing only — that he said what it will HOLD.
  */
 
-import { isVagueBuildRequest } from '../core/orchestrator/clarify';
+import { isVagueBuildRequest, clarifyQuestions } from '../core/orchestrator/clarify';
 
 describe('something he says he will keep track of is something to be built', () => {
     // POSITIVE — the live request, and the same shape with objects in no list.
@@ -68,5 +68,57 @@ describe('something he says he will keep track of is something to be built', () 
         ['شكوى', 'الجدول اللي عملته أمس صار بطيء'],
     ])('%s is neither built nor questioned', (_label, ask) => {
         expect(isVagueBuildRequest(ask)).toBe(false);
+    });
+});
+
+/**
+ * …AND THE QUESTION IS ABOUT HIS THING, NOT ABOUT SECTIONS AND COLOURS.
+ *
+ * Measured live once the gate fired. Joe stopped lecturing him about interest
+ * rates — and asked this instead, for a man who wants to track his debts:
+ *
+ *     What is the site about? (a restaurant? a store? a portfolio?)
+ *     Which sections do you want? Any colours? One page or multi-page?
+ *
+ * Right instinct, wrong questions: the list was a fixed catalogue that knew
+ * only one kind of request.
+ *
+ * There is exactly one thing Joe cannot build without and must never invent —
+ * WHAT EACH ROW HOLDS. So that is the question, and it names his own word
+ * back to him, in the language of the interface he is looking at.
+ */
+describe('the question names his own thing', () => {
+    const q = (goal: string, lang = 'ar'): string => clarifyQuestions(goal, lang);
+
+    // POSITIVE — his word comes back, in objects that are in no list.
+    it.each([
+        ['ديون', 'بدي شي أتابع فيه ديوني', 'ar', 'ديوني'],
+        ['نوق', 'بدي أسجل نوقي', 'ar', 'نوقي'],
+        ['زنابق (بلا معنى)', 'بدي أتابع الزنابق تبعي', 'ar', 'الزنابق'],
+        ['shipments', 'I want to track my shipments', 'en', 'shipments'],
+        ['clients', 'I need to manage my clients', 'en', 'clients'],
+    ])('%s is asked about by name', (_label, goal, lang, word) => {
+        expect(q(goal, lang)).toContain(word);
+    });
+
+    // POSITIVE — one question about the columns, not four about a website.
+    it('asks what each row holds, not what sections the site has', () => {
+        const asked = q('بدي شي أتابع فيه ديوني', 'ar');
+        expect(asked).toMatch(/تسجيله|تسجّل/);
+        expect(asked).not.toMatch(/الأقسام|ألوان|صفحة واحدة/);
+    });
+
+    // POSITIVE — the interface owns the wording even when he writes Arabic.
+    it('an English interface asks in English about his Arabic word', () => {
+        const asked = q('بدي شي أتابع فيه ديوني', 'en');
+        expect(asked).toContain('what do you want to record');
+        expect(asked).toContain('ديوني');
+    });
+
+    // NEGATIVE — a bare site request keeps the four site questions.
+    it('a bare build request still gets the original questions', () => {
+        const asked = q('ابن لي موقع', 'ar');
+        expect(asked).toMatch(/الأقسام/);
+        expect(asked).not.toMatch(/تسجيله/);
     });
 });
