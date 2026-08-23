@@ -30,6 +30,7 @@ import { ROLES, describeRoles } from '../../../core/design/roles';
 import { broadcast, broadcastThinkingDetail, broadcastTerminalLine } from '../../../api/ws';
 import { openTerminal } from '../../../core/quality/terminal-session';
 import { persistJoeProjects, writeJoeProject } from '../../../api/page-store';
+import { replyLanguageCode } from '../../../shared/reply-language';
 
 const slug = (s: string) => (String(s || '').toLowerCase()
     .replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '').slice(0, 32)) || 'api';
@@ -2145,8 +2146,10 @@ export class ApiProjectTool extends BaseTool {
         if (!request) return { ok: false, error: 'no_request', logs };
         const sessionId = context?.sessionId;
         const uiLang = String(context?.language || '').toLowerCase();
-        // Same rule as the React builder: the user's language, not the prompt's script.
-        const isAr = uiLang ? uiLang.startsWith('ar') : /[؀-ۿ]/.test(request);
+        // Same rule as the React builder: the interface language wins;
+        // request script is only a fallback when the interface gave none.
+        const replyLang = replyLanguageCode(context?.language, request);
+        const isAr = replyLang === 'ar';
         try { broadcast({ type: 'build_started', sessionId, data: { tool: 'api_project', sessionId } } as any); } catch { /* UI optional */ }
 
         const term = (line: string) => {

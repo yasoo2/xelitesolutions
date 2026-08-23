@@ -100,7 +100,7 @@ export const content = {
 ${bp.fields.map(f => `    { key: '${q(f.key)}', label: '${q(f.label)}', type: '${q(f.type)}'${f.options ? `, options: [${f.options.map(x => `'${q(x)}'`).join(', ')}]` : ''}${f.required ? ', required: true' : ''}${f.min !== undefined ? `, min: ${f.min}` : ''}${f.minExclusive ? ', minExclusive: true' : ''}${f.primary ? ', primary: true' : ''} },`).join('\n')}
   ],
   metrics: [
-${bp.metrics.map(m => `    { label: '${q(m.label)}', kind: '${q(m.kind)}'${m.field ? `, field: '${q(m.field)}'` : ''}${m.field2 ? `, field2: '${q(m.field2)}'` : ''}${m.equals ? `, equals: '${q(m.equals)}'` : ''} },`).join('\n')}
+${bp.metrics.map(m => `    { label: '${q(m.label)}', kind: '${q(m.kind)}'${m.field ? `, field: '${q(m.field)}'` : ''}${m.field2 ? `, field2: '${q(m.field2)}'` : ''}${m.field3 ? `, field3: '${q(m.field3)}'` : ''}${m.equals ? `, equals: '${q(m.equals)}'` : ''} },`).join('\n')}
   ],
   statusField: '${q(bp.statusField || '')}',
   doneValue: '${q(bp.doneValue || '')}',
@@ -345,6 +345,7 @@ export function computeMetric(m, rows) {
     case 'countWhere': return String(list.filter(r => String(r[m.field] || '') === m.equals).length);
     case 'sum': return round(list.reduce((a, r) => a + num(r[m.field]), 0));
     case 'sumProduct': return round(list.reduce((a, r) => a + num(r[m.field]) * num(r[m.field2]), 0));
+    case 'sumMargin': return round(list.reduce((a, r) => a + num(r[m.field]) * (num(r[m.field2]) - num(r[m.field3])), 0));
     case 'avg': {
       const vals = list.map(r => r[m.field]).filter(v => v !== '' && v != null).map(num);
       return vals.length ? round(vals.reduce((a, b) => a + b, 0) / vals.length) : '—';
@@ -1159,7 +1160,7 @@ export default function RecordsApp({ content }) {
       <section className="stats" aria-label={${T('الأرقام', 'Numbers')}}>
         {content.metrics.map((m, i) => (
           <div className="stat" key={i}>
-            <i className="stat-ico" aria-hidden="true">{({count:'🧾',sum:'💰',todaySum:'📅',todayCount:'📅',sumProduct:'📦',avg:'📈',countWhere:'✅'})[m.kind] || '📊'}</i>
+            <i className="stat-ico" aria-hidden="true">{({count:'🧾',sum:'💰',todaySum:'📅',todayCount:'📅',sumProduct:'📦',sumMargin:'📈',avg:'📈',countWhere:'✅'})[m.kind] || '📊'}</i>
             <div>
               <b>{computeMetric(m, rows)}</b>
               <span>{m.label}</span>
@@ -4232,7 +4233,7 @@ export default function ShopApp({ content }) {
     <div className="wrap">
       <section className="stats" aria-label={${T('الأرقام', 'Numbers')}}>
         {content.metrics.map((m, i) => (
-          <div className="stat" key={i}><i className="stat-ico" aria-hidden="true">{({count:'🧾',sum:'💰',todaySum:'📅',todayCount:'📅',sumProduct:'📦',avg:'📈',countWhere:'✅'})[m.kind] || '📊'}</i><div><b>{computeMetric(m, products)}</b><span>{m.label}</span></div></div>
+          <div className="stat" key={i}><i className="stat-ico" aria-hidden="true">{({count:'🧾',sum:'💰',todaySum:'📅',todayCount:'📅',sumProduct:'📦',sumMargin:'📈',avg:'📈',countWhere:'✅'})[m.kind] || '📊'}</i><div><b>{computeMetric(m, products)}</b><span>{m.label}</span></div></div>
         ))}
         <div className="stat"><i className="stat-ico" aria-hidden="true">🛒</i><div><b>{count}</b><span>{${T('في السلة', 'In cart')}}</span></div></div>
       </section>

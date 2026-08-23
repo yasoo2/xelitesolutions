@@ -12,7 +12,7 @@
  * The columns now come from the same blueprint the interface renders from.
  */
 import { apiColumnsForRequest, apiPrimaryColumnsForApp, CATALOGUE_COLUMNS, selectApiPrimary } from '../modules/tools/definitions/ApiProjectTool';
-import { blueprintFor, detectAppKind, APP_KIND_SIGNALS, maskNegatedSpans, requestedFeatures, uncoveredFeatures } from '../core/design/app-blueprints';
+import { blueprintFor, detectAppKind, APP_KIND_SIGNALS, maskNegatedSpans, requestedFeatures, uncoveredFeatures, derivedColumns } from '../core/design/app-blueprints';
 import { extractRunReceiptEvidence } from '../modules/services/AgentLoopService';
 import { designDataModel } from '../core/design/schema-designer';
 import { fileFinanceAppJsx } from '../modules/tools/definitions/react-app-templates';
@@ -84,6 +84,26 @@ describe('the schema follows the app, not a fixed guess', () => {
         expect(cols.find(c => c.key === 'name')!.required).toBe(true);
     });
 
+    it('an explicit clinic recording request owns its schema and has no implicit doctor parent', () => {
+        const request = 'عندي عيادة أسنان. بدي جدول أسجل فيه المواعيد: اسم المريض ورقم تلفونه ووقت الموعد ونوع العلاج والمبلغ المدفوع. وبدي أبحث عن المريض باسمه أو تلفونه، وبدي أعرف كم قبضت الإجمالي.';
+        const kind = detectAppKind(request)!;
+        expect(kind).toBe('generic');
+        const bp = blueprintFor(kind, request, true);
+        expect(bp.engine).toBe('records');
+        expect(bp.title).toBe('المواعيد');
+        expect(bp.fields.map(field => field.label)).toEqual([
+            'اسم المريض', 'رقم تلفونه', 'وقت الموعد', 'نوع العلاج', 'المبلغ المدفوع',
+        ]);
+        expect(bp.relation).toBeUndefined();
+        expect(bp.fields.some(field => /doctor|طبيب|دكتور/i.test(`${field.key} ${field.label}`))).toBe(false);
+        const bookingBp = blueprintFor('booking', request, true);
+        expect(bookingBp.relation).toBeUndefined();
+        expect(bookingBp.title).toBe('المواعيد');
+        expect(bookingBp.fields.map(field => field.label)).toEqual(bp.fields.map(field => field.label));
+        expect(apiColumnsForRequest(request).map(column => column.key)).toEqual(bp.fields.map(field => field.key));
+        expect(apiColumnsForRequest(request).some(column => /doctor|طبيب|دكتور/i.test(column.key))).toBe(false);
+    });
+
     it('an expense tracker stores its amount as a NUMBER', () => {
         const cols = apiColumnsForRequest('تطبيق لتتبّع المصاريف الشخصية');
         const amount = cols.find(c => c.type === 'REAL');
@@ -146,6 +166,7 @@ describe('the schema follows the app, not a fixed guess', () => {
     it('049b detects the full canonical WeatherGo prompt by score, not first keyword', () => {
         const fullPrompt = 'Build a production-ready React + TypeScript + Vite application called WeatherGo, not a brochure or static mockup. Create a polished responsive mobile-first weather experience with live data from the Open-Meteo geocoding and forecast APIs, requiring no API key or account. Include a visible city search field with a Search button and Enter-key submission, reject empty input, show loading state, and show clear invalid-city, network-failure, and API-error states. Add a working Use my current location action using browser geolocation. For the selected city show current temperature, feels-like temperature, humidity, wind speed, weather condition and a meaningful weather icon. Request and render a real seven-day daily forecast, including sunrise and sunset values from the daily API response, and keep daily data distinct from current data. Add saved/favorite cities with no duplicates, persist favorites and settings in namespaced localStorage, and restore them after a full reload. Add Celsius/Fahrenheit and 12/24-hour display settings, plus a user-controlled light/dark mode. Make the interface accessible, visually coherent, responsive on mobile and desktop, and use smooth but restrained transitions. Do not use fake API responses, random placeholder images, TODOs, unexplained claims, or packages absent from package.json. Keep the existing Joe app shell contract and build the actual app from this request. After implementation, run the real build and quality checks, open the live result in the browser, exercise search, Enter, empty input, invalid city, current location handling, unit/theme/settings persistence, and verify the delivered app honestly reports any remaining limitation.';
         expect(fullPrompt.length).toBe(1697);
+        expect(derivedColumns(fullPrompt)).toBeNull();
         expect(detectAppKind(fullPrompt)).toBe('weather');
     });
 

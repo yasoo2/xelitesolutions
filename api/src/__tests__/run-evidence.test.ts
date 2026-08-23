@@ -122,6 +122,77 @@ describe('048b durable run evidence contract', () => {
     expect(receipt.envelopeKeys).toEqual(['ok', 'result']);
   });
 
+  test('receipt preserves per-finding reviewer provenance when a quality gate blocks', () => {
+    const receipt = extractRunReceiptEvidence({
+      phaseNumber: 1,
+      phaseName: 'Review',
+      results: [{
+        tool: 'code_reviewer',
+        ok: false,
+        error: 'code_reviewer quality gate failed: 1 verified critical finding(s) remain',
+        output: {
+          filesRequested: 1,
+          filesReviewed: 1,
+          reviewedFiles: ['src/App.tsx'],
+          missingFiles: [],
+          issues: [{
+            file: 'src/App.tsx',
+            line: 7,
+            severity: 'critical',
+            category: 'security',
+            message: 'A deterministic security check found a secret.',
+            verificationStatus: 'verified',
+            evidenceEligible: true,
+          }],
+          summary: { critical: 1, verifiedCritical: 1, warning: 0, info: 0 },
+          qualityGate: { failOnCritical: true, blockingCritical: 1, passed: false },
+        },
+      }],
+    }, 'run-review-findings', 'session-review-findings', 'failed');
+
+    expect(receipt.reviewerFindingsLost).toBeUndefined();
+    expect(receipt.taskReceipts[0]).toMatchObject({
+      tool: 'code_reviewer',
+      reviewerFindings: [{
+        file: 'src/App.tsx',
+        line: 7,
+        message: 'A deterministic security check found a secret.',
+        verificationStatus: 'verified',
+        evidenceEligible: true,
+      }],
+    });
+  });
+
+  test('a blocked reviewer with missing findings raises a named reporting defect', () => {
+    const receipt = extractRunReceiptEvidence({
+      phaseNumber: 1,
+      results: [{
+        tool: 'code_reviewer',
+        ok: false,
+        error: 'code_reviewer quality gate failed: 6 critical finding(s) remain',
+        output: {
+          filesRequested: 4,
+          filesReviewed: 4,
+          reviewedFiles: ['src/App.tsx', 'src/Total.tsx', 'src/ExpenseForm.tsx', 'src/ExpenseList.tsx'],
+          issues: [],
+          summary: { critical: 6, verifiedCritical: 0 },
+          qualityGate: { failOnCritical: true, passed: false },
+        },
+      }],
+    }, 'run-review-findings-lost', 'session-review-findings-lost', 'failed');
+
+    expect(receipt).toMatchObject({
+      reviewerFindingsLost: true,
+      reportingDefect: 'reviewer_findings_lost',
+    });
+    expect(receipt.taskReceipts[0]).toMatchObject({
+      tool: 'code_reviewer',
+      reviewerFindings: [],
+      reviewerFindingsLost: true,
+      reportingDefect: 'reviewer_findings_lost',
+    });
+  });
+
   test('GET /:id/receipt returns the structural receipt for a textual runId', async () => {
     const handler = routeHandler('/:id/receipt');
     const res = responseDouble();

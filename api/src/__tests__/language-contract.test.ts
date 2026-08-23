@@ -134,11 +134,13 @@ describe('messageLanguage — the script of the message decides', () => {
     });
 });
 
-describe('the run derives its language from the message, not the raw switcher', () => {
-    test('AgentLoopService computes language0 via messageLanguage(goal, …) and reuses it everywhere', () => {
+describe('the run derives its language from the shared UI-wins contract', () => {
+    test('AgentLoopService uses replyLanguageCode for clarify and the whole run', () => {
         const loop = read('modules', 'services', 'AgentLoopService.ts');
-        expect(loop).toContain('messageLanguage(goal, options.language');
-        // The old pattern — trusting options.language alone — must be gone.
+        expect(loop).toContain('const gateLang = replyLanguageCode(options.language, goal);');
+        expect(loop).toContain('const language0 = replyLanguageCode(options.language, goal);');
+        expect(loop).not.toContain('messageLanguage(goal, options.language');
+        // The old pattern — trusting options.language without normalization — must be gone.
         expect(loop).not.toMatch(/const language0 = String\(options\.language/);
         expect(loop).not.toMatch(/const language = String\(options\.language/);
         // One language for the whole run: the context the tools see included.

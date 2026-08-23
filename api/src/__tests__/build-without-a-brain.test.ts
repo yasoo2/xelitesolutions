@@ -44,6 +44,17 @@ describe('«بنِ» is the same verb as «ابنِ»', () => {
             expect(PlanningEngine.looksLikeBuild(g)).toBe(false);
         }
     });
+
+    it('recognizes asking language plus an unseen records shape', () => {
+        expect(PlanningEngine.looksLikeBuild('عندي مزرعة إبل. بدي سجل أسجل فيه: اسم الناقة والعمر والوزن')).toBe(true);
+        expect(PlanningEngine.looksLikeBuild('I want a table to record appointments: patient name, phone and amount paid')).toBe(true);
+    });
+
+    it('does not turn an information question into a build from a listed noun', () => {
+        for (const question of ['بدي أعرف كم الساعة', 'ابحث لي عن سعر الدولار', 'سجّل دخولي']) {
+            expect(PlanningEngine.looksLikeBuild(question)).toBe(false);
+        }
+    });
 });
 
 describe('suppliers and orders are a database', () => {
@@ -58,6 +69,20 @@ describe('suppliers and orders are a database', () => {
 
     it('while a landing page stays a page', () => {
         expect(PlanningEngine.classifyBuildScope('ابنِ صفحة هبوط لشركتي')).toBe('page');
+    });
+});
+
+describe('clinic construction is not a web search', () => {
+    it('the exact clinic brief reaches the engineering pipeline before browser routes', async () => {
+        const request = 'عندي عيادة أسنان. بدي جدول أسجل فيه المواعيد: اسم المريض ورقم تلفونه ووقت الموعد ونوع العلاج والمبلغ المدفوع. وبدي أبحث عن المريض باسمه أو تلفونه، وبدي أعرف كم قبضت الإجمالي.';
+        const plan = await Promise.race([
+            PlanningEngine.generatePlan({ intent: { goal: request, complexity: 'high', riskLevel: 'low', rawIntent: {} } as any }),
+            new Promise<never>((_, reject) => setTimeout(() => reject(new Error('planner timeout')), 1500)),
+        ]);
+        const tools = plan.steps.map(step => step.tool);
+        expect(tools.some(tool => /^(react_project|project_pipeline)$/.test(tool))).toBe(true);
+        expect(tools.filter(tool => tool.startsWith('browser'))).toEqual([]);
+        expect(tools).not.toContain('google_account');
     });
 });
 

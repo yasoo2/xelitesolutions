@@ -11,7 +11,7 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { readDeclaredOptions, blueprintFor, detectAppKind, violatesFieldConstraint } from '../core/design/app-blueprints';
+import { readDeclaredOptions, blueprintFor, detectAppKind, violatesFieldConstraint, derivedColumns, recordedSubject } from '../core/design/app-blueprints';
 
 const SRC = path.join(__dirname, '..');
 const read = (...p: string[]) => fs.readFileSync(path.join(SRC, ...p), 'utf-8');
@@ -25,6 +25,29 @@ describe('classification follows request shape, not a domain-noun catalogue', ()
         const bp = blueprintFor('generic', unseenShape, false);
         expect(bp.engine).toBe('records');
         expect(bp.fields.length).toBeGreaterThan(0);
+    });
+});
+
+describe('the request describes a records shape without a domain catalogue', () => {
+    it('reads unseen-domain columns in the user order and infers only value shapes', () => {
+        const request = 'عندي مزرعة إبل. بدي سجل أسجل فيه بيانات الناقة: اسم الناقة والعمر والوزن';
+        expect(detectAppKind(request)).toBe('generic');
+        expect(recordedSubject(request)).toBe('بيانات الناقة');
+        expect(derivedColumns(request)?.map(column => column.label)).toEqual(['اسم الناقة', 'العمر', 'الوزن']);
+        const bp = blueprintFor('generic', request, true);
+        expect(bp.engine).toBe('records');
+        expect(bp.fields.map(field => field.label)).toEqual(['اسم الناقة', 'العمر', 'الوزن']);
+        expect(bp.fields.find(field => field.label === 'العمر')).toMatchObject({ type: 'number' });
+        expect(bp.fields.find(field => field.label === 'الوزن')).toMatchObject({ type: 'number' });
+    });
+
+    it('does not treat a colon after a field as a column list', () => {
+        expect(derivedColumns('متجر بفئات: قهوة، أدوات، حلويات')).toBeNull();
+    });
+
+    it('keeps the deliberate three-field floor explicit', () => {
+        expect(derivedColumns('بدي جدول أسجل فيه المواعيد: اسم المريض ورقم تلفونه')).toBeNull();
+        expect(derivedColumns('I want to track my clients: name and phone')).toBeNull();
     });
 });
 
@@ -153,6 +176,15 @@ describe('the records output enforces only declared numeric bounds', () => {
         const t = T();
         expect(t).toMatch(/if \(field\.type !== 'number' \|\| field\.min === undefined\) return false/);
         expect(t).toMatch(/const invalid = invalidNumericField\(fields, draft\);/);
+    });
+
+    it('executes and serialises a request-derived margin metric', () => {
+        const t = T();
+        expect(t).toMatch(/case 'sumMargin': return round\(/);
+        expect(t).toMatch(/m\.field3/);
+        const bp = blueprintFor('generic', 'بدي سجل أسجل فيه مبيعات: الكمية وسعر الشراء وسعر البيع وأريد إجمالي الربح', true);
+        const margin = bp.metrics.find(m => m.kind === 'sumMargin');
+        expect(margin).toMatchObject({ field: 'count1', field2: 'money2', field3: 'money1' });
     });
 });
 

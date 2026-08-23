@@ -36,6 +36,7 @@ import { repairAndRebuild, worthRepairing } from '../../../core/quality/self-rep
 import { inspectWeatherEngineSource, formatWeatherSemanticRepair } from '../../../core/quality/weather-contract';
 import { isProviderFailure } from '../../../core/llm/intelligent-router';
 import { validateFileWriteBatch } from '../../../shared/file-write-contract';
+import { replyLanguageCode } from '../../../shared/reply-language';
 
 type MeasuredAbility = {
     ar: string;
@@ -2640,7 +2641,8 @@ export class ReactProjectTool extends BaseTool {
          * and the prompt's own script only breaks a tie when it does not.
          */
         const uiLang = String(context?.language || '').toLowerCase();
-        const isAr = uiLang ? uiLang.startsWith('ar') : /[؀-ۿ]/.test(request);
+        const replyLang = replyLanguageCode(context?.language, request);
+        const isAr = replyLang === 'ar';
         try { broadcast({ type: 'build_started', sessionId, data: { tool: 'react_project', sessionId } } as any); } catch { /* UI optional */ }
 
         const term = (line: string) => {
@@ -2751,7 +2753,7 @@ export class ReactProjectTool extends BaseTool {
         const appBp: AppBlueprint | null = appKind ? blueprintFor(appKind, request, isAr) : null;
         // سجّل قرار القالب نفسه، لا وعداً عاماً بالنجاح؛ هذا يكشف فوراً أي
         // تحوير لوسيط الطلب بين الخطة وأداة البناء في الاختبارات الحية.
-        term(`template classification: page=${kind || 'generic'} · app=${appKind || 'none'} · mode=${appBp ? 'interactive' : 'presentation'}`);
+        term(`template classification: page=${kind || 'generic'} · app=${appKind || 'none'} · mode=${appBp ? 'interactive' : 'presentation'} · lang=${replyLang} (ui=${uiLang || 'absent'})`);
         const family = familyFor(request, kind);
         const multiPage = wantsMultiPage(request);
         const pages = pagesForKind(kind);

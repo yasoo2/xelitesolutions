@@ -48,3 +48,11 @@ export function isArabicReply(src: LanguageSource | string | undefined): boolean
 export function say(isAr: boolean, ar: string, en: string): string {
     return isAr ? ar : en;
 }
+
+
+/** Return the interface language code Joe should use for a run. */
+export function replyLanguageCode(uiLanguage: string | undefined, text: string): string {
+    const ui = String(uiLanguage || '').trim().toLowerCase().split('-')[0];
+    if (ui) return ui;
+    return isArabicReply({ text }) ? 'ar' : 'en';
+}

@@ -1,6 +1,12 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+
+const mockCallLLM = jest.fn();
+jest.mock('../core/llm', () => ({
+    callLLM: (...args: any[]) => mockCallLLM(...args),
+}));
+
 import { CodeReviewerTool } from '../modules/tools/definitions/CodeReviewerTool';
 import { workspaceService } from '../modules/services/WorkspaceService';
 
@@ -76,5 +82,53 @@ describe('CodeReviewerTool workspace-bound review contract', () => {
             qualityGate: { minimumScore: 70, failOnCritical: true, passed: false },
         });
         expect(result.output.overallScore).toBeLessThan(70);
+    });
+
+    it('blocks only on deterministic critical evidence and carries its provenance', async () => {
+        fs.writeFileSync(path.join(workspaceRoot, 'secret.ts'), 'const key = "sk-123456789012345678901234";\n');
+
+        const result: any = await new CodeReviewerTool().execute({
+            files: ['secret.ts'],
+            reviewType: 'quick',
+            failOnCritical: true,
+        }, { workspaceId: 'workspace-nexus' });
+
+        expect(result.ok).toBe(false);
+        expect(result.output.summary).toMatchObject({ critical: 1, verifiedCritical: 1 });
+        expect(result.output.qualityGate).toMatchObject({ blockingCritical: 1, passed: false });
+        expect(result.output.issues[0]).toMatchObject({
+            file: 'secret.ts',
+            line: 1,
+            severity: 'critical',
+            verificationStatus: 'verified',
+            evidenceEligible: true,
+        });
+    });
+
+    it('keeps an LLM critical proposal visible as unverified without blocking', async () => {
+        mockCallLLM.mockResolvedValueOnce(JSON.stringify({
+            score: 85,
+            issues: [{ line: 1, severity: 'critical', category: 'best-practice', message: 'The model suspects a design problem.' }],
+            suggestions: [],
+        }));
+        fs.writeFileSync(path.join(workspaceRoot, 'clean.ts'), 'const answer = 42;\n');
+
+        const result: any = await new CodeReviewerTool().execute({
+            files: ['clean.ts'],
+            reviewType: 'detailed',
+            failOnCritical: true,
+        }, { workspaceId: 'workspace-nexus' });
+
+        expect(result.ok).toBe(true);
+        expect(result.output.summary).toMatchObject({ critical: 1, verifiedCritical: 0 });
+        expect(result.output.qualityGate).toMatchObject({ blockingCritical: 0, passed: true });
+        expect(result.output.issues).toContainEqual(expect.objectContaining({
+            file: 'clean.ts',
+            line: 1,
+            severity: 'critical',
+            verificationStatus: 'unverified',
+            evidenceEligible: false,
+            message: 'The model suspects a design problem.',
+        }));
     });
 });

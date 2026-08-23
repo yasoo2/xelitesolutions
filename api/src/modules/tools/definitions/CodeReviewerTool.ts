@@ -155,7 +155,7 @@ export class CodeReviewerTool implements ToolDefinition {
                 }
 
                 const content = fs.readFileSync(filePath, 'utf-8');
-                const review = await this.reviewFile(filePath, content, reviewType);
+                const review = await this.reviewFile(filePath, content, reviewType, file);
 
                 issues.push(...review.issues);
                 suggestions.push(...review.suggestions);
@@ -167,12 +167,15 @@ export class CodeReviewerTool implements ToolDefinition {
 
             const overallScore = reviewedFiles.length > 0 ? Math.round(totalScore / reviewedFiles.length) : 0;
             const criticalCount = issues.filter(i => i.severity === 'critical').length;
+            const verifiedCriticalCount = issues.filter(i =>
+                i.severity === 'critical' && i.verificationStatus === 'verified' && i.evidenceEligible === true
+            ).length;
             const qualityFailures: string[] = [];
             if (minimumScore !== undefined && overallScore < minimumScore) {
                 qualityFailures.push(`overall score ${overallScore}/100 is below the required ${minimumScore}/100`);
             }
-            if (failOnCritical && criticalCount > 0) {
-                qualityFailures.push(`${criticalCount} critical finding(s) remain`);
+            if (failOnCritical && verifiedCriticalCount > 0) {
+                qualityFailures.push(`${verifiedCriticalCount} verified critical finding(s) remain`);
             }
             const missingError = missingFiles.length > 0
                 ? `code_reviewer could not review ${missingFiles.length} requested file(s): ${missingFiles.join(', ')}`
@@ -183,7 +186,7 @@ export class CodeReviewerTool implements ToolDefinition {
             const error = [missingError, qualityError].filter(Boolean).join('; ') || undefined;
 
             logs.push(`Review complete. Overall score: ${overallScore}/100`);
-            if (minimumScore !== undefined) logs.push(`Quality gate: minimum score ${minimumScore}/100; critical findings ${failOnCritical ? 'block' : 'informational'}`);
+            if (minimumScore !== undefined) logs.push(`Quality gate: minimum score ${minimumScore}/100; critical findings ${failOnCritical ? 'block when evidence-eligible' : 'informational'}`);
             if (error) logs.push(`Review failed: ${error}`);
 
             return {
@@ -199,12 +202,14 @@ export class CodeReviewerTool implements ToolDefinition {
                     suggestions,
                     summary: {
                         critical: criticalCount,
+                        verifiedCritical: verifiedCriticalCount,
                         warning: issues.filter(i => i.severity === 'warning').length,
                         info: issues.filter(i => i.severity === 'info').length
                     },
                     qualityGate: {
                         minimumScore,
                         failOnCritical,
+                        blockingCritical: verifiedCriticalCount,
                         passed: qualityFailures.length === 0
                     }
                 },
@@ -221,16 +226,32 @@ export class CodeReviewerTool implements ToolDefinition {
         }
     }
 
-    private async reviewFile(filePath: string, content: string, reviewType: string): Promise<any> {
+    private annotateFinding(finding: any, file: string, content: string, source: 'deterministic' | 'llm'): any {
+        const line = Number(finding?.line);
+        const message = String(finding?.message || '').trim();
+        const lineIsInFile = Number.isInteger(line) && line > 0 && line <= content.split('\n').length;
+        const evidenceEligible = source === 'deterministic' && Boolean(file) && lineIsInFile && Boolean(message);
+        return {
+            ...finding,
+            file,
+            ...(lineIsInFile ? { line } : {}),
+            message: (message || 'Reviewer supplied a finding without a message.').slice(0, 2_000),
+            evidenceEligible,
+            verificationStatus: evidenceEligible ? 'verified' : 'unverified',
+        };
+    }
+
+    private async reviewFile(filePath: string, content: string, reviewType: string, file: string): Promise<any> {
         const ext = path.extname(filePath);
         const language = this.detectLanguage(ext);
 
         // Always run the INSTANT deterministic pass first (free, offline).
         const basic = this.basicReview(content, language);
+        const verifiedBasic = basic.issues.map((finding: any) => this.annotateFinding(finding, file, content, 'deterministic'));
 
         // 'quick' review returns the deterministic result immediately — no waiting
         // on a slow local model. Deeper reviews add an LLM pass on top.
-        if (reviewType === 'quick') return basic;
+        if (reviewType === 'quick') return { ...basic, issues: verifiedBasic };
 
         const reviewPrompt = `You are an expert code reviewer. Review the following ${language} code and provide feedback.
 
@@ -275,14 +296,18 @@ Return ONLY valid JSON.`;
             // static checks (secrets, merge markers, eval) are never dropped.
             const llmIssues = Array.isArray(review.issues) ? review.issues : [];
             const llmSuggestions = Array.isArray(review.suggestions) ? review.suggestions : [];
-            const mergedIssues = [...basic.issues, ...llmIssues];
+            // An LLM proposal is useful review input, but it is not proof that the
+            // alleged defect exists. Keep it visible and explicitly unverified so
+            // a model hallucination cannot become a hard delivery blocker.
+            const unverifiedLlm = llmIssues.map((finding: any) => this.annotateFinding(finding, file, content, 'llm'));
+            const mergedIssues = [...verifiedBasic, ...unverifiedLlm];
             const mergedSuggestions = [...basic.suggestions, ...llmSuggestions];
             // Take the stricter (lower) of the two scores.
             const score = Math.min(typeof review.score === 'number' ? review.score : 70, basic.score);
             return { score, issues: mergedIssues, suggestions: mergedSuggestions };
         } catch (error) {
             // LLM unavailable/invalid — the deterministic review still stands.
-            return basic;
+            return { ...basic, issues: verifiedBasic };
         }
     }
 

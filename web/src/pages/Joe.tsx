@@ -732,7 +732,8 @@ export default function Joe() {
                     sessionId: targetSessionId,
                     workspaceId: currentWorkspaceId,
                     // Keep browser_run on the same visible page owned by the target chat.
-                    browserSessionId: browserSessionId || `browser:${targetSessionId}`
+                    browserSessionId: browserSessionId || `browser:${targetSessionId}`,
+                    language: i18n.language,
                 });
             } else {
                 await SocketService.sendMessage(targetSessionId, messageText);
@@ -742,7 +743,7 @@ export default function Joe() {
         } finally {
             setIsLoading(false);
         }
-    }, [inputValue, isLoading, activeSessionId, activeSessionKind, workspaceId, browserSessionId, ensuresWorkspace, loadAllSessions, setAgentSelected]);
+    }, [inputValue, isLoading, activeSessionId, activeSessionKind, workspaceId, browserSessionId, i18n.language, ensuresWorkspace, loadAllSessions, setAgentSelected]);
 
     const handleCreateSession = useCallback(async () => {
         await createSession({ kind: 'agent' });
