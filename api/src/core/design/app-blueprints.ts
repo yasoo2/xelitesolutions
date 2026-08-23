@@ -533,7 +533,21 @@ export function recordedSubject(requestRaw: string): string | null {
         if (words.length === 3) break;
     }
     const subject = words.join(' ').trim();
-    return subject.length >= 3 ? subject : null;
+    if (subject.length >= 3) return subject;
+    /**
+     *  AND ARABIC OFTEN PUTS IT BEFORE THE VERB.
+     *
+     *  «بدي جدول للمواعيد أسجل فيه: اسم المريض…» names the table BEFORE the
+     *  recording verb, so reading forward finds only «فيه» and gives up. The
+     *  word he wants is the one immediately in front of the verb.
+     *
+     *  This runs only when reading forward found nothing, so «بدي جدول أسجل
+     *  فيه المواعيد: …» still yields «المواعيد» and never «جدول».
+     */
+    const before = request.slice(0, opener.index || 0).trim().split(/\s+/);
+    const tail = before.slice(-1)[0] || '';
+    const bare = tail.replace(/^(?:لل|ال|ل)/, '');
+    return bare.length >= 3 ? bare : null;
 }
 
 export function blueprintFor(kind: AppKind, request: string, isAr: boolean): AppBlueprint {
@@ -1204,6 +1218,53 @@ const TYPE_MARKS: Array<[RegExp, DerivedRole, FieldType]> = [
 export interface DerivedField { label: string; key: string; type: FieldType; role: DerivedRole; options?: string[] }
 
 /** The columns a request enumerates, in his words and his order. */
+/**
+ * EVERY TABLE HE NAMED, NOT THE FIRST ONE.
+ *
+ * Measured. He wrote, in one breath:
+ *
+ *     «بدي جدول للمواعيد أسجل فيه: اسم المريض ووقت الموعد.
+ *      وبدي جدول ثاني للمصاريف أسجل فيه: البند والمبلغ والتاريخ.»
+ *
+ * and the reader returned NOTHING. The English twin returned the first table
+ * and dropped the second without a word — which is worse, because it looks
+ * like success.
+ *
+ * The cause is that derivedColumns stops at the first opener and reads to the
+ * end of that one sentence. A man who asks for two tables in two sentences is
+ * not asking for one.
+ *
+ * This walks every opener in the request and returns one group per table, in
+ * his order. What the builder then does with a second table is a separate
+ * question — but it can no longer pretend it never saw it.
+ */
+export interface DerivedTable { subject: string | null; columns: DerivedField[] }
+
+export function derivedTables(requestRaw: string): DerivedTable[] {
+    const request = String(requestRaw || '');
+    //  Sentences are the natural boundary between two asks — he ended one and
+    //  began another. Reading each on its own also stops a list from swallowing
+    //  the sentence after it.
+    const out: DerivedTable[] = [];
+    const seen = new Set<string>();
+    for (const piece of request.split(/(?<=[.؟!\n])/u)) {
+        const cols = derivedColumns(piece);
+        if (!cols) continue;
+        const key = cols.map(c => c.label).join('|');
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push({ subject: recordedSubject(piece), columns: cols });
+    }
+    //  A single table stated across two sentences must not become two: when the
+    //  whole request reads as one list and nothing split out, keep that reading.
+    if (out.length === 0) {
+        const whole = derivedColumns(request);
+        if (whole) out.push({ subject: recordedSubject(request), columns: whole });
+    }
+    return out;
+}
+
+
 export function derivedColumns(requestRaw: string): DerivedField[] | null {
     const request = String(requestRaw || '');
     /**

@@ -24,7 +24,7 @@
  * Every case below is a trade this code was NOT written from. That is the
  * point of them.
  */
-import { detectAppKind, blueprintFor, derivedColumns } from '../core/design/app-blueprints';
+import { detectAppKind, blueprintFor, derivedColumns, derivedTables, recordedSubject } from '../core/design/app-blueprints';
 
 const labelsOf = (r: string) => (derivedColumns(r) || []).map(c => c.label);
 const typesOf = (r: string) => (derivedColumns(r) || []).map(c => c.type);
@@ -318,5 +318,65 @@ describe('a column phrased as a question is a yes or a no', () => {
         const bp = blueprintFor('booking' as never, 'عندي عيادة أسنان. بدي جدول أسجل فيه المواعيد: اسم المريض ورقم تلفونه ووقت الموعد', true);
         expect(bp.statusField).toBeUndefined();
         expect(bp.doneValue).toBeUndefined();
+    });
+});
+
+/**
+ * EVERY TABLE HE NAMED, NOT THE FIRST ONE.
+ *
+ * Measured. He wrote, in one breath:
+ *
+ *     «بدي جدول للمواعيد أسجل فيه: اسم المريض ووقت الموعد والعلاج.
+ *      وبدي جدول ثاني للمصاريف أسجل فيه: البند والمبلغ والتاريخ.»
+ *
+ * and the reader returned NOTHING. The English twin returned the first table
+ * and dropped the second without a word — which is worse, because it looks
+ * like success.
+ *
+ * derivedColumns stops at the first opener and reads to the end of that one
+ * sentence. A man who asks for two tables in two sentences is not asking for
+ * one, and silently building half a request is the failure this whole branch
+ * exists to end.
+ *
+ * Reading the subject also had to learn that Arabic often names the table
+ * BEFORE the verb — «جدول للمواعيد أسجل فيه» — which reading forward can never
+ * find.
+ */
+describe('a request that names two tables yields two tables', () => {
+    // POSITIVE — both tables, in his order, in both languages.
+    it('two Arabic tables in one message are both read', () => {
+        const tables = derivedTables('بدي جدول للمواعيد أسجل فيه: اسم المريض ووقت الموعد والعلاج. وبدي جدول ثاني للمصاريف أسجل فيه: البند والمبلغ والتاريخ.');
+        expect(tables).toHaveLength(2);
+        expect(tables[0].subject).toBe('مواعيد');
+        expect(tables[0].columns.map(c => c.label)).toEqual(['اسم المريض', 'وقت الموعد', 'العلاج']);
+        expect(tables[1].subject).toBe('مصاريف');
+        expect(tables[1].columns.map(c => c.label)).toEqual(['البند', 'المبلغ', 'التاريخ']);
+    });
+
+    it('two English tables in one message are both read', () => {
+        const tables = derivedTables('I want a table to record my clients: name, phone and email. And another table to record my invoices: number, amount and date.');
+        expect(tables.map(t => t.subject)).toEqual(['clients', 'invoices']);
+        expect(tables[1].columns.map(c => c.label)).toEqual(['number', 'amount', 'date']);
+    });
+
+    // NEGATIVE — one table stays one, with all five of his columns together.
+    it('one table stated in two sentences does not become two', () => {
+        const tables = derivedTables('عندي عيادة أسنان. بدي جدول أسجل فيه المواعيد: اسم المريض ورقم تلفونه ووقت الموعد ونوع العلاج والمبلغ المدفوع.');
+        expect(tables).toHaveLength(1);
+        expect(tables[0].subject).toBe('المواعيد');
+        expect(tables[0].columns).toHaveLength(5);
+    });
+
+    // NEGATIVE — a request with no table at all yields none.
+    it.each([
+        ['بحث', 'ابحث لي عن سعر الدولار اليوم'],
+        ['سؤال', 'ما الفرق بين React وVue؟'],
+    ])('%s yields no tables', (_label, ask) => {
+        expect(derivedTables(ask)).toEqual([]);
+    });
+
+    // NEGATIVE — reading the subject before the verb must not grab the artefact word.
+    it('«جدول» is never mistaken for the subject', () => {
+        expect(recordedSubject('بدي جدول أسجل فيه المواعيد: اسم المريض ورقم تلفونه ووقت الموعد')).toBe('المواعيد');
     });
 });
