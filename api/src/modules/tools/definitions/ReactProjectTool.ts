@@ -2723,7 +2723,11 @@ export class ReactProjectTool extends BaseTool {
         const appBp: AppBlueprint | null = appKind ? blueprintFor(appKind, request, isAr) : null;
         // سجّل قرار القالب نفسه، لا وعداً عاماً بالنجاح؛ هذا يكشف فوراً أي
         // تحوير لوسيط الطلب بين الخطة وأداة البناء في الاختبارات الحية.
-        term(`template classification: page=${kind || 'generic'} · app=${appKind || 'none'} · mode=${appBp ? 'interactive' : 'presentation'}`);
+        // The language Joe SPEAKS is the interface's, not the prompt's — and a
+        // build that narrates in the wrong one is a defect the user sees
+        // before any test does. Record which signal decided it, so the next
+        // report says whether the switcher arrived or was lost on the way.
+        term(`template classification: page=${kind || 'generic'} · app=${appKind || 'none'} · mode=${appBp ? 'interactive' : 'presentation'} · lang=${isAr ? 'ar' : 'en'} (ui=${uiLang || 'absent'})`);
         const family = familyFor(request, kind);
         const multiPage = wantsMultiPage(request);
         const pages = pagesForKind(kind);

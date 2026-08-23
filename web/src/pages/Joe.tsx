@@ -732,7 +732,22 @@ export default function Joe() {
                     sessionId: targetSessionId,
                     workspaceId: currentWorkspaceId,
                     // Keep browser_run on the same visible page owned by the target chat.
-                    browserSessionId: browserSessionId || `browser:${targetSessionId}`
+                    browserSessionId: browserSessionId || `browser:${targetSessionId}`,
+                    /**
+                     *  THE LANGUAGE SWITCH WAS NEVER CONNECTED.
+                     *
+                     *  «النظام الان باللغه الانجليزية فلماذا تظهر بعض الكلمات
+                     *   باللغه العربية» — because this payload never carried his
+                     *  choice. The server has the right rule and has had it all
+                     *  along: the session language decides what Joe SAYS, and the
+                     *  script of one sentence only breaks a tie. But `language`
+                     *  was absent from the body, so the rule fell through to
+                     *  Accept-Language and then to the script he happened to type
+                     *  — and an English interface narrated its build in Arabic.
+                     *
+                     *  A setting nobody sends is not a setting.
+                     */
+                    language: i18n.language
                 });
             } else {
                 await SocketService.sendMessage(targetSessionId, messageText);
@@ -742,7 +757,7 @@ export default function Joe() {
         } finally {
             setIsLoading(false);
         }
-    }, [inputValue, isLoading, activeSessionId, activeSessionKind, workspaceId, browserSessionId, ensuresWorkspace, loadAllSessions, setAgentSelected]);
+    }, [inputValue, isLoading, activeSessionId, activeSessionKind, workspaceId, browserSessionId, ensuresWorkspace, loadAllSessions, setAgentSelected, i18n.language]);
 
     const handleCreateSession = useCallback(async () => {
         await createSession({ kind: 'agent' });
