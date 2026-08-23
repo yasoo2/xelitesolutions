@@ -347,6 +347,20 @@ describe('partial phases preserve verified blockers instead of guessing a repair
         expect(executor).toContain('...(verificationFailed ? { verificationFailed: true } : {})');
     });
 
+    it('keeps an unavailable browser checker distinct from a failed product', () => {
+        const executor = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'PhaseExecutorTool.ts'), 'utf-8');
+        const loop = fs.readFileSync(path.join(__dirname, '..', 'modules', 'services', 'AgentLoopService.ts'), 'utf-8');
+        const pipeline = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ProjectPipelineTool.ts'), 'utf-8');
+        expect(executor).toContain('let verificationUnavailable = false');
+        expect(executor).toContain('verification_unavailable:');
+        expect(executor).toContain('...(verificationUnavailable ? { verificationUnavailable: true } : {})');
+        expect(loop).toContain("'verificationUnavailable'");
+        expect(loop).toContain('const verificationUnavailable = phaseResult?.output?.verificationUnavailable === true');
+        expect(pipeline).toContain('const verificationUnavailable = Array.isArray(pipeline?.results)');
+        expect(pipeline).toContain("verificationUnavailable ? 'not_verified'");
+        expect(pipeline).toContain('Project could not be verified');
+    });
+
     it('carries structured fidelity repair routing without inventing a file target', () => {
         const react = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ReactProjectTool.ts'), 'utf-8');
         const executor = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'PhaseExecutorTool.ts'), 'utf-8');

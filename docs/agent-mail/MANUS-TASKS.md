@@ -1069,3 +1069,42 @@ POS-2026-08-23-W50: 0/50 closed; sequential rule preserved
 | W50 | **مؤجلة؛ 0/50 مغلقة** | تبقى آخر مهمة، ولا تبدأ قبل قبول Prompt 01؛ لا تغيير في القاعدة التسلسلية. |
 
 `POS-2026-08-23-PROMOTION`: pre-fix raw red `1 suite / 30 passed + 1 failed`; post-fix focused `4 suites / 93 tests`; API `tsc=0`; full `229 suites / 3739 tests / 20 of 20 batches / GATE:PASS`; no package/lock/generated artifacts/WeatherGo edits.
+
+
+## سجل إصلاح 035-BROWSER-CONTRACT — 2026-08-23
+| المعرّف | المهمة | الحالة | الدليل ومعيار الإغلاق |
+|---|---|---|---|
+| 035-BROWSER-CONTRACT | منع `browser_run` من تمرير actions نصية/مجهولة إلى executor، والتمييز بين checker غير القابل للتشغيل وفشل المنتج | **منجز ومدفوع في `8fc8be33`; الجولة الحية التالية مطلوبة** | `plannedArgsIssue` يرفض action غير الكائني أو type غير المدعوم باسم السبب؛ sanitizer لا يستبدل browser verifier المعطوب بـ`project_detect`؛ PhaseExecutor وAgentLoop وProjectPipeline يحملون `verificationUnavailable`؛ التقرير يقول `not verified`/`could not verify` ولا يسمي المنتج فاشلاً. Negative control خام منشور قبل الإصلاح؛ focused=3 suites/19 tests ثم suite ProjectPipeline=42/42؛ API `tsc=0`; full gate بعد تصحيح assertion متقادمة=229 suites/3744 tests/20 of 20 batches/`GATE:PASS`. |
+| PR82-035-BROWSER-CONTRACT | الدليل والقرار والختام في قناة Claude | **منجز ومدفوع في `8fc8be33`; الختام منشور؛ الجولة الحية التالية مطلوبة** | raw الجولة الحية `5385366576`، diagnosis `5385366576`، قرار Claude `5385402806`، إقرار التنفيذ `5385405242`، negative-control raw `5385413237`، إعلان التنفيذ `5385455077`. لا دمج لـ`6ff448dc` ولا بدء 2a؛ لا package/lock/generated artifacts ولا تعديل WeatherGo يدوياً. |
+| Prompt 01 — SpendWise | **مفتوح؛ لا انتقال إلى Prompt 02** | بعد `8fc8be33` نجحت الجولة المرئية في البناء/preview وQA، لكن الاختبار المباشر أثبت أن `-5` قُبل وأُنشئ صفاً (`Entries 0→1`, `Total 0→-5`)؛ لذلك لا acceptance. إصلاح validation التالي اجتاز regressions والبوابة، وتبقى إعادة Joe المرئية على SHA الجديد ثم اختبار empty description وnon-positive (مع بقاء Entries/Total صفراً قبل الصف) وباقي CRUD/total/search/filter/CSV/reload/live preview. |
+| W50 | **مؤجلة؛ 0/50 مغلقة** | تبقى آخر مهمة، ولا تبدأ قبل قبول Prompt 01؛ القاعدة التسلسلية محفوظة. |
+
+`POS-2026-08-23-BROWSER-CONTRACT`: pre-fix negative control=2 failed assertions; focused green=3 suites/19 selected tests; ProjectPipeline=42/42; API `tsc=0`; full `229 suites / 3744 tests / 20 of 20 batches / GATE:PASS`; initial full rerun exposed one stale decision-evidence key assertion (228/229, 3743/3744), corrected before final green gate.
+
+
+## سجل إصلاح 035-VALIDATION-METADATA — 2026-08-23
+
+| المعرّف | المهمة | الحالة | الدليل ومعيار الإغلاق |
+|---|---|---|---|
+| 035-VALIDATION-METADATA | حمل القيد الصريح `non-positive amounts` إلى AppField ثم رفضه في RecordsApp قبل أي mutation | **منجز ومدفوع في `22f6f815`; Prompt 01 ما زال مفتوحاً حتى rerun حي** | أضيفت `min?`/`minExclusive?` عامة، ومحلل request لا يضيف bound إلا عند ذكر الحقل والقيد صراحةً؛ `blueprintFor` ومسار `blueprintFromEntity` يحملانها؛ `content.js` ي serialise metadata؛ RecordsApp يفحص add/edit/parent قبل `setRows`/`apiCreate`/`apiUpdate` ويضيف `min` كـUX اختياري. |
+| PR82-035-VALIDATION | الدليل والقرار في قناة Claude | **منجز ومدفوع في `22f6f815`; الختام منشور؛ rerun الحي مطلوب** | raw non-positive `5385538200`، diagnosis `5385548538`، قرار Claude `5385568071`، إقرار/شرط World A `5385571635`، red control `5385578896`، إقرار Claude 295 `5385584182`، acknowledgement `5385586421`، implementation update `5385604938`. |
+| VALIDATION-REGRESSION | حماية القيد وعدم اختراعه | **أخضر** | `the-request-shapes-the-data.test.ts`: metadata Prompt 01، رفض `-5` و`0`، قبول `-5` في silent blueprint، وtemplate order. `generated-app-parses.test.ts`: serialization إلى `content.js` وparse لـRecordsApp. |
+| VALIDATION-GATE | بوابة الإصلاح | **أخضر** | focused: 3 suites / 80 tests / EXIT 0؛ API `npx tsc --noEmit`: 0؛ full: 229 suites / 3750 tests / 20 من 20 batches / كل exits صفر / `GATE:PASS`. |
+| Prompt 01 — SpendWise | **مفتوح؛ لا انتقال إلى Prompt 02** | بعد دفع validation يجب قتل الزوج المؤقت القديم فقط، وبناء API/Vite من SHA الجديد، ثم Joe New Chat مرئي جديد بالنص الحرفي `/tmp/joe-prompt-01.md`. لا قبول قبل اختبار empty description وnon-positive مع `Entries=0` و`Total=0` بعد الرفض، ثم valid add/row-derived total/search/category filter/edit/delete/CSV/reload/live preview، وتسليم Joe الصادق. |
+| W50 | **مؤجلة؛ 0/50 مغلقة** | لا تبدأ قبل قبول Prompt 01؛ الترتيب التسلسلي محفوظ. |
+
+`POS-2026-08-23-VALIDATION`: red control قبل الإصلاح `17 passed + 1 failed / 18 total`; focused بعد الإصلاح `3 suites / 80 tests`; API `tsc=0`; full `229 suites / 3750 tests / 20 of 20 batches / GATE:PASS`; changed files: `app-blueprints.ts`, `ReactProjectTool.ts`, `react-app-templates.ts`, `the-request-shapes-the-data.test.ts`, `generated-app-parses.test.ts`, `MANUS-TASKS.md`; no package/lock/generated artifacts/WeatherGo edits.
+
+POS-2026-08-23-VALIDATION-PUSHED: `22f6f815917e0b629776a87391cae04a2cbc1a8f`; `HEAD == origin/main` بعد الدفع؛ Prompt 01 لا يزال مفتوحاً حتى rerun Joe المباشر.
+
+
+## سجل إصلاح 035-PRIMARY-HANDOFF — 2026-08-23
+
+| المعرّف | المهمة | الحالة | الدليل ومعيار الإغلاق |
+|---|---|---|---|
+| 035-PRIMARY-HANDOFF | منع ReactProjectTool من إسقاط primary resource إلى generic بسبب أن `builtKeys` كانت تقرأ child model فقط | **منجز ومدفوع في `ac5a9d28`; إعادة الجولة الحية مطلوبة** | وفق قرار Claude 295 `5385751995`، أصلحت `ReactProjectTool.ts:3184` بإضافة `prevEntry.resource` إلى المجموعة نفسها بلا branch حسب kind أو catalogue. `api-project.test.ts` = 33/33، focused validation = 80/80، API `tsc=0`، full = 229 suites/3752 tests/20 batches/`GATE:PASS`. الدفع موثق في `5385824567` مع `HEAD == origin/main == ac5a9d28`. Prompt 01 handoff وuncatalogued clinic regressions أخضرا؛ لا قبول حي بعد. |
+| 035-PRIMARY-HANDOFF-REGRESSION | إثبات الإصلاح على class لا instance | **أخضر محلياً** | `api-project.test.ts`: `33/33`؛ linked Prompt 01 يحافظ على `expenses/title/amount/category/date/note` ويرفض `price/quantity` في generated content، وbrief عيادة مشتق يحافظ على `patients/name/phone/email/notes` ويرفض fallback fields. |
+| A-GENERIC-FALLBACK-IS-STILL-A-CATALOGUE | إزالة fallback `descriptions`/`price`/`quantity` المعلّب الذي يُسمّى generic | **دين مفتوح مؤجل؛ لا يُصلح في هذه الدفعة** | سجّله Claude 295 في `5385751995`: fallback الحالي ما زال جواباً محفوظاً لا قراءةً للطلب. لا يُعتبر أخضر لمجرد أن primary demotion أُصلح؛ يحتاج استشارة ونطاقاً واختبارات مستقلّة بعد إغلاق Prompt 01. |
+| Prompt 01 — SpendWise | إعادة اختبار Joe المرئي بعد primary handoff repair | **مفتوح؛ لا انتقال إلى Prompt 02** | لا reuse للمشروع المعيب. بعد gate/push أبني pair جديداً من SHA المطابق، أرسل `/tmp/joe-prompt-01.md` في New Chat مرئي، ثم أختبر السلوك مباشرة؛ لا acceptance من phase count أو QA أو preview وحدها. |
+
+`POS-2026-08-23-PRIMARY-HANDOFF`: Claude approved formulation (b) `5385751995`; source `ReactProjectTool.ts`; `api-project.test.ts` = 33/33; focused validation = 80/80; API `tsc=0`; full = 229 suites/3752 tests/20 of 20 batches/`GATE:PASS`; pushed as `ac5a9d28391033f8a4fd0bcd93d015e8e34db480`, `HEAD == origin/main`; fresh live rerun pending; no package/lock/generated artifacts/WeatherGo edits.

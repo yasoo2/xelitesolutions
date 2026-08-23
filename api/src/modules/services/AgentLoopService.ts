@@ -96,7 +96,7 @@ export function compactPhaseReceipt(output: any, logs: any, status?: string, ext
     const receipt: Record<string, any> = {};
     const retainedKeys = [
         'phaseNumber', 'phaseName', 'status', 'completedTasks', 'totalTasks', 'nextPhase',
-        'deliverables', 'estimatedTime', 'verificationFailed', 'requiresUserDecision',
+        'deliverables', 'estimatedTime', 'verificationFailed', 'verificationUnavailable', 'requiresUserDecision',
         'primaryError', 'error', 'results', 'honestBlocker',
     ];
     for (const key of retainedKeys) {
@@ -903,9 +903,14 @@ export class AgentLoopService {
                 phaseResult?.output?.verificationFailed === true &&
                 (hasActionableEvidence || hasActionableAcceptanceEvidence) &&
                 !nonRepairableEvidence;
+            // A checker that could not run is not evidence about the product.
+            // Keep it as an honest blocker: SelfFix has no source target to repair
+            // and must not turn a missing browser observation into a guessed edit.
+            const verificationUnavailable = phaseResult?.output?.verificationUnavailable === true;
             const isHonestBlocker =
                 phaseResult?.output?.requiresUserDecision === true ||
                 primaryError.includes('EVIDENCE_BLOCKER') ||
+                verificationUnavailable ||
                 (phaseResult?.output?.verificationFailed === true && !actionableVerificationFailure);
             if (isHonestBlocker) {
                 voice(pick(isAr,
@@ -914,6 +919,7 @@ export class AgentLoopService {
                 results.push(compactPhaseReceipt(phaseResult?.output, phaseResult?.logs, status,
                     phaseReceiptExtras(projectContext, phaseResult?.output?.results, {
                         honestBlocker: true,
+                        ...(verificationUnavailable ? { verificationUnavailable: true } : {}),
                         primaryError: surfacedPrimaryError,
                     }),
                 ));

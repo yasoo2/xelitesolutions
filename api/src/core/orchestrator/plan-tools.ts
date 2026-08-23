@@ -911,10 +911,17 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
                     || (verificationTool === 'shell_execute'
                         ? unprovenProjectCheckIssue(verificationArgs?.command, candidateCheckCommands)
                         : null);
-                verification = verificationIssue
+                // A browser verifier is itself the evidence boundary. Replacing
+                // an invalid browser contract with project_detect would make an
+                // unrun checker look like a passed verification. Preserve the
+                // named browser verifier so PhaseExecutor can report
+                // verification_unavailable honestly and never blame the product.
+                verification = verificationIssue && verificationTool !== 'browser_run'
                     ? { task: 'Inspect phase output on disk', tool: 'project_detect', args: {} }
                     : { ...v, tool: verificationTool, args: verificationArgs };
-                if (verificationIssue) notes.push(`[plan] استبدلتُ مهمة تحقق غير مكتملة بفحص المشروع — ${verificationIssue}`);
+                if (verificationIssue) notes.push(verificationTool === 'browser_run'
+                    ? `[plan] أبقيتُ تحقق browser_run مع عائق عقد مسمّى — ${verificationIssue}؛ لن أستبدله بفحص يوحي بنجاح لم يحدث.`
+                    : `[plan] استبدلتُ مهمة تحقق غير مكتملة بفحص المشروع — ${verificationIssue}`);
             }
         }
 
@@ -1183,6 +1190,13 @@ const RUNTIME_SUPPLIED_PLAN_FIELDS = new Set([
     'sessionId', 'userId', 'workspaceId', 'context', '__userId', '__workspaceId',
 ]);
 
+/** The exact action names implemented by modules/browser/executor.ts. */
+const BROWSER_ACTION_TYPES = new Set([
+    'goto', 'click', 'type', 'fill', 'hover', 'key', 'evaluate', 'scroll', 'wait',
+    'assert', 'ui_audit', 'back', 'forward', 'reload', 'screenshot', 'extract_text',
+    'get_elements', 'scroll_to_element', 'click_coordinates', 'select', 'thought',
+]);
+
 /**
  * Validate model-written arguments that use a closed action vocabulary.
  *
@@ -1201,9 +1215,26 @@ export function plannedArgsIssue(toolName: string, args: any): string | null {
      */
     if (toolName === 'browser_run') {
         const instruction = String(args?.instructionText || '').trim();
-        const actions = Array.isArray(args?.actions) ? args.actions.filter(Boolean) : [];
+        const rawActions = args?.actions;
+        if (rawActions !== undefined && rawActions !== null && !Array.isArray(rawActions)) {
+            return 'browser_run يحتاج actions كمصفوفة من كائنات الإجراءات؛ الخطة مرّرت قيمة ليست مصفوفة، لذلك رُفضت قبل فتح المتصفح.';
+        }
+        const actions = Array.isArray(rawActions) ? rawActions : [];
         if (!instruction && actions.length === 0) {
             return 'browser_run يحتاج instructionText أو actions غير فارغة؛ لم تُحدّد الخطة هدفاً أو إجراءً قابلاً للتنفيذ، لذلك أُوقفت قبل فتح المتصفح.';
+        }
+        for (let i = 0; i < actions.length; i += 1) {
+            const action = actions[i];
+            if (!action || typeof action !== 'object' || Array.isArray(action)) {
+                return `browser_run action #${i + 1} يجب أن يكون كائناً منسقاً؛ النصوص لا تُحوّل تلقائياً إلى أفعال متصفح، لذلك رُفضت الخطة قبل التنفيذ.`;
+            }
+            const type = String(action.type || '').trim();
+            if (!type) {
+                return `browser_run action #${i + 1} يفتقد type؛ لا يمكن تنفيذ فعل مجهول، لذلك رُفضت الخطة قبل التنفيذ.`;
+            }
+            if (!BROWSER_ACTION_TYPES.has(type)) {
+                return `browser_run action #${i + 1} يحمل type غير مدعوم «${type}»؛ الأفعال المدعومة: ${Array.from(BROWSER_ACTION_TYPES).join(', ')}.`;
+            }
         }
     }
     if (toolName === 'scaffold_project') {

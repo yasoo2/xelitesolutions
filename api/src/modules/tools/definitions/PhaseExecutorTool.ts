@@ -1570,6 +1570,7 @@ export class PhaseExecutorTool implements ToolDefinition {
             // orchestration must distinguish a code task that failed to run from
             // a phase whose explicit acceptance check disproved delivery.
             let verificationFailed = false;
+            let verificationUnavailable = false;
 
             appendLog(`[PhaseExecutor] Phase ${phaseTag} ${status}: ${completedCount}/${totalTasks} tasks completed`);
 
@@ -1612,8 +1613,12 @@ export class PhaseExecutorTool implements ToolDefinition {
                     const verificationArgsIssue = plannedArgsIssue(vToolName, verificationArgs);
                     if (verificationArgsIssue) {
                         appendLog(`[PhaseExecutor] ⚠️ Verification input invalid: ${verificationArgsIssue}`);
-                        results.push({ task: vTaskDesc, tool: vToolName, ok: false, error: verificationArgsIssue });
+                        const checkerError = vToolName === 'browser_run'
+                            ? `verification_unavailable: ${verificationArgsIssue}`
+                            : verificationArgsIssue;
+                        results.push({ task: vTaskDesc, tool: vToolName, ok: false, error: checkerError });
                         verificationFailed = true;
+                        verificationUnavailable = vToolName === 'browser_run';
                         status = 'partial';
                     } else {
                         const vResult = await executeTool(vToolName, verificationArgs, executionContext);
@@ -1623,9 +1628,14 @@ export class PhaseExecutorTool implements ToolDefinition {
                         results.push({ task: vTaskDesc, tool: vToolName, ok: true });
                         } else {
                             const vErr = String(vResult.error || 'Verification failed');
-                            appendLog(`[PhaseExecutor] ⚠️ Verification failed: ${vErr}`);
-                            results.push({ task: vTaskDesc, tool: vToolName, ok: false, error: vErr });
+                            const checkerUnavailable = vToolName === 'browser_run'
+                                && /^(?:browser_unavailable|unauthorized|forbidden|missing_secrets|login_2fa_required|login_not_completed)$/i.test(vErr.trim());
+                            appendLog(checkerUnavailable
+                                ? `[PhaseExecutor] ⚠️ Verification unavailable: ${vErr}`
+                                : `[PhaseExecutor] ⚠️ Verification failed: ${vErr}`);
+                            results.push({ task: vTaskDesc, tool: vToolName, ok: false, error: checkerUnavailable ? `verification_unavailable: ${vErr}` : vErr });
                             verificationFailed = true;
+                            verificationUnavailable = checkerUnavailable;
                             status = 'partial';
                         }
                     }
@@ -1714,6 +1724,7 @@ export class PhaseExecutorTool implements ToolDefinition {
                     deliverables: phase.deliverables || [],
                     estimatedTime: phase.estimatedTime || 'unknown',
                     ...(verificationFailed ? { verificationFailed: true } : {}),
+                    ...(verificationUnavailable ? { verificationUnavailable: true } : {}),
                     ...(phaseDelivery ? { delivery: phaseDelivery } : {})
                 },
                 logs

@@ -11,7 +11,7 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { readDeclaredOptions, blueprintFor } from '../core/design/app-blueprints';
+import { readDeclaredOptions, blueprintFor, violatesFieldConstraint } from '../core/design/app-blueprints';
 
 const SRC = path.join(__dirname, '..');
 const read = (...p: string[]) => fs.readFileSync(path.join(SRC, ...p), 'utf-8');
@@ -92,6 +92,55 @@ describe('the blueprint obeys the declaration', () => {
     it('expenses carries the topGroup metric', () => {
         const bp = blueprintFor('expenses', 'تطبيق مصاريف', true);
         expect(bp.metrics.some(m => m.kind === 'topGroup' && m.field === 'category' && m.field2 === 'amount')).toBe(true);
+    });
+});
+
+describe('request-stated numeric validation is part of the field contract', () => {
+    const PROMPT_01 = fs.readFileSync('/tmp/joe-prompt-01.md', 'utf-8').trim();
+
+    it('exact Prompt 01 carries a strict positive bound on its amount field', () => {
+        const bp = blueprintFor('expenses', PROMPT_01, false);
+        const amount = bp.fields.find(f => f.key === 'amount');
+        expect(amount).toMatchObject({ type: 'number', min: 0, minExclusive: true });
+    });
+
+    it('exact Prompt 01 rejects -5 through the field contract before mutation', () => {
+        const bp = blueprintFor('expenses', PROMPT_01, false);
+        const amount = bp.fields.find(f => f.key === 'amount')!;
+        expect(violatesFieldConstraint(amount, '-5')).toBe(true);
+        expect(violatesFieldConstraint(amount, '0')).toBe(true);
+        expect(violatesFieldConstraint(amount, '0.01')).toBe(false);
+    });
+
+    it('the silent numeric request invents no bound, so -5 remains accepted', () => {
+        const bp = blueprintFor('expenses', 'Build a quiet expense ledger', false);
+        const amount = bp.fields.find(f => f.key === 'amount')!;
+        expect(amount).toMatchObject({ type: 'number' });
+        expect(amount).not.toHaveProperty('min');
+        expect(amount).not.toHaveProperty('minExclusive');
+        expect(violatesFieldConstraint(amount, '-5')).toBe(false);
+    });
+});
+
+describe('the records output enforces only declared numeric bounds', () => {
+    const T = () => read('modules', 'tools', 'definitions', 'react-app-templates.ts');
+
+    it('rejects a declared bound before the row and API mutations', () => {
+        const t = T();
+        const guard = t.indexOf('const invalid = invalidNumericField(fields, draft);');
+        const rowMutation = t.indexOf('setRows(rows.map', guard);
+        const apiMutation = t.indexOf('apiCreate(content.api, local)', guard);
+        expect(guard).toBeGreaterThan(-1);
+        expect(rowMutation).toBeGreaterThan(guard);
+        expect(apiMutation).toBeGreaterThan(guard);
+        expect(t).toMatch(/field\.minExclusive \? value <= field\.min : value < field\.min/);
+        expect(t).toMatch(/min=\{f\.min !== undefined \? f\.min : undefined\}/);
+    });
+
+    it('keeps the silent numeric path free of a fabricated positive guard', () => {
+        const t = T();
+        expect(t).toMatch(/if \(field\.type !== 'number' \|\| field\.min === undefined\) return false/);
+        expect(t).toMatch(/const invalid = invalidNumericField\(fields, draft\);/);
     });
 });
 

@@ -43,6 +43,10 @@ export interface AppField {
     type: FieldType;
     options?: string[];
     required?: boolean;
+    /** Lower bound stated by the user, when the request explicitly gives one. */
+    min?: number;
+    /** When true, the value must be strictly greater than `min`. */
+    minExclusive?: boolean;
     /** Shown in the compact row summary — keeps the list readable. */
     primary?: boolean;
 }
@@ -450,6 +454,49 @@ export function subjectOf(request: string): string {
     return (lastSpace > 12 ? cut.slice(0, lastSpace) : cut).trim();
 }
 
+const STRICT_POSITIVE_CONSTRAINT = /non[-\s]?positive|strictly\s+positive|positive[-\s]?only|(?:must|should|need(?:s)?|require(?:s)?|validation(?:\s+that)?|validate|reject(?:s)?|disallow(?:s)?|not\s+accept)\s+(?:be\s+)?positive|(?:greater|more)\s+than\s+zero|above\s+zero|غير\s*(?:موجب|موجبة|موجبين)|(?:موجب|موجبة)\s+فقط|أكبر\s+من\s+الصفر|فوق\s+الصفر|(?:يرفض|لا\s+يقبل)\s+(?:الصفر|السالب)/iu;
+
+function requestNamesField(requestRaw: string, field: AppField): boolean {
+    const request = String(requestRaw || '').toLocaleLowerCase();
+    const names = [field.key, field.label]
+        .map(value => String(value || '').trim().toLocaleLowerCase())
+        .filter(Boolean);
+    return names.some(name => {
+        let from = 0;
+        while (from < request.length) {
+            const at = request.indexOf(name, from);
+            if (at < 0) return false;
+            const window = request.slice(Math.max(0, at - 96), at + name.length + 96);
+            if (STRICT_POSITIVE_CONSTRAINT.test(window)) return true;
+            from = at + Math.max(1, name.length);
+        }
+        return false;
+    });
+}
+
+/**
+ * Carry only an explicit lower-bound instruction from the request into fields.
+ * A numeric type alone never invents a bound; the request must name the field
+ * and state the constraint in its own words.
+ */
+export function applyRequestFieldConstraints(bp: AppBlueprint, request: string): AppBlueprint {
+    const fields = bp.fields.map(field => (
+        field.type === 'number' && requestNamesField(request, field)
+            ? { ...field, min: 0, minExclusive: true }
+            : field
+    ));
+    return fields.some((field, index) => field !== bp.fields[index]) ? { ...bp, fields } : bp;
+}
+
+export function violatesFieldConstraint(field: Pick<AppField, 'type' | 'min' | 'minExclusive'>, raw: unknown): boolean {
+    if (field.type !== 'number' || field.min === undefined) return false;
+    const text = String(raw ?? '').trim();
+    if (!text) return false;
+    const value = Number(text);
+    if (!Number.isFinite(value)) return true;
+    return field.minExclusive ? value <= field.min : value < field.min;
+}
+
 export function blueprintFor(kind: AppKind, request: string, isAr: boolean): AppBlueprint {
     /**
      * AN EXPLICIT LIST BEATS EVERY ARCHETYPE, WHATEVER THE DOMAIN LOOKS LIKE.
@@ -503,7 +550,7 @@ export function blueprintFor(kind: AppKind, request: string, isAr: boolean): App
 }
 
 function blueprintForKind(kind: AppKind, request: string, isAr: boolean): AppBlueprint {
-    const bp = stockBlueprintFor(kind, request, isAr);
+    let bp = stockBlueprintFor(kind, request, isAr);
     /**
      * The declared categories replace the stock ones — on whichever field
      * carries the grouping (the statusField when it has one, else a field
@@ -520,6 +567,7 @@ function blueprintForKind(kind: AppKind, request: string, isAr: boolean): AppBlu
             if (!bp.statusField) bp.statusField = target.key;
         }
     }
+    bp = applyRequestFieldConstraints(bp, request);
     return bp;
 }
 

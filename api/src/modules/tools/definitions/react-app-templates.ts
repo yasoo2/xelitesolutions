@@ -97,7 +97,7 @@ export const content = {
   // Composite apps address each first-class collection explicitly.
   apiResources: ${JSON.stringify(apiResources)},
   fields: [
-${bp.fields.map(f => `    { key: '${q(f.key)}', label: '${q(f.label)}', type: '${q(f.type)}'${f.options ? `, options: [${f.options.map(x => `'${q(x)}'`).join(', ')}]` : ''}${f.required ? ', required: true' : ''}${f.primary ? ', primary: true' : ''} },`).join('\n')}
+${bp.fields.map(f => `    { key: '${q(f.key)}', label: '${q(f.label)}', type: '${q(f.type)}'${f.options ? `, options: [${f.options.map(x => `'${q(x)}'`).join(', ')}]` : ''}${f.required ? ', required: true' : ''}${f.min !== undefined ? `, min: ${f.min}` : ''}${f.minExclusive ? ', minExclusive: true' : ''}${f.primary ? ', primary: true' : ''} },`).join('\n')}
   ],
   metrics: [
 ${bp.metrics.map(m => `    { label: '${q(m.label)}', kind: '${q(m.kind)}'${m.field ? `, field: '${q(m.field)}'` : ''}${m.field2 ? `, field2: '${q(m.field2)}'` : ''}${m.field3 ? `, field3: '${q(m.field3)}'` : ''}${m.equals ? `, equals: '${q(m.equals)}'` : ''} },`).join('\n')}
@@ -959,6 +959,21 @@ function whyLocal(sent) {
   return '';
 }
 
+function invalidNumericField(fields, values) {
+  return fields.find((field) => {
+    if (field.type !== 'number' || field.min === undefined) return false;
+    const raw = String(values[field.key] ?? '').trim();
+    if (!raw) return false;
+    const value = Number(raw);
+    return !Number.isFinite(value) || (field.minExclusive ? value <= field.min : value < field.min);
+  }) || null;
+}
+
+function invalidFieldMessage(field) {
+  return ${T('يجب أن تكون قيمة ', 'The value for ')} + field.label
+    + ${T(' أكبر من ', ' must be greater than ')} + field.min;
+}
+
 export default function RecordsApp({ content }) {
   const store = useMemo(() => createStore(content.storeKey + ':rows'), [content.storeKey]);
   const fields = content.fields;
@@ -1041,6 +1056,8 @@ export default function RecordsApp({ content }) {
     e.preventDefault();
     const missing = rel.fields.filter(f => f.required && !String(parentDraft[f.key] || '').trim());
     if (missing.length) { setParentError(${T('املأ الحقول المطلوبة: ', 'Required: ')} + missing.map(f => f.label).join('، ')); return; }
+    const invalid = invalidNumericField(rel.fields, parentDraft);
+    if (invalid) { setParentError(invalidFieldMessage(invalid)); return; }
     setParentError('');
     const sent = await apiCreateOn(content.api, rel.resource, parentDraft);
     if (whyLocal(sent)) setParentError(whyLocal(sent));
@@ -1063,6 +1080,8 @@ export default function RecordsApp({ content }) {
     e.preventDefault();
     const missing = fields.filter(f => f.required && !String(draft[f.key] || '').trim());
     if (missing.length) { setError(${T('املأ الحقول المطلوبة: ', 'Required: ')} + missing.map(f => f.label).join('، ')); return; }
+    const invalid = invalidNumericField(fields, draft);
+    if (invalid) { setError(invalidFieldMessage(invalid)); return; }
     setError('');
     if (editing) {
       const patch = { ...draft };
@@ -1194,6 +1213,7 @@ export default function RecordsApp({ content }) {
               <label className="field" key={f.key}>
                 <span>{f.label}{f.required ? ' *' : ''}</span>
                 <input type={f.type === 'number' ? 'number' : f.type === 'tel' ? 'tel' : f.type === 'email' ? 'email' : 'text'}
+                  min={f.min !== undefined ? f.min : undefined}
                   value={parentDraft[f.key] || ''} onChange={e => setParentDraft({ ...parentDraft, [f.key]: e.target.value })} />
               </label>
             ))}
@@ -1261,6 +1281,7 @@ export default function RecordsApp({ content }) {
               ) : (
                 <input type={f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : f.type === 'time' ? 'time' : f.type === 'tel' ? 'tel' : f.type === 'email' ? 'email' : 'text'}
                   required={!!f.required}
+                  min={f.min !== undefined ? f.min : undefined}
                   value={draft[f.key] || ''} onChange={e => setDraft({ ...draft, [f.key]: e.target.value })} />
               )}
             </label>

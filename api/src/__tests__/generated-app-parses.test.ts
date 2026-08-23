@@ -102,6 +102,30 @@ const WeatherProvider: React.FC<WeatherProviderProps> = ({ children }) => {
         }
     });
 
+    it('serializes request-stated numeric bounds into a parsable RecordsApp without inventing silent bounds', () => {
+        const constrained = blueprintFor(
+            'expenses',
+            'Build a SpendWise expense tracker with an amount field and validation that rejects non-positive amounts',
+            false,
+        );
+        const constrainedFiles = buildAppFiles(constrained, {
+            isArabic: false, brand: 'SpendWise', storeKey: 'spendwise', api: '',
+        } as any, 'spendwise');
+        const constrainedAmount = constrainedFiles['src/content.js'].split('\n').find(line => line.includes("key: 'amount'")) || '';
+        expect(constrainedAmount).toContain('min: 0');
+        expect(constrainedAmount).toContain('minExclusive: true');
+        expect(syntaxOk('src/content.js', constrainedFiles['src/content.js']).ok).toBe(true);
+        expect(syntaxOk('src/components/RecordsApp.jsx', constrainedFiles['src/components/RecordsApp.jsx']).ok).toBe(true);
+
+        const silent = blueprintFor('expenses', 'Build a quiet expense ledger', false);
+        const silentFiles = buildAppFiles(silent, {
+            isArabic: false, brand: 'Quiet Ledger', storeKey: 'quiet-ledger', api: '',
+        } as any, 'quiet-ledger');
+        const silentAmount = silentFiles['src/content.js'].split('\n').find(line => line.includes("key: 'amount'")) || '';
+        expect(silentAmount).not.toContain('min:');
+        expect(silentAmount).not.toContain('minExclusive');
+    });
+
     it('normalizes a proven React/Vite scaffold with a missing root index.html', () => {
         const result = normalizeReactScaffoldStructure({
             'package.json': JSON.stringify({

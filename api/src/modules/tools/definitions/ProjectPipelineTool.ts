@@ -48,6 +48,7 @@ export interface PipelineDecisionEvidence {
     finalVerified: boolean;
     browserQaFailed: boolean;
     scopeCoverageFailed: boolean;
+    verificationUnavailable: boolean;
     liveUrl: string | null;
     done: number;
     total: number;
@@ -89,14 +90,20 @@ export function buildPipelineDecisionEvidence(input: {
     total: number;
     finalHonestBlocker: boolean;
     verificationFailed?: boolean;
+    verificationUnavailable?: boolean;
     liveRunVerificationFailed?: boolean;
     liveRunError?: string;
     scopeAudit?: { built?: number; requested?: number; missing?: string[] };
     phaseResults?: any[];
 }): PipelineDecisionEvidence {
     const results = Array.isArray(input.phaseResults) ? input.phaseResults : [];
+    const verificationUnavailable = input.verificationUnavailable === true || results.some((result: any) => (
+        result?.verificationUnavailable === true
+        || result?.output?.verificationUnavailable === true
+    ));
     const failedPhase = results.find((result: any) => (
         result?.verificationFailed === true
+        || result?.verificationUnavailable === true
         || result?.ok === false
         || (result?.status && result.status !== 'completed')
     ));
@@ -107,6 +114,8 @@ export function buildPipelineDecisionEvidence(input: {
         honestBlocker = `live_run: ${String(input.liveRunError).slice(0, 420)}`;
     } else if (input.browserQaFailed) {
         honestBlocker = 'browser_qa_failed';
+    } else if (verificationUnavailable) {
+        honestBlocker = 'verification_unavailable';
     } else if (input.scopeCoverageFailed && input.scopeAudit?.requested) {
         honestBlocker = `scope_coverage: ${Number(input.scopeAudit.built || 0)}/${Number(input.scopeAudit.requested)}`;
     } else if (phaseName || phaseError) {
@@ -120,6 +129,7 @@ export function buildPipelineDecisionEvidence(input: {
         finalVerified: input.finalVerified,
         browserQaFailed: input.browserQaFailed,
         scopeCoverageFailed: input.scopeCoverageFailed,
+        verificationUnavailable,
         liveUrl: String(input.liveUrl || '').trim() || null,
         done: Number(input.done || 0),
         total: Number(input.total || 0),
@@ -1341,21 +1351,28 @@ export class ProjectPipelineTool implements ToolDefinition {
         // A pipeline-level failure can already be a final, evidence-backed
         // verdict from phase execution. Carry the machine-readable marker out
         // to AgentOrchestrator so it cannot reopen a generative recovery loop.
+        const verificationUnavailable = Array.isArray(pipeline?.results)
+            && pipeline.results.some((result: any) => (
+                result?.verificationUnavailable === true
+                || result?.output?.verificationUnavailable === true
+            ));
         const verificationFailed = requestFidelityBlocked || (Array.isArray(pipeline?.results)
             && pipeline.results.some((result: any) => result?.verificationFailed === true));
         let liveRunVerificationFailed = false;
         let browserQaFailed = false;
         let browserQa: AppAudit | null = null;
-        const honestBlocker = pipeline?.honestBlocker === true || verificationFailed;
+        const honestBlocker = pipeline?.honestBlocker === true || verificationFailed || verificationUnavailable;
         let finalHonestBlocker = honestBlocker;
         // Compatibility facts for phase execution; live-run may still veto delivery.
         const executionStatus = verified ? 'completed' : done > 0 ? 'partial' : 'failed';
         const verificationStatus = requestFidelityBlocked
             ? requestFidelityEvidenceUnavailable ? 'fidelity_unverifiable' : 'request_fidelity_mismatch'
-            : verified ? 'passed' : String(pipeline?.verificationStatus || 'failed');
+            : verificationUnavailable ? 'not_verified'
+                : verified ? 'passed' : String(pipeline?.verificationStatus || 'failed');
         const deliveryStatus = requestFidelityBlocked
             ? 'blocked'
-            : verified ? 'delivered' : done > 0 ? 'partial' : 'blocked';
+            : verificationUnavailable ? 'not_verified'
+                : verified ? 'delivered' : done > 0 ? 'partial' : 'blocked';
         if (requestFidelityBlocked) {
             appendBoundedPipelineLog(logs, requestFidelityEvidenceUnavailable
                 ? '[pipeline] fidelity_unverifiable is final delivery evidence; partial delivery disabled'
@@ -1986,10 +2003,12 @@ export class ProjectPipelineTool implements ToolDefinition {
         const finalExecutionStatus = finalVerified ? 'completed' : done > 0 ? 'partial' : 'failed';
         const finalVerificationStatus = requestFidelityBlocked
             ? requestFidelityEvidenceUnavailable ? 'fidelity_unverifiable' : 'request_fidelity_mismatch'
-            : finalVerified ? 'passed' : browserQaFailed ? 'browser_qa_failed' : String(pipeline?.verificationStatus || 'failed');
+            : verificationUnavailable ? 'not_verified'
+                : finalVerified ? 'passed' : browserQaFailed ? 'browser_qa_failed' : String(pipeline?.verificationStatus || 'failed');
         const finalDeliveryStatus = requestFidelityBlocked
             ? 'blocked'
-            : finalVerified ? 'delivered' : (partialDelivery || done > 0) ? 'partial' : 'blocked';
+            : verificationUnavailable ? 'not_verified'
+                : finalVerified ? 'delivered' : (partialDelivery || done > 0) ? 'partial' : 'blocked';
         const decisionEvidence = buildPipelineDecisionEvidence({
             finalVerified,
             browserQaFailed,
@@ -1999,6 +2018,7 @@ export class ProjectPipelineTool implements ToolDefinition {
             total,
             finalHonestBlocker,
             verificationFailed,
+            verificationUnavailable,
             liveRunVerificationFailed,
             liveRunError,
             scopeAudit,
@@ -2008,7 +2028,7 @@ export class ProjectPipelineTool implements ToolDefinition {
         const summary = this.buildDeliveryReport({
             language: isAr ? 'ar' : 'en',
             projectName: String(plannerResult.output.projectName || 'project'),
-            phases, pipeline, done, total, verified: finalVerified, liveUrl, liveRunError, liveRepairStatus, scopeAudit, scopeRepairStatus, browserQa, decisionEvidence,
+            phases, pipeline, done, total, verified: finalVerified, liveUrl, liveRunError, liveRepairStatus, scopeAudit, scopeRepairStatus, browserQa, decisionEvidence, verificationUnavailable,
         });
         say(`[pipeline] ${finalVerified ? `✅ ${done}/${total}` : `⚠️ ${done}/${total}`} — delivery report ready`);
 
@@ -2025,6 +2045,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                 deliveryStatus: finalDeliveryStatus,
                 decisionEvidence,
                 ...(verificationFailed ? { verificationFailed: true } : {}),
+                ...(verificationUnavailable ? { verificationUnavailable: true } : {}),
                 ...(requestFidelityMismatch ? { requestFidelityMismatch: true } : {}),
                 ...(requestFidelityEvidenceUnavailable ? { fidelityUnverifiable: true } : {}),
                 ...(liveRunVerificationFailed ? { verificationFailed: true } : {}),
@@ -2244,8 +2265,9 @@ export class ProjectPipelineTool implements ToolDefinition {
         scopeRepairStatus?: string;
         browserQa?: AppAudit | null;
         decisionEvidence?: PipelineDecisionEvidence;
+        verificationUnavailable?: boolean;
     }): string {
-        const { language: lang, projectName, phases, pipeline, done, total, verified, liveUrl, liveRunError, liveRepairStatus, scopeAudit, scopeRepairStatus, browserQa, decisionEvidence } = args;
+        const { language: lang, projectName, phases, pipeline, done, total, verified, liveUrl, liveRunError, liveRepairStatus, scopeAudit, scopeRepairStatus, browserQa, decisionEvidence, verificationUnavailable } = args;
         const ar = lang === 'ar';
         const lines: string[] = [];
         /**
@@ -2278,7 +2300,9 @@ export class ProjectPipelineTool implements ToolDefinition {
 
         lines.push(verified
             ? (ar ? `## ✅ اكتمل المشروع: ${projectName}` : `## ✅ Project delivered: ${projectName}`)
-            : (ar ? `## ⚠️ توقف البناء بصدق: ${projectName}` : `## ⚠️ Build stopped honestly: ${projectName}`));
+            : verificationUnavailable
+                ? (ar ? `## ⚠️ لم أستطع التحقق من المشروع: ${projectName}` : `## ⚠️ Project could not be verified: ${projectName}`)
+                : (ar ? `## ⚠️ توقف البناء بصدق: ${projectName}` : `## ⚠️ Build stopped honestly: ${projectName}`));
 
         if (credentials.length) {
             lines.push('');
@@ -2297,9 +2321,13 @@ export class ProjectPipelineTool implements ToolDefinition {
                 ? `### 🟢 نظامك يعمل الآن\nالمعاينة الحية مفتوحة على: **${liveUrl}**\nيمكنك استخدامه الآن. لإيقافه قل: «أوقف المشروع».`
                 : `### 🟢 Your system is live\nOpen at: **${liveUrl}**\nUse it now. To stop it, say: "stop the project".`);
         }
-        lines.push(ar
-            ? `**المراحل:** ${done}/${total} نُفِّذت وتحقَّقت (تنفيذ فعلي + فحوص، لا مجرد كتابة ملفات).`
-            : `**Phases:** ${done}/${total} executed and verified (real execution + checks, not just written files).`);
+        lines.push(verificationUnavailable
+            ? (ar
+                ? `**المراحل:** ${done}/${total} نُفِّذت، لكن لم يكتمل فحص القبول؛ النتيجة **غير متحقَّقة** وليست حكماً على المنتج.`
+                : `**Phases:** ${done}/${total} executed, but the acceptance checker could not complete; the result is **not verified**, not a product-failure verdict.`)
+            : ar
+                ? `**المراحل:** ${done}/${total} نُفِّذت وتحقَّقت (تنفيذ فعلي + فحوص، لا مجرد كتابة ملفات).`
+                : `**Phases:** ${done}/${total} executed and verified (real execution + checks, not just written files).`);
         // Everything the reader needs first is inserted here at the end, once
         // the sections below have been computed.
         const reasonAt = lines.length;
@@ -2433,6 +2461,11 @@ export class ProjectPipelineTool implements ToolDefinition {
                 whatHappened.push(ar
                     ? `- المرحلة المتعثرة: **${failedPhase.phaseName || failedPhase.phaseNumber}**`
                     : `- Failed phase: **${failedPhase.phaseName || failedPhase.phaseNumber}**`);
+            }
+            if (verificationUnavailable) {
+                whatHappened.push(ar
+                    ? '- لم أستطع الحكم: أداة فحص المتصفح لم تكتمل، لذلك لا أنسب العطل إلى التطبيق ولا أعتبره مقبولاً.'
+                    : '- Could not verify: the browser acceptance checker did not complete, so this does not blame the product and is not accepted as delivered.');
             }
             if (ticket?.primaryError) {
                 whatHappened.push((ar ? '- الخطأ: ' : '- Error: ') + '`' + String(ticket.primaryError).slice(0, 220) + '`');

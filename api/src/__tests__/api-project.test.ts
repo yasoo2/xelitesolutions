@@ -243,6 +243,43 @@ describe('the offline scaffold — complete, parseable, kind-aware', () => {
         expect(db).toContain('"key":"note"');
     });
 
+    it('the linked Prompt 01 React handoff keeps the API primary and its request fields', async () => {
+        const request = 'Build a polished React project called SpendWise, a personal expense tracker for one user. Create a responsive dashboard with a clear title, a form to add an expense with description, category, amount, and date, validation that rejects empty descriptions and non-positive amounts, a list of saved expenses with edit and delete actions, category filtering, text search, a running total that updates from the actual rows, and a CSV export button. Keep the data durable across reloads with localStorage. Use a clean light theme with accessible contrast and helpful empty, loading, and error states. Run the real production build and open the live preview. Do not modify existing projects.';
+        const { ReactProjectTool } = require('../modules/tools/definitions/ReactProjectTool');
+        const linked: any = await new ReactProjectTool().execute(
+            { request, skipInstall: true, root: tmp }, { sessionId: 'api-expense-promotion' });
+        // `skipInstall` intentionally omits build/preview proof; source handoff is the contract here.
+        const content = fs.readFileSync(path.join(linked.output.path, 'src', 'content.js'), 'utf-8');
+        const records = fs.readFileSync(path.join(linked.output.path, 'src', 'components', 'RecordsApp.jsx'), 'utf-8');
+        const keys = [...content.matchAll(/key: '([^']+)'/g)].map((m: RegExpMatchArray) => m[1]);
+        expect(keys).toEqual(expect.arrayContaining(['title', 'amount', 'category', 'date', 'note']));
+        expect(keys).not.toContain('price');
+        expect(keys).not.toContain('quantity');
+        expect(content).toContain("api: '/api/expenses'");
+        expect(records).toContain('invalidNumericField');
+        delete (global as any).joeProjects?.['api-expense-promotion'];
+    });
+
+    it('a request-derived uncatalogued clinic model survives the same linked handoff', async () => {
+        const request = 'Build a dental office management system. Tables: patients, treatments. Record patient name, phone, treatment, and amount paid.';
+        const sessionId = 'api-uncatalogued-clinic';
+        const api: any = await new ApiProjectTool().execute(
+            { request, skipInstall: true, root: tmp }, { sessionId });
+        expect(api.ok).toBe(true);
+        expect(api.output.resource).toBe('patients');
+        const { ReactProjectTool } = require('../modules/tools/definitions/ReactProjectTool');
+        const linked: any = await new ReactProjectTool().execute(
+            { request, skipInstall: true, root: tmp }, { sessionId });
+        expect(linked.ok).toBe(true);
+        const content = fs.readFileSync(path.join(linked.output.path, 'src', 'content.js'), 'utf-8');
+        const keys = [...content.matchAll(/key: '([^']+)'/g)].map((m: RegExpMatchArray) => m[1]);
+        expect(keys).toEqual(expect.arrayContaining(['name', 'phone', 'email', 'notes']));
+        expect(keys).not.toContain('price');
+        expect(keys).not.toContain('quantity');
+        expect(content).toContain("api: '/api/patients'");
+        delete (global as any).joeProjects?.[sessionId];
+    });
+
     it('FULL-STACK LINK: a react build after an API build is born connected — and unlinked otherwise', async () => {
         const { ReactProjectTool } = require('../modules/tools/definitions/ReactProjectTool');
         // The API registered itself above for session api-t (resource dishes).
