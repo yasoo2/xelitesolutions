@@ -30,6 +30,7 @@
  */
 
 import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
+import { IntentParser } from '../core/intelligence/IntentParser';
 
 const looksLikeBuild = (text: string): boolean =>
     (PlanningEngine as unknown as { looksLikeBuild(t: string): boolean }).looksLikeBuild(text);
@@ -104,5 +105,52 @@ describe('a table is a thing people ask to be built', () => {
         ['English question', 'what is on the list you gave me yesterday'],
     ])('%s is not a build', (_label, ask) => {
         expect(looksLikeBuild(ask)).toBe(false);
+    });
+});
+
+/**
+ * The same trap, one layer earlier.
+ *
+ * After the calendar hijack was closed, the same clinic brief was claimed by
+ * the browser fast path instead — because it contains «أبحث»:
+ *
+ *     [IntentParser] ⚡ Deterministic fast intent (Browser)
+ *     [AgentOrchestrator] Executing node: browser_smart
+ *         (Search (live typing): المريض باسمه أو تلفونه)
+ *
+ * «أبحث» there is the FEATURE he wants in his table, not an instruction to
+ * Joe. Two different routers, two different words, one defect: a word lifted
+ * out of the request and read as if he had addressed it to the machine.
+ *
+ * The engineering-brief gate that should have caught it asks for 240
+ * characters or a word like «حقيقي». Length is a property of how wordy
+ * someone is, not of what he asked for.
+ */
+describe('a verb he wants inside his app is not a command to Joe', () => {
+    const quickIntent = (text: string): { suggestedAgent?: string } | null =>
+        (IntentParser as unknown as { quickIntent(t: string): { suggestedAgent?: string } | null }).quickIntent(text);
+
+    // POSITIVE — a build brief containing a web verb reaches the planner.
+    it.each([
+        ['العيادة، وفيها «أبحث»', 'عندي عيادة أسنان. بدي جدول أسجل فيه المواعيد: اسم المريض ورقم تلفونه ووقت الموعد ونوع العلاج والمبلغ المدفوع. وبدي أبحث عن المريض باسمه أو تلفونه، وبدي أعرف كم قبضت الإجمالي.'],
+        ['متجر وفيه بحث', 'بدي متجر صغير أضيف فيه المنتجات وأبحث عن المنتج باسمه'],
+        ['English search feature', 'I want a table for my clients where I can search a client by name or phone'],
+    ])('%s does not become a browser task', (_label, brief) => {
+        expect(quickIntent(brief)).toBeNull();
+    });
+
+    // NEGATIVE — the browser fast path must survive its own guard.
+    it.each([
+        ['بحث حقيقي', 'ابحث لي عن سعر الدولار اليوم'],
+        ['موقع معروف', 'ادخل على جيت هاب وشوف آخر إشعارات'],
+        ['رابط صريح', 'افتح https://example.com واقرأ العنوان'],
+        ['تصفّح', 'تصفّح الويب ولخّص لي أول نتيجة'],
+    ])('%s is still a browser task', (_label, ask) => {
+        expect(quickIntent(ask)?.suggestedAgent).toBe('Browser');
+    });
+
+    // NEGATIVE — naming a site keeps the browser even inside a build-shaped ask.
+    it('a build verb aimed at a named site is not stolen from the browser', () => {
+        expect(looksLikeBuild('افتح جيت هاب واعمل لي issue جديد')).toBe(false);
     });
 });
