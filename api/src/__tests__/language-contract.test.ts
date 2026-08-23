@@ -17,6 +17,9 @@ jest.mock('../core/llm/intelligent-router', () => ({
 }));
 import { routeToModel } from '../core/llm/intelligent-router';
 import { CentralAnswerTool } from '../modules/tools/definitions/CentralAnswerTool';
+import { ImageStudioTool } from '../modules/tools/definitions/ImageStudioTool';
+import { ProjectRepairTool } from '../modules/tools/definitions/ProjectRepairTool';
+import { githubReportLanguage } from '../modules/tools/definitions/GitHubRepoManagerTool';
 
 const read = (...p: string[]) => fs.readFileSync(path.join(__dirname, '..', ...p), 'utf-8');
 
@@ -74,6 +77,43 @@ describe('central_answer — an Arabic question gets an Arabic answer, measured'
         const r: any = await tool.execute({ question: 'Please analyze this configuration file for me' }, { language: 'en' });
         expect(r.output).toBe(ENGLISH_REPLY);
         expect((routeToModel as jest.Mock).mock.calls.length).toBe(1);
+    });
+
+    // NEGATIVE — no caller-side language must still keep an English request English.
+    test('an English question without a language stays English', async () => {
+        (routeToModel as jest.Mock).mockResolvedValueOnce(ENGLISH_REPLY);
+        const tool = new CentralAnswerTool();
+        const r: any = await tool.execute({ question: 'Please explain this configuration file' });
+        expect(r.output).toBe(ENGLISH_REPLY);
+        expect((routeToModel as jest.Mock).mock.calls.length).toBe(1);
+    });
+});
+
+describe('tool language fallbacks never assume Arabic', () => {
+    test('ImageStudio reports its missing session in English without a language', async () => {
+        const r: any = await new ImageStudioTool().execute(
+            { context: 'fetch the pictures' },
+            { sessionId: `language-image-missing-${Date.now()}` },
+        );
+        expect(r.ok).toBe(false);
+        expect(r.error).toContain('This session has no system with tables');
+        expect(r.error).not.toMatch(/[؀-ۿ]/);
+    });
+
+    test('ProjectRepair reports its missing project in English without a language', async () => {
+        const r: any = await new ProjectRepairTool().execute(
+            {},
+            { sessionId: `language-repair-missing-${Date.now()}` },
+        );
+        expect(r.ok).toBe(false);
+        expect(r.error).toContain('No built project in this session to repair');
+        expect(r.error).not.toMatch(/[؀-ۿ]/);
+    });
+
+    test('GitHub report language defaults to English for an ASCII request and Arabic only for Arabic signal', () => {
+        expect(githubReportLanguage({ repoName: 'owner/repo' })).toBe('en');
+        expect(githubReportLanguage({ request: 'حلل المستودع' })).toBe('ar');
+        expect(githubReportLanguage({ language: 'en', request: 'حلل المستودع' })).toBe('en');
     });
 });
 

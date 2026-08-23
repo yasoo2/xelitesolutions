@@ -40,12 +40,12 @@ describe('the interface speaks the user\'s language, not the prompt\'s', () => {
     it('the real React builder reports both language decisions in its classification line', async () => {
         const { ReactProjectTool } = require('../modules/tools/definitions/ReactProjectTool');
         const request = 'ابنِ صفحة لمقهى';
-        const run = async (label: string, language?: string) => {
+        const run = async (label: string, language?: string, text = request) => {
             const root = fs.mkdtempSync(path.join(require('os').tmpdir(), `joe-language-${label}-`));
             const sessionId = `delivered-language-${label}-${Date.now()}`;
             try {
                 const result: any = await new ReactProjectTool().execute(
-                    { request, skipInstall: true, root },
+                    { request: text, skipInstall: true, root },
                     { sessionId, ...(language ? { language } : {}) },
                 );
                 expect(result.ok).toBe(true);
@@ -57,6 +57,8 @@ describe('the interface speaks the user\'s language, not the prompt\'s', () => {
         };
         expect(await run('english-ui', 'en')).toContain('lang=en (ui=en)');
         expect(await run('no-ui')).toContain('lang=ar (ui=absent)');
+        expect(await run('unicode-arabic-fallback', undefined, '\u0750\u08A0\uFB50'))
+            .toContain('lang=ar (ui=absent)');
     }, 120000);
 
     it('the prompt\'s script still decides when the session says nothing', () => {

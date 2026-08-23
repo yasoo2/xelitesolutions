@@ -22,6 +22,7 @@ import { findActiveBuiltProject } from '../../../core/orchestrator/active-built-
 import { BaseTool } from '../base';
 import { ToolPermission, ToolExecutionResult } from '../types';
 import { broadcast, broadcastTerminalLine, broadcastThinkingDetail } from '../../../api/ws';
+import { isArabicReply } from '../../../shared/reply-language';
 
 export class ProjectRepairTool extends BaseTool {
     name = 'project_repair';
@@ -52,7 +53,8 @@ export class ProjectRepairTool extends BaseTool {
         const logs: string[] = [];
         const sessionId = context?.sessionId || input?.sessionId;
         const sessionKey = String(sessionId || 'default').replace(/[^a-zA-Z0-9._-]/g, '_');
-        const isAr = String(context?.language || 'ar').toLowerCase().startsWith('ar');
+        const requestText = String(input?.request || input?.prompt || input?.text || '');
+        const isAr = isArabicReply({ language: context?.language, text: requestText });
         const term = (line: string) => {
             logs.push(line);
             try { broadcastTerminalLine(sessionId, line + '\r\n'); } catch { /* UI optional */ }

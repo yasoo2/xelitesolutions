@@ -27,7 +27,7 @@
  * one thing only — that he said what it will HOLD.
  */
 
-import { isVagueBuildRequest, clarifyQuestions } from '../core/orchestrator/clarify';
+import { isVagueBuildRequest, clarifyQuestions, clarifyGate } from '../core/orchestrator/clarify';
 
 describe('something he says he will keep track of is something to be built', () => {
     // POSITIVE — the live request, and the same shape with objects in no list.
@@ -120,6 +120,25 @@ describe('the question names his own thing', () => {
         const asked = q('ابن لي موقع', 'ar');
         expect(asked).toMatch(/الأقسام/);
         expect(asked).not.toMatch(/تسجيله/);
+    });
+
+    // NEGATIVE — no language must not silently become Arabic for an English request.
+    it('an English request without a language does not default to Arabic', () => {
+        const asked = clarifyQuestions('I want a table', '');
+        expect(asked).toContain('One thing before I start');
+        expect(asked).not.toMatch(/[؀-ۿ]/);
+    });
+
+    it('a pending English clarification without a language keeps the English marker', () => {
+        const session = `clarify-language-${Date.now()}`;
+        const first = clarifyGate('I want a table', session, '');
+        expect(first.kind).toBe('ask');
+        const merged = clarifyGate('blue and green', session, '');
+        expect(merged.kind).toBe('merge');
+        if (merged.kind === 'merge') {
+            expect(merged.goal).toContain('[The user\'s clarifications]');
+            expect(merged.goal).not.toContain('[توضيحات المستخدم عن المشروع]');
+        }
     });
 });
 

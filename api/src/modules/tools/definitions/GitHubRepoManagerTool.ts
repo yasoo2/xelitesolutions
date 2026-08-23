@@ -1,12 +1,21 @@
 import { ToolDefinition } from '../types';
 import https from 'https';
 import { pick, languageDirective, languageName } from '../../../shared/utils/language';
+import { isArabicReply } from '../../../shared/reply-language';
 
 /**
  * Everything in the analysis report the user reads. The report used to be written
  * in hardcoded Arabic, so switching the interface language translated the buttons
  * around it and left the report itself untouched.
  */
+export function githubReportLanguage(input: any, repoName = ''): string {
+    const language = input?.__language ?? input?.language;
+    const text = String(input?.request ?? input?.prompt ?? input?.description ?? repoName ?? '');
+    if (isArabicReply({ language, text })) return 'ar';
+    const explicit = String(language || '').trim().toLowerCase().split(/[-_]/)[0];
+    return explicit || 'en';
+}
+
 const MSG = {
     unreachable: {
         ar: 'تعذّر الوصول إلى GitHub (api.github.com) — يبدو أن هناك انقطاعاً مؤقتاً في الشبكة أو في DNS. تحقّق من اتصالك بالإنترنت ثم أعد المحاولة.',
@@ -163,7 +172,7 @@ export class GitHubRepoManagerTool implements ToolDefinition {
                 // A dead network is the one failure the user can actually fix, so it
                 // gets a sentence in their own language instead of a Node error code.
                 error: error?.code === 'GITHUB_UNREACHABLE'
-                    ? `${pick(MSG.unreachable, input?.__language)} (${error.attempts} × — ${error.cause})`
+                    ? `${pick(MSG.unreachable, githubReportLanguage(input))} (${error.attempts} × — ${error.cause})`
                     : error.message,
                 logs
             };
@@ -331,7 +340,7 @@ export class GitHubRepoManagerTool implements ToolDefinition {
             fullName = `${await this.getUsername(token)}/${fullName}`;
         }
         if (!fullName) fullName = await this.resolveConnectedRepo(input, logs);
-        const lang = input?.__language ?? input?.language;
+        const lang = githubReportLanguage(input, fullName);
         if (!fullName) {
             return { ok: false, error: pick(MSG.noRepo, lang), logs };
         }
@@ -412,7 +421,7 @@ export class GitHubRepoManagerTool implements ToolDefinition {
             .map(([name, bytes]) => `${name} (${Math.round(Number(bytes) / 1024)} KB)`);
         const fmtDate = (d: any) => { try { return new Date(d).toISOString().slice(0, 10); } catch { return String(d || '—'); } };
         const L = (k: keyof typeof MSG) => pick(MSG[k] as any, lang);
-        const listSep = String(lang || 'ar').startsWith('ar') ? '، ' : ', ';
+        const listSep = isArabicReply({ language: lang, text: '' }) ? '، ' : ', ';
         const lines: string[] = [];
         lines.push(`## ${L('title')} \`${fullName}\``);
         lines.push('');

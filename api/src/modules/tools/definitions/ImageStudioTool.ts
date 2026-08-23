@@ -23,6 +23,7 @@ import path from 'path';
 import { BaseTool } from '../base';
 import { ToolPermission, ToolExecutionResult } from '../types';
 import { describePictures, picturesFor, RowPicture, Shrinker } from '../../../core/design/row-image';
+import { isArabicReply } from '../../../shared/reply-language';
 
 /** The columns that hold a picture — the same rule the app and server use. */
 const IMAGE_COL = /(^|_)(image|photo|picture|img)$/;
@@ -122,7 +123,7 @@ export class ImageStudioTool extends BaseTool {
 
     async execute(input: any, context?: any): Promise<ToolExecutionResult> {
         const sessionId = String(context?.sessionId || 'default');
-        const isAr = String(context?.language || 'ar').startsWith('ar');
+        const isAr = isArabicReply({ language: context?.language, text: String(input?.context || '') });
         const projects = (global as any).joeProjects || {};
         const entry = projects[sessionId] || projects[String(sessionId).replace(/[^a-zA-Z0-9._-]/g, '_')];
         const dir = String(entry?.dir || '');

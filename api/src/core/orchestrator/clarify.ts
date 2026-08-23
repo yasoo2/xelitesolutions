@@ -13,6 +13,7 @@
  */
 
 import { asksForSomething, describesItsContents, tracksSomethingOfHis, trackingVerbAt, looksLikeBuild } from './buildIntent';
+import { isArabicReply } from '../../shared/reply-language';
 
 interface PendingClarify { request: string; at: number }
 const TTL_MS = 30 * 60_000;
@@ -160,7 +161,7 @@ function trackedObject(goal: string): string {
 }
 
 export function clarifyQuestions(goal: string, language: string): string {
-    const isAr = String(language || 'ar').startsWith('ar');
+    const isAr = isArabicReply({ language, text: goal });
     //  A man who named something to track needs one question, not four,
     //  and it must be about HIS thing — never about sections and colours.
     const tracked = trackedObject(goal);
@@ -219,7 +220,7 @@ export function clarifyGate(goal: string, sessionId: string, language: string, o
         if (BUILD_VERB.test(text) && WEB_NOUN.test(text) && descriptiveTokens(text).length >= 2) {
             return { kind: 'pass' };
         }
-        const isAr = String(language || 'ar').startsWith('ar');
+        const isAr = isArabicReply({ language, text: goal });
         const merged = `${pending.request}\n\n${isAr ? '[توضيحات المستخدم عن المشروع]' : '[The user\'s clarifications]'}: ${text}`;
         return { kind: 'merge', goal: merged };
     }
