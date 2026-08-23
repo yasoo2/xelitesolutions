@@ -59,3 +59,47 @@ describe('what he describes building is not what he asked Joe to search for', ()
         expect(await plan('افتح المتصفح وابحث عن أخبار اليوم')).toContain('browser_search');
     }, 180000);
 });
+
+/**
+ * …AND A VOCABULARY WIDENED IN ONE PLACE IS THREE PLACES STALE.
+ *
+ * With every browser door shut, Joe finally understood the clinic brief as a
+ * build — and built the wrong thing. Six steps, four invented database
+ * tables, prose about «PostgreSQL أو MySQL», an Express API named «مشروع
+ * التخزين», and no screen at all. He asked for «جدول أسجل فيه».
+ *
+ * Cause: the build gate is `buildVerb && webNoun`, and webNoun — a THIRD
+ * private vocabulary — knew «صفحة», «موقع», «متجر», even «قائمة طعام», but
+ * not «جدول». So the request missed the deterministic records-app route and
+ * fell to an LLM inventing an architecture.
+ *
+ * Measured, same brief, same commit, one word added to one list:
+ *
+ *     before: tools=central_answer,large_data_seeder,api_project,project_edit,…
+ *     after:  tools=react_project
+ *
+ * The car-parts brief that works — «بدي صفحة أسجل فيها قطع الغيار…» — differs
+ * from the clinic brief in exactly one word: «صفحة» instead of «جدول». That
+ * is not a difference in what he wants.
+ */
+describe('a table he types into is a page', () => {
+    // POSITIVE — the artefact nouns all reach the deterministic build route.
+    it.each([
+        ['العيادة', CLINIC],
+        ['قطع الغيار (المرجع الناجح)', 'بدي صفحة أسجل فيها قطع الغيار: اسم القطعة ورقمها والكمية وسعر الشراء وسعر البيع'],
+        ['كشف ديون', 'اعمل لي كشف بالديون فيه اسم الزبون والمبلغ وتاريخ الدين'],
+    ])('%s is planned as a real build, not an invented architecture', async (_label, brief) => {
+        const tools = await plan(brief);
+        expect(tools.some(t => /^(react_project|project_pipeline)$/.test(t))).toBe(true);
+        expect(tools).not.toContain('api_project');
+    }, 180000);
+
+    // NEGATIVE — the widened vocabulary must not turn talk into a build.
+    it.each([
+        ['سؤال', 'ما الفرق بين React وVue؟'],
+        ['بحث', 'ابحث لي عن سعر الدولار اليوم'],
+    ])('%s is not planned as a build', async (_label, ask) => {
+        const tools = await plan(ask);
+        expect(tools.some(t => /^(react_project|project_pipeline)$/.test(t))).toBe(false);
+    }, 180000);
+});

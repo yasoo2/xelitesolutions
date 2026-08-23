@@ -1300,12 +1300,12 @@ Rules:
          * Not one file was written.
          */
         const webNoun = /\b(page|site|website|web ?app|landing|portfolio|dashboard|form|store|shop|html|ui|interface)\b/.test(goalLower)
-            || /\b(platform|marketplace|e-?commerce|storefront|system|app|application|software|tool|service|portal|panel|admin|backend|api|saas|crm|erp|pos|blog|editor|tracker|planner|scheduler|booking|marketplace|network|clone)\b/.test(goalLower)
+            || /\b(platform|marketplace|e-?commerce|storefront|system|app|application|software|tool|service|portal|panel|admin|backend|api|saas|crm|erp|pos|blog|editor|tracker|planner|scheduler|booking|marketplace|network|clone|table|spreadsheet|ledger|register|list)\b/.test(goalLower)
             // «نظام نقاط بيع للمطاعم مع تقارير مبيعات» named no «موقع» and no
             // «صفحة», so the build gate never opened and Joe just TALKED about it.
             // A system, a platform, a dashboard and a tool are things people ask
             // to have built, exactly like a site.
-            || /(صفحة|موقع|تطبيق|واجهة|متجر|لوحة|نموذج|بورتفوليو|معرض|هبوط|نظام|منصّ?ة|أداة|اداة|برنامج|بوابة|خدمة|محرّ?ر|مدوّ?نة|سيرة\s*ذاتية|منيو|قائمة\s*(?:طعام|أسعار|منتجات))/.test(probe);
+            || /(صفحة|موقع|تطبيق|واجهة|متجر|لوحة|نموذج|بورتفوليو|معرض|هبوط|نظام|منصّ?ة|أداة|اداة|برنامج|بوابة|خدمة|محرّ?ر|مدوّ?نة|سيرة\s*ذاتية|منيو|قائمة\s*(?:طعام|أسعار|منتجات)|جدول|كشف|قائمة)/.test(probe);
         // Route follow-up edits (add button / change colour / ...) to the SAME page.
         const activeKey = String((context && context.sessionId) || 'default').replace(/[^a-zA-Z0-9._-]/g, '_');
         const hasActivePage = !!((global as any).joePages && (global as any).joePages[activeKey]);
