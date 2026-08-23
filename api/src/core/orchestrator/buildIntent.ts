@@ -147,9 +147,20 @@ export function describesItsContents(goalRaw: string): boolean {
 const ARABIC_LETTER = '[\u0621-\u064a]';
 const VERB_SHAPED = new RegExp(
     //  Present tense opens with أ/ن/ي/ت — and never with the article «ال».
-    `(?:^|[\\s،:؛])(?!ال)[أاينت]${ARABIC_LETTER}{2,9}(?=$|[\\s،:؛])`, 'u');
+    `(?:^|[\\\s،:؛])(?!ال)[أاينت]${ARABIC_LETTER}{2,9}(?=$|[\\\s،:؛])`, 'u');
 const OWNED_OBJECT = new RegExp(
     `(?:^|[\\s،:؛])(?:فيه|فيها|${ARABIC_LETTER}{3,12}(?:ي|نا|اتي|اتنا))(?=$|[\\s،:؛.])|\\bmy\\b`, 'u');
+/**
+ *  …AND FOR A VERB WE ONLY INFERRED, «فيه» IS NOT ENOUGH.
+ *
+ *  «بدي تطبيق فيه بحث وتصفية» reads as verb-plus-object under the shape rule,
+ *  because «تطبيق» opens with «ت» like a present-tense verb and «فيه» follows
+ *  it. But «فيه» is evidence of CONTAINMENT — an app that HAS search — not of
+ *  his ownership. Only the possessive suffix proves the thing is his, and
+ *  that is the whole warrant for trusting a verb nobody listed.
+ */
+const POSSESSIVE_OBJECT = new RegExp(
+    `(?:^|[\\s،:؛])${ARABIC_LETTER}{3,12}(?:ي|نا|اتي|اتنا)(?=$|[\\s،:؛.])|\\bmy\\b`, 'u');
 
 /**
  * Does the request name something he keeps track of — with a verb we know, or
@@ -168,12 +179,30 @@ export function trackingVerbAt(goalRaw: string, knownVerbs: RegExp): { index: nu
     const bare = stripArabicDiacritics(String(goalRaw || ''));
     const known = knownVerbs.exec(bare);
     if (known) return { index: known.index, length: known[0].length };
-    if (!OWNED_OBJECT.test(bare)) return null;
-    const shaped = VERB_SHAPED.exec(bare);
-    if (!shaped) return null;
-    //  The match may carry the separator it was anchored on; the verb starts
-    //  where the Arabic letters do.
-    const lead = shaped[0].length - shaped[0].replace(/^[\s،:؛]+/u, '').length;
-    return { index: shaped.index + lead, length: shaped[0].length - lead };
+    /**
+     *  THE OBJECT HAS TO FOLLOW THE VERB, NOT MERELY EXIST.
+     *
+     *  Measured on «ابنِ تطبيقاً لإدارة العملاء مع بحث وتصفية وإجمالي»: the
+     *  sentence ends in «إجمالي», which carries the same «ـي» as «ديوني» —
+     *  and it is not a possessive at all, it is a nisba adjective. Anywhere in
+     *  the sentence was enough, so a CRM request was asked what it wanted to
+     *  record for each «ِ تطبيقاً».
+     *
+     *  A man who says «أفهرس ديوني» puts the thing right after the verb. That
+     *  is where it has to be looked for — position is the evidence, and it
+     *  costs no vocabulary.
+     */
+    const re = new RegExp(VERB_SHAPED.source, 'gu');
+    for (let m = re.exec(bare); m; m = re.exec(bare)) {
+        const lead = m[0].length - m[0].replace(/^[\s،:؛]+/u, '').length;
+        const index = m.index + lead;
+        const length = m[0].length - lead;
+        //  The IMMEDIATELY following word, not a window: «تطبيق فيه بحث
+        //  وتصفية وإجمالي» ends in a nisba «إجمالي» that would qualify from
+        //  four words away. He puts the thing he owns right after the verb.
+        const next = (bare.slice(index + length).trim().split(/[\s،:؛.]+/u)[0] || '');
+        if (next && POSSESSIVE_OBJECT.test(' ' + next)) return { index, length };
+    }
+    return null;
 }
 

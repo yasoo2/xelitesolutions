@@ -168,4 +168,22 @@ describe('an invented verb still asks the right question', () => {
     it('a verb without something of his is not tracking', () => {
         expect(clarifyQuestions('بدي أفهرس الكتب', 'ar')).not.toMatch(/تسجيله/);
     });
+    /**
+     *  AND THE OBJECT HAS TO FOLLOW THE VERB, NOT MERELY EXIST.
+     *
+     *  Manus hit this on his side and I had the same hole on mine. «ابنِ
+     *  تطبيقاً لإدارة العملاء مع بحث وتصفية وإجمالي» ends in «إجمالي», which
+     *  carries the same «ـي» as «ديوني» — and is not a possessive at all, it
+     *  is a nisba adjective. Anywhere in the sentence was enough, so a CRM
+     *  request was asked what it wanted to record for each «ِ تطبيقاً».
+     *
+     *  A man who says «أفهرس ديوني» puts the thing right after the verb.
+     *  Position is the evidence, and it costs no vocabulary.
+     */
+    it.each([
+        ['CRM', 'ابنِ تطبيقاً لإدارة العملاء مع بحث وتصفية وإجمالي'],
+        ['نسبة في آخر الجملة', 'بدي تطبيق فيه بحث وتصفية وإجمالي'],
+    ])('%s is not a tracking request', (_label, goal) => {
+        expect(clarifyQuestions(goal, 'ar')).not.toMatch(/تسجيله/);
+    });
 });
