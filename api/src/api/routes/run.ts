@@ -192,6 +192,29 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         return res.status(400).json({ error: 'Goal text is required' });
     }
 
+    /**
+     *  A RUN WITHOUT A BROWSER SESSION CAN NEVER BE WATCHED.
+     *
+     *  Measured with the eye open on his screen:
+     *
+     *      POST_RUN browserSessionId=undefined sessionId=undefined
+     *      [SelfQA] session=panel-browser watching=false ctxSid=absent
+     *      canvas 300x150 lit=0.0%
+     *
+     *  The FIRST message of a new chat is sent before any session exists —
+     *  the server mints one and the interface adopts it afterwards. That is a
+     *  sound design, but the browser session was derived on the CLIENT, from
+     *  a session id that did not exist yet. So the most common case there is
+     *  — a fresh chat, one build request — could never show him its self-QA,
+     *  no matter what the client sent.
+     *
+     *  Derive it here instead, from whatever session this run ends up with.
+     *  One place, every client, first message included.
+     */
+    const runSessionId = String(sessionId || '').trim();
+    const effectiveBrowserSessionId = String(browserSessionId || '').trim()
+        || (runSessionId ? `browser:${runSessionId}` : '');
+
     // Persist the user message in offline/JSON mode so the chat shows the FULL
     // conversation (user + Joe) and it survives reloads. Agent runs go through this
     // route, which previously saved nothing — so only Joe's reply ever appeared.
@@ -242,7 +265,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             sessionId,
             // لا تستبدل جلسة لوحة المتصفح بجلسة الدردشة؛ تستخدمها browser_run
             // للتحكم في الصفحة نفسها التي تعرضها الواجهة.
-            browserSessionId: String(browserSessionId || '').trim() || undefined,
+            browserSessionId: effectiveBrowserSessionId || undefined,
             // مساحة العمل يختارها المستخدم في الواجهة ويجب أن تصل إلى كل أداة
             // تعتمد على ملفات المشروع، لا أن تتحول إلى مجلد جلسة الدردشة.
             workspaceId: String(workspaceId || '').trim() || undefined,

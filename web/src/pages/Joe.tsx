@@ -253,7 +253,33 @@ export default function Joe() {
              * transition. Preview opens on `preview_ready`, when there is
              * actually something new to show.
              */
-            if ((isToolStart && toolName === 'web_page_builder') || msg.type === 'build_started') {
+            /**
+             *  AN EXPLICIT REQUEST OUTRANKS A HEURISTIC.
+             *
+             *  Measured with the eye open on his own screen, three runs in a
+             *  row:
+             *
+             *      PANEL_FOCUS server-asked="terminal" reason="build_shell"
+             *      TAB → Logs
+             *
+             *  The server asks for the Terminal, and a fraction of a second
+             *  later broadcasts `build_started` — and THIS line took the tab
+             *  away and gave it to Logs. He watched a whole build with npm
+             *  scrolling past in a log pane while «Joe's terminal — building
+             *  the interface» was written into it, and the Terminal tab he was
+             *  promised never opened once.
+             *
+             *  The rule was written for the PAGE BUILDER, whose sections
+             *  really do stream into Logs — the comment above says so. The
+             *  bug is that `build_started` was matched with no tool at all, so
+             *  it captured every build in the system, including a React build
+             *  whose entire visible work happens in the Terminal.
+             *
+             *  The event already names its tool. Ask it.
+             */
+            const buildTool = String(msg?.data?.tool || '');
+            if ((isToolStart && toolName === 'web_page_builder')
+                || (msg.type === 'build_started' && (!buildTool || buildTool === 'web_page_builder'))) {
                 setWorkspaceTab('logs');
                 triggerUncollapse();
             } else if (isToolStart && ['dev_server', 'dev_server_start', 'website_full_pipeline', 'scaffold_project', 'scaffold_full_stack'].includes(toolName)) {
