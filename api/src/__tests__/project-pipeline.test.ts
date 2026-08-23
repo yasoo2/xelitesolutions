@@ -407,12 +407,13 @@ describe('the bridge tool — plan, execute phases, report honestly', () => {
             phaseResults: [{ status: 'completed' }],
         });
         expect(Object.keys(blocked).sort()).toEqual([
-            'browserQaFailed', 'done', 'finalVerified', 'honestBlocker', 'liveUrl', 'scopeCoverageFailed', 'total',
+            'browserQaFailed', 'done', 'finalVerified', 'honestBlocker', 'liveUrl', 'scopeCoverageFailed', 'total', 'verificationUnavailable',
         ].sort());
         expect(blocked).toMatchObject({
             finalVerified: false,
             browserQaFailed: false,
             scopeCoverageFailed: true,
+            verificationUnavailable: false,
             liveUrl: 'http://localhost:4173/weather',
             done: 0,
             total: 8,
@@ -430,6 +431,7 @@ describe('the bridge tool — plan, execute phases, report honestly', () => {
             phaseResults: [{ status: 'completed', ok: true }],
         });
         expect(delivered.finalVerified).toBe(true);
+        expect(delivered.verificationUnavailable).toBe(false);
         expect(delivered.honestBlocker).toBeNull();
     });
 

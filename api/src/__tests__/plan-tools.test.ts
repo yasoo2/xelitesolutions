@@ -291,6 +291,38 @@ describe('model-written tool arguments are checked before execution', () => {
         expect(plannedArgsIssue('browser_run', { sessionId: 'browser:test' })).toMatch(/instructionText أو actions/);
     });
 
+    it('rejects textual browser actions before the executor can turn them into unknown', () => {
+        expect(plannedArgsIssue('browser_run', {
+            actions: ['Open the local app and inspect the page'],
+        })).toMatch(/actions.*object|action.*object|كائناً|كائن/iu);
+    });
+
+    it('rejects an unsupported browser action by name while preserving valid action objects', () => {
+        expect(plannedArgsIssue('browser_run', {
+            actions: [{ type: 'navigate_to_live_app' }],
+        })).toMatch(/navigate_to_live_app|unsupported|supported/i);
+        expect(plannedArgsIssue('browser_run', {
+            actions: [{ type: 'goto', url: 'http://localhost:4300/' }, { type: 'extract_text' }],
+        })).toBeNull();
+    });
+
+    it('does not downgrade a malformed browser verification into a passing project_detect check', () => {
+        const phase = {
+            phaseNumber: 1,
+            name: 'Live verification',
+            tasks: [{ task: 'Write the app entrypoint', tool: 'write_file', args: { path: 'src/main.ts', content: 'export {};' } }],
+            verificationTask: {
+                task: 'Open the app and inspect the final screen',
+                tool: 'browser_run',
+                args: { actions: ['open the final screen'] },
+            },
+        };
+        const result = sanitisePlanPhases([phase], 'browser-contract-app');
+        expect(result.phases[0].verificationTask?.tool).toBe('browser_run');
+        expect(result.phases[0].verificationTask?.args?.actions).toEqual(['open the final screen']);
+        expect(result.notes.join('\\n')).toMatch(/browser_run.*(invalid|reject|contract|object|عائق|رُفضت)/iu);
+    });
+
     it('allows browser_ui_audit to resolve url from the Joe session runtime', () => {
         expect(plannedArgsIssue('browser_ui_audit', {})).toBeNull();
         expect(plannedArgsIssue('browser_ui_audit', { url: 'http://127.0.0.1:4300' })).toBeNull();

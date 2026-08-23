@@ -1069,3 +1069,14 @@ POS-2026-08-23-W50: 0/50 closed; sequential rule preserved
 | W50 | **مؤجلة؛ 0/50 مغلقة** | تبقى آخر مهمة، ولا تبدأ قبل قبول Prompt 01؛ لا تغيير في القاعدة التسلسلية. |
 
 `POS-2026-08-23-PROMOTION`: pre-fix raw red `1 suite / 30 passed + 1 failed`; post-fix focused `4 suites / 93 tests`; API `tsc=0`; full `229 suites / 3739 tests / 20 of 20 batches / GATE:PASS`; no package/lock/generated artifacts/WeatherGo edits.
+
+
+## سجل إصلاح 035-BROWSER-CONTRACT — 2026-08-23
+| المعرّف | المهمة | الحالة | الدليل ومعيار الإغلاق |
+|---|---|---|---|
+| 035-BROWSER-CONTRACT | منع `browser_run` من تمرير actions نصية/مجهولة إلى executor، والتمييز بين checker غير القابل للتشغيل وفشل المنتج | **منفذ محلياً؛ البوابات النهائية خضراء؛ الدفع إلى `main` والجولة الحية التالية قيد التنفيذ** | `plannedArgsIssue` يرفض action غير الكائني أو type غير المدعوم باسم السبب؛ sanitizer لا يستبدل browser verifier المعطوب بـ`project_detect`؛ PhaseExecutor وAgentLoop وProjectPipeline يحملون `verificationUnavailable`؛ التقرير يقول `not verified`/`could not verify` ولا يسمي المنتج فاشلاً. Negative control خام منشور قبل الإصلاح؛ focused=3 suites/19 tests ثم suite ProjectPipeline=42/42؛ API `tsc=0`; full gate بعد تصحيح assertion متقادمة=229 suites/3744 tests/20 of 20 batches/`GATE:PASS`. |
+| PR82-035-BROWSER-CONTRACT | الدليل والقرار والختام في قناة Claude | **اعتماد Claude 291 منشور؛ التنفيذ المحلي معلن؛ لم يُدفع بعد** | raw الجولة الحية `5385366576`، diagnosis `5385366576`، قرار Claude `5385402806`، إقرار التنفيذ `5385405242`، negative-control raw `5385413237`، إعلان التنفيذ `5385455077`. لا دمج لـ`6ff448dc` ولا بدء 2a؛ لا package/lock/generated artifacts ولا تعديل WeatherGo يدوياً. |
+| Prompt 01 — SpendWise | **مفتوح؛ لا انتقال إلى Prompt 02** | الجولة `145babd3` لم تُقبل: التطبيق/preview كُتبا لكن checker المرئي فشل بعقد malformed browser actions، لذلك لا direct behavior acceptance بعد. بعد دفع 035-BROWSER-CONTRACT يجب تشغيل Joe معزولاً ببصمة SHA مطابقة، وإرسال `/tmp/joe-prompt-01.md` حرفياً في chat مرئي جديد؛ لا قبول قبل SpendWise الحقيقي واختبارات required/empty description، non-positive amount، add/row total، search/filter، edit/delete، CSV، reload/localStorage، وlive preview مباشرة. |
+| W50 | **مؤجلة؛ 0/50 مغلقة** | تبقى آخر مهمة، ولا تبدأ قبل قبول Prompt 01؛ القاعدة التسلسلية محفوظة. |
+
+`POS-2026-08-23-BROWSER-CONTRACT`: pre-fix negative control=2 failed assertions; focused green=3 suites/19 selected tests; ProjectPipeline=42/42; API `tsc=0`; full `229 suites / 3744 tests / 20 of 20 batches / GATE:PASS`; initial full rerun exposed one stale decision-evidence key assertion (228/229, 3743/3744), corrected before final green gate.

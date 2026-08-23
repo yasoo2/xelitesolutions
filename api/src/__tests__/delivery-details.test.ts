@@ -82,6 +82,35 @@ describe('048a provenance survives compaction and delivery reporting', () => {
             fs.rmSync(root, { recursive: true, force: true });
         }
     });
+
+    it('says not verified when the checker could not run instead of blaming the product', () => {
+        const report = (new ProjectPipelineTool() as any).buildDeliveryReport({
+            language: 'en',
+            projectName: 'SpendWise',
+            phases: [{
+                status: 'partial',
+                phaseName: 'Final Implementation and Verification',
+                completedTasks: 2,
+                totalTasks: 2,
+                verificationUnavailable: true,
+                primaryError: 'verification_unavailable: browser_run action must be an object',
+                results: [{
+                    task: 'Verify final implementation',
+                    tool: 'browser_run',
+                    ok: false,
+                    error: 'verification_unavailable: browser_run action must be an object',
+                }],
+            }],
+            pipeline: { results: [] },
+            done: 3,
+            total: 4,
+            verified: false,
+            verificationUnavailable: true,
+        });
+        expect(report).toMatch(/not verified|could not verify/i);
+        expect(report).not.toContain('some_steps_failed');
+        expect(report).not.toContain('the product failed');
+    });
 });
 
 describe('pipeline delivery preserves the one-time test credential handoff', () => {
