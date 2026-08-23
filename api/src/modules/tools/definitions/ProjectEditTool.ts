@@ -298,7 +298,7 @@ export class ProjectEditTool extends BaseTool {
             weather: /توقّع|توقع|أيام|رطوبة|رياح|فهرنهايت|مئوي|forecast|humidity|wind|fahrenheit|celsius/i,
         };
         if (appMeta && ENGINE_ABILITY[appMeta.engine]?.test(request)) {
-            const { blueprintFor } = require('../../../core/design/app-blueprints');
+            const { blueprintFor, columnEdit, applyColumnEdit } = require('../../../core/design/app-blueprints');
             const { buildAppFiles } = require('./react-app-templates');
             /**
              *  AN EDIT MUST NOT REBUILD HIM A DIFFERENT TABLE.
@@ -323,6 +323,23 @@ export class ProjectEditTool extends BaseTool {
             if (appMeta.title) bp.title = appMeta.title;
             if (appMeta.entityOne) bp.entityOne = appMeta.entityOne;
             if (appMeta.entityMany) bp.entityMany = appMeta.entityMany;
+            /**
+             *  AND THE ONE COLUMN HE ASKED FOR IS ADDED TO THE OTHERS.
+             *
+             *  «ضيف عمود الخصم» is not a new table and not a new app: it is
+             *  one column, named, on the table already in front of him. The
+             *  blueprint above re-derives his original columns; this puts the
+             *  new one beside them instead of hoping the regeneration guesses
+             *  it.
+             *
+             *  If he names no column, nothing is added — an edit that invents
+             *  a column called «عمود» is worse than an edit that does nothing.
+             */
+            const colEdit = columnEdit(request);
+            if (colEdit.add.length || colEdit.remove.length) {
+                bp.fields = applyColumnEdit(bp.fields, colEdit, appMeta.isArabic);
+                logs.push(`column edit: +[${colEdit.add.join(', ')}] -[${colEdit.remove.join(', ')}] → ${bp.fields.length} column(s)`);
+            }
             const slugName = String(JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf-8')).name || 'app');
             const fresh: Record<string, string> = buildAppFiles(bp, {
                 brand: appMeta.brand, isArabic: appMeta.isArabic, api: appMeta.api, storeKey: appMeta.storeKey,

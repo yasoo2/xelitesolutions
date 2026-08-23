@@ -1342,6 +1342,57 @@ export function derivedColumns(requestRaw: string): DerivedField[] | null {
     return out.length >= 3 ? out : null;
 }
 
+/**
+ * A COLUMN HE ASKS TO ADD, AND ONE HE ASKS TO DROP.
+ *
+ * «ضيف عمود الخصم» is not a new table and not a new app: it is one column,
+ * named, on the table already in front of him. Reading it needs no vocabulary
+ * of columns — the ADD VERB introduces the noun, and the noun introduces the
+ * name, which is the same grammar that lets «الحقول: …» declare a list while a
+ * bare «field» does not.
+ *
+ * What it must never do is guess. If he names nothing after the noun, nothing
+ * is added and the edit says so rather than inventing a column called «عمود».
+ */
+export interface ColumnEdit { add: string[]; remove: string[] }
+
+const ADD_COLUMN = /(?:ضيف|أضف|اضف|اضافة|إضافة|زيد|حط|\badd\b)\s+(?:a|an|the)?\s*(?:عمود|العمود|خانة|الخانة|حقل|الحقل|column|field)\s+(?:اسمه\s+|باسم\s+|called\s+|named\s+|for\s+|the\s+)?([^\n،,.؛;]{2,32})/iu;
+const DROP_COLUMN = /(?:شيل|احذف|أحذف|امسح|الغِ?ي?|ألغِ|\bremove\b|\bdrop\b|\bdelete\b)\s+(?:a|an|the)?\s*(?:عمود|العمود|خانة|الخانة|حقل|الحقل|column|field)\s+(?:the\s+)?([^\n،,.؛;]{2,32})/iu;
+
+/** The one-column changes a follow-up message asks for, in his own words. */
+export function columnEdit(requestRaw: string): ColumnEdit {
+    const request = String(requestRaw || '');
+    const clean = (s: string): string => s.trim().replace(/^(?:ال)?(?=.{3,})/u, m => m).trim();
+    const add = ADD_COLUMN.exec(request);
+    const drop = DROP_COLUMN.exec(request);
+    return {
+        add: add && add[1].trim().length >= 2 ? [clean(add[1])] : [],
+        remove: drop && drop[1].trim().length >= 2 ? [clean(drop[1])] : [],
+    };
+}
+
+/** Apply those changes to a set of fields, keeping every other column as it is. */
+export function applyColumnEdit(fields: AppField[], edit: ColumnEdit, isAr: boolean): AppField[] {
+    let out = fields.slice();
+    for (const name of edit.remove) {
+        out = out.filter(f => f.label.trim() !== name && !f.label.includes(name));
+    }
+    for (const name of edit.add) {
+        if (out.some(f => f.label.trim() === name)) continue;
+        const derived = derivedColumns(`أسجل فيه: ${name} و${name} و${name}`)?.[0];
+        out.push({
+            key: `${derived?.role || 'text'}${out.length + 1}`,
+            label: name,
+            type: derived?.type || 'text',
+            ...(derived?.options ? { options: derived.options } : {}),
+        });
+    }
+    //  A table with no columns left is not an edit, it is a deletion he did not
+    //  ask for. The original stands.
+    return out.length ? out : fields;
+}
+
+
 export function fieldsFromRequest(requestRaw: string, isAr: boolean): AppField[] | null {
     const cols = derivedColumns(requestRaw);
     if (!cols) return null;
