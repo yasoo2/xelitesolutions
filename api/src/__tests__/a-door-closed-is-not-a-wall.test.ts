@@ -20,6 +20,23 @@
  * planner actually PLAN?
  */
 
+jest.mock('../core/llm/intelligent-router', () => {
+    const actual = jest.requireActual('../core/llm/intelligent-router');
+    return {
+        ...actual,
+        routeToModel: jest.fn(async (messages: any[]) => {
+            const prompt = JSON.stringify(messages);
+            if (prompt.includes('"action"')) {
+                return JSON.stringify({ action: 'none', url: '', query: '', text: '', lang: '' });
+            }
+            if (prompt.includes('"intent"')) {
+                return JSON.stringify({ intent: 'other', repo: '' });
+            }
+            return JSON.stringify([]);
+        }),
+    };
+});
+
 import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
 
 const CLINIC = 'عندي عيادة أسنان. بدي جدول أسجل فيه المواعيد: اسم المريض ورقم تلفونه ووقت الموعد ونوع العلاج والمبلغ المدفوع. وبدي أبحث عن المريض باسمه أو تلفونه، وبدي أعرف كم قبضت الإجمالي.';

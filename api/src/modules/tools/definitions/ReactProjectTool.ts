@@ -149,6 +149,19 @@ const ACCEPTANCE_TOPIC_IDS: Record<string, DeliveryTopic[]> = {
     browser_check: [],
 };
 
+// Columns are request-derived acceptance criteria, not a finite domain catalogue.
+// Keep the generated namespace narrow so arbitrary unknown ids still fail loudly.
+const DYNAMIC_COLUMN_ACCEPTANCE_ID = /^column:[A-Za-z][A-Za-z0-9_-]*$/;
+
+function isKnownAcceptanceId(id: string): boolean {
+    return Object.prototype.hasOwnProperty.call(ACCEPTANCE_TOPIC_IDS, id)
+        || DYNAMIC_COLUMN_ACCEPTANCE_ID.test(id);
+}
+
+function acceptanceTopics(id: string): DeliveryTopic[] {
+    return ACCEPTANCE_TOPIC_IDS[id] || [];
+}
+
 function deliveryTopics(value: string): DeliveryTopic[] {
     return DELIVERY_TOPIC_RULES.filter(([, pattern]) => pattern.test(String(value || ''))).map(([topic]) => topic);
 }
@@ -181,12 +194,12 @@ export function reconcileDeliveryVoices(
     acceptanceIds: string[] = metAcceptanceIds,
 ): ReconciledDeliveryVoices {
     const idsToValidate = [...acceptanceIds, ...metAcceptanceIds].map(String);
-    const unmappedIds = [...new Set(idsToValidate.filter(id => !Object.prototype.hasOwnProperty.call(ACCEPTANCE_TOPIC_IDS, id)))];
+    const unmappedIds = [...new Set(idsToValidate.filter(id => !isKnownAcceptanceId(id)))];
     if (unmappedIds.length) {
         throw new Error(`delivery_acceptance_unmapped:${unmappedIds.join(',')}`);
     }
 
-    const metTopics = new Set(metAcceptanceIds.flatMap(id => ACCEPTANCE_TOPIC_IDS[String(id)]));
+    const metTopics = new Set(metAcceptanceIds.flatMap(id => acceptanceTopics(String(id))));
     const resolvedByAcceptance = declaredMissing.filter(item => deliveryTopics(item).some(topic => metTopics.has(topic)));
     const hasMeasuredClaim = (item: string) => deliveryTopics(item).some(topic =>
         metTopics.has(topic) && claimed.some(claim => deliveryTopics(claim).includes(topic)));
@@ -3258,13 +3271,25 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             let adminModel = tableModel;
             if (tableModel.length && effectiveBp.kind === 'generic' && effectiveBp.engine === 'records') {
                 const { blueprintFromEntity, apiFor } = require('../../../core/design/entity-app');
+                const { fieldsFromRequest } = require('../../../core/design/app-blueprints');
                 const lead = tableModel[0];
                 const derived = blueprintFromEntity(effectiveBp, lead, isAr);
                 if (derived !== effectiveBp) {
-                    runBp = applyRequestFieldConstraints(derived, request);
+                    // The request's declared fields are authoritative when they
+                    // exist. Entity metadata supplies the primary table's
+                    // identity/title, but must not replace the user's labels
+                    // with the stock person/thing shape — the API was already
+                    // built from these same request fields.
+                    const requestedFields = fieldsFromRequest(request, isAr);
+                    const aligned = requestedFields
+                        ? { ...derived, fields: requestedFields, metrics: effectiveBp.metrics,
+                            statusField: effectiveBp.statusField, doneValue: effectiveBp.doneValue,
+                            relation: undefined }
+                        : derived;
+                    runBp = applyRequestFieldConstraints(aligned, request);
                     appApi = apiFor(apiLink, lead.key) || apiLink;
                     adminModel = tableModel.slice(1);          // never the same table twice
-                    term(`application: managing «${lead.key}» itself — ${derived.fields.map((f: any) => f.key).join(', ')}`);
+                    term(`application: managing «${lead.key}» itself — ${runBp.fields.map((f: any) => f.key).join(', ')}`);
                 }
             }
             if (adminModel.length) term(`admin screens: ${adminModel.map((e: any) => e.key).join(', ')}`);

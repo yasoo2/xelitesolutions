@@ -23,6 +23,7 @@ import { useTranslation } from 'react-i18next';
 import { resolveIdentity, isPrivileged, loadGoogleProfile } from '../lib/userIdentity';
 import { API_URL } from '../config';
 import { applyAccent } from '../accents';
+import { shouldOpenPreviewOnReady } from '../lib/preview-routing';
 
 interface Message {
     id: string;
@@ -310,7 +311,7 @@ export default function Joe() {
                          * hand) watches the page grow; only the FINISHED
                          * page flips the tab to Preview.
                          */
-                        if (!msg.data?.partial) {
+                        if (shouldOpenPreviewOnReady(msg as any)) {
                             setWorkspaceTab('preview');
                             triggerUncollapse();
                         }

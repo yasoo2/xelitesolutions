@@ -19,6 +19,7 @@
 
 import fs from 'fs';
 import path from 'path';
+import { shouldOpenPreviewOnReady } from '../../../web/src/lib/preview-routing';
 
 const BUILDER = fs.readFileSync(
     path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'WebPageBuilderTool.ts'), 'utf-8');
@@ -85,8 +86,14 @@ describe('the tab choreography matches the request', () => {
         expect(previewList).not.toContain('web_page_builder');
     });
 
-    it('preview opens when the page is actually READY', () => {
-        expect(JOE).toMatch(/preview_ready[\s\S]{0,600}setWorkspaceTab\('preview'\)/);
+    it.each([
+        ['complete internal preview', { type: 'preview_ready', data: { url: 'http://localhost:4173', partial: false } }, true],
+        ['complete proxy preview', { type: 'preview_ready', data: { previewUrl: 'https://xelitesolutions.com/preview/run-1' } }, true],
+        ['partial internal preview', { type: 'preview_ready', data: { url: 'http://localhost:4173', partial: true } }, false],
+        ['external preview', { type: 'preview_ready', data: { url: 'https://example.com' } }, false],
+        ['unrelated event', { type: 'file_stream', data: { url: 'http://localhost:4173' } }, false],
+    ])('%s selects Preview iff the page is complete and internal', (_label, event, expected) => {
+        expect(shouldOpenPreviewOnReady(event)).toBe(expected);
     });
 });
 
@@ -108,7 +115,7 @@ describe('the panel renders what exists', () => {
 describe('explicit panel focus outranks live-code heuristics', () => {
     it('keeps a server-requested Terminal ahead of the file-stream Logs event', () => {
         expect(LAYOUT).toContain('const explicitPanel = useRef<WorkspaceTab | null>(null);');
-        expect(LAYOUT).toMatch(/if \(data\?\.reason\) explicitPanel\.current = panel as WorkspaceTab/);
+        expect(LAYOUT).toMatch(/if \(data\?\.reason\) explicitPanel\.current = \(panel as WorkspaceTab\)/);
         expect(LAYOUT).toMatch(/if \(explicitPanel\.current && explicitPanel\.current !== 'logs'\) return/);
         expect(LAYOUT).toMatch(/explicitPanel\.current = null/);
     });

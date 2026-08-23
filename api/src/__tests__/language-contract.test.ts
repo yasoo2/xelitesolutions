@@ -112,6 +112,7 @@ describe('the fabrication ban — what Joe has not seen, Joe does not describe',
  * the reply follows what the user WROTE; the switcher only breaks ties.
  */
 import { messageLanguage } from '../shared/utils/language';
+import { replyLanguageCode } from '../shared/reply-language';
 
 describe('messageLanguage — the script of the message decides', () => {
     test('an Arabic message overrides an English UI switcher (the field bug)', () => {
@@ -134,14 +135,22 @@ describe('messageLanguage — the script of the message decides', () => {
     });
 });
 
-describe('the run derives its language from the message, not the raw switcher', () => {
-    test('AgentLoopService computes language0 via messageLanguage(goal, …) and reuses it everywhere', () => {
+describe('the run derives its language from the shared interface contract', () => {
+    it.each([
+        ['English UI, Arabic request', 'en', 'عندي عيادة أسنان. بدي جدول أسجل فيه المواعيد', 'en'],
+        ['Arabic UI, English request', 'ar', 'Build me a table for my clients', 'ar'],
+        ['no UI, Arabic request', undefined, 'عندي عيادة أسنان. بدي جدول', 'ar'],
+        ['no UI, English request', '', 'Build me a table for my clients', 'en'],
+    ])('%s resolves one language for the whole run', (_label, ui, goal, expected) => {
+        expect(replyLanguageCode(ui as string | undefined, goal)).toBe(expected);
+    });
+
+    // The complete AgentLoop execution is intentionally not started here: it
+    // launches tools and persistence. The semantic tokens below prove that its
+    // run context uses the shared resolver and reuses one resolved language.
+    test('AgentLoop uses the shared resolver and reuses the resolved language', () => {
         const loop = read('modules', 'services', 'AgentLoopService.ts');
-        expect(loop).toContain('messageLanguage(goal, options.language');
-        // The old pattern — trusting options.language alone — must be gone.
-        expect(loop).not.toMatch(/const language0 = String\(options\.language/);
-        expect(loop).not.toMatch(/const language = String\(options\.language/);
-        // One language for the whole run: the context the tools see included.
+        expect(loop).toContain('replyLanguageCode');
         expect(loop).toContain('const language = language0;');
     });
 });

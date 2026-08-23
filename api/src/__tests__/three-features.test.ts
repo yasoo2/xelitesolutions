@@ -14,6 +14,7 @@ import path from 'path';
 import zlib from 'zlib';
 import { clarifyGate, isVagueBuildRequest, clarifyQuestions, descriptiveTokens } from '../core/orchestrator/clarify';
 import { wantsMobileApp, iconPng, manifestJson, serviceWorkerJs, ensurePwaMarkup } from '../core/design/pwa';
+import { shouldOpenPreviewOnReady } from '../../../web/src/lib/preview-routing';
 
 const read = (...p: string[]) => fs.readFileSync(path.join(__dirname, '..', ...p), 'utf-8');
 
@@ -23,13 +24,19 @@ describe('(1) the Logs panel opens the moment a build starts', () => {
         expect(src).toContain("type: 'build_started'");
         expect(src.indexOf("type: 'build_started'")).toBeLessThan(src.indexOf('const isAr'));
     });
-    it('the frontend opens Logs on build_started and a PARTIAL preview never steals the tab', () => {
+    it('the frontend opens Logs on build_started and only a complete internal preview may steal the tab', () => {
         const ui = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'web', 'src', 'pages', 'Joe.tsx'), 'utf-8');
         expect(ui).toContain("msg.type === 'build_started'");
-        expect(ui).toContain('if (!msg.data?.partial) {');
-        // The partial URL still feeds the preview pane (split view keeps growing).
-        const handler = ui.slice(ui.indexOf("msg.type === 'preview_ready'"));
-        expect(handler.indexOf('setPreviewUrl(url)')).toBeLessThan(handler.indexOf('if (!msg.data?.partial)'));
+        expect(shouldOpenPreviewOnReady({
+            type: 'preview_ready', data: { url: 'http://127.0.0.1:4100/project-preview/app/index.html' },
+        })).toBe(true);
+        expect(shouldOpenPreviewOnReady({
+            type: 'preview_ready', data: { url: 'http://127.0.0.1:4100/project-preview/app/index.html', partial: true },
+        })).toBe(false);
+        expect(shouldOpenPreviewOnReady({
+            type: 'preview_ready', data: { url: 'https://user-preview.example/app/index.html' },
+        })).toBe(false);
+        expect(shouldOpenPreviewOnReady({ type: 'file_stream', data: { url: 'http://127.0.0.1:4100/app' } })).toBe(false);
     });
 });
 

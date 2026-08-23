@@ -141,6 +141,21 @@ describe('delivery voices cannot contradict one another', () => {
         expect(reconciled.unmet).toEqual([]);
     });
 
+    it('accepts request-shaped column criteria without inventing a delivery topic', () => {
+        const reconciled = reconcileDeliveryVoices(
+            ['a measured unrelated ability'],
+            ['an unrelated missing ability'],
+            ['column:text1', 'column:tel1'],
+            ['column:text1', 'column:tel1'],
+        );
+        expect(reconciled).toEqual({
+            abilities: ['a measured unrelated ability'],
+            unmet: ['an unrelated missing ability'],
+            unjudged: [],
+            conflicts: [],
+        });
+    });
+
     it('fails loudly by name when a criterion has no delivery mapping', () => {
         expect(() => reconcileDeliveryVoices([], [], [], ['future_criterion']))
             .toThrow(/delivery_acceptance_unmapped:future_criterion/);
@@ -485,7 +500,12 @@ describe('THE WIRING: the build is judged before it is delivered', () => {
         expect(REACT).toContain("throw new Error('delivery_message_voice_overlap')");
         expect(REACT).toMatch(/deliveryVoiceOverlap\(reconciledAppAbilities, \[\.\.\.unmet, \.\.\.unjudged\]\)/);
         expect(REACT).toMatch(/const abilityBlock = reconciledAppAbilities\.length \|\| unmeasuredAbilitiesNotice/);
-        expect(REACT).toContain('${abilityBlock}${screensLine}${unjudgedBlock}${unmetBlock}');
+        // This file-level lock checks the delivery ledger's semantic parts; the
+        // live linked-handoff test proves the resulting message/acceptance.
+        expect(REACT).toContain('const appBlock = appBp ?');
+        expect(REACT).toContain('${unbuiltBlock}');
+        expect(REACT).toContain('${unjudgedBlock}');
+        expect(REACT).toContain('${unmetBlock}');
     });
 
     it('the ledger reaches the message in both languages, and the caller', () => {

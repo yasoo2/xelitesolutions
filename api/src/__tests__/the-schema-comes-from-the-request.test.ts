@@ -236,8 +236,16 @@ describe('a bare noun does not open a column list', () => {
         ['الحقول:', 'بدي جدول الحقول: الاسم والسعر والكمية', ['الاسم', 'السعر', 'الكمية']],
         ['columns:', 'I want a table, columns: name, price and quantity', ['name', 'price', 'quantity']],
         ['fields are', 'I want a table whose fields are name, phone and email', ['name', 'phone', 'email']],
+        ['Oxford comma', 'I want a table, columns: patient, phone, and amount paid', ['patient', 'phone', 'amount paid']],
     ])('%s still declares its list', (_label, text, expected) => {
         expect(derivedColumns(text)?.map(c => c.label)).toEqual(expected);
+    });
+
+    it('keeps an Arabic label whose first character is the attached conjunction', () => {
+        const labels = derivedColumns(
+            'عندي عيادة أسنان. بدي جدول أسجل فيه المواعيد: اسم المريض ورقم تلفونه ووقت الموعد ونوع العلاج والمبلغ المدفوع',
+        )?.map(c => c.label);
+        expect(labels).toEqual(['اسم المريض', 'رقم تلفونه', 'وقت الموعد', 'نوع العلاج', 'المبلغ المدفوع']);
     });
 
     // POSITIVE — and a recording VERB still needs no introduction at all.

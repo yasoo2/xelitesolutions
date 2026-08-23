@@ -327,6 +327,7 @@ Rules:
 - A question ABOUT design or about a repo is "answer", not a build or an analysis.
 - When genuinely unsure, output "other".`;
         let raw = '';
+        let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
         try {
             // Semantic routing is part of the engineering pipeline when the caller
             // is already executing a real build.  Its short chat timeout used to
@@ -339,11 +340,17 @@ Rules:
             const classifierTimeoutMs = inheritedContext.engineeringPipeline === true
                 ? Math.min(180_000, Math.max(90_000, Number.isFinite(requested) && requested > 0 ? requested : 90_000))
                 : 12_000;
+            const timeoutPromise = new Promise<never>((_, rej) => {
+                timeoutHandle = setTimeout(() => rej(new Error('timeout')), classifierTimeoutMs);
+            });
             raw = await Promise.race([
                 routeToModel([{ role: 'system', content: sys }, { role: 'user', content: `Request: ${goal}` }], undefined, undefined, undefined, undefined, undefined, undefined, inheritedContext),
-                new Promise<string>((_, rej) => setTimeout(() => rej(new Error('timeout')), classifierTimeoutMs)),
+                timeoutPromise,
             ]);
         } catch { return null; }
+        finally {
+            if (timeoutHandle) clearTimeout(timeoutHandle);
+        }
         const m = raw && raw.match(/\{[\s\S]*\}/);
         if (!m) return null;
         let obj: any;
@@ -375,6 +382,7 @@ Rules:
 - If the request is NOT about the web/browser at all -> action="none".
 - Put a value in "url" ONLY if the user explicitly named a site or link.`;
         let raw = '';
+        let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
         try {
             // Browser-intent classification can be reached from the QA part of a
             // project pipeline.  Do not let its ordinary 18s chat guard cancel a
@@ -385,11 +393,17 @@ Rules:
             const classifierTimeoutMs = inheritedContext.engineeringPipeline === true
                 ? Math.min(180_000, Math.max(90_000, Number.isFinite(requested) && requested > 0 ? requested : 90_000))
                 : 18_000;
+            const timeoutPromise = new Promise<never>((_, rej) => {
+                timeoutHandle = setTimeout(() => rej(new Error('timeout')), classifierTimeoutMs);
+            });
             raw = await Promise.race([
                 routeToModel([{ role: 'system', content: sys }, { role: 'user', content: `Request: ${goal}` }], undefined, undefined, undefined, undefined, undefined, undefined, inheritedContext),
-                new Promise<string>((_, rej) => setTimeout(() => rej(new Error('timeout')), classifierTimeoutMs)),
+                timeoutPromise,
             ]);
         } catch { return null; }
+        finally {
+            if (timeoutHandle) clearTimeout(timeoutHandle);
+        }
         const m = raw && raw.match(/\{[\s\S]*\}/);
         if (!m) return null;
         let obj: any;

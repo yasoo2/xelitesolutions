@@ -1411,7 +1411,10 @@ export function derivedColumns(requestRaw: string): DerivedField[] | null {
         //  next word, «and» is a word of its own. A reader that knows only one of
         //  them reads only one language's requests.
         .split(/\s*[،,]\s*|\s+و(?=\S)|\s+and\s+|\s+&\s+/iu)
-        .map(p => p.trim().replace(/^(?:ال)?كل\s+/u, '').replace(/^[:：]\s*/u, '').trim())
+        .map(p => p.trim()
+            .replace(/^and\s+/iu, '')
+            .replace(/^(?:ال)?كل\s+/u, '')
+            .replace(/^[:：]\s*/u, '').trim())
         .filter(p => p.length >= 2 && p.length <= 32);
     if (parts.length < 3 || parts.length > 10) return null;
 

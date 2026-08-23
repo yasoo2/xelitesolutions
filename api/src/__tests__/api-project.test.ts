@@ -18,11 +18,20 @@ import { ApiProjectTool, apiResourceForKind } from '../modules/tools/definitions
 import { syntaxOk } from '../modules/tools/definitions/ProjectEditTool';
 
 const FALLTHROUGH = 'llm-fallthrough';
+const withDeadline = (p: Promise<string>, ms = 1500): Promise<string> => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const fallback = new Promise<string>(resolve => {
+        timer = setTimeout(() => resolve(FALLTHROUGH), ms);
+    });
+    return Promise.race([p, fallback]).finally(() => {
+        if (timer) clearTimeout(timer);
+    });
+};
 const route = async (goal: string): Promise<string> => {
     const p = PlanningEngine.generatePlan(
         { intent: { goal, complexity: 'medium', riskLevel: 'low', rawIntent: {} } as any },
     ).then(x => x.steps[0].tool).catch(() => FALLTHROUGH);
-    return Promise.race([p, new Promise<string>(r => setTimeout(() => r(FALLTHROUGH), 1500))]);
+    return withDeadline(p);
 };
 
 const routeInSession = async (goal: string, sessionId: string): Promise<string> => {
@@ -31,7 +40,7 @@ const routeInSession = async (goal: string, sessionId: string): Promise<string> 
         undefined,
         { sessionId },
     ).then(x => x.steps[0].tool).catch(() => FALLTHROUGH);
-    return Promise.race([p, new Promise<string>(r => setTimeout(() => r(FALLTHROUGH), 1500))]);
+    return withDeadline(p);
 };
 
 describe('quality review routing uses the active built project', () => {
@@ -273,7 +282,9 @@ describe('the offline scaffold — complete, parseable, kind-aware', () => {
         expect(linked.ok).toBe(true);
         const content = fs.readFileSync(path.join(linked.output.path, 'src', 'content.js'), 'utf-8');
         const keys = [...content.matchAll(/key: '([^']+)'/g)].map((m: RegExpMatchArray) => m[1]);
-        expect(keys).toEqual(expect.arrayContaining(['name', 'phone', 'email', 'notes']));
+        const labels = [...content.matchAll(/label: '([^']+)'/g)].map((m: RegExpMatchArray) => m[1]);
+        expect(keys).toEqual(expect.arrayContaining(['text1', 'tel1', 'text2', 'money1']));
+        expect(labels).toEqual(expect.arrayContaining(['patient name', 'phone', 'treatment', 'amount paid']));
         expect(keys).not.toContain('price');
         expect(keys).not.toContain('quantity');
         expect(content).toContain("api: '/api/patients'");

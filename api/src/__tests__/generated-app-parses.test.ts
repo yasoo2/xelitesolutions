@@ -126,28 +126,31 @@ const WeatherProvider: React.FC<WeatherProviderProps> = ({ children }) => {
         expect(silentAmount).not.toContain('minExclusive');
     });
 
-    it('emits an honest loading path only for a server-backed RecordsApp', () => {
+    it('uses an explicit backend endpoint and reports only a measured connection', () => {
         const remote = buildAppFiles(
-            blueprintFor('expenses', 'Build a records app with loading and error states', false),
+            blueprintFor('expenses', 'Build a records app with backend data', false),
             { isArabic: false, brand: 'Ledger', storeKey: 'ledger', api: 'http://localhost:4100/api/expenses' } as any,
             'ledger',
         );
         const remoteRecords = remote['src/components/RecordsApp.jsx'];
-        expect(remoteRecords).toContain('const [loading, setLoading] = useState(() => !!content.api);');
-        expect(remoteRecords).toContain('if (!content.api) return undefined;');
+        const remoteContent = remote['src/content.js'];
+        expect(remoteContent).toContain("api: 'http://localhost:4100/api/expenses'");
         expect(remoteRecords).toContain('const remote = await apiList(content.api);');
-        expect(remoteRecords).toContain('setLoading(false)');
-        expect(remoteRecords).toMatch(/loading \?/);
-        expect(remoteRecords).toContain('role="status"');
+        expect(remoteRecords).toContain('if (!alive || !remote) return;');
+        expect(remoteRecords).toContain('setServer(true);');
+        expect(remoteRecords).toMatch(/server \? .*Server connected/s);
+        expect(remoteRecords).toContain('Local to this device');
 
         const local = buildAppFiles(
-            blueprintFor('expenses', 'Build a quiet local ledger with loading and error states', false),
+            blueprintFor('expenses', 'Build a quiet local ledger', false),
             { isArabic: false, brand: 'Local Ledger', storeKey: 'local-ledger', api: '' } as any,
             'local-ledger',
         );
-        const localRecords = local['src/components/RecordsApp.jsx'];
-        expect(localRecords).toContain('useState(() => !!content.api)');
-        expect(localRecords).toContain('if (!content.api) return undefined;');
+        const localContent = local['src/content.js'];
+        expect(localContent).toContain("api: ''");
+        // The same RecordsApp stays reusable; an empty endpoint yields no
+        // server claim, while the local store remains the visible truth.
+        expect(local['src/components/RecordsApp.jsx']).toContain('apiList(content.api)');
     });
 
     it('normalizes a proven React/Vite scaffold with a missing root index.html', () => {

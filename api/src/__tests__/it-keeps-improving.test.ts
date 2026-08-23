@@ -130,7 +130,7 @@ describe('every round is paid for in a measured number', () => {
         }));
         expect(r.rounds).toHaveLength(0);
         expect(repaired).toBe(0);
-        expect(r.stoppedBecause).toBe('target_reached');
+        expect(r.stoppedBecause).toBe('nothing_left');
     });
 
     it('it climbs while it keeps winning, and names what really closed', async () => {

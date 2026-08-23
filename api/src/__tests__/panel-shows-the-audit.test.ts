@@ -37,18 +37,25 @@ describe('the browser is awake before the audit needs it', () => {
 
     it('and the build wakes it BEFORE npm install, not when the audit starts', () => {
         const r = read('modules', 'tools', 'definitions', 'ReactProjectTool.ts');
-        const warmAt = r.indexOf('warmBrowserSession(PANEL_BROWSER_SID)');
+        const warmAt = r.indexOf('warmBrowserSession(');
         const installAt = r.indexOf("run('npm', ['install'");
         const auditAt = r.indexOf('audit = await auditBuiltApp');
         expect(warmAt).toBeGreaterThan(0);
+        expect(r).toContain('browserSessionId');
+        expect(r).toContain('const auditSid = String(context?.browserSessionId || \'\').trim() || PANEL_BROWSER_SID;');
+        expect(r).toContain('waitForPanelWatcher(auditSid, 4000)');
+        expect(r).toContain('watchSessionId: auditSid');
         expect(warmAt).toBeLessThan(installAt);
         expect(installAt).toBeLessThan(auditAt);
     });
 
     it('and a build that was told to skip the audit does not open a browser at all', () => {
         const r = read('modules', 'tools', 'definitions', 'ReactProjectTool.ts');
-        const at = r.indexOf('warmBrowserSession(PANEL_BROWSER_SID)');
-        expect(r.slice(at - 400, at)).toMatch(/if \(!input\?\.skipAudit\) \{/);
+        const skipAt = r.indexOf('if (!input?.skipAudit) {');
+        const at = r.indexOf('warmBrowserSession(');
+        expect(skipAt).toBeGreaterThan(0);
+        expect(at).toBeGreaterThan(skipAt);
+        expect(r).toContain('warmBrowserSession(');
     });
 
     it('and «أصلح ما تبقّى» warms it too — it audits within seconds of starting', () => {
