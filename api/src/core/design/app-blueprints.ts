@@ -497,6 +497,45 @@ export function violatesFieldConstraint(field: Pick<AppField, 'type' | 'min' | '
     return field.minExclusive ? value <= field.min : value < field.min;
 }
 
+/**
+ * WHAT HE SAYS HE IS RECORDING IS WHAT THE TABLE IS CALLED.
+ *
+ * Measured live. His five columns finally reached the generated app, and the
+ * page still called itself «الحجوزات», with «حجز» for a row and the lede
+ * «احجز، أكّد، وتابع مواعيد اليوم في لوحة واحدة». He had written «بدي جدول
+ * أسجل فيه المواعيد». His word existed, in the same sentence the columns came
+ * from, and the archetype's word was printed over it.
+ *
+ * derivedColumns already walks past this noun on its way to the list — the
+ * colon is what separates them: «أسجل فيه المواعيد: اسم المريض و…». So the
+ * subject is read the same way the columns are, from his sentence, and it
+ * needs no vocabulary of trades: a clinic, a nursery or a camel farm all name
+ * their own table.
+ */
+export function recordedSubject(requestRaw: string): string | null {
+    const request = String(requestRaw || '').trim();
+    if (!request) return null;
+    const RECORDING = /(أسجل|اسجل|سجّل|أضيف|اضيف|أدخل|ادخل|أدوّن|ادون|الحقول|تحتوي على|يحتوي على|\brecord\b|\btrack\b|\blog\b)/iu;
+    const opener = RECORDING.exec(request);
+    if (!opener) return null;
+    const after = request.slice((opener.index || 0) + opener[0].length);
+    const colon = after.indexOf(':') >= 0 ? after.indexOf(':') : after.indexOf('：');
+    // No colon means the list starts immediately: there is no subject to read,
+    // and inventing one would be worse than keeping the archetype's word.
+    if (colon < 0 || colon > 40) return null;
+    //  «فيه», «فيها», «in», «my» are grammar between the verb and the subject.
+    const LEAD = /^(?:فيه|فيها|به|بها|في|فى|the|my|our|a|an|all|of|for)$/i;
+    const words: string[] = [];
+    for (const w of after.slice(0, colon).trim().split(/\s+/)) {
+        if (!w) continue;
+        if (words.length === 0 && LEAD.test(w)) continue;
+        words.push(w);
+        if (words.length === 3) break;
+    }
+    const subject = words.join(' ').trim();
+    return subject.length >= 3 ? subject : null;
+}
+
 export function blueprintFor(kind: AppKind, request: string, isAr: boolean): AppBlueprint {
     /**
      * AN EXPLICIT LIST BEATS EVERY ARCHETYPE, WHATEVER THE DOMAIN LOOKS LIKE.
@@ -518,6 +557,7 @@ export function blueprintFor(kind: AppKind, request: string, isAr: boolean): App
     if (explicitColumns) {
         const base = blueprintForKind(kind, request, isAr);
         const cols = derivedColumns(request) || [];
+        const subject = recordedSubject(request);
         const counts = cols.filter(c => c.role === 'count');
         const monies = cols.filter(c => c.role === 'money');
         const wantsTotal = /مجموع|اجمالي|إجمالي|قيمة\s*ال|كم\s|\btotal\b|\bsum\b|how much/iu.test(request);
@@ -564,6 +604,23 @@ export function blueprintFor(kind: AppKind, request: string, isAr: boolean): App
              *  named no columns — keeps its «طبيب ← مواعيده» relation.
              */
             relation: undefined,
+            /**
+             *  …AND HIS WORD FOR THE THING, WHEN HE SAID IT.
+             *
+             *  The archetype titled his clinic table «الحجوزات» and told him
+             *  «احجز، أكّد، وتابع مواعيد اليوم» while his own sentence said
+             *  «أسجل فيه المواعيد». Its copy is a fallback for a man who
+             *  named nothing — never an overwrite of a man who did.
+             */
+            ...(subject ? {
+                title: subject,
+                entityOne: subject,
+                entityMany: subject,
+                lede: isAr ? `أضف ${subject}، وابحث فيها، ورتّبها، وصدّرها.`
+                    : `Add ${subject}, search them, sort them and export them.`,
+                emptyHint: isAr ? `لا ${subject} بعد — أضف أول واحد من النموذج.`
+                    : `No ${subject} yet — add the first one from the form.`,
+            } : {}),
             lowStock: (counts[0] && lowMatch && wantsAlert)
                 ? { field: counts[0].key, below: Number(lowMatch[1]) } : undefined,
         };

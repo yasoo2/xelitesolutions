@@ -155,3 +155,38 @@ describe('an explicit list of columns admits no invented parent', () => {
         expect(bp.relation?.one).toBe('طبيب');
     });
 });
+
+/**
+ * AND HIS WORD FOR THE THING, WHEN HE SAID IT.
+ *
+ * His five columns reached the generated app, and the page still called
+ * itself «الحجوزات», with «حجز» for a row and the lede «احجز، أكّد، وتابع
+ * مواعيد اليوم في لوحة واحدة». He had written «بدي جدول أسجل فيه المواعيد» —
+ * his word was in the same sentence the columns came from.
+ *
+ * The archetype's copy is a fallback for a man who named nothing. It is never
+ * an overwrite of a man who did.
+ */
+describe('the table is called what he says he is recording', () => {
+    // POSITIVE — trades in no list, including a word for she-camels.
+    it.each([
+        ['العيادة', 'booking', 'عندي عيادة أسنان. بدي جدول أسجل فيه المواعيد: اسم المريض ورقم تلفونه ووقت الموعد ونوع العلاج والمبلغ المدفوع.', 'المواعيد'],
+        ['مشتل', 'store', 'عندي مشتل. بدي كرّاسة أدوّن فيها الشتلات: اسم الشتلة والكمية والسعر', 'الشتلات'],
+        ['نوق', 'generic', 'أملك مزرعة إبل. بدي سجل أسجل فيه النوق: اسم الناقة والعمر والوزن', 'النوق'],
+        ['English', 'booking', 'I want a table to record appointments: patient name, phone, appointment time and amount paid', 'appointments'],
+    ])('%s is titled %s', (_label, kind, brief, expected) => {
+        const bp = blueprintFor(kind as never, brief, /[\u0600-\u06FF]/.test(brief));
+        expect(bp.title).toBe(expected);
+        expect(bp.entityMany).toBe(expected);
+        expect(bp.lede).toContain(expected);
+        expect(bp.emptyHint).toContain(expected);
+    });
+
+    // NEGATIVE — no subject stated, so the archetype keeps its own word.
+    it.each([
+        ['قائمة بلا نقطتين', 'بدي جدول أسجل فيه اسم المريض ورقم تلفونه ووقت الموعد ونوع العلاج والمبلغ'],
+        ['طلب قصير', 'بدي تطبيق حجوزات لعيادتي'],
+    ])('%s keeps the archetype title', (_label, brief) => {
+        expect(blueprintFor('booking' as never, brief, true).title).toBe('الحجوزات');
+    });
+});
