@@ -3612,7 +3612,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 try {
                     const { PANEL_BROWSER_SID } = require('./BrowserSmartTools');
                     const { warmBrowserSession } = require('../../browser/manager');
-                    warmBrowserSession(PANEL_BROWSER_SID);
+                    warmBrowserSession(String(context?.browserSessionId || '').trim() || PANEL_BROWSER_SID);
                     term('self-QA: warming the browser now so the audit has something to show from its first second');
                 } catch { /* the audit launches its own — exactly as before */ }
             }
@@ -3792,6 +3792,31 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
              * tab, and the tab is opened for him when the audit starts.
              */
             const { PANEL_BROWSER_SID } = require('./BrowserSmartTools');
+            /**
+             *  THE AUDIT MUST WATCH WHERE HE IS WATCHING.
+             *
+             *  Measured on his machine, with a screenshot taken at the exact
+             *  moment Joe printed «Watch it happen in the Browser panel»:
+             *
+             *      URL bar : No page loaded
+             *      canvas  : black
+             *      status  : connected · quality=unknown · 1280×720
+             *
+             *  And in the same run, 170 websocket frames went to
+             *  `panel-terminal` and ZERO to `panel-browser`.
+             *
+             *  Two names for one panel. The interface binds its Browser tab to
+             *  `browser:<sessionId>` — its own comment says «Never fall back to
+             *  a shared panel-browser surface» — while the audit borrowed the
+             *  constant PANEL_BROWSER_SID, which is that abandoned surface. So
+             *  the audit really did run in a real browser, really did press
+             *  controls, and did all of it on a stage nobody was pointed at.
+             *
+             *  The session comes from the RUN now. The constant remains only
+             *  for callers with no session at all — a script, a test — and
+             *  those are exactly the cases that should say «private».
+             */
+            const auditSid = String(context?.browserSessionId || '').trim() || PANEL_BROWSER_SID;
             try {
                 broadcast({ type: 'panel_focus', sessionId, data: { panel: 'browser', reason: 'self_qa' } } as any);
             } catch { /* UI optional */ }
@@ -3808,7 +3833,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
              */
             try {
                 const { waitForPanelWatcher } = require('../../browser/wsHub');
-                const watching = await waitForPanelWatcher(PANEL_BROWSER_SID, 4000);
+                const watching = await waitForPanelWatcher(auditSid, 4000);
                 term(watching
                     ? 'self-QA: the Browser panel is attached — the audit runs where you can see it'
                     : 'self-QA: no Browser panel attached — running anyway, the findings are in the message');
@@ -3826,7 +3851,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 // it simply never downloads a browser to make itself possible.
                 offline: noInstall,
                 timeoutMs: 30_000,
-                watchSessionId: PANEL_BROWSER_SID,
+                watchSessionId: auditSid,
                 ...(liveServer ? { serveUrl: liveServer.url } : {}),
                 /**
                  * And the invitation matches reality. When the audit cannot
@@ -3970,7 +3995,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 // His «لا تستخدم الشبكة» reaches the audit too: it still runs,
                 // it simply never downloads a browser to make itself possible.
                 offline: noInstall,
-                        timeoutMs: 30_000, watchSessionId: PANEL_BROWSER_SID,
+                        timeoutMs: 30_000, watchSessionId: auditSid,
                         ...(liveServer ? { serveUrl: liveServer.url } : {}),
                         ...(runtimeAuth ? { credentials: runtimeAuth } : {}),
                     });
