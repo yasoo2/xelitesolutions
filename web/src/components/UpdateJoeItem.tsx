@@ -267,8 +267,28 @@ const AUTO_PREF_KEY = 'joe-auto-update';
 const DISMISS_KEY = 'joe-update-dismissed';
 const AUTO_DELAY_S = 45;
 
+/**
+ * OFF UNTIL HE SAYS OTHERWISE.
+ *
+ * This read used to be `!== '0'`, which means a browser that has never heard
+ * of the preference answers YES. So on the owner's machine, opening Joe while
+ * the checkout was behind started a countdown he never asked for, and forty-five
+ * seconds later the updater killed the running server — measured, three times,
+ * mid-build: the reply never arrived, no error was shown, and the process was
+ * simply gone.
+ *
+ * Restarting the program someone is using, and rewriting the repository it
+ * lives in, is not a default. It is a decision, and only he makes it: the
+ * toggle already writes '1' when he turns it on, so an absent preference now
+ * means off rather than on.
+ */
+const AUTO_UPDATE_DEFAULT = false;
+
 function autoUpdateEnabled(): boolean {
-    try { return localStorage.getItem(AUTO_PREF_KEY) !== '0'; } catch { return true; }
+    try {
+        const stored = localStorage.getItem(AUTO_PREF_KEY);
+        return stored === null ? AUTO_UPDATE_DEFAULT : stored === '1';
+    } catch { return AUTO_UPDATE_DEFAULT; }
 }
 
 export function UpdateAutoPilot() {
