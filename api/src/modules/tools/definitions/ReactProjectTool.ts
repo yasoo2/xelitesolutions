@@ -3817,6 +3817,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
              *  those are exactly the cases that should say «private».
              */
             const auditSid = String(context?.browserSessionId || '').trim() || PANEL_BROWSER_SID;
+            let auditWatching = false;
             try {
                 broadcast({ type: 'panel_focus', sessionId, data: { panel: 'browser', reason: 'self_qa' } } as any);
             } catch { /* UI optional */ }
@@ -3834,6 +3835,20 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             try {
                 const { waitForPanelWatcher } = require('../../browser/wsHub');
                 const watching = await waitForPanelWatcher(auditSid, 4000);
+                auditWatching = watching;
+                //  Name the session, not just the verdict: «no panel attached»
+                //  and «attached to a panel nobody is looking at» read the same
+                //  in a log and are entirely different defects.
+                //  In the server log too, not only the terminal panel: when the
+                //  Browser tab is the one on screen, the Terminal tab's text is
+                //  not in the DOM at all, so a measurement that lives only there
+                //  cannot be read at the moment it matters.
+                try {
+                    const mgr = require('../../browser/manager');
+                    const live = typeof mgr.liveBrowserSessionCount === 'function' ? mgr.liveBrowserSessionCount() : -1;
+                    console.log(`[SelfQA] session=${auditSid} watching=${watching} liveSessions=${live} ctxSid=${context?.browserSessionId || 'absent'}`);
+                } catch { /* observability only */ }
+                term(`self-QA session: ${auditSid} · watching=${watching}`);
                 term(watching
                     ? 'self-QA: the Browser panel is attached — the audit runs where you can see it'
                     : 'self-QA: no Browser panel attached — running anyway, the findings are in the message');
@@ -3846,6 +3861,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                     ? '🔌 أفحص النظام وهو يعمل — الواجهة داخل خادمها، والبيانات من قاعدتها الحقيقية'
                     : '🔌 Measuring the system while it RUNS — the interface inside its server, the data from its real database');
             }
+            const someoneIsWatching = auditWatching;
             audit = await auditBuiltApp(path.join(proj, 'dist'), {
                 // His «لا تستخدم الشبكة» reaches the audit too: it still runs,
                 // it simply never downloads a browser to make itself possible.
@@ -3900,6 +3916,19 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                     }
                 },
             });
+            /**
+             *  BORROWED IS NOT WATCHED.
+             *
+             *  Measured: `session=panel-browser watching=false` — the audit
+             *  borrowed a browser session that EXISTS and that nobody has
+             *  open, and the delivery still said «in the Browser panel, in
+             *  front of you».
+             *
+             *  A stage with no audience is a private browser by every measure
+             *  that matters to him. Borrowing proves a session was found; only
+             *  a watcher proves he could have seen it.
+             */
+            if (audit && !someoneIsWatching) audit.visible = false;
             term(audit.skipped
                 ? `self-QA: skipped (${audit.skipped})`
                 : `self-QA: ${audit.score}/100${audit.findings.length ? ` — ${audit.findings.map((f: any) => f.id).join(', ')}` : ' — clean'}`);
