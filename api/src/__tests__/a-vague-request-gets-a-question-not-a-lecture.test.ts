@@ -187,3 +187,57 @@ describe('an invented verb still asks the right question', () => {
         expect(clarifyQuestions(goal, 'ar')).not.toMatch(/تسجيله/);
     });
 });
+
+/**
+ * AND «بدي جدول» IS A REQUEST TOO.
+ *
+ * The emptiest thing a man can type — «بدي جدول» — was not asked a single
+ * question. It went straight to the builder with nothing to build from, and
+ * the builder invented a stock table for him.
+ *
+ * The gate carried its OWN list of build verbs — ابنِ, انشئ, اعمل, build,
+ * create — and «بدي» was not on it. A seventh private answer to «is this a
+ * build?», in the one place whose entire job is to notice a request too thin
+ * to build.
+ *
+ * Two more things fell out of measuring it:
+ *
+ *   · «أريد» — the correct spelling, with the hamza — was in no desire list at
+ *     all. Only «اريد» was. Every request he types the proper way was invisible.
+ *   · Two descriptive words was too low a bar. «بدي جدول للمواعيد» names a
+ *     subject and not one column, and a table with no columns can only be
+ *     invented.
+ */
+describe('a request too thin to build is asked about', () => {
+    // POSITIVE — an artefact named and nothing else, in every phrasing.
+    it.each([
+        ['جدول', 'بدي جدول'],
+        ['جدول بموضوع', 'بدي جدول للمواعيد'],
+        ['تطبيق', 'بدي تطبيق'],
+        ['أريد بالهمزة', 'أريد صفحة'],
+        ['متجر', 'بدي متجر'],
+        ['English', 'I want a table'],
+        ['أمر', 'ابن لي موقع'],
+    ])('%s is asked about', (_label, goal) => {
+        expect(isVagueBuildRequest(goal)).toBe(true);
+    });
+
+    // NEGATIVE — a request that says enough is built without an interview.
+    it.each([
+        ['أعمدة صريحة', 'عندي عيادة أسنان. بدي جدول أسجل فيه المواعيد: اسم المريض ورقم تلفونه ووقت الموعد'],
+        ['متجر مفصّل', 'بدي متجر لبيع القهوة فيه صفحة منتجات وصفحة أسعار وسلة شراء'],
+        ['CRM بقدرات', 'ابنِ تطبيقاً لإدارة العملاء مع بحث وتصفية وإجمالي'],
+    ])('%s is built without questions', (_label, goal) => {
+        expect(isVagueBuildRequest(goal)).toBe(false);
+    });
+
+    // NEGATIVE — and what is not a build is never interviewed.
+    it.each([
+        ['بحث', 'ابحث لي عن سعر الدولار'],
+        ['سؤال', 'ما الفرق بين React وVue؟'],
+        ['شكوى', 'الجدول اللي عملته أمس صار بطيء'],
+        ['دخول', 'سجّل دخولي بالإيميل'],
+    ])('%s is neither built nor interviewed', (_label, goal) => {
+        expect(isVagueBuildRequest(goal)).toBe(false);
+    });
+});

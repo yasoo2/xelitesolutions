@@ -12,7 +12,7 @@
  * toll booth.
  */
 
-import { asksForSomething, describesItsContents, tracksSomethingOfHis, trackingVerbAt } from './buildIntent';
+import { asksForSomething, describesItsContents, tracksSomethingOfHis, trackingVerbAt, looksLikeBuild } from './buildIntent';
 
 interface PendingClarify { request: string; at: number }
 const TTL_MS = 30 * 60_000;
@@ -93,7 +93,19 @@ export function isVagueBuildRequest(goal: string, opts?: { hasActivePage?: boole
     //  said what it will HOLD, there is nothing left to ask — that request
     //  is complete and goes straight to the builder.
     if (describesItsContents(text)) return false;
-    const namesAThing = BUILD_VERB.test(text) && WEB_NOUN.test(text);
+    /**
+     *  AND «بدي جدول» IS A REQUEST TOO.
+     *
+     *  Measured: the emptiest request a man can type — «بدي جدول» — was not
+     *  asked a single question. It went straight to the builder with nothing
+     *  to build from, and the builder invented a stock table for him.
+     *
+     *  This gate carried its OWN list of build verbs — ابنِ, انشئ, اعمل,
+     *  build, create — and «بدي» was not on it. A seventh private answer to
+     *  «is this a build?», in the one place whose whole job is to notice a
+     *  request too thin to build.
+     */
+    const namesAThing = looksLikeBuild(text);
     const namesSomethingToTrack = asksForSomething(text) && tracksSomethingOfHis(text, TRACKING);
     if (!namesAThing && !namesSomethingToTrack) return false;
     //  «Enough detail» means two different things for the two shapes.
@@ -104,7 +116,11 @@ export function isVagueBuildRequest(goal: string, opts?: { hasActivePage?: boole
     //  column, so counting words would call it complete and build him a
     //  table out of thin air.
     if (namesSomethingToTrack) return true;
-    return descriptiveTokens(text).length < 2;
+    //  «بدي جدول للمواعيد» and "I want a table" both named a thing and
+    //  nothing else about it. Two words was a low enough bar to let a
+    //  request through with a subject and no columns — and a table with no
+    //  columns can only be invented. Three.
+    return descriptiveTokens(text).length < 3;
 }
 
 /** The questions, deterministic, in the user's language. */
