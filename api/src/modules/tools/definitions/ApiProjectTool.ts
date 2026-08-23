@@ -154,6 +154,56 @@ export function apiPrimaryColumnsForApp(appKind: string | null, resource: string
     return primary ? columnsFromFields(primary.fields || []) : [];
 }
 
+export interface ApiPrimarySelection {
+    promoted: any | null;
+    resource: string;
+    labelAr: string;
+    /** Keys backed by a declaration, named-entity list, or exact user token. */
+    explicitKeys: string[];
+}
+
+/**
+ * Choose the API's primary table without letting an inferred fragment replace a
+ * known blueprint. Explicit declarations/lists outrank inference; an exact
+ * table key in the request is the minimum evidence for an uncurated noun.
+ */
+export function selectApiPrimary(
+    appKind: string | null,
+    picked: { resource: string; labelAr: string; generic?: boolean },
+    designed: any[],
+    request: string,
+): ApiPrimarySelection {
+    const { declaredTables } = require('../../../core/design/declared-tables');
+    const { namedEntities } = require('../../../core/design/named-entities');
+    const declared = declaredTables(String(request || '')) as any[];
+    const listed = declared.length ? declared : namedEntities(String(request || '')) as any[];
+    const listedKeys = Array.from(new Set(
+        listed.map(entity => String(entity?.key || '').toLowerCase()).filter(Boolean),
+    ));
+    const exactTokens = new Set((String(request || '').match(/[A-Za-z][A-Za-z0-9_]*/g) || [])
+        .map(token => token.toLowerCase()));
+    const explicitKeys = Array.from(new Set([
+        ...listedKeys,
+        ...(designed || []).map(entity => String(entity?.key || '').toLowerCase())
+            .filter(key => key && exactTokens.has(key)),
+    ]));
+    const knownPrimary = !!picked.resource && picked.generic !== true && appKind !== 'generic';
+    if (knownPrimary) {
+        return { promoted: null, resource: picked.resource, labelAr: picked.labelAr, explicitKeys };
+    }
+
+    // A generic app may promote only a table the user actually named. Inferred
+    // count is deliberately not evidence: `calleds` came from `called`, not a
+    // table anyone typed, and therefore cannot become a route or a screen.
+    const candidate = (designed || []).find(entity => {
+        const key = String(entity?.key || '').toLowerCase();
+        return key && key !== String(picked.resource || '').toLowerCase() && listedKeys.includes(key);
+    });
+    return candidate
+        ? { promoted: candidate, resource: String(candidate.key), labelAr: String(candidate.ar || candidate.key), explicitKeys }
+        : { promoted: null, resource: picked.resource, labelAr: picked.labelAr, explicitKeys };
+}
+
 /**
  * THE PARENT TABLE, AS THE SERVER SEES IT.
  *
@@ -2222,11 +2272,10 @@ export class ApiProjectTool extends BaseTool {
          * built. A restaurant keeps `dishes` and its seed menu, because
          * `dishes` IS in the model.
          */
-        const outsideTheSystem = designed.length > 0
-            && !designed.some((e: any) => String(e.key) === picked.resource);
-        const promoted = outsideTheSystem && (designed.length >= 3 || picked.generic) ? designed[0] : null;
-        const resource = promoted ? String(promoted.key) : picked.resource;
-        const labelAr = promoted ? String(promoted.ar || promoted.key) : picked.labelAr;
+        const primarySelection = selectApiPrimary(appKind, picked, designed, request);
+        const promoted = primarySelection.promoted;
+        const resource = primarySelection.resource;
+        const labelAr = primarySelection.labelAr;
         // A described system starts EMPTY. Seeding «عنصر تجريبي أول» into
         // `shipments` would be fabricated data wearing his table's name.
         const catalogueSeeds = promoted ? [] : picked.seeds;
@@ -2312,7 +2361,15 @@ export class ApiProjectTool extends BaseTool {
         // Do not let a free-form inference result turn a Notes + Tasks app into
         // dates/persistences. For every other domain the general designer stays
         // the source of truth exactly as before.
-        const model = isProductivity ? productivityModel : designed.filter((e: any) => e.key !== resource);
+        const explicitKeys = new Set(primarySelection.explicitKeys);
+        const model = isProductivity
+            ? productivityModel
+            : appKind === 'finance'
+                ? designed.filter((e: any) => e.key !== resource)
+                : designed.filter((e: any) => {
+                    const key = String(e?.key || '').toLowerCase();
+                    return key !== String(resource || '').toLowerCase() && explicitKeys.has(key);
+                });
         if (collided.length) {
             term(`data model: ${collided.join(', ')} — already the system's own table, not regenerated`);
             if (sessionId) {

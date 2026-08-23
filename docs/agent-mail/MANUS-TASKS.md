@@ -1057,3 +1057,15 @@ CLAUDE-208: acknowledged; implementation pending
 POS-2026-08-23-PREVIEW-CONTRACT: targeted=23/23, tsc=0, full=229 suites/3732 tests, 20/20 batches, GATE:PASS
 POS-2026-08-23-PROMPT01: open-after-timeout; no direct app acceptance yet
 POS-2026-08-23-W50: 0/50 closed; sequential rule preserved
+
+
+## سجل إصلاح 035-PROMOTION — 2026-08-23
+
+| المعرّف | المهمة | الحالة | الدليل ومعيار الإغلاق |
+|---|---|---|---|
+| 035-PROMOTION | منع ترقية fragment مستنتج فوق blueprint معروف، وإلزام generic promotion بقائمة سمّاها المستخدم | **منفذ محلياً؛ البوابات خضراء؛ الدفع والجولة الحية التالية قيد التنفيذ** | أُضيف `selectApiPrimary` في `ApiProjectTool.ts`: known non-generic resource لا يُستبدل؛ generic لا يرقّي إلا `declaredTables`/`namedEntities`؛ الجداول العرضية غير المسمّاة لا تُسلّم في model. اختبار سلبي قبل الإصلاح أعاد `categories` بدل `expenses`، ثم focused=4 suites/93 tests وTSC=0 وfull=229 suites/3739 tests/20 batches/`GATE:PASS`. |
+| PR82-035-PROMOTION | قناة الدليل والقرار والمراجعة | **الدليل الخام والتشخيص منفصلان ومنشوران؛ مراجعة فرع Claude مكتملة** | raw comment `5385236654`، diagnosis `5385253979`، branch-review close `5385292144`. لم يُدمج `6ff448dc`: `fieldsFromRequest`/`sumMargin` خارج نطاق الإصلاح ولهما مخاطر generic أوسع؛ مؤجلان بعد إغلاق Prompt 01 وباعتماد نطاق جديد. |
+| Prompt 01 — SpendWise | **مفتوح؛ لا انتقال إلى Prompt 02** | بعد دفع هذا الإصلاح يجب إنشاء Joe verification pair جديد ببصمة SHA المطابقة، ثم إرسال النص الرسمي في chat مرئي جديد. لا قبول قبل ظهور تطبيق SpendWise الحقيقي واختبار validation/CRUD/total/search/filter/CSV/localStorage/preview مباشرة. |
+| W50 | **مؤجلة؛ 0/50 مغلقة** | تبقى آخر مهمة، ولا تبدأ قبل قبول Prompt 01؛ لا تغيير في القاعدة التسلسلية. |
+
+`POS-2026-08-23-PROMOTION`: pre-fix raw red `1 suite / 30 passed + 1 failed`; post-fix focused `4 suites / 93 tests`; API `tsc=0`; full `229 suites / 3739 tests / 20 of 20 batches / GATE:PASS`; no package/lock/generated artifacts/WeatherGo edits.

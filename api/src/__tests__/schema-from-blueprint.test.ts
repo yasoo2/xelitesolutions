@@ -11,7 +11,7 @@
  *
  * The columns now come from the same blueprint the interface renders from.
  */
-import { apiColumnsForRequest, apiPrimaryColumnsForApp, CATALOGUE_COLUMNS } from '../modules/tools/definitions/ApiProjectTool';
+import { apiColumnsForRequest, apiPrimaryColumnsForApp, CATALOGUE_COLUMNS, selectApiPrimary } from '../modules/tools/definitions/ApiProjectTool';
 import { blueprintFor, detectAppKind, APP_KIND_SIGNALS, maskNegatedSpans, requestedFeatures, uncoveredFeatures } from '../core/design/app-blueprints';
 import { extractRunReceiptEvidence } from '../modules/services/AgentLoopService';
 import { designDataModel } from '../core/design/schema-designer';
@@ -19,6 +19,64 @@ import { fileFinanceAppJsx } from '../modules/tools/definitions/react-app-templa
 import { transform } from 'esbuild';
 
 describe('the schema follows the app, not a fixed guess', () => {
+    const PROMPT_01 = 'Build a polished React project called SpendWise, a personal expense tracker for one user. Create a responsive dashboard with a clear title, a form to add an expense with description, category, amount, and date, validation that rejects empty descriptions and non-positive amounts, a list of saved expenses with edit and delete actions, category filtering, text search, a running total that updates from the actual rows, and a CSV export button. Keep the data durable across reloads with localStorage. Use a clean light theme with accessible contrast and helpful empty, loading, and error states. Run the real production build and open the live preview. Do not modify existing projects.';
+
+    it('Prompt 01 keeps the recognized expenses resource and its five blueprint columns', () => {
+        expect(detectAppKind(PROMPT_01)).toBe('expenses');
+        expect(apiColumnsForRequest(PROMPT_01).map(column => column.key))
+            .toEqual(['title', 'amount', 'category', 'date', 'note']);
+    });
+
+    it('generic multi-table promotion follows an explicit user list, not inferred count', () => {
+        const request = 'Build a generic management system. Tables: projects, tasks';
+        const designed = [
+            { key: 'projects', ar: 'projects', fields: [] },
+            { key: 'tasks', ar: 'tasks', fields: [] },
+        ];
+        const selected = selectApiPrimary('generic', { resource: 'items', labelAr: 'items', generic: true }, designed, request);
+        expect(selected.resource).toBe('projects');
+        expect(selected.promoted?.key).toBe('projects');
+    });
+
+    it('generic prose names alone do not authorize primary promotion', () => {
+        const request = 'Build a generic management system for projects, tasks and activity logs.';
+        const designed = [
+            { key: 'projects', ar: 'projects', fields: [] },
+            { key: 'tasks', ar: 'tasks', fields: [] },
+            { key: 'activity_logs', ar: 'activity logs', fields: [] },
+        ];
+        const selected = selectApiPrimary('generic', { resource: 'items', labelAr: 'items', generic: true }, designed, request);
+        expect(selected.promoted).toBeNull();
+        expect(selected.resource).toBe('items');
+    });
+
+    it('generic inference without a declaration cannot promote an absent key', () => {
+        const designed = [
+            { key: 'calleds', ar: 'calleds', fields: [] },
+            { key: 'spends', ar: 'spends', fields: [] },
+            { key: 'wises', ar: 'wises', fields: [] },
+        ];
+        const selected = selectApiPrimary('generic', { resource: 'items', labelAr: 'items', generic: true }, designed, PROMPT_01);
+        expect(selected.promoted).toBeNull();
+        expect(selected.resource).toBe('items');
+    });
+
+    it('a known non-generic blueprint cannot be displaced by an inferred entity', () => {
+        const selected = selectApiPrimary('expenses', { resource: 'expenses', labelAr: 'expenses' }, [
+            { key: 'calleds', ar: 'calleds', fields: [] },
+        ], PROMPT_01);
+        expect(selected.promoted).toBeNull();
+        expect(selected.resource).toBe('expenses');
+    });
+
+    it('different declared expense options change blueprint bytes while silent requests stay stable', () => {
+        const food = JSON.stringify(blueprintFor('expenses', 'Build an expense tracker with categories: Food, Transit, Rent', true));
+        const business = JSON.stringify(blueprintFor('expenses', 'Build an expense tracker with categories: Payroll, Tax, Utilities', true));
+        expect(food).not.toBe(business);
+        const silent = JSON.stringify(blueprintFor('expenses', 'Build a personal expense tracker', true));
+        expect(silent).toBe(JSON.stringify(blueprintFor('expenses', 'Build a personal expense tracker', true)));
+    });
+
     it('a clinic booking system stores date, time and status', () => {
         const cols = apiColumnsForRequest('نظام حجز مواعيد لعيادة أسنان مع قاعدة بيانات');
         const keys = cols.map(c => c.key);
