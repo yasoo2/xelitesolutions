@@ -96,7 +96,7 @@ describe('the blueprint obeys the declaration', () => {
 });
 
 describe('request-stated numeric validation is part of the field contract', () => {
-    const PROMPT_01 = fs.readFileSync('/tmp/joe-prompt-01.md', 'utf-8').trim();
+    const PROMPT_01 = fs.readFileSync(path.join(__dirname, 'fixtures', 'prompt-01.md'), 'utf-8').trim();
 
     it('exact Prompt 01 carries a strict positive bound on its amount field', () => {
         const bp = blueprintFor('expenses', PROMPT_01, false);

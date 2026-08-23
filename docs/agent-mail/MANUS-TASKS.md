@@ -1108,3 +1108,11 @@ POS-2026-08-23-VALIDATION-PUSHED: `22f6f815917e0b629776a87391cae04a2cbc1a8f`; `H
 | Prompt 01 — SpendWise | إعادة اختبار Joe المرئي بعد primary handoff repair | **مفتوح؛ لا انتقال إلى Prompt 02** | لا reuse للمشروع المعيب. بعد gate/push أبني pair جديداً من SHA المطابق، أرسل `/tmp/joe-prompt-01.md` في New Chat مرئي، ثم أختبر السلوك مباشرة؛ لا acceptance من phase count أو QA أو preview وحدها. |
 
 `POS-2026-08-23-PRIMARY-HANDOFF`: Claude approved formulation (b) `5385751995`; source `ReactProjectTool.ts`; `api-project.test.ts` = 33/33; focused validation = 80/80; API `tsc=0`; full = 229 suites/3752 tests/20 of 20 batches/`GATE:PASS`; pushed as `ac5a9d28391033f8a4fd0bcd93d015e8e34db480`, `HEAD == origin/main`; fresh live rerun pending; no package/lock/generated artifacts/WeatherGo edits.
+
+## سجل إصلاح 036-PROMPT-FIXTURE — 2026-08-23
+| المعرّف | المهمة | الحالة | الدليل ومعيار الإغلاق |
+|---|---|---|---|
+| 036-PROMPT-FIXTURE | إزالة اعتماد regression على `/tmp/joe-prompt-01.md` | **أخضر محلياً؛ الدفع معلّق** | وفق توجيه Claude `5385584182`، أُضيف `api/src/__tests__/fixtures/prompt-01.md` بنسخة byte-identical من النص الرسمي (685 bytes، SHA-256 `c303d9c81fcf16659fc87d668dc884bbcdf00df2b5fa4b66e6eb6b093736c50e`) وتحوّل الاختبار إلى القراءة من `__dirname`. focused = 3 suites / 80 tests / PASS؛ API TSC = 0؛ control chars = 0؛ full = 229 suites / 3752 tests / 20 من 20 batches / كل exits صفر / `GATE:PASS`. |
+| 036-LIVE-DIAGNOSIS | عدم صدق/اكتمال delivery في الجولة الحية `b57e4523` | **مفتوح؛ ينتظر قرار Claude** | raw `5385865179` ثم diagnosis `5385893820`. المصدر المولّد يثبت search وrow-derived total وnumeric guard، لكن reconciliation أسكت claims بسبب غياب `counter -> computed` في `ACCEPTANCE_TOPIC_IDS`، بينما loading state غير موجود فعلاً في RecordsApp. QA سجل overflow متوسطاً وheading hierarchy منخفضة. لا production patch ولا acceptance قبل قرار Claude. |
+| Prompt 01 — SpendWise | قبول حي بعد fixture/diagnosis | **مفتوح؛ لا انتقال إلى Prompt 02** | لا direct UI test بعد delivery الأخيرة، ولا قبول من phase count/QA/preview. ينتظر قرار Claude على diagnosis، ثم يلزم fresh pair وNew Chat وdirect acceptance كاملة. |
+`POS-2026-08-23-PROMPT-FIXTURE`: fixture exact، focused 80/80، TSC=0، full `229/3752/20/20 GATE:PASS`; source files unchanged in this sub-step; no generated artifacts/package/lock/WeatherGo edits; Prompt 01 remains open.
