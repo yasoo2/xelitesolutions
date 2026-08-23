@@ -12,6 +12,8 @@
  * toll booth.
  */
 
+import { asksForSomething, describesItsContents } from './buildIntent';
+
 interface PendingClarify { request: string; at: number }
 const TTL_MS = 30 * 60_000;
 
@@ -28,6 +30,26 @@ function userWords(goal: string): string {
 }
 
 const BUILD_VERB = /\b(build|create|make|design|develop|generate)\b|(ابنِ|ابني|ابن\s|انشئ|أنشئ|اصنع|صمم|اعمل|سوي?\s*لي)/i;
+/**
+ *  …AND A THING HE SAYS HE WILL KEEP TRACK OF.
+ *
+ *  Measured live. He wrote «بدي شي أتابع فيه ديوني» — a request to build,
+ *  with nothing to build from. This gate should have asked him what he
+ *  wanted to record. It did not fire, because it required a noun from its
+ *  own private list and he had written «شي».
+ *
+ *  So Joe fell through to a free answer and improvised a financial
+ *  adviser: he asked the man about his interest rates, his minimum
+ *  payments and his monthly income, and offered him «طريقة التلال» versus
+ *  «طريقة الثلج». Nothing was built and nothing was asked that would let
+ *  anything be built.
+ *
+ *  A tracking verb with an object is a build-shaped request whatever the
+ *  object is called — «أتابع ديوني», «أسجل شتلاتي», «track my shipments».
+ *  The verb is the closed class here; the object never is.
+ */
+const TRACKING = /(أتابع|اتابع|أسجل|اسجل|أدوّن|ادون|أحفظ|احفظ|أنظم|انظم|أرتب|ارتب|أدير|ادير|\btrack\b|\bmanage\b|\brecord\b|\blog\b|\bkeep\s+track\b|\borgani[sz]e\b)/i;
+
 const WEB_NOUN = /\b(page|site|website|app|store|dashboard|portfolio|landing)\b|(صفحة|موقع|تطبيق|متجر|لوحة|واجهة|بورتفوليو|هبوط)/i;
 const BYPASS = /(مباشرة|مباشره|بدون\s*أ?سئلة|بدون\s*اسئله|على\s*(راحتك|كيفك|ذوقك)|كما\s*تراه|اقترح\s*أنت|directly|no\s*questions|your\s*call|surprise\s*me)/i;
 
@@ -66,7 +88,22 @@ export function isVagueBuildRequest(goal: string, opts?: { hasActivePage?: boole
     if (!text || opts?.hasActivePage) return false;                 // edits are never questioned
     if (/\[ATTACHED FILES/i.test(String(goal)) || opts?.hasAttachments) return false; // the attachment IS the brief
     if (BYPASS.test(text)) return false;
-    if (!BUILD_VERB.test(text) || !WEB_NOUN.test(text)) return false;
+    //  Two ways to be a build request: he names a thing to be made, or he
+    //  names something he will keep track of. Either way, if he has already
+    //  said what it will HOLD, there is nothing left to ask — that request
+    //  is complete and goes straight to the builder.
+    if (describesItsContents(text)) return false;
+    const namesAThing = BUILD_VERB.test(text) && WEB_NOUN.test(text);
+    const namesSomethingToTrack = asksForSomething(text) && TRACKING.test(text);
+    if (!namesAThing && !namesSomethingToTrack) return false;
+    //  «Enough detail» means two different things for the two shapes.
+    //  For a named artefact it is descriptive words — «موقع لمطعم إيطالي»
+    //  needs no questions. For something he will track, the only detail
+    //  that counts is WHAT IT HOLDS, and that was already checked above:
+    //  «بدي شي أتابع فيه ديوني» has three descriptive words and not one
+    //  column, so counting words would call it complete and build him a
+    //  table out of thin air.
+    if (namesSomethingToTrack) return true;
     return descriptiveTokens(text).length < 2;
 }
 

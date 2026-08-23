@@ -515,7 +515,7 @@ export function violatesFieldConstraint(field: Pick<AppField, 'type' | 'min' | '
 export function recordedSubject(requestRaw: string): string | null {
     const request = String(requestRaw || '').trim();
     if (!request) return null;
-    const RECORDING = /(أسجل|اسجل|سجّل|أضيف|اضيف|أدخل|ادخل|أدوّن|ادون|الحقول|تحتوي على|يحتوي على|\brecord\b|\btrack\b|\blog\b)/iu;
+    const RECORDING = /(أسجل|اسجل|سجّل|أضيف|اضيف|أدخل|ادخل|أدوّن|ادون|الحقول|تحتوي على|يحتوي على|أتابع|اتابع|أدير|ادير|أنظم|انظم|\brecord\b|\btrack\b|\blog\b|\bmanage\b|\borgani[sz]e\b)/iu;
     const opener = RECORDING.exec(request);
     if (!opener) return null;
     const after = request.slice((opener.index || 0) + opener[0].length);
@@ -1189,7 +1189,7 @@ export function derivedColumns(requestRaw: string): DerivedField[] | null {
      * Values follow a field. So the enumeration is only read when a recording
      * phrase stands in front of it.
      */
-    const RECORDING = /(أسجل|اسجل|سجّل|أضيف|اضيف|أدخل|ادخل|أدوّن|ادون|فيها|فيه|الحقول|تحتوي على|يحتوي على|\brecord\b|\btrack\b|\blog\b|\bcolumns?\b|\bfields?\b)/iu;
+    const RECORDING = /(أسجل|اسجل|سجّل|أضيف|اضيف|أدخل|ادخل|أدوّن|ادون|فيها|فيه|الحقول|تحتوي على|يحتوي على|أتابع|اتابع|أدير|ادير|أنظم|انظم|\brecord\b|\btrack\b|\blog\b|\bmanage\b|\borgani[sz]e\b|\bcolumns?\b|\bfields?\b)/iu;
     const opener = RECORDING.exec(request);
     if (!opener) return null;
     let after = request.slice((opener.index || 0) + opener[0].length);

@@ -1,3 +1,4 @@
+import { isArabicReply } from '../../../shared/reply-language';
 import { ToolDefinition } from '../types';
 import { routeToModel } from '../../../core/llm/intelligent-router';
 import { arabicShare } from '../../../shared/utils/language';
@@ -103,8 +104,21 @@ export class CentralAnswerTool implements ToolDefinition {
 
     async execute(input: { question: string }, context?: any) {
         const question = String(input?.question ?? '').trim();
-        const lang = context?.language || 'en';
-        const isAr = lang.startsWith('ar') || /[؟\u0600-\u06FF]/.test(question);
+        /**
+         *  A FIFTH PRIVATE ANSWER TO THE SAME QUESTION.
+         *
+         *  The `||` meant the script of his sentence always won: with the
+         *  interface set to English and an Arabic question, this answered in
+         *  Arabic — measured live, in a chat whose own greeting on the same
+         *  screen read «Good afternoon, Guest».
+         *
+         *  The rule lives in shared/reply-language and every layer asks it:
+         *  the interface he is looking at decides what Joe SAYS, and the
+         *  script of what he typed decides only when no interface language
+         *  arrived at all.
+         */
+        const isAr = isArabicReply({ language: context?.language, text: question });
+        const lang = isAr ? 'ar' : (String(context?.language || 'en').split('-')[0] || 'en');
         // Called with no question (a tool-picker that emitted empty args), this
         // used to send a message with NO content to the provider — a 400 that
         // cascaded into the entire provider chain being declared dead. Fail here,

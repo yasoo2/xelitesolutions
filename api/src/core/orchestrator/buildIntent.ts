@@ -99,3 +99,26 @@ export function looksLikeBuild(goalRaw: string): boolean {
     const describesItsContents = !!derivedColumns(g);
     return (verb && noun) || (asking && describesItsContents);
 }
+
+/**
+ *  HE IS ASKING FOR SOMETHING, WHATEVER IT IS.
+ *
+ *  The asking half of looksLikeBuild, on its own, because more than one
+ *  layer needs it. The clarify gate carried its OWN noun list and so did
+ *  not recognise «بدي شي أتابع فيه ديوني» as a request to build anything —
+ *  so instead of asking him which columns he wanted, Joe improvised a
+ *  financial adviser and interrogated him about interest rates and his
+ *  monthly income. He had asked for a table.
+ */
+export function asksForSomething(goalRaw: string): boolean {
+    const g = String(goalRaw || '');
+    const bare = stripArabicDiacritics(g);
+    return /(?:^|[\s،:؛])(?:بدي|بدى|ودي|ابغي|ابغى|اريد|عايز|عاوز|محتاج|نبي)(?=$|[\s،:؛])/.test(bare)
+        || /(?:^|[\s،:؛])(?:ابن|ابني|انشئ|اصنع|صمم|طور|اعمل|اصمم|سو|سوي|برمج|جهز)(?=$|[\s،:؛])/.test(bare)
+        || /\b(?:i\s+(?:want|need)|can\s+you|could\s+you|please|make\s+me|give\s+me|build\s+me)\b/i.test(g);
+}
+
+/** Does the request itself say what the thing will hold? */
+export function describesItsContents(goalRaw: string): boolean {
+    return !!derivedColumns(String(goalRaw || ''));
+}
