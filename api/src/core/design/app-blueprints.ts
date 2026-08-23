@@ -542,6 +542,28 @@ export function blueprintFor(kind: AppKind, request: string, isAr: boolean): App
             metrics,
             statusField: undefined,
             doneValue: undefined,
+            /**
+             *  AND NO PARENT HE NEVER NAMED.
+             *
+             *  Measured live. His five columns finally reached the generated
+             *  app — and the booking archetype attached its own parent table
+             *  on top: «اسم الطبيب *», «التخصّص», «الهاتف», with a picker
+             *  «لا أطباء بعد — أضف أول طبيب ثم احجز له موعداً».
+             *
+             *  He never mentioned a doctor. Worse, the parent name was
+             *  REQUIRED, so the form refused every appointment until he
+             *  invented a doctor first. Two rows were typed into the live
+             *  preview and neither appeared:
+             *
+             *      ROWS_SAMI=0 ROWS_LAYLA=0
+             *
+             *  A man who lists his columns has described his table. Keeping
+             *  the archetype's title and copy is help; adding a second table
+             *  he must fill before his own will accept a row is the catalogue
+             *  overruling the request. A stock booking app — one where he
+             *  named no columns — keeps its «طبيب ← مواعيده» relation.
+             */
+            relation: undefined,
             lowStock: (counts[0] && lowMatch && wantsAlert)
                 ? { field: counts[0].key, below: Number(lowMatch[1]) } : undefined,
         };

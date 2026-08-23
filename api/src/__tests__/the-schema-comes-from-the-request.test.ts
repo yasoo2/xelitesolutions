@@ -119,3 +119,39 @@ describe('INVARIANT: an explicit list outranks every archetype', () => {
         expect(derivedColumns('بدي نظام إدارة مهامي اليومية')).toBeNull();
     });
 });
+
+/**
+ * AND NO PARENT HE NEVER NAMED.
+ *
+ * Measured live on his machine. His five columns finally reached the
+ * generated app — and the booking archetype attached its own parent table on
+ * top: «اسم الطبيب *», «التخصّص», «الهاتف», plus a picker reading «لا أطباء
+ * بعد — أضف أول طبيب ثم احجز له موعداً».
+ *
+ * He never mentioned a doctor. And the parent's name was REQUIRED, so his own
+ * table refused every row until he invented one. Two appointments were typed
+ * into the live preview and neither appeared:
+ *
+ *     ROWS_SAMI=0 ROWS_LAYLA=0
+ *
+ * A man who lists his columns has described his table. The archetype may keep
+ * its copy; it may not add a second table he must fill before his own works.
+ */
+describe('an explicit list of columns admits no invented parent', () => {
+    // POSITIVE — his own brief, and the same trap in two other trades.
+    it.each([
+        ['العيادة', 'booking', 'عندي عيادة أسنان. بدي جدول أسجل فيه المواعيد: اسم المريض ورقم تلفونه ووقت الموعد ونوع العلاج والمبلغ المدفوع.'],
+        ['كوافير', 'booking', 'بدي جدول أسجل فيه مواعيد الزبونات: الاسم والتلفون ووقت الموعد والمبلغ'],
+        ['English clinic', 'booking', 'I want a table to record appointments: patient name, phone, appointment time, treatment and amount paid'],
+    ])('%s gets no parent table', (_label, kind, brief) => {
+        const bp = blueprintFor(kind as never, brief, /[\u0600-\u06FF]/.test(brief));
+        expect(bp.relation).toBeUndefined();
+        expect(bp.fields.every(f => !/طبيب|doctor|provider/i.test(f.label))).toBe(true);
+    });
+
+    // NEGATIVE — a stock booking app, where he named no columns, keeps its parent.
+    it('a booking app with no stated columns keeps its «طبيب ← مواعيده» relation', () => {
+        const bp = blueprintFor('booking' as never, 'بدي تطبيق حجوزات لعيادتي', true);
+        expect(bp.relation?.one).toBe('طبيب');
+    });
+});
