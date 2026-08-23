@@ -28,6 +28,7 @@
  * cannot test says «unprovable» rather than passing quietly — because a check
  * that cannot fail is the thing this project keeps deleting.
  */
+import { derivedColumns, type DerivedField } from '../design/app-blueprints';
 import fs from 'fs';
 import path from 'path';
 
@@ -54,6 +55,24 @@ export interface Criterion {
     markers?: RegExp[];
     /** Exact user-requested title text, when it can be extracted safely. */
     expectedText?: string;
+    /**
+     *  The exact column he listed, when the criterion is about one.
+     *
+     *  Measured live on his own brief — five columns, a search and a total:
+     *
+     *      «I could not derive a checkable criterion from your request,
+     *       so I did not issue an acceptance judgment.»
+     *
+     *  The schema layer had already read every one of those columns from
+     *  his sentence. The judge could not derive a single criterion, because
+     *  it only knew five it had been taught: counter, button, title, status
+     *  message, search. A checklist, in the one place the fourth law says
+     *  must come from the request.
+     *
+     *  A column he named is the most checkable criterion there is: it is
+     *  either a field in the built app or it is not.
+     */
+    expectedColumn?: string;
 }
 
 export interface JudgedCriterion extends Criterion {
@@ -194,11 +213,25 @@ export function titleTextFrom(request: string): string | undefined {
 /** The criteria THIS brief actually asks for — never a fixed checklist. */
 export function acceptanceFor(request: string): Criterion[] {
     const t = String(request || '');
-    return CATALOGUE.filter(c => c.asked.test(t))
+    const catalogue = CATALOGUE.filter(c => c.asked.test(t))
         .map(({ asked, ...rest }) => rest)
         .map(c => c.id === 'title'
             ? { ...c, expectedText: titleTextFrom(t) }
-            : c);
+        : c);
+
+    //  His columns, in his words, each one its own criterion. No catalogue
+    //  is consulted: derivedColumns reads them from the sentence he wrote.
+    const columns = derivedColumns(t) || [];
+    return [
+        ...catalogue,
+        ...columns.map((col: DerivedField) => ({
+            id: `column:${col.key}`,
+            kind: 'feature' as CriterionKind,
+            ar: `عمود «${col.label}» موجود في الجدول`,
+            en: `a column «${col.label}» exists in the table`,
+            expectedColumn: col.label,
+        })),
+    ];
 }
 
 export interface Evidence {
@@ -483,6 +516,18 @@ export function judgeAcceptance(criteria: Criterion[], ev: Evidence, isAr = true
     const judged: JudgedCriterion[] = criteria.map(c => {
         const say = (verdict: Verdict, why: string): JudgedCriterion => ({ ...c, verdict, why });
 
+        if (c.expectedColumn) {
+            //  The label he wrote, quoted in the generated source. A column
+            //  that is not there cannot be greped into existence.
+            //  As a COLUMN, not as loose text: a label that happens to
+            //  appear in a comment or a sentence proves nothing about the
+            //  table. The generated schema writes `label: '…'`.
+            const quoted = c.expectedColumn.replace(/[-/\\^$*+?.()|[\\]{}]/g, "\\$&");
+            const has = !!src && new RegExp("label:\\s*'" + quoted + "'").test(src);
+            return has
+                ? say('met', isAr ? `العمود «${c.expectedColumn}» في مخطّط الجدول` : `the column «${c.expectedColumn}» is in the table schema`)
+                : say('unmet', isAr ? `العمود «${c.expectedColumn}» غير موجود` : `the column «${c.expectedColumn}» is missing`);
+        }
         if (c.id === 'readme') {
             const has = !!dir && ['README.md', 'readme.md'].some(f => fs.existsSync(path.join(dir, f)));
             return has
