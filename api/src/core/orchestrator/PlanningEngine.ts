@@ -1266,7 +1266,23 @@ Rules:
             || /(^|\s)بنِ?\s/.test(probe)
             || /قم\s*ب?(بناء|عمل|انشاء|إنشاء|تصميم|تطوير|صنع)/.test(probe)
             || /(اريد|أريد|ابغى|أبغى|بدي|ودي)\s*(ب?بناء|عمل|انشاء|إنشاء|تصميم|موقع|صفحة|تطبيق|متجر|نظام|منصّ?ة|لوحة|أداة|اداة)/.test(probe)
-            || /\b(بناء|تصميم|إنشاء|انشاء)\s+(موقع|صفحة|تطبيق|متجر|واجهة|لوحة)/.test(probe));
+            || /\b(بناء|تصميم|إنشاء|انشاء)\s+(موقع|صفحة|تطبيق|متجر|واجهة|لوحة)/.test(probe)
+            /**
+             *  …AND A THIRD COPY OF THE SAME QUESTION.
+             *
+             *  Everything above answers «is this a build?» — and so does the
+             *  shared looksLikeBuild, and so did looksLikeEngineeringBrief.
+             *  Three answers to one question, and his clinic brief got a
+             *  different one from each: the shared test said yes, this list
+             *  said no, and because it said no, looksBrowser said yes and Joe
+             *  typed «المريض باسمه أو تلفونه» into a search engine.
+             *
+             *  The list above stays — it carries cases the shared test does
+             *  not, and every one of them was paid for. But it stops being the
+             *  last word. Ask the shared question too, so a request that is a
+             *  build anywhere is a build here.
+             */
+            || looksLikeBuild(String(intent.goal || '')));
         /**
          * THE ENGLISH LIST WAS NEVER BROUGHT UP TO THE ARABIC ONE.
          *
@@ -2248,7 +2264,21 @@ Rules:
         // "افتح المتصفح وابحث عن X". The old (^|\s) anchor missed "وابحث", so the
         // request fell to the plain open-browser path and only showed Google.
         const searchIntent = PlanningEngine.hasSearchIntent(probe);
-        if (searchIntent && !urlMatch) {
+        /**
+         *  A DOOR CLOSED IS NOT A WALL.
+         *
+         *  The search-priority gate above asks looksBrowser first, and
+         *  looksBrowser now refuses a build. This branch asks nothing but the
+         *  verb — so his clinic brief walked straight past the closed door and
+         *  through this one, and Joe typed «المريض باسمه أو تلفونه» into a
+         *  search engine anyway. Measured directly on the planner, twice: the
+         *  first fix moved nothing.
+         *
+         *  A defect fixed at one router is not fixed. Same property, stated
+         *  here too: what he describes building is not what he asked Joe to
+         *  search for.
+         */
+        if (searchIntent && !urlMatch && !buildVerb) {
             // Extract the CLEAN topic from the user's own words (shared helper —
             // same logic used by the search-priority path above).
             const query = PlanningEngine.extractSearchQuery(goalRaw) || PlanningEngine.extractSearchQuery(goalNorm);
