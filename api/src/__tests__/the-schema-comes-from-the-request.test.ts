@@ -265,3 +265,58 @@ describe('a bare noun does not open a column list', () => {
         expect(derivedColumns('I want to track my clients: name and phone')).toBeNull();
     });
 });
+
+/**
+ * A COLUMN THAT ASKS A QUESTION IS A YES OR A NO.
+ *
+ * Measured live. He answered Joe's question with «اسم المدين والمبلغ وتاريخ
+ * الدين وهل تم السداد» and got four columns — three right, and a free-text box
+ * labelled «هل تم السداد». He would have had to type the word «نعم» into it,
+ * and nothing could ever count it.
+ *
+ * The signal is grammatical, not a list of states: a label that OPENS WITH AN
+ * INTERROGATIVE — «هل», `is`, `has`, `did` — or ends in a question mark is a
+ * question, and a column that asks a question holds an answer of yes or no.
+ * The handful of past participles people write instead of the question
+ * («مدفوع», `paid`, `done`) are the same column with the question implicit.
+ *
+ * And it is the app's done-state, not a fifth text box: the records engine
+ * already knows how to draw a row as done, so a settled debt looks settled.
+ */
+describe('a column phrased as a question is a yes or a no', () => {
+    // POSITIVE — the live answer, and the same shape in both languages.
+    it.each([
+        ['هل تم السداد', 'بدي أتابع ديوني: اسم المدين والمبلغ وتاريخ الدين وهل تم السداد', 'هل تم السداد', ['نعم', 'لا']],
+        ['مدفوع', 'بدي جدول أسجل فيه الفواتير: اسم الزبون والمبلغ ومدفوع', 'مدفوع', ['نعم', 'لا']],
+        ['علامة سؤال', 'بدي أتابع الطلبات: رقم الطلب والمبلغ وتم التسليم؟', 'تم التسليم', ['نعم', 'لا']],
+        ['is it paid', 'I want to track my invoices: client, amount and is it paid', 'is it paid', ['Yes', 'No']],
+        ['done', 'I want to track my tasks: title, due date and done', 'done', ['Yes', 'No']],
+    ])('%s becomes a choice, in the language he wrote it in', (_label, brief, label, options) => {
+        const col = derivedColumns(brief)?.find(c => c.label === label);
+        expect(col?.type).toBe('select');
+        expect(col?.options).toEqual(options);
+    });
+
+    // POSITIVE — and it becomes the row's done-state, wired to the engine.
+    it('the yes/no column is the app done-state', () => {
+        const bp = blueprintFor('generic' as never, 'بدي أتابع ديوني: اسم المدين والمبلغ وتاريخ الدين وهل تم السداد', true);
+        const flag = bp.fields.find(f => f.label === 'هل تم السداد');
+        expect(bp.statusField).toBe(flag?.key);
+        expect(bp.doneValue).toBe('نعم');
+    });
+
+    // NEGATIVE — a word that merely CONTAINS a state word is not a question.
+    it.each([
+        ['تمويل المشروع', 'بدي أسجل الطلبات: اسم الزبون وتمويل المشروع والمبلغ', 'تمويل المشروع', 'text'],
+        ['المبلغ المدفوع', 'عندي عيادة أسنان. بدي جدول أسجل فيه المواعيد: اسم المريض ووقت الموعد والمبلغ المدفوع', 'المبلغ المدفوع', 'number'],
+    ])('%s keeps its own type', (_label, brief, label, type) => {
+        expect(derivedColumns(brief)?.find(c => c.label === label)?.type).toBe(type);
+    });
+
+    // NEGATIVE — a table with no yes/no column gets no invented done-state.
+    it('a schema with no question column has no done-state', () => {
+        const bp = blueprintFor('booking' as never, 'عندي عيادة أسنان. بدي جدول أسجل فيه المواعيد: اسم المريض ورقم تلفونه ووقت الموعد', true);
+        expect(bp.statusField).toBeUndefined();
+        expect(bp.doneValue).toBeUndefined();
+    });
+});

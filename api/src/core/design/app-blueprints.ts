@@ -605,6 +605,19 @@ export function blueprintFor(kind: AppKind, request: string, isAr: boolean): App
              */
             relation: undefined,
             /**
+             *  …AND A YES/NO COLUMN IS THE APP'S DONE-STATE.
+             *
+             *  He wrote «وهل تم السداد». That is not a fifth text box: it is
+             *  the state of the row, and the records engine already knows how
+             *  to draw a row as done. Naming it here is what connects the two,
+             *  so a settled debt looks settled instead of holding the word
+             *  «نعم» in a box.
+             */
+            ...(cols.find(c => c.role === 'flag')
+                ? { statusField: cols.find(c => c.role === 'flag')!.key,
+                    doneValue: (cols.find(c => c.role === 'flag')!.options || [])[0] }
+                : {}),
+            /**
              *  …AND HIS WORD FOR THE THING, WHEN HE SAID IT.
              *
              *  The archetype titled his clinic table «الحجوزات» and told him
@@ -1153,10 +1166,28 @@ function stockBlueprintFor(kind: AppKind, request: string, isAr: boolean): AppBl
  * The key is mechanical, derived from the role its type implies, so metrics can
  * bind to «the money column» without ever knowing what the money is for.
  */
-type DerivedRole = 'money' | 'count' | 'scalar' | 'date' | 'time' | 'tel' | 'email' | 'note' | 'text';
+type DerivedRole = 'money' | 'count' | 'scalar' | 'date' | 'time' | 'tel' | 'email' | 'flag' | 'note' | 'text';
 
 /** Closed vocabulary: what KIND of value this is, never what it is called. */
+/**
+ *  A COLUMN THAT ASKS A QUESTION IS A YES OR A NO.
+ *
+ *  Measured live. He answered Joe’s question with «اسم المدين والمبلغ
+ *  وتاريخ الدين وهل تم السداد» and got four columns — three right, and a
+ *  free-text box labelled «هل تم السداد». He would have had to type the
+ *  word «نعم» into it, and no total could ever count it.
+ *
+ *  The signal is grammatical and needs no list of states: a label that
+ *  OPENS WITH AN INTERROGATIVE — «هل», «is», «has», «did» — or ends in a
+ *  question mark is a question, and a column that asks a question holds an
+ *  answer of yes or no. A handful of past participles people write instead
+ *  of the question («مدفوع», «تم الدفع», `paid`, `done`) are the same
+ *  column with the question left implicit.
+ */
+const ASKS_YES_OR_NO = /^(?:هل|is|are|was|were|has|have|did|does)(?=$|\s)|[?؟]\s*$|^(?:تم|مدفوع|مدفوعة|مسدد|مسدّد|منجز|مكتمل|مغلق|paid|done|completed|settled|closed|shipped|delivered)(?=$|\s)/iu;
+
 const TYPE_MARKS: Array<[RegExp, DerivedRole, FieldType]> = [
+    [ASKS_YES_OR_NO, 'flag', 'select'],
     [/تلفون|هاتف|جوال|موبايل|واتس|\bphone\b|\bmobile\b|\btel\b|whatsapp/iu, 'tel', 'tel'],
     [/ايميل|إيميل|بريد\s*الكتروني|بريد\s*إلكتروني|\bemail\b|\be-?mail\b/iu, 'email', 'email'],
     [/تاريخ|يوم\s|\bdate\b|\bday\b/iu, 'date', 'date'],
@@ -1170,7 +1201,7 @@ const TYPE_MARKS: Array<[RegExp, DerivedRole, FieldType]> = [
     [/ملاحظ|وصف|تفاصيل|شرح|تعليق|\bnote\b|\bdescription\b|\bdetails\b|\bcomment\b/iu, 'note', 'textarea'],
 ];
 
-export interface DerivedField { label: string; key: string; type: FieldType; role: DerivedRole }
+export interface DerivedField { label: string; key: string; type: FieldType; role: DerivedRole; options?: string[] }
 
 /** The columns a request enumerates, in his words and his order. */
 export function derivedColumns(requestRaw: string): DerivedField[] | null {
@@ -1240,7 +1271,12 @@ export function derivedColumns(requestRaw: string): DerivedField[] | null {
         }
         const n = (seen.get(role) || 0) + 1;
         seen.set(role, n);
-        out.push({ label, key: `${role}${n}`, type, role });
+        //  The answers are written in the language of his own label, so an
+        //  Arabic column offers «نعم/لا» and an English one Yes/No.
+        const options = role === 'flag'
+            ? (/[\u0600-\u06FF]/.test(label) ? ['نعم', 'لا'] : ['Yes', 'No'])
+            : undefined;
+        out.push({ label, key: `${role}${n}`, type, role, options });
     }
     return out.length >= 3 ? out : null;
 }
@@ -1249,7 +1285,7 @@ export function fieldsFromRequest(requestRaw: string, isAr: boolean): AppField[]
     const cols = derivedColumns(requestRaw);
     if (!cols) return null;
     return cols.map((c, i) => f(
-        [c.key, c.label, c.label, c.type, undefined,
+        [c.key, c.label, c.label, c.type, c.options,
             i === 0 ? ['required', 'primary'] : (c.role === 'money' || c.role === 'count' ? ['required'] : undefined)],
         isAr,
     ));
