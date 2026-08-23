@@ -11,6 +11,7 @@ import shadow from 'fs';
 import path from 'path';
 import { executionEngine } from '../../kernel/ExecutionEngine';
 import { executionFirewall } from '../../orchestration/AgentExecutionFirewall';
+import { assessAutoUpdateSafety, parseAheadCount } from '../../core/deploy/deployment-safety';
 
 const fs = shadow.promises;
 const STABLE_COMMIT_FILE = './last_stable_commit';
@@ -169,6 +170,11 @@ export class DeployManager {
 
     private async attemptRollback() {
         try {
+            const safety = await this.assessAutomaticUpdateSafety();
+            if (!safety.ok) {
+                logger.error(`[DeployManager] Rollback blocked: ${safety.reason}`);
+                return;
+            }
             if (shadow.existsSync(STABLE_COMMIT_FILE)) {
                 const stableCommit = shadow.readFileSync(STABLE_COMMIT_FILE, 'utf8').trim();
                 logger.info(`[DeployManager] Rolling back to: ${stableCommit}`);
@@ -213,6 +219,20 @@ export class DeployManager {
             const result = await this.runCommand('git', ['rev-parse', 'origin/main'], PROJECT_ROOT, 10000);
             return result.trim();
         } catch (e) { return 'unknown'; }
+    }
+
+    private async assessAutomaticUpdateSafety() {
+        const worktreeStatus = await this.runCommand(
+            'git', ['status', '--porcelain', '--untracked-files=all'], PROJECT_ROOT, 10000);
+        const relation = await this.runCommand(
+            'git', ['rev-list', '--left-right', '--count', 'HEAD...origin/main'], PROJECT_ROOT, 10000);
+        const ahead = parseAheadCount(relation);
+        return assessAutoUpdateSafety({
+            root: PROJECT_ROOT,
+            runtimeMode: process.env.NODE_ENV,
+            worktreeStatus,
+            ahead: ahead ?? -1,
+        });
     }
 
     private broadcastStatus(id: string, status: string) {
@@ -275,21 +295,26 @@ export class DeployManager {
         this.pollerActive = true;
 
         try {
-            // Force reset any local changes and wipe untracked files so auto-deploy never gets stuck
-            await this.runCommand('git', ['reset', '--hard'], PROJECT_ROOT, 10000);
-            await this.runCommand('git', ['clean', '-fd'], PROJECT_ROOT, 10000);
-        } catch (e: any) { }
+            // Read-only discovery comes first. Never clean or hard-reset a checkout
+            // before proving that it is a clean, non-personal production target.
+            const localCommit = await this.getCurrentCommit();
+            const remoteCommit = await this.getRemoteCommit();
+            this.lastLocalCommit = localCommit;
+            this.lastRemoteCommit = remoteCommit;
 
-        const localCommit = await this.getCurrentCommit();
-        const remoteCommit = await this.getRemoteCommit();
-        this.lastLocalCommit = localCommit;
-        this.lastRemoteCommit = remoteCommit;
-
-        if (localCommit !== remoteCommit && remoteCommit !== 'unknown') {
-            if (this.currentDeploymentId) return;
-            await this.startDeploy('webhook', remoteCommit);
+            if (localCommit !== remoteCommit && remoteCommit !== 'unknown') {
+                const safety = await this.assessAutomaticUpdateSafety();
+                if (!safety.ok) {
+                    this.lastPollError = safety.reason;
+                    logger.warn(`[DeployManager] Auto-deploy stopped safely: ${safety.reason}`);
+                    return;
+                }
+                if (this.currentDeploymentId) return;
+                await this.startDeploy('webhook', remoteCommit);
+            }
+        } finally {
+            this.pollerActive = false;
         }
-        this.pollerActive = false;
     }
 
     async startDeploy(trigger: string, commitHash: string): Promise<string> {

@@ -7,6 +7,8 @@
  */
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
+import { assessAutoUpdateSafety, isProtectedPersonalRoot, parseAheadCount } from '../core/deploy/deployment-safety';
 
 const src = fs.readFileSync(
     path.join(__dirname, '..', 'modules', 'services', 'AgentLoopService.ts'), 'utf-8');
@@ -78,5 +80,56 @@ describe('the launcher itself lives by the same discipline', () => {
 
     test('the PowerShell behavioral suite exists for Windows verification', () => {
         expect(fs.existsSync(path.join(root, 'scripts', 'test-launcher.ps1'))).toBe(true);
+    });
+});
+
+describe('A-DEPLOY-PATH-THAT-WIPES-THE-USER — automatic update safety', () => {
+    const repoRoot = path.join(__dirname, '..', '..', '..');
+    const pingDeploy = fs.readFileSync(path.join(repoRoot, 'api', 'src', 'api', 'routes', 'ping-deploy.ts'), 'utf-8');
+    const deployManager = fs.readFileSync(path.join(__dirname, '..', 'modules', 'services', 'DeployManager.ts'), 'utf-8');
+
+    test('destructive cleanup is absent from automatic update sources', () => {
+        expect(pingDeploy).not.toMatch(/['"]clean['"]\s*,\s*['"]-fd['"]/u);
+        expect(deployManager).not.toMatch(/['"]clean['"]\s*,\s*['"]-fd['"]/u);
+        expect(deployManager).toContain('assessAutoUpdateSafety');
+        expect(pingDeploy).toContain('assessAutoUpdateSafety');
+    });
+
+    test('a dirty or untracked repository is refused without touching its files', () => {
+        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-deploy-safety-'));
+        const keep = path.join(tempRoot, 'keep-me.txt');
+        fs.writeFileSync(keep, 'owner work', 'utf-8');
+        try {
+            const decision = assessAutoUpdateSafety({
+                root: tempRoot,
+                runtimeMode: 'production',
+                worktreeStatus: '?? keep-me.txt',
+                ahead: 0,
+            });
+            expect(decision.ok).toBe(false);
+            expect(decision.reason).toMatch(/uncommitted or untracked/u);
+            expect(fs.readFileSync(keep, 'utf-8')).toBe('owner work');
+            expect(fs.existsSync(keep)).toBe(true);
+        } finally {
+            fs.rmSync(tempRoot, { recursive: true, force: true });
+        }
+    });
+
+    test('the personal owner checkout and unverifiable ancestry are refused', () => {
+        expect(isProtectedPersonalRoot('/root/xelitesolutions')).toBe(true);
+        expect(assessAutoUpdateSafety({
+            root: '/root/xelitesolutions',
+            runtimeMode: 'production',
+            worktreeStatus: '',
+            ahead: 0,
+        }).ok).toBe(false);
+        expect(assessAutoUpdateSafety({
+            root: '/srv/joe',
+            runtimeMode: 'production',
+            worktreeStatus: '',
+            ahead: -1,
+        }).ok).toBe(false);
+        expect(parseAheadCount('2 5')).toBe(2);
+        expect(parseAheadCount('not-a-rev-list')).toBeNull();
     });
 });
