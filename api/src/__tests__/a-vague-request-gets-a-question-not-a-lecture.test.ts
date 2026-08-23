@@ -122,3 +122,50 @@ describe('the question names his own thing', () => {
         expect(asked).not.toMatch(/تسجيله/);
     });
 });
+
+/**
+ * A VERB HE INVENTED IS STILL A VERB.
+ *
+ * Manus attacked the tracking gate with «بدي أفهرس ديوني» and was right: a
+ * closed list of VERBS is the same defect as a closed list of nouns, one coat
+ * further in. «أفهرس» is ordinary Arabic; it was simply not on the list.
+ *
+ * The obvious repair — any word starting أ/ا/ي/ت is a verb — is WORSE than the
+ * defect. A word beginning with «ا» is far more often a noun in his sentences,
+ * starting with the definite article: «الاسم», «الكمية», «التاريخ» — every
+ * column he ever names. That rule would interrogate him about columns for «بدي
+ * الاسم والمبلغ».
+ *
+ * What makes «أفهرس ديوني» a tracking request is not the verb alone: it is a
+ * verb followed by something he says is HIS. Arabic marks that with a
+ * possessive suffix — «ـي» in ديوني، شحناتي، زنابقي — and that suffix is a
+ * closed class. Verb shape AND owned object. Either alone is noise.
+ */
+describe('an invented verb still asks the right question', () => {
+    // POSITIVE — a real-but-unlisted verb, and a verb that means nothing at all.
+    it.each([
+        ['أفهرس', 'بدي أفهرس ديوني', 'ديوني'],
+        ['أزغرم (بلا معنى)', 'بدي أزغرم زنابقي', 'زنابقي'],
+        ['أرشف', 'بدي أرشف فواتيري', 'فواتيري'],
+    ])('%s asks about «%s» by name', (_label, goal, word) => {
+        expect(isVagueBuildRequest(goal)).toBe(true);
+        const asked = clarifyQuestions(goal, 'ar');
+        expect(asked).toContain(word);
+        expect(asked).toMatch(/تسجيله/);
+    });
+
+    // NEGATIVE — the trap the obvious repair would have walked into.
+    it.each([
+        ['أعمدة تبدأ بالألف', 'بدي الاسم والمبلغ والتاريخ'],
+        ['سؤال', 'بدي أعرف كم الساعة'],
+        ['شكوى', 'الجدول اللي عملته أمس صار بطيء'],
+        ['طلب كامل', 'عندي عيادة أسنان. بدي جدول أسجل فيه المواعيد: اسم المريض ورقم تلفونه ووقت الموعد'],
+    ])('%s is not a tracking request', (_label, goal) => {
+        expect(isVagueBuildRequest(goal)).toBe(false);
+    });
+
+    // NEGATIVE — a verb with no owned object is not enough on its own.
+    it('a verb without something of his is not tracking', () => {
+        expect(clarifyQuestions('بدي أفهرس الكتب', 'ar')).not.toMatch(/تسجيله/);
+    });
+});

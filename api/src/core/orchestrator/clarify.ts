@@ -12,7 +12,7 @@
  * toll booth.
  */
 
-import { asksForSomething, describesItsContents } from './buildIntent';
+import { asksForSomething, describesItsContents, tracksSomethingOfHis, trackingVerbAt } from './buildIntent';
 
 interface PendingClarify { request: string; at: number }
 const TTL_MS = 30 * 60_000;
@@ -94,7 +94,7 @@ export function isVagueBuildRequest(goal: string, opts?: { hasActivePage?: boole
     //  is complete and goes straight to the builder.
     if (describesItsContents(text)) return false;
     const namesAThing = BUILD_VERB.test(text) && WEB_NOUN.test(text);
-    const namesSomethingToTrack = asksForSomething(text) && TRACKING.test(text);
+    const namesSomethingToTrack = asksForSomething(text) && tracksSomethingOfHis(text, TRACKING);
     if (!namesAThing && !namesSomethingToTrack) return false;
     //  «Enough detail» means two different things for the two shapes.
     //  For a named artefact it is descriptive words — «موقع لمطعم إيطالي»
@@ -127,9 +127,11 @@ export function isVagueBuildRequest(goal: string, opts?: { hasActivePage?: boole
  */
 function trackedObject(goal: string): string {
     const text = userWords(goal);
-    const m = TRACKING.exec(text);
+    //  The same reading as the gate — a verb we know, or one he invented
+    //  followed by something he says is his.
+    const m = trackingVerbAt(text, TRACKING);
     if (!m) return '';
-    const after = text.slice((m.index || 0) + m[0].length).split(/[.،,؛;!؟?\n]/)[0] || '';
+    const after = text.slice(m.index + m.length).split(/[.،,؛;!؟?\n]/)[0] || '';
     const LEAD = /^(?:فيه|فيها|به|بها|في|فى|كل|جميع|my|the|all|of|for|a|an)$/i;
     const words: string[] = [];
     for (const w of after.trim().split(/\s+/)) {

@@ -122,3 +122,58 @@ export function asksForSomething(goalRaw: string): boolean {
 export function describesItsContents(goalRaw: string): boolean {
     return !!derivedColumns(String(goalRaw || ''));
 }
+
+
+/**
+ *  A VERB HE INVENTED IS STILL A VERB.
+ *
+ *  Manus attacked the tracking gate with «بدي أفهرس ديوني» and was right: a
+ *  closed list of VERBS is the same defect as a closed list of nouns, one coat
+ *  further in. «أفهرس» is ordinary Arabic; it was simply not on the list.
+ *
+ *  The obvious repair — any word starting أ/ا/ي/ت is a verb — is worse than
+ *  the defect. A word beginning with «ا» is far more often a NOUN in his
+ *  sentences, starting with the definite article: «الاسم», «الكمية»,
+ *  «التاريخ» — every column he ever names. That rule would interrogate him
+ *  about columns for «بدي الاسم والمبلغ».
+ *
+ *  What makes «أفهرس ديوني» a tracking request is not the verb alone. It is a
+ *  verb followed by SOMETHING HE SAYS IS HIS — and Arabic marks that with a
+ *  possessive suffix, which is a closed class: «ـي» in ديوني، شحناتي، نوقي,
+ *  «ـنا», or he says «فيه/فيها». English says «my».
+ *
+ *  Verb shape AND owned object. Either alone is noise.
+ */
+const ARABIC_LETTER = '[\u0621-\u064a]';
+const VERB_SHAPED = new RegExp(
+    //  Present tense opens with أ/ن/ي/ت — and never with the article «ال».
+    `(?:^|[\\s،:؛])(?!ال)[أاينت]${ARABIC_LETTER}{2,9}(?=$|[\\s،:؛])`, 'u');
+const OWNED_OBJECT = new RegExp(
+    `(?:^|[\\s،:؛])(?:فيه|فيها|${ARABIC_LETTER}{3,12}(?:ي|نا|اتي|اتنا))(?=$|[\\s،:؛.])|\\bmy\\b`, 'u');
+
+/**
+ * Does the request name something he keeps track of — with a verb we know, or
+ * with one he invented? The object has to be his either way.
+ */
+export function tracksSomethingOfHis(goalRaw: string, knownVerbs: RegExp): boolean {
+    return trackingVerbAt(goalRaw, knownVerbs) !== null;
+}
+
+/**
+ * Where the tracking verb is, so the caller can read what follows it. One
+ * definition for «is this tracking?» and «what is being tracked?» — asking the
+ * same question in two places is how they drift apart.
+ */
+export function trackingVerbAt(goalRaw: string, knownVerbs: RegExp): { index: number; length: number } | null {
+    const bare = stripArabicDiacritics(String(goalRaw || ''));
+    const known = knownVerbs.exec(bare);
+    if (known) return { index: known.index, length: known[0].length };
+    if (!OWNED_OBJECT.test(bare)) return null;
+    const shaped = VERB_SHAPED.exec(bare);
+    if (!shaped) return null;
+    //  The match may carry the separator it was anchored on; the verb starts
+    //  where the Arabic letters do.
+    const lead = shaped[0].length - shaped[0].replace(/^[\s،:؛]+/u, '').length;
+    return { index: shaped.index + lead, length: shaped[0].length - lead };
+}
+
