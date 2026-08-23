@@ -223,6 +223,26 @@ describe('the offline scaffold — complete, parseable, kind-aware', () => {
         expect(apiResourceForKind('store' as any, true).seeds.some(s => s.name === 'طقم الهدية')).toBe(true);
     });
 
+    it('a recognized expenses blueprint stays primary over incidental inferred fragments', async () => {
+        const request = 'Build a polished React project called SpendWise, a personal expense tracker for one user. Create a responsive dashboard with a clear title, a form to add an expense with description, category, amount, and date, validation that rejects empty descriptions and non-positive amounts, a list of saved expenses with edit and delete actions, category filtering, text search, a running total that updates from the actual rows, and a CSV export button. Keep the data durable across reloads with localStorage. Use a clean light theme with accessible contrast and helpful empty, loading, and error states. Run the real production build and open the live preview. Do not modify existing projects.';
+        const res: any = await new ApiProjectTool().execute(
+            { request, skipInstall: true, root: tmp }, { sessionId: 'api-expense-promotion' });
+        expect(res.ok).toBe(true);
+        expect(res.output.resource).toBe('expenses');
+        const state = (global as any).joeProjects['api-expense-promotion'];
+        expect(state.resource).toBe('expenses');
+        expect(state.model || []).not.toEqual(expect.arrayContaining([
+            expect.objectContaining({ key: 'calleds' }),
+            expect.objectContaining({ key: 'categories' }),
+        ]));
+        const db = fs.readFileSync(path.join(res.output.path, 'db.js'), 'utf-8');
+        expect(db).toContain('"key":"title"');
+        expect(db).toContain('"key":"amount"');
+        expect(db).toContain('"key":"category"');
+        expect(db).toContain('"key":"date"');
+        expect(db).toContain('"key":"note"');
+    });
+
     it('FULL-STACK LINK: a react build after an API build is born connected — and unlinked otherwise', async () => {
         const { ReactProjectTool } = require('../modules/tools/definitions/ReactProjectTool');
         // The API registered itself above for session api-t (resource dishes).
