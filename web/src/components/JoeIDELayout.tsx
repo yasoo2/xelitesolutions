@@ -219,6 +219,26 @@ export default function JoeIDELayout({
     // Auto-open is disabled for the first moment after load, so the terminal's
     // idle "Connected" banner and initial tool wiring don't pop the canvas over the
     // full-page chat. Real tasks (which happen after the user acts) still open it.
+    /**
+     *  WHAT THE SERVER ASKED FOR HOLDS UNTIL SOMETHING ELSE ASKS.
+     *
+     *  Measured on his screen, two seconds apart:
+     *
+     *      PANEL_FOCUS server-asked="terminal" reason="build_shell"
+     *      016 TAB → Terminal
+     *      017 TAB → Logs
+     *
+     *  The Terminal opened exactly as asked, and the next streamed file took
+     *  the tab back — «live code arriving means the user should be WATCHING
+     *  it arrive», twelve files per build. A build that runs for four
+     *  minutes gets its Terminal for two seconds.
+     *
+     *  Both rules are reasonable alone. The order between them is what was
+     *  missing: a panel the SERVER named is a stated intent, and a heuristic
+     *  fired by a passing event is a guess. The stated intent holds until the
+     *  server states another one, or the user picks a tab himself.
+     */
+    const explicitPanel = useRef<WorkspaceTab | null>(null);
     const canAutoOpen = useRef(false);
     useEffect(() => {
         const t = setTimeout(() => { canAutoOpen.current = true; }, 2500);
@@ -289,6 +309,8 @@ export default function JoeIDELayout({
     useEffect(() => {
         // Live code arriving means the user should be WATCHING it arrive.
         const handleOpenLogsTab = () => {
+            //  A stated intent outranks a streamed file.
+            if (explicitPanel.current && explicitPanel.current !== 'logs') return;
             if (canAutoOpen.current) setIsWorkspaceCollapsed(false);
             if (onWorkspaceTabChange) onWorkspaceTabChange('logs');
             else setInternalWorkspaceTab('logs');
@@ -323,6 +345,8 @@ export default function JoeIDELayout({
     }, [runBusy, isWorkspaceCollapsed, activeWorkspaceTab]);
 
     const handleWorkspaceTabChange = useCallback((tab: WorkspaceTab) => {
+        //  He chose. Nothing the server said earlier outranks that.
+        explicitPanel.current = null;
         // A clicked tab is the user's own open: the auto-close contract lets
         // go of the canvas — it stays until the user closes it.
         autoOpenedRef.current = false;
@@ -643,6 +667,8 @@ export default function JoeIDELayout({
     // the canvas ONLY after the initial settle window (so it doesn't fight the
     // full-page-chat default on load).
     const handleAutoOpen = useCallback((panel: PanelType, data?: any) => {
+        //  `panel_focus` always carries a reason; a tool-name guess does not.
+        if (data?.reason) explicitPanel.current = (panel as WorkspaceTab);
         const tab: WorkspaceTab | null = panel === 'preview' ? 'preview' : panel === 'browser' ? 'browser' : panel === 'terminal' ? 'terminal' : null;
         if (!tab) return;
         if (onWorkspaceTabChange) onWorkspaceTabChange(tab); else setInternalWorkspaceTab(tab);
