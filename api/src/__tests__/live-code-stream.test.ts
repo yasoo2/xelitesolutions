@@ -75,7 +75,11 @@ describe('the layout accumulates the stream correctly', () => {
 
 describe('the tab choreography matches the request', () => {
     it('a page build opens LOGS at start, not Preview', () => {
-        expect(JOE).toMatch(/toolName === 'web_page_builder'[\s\S]{0,120}setWorkspaceTab\('logs'\)/);
+        const builder = JOE.indexOf("toolName === 'web_page_builder'");
+        const logs = JOE.indexOf("setWorkspaceTab('logs')", builder);
+        expect(builder).toBeGreaterThan(-1);
+        expect(logs).toBeGreaterThan(builder);
+        expect(JOE).toContain("msg.type === 'build_started' && (!buildTool || buildTool === 'web_page_builder')");
         // and web_page_builder is no longer in the open-preview-on-start list
         const previewList = JOE.match(/\[('dev_server'[^\]]*)\]/)?.[1] || '';
         expect(previewList).not.toContain('web_page_builder');
@@ -97,5 +101,20 @@ describe('the panel renders what exists', () => {
 
     it('counts live files into the Logs badge', () => {
         expect(PANEL).toMatch(/logs\.length \+ liveFiles\.length/);
+    });
+});
+
+
+describe('explicit panel focus outranks live-code heuristics', () => {
+    it('keeps a server-requested Terminal ahead of the file-stream Logs event', () => {
+        expect(LAYOUT).toContain('const explicitPanel = useRef<WorkspaceTab | null>(null);');
+        expect(LAYOUT).toMatch(/if \(data\?\.reason\) explicitPanel\.current = panel as WorkspaceTab/);
+        expect(LAYOUT).toMatch(/if \(explicitPanel\.current && explicitPanel\.current !== 'logs'\) return/);
+        expect(LAYOUT).toMatch(/explicitPanel\.current = null/);
+    });
+
+    it('does not let a React build_started event steal the Terminal tab', () => {
+        expect(JOE).toContain("const buildTool = String(msg?.data?.tool || '');");
+        expect(JOE).toMatch(/msg\.type === 'build_started' && \(!buildTool \|\| buildTool === 'web_page_builder'\)/);
     });
 });

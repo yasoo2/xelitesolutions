@@ -12,6 +12,8 @@
  * toll booth.
  */
 
+import { asksForSomething, describesItsContents, looksLikeBuild, trackingVerbAt, tracksSomethingOfHis } from './buildIntent';
+
 interface PendingClarify { request: string; at: number }
 const TTL_MS = 30 * 60_000;
 
@@ -29,6 +31,7 @@ function userWords(goal: string): string {
 
 const BUILD_VERB = /\b(build|create|make|design|develop|generate)\b|(ابنِ|ابني|ابن\s|انشئ|أنشئ|اصنع|صمم|اعمل|سوي?\s*لي)/i;
 const WEB_NOUN = /\b(page|site|website|app|store|dashboard|portfolio|landing)\b|(صفحة|موقع|تطبيق|متجر|لوحة|واجهة|بورتفوليو|هبوط)/i;
+const TRACKING = /(أتابع|اتابع|أسجل|اسجل|أدوّن|ادون|أحفظ|احفظ|أنظم|انظم|أرتب|ارتب|أدير|ادير|\btrack\b|\bmanage\b|\brecord\b|\blog\b|\bkeep\s+track\b|\borgani[sz]e\b)/i;
 const BYPASS = /(مباشرة|مباشره|بدون\s*أ?سئلة|بدون\s*اسئله|على\s*(راحتك|كيفك|ذوقك)|كما\s*تراه|اقترح\s*أنت|directly|no\s*questions|your\s*call|surprise\s*me)/i;
 
 /**
@@ -66,12 +69,43 @@ export function isVagueBuildRequest(goal: string, opts?: { hasActivePage?: boole
     if (!text || opts?.hasActivePage) return false;                 // edits are never questioned
     if (/\[ATTACHED FILES/i.test(String(goal)) || opts?.hasAttachments) return false; // the attachment IS the brief
     if (BYPASS.test(text)) return false;
-    if (!BUILD_VERB.test(text) || !WEB_NOUN.test(text)) return false;
-    return descriptiveTokens(text).length < 2;
+    // A request that already states its row contents is build-ready. Otherwise
+    // distinguish a thin site ask from a thing the user wants to track.
+    if (describesItsContents(text)) return false;
+    const namesAThing = looksLikeBuild(text) || (BUILD_VERB.test(text) && WEB_NOUN.test(text));
+    const namesSomethingToTrack = asksForSomething(text) && tracksSomethingOfHis(text, TRACKING);
+    if (!namesAThing && !namesSomethingToTrack) return false;
+    // Site requests use descriptive words as their completeness measure. A
+    // tracking request is incomplete until the row contents are declared.
+    if (namesAThing) return descriptiveTokens(text).length < 2;
+    return true;
 }
 
 /** The questions, deterministic, in the user's language. */
+function trackedObject(goal: string): string {
+    const text = userWords(goal);
+    const match = trackingVerbAt(text, TRACKING);
+    if (!match) return '';
+    const after = text.slice(match.index + match.length).split(/[.،,؛;!؟?\n]/)[0] || '';
+    const lead = /^(?:فيه|فيها|به|بها|في|فى|كل|جميع|my|the|all|of|for|a|an)$/i;
+    const words: string[] = [];
+    for (const word of after.trim().split(/\s+/)) {
+        if (!word) continue;
+        if (words.length === 0 && lead.test(word)) continue;
+        words.push(word);
+        if (words.length === 2) break;
+    }
+    return words.join(' ').trim();
+}
+
 export function clarifyQuestions(goal: string, language: string): string {
+    const tracked = trackedObject(goal);
+    if (tracked) {
+        const isAr = String(language || 'ar').startsWith('ar');
+        return isAr
+            ? `سؤال واحد قبل أن أبدأ — ما الذي تريد تسجيله لكل واحد من «${tracked}»؟\n\nمثلاً: الاسم، المبلغ، التاريخ… اكتبها كما تريدها أن تظهر في الجدول، وسأبنيه بها.\n\nوإن أردت أن أختار أنا، قل «ابدأ مباشرة».`
+            : `One question before I start — what do you want to record for each of your ${tracked}?\n\nFor example: name, amount, date… write them the way you want them to appear in the table, and I will build it with those.\n\nOr say "start now" and I will choose for you.`;
+    }
     const isAr = String(language || 'ar').startsWith('ar');
     const wantsApp = /(تطبيق|app)/i.test(userWords(goal));
     if (isAr) {

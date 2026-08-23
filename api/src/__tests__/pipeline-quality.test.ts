@@ -205,7 +205,9 @@ describe('the self-QA runs where the user can watch it', () => {
     it('the build asks for the panel, and the interface opens it by name', () => {
         const R = require('fs').readFileSync(
             require('path').join(__dirname, '..', 'modules', 'tools', 'definitions', 'ReactProjectTool.ts'), 'utf-8');
-        expect(R).toMatch(/watchSessionId: PANEL_BROWSER_SID/);
+        expect(R).toMatch(/const auditSid = String\(context\?\.browserSessionId \|\| ''\)\.trim\(\) \|\| PANEL_BROWSER_SID/);
+        expect(R).toMatch(/watchSessionId: auditSid/);
+        expect(R).toMatch(/if \(audit && !someoneIsWatching\) audit\.visible = false/);
         expect(R).toMatch(/type: 'panel_focus'/);
         const W = require('fs').readFileSync(
             require('path').join(__dirname, '..', '..', '..', 'web', 'src', 'services', 'AutoOpenManager.ts'), 'utf-8');

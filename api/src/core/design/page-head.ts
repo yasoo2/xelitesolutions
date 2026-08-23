@@ -42,6 +42,22 @@ const STOP_WORDS = [
     'that', 'which', 'who', 'and', 'for', 'in', 'to', 'not', 'without', 'but', 'rather', 'specialis', 'specializ', 'working',
 ];
 
+/** Function words resume the sentence; they are not a product name. */
+const NAME_STOPS = /^(?:و|أو|او|ثم|فيه|فيها|به|بها|مع|من|في|على|الذي|التي|يحتوي|تحتوي|يكون|تكون|هو|هي|a|an|the|and|or|with|that|which|for|to|is|are|where|when|containing|including)$/i;
+
+/** Read a short name span without allowing the following clause into it. */
+function nameSpan(text: string): string {
+    const clause = String(text || '').split(/[،,؛;.!؟?\n:]/)[0] || '';
+    const words: string[] = [];
+    for (const w of clause.trim().split(/\s+/)) {
+        if (!w) continue;
+        if (NAME_STOPS.test(w.replace(/^[«"“]|[»"”]$/g, ''))) break;
+        words.push(w);
+        if (words.length === 4) break;
+    }
+    return words.join(' ').trim();
+}
+
 function trimBrand(raw: string): string {
     // Markdown emphasis/code markers are presentation syntax, not part of the
     // product identity.  A request such as `called **WeatherGo**, not a mockup`
@@ -99,9 +115,12 @@ export function brandFrom(request: string, _isArabic?: boolean): string {
      * folder name of a real field build. When the author quoted the name, the
      * quotes say exactly where it ends; take that span verbatim first.
      */
-    const introduced = req.match(/(?:اسمها|اسمه|إسمها|إسمه|تسمى|يسمى|باسم|called|named|by the name of)\s*:?[\s\r\n]*(?:["«“]([^"«»“”]{2,40})["»”]|(.{2,60}))/i);
+    // The marker must be a complete word: «باسمه» is a possessive pronoun,
+    // not the introduction «باسم ...». Quoted names are already bounded;
+    // unquoted names stop at punctuation/function words via nameSpan.
+    const introduced = req.match(/(?:^|[\s،:؛.«»"])(?:اسمها|اسمه|إسمها|إسمه|تسمى|يسمى|باسم|called|named|by the name of)\s*:?[\s\r\n]*(?:["«“]([^"«»“”]{2,40})["»”]|(.{2,60}))/i);
     if (introduced) {
-        const b = trimBrand(introduced[1] || introduced[2] || '');
+        const b = trimBrand(introduced[1] || nameSpan(introduced[2] || ''));
         if (b) return b;
     }
 
@@ -139,11 +158,17 @@ export function brandFrom(request: string, _isArabic?: boolean): string {
  * say what the thing IS. Deterministic, no model, and «MyApp» stays only for a
  * request that truly says nothing.
  */
+/** Possessive clauses state the subject without a domain vocabulary. */
+const OWNS_PATTERNS: RegExp[] = [
+    /(?:^|[\s،:؛.])(?:عندي|عندنا|املك|أملك|امتلك|أمتلك|ادير|أدير|لدي|لدينا)\s+(?:ال)?([\u0600-\u06FF][\u0600-\u06FF\s]{2,28})/,
+    /\bi\s+(?:have|run|own|manage)\s+(?:an?\s+|my\s+|the\s+)?([A-Za-z][A-Za-z' -]{2,28})\b/i,
+];
+
 const SUBJECT_PATTERNS: RegExp[] = [
     /\bfor\s+(?:an?\s+|my\s+|the\s+)?([A-Za-z][A-Za-z' -]{2,24})\b/i,
     /\b(?:selling|sells|that sells)\s+([A-Za-z][A-Za-z' -]{2,24})\b/i,
     /\b(?:store|shop|site|website|app|platform)\s+(?:for|about)\s+([A-Za-z][A-Za-z' -]{2,24})\b/i,
-    /(?:لبيع|لـ|ل)\s*(?:ال)?([\u0600-\u06FF]{3,20})/,
+    /(?:لبيع|لـ|لل)\s*(?:ال)?([\u0600-\u06FF]{3,20})/,
     /(?:متجر|مطعم|موقع|تطبيق|منصة|منصّة)\s+(?:ال)?([\u0600-\u06FF]{3,20})/,
 ];
 
@@ -170,6 +195,12 @@ export function brandFallback(request: string, isArabic: boolean, kind = 'generi
     // pattern can shave a word off «تجارة إلكترونية» and call it a subject.
     if (/\b(e-?commerce|marketplace)\b|تجارة إ?لكترونية|سوق إ?لكتروني/i.test(req)) {
         return isArabic ? 'سوق التجارة' : 'Commerce Hub';
+    }
+    for (const re of OWNS_PATTERNS) {
+        const m = req.match(re);
+        const owned = (m?.[1] || '').trim().split(/\s+/).slice(0, 3)
+            .filter(w => !NOT_A_SUBJECT.test(w)).join(' ').trim();
+        if (owned.length >= 3) return isArabic ? owned : titleCase(owned);
     }
     let subject = '';
     for (const re of SUBJECT_PATTERNS) {

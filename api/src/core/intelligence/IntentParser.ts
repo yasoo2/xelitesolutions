@@ -1,6 +1,7 @@
 import { analyzeContextualIntent, ConversationContext, buildConversationContext } from '../llm/context-engine';
 import intelligentRouter from '../llm/intelligent-router';
 import { normalizeIntentText } from '../orchestrator/promptNormalizer';
+import { looksLikeBuild } from '../orchestrator/buildIntent';
 
 export interface StructuredIntent {
     goal: string;
@@ -171,6 +172,12 @@ Return ONLY a JSON object:
         // button") is a continuation of the open page — unmistakably a browser task.
         const interactUi = /(اضغط|انقر|اختر|اكتب|أدخل|مرّ?ر|انزل|عبّ?ئ|املأ|حدّ?د|click|press|scroll|select|type|fill)/i.test(probe)
             && /(زر|الزر|حقل|الحقل|خانة|القائمة|قائمة|رابط|مربع|صندوق|التبويب|button|field|link|menu|dropdown|checkbox|tab|box|input)/i.test(probe);
+        /**
+         * A feature verb inside a build brief is not an instruction to Joe's
+         * browser. Keep an explicit URL or named site as a real web target, but
+         * let a domain-agnostic build shape reach the evidence-first pipeline.
+         */
+        if (looksLikeBuild(raw) && !hasUrl && !knownSite) return null;
         // Unmistakable web request: URL, strong web verb, weak verb + noun, or UI interaction.
         if (!(hasUrl || strongWebVerb || interactUi || (weakWebVerb && webNoun))) return null;
         return {

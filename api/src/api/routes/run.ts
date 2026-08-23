@@ -192,6 +192,16 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         return res.status(400).json({ error: 'Goal text is required' });
     }
 
+    /**
+     * The first message of a new chat can arrive before the client has a
+     * session id to derive its browser session from. The server owns the
+     * canonical run session, so cover that first message here as well as the
+     * client-side fallback used by later messages.
+     */
+    const runSessionId = String(sessionId || '').trim();
+    const effectiveBrowserSessionId = String(browserSessionId || '').trim()
+        || (runSessionId ? `browser:${runSessionId}` : '');
+
     // Persist the user message in offline/JSON mode so the chat shows the FULL
     // conversation (user + Joe) and it survives reloads. Agent runs go through this
     // route, which previously saved nothing — so only Joe's reply ever appeared.
@@ -242,7 +252,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             sessionId,
             // لا تستبدل جلسة لوحة المتصفح بجلسة الدردشة؛ تستخدمها browser_run
             // للتحكم في الصفحة نفسها التي تعرضها الواجهة.
-            browserSessionId: String(browserSessionId || '').trim() || undefined,
+            browserSessionId: effectiveBrowserSessionId || undefined,
             // مساحة العمل يختارها المستخدم في الواجهة ويجب أن تصل إلى كل أداة
             // تعتمد على ملفات المشروع، لا أن تتحول إلى مجلد جلسة الدردشة.
             workspaceId: String(workspaceId || '').trim() || undefined,

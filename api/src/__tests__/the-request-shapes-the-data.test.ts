@@ -11,7 +11,7 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { readDeclaredOptions, blueprintFor, detectAppKind, violatesFieldConstraint } from '../core/design/app-blueprints';
+import { readDeclaredOptions, blueprintFor, detectAppKind, violatesFieldConstraint, derivedColumns, recordedSubject } from '../core/design/app-blueprints';
 
 const SRC = path.join(__dirname, '..');
 const read = (...p: string[]) => fs.readFileSync(path.join(SRC, ...p), 'utf-8');
@@ -25,6 +25,24 @@ describe('classification follows request shape, not a domain-noun catalogue', ()
         const bp = blueprintFor('generic', unseenShape, false);
         expect(bp.engine).toBe('records');
         expect(bp.fields.length).toBeGreaterThan(0);
+    });
+});
+
+describe('the request describes a records shape without a domain catalogue', () => {
+    it('reads unseen-domain columns in the user order and infers only value shapes', () => {
+        const request = 'عندي مزرعة إبل. بدي سجل أسجل فيه بيانات الناقة: اسم الناقة والعمر والوزن';
+        expect(detectAppKind(request)).toBe('generic');
+        expect(recordedSubject(request)).toBe('بيانات الناقة');
+        expect(derivedColumns(request)?.map(column => column.label)).toEqual(['اسم الناقة', 'العمر', 'الوزن']);
+        const bp = blueprintFor('generic', request, true);
+        expect(bp.engine).toBe('records');
+        expect(bp.fields.map(field => field.label)).toEqual(['اسم الناقة', 'العمر', 'الوزن']);
+        expect(bp.fields.find(field => field.label === 'العمر')).toMatchObject({ type: 'number' });
+        expect(bp.fields.find(field => field.label === 'الوزن')).toMatchObject({ type: 'number' });
+    });
+
+    it('does not treat a colon after a field as a column list', () => {
+        expect(derivedColumns('متجر بفئات: قهوة، أدوات، حلويات')).toBeNull();
     });
 });
 
@@ -154,6 +172,15 @@ describe('the records output enforces only declared numeric bounds', () => {
         expect(t).toMatch(/if \(field\.type !== 'number' \|\| field\.min === undefined\) return false/);
         expect(t).toMatch(/const invalid = invalidNumericField\(fields, draft\);/);
     });
+
+    it('executes and serialises a request-derived margin metric', () => {
+        const t = T();
+        expect(t).toMatch(/case 'sumMargin': return round\(/);
+        expect(t).toMatch(/m\.field3/);
+        const bp = blueprintFor('generic', 'بدي سجل أسجل فيه مبيعات: الكمية وسعر الشراء وسعر البيع وأريد إجمالي الربح', true);
+        const margin = bp.metrics.find(m => m.kind === 'sumMargin');
+        expect(margin).toMatchObject({ field: 'count1', field2: 'money2', field3: 'money1' });
+    });
 });
 
 describe('the chart is real and shares its numbers with the metric', () => {
@@ -175,5 +202,22 @@ describe('the chart is real and shares its numbers with the metric', () => {
     it('the chart styles ride in the app css', () => {
         expect(T()).toMatch(/\.donut\{position:relative/);
         expect(T()).toMatch(/\.chart-legend li\{display:flex/);
+    });
+});
+
+
+describe('a bare UI noun does not open a request-shaped column list', () => {
+    it('rejects an invented Arabic UI name without a declaration marker', () => {
+        const request = 'بدي صفحة فيها الحقول زغرودة والزر إرسال';
+        expect(derivedColumns(request)).toBeNull();
+    });
+
+    it('proves the old bare-noun opener would collide on that unseen name', () => {
+        const request = 'بدي صفحة فيها الحقول زغرودة والزر إرسال';
+        const deliberatelyUnsafe = /(?:الحقول|الأعمدة|\bcolumns?\b|\bfields?\b)/iu;
+        expect(deliberatelyUnsafe.test(request)).toBe(true);
+        // If bare nouns are allowed back into production, this exact UI prose
+        // becomes a false schema; the production assertion must stay null.
+        expect(derivedColumns(request)).toBeNull();
     });
 });

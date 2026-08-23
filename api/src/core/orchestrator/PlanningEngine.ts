@@ -1,7 +1,8 @@
 import { StructuredIntent } from '../intelligence/IntentParser';
 import { catalogueFor, registeredToolNames, capabilityRoute, inputForTool } from './toolCatalog';
 import { routeToModel, TaskAnalysis } from '../llm/intelligent-router';
-import { normalizeIntentText, stripArabicDiacritics, foldChars } from './promptNormalizer';
+import { normalizeIntentText, foldChars } from './promptNormalizer';
+import { looksLikeBuild as sharedLooksLikeBuild } from './buildIntent';
 import { compactHistoryForPrompt } from './history-compact';
 import { enrichWorkspaceToolInput } from './workspace-evidence';
 import { findActiveBuiltProject } from './active-built-project';
@@ -154,46 +155,8 @@ export class PlanningEngine {
 
     /** Does this request ask for something to EXIST afterwards? */
     static looksLikeBuild(goalRaw: string): boolean {
-        const g = String(goalRaw || '');
-        /**
-         * «بنِ» IS THE SAME VERB AS «ابنِ».
-         *
-         * His request, verbatim: «بنِ نظاماً لمشتل نباتات: النباتات والموردون
-         * والطلبيات». Every noun matched; not one verb did — the list carried
-         * «ابن» and «ابني» and nothing for the bare imperative «بنِ», which is
-         * how the verb is most often written. So the build gate stayed shut, a
-         * planner LLM was asked for a DAG instead, Groq's daily quota was
-         * already spent, and a request that needed NO model at all died with
-         * «تعذّر الوصول إلى محرّك الذكاء». One missing alef.
-         */
-        /**
-         * …AND A VOWEL MARK IS NOT A WORD BOUNDARY.
-         *
-         * Asserting Arabic boundaries above was right — a bare substring made
-         * «واجهة برمجية» look like the imperative «برمج». But the boundary
-         * class `[\s،:؛]` knows nothing of harakat, so `«ابنِ نظاماً»` — the
-         * verb followed by a KASRA — failed the lookahead and stopped being a
-         * build request at all. Measured: true before the boundaries were
-         * added, false after.
-         *
-         * Adding «ابنِ» beside «ابن» would fix this sentence and no other:
-         * «ابنُ», «اِبن» and every form nobody has typed yet are already
-         * queuing. Strip the marks once and match the letters — the harakat
-         * are decoration on a word, never a break between two.
-         */
-        const bare = stripArabicDiacritics(g);
-        const verb = /\b(build|create|make|develop|generate|scaffold|implement|code)\b/i.test(g)
-            // Require verb boundaries in Arabic too. A bare substring made
-            // «واجهة برمجية» look like the imperative «برمج»، hijacking
-            // analysis → security → API-test workflows as project builds.
-            || /(?:^|[\s،:؛])(?:ابن|ابني|انشئ|أنشئ|اصنع|صمم|طور|اعمل|اصمم|سو|برمج|شيّ?د|أقم|اقم)(?=$|[\s،:؛])/.test(bare)
-            || /(^|\s)بنِ?\s/.test(g)
-            || /(?:^|[\s،:؛])بن(?=$|[\s،:؛])/.test(bare);
-        const noun = /\b(platform|marketplace|storefront|e-?commerce|site|website|page|app|application|software|system|dashboard|panel|console|admin|store|shop|portal|api|backend|tool|service|saas|crm|erp|pos|blog|editor|tracker|game)\b/i.test(g)
-            || /(موقع|صفحة|تطبيق|متجر|نظام|منصّ?ة|لوحة|واجهة|أداة|اداة|برنامج|بوابة|خدمة)/.test(bare);
-        return verb && noun;
+        return sharedLooksLikeBuild(goalRaw);
     }
-
     /**
      * ASKING IS NOT ORDERING.
      *
@@ -1301,7 +1264,8 @@ Rules:
             || /(^|\s)بنِ?\s/.test(probe)
             || /قم\s*ب?(بناء|عمل|انشاء|إنشاء|تصميم|تطوير|صنع)/.test(probe)
             || /(اريد|أريد|ابغى|أبغى|بدي|ودي)\s*(ب?بناء|عمل|انشاء|إنشاء|تصميم|موقع|صفحة|تطبيق|متجر|نظام|منصّ?ة|لوحة|أداة|اداة)/.test(probe)
-            || /\b(بناء|تصميم|إنشاء|انشاء)\s+(موقع|صفحة|تطبيق|متجر|واجهة|لوحة)/.test(probe));
+            || /\b(بناء|تصميم|إنشاء|انشاء)\s+(موقع|صفحة|تطبيق|متجر|واجهة|لوحة)/.test(probe)
+            || sharedLooksLikeBuild(String(intent.goal || '')));
         /**
          * THE ENGLISH LIST WAS NEVER BROUGHT UP TO THE ARABIC ONE.
          *
@@ -1319,12 +1283,12 @@ Rules:
          * Not one file was written.
          */
         const webNoun = /\b(page|site|website|web ?app|landing|portfolio|dashboard|form|store|shop|html|ui|interface)\b/.test(goalLower)
-            || /\b(platform|marketplace|e-?commerce|storefront|system|app|application|software|tool|service|portal|panel|admin|backend|api|saas|crm|erp|pos|blog|editor|tracker|planner|scheduler|booking|marketplace|network|clone)\b/.test(goalLower)
+            || /\b(platform|marketplace|e-?commerce|storefront|system|app|application|software|tool|service|portal|panel|admin|backend|api|saas|crm|erp|pos|blog|editor|tracker|planner|scheduler|booking|marketplace|network|clone|table|spreadsheet|ledger|register|list)\b/.test(goalLower)
             // «نظام نقاط بيع للمطاعم مع تقارير مبيعات» named no «موقع» and no
             // «صفحة», so the build gate never opened and Joe just TALKED about it.
             // A system, a platform, a dashboard and a tool are things people ask
             // to have built, exactly like a site.
-            || /(صفحة|موقع|تطبيق|واجهة|متجر|لوحة|نموذج|بورتفوليو|معرض|هبوط|نظام|منصّ?ة|أداة|اداة|برنامج|بوابة|خدمة|محرّ?ر|مدوّ?نة|سيرة\s*ذاتية|منيو|قائمة\s*(?:طعام|أسعار|منتجات))/.test(probe);
+            || /(صفحة|موقع|تطبيق|واجهة|متجر|لوحة|نموذج|بورتفوليو|معرض|هبوط|نظام|منصّ?ة|أداة|اداة|برنامج|بوابة|خدمة|محرّ?ر|مدوّ?نة|سيرة\s*ذاتية|منيو|قائمة\s*(?:طعام|أسعار|منتجات)|جدول|كشف|قائمة)/.test(probe);
         // Route follow-up edits (add button / change colour / ...) to the SAME page.
         const activeKey = String((context && context.sessionId) || 'default').replace(/[^a-zA-Z0-9._-]/g, '_');
         const hasActivePage = !!((global as any).joePages && (global as any).joePages[activeKey]);
@@ -1961,7 +1925,7 @@ Rules:
         // whole thing to a plain open, and it also corrupts names (نابلس->نبعلس). So
         // we resolve search deterministically FIRST, from the user's own words, and
         // send it to the VISIBLE search tool. Only when there's no explicit site URL.
-        if (looksBrowser && !urlMatch && PlanningEngine.hasSearchIntent(probe)) {
+        if (looksBrowser && !urlMatch && PlanningEngine.hasSearchIntent(probe) && !buildVerb) {
             const q = PlanningEngine.extractSearchQuery(goalRaw) || PlanningEngine.extractSearchQuery(goalNorm);
             if (q.length >= 2) {
                 console.log(`[PlanningEngine] search priority -> browser_search query="${q}"`);
@@ -2239,7 +2203,7 @@ Rules:
         // "افتح المتصفح وابحث عن X". The old (^|\s) anchor missed "وابحث", so the
         // request fell to the plain open-browser path and only showed Google.
         const searchIntent = PlanningEngine.hasSearchIntent(probe);
-        if (searchIntent && !urlMatch) {
+        if (searchIntent && !urlMatch && !buildVerb) {
             // Extract the CLEAN topic from the user's own words (shared helper —
             // same logic used by the search-priority path above).
             const query = PlanningEngine.extractSearchQuery(goalRaw) || PlanningEngine.extractSearchQuery(goalNorm);

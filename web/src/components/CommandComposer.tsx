@@ -2394,7 +2394,7 @@ export default function CommandComposer({
 
     const token = localStorage.getItem('token');
     try {
-      let effectiveBrowserSessionId = browserSessionId;
+      let effectiveBrowserSessionId = browserSessionId || (sessionId ? `browser:${sessionId}` : undefined);
       // Allow auto-open in chat mode too. Skip if no sessionId yet (first message).
       if (sessionId && (sessionKind === 'agent' || sessionKind === 'chat') && !effectiveBrowserSessionId && needsBrowserForText(inputText)) {
         const inputNorm = normalizeForIntent(inputText);

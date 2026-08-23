@@ -59,6 +59,17 @@ describe('engineering briefs are not hijacked by the browser fast path', () => {
             requiredTools: ['browser_run'],
         }));
     });
+
+    it('does not mistake an in-app search feature for a browser command', () => {
+        expect(IntentParser.quickIntent('عندي مزرعة إبل. بدي سجل أسجل فيه بيانات الناقة: اسم الناقة والعمر والوزن، وبدي أبحث عن الناقة وأحسب الإجمالي')).toBeNull();
+    });
+
+    it('keeps a named site as a browser target even inside a build request', () => {
+        expect(IntentParser.quickIntent('ابنِ أداة لإدارة عملي ثم افتح GitHub للمراجعة')).toEqual(expect.objectContaining({
+            suggestedAgent: 'Browser',
+            requiredTools: ['browser_run'],
+        }));
+    });
 });
 
 describe('extractRequirements reads what the user explicitly demanded', () => {

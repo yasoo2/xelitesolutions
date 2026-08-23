@@ -9,7 +9,7 @@ import { executeTool } from './ToolService';
 import { executionFirewall } from '../../orchestration/AgentExecutionFirewall';
 import { longTermMemory } from '../../core/memory/long-term-memory';
 import { uiText, languageName, messageLanguage } from '../../shared/utils/language';
-import { isArabicReply, say as pick } from '../../shared/reply-language';
+import { isArabicReply, replyLanguageCode, say as pick } from '../../shared/reply-language';
 import { formatAttachmentsBlock } from '../../shared/attachments';
 import { describeImageAttachments } from '../../shared/vision';
 import { withDeadline, RUN_DEADLINE_MS, DeadlineError } from '../../shared/utils/deadline';
@@ -68,13 +68,60 @@ function compactPhaseLogs(logs: any): string[] {
     return [`[AgentLoop] ... ${logs.length - MAX_PHASE_RECEIPT_LOGS} older phase log entries truncated ...`, ...recent];
 }
 
-function compactTaskReceipts(results: any): Array<{ tool: string; ok: boolean; error: string }> {
+const MAX_REVIEWER_RECEIPT_FINDINGS = 48;
+
+function compactReviewerFinding(finding: any): Record<string, any> {
+    const line = Number(finding?.line);
+    const message = String(finding?.message || '').trim();
+    return {
+        ...(String(finding?.file || '').trim() ? { file: String(finding.file).trim().slice(0, 240) } : {}),
+        ...(Number.isInteger(line) && line > 0 ? { line } : {}),
+        severity: String(finding?.severity || 'info').slice(0, 32),
+        category: String(finding?.category || 'review').slice(0, 80),
+        message: (message || 'Reviewer supplied a finding without a message.').slice(0, MAX_PHASE_RECEIPT_STRING_CHARS),
+        verificationStatus: finding?.verificationStatus === 'verified' ? 'verified' : 'unverified',
+        ...(finding?.evidenceEligible === true || finding?.evidenceEligible === false
+            ? { evidenceEligible: finding.evidenceEligible }
+            : {}),
+    };
+}
+
+function compactTaskReceipts(results: any): Array<Record<string, any>> {
     if (!Array.isArray(results)) return [];
-    return results.slice(0, MAX_PHASE_RECEIPT_RESULTS).map((result: any) => ({
-        tool: String(result?.tool || result?.toolName || result?.name || result?.operation || 'unknown tool').slice(0, 240),
-        ok: result?.ok === true,
-        error: String(result?.error || result?.errorMessage || result?.stderr || result?.output?.stderr || result?.message || result?.output?.message || '').slice(0, MAX_PHASE_RECEIPT_STRING_CHARS),
-    }));
+    return results.slice(0, MAX_PHASE_RECEIPT_RESULTS).map((result: any) => {
+        const tool = String(result?.tool || result?.toolName || result?.name || result?.operation || 'unknown tool').slice(0, 240);
+        const error = String(result?.error || result?.errorMessage || result?.stderr || result?.output?.stderr || result?.message || result?.output?.message || '').slice(0, MAX_PHASE_RECEIPT_STRING_CHARS);
+        const base: Record<string, any> = { tool, ok: result?.ok === true, error };
+        if (tool !== 'code_reviewer') return base;
+
+        const output = result?.output && typeof result.output === 'object' ? result.output : {};
+        const findings = Array.isArray(output.issues)
+            ? output.issues.slice(0, MAX_REVIEWER_RECEIPT_FINDINGS).map(compactReviewerFinding)
+            : [];
+        const summaryCritical = Number(output?.summary?.critical);
+        const errorCritical = Number(error.match(/(\d+)\s+critical(?: finding| issue)/i)?.[1]);
+        const declaredCritical = Number.isFinite(summaryCritical) ? summaryCritical : (Number.isFinite(errorCritical) ? errorCritical : 0);
+        const blocked = output?.qualityGate?.passed === false || /code_reviewer quality gate failed/i.test(error);
+        return {
+            ...base,
+            reviewerFindings: findings,
+            reviewer: compactReceiptValue({
+                filesRequested: output.filesRequested,
+                filesReviewed: output.filesReviewed,
+                reviewedFiles: output.reviewedFiles,
+                missingFiles: output.missingFiles,
+                summary: output.summary,
+                qualityGate: output.qualityGate,
+                suggestions: output.suggestions,
+            }),
+            ...(blocked && declaredCritical > 0 && findings.length === 0
+                ? {
+                    reviewerFindingsLost: true,
+                    reportingDefect: 'reviewer_findings_lost',
+                }
+                : {}),
+        };
+    });
 }
 function phaseReceiptExtras(projectContext: any, taskResults: any, extras: Record<string, any> = {}): Record<string, any> {
     const receiptExtras: Record<string, any> = {
@@ -168,6 +215,7 @@ export function extractRunReceiptEvidence(source: any, runId: string, sessionId:
     ).slice(0, MAX_PHASE_RECEIPT_STRING_CHARS);
     const completedSource = objects.find(value => Number.isFinite(Number(value.completedPhases)));
     const honestBlocker = objects.some(value => value.honestBlocker === true || value.requiresUserDecision === true);
+    const reviewerFindingsLost = taskReceipts.some((receipt: any) => receipt?.tool === 'code_reviewer' && receipt?.reviewerFindingsLost === true);
     const extractionMiss = taskReceipts.length === 0 && !root && fidelityVerdict === null;
     const envelopeKeys = extractionMiss && source && typeof source === 'object'
         ? Object.keys(source).slice(0, 20)
@@ -182,6 +230,7 @@ export function extractRunReceiptEvidence(source: any, runId: string, sessionId:
         selfFixReason: selfFixReason || undefined,
         completedPhases: completedSource?.completedPhases,
         honestBlocker,
+        ...(reviewerFindingsLost ? { reviewerFindingsLost: true, reportingDefect: 'reviewer_findings_lost' } : {}),
         ...(extractionMiss ? { extractionMiss: true, envelopeKeys } : {}),
         ...extra,
     };
@@ -332,7 +381,7 @@ export class AgentLoopService {
         // the field log carried «The user's language is English» over the goal
         // «حلل هذه الصوره» because the switcher said so. messageLanguage reads
         // the script of what the user actually wrote.
-        const language0 = messageLanguage(goal, options.language || 'ar');
+        const language0 = replyLanguageCode(options.language, goal);
         if ((options.attachments || []).some(a => /^image\//i.test(a.mimeType || '') && !String(a.content || '').trim())) {
             broadcastThinkingDetail(options.sessionId || '', language0 === 'ar' ? '👁️ أفحص الصور المرفقة بنموذج رؤية…' : '👁️ Reading the attached images with a vision model…');
             try {

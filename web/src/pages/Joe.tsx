@@ -253,7 +253,9 @@ export default function Joe() {
              * transition. Preview opens on `preview_ready`, when there is
              * actually something new to show.
              */
-            if ((isToolStart && toolName === 'web_page_builder') || msg.type === 'build_started') {
+            const buildTool = String(msg?.data?.tool || '');
+            if ((isToolStart && toolName === 'web_page_builder')
+                || (msg.type === 'build_started' && (!buildTool || buildTool === 'web_page_builder'))) {
                 setWorkspaceTab('logs');
                 triggerUncollapse();
             } else if (isToolStart && ['dev_server', 'dev_server_start', 'website_full_pipeline', 'scaffold_project', 'scaffold_full_stack'].includes(toolName)) {
@@ -732,7 +734,8 @@ export default function Joe() {
                     sessionId: targetSessionId,
                     workspaceId: currentWorkspaceId,
                     // Keep browser_run on the same visible page owned by the target chat.
-                    browserSessionId: browserSessionId || `browser:${targetSessionId}`
+                    browserSessionId: browserSessionId || `browser:${targetSessionId}`,
+                    language: i18n.language,
                 });
             } else {
                 await SocketService.sendMessage(targetSessionId, messageText);
@@ -742,7 +745,7 @@ export default function Joe() {
         } finally {
             setIsLoading(false);
         }
-    }, [inputValue, isLoading, activeSessionId, activeSessionKind, workspaceId, browserSessionId, ensuresWorkspace, loadAllSessions, setAgentSelected]);
+    }, [inputValue, isLoading, activeSessionId, activeSessionKind, workspaceId, browserSessionId, i18n.language, ensuresWorkspace, loadAllSessions, setAgentSelected]);
 
     const handleCreateSession = useCallback(async () => {
         await createSession({ kind: 'agent' });

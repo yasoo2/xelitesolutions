@@ -3813,6 +3813,8 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
              * tab, and the tab is opened for him when the audit starts.
              */
             const { PANEL_BROWSER_SID } = require('./BrowserSmartTools');
+            const auditSid = String(context?.browserSessionId || '').trim() || PANEL_BROWSER_SID;
+            let auditWatching = false;
             try {
                 broadcast({ type: 'panel_focus', sessionId, data: { panel: 'browser', reason: 'self_qa' } } as any);
             } catch { /* UI optional */ }
@@ -3829,11 +3831,19 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
              */
             try {
                 const { waitForPanelWatcher } = require('../../browser/wsHub');
-                const watching = await waitForPanelWatcher(PANEL_BROWSER_SID, 4000);
+                const watching = await waitForPanelWatcher(auditSid, 4000);
+                auditWatching = watching;
+                try {
+                    const mgr = require('../../browser/manager');
+                    const live = typeof mgr.liveBrowserSessionCount === 'function' ? mgr.liveBrowserSessionCount() : -1;
+                    console.log(`[SelfQA] session=${auditSid} watching=${watching} liveSessions=${live} ctxSid=${context?.browserSessionId || 'absent'}`);
+                } catch { /* observability only */ }
+                term(`self-QA session: ${auditSid} · watching=${watching}`);
                 term(watching
                     ? 'self-QA: the Browser panel is attached — the audit runs where you can see it'
                     : 'self-QA: no Browser panel attached — running anyway, the findings are in the message');
             } catch { /* the hub is optional — never block a build on it */ }
+            const someoneIsWatching = auditWatching;
             let auditVisible = false;
             liveServer = await bootPackagedServer();
             if (liveServer) {
@@ -3847,7 +3857,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 // it simply never downloads a browser to make itself possible.
                 offline: noInstall,
                 timeoutMs: 30_000,
-                watchSessionId: PANEL_BROWSER_SID,
+                watchSessionId: auditSid,
                 ...(liveServer ? { serveUrl: liveServer.url } : {}),
                 /**
                  * And the invitation matches reality. When the audit cannot
@@ -3896,6 +3906,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                     }
                 },
             });
+            if (audit && !someoneIsWatching) audit.visible = false;
             term(audit.skipped
                 ? `self-QA: skipped (${audit.skipped})`
                 : `self-QA: ${audit.score}/100${audit.findings.length ? ` — ${audit.findings.map((f: any) => f.id).join(', ')}` : ' — clean'}`);

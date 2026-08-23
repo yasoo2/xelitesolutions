@@ -163,6 +163,15 @@ describe('and he is never invited to watch a browser he cannot see', () => {
         expect(a).toMatch(/onProgress\?\.\('pressing'\)/);
     });
 
+    it('never calls a borrowed-but-unwatched browser visible', () => {
+        const r = read('modules', 'tools', 'definitions', 'ReactProjectTool.ts');
+        expect(r).toMatch(/let auditWatching = false/);
+        expect(r).toMatch(/auditWatching = watching/);
+        expect(r).toMatch(/const someoneIsWatching = auditWatching/);
+        expect(r).toMatch(/if \(audit && !someoneIsWatching\) audit\.visible = false/);
+        expect(r).toMatch(/\[SelfQA\] session=\$\{auditSid\} watching=\$\{watching\}/);
+    });
+
     it('and so does the repair command', () => {
         const p = read('modules', 'tools', 'definitions', 'ProjectRepairTool.ts');
         expect(p).toMatch(/where\.startsWith\('private'\)/);

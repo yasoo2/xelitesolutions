@@ -54,9 +54,10 @@ export interface AppField {
 /** A number worth showing at the top of the app, computed from the rows. */
 export interface AppMetric {
     label: string;
-    kind: 'count' | 'sum' | 'sumProduct' | 'avg' | 'countWhere' | 'todayCount' | 'todaySum' | 'topGroup';
+    kind: 'count' | 'sum' | 'sumProduct' | 'sumMargin' | 'avg' | 'countWhere' | 'todayCount' | 'todaySum' | 'topGroup';
     field?: string;
     field2?: string;
+    field3?: string;
     equals?: string;
     /** For money-shaped metrics — appended to the value. */
     unit?: string;
@@ -174,6 +175,8 @@ export interface AppBlueprint {
     relation?: AppRelation;
     /** Extra npm dependencies this engine really needs. */
     deps: Record<string, string>;
+    /** Optional request-stated threshold for a numeric records field. */
+    lowStock?: { field: string; below: number };
     /** What the app says when it has no rows yet — never fabricated rows. */
     emptyHint: string;
 }
@@ -319,6 +322,10 @@ export function detectAppKind(requestRaw: string): AppKind | null {
     // self-audit or planner context happened to mention a conversation.
     if (TASK_BOARD_CONTRACT.test(intentRequest)) return 'tasks';
     if (FINANCE_CONTRACT.test(intentRequest)) return 'finance';
+    // Explicit user-listed columns are a stronger contract than an incidental
+    // domain noun such as «عيادة» or «مواعيد». Let the records engine read the
+    // request-shaped schema instead of silently restoring a stock relation.
+    if (derivedColumns(intentRequest)?.length) return 'generic';
     /**
      * Score every registered archetype instead of returning the first keyword
      * that happens to occur in a long request. A real request often names the
@@ -362,8 +369,88 @@ const f = (s: FieldSpec, isAr: boolean): AppField => ({
 
 const SELECT_AR_EN = (ar: string[], en: string[], isAr: boolean) => (isAr ? ar : en);
 
+type DerivedRole = 'money' | 'count' | 'scalar' | 'date' | 'time' | 'tel' | 'email' | 'note' | 'flag' | 'text';
+const ASKS_YES_OR_NO = /(?:^|[\s،:؛])هل(?=\s|$)|(?:^|\s)(?:is|are|has|have|did|was|were)(?=\s)|[?؟]|\b(?:done|completed|active|enabled|paid|sent|approved|ready|available)\b/iu;
+
+/** Closed vocabulary describes value shape, never the domain noun. */
+const TYPE_MARKS: Array<[RegExp, DerivedRole, FieldType]> = [
+    [ASKS_YES_OR_NO, 'flag', 'select'],
+    [/تلفون|هاتف|جوال|موبايل|واتس|\bphone\b|\bmobile\b|\btel\b|whatsapp/iu, 'tel', 'tel'],
+    [/ايميل|إيميل|بريد\s*الكتروني|بريد\s*إلكتروني|\bemail\b|\be-?mail\b/iu, 'email', 'email'],
+    [/تاريخ|يوم\s|\bdate\b|\bday\b/iu, 'date', 'date'],
+    [/وقت|ساعة|موعد|\btime\b|\bhour\b/iu, 'time', 'time'],
+    [/سعر|مبلغ|تكلفة|ثمن|قيمة|راتب|اجرة|أجرة|رسوم|دفع|مدفوع|\bprice\b|\bamount\b|\bcost\b|\bfee\b|\bsalary\b|\bpaid\b|\btotal\b/iu, 'money', 'number'],
+    [/سنة|عام|عمر|\byear\b|\bage\b/iu, 'scalar', 'number'],
+    [/كمي|عدد|وزن|طول|عرض|ارتفاع|مساحة|نسب|\bqty\b|\bquantity\b|\bcount\b|\bweight\b|\bsize\b/iu, 'count', 'number'],
+    [/ملاحظ|وصف|تفاصيل|شرح|تعليق|\bnote\b|\bdescription\b|\bdetails\b|\bcomment\b/iu, 'note', 'textarea'],
+];
+
+export interface DerivedField { label: string; key: string; type: FieldType; role: DerivedRole; options?: string[] }
+
+/** Read three to ten user-listed columns after an explicit recording phrase. */
+export function derivedColumns(requestRaw: string): DerivedField[] | null {
+    const request = String(requestRaw || '');
+    const RECORDING_LITERAL = /(أسجل|اسجل|سجّل|أضيف|اضيف|أدخل|ادخل|أدوّن|ادون|أتابع|اتابع|أدير|ادير|أنظم|انظم|فيها|فيه|تحتوي على|يحتوي على|\brecord\b|\btrack\b|\blog\b|\bmanage\b|\borgani[sz]e\b)/iu;
+    const DECLARED_LIST = /(الحقول|الأعمدة|الاعمدة|\bcolumns?\b|\bfields?\b)\s*(?::|：|هي|are\b|include(?:s)?\b)/iu;
+    const opener = RECORDING_LITERAL.exec(request) || DECLARED_LIST.exec(request);
+    if (!opener) return null;
+    let after = request.slice((opener.index || 0) + opener[0].length);
+    const colon = after.indexOf(':') >= 0 ? after.indexOf(':') : after.indexOf('：');
+    if (colon >= 0 && colon <= 40) after = after.slice(colon + 1);
+    const sentence = after.split(/[.؟!\n]/)[0] || '';
+    const parts = sentence
+        .split(/\s*[،,]\s*|\s+و(?=\S)|\s+and\s+|\s+&\s+/iu)
+        .map(p => p.trim().replace(/^(?:ال)?كل\s+/u, '').replace(/^[:：]\s*/u, '').trim())
+        .filter(p => p.length >= 2 && p.length <= 32);
+    if (parts.length < 3 || parts.length > 10) return null;
+    const seen = new Map<DerivedRole, number>();
+    return parts.map(label => {
+        let role: DerivedRole = 'text';
+        let type: FieldType = 'text';
+        for (const [mark, nextRole, nextType] of TYPE_MARKS) {
+            if (mark.test(label)) { role = nextRole; type = nextType; break; }
+        }
+        const n = (seen.get(role) || 0) + 1;
+        seen.set(role, n);
+        const options = role === 'flag'
+            ? (/^[\u0000-\u007F]*$/.test(label) ? ['Yes', 'No'] : ['نعم', 'لا'])
+            : undefined;
+        return { label, key: `${role}${n}`, type, role, ...(options ? { options } : {}) };
+    });
+}
+
+export function fieldsFromRequest(requestRaw: string, isAr: boolean): AppField[] | null {
+    const cols = derivedColumns(requestRaw);
+    if (!cols) return null;
+    return cols.map((c, i) => f(
+        [c.key, c.label, c.label, c.type, c.options,
+            i === 0 ? ['required', 'primary'] : (c.role === 'money' || c.role === 'count' ? ['required'] : undefined)],
+        isAr,
+    ));
+}
+
+/** The subject immediately before the user's explicit column list. */
+export function recordedSubject(requestRaw: string): string | null {
+    const request = String(requestRaw || '').trim();
+    const RECORDING_LITERAL = /(أسجل|اسجل|سجّل|أضيف|اضيف|أدخل|ادخل|أدوّن|ادون|أتابع|اتابع|أدير|ادير|أنظم|انظم|الحقول|تحتوي على|يحتوي على|\brecord\b|\btrack\b|\blog\b)/iu;
+    const opener = RECORDING_LITERAL.exec(request);
+    if (!opener) return null;
+    const after = request.slice((opener.index || 0) + opener[0].length);
+    const colon = after.indexOf(':') >= 0 ? after.indexOf(':') : after.indexOf('：');
+    if (colon < 0 || colon > 40) return null;
+    const lead = /^(?:فيه|فيها|به|بها|في|فى|the|my|our|a|an|all|of|for)$/i;
+    const words: string[] = [];
+    for (const word of after.slice(0, colon).trim().split(/\s+/)) {
+        if (words.length === 0 && lead.test(word)) continue;
+        if (word) words.push(word);
+        if (words.length === 3) break;
+    }
+    const subject = words.join(' ').trim();
+    return subject.length >= 3 ? subject : null;
+}
+
 /** The subject of the request, cleaned of the build verbs — used to name a
- *  generic app after what the user actually asked to manage. */
+ * generic app after what the user actually asked to manage. */
 export function subjectOf(request: string): string {
     /**
      * WHAT IT IS CALLED — NOT THE FIRST FORTY CHARACTERS OF THE REQUEST.
@@ -465,6 +552,46 @@ export function violatesFieldConstraint(field: Pick<AppField, 'type' | 'min' | '
 }
 
 export function blueprintFor(kind: AppKind, request: string, isAr: boolean): AppBlueprint {
+    const explicitColumns = fieldsFromRequest(request, isAr);
+    if (explicitColumns) {
+        const base = stockBlueprintFor(kind, request, isAr);
+        const cols = derivedColumns(request) || [];
+        const subject = recordedSubject(request);
+        const counts = cols.filter(c => c.role === 'count');
+        const monies = cols.filter(c => c.role === 'money');
+        const wantsTotal = /مجموع|اجمالي|إجمالي|قيمة\\s*ال|كم\\s|\\btotal\\b|\\bsum\\b|how much/iu.test(request);
+        const lowMatch = /(?:اقل|أقل|تحت|دون|less\\s+than|under|below|<)\\s*(?:من\\s*)?(\\d{1,4})/iu.exec(request);
+        const wantsAlert = /(احمر|أحمر|بالاحمر|بالأحمر|\\bred\\b|تنبيه|انتبه|أنتبه|\\bwarn|\\balert)/iu.test(request);
+        const metrics: AppMetric[] = [
+            { label: isAr ? 'عدد السجلات' : 'Records', kind: 'count' },
+            ...(wantsTotal && counts[0] && monies[0]
+                ? [{ label: `${isAr ? 'إجمالي' : 'Total'} ${counts[0].label} × ${monies[0].label}`, kind: 'sumProduct', field: counts[0].key, field2: monies[0].key } as AppMetric] : []),
+            ...(wantsTotal && counts[0] && monies[1]
+                ? [{ label: `${isAr ? 'الفرق بين' : 'Margin between'} ${monies[1].label} ${isAr ? 'و' : 'and'} ${monies[0].label}`, kind: 'sumMargin', field: counts[0].key, field2: monies[1].key, field3: monies[0].key } as AppMetric] : []),
+            ...(wantsTotal && monies[0] && !counts[0]
+                ? [{ label: `${isAr ? 'مجموع' : 'Total'} ${monies[0].label}`, kind: 'sum', field: monies[0].key } as AppMetric] : []),
+            ...(counts[0]
+                ? [{ label: `${isAr ? 'مجموع' : 'Total'} ${counts[0].label}`, kind: 'sum', field: counts[0].key } as AppMetric] : []),
+        ];
+        const shaped: AppBlueprint = {
+            ...base,
+            fields: explicitColumns,
+            metrics,
+            statusField: explicitColumns.find(field => field.type === 'select' && field.options?.length === 2)?.key,
+            doneValue: explicitColumns.find(field => field.type === 'select' && field.options?.length === 2)?.options?.[0],
+            relation: undefined,
+            ...(subject ? {
+                title: subject,
+                entityOne: subject,
+                entityMany: subject,
+                lede: isAr ? `أضف ${subject}، وابحث فيها، ورتّبها، وصدّرها.` : `Add ${subject}, search them, sort them and export them.`,
+                emptyHint: isAr ? `لا ${subject} بعد — أضف أول واحد من النموذج.` : `No ${subject} yet — add the first one from the form.`,
+            } : {}),
+            lowStock: counts[0] && lowMatch && wantsAlert ? { field: counts[0].key, below: Number(lowMatch[1]) } : undefined,
+        };
+        return applyRequestFieldConstraints(shaped, request);
+    }
+
     let bp = stockBlueprintFor(kind, request, isAr);
     /**
      * The declared categories replace the stock ones — on whichever field

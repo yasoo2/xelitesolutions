@@ -84,6 +84,22 @@ describe('the schema follows the app, not a fixed guess', () => {
         expect(cols.find(c => c.key === 'name')!.required).toBe(true);
     });
 
+    it('an explicit clinic recording request owns its schema and has no implicit doctor parent', () => {
+        const request = 'عندي عيادة أسنان. بدي جدول أسجل فيه المواعيد: اسم المريض ورقم تلفونه ووقت الموعد ونوع العلاج والمبلغ المدفوع. وبدي أبحث عن المريض باسمه أو تلفونه، وبدي أعرف كم قبضت الإجمالي.';
+        const kind = detectAppKind(request)!;
+        expect(kind).toBe('generic');
+        const bp = blueprintFor(kind, request, true);
+        expect(bp.engine).toBe('records');
+        expect(bp.title).toBe('المواعيد');
+        expect(bp.fields.map(field => field.label)).toEqual([
+            'اسم المريض', 'رقم تلفونه', 'وقت الموعد', 'نوع العلاج', 'المبلغ المدفوع',
+        ]);
+        expect(bp.relation).toBeUndefined();
+        expect(bp.fields.some(field => /doctor|طبيب|دكتور/i.test(`${field.key} ${field.label}`))).toBe(false);
+        expect(apiColumnsForRequest(request).map(column => column.key)).toEqual(bp.fields.map(field => field.key));
+        expect(apiColumnsForRequest(request).some(column => /doctor|طبيب|دكتور/i.test(column.key))).toBe(false);
+    });
+
     it('an expense tracker stores its amount as a NUMBER', () => {
         const cols = apiColumnsForRequest('تطبيق لتتبّع المصاريف الشخصية');
         const amount = cols.find(c => c.type === 'REAL');
