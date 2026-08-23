@@ -190,3 +190,78 @@ describe('the table is called what he says he is recording', () => {
         expect(blueprintFor('booking' as never, brief, true).title).toBe('الحجوزات');
     });
 });
+
+/**
+ * A VERB STANDS ALONE. A NOUN NEEDS TO BE INTRODUCED.
+ *
+ * Manus attacked the schema reader and was right. The canonical WeatherGo
+ * prompt contains «a visible city search FIELD with a Search button», and the
+ * bare `field` opener turned the UI requirements that followed into seven
+ * columns of a user record:
+ *
+ *     with a Search button · Enter-key submission · reject empty input
+ *     show loading state · and show clear invalid-city · network-failure ·
+ *     and API-error states
+ *
+ * Seven columns nobody asked for — and worse, the false schema made the app
+ * look `generic`, so the weather blueprint never ran at all:
+ *
+ *     Expected: "weather"   Received: "generic"
+ *
+ * This is «فخّ العربية» in English clothes: a bare noun matched with no
+ * context. «أسجل» and `record` are VERBS — a man who writes one is doing the
+ * recording and the list follows. «الحقول», `columns`, `fields` are NOUNS:
+ * they name the thing rather than do it, and a noun declares a list only when
+ * it is introduced — by a colon, or by «هي» / `are` / `include`.
+ */
+describe('a bare noun does not open a column list', () => {
+    const WEATHERGO = 'Build a polished weather dashboard called WeatherGo. Create a visible city search field with a Search button, Enter-key submission, reject empty input, show loading state, and show clear invalid-city, network-failure, and API-error states.';
+
+    // NEGATIVE — the exact false positive, and the shape that caused it.
+    it('the WeatherGo prompt yields no columns and stays a weather app', () => {
+        expect(derivedColumns(WEATHERGO)).toBeNull();
+        expect(detectAppKind(WEATHERGO)).toBe('weather');
+    });
+
+    it.each([
+        ['search field', 'a page with a search field and a submit button'],
+        ['input fields', 'the form should validate its input fields before submitting'],
+        ['a log line', 'show a log of every request the server handled'],
+    ])('%s is not a column declaration', (_label, text) => {
+        expect(derivedColumns(text)).toBeNull();
+    });
+
+    // POSITIVE — an introduced noun still declares, in both languages.
+    it.each([
+        ['الحقول:', 'بدي جدول الحقول: الاسم والسعر والكمية', ['الاسم', 'السعر', 'الكمية']],
+        ['columns:', 'I want a table, columns: name, price and quantity', ['name', 'price', 'quantity']],
+        ['fields are', 'I want a table whose fields are name, phone and email', ['name', 'phone', 'email']],
+    ])('%s still declares its list', (_label, text, expected) => {
+        expect(derivedColumns(text)?.map(c => c.label)).toEqual(expected);
+    });
+
+    // POSITIVE — and a recording VERB still needs no introduction at all.
+    it.each([
+        ['أسجل', 'بدي جدول أسجل فيه المواعيد: اسم المريض ورقم تلفونه ووقت الموعد', 3],
+        ['track', 'I want to track my clients: name, phone and email', 3],
+        ['أتابع', 'بدي أتابع ديوني: اسم المدين والمبلغ وتاريخ الدين', 3],
+    ])('%s opens a list on its own', (_label, text, count) => {
+        expect(derivedColumns(text)?.length).toBe(count);
+    });
+    /**
+     *  THE FLOOR IS THREE, AND IT IS A REAL LIMIT — SAY SO.
+     *
+     *  A list of two is not read as a list. That threshold predates this work
+     *  and it is what keeps an ordinary sentence from becoming a schema, but
+     *  it does cost a real request: a man who wants exactly two columns is
+     *  told nothing and gets a stock table instead.
+     *
+     *  It is pinned here rather than left implicit, so that lowering it is a
+     *  deliberate act with a test to change, not an accident — and so that
+     *  nobody reading the five-column cases above assumes any list works.
+     */
+    it('two named columns are below the floor — a known, deliberate limit', () => {
+        expect(derivedColumns('بدي جدول أسجل فيه المواعيد: اسم المريض ورقم تلفونه')).toBeNull();
+        expect(derivedColumns('I want to track my clients: name and phone')).toBeNull();
+    });
+});

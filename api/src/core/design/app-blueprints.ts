@@ -1189,8 +1189,31 @@ export function derivedColumns(requestRaw: string): DerivedField[] | null {
      * Values follow a field. So the enumeration is only read when a recording
      * phrase stands in front of it.
      */
-    const RECORDING = /(أسجل|اسجل|سجّل|أضيف|اضيف|أدخل|ادخل|أدوّن|ادون|فيها|فيه|الحقول|تحتوي على|يحتوي على|أتابع|اتابع|أدير|ادير|أنظم|انظم|\brecord\b|\btrack\b|\blog\b|\bmanage\b|\borgani[sz]e\b|\bcolumns?\b|\bfields?\b)/iu;
-    const opener = RECORDING.exec(request);
+    /**
+     *  A VERB STANDS ALONE. A NOUN NEEDS TO BE INTRODUCED.
+     *
+     *  Manus attacked this and was right. The canonical WeatherGo prompt
+     *  contains «a visible city search FIELD with a Search button», and the
+     *  bare `field` opener turned the UI requirements that followed into
+     *  seven columns of a user record:
+     *
+     *      with a Search button · Enter-key submission · reject empty input
+     *      show loading state · and show clear invalid-city ·
+     *      network-failure · and API-error states
+     *
+     *  Seven columns nobody asked for, and worse: the false schema made the
+     *  app look `generic`, so the weather blueprint never got to run.
+     *
+     *  This is the law of «فخّ العربية» in English clothes — a bare noun
+     *  matched without context. «أسجل» and `record` are VERBS: a man who
+     *  writes one is doing the recording, and the list follows. «الحقول»,
+     *  `columns` and `fields` are NOUNS: they name the thing rather than
+     *  do it, and a noun means a declaration only when it is introduced —
+     *  by a colon, or by «هي»/`are`/`include`.
+     */
+    const RECORDING_VERB = /(أسجل|اسجل|سجّل|أضيف|اضيف|أدخل|ادخل|أدوّن|ادون|أتابع|اتابع|أدير|ادير|أنظم|انظم|فيها|فيه|تحتوي على|يحتوي على|\brecord\b|\btrack\b|\blog\b|\bmanage\b|\borgani[sz]e\b)/iu;
+    const DECLARED_LIST = /(الحقول|الأعمدة|الاعمدة|\bcolumns?\b|\bfields?\b)\s*(?::|：|هي|are\b|include(?:s)?\b)/iu;
+    const opener = RECORDING_VERB.exec(request) || DECLARED_LIST.exec(request);
     if (!opener) return null;
     let after = request.slice((opener.index || 0) + opener[0].length);
     //  A colon further along is the real start of the list: «أسجل فيه المواعيد:
