@@ -205,7 +205,16 @@ const SUBJECT_PATTERNS: RegExp[] = [
     /\bfor\s+(?:an?\s+|my\s+|the\s+)?([A-Za-z][A-Za-z' -]{2,24})\b/i,
     /\b(?:selling|sells|that sells)\s+([A-Za-z][A-Za-z' -]{2,24})\b/i,
     /\b(?:store|shop|site|website|app|platform)\s+(?:for|about)\s+([A-Za-z][A-Za-z' -]{2,24})\b/i,
-    /(?:لبيع|لـ)\s*(?:ال)?([\u0600-\u06FF]{3,20})/,
+    //  A BARE «ل» IS AMBIGUOUS. «لل» IS NOT.
+    //
+    //  Removing the bare lam was right — it attaches to verbs and produced
+    //  «مشروع الأسجل» from «بدي جدول أسجل فيه». But it took «للقهوة» with it,
+    //  and «ابنِ متجراً للقهوة المختصة» stopped being «متجر القهوة».
+    //
+    //  The two are not the same shape. «لل» is the preposition plus the
+    //  DEFINITE ARTICLE, and an article introduces a noun — never a verb. So
+    //  the article is the boundary the bare lam never had.
+    /(?:لبيع|لـ|لل)\s*(?:ال)?([\u0600-\u06FF]{3,20})/,
     /(?:متجر|مطعم|موقع|تطبيق|منصة|منصّة)\s+(?:ال)?([\u0600-\u06FF]{3,20})/,
 ];
 

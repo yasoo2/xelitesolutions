@@ -85,4 +85,31 @@ describe('the name comes from his words, and only the part that is a name', () =
             expect(brand(request)).not.toMatch(/(?:^|\s)(?:أو|او|و|and|or|a|an|the)(?:\s|$)/);
         }
     });
+    /**
+     *  A BARE «ل» IS AMBIGUOUS. «لل» IS NOT.
+     *
+     *  Removing the bare lam was right — it attaches to verbs, and «بدي جدول
+     *  أسجل فيه» became «مشروع الأسجل». But it took «للقهوة» with it, and
+     *  Manus's gate caught what my own tests did not:
+     *
+     *      brandFallback('ابنِ متجراً للقهوة المختصة', true, 'store')
+     *          Expected: "متجر القهوة"   Received: "مشروعي"
+     *
+     *  The two are not the same shape. «لل» is the preposition plus the
+     *  DEFINITE ARTICLE, and an article introduces a noun, never a verb. The
+     *  article is the boundary the bare lam never had.
+     *
+     *  Both directions are pinned here so neither half can be lost again.
+     */
+    it.each([
+        ['للقهوة', 'ابنِ متجراً للقهوة المختصة', 'store', 'متجر القهوة'],
+        ['للمأكولات', 'اعمل موقع مطعم للمأكولات البحرية', 'restaurant', 'مطعم المأكولات'],
+        ['لبيع', 'بدي متجر لبيع القهوة فيه المنتجات', 'store', 'متجر القهوة'],
+    ])('%s introduces a subject', (_label, request, kind, expected) => {
+        expect(brandFallback(request, true, kind)).toBe(expected);
+    });
+
+    it('a bare «ل» on a verb still names nothing', () => {
+        expect(brandFallback('بدي جدول أسجل فيه المواعيد: اسم المريض ورقم تلفونه ووقت الموعد', true, 'generic')).toBe('مشروعي');
+    });
 });
