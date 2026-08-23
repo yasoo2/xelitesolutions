@@ -71,3 +71,40 @@ describe('INVARIANT: the totals follow the columns, and the threshold is his', (
         expect(planOf(quiet).lowStock).toBeUndefined();
     });
 });
+
+/**
+ * HALF A FIX IS A HALF-TRUTH — AND THIS ONE SHIPPED FOR ONE ITERATION.
+ *
+ * `sumMargin` was added in three of the four places it needed to exist: the
+ * metric type, the blueprint that emits it, and the arithmetic in the
+ * generated app. The fourth — the writer that serialises a metric into
+ * content.js — still knew only `field` and `field2`. Measured in a live
+ * generated project:
+ *
+ *     { label: 'الربح المتوقع', kind: 'sumMargin', field: 'qty', field2: 'sellPrice' }
+ *
+ * `field3` was gone, so the app computed quantity × sell price and called it
+ * profit. The buy price was never subtracted. A number that is confidently
+ * wrong is worse than a number that is missing, because nobody checks it.
+ */
+import { fileAppContentJs } from '../modules/tools/definitions/react-app-templates';
+
+describe('INVARIANT: every field a metric names survives into the app', () => {
+    const marginContent = () => fileAppContentJs(
+        blueprintFor(detectAppKind(OWNER)!, OWNER, true),
+        { brand: 'محلي', isArabic: true, storeKey: 'k' } as any,
+    );
+
+    test('the margin metric carries all three of its fields', () => {
+        const js = marginContent();
+        expect(js).toContain("kind: 'sumMargin'");
+        expect(js).toContain("field: 'qty'");
+        expect(js).toContain("field2: 'sellPrice'");
+        //  The one that was missing: without it the app subtracts nothing.
+        expect(js).toContain("field3: 'buyPrice'");
+    });
+
+    test('and the threshold he wrote reaches the app too', () => {
+        expect(marginContent()).toContain("lowStock: { field: 'qty', below: 3 }");
+    });
+});
