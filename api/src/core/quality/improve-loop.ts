@@ -66,7 +66,7 @@ export interface ImproveRound {
     /** Ids that were there before and are gone after — the honest gain. */
     fixed: string[];
     /** Why the loop moved on, or stopped here. */
-    verdict: 'improved' | 'no_change_possible' | 'no_measured_gain' | 'build_failed' | 'target_reached';
+    verdict: 'improved' | 'no_change_possible' | 'no_measured_gain' | 'build_failed' | 'target_reached' | 'nothing_left';
     /** True when this round's edits were undone because they did not pay. */
     rolledBack: boolean;
 }
@@ -152,11 +152,46 @@ export async function improveUntilItStops(
 
     for (let round = 1; round <= maxRounds; round++) {
         if (current.skipped) { stoppedBecause = 'no_change_possible'; break; }
-        if (current.score >= target) {
-            stoppedBecause = 'target_reached';
-            say(`improve: round ${round} not needed — ${current.score}/100 is at or above the ${target} bar`);
+        /**
+         *  ZERO FINDINGS, NOT A GOOD SCORE.
+         *
+         *  His instruction, in his own words:
+         *
+         *      «واذا وجد مشاكل يرجعه للنظام ويبقى على هذا الحال حتى يطبع
+         *       اختبار الجوده صفر مشاكل»
+         *
+         *  The loop stopped at a SCORE — «95/100 is at or above the bar» —
+         *  and a score of 97 still carried a finding he could read in the
+         *  delivery: «Largest heading 17px against 14px body — no visual
+         *  hierarchy». A bar that leaves named defects standing is a bar
+         *  that declares victory over them.
+         *
+         *  So the target is emptiness. The score remains a floor for the
+         *  case where a finding cannot be repaired at all — the loop still
+         *  stops, and still says why, and the finding is still printed.
+         */
+        if (!current.findingIds.length) {
+            stoppedBecause = 'nothing_left';
+            say(`improve: round ${round} not needed — the audit reports zero findings`);
             break;
         }
+        /**
+         *  THE SCORE IS MEASURED. IT DOES NOT DECIDE.
+         *
+         *  What stood here ended the loop the moment the number passed a bar:
+         *  «95/100 is at or above the 95 bar». So a build that measured 97 and
+         *  still carried «Largest heading 17px against 14px body — no visual
+         *  hierarchy» was declared finished, with the fix for that exact
+         *  finding sitting written and unused.
+         *
+         *  He asked for the opposite and he is right: «حتى يطبع اختبار الجوده
+         *  صفر مشاكل». A named defect outranks a flattering average.
+         *
+         *  Nothing runs forever: the loop still ends when a round can write no
+         *  different byte, when a round gains nothing and is rolled back, when
+         *  a round breaks the build, or at the round ceiling — and it says
+         *  which of those happened.
+         */
 
         const remaining = uniq(current.findingIds);
         say(`improve: round ${round}/${maxRounds} — ${current.score}/100, still open: ${remaining.join(', ') || '(none named)'}`);
@@ -299,6 +334,13 @@ export function normaliseImproveResult(
 /** The one-line story of the loop, for a delivery report. */
 export function improveSummary(r: ImproveResult, isAr: boolean): string {
     const paid = r.rounds.filter(x => x.verdict === 'improved');
+    //  «Zero findings» is not «no gain» — the first is the goal reached, the
+    //  second is a loop that could not move. They must never read the same.
+    if (r.stoppedBecause === 'nothing_left' && !paid.length) {
+        return isAr
+            ? `🔁 دورة التحسين: ${r.first.score}/100 — الفحص لم يجد عطباً واحداً منذ الجولة الأولى.`
+            : `🔁 Improvement loop: ${r.first.score}/100 — the audit found not one finding from the first round.`;
+    }
     if (!paid.length) {
         return isAr
             ? `🔁 دورة التحسين: ${r.first.score}/100 — لم تُنتج أي جولة مكسباً مقيساً، فتوقّفتُ عند أول رقم بدل تكرار نفسي.`
@@ -306,6 +348,7 @@ export function improveSummary(r: ImproveResult, isAr: boolean): string {
     }
     const steps = [r.first.score, ...paid.map(p => p.after ?? p.before)].join(' → ');
     const why = {
+        nothing_left: isAr ? 'لم يبقَ عطبٌ واحد — الفحص يقول صفر' : 'not one finding is left — the audit reports zero',
         target_reached: isAr ? 'بلغتُ الحد المطلوب' : 'reached the bar',
         no_measured_gain: isAr ? 'الجولة التالية لم تكسب شيئاً فتراجعتُ عنها' : 'the next round gained nothing and was rolled back',
         no_change_possible: isAr ? 'لم يبقَ ما أستطيع كتابته بشكل مختلف' : 'nothing left I could write differently',

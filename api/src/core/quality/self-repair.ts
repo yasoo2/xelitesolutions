@@ -59,8 +59,23 @@ export const REPAIRABLE_FINDINGS = new Set([
     'heavy_images', 'html_lang', 'missing_viewport', 'low_contrast', 'dead_images_alt',
 ]);
 
+/**
+ *  ASK THE REPAIRER, DO NOT REMEMBER FOR IT.
+ *
+ *  This list and ui-repair's own capabilities were two answers to one
+ *  question, and this one was five ids behind. `type_scale_drift` — the
+ *  heading-hierarchy finding he watched survive build after build — has a
+ *  written, working fix that this gate refused to let run.
+ *
+ *  The union is deliberate: the ids below that ui-repair does not answer
+ *  are handled elsewhere in the repair round (links, images, lang, meta),
+ *  so dropping them would trade one stale list for another.
+ */
 export function worthRepairing(findings: Array<{ id: string }>): boolean {
-    return findings.some(f => REPAIRABLE_FINDINGS.has(f.id));
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    let fromRepairer: ReadonlySet<string> = new Set();
+    try { fromRepairer = require('./ui-repair').REPAIRS_THIS_FILE_CAN_MAKE || new Set(); } catch { /* older build */ }
+    return findings.some(f => REPAIRABLE_FINDINGS.has(f.id) || fromRepairer.has(f.id));
 }
 
 export interface RepairCycle {
