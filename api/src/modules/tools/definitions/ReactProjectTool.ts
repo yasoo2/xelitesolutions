@@ -23,7 +23,7 @@ import { ToolPermission, ToolExecutionResult } from '../types';
 import { buildPalette, paletteCss, darkTokenBlock, lightTokenBlock } from '../../../core/design/design-system';
 import { brandFrom, brandFallback } from '../../../core/design/page-head';
 import { detectPageKind, type PageKind } from '../../../core/design/blueprints';
-import { applyRequestFieldConstraints, detectAppKind, blueprintFor, uncoveredFeatures, type AppBlueprint } from '../../../core/design/app-blueprints';
+import { applyRequestFieldConstraints, detectAppKind, blueprintFor, uncoveredFeatures, derivedTables, type AppBlueprint } from '../../../core/design/app-blueprints';
 import { acceptanceFor as acceptanceCriteriaFor } from '../../../core/quality/acceptance';
 import { buildAppFiles, fileAppCss } from './react-app-templates';
 import { familyFor, familyCss, familyFonts, FAMILY_LABEL_AR, type DesignFamily } from '../../../core/design/families';
@@ -4401,7 +4401,29 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 ? `\n🧠 هذا تطبيق يعمل، لا صفحة تتحدث عنه — «${appBp?.title || ''}»:\n${reconciledAppAbilities.map(a => `   • ${a}`).join('\n')}${unmeasuredAbilitiesNotice ? `\n${unmeasuredAbilitiesNotice}` : ''}`
                 : `\n🧠 A working application, not a page about one — "${appBp?.title || ''}":\n${reconciledAppAbilities.map(a => `   • ${a}`).join('\n')}${unmeasuredAbilitiesNotice ? `\n${unmeasuredAbilitiesNotice}` : ''}`)
             : '';
-        const appBlock = appBp ? `${abilityBlock}${screensLine}${unjudgedBlock}${unmetBlock}` : '';
+        /**
+         *  A TABLE HE ASKED FOR AND DID NOT GET MUST BE SAID OUT LOUD.
+         *
+         *  Measured. He asked for two in one message — «جدول للمواعيد …
+         *  وجدول ثاني للمصاريف …» — and the builder made one and said
+         *  nothing about the other. A half-built request that reports
+         *  success is the exact failure this branch exists to end, and it is
+         *  worse than an honest refusal because he only finds out later.
+         *
+         *  Building both is the right answer and it is not built yet. Until
+         *  it is, the delivery names what was left out, in his own words, so
+         *  the gap is his to see rather than his to discover.
+         */
+        const askedTables = derivedTables(request);
+        const unbuiltTables = askedTables.length > 1
+            ? askedTables.slice(1).map(t => t.subject).filter((s): s is string => !!s)
+            : [];
+        const unbuiltBlock = unbuiltTables.length
+            ? (isAr
+                ? `\n⚠️ طلبتَ أكثر من جدول. بنيتُ «${askedTables[0].subject || appBp?.title || ''}» فقط — ولم أبنِ: ${unbuiltTables.map(t => `«${t}»`).join(' · ')}. قل «أضف جدول ${unbuiltTables[0]}» وأبنيه.\n`
+                : `\n⚠️ You asked for more than one table. I built only «${askedTables[0].subject || appBp?.title || ''}» — and did not build: ${unbuiltTables.map(t => `«${t}»`).join(' · ')}. Say «add the ${unbuiltTables[0]} table» and I will.\n`)
+            : '';
+        const appBlock = appBp ? `${abilityBlock}${screensLine}${unbuiltBlock}${unjudgedBlock}${unmetBlock}` : '';
         const fidelityBlock = fidelityEvidenceUnavailable
             ? (isAr
                 ? `\n⛔ تعذّر التحقق من وفاء التطبيق المطلوب: دليل المصدر غير متاح أو أقصر من الحد الآمن (${fidelityEvidenceLength} حرفاً)، لذلك حُجب التسليم.\n`
