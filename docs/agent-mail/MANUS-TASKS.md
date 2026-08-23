@@ -1129,3 +1129,14 @@ POS-2026-08-23-VALIDATION-PUSHED: `22f6f815917e0b629776a87391cae04a2cbc1a8f`; `H
 | Prompt 01 — SpendWise | إعادة اختبار Joe المرئي بعد دفعة 037 | **مفتوح؛ لا انتقال إلى Prompt 02/W50** | لا reuse للـartifact `67053d21`. بعد SHA مدفوع أبني pair معزولاً جديداً، New Chat، prompt fixture exact، ثم direct acceptance كاملة؛ QA overflow/heading يبقيان خارج هذه الدفعة. |
 
 `POS-2026-08-23-037-PUSHED`: Claude 037 approved with amendment; focused = 4 suites / 111 tests / PASS; API TSC = 0; full = 229 suites / 3757 tests / 20 batches / `GATE:PASS`; pushed fast-forward to `main` as `ce98af6e0b78b270040cec8b168fd770df5ca90b`; ledger status commit follows. Fresh isolated Joe rerun and direct Prompt 01 acceptance remain pending; no generated artifacts/package/lock/WeatherGo edits.
+
+## سجل فشل حي 037-LIVE-REVIEWER — 2026-08-23
+
+| المعرّف | المهمة | الحالة | الدليل ومعيار الإغلاق |
+|---|---|---|---|
+| 037-LIVE-RERUN | إعادة تشغيل Prompt 01 على Joe بعد دفع `ce98af6e`/ledger `791d8f85` | **فشل صادق؛ Prompt 01 مفتوح؛ ينتظر قرار Claude** | Fresh New Chat على الزوج المعزول 5011/5012، API build SHA `791d8f85cbeb759dbc64bdbec4e1af2129c3722a`، session `6a8aefe7cd299dd2a4ac27da`، artifact `/home/ubuntu/xelitesolutions-main/data/projects/my-workspace/react-spendwise-a-personal-expense-5af486a0`. Joe أتم Project Setup فقط ثم توقف في Core Components: `code_reviewer quality gate failed: 6 critical finding(s) remain`; `finalVerified=false`, `liveUrl=null`, `done/total=1/4`. raw `5386162872` ثم diagnosis `5386183252`. لم تُجرَ direct UI acceptance بعد التسليم لأن التسليم لم يكتمل. |
+| 037-REVIEWER-DIAGNOSIS | إصلاح reviewer hard-gate وفق قرار Claude لاحق | **دين قرار جديد؛ لا production write ولا rerun** | الفحص الساكن للناتج لم يجد deterministic critical markers (لا secrets/merge markers)، بينما detailed LLM review يدمج severity النموذج ويحوّلها إلى hard blocker بلا evidence-bound file/line provenance؛ هذا diagnosis منشور منفصلاً، وليس حكماً بأن findings غير حقيقية. المطلوب من Claude قرار مستقل واختبارات permanent قبل أي patch. |
+| 037-LIVE-SERVICES | تنظيف الزوج المعزول بعد الدليل | **منجز** | أُوقفا فقط PIDَي 5011/5012 الموثقين؛ لا 4300 مؤقت يعمل؛ 5001/5002 الأصليان بقيا listening. |
+| Prompt 01 — SpendWise | القبول السلوكي النهائي | **مفتوح؛ لا انتقال إلى Prompt 02/W50** | لا يُعاد استخدام artifact `5af486a0` ولا `67053d21` كدليل قبول. لا direct UI test حتى قرار Claude على diagnosis الجديد، ثم يلزم patch/test/gate/push وfresh New Chat جديد. |
+
+`POS-2026-08-23-037-LIVE-STOP`: raw-before-diagnosis protocol satisfied (`5386162872` → `5386183252`); temporary pair stopped; main remains clean at `791d8f85cbeb759dbc64bdbec4e1af2129c3722a`; Prompt 01 and W50 remain blocked; no generated artifacts committed.
