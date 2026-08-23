@@ -22,6 +22,13 @@ export default defineConfig({
     react()
   ],
   server: {
+    //  The terminal panel imports the Arabic shaper from `api/src`, because
+    //  one implementation under test beats two copies under none. `vite
+    //  build` resolves it without help; the DEV server refuses to serve a
+    //  file above its root unless told, and the refusal is a blank page, not
+    //  a warning. The owner's machine builds and serves `dist`, so this line
+    //  protects the case none of us would notice.
+    fs: { allow: ['..'] },
     host: '0.0.0.0',
     port: 5001,
     allowedHosts: true,

@@ -5,6 +5,7 @@ import { SearchAddon } from 'xterm-addon-search';
 import 'xterm/css/xterm.css';
 import { SocketService } from '../../services/socket';
 import { API_URL } from '../../config';
+import { shapeForTerminal } from '../../lib/arabic-terminal';
 import { Terminal as TerminalIcon, RefreshCw, Trash2, Maximize2, Minimize2, X, Copy, Download, Check, Search, ChevronUp, ChevronDown } from 'lucide-react';
 
 // ANSI escape sequences are display, not content — strip them for copy/download.
@@ -128,7 +129,7 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded, sessionId
             const history = SocketService.getTerminalHistory(ownerSessionId);
             if (!history) return;
             term.writeln('\x1b[2m--- Restored Joe execution output ---\x1b[0m');
-            term.write(history);
+            term.write(shapeForTerminal(history));
             const plain = stripAnsi(history);
             logBufferRef.current = plain.length > LOG_BUFFER_CAP ? plain.slice(-LOG_BUFFER_CAP) : plain;
         };
@@ -245,7 +246,13 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded, sessionId
                 || msg.id === 'joe-agent'
                 || (Array.isArray(msg.ids) && msg.ids.includes(activeTabId));
             if (msg.type === 'terminal_output' && addressedHere) {
-                termRef.current?.write(msg.data);
+                //  xterm.js has no bidirectional algorithm and no Arabic
+                //  shaper: it paints codepoints left to right in the order
+                //  it receives them. Prepared here, at the last inch, and
+                //  nowhere upstream — the plain copy just below is built
+                //  from the ORIGINAL data, so a saved log stays in logical
+                //  order and stays searchable.
+                termRef.current?.write(shapeForTerminal(String(msg.data ?? '')));
                 // Keep a plain-text copy of everything shown, for copy/download.
                 const plain = stripAnsi(String(msg.data || ''));
                 const next = logBufferRef.current + plain;
