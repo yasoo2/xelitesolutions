@@ -7,6 +7,7 @@ import { workspaceService } from '../../services/WorkspaceService';
 import { recoverMissingNpmLauncher } from '../npm-launcher-recovery';
 export { recoverMissingNpmLauncher } from '../npm-launcher-recovery';
 import { executeTool } from '../../services/ToolService';
+import { normalizeConceptualArtifactPath } from '../runtime-artifact-path';
 
 type PhaseDeliveryEvidence = {
     accepted?: boolean;
@@ -246,20 +247,9 @@ export function inheritRuntimeProjectArguments(
     const mapRuntimeArtifactSource = (value: unknown, key: string): string => {
         const existing = String(value || '').trim();
         if (!existing || path.isAbsolute(existing)) return existing;
-        const normaliseSegment = (segment: string) => segment
-            .replace(/\\/g, '/')
-            .replace(/^\.\//u, '')
-            .replace(/[-_]+/g, ' ')
-            .replace(/\s+/g, ' ')
-            .trim()
-            .toLocaleLowerCase();
         const projectName = String(projectContext?.projectName || '').trim();
-        const rawSegments = existing.replace(/\\/g, '/').split('/').filter(Boolean);
-        const firstSegment = rawSegments[0] || '';
-        const projectSegmentMatches = !!projectName && !!firstSegment
-            && normaliseSegment(firstSegment) === normaliseSegment(projectName);
-        const relativeSegments = projectSegmentMatches ? rawSegments.slice(1) : rawSegments;
-        const logicalPath = relativeSegments.join(path.sep) || '.';
+        const logicalPath = normalizeConceptualArtifactPath(existing, projectName);
+        const projectSegmentMatches = logicalPath !== existing;
         if (runtimeLogicalSourceTools.has(toolName)) {
             logs?.push(projectSegmentMatches
                 ? `[PhaseExecutor] ${toolName}: mapped conceptual ${key} to logical artifact path (${logicalPath.slice(0, 240)})`
