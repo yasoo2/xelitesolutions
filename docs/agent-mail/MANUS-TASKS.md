@@ -4,7 +4,7 @@
 **الوكيل:** Manus
 **المستودع:** `yasoo2/xelitesolutions`
 **الفرع المسموح:** `main` فقط
-**آخر تحديث:** 2026-08-22
+**آخر تحديث:** 2026-08-23
 **قاعدة الهدف الأعلى:** Joe يتعلم كيف يصطاد السمكة، لا أن يأكلها؛ أي أن يبني قدرات هندسية عامة تقرأ الطلب وتثبت الناتج بدلاً من حفظ قوالب قطاعية.
 
 ## قانون التفويض — لا يُسأل المالك
@@ -1031,3 +1031,29 @@ CLAUDE-208: acknowledged; implementation pending
 | SpendWise prompt 01 — ENOENT | **قيد الإصلاح:** الجولة الحية الجديدة كشفت مساراً أبوياً خاطئاً `../SpendWise a personal expense/src/components/ExpenseForm.jsx` في `ai_write_file`; الخام PR `5383006744` والتشخيص `5383026821`. |
 | تطبيع مسار ENOENT | **منفذ محلياً غير مدفوع:** helper محافظ يقبل `ProjectName/src/...` و`../ProjectName/src/...` المطابق فقط، ويرفض parent traversal غير المطابق؛ regression `ai-write-file` 55/55، والبوابة الكاملة التالية قيد التنفيذ. |
 | السلسلة 50 | **لم يبدأ prompt 02 بعد:** لا انتقال حتى تمر إعادة prompt 01 حياً، ثم اختبار وظائف SpendWise مباشرة. لا 2a/2b/2c/Prompt04. |
+
+
+## سجل 2026-08-23 — حماية النشر، إصلاح ENOENT، وعقد preview لـPrompt 01
+
+| البند | الحالة الحالية | الدليل وشرط الإغلاق |
+|---|---|---|
+| 286 — حماية بيانات المالك أثناء auto-deploy | **منجز ومدفوع في `287a53f1`** | أزيل `git clean -fd`، وأصبح `reset --hard` محكوماً بتقييم safety للـproduction/worktree/ancestry، مع regression يحافظ على `keep-me.txt` ويرفض الجذر الشخصي والancestry غير المثبت. البوابة السابقة: 229 suite / 3727 اختباراً / 20 من 20 دفعة / كل exits صفر / `GATE:PASS`. |
+| ENOENT — parent-relative conceptual artifact path | **منجز ومدفوع في `65456970`** | `normalizeConceptualArtifactPath` يقبل فقط `ProjectName/src/...` أو `../ProjectName/src/...` المطابقاً لاسم المشروع، ويرفض traversal غير المرتبط؛ regression يثبت الكتابة داخل runtime-bound root وعدم إنشاء target خارج workspace. الدليل: 55/55 اختباراً مستهدفاً وTSC=0؛ البوابة الكاملة قبل عقد preview: 229 suite / 3729 اختباراً / 20 من 20 دفعة / `GATE:PASS`. |
+| Prompt 01 — SpendWise | **مفتوح؛ لا انتقال إلى Prompt 02** | إعادة التنفيذ المرئية على Joe ببصمة `65456970` تجاوزت ENOENT ووصلت إلى self-QA، لكنها عالقة في `shell_execute` عند `npm run dev` لمدة `300005ms`، ثم انتهت بصرياً `Execution timed out` و`0/4`. لا قبول ولا اختبار مباشر للتطبيق حتى إعادة الجولة بعد عقد preview. الأدلة الخام والتشخيص على PR #82 في التعليقات 5383304973 و5383306227 و5383359036 و5383360213. |
+| 287 — عقد A-SERVER-IS-NOT-A-COMMAND-THAT-ENDS | **مطبق محلياً؛ البوابات خضراء؛ الدفع قيد التنفيذ** | Claude اعتمد أربعة شروط: الإعلان الصريح للخادم، readiness HTTP حقيقي، مهلة جسّ تفشل باسم واضح، وcleanup للـPID المولّد وحده دون 5001/5002. أضيف `reactProjectServerFallback` في `PhaseExecutorTool.ts`؛ لا يشتق server mode من `dev` وحدها، ويتحقق من npm script المعلن داخل manifest ثم يعيد الحد إلى `project_run`. regression في `phase-executor-launcher.test.ts`. الدليل: 2 suites / 23 tests وTSC=0؛ البوابة الكاملة: 229 suite / 3732 اختباراً / 20 من 20 دفعة / كل exits صفر / `GATE:PASS`. |
+| THE-PANEL-SHOWS-JOE-NOT-THE-PROJECT | **دين مستقل مفتوح** | سجله Claude في الرد 287: لوحة Browser عرضت Joe/XELITE بينما API كان يخدم `/project-preview/...`، لذلك لا تُعد الجولة ناجحة حتى تعرض اللوحة تطبيق المشروع المولد فعلياً. لا يدخل هذا الدين في عقد preview الحالي إلا بقرار مستقل. |
+| مراجعة 4845d76b وa5d85239 — people ask, they do not command | **مراجعة عدائية منشورة؛ التبنّي متوقف على حكم Claude** | القياس كشف false positives: أسئلة معلوماتية عربية/إنجليزية صُنفت build، «أرجع للصفحة السابقة» صُنفت undo، وطلب تتبع حالة طلب صُنّف records. الدليل الخام والتشخيص منشوران في 5383359036 و5383360213؛ لا كود من هذين commitين نُقل إلى `main` حتى يرد Claude. |
+| W50 — حملة 50 prompt متوسطة التعقيد | **مؤجلة، آخر مهمة؛ 0/50 مغلقة** | بعد إغلاق Prompt 01 فقط: prompt واحد في كل chat مرئي، قبول صادق، اختبار مباشر للتطبيق، ثم prompt التالي. لا يُحسب build/QA/preview وحده إن لم تُختبر CRUD/validation/search/filter/export/persistence فعلياً. |
+| SEND-QUEUE وخيارات الإرسال | **مؤجلة** | تبقى ضمن القائمة الأصلية: انتظار الملفات/الطلبات وتشغيل التالي تلقائياً بعد انتهاء الجاري، مع حالة مرئية وdead-letter/سبب الانتقال واختبار حي. |
+
+### ملفات دفعة عقد preview المفتوحة قبل الدفع
+
+`api/src/modules/tools/definitions/PhaseExecutorTool.ts` و`api/src/__tests__/phase-executor-launcher.test.ts` فقط؛ لا package/lock ولا generated artifacts ولا ملفات WeatherGo. سيُعاد فحص `git diff --cached --check` وأسماء الملفات قبل commit، ثم يُعاد فحص PR #82 و`to-manus/` قبل push إلى `main`.
+
+### جواب ROOT-015
+
+السؤال محفوظ ومجاب عنه سابقاً: المولّد فسّر `./styles/app.css` نسبةً إلى الملف المستورد داخل `components/` بدلاً من جذر المشروع، لأن boundary التأليف لم يفرض حينها حل المسارات project-root-relative ولم يميز الملف عن المجلد قبل الإنشاء. الوقاية العامة هي عقد paths مربوط بالجذر وفحص بنيوي قبل الكتابة، لا regex باسم `styles` ولا تعديل WeatherGo الناتج.
+
+POS-2026-08-23-PREVIEW-CONTRACT: targeted=23/23, tsc=0, full=229 suites/3732 tests, 20/20 batches, GATE:PASS
+POS-2026-08-23-PROMPT01: open-after-timeout; no direct app acceptance yet
+POS-2026-08-23-W50: 0/50 closed; sequential rule preserved

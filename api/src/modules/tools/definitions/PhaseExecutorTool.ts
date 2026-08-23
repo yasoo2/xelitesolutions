@@ -113,6 +113,63 @@ export function reactProjectStartFallback(
     return { cwd: projectRoot };
 }
 
+/**
+ * A preview server is a different kind of success from a finite shell command:
+ * it succeeds when its declared project answers HTTP, not when npm exits. Keep
+ * that distinction at the phase boundary. The server contract is explicit in
+ * the task description; the command text alone (especially the word `dev`) is
+ * never enough to opt into it.
+ */
+export function reactProjectServerFallback(
+    command: unknown,
+    taskDescription: unknown,
+    taskArgs: Record<string, any> = {},
+    projectContext?: Record<string, any>,
+    workspaceId?: string,
+): { cwd: string; script: string } | null {
+    const rawCommand = String(command || '').trim();
+    const description = String(taskDescription || '').trim();
+    const serverTask = /(?:\b(?:start|launch|serve|preview|open)\b|\b(?:development|dev|live)\s+server\b|تشغيل|شغّل|ابدأ|الخادم|خادم|معاينة|افتح)/iu.test(description);
+    if (!serverTask) return null;
+
+    // Only a single, manifest-backed npm script is eligible. Chained shell
+    // commands remain ordinary shell work and retain their exit semantics.
+    const commandMatch = rawCommand.match(/^npm\s+(?:(?:run|run-script)\s+([A-Za-z0-9:_-]+)|start)(?:\s+--\s+.*)?$/iu);
+    const script = commandMatch?.[1] || (commandMatch ? 'start' : '');
+    if (!script) return null;
+
+    const runtimeRoot = projectContext?.projectRootRuntimeBound === true
+        ? String(projectContext?.projectRoot || '').trim()
+        : '';
+    const candidate = runtimeRoot
+        || String(taskArgs.cwd || taskArgs.projectPath || projectContext?.projectRoot || '').trim()
+        || (() => {
+            try { return String(workspaceService.getActiveRoot(workspaceId) || '').trim(); } catch { return ''; }
+        })();
+    if (!candidate) return null;
+
+    // A runtime-bound root was established by the evidence binder and is already
+    // constrained to the active workspace. Do not consult the mutable workspace
+    // cache again for that trusted path; unbound candidates still require the
+    // ordinary workspace containment check.
+    const workspaceRoot = runtimeRoot ? '' : (() => {
+        try { return path.resolve(String(workspaceService.getActiveRoot(workspaceId) || '').trim()); } catch { return ''; }
+    })();
+    const projectRoot = path.isAbsolute(candidate)
+        ? path.resolve(candidate)
+        : path.resolve(workspaceRoot || process.cwd(), candidate);
+    if (!runtimeRoot && workspaceRoot && !isWithinRoot(projectRoot, workspaceRoot)) return null;
+
+    const manifestPath = path.join(projectRoot, 'package.json');
+    if (!fs.existsSync(manifestPath)) return null;
+    try {
+        const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+        if (typeof manifest?.scripts?.[script] !== 'string' || !manifest.scripts[script].trim()) return null;
+    } catch { return null; }
+
+    return { cwd: projectRoot, script };
+}
+
 export function inheritRuntimeProjectArguments(
     toolName: string,
     planned: Record<string, any>,
@@ -1114,12 +1171,20 @@ export class PhaseExecutorTool implements ToolDefinition {
                 const browserStart = (toolName === 'shell_execute' || toolName === 'terminal_manager')
                     ? reactProjectStartFallback(rawTaskArgs.command, taskDesc, rawTaskArgs, projectContext, executionContext.workspaceId)
                     : null;
+                const serverStart = !browserStart && (toolName === 'shell_execute' || toolName === 'terminal_manager')
+                    ? reactProjectServerFallback(rawTaskArgs.command, taskDesc, rawTaskArgs, projectContext, executionContext.workspaceId)
+                    : null;
                 if (browserStart) {
                     toolName = 'project_run';
                     rawTaskArgs = { ...rawTaskArgs, cwd: browserStart.cwd };
                     delete rawTaskArgs.command;
                     delete rawTaskArgs.background;
                     appendLog(`[PhaseExecutor] ↪️ Task ${i + 1}: replaced direct Node TypeScript launch with project_run (${browserStart.cwd.slice(0, 240)})`);
+                } else if (serverStart) {
+                    toolName = 'project_run';
+                    rawTaskArgs = { ...rawTaskArgs, cwd: serverStart.cwd, command: `npm run ${serverStart.script}` };
+                    delete rawTaskArgs.background;
+                    appendLog(`[PhaseExecutor] ↪️ Task ${i + 1}: declared preview server uses project_run (${serverStart.cwd.slice(0, 240)})`);
                 }
                 if (toolName !== askedFor) {
                     appendLog(`[PhaseExecutor] ↪️ «${askedFor}» تعني ${toolName} — نفّذتُ الأداة الحقيقية.`);

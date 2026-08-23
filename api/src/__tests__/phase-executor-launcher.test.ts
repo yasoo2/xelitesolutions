@@ -1,7 +1,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { applyPhaseExecutionEvidence, inheritRuntimeProjectArguments, recoverMissingNpmLauncher } from '../modules/tools/definitions/PhaseExecutorTool';
+import { applyPhaseExecutionEvidence, inheritRuntimeProjectArguments, reactProjectServerFallback, recoverMissingNpmLauncher } from '../modules/tools/definitions/PhaseExecutorTool';
 import { ShellExecuteTool } from '../modules/tools/definitions/SystemTools';
 import { executionEngine } from '../kernel/ExecutionEngine';
 import { workspaceService } from '../modules/services/WorkspaceService';
@@ -251,6 +251,41 @@ describe('PhaseExecutor manifest-aware npm launcher recovery', () => {
         const absolute = { filePath: '/tmp/not-an-artifact/App.jsx' };
         inheritRuntimeProjectArguments('test_generator', absolute, context);
         expect(absolute.filePath).toBe('/tmp/not-an-artifact/App.jsx');
+    });
+
+    it('routes an explicitly declared npm dev server through project_run', () => {
+        fs.writeFileSync(path.join(workspaceRoot, 'package.json'), JSON.stringify({
+            scripts: { start: 'node dist/index.js', dev: 'vite --host 127.0.0.1', build: 'echo build' },
+        }));
+        const fallback = reactProjectServerFallback(
+            'npm run dev',
+            'Start the development server and open the live preview',
+            { cwd: workspaceRoot },
+            { projectRoot: workspaceRoot, projectRootRuntimeBound: true },
+            'workspace-launcher',
+        );
+
+        expect(fallback).toEqual({ cwd: workspaceRoot, script: 'dev' });
+    });
+
+    it('does not infer a preview server from npm run dev in a finite build task', () => {
+        expect(reactProjectServerFallback(
+            'npm run dev',
+            'Run the build checks and report the exit code',
+            { cwd: workspaceRoot },
+            { projectRoot: workspaceRoot, projectRootRuntimeBound: true },
+            'workspace-launcher',
+        )).toBeNull();
+    });
+
+    it('refuses a declared preview task when the manifest does not declare the script', () => {
+        expect(reactProjectServerFallback(
+            'npm run preview',
+            'Start the preview server and open it',
+            { cwd: workspaceRoot },
+            { projectRoot: workspaceRoot, projectRootRuntimeBound: true },
+            'workspace-launcher',
+        )).toBeNull();
     });
 
     it('selects the repository start script when a server alias is missing', () => {
