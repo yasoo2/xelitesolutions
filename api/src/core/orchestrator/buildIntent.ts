@@ -12,6 +12,7 @@
  * stale one.
  */
 import { stripArabicDiacritics, foldChars } from './promptNormalizer';
+import { derivedColumns } from '../design/app-blueprints';
 
 export function looksLikeBuild(goalRaw: string): boolean {
     const g = String(goalRaw || '');
@@ -70,5 +71,31 @@ export function looksLikeBuild(goalRaw: string): boolean {
         || /\b(?:i\s+(?:want|need)|can\s+you\s+(?:make|build|create)|could\s+you\s+(?:make|build|create)|please\s+(?:make|build|create))\b(?:\s+\S+){0,3}\s+(?:a|an|the|my)?\s*\S*(?:site|website|page|app|application|system|dashboard|panel|store|shop|portal|tool|tracker|table|list)/i.test(g);
     const noun = /\b(platform|marketplace|storefront|e-?commerce|site|website|page|app|application|software|system|dashboard|panel|console|admin|store|shop|portal|api|backend|tool|service|saas|crm|erp|pos|blog|editor|tracker|game|table|spreadsheet|list|ledger|register)\b/i.test(g)
         || /(موقع|صفحة|تطبيق|متجر|نظام|منصّ?ة|لوحة|واجهة|أداة|اداة|برنامج|بوابة|خدمة|جدول|قائمة|كشف)/.test(bare);
-    return verb && noun;
+    /**
+     *  A LIST OF NOUNS IS A CATALOGUE OF WORDS.
+     *
+     *  He said it plainly: «اصلحت النموذج وليس عقل جو — المره القادمه سوف
+     *  يتصرف جو نفس الخطء». He was right. «جدول» was added to this list
+     *  because his clinic brief failed on it; «دفتر», «فاتورة», «كرّاسة»,
+     *  «سِجِلّ» and every word nobody has typed yet were still queuing behind
+     *  it, and each would have cost another live round.
+     *
+     *  Nouns are open. No list of them is ever finished, and a rule that
+     *  needs one is a rule that has to be taught every word in the language.
+     *
+     *  But the SHAPE of the sentence is finite. When a man asks for a thing
+     *  and then says what it will hold — «أسجل فيه: اسم المريض ورقم تلفونه
+     *  ووقت الموعد» — he has described a table whatever he calls it. That is
+     *  a structural fact about his sentence, readable without knowing a
+     *  single noun, and derivedColumns already reads it: it needs a recording
+     *  phrase and three to ten listed items, and it returns his own words.
+     *
+     *  So the list stays for short asks that name a thing without listing its
+     *  contents («بدي متجر»), and it stops being the only way in.
+     */
+    const asking = /(?:^|[\s،:؛])(?:بدي|بدى|ودي|ابغي|ابغى|اريد|عايز|عاوز|محتاج|نبي)(?=$|[\s،:؛])/.test(bare)
+        || /(?:^|[\s،:؛])(?:ابن|ابني|انشئ|اصنع|صمم|طور|اعمل|اصمم|سو|سوي|برمج|جهز)(?=$|[\s،:؛])/.test(bare)
+        || /\b(?:i\s+(?:want|need)|can\s+you|could\s+you|please|make\s+me|give\s+me|build\s+me)\b/i.test(g);
+    const describesItsContents = !!derivedColumns(g);
+    return (verb && noun) || (asking && describesItsContents);
 }

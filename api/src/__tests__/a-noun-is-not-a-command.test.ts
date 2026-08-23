@@ -154,3 +154,49 @@ describe('a verb he wants inside his app is not a command to Joe', () => {
         expect(looksLikeBuild('افتح جيت هاب واعمل لي issue جديد')).toBe(false);
     });
 });
+
+/**
+ * A LIST OF NOUNS IS A CATALOGUE OF WORDS.
+ *
+ * The owner read the last fix and rejected it, in his own words:
+ *
+ *     «لكنك اصلحت النموذج وليس عقل جو — يعني المره القادمه سوف يتصرف جو
+ *      نفس الخطء»
+ *
+ * He was right. «جدول» had been added to a list because his clinic brief
+ * failed on it. «دفتر», «فاتورة», «كرّاسة», «سِجِلّ» and every word nobody has
+ * typed yet were still queuing behind it, each worth another failed round.
+ *
+ * Nouns are open. No list of them is ever finished. But the SHAPE of the
+ * sentence is finite: when a man asks for a thing and then says what it will
+ * hold — «أسجل فيه: اسم المريض ورقم تلفونه ووقت الموعد» — he has described a
+ * table whatever he calls it, and that is readable without knowing one noun.
+ *
+ * Every case below uses a word that is in NO list in this repository, and the
+ * last one uses a word that means nothing at all.
+ */
+describe('a request that says what it will hold is a build, whatever he calls it', () => {
+    // POSITIVE — nouns absent from every vocabulary in the codebase.
+    it.each([
+        ['دفتر', 'بدي دفتر أسجل فيه الديون: اسم المدين والمبلغ وتاريخ الدين'],
+        ['كرّاسة', 'عندي مشتل. بدي كرّاسة أدوّن فيها الشتلات: اسم الشتلة والكمية والسعر'],
+        ['سِجِلّ', 'بدي سجل لرعاية الإبل أسجل فيه: اسم الناقة والعمر والوزن وتاريخ الفحص'],
+        ['فاتورة', 'اعمل لي فاتورة فيها: اسم الصنف والكمية والسعر والإجمالي'],
+        ['English rolodex', 'I want a rolodex where I record my clients: name, phone and email'],
+        // A word with no meaning at all. If this passes, no catalogue was consulted.
+        ['كلمة لا معنى لها', 'بدي زَنبَقة أسجل فيها الرحلات: اسم السائق والوجهة والتاريخ والأجرة'],
+    ])('%s is a build without being in any list', (_label, brief) => {
+        expect(looksLikeBuild(brief)).toBe(true);
+    });
+
+    // NEGATIVE — asking without contents, and contents without asking.
+    it.each([
+        ['سؤال بلا محتوى', 'بدي أعرف كم الساعة'],
+        ['محتوى بلا طلب — شكوى', 'الجدول اللي عملته أمس فيه: الاسم والسعر والكمية صار بطيء'],
+        ['محتوى بلا طلب — حكاية', 'قرأت مقالاً فيه: المقدمة والتحليل والخاتمة'],
+        ['بحث', 'ابحث لي عن سعر الدولار اليوم'],
+        ['تسجيل دخول', 'سجّل دخولي بالإيميل'],
+    ])('%s is not a build', (_label, ask) => {
+        expect(looksLikeBuild(ask)).toBe(false);
+    });
+});
