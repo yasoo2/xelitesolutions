@@ -7,6 +7,7 @@ import path from 'path';
 import { prepareArtifactContent } from '../artifact-validation';
 import { undefinedJsxComponentMismatch } from '../../../core/quality/source-contract';
 import { localFileExistsWithExactCase } from './ProjectRunTool';
+import { normalizeConceptualArtifactPath } from '../runtime-artifact-path';
 
 type ArtifactProfile = {
     kind: 'markdown_document' | 'structured_data' | 'source_code' | 'frontend_asset' | 'text_document';
@@ -81,21 +82,12 @@ function normalizeRuntimeArtifactPath(filePath: string, projectRoot?: string, pr
     const requestedName = String(projectName || '').trim();
     if (!requestedRoot || !path.isAbsolute(requestedRoot) || !requestedName || path.isAbsolute(filePath)) return filePath;
 
-    const normaliseLabel = (value: string) => value
-        .replace(/\\/g, '/')
-        .replace(/^\.\//u, '')
-        .replace(/[-_]+/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim()
-        .toLocaleLowerCase();
-    const segments = filePath.replace(/\\/g, '/').replace(/^\.\//u, '').split('/').filter(Boolean);
-    const firstSegment = segments[0] || '';
-    // A planner may describe a file as `WeatherGo/src/App.jsx`, while the
-    // runtime-bound artifact is already `/workspace/react-weathergo-...`.
-    // Strip only the canonical project label; arbitrary directories remain
-    // untouched so a real in-project folder is never silently renamed.
-    if (!firstSegment || normaliseLabel(firstSegment) !== normaliseLabel(requestedName)) return filePath;
-    return segments.slice(1).join(path.sep) || '.';
+    // A planner may describe a file as `WeatherGo/src/App.jsx` or
+    // `../WeatherGo/src/App.jsx`, while the runtime-bound artifact is already
+    // `/workspace/react-weathergo-...`. Strip only the exact conceptual prefix;
+    // arbitrary parent traversal remains untouched and is rejected downstream.
+    return normalizeConceptualArtifactPath(filePath, requestedName);
+
 }
 
 function artifactMismatch(filePath: string, content: string): string | null {

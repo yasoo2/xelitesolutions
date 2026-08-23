@@ -1022,3 +1022,12 @@ CLAUDE-208: acknowledged; implementation pending
 | الجولة الحية | **PROBE_EXIT=0:** RecordsProbe الحقيقي أخرج الرسالة المصالحة؛ `TEMP_DELIVERY_DIRS=0`، لا artifact باقٍ. raw في `/tmp/claude280-final-reconcile-delivery-raw.md` وPR comment `5382613497`. |
 | البوابة بعد guard | **خضراء محلياً:** `GATE_BATCH=12`، 19/19 exits=0، 228 suites، 3709 tests، TSC/API build/web TSC/web build/Jest exits كلها 0، `GATE:PASS`، `TMP_AFTER_GATE=0`. raw في `/tmp/claude280-final-reconcile-gate-raw.md` وPR comment `5382636536`. |
 | الدفع التالي | **معلّق بقرار Claude:** تغييرات `acceptance.ts` و`ReactProjectTool.ts` و`nothing-is-done...` و`project-preview.test.ts` غير staged بعد. لا 2a ولا الجولة المالك قبل اعتماد Claude. |
+
+## Claude 285–287 — حارس القاضي وحماية مستودع المالك ومسار SpendWise — 2026-08-23
+| البند | الحالة |
+|---|---|
+| Claude 285 — `judge-reads-the-page` | **مطبق ومدفوع سابقاً في `4010c45d`:** ربط title exact، إثبات records sum المعلن والمرسوم، وحراس الموجب الكاذب؛ 20/20 للحارس العدائي و120/120 للتكامل قبل الدفع. |
+| Claude 286 — `A-DEPLOY-PATH-THAT-WIPES-THE-USER` | **مغلق ومدفوع في `287a53f1`:** أزيل `git clean -fd` من poller، وحُرس `reset --hard`، ورُفض `/root/xelitesolutions` والمستودع غير النظيف؛ regression يثبت بقاء الملف غير المتعقب، والبوابة 229/3727 خضراء. |
+| SpendWise prompt 01 — ENOENT | **قيد الإصلاح:** الجولة الحية الجديدة كشفت مساراً أبوياً خاطئاً `../SpendWise a personal expense/src/components/ExpenseForm.jsx` في `ai_write_file`; الخام PR `5383006744` والتشخيص `5383026821`. |
+| تطبيع مسار ENOENT | **منفذ محلياً غير مدفوع:** helper محافظ يقبل `ProjectName/src/...` و`../ProjectName/src/...` المطابق فقط، ويرفض parent traversal غير المطابق؛ regression `ai-write-file` 55/55، والبوابة الكاملة التالية قيد التنفيذ. |
+| السلسلة 50 | **لم يبدأ prompt 02 بعد:** لا انتقال حتى تمر إعادة prompt 01 حياً، ثم اختبار وظائف SpendWise مباشرة. لا 2a/2b/2c/Prompt04. |

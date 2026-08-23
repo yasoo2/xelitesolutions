@@ -577,6 +577,36 @@ describe('verified runtime contracts keep generated source on the project stack'
         expect(res.output.path).toBe(path.join('src', 'services', 'forecast.ts'));
     });
 
+    it('maps one parent-relative conceptual project prefix onto the bound artifact', async () => {
+        const conceptualPath = path.join('..', 'SpendWise a personal expense', 'src', 'components', 'ExpenseForm.jsx');
+        const expectedPath = path.join(projectRoot, 'src', 'components', 'ExpenseForm.jsx');
+        callLLM.mockResolvedValue("export default function ExpenseForm() { return <form>expense</form>; }");
+
+        const res: any = await tool.execute({
+            path: conceptualPath,
+            description: 'Write the expense form inside the current runtime-bound React artifact.',
+        }, { projectRoot, projectName: 'SpendWise a personal expense', engineeringPipeline: true });
+
+        expect(res.ok).toBe(true);
+        expect(fs.readFileSync(expectedPath, 'utf8')).toContain('ExpenseForm');
+        expect(fs.existsSync(path.join(projectRoot, '..', 'SpendWise a personal expense', 'src', 'components', 'ExpenseForm.jsx'))).toBe(false);
+        expect(res.output.path).toBe(path.join('src', 'components', 'ExpenseForm.jsx'));
+    });
+
+    it('does not turn an unrelated parent traversal into a trusted artifact path', async () => {
+        const unrelated = path.join('..', 'other-project', 'src', 'App.jsx');
+        callLLM.mockResolvedValue("export default function App() { return <main>unrelated</main>; }");
+
+        const res: any = await tool.execute({
+            path: unrelated,
+            description: 'Write a file for an unrelated project.',
+        }, { projectRoot, projectName: 'verified-web', engineeringPipeline: true });
+
+        expect(res.ok).toBe(false);
+        expect(res.error).toMatch(/path_outside_project_root/);
+        expect(fs.existsSync(path.join(projectRoot, '..', 'other-project', 'src', 'App.jsx'))).toBe(false);
+    });
+
     it('rejects an absolute artifact outside the bound project root before its manifest exists', async () => {
         const fallbackRoot = path.join(landsAt(DIR), 'runtime-fallback-root');
         const orphanRoot = path.join(workspaceService.externalRoot, '__ai_write_file_orphan_artifact__');
