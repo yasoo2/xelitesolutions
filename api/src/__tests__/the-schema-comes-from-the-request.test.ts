@@ -1,110 +1,121 @@
 /**
- * A CANNED TABLE FOR A MAN WHO NAMED HIS COLUMNS.
+ * HIS WORDS, HIS COLUMNS — IN ANY TRADE, IN EITHER LANGUAGE.
  *
- * Measured live, third iteration of the same brief. The planner routed it
- * correctly and the records engine was finally chosen — and then handed him
- * the generic blueprint's five: العنوان, التفاصيل, قيمة, التاريخ, الحالة.
+ * The owner stated this as law, after reading the first version of this reader:
  *
- * He had written his columns in the same sentence:
+ *     «أنا أريد جو أن يقدر يبني أيّ برومبت، وليس أن يحفظ ويتدرّب على برومبتات
+ *      محدّدة … هذا قانون صارم لا تتخطّاه.»
  *
- *     «بدي صفحة أسجل فيها كل قطعة: اسمها ورقمها والكمية وسعر الشراء وسعر البيع
- *      … وبدي يطلع لي تحت مجموع رأس المال ومجموع الربح المتوقع، وإذا كمية قطعة
- *      صارت أقل من 3 يصير لونها أحمر عشان أنتبه»
+ * He was right, and the first version broke it. It carried a table of MEANINGS
+ * built from the one request it was written for — «سعر الشراء» became
+ * `buyPrice` and was relabelled, «كمية» became `qty` and was relabelled. Across
+ * three trades it had never seen:
  *
- * Not one of his five existed. Neither total existed. The threshold did not
- * exist. The engine was right and the product was still somebody else's.
+ *     عيادة   «اسم المريض» -> «الاسم»    «رقم تلفونه» -> «الرقم»    (a phone became a part number)
+ *     مكتبة   «اسم المؤلف» -> «الاسم»    «سنة الإصدار» -> plain text
+ *     مزرعة   «كمية الحليب» -> «الكمية»  «تاريخ الولادة» -> «التاريخ»
  *
- * So the request dictates the schema when the request states it: the columns
- * he listed, the totals his columns imply — a quantity beside a buy price IS
- * capital, a quantity beside both prices IS margin — and the threshold in the
- * number he actually typed. Read stingily: an enumeration only after a colon
- * or «فيها», only to the end of that sentence, only at three parts or more.
+ * So the reader now keeps one thing from him and infers one thing itself: the
+ * LABEL is his, unchanged, always; the TYPE comes from a closed vocabulary —
+ * the input types a form can have at all. There are nine of those and
+ * infinitely many names, which is exactly why one can be a table and the other
+ * cannot.
+ *
+ * Every case below is a trade this code was NOT written from. That is the
+ * point of them.
  */
-import { detectAppKind, blueprintFor, fieldsFromRequest } from '../core/design/app-blueprints';
+import { detectAppKind, blueprintFor, derivedColumns } from '../core/design/app-blueprints';
 
-/** The brief as the owner typed it. */
-const OWNER = 'أنا عندي محل قطع سيارات. بدي صفحة أسجل فيها كل قطعة: اسمها ورقمها والكمية وسعر الشراء وسعر البيع. لما أضيف قطعة تنحفظ وتضل موجودة لما أسكر الصفحة وأرجع أفتحها. وبدي أبحث عن القطعة باسمها أو رقمها، وبدي يطلع لي تحت مجموع رأس المال ومجموع الربح المتوقع، وإذا كمية قطعة صارت أقل من 3 يصير لونها أحمر عشان أنتبه.';
+const labelsOf = (r: string) => (derivedColumns(r) || []).map(c => c.label);
+const typesOf = (r: string) => (derivedColumns(r) || []).map(c => c.type);
+const planOf = (r: string) => blueprintFor(detectAppKind(r)!, r, true);
 
-const planOf = (request: string) => blueprintFor(detectAppKind(request)!, request, true);
+const SHOP = 'أنا عندي محل قطع سيارات. بدي صفحة أسجل فيها كل قطعة: اسمها ورقمها والكمية وسعر الشراء وسعر البيع. وبدي يطلع لي تحت مجموع رأس المال ومجموع الربح المتوقع، وإذا كمية قطعة صارت أقل من 3 يصير لونها أحمر عشان أنتبه.';
+const CLINIC = 'عندي عيادة أسنان. بدي جدول أسجل فيه المواعيد: اسم المريض ورقم تلفونه ووقت الموعد ونوع العلاج والمبلغ المدفوع. وبدي أعرف كم قبضت هذا الشهر.';
+const LIBRARY = 'بدي صفحة أسجل فيها الكتب: عنوان الكتاب واسم المؤلف ودار النشر وسنة الإصدار وعدد النسخ.';
+const FARM = 'بدي جدول أسجل فيه الأبقار: رقم البقرة وسلالتها ووزنها وتاريخ الولادة وكمية الحليب.';
+const ENGLISH = 'I want a page where I record students: student name, email, phone, enrolment date and the fee paid.';
 
-describe('INVARIANT: the columns a request lists are the columns it gets', () => {
-    test('his five, in his order, with the types his words imply', () => {
-        expect((fieldsFromRequest(OWNER, true) || []).map(f => f.key))
-            .toEqual(['name', 'number', 'qty', 'buyPrice', 'sellPrice']);
-        expect((fieldsFromRequest(OWNER, true) || []).map(f => f.type))
-            .toEqual(['text', 'text', 'number', 'number', 'number']);
+describe('INVARIANT: the label belongs to the person who wrote it', () => {
+    test('a clinic keeps its own words — none of them replaced', () => {
+        expect(labelsOf(CLINIC)).toEqual(
+            ['اسم المريض', 'رقم تلفونه', 'وقت الموعد', 'نوع العلاج', 'المبلغ المدفوع']);
     });
 
-    test('IS NOT VACUOUS: a request that lists nothing gets no derived schema', () => {
-        expect(fieldsFromRequest('بدي صفحة فيها جدول', true)).toBeNull();
-        expect(fieldsFromRequest('اعمل صفحة فيها: الاسم والسعر', true)).toBeNull();   // two is not a list
+    test('so do a library and a farm', () => {
+        expect(labelsOf(LIBRARY)).toEqual(
+            ['عنوان الكتاب', 'اسم المؤلف', 'دار النشر', 'سنة الإصدار', 'عدد النسخ']);
+        expect(labelsOf(FARM)).toEqual(
+            ['رقم البقرة', 'سلالتها', 'وزنها', 'تاريخ الولادة', 'كمية الحليب']);
     });
 
-    test('and a request with no enumeration keeps the general blueprint', () => {
-        //  Asked of the general blueprint directly: «بدي نظام إدارة للعملاء»
-        //  resolves to `crm`, a sharper archetype with its own columns, which
-        //  is a better answer and not the one under test here.
-        expect(blueprintFor('generic', 'بدي نظام إدارة لأشيائي', true).fields.map(f => f.key))
-            .toEqual(['title', 'details', 'amount', 'date', 'status']);
+    test('and a list joined by «and» reads the same as one joined by «و»', () => {
+        expect(labelsOf(ENGLISH)).toEqual(
+            ['student name', 'email', 'phone', 'enrolment date', 'the fee paid']);
     });
 });
 
-describe('INVARIANT: the totals follow the columns, and the threshold is his', () => {
-    test('quantity with a buy price is capital; with both prices, margin', () => {
-        const labels = planOf(OWNER).metrics.map(m => m.label);
-        expect(labels).toContain('رأس المال');
-        expect(labels).toContain('الربح المتوقع');
-        const margin = planOf(OWNER).metrics.find(m => m.kind === 'sumMargin')!;
-        expect([margin.field, margin.field2, margin.field3]).toEqual(['qty', 'sellPrice', 'buyPrice']);
+describe('INVARIANT: the type is inferred, and only the type', () => {
+    test('a phone is a phone, a time is a time, money is a number', () => {
+        expect(typesOf(CLINIC)).toEqual(['text', 'tel', 'time', 'text', 'number']);
     });
 
-    test('the low-stock rule carries the number he wrote, not a default', () => {
-        expect(planOf(OWNER).lowStock).toEqual({ field: 'qty', below: 3 });
+    test('a birth date is a date and a milk quantity is a number', () => {
+        expect(typesOf(FARM)).toEqual(['text', 'text', 'number', 'date', 'number']);
     });
 
-    test('IS NOT VACUOUS: no threshold in the request means no rule at all', () => {
-        expect(blueprintFor('generic', 'بدي نظام إدارة لأشيائي', true).lowStock).toBeUndefined();
+    test('an email is an email even when the word is the whole label', () => {
+        expect(typesOf(ENGLISH)).toEqual(['text', 'email', 'tel', 'date', 'number']);
     });
 
-    test('IS NOT VACUOUS: a threshold with no colour or warning is not a rule', () => {
-        const quiet = 'بدي صفحة أسجل فيها: الاسم والرقم والكمية. وما بدي شي إذا صارت أقل من 3.';
-        expect(planOf(quiet).lowStock).toBeUndefined();
+    test('IS NOT VACUOUS: a request that lists nothing derives nothing', () => {
+        expect(derivedColumns('بدي صفحة فيها جدول')).toBeNull();
+        expect(derivedColumns('اعمل صفحة فيها: الاسم والسعر')).toBeNull();   // two is not a list
     });
 });
 
-/**
- * HALF A FIX IS A HALF-TRUTH — AND THIS ONE SHIPPED FOR ONE ITERATION.
- *
- * `sumMargin` was added in three of the four places it needed to exist: the
- * metric type, the blueprint that emits it, and the arithmetic in the
- * generated app. The fourth — the writer that serialises a metric into
- * content.js — still knew only `field` and `field2`. Measured in a live
- * generated project:
- *
- *     { label: 'الربح المتوقع', kind: 'sumMargin', field: 'qty', field2: 'sellPrice' }
- *
- * `field3` was gone, so the app computed quantity × sell price and called it
- * profit. The buy price was never subtracted. A number that is confidently
- * wrong is worse than a number that is missing, because nobody checks it.
- */
-import { fileAppContentJs } from '../modules/tools/definitions/react-app-templates';
-
-describe('INVARIANT: every field a metric names survives into the app', () => {
-    const marginContent = () => fileAppContentJs(
-        blueprintFor(detectAppKind(OWNER)!, OWNER, true),
-        { brand: 'محلي', isArabic: true, storeKey: 'k' } as any,
-    );
-
-    test('the margin metric carries all three of its fields', () => {
-        const js = marginContent();
-        expect(js).toContain("kind: 'sumMargin'");
-        expect(js).toContain("field: 'qty'");
-        expect(js).toContain("field2: 'sellPrice'");
-        //  The one that was missing: without it the app subtracts nothing.
-        expect(js).toContain("field3: 'buyPrice'");
+describe('INVARIANT: totals are arithmetic on roles, named in his words', () => {
+    test('a quantity beside two prices is capital and margin', () => {
+        const labels = planOf(SHOP).metrics.map(m => m.label);
+        expect(labels).toContain('إجمالي الكمية × سعر الشراء');
+        expect(labels).toContain('الفرق بين سعر البيع و سعر الشراء');
+        const margin = planOf(SHOP).metrics.find(m => m.kind === 'sumMargin')!;
+        expect([margin.field, margin.field2, margin.field3]).toEqual(['count1', 'money2', 'money1']);
     });
 
-    test('and the threshold he wrote reaches the app too', () => {
-        expect(marginContent()).toContain("lowStock: { field: 'qty', below: 3 }");
+    test('a clinic that asks what it collected gets its own money column summed', () => {
+        expect(planOf(CLINIC).metrics.map(m => m.label)).toContain('مجموع المبلغ المدفوع');
+    });
+
+    test('IS NOT VACUOUS: a year is read, not added', () => {
+        //  «سنة الإصدار» is a number and not a quantity. Summing it produces a
+        //  figure that means nothing, and printing it as a total is a confident
+        //  lie about the user's data.
+        const labels = planOf(LIBRARY).metrics.map(m => m.label);
+        expect(labels).toContain('مجموع عدد النسخ');
+        expect(labels).not.toContain('مجموع سنة الإصدار');
+    });
+
+    test('the threshold is his number, on whichever column counts', () => {
+        expect(planOf(SHOP).lowStock).toEqual({ field: 'count1', below: 3 });
+    });
+
+    test('IS NOT VACUOUS: no threshold, or no request to be warned, means no rule', () => {
+        expect(planOf(FARM).lowStock).toBeUndefined();
+        expect(planOf('بدي جدول أسجل فيه: الاسم والرقم والكمية. وما بدي شي إذا صارت أقل من 3.').lowStock)
+            .toBeUndefined();
+    });
+});
+
+describe('INVARIANT: an explicit list outranks every archetype', () => {
+    test('a clinic that names its columns does not get the bookings template', () => {
+        //  «مواعيد» matches the bookings archetype; his five columns still win.
+        expect(planOf(CLINIC).fields.map(f => f.label)).toEqual(labelsOf(CLINIC));
+    });
+
+    test('and a request that names none keeps the archetype it matched', () => {
+        const tasks = planOf('بدي نظام إدارة مهامي اليومية');
+        expect(tasks.fields.length).toBeGreaterThan(0);
+        expect(derivedColumns('بدي نظام إدارة مهامي اليومية')).toBeNull();
     });
 });
