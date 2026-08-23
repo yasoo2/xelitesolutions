@@ -322,6 +322,16 @@ export function detectAppKind(requestRaw: string): AppKind | null {
     // self-audit or planner context happened to mention a conversation.
     if (TASK_BOARD_CONTRACT.test(intentRequest)) return 'tasks';
     if (FINANCE_CONTRACT.test(intentRequest)) return 'finance';
+    //  A LIST HE WROTE OUTRANKS A NOUN HE HAPPENED TO USE.
+    //
+    //  «عندي عيادة أسنان … اسم المريض ورقم تلفونه …» carries the word
+    //  «عيادة» and a list of five columns. The word is incidental; the list
+    //  is the contract. Scoring archetypes first let a stock relation come
+    //  back and quietly replace what he wrote.
+    //
+    //  Ported from main (Manus, da586c92) — the same property this branch
+    //  argues everywhere: what he stated beats what we recognised.
+    if (derivedColumns(intentRequest)?.length) return 'generic';
     /**
      * Score every registered archetype instead of returning the first keyword
      * that happens to occur in a long request. A real request often names the
@@ -456,22 +466,102 @@ export function subjectOf(request: string): string {
 
 const STRICT_POSITIVE_CONSTRAINT = /non[-\s]?positive|strictly\s+positive|positive[-\s]?only|(?:must|should|need(?:s)?|require(?:s)?|validation(?:\s+that)?|validate|reject(?:s)?|disallow(?:s)?|not\s+accept)\s+(?:be\s+)?positive|(?:greater|more)\s+than\s+zero|above\s+zero|غير\s*(?:موجب|موجبة|موجبين)|(?:موجب|موجبة)\s+فقط|أكبر\s+من\s+الصفر|فوق\s+الصفر|(?:يرفض|لا\s+يقبل)\s+(?:الصفر|السالب)/iu;
 
-function requestNamesField(requestRaw: string, field: AppField): boolean {
-    const request = String(requestRaw || '').toLocaleLowerCase();
-    const names = [field.key, field.label]
-        .map(value => String(value || '').trim().toLocaleLowerCase())
-        .filter(Boolean);
-    return names.some(name => {
-        let from = 0;
-        while (from < request.length) {
-            const at = request.indexOf(name, from);
-            if (at < 0) return false;
-            const window = request.slice(Math.max(0, at - 96), at + name.length + 96);
-            if (STRICT_POSITIVE_CONSTRAINT.test(window)) return true;
-            from = at + Math.max(1, name.length);
+/**
+ * A BOUND IS A COMPARISON AND A NUMBER, NOT A PHRASE SOMEONE REMEMBERED.
+ *
+ * Measured. Six ways of saying the same constraint; two were understood:
+ *
+ *     «وارفض المبلغ إذا كان صفر أو أقل»               → no bound
+ *     «المبلغ يجب أن يكون موجباً فقط»                  → no bound
+ *     «الكمية لا تقل عن 1»                            → no bound
+ *     «المبلغ أكبر من الصفر»                          → min 0, exclusive
+ *     "rejects non-positive amounts"                  → min 0, exclusive
+ *
+ * The four that failed are the ones he is most likely to type. The cause was a
+ * list of remembered phrasings — and «موجباً فقط» failed against a pattern
+ * that knew «موجب فقط», which is the same word wearing a tanween.
+ *
+ * A bound is not a phrase. It is a COMPARISON and a NUMBER, and both are
+ * closed classes: there are only so many ways to say greater, smaller, at
+ * least, and only so many digits. What is open — the field, the trade, the
+ * wording around it — is exactly what this must not depend on.
+ *
+ * The one subtlety is which SIDE was named. «أكبر من ١٠» names what is
+ * allowed; «ارفض ما هو أقل من ١٠» names what is refused, and the same number
+ * means a different bound. So the rejection verb is read too, and it flips the
+ * reading — that is one closed class more, not a catalogue.
+ */
+const REJECTS = /(ارفض|أرفض|رفض|ترفض|لا\s*يقبل|لا\s*تقبل|امنع|\breject|\bdisallow|\bnot\s+accept|\bmust\s+not\s+be)/iu;
+const AR_DIGITS = /[\u0660-\u0669]/g;
+
+/** «صفر» and «zero» are numbers he wrote in words. */
+function numberIn(text: string): number | null {
+    const normalised = text.replace(AR_DIGITS, d => String(d.charCodeAt(0) - 0x0660));
+    const m = normalised.match(/-?\d+(?:[.,]\d+)?/);
+    if (m) return Number(String(m[0]).replace(',', '.'));
+    if (/(?:^|[^\u0621-\u064a])(?:صفر|الصفر)(?:$|[^\u0621-\u064a])|\bzero\b/iu.test(text)) return 0;
+    return null;
+}
+
+/** The lower bound a sentence states about a number, or null when it states none. */
+export function statedBound(window: string): { min: number; minExclusive: boolean } | null {
+    const text = String(window || '');
+    const rejecting = REJECTS.test(text);
+
+    //  «موجب» / positive names zero as the floor without naming a number.
+    if (/(موجب|موجبة|موجبا|موجباً|\bpositive\b)/iu.test(text) && !/(غير|non-?|لا)\s*(?:موجب|positive)/iu.test(text)) {
+        return { min: 0, minExclusive: true };
+    }
+    if (/(غير\s*(?:موجب|موجبة|موجبا|موجباً)|non-?positive)/iu.test(text) && rejecting) {
+        return { min: 0, minExclusive: true };
+    }
+
+    const n = numberIn(text);
+    if (n === null) return null;
+
+    const below = /(أقل|اقل|أصغر|اصغر|تحت|دون|less\s+than|below|under|smaller)/iu.test(text);
+    const above = /(أكبر|اكبر|أعلى|اعلى|فوق|greater\s+than|more\s+than|above|over)/iu.test(text);
+    const atLeast = /(لا\s*(?:يقل|تقل)\s*عن|على\s*الأقل|على\s*الاقل|at\s+least|no\s+less\s+than|minimum(?:\s+of)?)/iu.test(text);
+
+    if (atLeast) return { min: n, minExclusive: false };
+    //  A rejection names the refused side, so «ارفض ما هو أقل من ١٠» allows ١٠
+    //  while «أكبر من ١٠» does not.
+    //  «N أو أقل» refuses N itself; «أقل من N» refuses only what is under it.
+    //  Same number, different floor — and he says the first far more often.
+    const inclusiveOfN = /(أو\s*أقل|أو\s*اقل|أو\s*أدنى|أو\s*ادنى|أو\s*أصغر|or\s+less|or\s+lower|or\s+below|or\s+under)/iu.test(text);
+    if (rejecting && below) return { min: n, minExclusive: inclusiveOfN };
+    if (rejecting && above) return null;                       // he refused the HIGH side; not a floor
+    if (above) return { min: n, minExclusive: true };
+    if (rejecting && n === 0) return { min: 0, minExclusive: true };
+    return null;
+}
+
+
+/**
+ *  A SENTENCE OWNS ITS OWN CONSTRAINT.
+ *
+ *  Measured: «الكمية لا تقل عن 1» set a floor of one on «السعر» as well,
+ *  because the reader took ninety-six characters on either side of each field
+ *  name and asked whether a bound appeared anywhere inside. A window that
+ *  wide contains the neighbour's sentence — the haystack was big enough to
+ *  contain every needle.
+ *
+ *  He states a constraint in a sentence, and that sentence names the field it
+ *  is about. So the sentence is the unit: a bound applies to the fields named
+ *  IN IT, and to no others.
+ */
+function boundsByField(requestRaw: string, fields: AppField[]): Map<string, { min: number; minExclusive: boolean }> {
+    const out = new Map<string, { min: number; minExclusive: boolean }>();
+    for (const sentence of String(requestRaw || '').split(/[.؟!\n]/u)) {
+        const lower = sentence.toLocaleLowerCase();
+        const bound = statedBound(sentence) || (STRICT_POSITIVE_CONSTRAINT.test(sentence) ? { min: 0, minExclusive: true } : null);
+        if (!bound) continue;
+        for (const field of fields) {
+            const names = [field.key, field.label].map(v => String(v || '').trim().toLocaleLowerCase()).filter(Boolean);
+            if (names.some(n => lower.includes(n))) out.set(field.key, bound);
         }
-        return false;
-    });
+    }
+    return out;
 }
 
 /**
@@ -480,11 +570,14 @@ function requestNamesField(requestRaw: string, field: AppField): boolean {
  * and state the constraint in its own words.
  */
 export function applyRequestFieldConstraints(bp: AppBlueprint, request: string): AppBlueprint {
-    const fields = bp.fields.map(field => (
-        field.type === 'number' && requestNamesField(request, field)
-            ? { ...field, min: 0, minExclusive: true }
-            : field
-    ));
+    const bounds = boundsByField(request, bp.fields);
+    const fields = bp.fields.map(field => {
+        if (field.type !== 'number') return field;
+        //  The bound is whatever HE stated, not a fixed zero: «الكمية لا تقل
+        //  عن 1» is a floor of one, and «ارفض صفر أو أقل» excludes the zero.
+        const bound = bounds.get(field.key);
+        return bound ? { ...field, min: bound.min, minExclusive: bound.minExclusive } : field;
+    });
     return fields.some((field, index) => field !== bp.fields[index]) ? { ...bp, fields } : bp;
 }
 
