@@ -104,6 +104,7 @@ ${bp.metrics.map(m => `    { label: '${q(m.label)}', kind: '${q(m.kind)}'${m.fie
   ],
   statusField: '${q(bp.statusField || '')}',
   doneValue: '${q(bp.doneValue || '')}',
+  lowStock: ${bp.lowStock ? `{ field: '${q(bp.lowStock.field)}', below: ${Number(bp.lowStock.below)} }` : 'null'},
   // The parent this app's rows belong to — «طبيب ← مواعيده». Null for a
   // one-table app, and then the picker below simply never renders.
   relation: ${bp.relation ? `{
@@ -345,6 +346,8 @@ export function computeMetric(m, rows) {
     case 'countWhere': return String(list.filter(r => String(r[m.field] || '') === m.equals).length);
     case 'sum': return round(list.reduce((a, r) => a + num(r[m.field]), 0));
     case 'sumProduct': return round(list.reduce((a, r) => a + num(r[m.field]) * num(r[m.field2]), 0));
+    //  A margin is a quantity times what each unit gains: sell minus buy.
+    case 'sumMargin': return round(list.reduce((a, r) => a + num(r[m.field]) * (num(r[m.field2]) - num(r[m.field3])), 0));
     case 'avg': {
       const vals = list.map(r => r[m.field]).filter(v => v !== '' && v != null).map(num);
       return vals.length ? round(vals.reduce((a, b) => a + b, 0) / vals.length) : '—';
@@ -1317,8 +1320,10 @@ export default function RecordsApp({ content }) {
           <ul className="rows">
             {visible.map(row => {
               const done = statusField && content.doneValue && row[statusField.key] === content.doneValue;
+              //  His own threshold, in his own number — see content.lowStock.
+              const low = content.lowStock && Number(row[content.lowStock.field]) < Number(content.lowStock.below);
               return (
-                <li className={'row' + (done ? ' done' : '')} key={row.id}>
+                <li className={'row' + (done ? ' done' : '') + (low ? ' low' : '')} key={row.id}>
                   {imageField ? (
                     <img className="row-pic" loading="lazy"
                       src={imageOf(row, imageField.key, primary.key)}
@@ -2478,6 +2483,11 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--accent,#06c);out
   border:1px solid var(--border,#e5e5e5);border-radius:var(--radius,12px);padding:12px 14px;background:var(--bg,#fff)}
 .row.done{opacity:.62}
 .row.done h3{text-decoration:line-through}
+/*  A row under his threshold has to be seen from across the shop, and still
+    be readable: a red edge and a red-tinted ground, not red text on red.  */
+.row.low{border-color:#e5484d;background:color-mix(in srgb,#e5484d 8%,transparent)}
+.row.low h3{color:#b42318}
+@media (prefers-color-scheme:dark){.row.low h3{color:#ff9c9c}}
 .row-main{min-width:0;flex:1 1 260px}
 .row-open{cursor:pointer;border-radius:8px;padding:2px;transition:background .16s ease,outline-color .16s ease}
 .row-open:hover{background:var(--tint,#f6f6f6)}

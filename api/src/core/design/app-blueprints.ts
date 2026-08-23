@@ -50,8 +50,9 @@ export interface AppField {
 /** A number worth showing at the top of the app, computed from the rows. */
 export interface AppMetric {
     label: string;
-    kind: 'count' | 'sum' | 'sumProduct' | 'avg' | 'countWhere' | 'todayCount' | 'todaySum' | 'topGroup';
+    kind: 'count' | 'sum' | 'sumProduct' | 'sumMargin' | 'avg' | 'countWhere' | 'todayCount' | 'todaySum' | 'topGroup';
     field?: string;
+    field3?: string;
     field2?: string;
     equals?: string;
     /** For money-shaped metrics — appended to the value. */
@@ -164,6 +165,8 @@ export interface AppBlueprint {
     fields: AppField[];
     /** The select field that drives the status filter and the done state. */
     statusField?: string;
+    /** «إذا كمية قطعة صارت أقل من 3 يصير لونها أحمر» — his rule, in his numbers. */
+    lowStock?: { field: string; below: number };
     doneValue?: string;
     metrics: AppMetric[];
     /** The parent table this system's rows belong to, when it has one. */
@@ -859,13 +862,50 @@ function stockBlueprintFor(kind: AppKind, request: string, isAr: boolean): AppBl
             emptyHint: L('لا عادات بعد — أضف أول عادة تريد الالتزام بها.', 'No habits yet — add the first one you want to keep.'),
         };
 
-        default: return {
+        default: {
+        /**
+         * THE COLUMNS HE NAMED, WHEN HE NAMED THEM.
+         *
+         * The canned five below are a starting point for a request that
+         * describes no schema. When the request DOES list its columns, that
+         * list wins — and the totals follow it: a quantity beside a price is a
+         * stock value, and saying so is arithmetic, not a guess.
+         */
+        const asked = fieldsFromRequest(request, isAr);
+        const askedKeys = new Set((asked || []).map(x => x.key));
+        /**
+         * «وإذا كمية قطعة صارت أقل من 3 يصير لونها أحمر عشان أنتبه»
+         *
+         * A threshold the user states is data, not decoration — and it is HIS
+         * number, read out of the sentence, never a default I picked. Both
+         * halves must be present: a quantity column to compare, and a number
+         * he actually wrote.
+         */
+        const lowStockMatch = /(?:اقل|أقل|تحت|دون|less\s+than|under|below|<)\s*(?:من\s*)?(\d{1,4})/iu.exec(request);
+        const wantsAlert = /(احمر|أحمر|بالاحمر|بالأحمر|red|تنبيه|انتبه|أنتبه|warn|alert)/iu.test(request);
+        const lowStock = (asked && askedKeys.has('qty') && lowStockMatch && wantsAlert)
+            ? { field: 'qty', below: Number(lowStockMatch[1]) }
+            : undefined;
+        const derivedMetrics: AppMetric[] = asked
+            ? [
+                { label: L('عدد السجلات', 'Records'), kind: 'count' },
+                ...(askedKeys.has('qty') && askedKeys.has('buyPrice')
+                    ? [{ label: L('رأس المال', 'Capital'), kind: 'sumProduct', field: 'qty', field2: 'buyPrice' } as AppMetric] : []),
+                ...(askedKeys.has('qty') && !askedKeys.has('buyPrice') && askedKeys.has('price')
+                    ? [{ label: L('قيمة المخزون', 'Stock value'), kind: 'sumProduct', field: 'qty', field2: 'price' } as AppMetric] : []),
+                ...(askedKeys.has('qty') && askedKeys.has('buyPrice') && askedKeys.has('sellPrice')
+                    ? [{ label: L('الربح المتوقع', 'Expected profit'), kind: 'sumMargin', field: 'qty', field2: 'sellPrice', field3: 'buyPrice' } as AppMetric] : []),
+                ...(askedKeys.has('qty')
+                    ? [{ label: L('إجمالي الكمية', 'Total quantity'), kind: 'sum', field: 'qty' } as AppMetric] : []),
+            ]
+            : [];
+        return {
             kind: 'generic', engine: 'records',
             title: subject || L('السجلات', 'Records'),
             lede: L('أضف، عدّل، ابحث، وصدّر — تطبيق يعمل فعلاً لا صفحة تتحدث عنه.',
                 'Add, edit, search and export — an app that works, not a page about one.'),
             entityOne: L('سجلّ', 'record'), entityMany: subject || L('السجلات', 'Records'),
-            fields: [
+            fields: asked || [
                 f(['title', 'العنوان', 'Title', 'text', undefined, ['required', 'primary']], isAr),
                 f(['details', 'التفاصيل', 'Details', 'textarea'], isAr),
                 f(['amount', 'قيمة', 'Value', 'number'], isAr),
@@ -873,7 +913,8 @@ function stockBlueprintFor(kind: AppKind, request: string, isAr: boolean): AppBl
                 f(['status', 'الحالة', 'Status', 'select', SELECT_AR_EN(['جديد', 'قيد العمل', 'منجز'], ['New', 'In progress', 'Done'], isAr)], isAr),
             ],
             statusField: 'status', doneValue: L('منجز', 'Done'),
-            metrics: [
+            lowStock,
+            metrics: derivedMetrics.length ? derivedMetrics : [
                 { label: L('كل السجلات', 'All records'), kind: 'count' },
                 { label: L('منجز', 'Done'), kind: 'countWhere', field: 'status', equals: L('منجز', 'Done') },
                 { label: L('أُضيف اليوم', 'Added today'), kind: 'todayCount', field: 'createdAt' },
@@ -881,7 +922,74 @@ function stockBlueprintFor(kind: AppKind, request: string, isAr: boolean): AppBl
             deps: {},
             emptyHint: L('لا سجلات بعد — أضف أول سجلّ من النموذج.', 'No records yet — add the first one in the form.'),
         };
+        }
     }
+}
+
+
+/* ── the schema the request itself dictates ──────────────────────────────── */
+
+/**
+ * FIELDS THE USER LISTED BEAT FIELDS I WROTE DOWN ONCE.
+ *
+ * Measured live. He asked for a car-parts ledger and named its columns in the
+ * same breath:
+ *
+ *     «بدي صفحة أسجل فيها كل قطعة: اسمها ورقمها والكمية وسعر الشراء وسعر البيع»
+ *
+ * The records engine was chosen correctly — and then handed him the generic
+ * blueprint's canned five: العنوان, التفاصيل, قيمة, التاريخ, الحالة. Not one
+ * of the five he had just typed. A template that ignores an explicit list is
+ * not a starting point, it is a different product.
+ *
+ * So an enumeration in the request becomes the schema. It is read STINGILY:
+ * only after a colon or «فيها», only to the end of that sentence, only when it
+ * yields at least three parts — a stray colon must not invent a table — and at
+ * most eight, so a run-on sentence cannot become a form nobody can fill.
+ * Anything not recognised keeps the user's own words as its label rather than
+ * being dropped, because his word for a column is better than mine.
+ */
+const FIELD_WORDS: Array<[RegExp, string, FieldType, string, string]> = [
+    [/سعر\s*(?:ال)?شراء|تكلفة|cost|buy\s*price|purchase/i, 'buyPrice', 'number', 'سعر الشراء', 'Buy price'],
+    [/سعر\s*(?:ال)?بيع|sell\s*price|selling/i, 'sellPrice', 'number', 'سعر البيع', 'Sell price'],
+    [/كمي|عدد|مخزون|رصيد|\bqty\b|quantity|stock/i, 'qty', 'number', 'الكمية', 'Quantity'],
+    [/رقم|كود|باركود|\bsku\b|\bcode\b|barcode|part\s*no/i, 'number', 'text', 'الرقم', 'Number'],
+    [/تاريخ|\bdate\b/i, 'date', 'date', 'التاريخ', 'Date'],
+    [/ملاحظ|وصف|تفاصيل|\bnote\b|description|details/i, 'note', 'textarea', 'ملاحظة', 'Note'],
+    [/سعر|مبلغ|قيمة|\bprice\b|\bamount\b|\bvalue\b/i, 'price', 'number', 'السعر', 'Price'],
+    [/اسم|صنف|قطعة|منتج|\bname\b|\btitle\b|\bitem\b|product/i, 'name', 'text', 'الاسم', 'Name'],
+];
+
+export function fieldsFromRequest(requestRaw: string, isAr: boolean): AppField[] | null {
+    const request = String(requestRaw || '');
+    const opener = /[:：]|فيها|تحتوي على|يحتوي على/.exec(request);
+    if (!opener) return null;
+    const after = request.slice((opener.index || 0) + opener[0].length);
+    //  One sentence. A list that runs past its full stop is no longer a list.
+    const sentence = after.split(/[.؟!\n]/)[0] || '';
+    const parts = sentence
+        .split(/\s*[،,]\s*|\s+و(?=\S)/u)
+        .map(p => p.trim().replace(/^(?:ال)?كل\s+/u, '').trim())
+        .filter(p => p.length >= 2 && p.length <= 28);
+    if (parts.length < 3 || parts.length > 8) return null;
+
+    const seen = new Set<string>();
+    const fields: AppField[] = [];
+    for (const part of parts) {
+        let key = '';
+        let type: FieldType = 'text';
+        let ar = part;
+        let en = part;
+        for (const [pattern, k, t, labelAr, labelEn] of FIELD_WORDS) {
+            if (pattern.test(part)) { key = k; type = t; ar = labelAr; en = labelEn; break; }
+        }
+        if (!key) { key = 'f' + (fields.length + 1); type = 'text'; ar = part; en = part; }
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const flags = fields.length === 0 ? ['required', 'primary'] : (type === 'number' ? ['required'] : undefined);
+        fields.push(f([key, ar, en, type, undefined, flags], isAr));
+    }
+    return fields.length >= 3 ? fields : null;
 }
 
 /* ── what was asked for, in the user's own words ─────────────────────────── */
