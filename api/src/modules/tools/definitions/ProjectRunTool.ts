@@ -1421,6 +1421,11 @@ export class ProjectRunTool implements ToolDefinition {
          *  the output arrives on a pipe, so it can go where he is looking;
          *  and there is no window, because there is no console to make.
          */
+        //  The previous server for this project dies before a new one is
+        //  born — see retireRecordedServer. Nine of them were alive on his
+        //  machine at once, holding twenty-one ports.
+        await retireRecordedServer(context, cwd, logs);
+
         const res = await ExecutionGateway.execute(detected.command, [], {
             cwd,
             env: { ...process.env, PORT: String(port), HOST: '127.0.0.1', BROWSER: 'none', CI: '1' },
@@ -1521,18 +1526,60 @@ export class ProjectRunTool implements ToolDefinition {
     }
 }
 
+/** The one way this file ends a server, wherever the pid came from. */
+async function killTree(pid: number): Promise<void> {
+    if (process.platform === 'win32') {
+        // Kills the whole process tree (npm -> the framework it spawned).
+        await ExecutionGateway.execute(`taskkill /F /T /PID ${pid}`, [], { shell: true, stdio: 'ignore' });
+    } else {
+        // Detached start makes the child a group leader; -pid kills the group.
+        try { process.kill(-pid, 'SIGTERM'); } catch { process.kill(pid, 'SIGTERM'); }
+    }
+}
+
+/**
+ *  A SERVER THAT OUTLIVES THE ROUND THAT STARTED IT.
+ *
+ *  Counted on the owner's machine after a day of rounds:
+ *
+ *      orphan vite servers still running:  9
+ *      listening 4xxx ports:              21
+ *
+ *  Every preview Joe opens stays open. stopServer above cannot reach any
+ *  of them, because it reads RUNNING — a Map in memory, emptied by every
+ *  restart — while the servers themselves survive it.
+ *
+ *  The record does survive: joeProjects keeps live.pid and live.cwd on
+ *  disk, and canAdoptRecordedLive already knows how to check that a pid
+ *  is alive AND belongs to that directory. The knowledge was there; only
+ *  the retirement was missing.
+ *
+ *  It runs before a NEW server is launched for a project, never on the
+ *  adoption path — a live server that is about to be reused must not be
+ *  shot on the way to reusing it.
+ */
+async function retireRecordedServer(context: any, cwd: string, logs: string[]): Promise<void> {
+    try {
+        const sessionId = String(context?.sessionId || '').trim();
+        if (!sessionId || !cwd) return;
+        const sessionKey = sessionId.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const record: any = readJoeProjectForRun(sessionKey, null);
+        const live = record?.live;
+        if (!canAdoptRecordedLive(live, cwd)) return;
+        await killTree(Number(live.pid));
+        logs.push(`retired previous server pid=${live.pid} port=${live.port}`);
+    } catch (e: any) {
+        //  A server that will not die is not a reason to refuse to start.
+        logs.push(`retire_failed: ${e?.message || e}`);
+    }
+}
+
 async function stopServer(key: string, logs: string[]): Promise<boolean> {
     const server = RUNNING.get(key);
     if (!server?.pid) return false;
     const pid = server.pid;
     try {
-        if (process.platform === 'win32') {
-            // Kills the whole process tree (npm -> the framework it spawned).
-            await ExecutionGateway.execute(`taskkill /F /T /PID ${pid}`, [], { shell: true, stdio: 'ignore' });
-        } else {
-            // Detached start makes the child a group leader; -pid kills the group.
-            try { process.kill(-pid, 'SIGTERM'); } catch { process.kill(pid, 'SIGTERM'); }
-        }
+        await killTree(pid);
         logs.push(`stopped pid=${pid} port=${server.port}`);
     } catch (e: any) {
         logs.push(`stop_failed pid=${pid}: ${e?.message || e}`);
