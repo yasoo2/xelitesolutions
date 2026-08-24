@@ -1437,6 +1437,16 @@ function everyItemIsADefiniteName(items: string[]): boolean {
     });
 }
 
+/**
+ *  A THING THAT HOLDS RECORDS, NAMED IN HIS OWN WORD.
+ *
+ *  This lived inside derivedColumns as a local. It is needed in a second
+ *  place now — the clarifier, which must ask about the container HE named
+ *  instead of asking about a website — and a second copy would drift the
+ *  first time one of them learned a word the other did not.
+ */
+export const RECORD_CONTAINER = /(جدول|جداول|قائمة|كشف|سجل|سجلّ|\btable\b|\blist\b|\bsheet\b|\bledger\b|\bregister\b|\btracker\b)/iu;
+
 export function derivedColumns(requestRaw: string): DerivedField[] | null {
     const request = String(requestRaw || '');
     /**
@@ -1488,8 +1498,7 @@ export function derivedColumns(requestRaw: string): DerivedField[] | null {
      *  or no word at all, just a colon.
      */
     if (!opener) {
-        const HOLDER = /(جدول|جداول|قائمة|كشف|سجل|سجلّ|\btable\b|\blist\b|\bsheet\b|\bledger\b|\bregister\b|\btracker\b)/iu;
-        const holder = HOLDER.exec(request);
+        const holder = RECORD_CONTAINER.exec(request);
         if (!holder) return null;
         const tail = request.slice((holder.index || 0) + holder[0].length);
         const colonAt = Math.max(tail.indexOf(':'), tail.indexOf('：'));

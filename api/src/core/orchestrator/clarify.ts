@@ -12,6 +12,7 @@
  * toll booth.
  */
 
+import { RECORD_CONTAINER } from '../design/app-blueprints';
 import { asksForSomething, describesItsContents, tracksSomethingOfHis, trackingVerbAt, looksLikeBuild } from './buildIntent';
 import { isArabicReply } from '../../shared/reply-language';
 
@@ -183,6 +184,9 @@ function trackedObject(goal: string): string {
  *  and «هناك تفاصيل صغيره كثيره يجب الانتباه عليها».
  */
 export function clarifyQuestions(goal: string, language: string): string {
+    //  A blank line, not a newline: the chat renders markdown and markdown
+    //  folds a single newline into a space.
+    const nl2 = '\n\n';
     const isAr = isArabicReply({ language, text: goal });
     //  A man who named something to track needs one question, not four,
     //  and it must be about HIS thing — never about sections and colours.
@@ -192,6 +196,43 @@ export function clarifyQuestions(goal: string, language: string): string {
             ? `سؤال واحد قبل أن أبدأ — ما الذي تريد تسجيله لكل واحد من «${tracked}»؟\n\nمثلاً: الاسم، المبلغ، التاريخ… اكتبها كما تريدها أن تظهر في الجدول، وسأبنيه بها.\n\nوإن أردت أن أختار أنا، قل «ابدأ مباشرة».`
             : `One question before I start — what do you want to record for each of your ${tracked}?\n\nFor example: name, amount, date… write them the way you want them to appear in the table, and I will build it with those.\n\nOr say "start now" and I will choose for you.`;
     }
+    /**
+     *  A CONTAINER HE NAMED IS NOT A WEBSITE.
+     *
+     *  Live round, in Chrome, on his machine. He wrote three words:
+     *
+     *      «بدي جدول»
+     *
+     *  and Joe answered:
+     *
+     *      What is the site about? A restaurant, a store, a company…
+     *      Which sections do you want? Home, services, pricing, contact…
+     *      Any colours or brand identity?   One page, or several?
+     *
+     *  He asked for a TABLE and was asked about a site's sections and its
+     *  colours. The branch above already knows the right shape — one
+     *  question, about HIS thing — but it only fires when a tracking verb
+     *  is present («أسجل», «أحفظ», «track»). «بدي جدول» has no verb, so it
+     *  fell through to a questionnaire that assumes every vague request is
+     *  a website. That is the fourth law broken in the one function whose
+     *  whole job is to ask about the request.
+     *
+     *  A container that holds records needs to know WHAT GOES IN IT, and
+     *  nothing about colours. The word is echoed back exactly as he wrote
+     *  it — his «كشف» is a كشف, not a «جدول» we prefer.
+     */
+    const container = RECORD_CONTAINER.exec(userWords(goal));
+    if (container) {
+        const word = container[1];
+        return isAr
+            ? `سؤال واحد قبل أن أبدأ — ما الذي تريد تسجيله في «${word}»؟` + nl2 +
+              `مثلاً: الاسم، المبلغ، التاريخ… اكتبها كما تريدها أن تظهر، وسأبنيه بها.` + nl2 +
+              `وإن أردت أن أختار أنا، قل «ابدأ مباشرة».`
+            : `One question before I start — what do you want to record in your ${word}?` + nl2 +
+              `For example: name, amount, date… write them the way you want them to appear, and I will build it with those.` + nl2 +
+              `Or say "start now" and I will choose for you.`;
+    }
+
     const wantsApp = /(تطبيق|app)/i.test(userWords(goal));
     if (isAr) {
         return `**سؤال واحد قبل أن أبدأ** — حتى أبني ما تريده فعلاً لا ما أتخيّله.
