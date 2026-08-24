@@ -1475,7 +1475,7 @@ export function derivedColumns(requestRaw: string): DerivedField[] | null {
      *  do it, and a noun means a declaration only when it is introduced —
      *  by a colon, or by «هي»/`are`/`include`.
      */
-    const RECORDING_VERB = /(أسجل|اسجل|سجّل|أضيف|اضيف|أدخل|ادخل|أدوّن|ادون|أتابع|اتابع|أدير|ادير|أنظم|انظم|فيها|فيه|تحتوي على|يحتوي على|\brecord\b|\btrack\b|\blog\b|\bmanage\b|\borgani[sz]e\b)/iu;
+    const RECORDING_VERB = /(?:^|[\s،:؛(])(?:أسجل|اسجل|سجّل|أضيف|اضيف|أدخل|ادخل|أدوّن|ادون|أتابع|اتابع|أدير|ادير|أنظم|انظم|فيها|فيه|تحتوي على|يحتوي على|record|track|log(?!\s+of\b)|manage|organi[sz]e)(?=$|[\s،:؛)])/iu;
     const DECLARED_LIST = /(الحقول|الأعمدة|الاعمدة|\bcolumns?\b|\bfields?\b)\s*(?::|：|هي|are\b|include(?:s)?\b)/iu;
     const opener = RECORDING_VERB.exec(request) || DECLARED_LIST.exec(request);
     /**
