@@ -1397,7 +1397,7 @@ export function derivedColumns(requestRaw: string): DerivedField[] | null {
      *  by a colon, or by «هي»/`are`/`include`.
      */
     const RECORDING_VERB = /(?:^|[\s،:؛(])(?:أسجل|اسجل|سجّل|أضيف|اضيف|أدخل|ادخل|أدوّن|ادون|أتابع|اتابع|أدير|ادير|أنظم|انظم|فيها|فيه|تحتوي على|يحتوي على|record|track|log(?!\s+of\b)|manage|organi[sz]e)(?=$|[\s،:؛)])/iu;
-    const DECLARED_LIST = /(الحقول|الأعمدة|الاعمدة|\bcolumns?\b|\bfields?\b)\s*(?::|：|هي|are\b|include(?:s)?\b)/iu;
+    const DECLARED_LIST = /(?:^|[\s،:؛(])(?:الحقول|الأعمدة|الاعمدة)(?=$|[\s،:؛)])\s*(?::|：|هي|include(?:s)?\b)|(?:^|[\s,;:(])(?:\bcolumns?\b|\bfields?\b)(?=$|[\s,;:)])\s*(?::|：|are\b|include(?:s)?\b)/iu;
     const opener = RECORDING_VERB.exec(request) || DECLARED_LIST.exec(request);
     if (!opener) return null;
     let after = request.slice((opener.index || 0) + opener[0].length);

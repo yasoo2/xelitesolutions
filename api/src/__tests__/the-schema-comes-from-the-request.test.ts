@@ -242,6 +242,32 @@ describe('a bare noun does not open a column list', () => {
         expect(derivedColumns(text)).toBeNull();
     });
 
+    // NEGATIVE — every Arabic recording alternative must be bounded, including
+    // the two-word forms; a pronoun/token suffix is not a recording action.
+    it.each([
+        ['أسجل', 'بدي برنامج أسجلهم الاسم والسعر والكمية'],
+        ['اسجل', 'بدي برنامج اسجلهم الاسم والسعر والكمية'],
+        ['سجّل', 'بدي برنامج سجّلهم الاسم والسعر والكمية'],
+        ['أضيف', 'بدي برنامج أضيفهم الاسم والسعر والكمية'],
+        ['اضيف', 'بدي برنامج اضيفهم الاسم والسعر والكمية'],
+        ['أدخل', 'بدي برنامج أدخلهم الاسم والسعر والكمية'],
+        ['ادخل', 'بدي برنامج ادخلهم الاسم والسعر والكمية'],
+        ['أدوّن', 'بدي برنامج أدوّنهم الاسم والسعر والكمية'],
+        ['ادون', 'بدي برنامج ادونهم الاسم والسعر والكمية'],
+        ['أتابع', 'بدي برنامج أتابعهم الاسم والسعر والكمية'],
+        ['اتابع', 'بدي برنامج اتابعهم الاسم والسعر والكمية'],
+        ['أدير', 'بدي برنامج أديرهم الاسم والسعر والكمية'],
+        ['ادير', 'بدي برنامج اديرهم الاسم والسعر والكمية'],
+        ['أنظم', 'بدي برنامج أنظمهم الاسم والسعر والكمية'],
+        ['انظم', 'بدي برنامج انظمهم الاسم والسعر والكمية'],
+        ['فيها', 'بدي برنامج فيهاهم الاسم والسعر والكمية'],
+        ['فيه', 'بدي برنامج فيههم الاسم والسعر والكمية'],
+        ['تحتوي على', 'بدي برنامج تحتوي علىهم الاسم والسعر والكمية'],
+        ['يحتوي على', 'بدي برنامج يحتوي علىهم الاسم والسعر والكمية'],
+    ])('%s does not open a list inside a larger token', (_label, text) => {
+        expect(derivedColumns(text)).toBeNull();
+    });
+
     // POSITIVE — the same bounded forms still open genuine lists.
     it.each([
         ['أسجل فيه', 'بدي جدول أسجل فيه المواعيد: اسم المريض ورقم تلفونه ووقت الموعد', ['اسم المريض', 'رقم تلفونه', 'وقت الموعد']],
@@ -249,6 +275,15 @@ describe('a bare noun does not open a column list', () => {
         ['record', 'record students: name, grade, section', ['name', 'grade', 'section']],
     ])('%s still opens an explicit recording list', (_label, text, expected) => {
         expect(derivedColumns(text)?.map(c => c.label)).toEqual(expected);
+    });
+
+    // NEGATIVE — an Arabic declaration noun inside an invented token is not a declaration.
+    it.each([
+        ['الحقول inside a token', 'بدي جدول اسمه مزرعةالحقول: الاسم والسعر والكمية'],
+        ['الأعمدة inside a token', 'بدي جدول اسمه qelvaniالأعمدة: الاسم والسعر والكمية'],
+        ['الاعمدة inside a token', 'بدي جدول اسمه zqvornالاعمدة: الاسم والسعر والكمية'],
+    ])('%s does not open a list', (_label, text) => {
+        expect(derivedColumns(text)).toBeNull();
     });
 
     // POSITIVE — an introduced noun still declares, in both languages.

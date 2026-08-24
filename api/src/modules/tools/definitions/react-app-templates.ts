@@ -1341,7 +1341,7 @@ export default function RecordsApp({ content }) {
             <option value="old">{${T('الأقدم أولاً', 'Oldest first')}}</option>
             <option value="az">{${T('أبجدياً', 'A → Z')}}</option>
           </select>
-          <button className="btn ghost" type="button" disabled={!rows.length}
+          <button className="btn ghost" type="button" disabled={!visible.length}
             onClick={() => download(content.storeKey + '.csv',
               rel
                 ? toCsv([...fields, { key: '__parent', label: rel.one }], visible.map(r => ({ ...r, __parent: parentName(r) })))
