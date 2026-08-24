@@ -260,7 +260,27 @@ export function brandFallback(request: string, isArabic: boolean, kind = 'generi
         if (candidate.length >= 3) { subject = candidate; break; }
     }
     if (!subject) return isArabic ? 'مشروعي' : 'MyApp';
-    if (isArabic) {
+
+    /**
+     *  A NAME TAKES THE LANGUAGE OF THE WORDS IT IS MADE OF.
+     *
+     *  Measured on a live ladder run, three rungs in a row:
+     *
+     *      «بدي جدول للكتب: العنوان والمؤلف والسعر»  ->  react-كتب-works
+     *
+     *  «كتب Works» is neither Arabic nor English. The subject was read
+     *  correctly out of his own sentence — «كتب» — and then the English
+     *  kind-word was welded onto it, because this function was deciding
+     *  the language from the INTERFACE the reader happened to be using
+     *  rather than from the word in its hands.
+     *
+     *  A name is not a sentence addressed to a reader; it is a label made
+     *  of a specific word. That word already has a language, and it is the
+     *  only one that can be right. The interface still decides the case
+     *  above, where there is no subject and so nothing to take a language
+     *  from — «مشروعي» or «MyApp» is genuinely addressed to the reader.
+     */
+    if (/[؀-ۿ]/.test(subject)) {
         // «للقهوة» hands back «لقهوة» unless the article is peeled off both
         // times — and «متجر القهوة» is what a signboard says, not «متجر قهوة».
         const bare = subject.replace(/^(لل|ال|ل)/, '');
