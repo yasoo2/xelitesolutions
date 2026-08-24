@@ -98,12 +98,44 @@ export function openTerminal(say: (line: string) => void): TerminalSession {
              * saying so in the first second is worth more than discovering it
              * after a scaffold, an install attempt and a timeout.
              */
-            const versions: string[] = [];
-            for (const [file, args] of [['node', ['-v']], ['npm', ['-v']]] as Array<[string, string[]]>) {
-                const r = await session.run(file, args, { cwd, timeout: 15_000, quiet: true });
-                const v = String(r.out || '').trim().split('\n').pop() || '';
-                versions.push(`${file} ${r.missing ? '— not on this machine' : v || '(no answer)'}`);
-            }
+            /**
+             *  A PROBE THAT PROMISES THE FIRST SECOND MUST NOT COST THIRTY.
+             *
+             *  Measured on his machine, in three places:
+             *
+             *      npm -v, plain shell            2332 / 2673 / 2145 ms
+             *      npm -v, through this engine    1563 / 1283 ms
+             *      npm -v, inside a built project 1227 / 1603 ms
+             *
+             *  And measured in his own transcript, twice in one evening:
+             *
+             *      → timed out after 15.1s   └─ node v24.18.0 · npm (no answer)
+             *      → timed out after 28.7s
+             *
+             *  A command that answers in 1.3 seconds was given fifteen, and
+             *  the two were run one after the other — so a busy machine could
+             *  spend thirty seconds of his time on a question the comment
+             *  above says is worth asking «in the first second». Then the run
+             *  carried on regardless, having printed him a failure.
+             *
+             *  A budget states what the caller is willing to wait, so it must
+             *  be scaled to the answer, not to the fear. Five seconds is four
+             *  times the slowest reading here. And the two are independent
+             *  questions, so they are asked at once: the worst case stops
+             *  being the sum and becomes the slower of the two.
+             */
+            const versions = await Promise.all(
+                ([['node', ['-v']], ['npm', ['-v']]] as Array<[string, string[]]>).map(async ([file, args]) => {
+                    const r = await session.run(file, args, { cwd, timeout: 5_000, quiet: true });
+                    const v = String(r.out || '').trim().split('\n').pop() || '';
+                    //  «no answer» told him nothing. Name which of the three
+                    //  things happened: absent, too slow, or silent.
+                    const why = r.missing ? '— not on this machine'
+                        : r.timedOut ? '— did not answer in 5s'
+                            : v || '(no version printed)';
+                    return `${file} ${why}`;
+                }),
+            );
             emit(`└─ ${versions.join(' · ')}`);
             emit('');
         },

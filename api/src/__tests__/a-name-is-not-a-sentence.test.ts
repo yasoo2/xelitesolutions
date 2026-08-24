@@ -46,6 +46,42 @@ describe('a name someone chose is kept', () => {
     });
 });
 
+describe('a name is made of words he wrote', () => {
+    /**
+     *  Found by a live ladder run, walking straight through the first version
+     *  of this guard:
+     *
+     *      «بدي جدول للكتب: العنوان والمؤلف والسعر»   -> react-the-d34e34be
+     *      «بدي جدول للكتب فيه العنوان والمؤلف والسعر» -> react-كتب-works-417308d5
+     *
+     *  «the» and «works» are not words he said, and «the» is three characters
+     *  so it never even reached the prefix test. Measured at the same moment,
+     *  brandFallback answered «مشروع الكتب» for both.
+     */
+    it.each([
+        ['The', 'بدي جدول للكتب: العنوان والمؤلف والسعر'],
+        ['كتب Works', 'بدي جدول للكتب فيه العنوان والمؤلف والسعر'],
+        ['MyAwesomeApp', 'بدي جدول للمصاريف: التاريخ والمبلغ'],
+        ['Untitled', 'بدي جدول للطلاب فيه الاسم والصف'],
+    ])('«%s» is the planner talking, not him', (candidate, request) => {
+        const got = projectDirNameForTest(candidate, 'مشروع الكتب', request);
+        expect(got).toBe('react-مشروع-الكتب');
+    });
+
+    //  POSITIVE — and Arabic attaches its articles, so «كتب» has to be found
+    //  inside «للكتب» or every Arabic name he chooses is refused.
+    it('finds his word under its article', () => {
+        expect(projectDirNameForTest('الكتب', 'x', 'بدي جدول للكتب فيه العنوان')).toBe('react-الكتب');
+        expect(projectDirNameForTest('كتب', 'x', 'بدي جدول للكتب فيه العنوان')).toBe('react-كتب');
+    });
+
+    //  NEGATIVE — a test that cannot run must not reject: with no request to
+    //  compare against, the candidate is taken as given.
+    it('does not refuse a name when there is nothing to compare it to', () => {
+        expect(projectDirNameForTest('Gate062', 'brand', '')).toBe('react-gate062');
+    });
+});
+
 describe('a sentence handed in as a name is refused', () => {
     //  NEGATIVE — his exact case, and the folder he actually got.
     it('his employees request does not become the folder name', () => {

@@ -23,7 +23,7 @@ import { ToolPermission, ToolExecutionResult } from '../types';
 import { buildPalette, paletteCss, darkTokenBlock, lightTokenBlock } from '../../../core/design/design-system';
 import { brandFrom, brandFallback } from '../../../core/design/page-head';
 import { detectPageKind, type PageKind } from '../../../core/design/blueprints';
-import { applyRequestFieldConstraints, detectAppKind, blueprintFor, uncoveredFeatures, derivedTables, type AppBlueprint } from '../../../core/design/app-blueprints';
+import { derivedColumns, applyRequestFieldConstraints, detectAppKind, blueprintFor, uncoveredFeatures, derivedTables, type AppBlueprint } from '../../../core/design/app-blueprints';
 import { acceptanceFor as acceptanceCriteriaFor } from '../../../core/quality/acceptance';
 import { buildAppFiles, fileAppCss } from './react-app-templates';
 import { familyFor, familyCss, familyFonts, FAMILY_LABEL_AR, type DesignFamily } from '../../../core/design/families';
@@ -294,16 +294,79 @@ export const PROJECT_SLUG_FOR_TEST = slug;
  *  back a name. No list of forbidden words appears here and none should
  *  — «بدي» and «build» are not the point; the shape is.
  */
+/**
+ *  A NAME IS MADE OF WORDS HE WROTE.
+ *
+ *  The first version of this guard asked two questions — is it short, and
+ *  is it the opening of his sentence — and a live ladder run walked
+ *  straight through both:
+ *
+ *      «بدي جدول للكتب: العنوان والمؤلف والسعر»   -> react-the-d34e34be
+ *      «بدي جدول للكتب فيه العنوان والمؤلف والسعر» -> react-كتب-works-417308d5
+ *
+ *  «the» and «works» are not words he said. Measured at the same time,
+ *  `brandFallback` answered «مشروع الكتب» for both — the right name was
+ *  sitting there again while the planner's invention was used instead.
+ *  «the» is three characters, so it never even reached the prefix test.
+ *
+ *  So the criterion becomes the only one that cannot be walked around:
+ *  EVERY word of the candidate must be a word he wrote. A name someone
+ *  chose for this request is built from this request — «Gate062» is in
+ *  «Build a small project called Gate062», «عيادة أسنان» is in «عندي
+ *  عيادة أسنان» — while «Works» is in nothing but the model's habits.
+ *
+ *  Arabic attaches its articles and prepositions to the word, so «كتب»
+ *  has to be recognised inside «للكتب». That is folding, not a synonym
+ *  table: the prefixes are a closed grammatical class and no domain word
+ *  appears here.
+ */
+/**
+ *  ONLY THE CLITICS THAT CANNOT BE A FIRST LETTER.
+ *
+ *  The first draft listed the single letters too — و ف ب ك ل — and ate the
+ *  opening letter of ordinary words: «كتب» became «تب», so his own word
+ *  stopped matching itself and the guard refused the name he had chosen.
+ *  «وقت», «بيت», «لون», «فرع» would all have gone the same way.
+ *
+ *  A single Arabic letter is never unambiguous evidence of a prefix. The
+ *  two- and three-letter forms below all end in the definite article, and
+ *  no Arabic word begins with «ال» except as that article — which is the
+ *  whole reason folding is safe here and was not safe there.
+ */
+const ARABIC_CLITICS = /^(?:ولل|فلل|بال|كال|فال|وال|لل|ال)/u;
+
+function bareWords(text: string): string[] {
+    return String(text || '')
+        .toLowerCase()
+        .replace(/\p{M}+/gu, '')
+        .split(/[^\p{L}\p{N}]+/u)
+        .filter(Boolean)
+        .map(w => (/[\u0600-\u06FF]/.test(w) ? w.replace(ARABIC_CLITICS, '') : w))
+        .filter(w => w.length >= 2);
+}
+
 function looksLikeAChosenName(candidate: string, request: string): boolean {
     const t = String(candidate || '').trim();
     if (!t) return false;
     if (t.split(/\s+/).filter(Boolean).length > 4) return false;
     if (/[:،؛]|,\s/.test(t)) return false;
-    const req = slug(request);
     const cand = slug(t);
     if (!cand || cand === 'app') return false;
+
+    const req = slug(request);
     //  The opening of the sentence is not a name for the sentence.
-    return !(req && cand.length >= 4 && req.startsWith(cand));
+    if (req && cand.length >= 4 && req.startsWith(cand)) return false;
+
+    //  And every word of it has to be one of his. With no request to
+    //  compare against — a caller that passed none — this test cannot run,
+    //  and a test that cannot run must not reject.
+    const his = new Set(bareWords(request));
+    if (!his.size) return true;
+    //  The tool's own `react-` prefix belongs to the directory, not to the
+    //  name — a candidate that already carries it is still his name.
+    const mine = bareWords(t.replace(/^react[-_\s]+/i, ''));
+    if (!mine.length) return false;
+    return mine.every(w => his.has(w));
 }
 
 export function projectDirNameForTest(projectName: string, brand: string, request = ''): string {
@@ -2698,6 +2761,35 @@ export class ReactProjectTool extends BaseTool {
         const uiLang = String(context?.language || '').toLowerCase();
         const replyLang = replyLanguageCode(context?.language, request);
         const isAr = replyLang === 'ar';
+
+        /**
+         *  THE REPLY IS FOR HIM. THE APP IS FOR WHOEVER WILL USE IT.
+         *
+         *  Measured on every ladder rung that built anything, with his
+         *  interface in English and his request in Arabic:
+         *
+         *      columns: العنوان · المؤلف · السعر
+         *      title:   «Records»
+         *      metric:  «Total السعر»
+         *
+         *  An application whose columns are Arabic and whose headings are
+         *  English is broken in both languages at once, and nobody would
+         *  ship it. It happened because ONE language decision was serving
+         *  two different readers: `replyLanguageCode` answers «what
+         *  language do I speak to HIM in», which the interface rightly
+         *  decides — and that answer was then used to label a thing he is
+         *  building for somebody else.
+         *
+         *  The artifact's chrome speaks the language of the labels it
+         *  carries, and those labels are his own words, read out of his
+         *  own sentence. With no columns to read there is nothing to take
+         *  a language from, so the reply language stands — which is the
+         *  same rule the project's NAME follows, and for the same reason.
+         */
+        const artifactLabels = derivedColumns(request) || [];
+        const artifactIsAr = artifactLabels.length
+            ? artifactLabels.some(c => /[\u0600-\u06FF]/.test(String(c.label || '')))
+            : isAr;
         try { broadcast({ type: 'build_started', sessionId, data: { tool: 'react_project', sessionId } } as any); } catch { /* UI optional */ }
 
         const term = (line: string) => {
@@ -2805,7 +2897,7 @@ export class ReactProjectTool extends BaseTool {
         // all. When the request names an application, the section library is
         // skipped entirely and a working app is generated instead.
         const appKind = detectAppKind(request) || inheritedAppKind;
-        const appBp: AppBlueprint | null = appKind ? blueprintFor(appKind, request, isAr) : null;
+        const appBp: AppBlueprint | null = appKind ? blueprintFor(appKind, request, artifactIsAr) : null;
         // سجّل قرار القالب نفسه، لا وعداً عاماً بالنجاح؛ هذا يكشف فوراً أي
         // تحوير لوسيط الطلب بين الخطة وأداة البناء في الاختبارات الحية.
         // The language Joe SPEAKS is the interface's, not the prompt's — and a
@@ -3301,7 +3393,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 const ownTable = String(RECORDS_TABLE_BY_KIND[effectiveBp.kind]?.[0] || '');
                 if (ownTable && !builtKeys.has(ownTable)) {
                     term(`data link: this system builds no «${ownTable}» table — the ${effectiveBp.kind} template stands down for the system's own model`);
-                    effectiveBp = blueprintFor('generic', request, isAr);
+                    effectiveBp = blueprintFor('generic', request, artifactIsAr);
                 }
             }
             let strippedRelation = false;
@@ -3354,7 +3446,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             });
             if (declaration) term(declaration);
             const appFiles = buildAppFiles(runBp, {
-                brand: content.brand, isArabic: isAr, api: appApi, apiResources,
+                brand: content.brand, isArabic: artifactIsAr, api: appApi, apiResources,
                 //  The app remembers the words it was built from, so an edit can
                 //  re-derive his columns instead of replacing them with a stock set.
                 sourceRequest: request,

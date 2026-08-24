@@ -38,10 +38,10 @@ async function main() {
     const t0 = Date.now();
     const res: any = await AgentLoopService.execute('ابن لي موقع', { sessionId: 'clar-live', language: 'ar' });
     const took = Date.now() - t0;
-    check('the reply is the clarify questions', !!res?.result?.clarify && /1️⃣/.test(String(res?.result?.answer)), JSON.stringify(res).slice(0, 120));
+    check('the reply is the clarify questions', !!res?.result?.clarify && /^\s*1\.\s+\S/m.test(String(res?.result?.answer)), JSON.stringify(res).slice(0, 120));
     check('…answered instantly (no provider walk)', took < 2000, `${took}ms`);
     check('…in Arabic, ending with the bypass hint', /ابدأ مباشرة/.test(String(res?.result?.answer)));
-    check('…persisted as an assistant message', (g.mockMessages || []).some((m: any) => m.role === 'assistant' && /1️⃣/.test(m.content)));
+    check('…persisted as an assistant message', (g.mockMessages || []).some((m: any) => m.role === 'assistant' && /^\s*1\.\s+\S/m.test(m.content)));
     const merged = (await import('../../core/orchestrator/clarify')).clarifyGate('مطعم مأكولات بحرية بألوان زرقاء', 'clar-live', 'ar');
     check('the NEXT message merges into the original request', merged.kind === 'merge' && /ابن لي موقع/.test((merged as any).goal) && /بحرية/.test((merged as any).goal));
 
