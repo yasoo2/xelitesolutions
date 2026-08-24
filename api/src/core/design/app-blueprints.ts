@@ -1536,6 +1536,27 @@ function everyItemIsADefiniteName(items: string[]): boolean {
     return items.every(raw => {
         const t = String(raw || '').trim();
         if (!isAName(t)) return false;
+        /**
+         *  A DEFINITENESS TEST IS WRITTEN IN ONE ALPHABET.
+         *
+         *  Measured, the same sentence in two scripts:
+         *
+         *      «بدي جدول للعملاء فيه الاسم والهاتف والعنوان»  → 3 columns
+         *      «A clients table with name, phone and address»  → null
+         *
+         *  Not «read badly» — never read at all. The test below is «ال» or
+         *  a possessive suffix, and no English noun carries either, so it
+         *  could NEVER pass and every English request fell through to a
+         *  memorised template.
+         *
+         *  English marks the difference on the CONTAINER instead of the
+         *  noun, and the caller has already established that a container
+         *  was named. «name», «phone», «address» are as bare in English as
+         *  «قهوة» is in Arabic; what keeps a shopping list out is that a
+         *  list holds things while a table holds columns, and that test
+         *  belongs to the container, not to the item.
+         */
+        if (!/[؀-ۿ]/u.test(t)) return true;
         //  «ال» anywhere — on the word itself or on the second half of an
         //  idafa («اسم المريض») — or a possessive suffix («رقم تلفونه»),
         //  which is the other way Arabic makes a noun definite.
@@ -1623,6 +1644,17 @@ export function derivedColumns(requestRaw: string): DerivedField[] | null {
             const start = words.findIndex(w => /^ال[ء-ي]/u.test(w));
             if (start > 0) items[0] = words.slice(start).join(' ');
         }
+        //  The same job in English, where there is no «ال» to find. What
+        //  stands between the container and the list is a preposition — a
+        //  closed class of function words, not a catalogue of nouns — and
+        //  «with name» is the sentence plus the column, not a column
+        //  called «with name».
+        if (items.length) {
+            items[0] = items[0]
+                .replace(/^(?:that\s+(?:has|have|holds?|contains?)|which\s+(?:has|have)|with|of|for|containing|including|holding|showing|having)\s+/iu, '')
+                .replace(/^(?:a|an|the)\s+/iu, '')
+                .trim();
+        }
         //  DROP THE RULE, KEEP THE LIST — in that order.
         //
         //  Caught by a live round, not by a test: «…: التاريخ والمبلغ والسبب،
@@ -1655,8 +1687,22 @@ export function derivedColumns(requestRaw: string): DerivedField[] | null {
          *  is still refused: a single noun after «جدول» is its subject, not
          *  its column — «جدول المبيعات» names no columns at all.
          */
+        /**
+         *  A LIST HOLDS VALUES. A TABLE HOLDS COLUMNS.
+         *
+         *  In Arabic the items answer this themselves by being definite or
+         *  not. English has no such mark, so the container answers: «a
+         *  shopping list with milk, bread and eggs» names three things it
+         *  holds, and «a clients table with name, phone and address» names
+         *  three attributes of each thing it holds. Reading the first as a
+         *  schema would give him a two-row app about milk.
+         */
+        const holdsColumns = !/^(?:list|قائمة)$/iu.test(holder[1] || '');
         const floor = holder ? 2 : 3;
         if (names.length < floor || names.length > 10) return null;
+        //  Latin items carry no definiteness of their own, so the container
+        //  they hang from decides — and a bare «list» decides no.
+        if (names.some(n => !/[؀-ۿ]/u.test(n)) && !holdsColumns) return null;
         if (!everyItemIsADefiniteName(names)) return null;
         //  THE LINK THAT WAS NEVER JOINED.
         //
