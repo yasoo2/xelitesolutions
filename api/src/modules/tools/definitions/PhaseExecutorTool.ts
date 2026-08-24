@@ -170,6 +170,82 @@ export function reactProjectServerFallback(
     return { cwd: projectRoot, script };
 }
 
+export const RUNTIME_ARTIFACT_SOURCE_KEYS = new Set([
+    'path', 'filename', 'filePath', 'sourceFile', 'targetPath',
+    'schemaPath', 'databasePath',
+]);
+
+export const RUNTIME_ARTIFACT_SOURCE_ARRAY_KEYS = new Set(['files', 'filePaths', 'sourceFiles', 'paths']);
+
+export const RUNTIME_LOGICAL_SOURCE_TOOLS = new Set([
+    // The generator validates a logical destination and resolves it inside its delegated runtime context.
+    'ai_write_file',
+    // execute() consumes `code`; filePath is optional provenance metadata only.
+    'pattern_recognize',
+    // Initial discovery selects the active workspace before a generated artifact exists.
+    'project_detect',
+    // Selects and inspects the active workspace/project before planning.
+    'engineering_discovery',
+    // Returns the caller-selected project root for the overall orchestration pipeline.
+    'project_pipeline',
+    // Imports or clones a local folder into the active workspace.
+    'import_project',
+    // Uses nested files[].path relative to each entry's own cwd; the shallow mapper is not its contract.
+    'bulk_file_generator',
+    // Queries dot-notation inside an in-memory JSON value, not a filesystem path.
+    'json_query',
+    // Stores a knowledge-document label, not a project filesystem path.
+    'knowledge_add',
+    // Names the output file in the screenshots area, not an input artifact source.
+    'screenshot',
+    // Names an optional generated HTML output file, not an input artifact source.
+    'web_page_builder',
+    // Self-coding file access is constrained to Joe's current repository root.
+    'repo_read_file',
+    // Self-coding search is constrained to Joe's current repository root.
+    'repo_search',
+    // Self-coding patches target Joe's current repository root.
+    'repo_apply_patch',
+    // Legacy declaration; the registered search path is intentionally redirected elsewhere.
+    'grep_search',
+]);
+
+export function mapRuntimeArtifactSourceArguments(
+    toolName: string,
+    planned: Record<string, any>,
+    projectContext?: Record<string, any>,
+    logs?: string[],
+): Record<string, any> {
+    const runtimeProjectRoot = String(projectContext?.projectRoot || '').trim();
+    if (projectContext?.projectRootRuntimeBound !== true || !runtimeProjectRoot) return planned;
+
+    const mapRuntimeArtifactSource = (value: unknown, key: string): string => {
+        const existing = String(value || '').trim();
+        if (!existing || path.isAbsolute(existing)) return existing;
+        const projectName = String(projectContext?.projectName || '').trim();
+        const logicalPath = normalizeConceptualArtifactPath(existing, projectName);
+        const projectSegmentMatches = logicalPath !== existing;
+        const candidate = path.resolve(runtimeProjectRoot, logicalPath);
+        if (!isWithinRoot(candidate, runtimeProjectRoot)) return existing;
+        logs?.push(projectSegmentMatches
+            ? `[PhaseExecutor] ${toolName}: mapped conceptual ${key} onto runtime-bound artifact (${candidate.slice(0, 240)})`
+            : `[PhaseExecutor] ${toolName}: resolved relative ${key} under runtime-bound artifact (${candidate.slice(0, 240)})`);
+        return candidate;
+    };
+
+    if (RUNTIME_LOGICAL_SOURCE_TOOLS.has(toolName)) return planned;
+    for (const [key, value] of Object.entries(planned)) {
+        if (RUNTIME_ARTIFACT_SOURCE_KEYS.has(key) && typeof value === 'string') {
+            planned[key] = mapRuntimeArtifactSource(value, key);
+        } else if (RUNTIME_ARTIFACT_SOURCE_ARRAY_KEYS.has(key) && Array.isArray(value)) {
+            planned[key] = value.map(entry => typeof entry === 'string'
+                ? mapRuntimeArtifactSource(entry, key)
+                : entry);
+        }
+    }
+    return planned;
+}
+
 export function inheritRuntimeProjectArguments(
     toolName: string,
     planned: Record<string, any>,
@@ -185,22 +261,14 @@ export function inheritRuntimeProjectArguments(
     // their target is usually `filePath`/`filename`, and reviewers often pass
     // arrays such as `files`. Once a builder has established the real artifact,
     // resolve these model-written paths at this trusted boundary so a leftover
-    // `WeatherGo/src/App.jsx` cannot fall back to the workspace root.
-    const runtimeArtifactSourceTools = new Set([
-        'write_file', 'file_edit', 'file_edit_advanced',
-        'delete_file', 'read_file', 'test_generator',
-        'code_reviewer', 'auto_refactor', 'doc_generator', 'performance_profiler',
-    ]);
-    // ai_write_file has a stricter public contract: its destination must remain
-    // workspace-relative until plannedArgsIssue has validated it. The generator
-    // receives projectRoot in delegated context and resolves that logical path
-    // inside the runtime-bound artifact itself (see AIGeneratorTool/utils.ts).
-    const runtimeLogicalSourceTools = new Set(['ai_write_file']);
-    const runtimeArtifactSourceKeys = new Set([
-        'path', 'filename', 'filePath', 'sourceFile', 'targetPath',
-        'schemaPath', 'databasePath',
-    ]);
-    const runtimeArtifactSourceArrayKeys = new Set(['files', 'filePaths', 'sourceFiles', 'paths']);
+    // `WeatherGo/src/App.jsx` cannot fall back to the workspace root. The key
+    // sets below are the criterion: do not maintain a second tool-name whitelist.
+    //
+    // The key sets and logical exception set are exported so a registry census can
+    // assert that every declared path input is intentionally classified.
+    const runtimeLogicalSourceTools = RUNTIME_LOGICAL_SOURCE_TOOLS;
+    const runtimeArtifactSourceKeys = RUNTIME_ARTIFACT_SOURCE_KEYS;
+    const runtimeArtifactSourceArrayKeys = RUNTIME_ARTIFACT_SOURCE_ARRAY_KEYS;
 
     /**
      * GREENFIELD HAS NO ARTIFACT ROOT YET.
@@ -301,37 +369,7 @@ export function inheritRuntimeProjectArguments(
         }
     }
 
-    const mapRuntimeArtifactSource = (value: unknown, key: string): string => {
-        const existing = String(value || '').trim();
-        if (!existing || path.isAbsolute(existing)) return existing;
-        const projectName = String(projectContext?.projectName || '').trim();
-        const logicalPath = normalizeConceptualArtifactPath(existing, projectName);
-        const projectSegmentMatches = logicalPath !== existing;
-        if (runtimeLogicalSourceTools.has(toolName)) {
-            logs?.push(projectSegmentMatches
-                ? `[PhaseExecutor] ${toolName}: mapped conceptual ${key} to logical artifact path (${logicalPath.slice(0, 240)})`
-                : `[PhaseExecutor] ${toolName}: preserved logical relative ${key} for runtime-bound artifact (${logicalPath.slice(0, 240)})`);
-            return logicalPath;
-        }
-        const candidate = path.resolve(runtimeProjectRoot, logicalPath);
-        if (!isWithinRoot(candidate, runtimeProjectRoot)) return existing;
-        logs?.push(projectSegmentMatches
-            ? `[PhaseExecutor] ${toolName}: mapped conceptual ${key} onto runtime-bound artifact (${candidate.slice(0, 240)})`
-            : `[PhaseExecutor] ${toolName}: resolved relative ${key} under runtime-bound artifact (${candidate.slice(0, 240)})`);
-        return candidate;
-    };
-
-    if (runtimeArtifactSourceTools.has(toolName)) {
-        for (const [key, value] of Object.entries(planned)) {
-            if (runtimeArtifactSourceKeys.has(key) && typeof value === 'string') {
-                planned[key] = mapRuntimeArtifactSource(value, key);
-            } else if (runtimeArtifactSourceArrayKeys.has(key) && Array.isArray(value)) {
-                planned[key] = value.map(entry => typeof entry === 'string'
-                    ? mapRuntimeArtifactSource(entry, key)
-                    : entry);
-            }
-        }
-    }
+    mapRuntimeArtifactSourceArguments(toolName, planned, projectContext, logs);
 
     const cwdInheritedTools = new Set(['npm_manager', 'shell_execute', 'terminal_manager', 'auto_tester']);
     if (cwdInheritedTools.has(toolName)) {

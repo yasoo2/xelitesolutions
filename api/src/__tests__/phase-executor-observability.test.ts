@@ -497,7 +497,7 @@ describe('PhaseExecutorTool observable trusted context', () => {
             expect(mockedExecuteTool.mock.calls[0][0]).toBe('auto_tester');
             expect(mockedExecuteTool.mock.calls[0][1]).toMatchObject({
                 testType: 'syntax',
-                files: ['scripts/smoke-test.test.mjs'],
+                files: [path.join(projectRoot, 'scripts', 'smoke-test.test.mjs')],
                 cwd: projectRoot,
                 projectPath: projectRoot,
             });
@@ -545,7 +545,7 @@ describe('PhaseExecutorTool observable trusted context', () => {
                 tool: 'auto_tester',
                 ok: false,
                 cwd: projectRoot,
-                file: 'scripts/smoke-test.test.mjs',
+                file: path.join(projectRoot, 'scripts', 'smoke-test.test.mjs'),
             });
         } finally {
             fs.rmSync(projectRoot, { recursive: true, force: true });

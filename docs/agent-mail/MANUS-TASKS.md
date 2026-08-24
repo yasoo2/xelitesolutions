@@ -4,7 +4,7 @@
 **الوكيل:** Manus
 **المستودع:** `yasoo2/xelitesolutions`
 **الفرع المسموح:** `main` فقط
-**آخر تحديث:** 2026-08-24 — checkpoint حي حتى بوابة ما قبل الدفع الأخيرة
+**آخر تحديث:** 2026-08-24 — PhaseExecutor inversion معتمد، focused/full gates خضراء، وقبل الدفع إلى main
 **قاعدة الهدف الأعلى:** Joe يتعلم كيف يصطاد السمكة، لا أن يأكلها؛ أي أن يبني قدرات هندسية عامة تقرأ الطلب وتثبت الناتج بدلاً من حفظ قوالب قطاعية.
 
 ## قانون التفويض — لا يُسأل المالك
@@ -25,21 +25,21 @@
 
 هذا الملف هو قائمة العمل المرئية. كل بند يملك حالة صريحة، ولا يُعد منجزاً إلا بعد اختبار مناسب ودفعه إلى `main`. يُحدَّث هذا الملف مع كل دفعة.
 
-## P01-PLANNER-2026-08-24 — الحالة التنفيذية الحالية
+## P01-PLANNER-PATH-2026-08-24 — الحالة التنفيذية الحالية
 
 | العنصر | الحالة المقاسة | الدليل/القرار |
 |---|---|---|
-| نقطة البداية | **مغلقة قبل التعديل** | `HEAD=origin/main=216ec11524e65814bad3fd40afd1fd92d731c3d3` قبل دفعة planner الحالية؛ الملفات المحلية غير المدفوعة هي `plan-tools.ts` و`ProjectPlannerTool.ts` وregressions planner ودفتر المهام. الملفات `web/.joe-live-vite.config.mjs` و`web/pnpm-lock.yaml` و`web/pnpm-workspace.yaml` untracked ممنوعة من staging. |
-| حكم Claude الملزم | **مطبّق** | Claude comment `5391078852`، وack `5391086950`: إعادة استخدام `taskProducesArtifact`، تغيير guard عند `plan-tools.ts:714` فقط، إضافة `args.filename` عند العد، وتثبيت regressions/mutation proofs دون تغيير tool sets. |
-| mutation (أ) | **مقاس قبل/بعد** | raw comment `5391127327`: guard القديم أسقط `react_project`، targeted Jest `EXIT=1`; بعد guard المعتمد targeted Jest `EXIT=0`. |
-| mutation (ج) | **مقاس قبل/بعد** | عند حذف `args.filename` فشل contract `.md` بـ`Expected 0 / Received 1` و`EXIT=1`؛ بعد الاستعادة نجح filename-positive بـ`EXIT=0`. سجل raw المحلي: `/tmp/joe-p01-planner-mutation-filename-doc-filter-raw-216ec115.md`. |
-| focused P01 | **أخضر** | بعد تسوية assertion القديمة: 15 suites، 348 tests، `EXIT=0`، log `/tmp/joe-p01-focused-after-gate-test-fix-20260824T060100Z.log`. |
-| canonical gate | **أخضر قبل الدفع** | `GATE_TSC_EXIT:0`، `GATE_WEB_TSC_EXIT:0`، `GATE_API_BUILD_EXIT:0`، `GATE_WEB_BUILD_EXIT:0`، 22/22 batches، 257 suites، 4199 tests، `GATE_JEST_EXIT:0` و`GATE:PASS`؛ log `/tmp/full-gate-p01-planner-repair-final-prepush-20260824T060300Z.log`. الفشل السابق كان suite واحدة قديمة، raw `5391168208` وdiagnosis `5391171388`، ثم تحديث regression المصرّح به. |
-| P01 الحي | **مفتوح، لا قبول بعد** | fresh browser run `run-1787544361016` / session `6a8bc30bd414b4efceef0a7e` وصل إلى ProjectPlanner ثم توقف قبل التنفيذ؛ raw `5390593853` وdiagnosis `5390614484`. بعد الدفع يجب تشغيل نسخة جديدة ببصمة SHA مطابقة وإثبات التسليم والـUI والجودة وإعادة التحميل/CSV، لا يكفي نجاح التخطيط أو gate. |
-| التشغيل المعزول | **محفوظ محلياً** | API isolated PID `553744` على `5102` بوضع JSON/offline/development harness؛ web isolated على `5101`، والخدمات الأصلية `5001/5002` محفوظة. لا تُسجّل أي JWT أو secret. |
+| نقطة البداية | **مغلقة ومتحققة** | `HEAD=origin/main=17acdc0269f209b2f55e300f9fb5208912433a16`; إصلاح planner السابق مدفوع. التغييرات tracked الحالية هي PhaseExecutor inversion واختباراته وledger؛ الملفات `web/.joe-live-vite.config.mjs` و`web/pnpm-lock.yaml` و`web/pnpm-workspace.yaml` untracked ممنوعة من staging. |
+| حكم Claude الملزم | **مطبّق محلياً قبل الدفع** | Claude `5392063947` رفض whitelist لـ`auto_tester` وأمر بالانعكاس key-driven؛ census/classification معتمدان في `5392547500` و`5392550337`، والـack المنشور `5392579208`. |
+| PhaseExecutor census | **مقاس ومعتمد** | AST raw census = 44 تعريفاً في `5392133028`، وتصنيف opt-in/opt-out في `5392145622`؛ Claude اعتمد inversion ومبررات opt-out والحارس الدائم. |
+| PhaseExecutor mutation | **مقاس قبل/بعد** | raw `5392703919`: إعادة name gate القديم أسقطت `auto_tester` و`performance_profile` و`qzzworp_stub` و`ls` (4 failures، `MUTATION_EXIT:1`)، ثم أُعيد inversion approved وتحقق `RESTORE_CHECK:PASS`. |
+| focused path contracts | **أخضر قبل الدفع** | launcher + auto-tester + ai-write-file + observability = 4 suites، 96 tests، `FOCUSED_AFTER_RESTORE_EXIT:0`؛ logs `/tmp/joe-focused-after-mutation-restore-20260824T0845.log` و`/tmp/joe-focused-path-contract-suite-20260824T0838-corrected.log`. |
+| canonical gate | **أخضر قبل الدفع** | `GATE_TSC_EXIT:0`، `GATE_WEB_TSC_EXIT:0`، `GATE_API_BUILD_EXIT:0`، `GATE_WEB_BUILD_EXIT:0`، `GATE_JEST_EXIT:0`، 22/22 batches، 257 suites، 4205 tests، `GATE:PASS`؛ raw `/tmp/full-gate-p01-phaseexecutor-inversion-20260824T0840.log` ونشر platform/markers في PR comment `5392770390`. |
+| P01 الحي | **مفتوح، لا قبول بعد** | آخر fresh run `6a8be463f181b88de4332704` أثبت planner، scaffold، Vite، Cairo assets، Browser QA `97/100` وPhase 1، ثم توقف Phase 2 عند ENOENT لمسار `FocusBoard/src/components/Task.jsx` تحت workspace root؛ raw/diagnosis `5391957513`/`5391963572`. بعد الدفع يجب rerun مرئي ببصمة SHA جديدة يثبت delivery وCRUD وreload/localStorage وCSV و`finalVerified=true`; لا Prompt 02 ولا W50. |
+| التشغيل المعزول | **محفوظ محلياً** | API isolated PID `529449` على `5102` بوضع JSON/offline/development harness، وweb isolated على `5101` (PID `522631` عند آخر قياس)؛ الخدمات الأصلية `5001/5002` محفوظة. عند إعادة التشغيل يجب نسخ `api/dist/index.js` و`api/assets/fonts/*` إلى runtime؛ لا تُسجّل JWT أو secret. |
 | ترتيب العمل | **ملزم** | لا Prompt 02 ولا W50 قبل fresh P01 حيّ ناجح مع delivery/direct UI evidence؛ W50 يبقى آخر مهمة في القائمة. |
 
-أدلة هذه الدفعة منشورة على PR #82: raw mutations `5391127327`، raw gate failure `5391168208`، diagnosis `5391171388`، وإعلان نطاق إصلاح regression `5391274600`. أول محاولة gate من `api/` بـ`EXIT=127` كانت خطأ working-directory فقط، ولم تُحسب بوابة؛ المحاولة المصححة من جذر المستودع هي التي حُكم عليها بـ`GATE:PASS`.
+أدلة دفعة PhaseExecutor منشورة على PR #82: ruling `5392063947`، raw census `5392133028`، classification `5392145622`، approvals `5392547500`/`5392550337`، ack `5392579208`، focused diagnoses `5392673043`/`5392685096`، mutation plan/raw/diagnosis `5392694189`/`5392703919`/`5392706637`، وraw canonical gate مع platform `5392770390`. البوابات المحلية خضراء، لكن الدفع والجولة الحية الجديدة لم يُنفّذا بعد.
 
 ## دين Claude 199 — A-GUARD-COMMENT-IS-A-MEASUREMENT
 
@@ -64,6 +64,7 @@
 
 | المعرّف | المهمة | الحالة | معيار الإغلاق |
 |---|---|---|---|
+| P01-PATH | ربط مفاتيح المسارات العامة بـruntime artifact بعد builder ومنع ENOENT في AutoTester | **معتمد، منفذ محلياً، والبوابات خضراء؛ الدفع والجولة الحية مطلوبان** | إزالة name gate، opt-out مسبب inline، census guard من registry، regressions auto_tester/traversal/ai_write_file/performance_profile/qzzworp/ls، focused 4/96، API TSC=0، canonical 22/22 و257/4205 و`GATE:PASS`؛ بعد الدفع rerun P01 المرئي فقط |
 | 037 | دليل إصلاح مهيكل عند `request_fidelity_mismatch`: تمرير `repairKind: regenerate_engine` من الأداة إلى self-fix | **منجز ومدفوع في `02a8cf9a`؛ الجولة الحية التالية تخص L4** | فصل `regenerate_engine` بلا `repairFile` عن `code_fix` ذي الملف المقيّد، regression أخضر، `tsc = 0`، حزمة Jest كاملة، دفع إلى `main`، ثم جولة حية |
 | L4 | قبول Level 4 — WeatherGo عبر 25+ جولة واختبار مستقل | **مفتوحة / معلّقة بقرار نطاق المالك بعد الجولة 20** | الجولة 20 أثبتت أن `react_project` لا ينتج TypeScript إطلاقاً (`0` ورود لـ`.tsx` في `ReactProjectTool.ts`) ويعلن ذلك عبر `UNMET`، بينما البرومبت القانوني يطلب `React + TypeScript + Vite`. الخياران المقاسان: اكتساب دعم TypeScript فعلياً (قوالب `.tsx` و`tsconfig` وتبعيات الأنواع وبوابة `tsc`) أو تعديل معيار القبول/استثناء TypeScript صراحةً؛ لا إصلاح التفافي، ولا لمس `WEATHER_FEATURE_RULES` أو artifact WeatherGo قبل القرار |
 | 038 | تصحيح ترتيب نية المشروع بعد الجولة الحية: فصل البناء الجديد عن تعديل/استئناف مشروع قائم | **منجز ومدفوع في `83683781`؛ discovery الحي أخضر** | البناء الجديد لا يُحجب بمخلفات workspace ولا يطابق اسماً قديماً صامتاً؛ الاستئناف فقط يطابق هدفاً قائماً؛ regressions للحالات الأربع والخامسة للنص الحي؛ TSC = 0، suite Jest الكاملة = 0؛ جولة حية أثبتت `mode=greenfield` مع مرشحين اثنين |
@@ -91,8 +92,8 @@
 | 035 | حارس وفاء القصد | **منجز ومدفوع** | حارس `ReactProjectTool` و`ProjectPipelineTool` يمنعان تسليم brochure عند طلب weather |
 | 036 | late-binding لـ `deploy_project` | **منجز ومدفوع** | سجل late-binding موحّد، توريث `projectPath` من artifact، وحواجز العقود الناقصة |
 | 037 | `regenerate_engine` المهيكل | **منجز ومدفوع (`02a8cf9a`)** | ReactProjectTool → PhaseExecutor whitelist → RepairTicket → SelfFixService، مع توقف SelfFixExecutionService بلا أداة ملفية؛ regressions وTSC وJest الكاملة خضراء |
-| GATE | بوابات الجودة قبل كل دفع | **آخر pre-push gate أخضر لإصلاح planner** | focused P01 بعد repair = 15 suites/348 tests؛ API TSC=0؛ web type-check/build=0؛ canonical full gate من جذر المستودع = 22/22 دفعة، 257 suite، 4199 tests، كل دفعة `EXIT 0`، `GATE:PASS`، log `/tmp/full-gate-p01-planner-repair-final-prepush-20260824T060300Z.log`; لا دفع بعد هذا القياس حتى تحديث السجل |
-| LIVE | التحقق الحي | **P01 ما زال مفتوحاً — rerun حي بعد push مطلوب** | الجولة الجديدة النظيفة وصلت إلى التخطيط فقط وتوقفت عندما أُسقط `react_project` مع peer `file_edit` ناقص `filename`; هذا العيب عولج في المصدر واختُبر محلياً، لكن لا توجد بعد جولة browser جديدة على SHA المدفوع تثبت execution/delivery أو UI/quality. بعد الدفع: rebuild API، مطابقة `JOE_BUILD_SHA`، Guest/New Chat، نفس FocusBoard prompt، ثم دليل delivery وfont/no-404 وterminal/browser watcher وquality وreload/CSV؛ لا تعديل يدوي للناتج |
+| GATE | بوابات الجودة قبل كل دفع | **آخر gate أخضر للإصلاح الحالي** | focused path contracts = 4 suites/96 tests، API TSC=0، web TSC/build=0؛ canonical full gate من جذر المستودع = 22/22 دفعة، 257 suite، 4205 tests، كل دفعة `EXIT 0`، `GATE:PASS`، log `/tmp/full-gate-p01-phaseexecutor-inversion-20260824T0840.log`؛ يجب إعادة قراءة PR #82 قبل commit/push |
+| LIVE | التحقق الحي | **P01 ما زال مفتوحاً — rerun حي بعد push مطلوب** | العيب الحالي عولج key-driven محلياً وثبتت regressions، لكن لا توجد جولة browser جديدة على SHA المدفوع تثبت execution/delivery أو UI/quality. بعد الدفع: rebuild API، نسخ bundle وfonts إلى harness، مطابقة `JOE_BUILD_SHA`، Guest/New Chat، نفس FocusBoard prompt، ثم دليل delivery وfont/no-404 وterminal/browser watcher وCRUD/reload/CSV؛ لا تعديل يدوي للناتج ولا Prompt 02/W50 |
 | 038-REG | regressions ترتيب نية المشروع | **أخضر بالكامل** | الحالات القائمة + regression خامس يثبت عبارة `existing Joe app shell contract`؛ 8 suites/243 tests مستهدفة خضراء، وsuite الـ22 دفعة خضراء قبل الدفع؛ لا اختيار المرشح الأول |
 | LIVE-EVIDENCE | الدليل المزدوج للجولة الحية | **خيط A مثبت باختباري A1/A2؛ الجولة الحية الجديدة مطلوبة** | `live-evidence-037-browser-raw.md` و`live-evidence-038-browser-raw.md` و`live-evidence-039-raw.md` + تعليق دليل خام ثم تشخيص منفصل؛ A1 يثبت brochure → `request_fidelity_mismatch` عند عقد ReactProjectTool، وA2 يثبت مرور WeatherGo الحقيقي |
 | UI-ACCENT-INK | إصلاح حبر الزرين ذوي الخلفية المتغيرة وفق Claude 192، مع حارس السطح الشفاف | **التعديل المحلي منفذ؛ القياسات الحية للشفافية والبوابات والدفع ما زالت مطلوبة** | تحوّل :3659 و:3861 إلى `var(--joe-on-accent, #fff)` فقط؛ فرعا `#22c55e` و`#ef4444` لا يُمسّ؛ regression يمر ويثبت أن إعادة الحبر القديم تحمر؛ لا إصلاح تلقائي للمواضع الشفافة قبل قياس الوضعين |

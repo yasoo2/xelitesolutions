@@ -1,10 +1,21 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { applyPhaseExecutionEvidence, inheritRuntimeProjectArguments, reactProjectServerFallback, recoverMissingNpmLauncher } from '../modules/tools/definitions/PhaseExecutorTool';
-import { ShellExecuteTool } from '../modules/tools/definitions/SystemTools';
+import {
+    applyPhaseExecutionEvidence,
+    inheritRuntimeProjectArguments,
+    mapRuntimeArtifactSourceArguments,
+    reactProjectServerFallback,
+    recoverMissingNpmLauncher,
+    RUNTIME_ARTIFACT_SOURCE_KEYS,
+    RUNTIME_ARTIFACT_SOURCE_ARRAY_KEYS,
+    RUNTIME_LOGICAL_SOURCE_TOOLS,
+} from '../modules/tools/definitions/PhaseExecutorTool';
+import { LsTool, ShellExecuteTool } from '../modules/tools/definitions/SystemTools';
 import { executionEngine } from '../kernel/ExecutionEngine';
 import { workspaceService } from '../modules/services/WorkspaceService';
+import { resolveToolPath } from '../modules/tools/utils';
+import { tools } from '../modules/tools/registry';
 
 describe('PhaseExecutor manifest-aware npm launcher recovery', () => {
     it('uses the discovery-selected root for project_run only when the plan has no explicit location', () => {
@@ -198,7 +209,7 @@ describe('PhaseExecutor manifest-aware npm launcher recovery', () => {
 
             expect(planned.path).toBe('/workspace/react-weathergo-a7c8');
             expect(activeRootSpy).not.toHaveBeenCalled();
-            expect(logs.join('\\n')).toContain('generic_tool: normalized conceptual path');
+            expect(logs.join('\\n')).toContain('generic_tool: mapped conceptual path onto runtime-bound artifact');
         } finally {
             activeRootSpy.mockRestore();
         }
@@ -251,6 +262,141 @@ describe('PhaseExecutor manifest-aware npm launcher recovery', () => {
         const absolute = { filePath: '/tmp/not-an-artifact/App.jsx' };
         inheritRuntimeProjectArguments('test_generator', absolute, context);
         expect(absolute.filePath).toBe('/tmp/not-an-artifact/App.jsx');
+    });
+
+    it('rebases auto_tester conceptual files into the runtime-bound artifact child', () => {
+        const context = {
+            projectRoot: '/workspace/react-focusboard-b32d2ab4',
+            projectName: 'FocusBoard',
+            projectRootRuntimeBound: true,
+        };
+        const planned: Record<string, any> = {
+            files: ['../FocusBoard/src/components/Task.jsx'],
+        };
+        const logs: string[] = [];
+
+        inheritRuntimeProjectArguments('auto_tester', planned, context, logs);
+
+        expect(planned.files).toEqual([
+            path.join(context.projectRoot, 'src', 'components', 'Task.jsx'),
+        ]);
+        expect(logs.join('\\n')).toContain('auto_tester: mapped conceptual files');
+    });
+
+    it('keeps unrelated traversal unresolved and proves the owning resolver refuses it', () => {
+        const context = {
+            projectRoot: '/workspace/react-focusboard-b32d2ab4',
+            projectName: 'FocusBoard',
+            projectRootRuntimeBound: true,
+        };
+        const planned: Record<string, any> = {
+            files: ['../other-project/src/Task.jsx'],
+        };
+
+        inheritRuntimeProjectArguments('auto_tester', planned, context);
+
+        expect(planned.files[0]).toBe('../other-project/src/Task.jsx');
+        const activeRootSpy = jest.spyOn(workspaceService, 'getActiveRoot').mockReturnValue(workspaceRoot);
+        try {
+            expect(() => resolveToolPath(planned.files[0], { workspaceId: 'workspace-traversal' }))
+                .toThrow(/path_outside_workspace:/);
+        } finally {
+            activeRootSpy.mockRestore();
+        }
+    });
+
+    it('preserves ai_write_file logical workspace-relative paths as an explicit opt-out', () => {
+        const context = {
+            projectRoot: '/workspace/react-focusboard-b32d2ab4',
+            projectName: 'FocusBoard',
+            projectRootRuntimeBound: true,
+        };
+        const planned: Record<string, any> = { path: 'FocusBoard/src/App.jsx' };
+        const logs: string[] = [];
+
+        mapRuntimeArtifactSourceArguments('ai_write_file', planned, context, logs);
+
+        expect(RUNTIME_LOGICAL_SOURCE_TOOLS.has('ai_write_file')).toBe(true);
+        expect(planned.path).toBe('FocusBoard/src/App.jsx');
+        expect(logs).toEqual([]);
+    });
+
+    it('uses path-key default binding for real and invented tool names', () => {
+        const context = {
+            projectRoot: '/workspace/react-focusboard-b32d2ab4',
+            projectName: 'FocusBoard',
+            projectRootRuntimeBound: true,
+        };
+        const performanceInput: Record<string, any> = { filePath: '../FocusBoard/src/App.jsx' };
+        mapRuntimeArtifactSourceArguments('performance_profile', performanceInput, context);
+        expect(performanceInput.filePath).toBe(path.join(context.projectRoot, 'src', 'App.jsx'));
+
+        const qzzworpSchema = { type: 'object', properties: { filePath: { type: 'string' } } };
+        const inventedInput: Record<string, any> = { filePath: '../FocusBoard/src/Task.jsx' };
+        mapRuntimeArtifactSourceArguments('qzzworp_stub', inventedInput, context);
+
+        expect(Object.keys(qzzworpSchema.properties)).toEqual(['filePath']);
+        expect(RUNTIME_LOGICAL_SOURCE_TOOLS.has('qzzworp_stub')).toBe(false);
+        expect(inventedInput.filePath).toBe(path.join(context.projectRoot, 'src', 'Task.jsx'));
+    });
+
+    it('proves an old name-gated discovery path differs from the key-driven ls result', async () => {
+        const runtimeRoot = path.join(workspaceRoot, 'react-focusboard-live');
+        fs.mkdirSync(path.join(workspaceRoot, 'FocusBoard'), { recursive: true });
+        fs.writeFileSync(path.join(workspaceRoot, 'FocusBoard', 'workspace-marker.txt'), 'workspace');
+        fs.mkdirSync(runtimeRoot, { recursive: true });
+        fs.writeFileSync(path.join(runtimeRoot, 'runtime-marker.txt'), 'runtime');
+        const activeRootSpy = jest.spyOn(workspaceService, 'getActiveRoot').mockReturnValue(workspaceRoot);
+        const context = {
+            projectRoot: runtimeRoot,
+            projectName: 'FocusBoard',
+            projectRootRuntimeBound: true,
+            workspaceId: 'workspace-ls-proof',
+        };
+        const ls = new LsTool();
+
+        try {
+            const before = { path: 'FocusBoard' };
+            const beforeResolved = resolveToolPath(before.path, { workspaceId: context.workspaceId });
+            const beforeResult: any = await ls.execute(before, { workspaceId: context.workspaceId });
+
+            const after = { path: 'FocusBoard' };
+            inheritRuntimeProjectArguments('ls', after, context);
+            const afterResolved = after.path;
+            const afterResult: any = await ls.execute(after, { workspaceId: context.workspaceId });
+
+            expect(beforeResolved).toBe(path.join(workspaceRoot, 'FocusBoard'));
+            expect(beforeResult.ok).toBe(true);
+            expect(beforeResult.output.entries).toContain('workspace-marker.txt');
+            expect(afterResolved).toBe(runtimeRoot);
+            expect(afterResult.ok).toBe(true);
+            expect(afterResult.output.entries).toContain('runtime-marker.txt');
+            expect(afterResult.output.entries).not.toContain('workspace-marker.txt');
+        } finally {
+            activeRootSpy.mockRestore();
+        }
+    });
+
+    it('keeps every registered eleven-key path declaration classified by default key binding or opt-out', () => {
+        const censusKeys = new Set([
+            'path', 'filename', 'filePath', 'sourceFile', 'targetPath',
+            'schemaPath', 'databasePath', 'files', 'filePaths', 'sourceFiles', 'paths',
+        ]);
+        const unclassified: string[] = [];
+
+        for (const tool of tools) {
+            const properties = (tool as any)?.inputSchema?.properties;
+            if (!properties || typeof properties !== 'object') continue;
+            for (const key of Object.keys(properties)) {
+                if (!censusKeys.has(key)) continue;
+                const classified = RUNTIME_LOGICAL_SOURCE_TOOLS.has(tool.name)
+                    || RUNTIME_ARTIFACT_SOURCE_KEYS.has(key)
+                    || RUNTIME_ARTIFACT_SOURCE_ARRAY_KEYS.has(key);
+                if (!classified) unclassified.push(`${tool.name}.${key}`);
+            }
+        }
+
+        expect(unclassified).toEqual([]);
     });
 
     it('routes an explicitly declared npm dev server through project_run', () => {
