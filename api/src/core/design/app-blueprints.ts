@@ -1676,7 +1676,32 @@ export function derivedColumns(requestRaw: string): DerivedField[] | null {
      *  do it, and a noun means a declaration only when it is introduced —
      *  by a colon, or by «هي»/`are`/`include`.
      */
-    const RECORDING_VERB = /(?:^|[\s،:؛(])(?:أسجل|اسجل|سجّل|أضيف|اضيف|أدخل|ادخل|أدوّن|ادون|أتابع|اتابع|أدير|ادير|أنظم|انظم|فيها|فيه|تحتوي على|يحتوي على|record|track|log(?!\s+of\b)|manage|organi[sz]e)(?=$|[\s،:؛)])/iu;
+    /**
+     *  A VERB WAS LEARNED IN ONE PERSON.
+     *
+     *  He can write the verb about himself — «بدي جدول أتابع فيه الطلبات
+     *  والمبلغ والتاريخ» — or about the thing he is asking for — «بدي
+     *  برنامج يتابع الطلبات والمبلغ والتاريخ». Same verb, same request,
+     *  same three columns. Measured, the first gave three columns and the
+     *  second gave none: the list held «أتابع» and «اتابع» and stopped.
+     *
+     *  This is not new vocabulary and must not become any. Arabic builds
+     *  the imperfect by putting a person on the front of a stem — أ for
+     *  «I», ي for «he», ت for «she», ن for «we» — so the stems already on
+     *  the list are conjugated here instead of being written out four
+     *  times each and drifting apart the first time one of them is edited.
+     *
+     *  «يسجل» hid this for a while by accident: it contains «سجل», which
+     *  is a container NOUN, so it matched RECORD_CONTAINER and took the
+     *  other branch. «يتابع» and «يدير» contain no such noun and returned
+     *  nothing at all.
+     */
+    const RECORDING_STEM = ['سجل', 'سجّل', 'ضيف', 'دخل', 'دوّن', 'دون', 'تابع', 'دير', 'نظم'];
+    const CONJUGATED = RECORDING_STEM.map(s => '[أاينت]' + s).join('|');
+    const RECORDING_VERB = new RegExp(
+        '(?:^|[\\s،:؛(])(?:' + CONJUGATED + '|فيها|فيه|[تي]حتوي على|record|track|log(?!\\s+of\\b)|manage|organi[sz]e)(?=$|[\\s،:؛)])',
+        'iu',
+    );
     const DECLARED_LIST = /(?:^|[\s،:؛(])(?:الحقول|الأعمدة|الاعمدة)(?=$|[\s،:؛)])\s*(?::|：|هي|include(?:s)?\b)|(?:^|[\s,;:(])(?:\bcolumns?\b|\bfields?\b)(?=$|[\s,;:)])\s*(?::|：|are\b|include(?:s)?\b)/iu;
     const opener = RECORDING_VERB.exec(request) || DECLARED_LIST.exec(request);
     /**
