@@ -1342,6 +1342,32 @@ export interface StatedRule { text: string; field?: string; min?: number; minExc
  *  apply must be SAID rather than silently lost — that is the whole of
  *  the difference between a report and a receipt.
  */
+/**
+ *  A COLUMN IS NOT THE WORD FOR THE THING THAT HOLDS IT.
+ *
+ *  Lowering the floor to two — because he named the container — let a
+ *  QUESTION through:
+ *
+ *      «ما الفرق بين الجدول والقائمة والسجل؟»
+ *        → columns: «القائمة», «السجل»
+ *
+ *  Three container words, compared with each other, read as a schema of
+ *  two. Nobody puts a column called «الجدول» inside his جدول, and that is
+ *  the whole rule — no list of question words, no punctuation trick, and
+ *  nothing that would break «…وهل انتهت؟», a real build request that ends
+ *  in a question mark because his last column asks one.
+ *
+ *  It reads the same RECORD_CONTAINER the rest of this file reads.
+ */
+function notAContainerItself(label: string): boolean {
+    const bare = String(label || '').trim().replace(/^ال(?=[ء-ي])/u, '');
+    if (!bare) return false;
+    const hit = RECORD_CONTAINER.exec(bare);
+    //  Only when the container word IS the whole label: «جدول المهام» is a
+    //  name he chose, «الجدول» on its own is the word for the box.
+    return !(hit && hit[0].length === bare.length);
+}
+
 export function statedRules(requestRaw: string): StatedRule[] {
     const request = String(requestRaw || '');
     const out: StatedRule[] = [];
@@ -1607,8 +1633,30 @@ export function derivedColumns(requestRaw: string): DerivedField[] | null {
         //
         //  The rule is removed first; what remains must then be a list of
         //  definite names, which is what keeps «قهوة، أدوات، حلويات» out.
-        const names = items.filter(isAName);
-        if (names.length < 3 || names.length > 10) return null;
+        const names = items.filter(isAName).filter(notAContainerItself);
+        /**
+         *  TWO NAMED COLUMNS ARE A TABLE WHEN HE NAMED THE TABLE.
+         *
+         *  Live round, and the whole shape of the failure:
+         *
+         *      «بدي جدول للكتب فيه العنوان والسعر»
+         *      → derivedColumns: 0 columns
+         *      → template classification: page=generic · app=none
+         *      → «I don't know this app type and have no ready engine»
+         *      → Navbar · Hero · Features · Steps · FAQ · Contact
+         *
+         *  He named a container and two columns and received a brochure.
+         *  The threshold was three, and three is the right floor for a bare
+         *  run of nouns in prose — «الرياض، جدة، الدمام» must not become a
+         *  schema. But he did not write a bare run: he wrote «جدول» first.
+         *
+         *  With a container named, the ambiguity that the third item was
+         *  guarding against is gone, and two definite names are a table. One
+         *  is still refused: a single noun after «جدول» is its subject, not
+         *  its column — «جدول المبيعات» names no columns at all.
+         */
+        const floor = holder ? 2 : 3;
+        if (names.length < floor || names.length > 10) return null;
         if (!everyItemIsADefiniteName(names)) return null;
         //  THE LINK THAT WAS NEVER JOINED.
         //
@@ -1637,10 +1685,22 @@ export function derivedColumns(requestRaw: string): DerivedField[] | null {
             .replace(/^(?:ال)?كل\s+/u, '')
             .replace(/^[:：]\s*/u, '').trim())
         .filter(p => p.length >= 2 && p.length <= 32);
-    if (parts.length < 3 || parts.length > 10) return null;
+    /**
+     *  THE SAME FLOOR, A THIRD TIME — AND THIS IS THE ONE THAT RAN.
+     *
+     *  «بدي جدول للكتب فيه العنوان والسعر» never reached the shape path at
+     *  all: «فيه» is itself a recording opener, so this branch handled it,
+     *  and its own floor of three refused two columns. Two copies of the
+     *  rule were raised and the third — the one actually taken — was not.
+     *
+     *  Same reasoning as the others: he named a container, so two definite
+     *  names are his table. One is a subject, not a column.
+     */
+    const namesFloor = RECORD_CONTAINER.test(request) ? 2 : 3;
+    if (parts.length < namesFloor || parts.length > 10) return null;
     //  A rule that rode in on the end of the list is not a column.
-    const named = parts.filter(isAName);
-    if (named.length < 3) return null;
+    const named = parts.filter(isAName).filter(notAContainerItself);
+    if (named.length < namesFloor) return null;
     //  THE LINK THAT WAS NEVER JOINED.
     //
     //  statedBound reads the condition. DerivedField carries a bound.
@@ -1672,7 +1732,15 @@ function fieldsFromLabels(parts: string[]): DerivedField[] | null {
             : undefined;
         out.push({ label, key: `${role}${n}`, type, role, options });
     }
-    return out.length >= 3 ? out : null;
+    //  THE SAME FLOOR, WRITTEN TWICE — AND ONE COPY WAS NOT MOVED.
+    //
+    //  The caller was raised to two when he names the container, and this
+    //  still refused two, so «بدي جدول للكتب فيه العنوان والسعر» kept
+    //  coming back empty and kept becoming a brochure. A rule written in
+    //  two places is a rule that will be changed in one.
+    //
+    //  Two is the floor here: one label is a subject, not a table.
+    return out.length >= 2 ? out : null;
 }
 
 /**
