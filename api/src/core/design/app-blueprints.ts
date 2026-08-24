@@ -1308,7 +1308,77 @@ const TYPE_MARKS: Array<[RegExp, DerivedRole, FieldType]> = [
     [/ملاحظ|وصف|تفاصيل|شرح|تعليق|\bnote\b|\bdescription\b|\bdetails\b|\bcomment\b/iu, 'note', 'textarea'],
 ];
 
-export interface DerivedField { label: string; key: string; type: FieldType; role: DerivedRole; options?: string[] }
+export interface DerivedField { label: string; key: string; type: FieldType; role: DerivedRole; options?: string[]; min?: number }
+
+/** A condition he stated, and the field it is about. */
+export interface StatedRule { text: string; field?: string; min?: number }
+
+/**
+ *  A RULE THAT IS NEITHER KEPT NOR CONFESSED.
+ *
+ *  Live round on his machine:
+ *
+ *      «بدي جدول مبيعات فيه اسم الصنف والكمية والسعر، والسعر لا يقبل صفر»
+ *
+ *  Three columns arrived, correctly, and the condition vanished. Measured
+ *  in the generated project:
+ *
+ *      { key: 'money1', label: 'السعر', type: 'number', required: true }
+ *          — no min, no bound of any kind
+ *      RecordsApp.jsx:28
+ *          if (field.type !== 'number' || field.min === undefined) return false;
+ *
+ *  The app SHIPS the guard. Nothing ever fills the value it reads, so
+ *  zero is accepted — the exact thing he forbade. And the ledger said
+ *  «3 of what I know how to prove is proven», naming three columns and
+ *  never the rule, so the report was true and useless at the same time.
+ *
+ *  isAName already RECOGNISES the sentence as a rule — that is how it
+ *  keeps «والسعر لا يقبل صفر» out of the column list. It recognised it
+ *  and dropped it on the floor.
+ *
+ *  So a rule is read, and what can be turned into a bound is turned into
+ *  one. What cannot is still returned, because a condition Joe cannot
+ *  apply must be SAID rather than silently lost — that is the whole of
+ *  the difference between a report and a receipt.
+ */
+export function statedRules(requestRaw: string): StatedRule[] {
+    const request = String(requestRaw || '');
+    const out: StatedRule[] = [];
+    //  Rules are stated as their own clause, after a comma or «و».
+    for (const raw of request.split(/[،,؛;.\n]/)) {
+        const clause = raw.trim().replace(/^و\s*/u, '').trim();
+        if (!clause || !READS_AS_A_RULE.test(clause)) continue;
+        const rule: StatedRule = { text: clause };
+        //  Which column is it about? The clause names it, and the name is
+        //  the definite noun it opens with — no vocabulary of field names.
+        const named = clause.match(/^(?:ال[ء-ي]+|[A-Za-z][A-Za-z0-9_]*)/u);
+        if (named) rule.field = named[0];
+        //  “does not accept zero” and “greater than N” are the same shape:
+        //  a number the value must exceed. Read the number he wrote; the
+        //  word for zero is read as the number it is.
+        const digits = clause.match(/(-?\d+(?:\.\d+)?)/u);
+        const saysZero = /(?:^|\s)(?:صفر|zero)(?:$|\s)/iu.test(clause);
+        const floor = digits ? Number(digits[1]) : (saysZero ? 0 : NaN);
+        if (Number.isFinite(floor)) rule.min = floor + 1;
+        out.push(rule);
+    }
+    return out;
+}
+
+/** Attach every readable bound to the field it names. Unreadable rules stay unattached. */
+export function applyStatedRules(fields: DerivedField[], rules: StatedRule[]): { fields: DerivedField[]; unapplied: StatedRule[] } {
+    const unapplied: StatedRule[] = [];
+    const next = fields.map(f => ({ ...f }));
+    for (const rule of rules) {
+        if (rule.min === undefined || !rule.field) { unapplied.push(rule); continue; }
+        //  His own label, matched as he wrote it — «السعر» is «السعر».
+        const target = next.find(f => f.label === rule.field || f.label.includes(String(rule.field)) || String(rule.field).includes(f.label));
+        if (!target || target.type !== 'number') { unapplied.push(rule); continue; }
+        target.min = rule.min;
+    }
+    return { fields: next, unapplied };
+}
 
 /** The columns a request enumerates, in his words and his order. */
 /**
