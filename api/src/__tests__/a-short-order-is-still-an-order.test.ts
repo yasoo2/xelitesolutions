@@ -63,3 +63,40 @@ describe('length no longer decides where a request goes', () => {
         expect(block).not.toMatch(/\bincludes\(\s*['"]زيد/);
     });
 });
+
+describe('and the thing in front of him decides what his word means', () => {
+    /**
+     *  Straight after the fast path stopped sending short orders to chat,
+     *  the same sentence went the other way and reached for a DATABASE:
+     *
+     *      exec=sqlite3 books.db 'CREATE TABLE IF NOT EXISTS books (…'
+     *      Stopped at step «Check if SQLite is installed on the system»
+     *
+     *  «عمود» is a column in a rendered table and a column in SQL. The
+     *  word cannot say which; what he has open can.
+     */
+    it('a column order with a project open is routed to that project', () => {
+        const at = SOURCE.indexOf('THE THING IN FRONT OF HIM DECIDES');
+        expect(at).toBeGreaterThan(0);
+        const block = SOURCE.slice(at, at + 2200);
+        expect(block).toContain("tool: 'project_edit'");
+        expect(block).toContain('joeProjects');
+    });
+
+    it('…and it decides from what is open, never from a vocabulary', () => {
+        //  A list naming sqlite, react, vite or any framework would be the
+        //  fourth law broken: the next tool he uses would not be on it.
+        const at = SOURCE.indexOf('THE THING IN FRONT OF HIM DECIDES');
+        const block = SOURCE.slice(at, at + 2200);
+        const code = block.slice(block.indexOf('if (readsAsAnOrder)'));
+        expect(code).not.toMatch(/['"](?:sqlite|mysql|postgres|react|vite|next)['"]/i);
+    });
+
+    it('…and with nothing open the request keeps its old road', () => {
+        //  The negative: with no project, «add a column» really might be
+        //  about a database, and this must not hijack it.
+        const at = SOURCE.indexOf('THE THING IN FRONT OF HIM DECIDES');
+        const block = SOURCE.slice(at, at + 2200);
+        expect(block).toMatch(/if \(open\?\.dir/);
+    });
+});

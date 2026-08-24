@@ -2500,6 +2500,50 @@ Rules:
             readsAsAnOrder = (edit?.add?.length || 0) > 0 || (edit?.remove?.length || 0) > 0;
         } catch { readsAsAnOrder = false; }
 
+        /**
+         *  THE THING IN FRONT OF HIM DECIDES WHAT HIS WORD MEANS.
+         *
+         *  Live round, straight after the fast path stopped sending short
+         *  orders to chat. He had a React book table on screen and typed
+         *  «زيد عمود المؤلف». Joe took it as an order this time — and then
+         *  went looking for a DATABASE:
+         *
+         *      exec=sqlite3 books.db 'CREATE TABLE IF NOT EXISTS books (…'
+         *      ERROR: 'sqlite3' is not recognized as an internal command
+         *      Stopped at step «Check if SQLite is installed on the system»
+         *
+         *  «عمود» is a column in a rendered table and a column in SQL, and
+         *  the word alone cannot say which. This is the Arabic trap the
+         *  contract names — «جدول» is a table and a schedule, «قائمة» is a
+         *  list and a menu — and the cure is never a longer word list. It
+         *  is CONTEXT: the man has a project open, its type is on record,
+         *  and a column added to what he is looking at is an edit of that
+         *  project. Nothing here reads the words «sqlite» or «react»; it
+         *  reads whether something of his is open.
+         *
+         *  If no project is open the request keeps its old road, because
+         *  then «add a column» really might be about a database.
+         */
+        if (readsAsAnOrder) {
+            const sid = String((context as any)?.sessionId || (intent as any)?.context?.sessionId || (intent as any)?.sessionId || '');
+            const open = ((global as any).joeProjects || {})[sid];
+            if (open?.dir && open?.type !== 'api') {
+                console.log(`[PlanningEngine] a column order with a project open → project_edit (${open.type})`);
+                return {
+                    id: `edit_${Date.now()}`,
+                    goal: intent.goal,
+                    steps: [{
+                        id: 'project_edit',
+                        description: `Surgical edit of the active project: ${intent.goal}`,
+                        tool: 'project_edit',
+                        args: { request: intent.goal },
+                        dependencies: [],
+                    }],
+                    reasoning: 'a column he asks for on the project already in front of him',
+                } as any;
+            }
+        }
+
         // [ELITE FAST-PATH] Direct answer for general questions or chat
         if (!readsAsAnOrder && ((intent as any).type === 'general' || (intent as any).type === 'chat' || intent.goal.length < 30)) {
             return {
