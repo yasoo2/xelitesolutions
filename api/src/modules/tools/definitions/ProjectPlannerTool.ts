@@ -1512,7 +1512,7 @@ Repeat the same compact phase shape for at least ${scope.minPhases} phases and n
                 const tool = String(task?.tool || '').toLowerCase();
                 if (!implementationTools.has(tool)) return false;
                 if (tool === 'scaffold_project') return scaffoldHasImplementationFile(task);
-                const target = String(task?.args?.path || task?.args?.filePath || task?.args?.targetPath || '').trim();
+                const target = String(task?.args?.path || task?.args?.filePath || task?.args?.filename || task?.args?.targetPath || '').trim();
                 return !isDocumentPath(target);
             }).length;
     }

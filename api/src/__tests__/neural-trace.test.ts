@@ -180,7 +180,7 @@ describe('the three defects behind the complaint are closed in the UI', () => {
         const view = read('components', 'NeuralTraceView.tsx');
         expect(view).toMatch(/className="jt-text" dir="auto"/);
         const ind = read('components', 'NeuralThinkingIndicator.tsx');
-        expect(ind).toMatch(/className="nc-line" dir="auto"/);
+        expect(ind).toMatch(/className="nc-roll"[^>]*dir="auto"/);
     });
 
     it('and a finished run always returns to idle, quiet mode or not', () => {

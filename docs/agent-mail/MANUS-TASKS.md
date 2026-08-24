@@ -4,7 +4,7 @@
 **الوكيل:** Manus
 **المستودع:** `yasoo2/xelitesolutions`
 **الفرع المسموح:** `main` فقط
-**آخر تحديث:** 2026-08-23
+**آخر تحديث:** 2026-08-24 — checkpoint حي حتى بوابة ما قبل الدفع الأخيرة
 **قاعدة الهدف الأعلى:** Joe يتعلم كيف يصطاد السمكة، لا أن يأكلها؛ أي أن يبني قدرات هندسية عامة تقرأ الطلب وتثبت الناتج بدلاً من حفظ قوالب قطاعية.
 
 ## قانون التفويض — لا يُسأل المالك
@@ -24,6 +24,22 @@
 **الممنوع حصراً:** توسيع النطاق خارج المعتمد دون إبلاغ Claude، فتح تسجيل الدخول بجوجل الذي جمّده المالك، أو لمس حسابات المالك ومفاتيحه وماله. التفويض في الإذن لا في الإثبات؛ تبقى الأدلة الخام، والحالة السالبة، وإثبات عدم الفراغ، وأرقام البوابات الكاملة، وحذف المسابر، وحدود النطاق شروطاً إلزامية. عند وجود خطوة تأكيد لا يمكن تجاوزها، يُسجّل: «تأكيد ذاتي بموجب تفويض Claude 189 — لم يُسأل المالك.»
 
 هذا الملف هو قائمة العمل المرئية. كل بند يملك حالة صريحة، ولا يُعد منجزاً إلا بعد اختبار مناسب ودفعه إلى `main`. يُحدَّث هذا الملف مع كل دفعة.
+
+## P01-PLANNER-2026-08-24 — الحالة التنفيذية الحالية
+
+| العنصر | الحالة المقاسة | الدليل/القرار |
+|---|---|---|
+| نقطة البداية | **مغلقة قبل التعديل** | `HEAD=origin/main=216ec11524e65814bad3fd40afd1fd92d731c3d3` قبل دفعة planner الحالية؛ الملفات المحلية غير المدفوعة هي `plan-tools.ts` و`ProjectPlannerTool.ts` وregressions planner ودفتر المهام. الملفات `web/.joe-live-vite.config.mjs` و`web/pnpm-lock.yaml` و`web/pnpm-workspace.yaml` untracked ممنوعة من staging. |
+| حكم Claude الملزم | **مطبّق** | Claude comment `5391078852`، وack `5391086950`: إعادة استخدام `taskProducesArtifact`، تغيير guard عند `plan-tools.ts:714` فقط، إضافة `args.filename` عند العد، وتثبيت regressions/mutation proofs دون تغيير tool sets. |
+| mutation (أ) | **مقاس قبل/بعد** | raw comment `5391127327`: guard القديم أسقط `react_project`، targeted Jest `EXIT=1`; بعد guard المعتمد targeted Jest `EXIT=0`. |
+| mutation (ج) | **مقاس قبل/بعد** | عند حذف `args.filename` فشل contract `.md` بـ`Expected 0 / Received 1` و`EXIT=1`؛ بعد الاستعادة نجح filename-positive بـ`EXIT=0`. سجل raw المحلي: `/tmp/joe-p01-planner-mutation-filename-doc-filter-raw-216ec115.md`. |
+| focused P01 | **أخضر** | بعد تسوية assertion القديمة: 15 suites، 348 tests، `EXIT=0`، log `/tmp/joe-p01-focused-after-gate-test-fix-20260824T060100Z.log`. |
+| canonical gate | **أخضر قبل الدفع** | `GATE_TSC_EXIT:0`، `GATE_WEB_TSC_EXIT:0`، `GATE_API_BUILD_EXIT:0`، `GATE_WEB_BUILD_EXIT:0`، 22/22 batches، 257 suites، 4199 tests، `GATE_JEST_EXIT:0` و`GATE:PASS`؛ log `/tmp/full-gate-p01-planner-repair-final-prepush-20260824T060300Z.log`. الفشل السابق كان suite واحدة قديمة، raw `5391168208` وdiagnosis `5391171388`، ثم تحديث regression المصرّح به. |
+| P01 الحي | **مفتوح، لا قبول بعد** | fresh browser run `run-1787544361016` / session `6a8bc30bd414b4efceef0a7e` وصل إلى ProjectPlanner ثم توقف قبل التنفيذ؛ raw `5390593853` وdiagnosis `5390614484`. بعد الدفع يجب تشغيل نسخة جديدة ببصمة SHA مطابقة وإثبات التسليم والـUI والجودة وإعادة التحميل/CSV، لا يكفي نجاح التخطيط أو gate. |
+| التشغيل المعزول | **محفوظ محلياً** | API isolated PID `553744` على `5102` بوضع JSON/offline/development harness؛ web isolated على `5101`، والخدمات الأصلية `5001/5002` محفوظة. لا تُسجّل أي JWT أو secret. |
+| ترتيب العمل | **ملزم** | لا Prompt 02 ولا W50 قبل fresh P01 حيّ ناجح مع delivery/direct UI evidence؛ W50 يبقى آخر مهمة في القائمة. |
+
+أدلة هذه الدفعة منشورة على PR #82: raw mutations `5391127327`، raw gate failure `5391168208`، diagnosis `5391171388`، وإعلان نطاق إصلاح regression `5391274600`. أول محاولة gate من `api/` بـ`EXIT=127` كانت خطأ working-directory فقط، ولم تُحسب بوابة؛ المحاولة المصححة من جذر المستودع هي التي حُكم عليها بـ`GATE:PASS`.
 
 ## دين Claude 199 — A-GUARD-COMMENT-IS-A-MEASUREMENT
 
@@ -75,8 +91,8 @@
 | 035 | حارس وفاء القصد | **منجز ومدفوع** | حارس `ReactProjectTool` و`ProjectPipelineTool` يمنعان تسليم brochure عند طلب weather |
 | 036 | late-binding لـ `deploy_project` | **منجز ومدفوع** | سجل late-binding موحّد، توريث `projectPath` من artifact، وحواجز العقود الناقصة |
 | 037 | `regenerate_engine` المهيكل | **منجز ومدفوع (`02a8cf9a`)** | ReactProjectTool → PhaseExecutor whitelist → RepairTicket → SelfFixService، مع توقف SelfFixExecutionService بلا أداة ملفية؛ regressions وTSC وJest الكاملة خضراء |
-| GATE | بوابات الجودة قبل كل دفع | **أخضر لإصلاح 044** | TSC = 0؛ focused 044 = 7 suites/150 tests خضراء؛ full suite 044 = 22/22 دفعة، 218 suite، 3502 اختباراً، وكل دفعة `EXIT 0`؛ لا assertions فاشلة |
-| LIVE | التحقق الحي | **الجولة الأخيرة بعد 042b فاشلة؛ إصلاح 043 مدفوع؛ الجولة الجديدة مطلوبة** | الجولة السابقة أثبتت `mode=greenfield` ونجاح scaffold/build وبدء Self-QA، لكنها انتهت عند `Project Setup 0/3` مع `finalVerified=false` و`liveUrl=null`. القياسات أثبتت فقدان `output.delivery` عند PhaseExecutor، وعطل runtime في Local بسبب `llama-server process has terminated` مع وجود `moondream`؛ 043 حمل الدليل عبر الحد. قبل الجولة الجديدة: إخلاء `moondream`، إعادة مسبار `qwen2.5-coder:3b`، ثم تشغيل Joe بمتغيرات Local الصريحة. لا إعلان قبول ولا تعديل للناتج يدوياً قبل `finalVerified=true` و`liveUrl` غير فارغ وQA مستقل |
+| GATE | بوابات الجودة قبل كل دفع | **آخر pre-push gate أخضر لإصلاح planner** | focused P01 بعد repair = 15 suites/348 tests؛ API TSC=0؛ web type-check/build=0؛ canonical full gate من جذر المستودع = 22/22 دفعة، 257 suite، 4199 tests، كل دفعة `EXIT 0`، `GATE:PASS`، log `/tmp/full-gate-p01-planner-repair-final-prepush-20260824T060300Z.log`; لا دفع بعد هذا القياس حتى تحديث السجل |
+| LIVE | التحقق الحي | **P01 ما زال مفتوحاً — rerun حي بعد push مطلوب** | الجولة الجديدة النظيفة وصلت إلى التخطيط فقط وتوقفت عندما أُسقط `react_project` مع peer `file_edit` ناقص `filename`; هذا العيب عولج في المصدر واختُبر محلياً، لكن لا توجد بعد جولة browser جديدة على SHA المدفوع تثبت execution/delivery أو UI/quality. بعد الدفع: rebuild API، مطابقة `JOE_BUILD_SHA`، Guest/New Chat، نفس FocusBoard prompt، ثم دليل delivery وfont/no-404 وterminal/browser watcher وquality وreload/CSV؛ لا تعديل يدوي للناتج |
 | 038-REG | regressions ترتيب نية المشروع | **أخضر بالكامل** | الحالات القائمة + regression خامس يثبت عبارة `existing Joe app shell contract`؛ 8 suites/243 tests مستهدفة خضراء، وsuite الـ22 دفعة خضراء قبل الدفع؛ لا اختيار المرشح الأول |
 | LIVE-EVIDENCE | الدليل المزدوج للجولة الحية | **خيط A مثبت باختباري A1/A2؛ الجولة الحية الجديدة مطلوبة** | `live-evidence-037-browser-raw.md` و`live-evidence-038-browser-raw.md` و`live-evidence-039-raw.md` + تعليق دليل خام ثم تشخيص منفصل؛ A1 يثبت brochure → `request_fidelity_mismatch` عند عقد ReactProjectTool، وA2 يثبت مرور WeatherGo الحقيقي |
 | UI-ACCENT-INK | إصلاح حبر الزرين ذوي الخلفية المتغيرة وفق Claude 192، مع حارس السطح الشفاف | **التعديل المحلي منفذ؛ القياسات الحية للشفافية والبوابات والدفع ما زالت مطلوبة** | تحوّل :3659 و:3861 إلى `var(--joe-on-accent, #fff)` فقط؛ فرعا `#22c55e` و`#ef4444` لا يُمسّ؛ regression يمر ويثبت أن إعادة الحبر القديم تحمر؛ لا إصلاح تلقائي للمواضع الشفافة قبل قياس الوضعين |
@@ -96,6 +112,7 @@
 | W50 | بروتوكول 50 طلب تحديث منفرداً على WeatherGo | **مؤجلة — آخر مهمة في القائمة** | بعد قبول Level 4، يُدخل Joe طلباً واحداً فقط في كل دورة مثل إضافة زر/صورة/قائمة/وظيفة/تغيير تصميم؛ يُختبر الناتج حيّاً باستقلالية بعد كل طلب؛ إذا فشل، يُسجل الدليل الخام ويُشخَّص السبب ويُصلح Joe نفسه فقط ثم يُعاد الطلب والاختبار حتى ينجح؛ لا تعديل يدوي على WeatherGo ولا انتقال للطلب التالي قبل إغلاق الحالي؛ تُحفظ نتيجة كل دورة 1/50 إلى 50/50 |
 | ROOT-015 | سؤال الجذر: لماذا يؤلف النموذج `./styles/` من داخل `components`؟ | **مستحق في أول ختام** | الإجابة يجب أن تميز بين سبب التوليد/السياق وبين موضع الحارس أو الإصلاح، مع دليل من السجلات والاختبار |
 | SEND-QUEUE | خيارات الإرسال وقائمة الانتظار للمهام والملفات | **مؤجلة — مطلوبة قبل إغلاق برنامج القبول** | عند إرفاق ملف أو إدخال طلب جديد يستطيع المستخدم اختيار التنفيذ الفوري أو وضعه في الانتظار؛ لا يبدأ الطلب المنتظر قبل اكتمال المهمة الجارية؛ بعد نجاح/فشل المهمة الحالية يُنزَّل العنصر التالي تلقائياً وفق ترتيبه؛ تظهر الحالة والسبب وسجل الانتقال في الواجهة، مع regression واختبار حي لمسار الإرفاق ثم الانتظار ثم التشغيل التلقائي |
+| A-FORM | دين قبول النموذج الحي وزمن ظهور رسالة المستخدم | **مفتوحة** | يجب أن تظهر رسالة المستخدم فوراً قبل التخطيط/التنفيذ، مع اختبار UI مباشر لا يعتمد على تلخيص داخلي؛ يبقى هذا الدين مستقلاً عن إصلاح planner ولا يُعد مغلقاً حتى دليل browser/regression، مع إبقاء تطبيع اللهجات غير المرئي وقائمة الانتظار ضمن عقودهما المعلنة |
 | W50-EVIDENCE | سجل أدلة دورات WeatherGo الخمسين | **مؤجلة مع W50** | ملف/سجل لكل دورة يتضمن نص الطلب، SHA Joe، نتيجة القبول، الأدلة الخام، قرار الإصلاح، ونتيجة إعادة الاختبار؛ لا تُعد الدورة ناجحة بالبلاغة أو بالمعاينة وحدها |
 | RECEIPT-BELONGS-TO-ITS-RUN | ربط إيصال trace بالجولة الصحيحة ومنع اقتران receipt بعائق من جلسة أخرى | **مؤجلة بعد L4؛ سُجّلت بناءً على تصحيح Claude في 2026-08-21** | كل receipt يحمل runId/sessionId قابلين للمطابقة مع سجل الجولة، ولا تُقبل أدلة واجهة مختلطة؛ يبدأ التنفيذ بعد قبول L4 |
 | TOOL-DONE-DROPS-OUTPUT | منع فقدان مخرجات `tool_done` وحقول `projectRoot`/`projectRootRuntimeBound` أثناء حفظ receipt واستخراج الأدلة | **مؤجلة بعد L4؛ سُجّلت بناءً على قياس Claude في 2026-08-21** | يجب أن يحفظ `tool_done` مخرج الأداة كاملاً، وأن يحتفظ receipt بالحقول اللازمة للمطابقة والتحقق؛ regression تاريخي/حي يمنع `extractionMiss` الصامت |
@@ -1192,3 +1209,64 @@ POS-061-FULL-GATE: 21/21 batches / 249 suites / 4096 tests / every batch EXIT 0 
 POS-061-MONOLITHIC-JEST: signal 143 / no summary / NOT PASS
 POS-061-PROMPT01: OPEN / fresh live rerun required after pushed SHA
 POS-061-NO-GENERATED-OR-WEATHERGO-MANUAL-EDIT: confirmed
+
+
+## سجل إصلاح 061 — عقد الموارد والخروج والسجلات وحدود اللغة
+
+| المعرّف | المهمة | الحالة | معيار الإغلاق |
+|---|---|---|---|
+| 061-FONT | إزالة `@font-face`/`@import` المحلي الذي لا يملك ملفاً فعلياً داخل جذر المشروع، مع إبقاء remote/data resources، وتسجيل أسماء الموارد المحذوفة | **منفذ محلياً ومثبت focused؛ البوابات والدفع والتحقق الحي معلّقة** | helper عام bounded بـ`projectRoot`؛ invented missing font يحذف، real existing face يبقى، وإثبات non-vacuity؛ سجل `rel:resource` الفعلي؛ لا تعديل generated artifact |
+| 061-TERM | منع recursion في lifecycle الخاص بـTerminal عند `resize`/`kill` و`onExit`، دون إسكات أخطاء حقيقية | **منفذ محلياً ومثبت focused؛ isolated live harness النهائي والبوابات معلّقة** | re-entrant resize/kill bounded إلى استدعاء underlying واحد؛ fallback لا يولد `RangeError: Maximum call stack size exceeded`؛ regression دائم، ولا قتل للخدمات الأصلية 5001/5002 |
+| 061-CSV | إصلاح فئة `THE-GUARD-WATCHES-ONE-VALUE-AND-THE-ACTION-USES-ANOTHER`: guard/action في records يقرآن `visible` نفسه | **منفذ محلياً؛ canonical Claude regression مدمج؛ focused أخضر** | `disabled={!visible.length}` مع `toCsv(...visible)`، دون `useRef` أو snapshot mirror؛ consecutive exports وhidden-filtered-row negative؛ لا فقدان صف ظاهر |
+| 061-SCHEMA | تطبيق folded boundaries على بدائل `RECORDING_VERB` و`DECLARED_LIST` العربية دون word-list domain catalogue | **منفذ؛ مصفوفة recording والـsystem-level shape negatives خضراء** | positives تبقى، pronoun/token suffix و`log of` لا يفتحون schema؛ حالات Arabic declaration التي أجابت عبر HOLDER/shape صُنّفت باتفاق صحيح من Claude `5389794373` وليست regression، فأزيل fixture branch-routing غير الصالح |
+| PR82-061 | مراجعة ودمج ref Claude `d83bfa931dc93fe746f60141162b79975fa7e7e0` إلى `main` | **normal merge محلي في `94d8efd03380d23e08fd420297baef34f5d3aa9a`؛ لم يُدفع بعد** | merge بلا cherry-pick/rebase/reset؛ إبقاء إصلاحات 061 وcanonical tests وstart-joe port fix؛ تحديث هذا ledger قبل الدفع؛ TSC/build/full gate ثم push main فقط |
+| P01-FOCUSBOARD | إغلاق Prompt 01 بعد عيوب font/Terminal/CSV | **مفتوح موضوعياً** | بعد الدفع: fresh Joe من SHA النهائي، Browser watcher/frame، Terminal بلا RangeError، fonts بلا 404، direct UI add/done/edit/search/filter/export مرتين/reload، ثم acceptance verdict حي؛ لا يبدأ P02 أو W50 قبل ذلك |
+
+### دليل وقياسات 061 الحالية
+
+الدليل الخام السابق لـPrompt 01 محفوظ في `/tmp/joe-50-prompt01-focusboard-raw-16294c11.md`، وتشخيص font في `/tmp/joe-p01-font-404-diagnosis-061.md`، ودليل Terminal في `/tmp/joe-50-eye-terminal-manager-raw-061.md`، ودليل CSV في `/tmp/joe-50-prompt01-focusboard-direct-061.md`. الدليل الجديد بعد merge الخاص بالـArabic declaration محفوظ في `/tmp/joe-p01-declared-list-shape-false-positive-raw-merge.md`، وتشخيصه في `/tmp/joe-p01-declared-list-shape-false-positive-diagnosis-merge.md`; Claude حكم أن labels العائدة `الاسم/السعر/الكمية` تطابق طلب المستخدم، أي اتفاق مسارين لا عيب منتج (`5389794373`).
+
+بعد الدمج الطبيعي وتشغيل الحكم المصحح: **focused = 9 suites / 156 tests / EXIT 0**، ويشمل `font-resources`, `records-export-live-state`, `terminal-kernel-lifecycle`, `the-schema-comes-from-the-request`، واختبارات Claude canonical الخمسة. محاولة focused السابقة قبل الحكم فشلت فقط بثلاث assertions غير صالحة في fixture branch-routing؛ أزيلت ولم يتغير parser. static gates بعد merge ناجحة: API TSC=0، web type-check=0، web build=0. full gate الأول كان FAIL بسبب selector contracts القديمة في neural suites (`255/257`, `4191/4193`)، ونُشر raw/diagnosis ثم صدر حكم Claude. بعد تحديث الاختبارين وإثبات mutation/restore، نجح canonical full gate الأخير: 22 batches، `257/257 suites` و`4193/4193 tests`، وكل exits=0 و`GATE:PASS`.
+
+الحالة الحالية الدقيقة: `HEAD=c3e2191978d833c0d4321883564b318687935bd1` على `main`، و`origin/main` ما زال عند `16294c110aa657d3d9d5b43d6a3425d3cff72ded`. شجرة full gate المطابقة لم تعدّل بعد تشغيلها إلا بmetadata commit هذا، والـworktree نظيف من tracked changes. الملفات `web/.joe-live-vite.config.mjs` و`web/pnpm-lock.yaml` و`web/pnpm-workspace.yaml` غير متتبعة وممنوع staging؛ كما لا تُضمّن generated projects أو lockfiles أو `node_modules` أو `dist`.
+
+### قرار العمل التالي
+
+أُغلق اعتراض `DECLARED_LIST` كاتفاق صحيح لا كفشل، وتبقى إصلاحات font/Terminal/CSV وإصلاح contract الاختبار العصبي هي الإصلاحات العامة الفعلية. بعد commit `c3e21919` اجتازت static gates والـfocused والـcanonical full gate، مع إثباتي mutation المطلوبين. المتبقي قبل الدفع هو نشر raw mutation outputs في قناة Claude إن أمكن، وfinal PR-channel check، ثم push عادي إلى main. بعد الدفع فقط تُعاد جولة P01 الحية من build SHA المطابق. **W50 آخر مهمة في القائمة، وPrompt 02 ممنوع قبل قبول P01 الحي الصادق.**
+
+POS-061-TASKS-UPDATED: 2026-08-24
+POS-061-COMMIT: `c3e2191978d833c0d4321883564b318687935bd1` (`test: align neural trace contracts with rendered card`)
+POS-061-CLAUDE-MERGE: normal merge `94d8efd03380d23e08fd420297baef34f5d3aa9a` from `d83bfa931dc93fe746f60141162b79975fa7e7e0`
+POS-061-FOCUSED: 9 suites / 156 tests / EXIT 0
+POS-061-TSC: 0; web type-check=0; web build=0
+POS-061-FULL-GATE: PASS — 22 batches; 257/257 suites and 4193/4193 tests; all exits 0; `GATE:PASS`
+POS-061-PUSH-HISTORICAL: قبل اكتمال نشر الأدلة الخام كان الدفع موصوفاً بأنه متوقف؛ هذا السطر تاريخي ومُستبدل بحالة الدفع الحالية في قسم P01 أعلاه.
+POS-061-LIVE-P01-HISTORICAL: post-push isolated restart on `216ec115` initially exited 22 because runtime lacked `JWT_SECRET`; raw `5390082837`, diagnosis `5390092343`. This is historical evidence; current P01 state and recovery are recorded in P01-PLANNER above.
+POS-061-NO-WEATHERGO-MANUAL-EDIT: confirmed
+
+POS-061-CLAUDE-ACK: `538986...` acknowledged — update only the two stale neural source-contract assertions to `.nc-roll`/`.nc-roll .ln`; prove non-vacuity by temporary removal of `dir="auto"` and `min-width: 0`/ellipsis contract, capture raw failing outputs, restore, rerun full gate, and do not touch DECLARED_LIST or other contracts.
+
+POS-061-NEURAL-MUTATION: Claude ruling `538986...` fulfilled locally — removed `dir="auto"` and the targeted neural-trace test exited 1; removed `.nc-roll min-width: 0` and the targeted neural-card test exited 1; both exact raw logs and before/after summaries are under `/tmp/joe-p01-neural-mutation-dir-raw-bbfa20a2.md`, `/tmp/joe-p01-neural-mutation-minwidth-raw-bbfa20a2.md`, `/tmp/pos061-mutation-neural-trace-dir-20260824T022047Z.log`, `/tmp/pos061-mutation-neural-card-minwidth-20260824T022125Z.log`, `/tmp/pos061-before-mutation-neural-trace-20260824T023106Z.log`, and `/tmp/pos061-before-mutation-neural-card-20260824T023106Z.log`; source restored and focused `9 suites / 156 tests / EXIT 0`.
+POS-061-FULL-GATE-PASS: `NO_COLOR=1 GATE_BATCH=12 bash scripts/gate.sh` at SHA `bbfa20a297f50918913d12f3842740ffb6708556` returned process `0`, `Test Suites: 0 failed, 257 passed, 257 total`, `Tests: 0 failed, 4193 passed, 4193 total`, `GATE_TSC_EXIT:0`, `GATE_WEB_TSC_EXIT:0`, `GATE_API_BUILD_EXIT:0`, `GATE_WEB_BUILD_EXIT:0`, `GATE_JEST_EXIT:0`, `GATE:PASS`; log `/tmp/full-gate-061-neural-fixed-20260824T022803Z.log`.
+POS-061-PR-RAW-HISTORICAL: earlier notes described raw mutation publication as pending; that state is superseded. Mutation raw before/after evidence is published in PR #82 comment `5391127327`, and the local raw files remain available for audit.
+
+POS-061-LIVE-RESTART-RAW-HISTORICAL: build from pushed `216ec115` succeeded; the first isolated restart exited 22 because `JWT_SECRET` was absent. Raw `5390082837`; diagnosis `5390092343`. A later harness probe returned a false-negative due to an order-sensitive predicate; raw `/tmp/joe-live-recovery-probe-false-negative-raw-20260824T031640Z.log`, diagnosis `/tmp/joe-live-recovery-probe-false-negative-diagnosis-20260824T031640Z.md`, and diagnosis comment `5390308302`. The process identity from that recovery is historical, not the current runtime; current isolated service state is recorded in P01-PLANNER above.
+POS-061-LIVE-GUEST-RAW-HISTORICAL: the earlier visible Guest click at `http://127.0.0.1:5101/login` returned exact `Failed to create guest session. Please try again later.`; no Prompt 01 was submitted in that attempt. Raw `5390373223` and backend raw `/tmp/joe-p01-guest-session-backend-raw-216ec115-20260824T032904Z.log`; diagnosis `5390378816`. The later local recovery and fresh P01 failure/success status are recorded separately above; this entry does not describe the current API state.
+POS-061-LIVE-STATUS-HISTORICAL: the prior isolated process status is historical and is not a claim about the current PID. The current isolated service and preserved original services are recorded in P01-PLANNER above. P01 remains OPEN; no Prompt 02/W50 execution.
+
+
+## POS-061 live update — planner contract failure after pushed SHA
+
+POS-061-LIVE-PUSH-VERIFIED: ordinary push to `origin/main` succeeded at SHA `216ec11524e65814bad3fd40afd1fd92d731c3d3`; `HEAD=origin/main` was verified. The earlier `POS-061-PUSH: blocked` line is historical and superseded by this entry.
+
+POS-061-LIVE-RECOVERY-HISTORICAL: the first isolated restart failure (`JWT_SECRET` absent) and the second harness false-negative were classified separately. Runtime-only synthetic-secret/local-JSON recovery preserved original services `5001/5002` and Vite `5101`; no repository source or generated project was changed by recovery. Current isolated state is not inferred from this historical entry.
+
+POS-061-FRESH-P01-RAW: a new Guest session and New Chat were created visibly at `http://127.0.0.1:5101/joe`; the exact FocusBoard prompt was submitted. Joe executed discovery and planning visibly, then stopped honestly at `0` implementation receipts with `78` log entries because multiple generated `file_edit` tasks lacked required `filename`; no project or template was created. Raw evidence was published on PR #82 as comment `5390593853` and saved at `/tmp/joe-p01-fresh-run-failure-raw-216ec115-20260824T040651Z.md`.
+
+POS-061-FRESH-P01-DIAGNOSIS: diagnosis comment `5390614484` identified the general planner contract defect: the planner catalogue/recovery prompt did not state `file_edit` required `filename/find/replace` explicitly; phase sanitizer used path-only `taskOutputPaths`, so valid `react_project` was erased when malformed peer edits created blockers; `countImplementationArtifacts` also omitted `args.filename`. Claude binding approval `5391078852` was then applied, with regressions, raw mutation evidence `5391127327`, focused/static gates, and final full gate recorded in P01-PLANNER above.
+
+POS-061-CURRENT-HISTORICAL: before Claude approval, P01 remained OPEN and planner source was unchanged after `216ec115`. That state is superseded by the approved local planner repair and green pre-push gates. The current source, untracked exclusions, and required fresh live rerun are recorded in P01-PLANNER above; no Prompt 02 or W50 prompt has started.
+
+POS-061-CLAUDE-POLL-HISTORICAL: the no-ruling polling state ended when Claude issued binding approval `5391078852`; the subsequent acknowledgement was `5391086950`. The planner repair, mutation proofs, and gates now have their current status in P01-PLANNER above.
+
+POS-061-CLAUDE-ACK-5391078852: أقرّ البنود الملزمة كاملة قبل التنفيذ. (1) سأعيد استخدام `taskProducesArtifact` الموجودة فقط، وأضيف `&& !kept.some(taskProducesArtifact)` إلى شرط phase-blocker عند `taskOutputPaths(kept).length === 0`، دون فحص موازٍ أو لمس artifact/runnable tool sets. (2) سأضيف regressions بالاتجاهين: builder صالح مع peer file_edit ناقص يبقى، file_edit ناقص يبقى مرفوضاً، filename/find/replace الكامل يُحتسب، مسار `.md` يبقى مستبعداً، وحالة خامسة بوصف مهمة عشوائي تثبت أن القرار شكلي لا قاموسي. (3) سأجري mutation proofs قبل/بعد للإضافتين، وأنشر raw الناتج قبل اعتماد الخضرة. (4) سألمس فقط plan-tools شرط المرحلة، ProjectPlannerTool count، وسطر catalogue/prompt لـfile_edit إن ثبت غيابه، والاختبارات؛ لا مناطق حساسة ولا generated output. (5) سأشغّل regressions ثم TSC ثم full `GATE:PASS` بالأرقام، وبعد push أعيد P01 حيّاً طازجاً على SHA المطابق. كما أقر بشرط Claude الإجرائي السابق: نشر raw mutation outputs في PR #82 فور توفر النشر؛ تم نشر raw P01 الجديد `5390593853`، وما يلزم من raw mutation السابق محفوظ في `/tmp` وينتظر تحديث القناة المناسب.

@@ -78,7 +78,7 @@ export const PLANNER_TOOL_CATALOGUE: Array<{ tool: string; purpose: string }> = 
     { tool: 'web_page_builder', purpose: 'build a complete website/landing page' },
     { tool: 'ai_write_file', purpose: 'write one source file whose content must be generated' },
     { tool: 'write_file', purpose: 'write one file with content you already know exactly' },
-    { tool: 'file_edit', purpose: 'change part of an existing file (search/replace)' },
+    { tool: 'file_edit', purpose: 'change part of one existing file; REQUIRED args.filename is one safe workspace-relative file path, args.find is non-empty text to find, and args.replace is the replacement text; never invent a path' },
     { tool: 'project_edit', purpose: 'surgical edit inside an existing project, with a build check' },
     { tool: 'delete_file', purpose: 'remove a file' },
     { tool: 'read_file', purpose: 'read a file before changing it' },
@@ -711,7 +711,7 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
                 blocker: nativeDependencyBlocker,
             };
         }
-        if (phaseBlockers.length && (runnable.length === 0 || taskOutputPaths(kept).length === 0)) {
+        if (phaseBlockers.length && (runnable.length === 0 || (taskOutputPaths(kept).length === 0 && !kept.some(taskProducesArtifact)))) {
             const blocker = phaseBlockers[0];
             blockers.push(blocker);
             notes.push(`[plan] أوقفتُ المرحلة «${phaseName}» بعائق تخطيط صريح: ${blocker.message}`);

@@ -52,8 +52,11 @@ describe('and it fits the chat it lives in', () => {
     it('a long goal line shrinks rather than stretching the card', () => {
         const src = CARD();
         expect(src.slice(src.indexOf('.neural-head {'), src.indexOf('.neural-head {') + 120)).toMatch(/min-width: 0/);
-        const line = src.slice(src.indexOf('.nc-line {'), src.indexOf('.nc-line {') + 200);
-        expect(line).toMatch(/min-width: 0/);
+        const rollStart = src.indexOf('.nc-roll {');
+        const roll = src.slice(rollStart, src.indexOf('.nc-roll .mover', rollStart));
+        expect(roll).toMatch(/min-width: 0/);
+        const lineStart = src.indexOf('.nc-roll .ln {');
+        const line = src.slice(lineStart, src.indexOf('.nc-roll .ln.leaving', lineStart));
         expect(line).toMatch(/text-overflow: ellipsis/);
         expect(line).toMatch(/white-space: nowrap/);
     });

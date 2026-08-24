@@ -27,6 +27,7 @@ import { applyRequestFieldConstraints, detectAppKind, blueprintFor, uncoveredFea
 import { acceptanceFor as acceptanceCriteriaFor } from '../../../core/quality/acceptance';
 import { buildAppFiles, fileAppCss } from './react-app-templates';
 import { familyFor, familyCss, familyFonts, FAMILY_LABEL_AR, type DesignFamily } from '../../../core/design/families';
+import { pruneMissingFontResources } from '../../../core/design/font-resources';
 import { resolveImages, sanitizeContentImages } from '../../../core/design/images';
 import { broadcast, broadcastThinkingDetail, broadcastTerminalLine } from '../../../api/ws';
 import { openTerminal, transcriptLine } from '../../../core/quality/terminal-session';
@@ -3667,6 +3668,23 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             } else {
                 term('fonts: bundle not found — system font stacks will serve (honest fallback)');
             }
+        }
+        // The resource-copy step runs after the initial file materialisation.
+        // Reconcile every generated stylesheet now, before npm/vite can turn a
+        // missing local font import into a browser 404. Existing files survive;
+        // absent local resources lose only their declaration, not the whole app.
+        const removedFontResources: string[] = [];
+        for (const [rel, body] of Object.entries(files)) {
+            if (!/\.(?:css|scss|sass)$/iu.test(rel) || typeof body !== 'string') continue;
+            const cssPath = path.join(proj, rel);
+            const reconciled = pruneMissingFontResources(body, cssPath, proj);
+            if (!reconciled.removed.length) continue;
+            files[rel] = reconciled.css;
+            fs.writeFileSync(cssPath, reconciled.css, 'utf-8');
+            removedFontResources.push(...reconciled.removed.map((resource) => `${rel}:${resource}`));
+        }
+        if (removedFontResources.length) {
+            term(`fonts: removed unavailable local declaration(s) before build — ${removedFontResources.join(', ')}`);
         }
         term(`react_project: scaffolded ${Object.keys(files).length} files in ${proj} — design family: ${family}`);
 

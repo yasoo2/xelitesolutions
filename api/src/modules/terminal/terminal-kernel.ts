@@ -13,6 +13,8 @@ import { executionEngine } from '../../kernel/ExecutionEngine';
  * Phase 1.6: Control Only. Execution delegated to ExecutionEngine.
  */
 export class TerminalKernel {
+    private readonly resizing = new Set<string>();
+    private readonly killing = new Set<string>();
     /**
      * Create a new terminal session
      */
@@ -75,7 +77,9 @@ export class TerminalKernel {
 
             session.onExit((code: number) => {
                 logger.info(`[Kernel] Session exit detected: ${id} code=${code}`);
-                this.killTerminal(id);
+                void this.killTerminal(id).catch((error: any) => {
+                    logger.error(`[Kernel] Terminal cleanup failed: ${id} — ${String(error?.message || error)}`);
+                });
             });
 
             return { id, pid: session.pid, fallback: session.fallback };
@@ -120,20 +124,40 @@ export class TerminalKernel {
 
         const term = terminals.get(id);
         if (!term) return;
-        
-        logger.info(`[Kernel] Resizing terminal: ${id} to ${cols}x${rows}`);
-        term.resize(cols, rows);
+        if (this.resizing.has(id)) {
+            logger.warn(`[Kernel] Ignoring re-entrant resize: ${id}`);
+            return;
+        }
+
+        this.resizing.add(id);
+        try {
+            logger.info(`[Kernel] Resizing terminal: ${id} to ${cols}x${rows}`);
+            term.resize(cols, rows);
+        } finally {
+            this.resizing.delete(id);
+        }
     }
 
     /**
      * Kill a terminal session
      */
     async killTerminal(id: string) {
+        if (this.killing.has(id)) {
+            logger.warn(`[Kernel] Ignoring re-entrant kill: ${id}`);
+            return;
+        }
         const term = terminals.get(id);
-        if (term) {
+        if (!term) return;
+
+        this.killing.add(id);
+        // Remove before invoking the underlying kill. node-pty may synchronously
+        // deliver onExit, whose cleanup must see an already-closed session.
+        removeTerminal(id);
+        try {
             term.kill();
-            removeTerminal(id);
             logger.info(`[Kernel] Terminal killed: ${id}`);
+        } finally {
+            this.killing.delete(id);
         }
     }
 
