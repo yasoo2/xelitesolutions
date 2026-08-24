@@ -2462,8 +2462,46 @@ Rules:
             }
         }
 
+        /**
+         *  A SHORT ORDER IS STILL AN ORDER.
+         *
+         *  Live round on his machine. He built a book table, then wrote,
+         *  in the same chat:
+         *
+         *      «زيد عمود المؤلف»
+         *
+         *  and Joe's own log says what happened:
+         *
+         *      21:01:32  🗂️ Recalled your project context from memory
+         *      21:01:37  ▶ central_answer
+         *      21:01:40  «Let's elevate your book table with an author
+         *                 column—a premium feature…»
+         *
+         *  It recalled the project and then TALKED about the column. The
+         *  column was never added: «المؤلف» appears zero times in the
+         *  source and zero times in the 151-line session log.
+         *
+         *  The reason is the third clause below: `goal.length < 30`. His
+         *  sentence is fifteen characters. LENGTH IS NOT INTENT — every
+         *  short imperative he can type («غيّر اللون», «احذف العمود»,
+         *  «زيد عموداً») was routed to chat because it was short.
+         *
+         *  So the shortcut may not fire on text that a parser already
+         *  recognises as a concrete instruction. columnEdit is one such
+         *  parser — measured: «زيد عمود المؤلف» → {add:['المؤلف']} — and
+         *  any future parser belongs in this same test rather than in a
+         *  list of verbs.
+         */
+        let readsAsAnOrder = false;
+        try {
+            // eslint-disable-next-line @typescript-eslint/no-var-requires
+            const { columnEdit } = require('../design/app-blueprints');
+            const edit = columnEdit(intent.goal);
+            readsAsAnOrder = (edit?.add?.length || 0) > 0 || (edit?.remove?.length || 0) > 0;
+        } catch { readsAsAnOrder = false; }
+
         // [ELITE FAST-PATH] Direct answer for general questions or chat
-        if ((intent as any).type === 'general' || (intent as any).type === 'chat' || intent.goal.length < 30) {
+        if (!readsAsAnOrder && ((intent as any).type === 'general' || (intent as any).type === 'chat' || intent.goal.length < 30)) {
             return {
                 id: `chat_${Date.now()}`,
                 goal: intent.goal,
