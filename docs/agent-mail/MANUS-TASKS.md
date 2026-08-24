@@ -4,7 +4,7 @@
 **الوكيل:** Manus
 **المستودع:** `yasoo2/xelitesolutions`
 **الفرع المسموح:** `main` فقط
-**آخر تحديث:** 2026-08-23
+**آخر تحديث:** 2026-08-24
 **قاعدة الهدف الأعلى:** Joe يتعلم كيف يصطاد السمكة، لا أن يأكلها؛ أي أن يبني قدرات هندسية عامة تقرأ الطلب وتثبت الناتج بدلاً من حفظ قوالب قطاعية.
 
 ## قانون التفويض — لا يُسأل المالك
@@ -1192,3 +1192,36 @@ POS-061-FULL-GATE: 21/21 batches / 249 suites / 4096 tests / every batch EXIT 0 
 POS-061-MONOLITHIC-JEST: signal 143 / no summary / NOT PASS
 POS-061-PROMPT01: OPEN / fresh live rerun required after pushed SHA
 POS-061-NO-GENERATED-OR-WEATHERGO-MANUAL-EDIT: confirmed
+
+
+## سجل إصلاح 061 — عقد الموارد والخروج والسجلات وحدود اللغة
+
+| المعرّف | المهمة | الحالة | معيار الإغلاق |
+|---|---|---|---|
+| 061-FONT | إزالة `@font-face`/`@import` المحلي الذي لا يملك ملفاً فعلياً داخل جذر المشروع، مع إبقاء remote/data resources، وتسجيل أسماء الموارد المحذوفة | **منفذ محلياً ومثبت focused؛ البوابات والدفع والتحقق الحي معلّقة** | helper عام bounded بـ`projectRoot`؛ invented missing font يحذف، real existing face يبقى، وإثبات non-vacuity؛ سجل `rel:resource` الفعلي؛ لا تعديل generated artifact |
+| 061-TERM | منع recursion في lifecycle الخاص بـTerminal عند `resize`/`kill` و`onExit`، دون إسكات أخطاء حقيقية | **منفذ محلياً ومثبت focused؛ isolated live harness النهائي والبوابات معلّقة** | re-entrant resize/kill bounded إلى استدعاء underlying واحد؛ fallback لا يولد `RangeError: Maximum call stack size exceeded`؛ regression دائم، ولا قتل للخدمات الأصلية 5001/5002 |
+| 061-CSV | إصلاح فئة `THE-GUARD-WATCHES-ONE-VALUE-AND-THE-ACTION-USES-ANOTHER`: guard/action في records يقرآن `visible` نفسه | **منفذ محلياً؛ canonical Claude regression مدمج؛ focused أخضر** | `disabled={!visible.length}` مع `toCsv(...visible)`، دون `useRef` أو snapshot mirror؛ consecutive exports وhidden-filtered-row negative؛ لا فقدان صف ظاهر |
+| 061-SCHEMA | تطبيق folded boundaries على بدائل `RECORDING_VERB` و`DECLARED_LIST` العربية دون word-list domain catalogue | **منفذ؛ مصفوفة recording والـsystem-level shape negatives خضراء** | positives تبقى، pronoun/token suffix و`log of` لا يفتحون schema؛ حالات Arabic declaration التي أجابت عبر HOLDER/shape صُنّفت باتفاق صحيح من Claude `5389794373` وليست regression، فأزيل fixture branch-routing غير الصالح |
+| PR82-061 | مراجعة ودمج ref Claude `d83bfa931dc93fe746f60141162b79975fa7e7e0` إلى `main` | **normal merge محلي في `94d8efd03380d23e08fd420297baef34f5d3aa9a`؛ لم يُدفع بعد** | merge بلا cherry-pick/rebase/reset؛ إبقاء إصلاحات 061 وcanonical tests وstart-joe port fix؛ تحديث هذا ledger قبل الدفع؛ TSC/build/full gate ثم push main فقط |
+| P01-FOCUSBOARD | إغلاق Prompt 01 بعد عيوب font/Terminal/CSV | **مفتوح موضوعياً** | بعد الدفع: fresh Joe من SHA النهائي، Browser watcher/frame، Terminal بلا RangeError، fonts بلا 404، direct UI add/done/edit/search/filter/export مرتين/reload، ثم acceptance verdict حي؛ لا يبدأ P02 أو W50 قبل ذلك |
+
+### دليل وقياسات 061 الحالية
+
+الدليل الخام السابق لـPrompt 01 محفوظ في `/tmp/joe-50-prompt01-focusboard-raw-16294c11.md`، وتشخيص font في `/tmp/joe-p01-font-404-diagnosis-061.md`، ودليل Terminal في `/tmp/joe-50-eye-terminal-manager-raw-061.md`، ودليل CSV في `/tmp/joe-50-prompt01-focusboard-direct-061.md`. الدليل الجديد بعد merge الخاص بالـArabic declaration محفوظ في `/tmp/joe-p01-declared-list-shape-false-positive-raw-merge.md`، وتشخيصه في `/tmp/joe-p01-declared-list-shape-false-positive-diagnosis-merge.md`; Claude حكم أن labels العائدة `الاسم/السعر/الكمية` تطابق طلب المستخدم، أي اتفاق مسارين لا عيب منتج (`5389794373`).
+
+بعد الدمج الطبيعي وتشغيل الحكم المصحح: **focused = 9 suites / 156 tests / EXIT 0**، ويشمل `font-resources`, `records-export-live-state`, `terminal-kernel-lifecycle`, `the-schema-comes-from-the-request`، واختبارات Claude canonical الخمسة. محاولة focused السابقة قبل الحكم فشلت فقط بثلاث assertions غير صالحة في fixture branch-routing؛ أزيلت ولم يتغير parser. لم تُشغّل بعدُ `npx tsc --noEmit` أو `NO_COLOR=1 GATE_BATCH=12 bash scripts/gate.sh` على الحالة النهائية بعد merge، ولذلك لا تُعد هذه الدفعة جاهزة للدفع.
+
+الحالة الحالية الدقيقة: `HEAD=94d8efd03380d23e08fd420297baef34f5d3aa9a`، و`origin/main` ما زال عند `16294c110aa657d3d9d5b43d6a3425d3cff72ded`. التغيير المتتبع غير المدفوع بعد هو إزالة fixture غير الصالح من `the-schema-comes-from-the-request.test.ts` وتحديث هذا ledger. الملفات `web/.joe-live-vite.config.mjs` و`web/pnpm-lock.yaml` و`web/pnpm-workspace.yaml` غير متتبعة وممنوع staging؛ كما لا تُضمّن generated projects أو lockfiles أو `node_modules` أو `dist`.
+
+### قرار العمل التالي
+
+أُغلق اعتراض `DECLARED_LIST` كاتفاق صحيح لا كفشل، وتبقى إصلاحات font/Terminal/CSV هي الإصلاحات العامة الفعلية. بعد commit ledger/test cleanup وتشغيل TSC وweb typecheck/build ثم canonical full gate، يُعاد فحص Claude قبل push وتُنشر أرقام البوابات وSHA الفعلي. بعد الدفع فقط تُعاد جولة P01 الحية من build SHA المطابق. **W50 آخر مهمة في القائمة، وPrompt 02 ممنوع قبل قبول P01 الحي الصادق.**
+
+POS-061-TASKS-UPDATED: 2026-08-24
+POS-061-CLAUDE-MERGE: normal merge `94d8efd03380d23e08fd420297baef34f5d3aa9a` from `d83bfa931dc93fe746f60141162b79975fa7e7e0`
+POS-061-FOCUSED: 9 suites / 156 tests / EXIT 0
+POS-061-TSC: pending on merged tree
+POS-061-FULL-GATE: pending on merged tree
+POS-061-PUSH: pending final Claude check and gates
+POS-061-LIVE-P01: required after push; P01 OPEN
+POS-061-NO-WEATHERGO-MANUAL-EDIT: confirmed
