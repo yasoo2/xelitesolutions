@@ -1638,6 +1638,78 @@ function firstColumnBeginsAtTheName(firstRaw: string, afterAContainer: boolean):
     return first;
 }
 
+/**
+ *  A CAPABILITY HE ASKED FOR IS NOT A COLUMN.
+ *
+ *  Measured on four of his own sentences:
+ *
+ *      «…فيه الاسم والصف والدرجة، مع بحث بالاسم وترتيب بالدرجة»
+ *      → الاسم · الصف · الدرجة · «مع بحث بالاسم» · «ترتيب بالدرجة»
+ *
+ *      «…فيه رقم الفاتورة والمبلغ والتاريخ، واعرض لي المجموع»
+ *      → … · «واعرض لي المجموع»
+ *
+ *      «…فيه اسم المنتج والسعر والصورة، مع سلة مشتريات»
+ *      → … · «مع سلة مشتريات»
+ *
+ *      «…فيه اسم العميل ووقت الحجز، ويحفظ البيانات على خادم»
+ *      → nothing at all — the capability sank the two real columns
+ *        below the floor and the whole request read as no schema.
+ *
+ *  He asked for a search, a total, a cart, a server. Each became a
+ *  column of the table, or drowned the ones that were real. This is the
+ *  same shape as the rule that became a column and was given statedRules
+ *  — and capabilities were never given the same treatment.
+ *
+ *  Two closed-class tests, no vocabulary:
+ *
+ *  1. A column is a DEFINITE NAME, judged by the same three marks used
+ *     everywhere else. «مع بحث بالاسم» and «مع سلة مشتريات» carry none.
+ *
+ *  2. A name is a word or a two-word idafa. A function word standing
+ *     INSIDE it means the phrase is a clause, not a name: «واعرض لي
+ *     المجموع» has «لي» in it, «يحفظ البيانات على خادم» has «على».
+ *     «اسم المريض», «رقم تلفونه», «وقت الموعد» have none.
+ *
+ *  And the run STOPS at the first one that fails rather than filtering
+ *  it out, because a list is contiguous: what follows the boundary is
+ *  the next thing he asked for, not a later column.
+ */
+/**
+ *  …AND IN ENGLISH THE BOUNDARY IS THE ONLY MARK THERE IS.
+ *
+ *  The two tests above are Arabic ones: definiteness, and a function word
+ *  standing inside a name. English has neither — every Latin item passes
+ *  the definiteness test by design, because English marks that on the
+ *  container instead. So this slipped straight through:
+ *
+ *      «A students table: name, class and grade, with search by name»
+ *      → name · class · grade · «with search by name»
+ *
+ *  The mark English does have is position. «with» opening the FIRST item
+ *  is the sentence handing over to the list, and firstColumnBeginsAtTheName
+ *  already strips it there. The same word opening a LATER item is him
+ *  starting a new request — there is nothing left for it to hand over.
+ *
+ *  «of» is deliberately absent: «date of birth» is a column he might
+ *  really write, and a rule that cannot tell it from a clause would cost
+ *  more than it saves.
+ */
+const OPENS_A_NEW_REQUEST = /^(?:مع|plus|with|along\s+with|together\s+with|including|and)(?=$|[\s،,])/iu;
+
+function isAColumnAndNotAClause(item: string, index: number): boolean {
+    const t = String(item || '').trim();
+    if (index > 0 && OPENS_A_NEW_REQUEST.test(t)) return false;
+    if (!everyItemIsADefiniteName([t])) return false;
+    const words = t.split(/\s+/);
+    return !words.slice(1).some(w => ARABIC_FUNCTION_WORD.test(w));
+}
+
+function columnsEndWhereHisNextRequestBegins(parts: string[]): string[] {
+    const stop = parts.findIndex((part, i) => !isAColumnAndNotAClause(part, i));
+    return stop < 0 ? parts : parts.slice(0, stop);
+}
+
 export function derivedColumns(requestRaw: string): DerivedField[] | null {
     const request = String(requestRaw || '');
     /**
@@ -1719,7 +1791,7 @@ export function derivedColumns(requestRaw: string): DerivedField[] | null {
         const tail = request.slice((holder.index || 0) + holder[0].length);
         const colonAt = Math.max(tail.indexOf(':'), tail.indexOf('：'));
         const scope = (colonAt >= 0 ? tail.slice(colonAt + 1) : tail).split(/[.؟!\n]/)[0] || '';
-        const items = scope
+        let items = scope
             .split(/\s*[،,]\s*|\s+و(?=\S)|\s+and\s+|\s+&\s+/iu)
             .map(p => p.trim().replace(/^and\s+/iu, '').replace(/^[:：]\s*/u, '').trim())
             .filter(p => p.length >= 2 && p.length <= 32);
@@ -1727,7 +1799,11 @@ export function derivedColumns(requestRaw: string): DerivedField[] | null {
         //  list — «جدول للمصاريف يحوي التاريخ» hands back «للمصاريف يحوي
         //  التاريخ» as one item. The name begins at the first word that opens
         //  with «ال»; everything before it is the sentence, not the column.
-        if (items.length) items[0] = firstColumnBeginsAtTheName(items[0], true);
+        //  A colon has already cut the container away, so what is left is
+        //  his own label — «للفواتير: رقم الفاتورة» leaves «رقم الفاتورة»,
+        //  and cutting to the article there would hand him «الفاتورة» and
+        //  throw away «رقم». Only an uncut residue is the container's own.
+        if (items.length) items[0] = firstColumnBeginsAtTheName(items[0], colonAt < 0);
         //  The same job in English, where there is no «ال» to find. What
         //  stands between the container and the list is a preposition — a
         //  closed class of function words, not a catalogue of nouns — and
@@ -1743,6 +1819,8 @@ export function derivedColumns(requestRaw: string): DerivedField[] | null {
         //
         //  The rule is removed first; what remains must then be a list of
         //  definite names, which is what keeps «قهوة، أدوات، حلويات» out.
+        //  The list ends where his next request begins — same table.
+        items = columnsEndWhereHisNextRequestBegins(items);
         const names = items.filter(isAName).filter(notAContainerItself);
         /**
          *  TWO NAMED COLUMNS ARE A TABLE WHEN HE NAMED THE TABLE.
@@ -1799,7 +1877,7 @@ export function derivedColumns(requestRaw: string): DerivedField[] | null {
     const colon = after.indexOf(':') >= 0 ? after.indexOf(':') : after.indexOf('：');
     if (colon >= 0 && colon <= 40) after = after.slice(colon + 1);
     const sentence = after.split(/[.؟!\n]/)[0] || '';
-    const parts = sentence
+    let parts = sentence
         //  Lists are joined differently in each language: «و» is a prefix on the
         //  next word, «and» is a word of its own. A reader that knows only one of
         //  them reads only one language's requests.
@@ -1823,7 +1901,29 @@ export function derivedColumns(requestRaw: string): DerivedField[] | null {
      *  Same reasoning as the others: he named a container, so two definite
      *  names are his table. One is a subject, not a column.
      */
-    const namesFloor = RECORD_CONTAINER.test(request) ? 2 : 3;
+    //  The list ends where his next request begins.
+    parts = columnsEndWhereHisNextRequestBegins(parts);
+    /**
+     *  «فيه» NAMES THE CONTAINER BY POINTING AT IT.
+     *
+     *      «بدي تطبيق للحجوزات فيه اسم العميل ووقت الحجز، ويحفظ البيانات
+     *       على خادم»
+     *      → nothing at all.
+     *
+     *  Two real columns and a capability. The capability is cut away now,
+     *  and two remain — but the floor asked whether he had written one of
+     *  the container NOUNS, and «تطبيق» is not one of them, so the floor
+     *  stayed at three and his two columns were refused.
+     *
+     *  He did name the container. «فيه» is «in IT», and the «ه» points
+     *  back at the thing he just named. That is a container established
+     *  by grammar rather than by vocabulary, and it is the reason the
+     *  floor drops — the same reason it dropped for a named container,
+     *  reached a different way. A bare recording verb («record», «أسجل»)
+     *  points at nothing and keeps the floor of three.
+     */
+    const containerByReference = /(?:^|[\s،:؛(])في(?:ه|ها)(?=$|[\s،:؛)])/u.test(request);
+    const namesFloor = RECORD_CONTAINER.test(request) || containerByReference ? 2 : 3;
     if (parts.length < namesFloor || parts.length > 10) return null;
     //  A rule that rode in on the end of the list is not a column.
     const named = parts.filter(isAName).filter(notAContainerItself);
