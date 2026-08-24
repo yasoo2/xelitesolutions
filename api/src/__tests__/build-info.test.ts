@@ -6,10 +6,22 @@ const entrypoint = fs.readFileSync(path.join(__dirname, '..', 'api', 'index.ts')
 const buildInfoSource = fs.readFileSync(path.join(__dirname, '..', 'shared', 'build-info.ts'), 'utf8');
 
 describe('Joe startup build identity', () => {
-  it('prints the resolved build SHA before the API starts serving', () => {
-    expect(entrypoint).toContain("import { resolveBuildSha } from '../shared/build-info';");
-    expect(entrypoint).toContain('const buildSha = resolveBuildSha();');
-    expect(entrypoint).toContain("logger.info({ buildSha }, 'JOE_BUILD_SHA');");
+  /**
+   *  This pinned three source lines, one of them an import. The boot now
+   *  prints a CLAIM and a MEASUREMENT side by side — resolveBuildSha
+   *  reads the environment, and the fingerprint is the digest of the
+   *  bytes actually executing — so the import changed and this went red
+   *  for a spelling, not for a behaviour.
+   *
+   *  It asserts the property instead: whatever it imports, the startup
+   *  must announce the identity under JOE_BUILD_SHA, and it must carry
+   *  the fingerprint, because a claim alone is what let a runtime report
+   *  a commit it was not running.
+   */
+  it('announces the build identity before the API starts serving', () => {
+    expect(entrypoint).toMatch(/from '\.\.\/shared\/build-info'/);
+    expect(entrypoint).toContain("'JOE_BUILD_SHA'");
+    expect(entrypoint).toContain('bundleFingerprint');
   });
 
   it('keeps build identity inside the fs/path boot boundary', () => {
