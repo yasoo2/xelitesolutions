@@ -1575,6 +1575,69 @@ function everyItemIsADefiniteName(items: string[]): boolean {
  */
 export const RECORD_CONTAINER = /(جدول|جداول|قائمة|كشف|سجل|سجلّ|\btable\b|\blist\b|\bsheet\b|\bledger\b|\bregister\b|\btracker\b)/iu;
 
+/**
+ *  WHERE THE SENTENCE ENDS AND THE FIRST COLUMN BEGINS.
+ *
+ *  Two branches read the same sentence — one when a recording verb opens
+ *  the list, one when only the container does — and whatever stood between
+ *  the container and the list stuck to the first item. One branch had been
+ *  taught to strip it. The other had not been taught at all, so a live
+ *  round returned this:
+ *
+ *      «بدي برنامج اسجل فيه اسم الطالب وصفه ودرجته»
+ *      → columns: «فيه اسم الطالب» · «صفه» · «درجته»
+ *
+ *  A column called «فيه». Not a bad reading of his words — the second
+ *  reader was never given the lesson the first one learned. So there is
+ *  one cleaner now, and both branches call it.
+ *
+ *  It strips a closed class and nothing else. In both languages what
+ *  stands between a container and its columns is a FUNCTION word — a
+ *  preposition, a relative, an article — and function words are a closed
+ *  set that can be written down honestly. Content words are not, and
+ *  guessing at them is how a verb becomes a column.
+ */
+const ARABIC_FUNCTION_WORD = /^(?:في|إلى|الى|على|عن|مع|من|ل|ب|ف|و)(?:ه|ها|هم|هن|ي|ك|كم|نا)?$/u;
+
+function firstColumnBeginsAtTheName(firstRaw: string, afterAContainer: boolean): string {
+    const first = String(firstRaw || '').trim();
+    //  English has no «ال», so the preposition is the whole signal:
+    //  «with name» is the sentence plus the column, not a column called
+    //  «with name».
+    const trimmedEn = first
+        .replace(/^(?:that\s+(?:has|have|holds?|contains?)|which\s+(?:has|have)|with|of|for|containing|including|holding|showing|having)\s+/iu, '')
+        .replace(/^(?:a|an|the)\s+/iu, '')
+        .trim();
+    if (trimmedEn !== first) return trimmedEn;
+    if (!/\s/.test(first)) return first;
+    const words = first.split(/\s+/);
+
+    //  A leading Arabic function word — «فيه», «لي», «بها». Strip the run
+    //  of them and stop: what follows is his own words.
+    let cut = 0;
+    while (cut < words.length - 1 && ARABIC_FUNCTION_WORD.test(words[cut])) cut++;
+    if (cut > 0) return words.slice(cut).join(' ');
+
+    //  A NAME IS MARKED DEFINITE THREE WAYS, AND THIS KNEW ONE.
+    //
+    //  «ال», an idafa whose second half carries «ال», and a possessive
+    //  suffix — «زبائني», «درجته». everyItemIsADefiniteName already knows
+    //  all three; this trim knew only the article, so «يحفظ لي زبائني»
+    //  found no start at all and handed back the verb as a column.
+    if (afterAContainer) {
+        //  Only when the residue is the container's own subject: «جدول
+        //  للمصاريف يحوي التاريخ» hands back «للمصاريف يحوي التاريخ», and
+        //  the column starts at «التاريخ». After a recording verb the
+        //  residue is an idafa he wrote himself — «اسم المريض» — and
+        //  cutting to the article there would throw away half his label.
+        const article = words.findIndex(w => /^ال[ء-ي]/u.test(w));
+        if (article > 0) return words.slice(article).join(' ');
+    }
+    const owned = words.findIndex(w => !ARABIC_FUNCTION_WORD.test(w) && /[ء-ي](?:ه|ها|هم|هن|ي|ك|كم|نا)$/u.test(w));
+    if (owned > 0) return words.slice(owned).join(' ');
+    return first;
+}
+
 export function derivedColumns(requestRaw: string): DerivedField[] | null {
     const request = String(requestRaw || '');
     /**
@@ -1639,22 +1702,12 @@ export function derivedColumns(requestRaw: string): DerivedField[] | null {
         //  list — «جدول للمصاريف يحوي التاريخ» hands back «للمصاريف يحوي
         //  التاريخ» as one item. The name begins at the first word that opens
         //  with «ال»; everything before it is the sentence, not the column.
-        if (items.length && /\s/.test(items[0])) {
-            const words = items[0].split(/\s+/);
-            const start = words.findIndex(w => /^ال[ء-ي]/u.test(w));
-            if (start > 0) items[0] = words.slice(start).join(' ');
-        }
+        if (items.length) items[0] = firstColumnBeginsAtTheName(items[0], true);
         //  The same job in English, where there is no «ال» to find. What
         //  stands between the container and the list is a preposition — a
         //  closed class of function words, not a catalogue of nouns — and
         //  «with name» is the sentence plus the column, not a column
         //  called «with name».
-        if (items.length) {
-            items[0] = items[0]
-                .replace(/^(?:that\s+(?:has|have|holds?|contains?)|which\s+(?:has|have)|with|of|for|containing|including|holding|showing|having)\s+/iu, '')
-                .replace(/^(?:a|an|the)\s+/iu, '')
-                .trim();
-        }
         //  DROP THE RULE, KEEP THE LIST — in that order.
         //
         //  Caught by a live round, not by a test: «…: التاريخ والمبلغ والسبب،
@@ -1731,6 +1784,9 @@ export function derivedColumns(requestRaw: string): DerivedField[] | null {
             .replace(/^(?:ال)?كل\s+/u, '')
             .replace(/^[:：]\s*/u, '').trim())
         .filter(p => p.length >= 2 && p.length <= 32);
+    //  The lesson the container branch learned, applied here too: after
+    //  «اسجل» the connector «فيه» is still standing, and it became a column.
+    if (parts.length) parts[0] = firstColumnBeginsAtTheName(parts[0], false);
     /**
      *  THE SAME FLOOR, A THIRD TIME — AND THIS IS THE ONE THAT RAN.
      *
