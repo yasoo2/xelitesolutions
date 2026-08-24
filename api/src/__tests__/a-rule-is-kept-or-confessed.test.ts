@@ -18,7 +18,7 @@
  *  I know how to prove is proven», naming three columns and never the rule:
  *  true, and useless at the same time.
  */
-import { statedRules, applyStatedRules, derivedColumns } from '../core/design/app-blueprints';
+import { statedRules, applyStatedRules, derivedColumns, fieldsFromRequest } from '../core/design/app-blueprints';
 
 const LIVE = 'بدي جدول مبيعات فيه اسم الصنف والكمية والسعر، والسعر لا يقبل صفر';
 
@@ -102,5 +102,36 @@ describe('the bound reaches the field it names', () => {
         const { fields: bounded, unapplied } = applyStatedRules(fields, [{ text: 'العنوان لا يقبل صفر', field: 'العنوان', min: 0, minExclusive: true }]);
         expect(bounded.find(f => f.label === 'العنوان')!.min).toBeUndefined();
         expect(unapplied).toHaveLength(1);
+    });
+});
+
+describe('and the bound survives the copy into the generated schema', () => {
+    /**
+     *  The live artifact, measured after the column already carried the
+     *  bound:
+     *
+     *      { key: 'money1', label: 'السعر', type: 'number', required: true }
+     *
+     *  Every part of the chain was correct and one line lost it:
+     *  fieldsFromRequest does not COPY a column, it REBUILDS one from a
+     *  fixed tuple of five things it knows about, and anything else falls
+     *  on the floor with no error and no warning.
+     */
+    it('the field handed to the generator carries min and minExclusive', () => {
+        const fields = fieldsFromRequest(LIVE, true);
+        expect(fields).not.toBeNull();
+        const price: any = fields!.find((f: any) => f.label === 'السعر');
+        expect(price).toBeDefined();
+        expect(price.min).toBe(0);
+        expect(price.minExclusive).toBe(true);
+    });
+
+    it('…and a column with no rule carries neither', () => {
+        //  The negative: if the copy invented a bound for every number,
+        //  every quantity in every table would refuse zero.
+        const fields: any[] = fieldsFromRequest(LIVE, true)!;
+        const qty = fields.find((f: any) => f.label === 'الكمية');
+        expect(qty.min).toBeUndefined();
+        expect(qty.minExclusive).toBeUndefined();
     });
 });

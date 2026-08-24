@@ -1729,11 +1729,38 @@ export function applyColumnEdit(fields: AppField[], edit: ColumnEdit, isAr: bool
 export function fieldsFromRequest(requestRaw: string, isAr: boolean): AppField[] | null {
     const cols = derivedColumns(requestRaw);
     if (!cols) return null;
-    return cols.map((c, i) => f(
-        [c.key, c.label, c.label, c.type, c.options,
-            i === 0 ? ['required', 'primary'] : (c.role === 'money' || c.role === 'count' ? ['required'] : undefined)],
-        isAr,
-    ));
+    /**
+     *  A COPY THAT LISTS WHAT IT KEEPS LOSES WHAT IT DOES NOT KNOW.
+     *
+     *  Live round on his machine. He wrote «…والسعر لا يقبل صفر», and the
+     *  generated schema came out as:
+     *
+     *      { key: 'money1', label: 'السعر', type: 'number', required: true }
+     *
+     *  with no bound, so zero was accepted — the exact thing he forbade.
+     *  And every part of the chain was already correct: derivedColumns
+     *  attaches min and minExclusive, the template emits them, and the
+     *  generated app validates against them and even prints «أكبر من N».
+     *
+     *  The loss is HERE, in one line. This does not copy a field; it
+     *  REBUILDS one from a fixed tuple of five things it happens to know
+     *  about. Anything the column carries that is not on that list falls
+     *  on the floor silently — no error, no warning, and a unit test on
+     *  either side of it passes.
+     *
+     *  So what the tuple cannot express is carried over explicitly. The
+     *  next property added to a column will be lost the same way, which is
+     *  why this comment names the shape rather than the symptom.
+     */
+    return cols.map((c, i) => ({
+        ...f(
+            [c.key, c.label, c.label, c.type, c.options,
+                i === 0 ? ['required', 'primary'] : (c.role === 'money' || c.role === 'count' ? ['required'] : undefined)],
+            isAr,
+        ),
+        ...(c.min !== undefined ? { min: c.min } : {}),
+        ...(c.minExclusive ? { minExclusive: true } : {}),
+    }));
 }
 
 /* ── what was asked for, in the user's own words ─────────────────────────── */
