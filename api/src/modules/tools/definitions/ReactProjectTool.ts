@@ -265,9 +265,50 @@ const slug = (s: string) => (String(s || '').toLowerCase()
     .replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '').slice(0, 32)) || 'app';
 export const PROJECT_SLUG_FOR_TEST = slug;
 
-export function projectDirNameForTest(projectName: string, brand: string): string {
+/**
+ *  A NAME IS NOT A SENTENCE.
+ *
+ *  Measured live. He asked «بدي جدول للموظفين فيه الاسم والراتب والقسم،
+ *  وصفحة ثانية تعرض مجموع الرواتب» and the project shipped in a folder
+ *  called:
+ *
+ *      react-بدي-جدول-للموظفين-فيه-الاسم-والر
+ *
+ *  His whole request, hyphenated and cut off at thirty-two characters.
+ *  Meanwhile `brandFallback` had already read the same sentence and
+ *  answered «مشروع الموظفين» — the right name existed and was ignored,
+ *  because this function takes whatever `projectName` the planner hands
+ *  it and slugs it without asking whether it is a name at all.
+ *
+ *  THE TEST IS SHAPE, AND IT NEEDS NO VOCABULARY.
+ *
+ *  A name someone CHOSE does not begin the sentence it came from.
+ *  «Gate062» in «Build a small project called Gate062» does not; «بدي
+ *  جدول للموظفين…» in «بدي جدول للموظفين…» is that sentence's opening
+ *  words. So a candidate whose slug is a PREFIX of the request's slug is
+ *  the request wearing a name's clothes, and the brand is used instead.
+ *
+ *  The word cap is the second half: a planner that hands back four words
+ *  of prose that happen not to be the opening ones is still not handing
+ *  back a name. No list of forbidden words appears here and none should
+ *  — «بدي» and «build» are not the point; the shape is.
+ */
+function looksLikeAChosenName(candidate: string, request: string): boolean {
+    const t = String(candidate || '').trim();
+    if (!t) return false;
+    if (t.split(/\s+/).filter(Boolean).length > 4) return false;
+    if (/[:،؛]|,\s/.test(t)) return false;
+    const req = slug(request);
+    const cand = slug(t);
+    if (!cand || cand === 'app') return false;
+    //  The opening of the sentence is not a name for the sentence.
+    return !(req && cand.length >= 4 && req.startsWith(cand));
+}
+
+export function projectDirNameForTest(projectName: string, brand: string, request = ''): string {
     const requestedProjectName = String(projectName || '').trim();
-    const requestedProjectSlug = requestedProjectName ? slug(requestedProjectName) : '';
+    const usable = looksLikeAChosenName(requestedProjectName, request);
+    const requestedProjectSlug = usable ? slug(requestedProjectName) : '';
     return requestedProjectSlug
         ? (/^react-/i.test(requestedProjectSlug) ? requestedProjectSlug : `react-${requestedProjectSlug}`)
         : `react-${slug(brand)}`;
@@ -2807,7 +2848,7 @@ export class ReactProjectTool extends BaseTool {
         // into the session's old `react-myapp-*` directory even though the plan
         // had already resolved the artifact as WeatherGo. Keep the visible brand
         // untouched; this value controls only the filesystem identity.
-        const dirName = projectDirNameForTest(String(input?.projectName || ''), content.brand);
+        const dirName = projectDirNameForTest(String(input?.projectName || ''), content.brand, String(request || ''));
         // THE FULL-STACK LINK: when this session's previous project is a Joe
         // API, the new frontend is born connected — content.js carries the
         // API's URL, the list components ask it for the LIVE rows at runtime,
