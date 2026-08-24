@@ -112,7 +112,15 @@ const CATALOGUE: Array<Criterion & { asked: RegExp }> = [
     },
     {
         id: 'counter', kind: 'feature',
-        asked: /(عداد|العدد|إجمالي|المجموع|\bcounter\b|\bcount\b|\btotal\b|\bbadge\b)/iu,
+        //  A PATTERN WRITTEN WITH THE ARTICLE MATCHES HALF THE LANGUAGE.
+        //
+        //  «المجموع» cannot match «مجموع», and «العدد» cannot match «عدد».
+        //  So «وصفحة ثانية تعرض مجموع الرواتب» asked for a total and
+        //  produced no criterion at all — not a criterion that failed, one
+        //  that was never written, which Joe can report success around.
+        //  The bare form matches both, which is why every other entry in
+        //  this catalogue is written bare and only these two were not.
+        asked: /(عداد|عدد|إجمالي|اجمالي|مجموع|\bcounter\b|\bcount\b|\btotal\b|\bbadge\b)/iu,
         ar: 'عداد أو إجمالي', en: 'a counter or total',
         markers: [],
     },
