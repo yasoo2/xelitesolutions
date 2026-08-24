@@ -4800,10 +4800,10 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
          */
         if (acceptance.criteria.length) {
             term(isAr
-                ? `acceptance: ${acceptance.met}/${acceptance.criteria.length} مما أعرف كيف أثبته مُثبَت`
-                    + (acceptance.unmet ? ` — unmet: ${acceptance.criteria.filter((c: any) => c.verdict === 'unmet').map((c: any) => c.id).join(', ')}` : '')
-                : `acceptance: ${acceptance.met}/${acceptance.criteria.length} of what I know how to prove is proven`
-                    + (acceptance.unmet ? ` — unmet: ${acceptance.criteria.filter((c: any) => c.verdict === 'unmet').map((c: any) => c.id).join(', ')}` : ''));
+                ? `acceptance: ${acceptance.met}/${acceptance.criteria.length} معياراً مشتقاً مُثبت`
+                    + (acceptance.unmet ? ` — not proven: ${acceptance.criteria.filter((c: any) => c.verdict !== 'met').map((c: any) => c.id).join(', ')}` : '')
+                : `acceptance: ${acceptance.met}/${acceptance.criteria.length} requested criteria proven`
+                    + (acceptance.unmet ? ` — not proven: ${acceptance.criteria.filter((c: any) => c.verdict !== 'met').map((c: any) => c.id).join(', ')}` : ''));
         }
         const acceptBlock = `${acceptanceBlock(acceptance, isAr)}\n`;
         const acceptanceBlocked = acceptance.criteria.length > 0 && !acceptance.accepted;
@@ -4815,7 +4815,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             term(`delivery: BLOCKED — requested capabilities not proven: ${askedButMissing.join(', ')}`);
         }
         if (acceptanceBlocked) {
-            term(`delivery: BLOCKED — acceptance ledger is not accepted (${acceptance.unmet} unmet)`);
+            term(`delivery: BLOCKED — acceptance ledger is not accepted (${acceptance.unmet} requested criteria not proven)`);
         }
 
         const shellBlock = (() => {

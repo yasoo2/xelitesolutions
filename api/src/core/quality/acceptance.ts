@@ -588,7 +588,11 @@ export function judgeAcceptance(criteria: Criterion[], ev: Evidence, isAr = true
     });
 
     const met = judged.filter(c => c.verdict === 'met').length;
-    const unmet = judged.filter(c => c.verdict === 'unmet').length;
+    // The denominator is every criterion derived from the user's request.
+    // `unprovable` is not neutral: an unchecked criterion is a failed
+    // acceptance obligation, otherwise a run can score 100% by proving only
+    // the subset the judge happened to inspect.
+    const unmet = judged.filter(c => c.verdict !== 'met').length;
     return { criteria: judged, met, unmet, accepted: judged.length > 0 && unmet === 0 };
 }
 
@@ -607,13 +611,13 @@ export function acceptanceBlock(a: Acceptance, isAr: boolean): string {
     }
     const head = a.accepted
         ? (isAr
-            ? `✅ حكم القبول الجزئي: أثبتُّ ${a.met} مما أعرف كيف أثبته — ولم أفحص بقية نص طلبك.`
-            : `✅ Partial acceptance: I proved ${a.met} of what I know how to prove — I did not inspect the rest of your request.`)
+            ? `✅ حكم القبول: أثبتُّ جميع المعايير المطلوبة (${a.met}/${a.criteria.length}).`
+            : `✅ Acceptance accepted: all ${a.met}/${a.criteria.length} requested criteria were proven.`)
         : (isAr
-            ? `⚠️ حكم القبول الجزئي: أثبتُّ ${a.met} مما أعرف كيف أثبته — و${a.unmet} مما أعرف كيف أثبته لم أُثبته، ولم أفحص بقية نص طلبك:`
-            : `⚠️ Partial acceptance: I proved ${a.met} things I know how to prove — ${a.unmet} things I know how to prove were not proven, and I did not inspect the rest of your request:`);
+            ? `⚠️ التسليم محجوب: أثبتُّ ${a.met} من أصل ${a.criteria.length} معياراً مشتقاً — و${a.unmet} لم يُثبت:`
+            : `⚠️ Delivery blocked: ${a.met} of ${a.criteria.length} requested criteria were proven — ${a.unmet} were not proven:`);
     const lines = a.criteria.map(c => {
-        const mark = c.verdict === 'met' ? '✅' : c.verdict === 'unmet' ? '❌' : '⏭️';
+        const mark = c.verdict === 'met' ? '✅' : '❌';
         return `   ${mark} ${isAr ? c.ar : c.en} — ${c.why}`;
     });
     return [head, ...lines].join('\n');
