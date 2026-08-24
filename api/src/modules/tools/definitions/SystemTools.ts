@@ -717,10 +717,59 @@ export class FileEditTool extends BaseTool {
         }
 
         let content = fs.readFileSync(full, 'utf-8');
-        if (!content.includes(find)) {
-            return { ok: false, error: 'Text to replace not found', logs };
+        /**
+         *  THE SAME TEXT WITH DIFFERENT LINE ENDINGS IS STILL THE SAME TEXT.
+         *
+         *  Live round, his machine. He asked for two things in one sentence
+         *  — a table and a second page showing the total — and the build
+         *  stopped:
+         *
+         *      Failed phase: Build total salary page
+         *      Error: Text to replace not found
+         *      Self-fix tool failed: could not match 1 replacement(s).
+         *
+         *  Then the files Joe had just written, counted:
+         *
+         *      src/App.jsx           CRLF 53 / 53 lines
+         *      src/data/employees.js CRLF 13 / 13 lines
+         *      src/main.jsx          CRLF  1 /  1 lines
+         *
+         *  Every generated file is CRLF, and a model writing a `find` block
+         *  writes LF. So `content.includes(find)` was false for EVERY
+         *  multi-line edit on this machine — not sometimes, always — and
+         *  the self-fix that followed had the same blindness.
+         *
+         *  Matching the file's own ending is not guessing at his intent; a
+         *  line break is a line break. The file keeps the endings it had.
+         */
+        const crlf = (content.match(/\r\n/g) || []).length;
+        const bareLf = (content.match(/(?<!\r)\n/g) || []).length;
+        const dominantEnding = crlf >= bareLf && crlf > 0 ? '\r\n' : '\n';
+        const toFile = (t: string) => t.replace(/\r\n?/g, '\n').split('\n').join(dominantEnding);
+        const findInFile = toFile(find);
+        const replaceInFile = toFile(replace);
+        if (!content.includes(findInFile)) {
+            /**
+             *  A FAILURE THAT NAMES NOTHING CANNOT BE REPAIRED.
+             *
+             *  «Text to replace not found» told the repair loop the same
+             *  amount it told the user: nothing. Which file, what was
+             *  sought, what is actually there — all of it was known here
+             *  and none of it was said.
+             */
+            const wanted = findInFile.split(dominantEnding)[0].trim().slice(0, 80);
+            const lines = content.split(dominantEnding);
+            const needle = wanted.replace(/\s+/g, ' ').toLowerCase();
+            const near = lines
+                .map((line, i) => ({ line: line.trim().slice(0, 80), at: i + 1, score: line.replace(/\s+/g, ' ').toLowerCase().includes(needle.slice(0, 24)) ? 1 : 0 }))
+                .filter(c => c.score > 0 && c.line)
+                .slice(0, 3);
+            const hint = near.length
+                ? ' Nearest in the file: ' + near.map(c => `line ${c.at}: ${c.line}`).join(' | ')
+                : ` The file has ${lines.length} lines and none of them opens with that text.`;
+            return { ok: false, error: `Text to replace not found in ${filename}. Looked for: ${wanted}.${hint}`, logs };
         }
-        content = content.replace(find, replace);
+        content = content.replace(findInFile, replaceInFile);
         fs.writeFileSync(full, content);
         logs.push(`edit=${filename}`);
 
