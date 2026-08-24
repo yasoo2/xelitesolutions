@@ -1161,3 +1161,34 @@ POS-2026-08-23-VALIDATION-PUSHED: `22f6f815917e0b629776a87391cae04a2cbc1a8f`; `H
 | A-FORM-FILLED-WITH-ONE-VALUE-PROVES-NOTHING | استقلالية قيم الحقول في Browser Self-QA | **دين جديد مفتوح؛ غير داخل هذا الدفع كإصلاح production** | raw evidence: Claude comment `5388147895` — في تشغيل حي كتب Joe QA القيمة نفسها في «اسم المريض» و«نوع العلاج»، فلا يثبت ذلك أن الحقول مستقلة. معيار الإغلاق: Self-QA يملأ كل حقل بقيمة distinct مرتبطة بـlabel، يثبت اختلاف القيم في DOM/API/receipt، ثم يعيد الاختبار الحي؛ لا يُعد Prompt 01 مقبولاً قبل ذلك أو قبل دليل بديل صريح. |
 | Prompt 01 — SpendWise | القبول السلوكي النهائي بعد 038 | **مفتوح؛ لا انتقال إلى Prompt 02/W50** | لا يُعاد استخدام artifact `5af486a0`. بعد الدفع يلزم pair جديد وNew Chat وPrompt 01 exact، ثم direct acceptance كاملة؛ أي توقف/تناقض يعاد إلى raw ثم diagnosis ثم Claude. |
 `POS-2026-08-23-038-PUSHED-LIVE-PENDING`: `origin/main` تحرك بنجاح من `da586c92` إلى `4688c41c` بــnormal push، والشجرة المحلية طابقت remote قبل هذا ledger correction. lineage يحفظ merges `f8ba2ca8` و`fa397045` وlanguage commit `e408f12c` وterminal `f47c9166`; combined focused = 12 suites / 342 tests / exit 0، static API/Web TSC/build + cached/worktree diff checks + control-byte scan = 0؛ combined full gate = 21/21 batches، 249 suites، 4089 tests، 0 failures، كل exits = 0، `GATE:PASS`. هذا ledger correction سيدفع كـnormal descendant، ثم يبدأ fresh Eye/Clinic/Prompt 01 live proof بعد SHA الذي يتحقق منه الدفع النهائي. لا generated/package/lock/WeatherGo files في الدفعة.
+
+
+## سجل 061 — boundary عربي في schema reader ومصفوفة 50 برومبت
+
+| المعرّف | المهمة | الحالة | معيار الإغلاق |
+|---|---|---|---|
+| 061-ARABIC-TOKEN-BOUNDARY | منع `derivedColumns()` من مطابقة بدائل التسجيل داخل `فيهم`/`أتابعهم`/`أديرها`، ومنع `log of` الإنجليزية من فتح schema | **منجز محلياً؛ البوابات الخضراء؛ الدفع إلى `main` ثم fresh live Prompt 01 مطلوب** | `RECORDING_VERB` يستخدم folded-boundary عام لكل البدائل؛ regressions سالبة تعيد `null` للحالات الأربع؛ regressions موجبة تبقي `أسجل فيه` و`فيها الحقول` و`record`؛ مسبار الكلمة المخترعة يثبت عدم اعتماد engine على اسم المجال؛ لا تعديل generated artifact |
+| PR82-061 | إقرار قرار Claude `5389410898` وclaim النطاق | **الإقرار والتشخيص منشوران؛ Claude صنّف Prompt 01 OPEN وسجّل أربع فئات؛ patch محلي بعد claim** | لا تغيير خارج `app-blueprints.ts` واختبار request-shape؛ قبل الدفع: focused، TSC، full gate، staging صريح، ثم normal push؛ لا انتقال Prompt 01 إلى PASS من code/build |
+| Prompt 01 — FocusBoard | قبول حي مستقل بعد 038 | **OPEN — لا PASS** | الجولة الحية الأولى على `8a6037a8b1fe319265c322cec0fd6feeb5516068` توقفت بصدق عند `react_delivery_quality_gate_failed`: build exit 0، `finalVerified=false`، `liveUrl=null`، `done/total=0/6`، high findings `console_errors` و`failed_requests`. Claude سجّل: `AN-ARABIC-TOKEN-HAS-NO-WORD-BOUNDARY`، `THE-SCHEMA-READER-IS-BLIND-IN-ENGLISH`، `A-DECLARED-WEBFONT-THAT-WAS-NEVER-SHIPPED`، `A-NATIVE-DIALOG-STOPS-THE-ONLY-EYE-WATCHING`. بعد دفع 061 يلزم fresh Joe build/live rerun؛ لا قبول من tests أو preview |
+| W50-50-PROMPT-SWEEP | 50 prompt بصيغ طلب متنوعة عبر Joe UI، لا domains محفوظة | **مؤجلة حتى إعادة تصنيف Prompt 01 بعد patch؛ matrix مسجل خارج Git** | `/tmp/joe-50-prompt-matrix-8a6037a8-revised.md` يضم 50 صفاً مع 15 run-on بلا colon/list، 8 طلبات مزدوجة، 8 قيود ملحقة، 6 ناقصة، 6 أسئلة، 5 edits بعد build، 22 English، و14 ألفاظ مخترعة؛ كل صف يحتاج delivery criteria مشتقة من نصه، direct DOM consequence، وreload عند implied storage. OPEN يحجز الصف التالي إذا كان دفاعه العام غير محسوم؛ يبدأ sweep فقط بعد تصنيف Prompt 01 وفق قرار Claude |
+| INV-WORD-PROBE | إثبات عدم اعتماد التشخيص على الاسم | **منجز كمسبار خارج Git** | الأمر الحرفي `npx --yes tsx /tmp/joe-50-invented-word-probe.ts` على SHA `8a6037a8b1fe319265c322cec0fd6feeb5516068` خرج `FocusBoard→tasks` و`Qelvani-Zorvex→tasks`، وبعد patch خرج run-on `زُرْقَمُونِي→appKind:null, derivedColumnLabels:null`; raw/diagnosis على PR #82؛ لا يصير هذا قبولاً حياً |
+
+### بوابات سجل 061
+
+أثبت focused regression الأمر الحرفي `cd /home/ubuntu/xelitesolutions-main/api && npx jest src/__tests__/the-schema-comes-from-the-request.test.ts --runInBand --detectOpenHandles` النتيجة **1 suite / 59 tests / process 0**. وأثبت مسبار الكلمة المخترعة الأمر الحرفي `npx --yes tsx /tmp/joe-50-invented-word-probe.ts` النتيجة **EXIT 0** مع السلبيات والموجبات الموثقة. وأثبت full gate الأمر الحرفي `NO_COLOR=1 GATE_BATCH=12 bash scripts/gate.sh` على **249 ملف اختبار، 21 batch، 249 suite، 4096 test، TSC=0، Web TSC=0، API build=0، Web build=0، كل 21 batch EXIT 0، process 0، `GATE:PASS`**.
+
+المحاولة الموحّدة `npx jest --runInBand --detectOpenHandles` انتهت بـsignal 143 بعد عدم إخراج summary، كما انتهت `--forceExit` بـ143؛ لذلك لم تُسجّل PASS مستقلة. full gate المتجزئ هو القياس الكامل الأخضر المعتمد، لأنه يشغّل جميع 249 ملفاً ويجمع denominator قبل التشغيل. لم تدخل `web/.joe-live-vite.config.mjs` أو `web/pnpm-lock.yaml` أو `web/pnpm-workspace.yaml` في staging، ولا generated artifacts أو WeatherGo.
+
+### جواب ROOT-015 المحفوظ
+
+السبب الجذري هو أن مسار التأليف كان يسمح للنموذج بمعاملة المسار النسبي كما لو كان نسبةً إلى الملف الجاري داخل `components`، من دون عقد يفرض حل كل path من `projectRoot` ويميز الملف من المجلد قبل الإنشاء؛ لذلك ظهر `./styles/` من سياق الملف/الطلب، وكان الكاتب القديم قادراً على إنشاء مجلد باسم ملف أو مسار خاطئ قبل الحارس. الدليل هو أن إصلاح 047 احتاج عقد كتابة مركزي يرفض `package.json` كمجلد قبل `mkdirSync`، وأن 048b جعل receipt يحمل `projectRoot` الموثق. العلاج العام هو root-relative boundary + structural validation + provenance، وليس استثناءً باسم `styles` أو WeatherGo.
+
+**آخر حالة الدفع:** `HEAD=origin/main=8a6037a8b1fe319265c322cec0fd6feeb5516068` قبل دفع سجل 061. بعد هذه الإضافة يجب staging صريح للملفات المسموح بها فقط، ثم commit وnormal push إلى `main`، ثم إعادة بناء Joe وتشغيل fresh Prompt 01؛ لا إعلان قبول إلا بدليل حي مستقل.
+
+POS-061-FOCUSED: 1 suite / 59 tests / EXIT 0
+POS-061-PROBE: invented-word after patch / EXIT 0
+POS-061-TSC: 0
+POS-061-FULL-GATE: 21/21 batches / 249 suites / 4096 tests / every batch EXIT 0 / GATE:PASS
+POS-061-MONOLITHIC-JEST: signal 143 / no summary / NOT PASS
+POS-061-PROMPT01: OPEN / fresh live rerun required after pushed SHA
+POS-061-NO-GENERATED-OR-WEATHERGO-MANUAL-EDIT: confirmed

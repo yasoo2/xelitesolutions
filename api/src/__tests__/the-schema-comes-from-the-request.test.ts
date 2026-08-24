@@ -231,6 +231,26 @@ describe('a bare noun does not open a column list', () => {
         expect(derivedColumns(text)).toBeNull();
     });
 
+    // NEGATIVE — Arabic recording words must not match inside pronouns, and the
+    // English noun «log of» must not be mistaken for the recording verb.
+    it.each([
+        ['فيهم', 'بدي برنامج يحفظ لي زُرْقَمُونِي وأرقامهم وعناوينهم ويخليني أبحث فيهم وأعدّلهم وأحذفهم'],
+        ['أتابعهم', 'عندي عملاء وأتابعهم بنفسي'],
+        ['أديرها', 'الملفات وأديرها يدوياً'],
+        ['log of', 'a log of visitors from last year'],
+    ])('%s does not open a recording list from inside a token', (_label, text) => {
+        expect(derivedColumns(text)).toBeNull();
+    });
+
+    // POSITIVE — the same bounded forms still open genuine lists.
+    it.each([
+        ['أسجل فيه', 'بدي جدول أسجل فيه المواعيد: اسم المريض ورقم تلفونه ووقت الموعد', ['اسم المريض', 'رقم تلفونه', 'وقت الموعد']],
+        ['فيها الحقول', 'جدول فيها الحقول: التاريخ والمبلغ والسبب', ['التاريخ', 'المبلغ', 'السبب']],
+        ['record', 'record students: name, grade, section', ['name', 'grade', 'section']],
+    ])('%s still opens an explicit recording list', (_label, text, expected) => {
+        expect(derivedColumns(text)?.map(c => c.label)).toEqual(expected);
+    });
+
     // POSITIVE — an introduced noun still declares, in both languages.
     it.each([
         ['الحقول:', 'بدي جدول الحقول: الاسم والسعر والكمية', ['الاسم', 'السعر', 'الكمية']],
