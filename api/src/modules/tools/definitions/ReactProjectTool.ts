@@ -23,7 +23,7 @@ import { ToolPermission, ToolExecutionResult } from '../types';
 import { buildPalette, paletteCss, darkTokenBlock, lightTokenBlock } from '../../../core/design/design-system';
 import { brandFrom, brandFallback } from '../../../core/design/page-head';
 import { detectPageKind, type PageKind } from '../../../core/design/blueprints';
-import { applyRequestFieldConstraints, detectAppKind, blueprintFor, uncoveredFeatures, derivedTables, type AppBlueprint } from '../../../core/design/app-blueprints';
+import { derivedColumns, applyRequestFieldConstraints, detectAppKind, blueprintFor, uncoveredFeatures, derivedTables, type AppBlueprint } from '../../../core/design/app-blueprints';
 import { acceptanceFor as acceptanceCriteriaFor } from '../../../core/quality/acceptance';
 import { buildAppFiles, fileAppCss } from './react-app-templates';
 import { familyFor, familyCss, familyFonts, FAMILY_LABEL_AR, type DesignFamily } from '../../../core/design/families';
@@ -2761,6 +2761,35 @@ export class ReactProjectTool extends BaseTool {
         const uiLang = String(context?.language || '').toLowerCase();
         const replyLang = replyLanguageCode(context?.language, request);
         const isAr = replyLang === 'ar';
+
+        /**
+         *  THE REPLY IS FOR HIM. THE APP IS FOR WHOEVER WILL USE IT.
+         *
+         *  Measured on every ladder rung that built anything, with his
+         *  interface in English and his request in Arabic:
+         *
+         *      columns: العنوان · المؤلف · السعر
+         *      title:   «Records»
+         *      metric:  «Total السعر»
+         *
+         *  An application whose columns are Arabic and whose headings are
+         *  English is broken in both languages at once, and nobody would
+         *  ship it. It happened because ONE language decision was serving
+         *  two different readers: `replyLanguageCode` answers «what
+         *  language do I speak to HIM in», which the interface rightly
+         *  decides — and that answer was then used to label a thing he is
+         *  building for somebody else.
+         *
+         *  The artifact's chrome speaks the language of the labels it
+         *  carries, and those labels are his own words, read out of his
+         *  own sentence. With no columns to read there is nothing to take
+         *  a language from, so the reply language stands — which is the
+         *  same rule the project's NAME follows, and for the same reason.
+         */
+        const artifactLabels = derivedColumns(request) || [];
+        const artifactIsAr = artifactLabels.length
+            ? artifactLabels.some(c => /[\u0600-\u06FF]/.test(String(c.label || '')))
+            : isAr;
         try { broadcast({ type: 'build_started', sessionId, data: { tool: 'react_project', sessionId } } as any); } catch { /* UI optional */ }
 
         const term = (line: string) => {
@@ -2868,7 +2897,7 @@ export class ReactProjectTool extends BaseTool {
         // all. When the request names an application, the section library is
         // skipped entirely and a working app is generated instead.
         const appKind = detectAppKind(request) || inheritedAppKind;
-        const appBp: AppBlueprint | null = appKind ? blueprintFor(appKind, request, isAr) : null;
+        const appBp: AppBlueprint | null = appKind ? blueprintFor(appKind, request, artifactIsAr) : null;
         // سجّل قرار القالب نفسه، لا وعداً عاماً بالنجاح؛ هذا يكشف فوراً أي
         // تحوير لوسيط الطلب بين الخطة وأداة البناء في الاختبارات الحية.
         // The language Joe SPEAKS is the interface's, not the prompt's — and a
@@ -3364,7 +3393,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 const ownTable = String(RECORDS_TABLE_BY_KIND[effectiveBp.kind]?.[0] || '');
                 if (ownTable && !builtKeys.has(ownTable)) {
                     term(`data link: this system builds no «${ownTable}» table — the ${effectiveBp.kind} template stands down for the system's own model`);
-                    effectiveBp = blueprintFor('generic', request, isAr);
+                    effectiveBp = blueprintFor('generic', request, artifactIsAr);
                 }
             }
             let strippedRelation = false;
@@ -3417,7 +3446,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             });
             if (declaration) term(declaration);
             const appFiles = buildAppFiles(runBp, {
-                brand: content.brand, isArabic: isAr, api: appApi, apiResources,
+                brand: content.brand, isArabic: artifactIsAr, api: appApi, apiResources,
                 //  The app remembers the words it was built from, so an edit can
                 //  re-derive his columns instead of replacing them with a stock set.
                 sourceRequest: request,
