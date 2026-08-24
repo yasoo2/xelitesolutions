@@ -1304,14 +1304,50 @@ export class ProjectRunTool implements ToolDefinition {
             logs.push(`project_run: ignored pre-existing loopback ports (${preExistingCommonPorts.join(', ')})`);
         }
 
-        // Detached start through the sanctioned gateway — never child_process.
+        /**
+         *  A PROCESS THAT RUNS OUTSIDE THE PANEL IS A PROCESS NOBODY WATCHES.
+         *
+         *  He photographed it: a separate black Windows Terminal window,
+         *  over his work, printing
+         *
+         *      > task-management-table@1.0.0 start
+         *      Server running at http://localhost:3000
+         *
+         *  Everything Joe does is meant to happen inside his panels —
+         *  start-joe.ps1 says so where it sets BROWSER_HEADED=0: «بلا نافذة
+         *  خارجية — كل شيء داخل لوحة جو». A window he did not open is a
+         *  surface Joe cannot read, cannot show him, and cannot close.
+         *
+         *  AND THE SHAPE THAT OPENED IT DOES NOT EVEN WORK. Measured on his
+         *  machine, spawning `npm start` in a real project four ways and
+         *  then asking the port whether anything answered:
+         *
+         *      detached + shell + ignore  (this code)   alive: false
+         *      detached + shell + ignore + windowsHide  alive: false
+         *      detached + shell + pipe    + windowsHide  alive: false
+         *      MANAGED  + shell + pipe    + windowsHide  alive: TRUE, output read
+         *
+         *  On Windows a detached shell command does not survive in any
+         *  variant. So the window was not the price of a working server —
+         *  it was the price of an unreliable one.
+         *
+         *  A managed child costs one thing and buys three: Joe owns the
+         *  lifetime, so a restart cannot leave an orphan holding port 3000;
+         *  the output arrives on a pipe, so it can go where he is looking;
+         *  and there is no window, because there is no console to make.
+         */
         const res = await ExecutionGateway.execute(detected.command, [], {
             cwd,
             env: { ...process.env, PORT: String(port), HOST: '127.0.0.1', BROWSER: 'none', CI: '1' },
-            detached: true,
+            //  Not detached: Joe keeps the handle, so a restart cannot leave
+            //  an orphan holding port 3000. Not waited for either — a server
+            //  never exits, and waiting for one would hang this tool forever.
+            detached: false,
+            background: true,
             shell: true,
-            stdio: 'ignore',
-        });
+            stdio: 'pipe',
+            windowsHide: true,
+        } as any);
         if (!res.success || res.data?.ok === false) {
             return { ok: false, error: `تعذّر تشغيل الخادم: ${res.error || res.data?.error || 'unknown'}`, logs };
         }

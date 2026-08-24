@@ -56,13 +56,6 @@ describe('a spawn that fails is a failure, not a silence', () => {
         expect(E).toMatch(/رمز الخروج/);
     });
 
-    it('and a detached child is not ALSO asked to hide a window it cannot have', () => {
-        // DETACHED_PROCESS with CREATE_NO_WINDOW is a contradiction Windows is
-        // documented not to accept; the observed result was a process that
-        // started, wrote nothing, and died.
-        expect(E).toMatch(/windowsHide: options\.windowsHide === true/);
-    });
-
     it('…and on Windows it is not detached at all — a console host needs a console', () => {
         // DETACHED_PROCESS leaves the child with no console, and powershell.exe
         // cannot start its host without one: it exits immediately with status
@@ -74,9 +67,67 @@ describe('a spawn that fails is a failure, not a silence', () => {
 });
 
 describe('attached command window policy is explicit at the spawn boundary', () => {
+    //  A spawn-shaped stub: these cases judge the OPTIONS spawn received,
+    //  so the child only has to exist.
+    const fakeChild = () => ({
+        pid: 4242, exitCode: null, killed: false,
+        stdout: null, stderr: null, stdin: null,
+        on() { return this; }, once() { return this; }, kill() { return true; }, unref() { },
+    }) as any;
+
     beforeEach(() => {
         spawnMock.mockClear();
     });
+
+    /**
+     *  THIS CASE WAS PINNING A LINE OF SOURCE, AND THE LINE WAS WRONG.
+     *
+     *  It asserted the exact text `windowsHide: options.windowsHide === true`
+     *  — «a detached child is not ALSO asked to hide a window» — on the
+     *  belief that DETACHED_PROCESS with CREATE_NO_WINDOW is a contradiction
+     *  Windows refuses, and that the observed death came from asking for both.
+     *
+     *  The death was real. The cause was not. Measured on the owner's machine,
+     *  spawning a real server four ways and then asking the port:
+     *
+     *      detached + shell   + ignore                alive: false
+     *      detached + shell   + ignore + windowsHide  alive: false
+     *      detached + NOshell + pipe   + windowsHide  alive: TRUE
+     *      background + shell + pipe   + windowsHide  alive: TRUE
+     *
+     *  A detached child lives perfectly well hidden. What kills it is being
+     *  detached from a SHELL command, in either state. Meanwhile the console
+     *  this line insisted on opened over his work, twice in one morning.
+     *
+     *  So the assertion is the behaviour now, not the sentence: what did
+     *  spawn actually receive. A test that quotes an implementation line
+     *  cannot notice that the line is mistaken — it can only defend it.
+     */
+    it('a detached child is spawned with no window', () => {
+        const calls: Array<Record<string, unknown>> = [];
+        spawnMock.mockImplementation(((...args: Parameters<typeof childProcess.spawn>) => {
+            calls.push((args[2] || {}) as Record<string, unknown>);
+            return fakeChild();
+        }) as typeof childProcess.spawn);
+
+        executionEngine.runDetached(process.execPath, ['-e', ''], { detached: true });
+        expect(calls.at(-1)?.windowsHide).toBe(true);
+    });
+
+    //  NEGATIVE — a caller that explicitly asks for a console still gets one,
+    //  or this is a hard rule rather than a default. Its own case, with its
+    //  own mock: two spawns through one mocked child share state.
+    it('and a caller may still ask for a console', () => {
+        const seen: Array<Record<string, unknown>> = [];
+        spawnMock.mockImplementation(((...args: Parameters<typeof childProcess.spawn>) => {
+            seen.push((args[2] || {}) as Record<string, unknown>);
+            return fakeChild();
+        }) as typeof childProcess.spawn);
+
+        executionEngine.runDetached(process.execPath, ['-e', ''], { detached: true, windowsHide: false });
+        expect(seen.at(-1)?.windowsHide).toBe(false);
+    });
+
 
     afterEach(() => {
         spawnMock.mockClear();
@@ -118,7 +169,13 @@ describe('attached command window policy is explicit at the spawn boundary', () 
 
         const result = executionEngine.runDetached(process.execPath, ['-e', ''], { detached: true });
         expect(result.ok).toBe(true);
-        expect(calls.at(-1)).toEqual({ windowsHide: false, detached: true });
+        //  This asserted `windowsHide: false` — a console window for every
+        //  detached child — on the belief that hiding one killed it. He was
+        //  shown two black windows over his work before that belief was
+        //  measured: hiding changes nothing about survival (a detached
+        //  non-shell child lives hidden; a detached SHELL command dies in
+        //  both states). The window was the cost of a wrong inference.
+        expect(calls.at(-1)).toEqual({ windowsHide: true, detached: true });
         child.kill();
     });
 });

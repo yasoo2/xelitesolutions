@@ -33,6 +33,26 @@ export interface ExecutionOptions {
     rows?: number;
     timeout?: number;
     detached?: boolean;
+    /**
+     *  DO NOT WAIT FOR IT — WHICH IS NOT THE SAME AS DETACH IT.
+     *
+     *  One flag was answering two questions. A long-running server needs
+     *  «return to me now, it will not exit»; the updater needs «survive me».
+     *  Because only `detached` existed, anything that must not be waited
+     *  for had to be cut loose as well — and on Windows a detached shell
+     *  command opens its own console window and, measured four ways on his
+     *  machine, does not survive at all:
+     *
+     *      detached + shell + ignore                 alive: false
+     *      detached + shell + ignore + windowsHide   alive: false
+     *      detached + shell + pipe    + windowsHide   alive: false
+     *      background + shell + pipe  + windowsHide   alive: TRUE
+     *
+     *  So `background` resolves as soon as the child exists, keeps the
+     *  handle, and leaves the window unmade. The parent still owns it, so
+     *  a restart cannot leave an orphan holding a port.
+     */
+    background?: boolean;
     stdio?: 'ignore' | 'pipe' | 'inherit';
     sessionId?: string;
     /**
@@ -628,7 +648,38 @@ export class ExecutionEngine {
                  * «العملية انتهت دون أن تبدأ», twice, deterministically.
                  * There is no window to hide when there is no console.
                  */
-                windowsHide: options.windowsHide === true,
+                /**
+                 *  HIDING THE WINDOW DOES NOT KILL THE CHILD. MEASURED.
+                 *
+                 *  This defaulted to FALSE — show the console — on the
+                 *  reasoning recorded above: that asking for a detached
+                 *  child AND a hidden window produced a process which was
+                 *  created, printed nothing, and died.
+                 *
+                 *  The observation was real. The inference was wrong, and
+                 *  he paid for it twice in one morning with a black console
+                 *  window opening over his work — first running `npm start`
+                 *  for a generated project, then a bare cmd.exe sitting in
+                 *  its directory.
+                 *
+                 *  Measured on his machine, spawning a real server four ways
+                 *  and then asking the port whether anything answered:
+                 *
+                 *      detached + shell   + ignore                alive: false
+                 *      detached + shell   + ignore + windowsHide  alive: false
+                 *      detached + NOshell + pipe   + windowsHide  alive: TRUE
+                 *      background + shell + pipe   + windowsHide  alive: TRUE
+                 *
+                 *  The killer is `detached` with a SHELL command, in both
+                 *  hide states. Hiding changes nothing about survival — the
+                 *  two live cases are both hidden. So the window was never
+                 *  the price of a working child; it was a conclusion drawn
+                 *  from a coincidence, and six call sites inherited it.
+                 *
+                 *  A caller that genuinely wants a console can still ask for
+                 *  one; nobody in this repository does.
+                 */
+                windowsHide: options.windowsHide !== false,
             } as any);
             /**
              * A FAILED SPAWN IS NOT A SUCCESS — AND MUST NOT KILL ITS HOST.
@@ -742,8 +793,10 @@ export class ExecutionEngine {
                 stdio: options.stdio || 'pipe'
             });
 
-            if (options.detached) {
-                child.unref();
+            if (options.detached || options.background) {
+                //  Only a DETACHED child is disowned. A background child is
+                //  still ours: that is the whole difference between the two.
+                if (options.detached) child.unref();
                 setTimeout(() => {
                     resolve({
                         ok: child.exitCode === null || child.exitCode === 0,
