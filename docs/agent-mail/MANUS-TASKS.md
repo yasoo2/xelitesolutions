@@ -1209,7 +1209,7 @@ POS-061-NO-GENERATED-OR-WEATHERGO-MANUAL-EDIT: confirmed
 
 الدليل الخام السابق لـPrompt 01 محفوظ في `/tmp/joe-50-prompt01-focusboard-raw-16294c11.md`، وتشخيص font في `/tmp/joe-p01-font-404-diagnosis-061.md`، ودليل Terminal في `/tmp/joe-50-eye-terminal-manager-raw-061.md`، ودليل CSV في `/tmp/joe-50-prompt01-focusboard-direct-061.md`. الدليل الجديد بعد merge الخاص بالـArabic declaration محفوظ في `/tmp/joe-p01-declared-list-shape-false-positive-raw-merge.md`، وتشخيصه في `/tmp/joe-p01-declared-list-shape-false-positive-diagnosis-merge.md`; Claude حكم أن labels العائدة `الاسم/السعر/الكمية` تطابق طلب المستخدم، أي اتفاق مسارين لا عيب منتج (`5389794373`).
 
-بعد الدمج الطبيعي وتشغيل الحكم المصحح: **focused = 9 suites / 156 tests / EXIT 0**، ويشمل `font-resources`, `records-export-live-state`, `terminal-kernel-lifecycle`, `the-schema-comes-from-the-request`، واختبارات Claude canonical الخمسة. محاولة focused السابقة قبل الحكم فشلت فقط بثلاث assertions غير صالحة في fixture branch-routing؛ أزيلت ولم يتغير parser. لم تُشغّل بعدُ `npx tsc --noEmit` أو `NO_COLOR=1 GATE_BATCH=12 bash scripts/gate.sh` على الحالة النهائية بعد merge، ولذلك لا تُعد هذه الدفعة جاهزة للدفع.
+بعد الدمج الطبيعي وتشغيل الحكم المصحح: **focused = 9 suites / 156 tests / EXIT 0**، ويشمل `font-resources`, `records-export-live-state`, `terminal-kernel-lifecycle`, `the-schema-comes-from-the-request`، واختبارات Claude canonical الخمسة. محاولة focused السابقة قبل الحكم فشلت فقط بثلاث assertions غير صالحة في fixture branch-routing؛ أزيلت ولم يتغير parser. static gates بعد merge ناجحة: API TSC=0، web type-check=0، web build=0. أما `NO_COLOR=1 GATE_BATCH=12 bash scripts/gate.sh` فنتيجته **FAIL** حقيقية: 22 batches، batch 11 فيه `neural-trace.test.ts` و`neural-card-fits.test.ts`، والمحصلة 255/257 suites و4191/4193 tests؛ لم يظهر `GATE:PASS` ولم يحدث push، ولذلك لا تُعد هذه الدفعة جاهزة للدفع.
 
 الحالة الحالية الدقيقة: `HEAD=94d8efd03380d23e08fd420297baef34f5d3aa9a`، و`origin/main` ما زال عند `16294c110aa657d3d9d5b43d6a3425d3cff72ded`. التغيير المتتبع غير المدفوع بعد هو إزالة fixture غير الصالح من `the-schema-comes-from-the-request.test.ts` وتحديث هذا ledger. الملفات `web/.joe-live-vite.config.mjs` و`web/pnpm-lock.yaml` و`web/pnpm-workspace.yaml` غير متتبعة وممنوع staging؛ كما لا تُضمّن generated projects أو lockfiles أو `node_modules` أو `dist`.
 
@@ -1220,8 +1220,14 @@ POS-061-NO-GENERATED-OR-WEATHERGO-MANUAL-EDIT: confirmed
 POS-061-TASKS-UPDATED: 2026-08-24
 POS-061-CLAUDE-MERGE: normal merge `94d8efd03380d23e08fd420297baef34f5d3aa9a` from `d83bfa931dc93fe746f60141162b79975fa7e7e0`
 POS-061-FOCUSED: 9 suites / 156 tests / EXIT 0
-POS-061-TSC: pending on merged tree
-POS-061-FULL-GATE: pending on merged tree
-POS-061-PUSH: pending final Claude check and gates
+POS-061-TSC: 0; web type-check=0; web build=0
+POS-061-FULL-GATE: FAIL — 22 batches; batch 11; 255/257 suites and 4191/4193 tests; no GATE:PASS
+POS-061-PUSH: blocked by neural stale-contract test repair, Claude ruling, and rerun of full gate
 POS-061-LIVE-P01: required after push; P01 OPEN
 POS-061-NO-WEATHERGO-MANUAL-EDIT: confirmed
+
+POS-061-CLAUDE-ACK: `538986...` acknowledged — update only the two stale neural source-contract assertions to `.nc-roll`/`.nc-roll .ln`; prove non-vacuity by temporary removal of `dir="auto"` and `min-width: 0`/ellipsis contract, capture raw failing outputs, restore, rerun full gate, and do not touch DECLARED_LIST or other contracts.
+
+POS-061-NEURAL-MUTATION: Claude ruling `538986...` fulfilled locally — removed `dir="auto"` and the targeted neural-trace test exited 1; removed `.nc-roll min-width: 0` and the targeted neural-card test exited 1; both exact raw logs and before/after summaries are under `/tmp/joe-p01-neural-mutation-dir-raw-bbfa20a2.md`, `/tmp/joe-p01-neural-mutation-minwidth-raw-bbfa20a2.md`, `/tmp/pos061-mutation-neural-trace-dir-20260824T022047Z.log`, `/tmp/pos061-mutation-neural-card-minwidth-20260824T022125Z.log`, `/tmp/pos061-before-mutation-neural-trace-20260824T023106Z.log`, and `/tmp/pos061-before-mutation-neural-card-20260824T023106Z.log`; source restored and focused `9 suites / 156 tests / EXIT 0`.
+POS-061-FULL-GATE-PASS: `NO_COLOR=1 GATE_BATCH=12 bash scripts/gate.sh` at SHA `bbfa20a297f50918913d12f3842740ffb6708556` returned process `0`, `Test Suites: 0 failed, 257 passed, 257 total`, `Tests: 0 failed, 4193 passed, 4193 total`, `GATE_TSC_EXIT:0`, `GATE_WEB_TSC_EXIT:0`, `GATE_API_BUILD_EXIT:0`, `GATE_WEB_BUILD_EXIT:0`, `GATE_JEST_EXIT:0`, `GATE:PASS`; log `/tmp/full-gate-061-neural-fixed-20260824T022803Z.log`.
+POS-061-PR-RAW-PENDING: Claude requested the two raw mutation outputs on PR #82; `gh`/GitHub API currently returns 401 for both configured tokens, so no new comment was posted and no browser state-changing action was performed. Evidence remains saved locally; push remains blocked until final PR-channel check and ordinary main push can be completed.
