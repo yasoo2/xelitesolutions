@@ -94,18 +94,34 @@
 }
 
 /* Collapsed States */
+
+/*  A NEGATIVE MARGIN CANCELS A GAP. WITH NO GAP, IT IS JUST A SHIFT.
+
+    Measured with the chat collapsed, at 1920:
+
+        .joe-chat-panel          width 0   margin-right -12px
+        .joe-workspace-container left -10
+        .joe-main                gap: normal
+
+    The row has no gap. The −12px had nothing to cancel, so it simply
+    dragged the pane beside it ten pixels off the left edge of the window
+    — every time the chat was closed, at every width. That is the shifted
+    screen he photographed: «ما زالت الشاشة زايحه».
+
+    A compensation is only ever as correct as the thing it compensates
+    for, and this one outlived it. */
 .joe-chat-panel.collapsed {
     --joe-chat-actual-width: 0px;
     opacity: 0;
     pointer-events: none;
-    margin-right: -12px;
+    margin-right: 0;
 }
 
 .joe-files-panel.collapsed {
     --joe-files-actual-width: 0px;
     opacity: 0;
     pointer-events: none;
-    margin-left: -12px;
+    margin-left: 0;
 }
 
 /* ========== Reset & Base ========== */
@@ -4020,4 +4036,30 @@ body:not(.rtl) .joe-user-info {
    ============================================================ */
 [style*="ellipsis"] {
     unicode-bidi: plaintext;
+}
+
+/* ============================================================
+   THE WHOLE PAGE MEANS THE WHOLE PAGE
+
+   Measured at 1920, before and after pressing the header button:
+
+       before:  chat 0..1771 (1771)   workspace 1773..1920 (147)
+       after:   chat 0..0    (0)      workspace -10..970  (980)
+
+   A 147-pixel browser panel while the chat held 1771, and then a
+   980-pixel one pinned ten pixels off the LEFT edge with 950 pixels of
+   empty screen beside it. That second number is the «شاشة زايحه» he
+   photographed: the pane keeps the fixed width it asked for
+   — clamp(620px, 58vw, 980px) — and a fixed width cannot fill a row
+   whose other child has just become zero.
+
+   So when the chat is gone the pane stops asking for a width and takes
+   the row instead. Both declarations are needed: the width would
+   otherwise win over the grow.
+   ============================================================ */
+.joe-main.chat-collapsed .joe-workspace-container:not(.canvas-collapsed) {
+    flex: 1 1 auto;
+    width: auto;
+    max-width: none;
+    border-inline-start: none;
 }

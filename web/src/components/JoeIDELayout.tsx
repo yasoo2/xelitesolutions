@@ -733,7 +733,13 @@ export default function JoeIDELayout({
             />
 
             {/* Main Content Area */}
-            <div className="joe-main">
+            {/*  The workspace can only fill the page if the page knows the
+                chat has gone. Measured before this class existed, at 1920:
+                chat 0..1771 and workspace 1773..1920 — a 147px browser
+                panel — and with the chat collapsed, workspace -10..970,
+                pinned off the left edge with 950px of empty screen beside
+                it. Neither state was what the button promised. */}
+            <div className={`joe-main ${isChatCollapsed ? 'chat-collapsed' : ''}`}>
                 {/* Left: Chat Panel */}
                 <ErrorBoundary fallbackTitle="تعذّر تحميل المحادثة">
                     <ChatPanel
