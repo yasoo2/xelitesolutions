@@ -286,13 +286,42 @@ const KIND_WORD: Record<string, { ar: string; en: string }> = {
 const titleCase = (s: string) => s.trim().split(/\s+/).slice(0, 2)
     .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
 
+/**
+ *  A NAME FOR HIS THING IS IN THE LANGUAGE HE WROTE.
+ *
+ *  Live round on his machine. He typed, in Arabic:
+ *
+ *      «بدي جدول مبيعات فيه اسم الصنف والكمية والسعر، والسعر لا يقبل صفر»
+ *
+ *  and Joe answered: A full React project scaffolded — "MyApp".
+ *
+ *  Measured on this function afterwards:
+ *
+ *      his words ARABIC  · interface ARABIC   → «مشروعي»
+ *      his words ARABIC  · interface ENGLISH  → «MyApp»    ← this round
+ *      his words ENGLISH · interface ARABIC   → «مشروعي»
+ *
+ *  The name followed the SWITCHER. A man writing Arabic was handed
+ *  «MyApp» because a control at the top of the screen said English, and
+ *  a man writing English would have been handed «مشروعي» for the mirror
+ *  reason. The interface language governs what Joe SAYS to him — that is
+ *  right and it stays. It does not govern what his project is CALLED:
+ *  that name is made of his words, and it takes their script.
+ *
+ *  The flag is still the answer when the request carries no script at
+ *  all — a bare «gate062», a number, an empty string — because then
+ *  there is nothing of his to read.
+ */
 export function brandFallback(request: string, isArabic: boolean, kind = 'generic'): string {
+    const arabicInHisWords = /[؀-ۿ]/.test(String(request || ''));
+    const latinInHisWords = /[A-Za-z]/.test(String(request || ''));
+    const inHisScript = arabicInHisWords ? true : (latinInHisWords ? false : isArabic);
     const req = String(request || '');
     const word = KIND_WORD[kind] || KIND_WORD.generic;
     // A marketplace names itself, and it says so before any «platform X»
     // pattern can shave a word off «تجارة إلكترونية» and call it a subject.
     if (/\b(e-?commerce|marketplace)\b|تجارة إ?لكترونية|سوق إ?لكتروني/i.test(req)) {
-        return isArabic ? 'سوق التجارة' : 'Commerce Hub';
+        return inHisScript ? 'سوق التجارة' : 'Commerce Hub';
     }
     // He stated his own subject: use it verbatim. A man who says «عندي عيادة
     // أسنان» has named the thing better than any pattern can.
@@ -300,7 +329,7 @@ export function brandFallback(request: string, isArabic: boolean, kind = 'generi
         const m = req.match(re);
         const owned = (m?.[1] || '').trim().split(/\s+/).slice(0, 3)
             .filter(w => !NOT_A_SUBJECT.test(w)).join(' ').trim();
-        if (owned.length >= 3) return isArabic ? owned : titleCase(owned);
+        if (owned.length >= 3) return inHisScript ? owned : titleCase(owned);
     }
     let subject = '';
     for (const re of SUBJECT_PATTERNS) {
@@ -311,7 +340,7 @@ export function brandFallback(request: string, isArabic: boolean, kind = 'generi
             .filter(w => !NOT_A_SUBJECT.test(w)).join(' ').trim();
         if (candidate.length >= 3) { subject = candidate; break; }
     }
-    if (!subject) return isArabic ? 'مشروعي' : 'MyApp';
+    if (!subject) return inHisScript ? 'مشروعي' : 'MyApp';
 
     /**
      *  A NAME TAKES THE LANGUAGE OF THE WORDS IT IS MADE OF.
