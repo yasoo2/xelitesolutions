@@ -1308,10 +1308,10 @@ const TYPE_MARKS: Array<[RegExp, DerivedRole, FieldType]> = [
     [/ملاحظ|وصف|تفاصيل|شرح|تعليق|\bnote\b|\bdescription\b|\bdetails\b|\bcomment\b/iu, 'note', 'textarea'],
 ];
 
-export interface DerivedField { label: string; key: string; type: FieldType; role: DerivedRole; options?: string[]; min?: number }
+export interface DerivedField { label: string; key: string; type: FieldType; role: DerivedRole; options?: string[]; min?: number; minExclusive?: boolean }
 
 /** A condition he stated, and the field it is about. */
-export interface StatedRule { text: string; field?: string; min?: number }
+export interface StatedRule { text: string; field?: string; min?: number; minExclusive?: boolean }
 
 /**
  *  A RULE THAT IS NEITHER KEPT NOR CONFESSED.
@@ -1348,19 +1348,29 @@ export function statedRules(requestRaw: string): StatedRule[] {
     //  Rules are stated as their own clause, after a comma or «و».
     for (const raw of request.split(/[،,؛;.\n]/)) {
         const clause = raw.trim().replace(/^و\s*/u, '').trim();
-        if (!clause || !READS_AS_A_RULE.test(clause)) continue;
+        if (!clause) continue;
+        //  READS_AS_A_RULE is a list of NEGATIONS — «لا», «يجب», «يمنع».
+        //  «والمبلغ أكبر من 50» states a condition and contains none of
+        //  them, so it was not seen as a rule at all. Caught by making a
+        //  test assert the wiring instead of calling the helper itself:
+        //  the old test passed with the link cut, which is a criterion
+        //  that cannot fail — a defect, and it was mine.
+        //
+        //  A clause that STATES A BOUND is a rule whatever words it uses,
+        //  and statedBound is the authority on that, not a vocabulary.
+        const boundHere = statedBound(clause);
+        if (!boundHere && !READS_AS_A_RULE.test(clause)) continue;
         const rule: StatedRule = { text: clause };
         //  Which column is it about? The clause names it, and the name is
         //  the definite noun it opens with — no vocabulary of field names.
         const named = clause.match(/^(?:ال[ء-ي]+|[A-Za-z][A-Za-z0-9_]*)/u);
         if (named) rule.field = named[0];
-        //  “does not accept zero” and “greater than N” are the same shape:
-        //  a number the value must exceed. Read the number he wrote; the
-        //  word for zero is read as the number it is.
-        const digits = clause.match(/(-?\d+(?:\.\d+)?)/u);
-        const saysZero = /(?:^|\s)(?:صفر|zero)(?:$|\s)/iu.test(clause);
-        const floor = digits ? Number(digits[1]) : (saysZero ? 0 : NaN);
-        if (Number.isFinite(floor)) rule.min = floor + 1;
+        //  THE BOUND READER ALREADY EXISTS — statedBound, above, and it
+        //  knows «أقل من», «على الأقل», «موجب» and their English twins.
+        //  Writing a second one here would be the duplication this file
+        //  keeps paying for: two readers drift the first time one of
+        //  them learns a phrase the other does not.
+        if (boundHere) { rule.min = boundHere.min; rule.minExclusive = boundHere.minExclusive; }
         out.push(rule);
     }
     return out;
@@ -1376,6 +1386,7 @@ export function applyStatedRules(fields: DerivedField[], rules: StatedRule[]): {
         const target = next.find(f => f.label === rule.field || f.label.includes(String(rule.field)) || String(rule.field).includes(f.label));
         if (!target || target.type !== 'number') { unapplied.push(rule); continue; }
         target.min = rule.min;
+        if (rule.minExclusive) target.minExclusive = true;
     }
     return { fields: next, unapplied };
 }
@@ -1599,7 +1610,16 @@ export function derivedColumns(requestRaw: string): DerivedField[] | null {
         const names = items.filter(isAName);
         if (names.length < 3 || names.length > 10) return null;
         if (!everyItemIsADefiniteName(names)) return null;
-        return fieldsFromLabels(names);
+        //  THE LINK THAT WAS NEVER JOINED.
+        //
+        //  statedBound reads the condition. DerivedField carries a bound.
+        //  react-app-templates emits «min» and «minExclusive» into the
+        //  schema. The generated app validates against them and even
+        //  says «أكبر من N» in its own error. Four parts of one chain,
+        //  built, and this link never joined — so «والسعر لا يقبل صفر»
+        //  reached a field with no min and zero was accepted.
+        const built = fieldsFromLabels(names);
+        return built ? applyStatedRules(built, statedRules(request)).fields : built;
     }
     let after = request.slice((opener.index || 0) + opener[0].length);
     //  A colon further along is the real start of the list: «أسجل فيه المواعيد:
@@ -1621,7 +1641,16 @@ export function derivedColumns(requestRaw: string): DerivedField[] | null {
     //  A rule that rode in on the end of the list is not a column.
     const named = parts.filter(isAName);
     if (named.length < 3) return null;
-    return fieldsFromLabels(named);
+    //  THE LINK THAT WAS NEVER JOINED.
+    //
+    //  statedBound reads the condition. DerivedField carries a bound.
+    //  react-app-templates emits «min» and «minExclusive» into the
+    //  schema. The generated app validates against them and even
+    //  says «أكبر من N» in its own error. Four parts of one chain,
+    //  built, and this link never joined — so «والسعر لا يقبل صفر»
+    //  reached a field with no min and zero was accepted.
+    const built = fieldsFromLabels(named);
+    return built ? applyStatedRules(built, statedRules(request)).fields : built;
 }
 
 /** Turn the labels he wrote into fields, once, for every path that finds them. */
