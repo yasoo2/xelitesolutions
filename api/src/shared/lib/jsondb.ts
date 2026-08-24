@@ -4,8 +4,32 @@ import path from 'path';
 export class JsonStore<T extends { id?: string; _id?: any }> {
     private filePath: string;
 
-    constructor(collectionName: string) {
-        const dataDir = path.join(process.cwd(), 'data', 'db');
+    constructor(collectionName: string, directory?: string) {
+        /**
+         *  A STORE THAT CANNOT BE POINTED ELSEWHERE CANNOT BE TESTED
+         *  WITHOUT WRITING ON THE MACHINE THAT RUNS THE TEST.
+         *
+         *  The guard written for this file put its rows in the REAL
+         *  data/db, because that was the only place a store could live.
+         *  It then raced the suites that read that directory, and the
+         *  gate came back with two failures that had nothing to do with
+         *  either change — including the new guard failing itself.
+         *
+         *  Same knob the chat and page stores already use, so a test can
+         *  hand it a temporary directory and leave nothing behind.
+         */
+        //  AN ENVIRONMENT VARIABLE IS GLOBAL TO THE WORKER, NOT TO THE FILE.
+        //
+        //  The first version of this took the directory from an env var so a
+        //  test could point it at a temporary folder. Jest gives each test
+        //  FILE its own module registry and the same worker PROCESS, so that
+        //  variable leaked into every other suite sharing the worker — and
+        //  the guard that set it took write-tools-contract down with it in
+        //  the full gate while passing perfectly on its own.
+        //
+        //  A parameter cannot leak. It travels with the store that was asked
+        //  for, and every other store keeps the real directory.
+        const dataDir = String(directory || '').trim() || path.join(process.cwd(), 'data', 'db');
         if (!fs.existsSync(dataDir)) {
             fs.mkdirSync(dataDir, { recursive: true });
         }
@@ -15,9 +39,40 @@ export class JsonStore<T extends { id?: string; _id?: any }> {
         }
     }
 
+    /**
+     *  A FILE THAT CANNOT BE PARSED MUST NOT TAKE THE READER DOWN WITH IT.
+     *
+     *  Found on his machine, not imagined:
+     *
+     *      node -e JSON.parse(readFileSync('run-evidence.json'))
+     *      → Unexpected non-whitespace character after JSON at position 769746
+     *
+     *  A complete document, and then a second copy of its own tail after
+     *  the closing bracket. Every read of that store threw, so every
+     *  question asked of it — including «what did this session do» —
+     *  answered with an exception instead of an answer.
+     *
+     *  The bad file is moved aside rather than deleted: it is the only
+     *  evidence of how it got that way, and an empty store is recoverable
+     *  while a destroyed one is not.
+     */
     private async read(): Promise<T[]> {
         const data = await fs.promises.readFile(this.filePath, 'utf-8');
-        const items = JSON.parse(data);
+        let items: any;
+        try {
+            items = JSON.parse(data);
+        } catch (e: any) {
+            const aside = this.filePath + '.corrupt-' + Date.now();
+            //  Both steps SYNCHRONOUS on purpose. An async recovery write is
+            //  not in the write queue below, so it can land after a create
+            //  that followed it and erase the row that was just added — the
+            //  guard for this file caught exactly that on its first run.
+            try { fs.renameSync(this.filePath, aside); } catch { /* keep going regardless */ }
+            try { fs.writeFileSync(this.filePath, JSON.stringify([])); } catch { /* next write will retry */ }
+            console.warn('[JsonStore] ' + this.filePath + ' was unparseable (' + String(e?.message || e).slice(0, 80) + '); moved to ' + aside);
+            return [];
+        }
+        if (!Array.isArray(items)) return [];
         return items.map((item: any) => {
             if (item.id && !item._id) item._id = item.id;
             if (item._id && !item.id) item.id = item._id;
@@ -25,8 +80,35 @@ export class JsonStore<T extends { id?: string; _id?: any }> {
         });
     }
 
+    /**
+     *  A WRITE IN PLACE, WITH NO LOCK, CAN LEAVE TWO DOCUMENTS IN ONE FILE.
+     *
+     *  writeFile truncates and then streams. Two of them overlapping — and
+     *  nothing here stopped them overlapping — leaves the shorter payload
+     *  followed by whatever of the longer one landed after it. That is
+     *  exactly the shape of the damage found on his disk: a valid document
+     *  and then a fragment of another.
+     *
+     *  Two changes, and each alone would have prevented it: writes on one
+     *  store are serialized, and each write lands in a temporary file that
+     *  is RENAMED over the target. A rename is the closest a filesystem
+     *  comes to all-or-nothing, so a reader sees the old file or the new
+     *  one and never half of each.
+     */
+    private writeQueue: Promise<void> = Promise.resolve();
+    private writeSeq = 0;
+
     private async write(items: T[]): Promise<void> {
-        await fs.promises.writeFile(this.filePath, JSON.stringify(items, null, 2));
+        const run = async () => {
+            //  Unique per write, not per process: two stores on one file, or
+            //  a retry, would otherwise rename the same temporary twice.
+            this.writeSeq += 1;
+            const temp = this.filePath + '.tmp-' + process.pid + '-' + this.writeSeq;
+            await fs.promises.writeFile(temp, JSON.stringify(items, null, 2));
+            await fs.promises.rename(temp, this.filePath);
+        };
+        this.writeQueue = this.writeQueue.then(run, run);
+        return this.writeQueue;
     }
 
     async find(query: any = {}): Promise<T[]> {

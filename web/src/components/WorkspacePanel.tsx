@@ -731,7 +731,24 @@ export default function WorkspacePanel({
                         : { display: activeTab === 'preview' ? 'contents' : 'none' }}>
                         <ErrorBoundary fallbackTitle={t('loadPreviewFailed')}>
                             <Suspense fallback={<LoadingFallback />}>
-                                <PreviewPanel url={previewUrl} />
+                                {/*
+                                  *  AN EMPTY VALUE IS ALSO AN ANSWER.
+                                  *
+                                  *  PreviewPanel updates on a URL and ignores the
+                                  *  absence of one — «if (initialUrl && …)». So the
+                                  *  first session's page stayed on screen while the
+                                  *  SECOND session was open. Measured, right after the
+                                  *  restore started working:
+                                  *
+                                  *    session «جدول مهام متصفح»      src=…/6a8c1ef9…
+                                  *    session «برنامج لحفظ الزبائن»  src=…/6a8c1ef9…  ← the same page
+                                  *
+                                  *  A preview belongs to its session, so the panel is
+                                  *  keyed by the session. A new session is a new panel
+                                  *  with nothing inherited — which is the only way
+                                  *  «this session built nothing» can be shown at all.
+                                  */}
+                                <PreviewPanel key={`preview:${sessionId || 'none'}`} url={previewUrl} />
                             </Suspense>
                         </ErrorBoundary>
                     </div>

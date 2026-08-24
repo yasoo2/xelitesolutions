@@ -18,6 +18,8 @@ import queueRoutes from './routes/queue';
 import filesRoutes from './routes/files';
 import { loadChatStores } from './chat-store';
 import { loadJoePages, loadJoeProjects } from './page-store';
+import { loadSessionLogs, recordSessionEvent } from '../core/session/session-log-store';
+import { observeBroadcasts, liveEventSessionId } from './ws';
 import approvalsRoutes from './routes/approvals';
 import formsPublicRoutes from './routes/formsPublic';
 import projectRoutes from './routes/project';
@@ -77,6 +79,18 @@ export const createApp = () => {
   // the page that was on screen instead of starting a tool circus.
   try { loadJoePages(); } catch { /* best-effort */ }
   try { loadJoeProjects(); } catch { /* best-effort */ }
+  /**
+   *  WRITE DOWN WHAT THE PANEL WOULD HAVE DRAWN.
+   *
+   *  Every log line he sees is broadcast and then forgotten, so a session
+   *  reopened after the window closed had nothing to show — measured, not
+   *  guessed: not one of the sessions in his row appears even once in
+   *  run-evidence.json. broadcast() offers each event to its observers
+   *  before anything else, including events sent before a socket exists,
+   *  so this is the one place that sees all of them and can slow none.
+   */
+  try { loadSessionLogs(); } catch { /* best-effort */ }
+  try { observeBroadcasts((event) => recordSessionEvent(liveEventSessionId(event), event)); } catch { /* best-effort */ }
 
   // Per-request logging is morgan's job (one concise line below). The old
   // old raw-header debug line printed EVERY header of EVERY request — including

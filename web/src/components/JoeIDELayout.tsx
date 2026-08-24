@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef, Suspense, lazy } from 'react';
-import { asPlainLine, logStamp } from '../lib/plainText';
+import { logStamp, logTextFor } from '../lib/plainText';
+import { api } from '../services/apiClient';
 import { useTranslation } from 'react-i18next';
 import JoeHeader from './JoeHeader';
 import TodosPanel from './TodosPanel';
@@ -459,6 +460,35 @@ export default function JoeIDELayout({
         setLogs(saved?.logs || []);
         setProblems(saved?.problems || []);
         setBuildStatus(saved?.buildStatus || null);
+        /**
+         *  A REF LIVES EXACTLY AS LONG AS THE WINDOW — workspace_restore.
+         *
+         *  panelArchive remembers what each session printed, and remembers
+         *  it in the tab. So switching between sessions worked, and closing
+         *  Joe and coming back did not: «كل الجلسات السابقة لا تعرض على
+         *  البرفيو واللوجز ما تم في تلك الجلسة». Measured on his machine,
+         *  opening two past sessions as a guest — chat 211 and 205 lines,
+         *  logs empty both times.
+         *
+         *  The server had them the whole time, in run-evidence, keyed by
+         *  session. Nothing asked. So when the archive has nothing for a
+         *  session, ask — and only then, because a live session's own lines
+         *  are newer than anything on disk and must not be overwritten.
+         */
+        if (sessionId && !(saved?.logs || []).length) {
+            const asked = sessionId;
+            api.get(`/sessions/${asked}/workspace`)
+                .then((data: any) => {
+                    const lines: string[] = Array.isArray(data?.logs) ? data.logs : [];
+                    if (!lines.length) return;
+                    //  He may have moved on while the request was in flight;
+                    //  writing another session's log into this panel would be
+                    //  worse than showing nothing.
+                    if (sessionRef.current !== asked) return;
+                    setLogs(prev => (prev.length ? prev : capLogs(lines)));
+                })
+                .catch(() => { /* an unreachable server is an empty panel, not a crash */ });
+        }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [sessionId]);
 
@@ -576,42 +606,24 @@ export default function JoeIDELayout({
                     }));
                 }
 
-                // Logs
-                if (event.type === 'step_started') {
-                    setLogs(prev => [...prev, `[${logStamp()}] Step Started: ${event.data?.name || 'Unknown'}`]);
-                } else if (event.type === 'step_done') {
-                    setLogs(prev => [...prev, `[${logStamp()}] Step Done`]);
-                } else if (event.type === 'run_finished') {
-                    setLogs(prev => [...prev, `[${logStamp()}] Run Finished`]);
-                } else if (event.type === 'text') {
-                    // event.data is { text, sessionId } — logging the object
-                    // printed a literal "[object Object]" line in the panel.
-                    const t = typeof event.data === 'string' ? event.data : String(event.data?.text ?? '');
-                    if (t) setLogs(prev => [...prev, `[${logStamp()}] ${asPlainLine(t)}`]);
-                } else if (event.type === 'terminal_output') {
-                    // THE BUILD'S REAL VOICE. Every builder narrates through
-                    // terminal_output — npm install, the vite build, the photo
-                    // notes, the audit verdict. The Logs panel used to ignore
-                    // all of it and showed four generic lines instead.
-                    //
-                    // The server may fan a session-owned line to several terminal
-                    // ids; taking one canonical id keeps it from landing here
-                    // multiple times without making the id a cross-session scope.
-                    if (event.id === 'panel-terminal') {
-                        const lines = String(event.data ?? '')
-                            .replace(/\x1B\[[0-9;]*[A-Za-z]/g, '')     // ANSI colours never reach the DOM
-                            .split(/\r?\n/).map(l => l.trimEnd()).filter(Boolean);
-                        if (lines.length) {
-                            const stamp = logStamp();
-                            setLogs(prev => capLogs([...prev, ...lines.map(l => `[${stamp}] ${l}`)]));
-                        }
+                /**
+                 *  Logs — ONE TABLE, shared with the server.
+                 *
+                 *  These rules used to live only here, so a session reopened
+                 *  after the window closed had no log at all: nothing could
+                 *  turn a stored event back into the line it once printed.
+                 *  They now live in api/src/core/session/log-line.ts, and the
+                 *  server applies the SAME function to the same event read
+                 *  back from run-evidence. The stamp stays on each side: a
+                 *  live line is stamped as it arrives, a restored one with
+                 *  the moment it actually happened.
+                 */
+                {
+                    const lines = logTextFor(event as any);
+                    if (lines.length) {
+                        const stamp = logStamp();
+                        setLogs(prev => capLogs([...prev, ...lines.map(l => `[${stamp}] ${l}`)]));
                     }
-                } else if (event.type === 'thinking_detail' && event.data?.detail) {
-                    // The stage narration the user already sees in chat — in
-                    // the log it is the spine the terminal lines hang from.
-                    setLogs(prev => capLogs([...prev, `[${logStamp()}] ${String(event.data.detail)}`]));
-                } else if (event.type === 'tool_started' && (event.data?.name || event.data?.tool)) {
-                    setLogs(prev => capLogs([...prev, `[${logStamp()}] ▶ ${String(event.data.name || event.data.tool)}`]));
                 }
 
                 // Problems
@@ -623,7 +635,7 @@ export default function JoeIDELayout({
                         if (typeof errorMsg === 'object') errorMsg = JSON.stringify(errorMsg);
                     }
                     setProblems(prev => [...prev, { type: 'error', message: errorMsg, time: new Date() }]);
-                    setLogs(prev => [...prev, `[${logStamp()}] ERROR: ${errorMsg}`]);
+                    //  The log line for this event is written once, above, by the shared table.
                 } else if (event.type === 'error') {
                     let errorMsg = 'System error';
                     if (typeof event.data === 'string') errorMsg = event.data;
@@ -632,7 +644,7 @@ export default function JoeIDELayout({
                         if (typeof errorMsg === 'object') errorMsg = JSON.stringify(errorMsg);
                     }
                     setProblems(prev => [...prev, { type: 'error', message: errorMsg, time: new Date() }]);
-                    setLogs(prev => [...prev, `[${logStamp()}] SYSTEM ERROR: ${errorMsg}`]);
+                    //  Likewise: one event, one line.
                 }
             }, sessionId);
         });

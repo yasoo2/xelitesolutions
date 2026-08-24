@@ -204,11 +204,31 @@ export class AgentOrchestrator {
    */
   public async execute(goal: AgentGoal): Promise<{ ok: boolean; result: any; steps?: RunStep[] }> {
     console.log(`[AgentOrchestrator] Starting REAL-TIME orchestration for goal: ${goal.goal}`);
-    broadcastThinkingDetail(goal.id, `🧠 Initializing Autonomous Brain for goal: ${goal.goal}`);
+    /**
+     *  THE RUN IS NOT THE SESSION.
+     *
+     *  Twenty lines below, this file already knows the rule and writes it
+     *  out: «goal.context?.sessionId || goal.id». These first two
+     *  broadcasts did not, so when a caller DID supply a session they were
+     *  addressed to the run instead. Caught by reading what a new recorder
+     *  had just written to disk:
+     *
+     *      proof-1787578607     [16:36:47] أقرأ طلبك وأفهم ما تريد بالضبط
+     *      run-1787578607425    [16:36:48] Initializing Autonomous Brain…
+     *
+     *  One request, two owners. And the run is not a session anybody has
+     *  open, so the very first thing Joe says about a goal was addressed
+     *  to a listener that does not exist — dropped by the session-scoped
+     *  rule that makes such events fail closed rather than leak.
+     *
+     *  Resolved once, into a name, so the two cannot drift apart again.
+     */
+    const liveSession = (goal.context as any)?.sessionId || goal.id;
+    broadcastThinkingDetail(liveSession, `🧠 Initializing Autonomous Brain for goal: ${goal.goal}`);
     //  Say it rather than let the card assume it: the indicator defaults to
     //  «analyzing» on mount, so for the whole first stretch of every run it
     //  was showing a phase nobody had sent.
-    announcePhase(goal.id, 'analyzing', (goal.context as any)?.language);
+    announcePhase(liveSession, 'analyzing', (goal.context as any)?.language);
 
     // goal.id IS the session — callers that pass no explicit context (the
     // REST /api/agent entry among them) must still plan WITH the session,

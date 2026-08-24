@@ -535,12 +535,41 @@ export class ExecutionEngine {
                 cwd: rest.cwd || this.getWorkspaceRoot(),
                 env: isolatedExecutionEnv(rest.env),
                 shell: true,
-            })
+                /**
+                 *  A CHILD WITH NO CONSOLE TO INHERIT MAKES ITS OWN.
+                 *
+                 *  He photographed a black window over his work twice and
+                 *  wrote «ظهرت مره اخرى». The count I answered with was wrong:
+                 *  it counted cmd.exe and conhost.exe PROCESSES, and a console
+                 *  process is not a console WINDOW. Counting the visible
+                 *  top-level windows instead — by class, ConsoleWindowClass
+                 *  and CASCADIA_HOSTING_WINDOW_CLASS — the four shapes
+                 *  separate cleanly, and the window even carries its title:
+                 *
+                 *      shell + wait                        windows +0
+                 *      shell + detached                    windows +2  «npm run hi»
+                 *      shell + detached + windowsHide      windows +0
+                 *      shell + wait     + windowsHide      windows +0
+                 *
+                 *  A child that keeps our console prints into it and opens
+                 *  nothing. A DETACHED child has no console to inherit, so
+                 *  Windows gives it a new one — and that new one is the
+                 *  window he sees. `windowsHide` is what declines it.
+                 *
+                 *  Two of this engine's four spawn paths asked for it and two
+                 *  did not, so whether he saw a window depended on which door
+                 *  a caller happened to come through. It is the same question
+                 *  every time, so it is answered in one place: hidden unless a
+                 *  caller explicitly asks for a console. Nobody here does.
+                 */
+                windowsHide: (rest as any).windowsHide !== false,
+            } as any)
             : spawn(cmd, args, {
                 cwd: rest.cwd || this.getWorkspaceRoot(),
                 env: isolatedExecutionEnv(rest.env),
                 shell: false,
-            });
+                windowsHide: (rest as any).windowsHide !== false,
+            } as any);
         const feed = (stream: 'stdout' | 'stderr') => (b: Buffer) => {
             if (!onLine) return;
             String(b).split(/\r?\n/).filter(Boolean).forEach(l => { try { onLine(l, stream); } catch { /* observer errors never kill the child */ } });
@@ -750,8 +779,10 @@ export class ExecutionEngine {
                 cwd: options.cwd || this.getWorkspaceRoot(),
                 env: isolatedExecutionEnv(options.env),
                 shell: false, // argv is already tokenized — never let a shell re-parse it
-                stdio: options.stdio || 'pipe'
-            });
+                stdio: options.stdio || 'pipe',
+                //  Same question, same answer — see the note in runArgvStreaming.
+                windowsHide: options.windowsHide !== false,
+            } as any);
             let stdout = '';
             let stderr = '';
             let done = false;

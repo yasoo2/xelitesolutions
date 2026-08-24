@@ -114,12 +114,37 @@ export default function PreviewPanel({
         };
     }, [onReady]);
 
-    // Update when initial URL changes
+    /**
+     *  AN EMPTY VALUE IS ALSO AN ANSWER.
+     *
+     *  This read «if (initialUrl && …)», so the panel could be told to show
+     *  a page and never told to stop. Switching to a session that built
+     *  nothing left the previous session's page on screen, wearing the new
+     *  session's name. Measured, right after the restore began working:
+     *
+     *      session «حفظ بيانات العملاء»  iframe → …/6a8c269c…   its own
+     *      session «إنشاء جدول مهام»      iframe → …/6a8c269c…   NOT its own
+     *
+     *  «this session shows nothing» is a fact about the session, and a
+     *  panel that cannot express it will always show somebody else's work.
+     *
+     *  What it must NOT do is wipe a URL that arrived by event while the
+     *  prop was empty all along — a build announcing its own preview. So
+     *  the prop is applied when the PROP CHANGES, empty or not, and an
+     *  unchanged empty prop is left alone.
+     */
+    //  A sentinel no prop can equal, so the FIRST run always applies what
+    //  it was given. Seeding the ref with initialUrl made mount look like
+    //  «nothing changed» and the panel showed nothing at all — measured:
+    //  three sessions, iframe=NONE, while the server answered every one of
+    //  them with the right URL.
+    const lastGivenUrl = useRef<string | undefined | null>(null);
     useEffect(() => {
-        if (initialUrl && mode === 'web') {
-            setPreviewUrl(initialUrl);
-            setInputUrl(initialUrl);
-        }
+        if (mode !== 'web') return;
+        if (lastGivenUrl.current === initialUrl) return;
+        lastGivenUrl.current = initialUrl;
+        setPreviewUrl(initialUrl || '');
+        setInputUrl(initialUrl || '');
     }, [initialUrl, mode]);
 
     const handleNavigate = useCallback((url: string) => {

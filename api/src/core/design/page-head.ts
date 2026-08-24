@@ -121,6 +121,32 @@ function nameSpan(text: string): string {
     return words.join(' ').trim();
 }
 
+/**
+ *  The part of a request that the person actually typed.
+ *
+ *  Joe appends its own evidence to its own planning text. That is fine for
+ *  a model prompt and never fine for a function documented to read «نصّ
+ *  الطلب»: the moment one string carries both, every reader of his words is
+ *  reading Joe's too and cannot tell which is which.
+ *
+ *  This recognises JOE'S OWN handwriting, not the world's — two shapes this
+ *  system itself emits. A request containing neither comes back whole.
+ */
+export function hisWordsOnly(text: string): string {
+    const raw = String(text || '').replace(/\r\n?/g, '\n').trim();
+    //  A fence Joe draws around a block it inserted.
+    const fence = raw.search(/^[ \t]*-{3,}[ \t]+\S/mu);
+    //  A shouted heading: three or more ALL-CAPS Latin words in a row. A
+    //  real brand stands alone — IKEA, IBM MEA and Gate062 all survive.
+    const shout = raw.search(/\b[A-Z][A-Z0-9]{2,}(?:\s+[A-Z][A-Z0-9]{2,}){2,}\b/u);
+    //  His message is one block; anything after a blank line was appended.
+    const gap = raw.search(/\n[ \t]*\n/u);
+    //  A cut at position zero is legitimate: none of it was his.
+    const cuts = [fence, shout, gap].filter(i => i >= 0);
+    const end = cuts.length ? Math.min(...cuts) : raw.length;
+    return raw.slice(0, end).trim();
+}
+
 export function brandFrom(request: string, _isArabic?: boolean): string {
     const req = String(request || '');
 
@@ -160,8 +186,34 @@ export function brandFrom(request: string, _isArabic?: boolean): string {
 
     // 3. A bare Latin token in an Arabic request is almost always the brand —
     //    an Arabic speaker writes the company's own spelling of its name.
+    /**
+     *  A READER OF HIS WORDS MUST BE HANDED HIS WORDS.
+     *
+     *  Live round. He wrote, in Arabic and nothing else:
+     *
+     *      «بدي برنامج يحفظ لي زبائني وارقام تلفوناتهم وعناوينهم»
+     *
+     *  and the page Joe built opened with
+     *
+     *      <title>AUTHORITATIVE — العملاء</title>
+     *      package.json  name: authoritative
+     *      folders       react-authoritative-260f36f8 · api-authoritative-335d
+     *
+     *  «العملاء» is his, read correctly from «زبائني». «AUTHORITATIVE» is
+     *  the first line of a block JOE appends to its own planning text.
+     *  Measured on this function, with the inputs:
+     *
+     *      his sentence alone                          → ''
+     *      + «AUTHORITATIVE DISCOVERY EVIDENCE — …»     → 'AUTHORITATIVE'
+     *      + «--- COMPACT REQUIREMENTS EVIDENCE … ---»  → 'COMPACT'
+     *
+     *  Two different words, so banning a word would have fixed one round
+     *  and left the defect standing. The rule is sound; what broke it is
+     *  that the text reaching it stopped being his.
+     */
     if (/[؀-ۿ]/.test(req)) {
-        const latin = req.match(/\b[A-Za-z][A-Za-z0-9._-]{2,30}\b/);
+        const mine = hisWordsOnly(req);
+        const latin = mine.match(/\b[A-Za-z][A-Za-z0-9._-]{2,30}\b/);
         if (latin && !/^(https?|www|html|css|js|api|web)$/i.test(latin[0])) return latin[0];
     }
 

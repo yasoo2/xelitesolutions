@@ -166,7 +166,34 @@ export default function Joe() {
      */
     const previewBySession = useRef<Map<string, string>>(new Map());
     useEffect(() => {
-        setPreviewUrl(activeSessionId ? previewBySession.current.get(activeSessionId) : undefined);
+        const known = activeSessionId ? previewBySession.current.get(activeSessionId) : undefined;
+        setPreviewUrl(known);
+        if (!activeSessionId || known) return;
+        /**
+         *  …AND THE MAP THAT FILES IT LIVES IN THE WINDOW — preview_restore.
+         *
+         *  Filing the URL under its session fixed one bug and left a bigger
+         *  one: the filing cabinet is a useRef, so it is emptied every time
+         *  he closes Joe. «عندما اضغط على شاشة البرفيو فانه لا يعرض الملف
+         *  الذي بني في تلك الجلسه». Measured, as a guest, on two past
+         *  sessions: chat restored, preview iframes=0 src=null — while at
+         *  the same moment GET /project-preview/<that session>/index.html
+         *  answered HTTP 200 with the page's own title.
+         *
+         *  The build was never lost. Only the note saying whose it was.
+         *  The server keeps that note on disk, so ask it.
+         */
+        const asked = activeSessionId;
+        api.get(`/sessions/${asked}/workspace`)
+            .then((data: any) => {
+                const url = String(data?.preview?.url || '');
+                if (!url) return;
+                //  He may have switched again while this was in flight.
+                if (asked !== activeSessionId) return;
+                previewBySession.current.set(asked, url);
+                setPreviewUrl(url);
+            })
+            .catch(() => { /* an unreachable server shows no preview, not an error page */ });
     }, [activeSessionId]);
 
     // Socket subscription for auto-switching tabs

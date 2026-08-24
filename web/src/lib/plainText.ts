@@ -32,23 +32,14 @@ export function stripPictographs(input: unknown): string {
  *  removes the marks and keeps every word, including the list numbering,
  *  which markdown would have drawn and a log has to spell.
  */
-export function asPlainLine(input: unknown): string {
-    let t = String(input ?? '');
-    if (!t) return '';
-    //  Fenced and inline code keep their contents, lose their fences.
-    t = t.replace(/```[a-zA-Z0-9]*\n?/g, '').replace(/`([^`]+)`/g, '$1');
-    //  Bold and italic, in that order: ** before * or the inner pass eats
-    //  one asterisk of each pair and leaves the other stranded.
-    t = t.replace(/\*\*([^*]+)\*\*/g, '$1').replace(/(^|[^*])\*([^*\n]+)\*/g, '$1$2');
-    t = t.replace(/__([^_]+)__/g, '$1');
-    //  A link keeps its words, not its address.
-    t = t.replace(/\[([^\]]+)\]\([^)]*\)/g, '$1');
-    //  Headings and quote marks are structure, not speech.
-    t = t.replace(/^\s{0,3}#{1,6}\s+/gm, '').replace(/^\s{0,3}>\s?/gm, '');
-    //  A bullet becomes a bullet the panel can draw in one font.
-    t = t.replace(/^\s{0,3}[-*+]\s+/gm, '· ');
-    return t.replace(/[ \t]+$/gm, '');
-}
+//  ONE TABLE, IMPORTED — NOT A SECOND COPY.
+//
+//  These rules now run in two places: here, on an event arriving live,
+//  and on the server, on the same event read back from run-evidence when
+//  he reopens a past session. Two copies would drift the first time one
+//  was edited, and a restored log would stop reading like a live one.
+export { asPlainLine, logTextFor } from '../../../api/src/core/session/log-line';
+
 
 /**
  *  A LOG CLOCK ASKS THE INTERFACE, NEVER THE OPERATING SYSTEM.
