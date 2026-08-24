@@ -14,7 +14,8 @@ import { formatAttachmentsBlock } from '../../shared/attachments';
 import { describeImageAttachments } from '../../shared/vision';
 import { withDeadline, RUN_DEADLINE_MS, DeadlineError } from '../../shared/utils/deadline';
 import { persistChatStores } from '../../api/chat-store';
-import { clarifyGate } from '../../core/orchestrator/clarify';
+import { clarifyGate } from '../../core/orchestrator/clarify';
+import { announceScaffoldSubstitution } from '../../core/design/scaffold-substitution';
 import { phaseDetail } from '../../core/orchestrator/phaseAnnounce';
 import { composeAnswer, composeFailure } from '../../core/orchestrator/answerComposer';
 import { compactRuntimeValue } from '../../core/orchestrator/ExecutionMemory';
@@ -411,6 +412,54 @@ export class AgentLoopService {
          * message's script decides only when no interface language arrived.
          */
         const language0 = replyLanguageCode(options.language, goal);
+
+        /**
+         * [SCAFFOLD-FALLBACK-UNGUARDED] THE SUBSTITUTION IS DECLARED HERE,
+         * BECAUSE THIS IS WHERE HE IS LISTENING.
+         *
+         * Measured live on his machine. «بدي جدول للكتب فيه العنوان والسعر»
+         * produced, one second apart:
+         *
+         *     [20:58:26] template classification: page=generic · app=none ·
+         *                mode=presentation · lang=en (ui=en)
+         *     [20:58:27] I don't know this app type and have no ready
+         *                engine — I'll build a generic structure.
+         *
+         * Joe knew. It said so. It said so into the BUILD TERMINAL, and the
+         * owner was reading the chat — so a generic presentation page was
+         * substituted for his request and nothing he could see admitted that
+         * a substitution had taken place.
+         *
+         * It goes here and not next to that terminal line for two reasons.
+         * The terminal line is emitted by the builder, which is already
+         * writing files by the time it speaks; this seam is before the
+         * planner has chosen anything, which is the only point at which
+         * «stop me now» is a real offer. And this is the same seam the
+         * clarify gate uses to talk to him — the precedent is directly
+         * above: a thin brief starts a conversation instead of a build.
+         *
+         * It does NOT block. The clarify gate asks and returns; this one
+         * declares and continues, because the request is not thin — it is
+         * unrecognised, and refusing to build would be a worse answer than
+         * building something and saying plainly what it is.
+         *
+         * The language is `language0`, which is the rule this file already
+         * settled after his complaint «النظام الان باللغه الانجليزية فلماذا
+         * تظهر بعض الكلمات باللغه العربية»: the interface he is looking at
+         * decides what Joe SAYS, and the script of his own message decides
+         * only when no interface language arrived. A second rule invented
+         * here would be the two-layers-two-answers defect again.
+         */
+        try {
+            const { PlanningEngine } = require('../../core/orchestrator/PlanningEngine');
+            announceScaffoldSubstitution({
+                request: goal,
+                building: !!PlanningEngine.looksLikeBuild(goal),
+                isArabic: language0 === 'ar',
+                say: (message: string) => broadcastThinkingDetail(sessionId, message),
+            });
+        } catch { /* a declaration must never block a run */ }
+
         if ((options.attachments || []).some(a => /^image\//i.test(a.mimeType || '') && !String(a.content || '').trim())) {
             broadcastThinkingDetail(options.sessionId || '', language0 === 'ar' ? '👁️ أفحص الصور المرفقة بنموذج رؤية…' : '👁️ Reading the attached images with a vision model…');
             try {
