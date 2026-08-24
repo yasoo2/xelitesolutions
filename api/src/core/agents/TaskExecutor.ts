@@ -1,4 +1,5 @@
-import fs from 'fs';
+import fs from 'fs';
+import { completeTheEntryPoint } from './scaffold-entry';
 import path from 'path';
 import { validateFileWriteBatch } from '../../shared/file-write-contract';
 import { tools } from '../../modules/tools/registry';
@@ -109,7 +110,18 @@ export class TaskExecutor {
             writtenCount++;
         }
 
-        return { success: true, output: `Project scaffolded in ${targetDir}. Created ${writtenCount} files.` };
+        //  A scaffold is not finished when its files are on disk — it is
+        //  finished when the toolchain it declared can enter it. Measured:
+        //  a Vite project shipped with no index.html and failed sixteen
+        //  minutes later inside a rollup stack trace.
+        const entry = completeTheEntryPoint(targetDir);
+        if (entry.missing) throw new Error(entry.reason);
+
+        return {
+            success: true,
+            output: `Project scaffolded in ${targetDir}. Created ${writtenCount} files.`
+                + (entry.wrote ? ` Wrote the missing ${entry.wrote} the build requires.` : ''),
+        };
     }
 
     private async writeFile(args: { path: string; content: string }) {
