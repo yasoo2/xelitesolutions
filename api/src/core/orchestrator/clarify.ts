@@ -160,6 +160,28 @@ function trackedObject(goal: string): string {
     return words.join(' ').trim();
 }
 
+/**
+ *  A LIST WRITTEN AS A PARAGRAPH IS A PARAGRAPH.
+ *
+ *  He pasted back what he actually saw, and it was one cramped block:
+ *
+ *      1⃣ What is the site about? (a restaurant? a store? ...) 2⃣ Which
+ *      sections do you want? (e.g. home, services, ...) 3⃣ Any colours
+ *
+ *  Two faults in one string, and both are invisible in the source.
+ *
+ *  1. SINGLE NEWLINES. The chat renders markdown, and markdown folds a
+ *     single newline into a space. Four questions written on four lines
+ *     arrive as one paragraph. A real ordered list survives that, because
+ *     it is a list rather than four lines that happen to look like one.
+ *
+ *  2. KEYCAP EMOJI. `1️⃣` is U+0031 U+FE0F U+20E3, and in his font the
+ *     sequence falls back to an empty box — which is exactly the `1⃣` he
+ *     pasted. A number is a number; markdown will draw it.
+ *
+ *  His words: «فالافضل ان يكون منسق اكثر مثل المواقع العالمية المنافسة»
+ *  and «هناك تفاصيل صغيره كثيره يجب الانتباه عليها».
+ */
 export function clarifyQuestions(goal: string, language: string): string {
     const isAr = isArabicReply({ language, text: goal });
     //  A man who named something to track needs one question, not four,
@@ -172,23 +194,23 @@ export function clarifyQuestions(goal: string, language: string): string {
     }
     const wantsApp = /(تطبيق|app)/i.test(userWords(goal));
     if (isAr) {
-        return `سؤال قبل أن أبدأ — حتى أبني ما تريده فعلاً لا ما أتخيله 🎯
+        return `**سؤال واحد قبل أن أبدأ** — حتى أبني ما تريده فعلاً لا ما أتخيّله.
 
-1️⃣ ما موضوع ${wantsApp ? 'التطبيق' : 'الموقع'}؟ (مطعم؟ متجر؟ شركة؟ معرض أعمال؟ …)
-2️⃣ ما الأقسام التي تريدها؟ (مثلاً: رئيسية، خدمات، أسعار، تواصل)
-3️⃣ هل لديك ألوان أو هوية معينة؟ (أو أتركها لي)
-4️⃣ صفحة واحدة أم موقع متعدد الصفحات؟
+1. **ما موضوع ${wantsApp ? 'التطبيق' : 'الموقع'}؟** مطعم، متجر، شركة، معرض أعمال…
+2. **ما الأقسام التي تريدها؟** رئيسية، خدمات، أسعار، تواصل…
+3. **هل لديك ألوان أو هوية؟** أو اتركها لي.
+4. **صفحة واحدة أم عدّة صفحات؟**
 
-أجب بما تعرفه فقط — وسأتصرف في الباقي. أو قل «ابدأ مباشرة» وسأبني فوراً على ذوقي.`;
+أجب بما تعرفه فقط وسأتصرّف في الباقي — أو قل **«ابدأ مباشرة»** وأبني فوراً.`;
     }
-    return `One thing before I start — so I build what you actually mean 🎯
+    return `**One thing before I start** — so I build what you actually mean.
 
-1️⃣ What is the ${wantsApp ? 'app' : 'site'} about? (a restaurant? a store? a company? a portfolio?)
-2️⃣ Which sections do you want? (e.g. home, services, pricing, contact)
-3️⃣ Any colours or brand identity? (or leave it to me)
-4️⃣ One page, or a multi-page site?
+1. **What is the ${wantsApp ? 'app' : 'site'} about?** A restaurant, a store, a company, a portfolio…
+2. **Which sections do you want?** Home, services, pricing, contact…
+3. **Any colours or brand identity?** Or leave it to me.
+4. **One page, or several?**
 
-Answer what you know — I'll handle the rest. Or say "start now" and I'll build immediately.`;
+Answer what you know and I'll handle the rest — or say **"start now"** and I'll build immediately.`;
 }
 
 export type ClarifyDecision =

@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState, lazy, Suspense, forwardRef } from 'react';
+import { useEffect, useMemo, useRef, useState, lazy, Suspense, forwardRef } from 'react';
+import { uiTime } from '../lib/plainText';
 import { createPortal } from 'react-dom';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -151,6 +152,8 @@ const EliteLogo = ({ size = 120, className = "" }: { size?: number; className?: 
 };
 
 const EngineeringReport = ({ report, ts, t }: { report: any; ts?: number; t: any }) => {
+    //  Written for a reader, so it follows the interface language.
+    const { i18n } = useTranslation();
   const [showRaw, setShowRaw] = useState(false);
   const md = report.engineeringReportMarkdown || '';
   
@@ -213,7 +216,7 @@ const EngineeringReport = ({ report, ts, t }: { report: any; ts?: number; t: any
       )}
 
       <div className="report-footer">
-        {new Date(ts || Date.now()).toLocaleTimeString()}
+        {uiTime(ts || Date.now(), i18n.language)}
       </div>
       <style>{`
         .engineering-report-container {

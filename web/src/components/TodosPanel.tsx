@@ -1,4 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { uiTime } from '../lib/plainText';
+import { useTranslation } from 'react-i18next';
 import { SocketService } from '../services/socket';
 import { CheckCircle2, Circle, Clock, XCircle, ChevronDown, ChevronRight, Activity } from 'lucide-react';
 
@@ -15,6 +17,9 @@ interface TodosPanelProps {
 }
 
 export default function TodosPanel({ sessionId, isCollapsed = false, onToggleCollapse }: TodosPanelProps) {
+    //  The time is shown to a person, so it is written in the language he set
+    //  the app to — not the one Windows happens to be in.
+    const { i18n } = useTranslation();
     const [todos, setTodos] = useState<TodoItem[]>([]);
     const [lastUpdated, setLastUpdated] = useState<string | null>(null);
 
@@ -108,7 +113,7 @@ export default function TodosPanel({ sessionId, isCollapsed = false, onToggleCol
                     {lastUpdated && (
                         <div className="joe-todos-footer">
                             <Clock size={12} />
-                            <span>Updated {new Date(lastUpdated).toLocaleTimeString()}</span>
+                            <span>Updated {uiTime(lastUpdated, i18n.language)}</span>
                         </div>
                     )}
                 </div>

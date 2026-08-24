@@ -13,3 +13,82 @@ const PICTOGRAPHS = /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE
 export function stripPictographs(input: unknown): string {
     return String(input ?? '').replace(PICTOGRAPHS, '');
 }
+
+/**
+ *  ONE STRING, TWO SURFACES, AND ONLY ONE OF THEM DRAWS MARKDOWN.
+ *
+ *  Seen on his screen, the same sentence in both panels at once:
+ *
+ *      chat:  One thing before I start — so I build what you actually mean
+ *             1. What is the site about? A restaurant, a store, a company…
+ *      logs:  **One thing before I start** — so I build what you actually
+ *             1. **What is the site about?** A restaurant, a store, a…
+ *
+ *  The chat renders markdown; the log panel is a transcript and does not.
+ *  So the log showed him the syntax — asterisks, backticks, list markers —
+ *  as if Joe had typed them at him.
+ *
+ *  A transcript should carry what was SAID, not how it was marked up. This
+ *  removes the marks and keeps every word, including the list numbering,
+ *  which markdown would have drawn and a log has to spell.
+ */
+export function asPlainLine(input: unknown): string {
+    let t = String(input ?? '');
+    if (!t) return '';
+    //  Fenced and inline code keep their contents, lose their fences.
+    t = t.replace(/```[a-zA-Z0-9]*\n?/g, '').replace(/`([^`]+)`/g, '$1');
+    //  Bold and italic, in that order: ** before * or the inner pass eats
+    //  one asterisk of each pair and leaves the other stranded.
+    t = t.replace(/\*\*([^*]+)\*\*/g, '$1').replace(/(^|[^*])\*([^*\n]+)\*/g, '$1$2');
+    t = t.replace(/__([^_]+)__/g, '$1');
+    //  A link keeps its words, not its address.
+    t = t.replace(/\[([^\]]+)\]\([^)]*\)/g, '$1');
+    //  Headings and quote marks are structure, not speech.
+    t = t.replace(/^\s{0,3}#{1,6}\s+/gm, '').replace(/^\s{0,3}>\s?/gm, '');
+    //  A bullet becomes a bullet the panel can draw in one font.
+    t = t.replace(/^\s{0,3}[-*+]\s+/gm, '· ');
+    return t.replace(/[ \t]+$/gm, '');
+}
+
+/**
+ *  A LOG CLOCK ASKS THE INTERFACE, NEVER THE OPERATING SYSTEM.
+ *
+ *  `new Date().toLocaleTimeString()` with no argument reads the machine's
+ *  locale. His Windows is Arabic, so an English interface was stamping
+ *  every log line «[5:12:34 ص]» — an Arabic meridiem inside an English
+ *  panel, from a call that never asked which language the app was in.
+ *
+ *  A timestamp in a log is machine data. Twenty-four hours, zero-padded,
+ *  built from the numbers themselves so no locale is consulted at all —
+ *  which is what every developer tool prints, and reads identically in
+ *  every language.
+ */
+export function logStamp(at: Date = new Date()): string {
+    const two = (n: number) => String(n).padStart(2, '0');
+    return `${two(at.getHours())}:${two(at.getMinutes())}:${two(at.getSeconds())}`;
+}
+
+/**
+ *  AND A TIME A PERSON READS FOLLOWS THE INTERFACE.
+ *
+ *  The other half of the same defect. `logStamp` is for machine lines;
+ *  this is for the times shown to him in words — «Updated 5:12», a
+ *  trace header, a note beside a screenshot. Those must be written in
+ *  the language he set the app to, which is the one thing an argument-
+ *  less `toLocaleTimeString()` never asks.
+ *
+ *  Passing the language explicitly is deliberate: a default here would
+ *  be a second answer to «which language is this», and this repository
+ *  has paid for that question having several answers already.
+ */
+export function uiTime(value: unknown, language: string, withDate = false): string {
+    const at = value instanceof Date ? value : new Date(Number(value) || String(value ?? ''));
+    if (Number.isNaN(at.getTime())) return '';
+    const lang = String(language || 'en').split('-')[0] || 'en';
+    try {
+        return withDate ? at.toLocaleString(lang) : at.toLocaleTimeString(lang);
+    } catch {
+        //  An unknown tag must not take the line down with it.
+        return withDate ? at.toLocaleString() : at.toLocaleTimeString();
+    }
+}

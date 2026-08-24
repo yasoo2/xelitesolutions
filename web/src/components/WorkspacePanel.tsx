@@ -1,4 +1,4 @@
-import { stripPictographs } from '../lib/plainText';
+import { stripPictographs, uiTime } from '../lib/plainText';
 import React, { Suspense, lazy, useState, useRef, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -73,7 +73,7 @@ interface WorkspacePanelProps {
 
 // ─── Inline Copy Button ────────────────────────────────────────────
 function CopyBtn({ text }: { text: string }) {
-    const { t } = useTranslation();
+    const { t, i18n } = useTranslation();
     const [copied, setCopied] = useState(false);
     const handleCopy = useCallback(async (e: React.MouseEvent) => {
         e.stopPropagation();
@@ -453,7 +453,7 @@ function EnhancedLogsPanel({ logs, liveFiles = [], buildStatus = null }: { logs:
 
 // ─── Enhanced Problems Panel ───────────────────────────────────────
 function EnhancedProblemsPanel({ problems }: { problems: any[] }) {
-    const { t } = useTranslation();
+    const { t, i18n } = useTranslation();
     const [filter, setFilter] = useState('');
     const [clearIndex, setClearIndex] = useState(0);
 
@@ -532,7 +532,7 @@ function EnhancedProblemsPanel({ problems }: { problems: any[] }) {
                                     <div style={{
                                         color: 'var(--joe-text-muted)', fontSize: 10, marginTop: 2,
                                     }}>
-                                        {new Date(p.time).toLocaleTimeString()}
+                                        {uiTime(p.time, i18n.language)}
                                     </div>
                                 )}
                             </div>

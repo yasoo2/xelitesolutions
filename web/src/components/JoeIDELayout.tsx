@@ -1,4 +1,5 @@
-import React, { useState, useCallback, useEffect, useRef, Suspense, lazy } from 'react';
+import React, { useState, useCallback, useEffect, useRef, Suspense, lazy } from 'react';
+import { asPlainLine, logStamp } from '../lib/plainText';
 import { useTranslation } from 'react-i18next';
 import JoeHeader from './JoeHeader';
 import TodosPanel from './TodosPanel';
@@ -577,16 +578,16 @@ export default function JoeIDELayout({
 
                 // Logs
                 if (event.type === 'step_started') {
-                    setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] Step Started: ${event.data?.name || 'Unknown'}`]);
+                    setLogs(prev => [...prev, `[${logStamp()}] Step Started: ${event.data?.name || 'Unknown'}`]);
                 } else if (event.type === 'step_done') {
-                    setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] Step Done`]);
+                    setLogs(prev => [...prev, `[${logStamp()}] Step Done`]);
                 } else if (event.type === 'run_finished') {
-                    setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] Run Finished`]);
+                    setLogs(prev => [...prev, `[${logStamp()}] Run Finished`]);
                 } else if (event.type === 'text') {
                     // event.data is { text, sessionId } — logging the object
                     // printed a literal "[object Object]" line in the panel.
                     const t = typeof event.data === 'string' ? event.data : String(event.data?.text ?? '');
-                    if (t) setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${t}`]);
+                    if (t) setLogs(prev => [...prev, `[${logStamp()}] ${asPlainLine(t)}`]);
                 } else if (event.type === 'terminal_output') {
                     // THE BUILD'S REAL VOICE. Every builder narrates through
                     // terminal_output — npm install, the vite build, the photo
@@ -601,16 +602,16 @@ export default function JoeIDELayout({
                             .replace(/\x1B\[[0-9;]*[A-Za-z]/g, '')     // ANSI colours never reach the DOM
                             .split(/\r?\n/).map(l => l.trimEnd()).filter(Boolean);
                         if (lines.length) {
-                            const stamp = new Date().toLocaleTimeString();
+                            const stamp = logStamp();
                             setLogs(prev => capLogs([...prev, ...lines.map(l => `[${stamp}] ${l}`)]));
                         }
                     }
                 } else if (event.type === 'thinking_detail' && event.data?.detail) {
                     // The stage narration the user already sees in chat — in
                     // the log it is the spine the terminal lines hang from.
-                    setLogs(prev => capLogs([...prev, `[${new Date().toLocaleTimeString()}] ${String(event.data.detail)}`]));
+                    setLogs(prev => capLogs([...prev, `[${logStamp()}] ${String(event.data.detail)}`]));
                 } else if (event.type === 'tool_started' && (event.data?.name || event.data?.tool)) {
-                    setLogs(prev => capLogs([...prev, `[${new Date().toLocaleTimeString()}] ▶ ${String(event.data.name || event.data.tool)}`]));
+                    setLogs(prev => capLogs([...prev, `[${logStamp()}] ▶ ${String(event.data.name || event.data.tool)}`]));
                 }
 
                 // Problems
@@ -622,7 +623,7 @@ export default function JoeIDELayout({
                         if (typeof errorMsg === 'object') errorMsg = JSON.stringify(errorMsg);
                     }
                     setProblems(prev => [...prev, { type: 'error', message: errorMsg, time: new Date() }]);
-                    setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ERROR: ${errorMsg}`]);
+                    setLogs(prev => [...prev, `[${logStamp()}] ERROR: ${errorMsg}`]);
                 } else if (event.type === 'error') {
                     let errorMsg = 'System error';
                     if (typeof event.data === 'string') errorMsg = event.data;
@@ -631,7 +632,7 @@ export default function JoeIDELayout({
                         if (typeof errorMsg === 'object') errorMsg = JSON.stringify(errorMsg);
                     }
                     setProblems(prev => [...prev, { type: 'error', message: errorMsg, time: new Date() }]);
-                    setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] SYSTEM ERROR: ${errorMsg}`]);
+                    setLogs(prev => [...prev, `[${logStamp()}] SYSTEM ERROR: ${errorMsg}`]);
                 }
             }, sessionId);
         });
@@ -641,7 +642,55 @@ export default function JoeIDELayout({
         };
     }, []);
 
-    const toggleChat = useCallback(() => setIsChatCollapsed(prev => !prev), []);
+    /**
+     *  A BUTTON THAT HIDES ONE THING MUST SHOW ANOTHER.
+     *
+     *  He photographed a blank white page and asked whether it was right.
+     *  It was not. Reproduced on his own 1280x585 window, reading the boxes
+     *  before and after one press:
+     *
+     *      workspace closed:  chat w=1278        workspace w=0 opacity=0
+     *      after the press:   chat w=0 opacity=0 workspace w=0 opacity=0
+     *
+     *  Both panes at zero, so the page had nothing on it at all. The button
+     *  says «Give the workspace the whole page» and was doing only the first
+     *  half of that — hiding the chat — with no one checking that there was
+     *  a workspace to give the page TO.
+     *
+     *  A control that names a state must produce that state. So hiding the
+     *  chat now opens the workspace, in the same act, and the promise on the
+     *  button is the promise the user gets.
+     */
+    const toggleChat = useCallback(() => {
+        const hiding = !isChatCollapsed;
+        if (hiding) {
+            //  Opening it here is a manual act, exactly as the workspace
+            //  toggle is, so the auto-close contract does not take it back.
+            autoOpenedRef.current = false;
+            //  Which TAB it lands on is his choice, not mine: «المهم انها
+            //  تعمل بالشكل الصحيح». It keeps whatever tab he last had.
+            setIsWorkspaceCollapsed(false);
+        }
+        setIsChatCollapsed(hiding);
+    }, [isChatCollapsed, isWorkspaceCollapsed]);
+
+    /**
+     *  AND THE PAGE ALWAYS SHOWS SOMETHING — whatever the route in.
+     *
+     *  The line above fixes the button he pressed. This fixes the CLASS:
+     *  there are several ways to close a pane in this layout — the three
+     *  header toggles, the workspace's own close control, the auto-close
+     *  contract, the mobile breakpoints — and each one was free to be the
+     *  last pane standing. None of them asked what would be left.
+     *
+     *  An invariant is the only honest cure for that, because it holds for
+     *  the paths nobody enumerated. The chat comes back rather than the
+     *  workspace: it is the surface he can always act FROM, and a workspace
+     *  with no session in it would be another empty page.
+     */
+    useEffect(() => {
+        if (isChatCollapsed && isWorkspaceCollapsed) setIsChatCollapsed(false);
+    }, [isChatCollapsed, isWorkspaceCollapsed]);
     const toggleExplorer = useCallback(() => setIsExplorerCollapsed(prev => !prev), []);
     const toggleWorkspace = useCallback(() => {
         // The header toggle is always a manual act — in either direction it
