@@ -138,7 +138,7 @@ const SECTOR_HUES: Array<[RegExp, [number, number]]> = [
     // painted clinic-teal. Arabic has no \b, so every Arabic stem in these
     // tables must be long enough not to hide inside another word. `ai` gets a
     // real \b for the same reason — it lives inside "email" and "chair".
-    [/تقني|تكنلوج|تكنولوج|برمج|تطبيق|software|tech|saas|ai|digital|consult|استشار|apps?/i, [196, 256]],
+    [/تقني|تكنلوج|تكنولوج|برمج|تطبيق|software|tech|saas|\bai\b|digital|consult|استشار|\bapps?\b/i, [196, 256]],
     [/متجر|تسوق|shop|store|ecommerce|commerce/i, [246, 292]],
     [/مطعم|كافيه|قهوة|طعام|food|restaurant|cafe|coffee/i, [8, 44]],
     [/صحة|صحي|طبي|طبيب|عيادة|عياد|مستشفى|health|medical|clinic|doctor|fitness|لياقة/i, [150, 192]],
