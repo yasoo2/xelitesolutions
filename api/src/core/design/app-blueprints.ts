@@ -1358,6 +1358,85 @@ export function derivedTables(requestRaw: string): DerivedTable[] {
 }
 
 
+/**
+ *  IS THIS ITEM A NAME, OR A RULE?
+ *
+ *  Measured on his own sentence:
+ *
+ *      «جدول مبيعات فيه اسم الصنف والكمية والسعر، وما يقبل مبلغ صفر»
+ *       → columns: ["اسم الصنف","الكمية","السعر","وما يقبل مبلغ صفر"]
+ *
+ *  The last one is not a column. It is the condition he attached to the
+ *  table, and the reader put it in the schema as a field whose label is a
+ *  whole clause. The app then showed him an input box asking him to type
+ *  «وما يقبل مبلغ صفر».
+ *
+ *  THE CLASS: A CONSTRAINT IS NOT A COLUMN.
+ *
+ *  The test is shape, not vocabulary. A column is a NAME — a short noun
+ *  phrase. A rule is a CLAUSE — it negates, it obliges, or it simply runs
+ *  long. The particles below are a closed grammatical class (negation and
+ *  obligation), not a list of business words: no domain noun appears here,
+ *  and none ever should.
+ */
+const READS_AS_A_RULE = /(?:^|[\s،])(?:لا|ما|ليس|ليست|غير|بدون|يجب|لازم|يمنع|يرفض|not|must|should|cannot|reject|forbid)(?:$|[\s،])/iu;
+
+function isAName(item: string): boolean {
+    const t = String(item || '').trim();
+    if (!t) return false;
+    if (READS_AS_A_RULE.test(t)) return false;
+    //  A name is short. «وما يقبل مبلغ صفر» is four words; «المبلغ المدفوع»
+    //  and «اسم المريض» are two. Arabic packs more into a word, so it gets
+    //  the tighter cap and English the looser one.
+    const words = t.split(/\s+/).filter(Boolean).length;
+    const arabic = /[\u0600-\u06FF]/u.test(t);
+    return words <= (arabic ? 3 : 4);
+}
+
+/**
+ *  IS THIS LIST A LIST OF COLUMNS, OR A LIST OF VALUES?
+ *
+ *  Measured, on the connector alone:
+ *
+ *      «بدي جدول للمصاريف فيه التاريخ والمبلغ والسبب»   → 3 columns
+ *      «بدي جدول للمصاريف يحوي التاريخ والمبلغ والسبب»  → null
+ *      «بدي جدول للمصاريف مع التاريخ والمبلغ والسبب»    → null
+ *      «بدي جدول للمصاريف أعمدته التاريخ والمبلغ والسبب»→ null
+ *      «بدي جدول للمصاريف: التاريخ والمبلغ والسبب»      → null
+ *
+ *  One word worked and four did not, and the four are the same sentence.
+ *  That is the fourth law being broken in the one function it was written
+ *  for: the reader had a list of connectors, and «فيه» happened to be on it.
+ *
+ *  Widening the list would be the same disease with a longer prescription.
+ *  So the SHAPE of the items decides instead — and Arabic states it plainly:
+ *
+ *      columns are DEFINITE   «التاريخ» «اسم المريض» «رقم تلفونه»
+ *      values are INDEFINITE  «قهوة» «أدوات» «حلويات» · «صغير» «وسط» «كبير»
+ *
+ *  This is what kept «متجر بفئات: قهوة، أدوات، حلويات» from becoming five
+ *  columns before, and it still does — not because «بفئات» is on a list of
+ *  forbidden words, but because coffee and sweets are indefinite nouns and
+ *  a column name is not.
+ *
+ *  EVERY item must qualify. Two of three is what «الرياض، جدة، الدمام»
+ *  scores — a list of cities carrying the article inside two proper names —
+ *  and a list of values that passes two thirds of a test is a list of values
+ *  that gets through.
+ */
+function everyItemIsADefiniteName(items: string[]): boolean {
+    if (!items.length) return false;
+    return items.every(raw => {
+        const t = String(raw || '').trim();
+        if (!isAName(t)) return false;
+        //  «ال» anywhere — on the word itself or on the second half of an
+        //  idafa («اسم المريض») — or a possessive suffix («رقم تلفونه»),
+        //  which is the other way Arabic makes a noun definite.
+        return /(?:^|\s)ال[ء-ي]/u.test(t)
+            || /[ء-ي](?:ه|ها|هم|هن|ي|ك|كم)(?:$|\s)/u.test(t);
+    });
+}
+
 export function derivedColumns(requestRaw: string): DerivedField[] | null {
     const request = String(requestRaw || '');
     /**
@@ -1399,7 +1478,50 @@ export function derivedColumns(requestRaw: string): DerivedField[] | null {
     const RECORDING_VERB = /(أسجل|اسجل|سجّل|أضيف|اضيف|أدخل|ادخل|أدوّن|ادون|أتابع|اتابع|أدير|ادير|أنظم|انظم|فيها|فيه|تحتوي على|يحتوي على|\brecord\b|\btrack\b|\blog\b|\bmanage\b|\borgani[sz]e\b)/iu;
     const DECLARED_LIST = /(الحقول|الأعمدة|الاعمدة|\bcolumns?\b|\bfields?\b)\s*(?::|：|هي|are\b|include(?:s)?\b)/iu;
     const opener = RECORDING_VERB.exec(request) || DECLARED_LIST.exec(request);
-    if (!opener) return null;
+    /**
+     *  NO TAUGHT WORD STOOD IN FRONT OF IT — SO READ ITS SHAPE.
+     *
+     *  The container has to be there («جدول», «قائمة», «table», «list»):
+     *  a run of definite nouns in a sentence about nothing in particular is
+     *  prose, not a schema. With a container in front and every item a
+     *  definite name, the run IS the columns, whatever word introduced it —
+     *  or no word at all, just a colon.
+     */
+    if (!opener) {
+        const HOLDER = /(جدول|جداول|قائمة|كشف|سجل|سجلّ|\btable\b|\blist\b|\bsheet\b|\bledger\b|\bregister\b|\btracker\b)/iu;
+        const holder = HOLDER.exec(request);
+        if (!holder) return null;
+        const tail = request.slice((holder.index || 0) + holder[0].length);
+        const colonAt = Math.max(tail.indexOf(':'), tail.indexOf('：'));
+        const scope = (colonAt >= 0 ? tail.slice(colonAt + 1) : tail).split(/[.؟!\n]/)[0] || '';
+        const items = scope
+            .split(/\s*[،,]\s*|\s+و(?=\S)|\s+and\s+|\s+&\s+/iu)
+            .map(p => p.trim().replace(/^and\s+/iu, '').replace(/^[:：]\s*/u, '').trim())
+            .filter(p => p.length >= 2 && p.length <= 32);
+        //  The first item carries whatever stood between the container and the
+        //  list — «جدول للمصاريف يحوي التاريخ» hands back «للمصاريف يحوي
+        //  التاريخ» as one item. The name begins at the first word that opens
+        //  with «ال»; everything before it is the sentence, not the column.
+        if (items.length && /\s/.test(items[0])) {
+            const words = items[0].split(/\s+/);
+            const start = words.findIndex(w => /^ال[ء-ي]/u.test(w));
+            if (start > 0) items[0] = words.slice(start).join(' ');
+        }
+        //  DROP THE RULE, KEEP THE LIST — in that order.
+        //
+        //  Caught by a live round, not by a test: «…: التاريخ والمبلغ والسبب،
+        //  والمبلغ لا يقبل صفر» has three names and one rule, and asking
+        //  «is EVERY item a name?» threw all four away. Joe then built a
+        //  memorised expense template — Item, Amount, Category, Date, Note —
+        //  and none of the three columns he actually wrote.
+        //
+        //  The rule is removed first; what remains must then be a list of
+        //  definite names, which is what keeps «قهوة، أدوات، حلويات» out.
+        const names = items.filter(isAName);
+        if (names.length < 3 || names.length > 10) return null;
+        if (!everyItemIsADefiniteName(names)) return null;
+        return fieldsFromLabels(names);
+    }
     let after = request.slice((opener.index || 0) + opener[0].length);
     //  A colon further along is the real start of the list: «أسجل فيه المواعيد:
     //  اسم المريض و…» — the noun before it is the subject, not a column.
@@ -1417,7 +1539,14 @@ export function derivedColumns(requestRaw: string): DerivedField[] | null {
             .replace(/^[:：]\s*/u, '').trim())
         .filter(p => p.length >= 2 && p.length <= 32);
     if (parts.length < 3 || parts.length > 10) return null;
+    //  A rule that rode in on the end of the list is not a column.
+    const named = parts.filter(isAName);
+    if (named.length < 3) return null;
+    return fieldsFromLabels(named);
+}
 
+/** Turn the labels he wrote into fields, once, for every path that finds them. */
+function fieldsFromLabels(parts: string[]): DerivedField[] | null {
     const seen = new Map<DerivedRole, number>();
     const out: DerivedField[] = [];
     for (const label of parts) {

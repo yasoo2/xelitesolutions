@@ -4704,6 +4704,45 @@ html[data-theme="light"] .input-actions {
   letter-spacing: 0.5px;
 }
 
+/* ============================================================
+   A FLEX CHILD REFUSES TO SHRINK UNLESS IT IS TOLD
+
+   Measured at seven viewport widths, with the workspace open:
+
+       w=1920  elite-workspace-selector@1621..1950   (329px wide)
+               elite-header-actions@1958..2114       (194px off-screen)
+       w=1280  elite-explorer-sidebar@1029..1309     (49px off-screen)
+       w=1097  elite-explorer-sidebar@866..1146
+
+   The sidebar is 280px. The selector inside it is 329px and will not give
+   way, so it pushes the header's buttons past the edge, where they are
+   clipped and can never be clicked. His words: «ما زالت الشاشة زايحه».
+
+   The cause is the default nobody remembers: a flex item's `min-width` is
+   `auto`, which means «never smaller than my content». A long workspace
+   path is long content, and `flex: 1` cannot overrule `min-width: auto`.
+
+   This repository already learned this once — `.neural-head` carries the
+   note «min-width:0 all the way down, or a long goal line refuses to
+   shrink and stretches the card past the chat». The lesson was written
+   down in one component and forgotten in the next, which is why it is
+   stated here as a rule about the header rather than about one selector.
+   ============================================================ */
+.elite-explorer-header,
+.elite-workspace-selector,
+.elite-workspace-selector > * {
+  min-width: 0;
+}
+
+.elite-select {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.elite-header-actions {
+  flex: none;
+}
+
 .elite-header-actions {
   display: flex;
   gap: 4px;
