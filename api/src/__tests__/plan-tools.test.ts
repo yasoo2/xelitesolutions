@@ -623,10 +623,11 @@ describe('model-written tool arguments are checked before execution', () => {
                 { task: 'Run syntax checks', tool: 'auto_tester', args: { testType: 'syntax', files: ['src/index.ts'] } },
             ],
         }], 'weathergo', { evidencedPaths: ['src/index.ts'] });
-        expect(plan.phases[0].deliveryStatus).toBe('blocked');
-        expect(plan.phases[0].blocker?.code).toBe('tool_contract_invalid');
-        expect(plan.notes.join('\\n')).toMatch(/auto_tester يحتاج projectPath/);
+        expect(plan.phases[0].tasks.map((task: any) => task.tool)).toContain('react_project');
         expect(plan.phases[0].tasks.map((task: any) => task.tool)).not.toContain('auto_tester');
+        expect(plan.phases[0].deliveryStatus).not.toBe('blocked');
+        expect(plan.phases[0].blocker).toBeUndefined();
+        expect(plan.notes.join('\\n')).toMatch(/auto_tester يحتاج projectPath/);
     });
 });
 

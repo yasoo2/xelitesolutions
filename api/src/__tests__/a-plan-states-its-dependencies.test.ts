@@ -14,7 +14,8 @@
  * both sides of the relation are actually present.
  */
 
-import { sanitisePlanPhases, stampPlanDependencies } from '../core/orchestrator/plan-tools';
+import { plannerToolPrompt, sanitisePlanPhases, stampPlanDependencies } from '../core/orchestrator/plan-tools';
+import { ProjectPlannerTool } from '../modules/tools/definitions/ProjectPlannerTool';
 
 const phase = (name: string, tool: string) => ({ name, tasks: [{ tool, task: name, args: {} }] });
 const toolsOf = (phases: any[]) => phases.map(p => String(p.tasks?.[0]?.tool));
@@ -127,6 +128,81 @@ describe('a plan states its own dependencies', () => {
         expect(clean.executableTasks).toBe(1);
         expect(clean.phases[0].tasks[0].tool).toBe('write_file');
         expect(clean.notes.join(' ')).toMatch(/مساراً نسبياً آمناً|غير مثبت/);
+    });
+
+    test('a valid builder survives a malformed file edit in the same phase', () => {
+        const clean = sanitisePlanPhases([{
+            name: 'Build the application',
+            tasks: [
+                { task: 'Create the runnable React application', tool: 'react_project', args: { request: 'Build a task manager' } },
+                { task: 'Update an existing file', tool: 'file_edit', args: { find: 'old', replace: 'new' } },
+            ],
+        }], 'FocusBoard', { mode: 'greenfield' });
+
+        const tools = clean.phases[0].tasks.map((task: any) => task.tool);
+        expect(tools).toContain('react_project');
+        expect(tools).not.toContain('file_edit');
+        expect(clean.blocker).toBeUndefined();
+        expect(clean.notes.join(' ')).toContain('file_edit يحتاج الحقل الإلزامي');
+    });
+
+    test('a malformed file edit remains rejected when it is the only implementation task', () => {
+        const clean = sanitisePlanPhases([{
+            name: 'Edit the application',
+            tasks: [{ task: 'Edit a file', tool: 'file_edit', args: { find: 'old', replace: 'new' } }],
+        }], 'FocusBoard', { mode: 'greenfield' });
+
+        expect(clean.phases[0].tasks).toEqual([]);
+        expect(clean.blocker?.code).toBe('tool_contract_invalid');
+        expect(clean.notes.join(' ')).toContain('file_edit يحتاج الحقل الإلزامي');
+    });
+
+    test('a complete filename-based file edit counts as implementation evidence', () => {
+        const planner = new ProjectPlannerTool() as any;
+        const count = planner.countImplementationArtifacts([{
+            tasks: [{
+                tool: 'file_edit',
+                args: { filename: 'src/App.jsx', find: 'old', replace: 'new' },
+            }],
+        }]);
+
+        expect(count).toBe(1);
+    });
+
+    test('a filename-based documentation edit remains excluded from implementation evidence', () => {
+        const planner = new ProjectPlannerTool() as any;
+        const count = planner.countImplementationArtifacts([{
+            tasks: [{
+                tool: 'file_edit',
+                args: { filename: 'docs/architecture.md', find: 'old', replace: 'new' },
+            }],
+        }]);
+
+        expect(count).toBe(0);
+    });
+
+    test('planner decisions depend on tool shape, not a domain word in the task description', () => {
+        const make = (task: string) => sanitisePlanPhases([{
+            name: 'Build the application',
+            tasks: [
+                { task: 'Create the runnable React application', tool: 'react_project', args: { request: 'Build a task manager' } },
+                { task, tool: 'file_edit', args: { find: 'old', replace: 'new' } },
+            ],
+        }], 'FocusBoard', { mode: 'greenfield' });
+        const ordinary = make('Update the task list');
+        const invented = make('Xqzt the thing');
+
+        expect(ordinary.phases[0].tasks.map((item: any) => item.tool))
+            .toEqual(invented.phases[0].tasks.map((item: any) => item.tool));
+        expect(ordinary.blocker?.code).toBe(invented.blocker?.code);
+        expect(ordinary.executableTasks).toBe(invented.executableTasks);
+    });
+
+    test('the planner catalogue states every required file_edit field', () => {
+        const prompt = plannerToolPrompt();
+        expect(prompt).toContain('args.filename');
+        expect(prompt).toContain('args.find');
+        expect(prompt).toContain('args.replace');
     });
 
 });
