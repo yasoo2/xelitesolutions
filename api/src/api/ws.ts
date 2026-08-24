@@ -495,9 +495,6 @@ export function canUseTerminalForSession(terminalId: string, sessionId: string):
 export function broadcast(
   event: LiveEvent | { type: string; data: any; id?: string; runId?: string; seq?: number; ts?: number }
 ) {
-  // Observers see EVERY event, including the ones sent before a socket exists
-  // — a proof that measures a build must not depend on a client being there.
-  for (const o of broadcastObservers) { try { o(event); } catch { /* an observer never breaks the wire */ } }
   const authBypass = process.env.ENABLE_AUTH_BYPASS === 'true';
   const normalized: LiveEvent = {
     ...(event as any),
@@ -512,6 +509,25 @@ export function broadcast(
               ? runIdBySessionId.get(trimId((event as any)?.sessionId || (event as any)?.data?.sessionId))
               : undefined),
   };
+  /**
+   *  AN OBSERVER MUST SEE WHAT ACTUALLY WENT OUT.
+   *
+   *  Observers see EVERY event, including the ones sent before a socket
+   *  exists — a proof that measures a build must not depend on a client
+   *  being there. They used to see it one step too early, BEFORE the
+   *  normalisation above stamped the time and resolved the run.
+   *
+   *  The session log recorder is such an observer, and his Logs panel
+   *  showed the cost:
+   *
+   *      [19:39:09] Reading your request and working out exactly what you want
+   *      [--:--:--] ▶ project_pipeline
+   *
+   *  The first event carried its own ts; the second did not, and the
+   *  recorder had nothing to stamp it with — while the very next line of
+   *  this function was about to give it one.
+   */
+  for (const o of broadcastObservers) { try { o(normalized); } catch { /* an observer never breaks the wire */ } }
   notifyRunEventListeners(normalized);
   if (!liveWssRef) {
     console.warn('[WS] broadcast called but liveWssRef is null');

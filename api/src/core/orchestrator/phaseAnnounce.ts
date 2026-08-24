@@ -89,6 +89,16 @@ export function phaseDetail(phase: ThinkingPhase | string, language: SupportedLa
  *  nobody used to be an exception in the middle of a build, and a run must not
  *  die because a caller had no chat attached.
  */
+/** The phase each session was last told it is in. */
+const lastPhaseBySession = new Map<string, ThinkingPhase>();
+const MAX_TRACKED_SESSIONS = 200;
+
+/** Forget a session's phase — a new run must be able to announce its first. */
+export function forgetPhase(sessionId: string | undefined): void {
+    const sid = String(sessionId || '').trim();
+    if (sid) lastPhaseBySession.delete(sid);
+}
+
 export function announcePhase(
     sessionId: string | undefined,
     phase: ThinkingPhase,
@@ -96,6 +106,33 @@ export function announcePhase(
 ): boolean {
     const sid = String(sessionId || '').trim();
     if (!sid) return false;
+    /**
+     *  A PHASE IS A STATE, NOT AN EVENT.
+     *
+     *  Live round, his screen, one request:
+     *
+     *      Reading your request and working out exactly what you want
+     *      Reading your request and working out exactly what you want
+     *      Reading your request and working out exactly what you want
+     *      Reading your request and working out exactly what you want
+     *
+     *  Two callers announce the same moment — AgentLoopService before it
+     *  hands over, and the orchestrator as it begins — and each is right
+     *  to. What is wrong is treating «I am analyzing» as news: announcing
+     *  a state you are already in says nothing and prints a line.
+     *
+     *  So the same phase for the same session is announced ONCE, and the
+     *  next different phase speaks again. Going idle forgets, because the
+     *  next request must be able to say «analyzing» from the start.
+     */
+    if (phase === 'idle') { lastPhaseBySession.delete(sid); return false; }
+    if (lastPhaseBySession.get(sid) === phase) return false;
+    lastPhaseBySession.set(sid, phase);
+    //  A session that ended long ago must not hold a slot forever.
+    if (lastPhaseBySession.size > MAX_TRACKED_SESSIONS) {
+        const oldest = lastPhaseBySession.keys().next().value;
+        if (oldest !== undefined) lastPhaseBySession.delete(oldest);
+    }
     try {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const { broadcastThinkingPhase } = require('../../api/ws');

@@ -87,6 +87,33 @@ describe('what the panel would have drawn is what is kept', () => {
     });
 });
 
+describe('an observer sees what actually went out', () => {
+    it('the recorder is handed a stamped event, not a bare one', () => {
+        //  His Logs panel showed the cost of the other order:
+        //      [19:39:09] Reading your request and working out exactly what you want
+        //      [--:--:--] ▶ project_pipeline
+        //  broadcast() stamps every event; the observers used to run one
+        //  step before that.
+        const fs2 = jest.requireActual<typeof import('fs')>('fs');
+        const path2 = jest.requireActual<typeof import('path')>('path');
+        const ws = fs2.readFileSync(path2.join(__dirname, '..', 'api', 'ws.ts'), 'utf-8');
+        const normalizedAt = ws.indexOf('const normalized: LiveEvent');
+        const observersAt = ws.indexOf('for (const o of broadcastObservers)');
+        expect(normalizedAt).toBeGreaterThan(0);
+        expect(observersAt).toBeGreaterThan(normalizedAt);
+        expect(ws).toContain('o(normalized)');
+        expect(ws).not.toContain('o(event)');
+    });
+
+    it('…and an event that truly has no time is still marked as such', () => {
+        //  The negative: stamping it with «now» would put today's clock on
+        //  a line that never carried one.
+        const s = load();
+        s.recordSessionEvent('sess-x', { type: 'step_done', data: {} });
+        expect(s.sessionLogLines('sess-x')).toEqual(['[--:--:--] Step Done']);
+    });
+});
+
 describe('it survives the restart, and never half-written', () => {
     it('lines written before a restart are there after it', async () => {
         const s = load();

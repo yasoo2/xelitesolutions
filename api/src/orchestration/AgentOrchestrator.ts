@@ -224,7 +224,25 @@ export class AgentOrchestrator {
      *  Resolved once, into a name, so the two cannot drift apart again.
      */
     const liveSession = (goal.context as any)?.sessionId || goal.id;
-    broadcastThinkingDetail(liveSession, `🧠 Initializing Autonomous Brain for goal: ${goal.goal}`);
+    /**
+     *  AN INTERNAL NOTE IS NOT A SENTENCE FOR HIM.
+     *
+     *  This used to be addressed to the RUN, so nobody ever saw it. The
+     *  moment it was addressed to the SESSION — correctly — it landed in
+     *  his chat, and a live round showed him this:
+     *
+     *      Initializing Autonomous Brain for goal: بدي جدول للموظفين فيه…
+     *
+     *  English, a machine's word for itself, a pictograph he asked not to
+     *  see in his log, and his own sentence read back at him truncated.
+     *  Two lines below, announcePhase already says the same moment in the
+     *  language he is using and in words about HIM rather than about the
+     *  engine. One moment, one sentence.
+     *
+     *  It stays as a console line, where a developer reading a terminal
+     *  is the audience it was always written for.
+     */
+    console.log(`[AgentOrchestrator] session=${liveSession} goal=${String(goal.goal).slice(0, 120)}`);
     //  Say it rather than let the card assume it: the indicator defaults to
     //  «analyzing» on mount, so for the whole first stretch of every run it
     //  was showing a phase nobody had sent.
