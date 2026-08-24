@@ -124,7 +124,87 @@ export function isInstructionClause(clause: string): boolean {
  * uses its own generic line, which is the honest outcome: better a neutral
  * tagline than the user's own instructions read back at him.
  */
+/**
+ *  THE THING HE NAMED, NOT THE SENTENCE HE SAID IT IN.
+ *
+ *  Measured on his machine:
+ *
+ *      subjectPhrase(«بدي جدول مبيعات فيه اسم الصنف والكمية والسعر،
+ *                     والسعر لا يقبل صفر»)
+ *        → «بدي جدول مبيعات فيه اسم الصنف والكمية والسعر، والسعر لا يقبل صفر»
+ *
+ *  The function that is supposed to extract the SUBJECT handed back the
+ *  whole request. It then became the app's title and its entity name, so
+ *  his generated app was called by the sentence that asked for it, cut at
+ *  thirty-seven characters in the middle of his own list.
+ *
+ *  A function that cannot fail is the same defect as a criterion that
+ *  cannot fail: it always returns something, so nothing ever looks wrong.
+ *
+ *  Arabic says it plainly, and so does English: «جدول مبيعات» is a table
+ *  OF sales, «a sales table» is the same words in the other order. When a
+ *  request names a container, the thing it holds is the noun beside that
+ *  container — before any «فيه», any colon, any list. That is grammar,
+ *  not a catalogue: «زُرقمونيات» is read exactly as «مبيعات» is, and no
+ *  domain, framework or app shape is named anywhere in it.
+ */
+export function subjectAfterContainer(requestRaw: string): string {
+    const request = String(requestRaw || '');
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { RECORD_CONTAINER } = require('./app-blueprints');
+    const hit = RECORD_CONTAINER.exec(request);
+    if (!hit) return '';
+    const after = request.slice((hit.index || 0) + hit[0].length);
+    //  The subject ends where the list begins.
+    const scope = after.split(/[:：،,؛;.\n]|\s(?:فيه|فيها|به|بها|يحوي|تحوي|يحتوي|تحتوي|with|containing)\s/u)[0] || '';
+    const words: string[] = [];
+    for (const raw of scope.trim().split(/\s+/)) {
+        //  «للكتب» is «ل» + «الكتب»: the preposition belonged to his
+        //  sentence, not to the name of the thing.
+        //  «للكتب» is «ل» + «الكتب» with the alef elided, so «لل» opens
+        //  back out to «ال»; a bare «ل» before a noun is just the
+        //  preposition and goes. «لمطعمي» is «مطعمي».
+        const w = raw
+            .replace(/^لل(?=[\u0621-\u064A])/u, 'ال')
+            .replace(/^ل(?=[\u0621-\u064A]{3,})/u, '')
+            .replace(/^(?:of|for|the|a|an)$/i, '');
+        if (!w) continue;
+        words.push(w);
+        if (words.length === 2) break;
+    }
+    let subject = words.join(' ').trim();
+
+    /**
+     *  AND ENGLISH PUTS IT ON THE OTHER SIDE.
+     *
+     *  «جدول مبيعات» is a table OF sales and the noun follows. «A clients
+     *  table» is the same two words in the opposite order, so reading
+     *  forward finds «with name, phone and address» — the list, not the
+     *  subject. Measured: the English sentence came back as «clients table
+     *  with name, phone and address», the whole clause again.
+     *
+     *  So when nothing usable follows the container, look at the word
+     *  before it. Still grammar, still no vocabulary of domains.
+     */
+    const beforeTheContainer = (): string => {
+        const head = request.slice(0, hit.index || 0).trim();
+        const parts = head.split(/\s+/).filter(Boolean);
+        const last = parts[parts.length - 1] || '';
+        if (/^(?:a|an|the|my|our|بدي|أريد|اريد|أبغى|ابغى)$/i.test(last)) return '';
+        return last;
+    };
+    if (!subject || /\s/.test(subject) === false && subject.length < 3) subject = beforeTheContainer();
+    if (subject.split(/\s+/).length > 2) subject = beforeTheContainer() || subject;
+    //  One letter is not a name; a whole clause is not one either.
+    return subject.length >= 3 && subject.length <= 40 ? subject : '';
+}
+
 export function subjectPhrase(request: string, maxChars = 72): string {
+    //  What he named comes first: reading the sentence for a headline is
+    //  the fallback, not the answer.
+    const named = subjectAfterContainer(request);
+    if (named) return named;
+
     const all = clausesOf(request);
 
     /**
