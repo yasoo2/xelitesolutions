@@ -94,18 +94,34 @@
 }
 
 /* Collapsed States */
+
+/*  A NEGATIVE MARGIN CANCELS A GAP. WITH NO GAP, IT IS JUST A SHIFT.
+
+    Measured with the chat collapsed, at 1920:
+
+        .joe-chat-panel          width 0   margin-right -12px
+        .joe-workspace-container left -10
+        .joe-main                gap: normal
+
+    The row has no gap. The −12px had nothing to cancel, so it simply
+    dragged the pane beside it ten pixels off the left edge of the window
+    — every time the chat was closed, at every width. That is the shifted
+    screen he photographed: «ما زالت الشاشة زايحه».
+
+    A compensation is only ever as correct as the thing it compensates
+    for, and this one outlived it. */
 .joe-chat-panel.collapsed {
     --joe-chat-actual-width: 0px;
     opacity: 0;
     pointer-events: none;
-    margin-right: -12px;
+    margin-right: 0;
 }
 
 .joe-files-panel.collapsed {
     --joe-files-actual-width: 0px;
     opacity: 0;
     pointer-events: none;
-    margin-left: -12px;
+    margin-left: 0;
 }
 
 /* ========== Reset & Base ========== */
@@ -172,14 +188,14 @@
     font-size: 13.5px;
     font-weight: 650;
     color: var(--joe-text-primary);
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; unicode-bidi: plaintext; white-space: nowrap;
 }
 .joe-user-menu-email {
     font-size: 11px;
     color: var(--joe-text-muted);
     direction: ltr;
     text-align: end;
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; unicode-bidi: plaintext; white-space: nowrap;
 }
 .joe-user-menu-item {
     display: flex;
@@ -406,7 +422,7 @@ body:not(.rtl) .joe-user-info {
     line-height: 1.2;
     max-width: 180px;
     overflow: hidden;
-    text-overflow: ellipsis;
+    text-overflow: ellipsis; unicode-bidi: plaintext;
     white-space: nowrap;
 }
 
@@ -424,7 +440,7 @@ body:not(.rtl) .joe-user-info {
     line-height: 1.2;
     max-width: 150px;
     overflow: hidden;
-    text-overflow: ellipsis;
+    text-overflow: ellipsis; unicode-bidi: plaintext;
     white-space: nowrap;
     direction: ltr;
     unicode-bidi: plaintext;
@@ -2370,7 +2386,7 @@ body:not(.rtl) .joe-user-info {
     margin-top: 2px;
     white-space: nowrap;
     overflow: hidden;
-    text-overflow: ellipsis;
+    text-overflow: ellipsis; unicode-bidi: plaintext;
 }
 
 .stg-nav-arrow {
@@ -3173,7 +3189,7 @@ body:not(.rtl) .joe-user-info {
     -webkit-text-fill-color: currentColor;
     white-space: nowrap;
     overflow: hidden;
-    text-overflow: ellipsis;
+    text-overflow: ellipsis; unicode-bidi: plaintext;
 }
 
 .onboarding-modal .onboarding-card-desc {
@@ -3982,4 +3998,68 @@ body:not(.rtl) .joe-user-info {
 :fullscreen .browser-quality-popover {
     left: 18px;
     bottom: 56px;
+}
+
+/* ============================================================
+   A LABEL IS CUT FROM ITS OWN END
+
+   Measured on his screen with the interface in Arabic, reading the
+   session tabs straight off the pixels:
+
+       before:  «...انات الزبانن»   «...واعيد العيادة»   «... اليوم»
+       after:   «إدارة بيانات...»   «جدول مواعيد...»     «طقس ...»
+
+   Every Arabic name was being truncated from its BEGINNING, so he could
+   not read the name of a single one of his own sessions — only their
+   tails. His words: «الواجهه كلها تميل الى اليمين».
+
+   THE CAUSE, and it is a decision this repository made on purpose:
+   i18n.ts keeps `document.documentElement.dir = ltr` in every language,
+   because flipping the whole IDE chrome breaks the editor, the terminal
+   and the browser panes. That decision is sound. What it never carried
+   was its consequence — it toggles a `body.rtl` class, and a grep of
+   every stylesheet in this project found exactly ONE rule that mentions
+   that class, and it is a `:not(.rtl)`. The hook was added and never
+   used, so Arabic text lived inside boxes that were laid out for
+   English and truncated as if it were English.
+
+   `unicode-bidi: plaintext` is the cure and it is not a flip: it tells
+   the element to take its direction from ITS OWN first strong character
+   — Arabic text reads right to left inside the box, English text is
+   untouched, and the ellipsis lands at the end of whichever it holds.
+   The chrome around it stays exactly where it was.
+
+   The attribute selector is deliberate. Nineteen labels in twelve React
+   files declare this truncation inline, and one rule here reaches all of
+   them and every one written after today — where nineteen `dir="auto"`
+   attributes would be nineteen chances to forget the twentieth.
+   ============================================================ */
+[style*="ellipsis"] {
+    unicode-bidi: plaintext;
+}
+
+/* ============================================================
+   THE WHOLE PAGE MEANS THE WHOLE PAGE
+
+   Measured at 1920, before and after pressing the header button:
+
+       before:  chat 0..1771 (1771)   workspace 1773..1920 (147)
+       after:   chat 0..0    (0)      workspace -10..970  (980)
+
+   A 147-pixel browser panel while the chat held 1771, and then a
+   980-pixel one pinned ten pixels off the LEFT edge with 950 pixels of
+   empty screen beside it. That second number is the «شاشة زايحه» he
+   photographed: the pane keeps the fixed width it asked for
+   — clamp(620px, 58vw, 980px) — and a fixed width cannot fill a row
+   whose other child has just become zero.
+
+   So when the chat is gone the pane stops asking for a width and takes
+   the row instead. Both declarations are needed: the width would
+   otherwise win over the grow.
+   ============================================================ */
+.joe-main.chat-collapsed .joe-workspace-container:not(.canvas-collapsed) {
+    flex: 1 1 auto;
+    width: auto;
+    max-width: none;
+    border-inline-start: none;
 }

@@ -293,6 +293,30 @@ while ($true) {
     Say "`n[3/3] Starting Joe (attempt #$restartCount, V8 heap ${nodeMaxOldSpaceMb}MB)  ->  http://localhost:5002/joe" Yellow
     Push-Location $apiDir
     $startedAt = Get-Date
+    # ============================================================
+    #  حرِّر المنفذ الآن، لا قبل خمس دقائق.
+    #
+    #  قِيس من سجلّ حقيقي: update-joe.ps1 أوقف النسخ العاملة في الساعة
+    #  01:21 وقال الحقّ — لم تكن هناك نسخة تعمل. ثمّ بنى الواجهة خمس
+    #  دقائق كاملة، وأثناءها أخذ المنفذَ شيءٌ آخر، فمات جو عند الاستماع
+    #  في 01:26 بـ EADDRINUSE ودخل في حلقة إعادة تشغيل.
+    #
+    #  فحصٌ تنتهي صلاحيّة جوابه قبل أن يُستعمل ليس فحصاً. هذا هو الفحص
+    #  نفسه، في اللحظة التي يهمّ فيها: قبل الاستماع مباشرة.
+    # ============================================================
+    $freed = 0
+    try {
+        $holders = @(Get-NetTCPConnection -LocalPort 5002 -State Listen -ErrorAction SilentlyContinue)
+        foreach ($h in $holders) {
+            if ($h.OwningProcess -and $h.OwningProcess -ne $PID) {
+                try { Stop-Process -Id $h.OwningProcess -Force -ErrorAction Stop; $freed++ } catch { }
+            }
+        }
+    } catch { }
+    if ($freed -gt 0) {
+        Say "    [port] المنفذ 5002 كان محجوزاً — أوقفتُ $freed عملية وأتابع." DarkYellow
+        Start-Sleep -Seconds 2
+    }
     node "--max-old-space-size=$nodeMaxOldSpaceMb" dist/index.js
     $exitCode = $LASTEXITCODE
     $aliveSeconds = ((Get-Date) - $startedAt).TotalSeconds

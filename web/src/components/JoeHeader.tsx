@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Bot, MessageSquare, Settings, Moon, Sun, PanelLeft, PanelRight, Columns2, Rocket, Activity, Shield, ChevronDown } from 'lucide-react';
+import { Bot, MessageSquare, Settings, Moon, Sun, PanelLeft, PanelRight, Columns2, Rocket, Activity, Shield, ChevronDown, Maximize2, Minimize2 } from 'lucide-react';
 import { resolveIdentity, nameFromEmail, initialsFrom, gravatarUrlFor, ROLE_KEY, isPrivileged, type UserRole } from '../lib/userIdentity';
 import JoeMark from './JoeMark';
 import UpdateJoeItem, { SelfUpdateOverlay, UpdateAutoPilot, useUpdateAvailable } from './UpdateJoeItem';
@@ -114,12 +114,21 @@ export default function JoeHeader({
             {/* Right: Settings & Profile - Reordered to have Profile in Corner */}
             <div className="joe-header-right">
                 <div className="joe-header-actions">
+                    {/*  ONE BUTTON, TWO STATES, AND THE ICON SAYS WHICH.
+
+                         «يجب ان يتغير هذا الزر الى شكل يفيد لهذه الوظيفه» — it
+                         showed the same panel glyph whether it was about to
+                         give the workspace the whole page or hand the page
+                         back to the chat, so the icon said nothing about what
+                         pressing it would do. Now it does: expand, then
+                         restore.  */}
                     <button
                         className={`joe-header-btn sidebar-toggle ${isChatCollapsed ? 'inactive' : 'active'}`}
                         onClick={onToggleChat}
-                        title="Toggle Chat"
+                        title={isChatCollapsed ? t('restoreChat', 'Show the chat again') : t('expandWorkspace', 'Give the workspace the whole page')}
+                        aria-pressed={isChatCollapsed}
                     >
-                        <PanelLeft size={18} />
+                        {isChatCollapsed ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
                     </button>
                     <button
                         className={`joe-header-btn sidebar-toggle ${isWorkspaceCollapsed ? 'inactive' : 'active'}`}

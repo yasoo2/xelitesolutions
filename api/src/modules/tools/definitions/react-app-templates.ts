@@ -398,6 +398,23 @@ export function groupTotals(rows, groupField, valueField) {
     .sort((a, b) => b.value - a.value);
 }
 
+/**
+ *  AND THE GUARD ON THAT EXPORT MUST WATCH THE VALUE THE EXPORT USES.
+ *
+ *  Measured on a generated app: the same page exported a full CSV once
+ *  and a header-only file the next time, from a state that still showed
+ *  a row, with the row present in localStorage both times.
+ *
+ *  The button was guarded on «rows.length«; the export writes «visible«.
+ *  Those two differ the moment a search or a status filter is set and
+ *  matches nothing: rows exist, so the button is live — nothing is
+ *  visible, so the file that lands in his Downloads folder is a header
+ *  and no data, and nothing anywhere says so.
+ *
+ *  A file that looks like a successful export and contains nothing is
+ *  the same lie as a green test that ran nothing. The guard now reads
+ *  «visible«, which is what leaves with him.
+ */
 /** A real export — the rows leave with the user, not locked in a browser. */
 export function toCsv(fields, rows) {
   const cell = (v) => '"' + String(v ?? '').replace(/"/g, '""') + '"';

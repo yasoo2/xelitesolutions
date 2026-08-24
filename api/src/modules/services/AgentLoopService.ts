@@ -14,7 +14,8 @@ import { formatAttachmentsBlock } from '../../shared/attachments';
 import { describeImageAttachments } from '../../shared/vision';
 import { withDeadline, RUN_DEADLINE_MS, DeadlineError } from '../../shared/utils/deadline';
 import { persistChatStores } from '../../api/chat-store';
-import { clarifyGate } from '../../core/orchestrator/clarify';
+import { clarifyGate } from '../../core/orchestrator/clarify';
+import { phaseDetail } from '../../core/orchestrator/phaseAnnounce';
 import { composeAnswer, composeFailure } from '../../core/orchestrator/answerComposer';
 import { compactRuntimeValue } from '../../core/orchestrator/ExecutionMemory';
 import { hasRequestFidelityMismatch, hasRequestFidelityEvidenceUnavailable } from '../tools/definitions/ProjectPipelineTool';
@@ -464,7 +465,10 @@ export class AgentLoopService {
         const language = language0;
 
         console.log(`[AgentLoopService] REAL-TIME Execution Request: ${goal} (traceId=${traceId})`);
-        broadcastThinkingDetail(sessionId, "🧠 Activating Dynamic Agent Runtime...");
+        //  This line is the FIRST thing he reads on every run, and it was
+        //  written in English only — in a system whose interface he sets to
+        //  Arabic. It also described the machinery rather than the work.
+        broadcastThinkingDetail(sessionId, phaseDetail('analyzing', language));
 
         // Create Run record for observability. The HTTP boundary may already have
         // issued a run-* id; that id is canonical and must not be replaced by a
