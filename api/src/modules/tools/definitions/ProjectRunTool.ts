@@ -185,6 +185,73 @@ function devServerPortFlags(cwd: string, port: number): string {
     return '';
 }
 
+/**
+ *  RUN ITS PROGRAM, NOT ITS PACKAGE MANAGER.
+ *
+ *  He photographed a black console window opening over his work, twice.
+ *  Windows named the culprit when asked directly:
+ *
+ *      cmd.exe  parent=node  cmd /d /s /c "npm run dev -- --port 4300 …"
+ *      conhost  parent=cmd   0x4        ← a visible console
+ *
+ *  Measured three ways, counting the consoles each one created:
+ *
+ *      shell:true  npm start      alive TRUE   +3 consoles
+ *      shell:false npm.cmd start  alive FALSE  +0 consoles
+ *      shell:false node index.js  alive TRUE   +1 console
+ *
+ *  `npm` is a `.cmd` shim, and Node refuses to spawn one without a shell
+ *  — a deliberate refusal, after a command-injection flaw in that path. So
+ *  going through npm means going through cmd.exe, and cmd.exe allocates a
+ *  console. `windowsHide` cannot help: it governs the process Node makes,
+ *  and the console is made one level further down.
+ *
+ *  The way out is not to hide the shell but to have none. Every script in
+ *  a package manifest names a program; when that program is JavaScript we
+ *  can resolve, Node runs it directly and no console is ever created.
+ *
+ *  It resolves by READING the manifest of the package the script names —
+ *  no framework is listed here, and a tool this file has never heard of
+ *  works the same way. When nothing resolves, the npm command stands: a
+ *  window is worse than a failure to start, but only barely, and guessing
+ *  an entry point would be worse than both.
+ */
+function resolveJsEntry(cwd: string, bin: string): string | null {
+    const name = String(bin || '').trim();
+    if (!name || name.startsWith('-')) return null;
+    //  A scoped or plain package directory under node_modules.
+    const pkgDir = path.join(cwd, 'node_modules', name);
+    let manifest: any = null;
+    try { manifest = JSON.parse(fs.readFileSync(path.join(pkgDir, 'package.json'), 'utf-8')); }
+    catch { return null; }
+    const declared = manifest && manifest.bin;
+    const rel = typeof declared === 'string'
+        ? declared
+        : (declared && typeof declared === 'object' ? declared[name] || Object.values(declared)[0] : null);
+    if (typeof rel !== 'string' || !rel) return null;
+    const abs = path.join(pkgDir, rel);
+    //  It has to be a real file, and it has to be JavaScript — a shell
+    //  wrapper resolved here would put the console straight back.
+    if (!fs.existsSync(abs) || !/\.(?:js|mjs|cjs)$/i.test(abs)) return null;
+    return path.relative(cwd, abs).split(path.sep).join('/');
+}
+
+/** The same command the script declares, with node in front of it. */
+function directNodeCommand(cwd: string, script: string, extraFlags = ''): string | null {
+    const text = String(script || '').trim();
+    if (!text) return null;
+    const parts = text.split(/\s+/).filter(Boolean);
+    //  Already a node invocation: nothing to resolve.
+    if (parts[0] === 'node') return text + extraFlags.replace(/^\s*--\s+/, ' ');
+    const entry = resolveJsEntry(cwd, parts[0]);
+    if (!entry) return null;
+    const rest = parts.slice(1).join(' ');
+    //  `--` is npm's separator for passing arguments through. Running the
+    //  program itself, the arguments are simply its own.
+    const flags = extraFlags.replace(/^\s*--\s+/, ' ');
+    return `node ${entry}${rest ? ' ' + rest : ''}${flags}`;
+}
+
 function isFrontendStartScript(script: string): boolean {
     return /(?:react-scripts\s+start|\bvite(?:\s|$)|\bnext\s+(?:dev|start)(?:\s|$)|\bparcel(?:\s|$))/iu.test(String(script || '').trim());
 }
@@ -242,11 +309,17 @@ export function detectStart(cwd: string, port: number): { command: string; kind:
         if (backendEntrypoint) {
             return { command: `node ${backendEntrypoint}`, kind: 'node-entry', expectPort: port, forced: false };
         }
-        if (scripts.start) return { command: 'npm start', kind: 'npm-start', expectPort: port, forced: false };
+        if (scripts.start) {
+            const direct = directNodeCommand(cwd, String(scripts.start));
+            if (direct) return { command: direct, kind: 'npm-start', expectPort: port, forced: false };
+            return { command: 'npm start', kind: 'npm-start', expectPort: port, forced: false };
+        }
         // A frontend dev server (Vite/Next/CRA) — told its port in the flag it
         // actually reads, so the announcement below is true.
         if (scripts.dev) {
             const flags = devServerPortFlags(cwd, port);
+            const direct = directNodeCommand(cwd, String(scripts.dev), flags);
+            if (direct) return { command: direct, kind: 'dev-server', expectPort: port, forced: !!flags };
             return { command: `npm run dev${flags}`, kind: 'dev-server', expectPort: port, forced: !!flags };
         }
     }
@@ -954,12 +1027,24 @@ async function runtimeSyntaxError(cwd: string, detected: { command: string; kind
 
 export function launchPrerequisiteError(cwd: string, detected: { command: string; kind: string }): string | null {
     const pkgPath = path.join(cwd, 'package.json');
-    if (!fs.existsSync(pkgPath) || !/^npm (?:start|run dev)\b/u.test(detected.command)) return null;
+    //  THE GATE READS THE KIND, NOT THE SPELLING.
+    //
+    //  This tested the TEXT of the command against /^npm (start|run dev)/
+    //  rather than what the command IS. The moment the launcher stopped
+    //  going through npm — to stop opening a console window on his screen —
+    //  and ran the script's own program with node instead, this guard went
+    //  silent: a declared-but-missing dependency stopped being noticed and
+    //  the auto-install never ran. Measured: 1 call expected, 0 received.
+    //
+    //  detected.kind already carries the answer, and it does not change when
+    //  the spelling does.
+    const fromManifestScript = detected.kind === 'npm-start' || detected.kind === 'dev-server';
+    if (!fs.existsSync(pkgPath) || !fromManifestScript) return null;
 
     try {
         const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
         const scripts = pkg?.scripts || {};
-        const selectedScript = detected.command.startsWith('npm start') ? scripts.start : scripts.dev;
+        const selectedScript = detected.kind === 'npm-start' ? scripts.start : scripts.dev;
         const deps = { ...(pkg?.dependencies || {}), ...(pkg?.devDependencies || {}) };
         const needsVite = !!deps.vite || /(?:^|\s)vite(?:\s|$)/u.test(String(selectedScript || ''))
             || fs.existsSync(path.join(cwd, 'vite.config.js')) || fs.existsSync(path.join(cwd, 'vite.config.ts'));
