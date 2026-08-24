@@ -1209,20 +1209,21 @@ POS-061-NO-GENERATED-OR-WEATHERGO-MANUAL-EDIT: confirmed
 
 الدليل الخام السابق لـPrompt 01 محفوظ في `/tmp/joe-50-prompt01-focusboard-raw-16294c11.md`، وتشخيص font في `/tmp/joe-p01-font-404-diagnosis-061.md`، ودليل Terminal في `/tmp/joe-50-eye-terminal-manager-raw-061.md`، ودليل CSV في `/tmp/joe-50-prompt01-focusboard-direct-061.md`. الدليل الجديد بعد merge الخاص بالـArabic declaration محفوظ في `/tmp/joe-p01-declared-list-shape-false-positive-raw-merge.md`، وتشخيصه في `/tmp/joe-p01-declared-list-shape-false-positive-diagnosis-merge.md`; Claude حكم أن labels العائدة `الاسم/السعر/الكمية` تطابق طلب المستخدم، أي اتفاق مسارين لا عيب منتج (`5389794373`).
 
-بعد الدمج الطبيعي وتشغيل الحكم المصحح: **focused = 9 suites / 156 tests / EXIT 0**، ويشمل `font-resources`, `records-export-live-state`, `terminal-kernel-lifecycle`, `the-schema-comes-from-the-request`، واختبارات Claude canonical الخمسة. محاولة focused السابقة قبل الحكم فشلت فقط بثلاث assertions غير صالحة في fixture branch-routing؛ أزيلت ولم يتغير parser. static gates بعد merge ناجحة: API TSC=0، web type-check=0، web build=0. أما `NO_COLOR=1 GATE_BATCH=12 bash scripts/gate.sh` فنتيجته **FAIL** حقيقية: 22 batches، batch 11 فيه `neural-trace.test.ts` و`neural-card-fits.test.ts`، والمحصلة 255/257 suites و4191/4193 tests؛ لم يظهر `GATE:PASS` ولم يحدث push، ولذلك لا تُعد هذه الدفعة جاهزة للدفع.
+بعد الدمج الطبيعي وتشغيل الحكم المصحح: **focused = 9 suites / 156 tests / EXIT 0**، ويشمل `font-resources`, `records-export-live-state`, `terminal-kernel-lifecycle`, `the-schema-comes-from-the-request`، واختبارات Claude canonical الخمسة. محاولة focused السابقة قبل الحكم فشلت فقط بثلاث assertions غير صالحة في fixture branch-routing؛ أزيلت ولم يتغير parser. static gates بعد merge ناجحة: API TSC=0، web type-check=0، web build=0. full gate الأول كان FAIL بسبب selector contracts القديمة في neural suites (`255/257`, `4191/4193`)، ونُشر raw/diagnosis ثم صدر حكم Claude. بعد تحديث الاختبارين وإثبات mutation/restore، نجح canonical full gate الأخير: 22 batches، `257/257 suites` و`4193/4193 tests`، وكل exits=0 و`GATE:PASS`.
 
-الحالة الحالية الدقيقة: `HEAD=94d8efd03380d23e08fd420297baef34f5d3aa9a`، و`origin/main` ما زال عند `16294c110aa657d3d9d5b43d6a3425d3cff72ded`. التغيير المتتبع غير المدفوع بعد هو إزالة fixture غير الصالح من `the-schema-comes-from-the-request.test.ts` وتحديث هذا ledger. الملفات `web/.joe-live-vite.config.mjs` و`web/pnpm-lock.yaml` و`web/pnpm-workspace.yaml` غير متتبعة وممنوع staging؛ كما لا تُضمّن generated projects أو lockfiles أو `node_modules` أو `dist`.
+الحالة الحالية الدقيقة: `HEAD=c3e2191978d833c0d4321883564b318687935bd1` على `main`، و`origin/main` ما زال عند `16294c110aa657d3d9d5b43d6a3425d3cff72ded`. شجرة full gate المطابقة لم تعدّل بعد تشغيلها إلا بmetadata commit هذا، والـworktree نظيف من tracked changes. الملفات `web/.joe-live-vite.config.mjs` و`web/pnpm-lock.yaml` و`web/pnpm-workspace.yaml` غير متتبعة وممنوع staging؛ كما لا تُضمّن generated projects أو lockfiles أو `node_modules` أو `dist`.
 
 ### قرار العمل التالي
 
-أُغلق اعتراض `DECLARED_LIST` كاتفاق صحيح لا كفشل، وتبقى إصلاحات font/Terminal/CSV هي الإصلاحات العامة الفعلية. بعد commit ledger/test cleanup وتشغيل TSC وweb typecheck/build ثم canonical full gate، يُعاد فحص Claude قبل push وتُنشر أرقام البوابات وSHA الفعلي. بعد الدفع فقط تُعاد جولة P01 الحية من build SHA المطابق. **W50 آخر مهمة في القائمة، وPrompt 02 ممنوع قبل قبول P01 الحي الصادق.**
+أُغلق اعتراض `DECLARED_LIST` كاتفاق صحيح لا كفشل، وتبقى إصلاحات font/Terminal/CSV وإصلاح contract الاختبار العصبي هي الإصلاحات العامة الفعلية. بعد commit `c3e21919` اجتازت static gates والـfocused والـcanonical full gate، مع إثباتي mutation المطلوبين. المتبقي قبل الدفع هو نشر raw mutation outputs في قناة Claude إن أمكن، وfinal PR-channel check، ثم push عادي إلى main. بعد الدفع فقط تُعاد جولة P01 الحية من build SHA المطابق. **W50 آخر مهمة في القائمة، وPrompt 02 ممنوع قبل قبول P01 الحي الصادق.**
 
 POS-061-TASKS-UPDATED: 2026-08-24
+POS-061-COMMIT: `c3e2191978d833c0d4321883564b318687935bd1` (`test: align neural trace contracts with rendered card`)
 POS-061-CLAUDE-MERGE: normal merge `94d8efd03380d23e08fd420297baef34f5d3aa9a` from `d83bfa931dc93fe746f60141162b79975fa7e7e0`
 POS-061-FOCUSED: 9 suites / 156 tests / EXIT 0
 POS-061-TSC: 0; web type-check=0; web build=0
-POS-061-FULL-GATE: FAIL — 22 batches; batch 11; 255/257 suites and 4191/4193 tests; no GATE:PASS
-POS-061-PUSH: blocked by neural stale-contract test repair, Claude ruling, and rerun of full gate
+POS-061-FULL-GATE: PASS — 22 batches; 257/257 suites and 4193/4193 tests; all exits 0; `GATE:PASS`
+POS-061-PUSH: blocked only by final raw-evidence publication/PR check and ordinary push to main; code repair, mutation proofs, focused, static, and full gate are green
 POS-061-LIVE-P01: required after push; P01 OPEN
 POS-061-NO-WEATHERGO-MANUAL-EDIT: confirmed
 
