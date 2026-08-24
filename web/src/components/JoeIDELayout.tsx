@@ -814,6 +814,27 @@ export default function JoeIDELayout({
                             title="إغلاق مساحة العمل"
                             aria-label="close workspace canvas"
                         >✕</button>
+                        {/*  A BOOLEAN THAT MEANS TWO THINGS CANNOT BE GUARDED.
+
+                             These two lines handed the workspace the FILE
+                             EXPLORER's flag to decide whether the workspace
+                             itself is collapsed on a phone. Measured at 760px:
+
+                             after pressing expand —
+                             .joe-chat-panel        opacity 0
+                             .joe-workspace-container opacity 1
+                             .joe-workspace         h=48 class collapsed-mobile
+                             .joe-workspace-content display:none w=0 h=0
+                             elementFromPoint(centre) = the empty container
+
+                             A 48-pixel tab strip over nothing. The invariant
+                             that guarantees a visible pane could not see it,
+                             because by STATE a pane was open — the explorer
+                             drawer, closed by default, was hiding a different
+                             pane's body.
+
+                             A pane's own open/closed state is the only honest
+                             answer to whether that pane is collapsed.  */}
                         <WorkspacePanel
                             activeTab={activeWorkspaceTab}
                             onTabChange={handleWorkspaceTabChange}
@@ -828,8 +849,8 @@ export default function JoeIDELayout({
                             liveFiles={liveFiles}
                             buildStatus={buildStatus}
                             problems={problems}
-                            mobileCollapsed={isExplorerCollapsed}
-                            onMobileToggle={toggleExplorer}
+                            mobileCollapsed={isWorkspaceCollapsed}
+                            onMobileToggle={toggleWorkspace}
                         >
                             {workspaceChildren}
                         </WorkspacePanel>
