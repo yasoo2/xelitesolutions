@@ -27,6 +27,8 @@
 //  copy of that character set would drift the first time one of them
 //  learned a mark the other did not.
 import { stripArabicDiacritics } from '../orchestrator/promptNormalizer';
+//  The reader that already knows which noun stands beside the container.
+import { subjectAfterContainer } from './subject-phrase';
 
 export type AppEngine = 'map' | 'chat' | 'weather' | 'records' | 'social' | 'shop' | 'calculator' | 'productivity' | 'finance';
 
@@ -610,12 +612,75 @@ export function violatesFieldConstraint(field: Pick<AppField, 'type' | 'min' | '
  * needs no vocabulary of trades: a clinic, a nursery or a camel farm all name
  * their own table.
  */
+//  Hoisted from derivedColumns: two readers need the same stems, and a
+//  second copy would drift the first time one of them learned a verb
+//  the other did not.
+const RECORDING_STEM = ['سجل', 'سجّل', 'ضيف', 'دخل', 'دوّن', 'دون', 'تابع', 'دير', 'نظم'];
+const CONJUGATED = RECORDING_STEM.map(stem => '[أاينت]' + stem).join('|');
+const A_RECORDING_VERB = new RegExp('^(?:' + CONJUGATED + ')$', 'u');
+
+//  The recording words, hoisted: theNounBesideTheContainer must refuse a
+//  verb as a name, and it runs before recordedSubject's local copy exists.
+const RECORDING_WORD = /(أسجل|اسجل|سجّل|أضيف|اضيف|أدخل|ادخل|أدوّن|ادون|الحقول|تحتوي على|يحتوي على|أتابع|اتابع|أدير|ادير|أنظم|انظم|\brecord\b|\btrack\b|\blog\b|\bmanage\b|\borgani[sz]e\b)/iu;
+
+/**
+ *  A NAME THAT IS THE SENTENCE THAT ASKED FOR IT.
+ *
+ *  Measured on four real requests, and three of them came out like this:
+ *
+ *      «بدي جدول مبيعات فيه اسم الصنف والكمية والسعر، والسعر لا يقبل صفر»
+ *      → title: «بدي جدول مبيعات فيه اسم الصنف والكمية»
+ *
+ *  His own words, cut off mid-phrase, printed back to him as the name of
+ *  his application — in the reply, on the page, in the empty state. The
+ *  one that came out right had a colon in it, because the only reader
+ *  wired to the title needed a recording verb AND a colon within forty
+ *  characters, and gave up on everything else.
+ *
+ *  There is a reader that already knows: subjectAfterContainer reads the
+ *  noun standing beside the container he named. It answered «مبيعات»,
+ *  «الموظفين», «الكتب» and «clients» on the same four sentences while the
+ *  title was still a truncated request. Nothing needed inventing — the
+ *  two readers were simply not joined.
+ *
+ *  Order matters and is not arbitrary. What he declared AFTER a recording
+ *  verb wins, because that is him naming the thing outright. The noun
+ *  beside the container comes next. And a verb is never a name: «جدول
+ *  أسجل فيه المواعيد» puts «أسجل» beside the container, and it is refused
+ *  here even though the earlier reader is the one that saves it.
+ */
+function theNounBesideTheContainer(request: string): string | null {
+    const beside = String(subjectAfterContainer(request) || '').trim();
+    //  A NAME IS WHAT IS LEFT AFTER THE PARTICLES, NOT THE PARTICLES.
+    //
+    //  «ما الفرق بين قاعدة البيانات والجدول؟» handed back «وال» — a
+    //  conjunction and an article with nothing behind them. Three
+    //  characters is a length, not a word; what has to be three is what
+    //  remains once the prefixes he did not choose are taken off.
+    const core = beside.replace(/^و/u, '').replace(/^(?:لل|ال|ل)/u, '');
+    //  AND A VERB IS NEVER A NAME, IN ANY PERSON HE WRITES IT.
+    //
+    //  «بدي جدول يسجل الاسم والهاتف والعنوان» put «يسجل» beside the
+    //  container and the app was named «يسجل الاسم». The older list
+    //  held «أسجل» and not «يسجل», so the guard let it through — the
+    //  same one-person blindness that cost the column reader a whole
+    //  class of requests. Same stems, same four persons, one table.
+    const first = beside.split(/\s+/)[0] || '';
+    if (core.length >= 3 && !RECORDING_WORD.test(beside) && !A_RECORDING_VERB.test(first)) return beside;
+    //  No container either — but grammar may still have found the entity,
+    //  and the first column of an entity-and-its-attributes run IS the
+    //  entity: «بدي برنامج يحفظ لي زبائني و…» is about زبائني.
+    const grammar = entityAndItsAttributes(request);
+    const head = grammar && grammar.length ? String(grammar[0].label || '').trim() : '';
+    return head.length >= 3 ? head : null;
+}
+
 export function recordedSubject(requestRaw: string): string | null {
     const request = String(requestRaw || '').trim();
     if (!request) return null;
-    const RECORDING = /(أسجل|اسجل|سجّل|أضيف|اضيف|أدخل|ادخل|أدوّن|ادون|الحقول|تحتوي على|يحتوي على|أتابع|اتابع|أدير|ادير|أنظم|انظم|\brecord\b|\btrack\b|\blog\b|\bmanage\b|\borgani[sz]e\b)/iu;
+    const RECORDING = RECORDING_WORD;
     const opener = RECORDING.exec(request);
-    if (!opener) return null;
+    if (!opener) return theNounBesideTheContainer(request);
     const after = request.slice((opener.index || 0) + opener[0].length);
     const colon = after.indexOf(':') >= 0 ? after.indexOf(':') : after.indexOf('：');
     // No colon means the list starts immediately: there is no subject to read,
@@ -645,7 +710,7 @@ export function recordedSubject(requestRaw: string): string | null {
     const before = request.slice(0, opener.index || 0).trim().split(/\s+/);
     const tail = before.slice(-1)[0] || '';
     const bare = tail.replace(/^(?:لل|ال|ل)/, '');
-    return bare.length >= 3 ? bare : null;
+    return bare.length >= 3 ? bare : theNounBesideTheContainer(request);
 }
 
 export function blueprintFor(kind: AppKind, request: string, isAr: boolean): AppBlueprint {
@@ -1865,8 +1930,6 @@ export function derivedColumns(requestRaw: string): DerivedField[] | null {
      *  other branch. «يتابع» and «يدير» contain no such noun and returned
      *  nothing at all.
      */
-    const RECORDING_STEM = ['سجل', 'سجّل', 'ضيف', 'دخل', 'دوّن', 'دون', 'تابع', 'دير', 'نظم'];
-    const CONJUGATED = RECORDING_STEM.map(s => '[أاينت]' + s).join('|');
     const RECORDING_VERB = new RegExp(
         '(?:^|[\\s،:؛(])(?:' + CONJUGATED + '|فيها|فيه|[تي]حتوي على|record|track|log(?!\\s+of\\b)|manage|organi[sz]e)(?=$|[\\s،:؛)])',
         'iu',
