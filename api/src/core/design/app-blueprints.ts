@@ -1847,9 +1847,31 @@ function isAColumnAndNotAClause(item: string, index: number): boolean {
     return !words.slice(1).some(w => ARABIC_FUNCTION_WORD.test(w));
 }
 
+/**
+ *  «صفحة المنتجات» IS A PAGE HE NAMED, NOT A COLUMN IN A TABLE.
+ *
+ *  One sentence, two readers, and no boundary between them. «فيه» opens a
+ *  list, and the column reader took everything after it:
+ *
+ *      «اعمل متجر فيه صفحة المنتجات وصفحة الشحن والاسترجاع»
+ *        → columns: «صفحة المنتجات» «صفحة الشحن» «الاسترجاع»
+ *
+ *  Three acceptance criteria demanding three table columns, from a request
+ *  that asked for a shop with pages. A site of pages can never satisfy them,
+ *  so the delivery is refused forever — a criterion that cannot be met, which
+ *  is the mirror of a criterion that cannot fail and just as dead.
+ *
+ *  The word «صفحة» settles it: that item belongs to the page plan, which
+ *  reads it in thePagesHeNamed(). It is REMOVED rather than used as a stop,
+ *  so a sentence that names a page AND real columns keeps the columns:
+ *  «فيه صفحة المنتجات واسم العميل والمبلغ» still yields two.
+ */
+const HE_NAMED_A_PAGE = new RegExp('^(?:ال)?صفح[ةه](?:$|\\s)|^(?:a|an|the)?\\s*[a-z0-9-]+\\s+page$', 'i');
+
 function columnsEndWhereHisNextRequestBegins(parts: string[]): string[] {
-    const stop = parts.findIndex((part, i) => !isAColumnAndNotAClause(part, i));
-    return stop < 0 ? parts : parts.slice(0, stop);
+    const mine = parts.filter(p => !HE_NAMED_A_PAGE.test(String(p || '').trim()));
+    const stop = mine.findIndex((part, i) => !isAColumnAndNotAClause(part, i));
+    return stop < 0 ? mine : mine.slice(0, stop);
 }
 
 /**

@@ -1,4 +1,5 @@
 /**
+
  * WHAT HE ASKED FOR, CHECKED ONE BY ONE, BEFORE ANYTHING IS CALLED DONE.
  *
  * An outside audit put it exactly right: «نجاح البناء لا يساوي نجاح الوكيل».
@@ -31,6 +32,13 @@
 import { derivedColumns, type DerivedField } from '../design/app-blueprints';
 import fs from 'fs';
 import path from 'path';
+import { thePagesHeNamed } from '../design/site-plan';
+
+//  The same folding the page reader itself uses — a request written with
+//  tanween must reach it in the shape its patterns are spelled in.
+const DIACRITICS_FOR_PAGES = new RegExp('[\\u064B-\\u0652\\u0670\\u0640]', 'g');
+const HAMZAS_FOR_PAGES = new RegExp('[أإآ]', 'g');
+const MAQSURA_FOR_PAGES = new RegExp('ى', 'g');
 
 /**
  * Gate062's fixed acceptance input: four source-backed UI criteria.
@@ -55,6 +63,20 @@ export interface Criterion {
     markers?: RegExp[];
     /** Exact user-requested title text, when it can be extracted safely. */
     expectedText?: string;
+    /**
+     *  The page he named, when the criterion is about one.
+     *
+     *  Measured live on «اعمل لي صفحة هبوط وصفحة تواصل لشركة تنظيف»,
+     *  after Joe had already built both pages correctly:
+     *
+     *      ⚠️ لم أستخرج معياراً قابلاً للفحص من طلبك، لذلك لم أصدر حكم قبول.
+     *
+     *  He had named two pages in one sentence, and thePagesHeNamed() had
+     *  read them — the page plan was built from them. The judge could not
+     *  derive a criterion because nothing asked that reader. The same shape
+     *  as the columns below: a reader that already knew, never consulted.
+     */
+    expectedPage?: { slug: string; title: string };
     /**
      *  The exact column he listed, when the criterion is about one.
      *
@@ -297,8 +319,29 @@ export function acceptanceFor(request: string): Criterion[] {
     //  His columns, in his words, each one its own criterion. No catalogue
     //  is consulted: derivedColumns reads them from the sentence he wrote.
     const columns = derivedColumns(t) || [];
+
+    /**
+     *  THE PAGES HE NAMED ARE CRITERIA, exactly as his columns are.
+     *
+     *  Only when he named TWO or more: one named page becomes the single
+     *  page of a single-page build, and «the page exists» would then be a
+     *  criterion that cannot fail. Two is where a page becomes a thing
+     *  that can be missing.
+     */
+    const named = thePagesHeNamed(
+        t.replace(DIACRITICS_FOR_PAGES, '').replace(HAMZAS_FOR_PAGES, 'ا').replace(MAQSURA_FOR_PAGES, 'ي'),
+    );
+    const pages = named.length >= 2 ? named : [];
+
     return [
         ...catalogue,
+        ...pages.map((p: { slug: string; title: string }) => ({
+            id: `page:${p.slug}`,
+            kind: 'feature' as CriterionKind,
+            ar: `صفحة «${p.title}» موجودة وتحمل اسمها`,
+            en: `a page «${p.title}» exists and carries its name`,
+            expectedPage: { slug: p.slug, title: p.title },
+        })),
         ...columns.map((col: DerivedField) => ({
             id: `column:${col.key}`,
             kind: 'feature' as CriterionKind,
@@ -602,6 +645,27 @@ export function judgeAcceptance(criteria: Criterion[], ev: Evidence, isAr = true
             return has
                 ? say('met', isAr ? `العمود «${c.expectedColumn}» في مخطّط الجدول` : `the column «${c.expectedColumn}» is in the table schema`)
                 : say('unmet', isAr ? `العمود «${c.expectedColumn}» غير موجود` : `the column «${c.expectedColumn}» is missing`);
+        }
+        if (c.expectedPage) {
+            //  A page is proven the way a column is: by what the build
+            //  actually wrote. Either a file of its own on disk (the page
+            //  builder) or a route carrying his title (the React router).
+            //  Nothing is greped into existence, and nothing is assumed
+            //  from the plan — the plan is what we are checking.
+            const slug = c.expectedPage.slug;
+            const file = slug === 'index' ? 'index.html' : `${slug}.html`;
+            const onDisk = !!dir && fs.existsSync(path.join(dir, file));
+            const route = slug === 'index' ? '/' : `/${slug}`;
+            //  The generator writes the route literally: `{ path: '/contact', … }`.
+            //  A plain substring is enough, and leaves no escape to get wrong.
+            const routed = !!src && src.includes(`path: '${route}'`);
+            return (onDisk || routed)
+                ? say('met', isAr
+                    ? `صفحة «${c.expectedPage.title}» مبنية (${onDisk ? file : route})`
+                    : `the page «${c.expectedPage.title}» was built (${onDisk ? file : route})`)
+                : say('unmet', isAr
+                    ? `صفحة «${c.expectedPage.title}» طلبتها ولم تُبنَ`
+                    : `the page «${c.expectedPage.title}» was asked for and not built`);
         }
         if (c.id === 'readme') {
             const has = !!dir && ['README.md', 'readme.md'].some(f => fs.existsSync(path.join(dir, f)));
