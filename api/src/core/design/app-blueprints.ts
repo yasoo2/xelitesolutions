@@ -577,14 +577,48 @@ function boundsByField(requestRaw: string, fields: AppField[]): Map<string, { mi
  * A numeric type alone never invents a bound; the request must name the field
  * and state the constraint in its own words.
  */
+/**
+ *  A BOUND READ ONCE AND SPREAD BY NAME.
+ *
+ *  Manus measured it on a real artifact and named the class; this is
+ *  the same thing reproduced here, on the same sentence:
+ *
+ *      «بدي جدول مبيعات فيه اسم الصنف والكمية والسعر، والسعر لا يقبل صفر»
+ *
+ *      from blueprintFor                  السعر bounded · الكمية free
+ *      after applyRequestFieldConstraints السعر bounded · الكمية BOUNDED
+ *
+ *  He put a floor under a price and a quantity he never mentioned in
+ *  that clause got the same floor. boundsByField split the request on
+ *  sentence punctuation — and his whole request is ONE sentence — then
+ *  stamped every field whose label appeared anywhere in it. Every
+ *  column he listed appears in it: that is what listing them means.
+ *
+ *  A rule belongs to the field named in the CLAUSE that states it.
+ *  statedRules already reads clauses — it splits on the comma and the
+ *  «و» and takes the definite noun the clause opens with — and
+ *  applyStatedRules already attaches each to the field it names.
+ *  Two readers for one rule, and this was the one that spread.
+ *
+ *  So this keeps its job — carrying his stated bounds into an
+ *  AppBlueprint — and stops having its own opinion about which field
+ *  a rule is about.
+ */
 export function applyRequestFieldConstraints(bp: AppBlueprint, request: string): AppBlueprint {
-    const bounds = boundsByField(request, bp.fields);
-    const fields = bp.fields.map(field => {
-        if (field.type !== 'number') return field;
-        //  The bound is whatever HE stated, not a fixed zero: «الكمية لا تقل
-        //  عن 1» is a floor of one, and «ارفض صفر أو أقل» excludes the zero.
-        const bound = bounds.get(field.key);
-        return bound ? { ...field, min: bound.min, minExclusive: bound.minExclusive } : field;
+    const rules = statedRules(request);
+    if (!rules.length) return bp;
+    //  applyStatedRules speaks DerivedField; an AppBlueprint field carries
+    //  the same label, type and bound, so the shapes meet on those three.
+    const carried = applyStatedRules(bp.fields as unknown as DerivedField[], rules).fields;
+    const fields = bp.fields.map((field, i) => {
+        const next = carried[i] as unknown as AppField;
+        //  No type check of my own: applyStatedRules already refuses a
+        //  target that is not a number, so a rule naming «الاسم» never
+        //  arrives here with a bound. A mutation proved the second check
+        //  could not decide anything, and two guards for one rule is how
+        //  they come apart.
+        if (next?.min === undefined) return field;
+        return { ...field, min: next.min, ...(next.minExclusive ? { minExclusive: true } : {}) };
     });
     return fields.some((field, index) => field !== bp.fields[index]) ? { ...bp, fields } : bp;
 }
@@ -1478,9 +1512,33 @@ export function applyStatedRules(fields: DerivedField[], rules: StatedRule[]): {
     const unapplied: StatedRule[] = [];
     const next = fields.map(f => ({ ...f }));
     for (const rule of rules) {
-        if (rule.min === undefined || !rule.field) { unapplied.push(rule); continue; }
+        //  A rule with no OPENING noun is not a rule with no field: the
+        //  clause below can still name one. Bailing here is what kept
+        //  «وارفض المبلغ إذا كان صفر أو أقل» unattached.
+        if (rule.min === undefined) { unapplied.push(rule); continue; }
         //  His own label, matched as he wrote it — «السعر» is «السعر».
-        const target = next.find(f => f.label === rule.field || f.label.includes(String(rule.field)) || String(rule.field).includes(f.label));
+        //
+        //  AND THE CLAUSE DOES NOT ALWAYS OPEN WITH THE FIELD.
+        //
+        //  Four natural phrasings put the VERB first and the field second:
+        //
+        //      «وارفض المبلغ إذا كان صفر أو أقل»
+        //      «ارفض الكمية إذا كانت أقل من 10»
+        //      «Validation that rejects non-positive amounts»
+        //      «Quantity at least 2»   — his capital, the field's lowercase
+        //
+        //  The opening noun is the STRONGEST signal and stays first. When
+        //  it names nothing, the field is whichever one his CLAUSE
+        //  mentions — the clause, never the whole request. That boundary
+        //  is the entire difference from the reader this replaced, which
+        //  searched the whole sentence and put a floor under every column
+        //  he had listed.
+        const said = String(rule.text || '').toLocaleLowerCase();
+        const target = next.find(f => f.label === rule.field
+                || f.label.includes(String(rule.field))
+                || String(rule.field).includes(f.label))
+            || next.find(f => f.type === 'number' && f.label
+                && said.includes(String(f.label).toLocaleLowerCase()));
         if (!target || target.type !== 'number') { unapplied.push(rule); continue; }
         target.min = rule.min;
         if (rule.minExclusive) target.minExclusive = true;
