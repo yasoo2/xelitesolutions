@@ -218,10 +218,77 @@ export function titleTextFrom(request: string): string | undefined {
     return extractRequestedTitle(request);
 }
 
+/**
+ * A WORD, NOT A RUN OF LETTERS THAT HAPPENS TO SIT INSIDE ONE.
+ *
+ * Every English alternative in the catalogue above is written \bcounter\b.
+ * Not one Arabic alternative had a boundary of any kind, and it could not:
+ * JavaScript defines \b by \w, which is [A-Za-z0-9_], so between two
+ * Arabic letters there is NEVER a \b position. Writing \bعدد\b does not
+ * make it stricter — it makes it unmatchable. So the Arabic side was left
+ * bare, and matched fragments.
+ *
+ * Measured, before this existed — each of these BLOCKED delivery on a
+ * criterion the request never asked for:
+ *
+ *     «متعدد الصفحات»        -> counter   («عدد» inside «متعدد»)
+ *     «لون أزرق فاتح»        -> button    («زر» inside «أزرق»)
+ *     «مجموعة صور»            -> counter   («مجموع» inside «مجموعة»)
+ *     «عندي استعداد»          -> counter   («عداد» inside «استعداد»)
+ *     «لبيع الجزر والخضار»    -> button    («زر» inside «الجزر»)
+ *
+ * So the boundary is checked on the MATCH instead of inside the pattern:
+ * a hit that begins or ends flush against another Arabic letter was a
+ * fragment — unless the letters before it are one of the particles Arabic
+ * glues onto the front of a word (ال، و، ب، ل، ك، ف and their pairs), or the
+ * letters after it are one of the endings it takes (ات، ها، ين …). «العداد»
+ * is the counter; «استعداد» is readiness; only a boundary tells them apart.
+ *
+ * This is deliberately generic: it fixes every pattern in the catalogue at
+ * once, and every pattern added to it later, instead of the one that was
+ * caught. A fix that names «عدد» would leave «زر» standing.
+ */
+const DIACRITIC = new RegExp('[\\u064B-\\u0652\\u0670\\u0640]', 'gu');
+const AR_LETTER = new RegExp('[\\u0621-\\u064A]', 'u');
+const AR_LEAD = new RegExp('[\\u0621-\\u064A]+$', 'u');
+const AR_TAIL = new RegExp('^[\\u0621-\\u064A]+', 'u');
+/** The particles Arabic writes joined to the front of the next word. */
+const GLUED_BEFORE = new RegExp('^(?:[وفبك]?ال|لل|[وفبكل])$', 'u');
+/** The endings a noun takes without becoming a different noun. */
+//  «عدادًا» keeps its accusative alif after the tanween mark is stripped,
+//  and «عدادان» is two of them. Neither is a different word.
+const GLUED_AFTER = new RegExp('^(?:ان|ات|ها|هم|هن|ين|ون|نا|كم|ا|ه|ي)$', 'u');
+
+export function requestAsksFor(asked: RegExp, text: string): boolean {
+    const flags = asked.flags.includes('g') ? asked.flags : asked.flags + 'g';
+    const re = new RegExp(asked.source, flags);
+    //  Diacritics are not letters and must not split a word: «عدّاد» with a
+    //  shadda is the same word as «عداد», and a pattern spelled without one
+    //  never reaches it. Strip them before asking, never in what is stored.
+    text = String(text || '').replace(DIACRITIC, '');
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text))) {
+        const hit = m[0];
+        if (!hit) { re.lastIndex = m.index + 1; continue; }
+        //  Step by ONE on rejection, never past it: the alternative that
+        //  matched a fragment here may have a longer sibling starting later.
+        const reject = () => { re.lastIndex = m!.index + 1; };
+        if (AR_LETTER.test(hit.charAt(0))) {
+            const lead = (text.slice(0, m.index).match(AR_LEAD) || [''])[0];
+            if (lead && !GLUED_BEFORE.test(lead)) { reject(); continue; }
+        }
+        if (AR_LETTER.test(hit.charAt(hit.length - 1))) {
+            const tail = (text.slice(m.index + hit.length).match(AR_TAIL) || [''])[0];
+            if (tail && !GLUED_AFTER.test(tail)) { reject(); continue; }
+        }
+        return true;
+    }
+    return false;
+}
 /** The criteria THIS brief actually asks for — never a fixed checklist. */
 export function acceptanceFor(request: string): Criterion[] {
     const t = String(request || '');
-    const catalogue = CATALOGUE.filter(c => c.asked.test(t))
+    const catalogue = CATALOGUE.filter(c => requestAsksFor(c.asked, t))
         .map(({ asked, ...rest }) => rest)
         .map(c => c.id === 'title'
             ? { ...c, expectedText: titleTextFrom(t) }
