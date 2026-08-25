@@ -21,7 +21,7 @@
  * is inferred from good intentions, and when the evidence is ambiguous the
  * answer is «not built», because overstating is the failure being fixed here.
  */
-import { clausesBeyondTheColumns } from '../design/app-blueprints';
+import { clausesBeyondTheColumns, statedRules } from '../design/app-blueprints';
 import fs from 'fs';
 import path from 'path';
 
@@ -260,14 +260,54 @@ export function capabilityEvidence(capability: Capability, source: string): bool
     return capability.evidence.test(source) || Boolean(capability.evidenceCheck?.(source));
 }
 
+/**
+ *  The two readers split a sentence differently — one on «و» before a rule,
+ *  the other on every «و» — so the same clause arrives with different edges.
+ *  Compared folded and by containment, never by equality.
+ */
+function foldForCompare(text: string): string {
+    return String(text || '')
+        .replace(/[ً-ْٰـ]/g, '')
+        .replace(/[أإآ]/g, 'ا')
+        .replace(/ى/g, 'ي')
+        .replace(/ة/g, 'ه')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toLocaleLowerCase();
+}
+
 /** The comparison itself: named against evidenced. */
 export function scopeReport(request: string, projectDirs: string[]): ScopeReport {
     const requested = requestedCapabilities(request);
     //  Computed before the early return: a request that names no KNOWN
     //  capability is exactly the one most likely to be full of unknown
     //  ones, and returning early there would hide them all.
+    /**
+     *  ONE CLAUSE, ONE VOICE.
+     *
+     *  Measured in a single reply on the owner's screen, about one clause:
+     *
+     *      «You wrote these and I have no way to check them, so I did not
+     *       — and I am not claiming I did: لا تقبل سعرًا صفرًا»
+     *      «your condition: «لا تقبل سعرًا صفرًا» — the bound is in the schema»
+     *
+     *  «I could not check it» and «it is applied», four lines apart, about the
+     *  same sentence he wrote. Both were true from where they stood: this
+     *  audit lists clauses no CAPABILITY matches, and the acceptance ledger
+     *  now reads those same clauses as rules and judges them.
+     *
+     *  The ledger is the one voice, because it says all three things a clause
+     *  can be — met, unmet, or declared unprovable. A clause it has spoken
+     *  about is not unchecked; it is judged, and saying otherwise beside its
+     *  own verdict is how one reply contradicts itself.
+     */
+    const claimed = statedRules(request).map(r => foldForCompare(r.text));
     const unchecked = clausesBeyondTheColumns(request)
-        .filter(clause => !CAPABILITIES.some(c => c.ask.test(clause)));
+        .filter(clause => !CAPABILITIES.some(c => c.ask.test(clause)))
+        .filter(clause => {
+            const c = foldForCompare(clause);
+            return !claimed.some(r => r === c || r.includes(c) || c.includes(r));
+        });
     if (!requested.length) return { requested: [], built: [], missing: [], unchecked };
     const src = readProjectSource(projectDirs);
     const built = requested.filter(c => capabilityEvidence(c, src));

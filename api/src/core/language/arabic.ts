@@ -135,12 +135,38 @@ const NOT_ITS_STEM: Record<string, string[]> = {
  *  is not: nothing asks for «زن», so the extra reading costs nothing, and
  *  «وزر تفاعلي» finds its button.
  */
+/**
+ *  EVERY WAY ARABIC CAN GLUE A PARTICLE ONTO A WORD, TRIED — NOT CUT.
+ *
+ *  Snowball strips «ب» from «بعنوان» and then strips «ان» as well, so it
+ *  returns «عنو» while «عنوان» returns itself. One word, two keys — and
+ *  «ابنِ تطبيقًا بعنوان Gate 062» stopped asking for a title. On short
+ *  words it strips nothing at all: «بزر» stays «بزر».
+ *
+ *  So the particle is never CUT off the word — that loses «وزن» and «كتاب»
+ *  the moment it guesses wrong. The word is tried EVERY way instead, and a
+ *  match on any reading counts. Adding readings is safe where removing
+ *  letters is not: nothing in any catalogue asks for «زن» or «تاب», so the
+ *  extra readings cost nothing and the real ones are found.
+ */
+const GLUED_ON = new RegExp('^(?:وال|فال|بال|كال|لل|[وفبكل])(?=[ء-ي]{2,})');
+
+function everyReadingOf(word: string): string[] {
+    const bare = normalise(word);
+    const out = new Set<string>([bare]);
+    out.add(bare.replace(ARTICLE, ''));
+    const unglued = bare.replace(GLUED_ON, '');
+    if (unglued !== bare) {
+        out.add(unglued);
+        out.add(unglued.replace(ARTICLE, ''));
+    }
+    return [...out].filter(Boolean);
+}
+
 function readsAs(word: string, target: string): boolean {
     const bare = normalise(word).replace(ARTICLE, '');
     if ((NOT_ITS_STEM[target] || []).includes(bare)) return false;
-    if (stem(word) === target) return true;
-    const withoutWaw = normalise(word).replace(/^[وف](?=[ء-ي]{2,})/, '');
-    return withoutWaw !== normalise(word) && stem(withoutWaw) === target;
+    return everyReadingOf(word).some(r => stemmer.stem(r) === target || r === target);
 }
 
 /**
