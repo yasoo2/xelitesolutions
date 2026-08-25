@@ -1432,7 +1432,10 @@ export interface StatedRule {
      *  returned all the same: a condition Joe cannot apply must be SAID, and
      *  before this they were not even read.
      */
-    kind?: 'bound' | 'forbid' | 'require';
+    //  `change` is fourth on purpose: «أعد تسمية» is a change and «اجعل»
+    //  is a requirement, and a clause that is both is more usefully read as
+    //  the change — it names a thing that must be different afterwards.
+    kind?: 'bound' | 'forbid' | 'require' | 'change';
 }
 
 /**
@@ -1463,7 +1466,13 @@ const A_RULE_OPENS_HERE = new RegExp(
 export function hisClauses(requestRaw: string): string[] {
     return String(requestRaw || '')
         .replace(A_RULE_OPENS_HERE, '\u0000')
-        .split(/[\u0000،,؛;.\n]/)
+        //  AND A COLON IS A SEPARATOR — it was not one, and that alone hid a
+        //  whole tier. The way anyone states an edit is «في موقع كذا: افعل
+        //  كذا»; without the colon here the sentence stayed one clause opening
+        //  with «في», so «اجعل الخط أكبر» never opened anything. Measured
+        //  across a thousand requests: every edit phrased that way derived
+        //  nothing at all.
+        .split(/[\u0000،,؛;:.\n]|—/)
         .map(c => c.trim().replace(/^و\s*/u, '').trim())
         .filter(Boolean);
 }
@@ -1487,6 +1496,26 @@ const ENDS_A_WORD = '(?=\\s|$)';
 const FORBIDS = new RegExp('^(?:لا|ألا|الا|بدون|دون|امنع|ارفض|يمنع|يرفض|no|never|without)' + ENDS_A_WORD
     + "|^(?:don'?t|do not)" + ENDS_A_WORD, 'iu');
 const REQUIRES = new RegExp('^(?:يجب|لازم|اجعل|اجعله|اجعلها|يكون|تكون|تأكد|تاكد|احرص|must|make|ensure|should)' + ENDS_A_WORD, 'iu');
+
+/**
+ *  A CHANGE HE ASKED FOR IS A THING THAT MUST BE TRUE AFTERWARDS.
+ *
+ *  «احذف قسم الآراء» · «غيّر اللون إلى أزرق فاتح» · «أضف عمود الملاحظات»
+ *
+ *  Each states a change, and a change is checkable in the way a condition
+ *  is: either the built thing shows it afterwards or it does not. Measured
+ *  across a thousand requests, the tier that edits an existing build derived
+ *  nothing for four of its eight verbs — so the edit was carried out on
+ *  trust and reported as done with nothing behind the word.
+ */
+const EDIT_OPENS = new RegExp(
+    '^(?:أضف|اضف|ضيف|أضيف|اضيف|غيّر|غير|بدّل|بدل|احذف|امسح|أزل|ازل|عدّل|عدل|أعد|اعد|ضع|حدّث|حدث'
+    + '|add|change|remove|delete|rename|update|replace|set)' + ENDS_A_WORD, 'iu');
+
+/** Does this clause ask for a CHANGE to something that already exists? */
+export function clauseChanges(clause: string): boolean {
+    return EDIT_OPENS.test(String(clause || '').trim());
+}
 
 /** Does this clause FORBID something rather than ask for it? */
 export function clauseForbids(clause: string): boolean {
@@ -1573,13 +1602,14 @@ export function statedRules(requestRaw: string): StatedRule[] {
         const boundHere = statedBound(clause);
         const forbids = clauseForbids(clause);
         const requires = clauseRequires(clause);
-        if (!boundHere && !forbids && !requires && !READS_AS_A_RULE.test(clause)) continue;
+        const changes = clauseChanges(clause);
+        if (!boundHere && !forbids && !requires && !changes && !READS_AS_A_RULE.test(clause)) continue;
         //  A bound is the strongest reading — it can become a real constraint.
         //  A prohibition outranks a requirement because «لا تجعل» opens with
         //  the negation and would otherwise be read as «اجعل».
         const rule: StatedRule = {
             text: clause,
-            kind: boundHere ? 'bound' : forbids ? 'forbid' : requires ? 'require' : undefined,
+            kind: boundHere ? 'bound' : forbids ? 'forbid' : changes ? 'change' : requires ? 'require' : undefined,
         };
         //  Which column is it about? The clause names it, and the name is
         //  the definite noun it opens with — no vocabulary of field names.

@@ -33,6 +33,7 @@ import { derivedColumns, statedRules, type DerivedField } from '../design/app-bl
 import fs from 'fs';
 import path from 'path';
 import { thePagesHeNamed } from '../design/site-plan';
+import { saysAny } from '../language/arabic';
 
 //  The same folding the page reader itself uses — a request written with
 //  tanween must reach it in the shape its patterns are spelled in.
@@ -59,6 +60,19 @@ export interface Criterion {
     kind: CriterionKind;
     ar: string;
     en: string;
+    /**
+     *  The WORDS that ask for this, in any form he writes them.
+     *
+     *  A regex over raw Arabic reads characters, not words — «زر» matched
+     *  inside «أزرق» and «عدد» inside «متعدد», so a request for a blue
+     *  page was refused for want of a button. These go through the language
+     *  layer instead, which segments with Unicode's own rules and stems with
+     *  the same Snowball stemmer Elasticsearch uses, so «عداد» is «العداد» is
+     *  «عدادًا» is «عداداتها» — and is never «استعداد».
+     *
+     *  `asked` stays for the entries that match a PHRASE rather than a word.
+     */
+    says?: string[];
     /** Source markers that prove a FEATURE was really generated. */
     markers?: RegExp[];
     /** Exact user-requested title text, when it can be extracted safely. */
@@ -94,7 +108,7 @@ export interface Criterion {
      *  `unprovable`, which is declared to him and does not block delivery.
      *  Silence is the only outcome that is never acceptable.
      */
-    expectedRule?: { text: string; kind?: 'bound' | 'forbid' | 'require' };
+    expectedRule?: { text: string; kind?: 'bound' | 'forbid' | 'require' | 'change' };
     /**
      *  The exact column he listed, when the criterion is about one.
      *
@@ -140,18 +154,21 @@ export interface Acceptance {
 const CATALOGUE: Array<Criterion & { asked: RegExp }> = [
     {
         id: 'search', kind: 'feature',
+        says: ['بحث', 'ابحث', 'search'],
         asked: /(بحث|ابحث|\bsearch\b)/iu,
         ar: 'بحث داخل البيانات', en: 'search across the data',
         markers: [/type=["']search["']/i, /\bsearch\b/i, /بحث/u, /filter\(/],
     },
     {
         id: 'filter', kind: 'feature',
+        says: ['مرشح', 'فلتر', 'تصفية', 'filter'],
         asked: /(مرشّ?ح|فلتر|تصفية|\bfilter\b)/iu,
         ar: 'مُرشّح حالة', en: 'a status filter',
         markers: [/status/i, /الحالة/u, /<select/i],
     },
     {
         id: 'counter', kind: 'feature',
+        says: ['عداد', 'عدد', 'إجمالي', 'مجموع', 'counter', 'count', 'total', 'badge'],
         //  A PATTERN WRITTEN WITH THE ARTICLE MATCHES HALF THE LANGUAGE.
         //
         //  «المجموع» cannot match «مجموع», and «العدد» cannot match «عدد».
@@ -166,12 +183,14 @@ const CATALOGUE: Array<Criterion & { asked: RegExp }> = [
     },
     {
         id: 'button', kind: 'feature',
+        says: ['زر', 'أزرار', 'button', 'cta'],
         asked: /(زر|أزرار|\bbutton\b|\bcta\b|call[- ]?to[- ]?action)/iu,
         ar: 'زر تفاعلي', en: 'an interactive button',
         markers: [],
     },
     {
         id: 'title', kind: 'feature',
+        says: ['عنوان', 'title', 'titled', 'heading', 'headline'],
         asked: /(عنوان|العنوان|\btitle\b|\btitled\b|\bheading\b|\bheadline\b)/iu,
         ar: 'عنوان أو رأس صفحة', en: 'a title or heading',
         markers: [/<h[1-6]\b/i, /<title\b/i],
@@ -190,6 +209,7 @@ const CATALOGUE: Array<Criterion & { asked: RegExp }> = [
     },
     {
         id: 'export', kind: 'feature',
+        says: ['تصدير', 'صدر', 'تنزيل', 'export', 'download', 'csv'],
         asked: /(تصدير|صدّ?ر|تنزيل|\bexport\b|\bdownload\b|\bcsv\b)/iu,
         ar: 'تصدير محلّي', en: 'a local export',
         markers: [/createObjectURL|download=|\bcsv\b|toCSV|Blob\(/i],
@@ -224,6 +244,7 @@ const CATALOGUE: Array<Criterion & { asked: RegExp }> = [
     },
     {
         id: 'preview', kind: 'verification',
+        says: ['معاينة', 'عاين', 'preview', 'serve'],
         asked: /(معاينة|عاين|\bpreview\b|\bserve\b)/iu,
         ar: 'معاينة محلّية تعمل', en: 'a working local preview',
     },
@@ -328,7 +349,9 @@ export function requestAsksFor(asked: RegExp, text: string): boolean {
 /** The criteria THIS brief actually asks for — never a fixed checklist. */
 export function acceptanceFor(request: string): Criterion[] {
     const t = String(request || '');
-    const catalogue = CATALOGUE.filter(c => requestAsksFor(c.asked, t))
+    //  A word is asked as a word; a phrase keeps its pattern. Entries with
+    //  `says` no longer touch a regex over Arabic at all.
+    const catalogue = CATALOGUE.filter(c => (c.says ? saysAny(t, c.says) : requestAsksFor(c.asked, t)))
         .map(({ asked, ...rest }) => rest)
         .map(c => c.id === 'title'
             ? { ...c, expectedText: titleTextFrom(t) }
