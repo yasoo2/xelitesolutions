@@ -2594,6 +2594,26 @@ export class ApiProjectTool extends BaseTool {
                 try {
                     let upResolve: (v: boolean) => void = () => { /* set below */ };
                     const upPromise = new Promise<boolean>((resolve) => { upResolve = resolve; });
+                    /**
+                     *  «THE SERVER DID NOT COME UP» WAS THREE DIFFERENT FACTS.
+                     *
+                     *  Readiness is a text match on «listening on», and its only
+                     *  failure value is `false`. So one sentence was printed for:
+                     *
+                     *    · the process CRASHED       — and its error is the answer
+                     *    · it was still STARTING     — fifteen seconds was not enough
+                     *    · it is RUNNING FINE        — and says something else
+                     *
+                     *  Measured live on the owner's machine while the rest of the
+                     *  build was competing for the disk: «live proof → server did
+                     *  not come up», with no way to tell which of the three it was
+                     *  and the server's own last line already on screen above it.
+                     *
+                     *  Same shape as «left as written» and «quality gate failed»:
+                     *  a report that describes the mechanism instead of the finding.
+                     */
+                    let whyNot = 'the process was still starting after 15s';
+                    let lastLine = '';
                     const upTimer = setTimeout(() => upResolve(false), 15_000);
                     // A long-running process cannot be awaited like a command,
                     // but it must still be ANNOUNCED the same way — otherwise
@@ -2618,10 +2638,17 @@ export class ApiProjectTool extends BaseTool {
                              * The server says which of the two happened. Listen.
                              */
                             if (/owner account created/.test(l)) ownerCreated = true;
-                            if (/listening on/.test(l)) upResolve(true);
+                            lastLine = l.slice(0, 200);
+                            if (/listening on/.test(l)) { whyNot = ''; upResolve(true); }
                         },
                     });
-                    child!.done.then(() => upResolve(false));
+                    child!.done.then((r: any) => {
+                        //  It ended before it was ready — that is a crash, not a
+                        //  slow start, and the two need different words.
+                        const code = r && typeof r.code === 'number' ? r.code : undefined;
+                        whyNot = `the process exited${code === undefined ? '' : ` with code ${code}`} before it was ready`;
+                        upResolve(false);
+                    });
                     const up = await upPromise;
                     booted = up;
                     clearTimeout(upTimer);
@@ -2788,7 +2815,9 @@ export class ApiProjectTool extends BaseTool {
                         }
                         }
                     } else {
-                        term('live proof → server did not come up');
+                        term(`live proof → no live proof: ${whyNot}`);
+                        if (lastLine) term(`  its last line was: ${lastLine}`);
+                        else term('  and it printed nothing at all, which is itself the clue');
                     }
                 } finally {
                     try { child?.kill(); } catch { /* already gone */ }
