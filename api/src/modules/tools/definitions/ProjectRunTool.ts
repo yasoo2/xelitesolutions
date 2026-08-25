@@ -1558,6 +1558,54 @@ async function killTree(pid: number): Promise<void> {
  *  adoption path — a live server that is about to be reused must not be
  *  shot on the way to reusing it.
  */
+/**
+ *  A PREVIEW THAT OUTLIVES EVERY ROUND, NOT JUST ITS OWN.
+ *
+ *  Measured on his machine, at 09:21 on a Tuesday:
+ *
+ *      total node.exe:       19
+ *      older than 6 hours:   12
+ *      older than 24 hours:   6
+ *
+ *      vite dev servers still listening
+ *          08-22 00:47  port 4399   — three days old
+ *          08-22 00:55  port 4398
+ *          08-24 13:13  port 4300
+ *          08-24 20:34  port 4301
+ *          08-24 22:01  port 4302
+ *          08-25 06:51  port 4303
+ *
+ *  retireRecordedServer already exists and already runs before every
+ *  launch. It could not fire, because the guard it borrowed is the
+ *  ADOPTION guard — canAdoptRecordedLive, which demands the recorded
+ *  server be in the SAME project directory. That is exactly right for
+ *  adopting a server, and exactly wrong for retiring one: a session
+ *  that builds a second project never revisits the first directory, so
+ *  the first preview was never anybody's to kill.
+ *
+ *  A session shows ONE preview. Starting the next one ends the last
+ *  one, whichever project it belonged to.
+ *
+ *  The blast radius is bounded and stated: only a pid this session
+ *  itself recorded, only while it is still alive, and only when the
+ *  directory it recorded is inside the workspace Joe generates into.
+ *  Nothing outside that tree is ever a candidate.
+ */
+export function theServerThisSessionLeftRunning(record: any, workspaceRoot: string): boolean {
+    const pid = Number(record?.pid);
+    if (!Number.isInteger(pid) || pid <= 0) return false;
+    const recorded = String(record?.cwd || '').trim();
+    if (!recorded) return false;
+    //  Inside the tree Joe writes into, and nowhere else.
+    const root = String(workspaceRoot || '').trim();
+    if (!root) return false;
+    const inside = path.resolve(recorded).toLowerCase()
+        .startsWith(path.resolve(root).toLowerCase() + path.sep);
+    if (!inside) return false;
+    try { process.kill(pid, 0); } catch { return false; }
+    return true;
+}
+
 async function retireRecordedServer(context: any, cwd: string, logs: string[]): Promise<void> {
     try {
         const sessionId = String(context?.sessionId || '').trim();
@@ -1565,7 +1613,10 @@ async function retireRecordedServer(context: any, cwd: string, logs: string[]): 
         const sessionKey = sessionId.replace(/[^a-zA-Z0-9._-]/g, '_');
         const record: any = readJoeProjectForRun(sessionKey, null);
         const live = record?.live;
-        if (!canAdoptRecordedLive(live, cwd)) return;
+        //  The session's own previous preview, whatever project it was.
+        const root = String(context?.workspaceRoot || '').trim()
+            || path.resolve(cwd, '..');
+        if (!canAdoptRecordedLive(live, cwd) && !theServerThisSessionLeftRunning(live, root)) return;
         await killTree(Number(live.pid));
         logs.push(`retired previous server pid=${live.pid} port=${live.port}`);
     } catch (e: any) {

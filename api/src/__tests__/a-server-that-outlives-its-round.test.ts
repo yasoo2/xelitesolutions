@@ -37,6 +37,8 @@ const bodyOf = (name: string): string => {
     return SOURCE.slice(at);
 };
 
+import { canAdoptRecordedLive, theServerThisSessionLeftRunning } from '../modules/tools/definitions/ProjectRunTool';
+
 describe('the previous server is retired before a new one is born', () => {
     it('a retirement exists and runs before the launch', () => {
         const retire = SOURCE.indexOf('await retireRecordedServer(context, cwd, logs);');
@@ -55,13 +57,23 @@ describe('the previous server is retired before a new one is born', () => {
     });
 
     it('it refuses to kill anything it has not identified', () => {
-        //  The negative that matters most: a pid that is not alive, or is
-        //  alive but belongs to another directory, must be left alone. Killing
-        //  by port or by name would end a process that was never ours.
+        //  The negative that matters most: a pid that is not alive must be
+        //  left alone, and killing by port or by name would end a process
+        //  that was never ours.
+        //
+        //  This pinned the identification to one spelling —
+        //  `if (!canAdoptRecordedLive(live, cwd)) return;` — and broke the
+        //  day a SECOND identification was added beside it. The property
+        //  is that nothing unidentified dies, not that one line reads a
+        //  particular way, and it is asserted as a property now.
         const body = bodyOf('async function retireRecordedServer');
-        expect(body).toContain('canAdoptRecordedLive(live, cwd)');
-        expect(body).toMatch(/if \(!canAdoptRecordedLive\(live, cwd\)\) return;/);
+        //  Every path out of the guard is an early return, and every
+        //  identification is by a recorded pid — never by port or name.
+        expect(body).toMatch(/if \([^)]*canAdoptRecordedLive\(live, cwd\)[\s\S]{0,120}?\) return;/);
         expect(body).not.toMatch(/taskkill[^`]*\/IM|pkill|killall/);
+        //  …and the identifiers themselves each refuse an unknown record.
+        expect(canAdoptRecordedLive({ pid: 999999999, cwd: __dirname }, __dirname)).toBe(false);
+        expect(theServerThisSessionLeftRunning({ pid: 999999999, cwd: __dirname }, __dirname)).toBe(false);
     });
 
     it('a server that will not die does not stop the new one from starting', () => {
