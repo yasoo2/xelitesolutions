@@ -27,6 +27,7 @@
 //  copy of that character set would drift the first time one of them
 //  learned a mark the other did not.
 import { stripArabicDiacritics } from '../orchestrator/promptNormalizer';
+import { saysWord } from '../language/arabic';
 import { hisWordsOnly } from './page-head';
 //  The reader that already knows which noun stands beside the container.
 import { subjectAfterContainer } from './subject-phrase';
@@ -1657,7 +1658,29 @@ export function applyStatedRules(fields: DerivedField[], rules: StatedRule[]): {
                 || f.label.includes(String(rule.field))
                 || String(rule.field).includes(f.label))
             || next.find(f => f.type === 'number' && f.label
-                && said.includes(String(f.label).toLocaleLowerCase()));
+                && said.includes(String(f.label).toLocaleLowerCase()))
+            //  AND ARABIC DOES NOT SAY THE LABEL BACK LETTER FOR LETTER.
+            //
+            //  «لا تقبل مبلغًا صفرًا» names the field — «مبلغًا» — and the field is
+            //  labelled «المبلغ». Indefinite, accusative, no article: a literal
+            //  `includes` finds nothing, and the bound he stated was dropped
+            //  into `unapplied` where nobody ever saw it again.
+            //
+            //  Measured on his own machine, in the built app:
+            //
+            //      RecordsApp.jsx:28  if (field.min === undefined) return false;
+            //      content.js         المبلغ → required: true, and no min
+            //
+            //  The application SHIPS the guard. Nothing fills the value it
+            //  reads, so zero is accepted — the exact thing he forbade, in a
+            //  build that reported itself complete.
+            //
+            //  saysWord() is the language layer added today: it segments with
+            //  Unicode's own rules and stems with the same stemmer Elasticsearch
+            //  ships, so «مبلغًا» and «المبلغ» are one word — and «أزرق» is still
+            //  not «زر».
+            || next.find(f => f.type === 'number' && f.label
+                && String(f.label).split(/\s+/).some(w => w.length > 2 && saysWord(said, w)));
         if (!target || target.type !== 'number') { unapplied.push(rule); continue; }
         target.min = rule.min;
         if (rule.minExclusive) target.minExclusive = true;
