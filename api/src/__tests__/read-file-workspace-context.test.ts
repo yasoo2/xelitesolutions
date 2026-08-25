@@ -36,6 +36,10 @@ describe('read_file workspace context', () => {
     );
 
     expect(result.ok).toBe(true);
+    expect(result.output).toBeDefined();
+    if (result.output === undefined) {
+      throw new Error('read_file succeeded without output');
+    }
     expect(result.output.content).toContain('contextual: true');
   });
 });

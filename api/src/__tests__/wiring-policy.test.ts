@@ -510,7 +510,7 @@ describe('the planner is offered the whole toolbox, not a frozen list of seven',
                 expect(NAMES_ALL).toContain(name);
                 const tool: any = tools.find((t: any) => t.name === name);
                 const args = (line.match(/\(([^)]*)\)/) || [])[1] || '';
-                for (const a of args.split(',').map(x => x.trim().replace(/\?$/, '')).filter(Boolean)) {
+                for (const a of args.split(',').map((x: string) => x.trim().replace(/\?$/, '')).filter(Boolean)) {
                     expect(Object.keys(tool.inputSchema?.properties || {})).toContain(a);
                 }
             }

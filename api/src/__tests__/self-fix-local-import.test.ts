@@ -114,6 +114,10 @@ describe('SelfFixService evidence-bound local import repair', () => {
     expect(plan.allowed).toBe(true);
     expect(plan.strategy).toBe('build_fix');
     expect(plan.suggestedTool).toBe('ai_write_file');
+    expect(plan.suggestedInput).toBeDefined();
+    if (plan.suggestedInput === undefined) {
+      throw new Error('build_fix plan is missing suggested input');
+    }
     expect(plan.suggestedInput).toMatchObject({
       path: importer.replace(/\\\\/g, '/'),
     });

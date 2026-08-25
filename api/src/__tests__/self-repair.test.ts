@@ -288,10 +288,45 @@ describe('structured request-fidelity recovery', () => {
                 },
             },
         });
+        const failedTask = ticket.failedTasks[0];
+        expect(failedTask).toBeDefined();
+        if (failedTask === undefined) {
+            throw new Error('ordinary failed task was not preserved in the repair ticket');
+        }
+        expect(failedTask.repairKind).toBeUndefined();
         const plan = SelfFixService.plan(ticket);
         expect(plan.strategy).toBe('code_fix');
-        expect(plan.repairKind).toBeUndefined();
         expect(plan.suggestedInput?.path).toContain('WeatherApp.jsx');
+    });
+
+    it('routes an explicit regenerate_engine repair kind to engine regeneration', () => {
+        const file = '/workspace/WeatherGo/src/components/WeatherApp.jsx';
+        const ticket = RepairTicketService.build({
+            phase: { phaseNumber: 1, name: 'Application' },
+            projectName: 'WeatherGo',
+            workspaceId: 'workspace-test',
+            phaseResult: {
+                output: {
+                    status: 'partial',
+                    results: [{
+                        task: 'Regenerate the requested engine',
+                        tool: 'react_project',
+                        ok: false,
+                        error: `request_fidelity_mismatch: ${file} does not contain the requested engine`,
+                        file,
+                        repairKind: 'regenerate_engine',
+                    }],
+                },
+            },
+        });
+        const failedTask = ticket.failedTasks[0];
+        expect(failedTask).toBeDefined();
+        if (failedTask === undefined) {
+            throw new Error('regenerate_engine task was not preserved in the repair ticket');
+        }
+        expect(failedTask.repairKind).toBe('regenerate_engine');
+        const plan = SelfFixService.plan(ticket);
+        expect(plan.strategy).toBe('regenerate_engine');
     });
 });
 

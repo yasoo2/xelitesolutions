@@ -36,6 +36,14 @@ describe('DbSchemaMigratorTool SQLite SQL migrations', () => {
         });
 
         expect(result.ok).toBe(true);
+        expect(result.output).toBeDefined();
+        if (result.output === undefined) {
+            throw new Error('SQLite migration succeeded without output');
+        }
+        expect('schemaPath' in result.output).toBe(true);
+        if (!('schemaPath' in result.output)) {
+            throw new Error('SQLite migration returned the short output shape without schemaPath');
+        }
         expect(result.output.schemaPath).toBe(discoveredSchema);
         expect(result.output.databasePath).toBe(path.join(workspaceRoot, 'discovered.db'));
     });
@@ -50,6 +58,14 @@ describe('DbSchemaMigratorTool SQLite SQL migrations', () => {
         });
 
         expect(result.ok).toBe(true);
+        expect(result.output).toBeDefined();
+        if (result.output === undefined) {
+            throw new Error('SQLite migration succeeded without output');
+        }
+        expect('engine' in result.output).toBe(true);
+        if (!('engine' in result.output)) {
+            throw new Error('SQLite migration returned the short output shape without engine');
+        }
         expect(result.output.engine).toBe('sqlite');
         expect(result.output.databasePath).toBe(databasePath);
 
@@ -59,6 +75,10 @@ describe('DbSchemaMigratorTool SQLite SQL migrations', () => {
             databasePath,
         });
         expect(status.ok).toBe(true);
+        expect(status.output).toBeDefined();
+        if (status.output === undefined) {
+            throw new Error('SQLite status succeeded without output');
+        }
         expect(status.output.output).toContain('tenants');
         expect(status.output.output).toContain('roles');
     });

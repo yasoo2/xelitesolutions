@@ -60,8 +60,8 @@ describe('the loop stops when there is nothing left, not when the score is nice'
             measure: async () => round(62, []),
             repair: async () => { throw new Error('must not repair a clean build'); },
             rebuild: async () => true,
-            snapshot: async () => 'snap',
-            rollback: async () => { },
+            snapshot: () => 'snap',
+            rollback: async () => true,
         });
         expect(result.stoppedBecause).toBe('nothing_left');
         expect(improveSummary(result, true)).toContain('لم يجد عطباً');
@@ -75,8 +75,8 @@ describe('the loop stops when there is nothing left, not when the score is nice'
             measure: async () => round(100, []),
             repair: async () => { repaired += 1; return ['src/styles/app.css']; },
             rebuild: async () => true,
-            snapshot: async () => 'snap',
-            rollback: async () => { },
+            snapshot: () => 'snap',
+            rollback: async () => true,
             maxRounds: 3,
         });
         expect(repaired).toBeGreaterThan(0);
@@ -90,11 +90,53 @@ describe('the loop stops when there is nothing left, not when the score is nice'
             measure: async () => round(80, ['low_contrast']),
             repair: async () => [],
             rebuild: async () => true,
-            snapshot: async () => 'snap',
-            rollback: async () => { },
+            snapshot: () => 'snap',
+            rollback: async () => true,
             maxRounds: 5,
         });
         expect(result.stoppedBecause).not.toBe('nothing_left');
         expect(result.rounds.length).toBeLessThanOrEqual(5);
+    });
+
+    const rollbackCase = async (snapshotId: string, rollbackResult: boolean) => {
+        const sayLines: string[] = [];
+        let rollbackCalls = 0;
+        const result = await improveUntilItStops(round(80, ['low_contrast']), {
+            say: (line) => { sayLines.push(line); },
+            measure: async () => round(80, ['low_contrast']),
+            repair: async () => ['src/styles/app.css'],
+            rebuild: async () => false,
+            snapshot: () => snapshotId,
+            rollback: async () => { rollbackCalls += 1; return rollbackResult; },
+            maxRounds: 1,
+        });
+        return { result, sayLines, rollbackCalls };
+    };
+
+    it('reports a failed rollback instead of claiming the round was restored', async () => {
+        const { result, sayLines, rollbackCalls } = await rollbackCase('snap', false);
+        expect(rollbackCalls).toBe(1);
+        expect(result.stoppedBecause).toBe('build_failed');
+        expect(result.rounds[0].rolledBack).toBe(false);
+        expect(result.rounds[0].rollback).toBe('failed');
+        expect(sayLines).toContain('improve: round 1 broke the build — حاولت التراجع لكنه فشل — rollback was attempted but failed; could NOT roll it back and stopped');
+    });
+
+    it('reports a successful rollback when the rollback actually returns true', async () => {
+        const { result, sayLines, rollbackCalls } = await rollbackCase('snap', true);
+        expect(rollbackCalls).toBe(1);
+        expect(result.stoppedBecause).toBe('build_failed');
+        expect(result.rounds[0].rolledBack).toBe(true);
+        expect(result.rounds[0].rollback).toBe('done');
+        expect(sayLines).toContain('improve: round 1 broke the build — تم التراجع بنجاح — rollback completed successfully; rolled it back and stopped');
+    });
+
+    it('reports that there is no rollback when taking the snapshot failed', async () => {
+        const { result, sayLines, rollbackCalls } = await rollbackCase('', false);
+        expect(rollbackCalls).toBe(0);
+        expect(result.stoppedBecause).toBe('build_failed');
+        expect(result.rounds[0].rolledBack).toBe(false);
+        expect(result.rounds[0].rollback).toBe('none');
+        expect(sayLines).toContain('improve: round 1 broke the build — لم آخذ نسخةً قبل الجولة، فلا رجوع — no snapshot was taken before the round; could NOT roll it back and stopped');
     });
 });
