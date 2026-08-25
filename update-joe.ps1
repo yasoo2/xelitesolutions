@@ -148,7 +148,32 @@ if ($isNetworkFailure) {
         Say "    (لاستعادتها لاحقاً: git stash list  ثم  git stash pop)" DarkGray
     }
 
+    # ============================================================
+    #  وحارسٌ ينقذ ما لم يُحفظ ويمحو ما حُفِظ.
+    #
+    #  الأسطر فوق تحفظ التعديلات غير المحفوظة في stash — وهذا صواب.
+    #  ولا ترى الالتزامات. والتزامٌ على فرعٍ ليس على GitHub يمحوه
+    #  `git reset --hard origin/main` بلا كلمة.
+    #
+    #  وقع ذلك فعلاً: في 13:27:08 محا هذا السطر **خمسين التزاماً**
+    #  من فرع claude/arabic-in-the-terminal — عمل يومٍ كامل — وقال
+    #  «سأجعل نسختك مطابقة تماماً لما على GitHub» ومضى.
+    #  واستُرجعت من reflog — ولو كُنِست المخزن لذهبت إلى غير رجعة.
+    #
+    #  والمفارقة دقيقة: **أسلم حالات العمل — أنّه مُلتزَم — هي
+    #  وحدها التي لم يكن لها حارس.**
+    #
+    #  وفرعٌ يُكتب قبل المحو لا يكلف شيئاً ويردّ كلّ شيء.
+    # ============================================================
     git fetch origin
+    $ahead = (git rev-list --count origin/main..HEAD 2>$null | Out-String).Trim()
+    if ($ahead -and ($ahead -as [int]) -gt 0) {
+        $stamp2 = Get-Date -Format "yyyyMMdd-HHmmss"
+        $keep = "joe-work-$stamp2"
+        git branch $keep HEAD | Out-Null
+        Say "    عندك $ahead التزاماً ليست على GitHub — حفظتُها في فرع $keep قبل التحديث." Yellow
+        Say "    (لاستعادتها: git reset --hard $keep)" DarkGray
+    }
     git reset --hard origin/main
     if ($LASTEXITCODE -ne 0) {
         Say "[X] تعذّر التحديث. تحقّق من اتصال الإنترنت ثم أعد المحاولة." Red
