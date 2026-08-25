@@ -174,6 +174,44 @@ if ($isNetworkFailure) {
         Say "    عندك $ahead التزاماً ليست على GitHub — حفظتُها في فرع $keep قبل التحديث." Yellow
         Say "    (لاستعادتها: git reset --hard $keep)" DarkGray
     }
+
+    # ============================================================
+    #  ولا يُحوَّل فرعُك إلى main دون أن تقول أنت.
+    #
+    #  الحارس فوق يحفظ الالتزامات في فرعٍ قبل المحو — وهو شبكةٌ
+    #  تحت ثقب. والثقبُ أنّ هذا السطر يجعلك على main مهما كان
+    #  الفرع الذي تعمل عليه: `git pull origin main` وأنت على فرعٍ
+    #  آخر يفشل غالباً، ففشلُه يُعالَج بأن تصير main.
+    #
+    #  وقع ذلك ثلاث مرّاتٍ في يومٍ واحد — 13:27 و13:57 و16:11 —
+    #  على فرع claude/arabic-in-the-terminal، وفي المرّة الأخيرة
+    #  ثلاثةٌ وخمسون التزاماً. أُنقذت كلّها من الفرع المحفوظ،
+    #  ولكنّ إنقاذاً يتكرّر ثلاث مرّاتٍ ليس إنقاذاً — هو عَرَض.
+    #
+    #  والصواب أن يتوقّف: التحديث خدمة، لا قرارٌ نيابةً عنك.
+    # ============================================================
+    $branch = (git rev-parse --abbrev-ref HEAD 2>$null | Out-String).Trim()
+    if ($branch -and $branch -ne 'main' -and $branch -ne 'HEAD') {
+        Say ""                                                                            
+        Say "[!] توقّفتُ قبل أن أمسّ شيئاً — وهذا مقصود." Yellow
+        Say ""
+        Say "    أنت الآن على فرعٍ اسمه: $branch" Yellow
+        if ($ahead -and ($ahead -as [int]) -gt 0) {
+            Say "    وفيه $ahead التزاماً ليست على GitHub — وحفظتُها في الفرع $keep." Yellow
+        }
+        Say ""
+        Say "    لو أكملتُ لجعلتُك على main ولمحوتُ هذا الفرع من تحتك،" DarkGray
+        Say "    وهذا قرارٌ لك أنت لا لي." DarkGray
+        Say ""
+        Say "    الخطوة الواحدة: انسخ هذا السطر وشغّله، ثم أعد update-joe.ps1:" Green
+        Say ""
+        Say "        git switch main" White
+        Say ""
+        Say "    (وفرعك $branch يبقى كما هو، ولا يضيع منه شيء.)" DarkGray
+        Wait-ForUser "اضغط Enter للخروج"
+        exit 0
+    }
+
     git reset --hard origin/main
     if ($LASTEXITCODE -ne 0) {
         Say "[X] تعذّر التحديث. تحقّق من اتصال الإنترنت ثم أعد المحاولة." Red
