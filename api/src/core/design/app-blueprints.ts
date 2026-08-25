@@ -1913,6 +1913,66 @@ export function clausesBeyondTheColumns(requestRaw: string): string[] {
     return out;
 }
 
+/**
+ *  A WORD THIS FILE ALREADY KNOWS AS AN INTRODUCER MAY NOT OPEN A LIST.
+ *
+ *  Measured, four phrasings of one request:
+ *
+ *      «Build an expenses app. Columns: date, amount, category and note»
+ *          → date · amount · category · note
+ *      «Build an expenses app. The fields are date, amount, …»
+ *          → date · amount · category · note
+ *      «Build a small expenses app. Include date, amount, category and note.»
+ *          → NOTHING
+ *      «Build an expenses app with date, amount, category and note.»
+ *          → NOTHING
+ *
+ *  «include» and «with» are already in this file's introducer set —
+ *  firstColumnBeginsAtTheName strips them off the first column every
+ *  day. They were known as words that HAND OVER to a list and not as
+ *  words that OPEN one, so the same sentence read two ways depending
+ *  on whether a container noun happened to stand nearby.
+ *
+ *  THE ONE CASE THIS MUST NOT SWALLOW, and how it is told apart:
+ *
+ *      «Build a small portfolio site with a home page, a projects page
+ *       and a contact form.»
+ *
+ *  Same word, same shape — and every item begins with an ARTICLE. A
+ *  column he names is «date», «amount», «note»; a thing he asks to be
+ *  built is «a home page», «a contact form». English marks the
+ *  difference with a closed class of three words, and that is the
+ *  whole test: no catalogue of page names, no list of field names.
+ */
+const ENGLISH_INTRODUCES_A_LIST = /(?:^|[.!?]\s+|[\s,;:(])(?:include(?:s|d)?|containing|consisting\s+of|made\s+up\s+of|with)(?=\s)/iu;
+const OPENS_WITH_AN_ARTICLE = /^(?:a|an|the)\s+/iu;
+
+function theListAnIntroducerHandedOver(request: string): DerivedField[] | null {
+    for (const sentence of String(request || '').split(/[.؟!\n]/)) {
+        const at = ENGLISH_INTRODUCES_A_LIST.exec(sentence);
+        if (!at) continue;
+        const tail = sentence.slice((at.index || 0) + at[0].length);
+        const items = tail
+            .split(/\s*[,，]\s*|\s+and\s+|\s+&\s+/iu)
+            .map(part => part.trim())
+            .filter(part => part.length >= 2 && part.length <= 32);
+        //  No floor here: the run check below is the same floor, and
+        //  columnsEndWhereHisNextRequestBegins never grows a list. A
+        //  mutation proved this one could never decide anything — with it
+        //  lowered to two, all four two-item sentences read identically.
+        //  An article means he is asking for the THING, not naming a
+        //  column of one.
+        if (items.some(part => OPENS_WITH_AN_ARTICLE.test(part))) continue;
+        const run = columnsEndWhereHisNextRequestBegins(items);
+        if (run.length < 3) continue;
+        const named = run.filter(isAName).filter(notAContainerItself);
+        if (named.length !== run.length) continue;
+        const built = fieldsFromLabels(named);
+        if (built) return applyStatedRules(built, statedRules(request)).fields;
+    }
+    return null;
+}
+
 export function derivedColumns(requestRaw: string): DerivedField[] | null {
     const request = String(requestRaw || '');
     /**
@@ -1988,8 +2048,20 @@ export function derivedColumns(requestRaw: string): DerivedField[] | null {
      */
     if (!opener) {
         const holder = RECORD_CONTAINER.exec(request);
-        //  Neither a container nor a taught verb. Grammar is the last reader.
-        if (!holder) return entityAndItsAttributes(request);
+        if (!holder) {
+            //  ORDER IS THE WHOLE ARGUMENT HERE.
+            //
+            //  This first sat above the container check and beat it — six
+            //  suites went red at once, because «A clients table with name,
+            //  phone and address» has both a container AND an introducer,
+            //  and the container reader is the one that knows what «table»
+            //  means. An introducer is what you reach for when nothing
+            //  better answered, so it runs where nothing better did.
+            const handed = theListAnIntroducerHandedOver(request);
+            if (handed) return handed;
+            //  And grammar last of all.
+            return entityAndItsAttributes(request);
+        }
         const tail = request.slice((holder.index || 0) + holder[0].length);
         const colonAt = Math.max(tail.indexOf(':'), tail.indexOf('：'));
         const scope = (colonAt >= 0 ? tail.slice(colonAt + 1) : tail).split(/[.؟!\n]/)[0] || '';

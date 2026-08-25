@@ -98,7 +98,12 @@ describe('and it sits BEFORE the model, not after', () => {
             require('path').join(__dirname, '..', 'core', 'design', 'schema-designer.ts'), 'utf-8');
         expect(d).toMatch(/const \{ inferModel \} = require\('\.\/entity-inference'\);/);
         expect(d.indexOf('inferModel(request)')).toBeLessThan(d.indexOf("require('../llm/structured')"));
-        // …and what it returns goes through the same validation as a model's.
-        expect(d).toMatch(/const valid = validateDesign\(inferred\.entities\);/);
+        //  …and what it returns goes through the same validation as a
+        //  model's. This pinned the call site character for character and
+        //  broke the day validateDesign gained a floor argument — a
+        //  guard on the spelling of a line, not on the property the test
+        //  is named for. The property is that the shape reader's output
+        //  is validated, whatever the call looks like.
+        expect(d).toMatch(/validateDesign\(inferred\.entities/);
     });
 });
