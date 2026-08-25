@@ -1099,7 +1099,21 @@ Rules:
             //  PREFIX — a bare form matches both, a prefixed one matches
             //  half. Writing the article into a pattern can only subtract.
             const projectTarget = /((?:ال)?مشروع|(?:ال)?نظام|(?:ال)?خادم|(?:ال)?سيرفر|(?:ال)?معاينة|\bproject\b|\bserver\b|\bapp\b|\bapplication\b|\bpreview\b|dev\s*server|localhost)/i.test(probe);
-            const deployTarget = projectTarget || /(الموقع|الصفحة|\bsite\b|\bwebsite\b|\bpage\b)/i.test(probe);
+            //  …AND THE SAME PREFIX, ONE LINE DOWN.
+            //
+            //  Measured through generatePlan on his own phrasings:
+            //
+            //      انشر الموقع   → deploy_pages
+            //      انشر موقع     → browser_launch
+            //
+            //  One article apart, and the bare one opens a BROWSER instead
+            //  of publishing anything. The deploy guard did not match, so
+            //  the request fell through to the browser router, which takes
+            //  «انشر» and a noun as something to go and look at.
+            //
+            //  The definite form was not more correct — it was accidentally
+            //  protected, and «ال» is a prefix.
+            const deployTarget = projectTarget || /((?:ال)?موقع|(?:ال)?صفحة|\bsite\b|\bwebsite\b|\bpage\b)/i.test(probe);
             // Content that "انشر/publish" ALSO applies to — publishing an article is
             // NOT deploying a site. This is the collision that sent "انشر مقالاً" to deploy.
             const contentNoun = /(مقال|منشور|تدوينة|تغريدة|خبر|إعلان|محتوى|قصة|\barticle\b|\bpost\b|\bblog\b|\btweet\b|\bstory\b|\bcontent\b)/i.test(probe);

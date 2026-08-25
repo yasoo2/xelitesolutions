@@ -55,6 +55,29 @@ describe('the same order works with the article and without it', () => {
     }
 });
 
+describe('and the same prefix, one line down: publishing', () => {
+    it('«انشر موقع» publishes, as «انشر الموقع» always did', async () => {
+        //  Measured before the fix:
+        //      انشر الموقع  → deploy_pages
+        //      انشر موقع    → browser_launch
+        //  One article apart, and the bare one opened a BROWSER instead
+        //  of publishing anything: the deploy guard did not match, so the
+        //  request fell through to the browser router, which takes «انشر»
+        //  and a noun as something to go and look at. The definite form
+        //  was not more correct — it was accidentally protected.
+        const withArticle = await routeOf('انشر الموقع');
+        expect(withArticle).toBe('deploy_pages');
+        expect(await routeOf('انشر موقع')).toBe(withArticle);
+    }, 120000);
+
+    it('…and publishing an ARTICLE is still not publishing a site', async () => {
+        //  The negative the widened pattern must not swallow: the
+        //  content guard stands in front of it.
+        expect(await routeOf('انشر مقالاً')).toBe('central_answer');
+        expect(await routeOf('انشر تدوينة عن موقعي')).toBe('central_answer');
+    }, 120000);
+});
+
 describe('…and nothing else became a project', () => {
     it('a washing machine is not a server', async () => {
         expect(await routeOf('شغّل الغسالة')).toBe('central_answer');
