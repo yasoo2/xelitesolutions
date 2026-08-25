@@ -43,6 +43,7 @@ const REACT = fs.readFileSync(
 const BRIEF = 'أنشئ لوحة حجوزات عربية RTL لورشة تصوير. المطلوب: لوحة مؤشرات، ستة حجوزات، بحث،'
     + ' مرشح حالة، إضافة حجز، حالات فراغ، تصدير محلي، README عربي، بناء إنتاج، ومعاينة عبر المتصفح.';
 const SHAPE_BRIEF = 'Build an app with a counter, button, title, and status message.';
+const BOUNDED_ARABIC = 'بدي جدول مبيعات فيه اسم الصنف والكمية والسعر، والسعر لا يقبل صفر';
 
 describe('the criteria come from HIS brief, never from a fixed checklist', () => {
     it('a wide brief yields every thing it asked for', () => {
@@ -85,6 +86,55 @@ describe('the criteria come from HIS brief, never from a fixed checklist', () =>
         expect(acceptanceFor(GATE062_LIVE_PROMPT).map(c => c.id).sort()).toEqual([
             'button', 'counter', 'preview', 'status_message', 'title',
         ].sort());
+    });
+
+    it('derives a stated numeric bound from the request and does not invent it when silent', () => {
+        const constrained = acceptanceFor(BOUNDED_ARABIC);
+        expect(constrained.map(c => c.id)).toEqual([
+            'column:text1', 'column:count1', 'column:money1', 'constraint:money1:min',
+        ]);
+        expect(constrained.find(c => c.id === 'constraint:money1:min')?.expectedBound)
+            .toEqual({ min: 0, minExclusive: true });
+
+        const withoutBound = acceptanceFor(BOUNDED_ARABIC.replace('، والسعر لا يقبل صفر', ''));
+        expect(withoutBound.map(c => c.id)).toEqual([
+            'column:text1', 'column:count1', 'column:money1',
+        ]);
+        expect(withoutBound.some(c => c.expectedBound)).toBe(false);
+    });
+
+    it('derives explicit bounds for an invented column name without a name catalogue', () => {
+        const invented = 'Build a table with columns: zqixdal_val, companion_field, third_field, and zqixdal_val must be greater than 4.';
+        const criteria = acceptanceFor(invented);
+        expect(criteria.map(c => c.id)).toEqual([
+            'column:text1',
+            'constraint:text1:min',
+            'column:text2',
+            'column:text3',
+        ]);
+        const bound = criteria.find(c => c.id === 'constraint:text1:min');
+        expect(bound?.expectedColumn).toBe('zqixdal_val');
+        expect(bound?.expectedBound).toEqual({ min: 4, minExclusive: true });
+
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-acceptance-invented-bound-'));
+        fs.mkdirSync(path.join(dir, 'src'), { recursive: true });
+        fs.writeFileSync(path.join(dir, 'src', 'App.jsx'), `const fields = [
+          { key: 'text1', label: 'zqixdal_val', type: 'number', min: 4, minExclusive: true },
+          { key: 'text2', label: 'companion_field', type: 'text' },
+          { key: 'text3', label: 'third_field', type: 'text' },
+        ];`);
+        try {
+            const judged = judgeAcceptance([bound!], { dir }, false);
+            expect(judged.criteria[0]?.verdict).toBe('met');
+            expect(judged.met).toBe(1);
+            expect(judged.unmet).toBe(0);
+        } finally {
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
+
+        const silent = acceptanceFor('Build a table with columns: zqixdal_val, companion_field, third_field.');
+        expect(silent.map(c => c.id)).toEqual(['column:text1', 'column:text2', 'column:text3']);
+        expect(silent.some(c => c.expectedBound)).toBe(false);
     });
 
     it('does not invent a record-add criterion from Create alone', () => {
@@ -370,6 +420,35 @@ describe('a criterion is met by EVIDENCE, or it is not met', () => {
         expect(a.unmet).toBe(0);
     });
 
+    it('judges a stated bound from the generated field object and fails a mutation that removes it', () => {
+        const criteria = acceptanceFor(BOUNDED_ARABIC);
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-acceptance-bound-'));
+        fs.mkdirSync(path.join(dir, 'src'), { recursive: true });
+        const source = `const fields = [
+          { key: 'text1', label: 'اسم الصنف', type: 'text', required: true },
+          { key: 'count1', label: 'الكمية', type: 'number', required: true },
+          { key: 'money1', label: 'السعر', type: 'number', required: true, min: 0, minExclusive: true },
+        ];
+        export default function App(){ return <div>{fields.map(field => <span key={field.key}>{field.label}</span>)}</div>; }`;
+        fs.writeFileSync(path.join(dir, 'src', 'App.jsx'), source);
+        try {
+            const positive = judgeAcceptance(criteria, { dir }, true);
+            expect(positive.criteria.find(c => c.id === 'constraint:money1:min')?.verdict).toBe('met');
+            expect(positive.met).toBe(4);
+            expect(positive.unmet).toBe(0);
+            expect(positive.accepted).toBe(true);
+
+            fs.writeFileSync(path.join(dir, 'src', 'App.jsx'), source.replace(', minExclusive: true', ''));
+            const mutated = judgeAcceptance(criteria, { dir }, true);
+            expect(mutated.criteria.find(c => c.id === 'constraint:money1:min')?.verdict).toBe('unmet');
+            expect(mutated.met).toBe(3);
+            expect(mutated.unmet).toBe(1);
+            expect(mutated.accepted).toBe(false);
+        } finally {
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
     it('extracts only a safe requested title and proves the exact heading', () => {
         const english = acceptanceFor('Create one polished page titled Gate 062 with a heading, a short status message, and a button.');
         const arabic = acceptanceFor('ابنِ صفحة بعنوان متجر الأمل فيها قائمة المنتجات');
@@ -530,6 +609,13 @@ describe('a criterion is met by EVIDENCE, or it is not met', () => {
         expect(blocked).toContain(`0 of ${criteria.length} requested criteria were proven`);
         expect(blocked).toContain(`${criteria.length} were not proven`);
         expect(blocked).not.toContain('⏭️');
+    });
+
+    it('refuses to format an internally inconsistent ledger', () => {
+        const clean = judgeAcceptance(acceptanceFor(SHAPE_BRIEF), { dir: '/no-evidence-at-all' }, false);
+        expect(() => acceptanceBlock(clean, false)).not.toThrow();
+        const broken = { ...clean, unmet: clean.unmet + 1 };
+        expect(() => acceptanceBlock(broken, false)).toThrow('acceptance_ledger_count_mismatch');
     });
 
     it('accepted is false while a single criterion is unmet', () => {

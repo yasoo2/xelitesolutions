@@ -36,7 +36,7 @@ describe('canonical engineering pipeline terminal outcomes', () => {
       liveUrl: '',
       verificationFailed: true,
     });
-    expect(applyLiveRunOutcome(true, { ok: true, output: { url: 'http://localhost:4317/' })).toEqual({
+    expect(applyLiveRunOutcome(true, { ok: true, output: { url: 'http://localhost:4317/' } })).toEqual({
       verified: true,
       liveUrl: 'http://localhost:4317/',
       verificationFailed: false,

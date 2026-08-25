@@ -28,7 +28,7 @@
  * cannot test says «unprovable» rather than passing quietly — because a check
  * that cannot fail is the thing this project keeps deleting.
  */
-import { derivedColumns, type DerivedField } from '../design/app-blueprints';
+import { derivedColumns, statedBound, type DerivedField } from '../design/app-blueprints';
 import fs from 'fs';
 import path from 'path';
 
@@ -73,6 +73,8 @@ export interface Criterion {
      *  either a field in the built app or it is not.
      */
     expectedColumn?: string;
+    /** The explicit lower bound stated for a named numeric column, when any. */
+    expectedBound?: { min: number; minExclusive: boolean };
 }
 
 export interface JudgedCriterion extends Criterion {
@@ -210,6 +212,19 @@ export function titleTextFrom(request: string): string | undefined {
     return extractRequestedTitle(request);
 }
 
+/** Find a bound in the smallest request clause that names this column. */
+function statedBoundForColumn(request: string, label: string): { min: number; minExclusive: boolean } | undefined {
+    const target = String(label || '').trim().toLocaleLowerCase();
+    if (!target) return undefined;
+    for (const clause of String(request || '').split(/[.؟!\n؛;,،]/u)) {
+        const text = clause.trim();
+        if (!text.toLocaleLowerCase().includes(target)) continue;
+        const bound = statedBound(text);
+        if (bound) return bound;
+    }
+    return undefined;
+}
+
 /** The criteria THIS brief actually asks for — never a fixed checklist. */
 export function acceptanceFor(request: string): Criterion[] {
     const t = String(request || '');
@@ -222,16 +237,32 @@ export function acceptanceFor(request: string): Criterion[] {
     //  His columns, in his words, each one its own criterion. No catalogue
     //  is consulted: derivedColumns reads them from the sentence he wrote.
     const columns = derivedColumns(t) || [];
-    return [
-        ...catalogue,
-        ...columns.map((col: DerivedField) => ({
+    const columnCriteria: Criterion[] = [];
+    for (const col of columns as DerivedField[]) {
+        columnCriteria.push({
             id: `column:${col.key}`,
-            kind: 'feature' as CriterionKind,
+            kind: 'feature',
             ar: `عمود «${col.label}» موجود في الجدول`,
             en: `a column «${col.label}» exists in the table`,
             expectedColumn: col.label,
-        })),
-    ];
+        });
+        //  The request, not a remembered type vocabulary, decides whether a
+        //  bound criterion exists. A stated comparison is itself evidence that
+        //  this named field is intended to carry a numeric constraint, even if
+        //  the upstream type reader cannot classify an invented label yet.
+        const bound = statedBoundForColumn(t, col.label);
+        if (bound) {
+            columnCriteria.push({
+                id: `constraint:${col.key}:min`,
+                kind: 'feature',
+                ar: `القيد «${col.label}» أكبر من ${bound.min}`,
+                en: `the column «${col.label}» rejects values at or below ${bound.min}`,
+                expectedColumn: col.label,
+                expectedBound: bound,
+            });
+        }
+    }
+    return [...catalogue, ...columnCriteria];
 }
 
 export interface Evidence {
@@ -486,6 +517,68 @@ function resolvedTitleText(src: string, expression: string): string | undefined 
     return undefined;
 }
 
+interface ObjectRange { open: number; close: number }
+
+/** Return balanced object ranges from code, excluding strings and comments. */
+function objectRanges(mask: string): ObjectRange[] {
+    const stack: number[] = [];
+    const ranges: ObjectRange[] = [];
+    for (let i = 0; i < mask.length; i++) {
+        if (mask[i] === '{') stack.push(i);
+        else if (mask[i] === '}' && stack.length) {
+            ranges.push({ open: stack.pop()!, close: i });
+        }
+    }
+    return ranges;
+}
+
+function objectProperties(src: string, mask: string, range: ObjectRange): Map<string, string> {
+    const properties = new Map<string, string>();
+    const bodyMask = mask.slice(range.open + 1, range.close);
+    for (const [start, end] of topLevelSegments(bodyMask)) {
+        const segmentMask = bodyMask.slice(start, end);
+        const keyMatch = /^\s*([A-Za-z_$][\w$]*)\s*:\s*/.exec(segmentMask);
+        if (!keyMatch) continue;
+        const valueStart = range.open + 1 + start + keyMatch[0].length;
+        const valueEnd = range.open + 1 + end;
+        const valueMask = mask.slice(valueStart, valueEnd).trim();
+        if (!valueMask) continue;
+        properties.set(keyMatch[1], src.slice(valueStart, valueEnd).trim());
+    }
+    return properties;
+}
+
+function staticStringLiteral(value: string): string | undefined {
+    const match = value.match(/^(['\"`])([\s\S]*)\1$/);
+    if (!match || (match[1] === '`' && match[2].includes('${'))) return undefined;
+    return match[2];
+}
+
+function literalNumber(value: string): number | undefined {
+    const match = value.match(/^-?\d+(?:\.\d+)?$/);
+    if (!match) return undefined;
+    const number = Number(value);
+    return Number.isFinite(number) ? number : undefined;
+}
+
+/** Prove a stated bound from one generated field object, not loose source text. */
+function fieldBoundEvidence(src: string, expectedColumn: string, expectedBound: { min: number; minExclusive: boolean }): boolean {
+    const mask = structuralMask(src);
+    const ranges = objectRanges(mask)
+        .filter(range => range.close > range.open)
+        .sort((a, b) => (a.close - a.open) - (b.close - b.open));
+    for (const range of ranges) {
+        const properties = objectProperties(src, mask, range);
+        const label = staticStringLiteral(properties.get('label') || '');
+        if (label !== expectedColumn) continue;
+        const min = literalNumber(properties.get('min') || '');
+        const minExclusive = properties.get('minExclusive');
+        if (min === undefined || (minExclusive !== 'true' && minExclusive !== 'false')) continue;
+        if (min === expectedBound.min && (minExclusive === 'true') === expectedBound.minExclusive) return true;
+    }
+    return false;
+}
+
 export function titleEvidence(src: string, expected: string): boolean {
     const literal = escapeRegExp(expected);
     //  Built from an explicit backslash: this file has been mangled once by an
@@ -516,6 +609,16 @@ export function judgeAcceptance(criteria: Criterion[], ev: Evidence, isAr = true
     const judged: JudgedCriterion[] = criteria.map(c => {
         const say = (verdict: Verdict, why: string): JudgedCriterion => ({ ...c, verdict, why });
 
+        if (c.expectedColumn && c.expectedBound) {
+            const has = !!src && fieldBoundEvidence(src, c.expectedColumn, c.expectedBound);
+            return has
+                ? say('met', isAr
+                    ? `القيد على «${c.expectedColumn}» موجود في كائن الحقل المولّد`
+                    : `the stated bound for «${c.expectedColumn}» is in the generated field object`)
+                : say('unmet', isAr
+                    ? `القيد المطلوب على «${c.expectedColumn}» غير مثبت في كائن الحقل المولّد`
+                    : `the stated bound for «${c.expectedColumn}» is missing from the generated field object`);
+        }
         if (c.expectedColumn) {
             //  The label he wrote, quoted in the generated source. A column
             //  that is not there cannot be greped into existence.
@@ -604,6 +707,9 @@ export function judgeAcceptance(criteria: Criterion[], ev: Evidence, isAr = true
  * believable.
  */
 export function acceptanceBlock(a: Acceptance, isAr: boolean): string {
+    if (a.met + a.unmet !== a.criteria.length) {
+        throw new Error('acceptance_ledger_count_mismatch');
+    }
     if (!a.criteria.length) {
         return isAr
             ? '⚠️ لم أستخرج معياراً قابلاً للفحص من طلبك، لذلك لم أصدر حكم قبول.'
