@@ -2293,26 +2293,101 @@ function fieldsFromLabels(parts: string[]): DerivedField[] | null {
  * What it must never do is guess. If he names nothing after the noun, nothing
  * is added and the edit says so rather than inventing a column called «عمود».
  */
-export interface ColumnEdit { add: string[]; remove: string[] }
+/**
+ *  A RENAME IS NEITHER AN ADD NOR A REMOVE.
+ *
+ *  Measured on his own follow-up:
+ *
+ *      columnEdit(«غيّر اسم عمود المبلغ إلى القيمة»)
+ *          → { add: [], remove: [] }
+ *
+ *  Nothing. This reader knows two verbs and his was a third, so a
+ *  rename after a build did nothing at all and said nothing about
+ *  it — the worst pair there is.
+ *
+ *  A rename is not «remove that column and add this one»: the data
+ *  in it is his, and dropping the column drops the rows' values
+ *  with it. The key and the type stay; the label he reads changes.
+ */
+export interface ColumnEdit { add: string[]; remove: string[]; rename?: { from: string; to: string } }
 
 const ADD_COLUMN = /(?:ضيف|أضف|اضف|اضافة|إضافة|زيد|حط|\badd\b)\s+(?:a|an|the)?\s*(?:عمود|العمود|خانة|الخانة|حقل|الحقل|column|field)\s+(?:اسمه\s+|باسم\s+|called\s+|named\s+|for\s+|the\s+)?([^\n،,.؛;]{2,32})/iu;
 const DROP_COLUMN = /(?:شيل|احذف|أحذف|امسح|الغِ?ي?|ألغِ|\bremove\b|\bdrop\b|\bdelete\b)\s+(?:a|an|the)?\s*(?:عمود|العمود|خانة|الخانة|حقل|الحقل|column|field)\s+(?:the\s+)?([^\n،,.؛;]{2,32})/iu;
+/**
+ *  The connector is the closed class, not the verb. «إلى / الى /
+ *  ليصبح / ليصير / to» is the same set ProjectEditTool already uses
+ *  to rename an app, and a second copy would drift the first time one
+ *  of them learned a word the other did not.
+ */
+const RENAME_COLUMN = /(?:غيّ?ر|بدّ?ل|سمّ?ِ?|\brename\b|\bchange\b)\s+(?:اسم\s+)?(?:a|an|the)?\s*(?:عمود|العمود|خانة|الخانة|حقل|الحقل|column|field)\s+([^\n،,.؛;]{2,32}?)\s*(?:إلى|الى|ليصبح|ليصير|يصير|تصير|\bto\b)\s+([^\n،,.؛;]{2,32})/iu;
+//  ARABIC PUTS THE NAME AFTER THE CONTAINER, ENGLISH BEFORE IT.
+//
+//  «عمود المبلغ» and «the amount column» are the same phrase in two
+//  orders, and a pattern that reads one reads half his messages. The
+//  same fact is already written down beside subjectAfterContainer; it
+//  is a fact about the two languages, not about renaming.
+const RENAME_COLUMN_EN = /(?:\brename\b|\bchange\b)\s+(?:a|an|the)?\s*([A-Za-z][A-Za-z0-9 _-]{1,31}?)\s+(?:column|field)\s+(?:\bto\b|\binto\b)\s+([A-Za-z][A-Za-z0-9 _-]{1,31})/i;
 
 /** The one-column changes a follow-up message asks for, in his own words. */
+/**
+ *  A COLUMN NAME THAT SWALLOWED THE ORDER THAT ASKED FOR IT.
+ *
+ *  From a live round, in Joe’s own log:
+ *
+ *      column edit: +[الملاحظات زيد عمود الملاحظات] -[] → 4 column(s)
+ *
+ *  and on his disk afterwards:
+ *
+ *      { key: 'text4', label: 'الملاحظات زيد عمود الملاحظات', type: 'text' }
+ *
+ *  His message reached Joe clean — 18 characters, «زيد عمود
+ *  الملاحظات», read straight out of the chat store. Somewhere between
+ *  that message and this reader the text arrived twice on one line, and
+ *  the capture ran happily through the seam.
+ *
+ *  WHERE IT DOUBLES IS NOT YET FOUND, and this does not pretend to fix
+ *  that. What it fixes is a thing that is true whatever the cause: a
+ *  column he named never contains the words of the order that asked for
+ *  it. «عمود» and «زيد» are the instruction, not the name — the same
+ *  closed class this file already reads to find the order in the first
+ *  place, used a second time to say where the name ends.
+ */
+const AN_EDIT_WORD = /(?:^|\s)(?:عمود|العمود|خانة|الخانة|حقل|الحقل|column|field|ضيف|أضف|اضف|زيد|حط|شيل|احذف|أحذف|امسح|\badd\b|\bremove\b|\bdrop\b|\bdelete\b)(?=$|\s)/iu;
+
+function theNameEndsBeforeTheOrderResumes(name: string): string {
+    const t = String(name || '').trim();
+    const at = t.search(AN_EDIT_WORD);
+    return (at > 0 ? t.slice(0, at) : t).trim();
+}
+
 export function columnEdit(requestRaw: string): ColumnEdit {
     const request = String(requestRaw || '');
     const clean = (s: string): string => s.trim().replace(/^(?:ال)?(?=.{3,})/u, m => m).trim();
     const add = ADD_COLUMN.exec(request);
     const drop = DROP_COLUMN.exec(request);
+    const ren = RENAME_COLUMN.exec(request) || RENAME_COLUMN_EN.exec(request);
+    const from = ren ? clean(ren[1]) : '';
+    const to = ren ? clean(ren[2]) : '';
     return {
-        add: add && add[1].trim().length >= 2 ? [clean(add[1])] : [],
-        remove: drop && drop[1].trim().length >= 2 ? [clean(drop[1])] : [],
+        add: add && add[1].trim().length >= 2 ? [theNameEndsBeforeTheOrderResumes(clean(add[1]))].filter(x => x.length >= 2) : [],
+        remove: drop && drop[1].trim().length >= 2 ? [theNameEndsBeforeTheOrderResumes(clean(drop[1]))].filter(x => x.length >= 2) : [],
+        ...(from.length >= 2 && to.length >= 2 && from !== to ? { rename: { from, to } } : {}),
     };
 }
 
 /** Apply those changes to a set of fields, keeping every other column as it is. */
 export function applyColumnEdit(fields: AppField[], edit: ColumnEdit, isAr: boolean): AppField[] {
     let out = fields.slice();
+    //  RENAME FIRST, AND IN PLACE.
+    //
+    //  Not a remove followed by an add: the column keeps its key and
+    //  its type, so the rows already stored under that key are still
+    //  his. Dropping it would drop their values with it.
+    if (edit.rename) {
+        const { from, to } = edit.rename;
+        const at = out.findIndex(f => f.label.trim() === from || f.label.trim().includes(from));
+        if (at >= 0) out[at] = { ...out[at], label: to };
+    }
     for (const name of edit.remove) {
         out = out.filter(f => f.label.trim() !== name && !f.label.includes(name));
     }
