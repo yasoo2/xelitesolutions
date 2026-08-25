@@ -2929,7 +2929,30 @@ Return ONLY a JSON array of steps:
             // Repair omitted project evidence before the generic URL/text filler.
             // The helper only uses the active session project inside the trusted
             // workspace; it never invents a path or a test harness.
-            s.input = enrichWorkspaceToolInput(String(s.tool || ''), s.input, `${s.description || ''} ${goal}`.trim(), context);
+            /**
+             *  A DESCRIPTION STAPLED TO THE THING IT DESCRIBES.
+             *
+             *  Read out of a live run's own evidence file:
+             *
+             *      "tool": "project_edit",
+             *      "input": { "request": "Surgical edit of the active
+             *        project: زيد عمود الملاحظات زيد عمود الملاحظات" }
+             *
+             *  His message was eighteen characters, read straight out of
+             *  the chat store. Every step here is described as «Surgical
+             *  edit of the active project: ${intent.goal}» — the goal is
+             *  already IN the description — and this line then joins the
+             *  description to the goal again.
+             *
+             *  Downstream, columnEdit read «عمود الملاحظات زيد عمود
+             *  الملاحظات» and named his new column after the whole order.
+             *
+             *  A description that already carries the goal adds nothing
+             *  by being repeated. One or the other — never both.
+             */
+            const said = String(s.description || '').trim();
+            const forFilling = said && goal && said.includes(goal) ? said : `${said} ${goal}`.trim();
+            s.input = enrichWorkspaceToolInput(String(s.tool || ''), s.input, forFilling, context);
 
             const hasValue = (key: string) => {
                 if (RUNTIME_SUPPLIED.has(key)) return true;
@@ -2948,7 +2971,7 @@ Return ONLY a JSON array of steps:
             // only the first alias it can derive, preserving any alias already
             // supplied by the planner.
             try {
-                const filled = inputForTool(tool, `${s.description || ''} ${goal}`.trim(), context);
+                const filled = inputForTool(tool, forFilling, context);
                 if (filled) {
                     for (const k of missing()) if (filled[k] !== undefined) (s.input as any)[k] = filled[k];
                     for (const group of missingAny()) {
