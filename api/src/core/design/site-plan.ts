@@ -93,43 +93,239 @@ const EN_TITLES: Record<string, string> = {
     'نبذة': 'About', 'الأرشيف': 'Archive', 'عن المدونة': 'About', 'خدماتنا': 'Services',
 };
 
+//  The folding a page-intent test needs: case endings, hamza shapes and
+//  alif maqsura are noise when the question is WHICH PAGES he asked for.
+const DIACRITICS = new RegExp('[\\u064B-\\u0652\\u0670\\u0640]', 'g');
+const HAMZAS = new RegExp('[أإآ]', 'g');
+const ALIF_MAQSURA = new RegExp('ى', 'g');
+/** THE PAGES HE NAMED — read from his sentence, not chosen from a list. */
+export interface NamedPage { title: string; slug: string; }
+
+const AR_STOP_TOKEN = new RegExp('^(?:مع|تحتوي|يحتوي|فيها|فيه|بها|ثم|بحيث|و|او|أو)$');
+const AR_NOT_A_NAME = new RegExp('^(?:واحده|واحدة|فقط|جديده|جديدة|اخري|أخرى|كل|هذه|هذا|رئيسيه)$');
+const AR_PAGE_WORD  = new RegExp('صفح[ةه]', 'g');
+//  A word that says HOW MANY, or a preposition that merely stands before
+//  «pages», is not the name of a page. It is tested against the LAST word
+//  of the capture, because «want multiple pages» ends in the counting word.
+const EN_NOT_A_NAME = new RegExp('^(?:multiple|several|linked|many|few|all|more|other|some|these|those|two|three|four|five|with|of|for|and|or|in|on|to|has|have|its|[0-9]+)$');
+
+function arabicNames(probe: string): string[] {
+    const out: string[] = [];
+    AR_PAGE_WORD.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = AR_PAGE_WORD.exec(probe))) {
+        const after = probe.slice(m.index + m[0].length);
+        const tokens = after.split(new RegExp('[\\s.,،؛:!؟()\\n]+')).filter(Boolean);
+        const name: string[] = [];
+        for (const raw of tokens) {
+            if (name.length >= 4) break;
+            //  the next page mention ends this one — «صفحة خدمات وصفحة اتصل»
+            if (new RegExp('^و?صفح[ةه]').test(raw)) break;
+            if (AR_STOP_TOKEN.test(raw)) break;
+            //  «صفحة تواصل لشركة تنظيف»: the ل- phrase says who the site is FOR,
+            //  it is not part of what he called the page. It only ends a name
+            //  that has already started — «للاسئلة» as a first word is the name.
+            if (name.length > 0 && raw.length >= 4 && raw.charAt(0) === 'ل') break;
+            if (name.length === 0 && AR_NOT_A_NAME.test(raw)) break;
+            name.push(raw);
+        }
+        if (name.length) out.push(name.join(' '));
+    }
+    return out;
+}
+
+function englishNames(probe: string): string[] {
+    const out: string[] = [];
+    const listed = probe.match(new RegExp('pages?\\s*:\\s*([^.\\n]+)', 'i'));
+    if (listed) for (const part of listed[1].split(new RegExp(',| and ', 'i'))) {
+        const t = part.trim().toLowerCase().replace(new RegExp('^(?:a|an|the) '), '').replace(new RegExp(' pages?$'), '');
+        if (t && !EN_NOT_A_NAME.test(t.split(' ').pop() || '')) out.push(t);
+    }
+    const re = new RegExp('([a-z][a-z0-9-]{1,20}(?:\\s+[a-z][a-z0-9-]{1,20})?)\\s+pages?\\b', 'gi');
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(probe))) {
+        const t = m[1].toLowerCase().replace(new RegExp('^(?:a|an|the|one|another)\\s+'), '').trim();
+        const last = t.split(' ').pop() || '';
+        if (t && !EN_NOT_A_NAME.test(last) && !out.includes(t)) out.push(t);
+    }
+    return out;
+}
+
+const SLUGS: Array<[RegExp, string]> = [
+    [new RegExp('^(?:ال)?(?:من نحن|نبذه|نبذة|عن المشروع|عن المدونه|عن المدونة|عنا|about|about us)$'), 'about'],
+    [new RegExp('^(?:ال)?(?:تواصل|تواصل معنا|اتصل بنا|اتصال|contact|contact us|get in touch)$'), 'contact'],
+    [new RegExp('^(?:ال)?(?:منتجات|متجر|products|shop|store|catalogue|catalog)$'), 'products'],
+    [new RegExp('^(?:ال)?(?:خدمات|services|our services)$'), 'services'],
+    [new RegExp('^(?:ال)?(?:قائمه|قائمة|قائمه الطعام|قائمة الطعام|منيو|menu)$'), 'menu'],
+    [new RegExp('^(?:ال)?(?:حجز|حجوزات|booking|bookings|reservations|reservation)$'), 'reservations'],
+    [new RegExp('^(?:ال)?(?:اعمال|اعمالنا|معرض الاعمال|work|works|portfolio|projects)$'), 'work'],
+    [new RegExp('^(?:ال)?(?:اسعار|باقات|تسعير|pricing|plans|prices)$'), 'pricing'],
+    [new RegExp('^(?:ال)?(?:شحن|توصيل|شحن والاسترجاع|الشحن والاسترجاع|shipping|delivery|returns)$'), 'shipping'],
+    [new RegExp('^(?:ال)?(?:اسئله الشائعه|اسئله|الاسئله الشائعه|faq|faqs|questions)$'), 'faq'],
+    [new RegExp('^(?:ال)?(?:مدونه|مدونة|اخبار|blog|news|articles)$'), 'blog'],
+    [new RegExp('^(?:ال)?(?:ارشيف|archive|archives)$'), 'archive'],
+    [new RegExp('^(?:ال)?(?:سله|سلة|عربة التسوق|cart|basket|checkout)$'), 'cart'],
+    [new RegExp('^(?:ال)?(?:دعم|مساعده|support|help)$'), 'support'],
+    [new RegExp('^(?:ال)?(?:توثيق|وثائق|docs|documentation)$'), 'docs'],
+    [new RegExp('^(?:ال)?(?:رئيسيه|رئيسية|هبوط|home|landing|main|index)$'), 'index'],
+];
+
+export function thePagesHeNamed(probe: string): NamedPage[] {
+    const raw = [...arabicNames(probe), ...englishNames(probe)];
+    const out: NamedPage[] = [];
+    let unknown = 0;
+    for (const title of raw) {
+        const key = title.trim().toLowerCase();
+        const hit = SLUGS.find(([re]) => re.test(key));
+        //  A page he named that is on no list is still a page he named. It
+        //  gets a file of its own and keeps HIS words as its title — the
+        //  alternative is a catalogue that can only ever emit what someone
+        //  wrote down in advance.
+        const slug = hit ? hit[1] : ('page' + (++unknown + 1));
+        if (!out.some(p => p.slug === slug)) out.push({ title: title.trim(), slug });
+    }
+    return out;
+}
+
+const PAGE_KIND: Record<string, PageKind> = {
+    products: 'store', cart: 'store', shipping: 'store',
+    menu: 'restaurant', reservations: 'restaurant',
+    work: 'portfolio', blog: 'blog', archive: 'blog',
+};
+
+const PAGE_PURPOSE: Record<string, string> = {
+    about: 'the story, the people behind it, and why to trust them',
+    contact: 'a validated contact form, opening hours, address and the direct channels',
+    products: 'the full catalogue with filters by category and price, and a working cart',
+    services: 'each service in depth, with what is included and for whom',
+    menu: 'the full menu by category with prices and photographs',
+    reservations: 'a reservation form with date, time and party size, plus the hours',
+    work: 'the full project grid with stack tags and links',
+    pricing: 'the plans side by side, what each includes, and what happens at the limits',
+    shipping: 'delivery times and costs by area, and exactly how a return is made',
+    faq: 'the questions buyers actually ask, answered plainly and without hedging',
+    blog: 'the recent posts by date, each with its opening lines',
+    archive: 'every post by category and date',
+    cart: 'the basket, quantities, totals, and the way through to checkout',
+    support: 'how to get help, which channel for what, and the response times',
+    docs: 'the reference organised by task, with examples that can be copied',
+    index: 'what this is, who it is for, and the one action it wants',
+};
+
 /**
- * Decide what to build.
+ * A page he named becomes a page Joe builds.
  *
- * Single page unless the request asks for a site — N pages costs N times the
- * model calls, and quietly turning one request into twelve on a CPU-only laptop
- * is not a favour.
+ * The FILE is a slug because a filename must be; the TITLE stays his exact
+ * words, so a page he called «سياسة الخصوصية» is not renamed into something off
+ * a list. A page whose name is on no list is still built — that is the whole
+ * difference between reading a request and matching it against a catalogue.
  */
+function toSpec(named: NamedPage, siteKind: PageKind, isArabic: boolean, seq: number): PageSpec {
+    const known = named.slug in PAGE_PURPOSE || named.slug in PAGE_KIND;
+    const latin = named.title.toLowerCase()
+        .replace(new RegExp('[^a-z0-9]+', 'g'), '-')
+        .replace(new RegExp('^-+|-+$', 'g'), '')
+        .replace(new RegExp('[0-9]', 'g'), '');
+    const slug = known ? named.slug
+        : (latin.length >= 2 ? latin : 'page-' + String.fromCharCode(97 + Math.min(seq, 24)));
+    return {
+        file: slug === 'index' ? 'index.html' : slug + '.html',
+        kind: slug === 'index' ? siteKind : (PAGE_KIND[slug] || 'landing'),
+        title: named.title,
+        purpose: PAGE_PURPOSE[slug] || ('the page the request called «' + named.title + '», and nothing it did not ask for'),
+    };
+}
+
+/**
+ * Decide what to build — FROM THE REQUEST.
+ *
+ * This function used to hold a catalogue and nothing else: a request that
+ * said «موقع كامل» got four pages someone wrote down in advance, and a
+ * request that NAMED its pages got one. Measured, before this was fixed:
+ *
+ *   «صفحة هبوط وصفحة تواصل»                      -> 1 page
+ *   «صفحة من نحن وصفحة خدمات وصفحة اتصل بنا»    -> 1 page
+ *   «moqiʿan kāmilā» for a restaurant, naming nothing   -> 4 pages, one of them
+ *                                                    a booking page he
+ *                                                    never mentioned
+ *
+ * A page he names that is not on the list was UNBUILDABLE by construction.
+ * So the request comes first and the shape is a declared default: when he
+ * named nothing, the reason line says out loud that these pages are a
+ * default for this kind and not something he asked for.
+ */
+
 export function planSite(kind: PageKind, request: string, isArabic: boolean): SitePlan {
-    const single = (reason: string): SitePlan => ({
-        multiPage: false,
-        pages: [{ file: 'index.html', kind, title: isArabic ? 'الرئيسية' : 'Home', purpose: '' }],
-        reason,
+    const entry = (): PageSpec => ({
+        file: 'index.html', kind,
+        title: isArabic ? 'الرئيسية' : 'Home',
+        purpose: PAGE_PURPOSE.index,
     });
+    const single = (reason: string): SitePlan => ({ multiPage: false, pages: [entry()], reason });
 
     /**
-     * Read the request with its Arabic case endings removed.
-     *
-     * A user writing natural Arabic says «ابني موقعًا كاملًا متعدد الصفحات» —
-     * with tanween on both words. `موقع كامل` does not match that, so the whole
-     * multi-page path was unreachable to anyone writing properly: measured, a
-     * request that explicitly said «موقعًا كاملًا متعدد الصفحات مع صفحة من نحن
-     * وصفحة خدمات وصفحة اتصل بنا» produced ONE page. Diacritics, tatweel and the
-     * ة/ه and أ/إ/ا variants are all noise for an intent test.
+     * Read the request with its Arabic case endings removed. A user writing
+     * natural Arabic says «ابني موقعًا كاملًا» — with tanween on both
+     * words — and «موقع كامل» does not match that.
      */
     const probe = String(request || '')
-        .replace(/[\u064B-\u0652\u0670\u0640]/g, '')
-        .replace(/[أإآ]/g, 'ا')
-        .replace(/ى/g, 'ي');
+        .replace(DIACRITICS, '')
+        .replace(HAMZAS, 'ا')
+        .replace(ALIF_MAQSURA, 'ي');
 
+    //  An explicit «صفحة واحدة» outranks everything else he wrote.
     if (WANTS_SINGLE.test(probe)) return single('the request asked for a single page');
-    if (!WANTS_SITE.test(probe)) return single('single page (ask for «موقع كامل» or «عدة صفحات» to get a linked site)');
+
+    const named = thePagesHeNamed(probe);
+    const his = named.map((n, i) => toSpec(n, kind, isArabic, i));
+    const wantsSite = WANTS_SITE.test(probe);
+
+    if (!wantsSite && his.length < 2) {
+        //  ONE named page is still HIS page: it keeps his title and his
+        //  purpose. Only the filename becomes index.html, because a
+        //  single-page build has exactly one file.
+        if (his.length === 1) return {
+            multiPage: false,
+            pages: [{ ...his[0], file: 'index.html', kind }],
+            reason: 'single page — the request named one: «' + named[0].title + '»',
+        };
+        return single('single page (name the pages you want, or ask for «موقع كامل»)');
+    }
 
     const shape = SITE_SHAPES[kind];
-    if (!shape) return single(`a ${kind} is a single page by nature`);
+    if (!shape && his.length < 2) return single('a ' + kind + ' is a single page by nature');
 
-    const pages = shape.map(p => ({ ...p, title: isArabic ? p.title : (EN_TITLES[p.title] || p.title) }));
-    return { multiPage: true, pages, reason: `a ${kind} site of ${pages.length} linked pages` };
+    //  HIS pages first. The shape only fills what he did not name; it is
+    //  never the reason a page exists when he named pages himself.
+    const pages: PageSpec[] = [];
+    const push = (p: PageSpec) => { if (!pages.some(x => x.file === p.file)) pages.push(p); };
+    his.forEach(push);
+    if (wantsSite && shape) shape
+        .map(p => ({ ...p, title: isArabic ? p.title : (EN_TITLES[p.title] || p.title) }))
+        .forEach(push);
+
+    //  Whoever provided index.html, it goes first. If NOBODY did, one is
+    //  made — and the reason line has to say so, because a home page Joe
+    //  added is not a page the request asked for and not one the shape
+    //  contributed either.
+    const at = pages.findIndex(p => p.file === 'index.html');
+    const homeWasMade = at < 0;
+    if (homeWasMade) pages.unshift(entry()); else pages.unshift(pages.splice(at, 1)[0]);
+
+    if (pages.length < 2) return single('single page — the request named one page only');
+
+    const hisFiles = new Set(his.map(p => p.file));
+    const fromShape = pages
+        .filter(p => !hisFiles.has(p.file) && !(homeWasMade && p.file === 'index.html'))
+        .map(p => p.title);
+    const reason = his.length
+        ? pages.length + ' linked pages — ' + his.length + ' named in the request ('
+            + his.map(p => p.title).join(', ') + ')'
+            + (fromShape.length ? ', and ' + fromShape.length + ' the ' + kind + ' shape adds (' + fromShape.join(', ') + ')' : '')
+            + (homeWasMade ? ', plus a home page to enter from' : '')
+        : 'a ' + kind + ' site of ' + pages.length + ' linked pages — the request named no pages, so this is the default shape for a ' + kind;
+
+    return { multiPage: true, pages, reason };
 }
 
 /* ---------- the shared navigation -------------------------------------------- */

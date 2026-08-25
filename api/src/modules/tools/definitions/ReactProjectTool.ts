@@ -39,6 +39,7 @@ import { isProviderFailure } from '../../../core/llm/intelligent-router';
 import { validateFileWriteBatch } from '../../../shared/file-write-contract';
 import { replyLanguageCode } from '../../../shared/reply-language';
 import { isWithinRoot } from '../path-containment';
+import { planSite } from '../../../core/design/site-plan';
 
 type MeasuredAbility = {
     ar: string;
@@ -828,9 +829,58 @@ export function pagesForKind(kind: PageKind): AppPage[] {
     }
 }
 
-/** Does the request ask for a MULTI-PAGE app? Single-page stays the default. */
-export function wantsMultiPage(text: string): boolean {
-    return /(متعدد\s*الصفحات|متعدده?\s*الصفحات|صفحات\s*(مترابطة|متعددة|متعدده)|عدة\s*صفحات|multi\s*-?\s*page|multiple\s*pages|with\s*pages)/i.test(String(text || ''));
+/**
+ * Does the request ask for a MULTI-PAGE app? Single-page stays the default.
+ *
+ * ONE SENTENCE, ONE READING. This used to be a second, narrower reader: it
+ * knew «متعدد الصفحات» but not «موقع كامل», and it could not see pages
+ * the request NAMED at all — so the same sentence got two pages from the page
+ * builder and one from here, depending only on which tool picked it up.
+ * planSite is now the single judgement, and this asks it.
+ */
+export function wantsMultiPage(text: string, kind: PageKind = 'landing'): boolean {
+    return planSite(kind, String(text || ''), true).multiPage;
+}
+
+/** Which sections carry each page a request can name. */
+const PAGE_SECTIONS: Record<string, string[]> = {
+    products: ['Products', 'Gallery', 'Faq'],
+    menu: ['Menu', 'Gallery'],
+    contact: ['Contact', 'Location'],
+    about: ['Story', 'Team', 'Testimonials'],
+    services: ['Features', 'Steps', 'Cta'],
+    pricing: ['Pricing', 'Compare', 'Faq'],
+    work: ['Gallery', 'Features'],
+    reservations: ['Contact', 'Steps'],
+    faq: ['Faq'],
+    shipping: ['Steps', 'Faq'],
+    cart: ['Products', 'Cta'],
+    blog: ['Story', 'Features'],
+    archive: ['Story', 'Features'],
+    support: ['Contact', 'Faq'],
+    docs: ['Steps', 'Faq'],
+};
+
+/**
+ * The pages of the plan, as React routes.
+ *
+ * A page he named that is on no list still becomes a route — it carries the
+ * generic pair rather than nothing, because a page that exists and says a
+ * little is honest, and a page he asked for that does not exist is not.
+ */
+export function appPagesFor(kind: PageKind, request: string, isArabic: boolean): AppPage[] {
+    const plan = planSite(kind, String(request || ''), isArabic);
+    if (!plan.multiPage) return pagesForKind(kind);
+    const home = pagesForKind(kind)[0];
+    return plan.pages.map(p => {
+        const slug = p.file === 'index.html' ? 'index' : p.file.replace(new RegExp('\\.html$'), '');
+        return {
+            path: slug === 'index' ? '/' : '/' + slug,
+            title: p.title,
+            titleEn: p.title,
+            sections: slug === 'index' ? home.sections : (PAGE_SECTIONS[slug] || ['Features', 'Cta']),
+        };
+    });
 }
 
 /**
@@ -2907,8 +2957,8 @@ export class ReactProjectTool extends BaseTool {
         // report says whether the switcher arrived or was lost on the way.
         term(`template classification: page=${kind || 'generic'} · app=${appKind || 'none'} · mode=${appBp ? 'interactive' : 'presentation'} · lang=${isAr ? 'ar' : 'en'} (ui=${uiLang || 'absent'})`);
         const family = familyFor(request, kind);
-        const multiPage = wantsMultiPage(request);
-        const pages = pagesForKind(kind);
+        const multiPage = wantsMultiPage(request, kind);
+        const pages = appPagesFor(kind, request, isAr);
         const sections = multiPage ? [...new Set(pages.flatMap(p => p.sections))] : sectionsForKind(kind);
         const content = deriveContent(request, isAr, kind);
         // BUSINESS MEMORY: the saved real details flow into the build — the
