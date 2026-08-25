@@ -41,6 +41,37 @@ interface PreviewPanelProps {
     onReady?: () => void;
 }
 
+/**
+ * THE PREVIEW OPENS ON THE HOST HE IS ALREADY USING.
+ *
+ * The server builds every preview URL as `http://127.0.0.1:<port>/`, which is
+ * correct from the server's own side and wrong from his. Measured live: this
+ * browser cannot reach 127.0.0.1 for this server at all — Joe himself only
+ * opened on the machine's LAN address — so the preview panel showed a grey
+ * empty frame while Joe reported the preview as ready.
+ *
+ * And it is not only this browser: the phone can never reach 127.0.0.1, so a
+ * preview addressed that way is unopenable from every device except the one
+ * running the server, however the browser there resolves it.
+ *
+ * The host he is reading this page on is by definition a host that reaches
+ * the server. Only the loopback names are rewritten — a preview already on a
+ * real host, or on a different origin entirely, is left exactly as it came.
+ */
+function onTheHostHeIsAlreadyUsing(url: string): string {
+    try {
+        const u = new URL(url, window.location.origin);
+        const loopback = u.hostname === '127.0.0.1' || u.hostname === 'localhost' || u.hostname === '::1';
+        if (!loopback) return url;
+        if (window.location.hostname === u.hostname) return url;
+        u.hostname = window.location.hostname;
+        return u.toString();
+    } catch {
+        //  Not a URL we can parse is a URL we must not rewrite.
+        return url;
+    }
+}
+
 export default function PreviewPanel({
     url: initialUrl,
     onReady
@@ -73,8 +104,9 @@ export default function PreviewPanel({
             const detail = e.detail as { url?: string };
             if (detail?.url) {
                 setMode('web');
-                setPreviewUrl(detail.url);
-                setInputUrl(detail.url);
+                const reachable = onTheHostHeIsAlreadyUsing(detail.url);
+                setPreviewUrl(reachable);
+                setInputUrl(reachable);
                 setError(null);
                 setBuildProgress(null); // Clear build progress when ready
                 // Force a HARD iframe reload so edits (e.g. "add a button") always
@@ -143,8 +175,12 @@ export default function PreviewPanel({
         if (mode !== 'web') return;
         if (lastGivenUrl.current === initialUrl) return;
         lastGivenUrl.current = initialUrl;
-        setPreviewUrl(initialUrl || '');
-        setInputUrl(initialUrl || '');
+        //  Through the same host rewrite as the event path. A URL arriving by
+        //  prop reaches the same iframe and must survive the same journey —
+        //  two ways in with one of them corrected is the defect, not the fix.
+        const reachable = initialUrl ? onTheHostHeIsAlreadyUsing(initialUrl) : '';
+        setPreviewUrl(reachable);
+        setInputUrl(reachable);
     }, [initialUrl, mode]);
 
     const handleNavigate = useCallback((url: string) => {

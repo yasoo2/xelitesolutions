@@ -39,7 +39,7 @@ import { isProviderFailure } from '../../../core/llm/intelligent-router';
 import { validateFileWriteBatch } from '../../../shared/file-write-contract';
 import { replyLanguageCode } from '../../../shared/reply-language';
 import { isWithinRoot } from '../path-containment';
-import { planSite } from '../../../core/design/site-plan';
+import { planSite, thePagesHeNamed } from '../../../core/design/site-plan';
 
 type MeasuredAbility = {
     ar: string;
@@ -868,6 +868,42 @@ const PAGE_SECTIONS: Record<string, string[]> = {
  * generic pair rather than nothing, because a page that exists and says a
  * little is honest, and a page he asked for that does not exist is not.
  */
+/**
+ *  WHAT LANGUAGE DOES THE ARTIFACT SPEAK — asked once, and by name.
+ *
+ *  Not the same question as «what language do I speak to HIM in», which the
+ *  interface rightly decides. The reply is for him; the app is for whoever
+ *  will use it, and it is labelled with HIS OWN WORDS.
+ *
+ *  Measured live with his interface set to EN:
+ *
+ *      «اعمل لي صفحة هبوط وصفحة تواصل لشركة تنظيف اسمها «نور»»
+ *        nav:     نور · هبوط · تواصل     ← his words, Arabic
+ *        heading: «Contact us»            ← the reply language, English
+ *
+ *  The rule existed and read only the COLUMNS he listed, so a request that
+ *  names PAGES fell through to the reply language. Both are his words, and
+ *  neither is more his than the other.
+ *
+ *  Exported and named because a decision worth guarding is worth calling.
+ *  A guard that read this out of the source tested its spelling: a mutation
+ *  that ignored the pages entirely left all six of its assertions green.
+ */
+export function artifactLanguageIsArabic(request: string, replyIsArabic: boolean): boolean {
+    const columns = (derivedColumns(request) || []).map((c: any) => String(c.label || ''));
+    const pages = thePagesHeNamed(
+        String(request || '')
+            .replace(/[ً-ْٰـ]/g, '')
+            .replace(/[أإآ]/g, 'ا')
+            .replace(/ى/g, 'ي'),
+    ).map(p => p.title);
+    const hisWords = [...columns, ...pages];
+    //  Nothing of his reached the artifact, so there is no language to take
+    //  from it and the one he is spoken to in stands. A fallback, never a
+    //  source.
+    return hisWords.length ? hisWords.some(w => /[؀-ۿ]/.test(w)) : replyIsArabic;
+}
+
 export function appPagesFor(kind: PageKind, request: string, isArabic: boolean): AppPage[] {
     const plan = planSite(kind, String(request || ''), isArabic);
     if (!plan.multiPage) return pagesForKind(kind);
@@ -2858,10 +2894,27 @@ export class ReactProjectTool extends BaseTool {
          *  a language from, so the reply language stands — which is the
          *  same rule the project's NAME follows, and for the same reason.
          */
-        const artifactLabels = derivedColumns(request) || [];
-        const artifactIsAr = artifactLabels.length
-            ? artifactLabels.some(c => /[\u0600-\u06FF]/.test(String(c.label || '')))
-            : isAr;
+        /**
+         *  AND A PAGE HE NAMED IS HIS OWN WORD TOO.
+         *
+         *  The rule above is right and was reading half of it. It asked the
+         *  COLUMNS what language the artifact speaks, and a request that names
+         *  pages instead of columns fell through to the reply language.
+         *
+         *  Measured live, in front of the owner, with his interface set to EN:
+         *
+         *      \u00AB\u0627\u0639\u0645\u0644 \u0644\u064A \u0635\u0641\u062D\u0629 \u0647\u0628\u0648\u0637 \u0648\u0635\u0641\u062D\u0629 \u062A\u0648\u0627\u0635\u0644 \u0644\u0634\u0631\u0643\u0629 \u062A\u0646\u0638\u064A\u0641 \u0627\u0633\u0645\u0647\u0627 \u00AB\u0646\u0648\u0631\u00BB\u00BB
+         *        nav:     \u0646\u0648\u0631 \u00B7 \u0647\u0628\u0648\u0637 \u00B7 \u062A\u0648\u0627\u0635\u0644      \u2190 his words, Arabic
+         *        heading: \u00ABContact us\u00BB            \u2190 the reply language, English
+         *
+         *  An Arabic page under an English heading, from one sentence. Same
+         *  defect as the columns, one reader short.
+         *
+         *  So the question is \u00ABdid any of HIS words reach this artifact\u00BB, and
+         *  every kind of his word answers it: the columns he listed and the
+         *  pages he named. Neither is more his than the other.
+         */
+        const artifactIsAr = artifactLanguageIsArabic(request, isAr);
         try { broadcast({ type: 'build_started', sessionId, data: { tool: 'react_project', sessionId } } as any); } catch { /* UI optional */ }
 
         const term = (line: string) => {
