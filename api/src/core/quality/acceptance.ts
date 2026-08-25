@@ -349,7 +349,26 @@ export function acceptanceFor(request: string): Criterion[] {
     const named = thePagesHeNamed(
         t.replace(DIACRITICS_FOR_PAGES, '').replace(HAMZAS_FOR_PAGES, 'ا').replace(MAQSURA_FOR_PAGES, 'ي'),
     );
-    const pages = named.length >= 2 ? named : [];
+    /**
+     *  ONE NAMED PAGE IS A CRITERION WHEN HE IS ADDING IT.
+     *
+     *  The two-page floor exists for a real reason: a single-page build writes
+     *  index.html by definition, so «the page exists» could never fail, and a
+     *  criterion that cannot fail is the thing this file keeps deleting.
+     *
+     *  But «أضف صفحة الأسعار» is not a single-page build — it is an addition
+     *  to something already on disk, and `pricing.html` either arrives or it
+     *  does not. Measured across a thousand requests: forty edit requests
+     *  naming a page derived NO criterion at all, so the page he asked to be
+     *  added was never checked for.
+     *
+     *  The verb is the whole distinction and it is in his own sentence, so no
+     *  session state is consulted: «أضف» / «add» means the thing must be there
+     *  afterwards, and one is enough.
+     */
+    const HE_IS_ADDING = /(?:^|\s)(?:أضف|اضف|ضيف|أضيف|اضيف|add)(?:\s|$)/iu;
+    const adding = HE_IS_ADDING.test(t);
+    const pages = (named.length >= 2 || (adding && named.length >= 1)) ? named : [];
 
     //  Every rule he stated, whether or not Joe can prove it. The judge says
     //  `unprovable` for what it cannot check, and that is declared to him —

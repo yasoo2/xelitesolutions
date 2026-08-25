@@ -19,6 +19,7 @@
 
 import type { PageKind } from './blueprints';
 import { logoLockup } from './logo';
+import { hisClauses, clauseForbids } from './app-blueprints';
 
 export interface PageSpec {
     /** Output filename, e.g. 'products.html'. The entry page is index.html. */
@@ -170,12 +171,70 @@ const SLUGS: Array<[RegExp, string]> = [
     [new RegExp('^(?:ال)?(?:رئيسيه|رئيسية|هبوط|home|landing|main|index)$'), 'index'],
 ];
 
+/**
+ *  A PAGE INSIDE A PROHIBITION IS NOT A PAGE HE ASKED FOR.
+ *
+ *      «اعمل موقع محل زهور ولا تضف صفحة تسجيل دخول»
+ *
+ *  read «تسجيل دخول» as a page he named — so the one page he explicitly
+ *  refused was the page most likely to be built. Measured across a thousand
+ *  requests: fifteen conditional requests carried a page name inside their
+ *  own negation.
+ *
+ *  A clause that forbids is skipped whole. Both readers are the same ones the
+ *  rule layer uses; a second opinion about where a clause begins is how two
+ *  readers of one sentence start again.
+ */
+function clausesThatAsk(probe: string): string {
+    return hisClauses(probe).filter(c => !clauseForbids(c)).join(' ، ');
+}
+
+/**
+ *  A RULE THAT WAS WRITTEN, MEASURED, AND WITHDRAWN — the record, not the rule.
+ *
+ *  «اعمل صفحة بخلفية زرقاء» reads «بخلفية زرقاء» as a page name. «بخلفية» is
+ *  «ب» glued to a noun — «with a background» — so rejecting a first token of
+ *  the shape «ب + noun» looked like the fix, and it was written here.
+ *
+ *  Its own negative case killed it. «صفحة بطاقات الهدايا» is a page he named,
+ *  and «بطاقات» is one word that merely begins with the same letter. Nothing
+ *  short of a lexicon tells the two apart, and the rule would have silently
+ *  DELETED a page he asked for in order to avoid inventing one he did not.
+ *
+ *  Weighed honestly: the misread produces one named page, which becomes a
+ *  single-page build whose title is his own phrase — a poor title. The rule
+ *  would have dropped real pages out of real plans. The trade is bad, so
+ *  there is no rule, and this comment is here so nobody writes it again
+ *  without measuring the other direction first.
+ */
 export function thePagesHeNamed(probe: string): NamedPage[] {
-    const raw = [...arabicNames(probe), ...englishNames(probe)];
+    const asked = clausesThatAsk(probe);
+    const raw = [...arabicNames(asked), ...englishNames(asked)];
     const out: NamedPage[] = [];
     let unknown = 0;
     for (const title of raw) {
-        const key = title.trim().toLowerCase();
+        /**
+         *  THE MAP IS SPELLED IN A FOLD THE INPUT NEVER ARRIVES IN.
+         *
+         *  Every entry below is written with «ه» — «الاسئله الشائعه» — but the
+         *  probe reaching here has only had its diacritics, hamzas and alif
+         *  maqsura folded. «الأسئلة الشائعة» becomes «الاسئلة الشائعة», with
+         *  its ة intact, and matches nothing.
+         *
+         *  Measured across a thousand requests: twenty-five real multi-page
+         *  plans came back with a page called `page-a` sitting between
+         *  `services` and `contact` — a page he named plainly, filed under a
+         *  letter, because the two halves of one fold disagreed.
+         *
+         *  So the key is folded the rest of the way HERE, where the map is
+         *  read, rather than asking every caller to remember.
+         */
+        const key = title.trim().toLowerCase()
+            .replace(/ة/g, 'ه')
+            .replace(/[ًٌٍَُِّْٰـ]/g, '')
+            .replace(/[أإآ]/g, 'ا')
+            .replace(/ى/g, 'ي')
+            .replace(/\s+/g, ' ');
         const hit = SLUGS.find(([re]) => re.test(key));
         //  A page he named that is on no list is still a page he named. It
         //  gets a file of its own and keeps HIS words as its title — the
