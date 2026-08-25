@@ -4,7 +4,7 @@
 **الوكيل:** Manus
 **المستودع:** `yasoo2/xelitesolutions`
 **الفرع المسموح:** `main` فقط
-**آخر تحديث:** 2026-08-25 — إصلاح صدق marker في scripts/gate.sh مكتمل محلياً؛ probe clean/failed/reused أخضر، والبوابة المجمّدة النهائية 22/22 و258/4221 وGATE:PASS؛ push هذه الدفعة قيد التنفيذ، HEAD=origin/main=4e909d5c
+**آخر تحديث:** 2026-08-25 — إصلاح صدق marker في scripts/gate.sh مكتمل ومدفوع؛ probe clean/failed/reused أخضر، والبوابة المجمّدة النهائية 22/22 و258/4221 وGATE:PASS؛ commit d7ac1acc، HEAD=origin/main=d7ac1acc
 **قاعدة الهدف الأعلى:** Joe يتعلم كيف يصطاد السمكة، لا أن يأكلها؛ أي أن يبني قدرات هندسية عامة تقرأ الطلب وتثبت الناتج بدلاً من حفظ قوالب قطاعية.
 
 ## قانون التفويض — لا يُسأل المالك
@@ -1307,7 +1307,7 @@ POS-061-CLAUDE-ACK-5391078852: أقرّ البنود الملزمة كاملة �
 | GATE-DEPS-WEB-MARKER | **منفذ محلياً؛ جاهز للدفع** | `scripts/gate.sh` يعلن `GATE_DEPS_WEB:clean` بعد نجاح `npm ci`، و`GATE_DEPS_WEB:failed` مع رمز وسبب الفشل، و`GATE_DEPS_WEB:reused` مع سبب عدم المحاولة؛ لا يصف النية كأنها نتيجة |
 | GATE-DEPS-WEB-PROBE | **أخضر** | clean: `npm ci` و`WEB_DEPS_EXIT=0`؛ reused: سبب صريح و`WEB_DEPS_EXIT=0`؛ غياب `web/package-lock.json`: `npm EUSAGE`، `GATE_DEPS_WEB:failed`، `WEB_DEPS_EXIT=1`، ثم استعادة lock؛ لا تغيير في ملفات web |
 | GATE-FROZEN-FINAL | **أخضر** | شجرة مجمدة مع api/web node_modules منقولة جانباً؛ `GATE_DEPS_API:clean`، `GATE_DEPS_WEB:clean`، TSC/build/Jest exits=0، `22/22` batches، `258/258` suites، `4221/4221` tests، `GATE:PASS`، و`ESBUILD_RESOLVE_EXIT=0`؛ `STATUS_COMPARE=identical` بعد trap |
-| GATE-PUSH | **قيد التنفيذ** | بعد قراءة PR #82 وto-manus، staging صريح للـgate والدفتر فقط؛ لا تدخل `web/.joe-live-vite.config.mjs` أو `web/pnpm-lock.yaml` أو `web/pnpm-workspace.yaml` |
+| GATE-PUSH | **منجز ومدفوع** | staging صريح للـgate والدفتر فقط؛ لا دخلت `web/.joe-live-vite.config.mjs` أو `web/pnpm-lock.yaml` أو `web/pnpm-workspace.yaml`؛ commit `d7ac1acc`، و`HEAD=origin/main` |
 | الهدف العام لجو | **مفتوح وممتد** | هذه الدفعة تصلح صدق البوابة فقط؛ لا تُعلن أن Joe يفهم أي برومبت بلا حدود. الاختبارات الحية المتدرجة، البناء والتعديل التراكمي، وإصلاحات القدرات العامة تبقى بعد تفويض Claude التالي |
 
 **EVIDENCE-RAW:** probe log 62 lines، SHA `f19affad4824f34ad70f12ac9951e79758095018189fb7f5b5d0bb560825d57a`؛ final frozen gate log 550 lines، SHA `ccaf106a639bc5327bd2dffccb68091644353397323b0b0963bcc6b79c7e19b5`.
