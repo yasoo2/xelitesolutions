@@ -82,7 +82,7 @@ const RESERVED = RESERVED_TABLES;
  * perfectly typed and still be nonsense — a table called «table», a foreign key
  * to something nobody declared, forty columns nobody asked for.
  */
-export function validateDesign(raw: any): ModelEntity[] | null {
+export function validateDesign(raw: any, minEntities = 2): ModelEntity[] | null {
     /**
      * TWO SHAPES REACH THIS VALIDATOR, AND IT ONLY EVER READ ONE.
      *
@@ -136,7 +136,25 @@ export function validateDesign(raw: any): ModelEntity[] | null {
             fields,
         });
     }
-    if (out.length < 2) return null;   // one table is what we already had
+    /**
+     *  «ONE TABLE IS WHAT WE ALREADY HAD» — AND THAT STOPPED BEING TRUE.
+     *
+     *  It was true while a single entity could only ever be a GUESS from
+     *  phrase shape, no better than the generic single-collection
+     *  fallback below. It is false for a table read from columns HE
+     *  wrote: that one carries his labels and his types, and the
+     *  fallback carries neither.
+     *
+     *  Measured on Joe's own logs, same sentence, before and after the
+     *  reader started returning one real table instead of four phantom
+     *  ones — «data model: read from the request itself» became «data
+     *  model: no model answered at all», and 120 seconds went to
+     *  providers with no keys, for a question already answered.
+     *
+     *  The floor is the caller's now, because only the caller knows
+     *  whether the reading was his words or a guess.
+     */
+    if (out.length < minEntities) return null;
 
     // Foreign keys, resolved LAST — a link can only point at a table that
     // survived validation, and it must have a column to live in.
@@ -289,11 +307,26 @@ export async function designDataModel(
      * because its labels are hand-checked.
      */
     const listed = namedEntities(request);
-    const shaped = inferModel(request).entities;
-    if (listed.length || shaped.length >= 2) {
+    const reading = inferModel(request);
+    const shaped = reading.entities;
+    /**
+     *  A COUNT CANNOT TELL A BETTER READING FROM A WORSE ONE.
+     *
+     *  The floor of two is right for entities GUESSED from phrase shape:
+     *  one vague noun is not a data model. It is wrong for a reading that
+     *  came from columns HE wrote, and the difference is invisible to a
+     *  count — measured on Joe's own logs, the same sentence went from
+     *  four phantom tables (which cleared the floor) to one real table
+     *  (which did not), and the better reading was thrown away for it.
+     *
+     *  What followed cost 120 seconds per build, asking providers with no
+     *  keys a question his sentence had already answered.
+     */
+    const floor = reading.declared ? 1 : 2;
+    if (listed.length || shaped.length >= floor) {
         const richer = shaped.length > listed.length ? shaped : listed;
-        const valid = validateDesign(richer);
-        if (valid && valid.length >= 2) {
+        const valid = validateDesign(richer, richer === shaped ? floor : 2);
+        if (valid && valid.length >= (richer === shaped ? floor : 2)) {
             opts?.onNote?.(`data model: read from the request itself — ${valid.map(e => e.key).join(', ')}`
                 + (richer === shaped && listed.length ? ` (${shaped.length} by shape beat ${listed.length} by name)` : ''));
             return valid;
@@ -323,9 +356,14 @@ export async function designDataModel(
      * give columns.
      */
     const inferred = inferModel(request);
-    if (inferred.entities.length >= 2) {
-        const valid = validateDesign(inferred.entities);
-        if (valid && valid.length >= 2) {
+    //  Two, and not the caller's floor: this block is only reached when
+    //  the block above did NOT return, and a declared reading always
+    //  returns there. A mutation proved the conditional could never
+    //  decide anything, so it is written as the constant it is.
+    const inferredFloor = 2;
+    if (inferred.entities.length >= inferredFloor) {
+        const valid = validateDesign(inferred.entities, inferredFloor);
+        if (valid && valid.length >= inferredFloor) {
             opts?.onNote?.(`data model: inferred from the request's own words — ${valid.map(e => e.key).join(', ')}`
                 + (inferred.capabilities.length ? ` (not tables: ${inferred.capabilities.slice(0, 4).join(', ')})` : ''));
             return valid;

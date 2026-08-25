@@ -266,6 +266,31 @@ export interface Inference {
     entities: ModelEntity[];
     /** Named in the request, and honestly out of reach of a CRUD table. */
     capabilities: string[];
+    /**
+     *  HE WROTE THE COLUMNS HIMSELF, SO ONE TABLE IS A WHOLE MODEL.
+     *
+     *  Callers downstream required two entities before they would trust
+     *  a reading — a sensible floor when entities are GUESSED from
+     *  phrase shape, because one vague noun is not a data model.
+     *
+     *  It stopped being sensible the moment this reader started
+     *  returning ONE table for «بدي جدول للفواتير فيه رقم الفاتورة
+     *  والمبلغ والتاريخ» instead of four. Measured from two of
+     *  Joe's own logs on the same sentence:
+     *
+     *      before  data model: read from the request itself —
+     *              invoices, mblghs, tarykhs, its
+     *      after   data model: no model answered at all
+     *
+     *  Four phantom tables cleared the floor of two; one real table did
+     *  not, so the reading was thrown away and a model was asked a
+     *  question his sentence had already answered — for 120 seconds, on
+     *  providers with no keys.
+     *
+     *  This flag is how a caller tells the two apart: a count cannot,
+     *  because the count went DOWN when the reading got better.
+     */
+    declared?: boolean;
 }
 
 /**
@@ -498,7 +523,7 @@ export function inferModel(request: string, limit = MAX_MODEL_ENTITIES): Inferen
     //  When he described ONE table and its columns, that is the model.
     //  Everything below reads a sentence that did not say so.
     const one = theOneTableHeDescribed(request);
-    if (one) return { entities: [one], capabilities: [] };
+    if (one) return { entities: [one], capabilities: [], declared: true };
     const entities: ModelEntity[] = [];
     const capabilities: string[] = [];
     const seen = new Set<string>();
