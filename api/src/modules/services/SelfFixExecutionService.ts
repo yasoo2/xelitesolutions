@@ -37,11 +37,14 @@ function pathsReferToSameFile(left: unknown, right: unknown): boolean {
   return a.endsWith(`/${b}`) || b.endsWith(`/${a}`);
 }
 
-function isWithinRoot(candidate: string, root: string): boolean {
-  const child = path.resolve(candidate);
-  const parent = path.resolve(root);
-  return child === parent || child.startsWith(parent.endsWith(path.sep) ? parent : `${parent}${path.sep}`);
-}
+//  ONE READER FOR ONE SECURITY QUESTION.
+//
+//  Three functions in this repository were called isWithinRoot. Measured
+//  on win32, they disagreed on three of seven cases: this copy refused a
+//  legitimate write whose drive letter was lowercase, and the copy in
+//  utils accepted a path that climbed out with «..». A question this
+//  serious gets one answer.
+import { isWithinRoot } from '../tools/utils';
 
 /**
  * File repair tools resolve relative destinations against the workspace. A
