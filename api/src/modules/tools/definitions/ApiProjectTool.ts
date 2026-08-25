@@ -183,8 +183,44 @@ export function selectApiPrimary(
     ));
     const exactTokens = new Set((String(request || '').match(/[A-Za-z][A-Za-z0-9_]*/g) || [])
         .map(token => token.toLowerCase()));
+    /**
+     *  AN INTERFACE AND ITS SERVICE, NAMED BY TWO DIFFERENT READERS.
+     *
+     *  From Joe's own browser QA on the owner's machine, on a build it
+     *  had just finished:
+     *
+     *      • 3 ملف لم يصل: 404 http://127.0.0.1:4732/api/invoices
+     *
+     *  The interface calls /api/invoices. The service serves /api/items.
+     *  Both were generated from one sentence, by two readers that never
+     *  spoke: the interface takes the entity key from the request, and
+     *  this side takes a resource from a kind→table map and falls to
+     *  «items» when no kind matches. Measured on three builds —
+     *  react-الفواتير, react-الموظفين and two more — all of them 404.
+     *
+     *  The promotion below already exists for exactly this, and it
+     *  could not fire: it demands the key be an EXACT TOKEN of the
+     *  request, and «invoices» is the English of «الفواتير». A man
+     *  writing Arabic can never type the key his own table will get, so
+     *  that evidence test excluded every Arabic request in the world.
+     *
+     *  A key that came from HIS declared columns is his word already —
+     *  translated or transliterated, but derived from nothing else. The
+     *  declaration IS the evidence, and it is the same reader the
+     *  interface used, which is the whole point.
+     */
+    let declaredKey = '';
+    try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { inferModel } = require('../../../core/design/entity-inference');
+        const reading = inferModel(String(request || ''));
+        if (reading?.declared && reading.entities?.length === 1) {
+            declaredKey = String(reading.entities[0]?.key || '').toLowerCase();
+        }
+    } catch { declaredKey = ''; }
     const explicitKeys = Array.from(new Set([
         ...listedKeys,
+        ...(declaredKey ? [declaredKey] : []),
         ...(designed || []).map(entity => String(entity?.key || '').toLowerCase())
             .filter(key => key && exactTokens.has(key)),
     ]));
@@ -198,7 +234,10 @@ export function selectApiPrimary(
     // table anyone typed, and therefore cannot become a route or a screen.
     const candidate = (designed || []).find(entity => {
         const key = String(entity?.key || '').toLowerCase();
-        return key && key !== String(picked.resource || '').toLowerCase() && listedKeys.includes(key);
+        if (!key || key === String(picked.resource || '').toLowerCase()) return false;
+        //  His declaration counts as naming it, because it is where the
+        //  interface's own endpoint came from.
+        return listedKeys.includes(key) || key === declaredKey;
     });
     return candidate
         ? { promoted: candidate, resource: String(candidate.key), labelAr: String(candidate.ar || candidate.key), explicitKeys }

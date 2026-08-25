@@ -27,6 +27,7 @@
 //  copy of that character set would drift the first time one of them
 //  learned a mark the other did not.
 import { stripArabicDiacritics } from '../orchestrator/promptNormalizer';
+import { hisWordsOnly } from './page-head';
 //  The reader that already knows which noun stands beside the container.
 import { subjectAfterContainer } from './subject-phrase';
 
@@ -1973,7 +1974,43 @@ function theListAnIntroducerHandedOver(request: string): DerivedField[] | null {
     return null;
 }
 
+/**
+ *  HIS WORDS, WITHOUT THE BLOCK JOE STAPLED TO THEM.
+ *
+ *  Read out of a real build's own record on his machine:
+ *
+ *      sourceRequest: 'بدي جدول للفواتير فيه رقم الفاتورة والمبلغ والتاريخ
+ *        AUTHORITATIVE REQUIREMENTS EVIDENCE (…): بدي جدول للفواتير فيه
+ *        رقم الفاتورة والمبلغ والتاريخ'
+ *
+ *  His sentence, Joe's paperwork, and his sentence AGAIN. Reading it
+ *  gives his columns twice, and the live edit round proved it:
+ *
+ *      from the record   رقم الفاتورة · المبلغ · المبلغ · التاريخ
+ *      from his words    رقم الفاتورة · المبلغ · التاريخ
+ *
+ *  He asked for one new column and got a duplicated one for free.
+ *
+ *  The cut lives HERE, at the reader every other reader goes through,
+ *  rather than at each writer — because the record is already written
+ *  on his disk in every app built so far, and a fix at the writer
+ *  heals none of them.
+ *
+ *  The guard on the guard is unchanged: hisWordsOnly also cuts at a
+ *  blank line, which is Joe's mark only when Joe put it there, so the
+ *  cut runs only when one of Joe's OWN marks is present.
+ */
+const JOES_OWN_MARK = /^[ \t]*-{3,}[ \t]+\S|\b[A-Z][A-Z0-9]{2,}(?:\s+[A-Z][A-Z0-9]{2,}){2,}\b/mu;
+
+export function hisSentence(request: string): string {
+    const raw = String(request || '');
+    if (!JOES_OWN_MARK.test(raw)) return raw;
+    const his = hisWordsOnly(raw);
+    return his.length >= 4 ? his : raw;
+}
+
 export function derivedColumns(requestRaw: string): DerivedField[] | null {
+    requestRaw = hisSentence(requestRaw);
     const request = String(requestRaw || '');
     /**
      * A LIST OF COLUMNS IS INTRODUCED BY THE ACT OF RECORDING.
