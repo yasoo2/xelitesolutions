@@ -95,8 +95,16 @@ describe('every condition that can block a delivery also names itself', () => {
     it('surviving high-severity findings are named, not counted', () => {
         const chain = causeChain();
         expect(chain).toContain('high_severity_findings_survived');
-        //  Naming them means reading their identity out of the findings; a
-        //  bare count would give him a number and not a thing to fix.
-        expect(chain).toMatch(/blockers\.map\(/);
+        //  Naming them means reading BOTH halves out of each finding: what it
+        //  is called, and what it found. A count would give him a number and
+        //  not a thing to fix; an id alone gives him a label.
+        //
+        //  Asserted as the PROPERTY and not the spelling — the first version of
+        //  this line demanded the characters `blockers.map(` and went red the
+        //  moment a `.slice(0, 3)` was placed between them, which is the same
+        //  mistake this whole file exists to catch.
+        expect(chain).toMatch(/blockers[^;]*\.map\(/);
+        expect(chain).toMatch(/f\.id/);
+        expect(chain).toMatch(/f\.detail/);
     });
 });

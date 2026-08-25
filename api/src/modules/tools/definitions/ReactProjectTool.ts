@@ -1276,7 +1276,28 @@ export default function App() {
       <ProductView content={content} />
       <Navbar content={content} pages={pages} />
       <main>
-        {path.startsWith('/product/') ? null : page ? page.render(content) : (
+        {path.startsWith('/product/') ? null : page ? (<>
+          {/*
+            A PAGE HE NAMED OPENS WITH THE NAME HE GAVE IT.
+
+            The home page carries its <h1> inside the hero. Every other page
+            was a bare stack of sections, and a section is not obliged to have
+            a heading — a contact page rendered <Contact /> and nothing above
+            it. Measured live: the audit reported broken_routes, «2 pages did
+            not open or have no main heading», and the delivery was refused
+            for a build whose routes were in fact correct.
+
+            So the title goes on the page. It is also the honest place for it:
+            the title is HIS word, read out of his request, and until now it
+            appeared only in the navigation.
+          */}
+          {page.path === '/' ? null : (
+            <section className="section page-head"><div className="wrap">
+              <h1>{page.title}</h1>
+            </div></section>
+          )}
+          {page.render(content)}
+        </>) : (
           <section className="section"><div className="wrap">
             <h1>404</h1>
             <p>${isAr ? 'هذه الصفحة غير موجودة — عد إلى الرئيسية من القائمة.' : 'This page does not exist — head back home from the menu.'}</p>
@@ -1505,7 +1526,7 @@ export default function Hero({ content }) {
       <h1>{content.heroTitle}</h1>
       <p className="lede">{content.heroLede}</p>
       <div className="hero-ctas">
-        <a className="btn" href="#contact">{content.cta}</a>
+        <a className="btn" href={content.contactHref || "#contact"}>{content.cta}</a>
         {content.heroSecondary ? (
           <a className="btn btn-ghost" href={content.heroSecondary.href}>{content.heroSecondary.label}</a>
         ) : null}
@@ -1764,7 +1785,7 @@ export default function Products({ content }) {
                 <strong className="product-price">{p.price}</strong>
                 {content.ordersApi
                   ? <OrderButton item={p.name} content={content} />
-                  : <a className="btn" href="#contact">{content.cta}</a>}
+                  : <a className="btn" href={content.contactHref || "#contact"}>{content.cta}</a>}
               </div>
             </div>
           ))}
@@ -1847,7 +1868,7 @@ export default function Pricing({ content }) {
               <ul>
                 {t.features.map((f) => <li key={f}>{f}</li>)}
               </ul>
-              <a className="btn" href="#contact">{content.cta}</a>
+              <a className="btn" href={content.contactHref || "#contact"}>{content.cta}</a>
             </div>
           ))}
         </div>
@@ -2189,7 +2210,7 @@ export default function ProductView({ content }) {
               <p className="product-price product-view-price">{p.price}</p>
               {content.ordersApi
                 ? <OrderButton item={p.name} content={content} />
-                : <a className="btn" href="#contact">{content.cta}</a>}
+                : <a className="btn" href={content.contactHref || "#contact"}>{content.cta}</a>}
             </div>
           </div>
         )}
@@ -2416,7 +2437,7 @@ export default function Cta({ content }) {
           <h2>{content.ctaBandTitle}</h2>
           <p className="cta-text">{content.ctaBandText}</p>
         </div>
-        <a className="btn btn-invert" href="#contact">{content.cta}</a>
+        <a className="btn btn-invert" href={content.contactHref || "#contact"}>{content.cta}</a>
       </div>
     </section>
   );
@@ -3070,6 +3091,35 @@ export class ReactProjectTool extends BaseTool {
                     .map(s => ({ href: `#${SECTION_ANCHOR[s]}`, label: SECTION_LABEL[s][isAr ? 0 : 1] }));
         };
         buildNavLinks();
+
+        /**
+         * WHERE «CONTACT» IS, DECIDED ONCE.
+         *
+         * Five components wrote `href="#contact"` — an in-page anchor. On a
+         * single page that is right. On a multi-page app the Contact section
+         * lives on its OWN page, so the anchor resolves to nothing on every
+         * page that is not it, and the hero's main call to action is a link
+         * that goes nowhere.
+         *
+         * Measured live on «اعمل لي صفحة هبوط وصفحة تواصل لشركة تنظيف»:
+         * the audit reported «12 رابط تنقّل يشير إلى قسم غير موجود في
+         * الصفحة» and «أزرار لا تستجيب» on a build whose routes were correct.
+         *
+         * Five components asking one question is five chances to answer it
+         * differently. Now they ask, and this answers — once, knowing both
+         * whether the app is multi-page and which page actually carries the
+         * section.
+         */
+        (content as any).contactHref = (() => {
+            if (!multiPage) return '#contact';
+            const home = pages.find(p => p.path === '/');
+            if (home && home.sections.includes('Contact')) return '#contact';
+            const holder = pages.find(p => p.sections.includes('Contact'));
+            //  No page carries it: leave the in-page anchor rather than
+            //  inventing a route. A dead anchor is a finding the audit
+            //  reports; an invented route is a 404 nobody explains.
+            return holder ? `#${holder.path}` : '#contact';
+        })();
         (content as any).headerLayout = directives.logoPosition === 'center' ? 'center' : '';
         (content as any).navDropdown = directives.navDropdown === true;
         (content as any).moreLabel = isAr ? 'المزيد' : 'More';
@@ -5041,7 +5091,15 @@ ${built ? '✅ npm install + vite build succeeded — the production build is in
                                 //  He is not a programmer. That sentence names nothing he can
                                 //  act on, and Joe knew exactly which findings survived.
                                 : blockers.length
-                                    ? `high_severity_findings_survived: ${blockers.map((f: any) => String(f.id || f.type || f.title || 'unnamed')).slice(0, 4).join(', ')}`
+                                    //  AND IT CARRIES WHAT IT FOUND, not only what it is called.
+                                    //  `broken_routes` is a label; «صفحة لم تُفتح أو بلا
+                                    //  عنوان رئيسي: contact.html» is a thing he can act on, and the
+                                    //  audit had already written it in his language.
+                                    ? `high_severity_findings_survived: ${blockers.slice(0, 3).map((f: any) => {
+                                        const id = String(f.id || f.type || 'unnamed');
+                                        const said = String((isAr ? f.detail : f.detailEn) || f.detail || f.detailEn || '').trim();
+                                        return said ? `${id} — ${said}` : id;
+                                    }).join(' | ')}`
                                     //  If this is ever reached, the truth is not that a
                                     //  quality gate failed — it is that something blocked
                                     //  delivery and no branch above could say what.
