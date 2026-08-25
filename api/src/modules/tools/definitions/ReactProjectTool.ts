@@ -5028,7 +5028,24 @@ ${built ? '✅ npm install + vite build succeeded — the production build is in
                             ? 'requested_features_not_proven'
                             : acceptanceBlocked
                                 ? 'acceptance_criteria_unmet'
-                                : 'react_delivery_quality_gate_failed')
+                                //  EVERY BLOCKER CARRIES ITS OWN NAME.
+                                //
+                                //  `blockers` — surviving HIGH-severity audit findings — was
+                                //  the one term of deliveryBlocked with no branch here, so the
+                                //  one condition that actually fires on a real run fell through
+                                //  to the generic tail. Measured live on «اعمل لي صفحة هبوط
+                                //  وصفحة تواصل لشركة تنظيف», the owner's whole reply was:
+                                //
+                                //      ⚠️ توقّفت عند الخطوة «Building» — react_delivery_quality_gate_failed
+                                //
+                                //  He is not a programmer. That sentence names nothing he can
+                                //  act on, and Joe knew exactly which findings survived.
+                                : blockers.length
+                                    ? `high_severity_findings_survived: ${blockers.map((f: any) => String(f.id || f.type || f.title || 'unnamed')).slice(0, 4).join(', ')}`
+                                    //  If this is ever reached, the truth is not that a
+                                    //  quality gate failed — it is that something blocked
+                                    //  delivery and no branch above could say what.
+                                    : 'delivery_blocked_without_a_named_cause')
                 : undefined,
             output: { message, acceptance,
                 path: proj,
