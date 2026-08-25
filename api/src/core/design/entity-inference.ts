@@ -29,6 +29,7 @@ import { ModelEntity, ModelField } from './data-model';
 //  The two readers that already know his columns and his word for the
 //  thing. Reading the same sentence a third way is how they drift.
 import { derivedColumns, recordedSubject, RECORD_CONTAINER } from './app-blueprints';
+import { hisWordsOnly } from './page-head';
 
 /* ────────────────────────────── field makers ───────────────────────────── */
 
@@ -452,7 +453,48 @@ function theOneTableHeDescribed(request: string): ModelEntity | null {
     };
 }
 
+/**
+ *  A READER OF HIS WORDS WAS HANDED JOE'S OWN PAPERWORK.
+ *
+ *  From a real run's log, on his own machine:
+ *
+ *      data model: read from the request itself — invoices, mblghs, tarykhs, its
+ *      🗂️ شاشات إدارة لكل جدول: invoices · mblghs · tarykhs · its
+ *
+ *  «its» is not a word he wrote. It is the tail of Joe's own
+ *  instruction — «do not invent beyond it)» — which the pipeline
+ *  appends to his sentence as AUTHORITATIVE REQUIREMENTS EVIDENCE.
+ *  He was shown an admin screen for a table named after a fragment
+ *  of Joe's paperwork.
+ *
+ *  Measured, with the block appended as the pipeline appends it:
+ *
+ *      «ابن لي متجراً صغيراً»                    → no tables
+ *      the same, with the block appended       → its · heres
+ *
+ *  hisWordsOnly already cuts exactly that block, and a test one
+ *  directory away has proved it for months. Its only caller was in
+ *  its own file. Again: the answer was in the repository and the
+ *  two readers were not joined.
+ *
+ *  The guard on the guard: hisWordsOnly also cuts at a blank line,
+ *  which is Joe's mark only when Joe put it there. A man writing two
+ *  paragraphs must not lose the second, so the cut runs only when
+ *  one of Joe's OWN marks is present — a fence it draws, or a
+ *  shouted heading it writes. A blank line alone is his.
+ */
+const JOES_OWN_MARK = /^[ \t]*-{3,}[ \t]+\S|\b[A-Z][A-Z0-9]{2,}(?:\s+[A-Z][A-Z0-9]{2,}){2,}\b/mu;
+
+function hisSentenceWithoutJoesPaper(request: string): string {
+    const raw = String(request || '');
+    if (!JOES_OWN_MARK.test(raw)) return raw;
+    const his = hisWordsOnly(raw);
+    return his.length >= 4 ? his : raw;
+}
+
 export function inferModel(request: string, limit = MAX_MODEL_ENTITIES): Inference {
+    //  His words, not the block Joe appended to them.
+    request = hisSentenceWithoutJoesPaper(request);
     //  When he described ONE table and its columns, that is the model.
     //  Everything below reads a sentence that did not say so.
     const one = theOneTableHeDescribed(request);
