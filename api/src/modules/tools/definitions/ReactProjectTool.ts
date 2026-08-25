@@ -153,13 +153,38 @@ const ACCEPTANCE_TOPIC_IDS: Record<string, DeliveryTopic[]> = {
     browser_check: [],
 };
 
-// Columns are request-derived acceptance criteria, not a finite domain catalogue.
-// Keep the generated namespace narrow so arbitrary unknown ids still fail loudly.
-const DYNAMIC_COLUMN_ACCEPTANCE_ID = /^column:[A-Za-z][A-Za-z0-9_-]*$/;
+/**
+ *  CRITERIA READ OUT OF HIS REQUEST ARE NOT A FINITE CATALOGUE.
+ *
+ *  The namespace is kept narrow on purpose, so a genuinely unknown id still
+ *  fails loudly rather than passing as something nobody checked. It listed
+ *  `column:` alone — and the day two more request-derived families were added,
+ *  a real build died in front of the owner:
+ *
+ *      Failed phase: Interface on the service
+ *      Error: delivery_acceptance_unmapped:rule:1,rule:2,rule:3
+ *
+ *  His three columns were correct on screen; the RULE he stated in the same
+ *  sentence crashed the delivery that was about to report them.
+ *
+ *  That is this list's whole failure mode, and it will recur every time the
+ *  judge learns to read something new. So each family is named here with the
+ *  reader that produces it, and the guard beside this file asserts that every
+ *  family acceptanceFor() can emit is one this list admits — the check that
+ *  would have caught it before it reached him.
+ */
+const DYNAMIC_ACCEPTANCE_ID = [
+    //  derivedColumns()      — a column he listed
+    /^column:[A-Za-z][A-Za-z0-9_-]*$/,
+    //  thePagesHeNamed()     — a page he named
+    /^page:[A-Za-z][A-Za-z0-9_-]*$/,
+    //  statedRules()         — a condition he stated
+    /^rule:[0-9]+$/,
+];
 
 function isKnownAcceptanceId(id: string): boolean {
     return Object.prototype.hasOwnProperty.call(ACCEPTANCE_TOPIC_IDS, id)
-        || DYNAMIC_COLUMN_ACCEPTANCE_ID.test(id);
+        || DYNAMIC_ACCEPTANCE_ID.some(re => re.test(id));
 }
 
 function acceptanceTopics(id: string): DeliveryTopic[] {
