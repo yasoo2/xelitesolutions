@@ -1416,7 +1416,87 @@ const TYPE_MARKS: Array<[RegExp, DerivedRole, FieldType]> = [
 export interface DerivedField { label: string; key: string; type: FieldType; role: DerivedRole; options?: string[]; min?: number; minExclusive?: boolean }
 
 /** A condition he stated, and the field it is about. */
-export interface StatedRule { text: string; field?: string; min?: number; minExclusive?: boolean }
+export interface StatedRule {
+    text: string;
+    field?: string;
+    min?: number;
+    minExclusive?: boolean;
+    /**
+     *  What KIND of rule it is, because the three cannot be judged alike.
+     *
+     *    bound   — a number the value may not cross («لا تقبل مبلغًا صفرًا»)
+     *    forbid  — a thing that must not be there («ولا تضف صفحة تسجيل دخول»)
+     *    require — a thing that must be («واجعل التصميم داكنًا»)
+     *
+     *  Only `bound` can be turned into a field constraint. The other two are
+     *  returned all the same: a condition Joe cannot apply must be SAID, and
+     *  before this they were not even read.
+     */
+    kind?: 'bound' | 'forbid' | 'require';
+}
+
+/**
+ *  A RULE STATED AFTER «و» WITH NO COMMA IS STILL ITS OWN CLAUSE.
+ *
+ *  statedRules split the request on punctuation and then stripped a leading
+ *  «و». Nobody writes a comma before a condition:
+ *
+ *      «اعمل موقع شركة تنظيف ولا تقبل مبلغًا صفرًا»
+ *
+ *  is ONE clause by that split, so the rule's own text came back as the whole
+ *  request — the sentence that asked for it standing in for the thing asked.
+ *  Measured across a thousand requests, tier 5 («an explicit condition») read
+ *  clean 5% of the time: the condition was not obeyed, not checked, and not
+ *  mentioned.
+ *
+ *  So the split happens before a «و» that OPENS a rule, and only there. It is
+ *  a short list of verbs on purpose — «والمبلغ» in a column list must not
+ *  split, and «والاسترجاع» must stay attached to «الشحن». A rule begins with
+ *  a prohibition or an instruction, never with a noun.
+ */
+const A_RULE_OPENS_HERE = new RegExp(
+    '\\s\u0648(?=(?:\u0644\u0627|\u0623\u0644\u0627|\u0627\u0644\u0627|\u0628\u062f\u0648\u0646|\u062f\u0648\u0646|\u064a\u062c\u0628|\u0644\u0627\u0632\u0645|\u0627\u0645\u0646\u0639|\u0627\u0631\u0641\u0636|\u0627\u062c\u0639\u0644|\u064a\u0643\u0648\u0646|\u062a\u0643\u0648\u0646|\u062a\u0623\u0643\u062f|\u062a\u0627\u0643\u062f|\u0627\u062d\u0631\u0635)\\s)',
+    'gu',
+);
+
+/** The clauses he wrote, with a rule after «و» counted as one of them. */
+export function hisClauses(requestRaw: string): string[] {
+    return String(requestRaw || '')
+        .replace(A_RULE_OPENS_HERE, '\u0000')
+        .split(/[\u0000،,؛;.\n]/)
+        .map(c => c.trim().replace(/^و\s*/u, '').trim())
+        .filter(Boolean);
+}
+
+/**
+ *  THE OPENER MUST END WHERE A WORD ENDS — AND `\b` CANNOT SAY THAT IN ARABIC.
+ *
+ *  JavaScript defines `\b` by `\w` = [A-Za-z0-9_], so between two Arabic
+ *  letters there is never a `\b` position at all. `^لا\b` does not match «لا
+ *  تضف» — the space after «لا» is a non-word character and so is «ا», so no
+ *  boundary falls between them. Written that way, every prohibition in this
+ *  file read as no rule at all.
+ *
+ *  And without an end to the opener, «لا» matches inside «لازم» and «الا»
+ *  matches inside «الاسترجاع» — measured: «صفحة الشحن والاسترجاع» split into
+ *  two, and a column he named became a clause.
+ *
+ *  So the openers end explicitly: a space, or the end of the clause.
+ */
+const ENDS_A_WORD = '(?=\\s|$)';
+const FORBIDS = new RegExp('^(?:لا|ألا|الا|بدون|دون|امنع|ارفض|يمنع|يرفض|no|never|without)' + ENDS_A_WORD
+    + "|^(?:don'?t|do not)" + ENDS_A_WORD, 'iu');
+const REQUIRES = new RegExp('^(?:يجب|لازم|اجعل|اجعله|اجعلها|يكون|تكون|تأكد|تاكد|احرص|must|make|ensure|should)' + ENDS_A_WORD, 'iu');
+
+/** Does this clause FORBID something rather than ask for it? */
+export function clauseForbids(clause: string): boolean {
+    return FORBIDS.test(String(clause || '').trim());
+}
+
+/** Does it state a requirement — a thing that must be so? */
+function clauseRequires(clause: string): boolean {
+    return REQUIRES.test(String(clause || '').trim());
+}
 
 /**
  *  A RULE THAT IS NEITHER KEPT NOR CONFESSED.
@@ -1476,10 +1556,11 @@ function notAContainerItself(label: string): boolean {
 export function statedRules(requestRaw: string): StatedRule[] {
     const request = String(requestRaw || '');
     const out: StatedRule[] = [];
-    //  Rules are stated as their own clause, after a comma or «و».
-    for (const raw of request.split(/[،,؛;.\n]/)) {
-        const clause = raw.trim().replace(/^و\s*/u, '').trim();
-        if (!clause) continue;
+    //  Rules are stated as their own clause, after a comma or «و» — and
+    //  hisClauses is the one place that knows where a clause begins. It
+    //  used to split on punctuation alone, so a condition joined by «و»
+    //  with no comma was never separated from the request that carried it.
+    for (const clause of hisClauses(request)) {
         //  READS_AS_A_RULE is a list of NEGATIONS — «لا», «يجب», «يمنع».
         //  «والمبلغ أكبر من 50» states a condition and contains none of
         //  them, so it was not seen as a rule at all. Caught by making a
@@ -1490,8 +1571,16 @@ export function statedRules(requestRaw: string): StatedRule[] {
         //  A clause that STATES A BOUND is a rule whatever words it uses,
         //  and statedBound is the authority on that, not a vocabulary.
         const boundHere = statedBound(clause);
-        if (!boundHere && !READS_AS_A_RULE.test(clause)) continue;
-        const rule: StatedRule = { text: clause };
+        const forbids = clauseForbids(clause);
+        const requires = clauseRequires(clause);
+        if (!boundHere && !forbids && !requires && !READS_AS_A_RULE.test(clause)) continue;
+        //  A bound is the strongest reading — it can become a real constraint.
+        //  A prohibition outranks a requirement because «لا تجعل» opens with
+        //  the negation and would otherwise be read as «اجعل».
+        const rule: StatedRule = {
+            text: clause,
+            kind: boundHere ? 'bound' : forbids ? 'forbid' : requires ? 'require' : undefined,
+        };
         //  Which column is it about? The clause names it, and the name is
         //  the definite noun it opens with — no vocabulary of field names.
         const named = clause.match(/^(?:ال[ء-ي]+|[A-Za-z][A-Za-z0-9_]*)/u);

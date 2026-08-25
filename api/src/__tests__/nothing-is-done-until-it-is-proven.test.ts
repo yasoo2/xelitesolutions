@@ -82,9 +82,24 @@ describe('the criteria come from HIS brief, never from a fixed checklist', () =>
         expect(acceptanceFor(GATE062_ACCEPTANCE_PROMPT).map(c => c.id).sort()).toEqual([
             'button', 'counter', 'status_message', 'title',
         ].sort());
+        //  THE LIVE PROMPT NOW DERIVES SIX, AND THE SIXTH IS DECLARED HERE.
+        //
+        //  It ends «Do not modify existing projects» — a stated rule, and one
+        //  Joe silently dropped for as long as nothing read rules. It is the
+        //  most consequential sentence in the whole brief: it is the one that
+        //  protects the owner's other work.
+        //
+        //  The reference denominator therefore moves 5 → 6. That is not the
+        //  prompt changing — not one character of it has — it is Joe reading a
+        //  sentence he used to ignore. Every «x/5» published before today is
+        //  incomparable with every «x/6» after it, and this comment is the
+        //  record of exactly when and why, so nobody has to guess later.
         expect(acceptanceFor(GATE062_LIVE_PROMPT).map(c => c.id).sort()).toEqual([
-            'button', 'counter', 'preview', 'status_message', 'title',
+            'button', 'counter', 'preview', 'rule:1', 'status_message', 'title',
         ].sort());
+        const rule = acceptanceFor(GATE062_LIVE_PROMPT).find(c => c.id === 'rule:1');
+        expect((rule as any).expectedRule.text).toBe('Do not modify existing projects');
+        expect((rule as any).expectedRule.kind).toBe('forbid');
     });
 
     it('does not invent a record-add criterion from Create alone', () => {
@@ -264,7 +279,17 @@ describe('a criterion is met by EVIDENCE, or it is not met', () => {
         expect(a.met).toBe(0);
         expect(a.unmet).toBe(5);
         expect(a.accepted).toBe(false);
-        expect(a.criteria.every(c => c.verdict === 'unmet')).toBe(true);
+        //  Five are unmet and the sixth is UNPROVABLE, which is a different
+        //  answer and has to stay a different answer: «I could not check
+        //  this» is not «this failed». Asserted one by one rather than as a
+        //  blanket, because `every(c => unmet || unprovable)` would also pass
+        //  on a day when all six quietly became unprovable.
+        expect(a.criteria.filter(c => c.verdict === 'unmet').map(c => c.id).sort())
+            .toEqual(['button', 'counter', 'preview', 'status_message', 'title']);
+        const declared = a.criteria.filter(c => c.verdict === 'unprovable');
+        expect(declared.map(c => c.id)).toEqual(['rule:1']);
+        //  And it says WHICH condition it could not prove, in his own words.
+        expect(declared[0].why).toContain('Do not modify existing projects');
     });
 
     it('counts each named UI shape independently from the generated source', () => {

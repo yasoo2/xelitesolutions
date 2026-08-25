@@ -29,7 +29,7 @@
  * cannot test says «unprovable» rather than passing quietly — because a check
  * that cannot fail is the thing this project keeps deleting.
  */
-import { derivedColumns, type DerivedField } from '../design/app-blueprints';
+import { derivedColumns, statedRules, type DerivedField } from '../design/app-blueprints';
 import fs from 'fs';
 import path from 'path';
 import { thePagesHeNamed } from '../design/site-plan';
@@ -77,6 +77,24 @@ export interface Criterion {
      *  as the columns below: a reader that already knew, never consulted.
      */
     expectedPage?: { slug: string; title: string };
+
+    /**
+     *  The rule he stated, when the criterion is about one.
+     *
+     *  Measured across a thousand requests: a request carrying an explicit
+     *  condition read clean 5% of the time. «اعمل موقع شركة تنظيف ولا تقبل
+     *  مبلغًا صفرًا» derived NOTHING — not the site, not the rule. The
+     *  condition was not obeyed, not checked, and not mentioned, which is the
+     *  worst of the three: he cannot even know it was lost.
+     *
+     *  statedRules() has read rules on this project for a long time. Nothing
+     *  asked it. The same shape as the pages and the columns above.
+     *
+     *  A rule Joe cannot prove is still a criterion — it comes back
+     *  `unprovable`, which is declared to him and does not block delivery.
+     *  Silence is the only outcome that is never acceptable.
+     */
+    expectedRule?: { text: string; kind?: 'bound' | 'forbid' | 'require' };
     /**
      *  The exact column he listed, when the criterion is about one.
      *
@@ -333,8 +351,20 @@ export function acceptanceFor(request: string): Criterion[] {
     );
     const pages = named.length >= 2 ? named : [];
 
+    //  Every rule he stated, whether or not Joe can prove it. The judge says
+    //  `unprovable` for what it cannot check, and that is declared to him —
+    //  a rule that vanishes is the one outcome with no honest reading.
+    const rules = statedRules(t);
+
     return [
         ...catalogue,
+        ...rules.map((r, i) => ({
+            id: `rule:${i + 1}`,
+            kind: 'feature' as CriterionKind,
+            ar: `شرطك: «${r.text}»`,
+            en: `your condition: «${r.text}»`,
+            expectedRule: { text: r.text, kind: r.kind },
+        })),
         ...pages.map((p: { slug: string; title: string }) => ({
             id: `page:${p.slug}`,
             kind: 'feature' as CriterionKind,
@@ -645,6 +675,29 @@ export function judgeAcceptance(criteria: Criterion[], ev: Evidence, isAr = true
             return has
                 ? say('met', isAr ? `العمود «${c.expectedColumn}» في مخطّط الجدول` : `the column «${c.expectedColumn}» is in the table schema`)
                 : say('unmet', isAr ? `العمود «${c.expectedColumn}» غير موجود` : `the column «${c.expectedColumn}» is missing`);
+        }
+        if (c.expectedRule) {
+            //  A BOUND is the one kind that becomes a real constraint, and
+            //  the generated app already ships the guard that reads it —
+            //  `if (field.type !== 'number' || field.min === undefined)`.
+            //  So the proof is the value that guard needs, in the schema.
+            if (c.expectedRule.kind === 'bound') {
+                const bounded = !!src && /min:\s*-?\d/.test(src);
+                return bounded
+                    ? say('met', isAr
+                        ? `الشرط مطبَّق في المخطّط: «${c.expectedRule.text}»`
+                        : `the bound is in the schema: «${c.expectedRule.text}»`)
+                    : say('unmet', isAr
+                        ? `اشترطتَ «${c.expectedRule.text}» ولم يُطبَّق حدٌّ في المخطّط`
+                        : `you asked for «${c.expectedRule.text}» and no bound reached the schema`);
+            }
+            //  A PROHIBITION and a REQUIREMENT are about the whole build, and
+            //  Joe has no general way to check either. It says so, in his own
+            //  words, rather than dropping the condition — `unprovable` is
+            //  declared to him and does not block the delivery.
+            return say('unprovable', isAr
+                ? `قرأتُ شرطك «${c.expectedRule.text}» ولا أملك طريقة أُثبته بها، فلم أدّعِ أنّي فحصته`
+                : `I read your condition «${c.expectedRule.text}» and have no way to prove it, so I did not claim to have checked it`);
         }
         if (c.expectedPage) {
             //  A page is proven the way a column is: by what the build
