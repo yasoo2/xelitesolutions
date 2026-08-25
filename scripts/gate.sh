@@ -98,9 +98,9 @@ say "dependencies"
 if [ "${GATE_DEPS:-}" = "clean" ] || [ ! -d "$ROOT/api/node_modules" ]; then
     echo "$ npm --prefix api ci --no-audit --no-fund"
     npm --prefix "$ROOT/api" ci --no-audit --no-fund || npm --prefix "$ROOT/api" install --no-audit --no-fund
-    echo "GATE_DEPS:clean"
+    echo "GATE_DEPS_API:clean"
 else
-    echo "GATE_DEPS:reused — api/node_modules already on disk (GATE_DEPS=clean to reinstall)"
+    echo "GATE_DEPS_API:reused — api/node_modules already on disk; set GATE_DEPS=clean to reinstall from api/package-lock.json"
 fi
 
 # ---------------------------------------------------------------- 2. types
@@ -111,7 +111,20 @@ TSC_EXIT=$?
 echo "GATE_TSC_EXIT:$TSC_EXIT"
 
 say "type-check — web"
-if [ -d "$ROOT/web/node_modules" ] || npm --prefix "$ROOT/web" ci --no-audit --no-fund; then
+if [ "${GATE_DEPS:-}" = "clean" ] || [ ! -d "$ROOT/web/node_modules" ]; then
+    echo "$ npm --prefix web ci --no-audit --no-fund"
+    if npm --prefix "$ROOT/web" ci --no-audit --no-fund; then
+        WEB_DEPS_EXIT=0
+        echo "GATE_DEPS_WEB:clean"
+    else
+        WEB_DEPS_EXIT=$?
+        echo "GATE_DEPS_WEB:failed — npm --prefix web ci exited $WEB_DEPS_EXIT; web type-check skipped"
+    fi
+else
+    WEB_DEPS_EXIT=0
+    echo "GATE_DEPS_WEB:reused — web/node_modules already on disk; set GATE_DEPS=clean to reinstall from web/package-lock.json"
+fi
+if [ "$WEB_DEPS_EXIT" -eq 0 ]; then
     echo "$ npm --prefix web run type-check"
     npm --prefix "$ROOT/web" run type-check
     WEB_TSC_EXIT=$?
