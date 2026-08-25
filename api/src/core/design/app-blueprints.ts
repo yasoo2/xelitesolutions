@@ -23,6 +23,11 @@
  *             search, filter, totals, CSV — driven by a per-domain schema
  */
 
+//  The one folder of Arabic diacritics this repository owns. A second
+//  copy of that character set would drift the first time one of them
+//  learned a mark the other did not.
+import { stripArabicDiacritics } from '../orchestrator/promptNormalizer';
+
 export type AppEngine = 'map' | 'chat' | 'weather' | 'records' | 'social' | 'shop' | 'calculator' | 'productivity' | 'finance';
 
 export type AppKind =
@@ -1560,8 +1565,13 @@ function everyItemIsADefiniteName(items: string[]): boolean {
         //  «ال» anywhere — on the word itself or on the second half of an
         //  idafa («اسم المريض») — or a possessive suffix («رقم تلفونه»),
         //  which is the other way Arabic makes a noun definite.
-        return /(?:^|\s)ال[ء-ي]/u.test(t)
-            || /[ء-ي](?:ه|ها|هم|هن|ي|ك|كم)(?:$|\s)/u.test(t);
+        //  Folded, because a diacritic is not a letter and every test here
+        //  reads letters. «زُرْقَمُونِي» carries a kasra between its last two
+        //  letters, so «a letter then ي» found nothing and his own invented
+        //  word was ruled not a name at all.
+        const bare = stripArabicDiacritics(t);
+        return /(?:^|\s)ال[ء-ي]/u.test(bare)
+            || /[ء-ي](?:ه|ها|هم|هن|ي|ك|كم|نا)(?:$|\s)/u.test(bare);
     });
 }
 
@@ -1700,6 +1710,14 @@ const OPENS_A_NEW_REQUEST = /^(?:مع|plus|with|along\s+with|together\s+with|inc
 function isAColumnAndNotAClause(item: string, index: number): boolean {
     const t = String(item || '').trim();
     if (index > 0 && OPENS_A_NEW_REQUEST.test(t)) return false;
+    //  A YES-OR-NO COLUMN IS INDEFINITE BY NATURE.
+    //
+    //  «بدي جدول أسجل فيه الفواتير: اسم الزبون والمبلغ ومدفوع» — «مدفوع»
+    //  carries no «ال» and no possessive, so the definiteness test cut the
+    //  run before it and he lost the column. It is a column all the same,
+    //  marked another way: a question about the row rather than a name of
+    //  a thing, which is exactly what ASKS_YES_OR_NO already reads.
+    if (ASKS_YES_OR_NO.test(t)) return true;
     if (!everyItemIsADefiniteName([t])) return false;
     const words = t.split(/\s+/);
     return !words.slice(1).some(w => ARABIC_FUNCTION_WORD.test(w));
@@ -1708,6 +1726,85 @@ function isAColumnAndNotAClause(item: string, index: number): boolean {
 function columnsEndWhereHisNextRequestBegins(parts: string[]): string[] {
     const stop = parts.findIndex((part, i) => !isAColumnAndNotAClause(part, i));
     return stop < 0 ? parts : parts.slice(0, stop);
+}
+
+/**
+ *  AN ENTITY AND ITS ATTRIBUTES, NAMED BY GRAMMAR ALONE.
+ *
+ *      «بدي برنامج يحفظ لي زبائني وارقام تلفوناتهم وعناوينهم»
+ *      → null
+ *
+ *  He named no container — «برنامج» holds an app, not records — and
+ *  «حفظ» is a stem the opener list has never held. Adding it would fix
+ *  this one sentence and the next man writes «يخزّن» or «يمسك» and we are
+ *  back here with a longer list. Nouns and verbs are open sets; no list
+ *  of them is ever finished.
+ *
+ *  But he DID mark the shape, in grammar. «زبائني» is MINE. «تلفوناتهم»
+ *  and «عناوينهم» are THEIRS — and the «هم» points back at the clients he
+ *  just named. A run whose later members BELONG TO the first member is an
+ *  entity and its attributes, and that is what a table is. The agreement
+ *  says it; no verb and no container are needed to hear it.
+ *
+ *  This is the last path tried, so it can only add readings the other two
+ *  refused. It stays strict for that reason: three items at least, every
+ *  one a definite name, and at least one of the later ones carrying the
+ *  third-person pronoun that does the pointing.
+ */
+const BELONGS_TO_THE_FIRST = /[ء-ي](?:ه|ها|هم|هن)$/u;
+const BELONGS_TO_HIM = /[ء-ي](?:ي|نا)$/u;
+
+//  A TEST ON THE LAST LETTERS, RUN ON TEXT THAT CARRIES DIACRITICS.
+//
+//  «زُرْقَمُونِي» ends in «ي», but a kasra sits between it and the letter
+//  before it, and a kasra is not an Arabic LETTER. The possessive
+//  test looked for a letter followed by «ي», found none, and the
+//  scan walked straight past his own word and landed on «بدي» — the
+//  verb he asked with — handing it back as a column.
+//
+//  Every test below reads a folded copy for that reason, and returns
+//  the word as he wrote it, diacritics and all.
+const owned = (word: string) => BELONGS_TO_HIM.test(stripArabicDiacritics(word));
+const ownedByTheFirst = (word: string) => BELONGS_TO_THE_FIRST.test(stripArabicDiacritics(word));
+const definiteWord = (word: string) => /^ال[ء-ي]/u.test(stripArabicDiacritics(word));
+
+function theNameHeEndedOn(phrase: string): string | null {
+    //  The run begins at the last real name in the opening fragment —
+    //  «بدي برنامج يحفظ لي زبائني» begins at «زبائني». Reading forward
+    //  would stop at «بدي», which ends in «ي» and looks owned but is the
+    //  verb he asked with.
+    const words = String(phrase || '').trim().split(/\s+/);
+    for (let i = words.length - 1; i >= 0; i--) {
+        const w = words[i];
+        if (ARABIC_FUNCTION_WORD.test(w)) continue;
+        if (definiteWord(w) || owned(w) || ownedByTheFirst(w)) return w;
+    }
+    return null;
+}
+
+function entityAndItsAttributes(request: string): DerivedField[] | null {
+    const sentence = String(request || '').split(/[.؟!\n]/)[0] || '';
+    const raw = sentence
+        .split(/\s*[،,]\s*|\s+و(?=\S)|\s+and\s+|\s+&\s+/iu)
+        .map(part => part.trim())
+        .filter(part => part.length >= 2 && part.length <= 32);
+    //  Two conditions stood here and neither could ever decide: a length
+    //  test the run test already made, and a definiteness test that
+    //  columnsEndWhereHisNextRequestBegins had already applied to every
+    //  item it returned. Mutations killed nothing through either, which
+    //  is what a condition that cannot fail looks like from outside.
+    const head = theNameHeEndedOn(raw[0]);
+    if (!head) return null;
+    const run = columnsEndWhereHisNextRequestBegins([head, ...raw.slice(1)]);
+    if (run.length < 3) return null;
+    const pointing = run.slice(1).filter(part => ownedByTheFirst(part.split(/\s+/).pop() || ''));
+    if (!pointing.length) return null;
+    //  A third condition stood here — that no item is a container word —
+    //  and it could not fire either: a container word anywhere in the
+    //  request sends the sentence down the branch before this one, so
+    //  by the time grammar is reading, there is none left to find.
+    const built = fieldsFromLabels(run);
+    return built ? applyStatedRules(built, statedRules(request)).fields : built;
 }
 
 export function derivedColumns(requestRaw: string): DerivedField[] | null {
@@ -1787,7 +1884,8 @@ export function derivedColumns(requestRaw: string): DerivedField[] | null {
      */
     if (!opener) {
         const holder = RECORD_CONTAINER.exec(request);
-        if (!holder) return null;
+        //  Neither a container nor a taught verb. Grammar is the last reader.
+        if (!holder) return entityAndItsAttributes(request);
         const tail = request.slice((holder.index || 0) + holder[0].length);
         const colonAt = Math.max(tail.indexOf(':'), tail.indexOf('：'));
         const scope = (colonAt >= 0 ? tail.slice(colonAt + 1) : tail).split(/[.؟!\n]/)[0] || '';
@@ -1904,26 +2002,26 @@ export function derivedColumns(requestRaw: string): DerivedField[] | null {
     //  The list ends where his next request begins.
     parts = columnsEndWhereHisNextRequestBegins(parts);
     /**
-     *  «فيه» NAMES THE CONTAINER BY POINTING AT IT.
+     *  «فيه» POINTS AT WHATEVER HE NAMED, AND THAT NEED NOT HOLD RECORDS.
      *
-     *      «بدي تطبيق للحجوزات فيه اسم العميل ووقت الحجز، ويحفظ البيانات
-     *       على خادم»
-     *      → nothing at all.
+     *  I lowered this floor to two whenever «فيه» or «فيها» appeared,
+     *  reasoning that the pronoun points back at a container he named.
+     *  It does — but at whatever he named, and «صفحة» is a page:
      *
-     *  Two real columns and a capability. The capability is cut away now,
-     *  and two remain — but the floor asked whether he had written one of
-     *  the container NOUNS, and «تطبيق» is not one of them, so the floor
-     *  stayed at three and his two columns were refused.
+     *      «اعمل صفحة فيها: الاسم والسعر»            must be null
+     *      «بدي صفحة فيها الحقول زغرودة والزر إرسال»  must be null
      *
-     *  He did name the container. «فيه» is «in IT», and the «ه» points
-     *  back at the thing he just named. That is a container established
-     *  by grammar rather than by vocabulary, and it is the reason the
-     *  floor drops — the same reason it dropped for a named container,
-     *  reached a different way. A bare recording verb («record», «أسجل»)
-     *  points at nothing and keeps the floor of three.
+     *  Two tests older than that change say so in words — «two is not a
+     *  list» — and I contradicted a stated rule without having read it.
+     *  The floor of three is the guard against a run of two nouns in
+     *  prose becoming a schema, and a pronoun aimed at a page does not
+     *  remove that ambiguity. It stands.
+     *
+     *  The cost is stated rather than hidden: «بدي تطبيق للحجوزات فيه
+     *  اسم العميل ووقت الحجز» names two columns and is refused. That is
+     *  the deliberate limit, not a defect of this line.
      */
-    const containerByReference = /(?:^|[\s،:؛(])في(?:ه|ها)(?=$|[\s،:؛)])/u.test(request);
-    const namesFloor = RECORD_CONTAINER.test(request) || containerByReference ? 2 : 3;
+    const namesFloor = RECORD_CONTAINER.test(request) ? 2 : 3;
     if (parts.length < namesFloor || parts.length > 10) return null;
     //  A rule that rode in on the end of the list is not a column.
     const named = parts.filter(isAName).filter(notAContainerItself);

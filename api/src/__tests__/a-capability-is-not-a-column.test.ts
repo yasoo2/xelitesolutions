@@ -49,11 +49,22 @@ describe('the thing he asked the app to DO is not a column of it', () => {
             .toEqual(['اسم المنتج', 'السعر', 'الصورة']);
     });
 
-    it('a capability no longer sinks the columns that are real', () => {
-        //  This one returned NOTHING before: two columns and a capability,
-        //  and the capability counted toward a floor of three that the two
-        //  could not reach without it.
-        expect(labels('بدي تطبيق للحجوزات فيه اسم العميل ووقت الحجز، ويحفظ البيانات على خادم'))
+    it('a capability no longer counts toward the floor it used to sink', () => {
+        //  «بدي تطبيق للحجوزات فيه اسم العميل ووقت الحجز، ويحفظ البيانات على
+        //  خادم» — the capability is cut now, which is this file's subject.
+        //  What remains is two columns and no records container: «تطبيق»
+        //  holds an app, not records, and the floor of three stands there.
+        //
+        //  I once lowered that floor whenever «فيه» appeared, reasoning the
+        //  pronoun points back at a container he named. It does — at
+        //  whatever he named, and a page is not a table. Two older tests
+        //  say so in words, and they were right. The limit is stated here
+        //  rather than hidden: this request is refused, and it is refused
+        //  by the floor, not by the capability.
+        expect(derivedColumns('بدي تطبيق للحجوزات فيه اسم العميل ووقت الحجز، ويحفظ البيانات على خادم'))
+            .toBeNull();
+        //  …and with a records container named, the same shape is read.
+        expect(labels('بدي جدول للحجوزات فيه اسم العميل ووقت الحجز، ويحفظ البيانات على خادم'))
             .toEqual(['اسم العميل', 'وقت الحجز']);
     });
 
@@ -163,17 +174,21 @@ describe('the boundary of the English cut, declared and not hidden', () => {
     });
 });
 
-describe('the boundary of the «فيه» floor, declared and not hidden', () => {
-    it('two definite names after «فيه» in plain prose ARE read as columns', () => {
-        //  Not a bug being asserted as behaviour — a limit being written
-        //  down. «فيه» lowers the floor to two because its «ه» points back
-        //  at a container he named, and the pronoun cannot tell whether
-        //  that container was one he ASKED to be built. Nothing in this
-        //  function knows the intent; the router does, and it is the router
-        //  that decides whether a sentence reaches a schema reader at all.
-        //  If this line ever has to change, the fix belongs upstream.
-        expect(labels('الكتاب فيه الورق والحبر')).toEqual(['الورق', 'الحبر']);
+describe('the «فيه» floor I lowered, and put back', () => {
+    it('two definite names after «فيه» in prose are still not a schema', () => {
+        //  I lowered this floor to two whenever «فيه» appeared, reasoning
+        //  that its pronoun points back at a container he named. It does
+        //  — at whatever he named, and «صفحة» is a page. Two tests older
+        //  than my change said «two is not a list» in words, and I had
+        //  contradicted a stated rule without having read it.
+        expect(derivedColumns('الكتاب فيه الورق والحبر')).toBeNull();
+        expect(derivedColumns('اعمل صفحة فيها: الاسم والسعر')).toBeNull();
     });
+
+    it('and a bare recording verb, which points at nothing, keeps it too', () => {
+        expect(derivedColumns('An app to record name and phone')).toBeNull();
+    });
+});
 
     it('and a bare recording verb, which points at nothing, keeps the floor of three', () => {
         expect(derivedColumns('An app to record name and phone')).toBeNull();

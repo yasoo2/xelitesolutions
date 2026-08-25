@@ -45,9 +45,13 @@ describe('the request describes a records shape without a domain catalogue', () 
         expect(derivedColumns('متجر بفئات: قهوة، أدوات، حلويات')).toBeNull();
     });
 
-    it('keeps the deliberate three-field floor explicit', () => {
-        expect(derivedColumns('بدي جدول أسجل فيه المواعيد: اسم المريض ورقم تلفونه')).toBeNull();
-        expect(derivedColumns('I want to track my clients: name and phone')).toBeNull();
+    it('keeps the floor explicit — three in prose, two once he names a container', () => {
+        //  Overruled by a live round: a container and two columns returned a
+        //  brochure. The floor of three still stands where it was earned —
+        //  a bare run of nouns with nothing holding them.
+        expect((derivedColumns('بدي جدول أسجل فيه المواعيد: اسم المريض ورقم تلفونه') || [])
+            .map(f => f.label)).toEqual(['اسم المريض', 'رقم تلفونه']);
+        expect(derivedColumns('اعمل صفحة فيها: الاسم والسعر')).toBeNull();
     });
 });
 
