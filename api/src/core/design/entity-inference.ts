@@ -26,6 +26,9 @@
  * it was not built — which is the other half of being honest about scale.
  */
 import { ModelEntity, ModelField } from './data-model';
+//  The two readers that already know his columns and his word for the
+//  thing. Reading the same sentence a third way is how they drift.
+import { derivedColumns, recordedSubject, RECORD_CONTAINER } from './app-blueprints';
 
 /* ────────────────────────────── field makers ───────────────────────────── */
 
@@ -385,7 +388,75 @@ export function englishFor(phrase: string): string | null {
     return null;
 }
 
+/**
+ *  A COLUMN HE NAMED BECAME A TABLE.
+ *
+ *  Measured on his own sentences, straight out of inferModel:
+ *
+ *      «بدي جدول للموظفين فيه الاسم والراتب»
+ *      → tables: employees · salaries
+ *
+ *      «بدي برنامج يحفظ لي زبائني وارقام تلفوناتهم وعناوينهم»
+ *      → tables: softwares · tlfwnathms · anawynhms
+ *
+ *  He asked for one table with two columns and got two tables. He asked
+ *  for one with three and got three, with keys transliterated out of his
+ *  own words because no dictionary carries «تلفوناتهم» as a noun — it is
+ *  not a noun, it is a column of one. And the first table's Arabic name
+ *  is his request with the end cut off, which is where every truncated
+ *  title in every generated app has been coming from.
+ *
+ *  This reader was finding entities by phrase shape while two other
+ *  readers in this repository already knew the answer: derivedColumns
+ *  returns his columns and recordedSubject returns his word for the
+ *  thing that holds them. Reading the same sentence a third way is how
+ *  three answers to one question appear.
+ *
+ *  THE ONE CASE THAT IS GENUINELY SEVERAL TABLES, and how it is told
+ *  apart without a word list:
+ *
+ *      «بدي نظام للمدرسة فيه جدول الطلاب وجدول المعلمين وجدول الصفوف»
+ *      → students · teachers · classes    — and that is correct.
+ *
+ *  The container word is the same in both sentences. What differs is how
+ *  many times he wrote it: once in front of the list means one table;
+ *  once in front of EVERY item means one table each. Grammar, not
+ *  vocabulary — and it holds in English the same way.
+ */
+function everyLabelCarriesTheContainer(labels: string[]): boolean {
+    return labels.length > 0 && labels.every(label => RECORD_CONTAINER.test(String(label || '')));
+}
+
+function theOneTableHeDescribed(request: string): ModelEntity | null {
+    const columns = derivedColumns(request);
+    if (!columns || columns.length < 2) return null;
+    const labels = columns.map(c => String(c.label || '').trim());
+    if (everyLabelCarriesTheContainer(labels)) return null;   //  several tables, not one
+    const subject = String(recordedSubject(request) || '').trim();
+    if (!subject) return null;
+    const key = /[A-Za-z]/.test(subject) ? keyOf(subject) : keyFromArabic(subject);
+    if (!key || key.length < 3 || key.length > 40 || NEVER.has(key)) return null;
+    const english = englishFor(subject);
+    return {
+        key,
+        ar: subject,
+        en: english || subject,
+        fields: columns.map((c, i) => ({
+            key: c.key || `f${i + 1}`,
+            //  His own type, carried over rather than guessed at again.
+            type: (c.type === 'number' ? 'REAL' : 'TEXT') as ModelField['type'],
+            required: i === 0,
+            ar: labels[i],
+            en: englishFor(labels[i]) || labels[i],
+        })),
+    };
+}
+
 export function inferModel(request: string, limit = MAX_MODEL_ENTITIES): Inference {
+    //  When he described ONE table and its columns, that is the model.
+    //  Everything below reads a sentence that did not say so.
+    const one = theOneTableHeDescribed(request);
+    if (one) return { entities: [one], capabilities: [] };
     const entities: ModelEntity[] = [];
     const capabilities: string[] = [];
     const seen = new Set<string>();

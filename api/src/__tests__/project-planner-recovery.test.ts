@@ -84,18 +84,24 @@ describe('project planner structured recovery', () => {
         const result: any = await new ProjectPlannerTool().execute({
             projectDescription: 'Continue by repairing the existing WeatherGo project; do not create a new project.',
             evidence: {
+                version: 1,
                 mode: 'existing_workspace',
                 workspaceRoot: '/tmp/joe-workspace',
                 selectedProject: {
                     root: '/tmp/joe-workspace/react-weathergo-a587',
-                    projectKinds: ['react'],
-                    manifests: [{ path: '/tmp/joe-workspace/react-weathergo-a587/package.json' }],
+                    projectKinds: ['node'],
+                    manifests: [{ path: '/tmp/joe-workspace/react-weathergo-a587/package.json', kind: 'package.json' }],
+                    git: { isRepository: false },
                     likelyEntrypoints: ['/tmp/joe-workspace/react-weathergo-a587/src/App.jsx'],
                     sourceFiles: ['/tmp/joe-workspace/react-weathergo-a587/src/App.jsx'],
                     testFiles: [],
-                    candidateChecks: [{ command: 'npm run build' }],
+                    candidateChecks: [{ kind: 'build', command: 'npm run build', source: '/tmp/joe-workspace/react-weathergo-a587/package.json' }],
                 },
                 referenceProjects: [],
+                instructionFiles: [],
+                constraints: { localOnly: true, forbidDeploy: true, userRequestedExistingProject: true, createsNewProject: false },
+                facts: [],
+                blockers: [],
             },
         }, { repairMode: true, engineeringPipeline: true });
 
@@ -161,18 +167,24 @@ describe('project planner structured recovery', () => {
         const result: any = await new ProjectPlannerTool().execute({
             projectDescription: 'Implement and repair the existing application, then verify it locally.',
             evidence: {
+                version: 1,
                 mode: 'existing_workspace',
                 workspaceRoot: '/tmp/joe-workspace',
                 selectedProject: {
                     root: '/tmp/joe-workspace',
                     projectKinds: ['node'],
-                    manifests: [{ path: '/tmp/joe-workspace/package.json' }],
+                    manifests: [{ path: '/tmp/joe-workspace/package.json', kind: 'package.json' }],
+                    git: { isRepository: false },
                     likelyEntrypoints: ['/tmp/joe-workspace/src/server.js'],
                     sourceFiles: ['/tmp/joe-workspace/src/App.jsx', '/tmp/joe-workspace/src/components/Home.jsx'],
                     testFiles: ['/tmp/joe-workspace/tests/server.test.js'],
-                    candidateChecks: [{ command: 'node --check src/server.js' }],
+                    candidateChecks: [{ kind: 'test', command: 'node --check src/server.js', source: '/tmp/joe-workspace/package.json' }],
                 },
                 referenceProjects: [],
+                instructionFiles: [],
+                constraints: { localOnly: true, forbidDeploy: true, userRequestedExistingProject: true, createsNewProject: false },
+                facts: [],
+                blockers: [],
             },
         }, {
             repairMode: true,
@@ -779,9 +791,14 @@ Build the complete system with locally verifiable implementation artifacts.
         const result: any = await new ProjectPlannerTool().execute({
             projectDescription: specification,
             evidence: {
+                version: 1,
                 mode: 'greenfield',
                 workspaceRoot: '/tmp/joe-scope-workspace',
                 selectedProject: undefined,
+                instructionFiles: [],
+                constraints: { localOnly: true, forbidDeploy: true, userRequestedExistingProject: false, createsNewProject: true },
+                facts: [],
+                blockers: [],
                 referenceProjects: [{
                     root: '/tmp/joe-scope-workspace/reference-app',
                     projectKinds: ['node'],

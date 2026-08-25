@@ -36,8 +36,12 @@ describe('DbSchemaMigratorTool SQLite SQL migrations', () => {
         });
 
         expect(result.ok).toBe(true);
-        expect(result.output.schemaPath).toBe(discoveredSchema);
-        expect(result.output.databasePath).toBe(path.join(workspaceRoot, 'discovered.db'));
+        const migrated = result.output;
+        if (!migrated || !('schemaPath' in migrated)) {
+            throw new Error(`discovery did not run through the SQLite executor: ${JSON.stringify(migrated)}`);
+        }
+        expect(migrated.schemaPath).toBe(discoveredSchema);
+        expect(migrated.databasePath).toBe(path.join(workspaceRoot, 'discovered.db'));
     });
 
     it('routes a concrete .sql migration away from Prisma and applies it with SQLite', async () => {
@@ -50,8 +54,12 @@ describe('DbSchemaMigratorTool SQLite SQL migrations', () => {
         });
 
         expect(result.ok).toBe(true);
-        expect(result.output.engine).toBe('sqlite');
-        expect(result.output.databasePath).toBe(databasePath);
+        const migrated = result.output;
+        if (!migrated || !('engine' in migrated)) {
+            throw new Error(`the .sql migration was not rerouted to the SQLite executor: ${JSON.stringify(migrated)}`);
+        }
+        expect(migrated.engine).toBe('sqlite');
+        expect(migrated.databasePath).toBe(databasePath);
 
         const status = await tool.execute({
             engine: 'sqlite',
@@ -59,7 +67,9 @@ describe('DbSchemaMigratorTool SQLite SQL migrations', () => {
             databasePath,
         });
         expect(status.ok).toBe(true);
-        expect(status.output.output).toContain('tenants');
-        expect(status.output.output).toContain('roles');
+        const statusOutput = status.output;
+        if (!statusOutput) throw new Error('the status action reported ok without any output to inspect');
+        expect(statusOutput.output).toContain('tenants');
+        expect(statusOutput.output).toContain('roles');
     });
 });

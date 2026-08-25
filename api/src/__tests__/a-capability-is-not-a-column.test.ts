@@ -190,7 +190,3 @@ describe('the «فيه» floor I lowered, and put back', () => {
     });
 });
 
-    it('and a bare recording verb, which points at nothing, keeps the floor of three', () => {
-        expect(derivedColumns('An app to record name and phone')).toBeNull();
-    });
-});

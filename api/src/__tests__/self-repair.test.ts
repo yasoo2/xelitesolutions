@@ -288,9 +288,12 @@ describe('structured request-fidelity recovery', () => {
                 },
             },
         });
+        const failedTask = ticket.failedTasks[0];
+        if (!failedTask) throw new Error('the ticket carried no failed task, so there is no repairKind to inspect');
+        expect(failedTask.repairKind).toBeUndefined();
+
         const plan = SelfFixService.plan(ticket);
         expect(plan.strategy).toBe('code_fix');
-        expect(plan.repairKind).toBeUndefined();
         expect(plan.suggestedInput?.path).toContain('WeatherApp.jsx');
     });
 });

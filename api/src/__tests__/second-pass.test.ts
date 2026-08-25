@@ -104,7 +104,7 @@ describe('(3) the first photograph loads eager and high-priority', () => {
 
 describe('(4) charts follow the page theme switch, not only the OS', () => {
     it('the runtime watches data-theme on <html> and redraws', () => {
-        const rt = chartRuntime('ar');
+        const rt = chartRuntime(true);
         expect(rt).toContain('MutationObserver');
         expect(rt).toContain("attributeFilter: ['data-theme']");
         expect(rt).toContain('redrawAll');

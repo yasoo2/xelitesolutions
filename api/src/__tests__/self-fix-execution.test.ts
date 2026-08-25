@@ -270,7 +270,7 @@ describe('SelfFixExecutionService phase resumption', () => {
         expect(result.ok).toBe(true);
         expect(result.followUpPlan?.strategy).toBe('build_fix');
         expect(result.followUpPlan?.suggestedTool).toBe('ai_write_file');
-        expect(result.followUpPlan?.suggestedInput.path).toBe('/workspace/WeatherGo/src/WeatherApp.css');
+        expect(result.followUpPlan?.suggestedInput?.path).toBe('/workspace/WeatherGo/src/WeatherApp.css');
         expect(result.followUpExecution?.ok).toBe(true);
         expect(phaseReruns).toBe(2);
         expect(executeToolSpy.mock.calls.map(call => call[0])).toEqual([
@@ -325,7 +325,7 @@ describe('SelfFixExecutionService phase resumption', () => {
         expect(result.ok).toBe(true);
         expect(result.followUpPlan?.strategy).toBe('build_fix');
         expect(result.followUpPlan?.suggestedTool).toBe('ai_write_file');
-        expect(result.followUpPlan?.suggestedInput.path).toBe('/workspace/WeatherGo/src/components/Search.jsx');
+        expect(result.followUpPlan?.suggestedInput?.path).toBe('/workspace/WeatherGo/src/components/Search.jsx');
         expect(result.followUpExecution?.ok).toBe(true);
         expect(result.followUpExecution?.rerunResult?.output?.status).toBe('completed');
         expect(writes).toBe(2);
@@ -381,7 +381,7 @@ describe('SelfFixExecutionService phase resumption', () => {
         expect(result.ok).toBe(true);
         expect(result.followUpPlan?.strategy).toBe('code_fix');
         expect(result.followUpPlan?.suggestedTool).toBe('ai_write_file');
-        expect(result.followUpPlan?.suggestedInput.path).toBe('/workspace/WeatherGo/src/components/WeatherApp.jsx');
+        expect(result.followUpPlan?.suggestedInput?.path).toBe('/workspace/WeatherGo/src/components/WeatherApp.jsx');
         expect(result.followUpExecution?.ok).toBe(true);
         expect(writes).toBe(2);
         expect(executeToolSpy.mock.calls.map(call => call[0])).toEqual([

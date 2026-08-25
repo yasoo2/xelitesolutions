@@ -60,8 +60,8 @@ describe('the loop stops when there is nothing left, not when the score is nice'
             measure: async () => round(62, []),
             repair: async () => { throw new Error('must not repair a clean build'); },
             rebuild: async () => true,
-            snapshot: async () => 'snap',
-            rollback: async () => { },
+            snapshot: () => 'snap',
+            rollback: async () => true,
         });
         expect(result.stoppedBecause).toBe('nothing_left');
         expect(improveSummary(result, true)).toContain('لم يجد عطباً');
@@ -75,8 +75,8 @@ describe('the loop stops when there is nothing left, not when the score is nice'
             measure: async () => round(100, []),
             repair: async () => { repaired += 1; return ['src/styles/app.css']; },
             rebuild: async () => true,
-            snapshot: async () => 'snap',
-            rollback: async () => { },
+            snapshot: () => 'snap',
+            rollback: async () => true,
             maxRounds: 3,
         });
         expect(repaired).toBeGreaterThan(0);
@@ -90,8 +90,8 @@ describe('the loop stops when there is nothing left, not when the score is nice'
             measure: async () => round(80, ['low_contrast']),
             repair: async () => [],
             rebuild: async () => true,
-            snapshot: async () => 'snap',
-            rollback: async () => { },
+            snapshot: () => 'snap',
+            rollback: async () => true,
             maxRounds: 5,
         });
         expect(result.stoppedBecause).not.toBe('nothing_left');

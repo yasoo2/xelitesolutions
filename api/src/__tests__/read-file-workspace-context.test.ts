@@ -36,6 +36,7 @@ describe('read_file workspace context', () => {
     );
 
     expect(result.ok).toBe(true);
+    if (!result.output) throw new Error('the read reported ok without any content to inspect');
     expect(result.output.content).toContain('contextual: true');
   });
 });

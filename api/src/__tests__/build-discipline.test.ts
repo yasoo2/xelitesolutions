@@ -107,6 +107,7 @@ describe('A-DEPLOY-PATH-THAT-WIPES-THE-USER — automatic update safety', () => 
                 ahead: 0,
             });
             expect(decision.ok).toBe(false);
+            if (decision.ok) throw new Error('a dirty worktree was accepted: the refusal carries no reason to inspect');
             expect(decision.reason).toMatch(/uncommitted or untracked/u);
             expect(fs.readFileSync(keep, 'utf-8')).toBe('owner work');
             expect(fs.existsSync(keep)).toBe(true);
