@@ -4,6 +4,7 @@ import { ToolPermission } from '../types';
 import fs from 'fs';
 import path from 'path';
 import { executionEngine } from '../../../kernel/ExecutionEngine';
+import { isWithinRoot } from '../path-containment';
 
 function getRepoRoot() {
   const cwd = process.cwd();
@@ -22,7 +23,7 @@ function assertSafeRelativePath(rawPath: string) {
   }
   const root = getRepoRoot();
   const full = path.resolve(root, rel);
-  if (!full.startsWith(root + path.sep) && full !== root) throw new Error('path_outside_repo');
+  if (!isWithinRoot(full, root)) throw new Error('path_outside_repo');
   return { rel: normalized, full };
 }
 

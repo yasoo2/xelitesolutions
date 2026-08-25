@@ -24,6 +24,7 @@ import crypto from 'crypto';
 import { parseSlot, scoreCandidate, SLOTS, buildImageBrief, groundSubject, type ImageSlot, type ImageBrief } from './image-brief';
 import { searchAllSources, availableSources, type SourceOutcome } from './photo-sources';
 import { englishSubject } from './subject-translation';
+import { isWithinRoot } from '../../modules/tools/path-containment';
 
 /** What the archives said the last time one was asked — reported to the user so
  *  "no photo" is always accompanied by the reason there is no photo. */
@@ -791,7 +792,7 @@ export function groundImageSrcs(
             // either, whatever the filesystem says.
             const full = path.resolve(dir, clean);
             const root = path.resolve(dir);
-            if (full !== root && !full.startsWith(root + path.sep)) return false;
+            if (!isWithinRoot(full, root)) return false;
             return fs.existsSync(full) && fs.statSync(full).isFile();
         } catch { return false; }
     };
@@ -876,7 +877,7 @@ export function imagesToMarkers(html: string, dir: string): { html: string; conv
             if (clean.startsWith('/artifacts/')) clean = clean.slice('/artifacts/'.length);
             const full = path.resolve(dir, clean);
             const root = path.resolve(dir);
-            if (full !== root && !full.startsWith(root + path.sep)) return false;
+            if (!isWithinRoot(full, root)) return false;
             return fs.existsSync(full) && fs.statSync(full).isFile();
         } catch { return false; }
     };

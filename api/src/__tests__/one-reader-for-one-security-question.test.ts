@@ -70,22 +70,45 @@ describe('…and on Windows the case belongs to the filesystem, not the caller',
     });
 });
 
-describe('and there is exactly one of it', () => {
-    it('no file declares a second isWithinRoot', () => {
-        //  The property, not the spelling: three copies of one security
-        //  answer is how they come apart, and they had.
+describe('and there is exactly one of it — by what it ASKS, not what it is called', () => {
+    /**
+     *  THIS GUARD FELL INTO THE CLASS IT WAS WRITTEN TO CLOSE.
+     *
+     *  Its first version searched for the NAME `isWithinRoot`. A FOURTH
+     *  copy — `isWithin` in workspace-evidence.ts, one letter shorter, the
+     *  same question, resolving without folding — walked straight past it.
+     *
+     *  A guard on a spelling protects the case it knows and not the case
+     *  that matters. So the test is the SHAPE of the answer: a body that
+     *  decides containment with `startsWith` and a path separator. That is
+     *  what all four copies had in common, and what a fifth would have.
+     */
+    //  A containment question needs BOTH a child and a parent. `startsWith(path.sep)`
+    //  asks something else entirely — whether a string is absolute — so the pattern
+    //  demands a parent be joined to the separator, by `+` or by a template.
+    const CONTAINMENT = new RegExp('startsWith\\((?:[^)]*\\+ *path\\.sep|`[^`]*\\$\\{path\\.sep\\})');
+
+    it('no file outside utils answers «is this path inside that root?»', () => {
         const root = path.join(__dirname, '..');
-        const found: string[] = [];
+        const guilty: string[] = [];
         const walk = (dir: string) => {
             for (const name of fs.readdirSync(dir)) {
                 if (name === 'node_modules' || name === 'dist' || name === '__tests__') continue;
                 const full = path.join(dir, name);
                 if (fs.statSync(full).isDirectory()) { walk(full); continue; }
                 if (!name.endsWith('.ts')) continue;
-                if (new RegExp('function\\s+isWithinRoot\\s*\\(').test(fs.readFileSync(full, 'utf8'))) found.push(full.slice(root.length + 1));
+                const rel = full.slice(root.length + 1);
+                if (rel === path.join('modules', 'tools', 'path-containment.ts')) continue;
+                if (CONTAINMENT.test(fs.readFileSync(full, 'utf8'))) guilty.push(rel);
             }
         };
         walk(root);
-        expect(found).toEqual([path.join('modules', 'tools', 'utils.ts')]);
+        //  ONE file may still answer a containment question inline, because
+        //  it is asking a DIFFERENT question: isSafeRepoPath() is handed a
+        //  relative string with no root at all, and asks whether that string
+        //  climbs upward on its own. There is no parent to be inside of.
+        //  Everything else in this tree now calls path-containment.ts.
+        const known = [path.join('api', 'routes', 'git.ts')];
+        expect(guilty.filter(f => !known.includes(f))).toEqual([]);
     });
 });

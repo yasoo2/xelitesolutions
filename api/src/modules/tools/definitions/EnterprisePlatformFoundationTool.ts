@@ -1,4 +1,5 @@
 import fs from 'fs';
+import { isWithinRoot } from '../path-containment';
 import path from 'path';
 import { BaseTool } from '../base';
 import { ToolPermission, ToolExecutionResult } from '../types';
@@ -148,7 +149,7 @@ export class EnterprisePlatformFoundationTool extends BaseTool {
     let writtenFiles = 0;
     for (const [relativePath, content] of Object.entries(files)) {
       const target = path.resolve(projectPath, relativePath);
-      if (!target.startsWith(`${projectPath}${path.sep}`)) return { ok: false, error: 'unsafe relative path', logs };
+      if (!isWithinRoot(target, projectPath)) return { ok: false, error: 'unsafe relative path', logs };
       writeText(target, content);
       stream(relativePath, content);
       writtenFiles += 1;

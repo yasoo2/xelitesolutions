@@ -1,4 +1,5 @@
 import { ToolDefinition, ToolPermission } from '../types';
+import { isWithinRoot } from '../path-containment';
 import fs from 'fs';
 import path from 'path';
 import { executeTool } from '../../services/ToolService';
@@ -240,7 +241,7 @@ function trustedRuntimeProjectRoot(sessionId: unknown, workspaceId: unknown, run
     if (!candidateRaw) return '';
     const workspaceRoot = path.resolve(workspaceService.getActiveRoot(String(workspaceId || '')));
     const candidate = path.resolve(candidateRaw);
-    const inside = candidate === workspaceRoot || candidate.startsWith(`${workspaceRoot}${path.sep}`);
+    const inside = isWithinRoot(candidate, workspaceRoot);
     return inside && fs.existsSync(path.join(candidate, 'package.json')) ? candidate : '';
 }
 

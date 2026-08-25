@@ -12,6 +12,7 @@
 import fs from 'fs';
 import path from 'path';
 import AdmZip from 'adm-zip';
+import { isWithinRoot } from '../../modules/tools/path-containment';
 
 export interface ExportResult {
     buffer: Buffer;
@@ -87,7 +88,7 @@ export function extractProject(zipBuffer: Buffer, destBase: string): ImportResul
         // may land. Anything resolving outside the fresh destination is refused
         // loudly — not skipped silently.
         const target = path.resolve(dest, e.entryName);
-        if (target !== dest && !target.startsWith(dest + path.sep)) {
+        if (!isWithinRoot(target, dest)) {
             throw new Error(`archive entry escapes the destination: ${e.entryName}`);
         }
         const data = e.getData();

@@ -24,6 +24,7 @@ import { getChromiumLaunchOptions } from '../../modules/browser/manager';
 import { probeControls, judgeBehaviour, FormResult, ControlResult } from './behaviour-audit';
 import { AuditEyes } from './audit-eyes';
 import { inspectUi } from './ui-inspection';
+import { isWithinRoot } from '../../modules/tools/path-containment';
 
 export interface AppAuditFinding {
     id: string;
@@ -176,7 +177,7 @@ export async function auditBuiltApp(
             : rawPath.replace(/^\/+/, '')) || 'index.html';
         const root = artifactRequest ? artifactRoot : path.resolve(distDir);
         const file = path.resolve(root, rel);
-        if ((file !== root && !file.startsWith(root + path.sep)) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
+        if (!isWithinRoot(file, root) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
             res.writeHead(404); return res.end();
         }
         const type = file.endsWith('.html') ? 'text/html; charset=utf-8' : file.endsWith('.js') ? 'text/javascript' : file.endsWith('.css') ? 'text/css' : file.endsWith('.svg') ? 'image/svg+xml' : file.endsWith('.png') ? 'image/png' : 'application/octet-stream';

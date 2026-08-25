@@ -38,6 +38,7 @@ import { inspectWeatherEngineSource, formatWeatherSemanticRepair } from '../../.
 import { isProviderFailure } from '../../../core/llm/intelligent-router';
 import { validateFileWriteBatch } from '../../../shared/file-write-contract';
 import { replyLanguageCode } from '../../../shared/reply-language';
+import { isWithinRoot } from '../path-containment';
 
 type MeasuredAbility = {
     ar: string;
@@ -3059,7 +3060,7 @@ export class ReactProjectTool extends BaseTool {
                 ? activeProject.dir : '';
         const activeDir = ownedScaffoldDir ? path.resolve(ownedScaffoldDir) : '';
         const workspaceRoot = path.resolve(root);
-        const activeInsideRoot = !!activeDir && (activeDir === workspaceRoot || activeDir.startsWith(workspaceRoot + path.sep));
+        const activeInsideRoot = !!activeDir && isWithinRoot(activeDir, workspaceRoot);
         const reusableScaffold = activeInsideRoot && (
             isReactViteProjectDir(activeDir)
             // A bounded dependency repair may resume before the first build has

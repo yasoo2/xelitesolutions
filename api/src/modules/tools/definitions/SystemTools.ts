@@ -1,4 +1,5 @@
 
+import { isWithinRoot } from '../path-containment';
 import { BaseTool } from '../base';
 import { ToolPermission } from '../types';
 import path from 'path';
@@ -1312,7 +1313,7 @@ export class ScaffoldProjectTool extends BaseTool {
         const workspaceRoot = path.resolve(workspaceService.getActiveRoot(context?.workspaceId));
         const resolvedProduct = path.resolve(resolvedBase);
         const isSafeProductChild = resolvedProduct !== workspaceRoot
-            && resolvedProduct.startsWith(`${workspaceRoot}${path.sep}`);
+            && isWithinRoot(resolvedProduct, workspaceRoot);
         const shouldResetGreenfield = context?.engineeringPipeline === true
             && context?.createsNewProject === true
             && context?.projectRootRuntimeBound !== true

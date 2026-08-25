@@ -1,4 +1,5 @@
 import { ToolDefinition, ToolPermission } from '../types';
+import { isWithinRoot } from '../path-containment';
 import { ExecutionGateway } from '../../../kernel/ExecutionGateway';
 import { NpmManagerTool } from './SystemTools';
 import { workspaceService } from '../../services/WorkspaceService';
@@ -865,7 +866,10 @@ function isRuntimePackageAvailable(cwd: string, packageName: string): boolean {
                 const entryCandidates = [packageManifest.main, packageManifest.module, 'index.js', 'index.mjs', 'index.cjs', 'index.json']
                     .filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
                     .map((entry) => path.resolve(candidate, entry));
-                if (entryCandidates.some((entry) => entry === candidate || entry.startsWith(`${candidate}${path.sep}`) && fs.existsSync(entry) && fs.statSync(entry).isFile())) return true;
+                //  `a || b && c` bound the existence check to the prefix branch alone:
+                //  an entry EQUAL to the directory returned true without ever being
+                //  looked for on disk. One reader, one precedence, one answer.
+                if (entryCandidates.some((entry) => isWithinRoot(entry, candidate) && fs.existsSync(entry) && fs.statSync(entry).isFile())) return true;
             }
         } catch { /* continue to the next trusted ancestor */ }
         const parent = path.dirname(probe);
@@ -1599,8 +1603,7 @@ export function theServerThisSessionLeftRunning(record: any, workspaceRoot: stri
     //  Inside the tree Joe writes into, and nowhere else.
     const root = String(workspaceRoot || '').trim();
     if (!root) return false;
-    const inside = path.resolve(recorded).toLowerCase()
-        .startsWith(path.resolve(root).toLowerCase() + path.sep);
+    const inside = isWithinRoot(recorded, root);
     if (!inside) return false;
     try { process.kill(pid, 0); } catch { return false; }
     return true;
