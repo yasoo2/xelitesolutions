@@ -1872,6 +1872,47 @@ function entityAndItsAttributes(request: string): DerivedField[] | null {
     return built ? applyStatedRules(built, statedRules(request)).fields : built;
 }
 
+/**
+ *  WHAT HE ASKED FOR BEYOND THE COLUMNS, AND NOBODY WROTE DOWN.
+ *
+ *  columnsEndWhereHisNextRequestBegins cuts the run at the first clause
+ *  that is not a column, and everything after the cut is thrown away.
+ *  Measured, that is where his other requests live:
+ *
+ *      «…، مع بحث بالاسم وترتيب بالدرجة»     → search · SORT
+ *      «…، وصفحة ثانية تعرض مجموع الرواتب»    → total · A SECOND PAGE
+ *      «…، مع سلة مشتريات»                    → A CART
+ *      «…، ويحفظ البيانات على خادم»           → A SERVER
+ *
+ *  The criteria catalogue knows «بحث» and «مجموع» and produces a criterion
+ *  for each. It does not know a sort, a second page, a cart or a server,
+ *  and for those it produces NOTHING — so Joe can report success without
+ *  ever having looked. A criterion that fails is a fact; a criterion that
+ *  was never written is a silence, and silence is what he is owed least.
+ *
+ *  This returns his own clauses so the report can name them. It invents no
+ *  vocabulary: a clause is anything the column reader already refused, and
+ *  the refusal is the same closed-class test used everywhere else.
+ */
+export function clausesBeyondTheColumns(requestRaw: string): string[] {
+    const request = String(requestRaw || '');
+    const out: string[] = [];
+    for (const sentence of request.split(/[.؟!\n]/)) {
+        const parts = sentence
+            .split(/\s*[،,]\s*|\s+و(?=\S)|\s+and\s+|\s+&\s+/iu)
+            .map(part => part.trim())
+            .filter(part => part.length >= 2 && part.length <= 64);
+        //  The first fragment carries the request itself — «بدي جدول
+        //  للموظفين فيه الاسم» — and is never one of his extra asks.
+        for (let i = 1; i < parts.length; i++) {
+            if (isAColumnAndNotAClause(parts[i], i)) continue;
+            const clause = parts[i].replace(/^(?:و|مع|with|plus|and)\s*/iu, '').trim();
+            if (clause.length >= 4 && !out.includes(clause)) out.push(clause);
+        }
+    }
+    return out;
+}
+
 export function derivedColumns(requestRaw: string): DerivedField[] | null {
     const request = String(requestRaw || '');
     /**

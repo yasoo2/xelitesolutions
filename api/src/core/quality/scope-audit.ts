@@ -21,6 +21,7 @@
  * is inferred from good intentions, and when the evidence is ambiguous the
  * answer is «not built», because overstating is the failure being fixed here.
  */
+import { clausesBeyondTheColumns } from '../design/app-blueprints';
 import fs from 'fs';
 import path from 'path';
 
@@ -227,6 +228,31 @@ export interface ScopeReport {
     requested: Capability[];
     built: Capability[];
     missing: Capability[];
+    /**
+     *  HIS OWN CLAUSES THAT THIS VOCABULARY CANNOT CHECK AT ALL.
+     *
+     *  Measured on five real requests:
+     *
+     *      «…، مع بحث بالاسم وترتيب بالدرجة»   → search, and NOTHING for the sort
+     *      «…، وصفحة ثانية تعرض مجموع الرواتب» → counter, and NOTHING for the page
+     *      «…، مع سلة مشتريات»                  → NOTHING in the acceptance catalogue
+     *          (this one IS known here, and is filtered out below — the
+     *           two catalogues are different, and only this one runs here)
+     *      «…، ويحفظ البيانات على خادم»         → NOTHING at all
+     *      «home page, projects page, contact form» → NOTHING at all
+     *
+     *  A capability that produces no criterion cannot fail, so Joe can
+     *  report success without ever having looked at it. A criterion that
+     *  fails is a fact; one that was never written is a silence, and the
+     *  line «ولم أفحص بقية نص طلبك» confesses the silence without naming
+     *  what is in it.
+     *
+     *  These are his own words, cut from his sentence by the same reader
+     *  that decides a clause is not a column. Nothing is invented: the
+     *  vocabulary below is not consulted to FIND them, only to remove the
+     *  ones it can already check.
+     */
+    unchecked: string[];
 }
 
 /** Evaluate ordinary and shape-aware evidence without asking a model to infer intent. */
@@ -237,11 +263,16 @@ export function capabilityEvidence(capability: Capability, source: string): bool
 /** The comparison itself: named against evidenced. */
 export function scopeReport(request: string, projectDirs: string[]): ScopeReport {
     const requested = requestedCapabilities(request);
-    if (!requested.length) return { requested: [], built: [], missing: [] };
+    //  Computed before the early return: a request that names no KNOWN
+    //  capability is exactly the one most likely to be full of unknown
+    //  ones, and returning early there would hide them all.
+    const unchecked = clausesBeyondTheColumns(request)
+        .filter(clause => !CAPABILITIES.some(c => c.ask.test(clause)));
+    if (!requested.length) return { requested: [], built: [], missing: [], unchecked };
     const src = readProjectSource(projectDirs);
     const built = requested.filter(c => capabilityEvidence(c, src));
     const missing = requested.filter(c => !built.includes(c));
-    return { requested, built, missing };
+    return { requested, built, missing, unchecked };
 }
 
 /**
@@ -252,12 +283,36 @@ export function scopeReport(request: string, projectDirs: string[]): ScopeReport
 export function formatScope(r: ScopeReport, isAr: boolean): string {
     // Below three named capabilities there is no meaningful gap to report:
     // a two-word request is not a specification.
-    if (r.requested.length < 3) return '';
+    /**
+     *  «ولم أفحص بقية نص طلبك» — AND WHAT IS IN IT?
+     *
+     *  That line was already honest and already useless: it confesses a
+     *  silence without naming what is inside it. He asked for a sort, a
+     *  second page, a cart, a server — and no criterion was written for any
+     *  of them, so none of them could fail, so the build could be declared
+     *  a success with all four missing.
+     *
+     *  Naming them costs nothing and changes what he can do next. A man
+     *  told «I did not check the rest» has to reread his own sentence to
+     *  find out what was skipped. A man told «لم أفحص: ترتيب بالدرجة»
+     *  already knows.
+     */
+    const confess = (): string => {
+        if (!r.unchecked.length) return '';
+        const list = r.unchecked.slice(0, 6).join(' · ');
+        return (isAr
+            ? `⚠️ وهذه كتبتَها ولا أعرف كيف أتحقّق منها، فلم أفحصها ولم أدّعِ أنّي فعلت: ${list}`
+            : `⚠️ You wrote these and I have no way to check them, so I did not — and I am not claiming I did: ${list}`) + '\n';
+    };
+    //  Below three named capabilities there is no meaningful gap to report:
+    //  a two-word request is not a specification. What he wrote and nobody
+    //  can check is reported anyway — no threshold covers that part.
+    if (r.requested.length < 3) return confess();
     const name = (c: Capability) => (isAr ? c.ar : c.en);
     if (!r.missing.length) {
-        return isAr
+        return (isAr
             ? `📋 القدرات التي أعرف كيف أتحقق منها وسمّيتَها (${r.requested.length}) موجودة في هذا البناء — ولم أفحص بقية نص طلبك.\n`
-            : `📋 The capabilities I know how to check and you named (${r.requested.length}) are in this build — I did not inspect the rest of your request.\n`;
+            : `📋 The capabilities I know how to check and you named (${r.requested.length}) are in this build — I did not inspect the rest of your request.\n`) + confess();
     }
     const lines: string[] = [];
     lines.push(isAr
@@ -274,5 +329,5 @@ export function formatScope(r: ScopeReport, isAr: boolean): string {
     lines.push(isAr
         ? `   ↳ لا أدّعي عكس ذلك: كلٌّ منها بناء قائم بذاته. قل «ابنِ ${r.missing[0].ar}» وأبنيها فوق هذا النظام.`
         : `   ↳ I am not pretending otherwise: each is a build of its own. Say "build ${r.missing[0].en}" and I will add it on top of this system.`);
-    return lines.join('\n') + '\n';
+    return lines.join('\n') + '\n' + confess();
 }
