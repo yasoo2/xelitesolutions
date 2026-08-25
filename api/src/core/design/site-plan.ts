@@ -181,7 +181,19 @@ export function thePagesHeNamed(probe: string): NamedPage[] {
         //  gets a file of its own and keeps HIS words as its title — the
         //  alternative is a catalogue that can only ever emit what someone
         //  wrote down in advance.
-        const slug = hit ? hit[1] : ('page' + (++unknown + 1));
+        //  AND THE NAME OF THAT FILE IS DECIDED HERE, ONCE. It used to be
+        //  decided twice — `page2` by this reader and `page-b` by the spec
+        //  builder — which nobody saw, because only the builder's name ever
+        //  reached disk. The moment anything else asked the reader what the
+        //  file was called it would have been told a name that is never
+        //  written, and an acceptance criterion on it could never be met.
+        const latin = title.toLowerCase()
+            .replace(new RegExp('[^a-z0-9]+', 'g'), '-')
+            .replace(new RegExp('^-+|-+$', 'g'), '')
+            .replace(new RegExp('[0-9]', 'g'), '');
+        const slug = hit ? hit[1]
+            : (latin.length >= 2 ? latin
+                : 'page-' + String.fromCharCode(97 + Math.min(unknown++, 24)));
         if (!out.some(p => p.slug === slug)) out.push({ title: title.trim(), slug });
     }
     return out;
@@ -220,14 +232,10 @@ const PAGE_PURPOSE: Record<string, string> = {
  * a list. A page whose name is on no list is still built — that is the whole
  * difference between reading a request and matching it against a catalogue.
  */
-function toSpec(named: NamedPage, siteKind: PageKind, isArabic: boolean, seq: number): PageSpec {
-    const known = named.slug in PAGE_PURPOSE || named.slug in PAGE_KIND;
-    const latin = named.title.toLowerCase()
-        .replace(new RegExp('[^a-z0-9]+', 'g'), '-')
-        .replace(new RegExp('^-+|-+$', 'g'), '')
-        .replace(new RegExp('[0-9]', 'g'), '');
-    const slug = known ? named.slug
-        : (latin.length >= 2 ? latin : 'page-' + String.fromCharCode(97 + Math.min(seq, 24)));
+function toSpec(named: NamedPage, siteKind: PageKind, isArabic: boolean): PageSpec {
+    //  The slug came with him. Deciding it a second time here is how the two
+    //  schemes drifted apart in the first place.
+    const slug = named.slug;
     return {
         file: slug === 'index' ? 'index.html' : slug + '.html',
         kind: slug === 'index' ? siteKind : (PAGE_KIND[slug] || 'landing'),
@@ -277,7 +285,7 @@ export function planSite(kind: PageKind, request: string, isArabic: boolean): Si
     if (WANTS_SINGLE.test(probe)) return single('the request asked for a single page');
 
     const named = thePagesHeNamed(probe);
-    const his = named.map((n, i) => toSpec(n, kind, isArabic, i));
+    const his = named.map(n => toSpec(n, kind, isArabic));
     const wantsSite = WANTS_SITE.test(probe);
 
     if (!wantsSite && his.length < 2) {
