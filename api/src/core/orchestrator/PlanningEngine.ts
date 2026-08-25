@@ -1084,7 +1084,21 @@ Rules:
 
             // A concrete project/server target — NOT a browser, NOT content. Word
             // boundaries keep "serve" out of "server" and "app" out of "happen".
-            const projectTarget = /(المشروع|مشروع|النظام|الخادم|السيرفر|المعاينة|\bproject\b|\bserver\b|\bapp\b|\bapplication\b|\bpreview\b|dev\s*server|localhost)/i.test(probe);
+            //  A PATTERN WRITTEN WITH THE ARTICLE MATCHES HALF THE LANGUAGE.
+            //
+            //  Measured through generatePlan, the real road a request takes:
+            //
+            //      شغّل الخادم   → project_run
+            //      شغّل خادم     → central_answer
+            //      أوقف الخادم   → project_stop
+            //      أوقف خادم     → central_answer
+            //
+            //  The same sentence, one article apart, and one of them does
+            //  nothing. «المشروع» already carried its bare twin «مشروع»
+            //  right beside it; the other four did not, and «ال» is a
+            //  PREFIX — a bare form matches both, a prefixed one matches
+            //  half. Writing the article into a pattern can only subtract.
+            const projectTarget = /((?:ال)?مشروع|(?:ال)?نظام|(?:ال)?خادم|(?:ال)?سيرفر|(?:ال)?معاينة|\bproject\b|\bserver\b|\bapp\b|\bapplication\b|\bpreview\b|dev\s*server|localhost)/i.test(probe);
             const deployTarget = projectTarget || /(الموقع|الصفحة|\bsite\b|\bwebsite\b|\bpage\b)/i.test(probe);
             // Content that "انشر/publish" ALSO applies to — publishing an article is
             // NOT deploying a site. This is the collision that sent "انشر مقالاً" to deploy.
