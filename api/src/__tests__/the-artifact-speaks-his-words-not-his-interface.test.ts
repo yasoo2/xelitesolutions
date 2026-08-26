@@ -50,10 +50,36 @@ describe('his words decide the artifact language, whatever his interface says', 
     });
 
     it('with none of his words, the language he is spoken to in stands', () => {
-        //  Nothing of his reached the artifact, so there is nothing to take a
-        //  language from. A fallback — and it must stay a fallback.
-        expect(artifactLanguageIsArabic('اعمل لي موقع', false)).toBe(false);
-        expect(artifactLanguageIsArabic('اعمل لي موقع', true)).toBe(true);
+        /**
+         *  ⛔ THE FIXTURE CONTRADICTED ITS OWN TITLE, AND A LIVE BUILD PROVED
+         *  WHICH ONE WAS RIGHT.
+         *
+         *  It read `artifactLanguageIsArabic('اعمل لي موقع', false) === false`
+         *  under the heading «with NONE of his words» — while the fixture is
+         *  four Arabic words of his. It passed only because the function read
+         *  his COLUMNS and PAGE NAMES and nothing else, so a sentence carrying
+         *  no columns and no page names counted as silence.
+         *
+         *  Measured on the owner's screen: that assumption shipped an ENGLISH
+         *  site for an all-Arabic request — `isArabic: false` beside
+         *  `heroTitle: 'وَقّاد — محمصة قهوة مختصة'`. His sentence was never
+         *  silent; it simply was not asked.
+         *
+         *  So the fixture is corrected to be genuinely wordless, and the case
+         *  it used to hold is now asserted for what it really is, below.
+         */
+        expect(artifactLanguageIsArabic('', false)).toBe(false);
+        expect(artifactLanguageIsArabic('', true)).toBe(true);
+        //  A handful of characters is still not a sentence to read.
+        expect(artifactLanguageIsArabic('go', true)).toBe(true);
+        expect(artifactLanguageIsArabic('...', false)).toBe(false);
+    });
+
+    it('and a request written in HIS language decides, whatever the interface says', () => {
+        //  The case the old fixture was really holding. Both directions, so
+        //  the rule cannot be satisfied by always answering one way.
+        expect(artifactLanguageIsArabic('اعمل لي موقع لمحمصة قهوة مختصة', false)).toBe(true);
+        expect(artifactLanguageIsArabic('build me a site for a coffee roastery', true)).toBe(false);
         expect(artifactLanguageIsArabic('', true)).toBe(true);
     });
 
