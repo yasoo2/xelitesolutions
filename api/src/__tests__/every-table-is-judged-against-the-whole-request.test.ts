@@ -27,7 +27,8 @@
  * first instance of it.
  */
 
-import { derivedTables } from '../core/design/app-blueprints';
+import { derivedTables, blueprintFor } from '../core/design/app-blueprints';
+import { fileAppContentJs } from '../modules/tools/definitions/react-app-templates';
 
 const SHOP = 'اعمل لي متجراً فيه صفحة المنتجات وصفحة الطلبات. جدول المنتجات فيه اسم الصنف والسعر والحالة (متوفر أو نافد). وجدول الطلبات فيه اسم الزبون ورقم الهاتف والصنف والكمية. لا تقبل رقم هاتف أقل من ٩ أرقام. ولا تقبل كمية بالسالب.';
 
@@ -70,5 +71,32 @@ describe('a rule reaches the table it is about, whichever sentence it is in', ()
                 expect(c.minLength).toBeUndefined();
             }
         }
+    });
+});
+
+describe('and the rule survives all the way into the file on his disk', () => {
+    //  The chain has two emitters — `fields` and `tables` — written months
+    //  apart with different expressions for the same field. The first learned
+    //  minLength and the second did not, so «رقم الهاتف» came out bare while
+    //  every reader upstream had it right. Measured, after the readers were
+    //  fixed and before this was: `HAS_minLength: false`.
+    //
+    //  A guard that stops at the reader tests the reader. This one reads what
+    //  is written to his machine.
+    const content = () => fileAppContentJs(
+        blueprintFor('generic' as any, SHOP, true) as any,
+        { brand: 'حلويات أم عمر', isArabic: true, storeKey: 'shop', sourceRequest: SHOP } as any,
+    );
+
+    it('content.js carries the phone length and the quantity floor', () => {
+        const c = content();
+        expect(c).toMatch(/label: 'رقم الهاتف'[^}]*minLength: 9/);
+        expect(c).toMatch(/label: 'الكمية'[^}]*min: 0/);
+    });
+
+    it('and puts neither on a column he said nothing about', () => {
+        const c = content();
+        expect(c).not.toMatch(/label: 'اسم الزبون'[^}]*min/);
+        expect(c).not.toMatch(/label: 'السعر'[^}]*minLength/);
     });
 });

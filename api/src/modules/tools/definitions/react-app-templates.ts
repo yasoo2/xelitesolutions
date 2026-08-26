@@ -169,7 +169,7 @@ ${(() => {
         return tables.map((t, i) => {
             const slug = (pages[i] && pages[i].slug) || `table-${i + 1}`;
             const title = t.subject || (pages[i] && pages[i].title) || `${i + 1}`;
-            const cols = t.columns.map(f => `        { key: '${q(f.key)}', label: '${q(f.label)}', type: '${q(f.type)}'${(f as any).options ? `, options: [${(f as any).options.map((x: string) => `'${q(x)}'`).join(', ')}]` : ''}${(f as any).required ? ', required: true' : ''}${(f as any).min !== undefined ? `, min: ${(f as any).min}` : ''}${(f as any).minExclusive ? ', minExclusive: true' : ''}${(f as any).primary ? ', primary: true' : ''} },`).join(NL);
+            const cols = t.columns.map(f => `        { key: '${q(f.key)}', label: '${q(f.label)}', type: '${q(f.type)}'${(f as any).options ? `, options: [${(f as any).options.map((x: string) => `'${q(x)}'`).join(', ')}]` : ''}${(f as any).required ? ', required: true' : ''}${(f as any).min !== undefined ? `, min: ${(f as any).min}` : ''}${(f as any).minLength !== undefined ? `, minLength: ${(f as any).minLength}` : ''}${(f as any).minExclusive ? ', minExclusive: true' : ''}${(f as any).primary ? ', primary: true' : ''} },`).join(NL);
             return `    { slug: '${q(slug)}', title: '${q(title)}', storeKey: '${q(o.storeKey)}:${q(slug)}',
       fields: [
 ${cols}
