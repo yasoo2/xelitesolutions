@@ -3387,12 +3387,16 @@ export class ReactProjectTool extends BaseTool {
          *  is the floor, and anything that cannot be shown to be about HIS
          *  subject is refused BY NAME in his terminal.
          */
-        const copyProvidersRationing = (() => {
-            try {
-                const { isProviderCoolingDown } = require('../../../core/llm/intelligent-router');
-                return ['Groq (Free)', 'Groq', 'Anthropic', 'OpenAI'].some((p: string) => isProviderCoolingDown(p));
-            } catch { return false; }
-        })();
+        //  Same rule for the copy author: both spend the same fuel and both
+        //  would make a hermetic test wait on a provider.
+        const copyProvidersRationing = process.env.NODE_ENV === 'test'
+            || !!process.env.JEST_WORKER_ID
+            || (() => {
+                try {
+                    const { isProviderCoolingDown } = require('../../../core/llm/intelligent-router');
+                    return ['Groq (Free)', 'Groq', 'Anthropic', 'OpenAI'].some((p: string) => isProviderCoolingDown(p));
+                } catch { return false; }
+            })();
         if (!input?.skipAuthoredCopy && !copyProvidersRationing) {
             try {
                 const { authorCopy, COPY_FIELDS } = require('../../../core/design/authored-copy');
@@ -4149,7 +4153,30 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
          *  provider is already rationing, the templates are a real floor and
          *  a built page beats a beautiful one that never got planned.
          */
-        const providersAreRationing = (() => {
+        /**
+         *  ⛔ AND IT NEVER RUNS INSIDE A TEST.
+         *
+         *  Measured: adding the authoring turned nine suites red at once --
+         *  design-families, api-project, business-profile, crash-and-repair-loop,
+         *  deploy-project-workspace, file-edit-recovery, auto-tester-contract,
+         *  audit-measures-the-system, build-info -- every one of them a suite
+         *  that builds a project. The failure was always the same:
+         *
+         *      thrown: "Exceeded timeout of 10000 ms for a test."
+         *        at design-families.test.ts:79  new ReactProjectTool().execute(…)
+         *
+         *  Six authoring calls at ~7s each do not fit in a ten-second test, and
+         *  they should never have been trying: a test that reaches a provider
+         *  measures the provider's mood, not the code. It goes red when a free
+         *  tier is busy and green when it is not, which is worse than no test.
+         *
+         *  ⛔ THE CLASS: a new capability quietly added LATENCY AND A NETWORK
+         *  DEPENDENCY to a path that many hermetic tests run through. The
+         *  authoring layer itself is tested directly, with a stubbed caller,
+         *  in `the-interface-has-an-author-now` -- that is where it belongs.
+         */
+        const insideATest = process.env.NODE_ENV === 'test' || !!process.env.JEST_WORKER_ID;
+        const providersAreRationing = insideATest || (() => {
             try {
                 const { isProviderCoolingDown } = require('../../../core/llm/intelligent-router');
                 return ['Groq (Free)', 'Groq', 'Anthropic', 'OpenAI'].some((p: string) => isProviderCoolingDown(p));
