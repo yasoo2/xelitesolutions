@@ -3700,7 +3700,9 @@ export function buildAppFiles(bp: AppBlueprint, o: AppBuildOptions, slugName: st
         weather: ['src/components/WeatherApp.jsx', fileWeatherAppJsx(o.isArabic)],
         records: ['src/components/RecordsApp.jsx', fileRecordsAppJsx(o.isArabic)],
         social: ['src/components/SocialApp.jsx', fileSocialAppJsx(o.isArabic)],
-        shop: ['src/components/ShopApp.jsx', fileShopAppJsx(o.isArabic)],
+        //  The brand colour the palette derived, handed over as a hue.
+        shop: ['src/components/ShopApp.jsx', fileShopAppJsx(o.isArabic,
+            require('../../../core/design/design-directives').hexToHue(o.brandColor || '') ?? undefined)],
         calculator: ['src/components/CalculatorApp.jsx', fileCalculatorAppJsx(o.isArabic)],
         productivity: ['src/components/ProductivityApp.jsx', fileProductivityAppJsx(o.isArabic)],
         finance: ['src/components/FinanceApp.jsx', fileFinanceAppJsx(o.isArabic)],
@@ -4373,10 +4375,34 @@ export default function SocialApp({ content }) {
  * Plus the merchant's own side: add a product, and it goes to the catalogue
  * endpoint so it is there for the next visitor, not just in this browser.
  */
-export function fileShopAppJsx(isAr: boolean): string {
+/**
+ *  ⛔ A PRODUCT WITH NO PHOTO IS DRAWN, NOT LEFT BLANK.
+ *
+ *  The tile below rendered an empty div in the border colour when a row
+ *  carried no image URL -- which is every row, until someone types one.
+ *  A shop whose whole catalogue is grey rectangles does not look
+ *  unfinished; it looks broken. Measured against the storefront the owner
+ *  showed, whose products are drawn per roast.
+ *
+ *  And the drawer was already in this file, already hue-aware: cardFor()
+ *  takes the brand hue and varies it slightly per row, so a coffee shop's
+ *  tiles are shades of its own colour instead of a rainbow. The records
+ *  grid calls it. The image preview calls it. The shop drew its own grey
+ *  div two thousand lines away -- the same design layer, and one of its
+ *  readers never wired to it.
+ *
+ *  The hue arrives as a number so the generated component carries no
+ *  colour maths of its own, and falls back to the row-name hash exactly
+ *  as cardFor already does when nobody passes one.
+ */
+export function fileShopAppJsx(isAr: boolean, brandHue?: number): string {
     const T = (ar: string, en: string) => `'${q(isAr ? ar : en)}'`;
     return `import React, { useEffect, useMemo, useState } from 'react';
-import { createStore, uid, computeMetric, apiList, apiCreate, apiPost, apiSiblingLive } from '../app/store.js';
+import { createStore, uid, computeMetric, apiList, apiCreate, apiPost, apiSiblingLive , cardFor } from '../app/store.js';
+
+//  The palette's own hue, baked at build time. undefined lets cardFor fall
+//  back to the row-name hash, which is what it did before anyone passed one.
+const BRAND_HUE = ${typeof brandHue === 'number' ? String(Math.round(brandHue)) : 'undefined'};
 
 const money = (n) => {
   const v = Number(n || 0);
@@ -4587,7 +4613,7 @@ export default function ShopApp({ content }) {
         <section className="products" aria-label={${T('المنتجات', 'Products')}}>
           {visible.map(p => (
             <article className="product" key={p.id}>
-              {webImage(p.image) ? <img src={webImage(p.image)} alt={p.name} loading="lazy" /> : <div className="product-noimg" aria-hidden="true" />}
+              <img src={webImage(p.image) || cardFor(p.name, BRAND_HUE)} alt={p.name} loading="lazy" />
               <h3>{p.name}</h3>
               {p.category ? <span className="tag">{p.category}</span> : null}
               {p.description ? <p>{p.description}</p> : null}
