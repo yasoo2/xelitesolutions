@@ -1050,10 +1050,48 @@ export function artifactLanguageIsArabic(request: string, replyIsArabic: boolean
             .replace(/ى/g, 'ي'),
     ).map(p => p.title);
     const hisWords = [...columns, ...pages];
-    //  Nothing of his reached the artifact, so there is no language to take
-    //  from it and the one he is spoken to in stands. A fallback, never a
-    //  source.
-    return hisWords.length ? hisWords.some(w => /[؀-ۿ]/.test(w)) : replyIsArabic;
+    if (hisWords.length) return hisWords.some(w => /[؀-ۿ]/.test(w));
+
+    /**
+     *  ⛔ AND WHEN HE NAMED NEITHER, THE REQUEST ITSELF IS STILL HIS WORDS.
+     *
+     *  Measured live, in front of the owner, with his interface in English:
+     *
+     *      «اعمل لي موقع لمحمصة قهوة مختصة اسمها وَقّاد، فيه قصة المحمصة
+     *        وأنواع القهوة وطريقة التحميص»
+     *
+     *      content.js:  isArabic: false
+     *                   tagline:  'محمصة قهوة مختصة'      <- from his request
+     *                   heroTitle:'وَقّاد — محمصة قهوة مختصة'
+     *                   ctaBandTitle: 'Your table is ready tonight'
+     *                   stepsTitle:   'How to book'
+     *
+     *  A request written entirely in Arabic produced an English artifact,
+     *  because this function read only the COLUMNS and the PAGE NAMES he
+     *  listed — and he listed neither. The fall-back to the interface
+     *  language was reached for a request that was never silent about its
+     *  language; it simply was not asked.
+     *
+     *  ⛔ THE CLASS IS THIS REPOSITORY'S MOST EXPENSIVE ONE, and the comment
+     *  above this function already records an earlier instance of it: «the
+     *  rule existed and read only the COLUMNS he listed, so a request that
+     *  names PAGES fell through». The fix then widened the fragment by one.
+     *  This is the same defect one fragment further out — A DECISION TAKEN
+     *  FROM A PART WHILE THE AUTHORITY IS THE WHOLE REQUEST, which is the
+     *  fourth law, and which has now appeared six times.
+     *
+     *  The reply language remains the fallback, but it is now reached only
+     *  when his sentence really says nothing — not merely when it says
+     *  nothing in the shape this function was looking for.
+     */
+    const arabicLetters = (String(request || '').match(/[؀-ۿ]/g) || []).length;
+    const latinLetters = (String(request || '').match(/[A-Za-z]/g) || []).length;
+    if (arabicLetters + latinLetters >= 8) return arabicLetters > latinLetters;
+
+    //  Nothing of his reached the artifact and his sentence carries no letters
+    //  to read, so the language he is spoken to in stands. A fallback, never
+    //  a source.
+    return replyIsArabic;
 }
 
 export function appPagesFor(kind: PageKind, request: string, isArabic: boolean): AppPage[] {
@@ -3321,6 +3359,75 @@ export class ReactProjectTool extends BaseTool {
             ? [...new Set(pages.flatMap(p => p.sections))]
             : sectionsForRequest(request, kind);
         const content = deriveContent(request, isAr, kind);
+        /**
+         *  ⛔ AND NOW THE WORDS ARE WRITTEN FOR HIS BUSINESS, NOT PULLED FROM
+         *  A CATALOGUE OF BUSINESS KINDS.
+         *
+         *  The owner, watching a live build of the coffee roastery he had just
+         *  described in Arabic: «this page is very poor and completely
+         *  unacceptable». Read from the `content.js` he was looking at:
+         *
+         *      heroLede = 'A real React app with instant performance, a
+         *                  consistent design system, ready to ship.'
+         *      perks    = ['Fresh every morning','Instant booking','Parking on site']
+         *      cta      = 'Book a table'
+         *
+         *  The line under his headline was JOE ADVERTISING HIMSELF. The perks
+         *  were a restaurant's. Only the brand and tagline came from what he
+         *  wrote.
+         *
+         *  ⛔ TWO LAYERS HAD ALREADY BEEN INVERTED THE SAME DAY — the design is
+         *  composed from his sentence, the section markup is authored per
+         *  request — and the page still read like every other page, because
+         *  the one layer a VISITOR actually reads was still a catalogue. That
+         *  is the seventh law paying out: the joining class was never «the
+         *  design is a catalogue», it was «Joe builds from a catalogue».
+         *
+         *  Same shape as the markup author: the model writes, the derived copy
+         *  is the floor, and anything that cannot be shown to be about HIS
+         *  subject is refused BY NAME in his terminal.
+         */
+        const copyProvidersRationing = (() => {
+            try {
+                const { isProviderCoolingDown } = require('../../../core/llm/intelligent-router');
+                return ['Groq (Free)', 'Groq', 'Anthropic', 'OpenAI'].some((p: string) => isProviderCoolingDown(p));
+            } catch { return false; }
+        })();
+        if (!input?.skipAuthoredCopy && !copyProvidersRationing) {
+            try {
+                const { authorCopy, COPY_FIELDS } = require('../../../core/design/authored-copy');
+                const { routeToModel } = require('../../../core/llm/intelligent-router');
+                const wanted = (COPY_FIELDS as readonly string[]).filter(f => f in content);
+                const written = await authorCopy({
+                    request,
+                    brand: content.brand,
+                    isArabic: artifactIsAr,
+                    current: content,
+                    fields: wanted,
+                }, async (prompt: string) => {
+                    let timer: any;
+                    try {
+                        return await Promise.race([
+                            routeToModel([{ role: 'user', content: prompt }]),
+                            new Promise<string>((_, rej) => {
+                                timer = setTimeout(() => rej(new Error('the model did not answer in time')), 90_000);
+                            }),
+                        ]);
+                    } finally { clearTimeout(timer); }
+                });
+                for (const [field, value] of Object.entries(written.fields)) (content as any)[field] = value;
+                term(Object.keys(written.fields).length
+                    ? `copy written for his business: ${Object.keys(written.fields).join(', ')}`
+                    : 'copy written for his business: none accepted — the derived copy stands');
+                for (const r of written.rejected as Array<{ field: string; reason: string }>) {
+                    term(`  refused ${r.field}: ${r.reason}`);
+                }
+            } catch (e: any) {
+                //  Copy is not worth failing a build over: the derived text is
+                //  a real floor, and a page with catalogue words beats no page.
+                term(`copy authoring skipped: ${String(e && e.message || e).slice(0, 120)}`);
+            }
+        }
         // BUSINESS MEMORY: the saved real details flow into the build — the
         // brand when the request named none, and a REAL contact block (tel:,
         // wa.me, mailto, socials). Absent profile → the old honest silence.
@@ -3997,9 +4104,112 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
         // Only the components this KIND actually uses are written — a
         // restaurant carries Menu.jsx, a store carries Pricing.jsx, and no
         // project ships dead files.
+        /**
+         *  The deterministic body of every component the model replaces, kept
+         *  by path. It is the floor: if the authored page fails the real
+         *  build, these go back and the build runs again.
+         */
+        const authoredFallback: Record<string, string> = {};
         for (const c of appBp ? [] : ['Navbar', ...sections, 'Footer']) {
             const tpl = componentTemplates[c];
             if (tpl) files[`src/components/${c}.jsx`] = tpl();
+        }
+        /**
+         *  ⛔ AND HERE THE MODEL AUTHORS THEM, INSTEAD OF FILLING THEM.
+         *
+         *  The owner: «I used many of Joe's competitors' sites and the
+         *  advantage was overwhelmingly theirs. What do we do?»
+         *
+         *  Measured before answering: zero model calls in this generator, and
+         *  24 components written by hand. So the request never changed the
+         *  SHAPE of a page — only the words poured into it, which is why every
+         *  colour, typeface, section and motion fix measured true and still
+         *  lost. They decorated a form nobody could leave.
+         *
+         *  The two layers are inverted here, and only here:
+         *      before   templates AUTHOR the interface, the model is absent
+         *      after    the model AUTHORS it, the templates are the FLOOR
+         *
+         *  Every deterministic body is kept in `authoredFallback` before it is
+         *  replaced. A draft that cannot be proven safe is refused by name and
+         *  its template stands; a draft that breaks the real build is rolled
+         *  back below and the build runs again. So the worst case is exactly
+         *  today's page — never a broken one, never one that claims what it
+         *  does not do.
+         */
+        /**
+         *  ⛔ AUTHORING STANDS DOWN WHEN THE PROVIDERS ARE COOLING.
+         *
+         *  Measured: the extra calls exhausted the free tier, the router fell
+         *  through to a keyless provider, and the very next build was planned
+         *  so badly that «اعمل لي موقع…» became a file read and came back
+         *  `{"success":false,"data":"File not found"}` — twice, reproducibly.
+         *
+         *  The planner's fuel is not the interface's to spend. When the good
+         *  provider is already rationing, the templates are a real floor and
+         *  a built page beats a beautiful one that never got planned.
+         */
+        const providersAreRationing = (() => {
+            try {
+                const { isProviderCoolingDown } = require('../../../core/llm/intelligent-router');
+                return ['Groq (Free)', 'Groq', 'Anthropic', 'OpenAI'].some((p: string) => isProviderCoolingDown(p));
+            } catch { return false; }
+        })();
+        if (!appBp && sections.length && providersAreRationing) {
+            term('interface authoring stood down — the model providers are rationing, and the planner needs that quota more than the page does');
+        }
+        if (!appBp && sections.length && !providersAreRationing) {
+            const { authorComponents, describeShapes } = require('../../../core/design/authored-ui');
+            const { composeDesign } = require('../../../core/design/composer');
+            const { routeToModel } = require('../../../core/llm/intelligent-router');
+            const names = ['Navbar', ...sections, 'Footer'].filter(c => componentTemplates[c]);
+            const authored = await authorComponents({
+                request,
+                brand: content.brand,
+                isArabic: artifactIsAr,
+                components: names,
+                //  Only keys that really exist, so an authored section cannot
+                //  invent a field and render an empty box where data belongs.
+                contentKeys: Object.keys(content || {}),
+                //  Names alone invited a real crash: `{content.heroSecondary}`
+                //  rendered an object as a React child. The shapes come from
+                //  the content object itself, so they cannot drift from it.
+                contentShapes: describeShapes(content || {}),
+                genome: composeDesign(request),
+                tokens: [
+                    '--brand', '--on-brand', '--ink', '--paper', '--card', '--panel',
+                    '--line', '--muted', '--ring', '--measure', '--rhythm', '--gap',
+                    '--section-space', '--radius-composed', '--rule', '--elevation',
+                ],
+            }, async (prompt: string) => {
+                //  Bounded on purpose: a provider that hangs must cost the
+                //  build a minute, not the whole delivery. A timeout lands in
+                //  `rejected` as a reachability fact, never as a design choice.
+                let timer: any;
+                try {
+                    return await Promise.race([
+                        routeToModel([{ role: 'user', content: prompt }]),
+                        new Promise<string>((_, rej) => {
+                            timer = setTimeout(() => rej(new Error('the model did not answer in time')), 120_000);
+                        }),
+                    ]);
+                } finally { clearTimeout(timer); }
+            });
+            for (const [name, code] of Object.entries(authored.files) as Array<[string, string]>) {
+                const rel = `src/components/${name}.jsx`;
+                authoredFallback[rel] = files[rel];
+                files[rel] = code;
+            }
+            const kept = Object.keys(authoredFallback).length;
+            term(kept
+                ? `interface authored by the model: ${Object.keys(authored.files).join(', ')} — the template of each is kept as the floor`
+                : 'interface authored by the model: none accepted — the deterministic sections stand');
+            //  Never silent: a refusal the owner cannot see is a refusal he
+            //  cannot judge, and a rejected draft that vanishes quietly is how
+            //  «it looks the same again» becomes unexplainable.
+            for (const r of authored.rejected as Array<{ name: string; reasons: string[] }>) {
+                term(`  refused ${r.name}: ${r.reasons.join(' · ')}`);
+            }
         }
         // Menu/Products import OrderButton statically — ship it with them.
         // An unlinked app never renders it (ordersApi is ''), and the
@@ -4377,6 +4587,32 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                  * reported, never one already declared, and exactly one retry,
                  * so a genuinely broken project cannot loop.
                  */
+                /**
+                 *  ⛔ THE FLOOR, ACTUALLY PUT BACK — NOT PROMISED.
+                 *
+                 *  An authored section is the one part of this project that no
+                 *  guard can fully prove before the bundler sees it: the
+                 *  validator can refuse what is unsafe or untrue, but only the
+                 *  real build knows whether the JSX compiles. So the rollback
+                 *  is not a comment about safety, it is a measured step —
+                 *  write the deterministic bodies back, build again, and say
+                 *  so in the terminal.
+                 *
+                 *  It runs BEFORE the log doctor on purpose. Diagnosing a
+                 *  missing package from an error the authored file caused
+                 *  would chase a symptom, and the remedy would install
+                 *  something the project never needed.
+                 */
+                if (!built && Object.keys(authoredFallback).length) {
+                    for (const [rel, body] of Object.entries(authoredFallback)) {
+                        fs.writeFileSync(path.join(proj, rel), body, 'utf-8');
+                    }
+                    term(`the authored interface did not build (exit ${b}) — the deterministic sections were put back: ${Object.keys(authoredFallback).map(r => r.split('/').pop()).join(', ')}`);
+                    b = await run('npm', ['run', 'build'], 300_000);
+                    buildExit = b;
+                    built = b === 0 && fs.existsSync(path.join(proj, 'dist', 'index.html'));
+                    term(`vite build (after putting the templates back) → ${built ? 'OK' : `exit ${b}`}`);
+                }
                 if (!built) {
                     // The diagnosis is no longer limited to missing packages:
                     // the log doctor reads the build's own words, names what is
@@ -4658,6 +4894,111 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
              *  that matters to him. Borrowing proves a session was found; only
              *  a watcher proves he could have seen it.
              */
+            /**
+             *  ⛔ A FLOOR THAT HEARS THE COMPILER BUT NOT THE BROWSER IS NOT
+             *  A FLOOR.
+             *
+             *  Measured on a live build, and this is the whole reason the step
+             *  exists. The authored sections passed every static check, the
+             *  project COMPILED, `dist/index.html` existed — and the page then
+             *  died in the browser:
+             *
+             *      empty_page  — no button, no link, no form on the page
+             *      page_errors — 5, «TypeError: $.toLowerCase is not a function»
+             *      success: false
+             *
+             *  Joe refused to deliver it, which is the honesty layer doing its
+             *  job. But the rollback beside the build only fires when the
+             *  BUILD fails, so a page that compiles and then crashes kept the
+             *  authored files and left the owner with nothing.
+             *
+             *  ⛔ AND THE CLASS IS THE ONE THE REPOSITORY ALREADY NAMED: the
+             *  guard stands at the writer, not at the reader. «A guard reads
+             *  what reaches the owner, not what is written in the source.»
+             *  What reaches him is a rendered page, so the floor belongs here
+             *  — behind the same judge that decides delivery — not behind the
+             *  bundler's exit code.
+             *
+             *  Bounded: one rollback, one rebuild, one re-audit. If the
+             *  deterministic page is also blocked, that is a defect the
+             *  authored sections did not cause and it must stay visible.
+             */
+            /**
+             *  ⛔ AND IT ROLLS BACK FOR WHAT THE AUTHORING CAUSED, NOT FOR
+             *  EVERY FAULT THE PAGE HAS.
+             *
+             *  The first version fired on ANY high finding. Measured on a live
+             *  build: the authored page came back with exactly one blocker —
+             *  `form_dead_submit`, a contact form with nothing behind it. The
+             *  rollback fired, the templates went back, the build and audit ran
+             *  again, and the verdict was:
+             *
+             *      success: false
+             *      high_severity_findings_survived: form_dead_submit
+             *
+             *  ⛔ THE SAME FAULT. So the rollback threw away a working authored
+             *  interface to repair something it had not broken and could not
+             *  fix. That is a guard punishing the new thing for a fault the old
+             *  thing also has — and the measurement that proves it is that the
+             *  finding SURVIVED the rollback.
+             *
+             *  So the trigger is the faults that mean the authored markup
+             *  itself failed to render: an empty page, a page error, a console
+             *  error, a thrown script. A form with no server and a button
+             *  wired to nothing belong to the project whether a model or a
+             *  template wrote the markup, and they are Joe's to fix elsewhere.
+             *
+             *  Both audits are read, because they do not agree on the field
+             *  name: app-audit writes `id`, behaviour-audit writes `code`.
+             */
+            const AUTHORED_RENDER_FAULTS = new Set([
+                'empty_page', 'page_errors', 'console_errors', 'js_errors',
+            ]);
+            const runtimeBlockers = ((audit?.findings || []) as any[]).filter(f =>
+                (f.severity === 'high' || f.severity === 'critical')
+                && AUTHORED_RENDER_FAULTS.has(String(f.id || f.code || '')));
+            if (runtimeBlockers.length && Object.keys(authoredFallback).length && !audit?.skipped) {
+                term(`the authored interface broke the page while it RAN (${runtimeBlockers.map((f: any) => f.id || f.kind || 'high').slice(0, 3).join(', ')}) — putting the deterministic sections back`);
+                for (const [rel, body] of Object.entries(authoredFallback)) {
+                    fs.writeFileSync(path.join(proj, rel), body, 'utf-8');
+                }
+                Object.keys(authoredFallback).forEach(k => delete authoredFallback[k]);
+                /**
+                 *  ⛔ THROUGH `shell.run`, BECAUSE JOE REFUSES TO BOOT OTHERWISE
+                 *  — AND HE IS RIGHT.
+                 *
+                 *  The first version of this rebuild called Node's process
+                 *  spawner directly, since the local `run` helper lives in a
+                 *  narrower block. The system would not start:
+                 *
+                 *      [ExecutionEnforcer] FATAL: EXECUTION ARCHITECTURE
+                 *      VIOLATIONS DETECTED!
+                 *        ❌ ReactProjectTool.ts: Illegal child_process import
+                 *        ❌ ReactProjectTool.ts: Illegal process-spawn call
+                 *      SYSTEM STARTUP BLOCKED.
+                 *
+                 *  A guard that stops the whole system rather than letting one
+                 *  convenient shortcut through is exactly the kind this
+                 *  repository is built out of. Every command Joe runs goes
+                 *  through one execution path so it can be measured, bounded
+                 *  and shown in his terminal — and a rebuild he cannot see is
+                 *  a rebuild he cannot check.
+                 */
+                const rbRes = await shell.run('npm', ['run', 'build'], { cwd: proj, timeout: 300_000 });
+                const rb = rbRes.missing ? -1 : rbRes.timedOut ? -2 : (rbRes.exitCode as number);
+                buildExit = rb;
+                built = rb === 0 && fs.existsSync(path.join(proj, 'dist', 'index.html'));
+                term(`vite build (after putting the templates back) → ${built ? 'OK' : `exit ${rb}`}`);
+                if (built) {
+                    audit = await auditBuiltApp(path.join(proj, 'dist'), {
+                        offline: noInstall,
+                        timeoutMs: 30_000,
+                        watchSessionId: auditSid,
+                        ...(liveServer ? { serveUrl: liveServer.url } : {}),
+                    });
+                    term(`self-QA after rollback: ${audit?.skipped ? `skipped (${audit.skipped})` : `${audit.score}/100`}`);
+                }
+            }
             if (audit && !someoneIsWatching) audit.visible = false;
             term(audit.skipped
                 ? `self-QA: skipped (${audit.skipped})`
