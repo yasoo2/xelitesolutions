@@ -3673,7 +3673,30 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
 :root[data-theme="light"]{${lightTokenBlock(palette)}}
 :root[data-theme="dark"]{color-scheme:dark}
 :root[data-theme="light"]{color-scheme:light}`,
-            'src/styles/base.css': fileBaseCss(family) + directivesCss(directives),
+            //  ⛔ AND THE MOTION, from the same layer the page builder uses.
+            //
+            //  The owner's words: «every prompt designs the same design and the
+            //  SAME MOVEMENTS, in an old style». Measured: pickRevealStyle
+            //  offers five motions derived from the request and had exactly one
+            //  caller -- WebPageBuilderTool. The app generator referenced it
+            //  zero times, so every application Joe built had no motion at all.
+            //
+            //  Fourth instance of one structure: two generators, one design
+            //  layer, only one wired. Colours, typefaces, sections, motion.
+            //
+            //  revealCss carries its own prefers-reduced-motion branch, and it
+            //  makes the sections VISIBLE rather than merely faster -- a reveal
+            //  that still moves is not a concession.
+            'src/styles/base.css': (() => {
+                const theme = require('../../../core/design/theme');
+                return [
+                    fileBaseCss(family) + directivesCss(directives),
+                    theme.revealCss(theme.pickRevealStyle(request)),
+                //  A named constant, because a join whose separator loses its
+                //  escape puts a REAL newline inside a quoted string and the
+                //  build dies dozens of lines away. That has happened here.
+                ].join(String.fromCharCode(10));
+            })(),
         };
         // AN APPLICATION REPLACES ALL OF IT. Not one marketing section, not
         // one fabricated customer, not one restaurant dish: the program, its

@@ -35,6 +35,7 @@
 import fs from 'fs';
 import path from 'path';
 import { pickTypePair, typographyCss } from '../core/design/layouts';
+import { pickRevealStyle, REVEAL_STYLES } from '../core/design/theme';
 
 const SRC = (rel: string) => fs.readFileSync(path.join(__dirname, '..', rel), 'utf-8');
 const APP = 'modules/tools/definitions/react-app-templates.ts';
@@ -66,6 +67,27 @@ describe('both generators are painted by the one design layer', () => {
         expect(coffee.display).not.toBe(clinic.display);
         //  …and the coffee one is the warm editorial serif, not a default.
         expect(coffee.note).toBe('warm editorial');
+    });
+
+    it('POSITIVE — the app path consults the MOTION layer too', () => {
+        //  The owner's words: «every prompt designs the same design and the
+        //  same movements, in an old style». Measured: pickRevealStyle offers
+        //  five motions derived from the request and has exactly ONE caller,
+        //  WebPageBuilderTool. The app generator has zero references to it, so
+        //  every application Joe builds has no motion at all.
+        //
+        //  Fourth instance of one structure: two generators, one design layer,
+        //  only one wired. Colours, typefaces, sections -- and now motion.
+        const app = SRC(APP);
+        expect(app).toContain('data-reveal-section');
+    });
+
+    it('POSITIVE — and two subjects get two different motions', () => {
+        const a = pickRevealStyle('اعمل لي متجر قهوة مختصة');
+        const b = pickRevealStyle('اعمل لي نظام مواعيد عيادة أسنان');
+        expect(REVEAL_STYLES).toContain(a);
+        expect(REVEAL_STYLES).toContain(b);
+        expect(a).not.toBe(b);
     });
 
     it('NEGATIVE — the page path still gets exactly what it had', () => {

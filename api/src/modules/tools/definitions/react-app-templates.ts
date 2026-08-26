@@ -353,7 +353,45 @@ function usePage() {
   return [slug, go];
 }
 
+/**
+ * Reveal, for a tree React mounts AFTER the document loads.
+ *
+ * The page builder ships a script that queries sections once at load. An app
+ * has no sections at that moment, so the same script would find nothing and
+ * every panel would stay at the opacity:0 the stylesheet gives it — an
+ * invisible application, shipped by a motion fix. This observes what is on
+ * screen now AND what arrives later, and it reveals unconditionally if
+ * anything goes wrong, because content must never depend on motion working.
+ */
+function useReveal() {
+  useEffect(() => {
+    const SEL = '[data-reveal-section]';
+    const show = (n) => n.classList.add('is-in');
+    try {
+      if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        document.querySelectorAll(SEL).forEach(show);
+        return;
+      }
+      if (!('IntersectionObserver' in window)) {
+        document.querySelectorAll(SEL).forEach(show);
+        return;
+      }
+      const io = new IntersectionObserver((entries) => {
+        for (const e of entries) if (e.isIntersecting) { show(e.target); io.unobserve(e.target); }
+      }, { rootMargin: '0px 0px -8% 0px', threshold: 0.05 });
+      const watch = () => document.querySelectorAll(SEL + ':not(.is-in)').forEach((n) => io.observe(n));
+      watch();
+      const mo = new MutationObserver(watch);
+      mo.observe(document.body, { childList: true, subtree: true });
+      return () => { mo.disconnect(); io.disconnect(); };
+    } catch {
+      document.querySelectorAll(SEL).forEach(show);
+    }
+  }, []);
+}
+
 export default function App() {
+  useReveal();
   const [page, goPage] = usePage();
   const [dark, setDark] = useState(() => {
     try {
@@ -1338,7 +1376,7 @@ export default function RecordsApp({ content }) {
 
   return (
     <div className="wrap">
-      <section className="stats" aria-label={${T('الأرقام', 'Numbers')}}>
+      <section data-reveal-section className="stats" aria-label={${T('الأرقام', 'Numbers')}}>
         {content.metrics.map((m, i) => (
           <div className="stat" key={i}>
             <i className="stat-ico" aria-hidden="true">{({count:'🧾',sum:'💰',todaySum:'📅',todayCount:'📅',sumProduct:'📦',avg:'📈',countWhere:'✅'})[m.kind] || '📊'}</i>
@@ -1375,7 +1413,7 @@ export default function RecordsApp({ content }) {
         const fieldLabel = (fields.find(f => f.key === content.statusField) || {}).label || content.statusField;
         const spoken = segs.map(s => s.label + ' ' + Math.round((s.value / total) * 100) + '%').join('، ');
         return (
-          <section className="panel chart-panel">
+          <section data-reveal-section className="panel chart-panel">
             <h2>{${T('توزيع', 'Breakdown by')} + ' ' + fieldLabel}</h2>
             <div className="chart-flex">
               <div className="donut" style={{ background: pie }} role="img" aria-label={spoken}>
@@ -1397,7 +1435,7 @@ export default function RecordsApp({ content }) {
       })()}
 
       {rel ? (
-        <section className="panel rel-panel">
+        <section data-reveal-section className="panel rel-panel">
           <h2>{rel.many}</h2>
           <form className="form rel-form" onSubmit={addParent}>
             {rel.fields.map(f => (
@@ -1437,7 +1475,7 @@ export default function RecordsApp({ content }) {
         </section>
       ) : null}
 
-      <section className="panel">
+      <section data-reveal-section className="panel">
         <h2>{editing ? ${T('تعديل ', 'Edit ')} + content.entityOne : ${T('إضافة ', 'Add a ')} + content.entityOne}</h2>
         {/* A MESSAGE ABOUT A PAST ATTEMPT MUST NOT READ AS A VERDICT ON THIS
             ONE. setError('') lives inside submit, so whenever the browser
@@ -1503,7 +1541,7 @@ export default function RecordsApp({ content }) {
         </form>
       </section>
 
-      <section className="panel">
+      <section data-reveal-section className="panel">
         <div className="toolbar">
           <input className="search" type="search" value={query} onChange={e => setQuery(e.target.value)}
             placeholder={${T('ابحث…', 'Search…')}} aria-label={${T('بحث', 'Search')}} />
@@ -2433,7 +2471,7 @@ export default function WeatherApp({ content }) {
 
   return (
     <div className="wrap">
-      <section className="panel">
+      <section data-reveal-section className="panel">
         <div className="toolbar">
           <div><h1>WeatherGo</h1><p className="muted small">{${T('طقس حقيقي من Open-Meteo', 'Live weather from Open-Meteo')}}</p></div>
           <button className="btn ghost" type="button" onClick={locate} disabled={busy}>{${T('موقعي', 'My location')}}</button>
@@ -2451,7 +2489,7 @@ export default function WeatherApp({ content }) {
       </section>
 
       {screen === 'search' ? (
-        <section className="panel">
+        <section data-reveal-section className="panel">
           <h2 className="list-title">{${T('اقتراحات المدن', 'City suggestions')}}</h2>
           {hits.length ? <ul className="rows compact">{hits.map(h => <li className="row" key={h.id}>
             <div className="row-main"><h3>{h.name}</h3><p className="muted small">{h.lat.toFixed(2)}, {h.lng.toFixed(2)}</p></div>
@@ -2461,7 +2499,7 @@ export default function WeatherApp({ content }) {
       ) : null}
 
       {screen === 'favorites' ? (
-        <section className="panel">
+        <section data-reveal-section className="panel">
           <h2 className="list-title">{${T('المدن المفضلة', 'Favorite cities')}} <em>({cities.length})</em></h2>
           {cities.length ? <ul className="rows compact">{cities.map(city => <li className="row" key={city.name}>
             <div className="row-main"><h3>{city.name}</h3></div><div className="row-acts"><button className="btn tiny" type="button" onClick={() => void load(city)}>{${T('تحديث', 'Load')}}</button><button className="btn tiny danger" type="button" onClick={() => removeCity(city)}>{${T('حذف', 'Remove')}}</button></div>
@@ -2470,14 +2508,14 @@ export default function WeatherApp({ content }) {
       ) : null}
 
       {screen === 'settings' ? (
-        <section className="panel">
+        <section data-reveal-section className="panel">
           <h2 className="list-title">{${T('إعدادات العرض', 'Display settings')}}</h2>
           <div className="toolbar"><label>{${T('الوحدة', 'Temperature unit')}} <button className="btn tiny" type="button" onClick={() => setUnit(unit === 'C' ? 'F' : 'C')}>{unit === 'C' ? 'Celsius (°C)' : 'Fahrenheit (°F)'}</button></label><label>{${T('تنسيق الوقت', 'Time format')}} <button className="btn tiny" type="button" onClick={() => setTimeFormat(timeFormat === '24h' ? '12h' : '24h')}>{timeFormat}</button></label></div>
           <p className="muted small">{${T('الإعدادات والمفضلة محفوظة محلياً بعد إعادة التحميل.', 'Favorites and settings persist locally after reload.')}}</p>
         </section>
       ) : null}
 
-      {(screen === 'home' || screen === 'details') && !cur ? <section className="panel"><p className="empty">{${T('ابحث عن مدينة لعرض الطقس الحقيقي.', 'Search for a city to view live weather.')}}</p></section> : null}
+      {(screen === 'home' || screen === 'details') && !cur ? <section data-reveal-section className="panel"><p className="empty">{${T('ابحث عن مدينة لعرض الطقس الحقيقي.', 'Search for a city to view live weather.')}}</p></section> : null}
 
       {(screen === 'home' || screen === 'details') && cur ? (
         <>
@@ -2487,15 +2525,15 @@ export default function WeatherApp({ content }) {
             <dl className="row-meta"><div><dt>{${T('الإحساس', 'Feels like')}}</dt><dd>{show(cur.apparent_temperature)}°{unit}</dd></div><div><dt>{${T('الرطوبة', 'Humidity')}}</dt><dd>{cur.relative_humidity_2m}%</dd></div><div><dt>{${T('الرياح', 'Wind')}}</dt><dd>{Math.round(cur.wind_speed_10m)} ${isAr ? 'كم/س' : 'km/h'}</dd></div></dl>
           </section>
 
-          <section className="panel"><h2 className="list-title">{${T('الساعات القادمة', 'Next 24 hours')}}</h2>{hourly && hourly.time ? <ul className="days">{hourly.time.slice(0, 24).map((time, i) => <li className="day" key={time}><span className="day-name">{formatHour(time, timeFormat)}</span><span className="day-icon" aria-hidden="true">{ICONS[hourly.weather_code[i]] || '🌡️'}</span><span className="day-temp"><b>{show(hourly.temperature_2m[i])}°{unit}</b></span></li>)}</ul> : <p className="empty">{${T('لا توجد بيانات ساعية.', 'Hourly data is unavailable.')}}</p>}</section>
+          <section data-reveal-section className="panel"><h2 className="list-title">{${T('الساعات القادمة', 'Next 24 hours')}}</h2>{hourly && hourly.time ? <ul className="days">{hourly.time.slice(0, 24).map((time, i) => <li className="day" key={time}><span className="day-name">{formatHour(time, timeFormat)}</span><span className="day-icon" aria-hidden="true">{ICONS[hourly.weather_code[i]] || '🌡️'}</span><span className="day-temp"><b>{show(hourly.temperature_2m[i])}°{unit}</b></span></li>)}</ul> : <p className="empty">{${T('لا توجد بيانات ساعية.', 'Hourly data is unavailable.')}}</p>}</section>
 
-          <section className="panel"><h2 className="list-title">{${T('توقعات 7 أيام', '7-day forecast')}}</h2>{daily && daily.time ? <ul className="days">{daily.time.slice(0, 7).map((day, i) => <li className="day" key={day}><span className="day-name">{formatDay(day)}</span><span className="day-icon" aria-hidden="true">{ICONS[daily.weather_code[i]] || '🌡️'}</span><span className="day-temp"><b>{show(daily.temperature_2m_max[i])}°</b> / {show(daily.temperature_2m_min[i])}°</span></li>)}</ul> : <p className="empty">{${T('لا توجد توقعات يومية.', 'Daily data is unavailable.')}}</p>}</section>
+          <section data-reveal-section className="panel"><h2 className="list-title">{${T('توقعات 7 أيام', '7-day forecast')}}</h2>{daily && daily.time ? <ul className="days">{daily.time.slice(0, 7).map((day, i) => <li className="day" key={day}><span className="day-name">{formatDay(day)}</span><span className="day-icon" aria-hidden="true">{ICONS[daily.weather_code[i]] || '🌡️'}</span><span className="day-temp"><b>{show(daily.temperature_2m_max[i])}°</b> / {show(daily.temperature_2m_min[i])}°</span></li>)}</ul> : <p className="empty">{${T('لا توجد توقعات يومية.', 'Daily data is unavailable.')}}</p>}</section>
 
-          <section className="panel"><h2 className="list-title">{${T('التفاصيل', 'Details')}}</h2><dl className="row-meta"><div><dt>{${T('الشروق', 'Sunrise')}}</dt><dd>{daily && daily.sunrise ? formatHour(daily.sunrise[0], timeFormat) : '—'}</dd></div><div><dt>{${T('الغروب', 'Sunset')}}</dt><dd>{daily && daily.sunset ? formatHour(daily.sunset[0], timeFormat) : '—'}</dd></div><div><dt>UV</dt><dd>{daily && daily.uv_index_max ? Math.round(daily.uv_index_max[0]) : '—'}</dd></div><div><dt>{${T('الرؤية', 'Visibility')}}</dt><dd>{cur.visibility ? Math.round(cur.visibility / 1000) + ' km' : '—'}</dd></div><div><dt>{${T('الضغط', 'Pressure')}}</dt><dd>{cur.pressure_msl ? Math.round(cur.pressure_msl) + ' hPa' : '—'}</dd></div></dl></section>
+          <section data-reveal-section className="panel"><h2 className="list-title">{${T('التفاصيل', 'Details')}}</h2><dl className="row-meta"><div><dt>{${T('الشروق', 'Sunrise')}}</dt><dd>{daily && daily.sunrise ? formatHour(daily.sunrise[0], timeFormat) : '—'}</dd></div><div><dt>{${T('الغروب', 'Sunset')}}</dt><dd>{daily && daily.sunset ? formatHour(daily.sunset[0], timeFormat) : '—'}</dd></div><div><dt>UV</dt><dd>{daily && daily.uv_index_max ? Math.round(daily.uv_index_max[0]) : '—'}</dd></div><div><dt>{${T('الرؤية', 'Visibility')}}</dt><dd>{cur.visibility ? Math.round(cur.visibility / 1000) + ' km' : '—'}</dd></div><div><dt>{${T('الضغط', 'Pressure')}}</dt><dd>{cur.pressure_msl ? Math.round(cur.pressure_msl) + ' hPa' : '—'}</dd></div></dl></section>
         </>
       ) : null}
 
-      <section className="panel"><p className="muted small">{${T('المصدر: Open-Meteo، بدون مفتاح API، والبيانات ليست تجريبية.', 'Source: Open-Meteo, no API key required; live data only.')}}</p></section>
+      <section data-reveal-section className="panel"><p className="muted small">{${T('المصدر: Open-Meteo، بدون مفتاح API، والبيانات ليست تجريبية.', 'Source: Open-Meteo, no API key required; live data only.')}}</p></section>
     </div>
   );
 }
@@ -4523,7 +4561,7 @@ export default function ShopApp({ content }) {
       {notice ? <p className="notice" role="status">{notice}</p> : null}
 
       {merchant ? (
-        <section className="panel">
+        <section data-reveal-section className="panel">
           <h2>{${T('أضف منتجاً', 'Add a product')}}</h2>
           <form className="grid-form" onSubmit={addProduct}>
             {content.fields.map(f => (
