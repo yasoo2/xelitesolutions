@@ -128,7 +128,10 @@ describe('a design is composed from his sentence, not picked off a shelf', () =>
         //  worse than one layout for everything.
         for (const r of REQUESTS.slice(0, 8)) {
             const css = composedCss(composeDesign(r));
-            expect({ r, wrap: css.includes('.wrap{'), section: css.includes('.section{'), measure: css.includes('--measure:') })
+            //  The claim is that a section rhythm EXISTS, not how it is spelled.
+            //  The selector moved to `main > section` when the stylesheet was
+            //  retargeted at the markup the generator really writes.
+            expect({ r, wrap: css.includes('.wrap{'), section: css.includes('main > section{'), measure: css.includes('--measure:') })
                 .toEqual({ r, wrap: true, section: true, measure: true });
         }
     });

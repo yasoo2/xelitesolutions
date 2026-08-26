@@ -193,11 +193,29 @@ export function composedCss(g: DesignGenome): string {
             ? '0 1px 2px rgb(15 23 42 / .05), 0 8px 24px -12px rgb(15 23 42 / .12)'
             : '0 2px 4px rgb(15 23 42 / .06), 0 18px 40px -16px rgb(15 23 42 / .22)';
 
+    /**
+     *  ⛔ EVERY SELECTOR HERE IS ONE THE GENERATOR ACTUALLY WRITES.
+     *
+     *  The first version of this stylesheet styled `.section`, `.section-head`,
+     *  `.split` and `.stack`. Counted in the file that writes the markup:
+     *  wrap 11, panel 32, product 3, eyebrow 1 -- and section 0, section-head
+     *  0, split 0, stack 0.
+     *
+     *  So a design composed from ten decisions had half of it landing on
+     *  selectors nothing wears. Every measurement of the genome would still
+     *  have said a hundred distinct designs, because the genome IS distinct --
+     *  it simply never reached the screen. That is this session's most common
+     *  class, committed while closing it: a capability that exists and a
+     *  reader that never asks.
+     *
+     *  The guard beside this file reads both sides and refuses a rule written
+     *  for something that does not exist.
+     */
     const accentRule =
         g.accent === 'rail'
-            ? `.section-head{border-inline-start:${g.weight + 2}px solid var(--brand);padding-inline-start:${gap}px}`
+            ? `.panel > h2,.panel > h3{border-inline-start:${g.weight + 2}px solid var(--brand);padding-inline-start:${gap}px}`
             : g.accent === 'underline'
-                ? `.section-head h2{padding-bottom:${Math.round(g.rhythm * 0.8)}px;border-bottom:${g.weight}px solid var(--brand)}`
+                ? `.panel > h2,.panel > h3{padding-bottom:${Math.round(g.rhythm * 0.8)}px;border-bottom:${g.weight}px solid var(--brand)}`
                 : g.accent === 'block'
                     ? `.eyebrow{background:var(--brand);color:var(--on-brand);padding:${Math.round(g.rhythm * 0.5)}px ${gap}px;border-radius:${Math.max(0, g.radius - 6)}px}`
                     : `.eyebrow{color:var(--brand-text,var(--brand))}`;
@@ -220,13 +238,12 @@ export function composedCss(g: DesignGenome): string {
   --section-space:${pad}px; --elevation:${shadow};
 }
 .wrap{width:min(100% - 2rem,var(--maxw,1180px));margin-inline:auto}
-.section{padding-block:var(--section-space)}
-.section-head{max-width:var(--measure);margin-bottom:calc(var(--rhythm) * 3);${g.align === 'center' ? 'margin-inline:auto;text-align:center' : ''}}
+main > section{padding-block:calc(var(--section-space) * .5)}
+main > section > h2,.panel > h2{max-width:var(--measure);${g.align === 'center' ? 'margin-inline:auto;text-align:center' : ''}}
 p,li{max-width:var(--measure)}
-.card,.panel,.product{border-radius:var(--radius-composed);border:var(--rule) solid var(--line);box-shadow:var(--elevation)}
-.split{display:grid;gap:calc(var(--gap) * 2);grid-template-columns:1fr}
-@media (min-width:900px){.split{grid-template-columns:calc(var(--split) * 100%) 1fr}}
-.stack{display:grid;gap:var(--gap)}
+.panel,.product{border-radius:var(--radius-composed);border:var(--rule) solid var(--line,#e5e5e5);box-shadow:var(--elevation)}
+.products{display:grid;gap:var(--gap)}
+@media (min-width:900px){.products{grid-template-columns:repeat(auto-fill,minmax(calc(var(--split) * 520px),1fr))}}
 ${accentRule}
 ${textureRule}`.trim();
 }
