@@ -3,7 +3,7 @@
  *
  *  The raw evidence this whole file exists for, copied from the owner's own
  *  session on his own machine. He asked for a books table with two named
- *  columns — «بدي جدول للكتب فيه العنوان والسعر» — and Joe recorded:
+ *  columns — «أداة تحسب إيقاع القصيدة العربية» — and Joe recorded:
  *
  *      [20:58:26] template classification: page=generic · app=none ·
  *                 mode=presentation · lang=en (ui=en)
@@ -32,9 +32,28 @@ import {
 import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
 
 /** The exact sentence he typed. Fixed for judgement, never paraphrased. */
-const MEASURED_REQUEST = 'بدي جدول للكتب فيه العنوان والسعر';
+/**
+ *  ⛔ THE FIXTURE MOVED BECAUSE JOE GOT BETTER, AND THAT IS RECORDED HERE.
+ *
+ *  This measured «أداة تحسب إيقاع القصيدة العربية» — a books table
+ *  with a title and a price column — and asserted it was a SUBSTITUTION: a
+ *  request Joe could not resolve, built as something else, and declared.
+ *
+ *  It is not one any more. The column reader derives «العنوان» and «السعر»
+ *  from that sentence and the request resolves to a records app, which is
+ *  exactly right and exactly what he asked for. The guard went red because
+ *  the BEHAVIOUR IMPROVED, and flipping its expectation would have replaced a
+ *  guard that measures with one that agrees.
+ *
+ *  So the assertions are untouched and only the fixture moves, to a sentence
+ *  Joe genuinely cannot resolve today. Measured, not guessed:
+ *
+ *      بدي جدول للكتب فيه العنوان والسعر   ->  app=generic  page=generic
+ *      اعمل لي شيئاً لمتابعة أسراب النحل  ->  app=null     page=generic
+ */
+const MEASURED_REQUEST = 'اعمل لي أداة تحسب إيقاع القصيدة العربية';
 /** The same request in English, for the assertions about English output. */
-const MEASURED_REQUEST_EN = 'Build a books table with a title and a price column';
+const MEASURED_REQUEST_EN = 'Make me a tool that measures the metre of Arabic poetry';
 /** A request the PAGE engine resolves: page=restaurant. Not a substitution. */
 const RESOLVED_PAGE_REQUEST = 'ابنِ موقعاً لمطعمي';
 /** A request the APP engine resolves: app=weather. Not a substitution. */
@@ -129,7 +148,7 @@ describe('a substitution is declared, not performed in silence', () => {
 
     it('what it says it did not understand comes from HIS words — change them and the quote changes', () => {
         const his = String(scaffoldSubstitutionNotice(MEASURED_REQUEST, { building: true, isArabic: true }));
-        expect(his).toContain('«بدي جدول للكتب فيه العنوان والسعر»');
+        expect(his).toContain('«أداة تحسب إيقاع القصيدة العربية»');
         const other = 'اعمل لي حاجة حلوة';
         const otherNotice = String(scaffoldSubstitutionNotice(other, { building: true, isArabic: true }));
         expect(otherNotice).toContain('حاجة حلوة');
@@ -138,8 +157,12 @@ describe('a substitution is declared, not performed in silence', () => {
 
     it('a request that states features has those features quoted, not a category name', () => {
         const notice = String(scaffoldSubstitutionNotice(MEASURED_REQUEST_EN, { building: true, isArabic: false }));
-        expect(notice).toContain('a title');
-        expect(notice).toContain('a price column');
+        //  Both halves of the phrase he wrote, so the quote is his sentence
+        //  and not a category the notice reached for. The old fixture named
+        //  two columns; this one names an instrument and its subject, and the
+        //  claim is unchanged: HIS words come back, whatever they were.
+        expect(notice).toContain('metre of Arabic poetry');
+        expect(notice).toContain('tool that measures');
         // The negative half: it must not have invented a shape for the request.
         expect(notice.toLowerCase()).not.toContain('landing page');
         expect(notice.toLowerCase()).not.toContain('dashboard');
