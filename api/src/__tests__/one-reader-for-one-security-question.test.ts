@@ -31,25 +31,104 @@ const ROOT = 'C:\\Users\\home\\Documents\\xelitesolutions';
 const PROJECTS = ROOT + '\\data\\projects';
 const win = process.platform === 'win32';
 
-describe('a path escapes by what it means, not by how it is spelled', () => {
-    it('«..» does not stay inside by starting inside', () => {
+/**
+ *  ⛔ A FIXTURE WRITTEN IN ONE PLATFORM'S DIALECT, JUDGED BY THE OTHER'S PARSER.
+ *
+ *  Every case below used to run on both platforms with Windows-form paths,
+ *  and one of them was simply WRONG on Linux:
+ *
+ *      isWithinRoot(PROJECTS + '\\x', PROJECTS)      win32 = true
+ *                                                     POSIX = false
+ *
+ *  Both answers are correct. On win32 the backslash is a SEPARATOR, so that
+ *  string names a child. On POSIX it is an ordinary FILENAME CHARACTER, so
+ *  the string names an entry sitting BESIDE the root, called `projects\\x`.
+ *
+ *  ⛔ AND THE POSIX ANSWER IS A SECURITY PROPERTY, NOT AN INCONVENIENCE.
+ *  Teaching the primitive to answer `true` there would be a false ACCEPT on
+ *  a containment check — a path outside the root judged inside it, which is
+ *  exactly what path-containment.ts was written to kill. So the primitive is
+ *  untouched and the FIXTURE is what gets a dialect.
+ *
+ *  The class: the same string means two different things to two readers, and
+ *  the test asserted one reader's meaning as if it were universal. Sibling of
+ *  `a-requirement-read-in-one-inflection-and-named-in-one-language`.
+ *
+ *  ⛔ AND SPLITTING IS NOT SKIPPING. A criterion that only ever runs on one
+ *  platform is, on the other, a criterion that can never fail. So the five
+ *  claims are asserted TWICE — once in each dialect — and the disagreement
+ *  itself is asserted third, in both directions.
+ */
+
+const onWin = win ? it : it.skip;
+const onPosix = win ? it.skip : it;
+
+const P_ROOT = '/srv/joe';
+const P_PROJECTS = P_ROOT + '/data/projects';
+
+describe('a path escapes by what it means, not by how it is spelled — Windows dialect', () => {
+    onWin('«..» does not stay inside by starting inside', () => {
         expect(isWithinRoot(ROOT + '\\..\\secrets', ROOT)).toBe(false);
     });
 
-    it('a sibling that shares a prefix is not a child', () => {
+    onWin('a sibling that shares a prefix is not a child', () => {
         expect(isWithinRoot(ROOT + '-backup\\x', ROOT)).toBe(false);
     });
 
-    it('somewhere else entirely is not a child', () => {
+    onWin('somewhere else entirely is not a child', () => {
         expect(isWithinRoot('C:\\Windows\\System32', ROOT)).toBe(false);
     });
 
-    it('a real child is a child', () => {
+    onWin('a real child is a child', () => {
         expect(isWithinRoot(PROJECTS + '\\x', PROJECTS)).toBe(true);
     });
 
-    it('the root is within itself', () => {
+    onWin('the root is within itself', () => {
         expect(isWithinRoot(ROOT, ROOT)).toBe(true);
+    });
+});
+
+describe('…and the same five claims in the POSIX dialect', () => {
+    //  Not a translation for tidiness. Without these, the whole block above
+    //  is dead weight on Linux and the gate that runs there proves nothing
+    //  about containment at all.
+    onPosix('«..» does not stay inside by starting inside', () => {
+        expect(isWithinRoot(P_ROOT + '/../secrets', P_ROOT)).toBe(false);
+    });
+
+    onPosix('a sibling that shares a prefix is not a child', () => {
+        expect(isWithinRoot(P_ROOT + '-backup/x', P_ROOT)).toBe(false);
+    });
+
+    onPosix('somewhere else entirely is not a child', () => {
+        expect(isWithinRoot('/etc/shadow', P_ROOT)).toBe(false);
+    });
+
+    onPosix('a real child is a child', () => {
+        expect(isWithinRoot(P_PROJECTS + '/x', P_PROJECTS)).toBe(true);
+    });
+
+    onPosix('the root is within itself', () => {
+        expect(isWithinRoot(P_ROOT, P_ROOT)).toBe(true);
+    });
+});
+
+describe('and a dialect is never universal — asserted in BOTH directions', () => {
+    //  This is the case that failed the gate. It is kept, not deleted: the
+    //  disagreement is the point, and each platform's answer is pinned so a
+    //  future «fix» that loosens the primitive turns one of them red.
+    onWin('on Windows a backslash SEPARATES, so that string is a child', () => {
+        expect(isWithinRoot(PROJECTS + '\\x', PROJECTS)).toBe(true);
+    });
+
+    onPosix('on POSIX a backslash is a FILENAME character, so it is refused', () => {
+        //  `projects\\x` sits beside the root, not inside it. Answering true
+        //  here would be a false accept on a security boundary.
+        expect(isWithinRoot(P_PROJECTS + '\\x', P_PROJECTS)).toBe(false);
+    });
+
+    onPosix('and a whole Windows path is not a POSIX child either', () => {
+        expect(isWithinRoot(ROOT + '\\data', P_ROOT)).toBe(false);
     });
 });
 
