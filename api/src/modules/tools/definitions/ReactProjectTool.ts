@@ -118,6 +118,31 @@ const MEASURED_ABILITIES: Record<string, MeasuredAbility[]> = {
     ],
 };
 
+/**
+ *  AND THE BLOCKER SAYS WHY IT BLOCKED.
+ *
+ *  Seen on the owner's screen at the end of a 42-step build:
+ *
+ *      Failed phase: Interface on the service
+ *      Error: required_visual_audit_not_completed
+ *
+ *  Nothing else. The audit records its reason in words — «playwright
+ *  unavailable: …», «disabled (JOE_VISUAL_AUDIT=0)», a launch that threw —
+ *  and the delivery threw the string away, so he was told the MECHANISM and
+ *  not the CAUSE. Measured on his machine at that moment: Playwright resolved
+ *  and its Chromium existed on disk, so the reason was neither of the two a
+ *  person would guess, and nothing on screen could have told him which.
+ *
+ *  The id stays at the front because other layers match on it; the reason
+ *  follows a colon, readable by him and still parseable by them.
+ */
+export function deliveryErrorForVisualAudit(audit: { skipped?: string } | null | undefined): string {
+    const id = 'required_visual_audit_not_completed';
+    if (!audit) return `${id}: the audit never ran`;
+    if (audit.skipped) return `${id}: ${audit.skipped}`;
+    return `${id}: the audit produced no result`;
+}
+
 /** Read the generated source and return only capabilities backed by their own evidence. */
 export function measuredAppAbilities(engine: string, isArabic: boolean, source: string): MeasuredAbilityReport {
     const entries = MEASURED_ABILITIES[String(engine || '')];
@@ -5165,7 +5190,7 @@ ${built ? '✅ npm install + vite build succeeded — the production build is in
             ok: !deliveryBlocked,
             error: deliveryBlocked
                 ? (visualAuditUnavailable
-                    ? 'required_visual_audit_not_completed'
+                    ? deliveryErrorForVisualAudit(audit)
                     : fidelityEvidenceUnavailable
                         ? 'fidelity_unverifiable'
                         : fidelityMismatch

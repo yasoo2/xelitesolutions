@@ -193,9 +193,25 @@ describe('preview claims require a measured HTTP response', () => {
 });
 
 describe('capability claims require a measured engine contract', () => {
+    /**
+     *  THE FIXTURE CARRIES CONTROLS NOW, NOT WORDS.
+     *
+     *  It used to list `search filter sort` as bare tokens, because that is
+     *  what the proof looked for — and `filter` and `sort` are JavaScript's
+     *  own array methods, present in every React file ever generated. A
+     *  records app with no filter control at all was told it could filter.
+     *
+     *  The claims are proven by the STATE their controls drive, so the
+     *  fixture names those, and the filter also needs a select column: its
+     *  control renders only when one exists, so without one the markup never
+     *  reaches the screen.
+     */
+    const RECORDS_SOURCE = "function RecordsApp(){ setRows add create edit update delete required validate"
+        + " setQuery( setFilter( setSort( groupTotals localStorage fetch toCsv download"
+        + " fields:[{key:'status',type:'select'}] }";
+
     it('returns only measured claims for a known engine with source evidence', () => {
-        const source = 'function RecordsApp(){ setRows add create edit update delete required validate search filter sort groupTotals localStorage fetch toCsv download }';
-        const report = measuredAppAbilities('records', true, source);
+        const report = measuredAppAbilities('records', true, RECORDS_SOURCE);
         expect(report.measured).toBe(true);
         expect(report.abilities).toContain('إضافة وتعديل وحذف السجلات فعلياً');
         expect(report.abilities).toContain('حفظ دائم + تصدير CSV + قراءة من خادم المشروع إن وُجد');
@@ -213,7 +229,16 @@ describe('capability claims require a measured engine contract', () => {
     it('does not claim any known-engine ability when its source cannot be read', () => {
         const report = measuredAppAbilities('records', true, '');
         expect(report).toEqual(expect.objectContaining({ abilities: [], measured: false }));
-        expect(report.unmeasured).toHaveLength(5);
+        //  EVERY ability of the engine, not a number that has to be edited
+        //  each time the contract gets more precise. It was written as `5`,
+        //  and splitting one false claim («search, filter and sort», proven
+        //  by two array methods) into three provable ones broke a test that
+        //  had nothing to say about the change. The count is derived from a
+        //  fully-evidenced run, so it describes the intent instead of a
+        //  snapshot of it.
+        const everyAbility = measuredAppAbilities('records', true, RECORDS_SOURCE).abilities;
+        expect(everyAbility.length).toBeGreaterThan(4);
+        expect(report.unmeasured).toHaveLength(everyAbility.length);
     });
 
     it('does not inherit records claims for an unknown engine', () => {

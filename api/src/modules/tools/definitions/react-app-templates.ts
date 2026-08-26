@@ -1398,11 +1398,17 @@ export default function RecordsApp({ content }) {
         {visible.length === 0 ? (
           <p className="empty">{rows.length ? ${T('لا نتائج مطابقة لبحثك.', 'Nothing matches that search.')} : content.emptyHint}</p>
         ) : content.asTable ? (
-          {/*  THE SHAPE HE NAMED. «اعمل جدول … فيه اسم الصنف والكمية والسعر»
-              was delivered as a stack of cards — measured «table count: 0,
-              th count: 0» — and the primary column's own LABEL was dropped,
-              so «اسم الصنف» appeared nowhere. A column he named is a column
-              he can read down, with its name at the top of it.  */}
+          //  THE SHAPE HE NAMED. «اعمل جدول … فيه اسم الصنف والكمية والسعر»
+          //  was delivered as a stack of cards — measured «table count: 0,
+          //  th count: 0» — and the primary column's own LABEL was dropped,
+          //  so «اسم الصنف» appeared nowhere. A column he named is a column
+          //  he can read down, with its name at the top of it.
+          //
+          //  And this comment is a LINE comment on purpose: written as
+          //  {/* … */} it was the first child of a parenthesised expression
+          //  followed by an element, which is two expressions and not one.
+          //  Every generated RecordsApp.jsx stopped parsing, in four
+          //  archetypes and both languages, and the syntax guard caught it.
           <div className="table-wrap">
             <table className="rows-table">
               <thead>
