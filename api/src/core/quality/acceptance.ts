@@ -29,7 +29,7 @@
  * cannot test says «unprovable» rather than passing quietly — because a check
  * that cannot fail is the thing this project keeps deleting.
  */
-import { derivedColumns, statedRules, type DerivedField, columnsAnywhereInHisRequest } from '../design/app-blueprints';
+import { derivedColumns, statedRules, type DerivedField, columnsAnywhereInHisRequest, detectAppKind } from '../design/app-blueprints';
 import fs from 'fs';
 import path from 'path';
 import { thePagesHeNamed } from '../design/site-plan';
@@ -384,7 +384,35 @@ export function acceptanceFor(request: string): Criterion[] {
 
     //  His columns, in his words, each one its own criterion. No catalogue
     //  is consulted: derivedColumns reads them from the sentence he wrote.
-    const columns = columnsAnywhereInHisRequest(t) || [];
+    /**
+     *  ⛔ A COLUMN BELONGS TO A TABLE, AND A WEBSITE HAS NONE.
+     *
+     *  Caught on a live run, from a sentence the owner wrote himself:
+     *
+     *      أبي موقع لمحمصة قهوة… حط فيه قائمة قهوة بأسعارها
+     *      ودرجة التحميص، وساعات العمل والموقع…
+     *
+     *          acceptance_criteria_unmet: column:text1 … column:text4
+     *
+     *  Measured on the same sentence: detectAppKind returns null -- Joe
+     *  knows perfectly well it is a site -- and the judge asked for four
+     *  table columns anyway. So the website gets built and then refused,
+     *  because it has no columns, which a website never has.
+     *
+     *  ⛔ That is a criterion that can NEVER BE MET, and it is the mirror
+     *  of the one this file keeps deleting: a check that cannot fail proves
+     *  nothing, and a check that cannot pass blocks everything.
+     *
+     *  The classifier was taught that a site noun means a site and the
+     *  judge was not -- two readers of one request, each correct alone and
+     *  the pair fatal. When nothing table-shaped will be built, the nouns
+     *  in his sentence are CONTENT, and the sections reader already carries
+     *  them: a coffee list with its prices becomes a listing, not four
+     *  columns nobody can point at.
+     */
+    const willBuildATable = detectAppKind(t) !== null;
+    const columns = willBuildATable ? (columnsAnywhereInHisRequest(t) || []) : [];
+
 
     /**
      *  THE PAGES HE NAMED ARE CRITERIA, exactly as his columns are.
