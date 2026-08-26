@@ -2179,6 +2179,47 @@ function firstColumnBeginsAtTheName(firstRaw: string, afterAContainer: boolean):
  */
 const OPENS_A_NEW_REQUEST = /^(?:مع|plus|with|along\s+with|together\s+with|including|and)(?=$|[\s،,])/iu;
 
+/**
+  ⛔ AND THIS LIST IS EXPLICIT ON PURPOSE, AFTER A LETTER RULE FAILED.
+ *
+ *  The first attempt read the leading LETTER: an Arabic present-tense verb
+ *  opens with ي ت ن or أ and carries no article, so the pattern was
+ *  /^[يتنأ](?!ل).../ . It threw away two of his columns immediately:
+ *
+ *      تاريخ الميلاد      <- opens with ت
+ *      نوع الحليب         <- opens with ن
+ *
+ *  Both are nouns, and the letter cannot tell. That is the class this file
+ *  keeps closing -- a pattern that reads letters where it must read words
+ *  -- and it was reopened here while closing a different member of it.
+ *
+ *  Nothing lexical separates them: «يطلع المجموع» and «تاريخ الميلاد»
+ *  have the same shape, the same definiteness pattern, the same word count.
+ *  Only knowing that طلع is a verb and تاريخ is a noun settles it, and no
+ *  stemmer here carries part of speech.
+ *
+ *  So the list is narrow and it is about BEHAVIOUR: these are the verbs a
+ *  person uses to say what the page should DO with a column, never to name
+ *  the column. It is matched through the language layer, so «يطلع» is
+ *  «يطلع» in any inflection he writes it.
+ *
+ *  A narrow list that is right beats a broad rule that is wrong, and the
+ *  negative cases below it name the two columns the broad rule ate.
+ */
+const BEHAVIOUR_VERBS = [
+    'يطلع', 'تطلع', 'يحسب', 'تحسب', 'يظهر', 'تظهر', 'يعرض', 'تعرض',
+    'يجمع', 'تجمع', 'يرتب', 'ترتب', 'يبحث', 'تبحث', 'يطبع', 'تطبع',
+];
+
+function opensAsABehaviour(word: string): boolean {
+    const w = String(word || '').trim();
+    if (!w) return false;
+    try {
+        const { saysAny } = require('../language/arabic');
+        return saysAny(w, BEHAVIOUR_VERBS);
+    } catch { return BEHAVIOUR_VERBS.includes(w); }
+}
+
 function isAColumnAndNotAClause(item: string, index: number): boolean {
     const t = String(item || '').trim();
     if (index > 0 && OPENS_A_NEW_REQUEST.test(t)) return false;
@@ -2214,6 +2255,33 @@ function isAColumnAndNotAClause(item: string, index: number): boolean {
         if (words.length === 1 && t.length >= 3
             && !ARABIC_FUNCTION_WORD.test(t) && !READS_AS_A_RULE.test(t)) return true;
     }
+    /**
+     *  ⛔ A COLUMN IS NAMED BY A NOUN, NEVER BY A VERB.
+     *
+     *  Measured on a sentence shaped the way the owner writes:
+     *
+     *      اعمل لي صفحة أسجل فيها مصاريفي ويطلع المجموع
+     *          columns  ->  ["مصاريفي", "يطلع المجموع"]
+     *          engine   ->  generic          (his expenses engine, lost)
+     *
+     *  The second item is a verb and its subject: something the page DOES.
+     *  It passed on the strength of its SECOND word -- «المجموع» is
+     *  definite and is not a function word -- so a definite noun ANYWHERE
+     *  in the phrase proved the whole phrase was a name.
+     *
+     *  That is this repository's first class: evidence that matches the
+     *  occurrence of a word instead of testing the claim, exactly as the
+     *  bound proof once granted a tick from any digit anywhere.
+     *
+     *  And the cost is the whole archetype, not one column: detectAppKind
+     *  returns 'generic' the moment ANY column is derived, so one misread
+     *  phrase costs him the engine that knows how to total his expenses.
+     *
+     *  Only the LEADING word is judged, and only when the phrase has more
+     *  than one -- a single word is settled by the tests around this one.
+     */
+    const leadWords = t.split(/\s+/).filter(Boolean);
+    if (leadWords.length > 1 && opensAsABehaviour(leadWords[0])) return false;
     if (!everyItemIsADefiniteName([t])) return false;
     const words = t.split(/\s+/);
     return !words.slice(1).some(w => ARABIC_FUNCTION_WORD.test(w));
