@@ -125,6 +125,13 @@ const AR_STOP_TOKEN = new RegExp('^(?:مع|تحتوي|يحتوي|فيها|فيه
     //  words — a catalogue of ORDERS, which is a closed and different set,
     //  and one of them can never be part of a name.
     + '|اعمل|أعمل|اعرض|أعرض|اضف|أضف|اجعل|أجعل|ابن|انشئ|أنشئ|احذف|امسح|اكتب|اربط|ضع'
+    //  …and a CONTAINER opens a declaration of its own. Measured in the shop
+    //  he asked for: «صفحة الطلبات. جدول المنتجات فيه اسم الصنف…» produced a
+    //  page called «الطلبات جدول المنتجات», and that label went into the
+    //  navigation he sees. A table is not part of a page's NAME even when it
+    //  is part of the page's contents — the sentence that names it is a new
+    //  sentence, and the full stop between them said so.
+    + '|جدول|جداول|كشف|سجل|سجلّ|قائمة|قائمه'
     + ')$');
 
 /**

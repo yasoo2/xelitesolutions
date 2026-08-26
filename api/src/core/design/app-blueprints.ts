@@ -356,7 +356,19 @@ export function detectAppKind(requestRaw: string): AppKind | null {
     //
     //  Ported from main (Manus, da586c92) — the same property this branch
     //  argues everywhere: what he stated beats what we recognised.
-    if (derivedColumns(intentRequest)?.length) return 'generic';
+    //  …and it asks the reader that finds his list ANYWHERE in the request.
+    //
+    //  Measured on the shop he asked for: two tables read, nine columns
+    //  between them, and this line returned nothing — because the
+    //  single-shot reader loses to the earlier list in «فيه صفحة المنتجات
+    //  وصفحة الطلبات». With no app kind, the builder fell through to the
+    //  brochure path and handed him a marketing site: heroTitle, features,
+    //  a story section and a gallery, for a request that named columns.
+    //
+    //  That is the SCAFFOLD-FALLBACK-UNGUARDED debt in CLAUDE.md, reached
+    //  from a new direction: not a failure to understand, but one reader
+    //  answering a question another reader had already answered better.
+    if (columnsAnywhereInHisRequest(intentRequest)?.length) return 'generic';
     /**
      * Score every registered archetype instead of returning the first keyword
      * that happens to occur in a long request. A real request often names the
