@@ -1106,6 +1106,89 @@ export function sectionsForKind(kind: PageKind): string[] {
     }
 }
 
+/**
+ *  ⛔ THE SECTIONS COME FROM WHAT HE ASKED FOR.
+ *
+ *  Measured on the owner's reference prompt: he named six things and the
+ *  page was assembled from a fixed eight, five of which he never mentioned
+ *  — Features, Steps, Stats, Team, Testimonials. The request was read once
+ *  to choose a KIND and then discarded, so a bicycle workshop, a coffee
+ *  roastery and a dental clinic all received the same headings.
+ *
+ *  Worse than the omissions were the substitutions: «phone CTA» became a
+ *  generic «Get started» and «booking form» became a name/email/message box.
+ *  An omission can be seen. A substitution hides behind something that looks
+ *  finished, which is why the run scored well and answered nothing.
+ *
+ *  Nothing was missing from the builder. A menu and a products grid carry
+ *  prices, Location renders opening hours and an address, tel: links exist,
+ *  the booking blueprint has its own fields. A severed wire, not an absent
+ *  organ.
+ *
+ *  ⛔ AND THE KIND STILL ANSWERS FOR HIS SILENCE. A page assembled only from
+ *  what he mentioned would leave a bare page for every brief that trusts Joe
+ *  to decide — the same defect from the other side. What he named is added
+ *  and what he did not name is left to the kind, minus the sections that
+ *  exist purely to fill a template he did not ask for.
+ */
+const SECTION_ASKS: Array<{ section: string; says: string[]; re: RegExp }> = [
+    { section: 'Menu', says: ['قائمة الطعام', 'menu'], re: /\bmenu\b|قائمة\s*(?:ال)?طعام|منيو/i },
+    { section: 'Products', says: ['خدمات', 'services', 'منتجات', 'products'],
+        re: /\bservices?\b|\bproducts?\b|خدمات|منتجات|بضائع/i },
+    { section: 'Pricing', says: ['الأسعار', 'pricing'], re: /\bpricing\b|\bplans\b|باقات|تسعير/i },
+    //  ⛔ «الموقع» IS TWO WORDS. It is the ADDRESS and it is the
+    //  WEBSITE, and the contract for this repository names it among the
+    //  Arabic traps beside «قائمة» and «العنوان». Listing it bare made
+    //  «اعمل لي موقع لمطعم» ask for a map section — caught by this
+    //  file's own negative case, which is what it is for. Only the
+    //  unambiguous forms answer here. And NO form of it survives: the
+    //  stemmer maps «موقع» and «موقعنا» to one root, correctly, so
+    //  morphology cannot separate the two meanings and only the words
+    //  that mean one thing are listed — «العنوان», «ساعات العمل»,
+    //  «خريطة», location, address, opening hours.
+    { section: 'Location', says: ['location', 'العنوان'],
+        re: /\blocation\b|\baddress\b|opening\s*hours|ساعات\s*(?:ال)?عمل|العنوان|خريطة/i },
+    { section: 'Gallery', says: ['معرض', 'gallery'], re: /\bgaller(?:y|ies)\b|معرض\s*صور|ألبوم/i },
+    { section: 'Faq', says: ['أسئلة', 'faq'], re: /\bfaqs?\b|أسئلة\s*(?:شائعة|متكررة)/i },
+    { section: 'Testimonials', says: ['آراء', 'testimonials'], re: /\btestimonials?\b|\breviews?\b|آراء\s*(?:ال)?عملاء|شهادات/i },
+    { section: 'Team', says: ['الفريق', 'team'], re: /\bteam\b|فريق\s*(?:ال)?عمل|موظف/i },
+    { section: 'Stats', says: ['إحصاء', 'stats'], re: /\bstats\b|\bstatistics\b|إحصاء|احصائ/i },
+    { section: 'Story', says: ['قصتنا', 'story'], re: /\bstory\b|\babout\s*us\b|قصتنا|من\s*نحن/i },
+    { section: 'Steps', says: ['خطوات', 'steps'], re: /\bsteps\b|how\s*it\s*works|خطوات|كيف\s*نعمل/i },
+];
+
+/**  Sections that exist to fill a page, not to answer a request. When he has
+ *   named what he wants, these are the ones that stop being free.  */
+const TEMPLATE_FILLER = new Set(['Features', 'Steps', 'Stats', 'Team', 'Testimonials']);
+
+export function sectionsForRequest(request: string, kind: PageKind): string[] {
+    const r = String(request || '');
+    const { saysAny } = require('../../../core/language/arabic');
+    const asked = new Set<string>();
+    for (const entry of SECTION_ASKS) {
+        let hit = false;
+        try { hit = saysAny(r, entry.says); } catch { hit = false; }
+        if (hit || entry.re.test(r)) asked.add(entry.section);
+    }
+    const base = sectionsForKind(kind);
+    //  He named nothing this reader recognises: the kind answers in full,
+    //  exactly as it did before. Silence is a request to decide, not a
+    //  request for a bare page.
+    if (!asked.size) return base;
+    const out: string[] = [];
+    for (const s of base) {
+        if (asked.has(s) || !TEMPLATE_FILLER.has(s)) out.push(s);
+    }
+    for (const s of SECTION_ASKS) {
+        if (asked.has(s.section) && !out.includes(s.section)) {
+            //  Placed after Hero, where the thing he asked for belongs, rather
+            //  than appended under a call to action.
+            out.splice(Math.min(1, out.length), 0, s.section);
+        }
+    }
+    return [...new Set(out)];
+}
+
 /** Content derived from the request — deterministic, never blocks on a model. */
 function deriveContent(request: string, isAr: boolean, kind: PageKind = 'generic'): ReactContent {
     const brand = brandFrom(request, isAr) || brandFallback(request, isAr, kind);
@@ -3185,7 +3268,12 @@ export class ReactProjectTool extends BaseTool {
         const family = familyFor(request, kind);
         const multiPage = wantsMultiPage(request, kind);
         const pages = appPagesFor(kind, request, isAr);
-        const sections = multiPage ? [...new Set(pages.flatMap(p => p.sections))] : sectionsForKind(kind);
+        //  From the REQUEST, with the kind answering only for his silence.
+        //  This line read `sectionsForKind(kind)` and that is where a brief
+        //  naming six things became a fixed eight, five of them unasked.
+        const sections = multiPage
+            ? [...new Set(pages.flatMap(p => p.sections))]
+            : sectionsForRequest(request, kind);
         const content = deriveContent(request, isAr, kind);
         // BUSINESS MEMORY: the saved real details flow into the build — the
         // brand when the request named none, and a REAL contact block (tel:,
