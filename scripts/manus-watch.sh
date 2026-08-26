@@ -57,6 +57,22 @@ check_once() {
         return 0
     fi
 
+    #  ⛔ AN ACKNOWLEDGEMENT IS NOT A QUESTION.
+    #
+    #  «إقرار حكم … سأنفذ الآن» says he accepted and is working. Shouting
+    #  «he is waiting» over that teaches the reader to ignore the alarm, and
+    #  an alarm that is ignored is not an alarm. This came from the watcher
+    #  this one replaces -- the one good idea it had, kept.
+    #
+    #  It is announced with a different word and a different exit code, so
+    #  a caller can tell «he is working» from «he is stopped» without
+    #  reading prose.
+    case "$head" in
+        إقرار*|ACK*|*"ACK —"*)
+            echo "MANUS ACKNOWLEDGED and is executing — no ruling needed ($last_at)"
+            echo "   said: $head"
+            return 3 ;;
+    esac
     echo "MANUS IS WAITING — the last word on PR #$PR is NOT mine."
     echo "   when: $last_at"
     echo "   id:   $last_id"
@@ -66,8 +82,18 @@ check_once() {
 }
 
 if [ "${1:-}" = "--loop" ]; then
+    #  A real wait repeats every tick, on purpose: it is the only thing that
+    #  survives a missed poll. An acknowledgement is said once and then held
+    #  quiet until something else arrives.
+    said_ack=""
     while true; do
-        check_once
+        out="$(check_once)"; rc=$?
+        if [ $rc -eq 3 ]; then
+            if [ "$out" != "$said_ack" ]; then printf '%s\n' "$out"; said_ack="$out"; fi
+        else
+            said_ack=""
+            printf '%s\n' "$out"
+        fi
         sleep "$EVERY"
     done
 else
