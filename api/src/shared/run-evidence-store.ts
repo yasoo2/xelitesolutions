@@ -227,6 +227,21 @@ export function saveRunReceipt(runId: string, receipt: RunReceiptPayload, status
     });
 }
 
+/**
+ *  Every run a session produced, oldest first.
+ *
+ *  A run is addressable by its own id already. Nothing could ask the
+ *  opposite question — «what did THIS SESSION do» — which is the only
+ *  question a user asks when he reopens a session from the row at the
+ *  bottom of the screen.
+ */
+export async function getRunEvidenceForSession(sessionId: string): Promise<RunEvidenceRecord[]> {
+    const id = String(sessionId || '').trim();
+    if (!id) return [];
+    const rows = await runEvidenceStore.find({ sessionId: id }).catch(() => [] as RunEvidenceRecord[]);
+    return rows.slice().sort((a, b) => String(a.startedAt || '').localeCompare(String(b.startedAt || '')));
+}
+
 export async function getRunEvidence(runId: string): Promise<RunEvidenceRecord | null> {
     const normalized = trimString(runId, 180);
     if (!normalized) return null;

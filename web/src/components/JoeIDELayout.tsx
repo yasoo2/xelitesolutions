@@ -1,4 +1,6 @@
-import React, { useState, useCallback, useEffect, useRef, Suspense, lazy } from 'react';
+import React, { useState, useCallback, useEffect, useRef, Suspense, lazy } from 'react';
+import { logStamp, logTextFor } from '../lib/plainText';
+import { api } from '../services/apiClient';
 import { useTranslation } from 'react-i18next';
 import JoeHeader from './JoeHeader';
 import TodosPanel from './TodosPanel';
@@ -458,6 +460,35 @@ export default function JoeIDELayout({
         setLogs(saved?.logs || []);
         setProblems(saved?.problems || []);
         setBuildStatus(saved?.buildStatus || null);
+        /**
+         *  A REF LIVES EXACTLY AS LONG AS THE WINDOW — workspace_restore.
+         *
+         *  panelArchive remembers what each session printed, and remembers
+         *  it in the tab. So switching between sessions worked, and closing
+         *  Joe and coming back did not: «كل الجلسات السابقة لا تعرض على
+         *  البرفيو واللوجز ما تم في تلك الجلسة». Measured on his machine,
+         *  opening two past sessions as a guest — chat 211 and 205 lines,
+         *  logs empty both times.
+         *
+         *  The server had them the whole time, in run-evidence, keyed by
+         *  session. Nothing asked. So when the archive has nothing for a
+         *  session, ask — and only then, because a live session's own lines
+         *  are newer than anything on disk and must not be overwritten.
+         */
+        if (sessionId && !(saved?.logs || []).length) {
+            const asked = sessionId;
+            api.get(`/sessions/${asked}/workspace`)
+                .then((data: any) => {
+                    const lines: string[] = Array.isArray(data?.logs) ? data.logs : [];
+                    if (!lines.length) return;
+                    //  He may have moved on while the request was in flight;
+                    //  writing another session's log into this panel would be
+                    //  worse than showing nothing.
+                    if (sessionRef.current !== asked) return;
+                    setLogs(prev => (prev.length ? prev : capLogs(lines)));
+                })
+                .catch(() => { /* an unreachable server is an empty panel, not a crash */ });
+        }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [sessionId]);
 
@@ -575,42 +606,24 @@ export default function JoeIDELayout({
                     }));
                 }
 
-                // Logs
-                if (event.type === 'step_started') {
-                    setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] Step Started: ${event.data?.name || 'Unknown'}`]);
-                } else if (event.type === 'step_done') {
-                    setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] Step Done`]);
-                } else if (event.type === 'run_finished') {
-                    setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] Run Finished`]);
-                } else if (event.type === 'text') {
-                    // event.data is { text, sessionId } — logging the object
-                    // printed a literal "[object Object]" line in the panel.
-                    const t = typeof event.data === 'string' ? event.data : String(event.data?.text ?? '');
-                    if (t) setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${t}`]);
-                } else if (event.type === 'terminal_output') {
-                    // THE BUILD'S REAL VOICE. Every builder narrates through
-                    // terminal_output — npm install, the vite build, the photo
-                    // notes, the audit verdict. The Logs panel used to ignore
-                    // all of it and showed four generic lines instead.
-                    //
-                    // The server may fan a session-owned line to several terminal
-                    // ids; taking one canonical id keeps it from landing here
-                    // multiple times without making the id a cross-session scope.
-                    if (event.id === 'panel-terminal') {
-                        const lines = String(event.data ?? '')
-                            .replace(/\x1B\[[0-9;]*[A-Za-z]/g, '')     // ANSI colours never reach the DOM
-                            .split(/\r?\n/).map(l => l.trimEnd()).filter(Boolean);
-                        if (lines.length) {
-                            const stamp = new Date().toLocaleTimeString();
-                            setLogs(prev => capLogs([...prev, ...lines.map(l => `[${stamp}] ${l}`)]));
-                        }
+                /**
+                 *  Logs — ONE TABLE, shared with the server.
+                 *
+                 *  These rules used to live only here, so a session reopened
+                 *  after the window closed had no log at all: nothing could
+                 *  turn a stored event back into the line it once printed.
+                 *  They now live in api/src/core/session/log-line.ts, and the
+                 *  server applies the SAME function to the same event read
+                 *  back from run-evidence. The stamp stays on each side: a
+                 *  live line is stamped as it arrives, a restored one with
+                 *  the moment it actually happened.
+                 */
+                {
+                    const lines = logTextFor(event as any);
+                    if (lines.length) {
+                        const stamp = logStamp();
+                        setLogs(prev => capLogs([...prev, ...lines.map(l => `[${stamp}] ${l}`)]));
                     }
-                } else if (event.type === 'thinking_detail' && event.data?.detail) {
-                    // The stage narration the user already sees in chat — in
-                    // the log it is the spine the terminal lines hang from.
-                    setLogs(prev => capLogs([...prev, `[${new Date().toLocaleTimeString()}] ${String(event.data.detail)}`]));
-                } else if (event.type === 'tool_started' && (event.data?.name || event.data?.tool)) {
-                    setLogs(prev => capLogs([...prev, `[${new Date().toLocaleTimeString()}] ▶ ${String(event.data.name || event.data.tool)}`]));
                 }
 
                 // Problems
@@ -622,7 +635,7 @@ export default function JoeIDELayout({
                         if (typeof errorMsg === 'object') errorMsg = JSON.stringify(errorMsg);
                     }
                     setProblems(prev => [...prev, { type: 'error', message: errorMsg, time: new Date() }]);
-                    setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ERROR: ${errorMsg}`]);
+                    //  The log line for this event is written once, above, by the shared table.
                 } else if (event.type === 'error') {
                     let errorMsg = 'System error';
                     if (typeof event.data === 'string') errorMsg = event.data;
@@ -631,7 +644,7 @@ export default function JoeIDELayout({
                         if (typeof errorMsg === 'object') errorMsg = JSON.stringify(errorMsg);
                     }
                     setProblems(prev => [...prev, { type: 'error', message: errorMsg, time: new Date() }]);
-                    setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] SYSTEM ERROR: ${errorMsg}`]);
+                    //  Likewise: one event, one line.
                 }
             }, sessionId);
         });
@@ -641,7 +654,55 @@ export default function JoeIDELayout({
         };
     }, []);
 
-    const toggleChat = useCallback(() => setIsChatCollapsed(prev => !prev), []);
+    /**
+     *  A BUTTON THAT HIDES ONE THING MUST SHOW ANOTHER.
+     *
+     *  He photographed a blank white page and asked whether it was right.
+     *  It was not. Reproduced on his own 1280x585 window, reading the boxes
+     *  before and after one press:
+     *
+     *      workspace closed:  chat w=1278        workspace w=0 opacity=0
+     *      after the press:   chat w=0 opacity=0 workspace w=0 opacity=0
+     *
+     *  Both panes at zero, so the page had nothing on it at all. The button
+     *  says «Give the workspace the whole page» and was doing only the first
+     *  half of that — hiding the chat — with no one checking that there was
+     *  a workspace to give the page TO.
+     *
+     *  A control that names a state must produce that state. So hiding the
+     *  chat now opens the workspace, in the same act, and the promise on the
+     *  button is the promise the user gets.
+     */
+    const toggleChat = useCallback(() => {
+        const hiding = !isChatCollapsed;
+        if (hiding) {
+            //  Opening it here is a manual act, exactly as the workspace
+            //  toggle is, so the auto-close contract does not take it back.
+            autoOpenedRef.current = false;
+            //  Which TAB it lands on is his choice, not mine: «المهم انها
+            //  تعمل بالشكل الصحيح». It keeps whatever tab he last had.
+            setIsWorkspaceCollapsed(false);
+        }
+        setIsChatCollapsed(hiding);
+    }, [isChatCollapsed, isWorkspaceCollapsed]);
+
+    /**
+     *  AND THE PAGE ALWAYS SHOWS SOMETHING — whatever the route in.
+     *
+     *  The line above fixes the button he pressed. This fixes the CLASS:
+     *  there are several ways to close a pane in this layout — the three
+     *  header toggles, the workspace's own close control, the auto-close
+     *  contract, the mobile breakpoints — and each one was free to be the
+     *  last pane standing. None of them asked what would be left.
+     *
+     *  An invariant is the only honest cure for that, because it holds for
+     *  the paths nobody enumerated. The chat comes back rather than the
+     *  workspace: it is the surface he can always act FROM, and a workspace
+     *  with no session in it would be another empty page.
+     */
+    useEffect(() => {
+        if (isChatCollapsed && isWorkspaceCollapsed) setIsChatCollapsed(false);
+    }, [isChatCollapsed, isWorkspaceCollapsed]);
     const toggleExplorer = useCallback(() => setIsExplorerCollapsed(prev => !prev), []);
     const toggleWorkspace = useCallback(() => {
         // The header toggle is always a manual act — in either direction it
@@ -765,6 +826,27 @@ export default function JoeIDELayout({
                             title="إغلاق مساحة العمل"
                             aria-label="close workspace canvas"
                         >✕</button>
+                        {/*  A BOOLEAN THAT MEANS TWO THINGS CANNOT BE GUARDED.
+
+                             These two lines handed the workspace the FILE
+                             EXPLORER's flag to decide whether the workspace
+                             itself is collapsed on a phone. Measured at 760px:
+
+                             after pressing expand —
+                             .joe-chat-panel        opacity 0
+                             .joe-workspace-container opacity 1
+                             .joe-workspace         h=48 class collapsed-mobile
+                             .joe-workspace-content display:none w=0 h=0
+                             elementFromPoint(centre) = the empty container
+
+                             A 48-pixel tab strip over nothing. The invariant
+                             that guarantees a visible pane could not see it,
+                             because by STATE a pane was open — the explorer
+                             drawer, closed by default, was hiding a different
+                             pane's body.
+
+                             A pane's own open/closed state is the only honest
+                             answer to whether that pane is collapsed.  */}
                         <WorkspacePanel
                             activeTab={activeWorkspaceTab}
                             onTabChange={handleWorkspaceTabChange}
@@ -779,8 +861,8 @@ export default function JoeIDELayout({
                             liveFiles={liveFiles}
                             buildStatus={buildStatus}
                             problems={problems}
-                            mobileCollapsed={isExplorerCollapsed}
-                            onMobileToggle={toggleExplorer}
+                            mobileCollapsed={isWorkspaceCollapsed}
+                            onMobileToggle={toggleWorkspace}
                         >
                             {workspaceChildren}
                         </WorkspacePanel>

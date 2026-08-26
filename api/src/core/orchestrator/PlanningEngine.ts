@@ -6,6 +6,7 @@ import { compactHistoryForPrompt } from './history-compact';
 import { enrichWorkspaceToolInput } from './workspace-evidence';
 import { findActiveBuiltProject } from './active-built-project';
 import { looksLikeBuild } from './buildIntent';
+import { saysAny } from '../language/arabic';
 
 export interface ExecutionStep {
     id: string;
@@ -1029,10 +1030,42 @@ Rules:
          * it describes, without one it honestly says vision is unavailable.
          */
         {
+            /**
+             *  TWO BARE PATTERNS, AND A SHOP HE ASKED FOR BECAME A CHAT.
+             *
+             *  Measured on his machine, deterministically reproducible through
+             *  the planner itself:
+             *
+             *      «اعمل لي متجراً … فيه صفحة المنتجات وصفحة الطلبات.
+             *       جدول المنتجات فيه اسم الصنف والسعر والحالة … وصورة …
+             *       شغّل البناء الحقيقي وافتح المعاينة الحية»
+             *      → steps: ["central_answer"]
+             *
+             *  Joe answered with a plan and asked permission to proceed, after
+             *  being told to run the real build. The two matches, printed:
+             *
+             *      VERB «وصف»  inside «وصفحة الطلبات»   ← «and a page», not «describe»
+             *      NOUN «صور»  inside «وصورة»           ← a COLUMN in his table
+             *
+             *  Neither word was his. This is the Arabic \b problem the language
+             *  layer was built for: `\w` never holds an Arabic letter, so a bare
+             *  pattern reads letters where the question is about words — the same
+             *  defect as «زر» inside «أزرق» and «عدد» inside «متعدد».
+             *
+             *  So both halves go through the word reader, and the guard against
+             *  a build is widened: WANTS_BUILD_RE did not fire on «اعمل لي
+             *  متجراً» either, and one bad reader should not depend on another
+             *  bad reader to be caught. A request that reads as a build anywhere
+             *  is never an image question.
+             */
             const asksImageAnalysis =
-                /(حلل|تحليل|صِف|وصف|افحص|اقرأ|اشرح|analy[sz]e|describe|inspect|examine|explain|read)/i.test(probe)
-                && /(صور|لقط|سكرين|image|photo|picture|screenshot)/i.test(probe);
-            if (asksImageAnalysis && !WANTS_BUILD_RE.test(userGoal)) {
+                saysAny(probe, ['حلل', 'تحليل', 'وصف', 'فحص', 'قرا', 'شرح'])
+                && saysAny(probe, ['صوره', 'صور', 'لقطه', 'سكرين'])
+                || (/\b(analy[sz]e|describe|inspect|examine|explain|read)\b/i.test(probe)
+                    && /\b(image|photo|picture|screenshot)\b/i.test(probe));
+            if (asksImageAnalysis
+                && !WANTS_BUILD_RE.test(userGoal)
+                && !PlanningEngine.looksLikeBuild(String(intent.goal || ''))) {
                 console.log('[PlanningEngine] image-analysis request → direct answer (no tool circus, with or without the file)');
                 return {
                     id: `chat_${Date.now()}`,
@@ -1084,8 +1117,36 @@ Rules:
 
             // A concrete project/server target — NOT a browser, NOT content. Word
             // boundaries keep "serve" out of "server" and "app" out of "happen".
-            const projectTarget = /(المشروع|مشروع|النظام|الخادم|السيرفر|المعاينة|\bproject\b|\bserver\b|\bapp\b|\bapplication\b|\bpreview\b|dev\s*server|localhost)/i.test(probe);
-            const deployTarget = projectTarget || /(الموقع|الصفحة|\bsite\b|\bwebsite\b|\bpage\b)/i.test(probe);
+            //  A PATTERN WRITTEN WITH THE ARTICLE MATCHES HALF THE LANGUAGE.
+            //
+            //  Measured through generatePlan, the real road a request takes:
+            //
+            //      شغّل الخادم   → project_run
+            //      شغّل خادم     → central_answer
+            //      أوقف الخادم   → project_stop
+            //      أوقف خادم     → central_answer
+            //
+            //  The same sentence, one article apart, and one of them does
+            //  nothing. «المشروع» already carried its bare twin «مشروع»
+            //  right beside it; the other four did not, and «ال» is a
+            //  PREFIX — a bare form matches both, a prefixed one matches
+            //  half. Writing the article into a pattern can only subtract.
+            const projectTarget = /((?:ال)?مشروع|(?:ال)?نظام|(?:ال)?خادم|(?:ال)?سيرفر|(?:ال)?معاينة|\bproject\b|\bserver\b|\bapp\b|\bapplication\b|\bpreview\b|dev\s*server|localhost)/i.test(probe);
+            //  …AND THE SAME PREFIX, ONE LINE DOWN.
+            //
+            //  Measured through generatePlan on his own phrasings:
+            //
+            //      انشر الموقع   → deploy_pages
+            //      انشر موقع     → browser_launch
+            //
+            //  One article apart, and the bare one opens a BROWSER instead
+            //  of publishing anything. The deploy guard did not match, so
+            //  the request fell through to the browser router, which takes
+            //  «انشر» and a noun as something to go and look at.
+            //
+            //  The definite form was not more correct — it was accidentally
+            //  protected, and «ال» is a prefix.
+            const deployTarget = projectTarget || /((?:ال)?موقع|(?:ال)?صفحة|\bsite\b|\bwebsite\b|\bpage\b)/i.test(probe);
             // Content that "انشر/publish" ALSO applies to — publishing an article is
             // NOT deploying a site. This is the collision that sent "انشر مقالاً" to deploy.
             const contentNoun = /(مقال|منشور|تدوينة|تغريدة|خبر|إعلان|محتوى|قصة|\barticle\b|\bpost\b|\bblog\b|\btweet\b|\bstory\b|\bcontent\b)/i.test(probe);
@@ -1487,11 +1548,37 @@ Rules:
             }
         }
 
+        /**
+         *  READING WHAT EXISTS IS NOT BUILDING WHAT DOES NOT.
+         *
+         *  Measured on his machine, deterministically. A shop he asked to have
+         *  built was planned as one step:
+         *
+         *      ▶ orders_read
+         *      «لا توجد طلبات بعد — حين يضغط زائر «اطلب الآن» في موقعك …»
+         *
+         *  One sentence of his request — «اعرض عدد الطلبات اليوم» — is a
+         *  REQUIREMENT OF THE THING BEING BUILT: a figure the shop must show.
+         *  The orders branch read it as an instruction to go and read orders
+         *  from a database, and answered a request to build a shop by
+         *  reporting that no orders had arrived.
+         *
+         *  The same class as everything else tonight: A DECISION TAKEN FROM A
+         *  FRAGMENT WHEN THE AUTHORITY IS THE WHOLE REQUEST. The three
+         *  branches below all answer «show me my existing data», and none of
+         *  them carried a build guard — each was relying on nobody writing a
+         *  build request that happens to contain their words. He just did.
+         *
+         *  So the guard is shared, and stated once: a request that reads as a
+         *  build anywhere is never a request to read existing rows.
+         */
+        const heIsAskingToBuild = PlanningEngine.looksLikeBuild(String(intent.goal || ''));
+
         // [BUSINESS PROFILE] «احفظ بيانات عملي» — Joe's business memory:
         // save/show/clear the real contact details every build injects.
         {
             const profileAsk = /(احفظ|خزن|خزّن|سجل|سجّل|اعرض|أعرض|امسح|احذف)\s*[^.\n]{0,12}?(بيانات|ملف)\s*(عملي|العمل|المشروع|النشاط|شركتي|متجري|مطعمي)|\b(business|my)\s*profile\b/i.test(probe);
-            if (profileAsk) {
+            if (profileAsk && !heIsAskingToBuild) {
                 return {
                     id: `profile_${Date.now()}`,
                     goal: intent.goal,
@@ -1505,7 +1592,7 @@ Rules:
         // the API project's database, in the chat, server up or not.
         {
             const ordersAsk = /(اعرض|أعرض|ارني|أرني|شوف|اقرأ|كم|هات)\s*[^.\n]{0,15}?(ال)?طلبات|طلبات\s*(جديدة|الزبائن|العملاء|الموقع)|كم\s*(من\s*)?طلب|هل\s*وصل[^.\n]{0,12}طلب|\b(show|list|read)\b[^.\n]{0,15}\borders\b/i.test(probe);
-            if (ordersAsk) {
+            if (ordersAsk && !heIsAskingToBuild) {
                 return {
                     id: `orders_${Date.now()}`,
                     goal: intent.goal,
@@ -1530,7 +1617,7 @@ Rules:
             const inboxAsk = SITE_INBOX.test(probe)
                 || /(اعرض|أعرض|شوف|كم|هل\s*(وصل|فيه)|اقرأ|اقرا|أقرأ|ارني|أرني|وريني|راجع|جاني|وصلني)\s*[^.\n]{0,25}?(رسائل|رساله|رسالة|الرسائل)|صندوق\s*(الرسائل|النموذج|الوارد)|من\s*راسل|form\s*(inbox|messages|submissions)/i.test(probe);
             const hasArtifact = !!((global as any).joePages?.[activeKey] || (global as any).joeProjects?.[activeKey]);
-            if (inboxAsk && hasArtifact) {
+            if (inboxAsk && hasArtifact && !heIsAskingToBuild) {
                 return {
                     id: `inbox_${Date.now()}`,
                     goal: intent.goal,
@@ -2462,8 +2549,90 @@ Rules:
             }
         }
 
+        /**
+         *  A SHORT ORDER IS STILL AN ORDER.
+         *
+         *  Live round on his machine. He built a book table, then wrote,
+         *  in the same chat:
+         *
+         *      «زيد عمود المؤلف»
+         *
+         *  and Joe's own log says what happened:
+         *
+         *      21:01:32  🗂️ Recalled your project context from memory
+         *      21:01:37  ▶ central_answer
+         *      21:01:40  «Let's elevate your book table with an author
+         *                 column—a premium feature…»
+         *
+         *  It recalled the project and then TALKED about the column. The
+         *  column was never added: «المؤلف» appears zero times in the
+         *  source and zero times in the 151-line session log.
+         *
+         *  The reason is the third clause below: `goal.length < 30`. His
+         *  sentence is fifteen characters. LENGTH IS NOT INTENT — every
+         *  short imperative he can type («غيّر اللون», «احذف العمود»,
+         *  «زيد عموداً») was routed to chat because it was short.
+         *
+         *  So the shortcut may not fire on text that a parser already
+         *  recognises as a concrete instruction. columnEdit is one such
+         *  parser — measured: «زيد عمود المؤلف» → {add:['المؤلف']} — and
+         *  any future parser belongs in this same test rather than in a
+         *  list of verbs.
+         */
+        let readsAsAnOrder = false;
+        try {
+            // eslint-disable-next-line @typescript-eslint/no-var-requires
+            const { columnEdit } = require('../design/app-blueprints');
+            const edit = columnEdit(intent.goal);
+            readsAsAnOrder = (edit?.add?.length || 0) > 0 || (edit?.remove?.length || 0) > 0;
+        } catch { readsAsAnOrder = false; }
+
+        /**
+         *  THE THING IN FRONT OF HIM DECIDES WHAT HIS WORD MEANS.
+         *
+         *  Live round, straight after the fast path stopped sending short
+         *  orders to chat. He had a React book table on screen and typed
+         *  «زيد عمود المؤلف». Joe took it as an order this time — and then
+         *  went looking for a DATABASE:
+         *
+         *      exec=sqlite3 books.db 'CREATE TABLE IF NOT EXISTS books (…'
+         *      ERROR: 'sqlite3' is not recognized as an internal command
+         *      Stopped at step «Check if SQLite is installed on the system»
+         *
+         *  «عمود» is a column in a rendered table and a column in SQL, and
+         *  the word alone cannot say which. This is the Arabic trap the
+         *  contract names — «جدول» is a table and a schedule, «قائمة» is a
+         *  list and a menu — and the cure is never a longer word list. It
+         *  is CONTEXT: the man has a project open, its type is on record,
+         *  and a column added to what he is looking at is an edit of that
+         *  project. Nothing here reads the words «sqlite» or «react»; it
+         *  reads whether something of his is open.
+         *
+         *  If no project is open the request keeps its old road, because
+         *  then «add a column» really might be about a database.
+         */
+        if (readsAsAnOrder) {
+            const sid = String((context as any)?.sessionId || (intent as any)?.context?.sessionId || (intent as any)?.sessionId || '');
+            const open = ((global as any).joeProjects || {})[sid];
+            if (open?.dir && open?.type !== 'api') {
+                console.log(`[PlanningEngine] a column order with a project open → project_edit (${open.type})`);
+                return {
+                    id: `edit_${Date.now()}`,
+                    goal: intent.goal,
+                    steps: [{
+                        id: 'project_edit',
+                        description: `Surgical edit of the active project: ${intent.goal}`,
+                        tool: 'project_edit',
+                        args: { request: intent.goal },
+                        dependencies: [],
+                    }],
+                    reasoning: 'a column he asks for on the project already in front of him',
+                } as any;
+            }
+        }
+
         // [ELITE FAST-PATH] Direct answer for general questions or chat
-        if ((intent as any).type === 'general' || (intent as any).type === 'chat' || intent.goal.length < 30) {
+        if (!readsAsAnOrder && ((intent as any).type === 'general' || (intent as any).type === 'chat' || intent.goal.length < 30)) {
             return {
                 id: `chat_${Date.now()}`,
                 goal: intent.goal,
@@ -2833,7 +3002,30 @@ Return ONLY a JSON array of steps:
             // Repair omitted project evidence before the generic URL/text filler.
             // The helper only uses the active session project inside the trusted
             // workspace; it never invents a path or a test harness.
-            s.input = enrichWorkspaceToolInput(String(s.tool || ''), s.input, `${s.description || ''} ${goal}`.trim(), context);
+            /**
+             *  A DESCRIPTION STAPLED TO THE THING IT DESCRIBES.
+             *
+             *  Read out of a live run's own evidence file:
+             *
+             *      "tool": "project_edit",
+             *      "input": { "request": "Surgical edit of the active
+             *        project: زيد عمود الملاحظات زيد عمود الملاحظات" }
+             *
+             *  His message was eighteen characters, read straight out of
+             *  the chat store. Every step here is described as «Surgical
+             *  edit of the active project: ${intent.goal}» — the goal is
+             *  already IN the description — and this line then joins the
+             *  description to the goal again.
+             *
+             *  Downstream, columnEdit read «عمود الملاحظات زيد عمود
+             *  الملاحظات» and named his new column after the whole order.
+             *
+             *  A description that already carries the goal adds nothing
+             *  by being repeated. One or the other — never both.
+             */
+            const said = String(s.description || '').trim();
+            const forFilling = said && goal && said.includes(goal) ? said : `${said} ${goal}`.trim();
+            s.input = enrichWorkspaceToolInput(String(s.tool || ''), s.input, forFilling, context);
 
             const hasValue = (key: string) => {
                 if (RUNTIME_SUPPLIED.has(key)) return true;
@@ -2852,7 +3044,7 @@ Return ONLY a JSON array of steps:
             // only the first alias it can derive, preserving any alias already
             // supplied by the planner.
             try {
-                const filled = inputForTool(tool, `${s.description || ''} ${goal}`.trim(), context);
+                const filled = inputForTool(tool, forFilling, context);
                 if (filled) {
                     for (const k of missing()) if (filled[k] !== undefined) (s.input as any)[k] = filled[k];
                     for (const group of missingAny()) {

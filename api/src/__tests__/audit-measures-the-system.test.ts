@@ -17,6 +17,29 @@ import path from 'path';
 const SRC = path.join(__dirname, '..');
 const read = (...p: string[]) => fs.readFileSync(path.join(SRC, ...p), 'utf-8');
 
+
+/**
+ *  Every `auditBuiltApp(` call in the generator, with its options block.
+ *  Read by call site rather than by count, so a new audit is welcome and a
+ *  careless one is caught.
+ */
+function auditCallSites(src: string): string[] {
+    const out: string[] = [];
+    let i = src.indexOf('auditBuiltApp(');
+    while (i >= 0) {
+        //  From the call to the matching close paren, by depth.
+        let depth = 0, j = src.indexOf('(', i);
+        const start = j;
+        for (; j < src.length; j++) {
+            if (src[j] === '(') depth++;
+            else if (src[j] === ')') { depth--; if (depth === 0) break; }
+        }
+        out.push(src.slice(start, j + 1));
+        i = src.indexOf('auditBuiltApp(', j);
+    }
+    return out;
+}
+
 describe('the audit measures the system, not the folder', () => {
     it('it can be pointed at a running address instead of serving a dist', () => {
         const a = read('core', 'quality', 'app-audit.ts');
@@ -81,9 +104,25 @@ describe('the build audits the system it just packaged', () => {
         expect(r).toMatch(/stop: \(\) => \{ try \{ child\.kill\(\); \}/);
     });
 
-    it('and both audits — before and after the repair — use that address', () => {
-        const r = R();
-        expect((r.match(/\.\.\.\(liveServer \? \{ serveUrl: liveServer\.url \} : \{\}\),/g) || []).length).toBe(2);
+    it('and EVERY audit — however many there are — uses that address', () => {
+        /**
+         *  ⛔ THIS COUNTED OCCURRENCES AND MEASURED THE WRONG THING.
+         *
+         *  It asserted the spread appeared exactly twice. A third audit was
+         *  added — the re-audit after an authored interface is rolled back —
+         *  and the guard went red although that call site carries the address
+         *  correctly. Worse in the other direction: a fourth call site WITHOUT
+         *  the address, added while another was removed, would have kept the
+         *  count at two and the guard green.
+         *
+         *  The claim was never «there are two audits». It is «every audit
+         *  measures the running system», so every call site is read.
+         */
+        const calls = auditCallSites(R());
+        expect(calls.length).toBeGreaterThanOrEqual(2);
+        const without = calls.filter(c => !c.includes('serveUrl: liveServer.url'));
+        expect({ audits: calls.length, missingTheAddress: without.length })
+            .toEqual({ audits: calls.length, missingTheAddress: 0 });
     });
 
     it('a build with no server of its own still gets audited', () => {

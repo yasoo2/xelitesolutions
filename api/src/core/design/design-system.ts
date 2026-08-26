@@ -138,7 +138,8 @@ const SECTOR_HUES: Array<[RegExp, [number, number]]> = [
     // painted clinic-teal. Arabic has no \b, so every Arabic stem in these
     // tables must be long enough not to hide inside another word. `ai` gets a
     // real \b for the same reason — it lives inside "email" and "chair".
-    [/تقني|تكنلوج|تكنولوج|برمج|تطبيق|software|tech|saas|ai|digital|consult|استشار|apps?/i, [196, 256]],
+    [/تقني|تكنلوج|تكنولوج|برمج|تطبيق|software|tech|saas|\bai\b|digital|consult|استشار|\bapps?\b/i, [196, 256]],
+    //  ⛔ A CONTAINER, and it is marked so — see CONTAINER_SECTORS below.
     [/متجر|تسوق|shop|store|ecommerce|commerce/i, [246, 292]],
     [/مطعم|كافيه|قهوة|طعام|food|restaurant|cafe|coffee/i, [8, 44]],
     [/صحة|صحي|طبي|طبيب|عيادة|عياد|مستشفى|health|medical|clinic|doctor|fitness|لياقة/i, [150, 192]],
@@ -155,11 +156,38 @@ function hashHue(text: string): number {
     return Math.abs(h) % 360;
 }
 
+/**
+ *  ⛔ A CONTAINER WORD ANSWERS ONLY WHEN NOTHING ELSE DOES.
+ *
+ *  «متجر قهوة» came back purple while «coffee roastery» came back
+ *  roasted brown — the same shop, two languages, one of them right. The
+ *  table is ordered and the first match wins, and the commerce row sits
+ *  above the food row, so «متجر» answered and «قهوة» was never
+ *  reached. English escaped only because that sentence happens to carry no
+ *  container word, which is why the defect was invisible in English and
+ *  painted on every Arabic request.
+ *
+ *  «متجر» says what FORM the thing takes. «قهوة» says what it is
+ *  ABOUT. This is the container trap already closed in the page reader,
+ *  where «صفحة» and «قائمة» name the vessel and not the content —
+ *  closed there, open here, because closing an instance never closes a
+ *  class.
+ *
+ *  Demoted, not deleted: a request that names no subject at all is still a
+ *  shop, and must still get the commerce colour.
+ */
+const CONTAINER_SECTORS = new Set([1]);
+
 export function pickHue(request: string): number {
     const r = probeOf(request);
     // A colour the user NAMED is not a suggestion. «أزرق» means blue, exactly.
     for (const [re, hue] of NAMED_HUES) if (re.test(r)) return hue;
-    for (const [re, [lo, hi]] of SECTOR_HUES) {
+    //  Two passes over one table: the subject first, the vessel only after.
+    const order = SECTOR_HUES.map((_, i) => i)
+        .filter(i => !CONTAINER_SECTORS.has(i))
+        .concat(SECTOR_HUES.map((_, i) => i).filter(i => CONTAINER_SECTORS.has(i)));
+    for (const idx of order) {
+        const [re, [lo, hi]] = SECTOR_HUES[idx];
         if (!re.test(r)) continue;
         // Stable per brief, spread across the band. The same request rebuilds
         // the same colour; a different business gets a different one.
@@ -254,12 +282,108 @@ export function paletteForHue(hue: number): Palette {
 }
 
 /** The tokens as CSS custom properties — pasted into every generated page. */
-export function paletteCss(p: Palette): string {
+/**
+ *  A hex colour at a given alpha, as `rgb(r g b / a)`.
+ *
+ *  Written rather than borrowed because the shadow has to carry the BRAND
+ *  hue -- a neutral drop shadow under a branded button is the same grey
+ *  default this change exists to remove.
+ */
+function hexAlpha(hex: string, alpha: number): string {
+    const h = String(hex || '').replace('#', '');
+    const full = h.length === 3 ? h.split('').map(c => c + c).join('') : h;
+    const n = parseInt(full || '000000', 16);
+    const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+    return `rgb(${r} ${g} ${b} / ${alpha})`;
+}
+
+/**
+ *  The faces a subject was paired with. Declared structurally rather than
+ *  imported, so the token layer never depends on the layout layer -- and so
+ *  a caller that has no pairing still ships a defined --font-body instead of
+ *  a token the app reads and nobody writes.
+ */
+export interface TypeTokens { display: string; body: string; note?: string }
+
+const NEUTRAL_TYPE: TypeTokens = {
+    display: `'Segoe UI Variable Display','Segoe UI','Noto Kufi Arabic',system-ui,sans-serif`,
+    body: `'Segoe UI','Noto Sans Arabic',system-ui,-apple-system,sans-serif`,
+    note: 'neutral modern',
+};
+
+/**
+ *  A SURFACE THE EYE READS THE SAME WHATEVER THE SUBJECT.
+ *
+ *  HSL lightness is a number, not a perception: two hues at the same L
+ *  are nowhere near the same brightness. Measured on the hues Joe's own
+ *  sector table lands on, cards built with hsl(hue, 44%, 97%):
+ *
+ *      perceived-lightness spread across five subjects   0.0093
+ *      the same cards built in OKLCH                     0.0017
+ *
+ *  Five and a half times tighter, and visibly the subject's own paper
+ *  rather than a wash of near-white. Contrast is not paid for it: text
+ *  measures above 15:1 on either.
+ *
+ *  Law six, and its warning. Three tools were measured before one was
+ *  adopted, and the best known of them -- Google's own colour utilities
+ *  -- could not be imported at all: its dynamiccolor module requires a
+ *  path with no extension and Node's ESM resolver refuses it. culori
+ *  imports, carries zero dependencies, and produced the numbers above.
+ *
+ *  It falls back to the HSL value rather than throwing: a page that
+ *  cannot be tinted must still be a page.
+ */
+function paperAt(hue: number, lightness: number, chroma: number, fallback: string): string {
+    try {
+        const { formatHex } = require('culori');
+        const hex = formatHex({ mode: 'oklch', l: lightness, c: chroma, h: ((hue % 360) + 360) % 360 });
+        return typeof hex === 'string' && /^#[0-9a-f]{6}$/i.test(hex) ? hex : fallback;
+    } catch {
+        return fallback;
+    }
+}
+
+export function paletteCss(p: Palette, type: TypeTokens = NEUTRAL_TYPE): string {
     return `:root{
   --brand:${p.primary}; --brand-dark:${p.primaryDark}; --brand-light:${p.primaryLight};
   --secondary:${p.secondary}; --accent:${p.accent}; --on-brand:${p.onPrimary};
   --tint:${p.tint}; --on-tint:${p.onTint}; --brand-text:${p.brandText};
   --bg:${p.bg}; --surface:${p.surface}; --text:${p.text}; --text-muted:${p.textMuted}; --border:${p.border};
+  /*  THE SURFACES THAT CARRY THE MOST AREA, AND THEY FOLLOW THE SUBJECT.
+   *
+   *  These eight were read by the app generator and defined by nobody, so
+   *  every card fell back to #fff, every chip to #f5f5f5, every rule to
+   *  #e5e5e5 and every secondary line to #667085 -- the same greys for a
+   *  coffee roastery and a dental clinic. The palette reached the buttons
+   *  and almost nothing else, which is the whole answer to «why does every
+   *  app Joe builds look the same».
+   *
+   *  The ring and the two shadows were worse than grey: read with no
+   *  fallback and defined nowhere, so the browser dropped those whole
+   *  declarations and the focus rings simply never rendered -- silently,
+   *  and with no error anywhere.
+   *
+   *  (And this comment carries no backtick, because it lives INSIDE the
+   *   template literal it documents. That has cost four builds tonight.)  */
+  /*  And the card is not pure white. p.surface is the constant the contrast
+   *  maths is fitted against, so it must stay #ffffff -- but painting the
+   *  largest surface in the app with it is what made a coffee roastery and a
+   *  dental clinic identical on screen. A card carries the subject's own hue
+   *  at a whisper: enough that two subjects are never the same paper, far too
+   *  little to move any pair off AA.
+   *
+   *  And the tint is a real one, not a rumour of one. At 99% lightness the
+   *  card was still clinically white next to the reference the owner showed,
+   *  whose paper sits near 91%: warm enough to read as paper rather than as
+   *  the absence of colour. 97 and 94 are the compromise -- visibly the
+   *  subject's own ground, and every pair still measured AA by the guard
+   *  beside this file rather than by assurance.  */
+  --card:${paperAt(p.hue, 0.962, 0.019, hslCss(p.hue, 44, 97))}; --panel:${paperAt(p.hue, 0.935, 0.028, hslCss(p.hue, 40, 94))}; --chip:${p.tint}; --line:${p.border};
+  --muted:${p.textMuted};
+  --ring:${p.primary};
+  --shadow-xs:0 1px 1px rgba(15,23,42,.05);
+  --shadow-brand:0 10px 30px -12px ${hexAlpha(p.primary, 0.45)};
   --radius:14px; --radius-lg:22px; --radius-pill:999px;
   --shadow-sm:0 1px 2px rgba(15,23,42,.06),0 1px 3px rgba(15,23,42,.08);
   --shadow-md:0 8px 24px -8px rgba(15,23,42,.18);
@@ -274,6 +398,12 @@ export function paletteCss(p: Palette): string {
   --step-4:clamp(2.07rem,1.75rem + 1.6vw,3rem);
   --step-5:clamp(2.49rem,2rem + 2.4vw,4rem);
   --maxw:1180px;
+  /*  The type pairing lives in the SAME stylesheet as the colours, because
+   *  the app generator reads --font-body and a token read by one file and
+   *  written by another is exactly the seam this whole change closes. It was
+   *  written here only after a guard caught me opening it again, one minute
+   *  after closing it for the colours.  */
+  --font-display:${type.display}; --font-body:${type.body};
 }
 @media (prefers-color-scheme:dark){:root{${darkTokenBlock(p)}}}`;
 }
@@ -291,6 +421,10 @@ export function darkTokenBlock(p: Palette): string {
   --bg:${p.darkBg}; --surface:${p.darkSurface}; --text:${p.darkText};
   --text-muted:${p.darkTextMuted}; --border:${p.darkBorder};
   --tint:${p.darkTint}; --on-tint:${p.onDarkTint}; --brand-text:${p.darkBrandText};
+  --card:${p.darkSurface}; --panel:${p.darkBg}; --chip:${p.darkTint}; --line:${p.darkBorder};
+  --muted:${p.darkTextMuted};
+  --shadow-xs:0 1px 1px rgba(0,0,0,.5);
+  --shadow-brand:0 10px 30px -12px ${hexAlpha(p.primary, 0.55)};
   --shadow-sm:0 1px 2px rgba(0,0,0,.4); --shadow-md:0 8px 24px -8px rgba(0,0,0,.55);
   --shadow-lg:0 24px 60px -16px rgba(0,0,0,.65);
 `;
@@ -301,9 +435,13 @@ export function lightTokenBlock(p: Palette): string {
   --bg:${p.bg}; --surface:${p.surface}; --text:${p.text};
   --text-muted:${p.textMuted}; --border:${p.border};
   --tint:${p.tint}; --on-tint:${p.onTint}; --brand-text:${p.brandText};
+  --card:${hslCss(p.hue, 44, 97)}; --panel:${hslCss(p.hue, 40, 94)}; --chip:${p.tint};
+  --line:${p.border}; --muted:${p.textMuted};
   --shadow-sm:0 1px 2px rgba(15,23,42,.06),0 1px 3px rgba(15,23,42,.08);
   --shadow-md:0 8px 24px -8px rgba(15,23,42,.18);
   --shadow-lg:0 24px 60px -16px rgba(15,23,42,.24);
+  --shadow-xs:0 1px 1px rgba(15,23,42,.05);
+  --shadow-brand:0 10px 30px -12px ${hexAlpha(p.primary, 0.45)};
 `;
 }
 

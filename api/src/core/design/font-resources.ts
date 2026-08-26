@@ -1,4 +1,5 @@
 import fs from 'fs';
+import { isWithinRoot } from '../../modules/tools/path-containment';
 import path from 'path';
 
 export type FontResourcePruneResult = {
@@ -12,10 +13,7 @@ function resourcePath(cssFilePath: string, projectRoot: string, rawUrl: string):
     const clean = String(rawUrl || '').split(/[?#]/, 1)[0];
     if (!clean || isExternalResource(clean)) return null;
     const resolved = path.resolve(path.dirname(cssFilePath), clean);
-    const relative = path.relative(path.resolve(projectRoot), resolved);
-    return relative === '' || (!relative.startsWith('..' + path.sep) && !path.isAbsolute(relative))
-        ? resolved
-        : '';
+    return isWithinRoot(resolved, projectRoot) ? resolved : '';
 }
 
 /**

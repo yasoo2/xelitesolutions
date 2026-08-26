@@ -23,6 +23,15 @@
  *             search, filter, totals, CSV — driven by a per-domain schema
  */
 
+//  The one folder of Arabic diacritics this repository owns. A second
+//  copy of that character set would drift the first time one of them
+//  learned a mark the other did not.
+import { stripArabicDiacritics } from '../orchestrator/promptNormalizer';
+import { saysWord, words, normalise } from '../language/arabic';
+import { hisWordsOnly } from './page-head';
+//  The reader that already knows which noun stands beside the container.
+import { subjectAfterContainer } from './subject-phrase';
+
 export type AppEngine = 'map' | 'chat' | 'weather' | 'records' | 'social' | 'shop' | 'calculator' | 'productivity' | 'finance';
 
 export type AppKind =
@@ -47,6 +56,8 @@ export interface AppField {
     min?: number;
     /** When true, the value must be strictly greater than `min`. */
     minExclusive?: boolean;
+    /**  A floor on the COUNT of characters — «٩ أرقام». */
+    minLength?: number;
     /** Shown in the compact row summary — keeps the list readable. */
     primary?: boolean;
 }
@@ -179,6 +190,22 @@ export interface AppBlueprint {
     deps: Record<string, string>;
     /** What the app says when it has no rows yet — never fabricated rows. */
     emptyHint: string;
+    /**
+     * HE NAMED THE SHAPE, AND THE SHAPE WAS THE ONE THING NOT READ.
+     *
+     * «اعمل **جدول** مبيعات فيه اسم الصنف والكمية والسعر» — the first word of
+     * the request. Measured in the delivered app: `table count: 0, th count: 0`.
+     * Rows came back as a stack of cards, and «اسم الصنف» — one of the three
+     * columns he named — had its LABEL dropped entirely, because the card
+     * template filters the primary field out of the meta list and puts its
+     * value in a bare heading.
+     *
+     * He cannot read down a column, compare prices, or find the column he
+     * asked for. The engine had one presentation and the request's own word
+     * for the presentation was never consulted — the catalogue deciding what
+     * the sentence already said.
+     */
+    asTable?: boolean;
 }
 
 /* ── which domain the request belongs to ─────────────────────────────────── */
@@ -255,6 +282,36 @@ const PAGE_SIGNAL = /صفحة\s*(?:هبوط|تعريف(?:ية)?|تسويقية)|
  * as "not a brochure" or "requiring no API key or account" cannot create a
  * false subject while an affirmative "brochure for my bakery" remains visible.
  */
+/**
+ *  ⛔ THE WORD FOR A WEBSITE IDENTIFIES A WEBSITE.
+ *
+ *  PAGE_SIGNAL above knows «landing page», «portfolio», «brochure» and
+ *  «one-pager» — and did not know «website» or «موقع», the single most
+ *  common way anyone asks for one. Measured live on the reference matrix:
+ *
+ *      Build a responsive WEBSITE for a bicycle repair studio. Include a
+ *      service list with prices, opening hours, location, phone CTA, and a
+ *      booking form.
+ *          ->  app=booking, engine=records
+ *          ->  Bookings | Providers | Add a booking | search | Export CSV
+ *
+ *  Six things asked for, one built, as a CRUD table. «booking form» is one
+ *  item of the six; it won because it was the only one the catalogue knew,
+ *  and nothing asked whether the sentence had already said what it wanted.
+ *
+ *  A site noun is not as loud as «landing page», so it does not get the same
+ *  unconditional early return: it answers only when the request does NOT
+ *  also ask for an application. «اعمل تطبيق حجوزات» stays an app,
+ *  «اعمل موقع فيه نموذج حجز» becomes the site he asked for. Reading
+ *  the whole request is the whole point.
+ */
+const SITE_NOUN = /(?:^|[^\p{L}\p{N}_])(?:موقع|موقعا|website|web\s?site)(?:[^\p{L}\p{N}_]|$)/iu;
+
+export function siteNounWithoutAppRequest(request: string): boolean {
+    const t = String(request || '');
+    return SITE_NOUN.test(t) && !APP_SIGNAL.test(t);
+}
+
 export function maskNegatedSpans(text: string): string {
     return String(text || '').replace(
         // JS `\\b` is ASCII-oriented and therefore unsafe for Arabic. Require
@@ -312,6 +369,9 @@ export function detectAppKind(requestRaw: string): AppKind | null {
     // «صفحة هبوط لتطبيق خرائط» is a page about an app — the document the user
     // named wins, exactly as classifyBuildScope decides it.
     if (PAGE_SIGNAL.test(intentRequest)) return null;
+    //  …and the plain word for a site, when nothing in the request asks for
+    //  an application. See siteNounWithoutAppRequest above for what this cost.
+    if (siteNounWithoutAppRequest(intentRequest)) return null;
     // Two named collections are a stronger contract than either word alone.
     // This prevents «notes and tasks» from becoming only a task table or a
     // React-Native-shaped scaffold; the builder receives both surfaces.
@@ -331,7 +391,47 @@ export function detectAppKind(requestRaw: string): AppKind | null {
     //
     //  Ported from main (Manus, da586c92) — the same property this branch
     //  argues everywhere: what he stated beats what we recognised.
-    if (derivedColumns(intentRequest)?.length) return 'generic';
+    //  …and it asks the reader that finds his list ANYWHERE in the request.
+    //
+    //  Measured on the shop he asked for: two tables read, nine columns
+    //  between them, and this line returned nothing — because the
+    //  single-shot reader loses to the earlier list in «فيه صفحة المنتجات
+    //  وصفحة الطلبات». With no app kind, the builder fell through to the
+    //  brochure path and handed him a marketing site: heroTitle, features,
+    //  a story section and a gallery, for a request that named columns.
+    //
+    //  That is the SCAFFOLD-FALLBACK-UNGUARDED debt in CLAUDE.md, reached
+    //  from a new direction: not a failure to understand, but one reader
+    //  answering a question another reader had already answered better.
+    /**
+     *  ⛔ ONE COLUMN IS NOT A LIST.
+     *
+     *  This fired on `length >= 1`, and it sits ABOVE the archetype scoring
+     *  and above MANAGE_SIGNAL -- so a single derived column, right or
+     *  wrong, short-circuits every reading that follows it.
+     *
+     *  Measured cost, on a sentence shaped the way the owner writes:
+     *
+     *      اعمل لي صفحة أسجل فيها مصاريفي ويطلع المجموع
+     *          -> generic, and the expenses engine that knows how to total
+     *             a column was never reached.
+     *
+     *  The rule itself is right and its comment says so: a list he WROTE
+     *  outranks a noun he happened to use. The defect is that it was never
+     *  conditioned on being a list at all.
+     *
+     *  And this repository already decided the same question one layer
+     *  over, in the schema designer's own guards:
+     *
+     *      «one table is not a design — that is what we already had»
+     *      «a table with no columns is a table with nothing in it»
+     *
+     *  Two readers of one idea, and only one of them held to it. Two is
+     *  where a name becomes an enumeration, and it needs no vocabulary and
+     *  no catalogue to know it.
+     */
+    if ((columnsAnywhereInHisRequest(intentRequest)?.length || 0) >= 2) return 'generic';
+
     /**
      * Score every registered archetype instead of returning the first keyword
      * that happens to occur in a long request. A real request often names the
@@ -503,8 +603,43 @@ function numberIn(text: string): number | null {
     return null;
 }
 
+/**
+ *  «٩ أرقام» IS NINE DIGITS, NOT THE NUMBER NINE.
+ *
+ *  Measured on the shop he asked for: «لا تقبل رقم هاتف أقل من ٩ أرقام» was
+ *  read as `{ min: 9 }` — the same reading as «أقل من ٩» with the counted
+ *  unit thrown away. A phone whose number is «12» satisfies that bound, and
+ *  he had just forbidden anything shorter than nine digits.
+ *
+ *  The class: A BOUND ON THE COUNT OF SOMETHING READ AS A BOUND ON THE VALUE.
+ *  The word after the number is not decoration — it says what is being
+ *  counted, and dropping it changes the rule into a different rule that
+ *  happens to use the same digit.
+ *
+ *  Returned separately from `statedBound` rather than folded into it, because
+ *  they attach to different things: a floor goes on a number field, a length
+ *  goes on the text he types. Merging them is how the digit got lost.
+ */
+export function statedLengthBound(window: string): { minLength: number } | null {
+    const text = String(window || '');
+    if (!REJECTS.test(text) && !/(على\s*الأقل|at\s+least|no\s+less\s+than|minimum)/iu.test(text)) return null;
+    //  The number and its unit, adjacent — «٩ أرقام», «9 digits», «٣ أحرف».
+    const m = /(\d+|[٠-٩]+)\s*(أرقام|رقم|أرقاماً|خانات|خانة|أحرف|حرف|حرفاً|digits?|characters?|chars?|letters?)/iu
+        .exec(text.replace(/[٠-٩]/g, d => String(d.charCodeAt(0) - 0x0660)));
+    if (!m) return null;
+    const n = Number(m[1]);
+    if (!Number.isFinite(n) || n <= 0 || n > 64) return null;
+    //  «أقل من ٩ أرقام» forbids eight; «على الأقل ٩ أرقام» requires nine.
+    //  Both land on the same floor — nine — because the refused side is what
+    //  is below it either way.
+    return { minLength: n };
+}
+
 /** The lower bound a sentence states about a number, or null when it states none. */
 export function statedBound(window: string): { min: number; minExclusive: boolean } | null {
+    //  …and a counted unit is never a value bound. Measured: «أقل من ٩ أرقام»
+    //  came back as `{ min: 9 }`, which a two-digit phone satisfies.
+    if (statedLengthBound(window)) return null;
     const text = String(window || '');
     const rejecting = REJECTS.test(text);
 
@@ -514,6 +649,34 @@ export function statedBound(window: string): { min: number; minExclusive: boolea
     }
     if (/(غير\s*(?:موجب|موجبة|موجبا|موجباً)|non-?positive)/iu.test(text) && rejecting) {
         return { min: 0, minExclusive: true };
+    }
+
+    /**
+     *  AND THE FLOOR NAMED FROM THE OTHER SIDE — «بالسالب».
+     *
+     *  Measured on his own request: «لا تقبل كمية بالسالب» read as a plain
+     *  prohibition, so no bound reached the schema and negative quantities
+     *  were accepted by the app he was given. The reader knew «موجب» and
+     *  «صفر» and not the word he actually used — one constraint, several
+     *  names, one of them taught.
+     *
+     *  The strictness is NOT the same as «موجب», and the difference is his:
+     *  a man who refuses NEGATIVES has said nothing against zero, while
+     *  «موجب» excludes it. So this floor is inclusive and that one is not —
+     *  reading them alike would refuse a quantity of zero he never forbade.
+     */
+    //  `rejecting` is the whole discriminator, and it must be the only one:
+    //  a guard I added against «اقبل السالب» matched «do NOT ACCEPT a
+    //  NEGATIVE quantity» too, because the refusal is spelled with the same
+    //  verb. A sentence that permits negatives carries no refusal at all, so
+    //  it never reaches this line.
+    if (/(بالسالب|السالب|سالب|سالبة|سالبا|سالباً|بالناقص|\bnegative\b)/iu.test(text) && rejecting) {
+        return { min: 0, minExclusive: false };
+    }
+    //  «غير سالب» / non-negative states the same floor as a requirement
+    //  rather than a refusal, so it does not need the rejecting verb.
+    if (/(غير\s*سالب|غير\s*سالبة|non-?negative)/iu.test(text)) {
+        return { min: 0, minExclusive: false };
     }
 
     const n = numberIn(text);
@@ -569,14 +732,48 @@ function boundsByField(requestRaw: string, fields: AppField[]): Map<string, { mi
  * A numeric type alone never invents a bound; the request must name the field
  * and state the constraint in its own words.
  */
+/**
+ *  A BOUND READ ONCE AND SPREAD BY NAME.
+ *
+ *  Manus measured it on a real artifact and named the class; this is
+ *  the same thing reproduced here, on the same sentence:
+ *
+ *      «بدي جدول مبيعات فيه اسم الصنف والكمية والسعر، والسعر لا يقبل صفر»
+ *
+ *      from blueprintFor                  السعر bounded · الكمية free
+ *      after applyRequestFieldConstraints السعر bounded · الكمية BOUNDED
+ *
+ *  He put a floor under a price and a quantity he never mentioned in
+ *  that clause got the same floor. boundsByField split the request on
+ *  sentence punctuation — and his whole request is ONE sentence — then
+ *  stamped every field whose label appeared anywhere in it. Every
+ *  column he listed appears in it: that is what listing them means.
+ *
+ *  A rule belongs to the field named in the CLAUSE that states it.
+ *  statedRules already reads clauses — it splits on the comma and the
+ *  «و» and takes the definite noun the clause opens with — and
+ *  applyStatedRules already attaches each to the field it names.
+ *  Two readers for one rule, and this was the one that spread.
+ *
+ *  So this keeps its job — carrying his stated bounds into an
+ *  AppBlueprint — and stops having its own opinion about which field
+ *  a rule is about.
+ */
 export function applyRequestFieldConstraints(bp: AppBlueprint, request: string): AppBlueprint {
-    const bounds = boundsByField(request, bp.fields);
-    const fields = bp.fields.map(field => {
-        if (field.type !== 'number') return field;
-        //  The bound is whatever HE stated, not a fixed zero: «الكمية لا تقل
-        //  عن 1» is a floor of one, and «ارفض صفر أو أقل» excludes the zero.
-        const bound = bounds.get(field.key);
-        return bound ? { ...field, min: bound.min, minExclusive: bound.minExclusive } : field;
+    const rules = statedRules(request);
+    if (!rules.length) return bp;
+    //  applyStatedRules speaks DerivedField; an AppBlueprint field carries
+    //  the same label, type and bound, so the shapes meet on those three.
+    const carried = applyStatedRules(bp.fields as unknown as DerivedField[], rules).fields;
+    const fields = bp.fields.map((field, i) => {
+        const next = carried[i] as unknown as AppField;
+        //  No type check of my own: applyStatedRules already refuses a
+        //  target that is not a number, so a rule naming «الاسم» never
+        //  arrives here with a bound. A mutation proved the second check
+        //  could not decide anything, and two guards for one rule is how
+        //  they come apart.
+        if (next?.min === undefined) return field;
+        return { ...field, min: next.min, ...(next.minExclusive ? { minExclusive: true } : {}) };
     });
     return fields.some((field, index) => field !== bp.fields[index]) ? { ...bp, fields } : bp;
 }
@@ -605,12 +802,75 @@ export function violatesFieldConstraint(field: Pick<AppField, 'type' | 'min' | '
  * needs no vocabulary of trades: a clinic, a nursery or a camel farm all name
  * their own table.
  */
+//  Hoisted from derivedColumns: two readers need the same stems, and a
+//  second copy would drift the first time one of them learned a verb
+//  the other did not.
+const RECORDING_STEM = ['سجل', 'سجّل', 'ضيف', 'دخل', 'دوّن', 'دون', 'تابع', 'دير', 'نظم'];
+const CONJUGATED = RECORDING_STEM.map(stem => '[أاينت]' + stem).join('|');
+const A_RECORDING_VERB = new RegExp('^(?:' + CONJUGATED + ')$', 'u');
+
+//  The recording words, hoisted: theNounBesideTheContainer must refuse a
+//  verb as a name, and it runs before recordedSubject's local copy exists.
+const RECORDING_WORD = /(أسجل|اسجل|سجّل|أضيف|اضيف|أدخل|ادخل|أدوّن|ادون|الحقول|تحتوي على|يحتوي على|أتابع|اتابع|أدير|ادير|أنظم|انظم|\brecord\b|\btrack\b|\blog\b|\bmanage\b|\borgani[sz]e\b)/iu;
+
+/**
+ *  A NAME THAT IS THE SENTENCE THAT ASKED FOR IT.
+ *
+ *  Measured on four real requests, and three of them came out like this:
+ *
+ *      «بدي جدول مبيعات فيه اسم الصنف والكمية والسعر، والسعر لا يقبل صفر»
+ *      → title: «بدي جدول مبيعات فيه اسم الصنف والكمية»
+ *
+ *  His own words, cut off mid-phrase, printed back to him as the name of
+ *  his application — in the reply, on the page, in the empty state. The
+ *  one that came out right had a colon in it, because the only reader
+ *  wired to the title needed a recording verb AND a colon within forty
+ *  characters, and gave up on everything else.
+ *
+ *  There is a reader that already knows: subjectAfterContainer reads the
+ *  noun standing beside the container he named. It answered «مبيعات»,
+ *  «الموظفين», «الكتب» and «clients» on the same four sentences while the
+ *  title was still a truncated request. Nothing needed inventing — the
+ *  two readers were simply not joined.
+ *
+ *  Order matters and is not arbitrary. What he declared AFTER a recording
+ *  verb wins, because that is him naming the thing outright. The noun
+ *  beside the container comes next. And a verb is never a name: «جدول
+ *  أسجل فيه المواعيد» puts «أسجل» beside the container, and it is refused
+ *  here even though the earlier reader is the one that saves it.
+ */
+function theNounBesideTheContainer(request: string): string | null {
+    const beside = String(subjectAfterContainer(request) || '').trim();
+    //  A NAME IS WHAT IS LEFT AFTER THE PARTICLES, NOT THE PARTICLES.
+    //
+    //  «ما الفرق بين قاعدة البيانات والجدول؟» handed back «وال» — a
+    //  conjunction and an article with nothing behind them. Three
+    //  characters is a length, not a word; what has to be three is what
+    //  remains once the prefixes he did not choose are taken off.
+    const core = beside.replace(/^و/u, '').replace(/^(?:لل|ال|ل)/u, '');
+    //  AND A VERB IS NEVER A NAME, IN ANY PERSON HE WRITES IT.
+    //
+    //  «بدي جدول يسجل الاسم والهاتف والعنوان» put «يسجل» beside the
+    //  container and the app was named «يسجل الاسم». The older list
+    //  held «أسجل» and not «يسجل», so the guard let it through — the
+    //  same one-person blindness that cost the column reader a whole
+    //  class of requests. Same stems, same four persons, one table.
+    const first = beside.split(/\s+/)[0] || '';
+    if (core.length >= 3 && !RECORDING_WORD.test(beside) && !A_RECORDING_VERB.test(first)) return beside;
+    //  No container either — but grammar may still have found the entity,
+    //  and the first column of an entity-and-its-attributes run IS the
+    //  entity: «بدي برنامج يحفظ لي زبائني و…» is about زبائني.
+    const grammar = entityAndItsAttributes(request);
+    const head = grammar && grammar.length ? String(grammar[0].label || '').trim() : '';
+    return head.length >= 3 ? head : null;
+}
+
 export function recordedSubject(requestRaw: string): string | null {
     const request = String(requestRaw || '').trim();
     if (!request) return null;
-    const RECORDING = /(أسجل|اسجل|سجّل|أضيف|اضيف|أدخل|ادخل|أدوّن|ادون|الحقول|تحتوي على|يحتوي على|أتابع|اتابع|أدير|ادير|أنظم|انظم|\brecord\b|\btrack\b|\blog\b|\bmanage\b|\borgani[sz]e\b)/iu;
+    const RECORDING = RECORDING_WORD;
     const opener = RECORDING.exec(request);
-    if (!opener) return null;
+    if (!opener) return theNounBesideTheContainer(request);
     const after = request.slice((opener.index || 0) + opener[0].length);
     const colon = after.indexOf(':') >= 0 ? after.indexOf(':') : after.indexOf('：');
     // No colon means the list starts immediately: there is no subject to read,
@@ -640,7 +900,7 @@ export function recordedSubject(requestRaw: string): string | null {
     const before = request.slice(0, opener.index || 0).trim().split(/\s+/);
     const tail = before.slice(-1)[0] || '';
     const bare = tail.replace(/^(?:لل|ال|ل)/, '');
-    return bare.length >= 3 ? bare : null;
+    return bare.length >= 3 ? bare : theNounBesideTheContainer(request);
 }
 
 export function blueprintFor(kind: AppKind, request: string, isAr: boolean): AppBlueprint {
@@ -663,7 +923,7 @@ export function blueprintFor(kind: AppKind, request: string, isAr: boolean): App
     const explicitColumns = fieldsFromRequest(request, isAr);
     if (explicitColumns) {
         const base = blueprintForKind(kind, request, isAr);
-        const cols = derivedColumns(request) || [];
+        const cols = columnsAnywhereInHisRequest(request) || [];
         const subject = recordedSubject(request);
         const counts = cols.filter(c => c.role === 'count');
         const monies = cols.filter(c => c.role === 'money');
@@ -1184,7 +1444,7 @@ function stockBlueprintFor(kind: AppKind, request: string, isAr: boolean): AppBl
          * And the label of each total is built from HIS words, so a clinic
          * never reads «رأس المال» about its fees.
          */
-        const cols = derivedColumns(request) || [];
+        const cols = columnsAnywhereInHisRequest(request) || [];
         const counts = cols.filter(c => c.role === 'count');
         const monies = cols.filter(c => c.role === 'money');
         const wantsTotal = /مجموع|اجمالي|إجمالي|قيمة\s*ال|كم\s|\btotal\b|\bsum\b|how much/iu.test(request);
@@ -1308,7 +1568,342 @@ const TYPE_MARKS: Array<[RegExp, DerivedRole, FieldType]> = [
     [/ملاحظ|وصف|تفاصيل|شرح|تعليق|\bnote\b|\bdescription\b|\bdetails\b|\bcomment\b/iu, 'note', 'textarea'],
 ];
 
-export interface DerivedField { label: string; key: string; type: FieldType; role: DerivedRole; options?: string[] }
+export interface DerivedField { label: string; key: string; type: FieldType; role: DerivedRole; options?: string[]; min?: number; minExclusive?: boolean }
+
+/** A condition he stated, and the field it is about. */
+/**
+ *  Words that open a clause without naming anything in it. The Arabic side
+ *  needs no twin: its test is the definite article, which a conjunction
+ *  cannot wear.
+ */
+const NOT_A_FIELD_NAME = new Set([
+    'and', 'or', 'but', 'the', 'a', 'an', 'also', 'then', 'plus', 'with', 'so',
+    'it', 'this', 'that', 'they', 'there', 'here', 'each', 'every', 'all', 'any',
+    'if', 'when', 'while', 'where', 'which', 'who', 'is', 'are', 'be', 'was',
+    'must', 'should', 'shall', 'may', 'can', 'do', 'does', 'not', 'no', 'never',
+    'please', 'make', 'build', 'create', 'add', 'set', 'use', 'ensure', 'keep',
+    'let', 'give', 'show', 'allow', 'reject', 'accept', 'run', 'open',
+]);
+
+export interface StatedRule {
+    text: string;
+    field?: string;
+    min?: number;
+    minExclusive?: boolean;
+    /**  «٩ أرقام» — a floor on the COUNT of characters, not on the value. */
+    minLength?: number;
+    /**
+     *  What KIND of rule it is, because the three cannot be judged alike.
+     *
+     *    bound   — a number the value may not cross («لا تقبل مبلغًا صفرًا»)
+     *    forbid  — a thing that must not be there («ولا تضف صفحة تسجيل دخول»)
+     *    require — a thing that must be («واجعل التصميم داكنًا»)
+     *
+     *  Only `bound` can be turned into a field constraint. The other two are
+     *  returned all the same: a condition Joe cannot apply must be SAID, and
+     *  before this they were not even read.
+     */
+    //  `change` is fourth on purpose: «أعد تسمية» is a change and «اجعل»
+    //  is a requirement, and a clause that is both is more usefully read as
+    //  the change — it names a thing that must be different afterwards.
+    kind?: 'bound' | 'forbid' | 'require' | 'change';
+}
+
+/**
+ *  A RULE STATED AFTER «و» WITH NO COMMA IS STILL ITS OWN CLAUSE.
+ *
+ *  statedRules split the request on punctuation and then stripped a leading
+ *  «و». Nobody writes a comma before a condition:
+ *
+ *      «اعمل موقع شركة تنظيف ولا تقبل مبلغًا صفرًا»
+ *
+ *  is ONE clause by that split, so the rule's own text came back as the whole
+ *  request — the sentence that asked for it standing in for the thing asked.
+ *  Measured across a thousand requests, tier 5 («an explicit condition») read
+ *  clean 5% of the time: the condition was not obeyed, not checked, and not
+ *  mentioned.
+ *
+ *  So the split happens before a «و» that OPENS a rule, and only there. It is
+ *  a short list of verbs on purpose — «والمبلغ» in a column list must not
+ *  split, and «والاسترجاع» must stay attached to «الشحن». A rule begins with
+ *  a prohibition or an instruction, never with a noun.
+ */
+const A_RULE_OPENS_HERE = new RegExp(
+    '\\s\u0648(?=(?:\u0644\u0627|\u0623\u0644\u0627|\u0627\u0644\u0627|\u0628\u062f\u0648\u0646|\u062f\u0648\u0646|\u064a\u062c\u0628|\u0644\u0627\u0632\u0645|\u0627\u0645\u0646\u0639|\u0627\u0631\u0641\u0636|\u0627\u062c\u0639\u0644|\u064a\u0643\u0648\u0646|\u062a\u0643\u0648\u0646|\u062a\u0623\u0643\u062f|\u062a\u0627\u0643\u062f|\u0627\u062d\u0631\u0635)\\s)',
+    'gu',
+);
+
+/** The clauses he wrote, with a rule after «و» counted as one of them. */
+export function hisClauses(requestRaw: string): string[] {
+    return String(requestRaw || '')
+        .replace(A_RULE_OPENS_HERE, '\u0000')
+        //  AND A COLON IS A SEPARATOR — it was not one, and that alone hid a
+        //  whole tier. The way anyone states an edit is «في موقع كذا: افعل
+        //  كذا»; without the colon here the sentence stayed one clause opening
+        //  with «في», so «اجعل الخط أكبر» never opened anything. Measured
+        //  across a thousand requests: every edit phrased that way derived
+        //  nothing at all.
+        .split(/[\u0000،,؛;:.\n]|—/)
+        .map(c => c.trim().replace(/^و\s*/u, '').trim())
+        .filter(Boolean);
+}
+
+/**
+ *  THE OPENER MUST END WHERE A WORD ENDS — AND `\b` CANNOT SAY THAT IN ARABIC.
+ *
+ *  JavaScript defines `\b` by `\w` = [A-Za-z0-9_], so between two Arabic
+ *  letters there is never a `\b` position at all. `^لا\b` does not match «لا
+ *  تضف» — the space after «لا» is a non-word character and so is «ا», so no
+ *  boundary falls between them. Written that way, every prohibition in this
+ *  file read as no rule at all.
+ *
+ *  And without an end to the opener, «لا» matches inside «لازم» and «الا»
+ *  matches inside «الاسترجاع» — measured: «صفحة الشحن والاسترجاع» split into
+ *  two, and a column he named became a clause.
+ *
+ *  So the openers end explicitly: a space, or the end of the clause.
+ */
+const ENDS_A_WORD = '(?=\\s|$)';
+const FORBIDS = new RegExp('^(?:لا|ألا|الا|بدون|دون|امنع|ارفض|يمنع|يرفض|no|never|without)' + ENDS_A_WORD
+    + "|^(?:don'?t|do not)" + ENDS_A_WORD, 'iu');
+const REQUIRES = new RegExp('^(?:يجب|لازم|اجعل|اجعله|اجعلها|يكون|تكون|تأكد|تاكد|احرص|must|make|ensure|should)' + ENDS_A_WORD, 'iu');
+
+/**
+ *  A CHANGE HE ASKED FOR IS A THING THAT MUST BE TRUE AFTERWARDS.
+ *
+ *  «احذف قسم الآراء» · «غيّر اللون إلى أزرق فاتح» · «أضف عمود الملاحظات»
+ *
+ *  Each states a change, and a change is checkable in the way a condition
+ *  is: either the built thing shows it afterwards or it does not. Measured
+ *  across a thousand requests, the tier that edits an existing build derived
+ *  nothing for four of its eight verbs — so the edit was carried out on
+ *  trust and reported as done with nothing behind the word.
+ */
+const EDIT_OPENS = new RegExp(
+    '^(?:أضف|اضف|ضيف|أضيف|اضيف|غيّر|غير|بدّل|بدل|احذف|امسح|أزل|ازل|عدّل|عدل|أعد|اعد|ضع|حدّث|حدث'
+    + '|add|change|remove|delete|rename|update|replace|set)' + ENDS_A_WORD, 'iu');
+
+/** Does this clause ask for a CHANGE to something that already exists? */
+export function clauseChanges(clause: string): boolean {
+    return EDIT_OPENS.test(String(clause || '').trim());
+}
+
+/** Does this clause FORBID something rather than ask for it? */
+export function clauseForbids(clause: string): boolean {
+    return FORBIDS.test(String(clause || '').trim());
+}
+
+/** Does it state a requirement — a thing that must be so? */
+function clauseRequires(clause: string): boolean {
+    return REQUIRES.test(String(clause || '').trim());
+}
+
+/**
+ *  A RULE THAT IS NEITHER KEPT NOR CONFESSED.
+ *
+ *  Live round on his machine:
+ *
+ *      «بدي جدول مبيعات فيه اسم الصنف والكمية والسعر، والسعر لا يقبل صفر»
+ *
+ *  Three columns arrived, correctly, and the condition vanished. Measured
+ *  in the generated project:
+ *
+ *      { key: 'money1', label: 'السعر', type: 'number', required: true }
+ *          — no min, no bound of any kind
+ *      RecordsApp.jsx:28
+ *          if (field.type !== 'number' || field.min === undefined) return false;
+ *
+ *  The app SHIPS the guard. Nothing ever fills the value it reads, so
+ *  zero is accepted — the exact thing he forbade. And the ledger said
+ *  «3 of what I know how to prove is proven», naming three columns and
+ *  never the rule, so the report was true and useless at the same time.
+ *
+ *  isAName already RECOGNISES the sentence as a rule — that is how it
+ *  keeps «والسعر لا يقبل صفر» out of the column list. It recognised it
+ *  and dropped it on the floor.
+ *
+ *  So a rule is read, and what can be turned into a bound is turned into
+ *  one. What cannot is still returned, because a condition Joe cannot
+ *  apply must be SAID rather than silently lost — that is the whole of
+ *  the difference between a report and a receipt.
+ */
+/**
+ *  A COLUMN IS NOT THE WORD FOR THE THING THAT HOLDS IT.
+ *
+ *  Lowering the floor to two — because he named the container — let a
+ *  QUESTION through:
+ *
+ *      «ما الفرق بين الجدول والقائمة والسجل؟»
+ *        → columns: «القائمة», «السجل»
+ *
+ *  Three container words, compared with each other, read as a schema of
+ *  two. Nobody puts a column called «الجدول» inside his جدول, and that is
+ *  the whole rule — no list of question words, no punctuation trick, and
+ *  nothing that would break «…وهل انتهت؟», a real build request that ends
+ *  in a question mark because his last column asks one.
+ *
+ *  It reads the same RECORD_CONTAINER the rest of this file reads.
+ */
+function notAContainerItself(label: string): boolean {
+    const bare = String(label || '').trim().replace(/^ال(?=[ء-ي])/u, '');
+    if (!bare) return false;
+    const hit = RECORD_CONTAINER.exec(bare);
+    //  Only when the container word IS the whole label: «جدول المهام» is a
+    //  name he chose, «الجدول» on its own is the word for the box.
+    return !(hit && hit[0].length === bare.length);
+}
+
+export function statedRules(requestRaw: string): StatedRule[] {
+    const request = String(requestRaw || '');
+    const out: StatedRule[] = [];
+    //  Rules are stated as their own clause, after a comma or «و» — and
+    //  hisClauses is the one place that knows where a clause begins. It
+    //  used to split on punctuation alone, so a condition joined by «و»
+    //  with no comma was never separated from the request that carried it.
+    for (const clause of hisClauses(request)) {
+        //  READS_AS_A_RULE is a list of NEGATIONS — «لا», «يجب», «يمنع».
+        //  «والمبلغ أكبر من 50» states a condition and contains none of
+        //  them, so it was not seen as a rule at all. Caught by making a
+        //  test assert the wiring instead of calling the helper itself:
+        //  the old test passed with the link cut, which is a criterion
+        //  that cannot fail — a defect, and it was mine.
+        //
+        //  A clause that STATES A BOUND is a rule whatever words it uses,
+        //  and statedBound is the authority on that, not a vocabulary.
+        const boundHere = statedBound(clause);
+        const forbids = clauseForbids(clause);
+        const requires = clauseRequires(clause);
+        const changes = clauseChanges(clause);
+        if (!boundHere && !forbids && !requires && !changes && !READS_AS_A_RULE.test(clause)) continue;
+        //  A bound is the strongest reading — it can become a real constraint.
+        //  A prohibition outranks a requirement because «لا تجعل» opens with
+        //  the negation and would otherwise be read as «اجعل».
+        const rule: StatedRule = {
+            text: clause,
+            kind: boundHere ? 'bound' : forbids ? 'forbid' : changes ? 'change' : requires ? 'require' : undefined,
+        };
+        //  Which column is it about? The clause names it, and the name is
+        //  the definite noun it opens with — no vocabulary of field names.
+        /**
+         *  ⛔ …AND THE ENGLISH SIDE MUST TEST SOMETHING TOO.
+         *
+         *  The Arabic branch asks for the definite article — a real claim
+         *  about the token it accepts. The English branch asked only «is it a
+         *  word», so «and zqixdal_val must be greater than 4» named the field
+         *  «and». Measured: the constraint never found its column and fell
+         *  back to a numbered rule, and a schema that dropped the bound
+         *  entirely would still have scored green.
+         *
+         *  This is the night's first class in its plainest form — a rule that
+         *  grants a claim from POSITION without testing it — and it hid because
+         *  the two languages were held to different standards inside one
+         *  pattern. So the openers are skipped, not accepted, and a function
+         *  word is never a column name.
+         */
+        let opening = clause;
+        for (let hop = 0; hop < 4; hop++) {
+            const lead = opening.match(/^([A-Za-z][A-Za-z0-9_]*)\s+/);
+            if (lead && NOT_A_FIELD_NAME.has(lead[1].toLowerCase())) {
+                opening = opening.slice(lead[0].length);
+                continue;
+            }
+            break;
+        }
+        const named = opening.match(/^(?:ال[ء-ي]+|[A-Za-z][A-Za-z0-9_]*)/u);
+        if (named && !NOT_A_FIELD_NAME.has(named[0].toLowerCase())) rule.field = named[0];
+        //  THE BOUND READER ALREADY EXISTS — statedBound, above, and it
+        //  knows «أقل من», «على الأقل», «موجب» and their English twins.
+        //  Writing a second one here would be the duplication this file
+        //  keeps paying for: two readers drift the first time one of
+        //  them learns a phrase the other does not.
+        if (boundHere) { rule.min = boundHere.min; rule.minExclusive = boundHere.minExclusive; }
+        //  …and a bound on how MANY characters, which lands on a different
+        //  kind of field and must not be confused with a floor on a value.
+        const lengthHere = statedLengthBound(clause);
+        if (lengthHere) { rule.minLength = lengthHere.minLength; rule.kind = 'bound'; }
+        out.push(rule);
+    }
+    return out;
+}
+
+/** Attach every readable bound to the field it names. Unreadable rules stay unattached. */
+export function applyStatedRules(fields: DerivedField[], rules: StatedRule[]): { fields: DerivedField[]; unapplied: StatedRule[] } {
+    const unapplied: StatedRule[] = [];
+    const next = fields.map(f => ({ ...f }));
+    for (const rule of rules) {
+        //  A rule with no OPENING noun is not a rule with no field: the
+        //  clause below can still name one. Bailing here is what kept
+        //  «وارفض المبلغ إذا كان صفر أو أقل» unattached.
+        /**
+         *  A LENGTH GOES ON THE TEXT HE TYPES, NOT ON A NUMBER.
+         *
+         *  «لا تقبل رقم هاتف أقل من ٩ أرقام» attaches to «رقم الهاتف», which
+         *  is a `tel` field — and the floor loop below only ever touched
+         *  `number` fields, so his rule was read, classed as a bound, and then
+         *  dropped for want of a number to sit on. Measured: the phone column
+         *  came out with no constraint of any kind.
+         */
+        if (rule.minLength !== undefined) {
+            const said = String(rule.field || rule.text || '');
+            const target = next.find(f => (f.type === 'tel' || f.type === 'text')
+                && f.label && (String(f.label) === rule.field
+                    || String(f.label).split(/\s+/).some(w => w.length > 2 && saysWord(said, w))));
+            if (target) (target as any).minLength = rule.minLength;
+            else unapplied.push(rule);
+            continue;
+        }
+        if (rule.min === undefined) { unapplied.push(rule); continue; }
+        //  His own label, matched as he wrote it — «السعر» is «السعر».
+        //
+        //  AND THE CLAUSE DOES NOT ALWAYS OPEN WITH THE FIELD.
+        //
+        //  Four natural phrasings put the VERB first and the field second:
+        //
+        //      «وارفض المبلغ إذا كان صفر أو أقل»
+        //      «ارفض الكمية إذا كانت أقل من 10»
+        //      «Validation that rejects non-positive amounts»
+        //      «Quantity at least 2»   — his capital, the field's lowercase
+        //
+        //  The opening noun is the STRONGEST signal and stays first. When
+        //  it names nothing, the field is whichever one his CLAUSE
+        //  mentions — the clause, never the whole request. That boundary
+        //  is the entire difference from the reader this replaced, which
+        //  searched the whole sentence and put a floor under every column
+        //  he had listed.
+        const said = String(rule.text || '').toLocaleLowerCase();
+        const target = next.find(f => f.label === rule.field
+                || f.label.includes(String(rule.field))
+                || String(rule.field).includes(f.label))
+            || next.find(f => f.type === 'number' && f.label
+                && said.includes(String(f.label).toLocaleLowerCase()))
+            //  AND ARABIC DOES NOT SAY THE LABEL BACK LETTER FOR LETTER.
+            //
+            //  «لا تقبل مبلغًا صفرًا» names the field — «مبلغًا» — and the field is
+            //  labelled «المبلغ». Indefinite, accusative, no article: a literal
+            //  `includes` finds nothing, and the bound he stated was dropped
+            //  into `unapplied` where nobody ever saw it again.
+            //
+            //  Measured on his own machine, in the built app:
+            //
+            //      RecordsApp.jsx:28  if (field.min === undefined) return false;
+            //      content.js         المبلغ → required: true, and no min
+            //
+            //  The application SHIPS the guard. Nothing fills the value it
+            //  reads, so zero is accepted — the exact thing he forbade, in a
+            //  build that reported itself complete.
+            //
+            //  saysWord() is the language layer added today: it segments with
+            //  Unicode's own rules and stems with the same stemmer Elasticsearch
+            //  ships, so «مبلغًا» and «المبلغ» are one word — and «أزرق» is still
+            //  not «زر».
+            || next.find(f => f.type === 'number' && f.label
+                && String(f.label).split(/\s+/).some(w => w.length > 2 && saysWord(said, w)));
+        if (!target || target.type !== 'number') { unapplied.push(rule); continue; }
+        target.min = rule.min;
+        if (rule.minExclusive) target.minExclusive = true;
+    }
+    return { fields: next, unapplied };
+}
 
 /** The columns a request enumerates, in his words and his order. */
 /**
@@ -1341,8 +1936,25 @@ export function derivedTables(requestRaw: string): DerivedTable[] {
     const out: DerivedTable[] = [];
     const seen = new Set<string>();
     for (const piece of request.split(/(?<=[.؟!\n])/u)) {
-        const cols = derivedColumns(piece);
-        if (!cols) continue;
+        const found = derivedColumns(piece);
+        if (!found) continue;
+        /**
+         *  A TABLE IS READ FROM ONE SENTENCE. HIS RULES ARE IN THE OTHERS.
+         *
+         *  Measured in the shop built on his machine: «وجدول الطلبات فيه اسم
+         *  الزبون ورقم الهاتف …» and «لا تقبل رقم هاتف أقل من ٩ أرقام» are two
+         *  sentences, and the phone column came out of the build with no
+         *  constraint of any kind — `content.js` carried no minLength at all,
+         *  while the generated app already shipped the input that would have
+         *  enforced one.
+         *
+         *  `derivedColumns(piece)` ends by applying the rules of THAT PIECE, so
+         *  a table found sentence-by-sentence is judged against one sentence's
+         *  worth of conditions. This is the third site of one class tonight —
+         *  a decision taken from a fragment when the authority is the whole
+         *  request — and it is fixed here the same way as the other two.
+         */
+        const cols = applyStatedRules(found, statedRules(request)).fields;
         const key = cols.map(c => c.label).join('|');
         if (seen.has(key)) continue;
         seen.add(key);
@@ -1429,15 +2041,524 @@ function everyItemIsADefiniteName(items: string[]): boolean {
     return items.every(raw => {
         const t = String(raw || '').trim();
         if (!isAName(t)) return false;
+        /**
+         *  A DEFINITENESS TEST IS WRITTEN IN ONE ALPHABET.
+         *
+         *  Measured, the same sentence in two scripts:
+         *
+         *      «بدي جدول للعملاء فيه الاسم والهاتف والعنوان»  → 3 columns
+         *      «A clients table with name, phone and address»  → null
+         *
+         *  Not «read badly» — never read at all. The test below is «ال» or
+         *  a possessive suffix, and no English noun carries either, so it
+         *  could NEVER pass and every English request fell through to a
+         *  memorised template.
+         *
+         *  English marks the difference on the CONTAINER instead of the
+         *  noun, and the caller has already established that a container
+         *  was named. «name», «phone», «address» are as bare in English as
+         *  «قهوة» is in Arabic; what keeps a shopping list out is that a
+         *  list holds things while a table holds columns, and that test
+         *  belongs to the container, not to the item.
+         */
+        if (!/[؀-ۿ]/u.test(t)) return true;
         //  «ال» anywhere — on the word itself or on the second half of an
         //  idafa («اسم المريض») — or a possessive suffix («رقم تلفونه»),
         //  which is the other way Arabic makes a noun definite.
-        return /(?:^|\s)ال[ء-ي]/u.test(t)
-            || /[ء-ي](?:ه|ها|هم|هن|ي|ك|كم)(?:$|\s)/u.test(t);
+        //  Folded, because a diacritic is not a letter and every test here
+        //  reads letters. «زُرْقَمُونِي» carries a kasra between its last two
+        //  letters, so «a letter then ي» found nothing and his own invented
+        //  word was ruled not a name at all.
+        const bare = stripArabicDiacritics(t);
+        return /(?:^|\s)ال[ء-ي]/u.test(bare)
+            || /[ء-ي](?:ه|ها|هم|هن|ي|ك|كم|نا)(?:$|\s)/u.test(bare);
     });
 }
 
+/**
+ *  A THING THAT HOLDS RECORDS, NAMED IN HIS OWN WORD.
+ *
+ *  This lived inside derivedColumns as a local. It is needed in a second
+ *  place now — the clarifier, which must ask about the container HE named
+ *  instead of asking about a website — and a second copy would drift the
+ *  first time one of them learned a word the other did not.
+ */
+export const RECORD_CONTAINER = /(جدول|جداول|قائمة|كشف|سجل|سجلّ|\btable\b|\blist\b|\bsheet\b|\bledger\b|\bregister\b|\btracker\b)/iu;
+
+/**
+ *  WHERE THE SENTENCE ENDS AND THE FIRST COLUMN BEGINS.
+ *
+ *  Two branches read the same sentence — one when a recording verb opens
+ *  the list, one when only the container does — and whatever stood between
+ *  the container and the list stuck to the first item. One branch had been
+ *  taught to strip it. The other had not been taught at all, so a live
+ *  round returned this:
+ *
+ *      «بدي برنامج اسجل فيه اسم الطالب وصفه ودرجته»
+ *      → columns: «فيه اسم الطالب» · «صفه» · «درجته»
+ *
+ *  A column called «فيه». Not a bad reading of his words — the second
+ *  reader was never given the lesson the first one learned. So there is
+ *  one cleaner now, and both branches call it.
+ *
+ *  It strips a closed class and nothing else. In both languages what
+ *  stands between a container and its columns is a FUNCTION word — a
+ *  preposition, a relative, an article — and function words are a closed
+ *  set that can be written down honestly. Content words are not, and
+ *  guessing at them is how a verb becomes a column.
+ */
+const ARABIC_FUNCTION_WORD = /^(?:في|إلى|الى|على|عن|مع|من|ل|ب|ف|و)(?:ه|ها|هم|هن|ي|ك|كم|نا)?$/u;
+
+function firstColumnBeginsAtTheName(firstRaw: string, afterAContainer: boolean): string {
+    const first = String(firstRaw || '').trim();
+    //  English has no «ال», so the preposition is the whole signal:
+    //  «with name» is the sentence plus the column, not a column called
+    //  «with name».
+    const trimmedEn = first
+        .replace(/^(?:that\s+(?:has|have|holds?|contains?)|which\s+(?:has|have)|with|of|for|containing|including|holding|showing|having)\s+/iu, '')
+        .replace(/^(?:a|an|the)\s+/iu, '')
+        .trim();
+    if (trimmedEn !== first) return trimmedEn;
+    if (!/\s/.test(first)) return first;
+    const words = first.split(/\s+/);
+
+    //  A leading Arabic function word — «فيه», «لي», «بها». Strip the run
+    //  of them and stop: what follows is his own words.
+    let cut = 0;
+    while (cut < words.length - 1 && ARABIC_FUNCTION_WORD.test(words[cut])) cut++;
+    if (cut > 0) return words.slice(cut).join(' ');
+
+    //  A NAME IS MARKED DEFINITE THREE WAYS, AND THIS KNEW ONE.
+    //
+    //  «ال», an idafa whose second half carries «ال», and a possessive
+    //  suffix — «زبائني», «درجته». everyItemIsADefiniteName already knows
+    //  all three; this trim knew only the article, so «يحفظ لي زبائني»
+    //  found no start at all and handed back the verb as a column.
+    if (afterAContainer) {
+        //  Only when the residue is the container's own subject: «جدول
+        //  للمصاريف يحوي التاريخ» hands back «للمصاريف يحوي التاريخ», and
+        //  the column starts at «التاريخ». After a recording verb the
+        //  residue is an idafa he wrote himself — «اسم المريض» — and
+        //  cutting to the article there would throw away half his label.
+        const article = words.findIndex(w => /^ال[ء-ي]/u.test(w));
+        if (article > 0) return words.slice(article).join(' ');
+    }
+    const owned = words.findIndex(w => !ARABIC_FUNCTION_WORD.test(w) && /[ء-ي](?:ه|ها|هم|هن|ي|ك|كم|نا)$/u.test(w));
+    if (owned > 0) return words.slice(owned).join(' ');
+    return first;
+}
+
+/**
+ *  A CAPABILITY HE ASKED FOR IS NOT A COLUMN.
+ *
+ *  Measured on four of his own sentences:
+ *
+ *      «…فيه الاسم والصف والدرجة، مع بحث بالاسم وترتيب بالدرجة»
+ *      → الاسم · الصف · الدرجة · «مع بحث بالاسم» · «ترتيب بالدرجة»
+ *
+ *      «…فيه رقم الفاتورة والمبلغ والتاريخ، واعرض لي المجموع»
+ *      → … · «واعرض لي المجموع»
+ *
+ *      «…فيه اسم المنتج والسعر والصورة، مع سلة مشتريات»
+ *      → … · «مع سلة مشتريات»
+ *
+ *      «…فيه اسم العميل ووقت الحجز، ويحفظ البيانات على خادم»
+ *      → nothing at all — the capability sank the two real columns
+ *        below the floor and the whole request read as no schema.
+ *
+ *  He asked for a search, a total, a cart, a server. Each became a
+ *  column of the table, or drowned the ones that were real. This is the
+ *  same shape as the rule that became a column and was given statedRules
+ *  — and capabilities were never given the same treatment.
+ *
+ *  Two closed-class tests, no vocabulary:
+ *
+ *  1. A column is a DEFINITE NAME, judged by the same three marks used
+ *     everywhere else. «مع بحث بالاسم» and «مع سلة مشتريات» carry none.
+ *
+ *  2. A name is a word or a two-word idafa. A function word standing
+ *     INSIDE it means the phrase is a clause, not a name: «واعرض لي
+ *     المجموع» has «لي» in it, «يحفظ البيانات على خادم» has «على».
+ *     «اسم المريض», «رقم تلفونه», «وقت الموعد» have none.
+ *
+ *  And the run STOPS at the first one that fails rather than filtering
+ *  it out, because a list is contiguous: what follows the boundary is
+ *  the next thing he asked for, not a later column.
+ */
+/**
+ *  …AND IN ENGLISH THE BOUNDARY IS THE ONLY MARK THERE IS.
+ *
+ *  The two tests above are Arabic ones: definiteness, and a function word
+ *  standing inside a name. English has neither — every Latin item passes
+ *  the definiteness test by design, because English marks that on the
+ *  container instead. So this slipped straight through:
+ *
+ *      «A students table: name, class and grade, with search by name»
+ *      → name · class · grade · «with search by name»
+ *
+ *  The mark English does have is position. «with» opening the FIRST item
+ *  is the sentence handing over to the list, and firstColumnBeginsAtTheName
+ *  already strips it there. The same word opening a LATER item is him
+ *  starting a new request — there is nothing left for it to hand over.
+ *
+ *  «of» is deliberately absent: «date of birth» is a column he might
+ *  really write, and a rule that cannot tell it from a clause would cost
+ *  more than it saves.
+ */
+const OPENS_A_NEW_REQUEST = /^(?:مع|plus|with|along\s+with|together\s+with|including|and)(?=$|[\s،,])/iu;
+
+/**
+  ⛔ AND THIS LIST IS EXPLICIT ON PURPOSE, AFTER A LETTER RULE FAILED.
+ *
+ *  The first attempt read the leading LETTER: an Arabic present-tense verb
+ *  opens with ي ت ن or أ and carries no article, so the pattern was
+ *  /^[يتنأ](?!ل).../ . It threw away two of his columns immediately:
+ *
+ *      تاريخ الميلاد      <- opens with ت
+ *      نوع الحليب         <- opens with ن
+ *
+ *  Both are nouns, and the letter cannot tell. That is the class this file
+ *  keeps closing -- a pattern that reads letters where it must read words
+ *  -- and it was reopened here while closing a different member of it.
+ *
+ *  Nothing lexical separates them: «يطلع المجموع» and «تاريخ الميلاد»
+ *  have the same shape, the same definiteness pattern, the same word count.
+ *  Only knowing that طلع is a verb and تاريخ is a noun settles it, and no
+ *  stemmer here carries part of speech.
+ *
+ *  So the list is narrow and it is about BEHAVIOUR: these are the verbs a
+ *  person uses to say what the page should DO with a column, never to name
+ *  the column. It is matched through the language layer, so «يطلع» is
+ *  «يطلع» in any inflection he writes it.
+ *
+ *  A narrow list that is right beats a broad rule that is wrong, and the
+ *  negative cases below it name the two columns the broad rule ate.
+ */
+const BEHAVIOUR_VERBS = [
+    'يطلع', 'تطلع', 'يحسب', 'تحسب', 'يظهر', 'تظهر', 'يعرض', 'تعرض',
+    'يجمع', 'تجمع', 'يرتب', 'ترتب', 'يبحث', 'تبحث', 'يطبع', 'تطبع',
+];
+
+function opensAsABehaviour(word: string): boolean {
+    const w = String(word || '').trim();
+    if (!w) return false;
+    try {
+        const { saysAny } = require('../language/arabic');
+        return saysAny(w, BEHAVIOUR_VERBS);
+    } catch { return BEHAVIOUR_VERBS.includes(w); }
+}
+
+function isAColumnAndNotAClause(item: string, index: number): boolean {
+    const t = String(item || '').trim();
+    if (index > 0 && OPENS_A_NEW_REQUEST.test(t)) return false;
+    //  A YES-OR-NO COLUMN IS INDEFINITE BY NATURE.
+    //
+    //  «بدي جدول أسجل فيه الفواتير: اسم الزبون والمبلغ ومدفوع» — «مدفوع»
+    //  carries no «ال» and no possessive, so the definiteness test cut the
+    //  run before it and he lost the column. It is a column all the same,
+    //  marked another way: a question about the row rather than a name of
+    //  a thing, which is exactly what ASKS_YES_OR_NO already reads.
+    if (ASKS_YES_OR_NO.test(t)) return true;
+    /**
+     *  AND A BARE NOUN AMONG NAMED COLUMNS IS A COLUMN.
+     *
+     *  Measured, one word apart:
+     *
+     *      «…فيه اسم الصنف والسعر والصورة»  → 3 columns
+     *      «…فيه اسم الصنف والسعر وصورة»    → 2 — «صورة» thrown away
+     *
+     *  He writes it the second way. The definiteness test is a guard against
+     *  prose becoming a schema, and it is a good one — the file already
+     *  carries one exception to it for «مدفوع», a yes-or-no column that is
+     *  indefinite by nature.
+     *
+     *  This is the second, and it is narrow on purpose: ONE word, and only
+     *  after two columns have already been confirmed. A single noun standing
+     *  third in a run of named columns is not prose; it is the item he did
+     *  not bother to define. A longer run, or one at the head of the list,
+     *  still has to prove itself the old way.
+     */
+    if (index >= 2 && !everyItemIsADefiniteName([t])) {
+        const words = t.split(/\s+/).filter(Boolean);
+        if (words.length === 1 && t.length >= 3
+            && !ARABIC_FUNCTION_WORD.test(t) && !READS_AS_A_RULE.test(t)) return true;
+    }
+    /**
+     *  ⛔ A COLUMN IS NAMED BY A NOUN, NEVER BY A VERB.
+     *
+     *  Measured on a sentence shaped the way the owner writes:
+     *
+     *      اعمل لي صفحة أسجل فيها مصاريفي ويطلع المجموع
+     *          columns  ->  ["مصاريفي", "يطلع المجموع"]
+     *          engine   ->  generic          (his expenses engine, lost)
+     *
+     *  The second item is a verb and its subject: something the page DOES.
+     *  It passed on the strength of its SECOND word -- «المجموع» is
+     *  definite and is not a function word -- so a definite noun ANYWHERE
+     *  in the phrase proved the whole phrase was a name.
+     *
+     *  That is this repository's first class: evidence that matches the
+     *  occurrence of a word instead of testing the claim, exactly as the
+     *  bound proof once granted a tick from any digit anywhere.
+     *
+     *  And the cost is the whole archetype, not one column: detectAppKind
+     *  returns 'generic' the moment ANY column is derived, so one misread
+     *  phrase costs him the engine that knows how to total his expenses.
+     *
+     *  Only the LEADING word is judged, and only when the phrase has more
+     *  than one -- a single word is settled by the tests around this one.
+     */
+    const leadWords = t.split(/\s+/).filter(Boolean);
+    if (leadWords.length > 1 && opensAsABehaviour(leadWords[0])) return false;
+    if (!everyItemIsADefiniteName([t])) return false;
+    const words = t.split(/\s+/);
+    return !words.slice(1).some(w => ARABIC_FUNCTION_WORD.test(w));
+}
+
+/**
+ *  «صفحة المنتجات» IS A PAGE HE NAMED, NOT A COLUMN IN A TABLE.
+ *
+ *  One sentence, two readers, and no boundary between them. «فيه» opens a
+ *  list, and the column reader took everything after it:
+ *
+ *      «اعمل متجر فيه صفحة المنتجات وصفحة الشحن والاسترجاع»
+ *        → columns: «صفحة المنتجات» «صفحة الشحن» «الاسترجاع»
+ *
+ *  Three acceptance criteria demanding three table columns, from a request
+ *  that asked for a shop with pages. A site of pages can never satisfy them,
+ *  so the delivery is refused forever — a criterion that cannot be met, which
+ *  is the mirror of a criterion that cannot fail and just as dead.
+ *
+ *  The word «صفحة» settles it: that item belongs to the page plan, which
+ *  reads it in thePagesHeNamed(). It is REMOVED rather than used as a stop,
+ *  so a sentence that names a page AND real columns keeps the columns:
+ *  «فيه صفحة المنتجات واسم العميل والمبلغ» still yields two.
+ */
+const HE_NAMED_A_PAGE = new RegExp('^(?:ال)?صفح[ةه](?:$|\\s)|^(?:a|an|the)?\\s*[a-z0-9-]+\\s+page$', 'i');
+
+function columnsEndWhereHisNextRequestBegins(parts: string[]): string[] {
+    const mine = parts.filter(p => !HE_NAMED_A_PAGE.test(String(p || '').trim()));
+    const stop = mine.findIndex((part, i) => !isAColumnAndNotAClause(part, i));
+    return stop < 0 ? mine : mine.slice(0, stop);
+}
+
+/**
+ *  AN ENTITY AND ITS ATTRIBUTES, NAMED BY GRAMMAR ALONE.
+ *
+ *      «بدي برنامج يحفظ لي زبائني وارقام تلفوناتهم وعناوينهم»
+ *      → null
+ *
+ *  He named no container — «برنامج» holds an app, not records — and
+ *  «حفظ» is a stem the opener list has never held. Adding it would fix
+ *  this one sentence and the next man writes «يخزّن» or «يمسك» and we are
+ *  back here with a longer list. Nouns and verbs are open sets; no list
+ *  of them is ever finished.
+ *
+ *  But he DID mark the shape, in grammar. «زبائني» is MINE. «تلفوناتهم»
+ *  and «عناوينهم» are THEIRS — and the «هم» points back at the clients he
+ *  just named. A run whose later members BELONG TO the first member is an
+ *  entity and its attributes, and that is what a table is. The agreement
+ *  says it; no verb and no container are needed to hear it.
+ *
+ *  This is the last path tried, so it can only add readings the other two
+ *  refused. It stays strict for that reason: three items at least, every
+ *  one a definite name, and at least one of the later ones carrying the
+ *  third-person pronoun that does the pointing.
+ */
+const BELONGS_TO_THE_FIRST = /[ء-ي](?:ه|ها|هم|هن)$/u;
+const BELONGS_TO_HIM = /[ء-ي](?:ي|نا)$/u;
+
+//  A TEST ON THE LAST LETTERS, RUN ON TEXT THAT CARRIES DIACRITICS.
+//
+//  «زُرْقَمُونِي» ends in «ي», but a kasra sits between it and the letter
+//  before it, and a kasra is not an Arabic LETTER. The possessive
+//  test looked for a letter followed by «ي», found none, and the
+//  scan walked straight past his own word and landed on «بدي» — the
+//  verb he asked with — handing it back as a column.
+//
+//  Every test below reads a folded copy for that reason, and returns
+//  the word as he wrote it, diacritics and all.
+const owned = (word: string) => BELONGS_TO_HIM.test(stripArabicDiacritics(word));
+const ownedByTheFirst = (word: string) => BELONGS_TO_THE_FIRST.test(stripArabicDiacritics(word));
+const definiteWord = (word: string) => /^ال[ء-ي]/u.test(stripArabicDiacritics(word));
+
+function theNameHeEndedOn(phrase: string): string | null {
+    //  The run begins at the last real name in the opening fragment —
+    //  «بدي برنامج يحفظ لي زبائني» begins at «زبائني». Reading forward
+    //  would stop at «بدي», which ends in «ي» and looks owned but is the
+    //  verb he asked with.
+    const words = String(phrase || '').trim().split(/\s+/);
+    for (let i = words.length - 1; i >= 0; i--) {
+        const w = words[i];
+        if (ARABIC_FUNCTION_WORD.test(w)) continue;
+        if (definiteWord(w) || owned(w) || ownedByTheFirst(w)) return w;
+    }
+    return null;
+}
+
+function entityAndItsAttributes(request: string): DerivedField[] | null {
+    const sentence = String(request || '').split(/[.؟!\n]/)[0] || '';
+    const raw = sentence
+        .split(/\s*[،,]\s*|\s+و(?=\S)|\s+and\s+|\s+&\s+/iu)
+        .map(part => part.trim())
+        .filter(part => part.length >= 2 && part.length <= 32);
+    //  Two conditions stood here and neither could ever decide: a length
+    //  test the run test already made, and a definiteness test that
+    //  columnsEndWhereHisNextRequestBegins had already applied to every
+    //  item it returned. Mutations killed nothing through either, which
+    //  is what a condition that cannot fail looks like from outside.
+    const head = theNameHeEndedOn(raw[0]);
+    if (!head) return null;
+    const run = columnsEndWhereHisNextRequestBegins([head, ...raw.slice(1)]);
+    if (run.length < 3) return null;
+    const pointing = run.slice(1).filter(part => ownedByTheFirst(part.split(/\s+/).pop() || ''));
+    if (!pointing.length) return null;
+    //  A third condition stood here — that no item is a container word —
+    //  and it could not fire either: a container word anywhere in the
+    //  request sends the sentence down the branch before this one, so
+    //  by the time grammar is reading, there is none left to find.
+    const built = fieldsFromLabels(run);
+    return built ? applyStatedRules(built, statedRules(request)).fields : built;
+}
+
+/**
+ *  WHAT HE ASKED FOR BEYOND THE COLUMNS, AND NOBODY WROTE DOWN.
+ *
+ *  columnsEndWhereHisNextRequestBegins cuts the run at the first clause
+ *  that is not a column, and everything after the cut is thrown away.
+ *  Measured, that is where his other requests live:
+ *
+ *      «…، مع بحث بالاسم وترتيب بالدرجة»     → search · SORT
+ *      «…، وصفحة ثانية تعرض مجموع الرواتب»    → total · A SECOND PAGE
+ *      «…، مع سلة مشتريات»                    → A CART
+ *      «…، ويحفظ البيانات على خادم»           → A SERVER
+ *
+ *  The criteria catalogue knows «بحث» and «مجموع» and produces a criterion
+ *  for each. It does not know a sort, a second page, a cart or a server,
+ *  and for those it produces NOTHING — so Joe can report success without
+ *  ever having looked. A criterion that fails is a fact; a criterion that
+ *  was never written is a silence, and silence is what he is owed least.
+ *
+ *  This returns his own clauses so the report can name them. It invents no
+ *  vocabulary: a clause is anything the column reader already refused, and
+ *  the refusal is the same closed-class test used everywhere else.
+ */
+export function clausesBeyondTheColumns(requestRaw: string): string[] {
+    const request = String(requestRaw || '');
+    const out: string[] = [];
+    for (const sentence of request.split(/[.؟!\n]/)) {
+        const parts = sentence
+            .split(/\s*[،,]\s*|\s+و(?=\S)|\s+and\s+|\s+&\s+/iu)
+            .map(part => part.trim())
+            .filter(part => part.length >= 2 && part.length <= 64);
+        //  The first fragment carries the request itself — «بدي جدول
+        //  للموظفين فيه الاسم» — and is never one of his extra asks.
+        for (let i = 1; i < parts.length; i++) {
+            if (isAColumnAndNotAClause(parts[i], i)) continue;
+            const clause = parts[i].replace(/^(?:و|مع|with|plus|and)\s*/iu, '').trim();
+            if (clause.length >= 4 && !out.includes(clause)) out.push(clause);
+        }
+    }
+    return out;
+}
+
+/**
+ *  A WORD THIS FILE ALREADY KNOWS AS AN INTRODUCER MAY NOT OPEN A LIST.
+ *
+ *  Measured, four phrasings of one request:
+ *
+ *      «Build an expenses app. Columns: date, amount, category and note»
+ *          → date · amount · category · note
+ *      «Build an expenses app. The fields are date, amount, …»
+ *          → date · amount · category · note
+ *      «Build a small expenses app. Include date, amount, category and note.»
+ *          → NOTHING
+ *      «Build an expenses app with date, amount, category and note.»
+ *          → NOTHING
+ *
+ *  «include» and «with» are already in this file's introducer set —
+ *  firstColumnBeginsAtTheName strips them off the first column every
+ *  day. They were known as words that HAND OVER to a list and not as
+ *  words that OPEN one, so the same sentence read two ways depending
+ *  on whether a container noun happened to stand nearby.
+ *
+ *  THE ONE CASE THIS MUST NOT SWALLOW, and how it is told apart:
+ *
+ *      «Build a small portfolio site with a home page, a projects page
+ *       and a contact form.»
+ *
+ *  Same word, same shape — and every item begins with an ARTICLE. A
+ *  column he names is «date», «amount», «note»; a thing he asks to be
+ *  built is «a home page», «a contact form». English marks the
+ *  difference with a closed class of three words, and that is the
+ *  whole test: no catalogue of page names, no list of field names.
+ */
+const ENGLISH_INTRODUCES_A_LIST = /(?:^|[.!?]\s+|[\s,;:(])(?:include(?:s|d)?|containing|consisting\s+of|made\s+up\s+of|with)(?=\s)/iu;
+const OPENS_WITH_AN_ARTICLE = /^(?:a|an|the)\s+/iu;
+
+function theListAnIntroducerHandedOver(request: string): DerivedField[] | null {
+    for (const sentence of String(request || '').split(/[.؟!\n]/)) {
+        const at = ENGLISH_INTRODUCES_A_LIST.exec(sentence);
+        if (!at) continue;
+        const tail = sentence.slice((at.index || 0) + at[0].length);
+        const items = tail
+            .split(/\s*[,，]\s*|\s+and\s+|\s+&\s+/iu)
+            .map(part => part.trim())
+            .filter(part => part.length >= 2 && part.length <= 32);
+        //  No floor here: the run check below is the same floor, and
+        //  columnsEndWhereHisNextRequestBegins never grows a list. A
+        //  mutation proved this one could never decide anything — with it
+        //  lowered to two, all four two-item sentences read identically.
+        //  An article means he is asking for the THING, not naming a
+        //  column of one.
+        if (items.some(part => OPENS_WITH_AN_ARTICLE.test(part))) continue;
+        const run = columnsEndWhereHisNextRequestBegins(items);
+        if (run.length < 3) continue;
+        const named = run.filter(isAName).filter(notAContainerItself);
+        if (named.length !== run.length) continue;
+        const built = fieldsFromLabels(named);
+        if (built) return applyStatedRules(built, statedRules(request)).fields;
+    }
+    return null;
+}
+
+/**
+ *  HIS WORDS, WITHOUT THE BLOCK JOE STAPLED TO THEM.
+ *
+ *  Read out of a real build's own record on his machine:
+ *
+ *      sourceRequest: 'بدي جدول للفواتير فيه رقم الفاتورة والمبلغ والتاريخ
+ *        AUTHORITATIVE REQUIREMENTS EVIDENCE (…): بدي جدول للفواتير فيه
+ *        رقم الفاتورة والمبلغ والتاريخ'
+ *
+ *  His sentence, Joe's paperwork, and his sentence AGAIN. Reading it
+ *  gives his columns twice, and the live edit round proved it:
+ *
+ *      from the record   رقم الفاتورة · المبلغ · المبلغ · التاريخ
+ *      from his words    رقم الفاتورة · المبلغ · التاريخ
+ *
+ *  He asked for one new column and got a duplicated one for free.
+ *
+ *  The cut lives HERE, at the reader every other reader goes through,
+ *  rather than at each writer — because the record is already written
+ *  on his disk in every app built so far, and a fix at the writer
+ *  heals none of them.
+ *
+ *  The guard on the guard is unchanged: hisWordsOnly also cuts at a
+ *  blank line, which is Joe's mark only when Joe put it there, so the
+ *  cut runs only when one of Joe's OWN marks is present.
+ */
+const JOES_OWN_MARK = /^[ \t]*-{3,}[ \t]+\S|\b[A-Z][A-Z0-9]{2,}(?:\s+[A-Z][A-Z0-9]{2,}){2,}\b/mu;
+
+export function hisSentence(request: string): string {
+    const raw = String(request || '');
+    if (!JOES_OWN_MARK.test(raw)) return raw;
+    const his = hisWordsOnly(raw);
+    return his.length >= 4 ? his : raw;
+}
+
 export function derivedColumns(requestRaw: string): DerivedField[] | null {
+    requestRaw = hisSentence(requestRaw);
     const request = String(requestRaw || '');
     /**
      * A LIST OF COLUMNS IS INTRODUCED BY THE ACT OF RECORDING.
@@ -1475,7 +2596,30 @@ export function derivedColumns(requestRaw: string): DerivedField[] | null {
      *  do it, and a noun means a declaration only when it is introduced —
      *  by a colon, or by «هي»/`are`/`include`.
      */
-    const RECORDING_VERB = /(?:^|[\s،:؛(])(?:أسجل|اسجل|سجّل|أضيف|اضيف|أدخل|ادخل|أدوّن|ادون|أتابع|اتابع|أدير|ادير|أنظم|انظم|فيها|فيه|تحتوي على|يحتوي على|record|track|log(?!\s+of\b)|manage|organi[sz]e)(?=$|[\s،:؛)])/iu;
+    /**
+     *  A VERB WAS LEARNED IN ONE PERSON.
+     *
+     *  He can write the verb about himself — «بدي جدول أتابع فيه الطلبات
+     *  والمبلغ والتاريخ» — or about the thing he is asking for — «بدي
+     *  برنامج يتابع الطلبات والمبلغ والتاريخ». Same verb, same request,
+     *  same three columns. Measured, the first gave three columns and the
+     *  second gave none: the list held «أتابع» and «اتابع» and stopped.
+     *
+     *  This is not new vocabulary and must not become any. Arabic builds
+     *  the imperfect by putting a person on the front of a stem — أ for
+     *  «I», ي for «he», ت for «she», ن for «we» — so the stems already on
+     *  the list are conjugated here instead of being written out four
+     *  times each and drifting apart the first time one of them is edited.
+     *
+     *  «يسجل» hid this for a while by accident: it contains «سجل», which
+     *  is a container NOUN, so it matched RECORD_CONTAINER and took the
+     *  other branch. «يتابع» and «يدير» contain no such noun and returned
+     *  nothing at all.
+     */
+    const RECORDING_VERB = new RegExp(
+        '(?:^|[\\s،:؛(])(?:' + CONJUGATED + '|فيها|فيه|[تي]حتوي على|record|track|log(?!\\s+of\\b)|manage|organi[sz]e)(?=$|[\\s،:؛)])',
+        'iu',
+    );
     const DECLARED_LIST = /(?:^|[\s،:؛(])(?:الحقول|الأعمدة|الاعمدة)(?=$|[\s،:؛)])\s*(?::|：|هي|include(?:s)?\b)|(?:^|[\s,;:(])(?:\bcolumns?\b|\bfields?\b)(?=$|[\s,;:)])\s*(?::|：|are\b|include(?:s)?\b)/iu;
     const opener = RECORDING_VERB.exec(request) || DECLARED_LIST.exec(request);
     /**
@@ -1488,13 +2632,25 @@ export function derivedColumns(requestRaw: string): DerivedField[] | null {
      *  or no word at all, just a colon.
      */
     if (!opener) {
-        const HOLDER = /(جدول|جداول|قائمة|كشف|سجل|سجلّ|\btable\b|\blist\b|\bsheet\b|\bledger\b|\bregister\b|\btracker\b)/iu;
-        const holder = HOLDER.exec(request);
-        if (!holder) return null;
+        const holder = RECORD_CONTAINER.exec(request);
+        if (!holder) {
+            //  ORDER IS THE WHOLE ARGUMENT HERE.
+            //
+            //  This first sat above the container check and beat it — six
+            //  suites went red at once, because «A clients table with name,
+            //  phone and address» has both a container AND an introducer,
+            //  and the container reader is the one that knows what «table»
+            //  means. An introducer is what you reach for when nothing
+            //  better answered, so it runs where nothing better did.
+            const handed = theListAnIntroducerHandedOver(request);
+            if (handed) return handed;
+            //  And grammar last of all.
+            return entityAndItsAttributes(request);
+        }
         const tail = request.slice((holder.index || 0) + holder[0].length);
         const colonAt = Math.max(tail.indexOf(':'), tail.indexOf('：'));
         const scope = (colonAt >= 0 ? tail.slice(colonAt + 1) : tail).split(/[.؟!\n]/)[0] || '';
-        const items = scope
+        let items = scope
             .split(/\s*[،,]\s*|\s+و(?=\S)|\s+and\s+|\s+&\s+/iu)
             .map(p => p.trim().replace(/^and\s+/iu, '').replace(/^[:：]\s*/u, '').trim())
             .filter(p => p.length >= 2 && p.length <= 32);
@@ -1502,11 +2658,16 @@ export function derivedColumns(requestRaw: string): DerivedField[] | null {
         //  list — «جدول للمصاريف يحوي التاريخ» hands back «للمصاريف يحوي
         //  التاريخ» as one item. The name begins at the first word that opens
         //  with «ال»; everything before it is the sentence, not the column.
-        if (items.length && /\s/.test(items[0])) {
-            const words = items[0].split(/\s+/);
-            const start = words.findIndex(w => /^ال[ء-ي]/u.test(w));
-            if (start > 0) items[0] = words.slice(start).join(' ');
-        }
+        //  A colon has already cut the container away, so what is left is
+        //  his own label — «للفواتير: رقم الفاتورة» leaves «رقم الفاتورة»,
+        //  and cutting to the article there would hand him «الفاتورة» and
+        //  throw away «رقم». Only an uncut residue is the container's own.
+        if (items.length) items[0] = firstColumnBeginsAtTheName(items[0], colonAt < 0);
+        //  The same job in English, where there is no «ال» to find. What
+        //  stands between the container and the list is a preposition — a
+        //  closed class of function words, not a catalogue of nouns — and
+        //  «with name» is the sentence plus the column, not a column
+        //  called «with name».
         //  DROP THE RULE, KEEP THE LIST — in that order.
         //
         //  Caught by a live round, not by a test: «…: التاريخ والمبلغ والسبب،
@@ -1517,10 +2678,57 @@ export function derivedColumns(requestRaw: string): DerivedField[] | null {
         //
         //  The rule is removed first; what remains must then be a list of
         //  definite names, which is what keeps «قهوة، أدوات، حلويات» out.
-        const names = items.filter(isAName);
-        if (names.length < 3 || names.length > 10) return null;
+        //  The list ends where his next request begins — same table.
+        items = columnsEndWhereHisNextRequestBegins(items);
+        const names = items.filter(isAName).filter(notAContainerItself);
+        /**
+         *  TWO NAMED COLUMNS ARE A TABLE WHEN HE NAMED THE TABLE.
+         *
+         *  Live round, and the whole shape of the failure:
+         *
+         *      «بدي جدول للكتب فيه العنوان والسعر»
+         *      → derivedColumns: 0 columns
+         *      → template classification: page=generic · app=none
+         *      → «I don't know this app type and have no ready engine»
+         *      → Navbar · Hero · Features · Steps · FAQ · Contact
+         *
+         *  He named a container and two columns and received a brochure.
+         *  The threshold was three, and three is the right floor for a bare
+         *  run of nouns in prose — «الرياض، جدة، الدمام» must not become a
+         *  schema. But he did not write a bare run: he wrote «جدول» first.
+         *
+         *  With a container named, the ambiguity that the third item was
+         *  guarding against is gone, and two definite names are a table. One
+         *  is still refused: a single noun after «جدول» is its subject, not
+         *  its column — «جدول المبيعات» names no columns at all.
+         */
+        /**
+         *  A LIST HOLDS VALUES. A TABLE HOLDS COLUMNS.
+         *
+         *  In Arabic the items answer this themselves by being definite or
+         *  not. English has no such mark, so the container answers: «a
+         *  shopping list with milk, bread and eggs» names three things it
+         *  holds, and «a clients table with name, phone and address» names
+         *  three attributes of each thing it holds. Reading the first as a
+         *  schema would give him a two-row app about milk.
+         */
+        const holdsColumns = !/^(?:list|قائمة)$/iu.test(holder[1] || '');
+        const floor = holder ? 2 : 3;
+        if (names.length < floor || names.length > 10) return null;
+        //  Latin items carry no definiteness of their own, so the container
+        //  they hang from decides — and a bare «list» decides no.
+        if (names.some(n => !/[؀-ۿ]/u.test(n)) && !holdsColumns) return null;
         if (!everyItemIsADefiniteName(names)) return null;
-        return fieldsFromLabels(names);
+        //  THE LINK THAT WAS NEVER JOINED.
+        //
+        //  statedBound reads the condition. DerivedField carries a bound.
+        //  react-app-templates emits «min» and «minExclusive» into the
+        //  schema. The generated app validates against them and even
+        //  says «أكبر من N» in its own error. Four parts of one chain,
+        //  built, and this link never joined — so «والسعر لا يقبل صفر»
+        //  reached a field with no min and zero was accepted.
+        const built = fieldsFromLabels(names);
+        return built ? applyStatedRules(built, statedRules(request)).fields : built;
     }
     let after = request.slice((opener.index || 0) + opener[0].length);
     //  A colon further along is the real start of the list: «أسجل فيه المواعيد:
@@ -1528,21 +2736,223 @@ export function derivedColumns(requestRaw: string): DerivedField[] | null {
     const colon = after.indexOf(':') >= 0 ? after.indexOf(':') : after.indexOf('：');
     if (colon >= 0 && colon <= 40) after = after.slice(colon + 1);
     const sentence = after.split(/[.؟!\n]/)[0] || '';
-    const parts = sentence
+    /**
+     *  A BRACKET AFTER A COLUMN NAMES ITS ANSWERS, NOT THE NEXT COLUMN.
+     *
+     *  Measured on a real request: «جدول المنتجات فيه اسم الصنف والسعر
+     *  والحالة (متوفر أو نافد) وصورة» produced TWO columns — «اسم الصنف»
+     *  and «السعر». «الحالة» and «صورة» were both lost, because «أو» inside
+     *  his bracket is on the list separator, so the split cut the sentence
+     *  in the middle of a parenthesis and left «الحالة (متوفر» and «نافد)»,
+     *  neither of which survives the name test.
+     *
+     *  He was not listing four things and then two more. He was naming a
+     *  column and, in the same breath, saying what its answers are — which
+     *  is how anyone describes a status field. So the bracket is shielded
+     *  from the split and then read as OPTIONS, which makes «الحالة» a real
+     *  select column offering «متوفر» and «نافد» instead of a free-text box
+     *  he has to retype into every row.
+     */
+    const SHIELD = String.fromCharCode(2);
+    //  The separator is REPLACED, not merely fenced. The first version wrapped
+    //  it — «متوفر،نافد» — and the comma was still a comma, so the
+    //  split cut through it exactly as before and «الحالة (متوفر» came out as a
+    //  column name. A shield that leaves the blade in place is not a shield.
+    const shielded = sentence.replace(/[(（][^)）]{1,60}[)）]/g,
+        m => m.replace(/\s*[،,]\s*|\s+و(?=\S)|\s+and\s+|\s+أو\s+|\s+او\s+|\s+or\s+/giu, SHIELD));
+    let parts = shielded
         //  Lists are joined differently in each language: «و» is a prefix on the
         //  next word, «and» is a word of its own. A reader that knows only one of
         //  them reads only one language's requests.
         .split(/\s*[،,]\s*|\s+و(?=\S)|\s+and\s+|\s+&\s+/iu)
+        //  Restored as a SEPARATOR, not a space: the option reader below
+        //  splits «متوفر، نافد» into two answers and «متوفر نافد» into one,
+        //  so joining with a space silently turned his choice into a single
+        //  meaningless value — measured, the column survived and its answers
+        //  did not.
+        .map(p => p.split(SHIELD).join('، ').replace(/\s{2,}/g, ' '))
         .map(p => p.trim()
             .replace(/^and\s+/iu, '')
             .replace(/^(?:ال)?كل\s+/u, '')
             .replace(/^[:：]\s*/u, '').trim())
         .filter(p => p.length >= 2 && p.length <= 32);
-    if (parts.length < 3 || parts.length > 10) return null;
+    //  The lesson the container branch learned, applied here too: after
+    //  «اسجل» the connector «فيه» is still standing, and it became a column.
+    if (parts.length) parts[0] = firstColumnBeginsAtTheName(parts[0], false);
+    /**
+     *  THE SAME FLOOR, A THIRD TIME — AND THIS IS THE ONE THAT RAN.
+     *
+     *  «بدي جدول للكتب فيه العنوان والسعر» never reached the shape path at
+     *  all: «فيه» is itself a recording opener, so this branch handled it,
+     *  and its own floor of three refused two columns. Two copies of the
+     *  rule were raised and the third — the one actually taken — was not.
+     *
+     *  Same reasoning as the others: he named a container, so two definite
+     *  names are his table. One is a subject, not a column.
+     */
+    /**
+     *  THE BRACKET IS HIS ANSWERS, AND IT IS NOT PART OF THE NAME.
+     *
+     *  Measured. «…والحالة (متوفر أو نافد)» lost the column entirely, and the
+     *  cause was not the split — it was the name test three lines down. A
+     *  name is capped at three Arabic words; «الحالة (متوفر أو نافد)» counts
+     *  as four, so the whole column was thrown away with its answers.
+     *
+     *  Bisected to be sure: «الحالة (متوفر)» survives, «الحالة (متوفر/نافد)»
+     *  survives, «الحالة (متوفر أو نافد)» does not. One word over the cap.
+     *
+     *  So the bracket comes off before the name is measured, and what was in
+     *  it becomes the column's OPTIONS — which is what he meant: a status
+     *  field offering «متوفر» and «نافد», not a free-text box he retypes into
+     *  every row. The cap still guards the name itself, which is its job.
+     */
+    const declaredOptions = new Map();
+    parts = parts.map(p => {
+        const m = /^([\s\S]*?)\s*[(（]([^)）]{1,60})[)）]\s*$/.exec(p);
+        if (!m) return p;
+        const label = m[1].trim();
+        const opts = m[2].split(/\s*[،,\/|]\s*|\s+أو\s+|\s+او\s+|\s+or\s+/iu)
+            .map(x => x.trim()).filter(x => x.length >= 1 && x.length <= 24);
+        if (label.length >= 2 && opts.length >= 2) declaredOptions.set(label, opts);
+        return label.length >= 2 ? label : p;
+    });
+    //  …and the bracket comes off BEFORE the list is cut, not after.
+    //  `columnsEndWhereHisNextRequestBegins` stops at the first part that
+    //  does not read as a column, and «الحالة (متوفر أو نافد)» does not —
+    //  so the truncation took «صورة» with it. Measured: stripping after the
+    //  cut fixed the bracket and still lost everything behind it.
+    //  The list ends where his next request begins.
+    parts = columnsEndWhereHisNextRequestBegins(parts);
+    /**
+     *  «فيه» POINTS AT WHATEVER HE NAMED, AND THAT NEED NOT HOLD RECORDS.
+     *
+     *  I lowered this floor to two whenever «فيه» or «فيها» appeared,
+     *  reasoning that the pronoun points back at a container he named.
+     *  It does — but at whatever he named, and «صفحة» is a page:
+     *
+     *      «اعمل صفحة فيها: الاسم والسعر»            must be null
+     *      «بدي صفحة فيها الحقول زغرودة والزر إرسال»  must be null
+     *
+     *  Two tests older than that change say so in words — «two is not a
+     *  list» — and I contradicted a stated rule without having read it.
+     *  The floor of three is the guard against a run of two nouns in
+     *  prose becoming a schema, and a pronoun aimed at a page does not
+     *  remove that ambiguity. It stands.
+     *
+     *  The cost is stated rather than hidden: «بدي تطبيق للحجوزات فيه
+     *  اسم العميل ووقت الحجز» names two columns and is refused. That is
+     *  the deliberate limit, not a defect of this line.
+     */
+    const namesFloor = RECORD_CONTAINER.test(request) ? 2 : 3;
+    if (parts.length < namesFloor || parts.length > 10) return null;
     //  A rule that rode in on the end of the list is not a column.
-    const named = parts.filter(isAName);
-    if (named.length < 3) return null;
-    return fieldsFromLabels(named);
+    const named = parts.filter(isAName).filter(notAContainerItself);
+    if (named.length < namesFloor) return null;
+    //  THE LINK THAT WAS NEVER JOINED.
+    //
+    //  statedBound reads the condition. DerivedField carries a bound.
+    //  react-app-templates emits «min» and «minExclusive» into the
+    //  schema. The generated app validates against them and even
+    //  says «أكبر من N» in its own error. Four parts of one chain,
+    //  built, and this link never joined — so «والسعر لا يقبل صفر»
+    //  reached a field with no min and zero was accepted.
+    const built = fieldsFromLabels(named);
+    //  …and the answers reach the field, so the app renders a select.
+    if (built) for (const f of built) {
+        const opts = declaredOptions.get(String(f.label));
+        if (opts) { (f as any).options = opts; (f as any).type = 'select'; }
+    }
+    return built ? applyStatedRules(built, statedRules(request)).fields : built;
+}
+
+/**
+ *  A LIST THAT LOST TO AN EARLIER LIST IS STILL HIS LIST.
+ *
+ *  Measured on his machine, in front of him, from a long request. Bisected by
+ *  adding one sentence at a time, same columns clause throughout:
+ *
+ *      «… اعمل جدول فيه اسم القطعة ورقم القطعة و…»              → 7 columns
+ *      «… نظاماً فيه ثلاث صفحات: صفحة المخزون و… . <the same>»   → 0 columns
+ *
+ *  And it is not the colon — the same request without one also read zero. It
+ *  is ORDER. `derivedColumns` finds the first opener in the request, reads the
+ *  enumeration after it, and when that yields nothing usable it returns null
+ *  instead of looking at the next one. «فيه ثلاث صفحات» is an opener; the
+ *  pages after it are not columns; and the seven columns two sentences later
+ *  were never reached.
+ *
+ *  What Joe then said to him was worse than silence:
+ *
+ *      «One question before I start — what do you want to record for each of
+ *       your اعرض إجمالي?»
+ *
+ *  — a question whose answer he had already written, seven times, in the same
+ *  breath. The fourth law is that the request is the authority; a reader that
+ *  gives up on the first miss hands that authority back.
+ *
+ *  The class: A READER THAT TAKES THE FIRST CANDIDATE AND NEVER RETRIES. In a
+ *  short request the column list is usually the only list. In a real one it
+ *  almost never is. `derivedTables` already walks every sentence for exactly
+ *  this reason — the walk just never reached the reader everyone calls.
+ *
+ *  So: the whole request first, unchanged, because a list stated across two
+ *  sentences must stay one list. Only when that finds nothing are the
+ *  sentences tried one at a time, and the first that yields columns wins.
+ */
+export function columnsAnywhereInHisRequest(requestRaw: string): DerivedField[] | null {
+    const request = String(requestRaw || '');
+    const whole = derivedColumns(request);
+    if (whole && whole.length) return whole;
+    //  More than one sentence, or there is nothing new to try and the guard
+    //  below would only repeat the reading that just failed.
+    const pieces = request.split(/(?<=[.؟!\n])/u).map(p => p.trim()).filter(p => p.length > 8);
+    if (pieces.length < 2) return whole;
+    for (const piece of pieces) {
+        /**
+         *  A SECOND CHANCE MUST BE STRICTER THAN THE FIRST, OR IT INVENTS.
+         *
+         *  Measured the moment this loop was written. On an English brief it
+         *  returned, as a table schema:
+         *
+         *      ["accessible contrast", "helpful empty", "loading"]
+         *
+         *  — read out of «Use a clean light theme with accessible contrast and
+         *  helpful empty, loading, and error states». A sentence about colour
+         *  became three columns, and the expenses archetype that had been
+         *  right for years was overruled by it.
+         *
+         *  The whole-request read is allowed to be generous because it sees
+         *  the whole request. A per-sentence retry sees a fragment, so it must
+         *  demand the fragment DECLARE a table: «جدول», «سجل», «table»,
+         *  «list» — the container test this file already owns. His inventory
+         *  sentence says «اعمل جدول فيه…» and passes; a sentence about a
+         *  theme says nothing of the kind and is refused.
+         */
+        if (!RECORD_CONTAINER.test(piece)) continue;
+        const cols = derivedColumns(piece);
+        if (!cols || !cols.length) continue;
+        /**
+         *  HIS COLUMNS ARE IN ONE SENTENCE. HIS RULES ARE IN THE OTHERS.
+         *
+         *  Measured on his own long request. The bound was read, and applied,
+         *  and still reached the generated app as nothing:
+         *
+         *      statedRules(whole)        → { kind: 'bound', min: 0 }   ✅
+         *      applyStatedRules(…, that) → الكمية.min = 0              ✅
+         *      blueprintFor(whole)       → no field carries a min      ❌
+         *
+         *  `derivedColumns(piece)` ends by applying the rules of THAT PIECE,
+         *  and «لا تقبل كمية بالسالب» is two sentences away from «اعمل جدول
+         *  فيه اسم القطعة و…». So a reader that found his columns by looking
+         *  sentence-by-sentence then judged them against one sentence's
+         *  worth of conditions, and dropped every rule he stated elsewhere.
+         *
+         *  The same class as the search that found them: a decision made
+         *  from a fragment when the authority is the whole request.
+         */
+        return applyStatedRules(cols, statedRules(request)).fields;
+    }
+    return whole;
 }
 
 /** Turn the labels he wrote into fields, once, for every path that finds them. */
@@ -1564,7 +2974,15 @@ function fieldsFromLabels(parts: string[]): DerivedField[] | null {
             : undefined;
         out.push({ label, key: `${role}${n}`, type, role, options });
     }
-    return out.length >= 3 ? out : null;
+    //  THE SAME FLOOR, WRITTEN TWICE — AND ONE COPY WAS NOT MOVED.
+    //
+    //  The caller was raised to two when he names the container, and this
+    //  still refused two, so «بدي جدول للكتب فيه العنوان والسعر» kept
+    //  coming back empty and kept becoming a brochure. A rule written in
+    //  two places is a rule that will be changed in one.
+    //
+    //  Two is the floor here: one label is a subject, not a table.
+    return out.length >= 2 ? out : null;
 }
 
 /**
@@ -1579,26 +2997,132 @@ function fieldsFromLabels(parts: string[]): DerivedField[] | null {
  * What it must never do is guess. If he names nothing after the noun, nothing
  * is added and the edit says so rather than inventing a column called «عمود».
  */
-export interface ColumnEdit { add: string[]; remove: string[] }
+/**
+ *  A RENAME IS NEITHER AN ADD NOR A REMOVE.
+ *
+ *  Measured on his own follow-up:
+ *
+ *      columnEdit(«غيّر اسم عمود المبلغ إلى القيمة»)
+ *          → { add: [], remove: [] }
+ *
+ *  Nothing. This reader knows two verbs and his was a third, so a
+ *  rename after a build did nothing at all and said nothing about
+ *  it — the worst pair there is.
+ *
+ *  A rename is not «remove that column and add this one»: the data
+ *  in it is his, and dropping the column drops the rows' values
+ *  with it. The key and the type stay; the label he reads changes.
+ */
+export interface ColumnEdit { add: string[]; remove: string[]; rename?: { from: string; to: string } }
 
 const ADD_COLUMN = /(?:ضيف|أضف|اضف|اضافة|إضافة|زيد|حط|\badd\b)\s+(?:a|an|the)?\s*(?:عمود|العمود|خانة|الخانة|حقل|الحقل|column|field)\s+(?:اسمه\s+|باسم\s+|called\s+|named\s+|for\s+|the\s+)?([^\n،,.؛;]{2,32})/iu;
 const DROP_COLUMN = /(?:شيل|احذف|أحذف|امسح|الغِ?ي?|ألغِ|\bremove\b|\bdrop\b|\bdelete\b)\s+(?:a|an|the)?\s*(?:عمود|العمود|خانة|الخانة|حقل|الحقل|column|field)\s+(?:the\s+)?([^\n،,.؛;]{2,32})/iu;
+/**
+ *  The connector is the closed class, not the verb. «إلى / الى /
+ *  ليصبح / ليصير / to» is the same set ProjectEditTool already uses
+ *  to rename an app, and a second copy would drift the first time one
+ *  of them learned a word the other did not.
+ */
+const RENAME_COLUMN = /(?:غيّ?ر|بدّ?ل|سمّ?ِ?|\brename\b|\bchange\b)\s+(?:اسم\s+)?(?:a|an|the)?\s*(?:عمود|العمود|خانة|الخانة|حقل|الحقل|column|field)\s+([^\n،,.؛;]{2,32}?)\s*(?:إلى|الى|ليصبح|ليصير|يصير|تصير|\bto\b)\s+([^\n،,.؛;]{2,32})/iu;
+//  ARABIC PUTS THE NAME AFTER THE CONTAINER, ENGLISH BEFORE IT.
+//
+//  «عمود المبلغ» and «the amount column» are the same phrase in two
+//  orders, and a pattern that reads one reads half his messages. The
+//  same fact is already written down beside subjectAfterContainer; it
+//  is a fact about the two languages, not about renaming.
+const RENAME_COLUMN_EN = /(?:\brename\b|\bchange\b)\s+(?:a|an|the)?\s*([A-Za-z][A-Za-z0-9 _-]{1,31}?)\s+(?:column|field)\s+(?:\bto\b|\binto\b)\s+([A-Za-z][A-Za-z0-9 _-]{1,31})/i;
 
 /** The one-column changes a follow-up message asks for, in his own words. */
+/**
+ *  A COLUMN NAME THAT SWALLOWED THE ORDER THAT ASKED FOR IT.
+ *
+ *  From a live round, in Joe’s own log:
+ *
+ *      column edit: +[الملاحظات زيد عمود الملاحظات] -[] → 4 column(s)
+ *
+ *  and on his disk afterwards:
+ *
+ *      { key: 'text4', label: 'الملاحظات زيد عمود الملاحظات', type: 'text' }
+ *
+ *  His message reached Joe clean — 18 characters, «زيد عمود
+ *  الملاحظات», read straight out of the chat store. Somewhere between
+ *  that message and this reader the text arrived twice on one line, and
+ *  the capture ran happily through the seam.
+ *
+ *  WHERE IT DOUBLES IS NOT YET FOUND, and this does not pretend to fix
+ *  that. What it fixes is a thing that is true whatever the cause: a
+ *  column he named never contains the words of the order that asked for
+ *  it. «عمود» and «زيد» are the instruction, not the name — the same
+ *  closed class this file already reads to find the order in the first
+ *  place, used a second time to say where the name ends.
+ */
+const AN_EDIT_WORD = /(?:^|\s)(?:عمود|العمود|خانة|الخانة|حقل|الحقل|column|field|ضيف|أضف|اضف|زيد|حط|شيل|احذف|أحذف|امسح|\badd\b|\bremove\b|\bdrop\b|\bdelete\b)(?=$|\s)/iu;
+
+function theNameEndsBeforeTheOrderResumes(name: string): string {
+    const t = String(name || '').trim();
+    const at = t.search(AN_EDIT_WORD);
+    return (at > 0 ? t.slice(0, at) : t).trim();
+}
+
 export function columnEdit(requestRaw: string): ColumnEdit {
     const request = String(requestRaw || '');
     const clean = (s: string): string => s.trim().replace(/^(?:ال)?(?=.{3,})/u, m => m).trim();
     const add = ADD_COLUMN.exec(request);
     const drop = DROP_COLUMN.exec(request);
+    const ren = RENAME_COLUMN.exec(request) || RENAME_COLUMN_EN.exec(request);
+    const from = ren ? clean(ren[1]) : '';
+    const to = ren ? clean(ren[2]) : '';
     return {
-        add: add && add[1].trim().length >= 2 ? [clean(add[1])] : [],
-        remove: drop && drop[1].trim().length >= 2 ? [clean(drop[1])] : [],
+        add: add && add[1].trim().length >= 2 ? [theNameEndsBeforeTheOrderResumes(clean(add[1]))].filter(x => x.length >= 2) : [],
+        remove: drop && drop[1].trim().length >= 2 ? [theNameEndsBeforeTheOrderResumes(clean(drop[1]))].filter(x => x.length >= 2) : [],
+        ...(from.length >= 2 && to.length >= 2 && from !== to ? { rename: { from, to } } : {}),
     };
+}
+
+/**
+ * DID HE ASK FOR A TABLE, OR DID WE ASSUME A SHAPE?
+ *
+ * «اعمل **جدول** مبيعات فيه اسم الصنف والكمية والسعر» — the shape is the first
+ * word he wrote, and the engine had exactly one presentation regardless. The
+ * delivered app measured `table count: 0, th count: 0`.
+ *
+ * «جدول» carries two meanings — a TABLE and a SCHEDULE — and CLAUDE.md names
+ * that pair as a source of false criteria, so the bare word is not enough. The
+ * context that settles it is his own: a man who lists the COLUMNS is asking for
+ * a table, whatever else «جدول» could have meant. So both are required, and the
+ * word must be a word — `saysWord`, not a substring, or «الجدولة» and «جدولي»
+ * would answer for it.
+ */
+export function heAskedForATable(request: string, fieldCount: number): boolean {
+    const said = String(request || '');
+    /**
+     * The stem is too wide HERE, and that is a measurement, not a preference:
+     * `saysWord(said, 'جدول')` answers TRUE for «الجدولة الزمنية» — Snowball
+     * reduces the verbal noun to the same root, which is correct stemming and
+     * the wrong question. A man discussing scheduling has not asked for a
+     * grid. So the shape must be named by its own word, in any of the forms it
+     * really appears in, with the article and conjunction folded off.
+     */
+    const namedTheShape = words(said)
+        .map(w => normalise(w).replace(/^(?:وال|فال|بال|كال|[وفبكل]ال|ال)/, ''))
+        .some(w => w === 'جدول' || w === 'جداول')
+        || /\b(table|grid|spreadsheet)\b/i.test(said);
+    return namedTheShape && fieldCount >= 2;
 }
 
 /** Apply those changes to a set of fields, keeping every other column as it is. */
 export function applyColumnEdit(fields: AppField[], edit: ColumnEdit, isAr: boolean): AppField[] {
     let out = fields.slice();
+    //  RENAME FIRST, AND IN PLACE.
+    //
+    //  Not a remove followed by an add: the column keeps its key and
+    //  its type, so the rows already stored under that key are still
+    //  his. Dropping it would drop their values with it.
+    if (edit.rename) {
+        const { from, to } = edit.rename;
+        const at = out.findIndex(f => f.label.trim() === from || f.label.trim().includes(from));
+        if (at >= 0) out[at] = { ...out[at], label: to };
+    }
     for (const name of edit.remove) {
         out = out.filter(f => f.label.trim() !== name && !f.label.includes(name));
     }
@@ -1619,13 +3143,45 @@ export function applyColumnEdit(fields: AppField[], edit: ColumnEdit, isAr: bool
 
 
 export function fieldsFromRequest(requestRaw: string, isAr: boolean): AppField[] | null {
-    const cols = derivedColumns(requestRaw);
+    //  His list wherever he put it in the sentence — see
+    //  columnsAnywhereInHisRequest. Asking the single-shot reader here is
+    //  what sent «مخزن الورشة» to the archetype: seven columns he named,
+    //  five canned ones delivered, «سعر الشراء» and «سعر البيع» merged into
+    //  one, «اسم المورد» and «تاريخ الإدخال» gone, «الحالة» invented.
+    const cols = columnsAnywhereInHisRequest(requestRaw);
     if (!cols) return null;
-    return cols.map((c, i) => f(
-        [c.key, c.label, c.label, c.type, c.options,
-            i === 0 ? ['required', 'primary'] : (c.role === 'money' || c.role === 'count' ? ['required'] : undefined)],
-        isAr,
-    ));
+    /**
+     *  A COPY THAT LISTS WHAT IT KEEPS LOSES WHAT IT DOES NOT KNOW.
+     *
+     *  Live round on his machine. He wrote «…والسعر لا يقبل صفر», and the
+     *  generated schema came out as:
+     *
+     *      { key: 'money1', label: 'السعر', type: 'number', required: true }
+     *
+     *  with no bound, so zero was accepted — the exact thing he forbade.
+     *  And every part of the chain was already correct: derivedColumns
+     *  attaches min and minExclusive, the template emits them, and the
+     *  generated app validates against them and even prints «أكبر من N».
+     *
+     *  The loss is HERE, in one line. This does not copy a field; it
+     *  REBUILDS one from a fixed tuple of five things it happens to know
+     *  about. Anything the column carries that is not on that list falls
+     *  on the floor silently — no error, no warning, and a unit test on
+     *  either side of it passes.
+     *
+     *  So what the tuple cannot express is carried over explicitly. The
+     *  next property added to a column will be lost the same way, which is
+     *  why this comment names the shape rather than the symptom.
+     */
+    return cols.map((c, i) => ({
+        ...f(
+            [c.key, c.label, c.label, c.type, c.options,
+                i === 0 ? ['required', 'primary'] : (c.role === 'money' || c.role === 'count' ? ['required'] : undefined)],
+            isAr,
+        ),
+        ...(c.min !== undefined ? { min: c.min } : {}),
+        ...(c.minExclusive ? { minExclusive: true } : {}),
+    }));
 }
 
 /* ── what was asked for, in the user's own words ─────────────────────────── */

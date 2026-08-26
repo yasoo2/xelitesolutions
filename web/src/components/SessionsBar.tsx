@@ -231,6 +231,17 @@ function SessionChip({
     return (
         <motion.div
             layout
+            /*
+             *  A CHIP THAT DOES NOT SAY WHICH SESSION IT IS CANNOT BE MEASURED.
+             *
+             *  The row is drawn with inline styles and no handle, so an
+             *  instrument checking «does this session show its own preview»
+             *  had to guess by position and picked a search dropdown instead,
+             *  reporting a session called «No results». A test that cannot
+             *  name what it clicked cannot testify about what it saw.
+             */
+            data-session-id={session.id}
+            data-session-active={session.isActive ? 'true' : 'false'}
             onMouseEnter={() => onHover(true)}
             onMouseLeave={() => onHover(false)}
             style={{

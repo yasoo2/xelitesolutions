@@ -14,6 +14,7 @@
 import { Router } from 'express';
 import fs from 'fs';
 import path from 'path';
+import { isWithinRoot } from '../../modules/tools/path-containment';
 
 /** The absolute file this preview request maps to, or null when it must 404. */
 export function resolvePreviewFile(key: string, rel: string): string | null {
@@ -23,7 +24,7 @@ export function resolvePreviewFile(key: string, rel: string): string | null {
     const dist = path.normalize(path.join(String(entry.dir), 'dist'));
     if (!fs.existsSync(dist)) return null;
     const file = path.normalize(path.join(dist, decodeURIComponent(String(rel || '')) || 'index.html'));
-    if (!file.startsWith(dist + path.sep) && file !== dist) return null;   // no path escapes
+    if (!isWithinRoot(file, dist)) return null;   // no path escapes
     if (!fs.existsSync(file)) return null;
     if (fs.statSync(file).isDirectory()) {
         const idx = path.join(file, 'index.html');

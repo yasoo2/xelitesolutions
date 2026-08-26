@@ -32,7 +32,17 @@ describe('the tool the message points at really exists', () => {
     it('and the message that offers it is the message that has blockers', () => {
         const src = REACT();
         const at = src.indexOf('const blockers =');
-        expect(src.slice(at, at + 2200)).toMatch(/أصلح ما تبقّى/);
+        //  ⛔ THE WINDOW IS THE REGION, NOT A CHARACTER COUNT.
+        //
+        //  This read slice(at, at + 2200) and went red the moment comments
+        //  were added ABOVE the line it looks for -- the code was untouched
+        //  and the guard failed anyway, which is a guard measuring the wrong
+        //  thing. A magic length is a criterion nobody can reason about: it
+        //  passes or fails on how much prose happens to sit nearby.
+        //
+        //  The region ends where the next named thing begins, so it grows and
+        //  shrinks with the code it is about.
+        expect(src.slice(at, src.indexOf('const message = isAr', at))).toMatch(/أصلح ما تبقّى/);
     });
 });
 

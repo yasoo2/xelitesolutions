@@ -1,4 +1,4 @@
-import { stripPictographs } from '../lib/plainText';
+import { stripPictographs, uiTime } from '../lib/plainText';
 import React, { Suspense, lazy, useState, useRef, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -73,7 +73,7 @@ interface WorkspacePanelProps {
 
 // ─── Inline Copy Button ────────────────────────────────────────────
 function CopyBtn({ text }: { text: string }) {
-    const { t } = useTranslation();
+    const { t, i18n } = useTranslation();
     const [copied, setCopied] = useState(false);
     const handleCopy = useCallback(async (e: React.MouseEvent) => {
         e.stopPropagation();
@@ -453,7 +453,7 @@ function EnhancedLogsPanel({ logs, liveFiles = [], buildStatus = null }: { logs:
 
 // ─── Enhanced Problems Panel ───────────────────────────────────────
 function EnhancedProblemsPanel({ problems }: { problems: any[] }) {
-    const { t } = useTranslation();
+    const { t, i18n } = useTranslation();
     const [filter, setFilter] = useState('');
     const [clearIndex, setClearIndex] = useState(0);
 
@@ -532,7 +532,7 @@ function EnhancedProblemsPanel({ problems }: { problems: any[] }) {
                                     <div style={{
                                         color: 'var(--joe-text-muted)', fontSize: 10, marginTop: 2,
                                     }}>
-                                        {new Date(p.time).toLocaleTimeString()}
+                                        {uiTime(p.time, i18n.language)}
                                     </div>
                                 )}
                             </div>
@@ -731,7 +731,24 @@ export default function WorkspacePanel({
                         : { display: activeTab === 'preview' ? 'contents' : 'none' }}>
                         <ErrorBoundary fallbackTitle={t('loadPreviewFailed')}>
                             <Suspense fallback={<LoadingFallback />}>
-                                <PreviewPanel url={previewUrl} />
+                                {/*
+                                  *  AN EMPTY VALUE IS ALSO AN ANSWER.
+                                  *
+                                  *  PreviewPanel updates on a URL and ignores the
+                                  *  absence of one — «if (initialUrl && …)». So the
+                                  *  first session's page stayed on screen while the
+                                  *  SECOND session was open. Measured, right after the
+                                  *  restore started working:
+                                  *
+                                  *    session «جدول مهام متصفح»      src=…/6a8c1ef9…
+                                  *    session «برنامج لحفظ الزبائن»  src=…/6a8c1ef9…  ← the same page
+                                  *
+                                  *  A preview belongs to its session, so the panel is
+                                  *  keyed by the session. A new session is a new panel
+                                  *  with nothing inherited — which is the only way
+                                  *  «this session built nothing» can be shown at all.
+                                  */}
+                                <PreviewPanel key={`preview:${sessionId || 'none'}`} url={previewUrl} />
                             </Suspense>
                         </ErrorBoundary>
                     </div>

@@ -26,6 +26,10 @@
  * it was not built — which is the other half of being honest about scale.
  */
 import { ModelEntity, ModelField } from './data-model';
+//  The two readers that already know his columns and his word for the
+//  thing. Reading the same sentence a third way is how they drift.
+import { derivedColumns, recordedSubject, RECORD_CONTAINER, columnsAnywhereInHisRequest } from './app-blueprints';
+import { hisWordsOnly } from './page-head';
 
 /* ────────────────────────────── field makers ───────────────────────────── */
 
@@ -262,6 +266,31 @@ export interface Inference {
     entities: ModelEntity[];
     /** Named in the request, and honestly out of reach of a CRUD table. */
     capabilities: string[];
+    /**
+     *  HE WROTE THE COLUMNS HIMSELF, SO ONE TABLE IS A WHOLE MODEL.
+     *
+     *  Callers downstream required two entities before they would trust
+     *  a reading — a sensible floor when entities are GUESSED from
+     *  phrase shape, because one vague noun is not a data model.
+     *
+     *  It stopped being sensible the moment this reader started
+     *  returning ONE table for «بدي جدول للفواتير فيه رقم الفاتورة
+     *  والمبلغ والتاريخ» instead of four. Measured from two of
+     *  Joe's own logs on the same sentence:
+     *
+     *      before  data model: read from the request itself —
+     *              invoices, mblghs, tarykhs, its
+     *      after   data model: no model answered at all
+     *
+     *  Four phantom tables cleared the floor of two; one real table did
+     *  not, so the reading was thrown away and a model was asked a
+     *  question his sentence had already answered — for 120 seconds, on
+     *  providers with no keys.
+     *
+     *  This flag is how a caller tells the two apart: a count cannot,
+     *  because the count went DOWN when the reading got better.
+     */
+    declared?: boolean;
 }
 
 /**
@@ -385,7 +414,116 @@ export function englishFor(phrase: string): string | null {
     return null;
 }
 
+/**
+ *  A COLUMN HE NAMED BECAME A TABLE.
+ *
+ *  Measured on his own sentences, straight out of inferModel:
+ *
+ *      «بدي جدول للموظفين فيه الاسم والراتب»
+ *      → tables: employees · salaries
+ *
+ *      «بدي برنامج يحفظ لي زبائني وارقام تلفوناتهم وعناوينهم»
+ *      → tables: softwares · tlfwnathms · anawynhms
+ *
+ *  He asked for one table with two columns and got two tables. He asked
+ *  for one with three and got three, with keys transliterated out of his
+ *  own words because no dictionary carries «تلفوناتهم» as a noun — it is
+ *  not a noun, it is a column of one. And the first table's Arabic name
+ *  is his request with the end cut off, which is where every truncated
+ *  title in every generated app has been coming from.
+ *
+ *  This reader was finding entities by phrase shape while two other
+ *  readers in this repository already knew the answer: derivedColumns
+ *  returns his columns and recordedSubject returns his word for the
+ *  thing that holds them. Reading the same sentence a third way is how
+ *  three answers to one question appear.
+ *
+ *  THE ONE CASE THAT IS GENUINELY SEVERAL TABLES, and how it is told
+ *  apart without a word list:
+ *
+ *      «بدي نظام للمدرسة فيه جدول الطلاب وجدول المعلمين وجدول الصفوف»
+ *      → students · teachers · classes    — and that is correct.
+ *
+ *  The container word is the same in both sentences. What differs is how
+ *  many times he wrote it: once in front of the list means one table;
+ *  once in front of EVERY item means one table each. Grammar, not
+ *  vocabulary — and it holds in English the same way.
+ */
+function everyLabelCarriesTheContainer(labels: string[]): boolean {
+    return labels.length > 0 && labels.every(label => RECORD_CONTAINER.test(String(label || '')));
+}
+
+function theOneTableHeDescribed(request: string): ModelEntity | null {
+    const columns = columnsAnywhereInHisRequest(request);
+    if (!columns || columns.length < 2) return null;
+    const labels = columns.map(c => String(c.label || '').trim());
+    if (everyLabelCarriesTheContainer(labels)) return null;   //  several tables, not one
+    const subject = String(recordedSubject(request) || '').trim();
+    if (!subject) return null;
+    const key = /[A-Za-z]/.test(subject) ? keyOf(subject) : keyFromArabic(subject);
+    if (!key || key.length < 3 || key.length > 40 || NEVER.has(key)) return null;
+    const english = englishFor(subject);
+    return {
+        key,
+        ar: subject,
+        en: english || subject,
+        fields: columns.map((c, i) => ({
+            key: c.key || `f${i + 1}`,
+            //  His own type, carried over rather than guessed at again.
+            type: (c.type === 'number' ? 'REAL' : 'TEXT') as ModelField['type'],
+            required: i === 0,
+            ar: labels[i],
+            en: englishFor(labels[i]) || labels[i],
+        })),
+    };
+}
+
+/**
+ *  A READER OF HIS WORDS WAS HANDED JOE'S OWN PAPERWORK.
+ *
+ *  From a real run's log, on his own machine:
+ *
+ *      data model: read from the request itself — invoices, mblghs, tarykhs, its
+ *      🗂️ شاشات إدارة لكل جدول: invoices · mblghs · tarykhs · its
+ *
+ *  «its» is not a word he wrote. It is the tail of Joe's own
+ *  instruction — «do not invent beyond it)» — which the pipeline
+ *  appends to his sentence as AUTHORITATIVE REQUIREMENTS EVIDENCE.
+ *  He was shown an admin screen for a table named after a fragment
+ *  of Joe's paperwork.
+ *
+ *  Measured, with the block appended as the pipeline appends it:
+ *
+ *      «ابن لي متجراً صغيراً»                    → no tables
+ *      the same, with the block appended       → its · heres
+ *
+ *  hisWordsOnly already cuts exactly that block, and a test one
+ *  directory away has proved it for months. Its only caller was in
+ *  its own file. Again: the answer was in the repository and the
+ *  two readers were not joined.
+ *
+ *  The guard on the guard: hisWordsOnly also cuts at a blank line,
+ *  which is Joe's mark only when Joe put it there. A man writing two
+ *  paragraphs must not lose the second, so the cut runs only when
+ *  one of Joe's OWN marks is present — a fence it draws, or a
+ *  shouted heading it writes. A blank line alone is his.
+ */
+const JOES_OWN_MARK = /^[ \t]*-{3,}[ \t]+\S|\b[A-Z][A-Z0-9]{2,}(?:\s+[A-Z][A-Z0-9]{2,}){2,}\b/mu;
+
+function hisSentenceWithoutJoesPaper(request: string): string {
+    const raw = String(request || '');
+    if (!JOES_OWN_MARK.test(raw)) return raw;
+    const his = hisWordsOnly(raw);
+    return his.length >= 4 ? his : raw;
+}
+
 export function inferModel(request: string, limit = MAX_MODEL_ENTITIES): Inference {
+    //  His words, not the block Joe appended to them.
+    request = hisSentenceWithoutJoesPaper(request);
+    //  When he described ONE table and its columns, that is the model.
+    //  Everything below reads a sentence that did not say so.
+    const one = theOneTableHeDescribed(request);
+    if (one) return { entities: [one], capabilities: [], declared: true };
     const entities: ModelEntity[] = [];
     const capabilities: string[] = [];
     const seen = new Set<string>();

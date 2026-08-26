@@ -12,6 +12,7 @@
  * toll booth.
  */
 
+import { RECORD_CONTAINER } from '../design/app-blueprints';
 import { asksForSomething, describesItsContents, tracksSomethingOfHis, trackingVerbAt, looksLikeBuild } from './buildIntent';
 import { isArabicReply } from '../../shared/reply-language';
 
@@ -116,7 +117,53 @@ export function isVagueBuildRequest(goal: string, opts?: { hasActivePage?: boole
     //  «بدي شي أتابع فيه ديوني» has three descriptive words and not one
     //  column, so counting words would call it complete and build him a
     //  table out of thin air.
-    if (namesSomethingToTrack) return true;
+    if (namesSomethingToTrack) {
+        /**
+         *  ⛔ BUT «HE MENTIONED SAVING SOMETHING» IS NOT «HE SAID NOTHING».
+         *
+         *  Seen live, with the owner watching. He typed forty-three words and
+         *  seven explicit requirements -- a honey store named «شهد», four named
+         *  pages, six products with prices, a working contact form, a cart
+         *  that totals and saves the order, a warm and elegant design, and a
+         *  rule that no price may be zero or negative -- and Joe answered:
+         *
+         *      «The brief is thin -- asking a few questions before building»
+         *      «what do you want to record for each of your تحسب الإجمالي?»
+         *
+         *  One clause about saving an order outranked every other thing he
+         *  said. That is the fourth law broken in the one gate whose whole job
+         *  is to judge how much he said: A DECISION TAKEN FROM A FRAGMENT
+         *  WHILE THE AUTHORITY IS THE WHOLE REQUEST.
+         *
+         *  And the reason it survived is worth more than the line itself. The
+         *  escape hatch above is `describesItsContents`, which means exactly
+         *  one thing: «did he name TABLE COLUMNS?». So a request that describes
+         *  its contents in every way except columns -- pages, products,
+         *  prices, a design, a constraint -- counts as describing nothing.
+         *
+         *  So the question goes to the one reader in this system that already
+         *  answers «what did he actually ask for»: the acceptance deriver, the
+         *  fourth law’s own machinery. Measured on the real sentences:
+         *
+         *      6   his honey store
+         *      3   «اعمل لي جدول فيه الاسم والمبلغ والتاريخ»
+         *      0   «بدي جدول»
+         *      0   «بدي جدول للمواعيد»
+         *      0   «بدي شي أتابع فيه ديوني»
+         *      0   «اعمل لي جدول لمصاريف البيت الشهرية»
+         *
+         *  Every request this gate exists to stop derives ZERO. The gap is the
+         *  whole scale, so the threshold sits in it with room on both sides,
+         *  and nothing that used to be questioned stops being questioned.
+         */
+        let derived = 0;
+        try {
+            const { acceptanceFor } = require('../quality/acceptance');
+            derived = (acceptanceFor(String(goal || '')) || []).length;
+        } catch { derived = 0; }
+        if (derived >= 2) return false;
+        return true;
+    }
     //  «بدي جدول للمواعيد» and "I want a table" both named a thing and
     //  nothing else about it. Two words was a low enough bar to let a
     //  request through with a subject and no columns — and a table with no
@@ -160,7 +207,32 @@ function trackedObject(goal: string): string {
     return words.join(' ').trim();
 }
 
+/**
+ *  A LIST WRITTEN AS A PARAGRAPH IS A PARAGRAPH.
+ *
+ *  He pasted back what he actually saw, and it was one cramped block:
+ *
+ *      1⃣ What is the site about? (a restaurant? a store? ...) 2⃣ Which
+ *      sections do you want? (e.g. home, services, ...) 3⃣ Any colours
+ *
+ *  Two faults in one string, and both are invisible in the source.
+ *
+ *  1. SINGLE NEWLINES. The chat renders markdown, and markdown folds a
+ *     single newline into a space. Four questions written on four lines
+ *     arrive as one paragraph. A real ordered list survives that, because
+ *     it is a list rather than four lines that happen to look like one.
+ *
+ *  2. KEYCAP EMOJI. `1️⃣` is U+0031 U+FE0F U+20E3, and in his font the
+ *     sequence falls back to an empty box — which is exactly the `1⃣` he
+ *     pasted. A number is a number; markdown will draw it.
+ *
+ *  His words: «فالافضل ان يكون منسق اكثر مثل المواقع العالمية المنافسة»
+ *  and «هناك تفاصيل صغيره كثيره يجب الانتباه عليها».
+ */
 export function clarifyQuestions(goal: string, language: string): string {
+    //  A blank line, not a newline: the chat renders markdown and markdown
+    //  folds a single newline into a space.
+    const nl2 = '\n\n';
     const isAr = isArabicReply({ language, text: goal });
     //  A man who named something to track needs one question, not four,
     //  and it must be about HIS thing — never about sections and colours.
@@ -170,25 +242,62 @@ export function clarifyQuestions(goal: string, language: string): string {
             ? `سؤال واحد قبل أن أبدأ — ما الذي تريد تسجيله لكل واحد من «${tracked}»؟\n\nمثلاً: الاسم، المبلغ، التاريخ… اكتبها كما تريدها أن تظهر في الجدول، وسأبنيه بها.\n\nوإن أردت أن أختار أنا، قل «ابدأ مباشرة».`
             : `One question before I start — what do you want to record for each of your ${tracked}?\n\nFor example: name, amount, date… write them the way you want them to appear in the table, and I will build it with those.\n\nOr say "start now" and I will choose for you.`;
     }
+    /**
+     *  A CONTAINER HE NAMED IS NOT A WEBSITE.
+     *
+     *  Live round, in Chrome, on his machine. He wrote three words:
+     *
+     *      «بدي جدول»
+     *
+     *  and Joe answered:
+     *
+     *      What is the site about? A restaurant, a store, a company…
+     *      Which sections do you want? Home, services, pricing, contact…
+     *      Any colours or brand identity?   One page, or several?
+     *
+     *  He asked for a TABLE and was asked about a site's sections and its
+     *  colours. The branch above already knows the right shape — one
+     *  question, about HIS thing — but it only fires when a tracking verb
+     *  is present («أسجل», «أحفظ», «track»). «بدي جدول» has no verb, so it
+     *  fell through to a questionnaire that assumes every vague request is
+     *  a website. That is the fourth law broken in the one function whose
+     *  whole job is to ask about the request.
+     *
+     *  A container that holds records needs to know WHAT GOES IN IT, and
+     *  nothing about colours. The word is echoed back exactly as he wrote
+     *  it — his «كشف» is a كشف, not a «جدول» we prefer.
+     */
+    const container = RECORD_CONTAINER.exec(userWords(goal));
+    if (container) {
+        const word = container[1];
+        return isAr
+            ? `سؤال واحد قبل أن أبدأ — ما الذي تريد تسجيله في «${word}»؟` + nl2 +
+              `مثلاً: الاسم، المبلغ، التاريخ… اكتبها كما تريدها أن تظهر، وسأبنيه بها.` + nl2 +
+              `وإن أردت أن أختار أنا، قل «ابدأ مباشرة».`
+            : `One question before I start — what do you want to record in your ${word}?` + nl2 +
+              `For example: name, amount, date… write them the way you want them to appear, and I will build it with those.` + nl2 +
+              `Or say "start now" and I will choose for you.`;
+    }
+
     const wantsApp = /(تطبيق|app)/i.test(userWords(goal));
     if (isAr) {
-        return `سؤال قبل أن أبدأ — حتى أبني ما تريده فعلاً لا ما أتخيله 🎯
+        return `**سؤال واحد قبل أن أبدأ** — حتى أبني ما تريده فعلاً لا ما أتخيّله.
 
-1️⃣ ما موضوع ${wantsApp ? 'التطبيق' : 'الموقع'}؟ (مطعم؟ متجر؟ شركة؟ معرض أعمال؟ …)
-2️⃣ ما الأقسام التي تريدها؟ (مثلاً: رئيسية، خدمات، أسعار، تواصل)
-3️⃣ هل لديك ألوان أو هوية معينة؟ (أو أتركها لي)
-4️⃣ صفحة واحدة أم موقع متعدد الصفحات؟
+1. **ما موضوع ${wantsApp ? 'التطبيق' : 'الموقع'}؟** مطعم، متجر، شركة، معرض أعمال…
+2. **ما الأقسام التي تريدها؟** رئيسية، خدمات، أسعار، تواصل…
+3. **هل لديك ألوان أو هوية؟** أو اتركها لي.
+4. **صفحة واحدة أم عدّة صفحات؟**
 
-أجب بما تعرفه فقط — وسأتصرف في الباقي. أو قل «ابدأ مباشرة» وسأبني فوراً على ذوقي.`;
+أجب بما تعرفه فقط وسأتصرّف في الباقي — أو قل **«ابدأ مباشرة»** وأبني فوراً.`;
     }
-    return `One thing before I start — so I build what you actually mean 🎯
+    return `**One thing before I start** — so I build what you actually mean.
 
-1️⃣ What is the ${wantsApp ? 'app' : 'site'} about? (a restaurant? a store? a company? a portfolio?)
-2️⃣ Which sections do you want? (e.g. home, services, pricing, contact)
-3️⃣ Any colours or brand identity? (or leave it to me)
-4️⃣ One page, or a multi-page site?
+1. **What is the ${wantsApp ? 'app' : 'site'} about?** A restaurant, a store, a company, a portfolio…
+2. **Which sections do you want?** Home, services, pricing, contact…
+3. **Any colours or brand identity?** Or leave it to me.
+4. **One page, or several?**
 
-Answer what you know — I'll handle the rest. Or say "start now" and I'll build immediately.`;
+Answer what you know and I'll handle the rest — or say **"start now"** and I'll build immediately.`;
 }
 
 export type ClarifyDecision =

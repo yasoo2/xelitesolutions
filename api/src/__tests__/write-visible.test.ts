@@ -3,6 +3,7 @@
  * panel — the same file_stream event the page builder emits — not only the
  * page builder's own sections. Proven on the real WebSocket wire.
  */
+import { logTextFor } from '../core/session/log-line';
 import fs from 'fs';
 import path from 'path';
 import { acceptPanelEventOnce, panelEventSessionId } from '../../../web/src/lib/panel-event-ownership';
@@ -94,16 +95,32 @@ describe('the Logs panel shows the build it is watching', () => {
     const ui = fs.readFileSync(
         path.join(__dirname, '..', '..', '..', 'web', 'src', 'components', 'JoeIDELayout.tsx'), 'utf-8');
 
+    /**
+     *  THESE PINNED THE SPELLING OF A FILE, AND THE RULES MOVED.
+     *
+     *  The three below asserted that JoeIDELayout.tsx CONTAINED certain
+     *  source text. Those rules now live in core/session/log-line.ts,
+     *  because the server has to turn the same stored event back into the
+     *  same line when a past session is reopened, and two copies of a rule
+     *  drift the first time one of them is edited.
+     *
+     *  So they ask the rule itself now — which is what they were always
+     *  trying to establish and could not: a regex over a source file
+     *  cannot tell you what the code DOES.
+     */
     test('terminal_output feeds the log — taken from ONE id, so no quadruple lines', () => {
-        expect(ui).toMatch(/event\.type === 'terminal_output'/);
-        expect(ui).toMatch(/event\.id === 'panel-terminal'/);
+        expect(logTextFor({ type: 'terminal_output', id: 'panel-terminal', data: 'npm install' })).toEqual(['npm install']);
+        //  The same line fanned to another terminal id is not drawn twice.
+        expect(logTextFor({ type: 'terminal_output', id: 'other-terminal', data: 'npm install' })).toEqual([]);
         expect(ui).not.toMatch(/Optional: Add terminal output to logs/);
     });
     test('the Arabic stage narration lands in the log too', () => {
-        expect(ui).toMatch(/event\.type === 'thinking_detail' && event\.data\?\.detail/);
+        expect(logTextFor({ type: 'thinking_detail', data: { detail: 'أقرأ طلبك وأفهم ما تريد بالضبط' } }))
+            .toEqual(['أقرأ طلبك وأفهم ما تريد بالضبط']);
+        expect(logTextFor({ type: 'thinking_detail', data: {} })).toEqual([]);
     });
     test('ANSI colour codes never reach the DOM', () => {
-        expect(ui).toMatch(/replace\(\/\\x1B\\\[\[0-9;\]\*\[A-Za-z\]\/g, ''\)/);
+        expect(logTextFor({ type: 'terminal_output', id: 'panel-terminal', data: '[32mdone[0m' })).toEqual(['done']);
     });
     test('a long build cannot grow the tab out of memory', () => {
         expect(ui).toMatch(/MAX_LOG_LINES = \d+/);

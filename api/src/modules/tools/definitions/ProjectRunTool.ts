@@ -1,4 +1,5 @@
 import { ToolDefinition, ToolPermission } from '../types';
+import { isWithinRoot } from '../path-containment';
 import { ExecutionGateway } from '../../../kernel/ExecutionGateway';
 import { NpmManagerTool } from './SystemTools';
 import { workspaceService } from '../../services/WorkspaceService';
@@ -185,6 +186,73 @@ function devServerPortFlags(cwd: string, port: number): string {
     return '';
 }
 
+/**
+ *  RUN ITS PROGRAM, NOT ITS PACKAGE MANAGER.
+ *
+ *  He photographed a black console window opening over his work, twice.
+ *  Windows named the culprit when asked directly:
+ *
+ *      cmd.exe  parent=node  cmd /d /s /c "npm run dev -- --port 4300 …"
+ *      conhost  parent=cmd   0x4        ← a visible console
+ *
+ *  Measured three ways, counting the consoles each one created:
+ *
+ *      shell:true  npm start      alive TRUE   +3 consoles
+ *      shell:false npm.cmd start  alive FALSE  +0 consoles
+ *      shell:false node index.js  alive TRUE   +1 console
+ *
+ *  `npm` is a `.cmd` shim, and Node refuses to spawn one without a shell
+ *  — a deliberate refusal, after a command-injection flaw in that path. So
+ *  going through npm means going through cmd.exe, and cmd.exe allocates a
+ *  console. `windowsHide` cannot help: it governs the process Node makes,
+ *  and the console is made one level further down.
+ *
+ *  The way out is not to hide the shell but to have none. Every script in
+ *  a package manifest names a program; when that program is JavaScript we
+ *  can resolve, Node runs it directly and no console is ever created.
+ *
+ *  It resolves by READING the manifest of the package the script names —
+ *  no framework is listed here, and a tool this file has never heard of
+ *  works the same way. When nothing resolves, the npm command stands: a
+ *  window is worse than a failure to start, but only barely, and guessing
+ *  an entry point would be worse than both.
+ */
+function resolveJsEntry(cwd: string, bin: string): string | null {
+    const name = String(bin || '').trim();
+    if (!name || name.startsWith('-')) return null;
+    //  A scoped or plain package directory under node_modules.
+    const pkgDir = path.join(cwd, 'node_modules', name);
+    let manifest: any = null;
+    try { manifest = JSON.parse(fs.readFileSync(path.join(pkgDir, 'package.json'), 'utf-8')); }
+    catch { return null; }
+    const declared = manifest && manifest.bin;
+    const rel = typeof declared === 'string'
+        ? declared
+        : (declared && typeof declared === 'object' ? declared[name] || Object.values(declared)[0] : null);
+    if (typeof rel !== 'string' || !rel) return null;
+    const abs = path.join(pkgDir, rel);
+    //  It has to be a real file, and it has to be JavaScript — a shell
+    //  wrapper resolved here would put the console straight back.
+    if (!fs.existsSync(abs) || !/\.(?:js|mjs|cjs)$/i.test(abs)) return null;
+    return path.relative(cwd, abs).split(path.sep).join('/');
+}
+
+/** The same command the script declares, with node in front of it. */
+function directNodeCommand(cwd: string, script: string, extraFlags = ''): string | null {
+    const text = String(script || '').trim();
+    if (!text) return null;
+    const parts = text.split(/\s+/).filter(Boolean);
+    //  Already a node invocation: nothing to resolve.
+    if (parts[0] === 'node') return text + extraFlags.replace(/^\s*--\s+/, ' ');
+    const entry = resolveJsEntry(cwd, parts[0]);
+    if (!entry) return null;
+    const rest = parts.slice(1).join(' ');
+    //  `--` is npm's separator for passing arguments through. Running the
+    //  program itself, the arguments are simply its own.
+    const flags = extraFlags.replace(/^\s*--\s+/, ' ');
+    return `node ${entry}${rest ? ' ' + rest : ''}${flags}`;
+}
+
 function isFrontendStartScript(script: string): boolean {
     return /(?:react-scripts\s+start|\bvite(?:\s|$)|\bnext\s+(?:dev|start)(?:\s|$)|\bparcel(?:\s|$))/iu.test(String(script || '').trim());
 }
@@ -242,11 +310,17 @@ export function detectStart(cwd: string, port: number): { command: string; kind:
         if (backendEntrypoint) {
             return { command: `node ${backendEntrypoint}`, kind: 'node-entry', expectPort: port, forced: false };
         }
-        if (scripts.start) return { command: 'npm start', kind: 'npm-start', expectPort: port, forced: false };
+        if (scripts.start) {
+            const direct = directNodeCommand(cwd, String(scripts.start));
+            if (direct) return { command: direct, kind: 'npm-start', expectPort: port, forced: false };
+            return { command: 'npm start', kind: 'npm-start', expectPort: port, forced: false };
+        }
         // A frontend dev server (Vite/Next/CRA) — told its port in the flag it
         // actually reads, so the announcement below is true.
         if (scripts.dev) {
             const flags = devServerPortFlags(cwd, port);
+            const direct = directNodeCommand(cwd, String(scripts.dev), flags);
+            if (direct) return { command: direct, kind: 'dev-server', expectPort: port, forced: !!flags };
             return { command: `npm run dev${flags}`, kind: 'dev-server', expectPort: port, forced: !!flags };
         }
     }
@@ -792,7 +866,10 @@ function isRuntimePackageAvailable(cwd: string, packageName: string): boolean {
                 const entryCandidates = [packageManifest.main, packageManifest.module, 'index.js', 'index.mjs', 'index.cjs', 'index.json']
                     .filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
                     .map((entry) => path.resolve(candidate, entry));
-                if (entryCandidates.some((entry) => entry === candidate || entry.startsWith(`${candidate}${path.sep}`) && fs.existsSync(entry) && fs.statSync(entry).isFile())) return true;
+                //  `a || b && c` bound the existence check to the prefix branch alone:
+                //  an entry EQUAL to the directory returned true without ever being
+                //  looked for on disk. One reader, one precedence, one answer.
+                if (entryCandidates.some((entry) => isWithinRoot(entry, candidate) && fs.existsSync(entry) && fs.statSync(entry).isFile())) return true;
             }
         } catch { /* continue to the next trusted ancestor */ }
         const parent = path.dirname(probe);
@@ -954,12 +1031,24 @@ async function runtimeSyntaxError(cwd: string, detected: { command: string; kind
 
 export function launchPrerequisiteError(cwd: string, detected: { command: string; kind: string }): string | null {
     const pkgPath = path.join(cwd, 'package.json');
-    if (!fs.existsSync(pkgPath) || !/^npm (?:start|run dev)\b/u.test(detected.command)) return null;
+    //  THE GATE READS THE KIND, NOT THE SPELLING.
+    //
+    //  This tested the TEXT of the command against /^npm (start|run dev)/
+    //  rather than what the command IS. The moment the launcher stopped
+    //  going through npm — to stop opening a console window on his screen —
+    //  and ran the script's own program with node instead, this guard went
+    //  silent: a declared-but-missing dependency stopped being noticed and
+    //  the auto-install never ran. Measured: 1 call expected, 0 received.
+    //
+    //  detected.kind already carries the answer, and it does not change when
+    //  the spelling does.
+    const fromManifestScript = detected.kind === 'npm-start' || detected.kind === 'dev-server';
+    if (!fs.existsSync(pkgPath) || !fromManifestScript) return null;
 
     try {
         const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
         const scripts = pkg?.scripts || {};
-        const selectedScript = detected.command.startsWith('npm start') ? scripts.start : scripts.dev;
+        const selectedScript = detected.kind === 'npm-start' ? scripts.start : scripts.dev;
         const deps = { ...(pkg?.dependencies || {}), ...(pkg?.devDependencies || {}) };
         const needsVite = !!deps.vite || /(?:^|\s)vite(?:\s|$)/u.test(String(selectedScript || ''))
             || fs.existsSync(path.join(cwd, 'vite.config.js')) || fs.existsSync(path.join(cwd, 'vite.config.ts'));
@@ -1304,14 +1393,55 @@ export class ProjectRunTool implements ToolDefinition {
             logs.push(`project_run: ignored pre-existing loopback ports (${preExistingCommonPorts.join(', ')})`);
         }
 
-        // Detached start through the sanctioned gateway — never child_process.
+        /**
+         *  A PROCESS THAT RUNS OUTSIDE THE PANEL IS A PROCESS NOBODY WATCHES.
+         *
+         *  He photographed it: a separate black Windows Terminal window,
+         *  over his work, printing
+         *
+         *      > task-management-table@1.0.0 start
+         *      Server running at http://localhost:3000
+         *
+         *  Everything Joe does is meant to happen inside his panels —
+         *  start-joe.ps1 says so where it sets BROWSER_HEADED=0: «بلا نافذة
+         *  خارجية — كل شيء داخل لوحة جو». A window he did not open is a
+         *  surface Joe cannot read, cannot show him, and cannot close.
+         *
+         *  AND THE SHAPE THAT OPENED IT DOES NOT EVEN WORK. Measured on his
+         *  machine, spawning `npm start` in a real project four ways and
+         *  then asking the port whether anything answered:
+         *
+         *      detached + shell + ignore  (this code)   alive: false
+         *      detached + shell + ignore + windowsHide  alive: false
+         *      detached + shell + pipe    + windowsHide  alive: false
+         *      MANAGED  + shell + pipe    + windowsHide  alive: TRUE, output read
+         *
+         *  On Windows a detached shell command does not survive in any
+         *  variant. So the window was not the price of a working server —
+         *  it was the price of an unreliable one.
+         *
+         *  A managed child costs one thing and buys three: Joe owns the
+         *  lifetime, so a restart cannot leave an orphan holding port 3000;
+         *  the output arrives on a pipe, so it can go where he is looking;
+         *  and there is no window, because there is no console to make.
+         */
+        //  The previous server for this project dies before a new one is
+        //  born — see retireRecordedServer. Nine of them were alive on his
+        //  machine at once, holding twenty-one ports.
+        await retireRecordedServer(context, cwd, logs);
+
         const res = await ExecutionGateway.execute(detected.command, [], {
             cwd,
             env: { ...process.env, PORT: String(port), HOST: '127.0.0.1', BROWSER: 'none', CI: '1' },
-            detached: true,
+            //  Not detached: Joe keeps the handle, so a restart cannot leave
+            //  an orphan holding port 3000. Not waited for either — a server
+            //  never exits, and waiting for one would hang this tool forever.
+            detached: false,
+            background: true,
             shell: true,
-            stdio: 'ignore',
-        });
+            stdio: 'pipe',
+            windowsHide: true,
+        } as any);
         if (!res.success || res.data?.ok === false) {
             return { ok: false, error: `تعذّر تشغيل الخادم: ${res.error || res.data?.error || 'unknown'}`, logs };
         }
@@ -1400,18 +1530,110 @@ export class ProjectRunTool implements ToolDefinition {
     }
 }
 
+/** The one way this file ends a server, wherever the pid came from. */
+async function killTree(pid: number): Promise<void> {
+    if (process.platform === 'win32') {
+        // Kills the whole process tree (npm -> the framework it spawned).
+        await ExecutionGateway.execute(`taskkill /F /T /PID ${pid}`, [], { shell: true, stdio: 'ignore' });
+    } else {
+        // Detached start makes the child a group leader; -pid kills the group.
+        try { process.kill(-pid, 'SIGTERM'); } catch { process.kill(pid, 'SIGTERM'); }
+    }
+}
+
+/**
+ *  A SERVER THAT OUTLIVES THE ROUND THAT STARTED IT.
+ *
+ *  Counted on the owner's machine after a day of rounds:
+ *
+ *      orphan vite servers still running:  9
+ *      listening 4xxx ports:              21
+ *
+ *  Every preview Joe opens stays open. stopServer above cannot reach any
+ *  of them, because it reads RUNNING — a Map in memory, emptied by every
+ *  restart — while the servers themselves survive it.
+ *
+ *  The record does survive: joeProjects keeps live.pid and live.cwd on
+ *  disk, and canAdoptRecordedLive already knows how to check that a pid
+ *  is alive AND belongs to that directory. The knowledge was there; only
+ *  the retirement was missing.
+ *
+ *  It runs before a NEW server is launched for a project, never on the
+ *  adoption path — a live server that is about to be reused must not be
+ *  shot on the way to reusing it.
+ */
+/**
+ *  A PREVIEW THAT OUTLIVES EVERY ROUND, NOT JUST ITS OWN.
+ *
+ *  Measured on his machine, at 09:21 on a Tuesday:
+ *
+ *      total node.exe:       19
+ *      older than 6 hours:   12
+ *      older than 24 hours:   6
+ *
+ *      vite dev servers still listening
+ *          08-22 00:47  port 4399   — three days old
+ *          08-22 00:55  port 4398
+ *          08-24 13:13  port 4300
+ *          08-24 20:34  port 4301
+ *          08-24 22:01  port 4302
+ *          08-25 06:51  port 4303
+ *
+ *  retireRecordedServer already exists and already runs before every
+ *  launch. It could not fire, because the guard it borrowed is the
+ *  ADOPTION guard — canAdoptRecordedLive, which demands the recorded
+ *  server be in the SAME project directory. That is exactly right for
+ *  adopting a server, and exactly wrong for retiring one: a session
+ *  that builds a second project never revisits the first directory, so
+ *  the first preview was never anybody's to kill.
+ *
+ *  A session shows ONE preview. Starting the next one ends the last
+ *  one, whichever project it belonged to.
+ *
+ *  The blast radius is bounded and stated: only a pid this session
+ *  itself recorded, only while it is still alive, and only when the
+ *  directory it recorded is inside the workspace Joe generates into.
+ *  Nothing outside that tree is ever a candidate.
+ */
+export function theServerThisSessionLeftRunning(record: any, workspaceRoot: string): boolean {
+    const pid = Number(record?.pid);
+    if (!Number.isInteger(pid) || pid <= 0) return false;
+    const recorded = String(record?.cwd || '').trim();
+    if (!recorded) return false;
+    //  Inside the tree Joe writes into, and nowhere else.
+    const root = String(workspaceRoot || '').trim();
+    if (!root) return false;
+    const inside = isWithinRoot(recorded, root);
+    if (!inside) return false;
+    try { process.kill(pid, 0); } catch { return false; }
+    return true;
+}
+
+async function retireRecordedServer(context: any, cwd: string, logs: string[]): Promise<void> {
+    try {
+        const sessionId = String(context?.sessionId || '').trim();
+        if (!sessionId || !cwd) return;
+        const sessionKey = sessionId.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const record: any = readJoeProjectForRun(sessionKey, null);
+        const live = record?.live;
+        //  The session's own previous preview, whatever project it was.
+        const root = String(context?.workspaceRoot || '').trim()
+            || path.resolve(cwd, '..');
+        if (!canAdoptRecordedLive(live, cwd) && !theServerThisSessionLeftRunning(live, root)) return;
+        await killTree(Number(live.pid));
+        logs.push(`retired previous server pid=${live.pid} port=${live.port}`);
+    } catch (e: any) {
+        //  A server that will not die is not a reason to refuse to start.
+        logs.push(`retire_failed: ${e?.message || e}`);
+    }
+}
+
 async function stopServer(key: string, logs: string[]): Promise<boolean> {
     const server = RUNNING.get(key);
     if (!server?.pid) return false;
     const pid = server.pid;
     try {
-        if (process.platform === 'win32') {
-            // Kills the whole process tree (npm -> the framework it spawned).
-            await ExecutionGateway.execute(`taskkill /F /T /PID ${pid}`, [], { shell: true, stdio: 'ignore' });
-        } else {
-            // Detached start makes the child a group leader; -pid kills the group.
-            try { process.kill(-pid, 'SIGTERM'); } catch { process.kill(pid, 'SIGTERM'); }
-        }
+        await killTree(pid);
         logs.push(`stopped pid=${pid} port=${server.port}`);
     } catch (e: any) {
         logs.push(`stop_failed pid=${pid}: ${e?.message || e}`);

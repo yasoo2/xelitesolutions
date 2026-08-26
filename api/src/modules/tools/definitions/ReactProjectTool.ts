@@ -23,7 +23,7 @@ import { ToolPermission, ToolExecutionResult } from '../types';
 import { buildPalette, paletteCss, darkTokenBlock, lightTokenBlock } from '../../../core/design/design-system';
 import { brandFrom, brandFallback } from '../../../core/design/page-head';
 import { detectPageKind, type PageKind } from '../../../core/design/blueprints';
-import { applyRequestFieldConstraints, detectAppKind, blueprintFor, uncoveredFeatures, derivedTables, type AppBlueprint } from '../../../core/design/app-blueprints';
+import { derivedColumns, applyRequestFieldConstraints, detectAppKind, blueprintFor, uncoveredFeatures, derivedTables, type AppBlueprint, columnsAnywhereInHisRequest } from '../../../core/design/app-blueprints';
 import { acceptanceFor as acceptanceCriteriaFor } from '../../../core/quality/acceptance';
 import { buildAppFiles, fileAppCss } from './react-app-templates';
 import { familyFor, familyCss, familyFonts, FAMILY_LABEL_AR, type DesignFamily } from '../../../core/design/families';
@@ -38,6 +38,8 @@ import { inspectWeatherEngineSource, formatWeatherSemanticRepair } from '../../.
 import { isProviderFailure } from '../../../core/llm/intelligent-router';
 import { validateFileWriteBatch } from '../../../shared/file-write-contract';
 import { replyLanguageCode } from '../../../shared/reply-language';
+import { isWithinRoot } from '../path-containment';
+import { planSite, thePagesHeNamed } from '../../../core/design/site-plan';
 
 type MeasuredAbility = {
     ar: string;
@@ -92,11 +94,132 @@ const MEASURED_ABILITIES: Record<string, MeasuredAbility[]> = {
     records: [
         { ar: 'إضافة وتعديل وحذف السجلات فعلياً', en: 'create, edit and delete records for real', evidence: hasAll(/setRows|add|create/i, /edit|update/i, /delete|remove/i) },
         { ar: 'تحقّق من الحقول المطلوبة قبل الحفظ', en: 'required-field validation before saving', evidence: hasAny(/required|validate|invalid/i) },
-        { ar: 'بحث وتصفية وترتيب فوري', en: 'instant search, filter and sort', evidence: hasAll(/search/i, /filter/i, /sort/i) },
+        /**
+         *  A CAPABILITY IS A CONTROL HE CAN USE, NOT A WORD IN THE SOURCE.
+         *
+         *  This was one claim — «instant search, filter and sort» — proven by
+         *  `hasAll(/search/i, /filter/i, /sort/i)`. Two of those three are
+         *  JavaScript's own array methods. `fields.filter(…)` and `.sort()`
+         *  appear in every React file ever generated, so the claim was true of
+         *  a build with no filter control at all — measured on his sales
+         *  table, which has no filter and was told it had one.
+         *
+         *  So: three claims, each proven by the STATE its control drives, and
+         *  the filter also by something to filter ON. The status filter is
+         *  conditional in the template — it renders only when a select column
+         *  exists — so the schema has to carry one, or the control is markup
+         *  that never appears.
+         */
+        { ar: 'بحث فوري في كل الأعمدة', en: 'instant search across the columns', evidence: hasAny(/setQuery\(/) },
+        { ar: 'تصفية حسب الحالة', en: 'filtering by status', evidence: hasAll(/setFilter\(/, /type:\s*'select'/) },
+        { ar: 'ترتيب الصفوف', en: 'sorting the rows', evidence: hasAny(/setSort\(/) },
         { ar: 'أرقام محسوبة من بياناتك أنت', en: 'numbers computed from YOUR rows', evidence: hasAny(/groupTotals|computeMetric|reduce\(|total/i) },
         { ar: 'حفظ دائم + تصدير CSV + قراءة من خادم المشروع إن وُجد', en: 'durable storage, CSV export, and reads from the project API when one exists', evidence: hasAll(/localStorage|fetch|api/i, /toCsv|\\.csv|download/i) },
     ],
 };
+
+/**
+ *  AND THE BLOCKER SAYS WHY IT BLOCKED.
+ *
+ *  Seen on the owner's screen at the end of a 42-step build:
+ *
+ *      Failed phase: Interface on the service
+ *      Error: required_visual_audit_not_completed
+ *
+ *  Nothing else. The audit records its reason in words — «playwright
+ *  unavailable: …», «disabled (JOE_VISUAL_AUDIT=0)», a launch that threw —
+ *  and the delivery threw the string away, so he was told the MECHANISM and
+ *  not the CAUSE. Measured on his machine at that moment: Playwright resolved
+ *  and its Chromium existed on disk, so the reason was neither of the two a
+ *  person would guess, and nothing on screen could have told him which.
+ *
+ *  The id stays at the front because other layers match on it; the reason
+ *  follows a colon, readable by him and still parseable by them.
+ */
+/**
+ *  «acceptance_criteria_unmet» — AND WHICH ONES?
+ *
+ *  Measured on his screen one round after the visual-audit blocker was made
+ *  to speak. The build got further, and stopped at:
+ *
+ *      Error: acceptance_criteria_unmet
+ *
+ *  The ledger knows exactly which criteria are unmet — it holds each one with
+ *  its id and the evidence it could not find — and the error carried none of
+ *  them. So he is told a judgement was made against him and not what it was,
+ *  and the only way to learn it is to read a message that may be off-screen.
+ *
+ *  This is the same defect as the visual audit's, in the next layer down: a
+ *  report that names the MECHANISM instead of the FINDING. Fixing one and
+ *  leaving the other would be fixing the instance and not the class, which
+ *  the third law forbids.
+ *
+ *  The ids come first because layers match on them, and a cap keeps a long
+ *  ledger from turning one line into a page — with the remainder counted, so
+ *  the number never lies about how much was left out.
+ */
+export function deliveryErrorForAcceptance(
+    criteria: Array<{ id: string; verdict: string }>,
+    max = 6,
+): string {
+    const id = 'acceptance_criteria_unmet';
+    const unmet = (criteria || []).filter(c => c && c.verdict === 'unmet').map(c => String(c.id));
+    if (!unmet.length) return id;
+    const shown = unmet.slice(0, max).join(', ');
+    const rest = unmet.length - Math.min(unmet.length, max);
+    return `${id}: ${shown}${rest > 0 ? ` (+${rest} more)` : ''}`;
+}
+
+/** What the install/build step actually did — the evidence the reporter needs. */
+export interface BuildOutcome {
+    /** false when the request forbade the network: nothing ran, so nothing failed. */
+    attempted?: boolean;
+    built?: boolean;
+    installed?: boolean;
+    npmMissing?: boolean;
+    /** -1 the binary is absent · -2 it ran out of time · otherwise the exit code. */
+    installExit?: number | null;
+    buildExit?: number | null;
+    /** The log doctor's verdict, already written in his language. */
+    diagnosis?: { id?: string; ar?: string } | null;
+}
+
+/**
+ *  A BUILD THAT NEVER PRODUCED A BUNDLE IS NOT AN AUDIT FAILURE.
+ *
+ *  The reason the audit «never ran» is not a fact about the audit. It is the
+ *  build's exit code, or npm's, and both were measured and named minutes
+ *  earlier. This carries them to the reader instead of leaving him with the
+ *  name of the one subsystem that was never at fault.
+ */
+export function deliveryErrorForBuild(state: BuildOutcome): string {
+    const id = 'build_produced_no_bundle';
+    const ranOut = (code: number | null | undefined) =>
+        code === -2 ? ' — it ran out of time' : (code === null || code === undefined) ? '' : ` — exit ${code}`;
+    if (state.npmMissing) return `${id}: npm is not on this machine, so nothing could be installed`;
+    if (state.installed === false) return `${id}: npm install did not finish${ranOut(state.installExit)}`;
+    const d = state.diagnosis;
+    if (d && (d.ar || d.id)) return `${id}: ${d.id ? `${d.id} — ` : ''}${String(d.ar || '').trim()}`.trim();
+    return `${id}: the build wrote no dist/index.html${ranOut(state.buildExit)}`;
+}
+
+export function deliveryErrorForVisualAudit(
+    audit: { skipped?: string } | null | undefined,
+    build?: BuildOutcome | null,
+): string {
+    const id = 'required_visual_audit_not_completed';
+    /**
+     * Order matters, and only this order is honest. `skipped` is proof that
+     * the audit RAN and stopped for a stated reason, so it stays the thing to
+     * report even on a failed build. A null audit on an attempted-but-failed
+     * build is the opposite: the audit was never reached, and blaming it names
+     * the wrong layer.
+     */
+    if (!audit && build && build.attempted && !build.built) return deliveryErrorForBuild(build);
+    if (!audit) return `${id}: the audit never ran`;
+    if (audit.skipped) return `${id}: ${audit.skipped}`;
+    return `${id}: the audit produced no result`;
+}
 
 /** Read the generated source and return only capabilities backed by their own evidence. */
 export function measuredAppAbilities(engine: string, isArabic: boolean, source: string): MeasuredAbilityReport {
@@ -151,13 +274,44 @@ const ACCEPTANCE_TOPIC_IDS: Record<string, DeliveryTopic[]> = {
     browser_check: [],
 };
 
-// Columns are request-derived acceptance criteria, not a finite domain catalogue.
-// Keep the generated namespace narrow so arbitrary unknown ids still fail loudly.
-const DYNAMIC_COLUMN_ACCEPTANCE_ID = /^column:[A-Za-z][A-Za-z0-9_-]*$/;
+/**
+ *  CRITERIA READ OUT OF HIS REQUEST ARE NOT A FINITE CATALOGUE.
+ *
+ *  The namespace is kept narrow on purpose, so a genuinely unknown id still
+ *  fails loudly rather than passing as something nobody checked. It listed
+ *  `column:` alone — and the day two more request-derived families were added,
+ *  a real build died in front of the owner:
+ *
+ *      Failed phase: Interface on the service
+ *      Error: delivery_acceptance_unmapped:rule:1,rule:2,rule:3
+ *
+ *  His three columns were correct on screen; the RULE he stated in the same
+ *  sentence crashed the delivery that was about to report them.
+ *
+ *  That is this list's whole failure mode, and it will recur every time the
+ *  judge learns to read something new. So each family is named here with the
+ *  reader that produces it, and the guard beside this file asserts that every
+ *  family acceptanceFor() can emit is one this list admits — the check that
+ *  would have caught it before it reached him.
+ */
+const DYNAMIC_ACCEPTANCE_ID = [
+    //  derivedColumns()      — a column he listed
+    /^column:[A-Za-z][A-Za-z0-9_-]*$/,
+    //  thePagesHeNamed()     — a page he named
+    /^page:[A-Za-z][A-Za-z0-9_-]*$/,
+    //  statedRules()         — a condition he stated
+    /^rule:[0-9]+$/,
+    //  statedRules() again   — a condition that names one of HIS columns, so
+    //  it is emitted beside that column instead of in a numbered list. It is
+    //  the same derivation wearing the shape the ledger can name; this reader
+    //  had to be told, and the guard that made it tell me is the one that
+    //  refuses to deliver an id nobody downstream understands.
+    /^constraint:[A-Za-z][A-Za-z0-9_-]*:min$/,
+];
 
 function isKnownAcceptanceId(id: string): boolean {
     return Object.prototype.hasOwnProperty.call(ACCEPTANCE_TOPIC_IDS, id)
-        || DYNAMIC_COLUMN_ACCEPTANCE_ID.test(id);
+        || DYNAMIC_ACCEPTANCE_ID.some(re => re.test(id));
 }
 
 function acceptanceTopics(id: string): DeliveryTopic[] {
@@ -294,16 +448,79 @@ export const PROJECT_SLUG_FOR_TEST = slug;
  *  back a name. No list of forbidden words appears here and none should
  *  — «بدي» and «build» are not the point; the shape is.
  */
+/**
+ *  A NAME IS MADE OF WORDS HE WROTE.
+ *
+ *  The first version of this guard asked two questions — is it short, and
+ *  is it the opening of his sentence — and a live ladder run walked
+ *  straight through both:
+ *
+ *      «بدي جدول للكتب: العنوان والمؤلف والسعر»   -> react-the-d34e34be
+ *      «بدي جدول للكتب فيه العنوان والمؤلف والسعر» -> react-كتب-works-417308d5
+ *
+ *  «the» and «works» are not words he said. Measured at the same time,
+ *  `brandFallback` answered «مشروع الكتب» for both — the right name was
+ *  sitting there again while the planner's invention was used instead.
+ *  «the» is three characters, so it never even reached the prefix test.
+ *
+ *  So the criterion becomes the only one that cannot be walked around:
+ *  EVERY word of the candidate must be a word he wrote. A name someone
+ *  chose for this request is built from this request — «Gate062» is in
+ *  «Build a small project called Gate062», «عيادة أسنان» is in «عندي
+ *  عيادة أسنان» — while «Works» is in nothing but the model's habits.
+ *
+ *  Arabic attaches its articles and prepositions to the word, so «كتب»
+ *  has to be recognised inside «للكتب». That is folding, not a synonym
+ *  table: the prefixes are a closed grammatical class and no domain word
+ *  appears here.
+ */
+/**
+ *  ONLY THE CLITICS THAT CANNOT BE A FIRST LETTER.
+ *
+ *  The first draft listed the single letters too — و ف ب ك ل — and ate the
+ *  opening letter of ordinary words: «كتب» became «تب», so his own word
+ *  stopped matching itself and the guard refused the name he had chosen.
+ *  «وقت», «بيت», «لون», «فرع» would all have gone the same way.
+ *
+ *  A single Arabic letter is never unambiguous evidence of a prefix. The
+ *  two- and three-letter forms below all end in the definite article, and
+ *  no Arabic word begins with «ال» except as that article — which is the
+ *  whole reason folding is safe here and was not safe there.
+ */
+const ARABIC_CLITICS = /^(?:ولل|فلل|بال|كال|فال|وال|لل|ال)/u;
+
+function bareWords(text: string): string[] {
+    return String(text || '')
+        .toLowerCase()
+        .replace(/\p{M}+/gu, '')
+        .split(/[^\p{L}\p{N}]+/u)
+        .filter(Boolean)
+        .map(w => (/[\u0600-\u06FF]/.test(w) ? w.replace(ARABIC_CLITICS, '') : w))
+        .filter(w => w.length >= 2);
+}
+
 function looksLikeAChosenName(candidate: string, request: string): boolean {
     const t = String(candidate || '').trim();
     if (!t) return false;
     if (t.split(/\s+/).filter(Boolean).length > 4) return false;
     if (/[:،؛]|,\s/.test(t)) return false;
-    const req = slug(request);
     const cand = slug(t);
     if (!cand || cand === 'app') return false;
+
+    const req = slug(request);
     //  The opening of the sentence is not a name for the sentence.
-    return !(req && cand.length >= 4 && req.startsWith(cand));
+    if (req && cand.length >= 4 && req.startsWith(cand)) return false;
+
+    //  And every word of it has to be one of his. With no request to
+    //  compare against — a caller that passed none — this test cannot run,
+    //  and a test that cannot run must not reject.
+    const his = new Set(bareWords(request));
+    if (!his.size) return true;
+    //  The tool's own `react-` prefix belongs to the directory, not to the
+    //  name — a candidate that already carries it is still his name.
+    const mine = bareWords(t.replace(/^react[-_\s]+/i, ''));
+    if (!mine.length) return false;
+    return mine.every(w => his.has(w));
 }
 
 export function projectDirNameForTest(projectName: string, brand: string, request = ''): string {
@@ -764,9 +981,132 @@ export function pagesForKind(kind: PageKind): AppPage[] {
     }
 }
 
-/** Does the request ask for a MULTI-PAGE app? Single-page stays the default. */
-export function wantsMultiPage(text: string): boolean {
-    return /(متعدد\s*الصفحات|متعدده?\s*الصفحات|صفحات\s*(مترابطة|متعددة|متعدده)|عدة\s*صفحات|multi\s*-?\s*page|multiple\s*pages|with\s*pages)/i.test(String(text || ''));
+/**
+ * Does the request ask for a MULTI-PAGE app? Single-page stays the default.
+ *
+ * ONE SENTENCE, ONE READING. This used to be a second, narrower reader: it
+ * knew «متعدد الصفحات» but not «موقع كامل», and it could not see pages
+ * the request NAMED at all — so the same sentence got two pages from the page
+ * builder and one from here, depending only on which tool picked it up.
+ * planSite is now the single judgement, and this asks it.
+ */
+export function wantsMultiPage(text: string, kind: PageKind = 'landing'): boolean {
+    return planSite(kind, String(text || ''), true).multiPage;
+}
+
+/** Which sections carry each page a request can name. */
+const PAGE_SECTIONS: Record<string, string[]> = {
+    products: ['Products', 'Gallery', 'Faq'],
+    menu: ['Menu', 'Gallery'],
+    contact: ['Contact', 'Location'],
+    about: ['Story', 'Team', 'Testimonials'],
+    services: ['Features', 'Steps', 'Cta'],
+    pricing: ['Pricing', 'Compare', 'Faq'],
+    work: ['Gallery', 'Features'],
+    reservations: ['Contact', 'Steps'],
+    faq: ['Faq'],
+    shipping: ['Steps', 'Faq'],
+    cart: ['Products', 'Cta'],
+    blog: ['Story', 'Features'],
+    archive: ['Story', 'Features'],
+    support: ['Contact', 'Faq'],
+    docs: ['Steps', 'Faq'],
+};
+
+/**
+ * The pages of the plan, as React routes.
+ *
+ * A page he named that is on no list still becomes a route — it carries the
+ * generic pair rather than nothing, because a page that exists and says a
+ * little is honest, and a page he asked for that does not exist is not.
+ */
+/**
+ *  WHAT LANGUAGE DOES THE ARTIFACT SPEAK — asked once, and by name.
+ *
+ *  Not the same question as «what language do I speak to HIM in», which the
+ *  interface rightly decides. The reply is for him; the app is for whoever
+ *  will use it, and it is labelled with HIS OWN WORDS.
+ *
+ *  Measured live with his interface set to EN:
+ *
+ *      «اعمل لي صفحة هبوط وصفحة تواصل لشركة تنظيف اسمها «نور»»
+ *        nav:     نور · هبوط · تواصل     ← his words, Arabic
+ *        heading: «Contact us»            ← the reply language, English
+ *
+ *  The rule existed and read only the COLUMNS he listed, so a request that
+ *  names PAGES fell through to the reply language. Both are his words, and
+ *  neither is more his than the other.
+ *
+ *  Exported and named because a decision worth guarding is worth calling.
+ *  A guard that read this out of the source tested its spelling: a mutation
+ *  that ignored the pages entirely left all six of its assertions green.
+ */
+export function artifactLanguageIsArabic(request: string, replyIsArabic: boolean): boolean {
+    const columns = (columnsAnywhereInHisRequest(request) || []).map((c: any) => String(c.label || ''));
+    const pages = thePagesHeNamed(
+        String(request || '')
+            .replace(/[ً-ْٰـ]/g, '')
+            .replace(/[أإآ]/g, 'ا')
+            .replace(/ى/g, 'ي'),
+    ).map(p => p.title);
+    const hisWords = [...columns, ...pages];
+    if (hisWords.length) return hisWords.some(w => /[؀-ۿ]/.test(w));
+
+    /**
+     *  ⛔ AND WHEN HE NAMED NEITHER, THE REQUEST ITSELF IS STILL HIS WORDS.
+     *
+     *  Measured live, in front of the owner, with his interface in English:
+     *
+     *      «اعمل لي موقع لمحمصة قهوة مختصة اسمها وَقّاد، فيه قصة المحمصة
+     *        وأنواع القهوة وطريقة التحميص»
+     *
+     *      content.js:  isArabic: false
+     *                   tagline:  'محمصة قهوة مختصة'      <- from his request
+     *                   heroTitle:'وَقّاد — محمصة قهوة مختصة'
+     *                   ctaBandTitle: 'Your table is ready tonight'
+     *                   stepsTitle:   'How to book'
+     *
+     *  A request written entirely in Arabic produced an English artifact,
+     *  because this function read only the COLUMNS and the PAGE NAMES he
+     *  listed — and he listed neither. The fall-back to the interface
+     *  language was reached for a request that was never silent about its
+     *  language; it simply was not asked.
+     *
+     *  ⛔ THE CLASS IS THIS REPOSITORY'S MOST EXPENSIVE ONE, and the comment
+     *  above this function already records an earlier instance of it: «the
+     *  rule existed and read only the COLUMNS he listed, so a request that
+     *  names PAGES fell through». The fix then widened the fragment by one.
+     *  This is the same defect one fragment further out — A DECISION TAKEN
+     *  FROM A PART WHILE THE AUTHORITY IS THE WHOLE REQUEST, which is the
+     *  fourth law, and which has now appeared six times.
+     *
+     *  The reply language remains the fallback, but it is now reached only
+     *  when his sentence really says nothing — not merely when it says
+     *  nothing in the shape this function was looking for.
+     */
+    const arabicLetters = (String(request || '').match(/[؀-ۿ]/g) || []).length;
+    const latinLetters = (String(request || '').match(/[A-Za-z]/g) || []).length;
+    if (arabicLetters + latinLetters >= 8) return arabicLetters > latinLetters;
+
+    //  Nothing of his reached the artifact and his sentence carries no letters
+    //  to read, so the language he is spoken to in stands. A fallback, never
+    //  a source.
+    return replyIsArabic;
+}
+
+export function appPagesFor(kind: PageKind, request: string, isArabic: boolean): AppPage[] {
+    const plan = planSite(kind, String(request || ''), isArabic);
+    if (!plan.multiPage) return pagesForKind(kind);
+    const home = pagesForKind(kind)[0];
+    return plan.pages.map(p => {
+        const slug = p.file === 'index.html' ? 'index' : p.file.replace(new RegExp('\\.html$'), '');
+        return {
+            path: slug === 'index' ? '/' : '/' + slug,
+            title: p.title,
+            titleEn: p.title,
+            sections: slug === 'index' ? home.sections : (PAGE_SECTIONS[slug] || ['Features', 'Cta']),
+        };
+    });
 }
 
 /**
@@ -802,6 +1142,135 @@ export function sectionsForKind(kind: PageKind): string[] {
         case 'event': return ['Hero', 'Steps', 'Stats', 'Cta', 'Faq', 'Contact'];
         default: return ['Hero', 'Features', 'Steps', 'Cta', 'Faq', 'Contact'];
     }
+}
+
+/**
+ *  ⛔ THE SECTIONS COME FROM WHAT HE ASKED FOR.
+ *
+ *  Measured on the owner's reference prompt: he named six things and the
+ *  page was assembled from a fixed eight, five of which he never mentioned
+ *  — Features, Steps, Stats, Team, Testimonials. The request was read once
+ *  to choose a KIND and then discarded, so a bicycle workshop, a coffee
+ *  roastery and a dental clinic all received the same headings.
+ *
+ *  Worse than the omissions were the substitutions: «phone CTA» became a
+ *  generic «Get started» and «booking form» became a name/email/message box.
+ *  An omission can be seen. A substitution hides behind something that looks
+ *  finished, which is why the run scored well and answered nothing.
+ *
+ *  Nothing was missing from the builder. A menu and a products grid carry
+ *  prices, Location renders opening hours and an address, tel: links exist,
+ *  the booking blueprint has its own fields. A severed wire, not an absent
+ *  organ.
+ *
+ *  ⛔ AND THE KIND STILL ANSWERS FOR HIS SILENCE. A page assembled only from
+ *  what he mentioned would leave a bare page for every brief that trusts Joe
+ *  to decide — the same defect from the other side. What he named is added
+ *  and what he did not name is left to the kind, minus the sections that
+ *  exist purely to fill a template he did not ask for.
+ */
+const SECTION_ASKS: Array<{ section: string; says: string[]; re: RegExp }> = [
+    { section: 'Menu', says: ['قائمة الطعام', 'menu'], re: /\bmenu\b|قائمة\s*(?:ال)?طعام|منيو/i },
+    { section: 'Products', says: ['خدمات', 'services', 'منتجات', 'products'],
+        re: /\bservices?\b|\bproducts?\b|خدمات|منتجات|بضائع/i },
+    { section: 'Pricing', says: ['الأسعار', 'pricing'], re: /\bpricing\b|\bplans\b|باقات|تسعير/i },
+    //  ⛔ «الموقع» IS TWO WORDS. It is the ADDRESS and it is the
+    //  WEBSITE, and the contract for this repository names it among the
+    //  Arabic traps beside «قائمة» and «العنوان». Listing it bare made
+    //  «اعمل لي موقع لمطعم» ask for a map section — caught by this
+    //  file's own negative case, which is what it is for. Only the
+    //  unambiguous forms answer here. And NO form of it survives: the
+    //  stemmer maps «موقع» and «موقعنا» to one root, correctly, so
+    //  morphology cannot separate the two meanings and only the words
+    //  that mean one thing are listed — «العنوان», «ساعات العمل»,
+    //  «خريطة», location, address, opening hours.
+    { section: 'Location', says: ['location', 'العنوان'],
+        re: /\blocation\b|\baddress\b|opening\s*hours|ساعات\s*(?:ال)?عمل|العنوان|خريطة/i },
+    { section: 'Gallery', says: ['معرض', 'gallery'], re: /\bgaller(?:y|ies)\b|معرض\s*صور|ألبوم/i },
+    { section: 'Faq', says: ['أسئلة', 'faq'], re: /\bfaqs?\b|أسئلة\s*(?:شائعة|متكررة)/i },
+    { section: 'Testimonials', says: ['آراء', 'testimonials'], re: /\btestimonials?\b|\breviews?\b|آراء\s*(?:ال)?عملاء|شهادات/i },
+    { section: 'Team', says: ['الفريق', 'team'], re: /\bteam\b|فريق\s*(?:ال)?عمل|موظف/i },
+    { section: 'Stats', says: ['إحصاء', 'stats'], re: /\bstats\b|\bstatistics\b|إحصاء|احصائ/i },
+    { section: 'Story', says: ['قصتنا', 'story'], re: /\bstory\b|\babout\s*us\b|قصتنا|من\s*نحن/i },
+    { section: 'Steps', says: ['خطوات', 'steps'], re: /\bsteps\b|how\s*it\s*works|خطوات|كيف\s*نعمل/i },
+];
+
+/**  Sections that exist to fill a page, not to answer a request. When he has
+ *   named what he wants, these are the ones that stop being free.  */
+/**
+ *  ⛔ THE SHAPE OF THE SENTENCE, NOT THE NAMES IN IT.
+ *
+ *  SECTION_ASKS above names subjects: services, prices, hours. It answers
+ *  the reference prompt and nothing else -- measured, by replacing every
+ *  subject noun with an invented word and keeping every structural one:
+ *
+ *      REAL  service list with prices, opening hours, phone CTA, booking form
+ *            ->  Hero · Location · Products · Cta · Contact
+ *      FAKE  quandle list with vorps, plimming hours, phone CTA, snarfing form
+ *            ->  the fixed eight, none of them his
+ *
+ *  «list», «hours», «CTA» and «form» all survived into the invented
+ *  sentence and not one was read. Joe was reading the NAMES of sections
+ *  and never the SHAPE of the request.
+ *
+ *  AND THIS IS NOT THE CATALOGUE THE FOURTH LAW FORBIDS. «coffee -> brown»
+ *  is a fact about a SUBJECT, and listing subjects fails on the next one he
+ *  names. «<anything> list» is a fact about FORM: «list» does not say what
+ *  the thing is about, it says what shape it takes. That is grammar, and
+ *  grammar is finite in a way subjects are not. The noun beside the shape
+ *  word is left entirely alone -- a service, a quandle, or a word he
+ *  invents tomorrow.
+ *
+ *  Boundaries are not optional: «list» lives inside «listen», «form»
+ *  inside «information», and Arabic has no \b at all.
+ */
+const SHAPE_ASKS: Array<{ section: string; re: RegExp }> = [
+    //  a listing of things, whatever the things are
+    { section: 'Products', re: /\b(?:list|listing|catalogue|catalog|grid|lineup)\b|قائمة\s+[\u0600-\u06ff]{3,}|لائحة\s+[\u0600-\u06ff]{3,}/i },
+    //  a form to fill in
+    { section: 'Contact', re: /\b(?:form|signup|sign-up|enquiry|inquiry)\b|نموذج\s+[\u0600-\u06ff]{3,}|استمارة/i },
+    //  when it opens, and where it is
+    { section: 'Location', re: /\bhours\b|\bmap\b|\bdirections\b|ساعات\s+[\u0600-\u06ff]{3,}|خريطة/i },
+    //  a picture wall
+    { section: 'Gallery', re: /\b(?:gallery|photos|portfolio)\b|معرض\s+[\u0600-\u06ff]{3,}|ألبوم/i },
+    //  questions and answers
+    { section: 'Faq', re: /\bfaqs?\b|\bquestions\b|أسئلة\s+[\u0600-\u06ff]{3,}/i },
+    //  what people said
+    { section: 'Testimonials', re: /\b(?:testimonials?|reviews?|quotes)\b|آراء\s+[\u0600-\u06ff]{3,}|شهادات/i },
+    //  a sequence
+    { section: 'Steps', re: /\bsteps\b|how\s+it\s+works|خطوات\s+[\u0600-\u06ff]{3,}/i },
+];
+
+const TEMPLATE_FILLER = new Set(['Features', 'Steps', 'Stats', 'Team', 'Testimonials']);
+
+export function sectionsForRequest(request: string, kind: PageKind): string[] {
+    const r = String(request || '');
+    const { saysAny } = require('../../../core/language/arabic');
+    const asked = new Set<string>();
+    //  Shape first: it holds for a sentence whose nouns mean nothing to us.
+    for (const entry of SHAPE_ASKS) if (entry.re.test(r)) asked.add(entry.section);
+    for (const entry of SECTION_ASKS) {
+        let hit = false;
+        try { hit = saysAny(r, entry.says); } catch { hit = false; }
+        if (hit || entry.re.test(r)) asked.add(entry.section);
+    }
+    const base = sectionsForKind(kind);
+    //  He named nothing this reader recognises: the kind answers in full,
+    //  exactly as it did before. Silence is a request to decide, not a
+    //  request for a bare page.
+    if (!asked.size) return base;
+    const out: string[] = [];
+    for (const s of base) {
+        if (asked.has(s) || !TEMPLATE_FILLER.has(s)) out.push(s);
+    }
+    for (const s of SECTION_ASKS) {
+        if (asked.has(s.section) && !out.includes(s.section)) {
+            //  Placed after Hero, where the thing he asked for belongs, rather
+            //  than appended under a call to action.
+            out.splice(Math.min(1, out.length), 0, s.section);
+        }
+    }
+    return [...new Set(out)];
 }
 
 /** Content derived from the request — deterministic, never blocks on a model. */
@@ -1162,7 +1631,28 @@ export default function App() {
       <ProductView content={content} />
       <Navbar content={content} pages={pages} />
       <main>
-        {path.startsWith('/product/') ? null : page ? page.render(content) : (
+        {path.startsWith('/product/') ? null : page ? (<>
+          {/*
+            A PAGE HE NAMED OPENS WITH THE NAME HE GAVE IT.
+
+            The home page carries its <h1> inside the hero. Every other page
+            was a bare stack of sections, and a section is not obliged to have
+            a heading — a contact page rendered <Contact /> and nothing above
+            it. Measured live: the audit reported broken_routes, «2 pages did
+            not open or have no main heading», and the delivery was refused
+            for a build whose routes were in fact correct.
+
+            So the title goes on the page. It is also the honest place for it:
+            the title is HIS word, read out of his request, and until now it
+            appeared only in the navigation.
+          */}
+          {page.path === '/' ? null : (
+            <section className="section page-head"><div className="wrap">
+              <h1>{page.title}</h1>
+            </div></section>
+          )}
+          {page.render(content)}
+        </>) : (
           <section className="section"><div className="wrap">
             <h1>404</h1>
             <p>${isAr ? 'هذه الصفحة غير موجودة — عد إلى الرئيسية من القائمة.' : 'This page does not exist — head back home from the menu.'}</p>
@@ -1391,7 +1881,7 @@ export default function Hero({ content }) {
       <h1>{content.heroTitle}</h1>
       <p className="lede">{content.heroLede}</p>
       <div className="hero-ctas">
-        <a className="btn" href="#contact">{content.cta}</a>
+        <a className="btn" href={content.contactHref || "#contact"}>{content.cta}</a>
         {content.heroSecondary ? (
           <a className="btn btn-ghost" href={content.heroSecondary.href}>{content.heroSecondary.label}</a>
         ) : null}
@@ -1650,7 +2140,7 @@ export default function Products({ content }) {
                 <strong className="product-price">{p.price}</strong>
                 {content.ordersApi
                   ? <OrderButton item={p.name} content={content} />
-                  : <a className="btn" href="#contact">{content.cta}</a>}
+                  : <a className="btn" href={content.contactHref || "#contact"}>{content.cta}</a>}
               </div>
             </div>
           ))}
@@ -1733,7 +2223,7 @@ export default function Pricing({ content }) {
               <ul>
                 {t.features.map((f) => <li key={f}>{f}</li>)}
               </ul>
-              <a className="btn" href="#contact">{content.cta}</a>
+              <a className="btn" href={content.contactHref || "#contact"}>{content.cta}</a>
             </div>
           ))}
         </div>
@@ -2075,7 +2565,7 @@ export default function ProductView({ content }) {
               <p className="product-price product-view-price">{p.price}</p>
               {content.ordersApi
                 ? <OrderButton item={p.name} content={content} />
-                : <a className="btn" href="#contact">{content.cta}</a>}
+                : <a className="btn" href={content.contactHref || "#contact"}>{content.cta}</a>}
             </div>
           </div>
         )}
@@ -2302,7 +2792,7 @@ export default function Cta({ content }) {
           <h2>{content.ctaBandTitle}</h2>
           <p className="cta-text">{content.ctaBandText}</p>
         </div>
-        <a className="btn btn-invert" href="#contact">{content.cta}</a>
+        <a className="btn btn-invert" href={content.contactHref || "#contact"}>{content.cta}</a>
       </div>
     </section>
   );
@@ -2698,6 +3188,52 @@ export class ReactProjectTool extends BaseTool {
         const uiLang = String(context?.language || '').toLowerCase();
         const replyLang = replyLanguageCode(context?.language, request);
         const isAr = replyLang === 'ar';
+
+        /**
+         *  THE REPLY IS FOR HIM. THE APP IS FOR WHOEVER WILL USE IT.
+         *
+         *  Measured on every ladder rung that built anything, with his
+         *  interface in English and his request in Arabic:
+         *
+         *      columns: العنوان · المؤلف · السعر
+         *      title:   «Records»
+         *      metric:  «Total السعر»
+         *
+         *  An application whose columns are Arabic and whose headings are
+         *  English is broken in both languages at once, and nobody would
+         *  ship it. It happened because ONE language decision was serving
+         *  two different readers: `replyLanguageCode` answers «what
+         *  language do I speak to HIM in», which the interface rightly
+         *  decides — and that answer was then used to label a thing he is
+         *  building for somebody else.
+         *
+         *  The artifact's chrome speaks the language of the labels it
+         *  carries, and those labels are his own words, read out of his
+         *  own sentence. With no columns to read there is nothing to take
+         *  a language from, so the reply language stands — which is the
+         *  same rule the project's NAME follows, and for the same reason.
+         */
+        /**
+         *  AND A PAGE HE NAMED IS HIS OWN WORD TOO.
+         *
+         *  The rule above is right and was reading half of it. It asked the
+         *  COLUMNS what language the artifact speaks, and a request that names
+         *  pages instead of columns fell through to the reply language.
+         *
+         *  Measured live, in front of the owner, with his interface set to EN:
+         *
+         *      \u00AB\u0627\u0639\u0645\u0644 \u0644\u064A \u0635\u0641\u062D\u0629 \u0647\u0628\u0648\u0637 \u0648\u0635\u0641\u062D\u0629 \u062A\u0648\u0627\u0635\u0644 \u0644\u0634\u0631\u0643\u0629 \u062A\u0646\u0638\u064A\u0641 \u0627\u0633\u0645\u0647\u0627 \u00AB\u0646\u0648\u0631\u00BB\u00BB
+         *        nav:     \u0646\u0648\u0631 \u00B7 \u0647\u0628\u0648\u0637 \u00B7 \u062A\u0648\u0627\u0635\u0644      \u2190 his words, Arabic
+         *        heading: \u00ABContact us\u00BB            \u2190 the reply language, English
+         *
+         *  An Arabic page under an English heading, from one sentence. Same
+         *  defect as the columns, one reader short.
+         *
+         *  So the question is \u00ABdid any of HIS words reach this artifact\u00BB, and
+         *  every kind of his word answers it: the columns he listed and the
+         *  pages he named. Neither is more his than the other.
+         */
+        const artifactIsAr = artifactLanguageIsArabic(request, isAr);
         try { broadcast({ type: 'build_started', sessionId, data: { tool: 'react_project', sessionId } } as any); } catch { /* UI optional */ }
 
         const term = (line: string) => {
@@ -2805,7 +3341,7 @@ export class ReactProjectTool extends BaseTool {
         // all. When the request names an application, the section library is
         // skipped entirely and a working app is generated instead.
         const appKind = detectAppKind(request) || inheritedAppKind;
-        const appBp: AppBlueprint | null = appKind ? blueprintFor(appKind, request, isAr) : null;
+        const appBp: AppBlueprint | null = appKind ? blueprintFor(appKind, request, artifactIsAr) : null;
         // سجّل قرار القالب نفسه، لا وعداً عاماً بالنجاح؛ هذا يكشف فوراً أي
         // تحوير لوسيط الطلب بين الخطة وأداة البناء في الاختبارات الحية.
         // The language Joe SPEAKS is the interface's, not the prompt's — and a
@@ -2814,10 +3350,88 @@ export class ReactProjectTool extends BaseTool {
         // report says whether the switcher arrived or was lost on the way.
         term(`template classification: page=${kind || 'generic'} · app=${appKind || 'none'} · mode=${appBp ? 'interactive' : 'presentation'} · lang=${isAr ? 'ar' : 'en'} (ui=${uiLang || 'absent'})`);
         const family = familyFor(request, kind);
-        const multiPage = wantsMultiPage(request);
-        const pages = pagesForKind(kind);
-        const sections = multiPage ? [...new Set(pages.flatMap(p => p.sections))] : sectionsForKind(kind);
+        const multiPage = wantsMultiPage(request, kind);
+        const pages = appPagesFor(kind, request, isAr);
+        //  From the REQUEST, with the kind answering only for his silence.
+        //  This line read `sectionsForKind(kind)` and that is where a brief
+        //  naming six things became a fixed eight, five of them unasked.
+        const sections = multiPage
+            ? [...new Set(pages.flatMap(p => p.sections))]
+            : sectionsForRequest(request, kind);
         const content = deriveContent(request, isAr, kind);
+        /**
+         *  ⛔ AND NOW THE WORDS ARE WRITTEN FOR HIS BUSINESS, NOT PULLED FROM
+         *  A CATALOGUE OF BUSINESS KINDS.
+         *
+         *  The owner, watching a live build of the coffee roastery he had just
+         *  described in Arabic: «this page is very poor and completely
+         *  unacceptable». Read from the `content.js` he was looking at:
+         *
+         *      heroLede = 'A real React app with instant performance, a
+         *                  consistent design system, ready to ship.'
+         *      perks    = ['Fresh every morning','Instant booking','Parking on site']
+         *      cta      = 'Book a table'
+         *
+         *  The line under his headline was JOE ADVERTISING HIMSELF. The perks
+         *  were a restaurant's. Only the brand and tagline came from what he
+         *  wrote.
+         *
+         *  ⛔ TWO LAYERS HAD ALREADY BEEN INVERTED THE SAME DAY — the design is
+         *  composed from his sentence, the section markup is authored per
+         *  request — and the page still read like every other page, because
+         *  the one layer a VISITOR actually reads was still a catalogue. That
+         *  is the seventh law paying out: the joining class was never «the
+         *  design is a catalogue», it was «Joe builds from a catalogue».
+         *
+         *  Same shape as the markup author: the model writes, the derived copy
+         *  is the floor, and anything that cannot be shown to be about HIS
+         *  subject is refused BY NAME in his terminal.
+         */
+        //  Same rule for the copy author: both spend the same fuel and both
+        //  would make a hermetic test wait on a provider.
+        const copyProvidersRationing = process.env.NODE_ENV === 'test'
+            || !!process.env.JEST_WORKER_ID
+            || (() => {
+                try {
+                    const { isProviderCoolingDown } = require('../../../core/llm/intelligent-router');
+                    return ['Groq (Free)', 'Groq', 'Anthropic', 'OpenAI'].some((p: string) => isProviderCoolingDown(p));
+                } catch { return false; }
+            })();
+        if (!input?.skipAuthoredCopy && !copyProvidersRationing) {
+            try {
+                const { authorCopy, COPY_FIELDS } = require('../../../core/design/authored-copy');
+                const { routeToModel } = require('../../../core/llm/intelligent-router');
+                const wanted = (COPY_FIELDS as readonly string[]).filter(f => f in content);
+                const written = await authorCopy({
+                    request,
+                    brand: content.brand,
+                    isArabic: artifactIsAr,
+                    current: content,
+                    fields: wanted,
+                }, async (prompt: string) => {
+                    let timer: any;
+                    try {
+                        return await Promise.race([
+                            routeToModel([{ role: 'user', content: prompt }]),
+                            new Promise<string>((_, rej) => {
+                                timer = setTimeout(() => rej(new Error('the model did not answer in time')), 90_000);
+                            }),
+                        ]);
+                    } finally { clearTimeout(timer); }
+                });
+                for (const [field, value] of Object.entries(written.fields)) (content as any)[field] = value;
+                term(Object.keys(written.fields).length
+                    ? `copy written for his business: ${Object.keys(written.fields).join(', ')}`
+                    : 'copy written for his business: none accepted — the derived copy stands');
+                for (const r of written.rejected as Array<{ field: string; reason: string }>) {
+                    term(`  refused ${r.field}: ${r.reason}`);
+                }
+            } catch (e: any) {
+                //  Copy is not worth failing a build over: the derived text is
+                //  a real floor, and a page with catalogue words beats no page.
+                term(`copy authoring skipped: ${String(e && e.message || e).slice(0, 120)}`);
+            }
+        }
         // BUSINESS MEMORY: the saved real details flow into the build — the
         // brand when the request named none, and a REAL contact block (tel:,
         // wa.me, mailto, socials). Absent profile → the old honest silence.
@@ -2927,6 +3541,35 @@ export class ReactProjectTool extends BaseTool {
                     .map(s => ({ href: `#${SECTION_ANCHOR[s]}`, label: SECTION_LABEL[s][isAr ? 0 : 1] }));
         };
         buildNavLinks();
+
+        /**
+         * WHERE «CONTACT» IS, DECIDED ONCE.
+         *
+         * Five components wrote `href="#contact"` — an in-page anchor. On a
+         * single page that is right. On a multi-page app the Contact section
+         * lives on its OWN page, so the anchor resolves to nothing on every
+         * page that is not it, and the hero's main call to action is a link
+         * that goes nowhere.
+         *
+         * Measured live on «اعمل لي صفحة هبوط وصفحة تواصل لشركة تنظيف»:
+         * the audit reported «12 رابط تنقّل يشير إلى قسم غير موجود في
+         * الصفحة» and «أزرار لا تستجيب» on a build whose routes were correct.
+         *
+         * Five components asking one question is five chances to answer it
+         * differently. Now they ask, and this answers — once, knowing both
+         * whether the app is multi-page and which page actually carries the
+         * section.
+         */
+        (content as any).contactHref = (() => {
+            if (!multiPage) return '#contact';
+            const home = pages.find(p => p.path === '/');
+            if (home && home.sections.includes('Contact')) return '#contact';
+            const holder = pages.find(p => p.sections.includes('Contact'));
+            //  No page carries it: leave the in-page anchor rather than
+            //  inventing a route. A dead anchor is a finding the audit
+            //  reports; an invented route is a 404 nobody explains.
+            return holder ? `#${holder.path}` : '#contact';
+        })();
         (content as any).headerLayout = directives.logoPosition === 'center' ? 'center' : '';
         (content as any).navDropdown = directives.navDropdown === true;
         (content as any).moreLabel = isAr ? 'المزيد' : 'More';
@@ -2967,7 +3610,7 @@ export class ReactProjectTool extends BaseTool {
                 ? activeProject.dir : '';
         const activeDir = ownedScaffoldDir ? path.resolve(ownedScaffoldDir) : '';
         const workspaceRoot = path.resolve(root);
-        const activeInsideRoot = !!activeDir && (activeDir === workspaceRoot || activeDir.startsWith(workspaceRoot + path.sep));
+        const activeInsideRoot = !!activeDir && isWithinRoot(activeDir, workspaceRoot);
         const reusableScaffold = activeInsideRoot && (
             isReactViteProjectDir(activeDir)
             // A bounded dependency repair may resume before the first build has
@@ -3167,7 +3810,19 @@ export class ReactProjectTool extends BaseTool {
             // Joe's REAL palette tokens — the same engine every page uses. The
             // data-theme blocks make the Navbar toggle actually change the
             // colours (paletteCss alone only follows the OS preference).
-            'src/styles/tokens.css': `${paletteCss(palette)}
+            //  …AND THE TYPE PAIRING, from the same layer the page builder uses.
+            //
+            //  `pickTypePair` has paired faces by subject for a long time and had
+            //  exactly one caller: WebPageBuilderTool. So a coffee roastery, a
+            //  dental clinic and a law firm all came out of the APP path in one
+            //  hardcoded family, while the PAGE path gave each of them its own.
+            //  Two generators, one design layer, only one of them wired to it —
+            //  and each file correct on its own, which is why it lasted.
+            //  The pairing goes THROUGH paletteCss, not beside it. Written
+            //  beside it first, and a guard caught the same seam reopening one
+            //  minute after it was closed for the colours: a token the app
+            //  reads, emitted by the caller instead of by the stylesheet.
+            'src/styles/tokens.css': `${paletteCss(palette, require('../../../core/design/layouts').pickTypePair(request))}
 ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the page's default, not an OS opinion */
 :root{${darkTokenBlock(palette)}}
 :root{color-scheme:dark}
@@ -3175,7 +3830,68 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
 :root[data-theme="light"]{${lightTokenBlock(palette)}}
 :root[data-theme="dark"]{color-scheme:dark}
 :root[data-theme="light"]{color-scheme:light}`,
-            'src/styles/base.css': fileBaseCss(family) + directivesCss(directives),
+            //  ⛔ AND THE MOTION, from the same layer the page builder uses.
+            //
+            //  The owner's words: «every prompt designs the same design and the
+            //  SAME MOVEMENTS, in an old style». Measured: pickRevealStyle
+            //  offers five motions derived from the request and had exactly one
+            //  caller -- WebPageBuilderTool. The app generator referenced it
+            //  zero times, so every application Joe built had no motion at all.
+            //
+            //  Fourth instance of one structure: two generators, one design
+            //  layer, only one wired. Colours, typefaces, sections, motion.
+            //
+            //  revealCss carries its own prefers-reduced-motion branch, and it
+            //  makes the sections VISIBLE rather than merely faster -- a reveal
+            //  that still moves is not a concession.
+            //  ⛔ AND THE COMPOSITION — the largest thing that was missing.
+            //
+            //  The owner, after the colours and typefaces and sections had all
+            //  been taught to follow the subject: «Joe builds bad and repeated
+            //  designs on every prompt». He was right, and every fix before
+            //  this one changed what FILLS the page and never the page.
+            //
+            //  layouts.ts has carried seven compositions for a long time --
+            //  split, centered, bento, editorial, showcase, overlap, contrast
+            //  -- chosen from the request by pickArchetype. Its callers were:
+            //  WebPageBuilderTool 1, this generator 0. So a coffee roastery, a
+            //  dental clinic and a law firm got different colours poured into
+            //  one stacked skeleton, and to an eye the skeleton IS the design.
+            //
+            //  Fifth instance of one structure: one design layer, two
+            //  generators, only one wired. This is the one that made the other
+            //  four look as though they had not worked.
+            'src/styles/base.css': (() => {
+                const theme = require('../../../core/design/theme');
+                //  ⛔ COMPOSED, NOT CHOSEN. The line above this one used to
+                //  read pickArchetype() and take one of seven named layouts.
+                //  The owner's judgement on that: «You are putting Joe inside
+                //  limits and imprisoning him. It makes no sense for a system
+                //  as large as Joe to own seven designs.» He was right, and
+                //  it is his own fourth law: a table of seven names is a
+                //  catalogue, and the eighth business he describes tomorrow
+                //  was never on it.
+                //
+                //  composeDesign derives TEN decisions from his sentence --
+                //  rhythm, measure, split, alignment, radius, rule weight,
+                //  elevation, accent, density, texture -- each inside a band a
+                //  designer would work in. Measured on a hundred briefs: a
+                //  hundred distinct designs, and every dimension varying
+                //  independently of the others.
+                //
+                //  No model sits in this path, so the same brief still
+                //  rebuilds the same page exactly.
+                const composer = require('../../../core/design/composer');
+                const genome = composer.composeDesign(request);
+                return [
+                    fileBaseCss(family) + directivesCss(directives),
+                    composer.composedCss(genome),
+                    theme.revealCss(theme.pickRevealStyle(request)),
+                //  A named constant, because a join whose separator loses its
+                //  escape puts a REAL newline inside a quoted string and the
+                //  build dies dozens of lines away. That has happened here.
+                ].join(String.fromCharCode(10));
+            })(),
         };
         // AN APPLICATION REPLACES ALL OF IT. Not one marketing section, not
         // one fabricated customer, not one restaurant dish: the program, its
@@ -3301,7 +4017,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 const ownTable = String(RECORDS_TABLE_BY_KIND[effectiveBp.kind]?.[0] || '');
                 if (ownTable && !builtKeys.has(ownTable)) {
                     term(`data link: this system builds no «${ownTable}» table — the ${effectiveBp.kind} template stands down for the system's own model`);
-                    effectiveBp = blueprintFor('generic', request, isAr);
+                    effectiveBp = blueprintFor('generic', request, artifactIsAr);
                 }
             }
             let strippedRelation = false;
@@ -3354,7 +4070,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             });
             if (declaration) term(declaration);
             const appFiles = buildAppFiles(runBp, {
-                brand: content.brand, isArabic: isAr, api: appApi, apiResources,
+                brand: content.brand, isArabic: artifactIsAr, api: appApi, apiResources,
                 //  The app remembers the words it was built from, so an edit can
                 //  re-derive his columns instead of replacing them with a stock set.
                 sourceRequest: request,
@@ -3392,9 +4108,139 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
         // Only the components this KIND actually uses are written — a
         // restaurant carries Menu.jsx, a store carries Pricing.jsx, and no
         // project ships dead files.
+        /**
+         *  The deterministic body of every component the model replaces, kept
+         *  by path. It is the floor: if the authored page fails the real
+         *  build, these go back and the build runs again.
+         */
+        const authoredFallback: Record<string, string> = {};
         for (const c of appBp ? [] : ['Navbar', ...sections, 'Footer']) {
             const tpl = componentTemplates[c];
             if (tpl) files[`src/components/${c}.jsx`] = tpl();
+        }
+        /**
+         *  ⛔ AND HERE THE MODEL AUTHORS THEM, INSTEAD OF FILLING THEM.
+         *
+         *  The owner: «I used many of Joe's competitors' sites and the
+         *  advantage was overwhelmingly theirs. What do we do?»
+         *
+         *  Measured before answering: zero model calls in this generator, and
+         *  24 components written by hand. So the request never changed the
+         *  SHAPE of a page — only the words poured into it, which is why every
+         *  colour, typeface, section and motion fix measured true and still
+         *  lost. They decorated a form nobody could leave.
+         *
+         *  The two layers are inverted here, and only here:
+         *      before   templates AUTHOR the interface, the model is absent
+         *      after    the model AUTHORS it, the templates are the FLOOR
+         *
+         *  Every deterministic body is kept in `authoredFallback` before it is
+         *  replaced. A draft that cannot be proven safe is refused by name and
+         *  its template stands; a draft that breaks the real build is rolled
+         *  back below and the build runs again. So the worst case is exactly
+         *  today's page — never a broken one, never one that claims what it
+         *  does not do.
+         */
+        /**
+         *  ⛔ AUTHORING STANDS DOWN WHEN THE PROVIDERS ARE COOLING.
+         *
+         *  Measured: the extra calls exhausted the free tier, the router fell
+         *  through to a keyless provider, and the very next build was planned
+         *  so badly that «اعمل لي موقع…» became a file read and came back
+         *  `{"success":false,"data":"File not found"}` — twice, reproducibly.
+         *
+         *  The planner's fuel is not the interface's to spend. When the good
+         *  provider is already rationing, the templates are a real floor and
+         *  a built page beats a beautiful one that never got planned.
+         */
+        /**
+         *  ⛔ AND IT NEVER RUNS INSIDE A TEST.
+         *
+         *  Measured: adding the authoring turned nine suites red at once --
+         *  design-families, api-project, business-profile, crash-and-repair-loop,
+         *  deploy-project-workspace, file-edit-recovery, auto-tester-contract,
+         *  audit-measures-the-system, build-info -- every one of them a suite
+         *  that builds a project. The failure was always the same:
+         *
+         *      thrown: "Exceeded timeout of 10000 ms for a test."
+         *        at design-families.test.ts:79  new ReactProjectTool().execute(…)
+         *
+         *  Six authoring calls at ~7s each do not fit in a ten-second test, and
+         *  they should never have been trying: a test that reaches a provider
+         *  measures the provider's mood, not the code. It goes red when a free
+         *  tier is busy and green when it is not, which is worse than no test.
+         *
+         *  ⛔ THE CLASS: a new capability quietly added LATENCY AND A NETWORK
+         *  DEPENDENCY to a path that many hermetic tests run through. The
+         *  authoring layer itself is tested directly, with a stubbed caller,
+         *  in `the-interface-has-an-author-now` -- that is where it belongs.
+         */
+        const insideATest = process.env.NODE_ENV === 'test' || !!process.env.JEST_WORKER_ID;
+        const providersAreRationing = insideATest || (() => {
+            try {
+                const { isProviderCoolingDown } = require('../../../core/llm/intelligent-router');
+                return ['Groq (Free)', 'Groq', 'Anthropic', 'OpenAI'].some((p: string) => isProviderCoolingDown(p));
+            } catch { return false; }
+        })();
+        if (!appBp && sections.length && providersAreRationing) {
+            term('interface authoring stood down — the model providers are rationing, and the planner needs that quota more than the page does');
+        }
+        if (!appBp && sections.length && !providersAreRationing) {
+            const { authorComponents, describeShapes } = require('../../../core/design/authored-ui');
+            const { composeDesign } = require('../../../core/design/composer');
+            const { routeToModel } = require('../../../core/llm/intelligent-router');
+            const names = ['Navbar', ...sections, 'Footer'].filter(c => componentTemplates[c]);
+            const authored = await authorComponents({
+                request,
+                brand: content.brand,
+                isArabic: artifactIsAr,
+                components: names,
+                //  Only keys that really exist, so an authored section cannot
+                //  invent a field and render an empty box where data belongs.
+                contentKeys: Object.keys(content || {}),
+                //  Names alone invited a real crash: `{content.heroSecondary}`
+                //  rendered an object as a React child. The shapes come from
+                //  the content object itself, so they cannot drift from it.
+                contentShapes: describeShapes(content || {}),
+                genome: composeDesign(request),
+                //  ⛔ What each authored section REPLACES, so «it must still
+                //  work» can be measured rather than hoped for. Contact was
+                //  authored into a beautiful form that did nothing at all.
+                replacing: Object.fromEntries(names.map((c: string) => [c, files[`src/components/${c}.jsx`] || ''])),
+                tokens: [
+                    '--brand', '--on-brand', '--ink', '--paper', '--card', '--panel',
+                    '--line', '--muted', '--ring', '--measure', '--rhythm', '--gap',
+                    '--section-space', '--radius-composed', '--rule', '--elevation',
+                ],
+            }, async (prompt: string) => {
+                //  Bounded on purpose: a provider that hangs must cost the
+                //  build a minute, not the whole delivery. A timeout lands in
+                //  `rejected` as a reachability fact, never as a design choice.
+                let timer: any;
+                try {
+                    return await Promise.race([
+                        routeToModel([{ role: 'user', content: prompt }]),
+                        new Promise<string>((_, rej) => {
+                            timer = setTimeout(() => rej(new Error('the model did not answer in time')), 120_000);
+                        }),
+                    ]);
+                } finally { clearTimeout(timer); }
+            });
+            for (const [name, code] of Object.entries(authored.files) as Array<[string, string]>) {
+                const rel = `src/components/${name}.jsx`;
+                authoredFallback[rel] = files[rel];
+                files[rel] = code;
+            }
+            const kept = Object.keys(authoredFallback).length;
+            term(kept
+                ? `interface authored by the model: ${Object.keys(authored.files).join(', ')} — the template of each is kept as the floor`
+                : 'interface authored by the model: none accepted — the deterministic sections stand');
+            //  Never silent: a refusal the owner cannot see is a refusal he
+            //  cannot judge, and a rejected draft that vanishes quietly is how
+            //  «it looks the same again» becomes unexplainable.
+            for (const r of authored.rejected as Array<{ name: string; reasons: string[] }>) {
+                term(`  refused ${r.name}: ${r.reasons.join(' · ')}`);
+            }
         }
         // Menu/Products import OrderButton statically — ship it with them.
         // An unlinked app never renders it (ordersApi is ''), and the
@@ -3691,6 +4537,10 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
         // ── prove it compiles: npm install + vite build, streamed live ──────
         let installed = false, built = false, npmMissing = false;
         let buildDiagnosis: any = null;
+        // The exit codes leave this block now. They are the only witnesses to
+        // WHY there is no bundle, and the delivery below is where that is read.
+        let installExit: number | null = null;
+        let buildExit: number | null = null;
         if (!noInstall) {
             // Through the Single Execution Authority — a direct spawn here
             // BLOCKED STARTUP on the user's machine (ExecutionEnforcer).
@@ -3732,6 +4582,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             }
             if (sessionId) broadcastThinkingDetail(sessionId, isAr ? '📦 أثبّت الحزم (npm install)…' : '📦 Installing packages (npm install)…');
             const inst = await run('npm', ['install', '--no-audit', '--no-fund'], 240_000);
+            installExit = inst;
             npmMissing = inst === -1;
             installed = inst === 0;
             // The exit code is already on screen, printed by the session. What
@@ -3743,7 +4594,12 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                     : `install did not finish (exit ${inst}) — the build below will say what broke`);
             if (installed) {
                 if (sessionId) broadcastThinkingDetail(sessionId, isAr ? '🏗️ أبني نسخة الإنتاج (vite build)…' : '🏗️ Building for production (vite build)…');
-                let b = await run('npm', ['run', 'build'], 180_000);
+                //  …and the build gets the same treatment. Three minutes is
+                //  ample for a warm vite build (measured: 3.77s in his own
+                //  project) and it is the FIRST one, on a cold machine with a
+                //  cold esbuild, that decides whether he ever sees a preview.
+                let b = await run('npm', ['run', 'build'], 600_000);
+                buildExit = b;
                 built = b === 0 && fs.existsSync(path.join(proj, 'dist', 'index.html'));
                 shell.note(built
                     ? 'dist/index.html exists — this is a real bundle, not a claim'
@@ -3762,6 +4618,32 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                  * reported, never one already declared, and exactly one retry,
                  * so a genuinely broken project cannot loop.
                  */
+                /**
+                 *  ⛔ THE FLOOR, ACTUALLY PUT BACK — NOT PROMISED.
+                 *
+                 *  An authored section is the one part of this project that no
+                 *  guard can fully prove before the bundler sees it: the
+                 *  validator can refuse what is unsafe or untrue, but only the
+                 *  real build knows whether the JSX compiles. So the rollback
+                 *  is not a comment about safety, it is a measured step —
+                 *  write the deterministic bodies back, build again, and say
+                 *  so in the terminal.
+                 *
+                 *  It runs BEFORE the log doctor on purpose. Diagnosing a
+                 *  missing package from an error the authored file caused
+                 *  would chase a symptom, and the remedy would install
+                 *  something the project never needed.
+                 */
+                if (!built && Object.keys(authoredFallback).length) {
+                    for (const [rel, body] of Object.entries(authoredFallback)) {
+                        fs.writeFileSync(path.join(proj, rel), body, 'utf-8');
+                    }
+                    term(`the authored interface did not build (exit ${b}) — the deterministic sections were put back: ${Object.keys(authoredFallback).map(r => r.split('/').pop()).join(', ')}`);
+                    b = await run('npm', ['run', 'build'], 300_000);
+                    buildExit = b;
+                    built = b === 0 && fs.existsSync(path.join(proj, 'dist', 'index.html'));
+                    term(`vite build (after putting the templates back) → ${built ? 'OK' : `exit ${b}`}`);
+                }
                 if (!built) {
                     // The diagnosis is no longer limited to missing packages:
                     // the log doctor reads the build's own words, names what is
@@ -3782,6 +4664,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                         term(`build remedy: ${remedy.note}`);
                         if (remedy.applied) {
                             b = await run('npm', ['run', 'build'], 180_000);
+                            buildExit = b;
                             built = b === 0 && fs.existsSync(path.join(proj, 'dist', 'index.html'));
                             term(`vite build (after: ${remedy.note}) → ${built ? 'OK' : `exit ${b}`}`);
                             if (built) buildDiagnosis = { ...d, healed: true, note: remedy.note };
@@ -4042,6 +4925,111 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
              *  that matters to him. Borrowing proves a session was found; only
              *  a watcher proves he could have seen it.
              */
+            /**
+             *  ⛔ A FLOOR THAT HEARS THE COMPILER BUT NOT THE BROWSER IS NOT
+             *  A FLOOR.
+             *
+             *  Measured on a live build, and this is the whole reason the step
+             *  exists. The authored sections passed every static check, the
+             *  project COMPILED, `dist/index.html` existed — and the page then
+             *  died in the browser:
+             *
+             *      empty_page  — no button, no link, no form on the page
+             *      page_errors — 5, «TypeError: $.toLowerCase is not a function»
+             *      success: false
+             *
+             *  Joe refused to deliver it, which is the honesty layer doing its
+             *  job. But the rollback beside the build only fires when the
+             *  BUILD fails, so a page that compiles and then crashes kept the
+             *  authored files and left the owner with nothing.
+             *
+             *  ⛔ AND THE CLASS IS THE ONE THE REPOSITORY ALREADY NAMED: the
+             *  guard stands at the writer, not at the reader. «A guard reads
+             *  what reaches the owner, not what is written in the source.»
+             *  What reaches him is a rendered page, so the floor belongs here
+             *  — behind the same judge that decides delivery — not behind the
+             *  bundler's exit code.
+             *
+             *  Bounded: one rollback, one rebuild, one re-audit. If the
+             *  deterministic page is also blocked, that is a defect the
+             *  authored sections did not cause and it must stay visible.
+             */
+            /**
+             *  ⛔ AND IT ROLLS BACK FOR WHAT THE AUTHORING CAUSED, NOT FOR
+             *  EVERY FAULT THE PAGE HAS.
+             *
+             *  The first version fired on ANY high finding. Measured on a live
+             *  build: the authored page came back with exactly one blocker —
+             *  `form_dead_submit`, a contact form with nothing behind it. The
+             *  rollback fired, the templates went back, the build and audit ran
+             *  again, and the verdict was:
+             *
+             *      success: false
+             *      high_severity_findings_survived: form_dead_submit
+             *
+             *  ⛔ THE SAME FAULT. So the rollback threw away a working authored
+             *  interface to repair something it had not broken and could not
+             *  fix. That is a guard punishing the new thing for a fault the old
+             *  thing also has — and the measurement that proves it is that the
+             *  finding SURVIVED the rollback.
+             *
+             *  So the trigger is the faults that mean the authored markup
+             *  itself failed to render: an empty page, a page error, a console
+             *  error, a thrown script. A form with no server and a button
+             *  wired to nothing belong to the project whether a model or a
+             *  template wrote the markup, and they are Joe's to fix elsewhere.
+             *
+             *  Both audits are read, because they do not agree on the field
+             *  name: app-audit writes `id`, behaviour-audit writes `code`.
+             */
+            const AUTHORED_RENDER_FAULTS = new Set([
+                'empty_page', 'page_errors', 'console_errors', 'js_errors',
+            ]);
+            const runtimeBlockers = ((audit?.findings || []) as any[]).filter(f =>
+                (f.severity === 'high' || f.severity === 'critical')
+                && AUTHORED_RENDER_FAULTS.has(String(f.id || f.code || '')));
+            if (runtimeBlockers.length && Object.keys(authoredFallback).length && !audit?.skipped) {
+                term(`the authored interface broke the page while it RAN (${runtimeBlockers.map((f: any) => f.id || f.kind || 'high').slice(0, 3).join(', ')}) — putting the deterministic sections back`);
+                for (const [rel, body] of Object.entries(authoredFallback)) {
+                    fs.writeFileSync(path.join(proj, rel), body, 'utf-8');
+                }
+                Object.keys(authoredFallback).forEach(k => delete authoredFallback[k]);
+                /**
+                 *  ⛔ THROUGH `shell.run`, BECAUSE JOE REFUSES TO BOOT OTHERWISE
+                 *  — AND HE IS RIGHT.
+                 *
+                 *  The first version of this rebuild called Node's process
+                 *  spawner directly, since the local `run` helper lives in a
+                 *  narrower block. The system would not start:
+                 *
+                 *      [ExecutionEnforcer] FATAL: EXECUTION ARCHITECTURE
+                 *      VIOLATIONS DETECTED!
+                 *        ❌ ReactProjectTool.ts: Illegal child_process import
+                 *        ❌ ReactProjectTool.ts: Illegal process-spawn call
+                 *      SYSTEM STARTUP BLOCKED.
+                 *
+                 *  A guard that stops the whole system rather than letting one
+                 *  convenient shortcut through is exactly the kind this
+                 *  repository is built out of. Every command Joe runs goes
+                 *  through one execution path so it can be measured, bounded
+                 *  and shown in his terminal — and a rebuild he cannot see is
+                 *  a rebuild he cannot check.
+                 */
+                const rbRes = await shell.run('npm', ['run', 'build'], { cwd: proj, timeout: 300_000 });
+                const rb = rbRes.missing ? -1 : rbRes.timedOut ? -2 : (rbRes.exitCode as number);
+                buildExit = rb;
+                built = rb === 0 && fs.existsSync(path.join(proj, 'dist', 'index.html'));
+                term(`vite build (after putting the templates back) → ${built ? 'OK' : `exit ${rb}`}`);
+                if (built) {
+                    audit = await auditBuiltApp(path.join(proj, 'dist'), {
+                        offline: noInstall,
+                        timeoutMs: 30_000,
+                        watchSessionId: auditSid,
+                        ...(liveServer ? { serveUrl: liveServer.url } : {}),
+                    });
+                    term(`self-QA after rollback: ${audit?.skipped ? `skipped (${audit.skipped})` : `${audit.score}/100`}`);
+                }
+            }
             if (audit && !someoneIsWatching) audit.visible = false;
             term(audit.skipped
                 ? `self-QA: skipped (${audit.skipped})`
@@ -4653,6 +5641,17 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
         // evidence is therefore a delivery blocker, just like a surviving error.
         const requestedVisualAudit = /(?:\b(?:browser|visual|preview|inspect|audit)\b|متصفح|معاينة|مرئي|بصري|دقّق|دقق|تدقيق)/i.test(request);
         const visualAuditUnavailable = requestedVisualAudit && (!audit || !!audit.skipped);
+        /**
+         * The evidence the blocker needs to name the RIGHT layer. `attempted`
+         * is the honest term: a request that forbade the network scaffolds
+         * without building, and nothing that never ran may be reported as
+         * having failed.
+         */
+        const buildOutcome: BuildOutcome = {
+            attempted: !noInstall, built, installed, npmMissing,
+            installExit, buildExit, diagnosis: buildDiagnosis,
+        };
+        const blamesTheBuild = !audit && buildOutcome.attempted && !built;
         const qualityDeliveryBlocked = blockers.length > 0 || visualAuditUnavailable;
         if (blockers.length) {
             // The artefact exists, but its final acceptance is rejected. Say both
@@ -4661,7 +5660,12 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             term(`self-QA: DELIVERED WITH ${blockers.length} BLOCKING FINDING(S) — final acceptance remains blocked: ${blockers.map(f => f.id).join(', ')}`);
         }
         if (visualAuditUnavailable) {
-            term('self-QA: DELIVERY BLOCKED — requested browser audit was not completed');
+            // …and the transcript says the same thing the error says. A terminal
+            // that blames the browser while the error blames the build is the
+            // seam this fix exists to close.
+            term(blamesTheBuild
+                ? `delivery BLOCKED — ${deliveryErrorForBuild(buildOutcome)}`
+                : 'self-QA: DELIVERY BLOCKED — requested browser audit was not completed');
         }
 
         const qaBlock = (() => {
@@ -4876,7 +5880,7 @@ ${built ? '✅ npm install + vite build succeeded — the production build is in
             ok: !deliveryBlocked,
             error: deliveryBlocked
                 ? (visualAuditUnavailable
-                    ? 'required_visual_audit_not_completed'
+                    ? deliveryErrorForVisualAudit(audit, buildOutcome)
                     : fidelityEvidenceUnavailable
                         ? 'fidelity_unverifiable'
                         : fidelityMismatch
@@ -4884,8 +5888,33 @@ ${built ? '✅ npm install + vite build succeeded — the production build is in
                             : askedButMissing.length
                             ? 'requested_features_not_proven'
                             : acceptanceBlocked
-                                ? 'acceptance_criteria_unmet'
-                                : 'react_delivery_quality_gate_failed')
+                                ? deliveryErrorForAcceptance(acceptance.criteria as any)
+                                //  EVERY BLOCKER CARRIES ITS OWN NAME.
+                                //
+                                //  `blockers` — surviving HIGH-severity audit findings — was
+                                //  the one term of deliveryBlocked with no branch here, so the
+                                //  one condition that actually fires on a real run fell through
+                                //  to the generic tail. Measured live on «اعمل لي صفحة هبوط
+                                //  وصفحة تواصل لشركة تنظيف», the owner's whole reply was:
+                                //
+                                //      ⚠️ توقّفت عند الخطوة «Building» — react_delivery_quality_gate_failed
+                                //
+                                //  He is not a programmer. That sentence names nothing he can
+                                //  act on, and Joe knew exactly which findings survived.
+                                : blockers.length
+                                    //  AND IT CARRIES WHAT IT FOUND, not only what it is called.
+                                    //  `broken_routes` is a label; «صفحة لم تُفتح أو بلا
+                                    //  عنوان رئيسي: contact.html» is a thing he can act on, and the
+                                    //  audit had already written it in his language.
+                                    ? `high_severity_findings_survived: ${blockers.slice(0, 3).map((f: any) => {
+                                        const id = String(f.id || f.type || 'unnamed');
+                                        const said = String((isAr ? f.detail : f.detailEn) || f.detail || f.detailEn || '').trim();
+                                        return said ? `${id} — ${said}` : id;
+                                    }).join(' | ')}`
+                                    //  If this is ever reached, the truth is not that a
+                                    //  quality gate failed — it is that something blocked
+                                    //  delivery and no branch above could say what.
+                                    : 'delivery_blocked_without_a_named_cause')
                 : undefined,
             output: { message, acceptance,
                 path: proj,

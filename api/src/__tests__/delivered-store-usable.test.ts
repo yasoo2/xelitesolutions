@@ -133,7 +133,18 @@ describe('a picture address from the database cannot break a card', () => {
         expect(helper).toContain('String.fromCharCode(92)');
         expect(helper).not.toContain('.test(');
         expect(helper).not.toContain('/^');
-        expect(tpl).toMatch(/\{webImage\(p\.image\) \? <img src=\{webImage\(p\.image\)\}/);
+        //  ⛔ THE CLAIM IS THAT THE SANITISED VALUE IS WHAT THE CARD USES.
+        //
+        //  This pinned one spelling of it: the ternary that chose between the
+        //  image and an empty div. The store draws a designed card when there
+        //  is no photo now, so the same value reaches the same <img> through
+        //  an || instead of a ?, and the guard went red while the thing it
+        //  names -- the raw address never being used -- was untouched.
+        //
+        //  Both halves are asserted below, on the card itself: the sanitiser
+        //  IS what feeds the src, and the raw value is NOT. That is the claim,
+        //  and it survives whichever operator carries it.
+        expect(tpl).toMatch(/<img src=\{webImage\(p\.image\)/);
         // …and the STORE card no longer renders the raw value. (The social
         // feed's `p.image` is a data URI the app itself made from an upload —
         // a different value with a different provenance, deliberately left.)

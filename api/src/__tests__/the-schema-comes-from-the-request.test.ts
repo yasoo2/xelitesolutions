@@ -234,12 +234,36 @@ describe('a bare noun does not open a column list', () => {
     // NEGATIVE — Arabic recording words must not match inside pronouns, and the
     // English noun «log of» must not be mistaken for the recording verb.
     it.each([
-        ['فيهم', 'بدي برنامج يحفظ لي زُرْقَمُونِي وأرقامهم وعناوينهم ويخليني أبحث فيهم وأعدّلهم وأحذفهم'],
         ['أتابعهم', 'عندي عملاء وأتابعهم بنفسي'],
         ['أديرها', 'الملفات وأديرها يدوياً'],
         ['log of', 'a log of visitors from last year'],
     ])('%s does not open a recording list from inside a token', (_label, text) => {
         expect(derivedColumns(text)).toBeNull();
+    });
+
+    //  «فيهم» USED TO STAND HERE, AND IT MOVED FOR A REASON.
+    //
+    //  «بدي برنامج يحفظ لي زُرْقَمُونِي وأرقامهم وعناوينهم ويخليني
+    //  أبحث فيهم وأعدّلهم وأحذفهم» was asserted to derive nothing, and at
+    //  the time nothing could read it. It is a records request: his own
+    //  invented noun, their numbers, their addresses, and three things
+    //  he wants to do to them. Returning nothing meant a template.
+    //
+    //  A grammar path reads it now — the pronoun on the later names
+    //  points back at the first — and the invariant this test was
+    //  written to protect is asserted separately below: «فيهم» still
+    //  does not open a list from inside its own token.
+    it('فيهم is read by grammar, not by a recording word inside a token', () => {
+        expect((derivedColumns('بدي برنامج يحفظ لي زُرْقَمُونِي وأرقامهم وعناوينهم ويخليني أبحث فيهم وأعدّلهم وأحذفهم') || [])
+            .map(f => f.label)).toEqual(['زُرْقَمُونِي', 'أرقامهم', 'عناوينهم']);
+    });
+
+    it('…and فيهم on its own still opens nothing', () => {
+        //  The original invariant, stated where it cannot be lost: with
+        //  no pronoun pointing back and no container, the token «فيهم»
+        //  must not be read as the opener «فيه».
+        expect(derivedColumns('بدي صفحة فيهم الاسم والسعر والتاريخ')).toBeNull();
+        expect(derivedColumns('بدي شي فيهم الاسم والسعر والتاريخ')).toBeNull();
     });
 
     // NEGATIVE — every Arabic recording alternative must be bounded, including
@@ -314,9 +338,25 @@ describe('a bare noun does not open a column list', () => {
      *  deliberate act with a test to change, not an accident — and so that
      *  nobody reading the five-column cases above assumes any list works.
      */
-    it('two named columns are below the floor — a known, deliberate limit', () => {
-        expect(derivedColumns('بدي جدول أسجل فيه المواعيد: اسم المريض ورقم تلفونه')).toBeNull();
+    it('two named columns ARE a table once he has named the container', () => {
+        //  This asserted null, and a live round overruled it: he wrote
+        //  «بدي جدول للكتب فيه العنوان والسعر» — a container and two columns —
+        //  and received a marketing brochure. Three is the right floor for a
+        //  bare run of nouns in prose, because «الرياض، جدة، الدمام» must not
+        //  become a schema. It is the wrong floor once he has said «جدول»:
+        //  the ambiguity the third item guarded against is already gone.
+        //
+        //  One is still refused — a single noun after «جدول» is its subject.
+        expect((derivedColumns('بدي جدول أسجل فيه المواعيد: اسم المريض ورقم تلفونه') || [])
+            .map(f => f.label)).toEqual(['اسم المريض', 'رقم تلفونه']);
+        //  The English half stays null, and for the reason the rule
+        //  names: he wrote «track» and «clients», and neither is a
+        //  container. No container, no lowered floor — the sentence is
+        //  refused by the same rule that reads the Arabic one.
         expect(derivedColumns('I want to track my clients: name and phone')).toBeNull();
+        expect((derivedColumns('I want a clients table: name and phone') || [])
+            .map(f => f.label)).toEqual(['name', 'phone']);
+        expect(derivedColumns('بدي جدول للمبيعات')).toBeNull();
     });
 });
 

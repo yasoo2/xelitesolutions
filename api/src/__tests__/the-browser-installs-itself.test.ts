@@ -88,7 +88,35 @@ describe('THE WIRING: the audit retries instead of giving up', () => {
         expect(SRC).not.toMatch(/detail: 'something went wrong/i);
     });
 
-    it('and the build carries his no-network instruction into the audit', () => {
-        expect((REACT.match(/offline: noInstall,/g) || []).length).toBe(2);
+    it('and EVERY audit carries his no-network instruction, however many there are', () => {
+        /**
+         *  ⛔ THIS COUNTED OCCURRENCES INSTEAD OF TESTING THE CLAIM.
+         *
+         *  It asserted `offline: noInstall,` appeared exactly twice. A third
+         *  audit was added — the re-audit after an authored interface is
+         *  rolled back — and this went red although that call site passes the
+         *  flag correctly. And an audit added WITHOUT the flag, while another
+         *  was removed, would have left the count at two and this green: the
+         *  owner's «لا تستخدم الشبكة» quietly ignored by one call site.
+         *
+         *  The claim is «his instruction reaches every audit», so every call
+         *  site is read.
+         */
+        const calls: string[] = [];
+        let i = REACT.indexOf('auditBuiltApp(');
+        while (i >= 0) {
+            let depth = 0, j = REACT.indexOf('(', i);
+            const start = j;
+            for (; j < REACT.length; j++) {
+                if (REACT[j] === '(') depth++;
+                else if (REACT[j] === ')') { depth--; if (depth === 0) break; }
+            }
+            calls.push(REACT.slice(start, j + 1));
+            i = REACT.indexOf('auditBuiltApp(', j);
+        }
+        expect(calls.length).toBeGreaterThanOrEqual(2);
+        const without = calls.filter(c => !c.includes('offline: noInstall'));
+        expect({ audits: calls.length, ignoringHisInstruction: without.length })
+            .toEqual({ audits: calls.length, ignoringHisInstruction: 0 });
     });
 });

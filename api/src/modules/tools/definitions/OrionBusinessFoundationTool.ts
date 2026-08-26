@@ -1,4 +1,5 @@
 import fs from 'fs';
+import { isWithinRoot } from '../path-containment';
 import path from 'path';
 import { BaseTool } from '../base';
 import { ToolPermission, ToolExecutionResult } from '../types';
@@ -43,7 +44,7 @@ export class OrionBusinessFoundationTool extends BaseTool {
     };
     const root = path.resolve(String(context?.workspaceRoot || workspaceService.getExplorerRoot()));
     const projectPath = path.join(root, ORION_DIR);
-    if (!projectPath.startsWith(`${root}${path.sep}`)) return { ok: false, error: 'unsafe project path', logs };
+    if (!isWithinRoot(projectPath, root)) return { ok: false, error: 'unsafe project path', logs };
 
     const arabic = isArabicReply({ language: context?.language, text: request });
     term(`[orion] creating phase-one business foundation in ${projectPath}`);
@@ -197,7 +198,7 @@ if __name__ == "__main__": unittest.main()
     let writtenFiles = 0;
     for (const [relativePath, content] of Object.entries(files)) {
       const target = path.resolve(projectPath, relativePath);
-      if (!target.startsWith(`${projectPath}${path.sep}`)) return { ok: false, error: 'unsafe relative path', logs };
+      if (!isWithinRoot(target, projectPath)) return { ok: false, error: 'unsafe relative path', logs };
       writeText(target, content); stream(relativePath, content); writtenFiles += 1;
     }
     term(`[orion] wrote ${writtenFiles} business-core, contract, UI, infrastructure, and evidence artifacts`);

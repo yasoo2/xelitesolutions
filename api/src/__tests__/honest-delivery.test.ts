@@ -59,7 +59,17 @@ describe('and the message leads with it', () => {
     it('names each blocking finding in words', () => {
         const src = SRC();
         const at = src.indexOf('const blockers =');
-        const block = src.slice(at, at + 2200);
+        //  ⛔ THE WINDOW IS THE REGION, NOT A CHARACTER COUNT.
+        //
+        //  This read slice(at, at + 2200) and went red the moment comments
+        //  were added ABOVE the line it looks for -- the code was untouched
+        //  and the guard failed anyway, which is a guard measuring the wrong
+        //  thing. A magic length is a criterion nobody can reason about: it
+        //  passes or fails on how much prose happens to sit nearby.
+        //
+        //  The region ends where the next named thing begins, so it grows and
+        //  shrinks with the code it is about.
+        const block = src.slice(at, src.indexOf('const message = isAr', at));
         // …in the language of the message it lands in: an English delivery
         // reading out «• 3 خطأ كونسول» was the same defect one layer down.
         expect(block).toMatch(/for \(const f of blockers\) lines\.push\(`   • \$\{say\(f\)\}`\)/);

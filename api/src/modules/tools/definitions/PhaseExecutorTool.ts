@@ -551,11 +551,9 @@ function sessionProjectKey(sessionId: unknown): string {
     return String(sessionId || '').trim().replace(/[^a-zA-Z0-9._-]/g, '_') || 'default';
 }
 
-function isWithinRoot(child: string, parent: string): boolean {
-    const c = path.resolve(child);
-    const p = path.resolve(parent);
-    return c === p || c.startsWith(p.endsWith(path.sep) ? p : `${p}${path.sep}`);
-}
+//  ONE READER FOR ONE SECURITY QUESTION — see utils.isWithinRoot. Three
+//  copies disagreed on three of seven measured cases on win32.
+import { isWithinRoot } from '../utils';
 
 /**
  * A runtime project may be incomplete while its first server-shaped write is

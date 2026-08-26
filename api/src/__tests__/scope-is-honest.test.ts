@@ -206,6 +206,9 @@ describe('and the message says it plainly', () => {
             requested: CAPABILITIES.filter(c => ['catalog', 'payments', 'shipping', 'loyalty'].includes(c.id)),
             built: CAPABILITIES.filter(c => c.id === 'catalog'),
             missing: CAPABILITIES.filter(c => ['payments', 'shipping', 'loyalty'].includes(c.id)),
+            //  He named four capabilities this vocabulary knows, and nothing
+            //  it does not — so there is nothing to confess beyond them.
+            unchecked: [],
         };
         const ar = formatScope(r, true);
         expect(ar).toMatch(/القدرات التي أعرف كيف أتحقق منها وسمّيتَها — 4 في التقرير؛ ولم أفحص بقية نص طلبك/);
@@ -222,7 +225,7 @@ describe('and the message says it plainly', () => {
 
     it('and says so in one line when nothing is missing', () => {
         const all = CAPABILITIES.filter(c => ['catalog', 'orders', 'accounts'].includes(c.id));
-        const r = { requested: all, built: all, missing: [] };
+        const r = { requested: all, built: all, missing: [], unchecked: [] };
         const ar = formatScope(r, true);
         expect(ar).toMatch(/القدرات التي أعرف كيف أتحقق منها وسمّيتَها \(3\) موجودة في هذا البناء — ولم أفحص بقية نص طلبك/);
         expect(ar).not.toContain('كل ما سمّيتَه في طلبك');

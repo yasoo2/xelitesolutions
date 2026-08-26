@@ -182,7 +182,19 @@ describe('a model that adds a sentence after its JSON is still understood', () =
     it('and the router uses it where it used to crash', () => {
         const src = fs.readFileSync(path.join(__dirname, '..', 'core', 'llm', 'intelligent-router.ts'), 'utf-8');
         expect(src).toMatch(/import \{ parseFirstJson \}/);
-        const analyse = src.slice(src.indexOf('export async function advancedAnalyzeTask'));
+        //  ⛔ THE ANCHOR IS PROVEN BEFORE ANYTHING IS BUILT ON IT.
+        //
+        //  `indexOf` returns -1 when the text moves, and `slice(-1)` then
+        //  yields a one-character string -- so a NEGATIVE assertion over it
+        //  passes on nothing at all. The guard would go green for ever, and
+        //  green is the one colour nobody investigates.
+        //
+        //  Four sibling guards in this repository already do this implicitly,
+        //  with a positive assertion on the same slice before the negative
+        //  one. This is the same claim, said out loud.
+        const analyseAt = src.indexOf('export async function advancedAnalyzeTask');
+        expect(analyseAt).toBeGreaterThan(-1);
+        const analyse = src.slice(analyseAt);
         expect(analyse.slice(0, 3000)).not.toMatch(/JSON\.parse\(jsonMatch\[0\]\)/);
     });
 });

@@ -59,11 +59,44 @@ describe('(2) a thin build prompt starts a dialogue, not a build', () => {
         expect(isVagueBuildRequest('ما هي عاصمة فرنسا؟')).toBe(false);
         expect(isVagueBuildRequest('كيف حالك يا جو')).toBe(false);
     });
+    /**
+     *  A GUARD NAMES THE PROPERTY, NEVER THE GLYPH THAT CARRIED IT.
+     *
+     *  This test pinned `1️⃣` and `4️⃣`. Those keycaps were removed because
+     *  they fall back to an empty box in the owner's font — he pasted the
+     *  broken `1⃣` back — and because the four questions, written on four
+     *  lines, were folded into one paragraph by the markdown renderer.
+     *
+     *  So the repair turned this suite red and the gate with it, and the
+     *  received string in that failure was the CORRECT output. A test that
+     *  pins a decoration fails whenever the decoration improves and passes
+     *  while the behaviour rots.
+     *
+     *  What the reader is owed, and what is asserted now: four questions,
+     *  each its own list item so no renderer can run them together; the
+     *  Arabic path answering in Arabic; the bypass phrase offered verbatim,
+     *  because that one IS the property — it is what he has to type.
+     */
     it('the questions are Arabic for an Arabic prompt and name the four things', () => {
         const q = clarifyQuestions('ابن لي موقع', 'ar');
-        expect(q).toContain('1️⃣');
-        expect(q).toContain('4️⃣');
+        //  Four questions, each an ordered-list item of its own.
+        expect((q.match(/^\s*\d+\.\s+\S/gm) || [])).toHaveLength(4);
+        //  And no keycap sequence can come back in through a redesign.
+        expect(q).not.toMatch(/⃣/);
+        //  Arabic in, Arabic out.
+        expect(/[؀-ۿ]/.test(q)).toBe(true);
+        //  The words he must type to skip the questions are the property.
         expect(q).toContain('ابدأ مباشرة');
+    });
+
+    //  NEGATIVE — the English path owes the reader the same four, and a
+    //  guard that only ever watched Arabic would not have noticed.
+    it('and four of them in English too, with no keycaps', () => {
+        const q = clarifyQuestions('build me a site', 'en');
+        expect((q.match(/^\s*\d+\.\s+\S/gm) || [])).toHaveLength(4);
+        expect(q).not.toMatch(/⃣/);
+        expect(/[؀-ۿ]/.test(q)).toBe(false);
+        expect(q).toContain('start now');
     });
     it('the full dialogue: ask → merge the answers → build once', () => {
         const first = clarifyGate('ابن لي موقع', 's-clar', 'ar');

@@ -344,7 +344,23 @@ describe('admin is decided by the server, once', () => {
 
     it('the decision itself: named wins, first-arrival does not', () => {
         const { roleForNewAccount } = require('../api/middleware/auth');
+        //  ⛔ THE ARRANGEMENT MUST COVER EVERY INPUT THE SUBJECT READS.
+        //
+        //  superAdminEmails() reads TWO variables -- SUPER_ADMIN_EMAILS and
+        //  ADMIN_EMAIL -- and this test controlled one. Importing the auth
+        //  middleware loads the machine's .env, which sets the other, so
+        //  ownersConfigured() stayed true after the delete below and the
+        //  loopback-bootstrap case came back USER instead of OWNER.
+        //
+        //  Measured: BEFORE require -> both unset; AFTER require -> the second
+        //  is set, list count 1, configured true. Nothing was printed of its
+        //  value. The test passed wherever that variable happened to be
+        //  absent, which is a criterion decided by the machine and not by the
+        //  code -- and it therefore proves nothing on the machine where it
+        //  passes.
         const prev = process.env.SUPER_ADMIN_EMAILS;
+        const prevAdmin = process.env.ADMIN_EMAIL;
+        delete process.env.ADMIN_EMAIL;
         process.env.SUPER_ADMIN_EMAILS = 'owner@joe.local';
         try {
             expect(roleForNewAccount({ email: 'owner@joe.local', isFirstUser: false, isLoopback: false })).toBe('OWNER');
@@ -359,6 +375,8 @@ describe('admin is decided by the server, once', () => {
         } finally {
             if (prev === undefined) delete process.env.SUPER_ADMIN_EMAILS;
             else process.env.SUPER_ADMIN_EMAILS = prev;
+            if (prevAdmin === undefined) delete process.env.ADMIN_EMAIL;
+            else process.env.ADMIN_EMAIL = prevAdmin;
         }
     });
 
@@ -1248,7 +1266,25 @@ describe('the panels belong to a session', () => {
         const J = WEB('pages', 'Joe.tsx');
         expect(J).toMatch(/previewBySession/);
         expect(J).toMatch(/previewBySession\.current\.set\(activeSessionId, url\)/);
-        expect(J).toMatch(/setPreviewUrl\(activeSessionId \? previewBySession\.current\.get\(activeSessionId\) : undefined\)/);
+        //  ⛔ THE CLAIM IS THAT THE READ IS KEYED, NOT THAT IT IS INLINE.
+        //
+        //  This pinned one spelling: the ternary written inside the call. The
+        //  code says the same thing over two lines now -- the keyed read into
+        //  a named value, then the call -- and the guard went red while the
+        //  behaviour it names was never touched.
+        //
+        //  So the two facts are asserted as two facts: the read IS keyed by
+        //  the active session, and its value reaches setPreviewUrl. The anchor
+        //  is proven first, and the window is the four lines a hand-off takes,
+        //  not a magic character count.
+        const getAt = J.indexOf('previewBySession.current.get(activeSessionId)');
+        expect(getAt).toBeGreaterThan(-1);
+        //  A named separator, because a split whose argument loses its escape
+        //  puts a real newline inside a quoted string and the suite stops
+        //  parsing. That has happened here.
+        const NL = String.fromCharCode(10);
+        const handOff = J.slice(getAt).split(NL).slice(0, 4).join(NL);
+        expect(handOff).toMatch(/setPreviewUrl\(/);
     });
 });
 
@@ -2267,7 +2303,14 @@ describe('the team reaches the roles', () => {
     it('and the shell imports it and renders it', () => {
         const t = T();
         expect(t).toMatch(/\$\{hasApi \? "import Accounts from '\.\/components\/Accounts\.jsx';/);
-        expect(t).toMatch(/\$\{hasApi \? '        <Accounts api=\{content\.api\} \/>/);
+        //  ⛔ THE CLAIM IS THE GATE, NOT THE INDENTATION.
+        //
+        //  This pinned eight spaces before the tag. The generated JSX now
+        //  nests one level deeper and carries twelve, and the guard went red
+        //  over whitespace while the behaviour it names -- hasApi gates the
+        //  render -- was never touched. A guard that fails on a difference
+        //  nobody can see is a guard somebody deletes.
+        expect(t).toMatch(/\$\{hasApi \? '\s*<Accounts api=\{content\.api\} \/>/);
         expect(t).toMatch(/'src\/App\.jsx': fileAppShellJsx\(bp, o\.isArabic, !!\(o\.model && o\.model\.length\), !!o\.api\)/);
     });
 

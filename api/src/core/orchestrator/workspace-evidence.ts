@@ -21,11 +21,17 @@ function sessionKey(context?: any): string {
     return raw.replace(/[^a-zA-Z0-9._-]/g, '_') || 'default';
 }
 
-function isWithin(child: string, parent: string): boolean {
-    const c = path.resolve(child);
-    const p = path.resolve(parent);
-    return c === p || c.startsWith(p.endsWith(path.sep) ? p : p + path.sep);
-}
+//  ONE READER FOR ONE SECURITY QUESTION — the fourth copy.
+//
+//  Three functions called isWithinRoot were unified into
+//  utils.isWithinRoot. This one is the same question under a name one
+//  letter shorter, and the guard written to close that class searched
+//  for the NAME — so it could not see this. A guard on a spelling
+//  protects the case it knows and not the case that matters.
+//
+//  Measured on win32 before the change: this copy resolves and does
+//  not fold, so a lowercased drive letter is refused as an escape.
+import { isWithinRoot as isWithin } from '../../modules/tools/path-containment';
 
 function activeProjectDir(context: any, workspaceRoot: string): string | undefined {
     const g: any = global as any;

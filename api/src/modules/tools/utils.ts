@@ -1,4 +1,6 @@
 import path from 'path';
+import { isWithinRoot } from './path-containment';
+export { isWithinRoot };
 import fs from 'fs';
 import { workspaceService } from '../services/WorkspaceService';
 
@@ -9,28 +11,6 @@ export interface ResolvePathOptions {
     projectRoot?: string;
 }
 
-/**
- * Is `child` the same directory as `parent`, or inside it?
- *
- * Exported so the rule can be tested directly on both platforms. Two things it
- * must get right, and each was wrong at some point:
- *
- *   - The comparison happens on a path BOUNDARY. Plain `startsWith` admits a
- *     sibling that merely shares a prefix — a parent of "/srv/joe" accepting
- *     "/srv/joe-backup/anything".
- *   - On Windows it ignores case, because the filesystem does. `path.resolve`
- *     preserves whatever case it was handed, so "C:\Users\home\..." and
- *     "c:\users\home\..." are one directory that a case-sensitive compare calls
- *     an escape — a false refusal of a legitimate write, and on Windows that is
- *     the common case rather than the edge one. Linux keeps the exact compare:
- *     there, two paths differing in case really are two different files.
- */
-export function isWithinRoot(child: string, parent: string): boolean {
-    const fold = (s: string) => (process.platform === 'win32' ? s.toLowerCase() : s);
-    const c = fold(child);
-    const p = fold(parent);
-    return c === p || c.startsWith(p.endsWith(path.sep) ? p : p + path.sep);
-}
 
 /**
  * Standard tool path resolver that anchors all relative paths to the project root

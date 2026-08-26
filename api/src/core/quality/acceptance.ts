@@ -1,4 +1,5 @@
 /**
+
  * WHAT HE ASKED FOR, CHECKED ONE BY ONE, BEFORE ANYTHING IS CALLED DONE.
  *
  * An outside audit put it exactly right: «نجاح البناء لا يساوي نجاح الوكيل».
@@ -28,9 +29,17 @@
  * cannot test says «unprovable» rather than passing quietly — because a check
  * that cannot fail is the thing this project keeps deleting.
  */
-import { derivedColumns, statedBound, type DerivedField } from '../design/app-blueprints';
+import { derivedColumns, statedRules, type DerivedField, columnsAnywhereInHisRequest, detectAppKind } from '../design/app-blueprints';
 import fs from 'fs';
 import path from 'path';
+import { thePagesHeNamed } from '../design/site-plan';
+import { saysAny, saysWord } from '../language/arabic';
+
+//  The same folding the page reader itself uses — a request written with
+//  tanween must reach it in the shape its patterns are spelled in.
+const DIACRITICS_FOR_PAGES = new RegExp('[\\u064B-\\u0652\\u0670\\u0640]', 'g');
+const HAMZAS_FOR_PAGES = new RegExp('[أإآ]', 'g');
+const MAQSURA_FOR_PAGES = new RegExp('ى', 'g');
 
 /**
  * Gate062's fixed acceptance input: four source-backed UI criteria.
@@ -51,10 +60,73 @@ export interface Criterion {
     kind: CriterionKind;
     ar: string;
     en: string;
+    /**
+     *  The WORDS that ask for this, in any form he writes them.
+     *
+     *  A regex over raw Arabic reads characters, not words — «زر» matched
+     *  inside «أزرق» and «عدد» inside «متعدد», so a request for a blue
+     *  page was refused for want of a button. These go through the language
+     *  layer instead, which segments with Unicode's own rules and stems with
+     *  the same Snowball stemmer Elasticsearch uses, so «عداد» is «العداد» is
+     *  «عدادًا» is «عداداتها» — and is never «استعداد».
+     *
+     *  `asked` stays for the entries that match a PHRASE rather than a word.
+     */
+    says?: string[];
     /** Source markers that prove a FEATURE was really generated. */
     markers?: RegExp[];
     /** Exact user-requested title text, when it can be extracted safely. */
     expectedText?: string;
+    /**
+     *  The page he named, when the criterion is about one.
+     *
+     *  Measured live on «اعمل لي صفحة هبوط وصفحة تواصل لشركة تنظيف»,
+     *  after Joe had already built both pages correctly:
+     *
+     *      ⚠️ لم أستخرج معياراً قابلاً للفحص من طلبك، لذلك لم أصدر حكم قبول.
+     *
+     *  He had named two pages in one sentence, and thePagesHeNamed() had
+     *  read them — the page plan was built from them. The judge could not
+     *  derive a criterion because nothing asked that reader. The same shape
+     *  as the columns below: a reader that already knew, never consulted.
+     */
+    expectedPage?: { slug: string; title: string };
+
+    /**
+     *  The rule he stated, when the criterion is about one.
+     *
+     *  Measured across a thousand requests: a request carrying an explicit
+     *  condition read clean 5% of the time. «اعمل موقع شركة تنظيف ولا تقبل
+     *  مبلغًا صفرًا» derived NOTHING — not the site, not the rule. The
+     *  condition was not obeyed, not checked, and not mentioned, which is the
+     *  worst of the three: he cannot even know it was lost.
+     *
+     *  statedRules() has read rules on this project for a long time. Nothing
+     *  asked it. The same shape as the pages and the columns above.
+     *
+     *  A rule Joe cannot prove is still a criterion — it comes back
+     *  `unprovable`, which is declared to him and does not block delivery.
+     *  Silence is the only outcome that is never acceptable.
+     */
+    /**
+     *  THE READER KNEW THE FIELD, THE VALUE AND THE STRICTNESS. THE JUDGE
+     *  ASKED FOR NONE OF THEM.
+     *
+     *  `StatedRule` already carries `field`, `min` and `minExclusive`, and
+     *  only `text` and `kind` were copied across. The proof left behind was
+     *  `/min:\s*-?\d/` against the WHOLE project — any digit after any `min:`
+     *  anywhere earned the ✅. So «لا تقبل سعرًا صفرًا» was reported as met by
+     *  a build whose bound sat on a different column, or carried a different
+     *  number, or — worst — omitted `minExclusive`, which is a build that
+     *  accepts the exact value he forbade while being told it obeys.
+     */
+    expectedRule?: {
+        text: string;
+        kind?: 'bound' | 'forbid' | 'require' | 'change';
+        field?: string;
+        min?: number;
+        minExclusive?: boolean;
+    };
     /**
      *  The exact column he listed, when the criterion is about one.
      *
@@ -73,7 +145,10 @@ export interface Criterion {
      *  either a field in the built app or it is not.
      */
     expectedColumn?: string;
-    /** The explicit lower bound stated for a named numeric column, when any. */
+    /**
+     *  The explicit lower bound stated for a named numeric column, when any.
+     *  A view of the same `expectedRule` value, never a second record of it.
+     */
     expectedBound?: { min: number; minExclusive: boolean };
 }
 
@@ -87,7 +162,9 @@ export interface Acceptance {
     criteria: JudgedCriterion[];
     met: number;
     unmet: number;
-    /** True only when every asked-for criterion is met. */
+    /** Stated, judged, and impossible for THIS judge to check. Never hidden. */
+    unprovable: number;
+    /** True only when nothing he asked for was looked for and missing. */
     accepted: boolean;
 }
 
@@ -102,30 +179,43 @@ export interface Acceptance {
 const CATALOGUE: Array<Criterion & { asked: RegExp }> = [
     {
         id: 'search', kind: 'feature',
+        says: ['بحث', 'ابحث', 'search'],
         asked: /(بحث|ابحث|\bsearch\b)/iu,
         ar: 'بحث داخل البيانات', en: 'search across the data',
         markers: [/type=["']search["']/i, /\bsearch\b/i, /بحث/u, /filter\(/],
     },
     {
         id: 'filter', kind: 'feature',
+        says: ['مرشح', 'فلتر', 'تصفية', 'filter'],
         asked: /(مرشّ?ح|فلتر|تصفية|\bfilter\b)/iu,
         ar: 'مُرشّح حالة', en: 'a status filter',
         markers: [/status/i, /الحالة/u, /<select/i],
     },
     {
         id: 'counter', kind: 'feature',
-        asked: /(عداد|العدد|إجمالي|المجموع|\bcounter\b|\bcount\b|\btotal\b|\bbadge\b)/iu,
+        says: ['عداد', 'عدد', 'إجمالي', 'مجموع', 'counter', 'count', 'total', 'badge'],
+        //  A PATTERN WRITTEN WITH THE ARTICLE MATCHES HALF THE LANGUAGE.
+        //
+        //  «المجموع» cannot match «مجموع», and «العدد» cannot match «عدد».
+        //  So «وصفحة ثانية تعرض مجموع الرواتب» asked for a total and
+        //  produced no criterion at all — not a criterion that failed, one
+        //  that was never written, which Joe can report success around.
+        //  The bare form matches both, which is why every other entry in
+        //  this catalogue is written bare and only these two were not.
+        asked: /(عداد|عدد|إجمالي|اجمالي|مجموع|\bcounter\b|\bcount\b|\btotal\b|\bbadge\b)/iu,
         ar: 'عداد أو إجمالي', en: 'a counter or total',
         markers: [],
     },
     {
         id: 'button', kind: 'feature',
+        says: ['زر', 'أزرار', 'button', 'cta'],
         asked: /(زر|أزرار|\bbutton\b|\bcta\b|call[- ]?to[- ]?action)/iu,
         ar: 'زر تفاعلي', en: 'an interactive button',
         markers: [],
     },
     {
         id: 'title', kind: 'feature',
+        says: ['عنوان', 'title', 'titled', 'heading', 'headline'],
         asked: /(عنوان|العنوان|\btitle\b|\btitled\b|\bheading\b|\bheadline\b)/iu,
         ar: 'عنوان أو رأس صفحة', en: 'a title or heading',
         markers: [/<h[1-6]\b/i, /<title\b/i],
@@ -144,6 +234,7 @@ const CATALOGUE: Array<Criterion & { asked: RegExp }> = [
     },
     {
         id: 'export', kind: 'feature',
+        says: ['تصدير', 'صدر', 'تنزيل', 'export', 'download', 'csv'],
         asked: /(تصدير|صدّ?ر|تنزيل|\bexport\b|\bdownload\b|\bcsv\b)/iu,
         ar: 'تصدير محلّي', en: 'a local export',
         markers: [/createObjectURL|download=|\bcsv\b|toCSV|Blob\(/i],
@@ -178,6 +269,7 @@ const CATALOGUE: Array<Criterion & { asked: RegExp }> = [
     },
     {
         id: 'preview', kind: 'verification',
+        says: ['معاينة', 'عاين', 'preview', 'serve'],
         asked: /(معاينة|عاين|\bpreview\b|\bserve\b)/iu,
         ar: 'معاينة محلّية تعمل', en: 'a working local preview',
     },
@@ -212,23 +304,79 @@ export function titleTextFrom(request: string): string | undefined {
     return extractRequestedTitle(request);
 }
 
-/** Find a bound in the smallest request clause that names this column. */
-function statedBoundForColumn(request: string, label: string): { min: number; minExclusive: boolean } | undefined {
-    const target = String(label || '').trim().toLocaleLowerCase();
-    if (!target) return undefined;
-    for (const clause of String(request || '').split(/[.؟!\n؛;,،]/u)) {
-        const text = clause.trim();
-        if (!text.toLocaleLowerCase().includes(target)) continue;
-        const bound = statedBound(text);
-        if (bound) return bound;
-    }
-    return undefined;
-}
+/**
+ * A WORD, NOT A RUN OF LETTERS THAT HAPPENS TO SIT INSIDE ONE.
+ *
+ * Every English alternative in the catalogue above is written \bcounter\b.
+ * Not one Arabic alternative had a boundary of any kind, and it could not:
+ * JavaScript defines \b by \w, which is [A-Za-z0-9_], so between two
+ * Arabic letters there is NEVER a \b position. Writing \bعدد\b does not
+ * make it stricter — it makes it unmatchable. So the Arabic side was left
+ * bare, and matched fragments.
+ *
+ * Measured, before this existed — each of these BLOCKED delivery on a
+ * criterion the request never asked for:
+ *
+ *     «متعدد الصفحات»        -> counter   («عدد» inside «متعدد»)
+ *     «لون أزرق فاتح»        -> button    («زر» inside «أزرق»)
+ *     «مجموعة صور»            -> counter   («مجموع» inside «مجموعة»)
+ *     «عندي استعداد»          -> counter   («عداد» inside «استعداد»)
+ *     «لبيع الجزر والخضار»    -> button    («زر» inside «الجزر»)
+ *
+ * So the boundary is checked on the MATCH instead of inside the pattern:
+ * a hit that begins or ends flush against another Arabic letter was a
+ * fragment — unless the letters before it are one of the particles Arabic
+ * glues onto the front of a word (ال، و، ب، ل، ك، ف and their pairs), or the
+ * letters after it are one of the endings it takes (ات، ها، ين …). «العداد»
+ * is the counter; «استعداد» is readiness; only a boundary tells them apart.
+ *
+ * This is deliberately generic: it fixes every pattern in the catalogue at
+ * once, and every pattern added to it later, instead of the one that was
+ * caught. A fix that names «عدد» would leave «زر» standing.
+ */
+const DIACRITIC = new RegExp('[\\u064B-\\u0652\\u0670\\u0640]', 'gu');
+const AR_LETTER = new RegExp('[\\u0621-\\u064A]', 'u');
+const AR_LEAD = new RegExp('[\\u0621-\\u064A]+$', 'u');
+const AR_TAIL = new RegExp('^[\\u0621-\\u064A]+', 'u');
+/** The particles Arabic writes joined to the front of the next word. */
+const GLUED_BEFORE = new RegExp('^(?:[وفبك]?ال|لل|[وفبكل])$', 'u');
+/** The endings a noun takes without becoming a different noun. */
+//  «عدادًا» keeps its accusative alif after the tanween mark is stripped,
+//  and «عدادان» is two of them. Neither is a different word.
+const GLUED_AFTER = new RegExp('^(?:ان|ات|ها|هم|هن|ين|ون|نا|كم|ا|ه|ي)$', 'u');
 
+export function requestAsksFor(asked: RegExp, text: string): boolean {
+    const flags = asked.flags.includes('g') ? asked.flags : asked.flags + 'g';
+    const re = new RegExp(asked.source, flags);
+    //  Diacritics are not letters and must not split a word: «عدّاد» with a
+    //  shadda is the same word as «عداد», and a pattern spelled without one
+    //  never reaches it. Strip them before asking, never in what is stored.
+    text = String(text || '').replace(DIACRITIC, '');
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text))) {
+        const hit = m[0];
+        if (!hit) { re.lastIndex = m.index + 1; continue; }
+        //  Step by ONE on rejection, never past it: the alternative that
+        //  matched a fragment here may have a longer sibling starting later.
+        const reject = () => { re.lastIndex = m!.index + 1; };
+        if (AR_LETTER.test(hit.charAt(0))) {
+            const lead = (text.slice(0, m.index).match(AR_LEAD) || [''])[0];
+            if (lead && !GLUED_BEFORE.test(lead)) { reject(); continue; }
+        }
+        if (AR_LETTER.test(hit.charAt(hit.length - 1))) {
+            const tail = (text.slice(m.index + hit.length).match(AR_TAIL) || [''])[0];
+            if (tail && !GLUED_AFTER.test(tail)) { reject(); continue; }
+        }
+        return true;
+    }
+    return false;
+}
 /** The criteria THIS brief actually asks for — never a fixed checklist. */
 export function acceptanceFor(request: string): Criterion[] {
     const t = String(request || '');
-    const catalogue = CATALOGUE.filter(c => c.asked.test(t))
+    //  A word is asked as a word; a phrase keeps its pattern. Entries with
+    //  `says` no longer touch a regex over Arabic at all.
+    const catalogue = CATALOGUE.filter(c => (c.says ? saysAny(t, c.says) : requestAsksFor(c.asked, t)))
         .map(({ asked, ...rest }) => rest)
         .map(c => c.id === 'title'
             ? { ...c, expectedText: titleTextFrom(t) }
@@ -236,33 +384,167 @@ export function acceptanceFor(request: string): Criterion[] {
 
     //  His columns, in his words, each one its own criterion. No catalogue
     //  is consulted: derivedColumns reads them from the sentence he wrote.
-    const columns = derivedColumns(t) || [];
-    const columnCriteria: Criterion[] = [];
-    for (const col of columns as DerivedField[]) {
-        columnCriteria.push({
-            id: `column:${col.key}`,
-            kind: 'feature',
-            ar: `عمود «${col.label}» موجود في الجدول`,
-            en: `a column «${col.label}» exists in the table`,
-            expectedColumn: col.label,
-        });
-        //  The request, not a remembered type vocabulary, decides whether a
-        //  bound criterion exists. A stated comparison is itself evidence that
-        //  this named field is intended to carry a numeric constraint, even if
-        //  the upstream type reader cannot classify an invented label yet.
-        const bound = statedBoundForColumn(t, col.label);
-        if (bound) {
-            columnCriteria.push({
-                id: `constraint:${col.key}:min`,
-                kind: 'feature',
-                ar: `القيد «${col.label}» أكبر من ${bound.min}`,
-                en: `the column «${col.label}» rejects values at or below ${bound.min}`,
-                expectedColumn: col.label,
-                expectedBound: bound,
-            });
-        }
+    /**
+     *  ⛔ A COLUMN BELONGS TO A TABLE, AND A WEBSITE HAS NONE.
+     *
+     *  Caught on a live run, from a sentence the owner wrote himself:
+     *
+     *      أبي موقع لمحمصة قهوة… حط فيه قائمة قهوة بأسعارها
+     *      ودرجة التحميص، وساعات العمل والموقع…
+     *
+     *          acceptance_criteria_unmet: column:text1 … column:text4
+     *
+     *  Measured on the same sentence: detectAppKind returns null -- Joe
+     *  knows perfectly well it is a site -- and the judge asked for four
+     *  table columns anyway. So the website gets built and then refused,
+     *  because it has no columns, which a website never has.
+     *
+     *  ⛔ That is a criterion that can NEVER BE MET, and it is the mirror
+     *  of the one this file keeps deleting: a check that cannot fail proves
+     *  nothing, and a check that cannot pass blocks everything.
+     *
+     *  The classifier was taught that a site noun means a site and the
+     *  judge was not -- two readers of one request, each correct alone and
+     *  the pair fatal. When nothing table-shaped will be built, the nouns
+     *  in his sentence are CONTENT, and the sections reader already carries
+     *  them: a coffee list with its prices becomes a listing, not four
+     *  columns nobody can point at.
+     */
+    const willBuildATable = detectAppKind(t) !== null;
+    const columns = willBuildATable ? (columnsAnywhereInHisRequest(t) || []) : [];
+
+
+    /**
+     *  THE PAGES HE NAMED ARE CRITERIA, exactly as his columns are.
+     *
+     *  Only when he named TWO or more: one named page becomes the single
+     *  page of a single-page build, and «the page exists» would then be a
+     *  criterion that cannot fail. Two is where a page becomes a thing
+     *  that can be missing.
+     */
+    const named = thePagesHeNamed(
+        t.replace(DIACRITICS_FOR_PAGES, '').replace(HAMZAS_FOR_PAGES, 'ا').replace(MAQSURA_FOR_PAGES, 'ي'),
+    );
+    /**
+     *  ONE NAMED PAGE IS A CRITERION WHEN HE IS ADDING IT.
+     *
+     *  The two-page floor exists for a real reason: a single-page build writes
+     *  index.html by definition, so «the page exists» could never fail, and a
+     *  criterion that cannot fail is the thing this file keeps deleting.
+     *
+     *  But «أضف صفحة الأسعار» is not a single-page build — it is an addition
+     *  to something already on disk, and `pricing.html` either arrives or it
+     *  does not. Measured across a thousand requests: forty edit requests
+     *  naming a page derived NO criterion at all, so the page he asked to be
+     *  added was never checked for.
+     *
+     *  The verb is the whole distinction and it is in his own sentence, so no
+     *  session state is consulted: «أضف» / «add» means the thing must be there
+     *  afterwards, and one is enough.
+     */
+    const HE_IS_ADDING = /(?:^|\s)(?:أضف|اضف|ضيف|أضيف|اضيف|add)(?:\s|$)/iu;
+    const adding = HE_IS_ADDING.test(t);
+    const pages = (named.length >= 2 || (adding && named.length >= 1)) ? named : [];
+
+    //  Every rule he stated, whether or not Joe can prove it. The judge says
+    //  `unprovable` for what it cannot check, and that is declared to him —
+    //  a rule that vanishes is the one outcome with no honest reading.
+    const rules = statedRules(t);
+
+    /**
+     *  A BOUND BELONGS TO ITS COLUMN, NOT TO A NUMBERED LIST.
+     *
+     *  Two readings of the same sentence grew independently — «شرطك: السعر لا
+     *  يقبل صفرًا» as `rule:1`, and «القيد على السعر» as `constraint:money1:min`
+     *  — and they met in a merge. Keeping both would have been the seam class
+     *  itself: two records of one fact, maintained separately, with nothing
+     *  forcing them to agree.
+     *
+     *  So there is ONE derivation, `statedRules`, and two presentations of it.
+     *  A rule that IS a bound and names a column he asked for is that column's
+     *  constraint and is emitted beside it, carrying both shapes so either
+     *  reader is served from the same value. Everything else — a forbid, a
+     *  require, a bound with no column to sit on — stays a numbered rule,
+     *  because a rule that vanishes is the one outcome with no honest reading.
+     */
+    const boundFor = new Map<string, typeof rules[number]>();
+    const loose: typeof rules = [];
+    for (const r of rules) {
+        const said = String(r.field || r.text || '');
+        const owner = (r.kind === 'bound' && r.min !== undefined && said)
+            ? (columns as DerivedField[]).find(col => {
+                const label = String(col.label || '');
+                if (!label) return false;
+                //  Through the language layer, both ways: he writes «سعرًا»
+                //  and the schema says «السعر». Matching raw text would read
+                //  letters, not words.
+                if (label === said || saysWord(said, label)) return true;
+                if (label.split(/\s+/).some(w => w.length > 2 && saysWord(said, w))) return true;
+                /**
+                 *  An identifier is not a word, and the word layer cannot see
+                 *  it. `zqixdal_val` segments into three pieces, so asking the
+                 *  stemmer for it always answers no — measured on an invented
+                 *  column name with no catalogue behind it.
+                 *
+                 *  Plain containment is the right test for exactly this shape
+                 *  and the wrong one for Arabic, where «العنوان» sits inside
+                 *  «العنوانين». So it is allowed only for a label carrying NO
+                 *  Arabic letter, which is where the word layer has nothing to
+                 *  offer and where the trap it guards cannot occur.
+                 */
+                if (label.length >= 3 && !/[؀-ۿ]/.test(label)) return said.includes(label);
+                return false;
+            })
+            : undefined;
+        if (owner && !boundFor.has(owner.key)) boundFor.set(owner.key, r);
+        else loose.push(r);
     }
-    return [...catalogue, ...columnCriteria];
+
+    return [
+        ...catalogue,
+        ...loose.map((r, i) => ({
+            id: `rule:${i + 1}`,
+            kind: 'feature' as CriterionKind,
+            ar: `شرطك: «${r.text}»`,
+            en: `your condition: «${r.text}»`,
+            //  Everything the reader derived, carried to the judge. Dropping
+            //  three of five fields here is what made the proof unprovable.
+            expectedRule: { text: r.text, kind: r.kind, field: r.field, min: r.min, minExclusive: r.minExclusive },
+        })),
+        ...pages.map((p: { slug: string; title: string }) => ({
+            id: `page:${p.slug}`,
+            kind: 'feature' as CriterionKind,
+            ar: `صفحة «${p.title}» موجودة وتحمل اسمها`,
+            en: `a page «${p.title}» exists and carries its name`,
+            expectedPage: { slug: p.slug, title: p.title },
+        })),
+        //  …and each column carries its own constraint immediately after it,
+        //  where he can read the two together.
+        ...(columns as DerivedField[]).flatMap((col: DerivedField) => {
+            const own: Criterion[] = [{
+                id: `column:${col.key}`,
+                kind: 'feature' as CriterionKind,
+                ar: `عمود «${col.label}» موجود في الجدول`,
+                en: `a column «${col.label}» exists in the table`,
+                expectedColumn: col.label,
+            }];
+            const r = boundFor.get(col.key);
+            if (r && r.min !== undefined) {
+                own.push({
+                    id: `constraint:${col.key}:min`,
+                    kind: 'feature' as CriterionKind,
+                    ar: `القيد «${col.label}» ${r.minExclusive ? 'أكبر من' : 'لا يقل عن'} ${r.min}`,
+                    en: `the column «${col.label}» rejects values ${r.minExclusive ? 'at or below' : 'below'} ${r.min}`,
+                    expectedColumn: col.label,
+                    expectedBound: { min: r.min, minExclusive: !!r.minExclusive },
+                    //  The same value in the shape the stronger judge reads —
+                    //  derived here, never maintained twice.
+                    expectedRule: { text: r.text, kind: r.kind, field: r.field, min: r.min, minExclusive: r.minExclusive },
+                });
+            }
+            return own;
+        }),
+    ];
 }
 
 export interface Evidence {
@@ -517,68 +799,6 @@ function resolvedTitleText(src: string, expression: string): string | undefined 
     return undefined;
 }
 
-interface ObjectRange { open: number; close: number }
-
-/** Return balanced object ranges from code, excluding strings and comments. */
-function objectRanges(mask: string): ObjectRange[] {
-    const stack: number[] = [];
-    const ranges: ObjectRange[] = [];
-    for (let i = 0; i < mask.length; i++) {
-        if (mask[i] === '{') stack.push(i);
-        else if (mask[i] === '}' && stack.length) {
-            ranges.push({ open: stack.pop()!, close: i });
-        }
-    }
-    return ranges;
-}
-
-function objectProperties(src: string, mask: string, range: ObjectRange): Map<string, string> {
-    const properties = new Map<string, string>();
-    const bodyMask = mask.slice(range.open + 1, range.close);
-    for (const [start, end] of topLevelSegments(bodyMask)) {
-        const segmentMask = bodyMask.slice(start, end);
-        const keyMatch = /^\s*([A-Za-z_$][\w$]*)\s*:\s*/.exec(segmentMask);
-        if (!keyMatch) continue;
-        const valueStart = range.open + 1 + start + keyMatch[0].length;
-        const valueEnd = range.open + 1 + end;
-        const valueMask = mask.slice(valueStart, valueEnd).trim();
-        if (!valueMask) continue;
-        properties.set(keyMatch[1], src.slice(valueStart, valueEnd).trim());
-    }
-    return properties;
-}
-
-function staticStringLiteral(value: string): string | undefined {
-    const match = value.match(/^(['\"`])([\s\S]*)\1$/);
-    if (!match || (match[1] === '`' && match[2].includes('${'))) return undefined;
-    return match[2];
-}
-
-function literalNumber(value: string): number | undefined {
-    const match = value.match(/^-?\d+(?:\.\d+)?$/);
-    if (!match) return undefined;
-    const number = Number(value);
-    return Number.isFinite(number) ? number : undefined;
-}
-
-/** Prove a stated bound from one generated field object, not loose source text. */
-function fieldBoundEvidence(src: string, expectedColumn: string, expectedBound: { min: number; minExclusive: boolean }): boolean {
-    const mask = structuralMask(src);
-    const ranges = objectRanges(mask)
-        .filter(range => range.close > range.open)
-        .sort((a, b) => (a.close - a.open) - (b.close - b.open));
-    for (const range of ranges) {
-        const properties = objectProperties(src, mask, range);
-        const label = staticStringLiteral(properties.get('label') || '');
-        if (label !== expectedColumn) continue;
-        const min = literalNumber(properties.get('min') || '');
-        const minExclusive = properties.get('minExclusive');
-        if (min === undefined || (minExclusive !== 'true' && minExclusive !== 'false')) continue;
-        if (min === expectedBound.min && (minExclusive === 'true') === expectedBound.minExclusive) return true;
-    }
-    return false;
-}
-
 export function titleEvidence(src: string, expected: string): boolean {
     const literal = escapeRegExp(expected);
     //  Built from an explicit backslash: this file has been mangled once by an
@@ -609,17 +829,19 @@ export function judgeAcceptance(criteria: Criterion[], ev: Evidence, isAr = true
     const judged: JudgedCriterion[] = criteria.map(c => {
         const say = (verdict: Verdict, why: string): JudgedCriterion => ({ ...c, verdict, why });
 
-        if (c.expectedColumn && c.expectedBound) {
-            const has = !!src && fieldBoundEvidence(src, c.expectedColumn, c.expectedBound);
-            return has
-                ? say('met', isAr
-                    ? `القيد على «${c.expectedColumn}» موجود في كائن الحقل المولّد`
-                    : `the stated bound for «${c.expectedColumn}» is in the generated field object`)
-                : say('unmet', isAr
-                    ? `القيد المطلوب على «${c.expectedColumn}» غير مثبت في كائن الحقل المولّد`
-                    : `the stated bound for «${c.expectedColumn}» is missing from the generated field object`);
-        }
-        if (c.expectedColumn) {
+        /**
+         *  ⛔ THE NARROWER CLAIM IS JUDGED FIRST.
+         *
+         *  A constraint criterion carries its column's label so the ledger can
+         *  name it, and «the column exists» is TRUE for a schema that dropped
+         *  the bound entirely. Judging by the wider claim first answers a
+         *  question nobody asked and marks the constraint met — measured: a
+         *  mutation that deleted `minExclusive: true` still scored green.
+         *
+         *  So a criterion that carries a rule is judged by its rule, and the
+         *  column it names is context, not the test.
+         */
+        if (c.expectedColumn && !c.expectedRule) {
             //  The label he wrote, quoted in the generated source. A column
             //  that is not there cannot be greped into existence.
             //  As a COLUMN, not as loose text: a label that happens to
@@ -630,6 +852,100 @@ export function judgeAcceptance(criteria: Criterion[], ev: Evidence, isAr = true
             return has
                 ? say('met', isAr ? `العمود «${c.expectedColumn}» في مخطّط الجدول` : `the column «${c.expectedColumn}» is in the table schema`)
                 : say('unmet', isAr ? `العمود «${c.expectedColumn}» غير موجود` : `the column «${c.expectedColumn}» is missing`);
+        }
+        if (c.expectedRule) {
+            //  A BOUND is the one kind that becomes a real constraint, and
+            //  the generated app already ships the guard that reads it —
+            //  `if (field.type !== 'number' || field.min === undefined)`.
+            //  So the proof is the value that guard needs, in the schema.
+            if (c.expectedRule.kind === 'bound') {
+                /**
+                 *  A BOUND IS PROVEN ON A COLUMN, WITH A NUMBER, AT A
+                 *  STRICTNESS — OR IT IS NOT PROVEN.
+                 *
+                 *  This asked `/min:\s*-?\d/` of the whole project, so any
+                 *  digit after any `min:` anywhere earned the ✅ — a bound on
+                 *  the wrong column, a different number, or a build missing
+                 *  `minExclusive` and therefore ACCEPTING the exact value he
+                 *  forbade, all reported as met.
+                 *
+                 *  The schema writes one line per column, and that line is the
+                 *  unit of proof:
+                 *
+                 *    { key: 'money1', label: 'السعر', type: 'number', … min: 0, minExclusive: true },
+                 */
+                const want = c.expectedRule;
+                const labelOf = (line: string) => (/label:\s*'([^']*)'/.exec(line) || [])[1] || '';
+                const columnLines = String(src || '').split('\n')
+                    .filter(l => /label:\s*'/.test(l) && /\bmin:\s*-?\d/.test(l));
+                //  On HIS column when he named one. `saysWord` both ways,
+                //  because he writes «سعرًا» and the schema says «السعر».
+                //  `field` is only filled when the clause OPENS with the noun
+                //  — «المبلغ إذا كان صفرًا». «لا تقبل سعرًا صفرًا» opens with
+                //  the negation, so it arrives empty, and the column is named
+                //  in the middle of his sentence instead. So the CLAUSE is
+                //  asked about each column, through the language layer: it
+                //  says «سعرًا», the schema says «السعر», and one stemmer
+                //  settles it. It does not say «كمية», so «الكمية» is out.
+                const said = want.field || want.text || '';
+                const onHisColumn = columnLines.filter(l => {
+                    const label = labelOf(l);
+                    if (!label || !said) return !!label;
+                    return label === said || saysWord(said, label)
+                        || label.split(/\s+/).some(w => w.length > 2 && saysWord(said, w));
+                });
+                //  With HIS number, when the sentence carried one.
+                const withHisNumber = onHisColumn.filter(l => want.min === undefined
+                    || new RegExp('\\bmin:\\s*' + want.min + '\\b').test(l));
+                //  And at HIS strictness. «لا تقبل سعرًا صفرًا» forbids the
+                //  value itself; a schema with `min: 0` and no `minExclusive`
+                //  accepts zero, which is the opposite of what he asked.
+                const proven = withHisNumber.filter(l => !want.minExclusive || /minExclusive:\s*true/.test(l));
+                if (proven.length) {
+                    return say('met', isAr
+                        ? `الشرط مطبَّق على العمود «${labelOf(proven[0])}»: «${want.text}»`
+                        : `the bound is on the column «${labelOf(proven[0])}»: «${want.text}»`);
+                }
+                //  A verdict that says WHICH of the three failed. «unmet» on
+                //  its own sent an hour of searching in the wrong direction
+                //  the last time a bound went missing.
+                const why = onHisColumn.length === 0
+                    ? (isAr ? `لم يصل حدٌّ إلى العمود الذي سمّيتَه` : `no bound reached the column you named`)
+                    : withHisNumber.length === 0
+                        ? (isAr ? `الحدّ على العمود بقيمة غير التي ذكرتها (${want.min})` : `the bound on that column is not the number you gave (${want.min})`)
+                        : (isAr ? `الحدّ يقبل القيمة نفسها — «${want.min}» مسموحة، وأنت منعتها` : `the bound admits the value itself — «${want.min}» is allowed, and you forbade it`);
+                return say('unmet', isAr
+                    ? `اشترطتَ «${want.text}» — ${why}`
+                    : `you asked for «${want.text}» — ${why}`);
+            }
+            //  A PROHIBITION and a REQUIREMENT are about the whole build, and
+            //  Joe has no general way to check either. It says so, in his own
+            //  words, rather than dropping the condition — `unprovable` is
+            //  declared to him and does not block the delivery.
+            return say('unprovable', isAr
+                ? `قرأتُ شرطك «${c.expectedRule.text}» ولا أملك طريقة أُثبته بها، فلم أدّعِ أنّي فحصته`
+                : `I read your condition «${c.expectedRule.text}» and have no way to prove it, so I did not claim to have checked it`);
+        }
+        if (c.expectedPage) {
+            //  A page is proven the way a column is: by what the build
+            //  actually wrote. Either a file of its own on disk (the page
+            //  builder) or a route carrying his title (the React router).
+            //  Nothing is greped into existence, and nothing is assumed
+            //  from the plan — the plan is what we are checking.
+            const slug = c.expectedPage.slug;
+            const file = slug === 'index' ? 'index.html' : `${slug}.html`;
+            const onDisk = !!dir && fs.existsSync(path.join(dir, file));
+            const route = slug === 'index' ? '/' : `/${slug}`;
+            //  The generator writes the route literally: `{ path: '/contact', … }`.
+            //  A plain substring is enough, and leaves no escape to get wrong.
+            const routed = !!src && src.includes(`path: '${route}'`);
+            return (onDisk || routed)
+                ? say('met', isAr
+                    ? `صفحة «${c.expectedPage.title}» مبنية (${onDisk ? file : route})`
+                    : `the page «${c.expectedPage.title}» was built (${onDisk ? file : route})`)
+                : say('unmet', isAr
+                    ? `صفحة «${c.expectedPage.title}» طلبتها ولم تُبنَ`
+                    : `the page «${c.expectedPage.title}» was asked for and not built`);
         }
         if (c.id === 'readme') {
             const has = !!dir && ['README.md', 'readme.md'].some(f => fs.existsSync(path.join(dir, f)));
@@ -691,12 +1007,48 @@ export function judgeAcceptance(criteria: Criterion[], ev: Evidence, isAr = true
     });
 
     const met = judged.filter(c => c.verdict === 'met').length;
-    // The denominator is every criterion derived from the user's request.
-    // `unprovable` is not neutral: an unchecked criterion is a failed
-    // acceptance obligation, otherwise a run can score 100% by proving only
-    // the subset the judge happened to inspect.
-    const unmet = judged.filter(c => c.verdict !== 'met').length;
-    return { criteria: judged, met, unmet, accepted: judged.length > 0 && unmet === 0 };
+    /**
+     *  ⛔ THREE OUTCOMES, AND ONLY ONE OF THEM MAY BLOCK.
+     *
+     *  Merging two branches put two guards in one tree arguing opposite
+     *  sides, and both were written from real incidents:
+     *
+     *    • «an unprovable rule does not block the delivery» — because
+     *      blocking on what Joe cannot check makes every conditional
+     *      request undeliverable, which is how a guard becomes a wall.
+     *      Every Gate062 run states «Do not modify existing projects»,
+     *      so counting it against acceptance freezes acceptance forever,
+     *      and a criterion that can NEVER be met is the same defect as
+     *      one that can never fail.
+     *
+     *    • «unmet must cover every criterion» — because otherwise a run
+     *      scores 100% by proving only the subset the judge knew how to
+     *      inspect.
+     *
+     *  Both are right, and picking one silently would have discarded a
+     *  measured incident. So the count is three-way: `unmet` blocks,
+     *  `unprovable` does not, and NEITHER is hidden — the ledger head
+     *  below never says «all proven» while an unprovable one stands, so
+     *  no claim is made that the run cannot support.
+     */
+    const unmet = judged.filter(c => c.verdict === 'unmet').length;
+    const unprovable = judged.filter(c => c.verdict === 'unprovable').length;
+    /**
+     *  ⛔ AND NOTHING PROVEN IS NEVER ACCEPTED.
+     *
+     *  `unmet === 0` alone made a run where the judge could check NOTHING
+     *  come back accepted: zero proven, zero failed, every criterion
+     *  unprovable — and a green verdict over a ledger with no evidence in
+     *  it at all. That is the exact false success this file exists to stop,
+     *  and it walked in through the door opened for `unprovable`.
+     *
+     *  So acceptance needs something demonstrated, not merely nothing
+     *  refuted. One met criterion is the floor.
+     */
+    return {
+        criteria: judged, met, unmet, unprovable,
+        accepted: judged.length > 0 && unmet === 0 && met > 0,
+    };
 }
 
 /**
@@ -707,7 +1059,15 @@ export function judgeAcceptance(criteria: Criterion[], ev: Evidence, isAr = true
  * believable.
  */
 export function acceptanceBlock(a: Acceptance, isAr: boolean): string {
-    if (a.met + a.unmet !== a.criteria.length) {
+    /**
+     *  A LEDGER THAT DOES NOT ADD UP IS NOT PUBLISHED.
+     *
+     *  The counts and the rows are two records of one judgement, and nothing
+     *  but this line forces them to agree. A ledger printing «4 proven» over
+     *  eleven rows is a report that reads as an answer, so it stops here
+     *  rather than reaching him.
+     */
+    if (a.met + a.unmet + (a.unprovable || 0) !== a.criteria.length) {
         throw new Error('acceptance_ledger_count_mismatch');
     }
     if (!a.criteria.length) {
@@ -715,14 +1075,54 @@ export function acceptanceBlock(a: Acceptance, isAr: boolean): string {
             ? '⚠️ لم أستخرج معياراً قابلاً للفحص من طلبك، لذلك لم أصدر حكم قبول.'
             : '⚠️ I could not derive a checkable criterion from your request, so I did not issue an acceptance judgment.';
     }
+    const gaps = a.unprovable || 0;
+    /**
+     *  ⛔ «ALL PROVEN» IS A CLAIM, AND IT IS FALSE WHILE ONE IS UNCHECKED.
+     *
+     *  `unprovable` does not block delivery — blocking on what this judge
+     *  cannot check would make every conditional request undeliverable. But
+     *  not blocking is not permission to round it away: the head said «all
+     *  requested criteria were proven» over a ledger with an unchecked row
+     *  in it, which is exactly the false-success this file exists to stop.
+     *
+     *  So the gap is stated in the same sentence as the acceptance, in his
+     *  language, with its number. He decides what to do about it; Joe only
+     *  has to stop pretending it is not there.
+     */
+    /**
+     *  ⛔ AND THE MARK IS THE EVIDENCE THAT REACHES HIM.
+     *
+     *  `✅` sat on «1 of 5 proven, 4 never checked» and on «5 of 5 proven»
+     *  alike — and his eye cannot tell those apart, whatever the sentence
+     *  after the mark says. That is `accepted` carrying two meanings in one
+     *  boolean, which this repository already closed once under the name
+     *  «a boolean that means two things cannot be guarded».
+     *
+     *  The two are separated where each belongs. `accepted` stays the
+     *  DELIVERY gate — nothing he asked for was looked for and missing —
+     *  because tying delivery to «everything proven» would wall off every
+     *  request carrying a criterion this judge cannot check, and the
+     *  reference prompt itself carries one, so that gate would never open
+     *  again. The MARK answers the other question: a tick means everything
+     *  he asked for was proven, and nothing less earns one.
+     *
+     *  He decides whether a partial delivery is good enough. Joe does not
+     *  decide it for him with a green tick.
+     */
     const head = a.accepted
-        ? (isAr
-            ? `✅ حكم القبول: أثبتُّ جميع المعايير المطلوبة (${a.met}/${a.criteria.length}).`
-            : `✅ Acceptance accepted: all ${a.met}/${a.criteria.length} requested criteria were proven.`)
+        ? (gaps
+            ? (isAr
+                ? `⚠️ حكم قبول ناقص: لم يسقط شيءٌ ممّا فحصتُه (${a.met}/${a.criteria.length}) — و${gaps} من طلبك لم أعرف كيف أفحصه، ولم أدَّعِ أنّي فحصتُه:`
+                : `⚠️ Accepted with gaps: nothing I checked failed (${a.met}/${a.criteria.length}) — and ${gaps} of your request I did not know how to check, and did not claim to have checked:`)
+            : (isAr
+                ? `✅ حكم القبول: أثبتُّ جميع المعايير المطلوبة (${a.met}/${a.criteria.length}).`
+                : `✅ Acceptance accepted: all ${a.met}/${a.criteria.length} requested criteria were proven.`))
         : (isAr
-            ? `⚠️ التسليم محجوب: أثبتُّ ${a.met} من أصل ${a.criteria.length} معياراً مشتقاً — و${a.unmet} لم يُثبت:`
-            : `⚠️ Delivery blocked: ${a.met} of ${a.criteria.length} requested criteria were proven — ${a.unmet} were not proven:`);
+            ? `⚠️ التسليم محجوب: أثبتُّ ${a.met} من أصل ${a.criteria.length} معياراً مشتقاً — و${a.unmet} لم يُثبت${gaps ? `، و${gaps} لم أعرف كيف أفحصه` : ''}:`
+            : `⚠️ Delivery blocked: ${a.met} of ${a.criteria.length} requested criteria were proven — ${a.unmet} were not proven${gaps ? `, and ${gaps} I did not know how to check` : ''}:`);
     const lines = a.criteria.map(c => {
+        //  Two marks, because there are two outcomes he can act on: proven,
+        //  or not. WHICH kind of not-proven is in `why`, where it belongs.
         const mark = c.verdict === 'met' ? '✅' : '❌';
         return `   ${mark} ${isAr ? c.ar : c.en} — ${c.why}`;
     });

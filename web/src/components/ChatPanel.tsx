@@ -3,6 +3,7 @@ import React, { useRef, useEffect, useState } from 'react';
 import { Sparkles, Send, Mic, User, Bot, Copy, Check, Paperclip } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import ReactMarkdown from 'react-markdown';
+import remarkBreaks from 'remark-breaks';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import NeuralThinkingIndicator from './NeuralThinkingIndicator';
@@ -224,6 +225,26 @@ export default function ChatPanel({
                                         </div>
                                     )}
                                     <ReactMarkdown
+                                        // A single newline IS a line break here.
+                                        //
+                                        // Measured on the owner's screen, from the DOM and not from the source:
+                                        // Joe's delivery message arrived as ONE <p> of 2107 characters carrying
+                                        // 39 newline characters and 0 <br> elements, with computed white-space
+                                        // 'normal' -- so every break collapsed to a space and a night of honest
+                                        // reporting reached him as a wall.
+                                        //
+                                        // Nothing was broken on either side. The producer writes chat text where
+                                        // a newline ends a line; the renderer applies CommonMark, where a single
+                                        // newline is a soft break and means a space. Two parties that must agree,
+                                        // maintained separately, with nothing forcing them -- so this is the line
+                                        // that forces them, and it is applied at EVERY renderer, because fixing
+                                        // the one that was seen and leaving the rest is how the same defect comes
+                                        // back through a second emitter.
+                                        //
+                                        // remark-breaks@4 measured through this exact renderer before adoption:
+                                        // 3 newlines -> 0 <br> without it, 3 <br> with it; code fences keep 0 <br>
+                                        // and their text intact; blank-line-separated paragraphs stay 2 <p>.
+                                        remarkPlugins={[remarkBreaks]}
                                         components={{
                                             // Each paragraph/heading/list-item decides its own
                                             // direction — the BiDi fix above, block by block.

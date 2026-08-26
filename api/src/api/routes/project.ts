@@ -1,4 +1,5 @@
 import express, { Router, Request, Response } from 'express';
+import { isWithinRoot } from '../../modules/tools/path-containment';
 import fs from 'fs';
 import path from 'path';
 import { authenticate } from '../middleware/auth';
@@ -104,7 +105,7 @@ async function resolvePathInsideWorkspace(inputPath: string, workspaceId?: strin
   const inside = rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
   
   // Extra boundary enforcement (AUDIT-119)
-  const isStrictlyInside = candidateReal.startsWith(workspaceReal + path.sep) || candidateReal === workspaceReal;
+  const isStrictlyInside = isWithinRoot(candidateReal, workspaceReal);
   
   return (inside && isStrictlyInside) ? candidateReal : null;
 }

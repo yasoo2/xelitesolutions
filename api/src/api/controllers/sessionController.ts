@@ -6,6 +6,11 @@ import { Tenant } from '../../shared/models/tenant';
 
 
 import { workspaceService } from '../../modules/services/WorkspaceService';
+import { readJoeProjectForRun } from '../page-store';
+import { getRunEvidenceForSession } from '../../shared/run-evidence-store';
+import { sessionLogLines } from '../../core/session/session-log-store';
+import { logTextFor, logStampFor } from '../../core/session/log-line';
+import { publicUrlFor } from '../../shared/utils/publicUrl';
 
 export async function createSession(req: Request, res: Response) {
     const rawTitle = typeof req.body?.title === 'string' ? req.body.title : '';
@@ -661,4 +666,75 @@ export async function searchSessions(req: Request, res: Response) {
     } catch (e) {
         return res.status(500).json({ error: 'Failed to search sessions' });
     }
+}
+
+/**
+ *  WHAT THIS SESSION PRODUCED — asked for, not listened for.
+ *
+ *  «عندما اضغط على شاشة البرفيو فانه لا يعرض الملف الذي بني في تلك الجلسه»
+ *
+ *  Measured on his machine, as a guest, opening two past sessions from the
+ *  row at the bottom:
+ *
+ *      «جدول مهام متصفح»      chat 211 lines · preview iframes=0 src=null · logs empty
+ *      «برنامج لحفظ الزبائن»  chat 205 lines · preview iframes=0 src=null · logs empty
+ *
+ *  and at the same moment, from the same machine:
+ *
+ *      GET /project-preview/6a8c269c433c89409960335d/index.html  →  HTTP 200
+ *      <title>AUTHORITATIVE — العملاء</title>
+ *
+ *  Nothing was lost. The project directory is in joe-projects.json and the
+ *  run's events are in run-evidence, both on disk, both keyed by session.
+ *  What died with the window was the BROWSER's note of which session owned
+ *  them — previewBySession and panelArchive are useRef Maps, and a ref
+ *  lives exactly as long as the tab. The chat came back because the chat
+ *  is asked for; the preview and the logs were only ever listened for, and
+ *  a listener hears nothing about a build that finished yesterday.
+ *
+ *  This is the question nobody could ask before.
+ */
+export async function sessionWorkspace(req: Request, res: Response) {
+    const sessionId = String(req.params.id || '').trim();
+    if (!sessionId) return res.status(400).json({ error: 'session_id_required' });
+
+    //  A conversation read, not a pipeline read: null run id on purpose.
+    let preview: { url: string; brand?: string; dir?: string; type?: string; at?: number } | null = null;
+    try {
+        const project: any = readJoeProjectForRun(sessionId, null);
+        //  An API-only project has no page to show. Saying so is the honest
+        //  answer; a URL to a directory that serves nothing is not.
+        if (project && project.dir && project.type !== 'api') {
+            const at = Number(project.updatedAt) || 0;
+            preview = {
+                url: publicUrlFor('/project-preview/' + encodeURIComponent(sessionId) + '/index.html' + (at ? '?v=' + at : '')),
+                brand: project.brand,
+                dir: project.dir,
+                type: project.type,
+                at,
+            };
+        }
+    } catch { preview = null; }
+
+    //  The same lines the live stream writes, stamped with the moment each
+    //  one happened rather than the moment it was read back.
+    //  What this session printed, written down as it was broadcast. This is
+    //  the whole record for a chat session; run-evidence below only ever
+    //  held the agent-run pipeline, and holds nothing at all for the
+    //  sessions in the row at the bottom of his screen.
+    const logs: string[] = sessionLogLines(sessionId);
+    try {
+        const runs = await getRunEvidenceForSession(sessionId);
+        for (const run of runs) {
+            for (const event of (run.events || [])) {
+                const stamp = logStampFor(event.ts);
+                for (const line of logTextFor(event as any)) logs.push('[' + stamp + '] ' + line);
+            }
+        }
+    } catch { /* an unreadable evidence file is an empty log, never a 500 */ }
+
+    //  The panel caps its own list; capping here too keeps a long-running
+    //  session from sending a megabyte of text to draw four screens.
+    const MAX = 500;
+    return res.json({ preview, logs: logs.length > MAX ? logs.slice(-MAX) : logs });
 }

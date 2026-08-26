@@ -124,8 +124,16 @@ describe('the question names his own thing', () => {
 
     // NEGATIVE — no language must not silently become Arabic for an English request.
     it('an English request without a language does not default to Arabic', () => {
+        //  This pinned «One thing before I start», the opening of the
+        //  four-question site questionnaire. «I want a table» names a
+        //  CONTAINER now, so it gets one question about what goes in it —
+        //  which is the better answer and a different sentence.
+        //
+        //  What this test is actually for is the LANGUAGE: an English
+        //  request with no interface language must not come back in
+        //  Arabic. That is asserted directly, and it holds.
         const asked = clarifyQuestions('I want a table', '');
-        expect(asked).toContain('One thing before I start');
+        expect(asked).toMatch(/before I start/);
         expect(asked).not.toMatch(/[؀-ۿ]/);
     });
 

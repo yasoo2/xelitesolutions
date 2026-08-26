@@ -1,4 +1,5 @@
 import { ToolDefinition, ToolPermission } from '../types';
+import { isWithinRoot } from '../path-containment';
 import fs from 'fs';
 import path from 'path';
 import { executeTool } from '../../services/ToolService';
@@ -240,7 +241,7 @@ function trustedRuntimeProjectRoot(sessionId: unknown, workspaceId: unknown, run
     if (!candidateRaw) return '';
     const workspaceRoot = path.resolve(workspaceService.getActiveRoot(String(workspaceId || '')));
     const candidate = path.resolve(candidateRaw);
-    const inside = candidate === workspaceRoot || candidate.startsWith(`${workspaceRoot}${path.sep}`);
+    const inside = isWithinRoot(candidate, workspaceRoot);
     return inside && fs.existsSync(path.join(candidate, 'package.json')) ? candidate : '';
 }
 
@@ -574,6 +575,51 @@ export function apiSiblingOf(projectRoot: string): string | null {
         const sibling = path.join(path.dirname(root), base.replace(/^react-/, 'api-'));
         return fs.existsSync(path.join(sibling, 'server.js')) ? sibling : null;
     } catch { return null; }
+}
+
+/**
+ *  A PLANNER THAT SUCCEEDS REPLACED THE ENGINE THAT KNOWS HIM.
+ *
+ *  The same sentence, twice, on his own machine:
+ *
+ *      run 1  [pipeline] no planner available — planning deterministically
+ *             → react-الفواتير: his three columns, in Arabic, with real
+ *               add/edit/delete, search, totals and durable storage
+ *
+ *      run 2  LLM planning completed → Plan created: 3 phases
+ *             → invoice-manager: 34 lines, in English, three invented
+ *               rows (INV-001, 100.00, 2023-01-01), no function at all
+ *
+ *  The WORSE build is the one where the planner worked. When it fails,
+ *  Joe falls back on his own engine, which reads the request; when it
+ *  succeeds, a model's guess takes the engine's place.
+ *
+ *  deterministicPhasesFor was written as a RESCUE for a dead planner.
+ *  It is not a rescue. For a request that declares its own schema it
+ *  is the right answer, and asking a model what to build instead is
+ *  asking a question that was already answered — by him.
+ *
+ *  So the test is not «did the planner work». It is «did HE say what
+ *  the thing holds». derivedColumns answers that from his sentence
+ *  alone, with no catalogue, and when it answers, the planner is not
+ *  consulted about WHAT to build. Everything else still goes to the
+ *  planner exactly as before: a request that declares no schema is
+ *  one where a model genuinely has something to decide.
+ */
+export function heDeclaredWhatItHolds(request: string): boolean {
+    try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { columnsAnywhereInHisRequest } = require('../../../core/design/app-blueprints');
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { PlanningEngine } = require('../../../core/orchestrator/PlanningEngine');
+        if (!PlanningEngine.looksLikeBuild(request)) return false;
+        const columns = columnsAnywhereInHisRequest(request);
+        //  No floor of my own: derivedColumns already refuses one noun
+        //  after «جدول» as a subject rather than a column, and two floors
+        //  for one rule is how they come apart. A mutation proved this
+        //  one could never decide anything.
+        return Array.isArray(columns) && columns.length > 0;
+    } catch { return false; }
 }
 
 export function deterministicRescueForDeadPlanner(request: string): boolean {
@@ -1058,6 +1104,40 @@ export class ProjectPipelineTool implements ToolDefinition {
         // 1 — Plan from the evidence. A valid plan may choose a framework or a
         // foundation only when it records a reason grounded in requirements or
         // inspected workspace facts; no deterministic request classifier owns it.
+        /**
+         *  HE ALREADY SAID WHAT IT HOLDS — SO NOTHING IS ASKED ABOUT IT.
+         *
+         *  See heDeclaredWhatItHolds above for the two runs of the same
+         *  sentence that produced two different products, the worse one
+         *  being the run where the planner succeeded.
+         *
+         *  This is not «skip the planner». It is: when his sentence
+         *  names the columns, WHAT to build is settled, and a model has
+         *  nothing left to decide about it. Requests that declare no
+         *  schema fall straight through to the planner as before — those
+         *  are the ones where a model genuinely has a question to answer.
+         */
+        let hisPlan: any = null;
+        const hisOwnSchema = evidence?.constraints?.createsNewProject
+            && heDeclaredWhatItHolds(productRequest)
+            ? deterministicPhasesFor(productRequest)
+            : null;
+        if (hisOwnSchema) {
+            say(pick(isAr,
+                `[pipeline] الطلب يصرّح بأعمدته — أبني منه مباشرة بلا أن أسأل نموذجاً ما المطلوب: ${hisOwnSchema.reason}`,
+                `[pipeline] the request declares its own columns — building from it directly, with no model asked what to build: ${hisOwnSchema.reason}`));
+            hisPlan = {
+                ok: true,
+                output: {
+                    projectName: hisOwnSchema.projectName,
+                    phases: hisOwnSchema.phases,
+                    deterministic: true,
+                    plannedWithoutModel: true,
+                },
+                logs: [],
+            };
+        }
+
         say('[pipeline] planning evidence-backed engineering phases…');
         // A greenfield engineering plan is the one operation that may legitimately
         // produce a large, evidence-backed JSON graph. Give it an explicit bounded
@@ -1067,7 +1147,8 @@ export class ProjectPipelineTool implements ToolDefinition {
         const plannerTimeoutMs = Number(context?.plannerTimeoutMs) > 0
             ? Number(context.plannerTimeoutMs)
             : 180_000;
-        let plannerResult: any = await executeTool('project_planner',
+        //  When his sentence settled it, the planner is not called at all.
+        let plannerResult: any = hisPlan || await executeTool('project_planner',
             { projectDescription: planningRequest, evidence: plannerEvidence },
             {
                 ...(context || {}),

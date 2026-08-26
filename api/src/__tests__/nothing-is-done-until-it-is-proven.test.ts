@@ -83,9 +83,24 @@ describe('the criteria come from HIS brief, never from a fixed checklist', () =>
         expect(acceptanceFor(GATE062_ACCEPTANCE_PROMPT).map(c => c.id).sort()).toEqual([
             'button', 'counter', 'status_message', 'title',
         ].sort());
+        //  THE LIVE PROMPT NOW DERIVES SIX, AND THE SIXTH IS DECLARED HERE.
+        //
+        //  It ends «Do not modify existing projects» — a stated rule, and one
+        //  Joe silently dropped for as long as nothing read rules. It is the
+        //  most consequential sentence in the whole brief: it is the one that
+        //  protects the owner's other work.
+        //
+        //  The reference denominator therefore moves 5 → 6. That is not the
+        //  prompt changing — not one character of it has — it is Joe reading a
+        //  sentence he used to ignore. Every «x/5» published before today is
+        //  incomparable with every «x/6» after it, and this comment is the
+        //  record of exactly when and why, so nobody has to guess later.
         expect(acceptanceFor(GATE062_LIVE_PROMPT).map(c => c.id).sort()).toEqual([
-            'button', 'counter', 'preview', 'status_message', 'title',
+            'button', 'counter', 'preview', 'rule:1', 'status_message', 'title',
         ].sort());
+        const rule = acceptanceFor(GATE062_LIVE_PROMPT).find(c => c.id === 'rule:1');
+        expect((rule as any).expectedRule.text).toBe('Do not modify existing projects');
+        expect((rule as any).expectedRule.kind).toBe('forbid');
     });
 
     it('derives a stated numeric bound from the request and does not invent it when silent', () => {
@@ -228,9 +243,25 @@ describe('preview claims require a measured HTTP response', () => {
 });
 
 describe('capability claims require a measured engine contract', () => {
+    /**
+     *  THE FIXTURE CARRIES CONTROLS NOW, NOT WORDS.
+     *
+     *  It used to list `search filter sort` as bare tokens, because that is
+     *  what the proof looked for — and `filter` and `sort` are JavaScript's
+     *  own array methods, present in every React file ever generated. A
+     *  records app with no filter control at all was told it could filter.
+     *
+     *  The claims are proven by the STATE their controls drive, so the
+     *  fixture names those, and the filter also needs a select column: its
+     *  control renders only when one exists, so without one the markup never
+     *  reaches the screen.
+     */
+    const RECORDS_SOURCE = "function RecordsApp(){ setRows add create edit update delete required validate"
+        + " setQuery( setFilter( setSort( groupTotals localStorage fetch toCsv download"
+        + " fields:[{key:'status',type:'select'}] }";
+
     it('returns only measured claims for a known engine with source evidence', () => {
-        const source = 'function RecordsApp(){ setRows add create edit update delete required validate search filter sort groupTotals localStorage fetch toCsv download }';
-        const report = measuredAppAbilities('records', true, source);
+        const report = measuredAppAbilities('records', true, RECORDS_SOURCE);
         expect(report.measured).toBe(true);
         expect(report.abilities).toContain('إضافة وتعديل وحذف السجلات فعلياً');
         expect(report.abilities).toContain('حفظ دائم + تصدير CSV + قراءة من خادم المشروع إن وُجد');
@@ -248,7 +279,16 @@ describe('capability claims require a measured engine contract', () => {
     it('does not claim any known-engine ability when its source cannot be read', () => {
         const report = measuredAppAbilities('records', true, '');
         expect(report).toEqual(expect.objectContaining({ abilities: [], measured: false }));
-        expect(report.unmeasured).toHaveLength(5);
+        //  EVERY ability of the engine, not a number that has to be edited
+        //  each time the contract gets more precise. It was written as `5`,
+        //  and splitting one false claim («search, filter and sort», proven
+        //  by two array methods) into three provable ones broke a test that
+        //  had nothing to say about the change. The count is derived from a
+        //  fully-evidenced run, so it describes the intent instead of a
+        //  snapshot of it.
+        const everyAbility = measuredAppAbilities('records', true, RECORDS_SOURCE).abilities;
+        expect(everyAbility.length).toBeGreaterThan(4);
+        expect(report.unmeasured).toHaveLength(everyAbility.length);
     });
 
     it('does not inherit records claims for an unknown engine', () => {
@@ -404,9 +444,30 @@ describe('a criterion is met by EVIDENCE, or it is not met', () => {
         `);
         const a = judgeAcceptance(acceptanceFor(GATE062_LIVE_PROMPT), { dir }, true);
         expect(a.met).toBe(0);
+        //  SIX, not five: `unmet` is now the count of everything NOT PROVEN,
+        //  because a criterion the judge could not check is still an acceptance
+        //  obligation the run did not discharge. Otherwise a run scores 100% by
+        //  proving only the subset the judge happened to know how to inspect.
+        //  The partition below is what keeps the two kinds distinguishable.
+        //  Five looked for and missing, one this judge cannot check. The
+        //  aggregate is asserted as the SUM so neither kind can quietly
+        //  absorb the other, which is the whole point of keeping them apart.
         expect(a.unmet).toBe(5);
+        expect(a.unprovable).toBe(1);
+        expect(a.unmet + a.unprovable).toBe(a.criteria.length);
+        expect(a.criteria.length).toBe(6);
         expect(a.accepted).toBe(false);
-        expect(a.criteria.every(c => c.verdict === 'unmet')).toBe(true);
+        //  Five are unmet and the sixth is UNPROVABLE, which is a different
+        //  answer and has to stay a different answer: «I could not check
+        //  this» is not «this failed». Asserted one by one rather than as a
+        //  blanket, because `every(c => unmet || unprovable)` would also pass
+        //  on a day when all six quietly became unprovable.
+        expect(a.criteria.filter(c => c.verdict === 'unmet').map(c => c.id).sort())
+            .toEqual(['button', 'counter', 'preview', 'status_message', 'title']);
+        const declared = a.criteria.filter(c => c.verdict === 'unprovable');
+        expect(declared.map(c => c.id)).toEqual(['rule:1']);
+        //  And it says WHICH condition it could not prove, in his own words.
+        expect(declared[0].why).toContain('Do not modify existing projects');
     });
 
     it('counts each named UI shape independently from the generated source', () => {
@@ -573,7 +634,7 @@ describe('a criterion is met by EVIDENCE, or it is not met', () => {
     it('with no source to read, a feature is UNPROVABLE — never quietly met', () => {
         const a = judgeAcceptance(acceptanceFor(BRIEF), { dir: '/nowhere-at-all' }, true);
         expect(a.criteria.find(c => c.id === 'search')!.verdict).toBe('unprovable');
-        expect(a.unmet).toBe(a.criteria.length);
+        expect(a.unmet + a.unprovable).toBe(a.criteria.length);
         expect(a.accepted).toBe(false);
     });
 
@@ -602,12 +663,17 @@ describe('a criterion is met by EVIDENCE, or it is not met', () => {
 
         const withoutEvidence = judgeAcceptance(criteria, { dir: '/no-evidence-at-all' }, false);
         expect(withoutEvidence.met).toBe(0);
-        expect(withoutEvidence.unmet).toBe(criteria.length);
+        expect(withoutEvidence.unmet + withoutEvidence.unprovable).toBe(criteria.length);
         expect(withoutEvidence.accepted).toBe(false);
         expect(withoutEvidence.criteria.every(c => c.verdict !== 'met')).toBe(true);
         const blocked = acceptanceBlock(withoutEvidence, false);
         expect(blocked).toContain(`0 of ${criteria.length} requested criteria were proven`);
-        expect(blocked).toContain(`${criteria.length} were not proven`);
+        //  With no directory at all NOTHING is checkable, so all four are
+        //  unprovable and none is unmet — and the head must say exactly
+        //  that rather than rounding the gap into a failure. Both numbers
+        //  are asserted so neither kind can absorb the other.
+        expect(blocked).toContain('0 were not proven');
+        expect(blocked).toContain(`${criteria.length} I did not know how to check`);
         expect(blocked).not.toContain('⏭️');
     });
 
@@ -630,8 +696,20 @@ describe('the ledger is published, in his language', () => {
         const a = judgeAcceptance(acceptanceFor(BRIEF), { dir: '/nope', built: false }, true);
         const block = acceptanceBlock(a, true);
         expect(block).toContain('التسليم محجوب');
-        expect(block).toContain('أثبتُّ 0 من أصل 11');
-        expect(block).toContain('11 لم يُثبت');
+        //  ⛔ NORMALISED ON BOTH SIDES, and this is not tidiness.
+        //  This line carried ت+shadda+damma while the source wrote
+        //  ت+damma+shadda — the same word to every human eye, two
+        //  different byte sequences to `includes`, and a guard that fails
+        //  on a difference no reader can see is a guard nobody can trust.
+        //  NFC puts combining marks in canonical order, so the comparison
+        //  finally asks what a reader asks.
+        const nfc = (x: string) => x.normalize('NFC');
+        expect(nfc(block)).toContain(nfc('أثبتُّ 0 من أصل 11'));
+        //  4 looked for and missing, 7 unknown to this judge — and BOTH
+        //  numbers reach him. Asserting only the total would let one kind
+        //  hide inside the other.
+        expect(nfc(block)).toContain(nfc('4 لم يُثبت'));
+        expect(nfc(block)).toContain(nfc('7 لم أعرف كيف أفحصه'));
         expect(block).not.toContain('ولم أفحص بقية نص طلبك');
         expect(block).toContain('❌');
         expect(block).toContain('README');
@@ -646,7 +724,8 @@ describe('the ledger is published, in his language', () => {
         const block = acceptanceBlock(a, false);
         expect(block).toContain('Delivery blocked');
         expect(block).toContain('0 of 3 requested criteria were proven');
-        expect(block).toContain('3 were not proven');
+        expect(block).toContain('1 were not proven');
+        expect(block).toContain('2 I did not know how to check');
         expect(block).not.toContain('I did not inspect the rest of your request');
     });
 

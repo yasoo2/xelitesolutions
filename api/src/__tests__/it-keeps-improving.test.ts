@@ -309,7 +309,18 @@ describe('the model round is contained, not trusted', () => {
         expect(REACT).toMatch(/fs\.appendFileSync\(cssPath/);
         expect(REACT).toMatch(/JOE_MODEL_ROUND \|\| '1'\) === '0'/);
         // No other write path for it: no writeFileSync of model output.
+        //  ⛔ THE ANCHOR IS PROVEN BEFORE ANYTHING IS BUILT ON IT.
+        //
+        //  `indexOf` returns -1 when the text moves, and `slice(-1)` then
+        //  yields a one-character string -- so a NEGATIVE assertion over it
+        //  passes on nothing at all. The guard would go green for ever, and
+        //  green is the one colour nobody investigates.
+        //
+        //  Four sibling guards in this repository already do this implicitly,
+        //  with a positive assertion on the same slice before the negative
+        //  one. This is the same claim, said out loud.
         const at = REACT.indexOf('const got = await askForCss');
+        expect(at).toBeGreaterThan(-1);
         expect(REACT.slice(at, at + 1200)).not.toMatch(/writeFileSync/);
     });
 });

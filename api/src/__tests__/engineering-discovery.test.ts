@@ -3,6 +3,8 @@ import os from 'os';
 import path from 'path';
 import { EngineeringDiscoveryTool } from '../modules/tools/definitions/EngineeringDiscoveryTool';
 
+import { heDeclaredWhatItHolds } from '../modules/tools/definitions/ProjectPipelineTool';
+
 describe('evidence-first engineering discovery', () => {
   const roots: string[] = [];
 
@@ -153,17 +155,47 @@ describe('evidence-first engineering discovery', () => {
    * owns the normal path, and the deterministic builders may appear only
    * BEHIND it, as the fallback for when it cannot be reached.
    */
-  test('the deterministic builders are a fallback behind the planner, never the primary route', () => {
+  test('the planner owns every request that did not declare its own schema', () => {
+    /**
+     *  This asserted «the deterministic builders are a fallback behind
+     *  the planner, never the primary route», by comparing two source
+     *  positions. The principle behind it — no product-named request may
+     *  be dispatched to a stored product foundation — is kept below and
+     *  is not what changed.
+     *
+     *  What changed is measured, not preferred. The same sentence, twice,
+     *  on the owner's machine — «بدي جدول للفواتير فيه رقم الفاتورة
+     *  والمبلغ والتاريخ»:
+     *
+     *      planner unreachable → his three columns, in Arabic, with real
+     *        add/edit/delete, search, totals and durable storage
+     *      planner answered   → 34 lines, in English, three invented rows
+     *        (INV-001, 100.00, 2023-01-01), no function at all
+     *
+     *  The worse build was the one where the planner worked. A source
+     *  position cannot see that, and the rule it was guarding was too
+     *  wide by exactly one case: a request that already says what the
+     *  thing holds leaves a model nothing to decide about WHAT to build.
+     *
+     *  So the invariant is narrowed and asserted on its own terms: the
+     *  planner still owns everything that did not declare a schema, the
+     *  fallback still exists behind a failed planner, and the early path
+     *  is gated on his own words plus a new project.
+     */
     const source = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ProjectPipelineTool.ts'), 'utf8');
-    const plannerIndex = source.indexOf("executeTool('project_planner'");
-    const fallbackIndex = source.indexOf('deterministicPhasesFor(productRequest)');
 
-    expect(fallbackIndex).toBeGreaterThan(plannerIndex);
-    // …and it is reached only after the planner has actually failed.
+    //  The fallback behind a failed planner is untouched.
     expect(source).toContain('if (!plannerResult?.ok || plannerResult?.output?.fallback)');
-    // …and only for a request that creates something new, so it can never
-    // scaffold on top of a project the user asked to be modified.
+
+    //  The early path exists, and it is gated on HIS words — not on a
+    //  product name, a domain guess or anything a catalogue could hold.
+    expect(source).toContain('heDeclaredWhatItHolds(productRequest)');
     expect(source).toContain('evidence?.constraints?.createsNewProject');
+
+    //  …and it is a decision, not a preference: with no declared schema
+    //  the planner is still what runs.
+    expect(heDeclaredWhatItHolds('ابن لي موقعاً لمطعمي')).toBe(false);
+    expect(heDeclaredWhatItHolds('بدي جدول للفواتير فيه رقم الفاتورة والمبلغ والتاريخ')).toBe(true);
   });
 
   test('does not mistake greenfield preflight language for an existing-project target', async () => {

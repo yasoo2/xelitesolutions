@@ -293,8 +293,28 @@ export class SymbolInspectorTool extends BaseTool {
  * AdvancedFileEditTool: Multi-chunk replacement.
  * Equivalent to `multi_replace_file_content`.
  */
+/**
+ *  A REPLACEMENT MUST ARRIVE IN THE FILE'S OWN LINE ENDINGS.
+ *
+ *  Every file Joe generates on this machine is CRLF — counted on a real
+ *  build: App.jsx 53/53, employees.js 13/13, main.jsx 1/1. A model writes
+ *  its `find` and `replace` blocks with bare LF. The matcher below is
+ *  whitespace-tolerant and finds the text anyway; the REPLACEMENT was
+ *  then spliced in as LF, leaving a file with two kinds of line ending
+ *  and the next literal edit unable to match what it had just written.
+ */
+function endingOf(content: string): string {
+    const crlf = (content.match(/\r\n/g) || []).length;
+    const bareLf = (content.match(/(?<!\r)\n/g) || []).length;
+    return crlf >= bareLf && crlf > 0 ? '\r\n' : '\n';
+}
+
 function applyAdvancedReplacement(content: string, find: string, replace: string): string | null {
-    if (content.includes(find)) return content.replace(find, replace);
+    const ending = endingOf(content);
+    const asFile = (t: string) => t.replace(/\r\n?/g, '\n').split('\n').join(ending);
+    const findHere = asFile(find);
+    const replaceHere = asFile(replace);
+    if (content.includes(findHere)) return content.replace(findHere, replaceHere);
     const lines = String(find || '').split(/\r?\n/).map(line => line.trim()).filter(Boolean);
     if (!lines.length) return null;
     const escaped = lines.map(line => [...line].map(char => /\s/.test(char)
@@ -304,7 +324,7 @@ function applyAdvancedReplacement(content: string, find: string, replace: string
         const re = new RegExp(escaped.join('\\s*\\n\\s*'));
         const match = content.match(re);
         if (match && match.index !== undefined) {
-            return content.slice(0, match.index) + replace + content.slice(match.index + match[0].length);
+            return content.slice(0, match.index) + replaceHere + content.slice(match.index + match[0].length);
         }
     } catch { /* malformed evidence is refused honestly */ }
     return null;

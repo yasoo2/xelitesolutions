@@ -18,6 +18,8 @@ import queueRoutes from './routes/queue';
 import filesRoutes from './routes/files';
 import { loadChatStores } from './chat-store';
 import { loadJoePages, loadJoeProjects } from './page-store';
+import { loadSessionLogs, recordSessionEvent } from '../core/session/session-log-store';
+import { observeBroadcasts, liveEventSessionId } from './ws';
 import approvalsRoutes from './routes/approvals';
 import formsPublicRoutes from './routes/formsPublic';
 import projectRoutes from './routes/project';
@@ -60,6 +62,18 @@ function normalizeOrigin(origin: string) {
   return String(origin || '').trim().replace(/\/+$/, '');
 }
 
+/**
+ *  WHO DECIDES WHETHER THIS INSTALL HAS ACCOUNTS.
+ *
+ *  Exported so the decision can be judged directly. A guard that reads a JSON
+ *  body is testing the wiring; a guard that reads the decision is testing the
+ *  decision — and every time this project has tested the wrapper instead of
+ *  the thing, the guard turned out to be measuring spelling.
+ */
+export function joeRunsWithoutAccounts(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.NODE_ENV !== 'production' && env.ENABLE_AUTH_BYPASS === 'true';
+}
+
 export const createApp = () => {
   const app = express();
   const apiRouter = express.Router();
@@ -77,6 +91,18 @@ export const createApp = () => {
   // the page that was on screen instead of starting a tool circus.
   try { loadJoePages(); } catch { /* best-effort */ }
   try { loadJoeProjects(); } catch { /* best-effort */ }
+  /**
+   *  WRITE DOWN WHAT THE PANEL WOULD HAVE DRAWN.
+   *
+   *  Every log line he sees is broadcast and then forgotten, so a session
+   *  reopened after the window closed had nothing to show — measured, not
+   *  guessed: not one of the sessions in his row appears even once in
+   *  run-evidence.json. broadcast() offers each event to its observers
+   *  before anything else, including events sent before a socket exists,
+   *  so this is the one place that sees all of them and can slow none.
+   */
+  try { loadSessionLogs(); } catch { /* best-effort */ }
+  try { observeBroadcasts((event) => recordSessionEvent(liveEventSessionId(event), event)); } catch { /* best-effort */ }
 
   // Per-request logging is morgan's job (one concise line below). The old
   // old raw-header debug line printed EVERY header of EVERY request — including
@@ -192,6 +218,30 @@ export const createApp = () => {
       database: dbStatus,
       uptime: process.uptime(),
       timestamp: new Date().toISOString(),
+      /**
+       *  WHO DECIDES WHETHER THIS INSTALL HAS ACCOUNTS.
+       *
+       *  Measured on the owner's own machine: he restarted Joe and was sent
+       *  to /login, asked for an email and a password — on his laptop, on his
+       *  single-user install, with `ENABLE_AUTH_BYPASS=true` set three lines
+       *  into the script that starts it.
+       *
+       *  The server was bypassing auth all along. The CLIENT was not: its
+       *  three ways past the login page are `import.meta.env.DEV`, a
+       *  build-time `VITE_` variable, and a URL parameter — all three decided
+       *  by the browser bundle, none of them by the server. He runs a
+       *  PRODUCTION web build against a DEVELOPMENT server, so the two
+       *  disagreed and the one that could not know won.
+       *
+       *  A seam again: two sides that must agree, with nothing making them.
+       *  So the server states its own mode and the client asks instead of
+       *  guessing. This is not a new permission — the server has been
+       *  answering these requests without a token the whole time; it is the
+       *  same fact, said out loud where the other side can read it. In a
+       *  production deployment, or with the bypass off, this is false and
+       *  nothing changes.
+       */
+      singleUser: joeRunsWithoutAccounts(),
       version: (() => {
         try {
           const fs = require('fs');

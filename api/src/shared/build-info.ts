@@ -85,3 +85,63 @@ export function resolveBuildSha(
 
   return 'unknown';
 }
+
+/**
+ *  A BUILD IDENTITY THAT IS ANNOUNCED IS NOT AN IDENTITY.
+ *
+ *  resolveBuildSha above reads JOE_BUILD_SHA, then GIT_COMMIT_SHA, then
+ *  the git HEAD of the working directory. Every one of those describes
+ *  the ENVIRONMENT the process was started in. None of them reads the
+ *  code that is actually executing.
+ *
+ *  Found the hard way on a live round: an isolated runtime announced
+ *  e0835559 in its startup log and in its own environment while running
+ *  a stale bundle from before that commit, and the round it produced was
+ *  believed for as long as it took to notice. Every «which build is this»
+ *  answer today — including the ones asked on the owner's own machine —
+ *  was a claim rather than a measurement.
+ *
+ *  A fingerprint cannot be announced. It is the digest of the bytes being
+ *  run, so two processes claiming one SHA with different fingerprints are
+ *  provably different, and a process whose fingerprint changed without a
+ *  redeploy is provably not what it was.
+ *
+ *  Unknown stays unknown: when the file cannot be read, this says so
+ *  rather than inventing a value — the same rule resolveBuildSha follows.
+ */
+export function runningBundleFingerprint(entry: string = process.argv[1] || ''): string {
+    try {
+        const file = String(entry || '').trim();
+        if (!file) return 'unknown';
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const fs = require('fs');
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const crypto = require('crypto');
+        const bytes = fs.readFileSync(file);
+        return crypto.createHash('sha256').update(bytes).digest('hex').slice(0, 12);
+    } catch {
+        return 'unknown';
+    }
+}
+
+export interface BuildIdentity {
+    /** What the environment SAYS this build is. */
+    claimedSha: string;
+    /** What the running bytes ARE. Cannot be set by an environment variable. */
+    bundleFingerprint: string;
+    /** The file those bytes came from. */
+    entry: string;
+}
+
+/** Both halves, so a claim can be compared with a measurement. */
+export function buildIdentity(
+    env: NodeJS.ProcessEnv = process.env,
+    cwd: string = process.cwd(),
+    entry: string = process.argv[1] || '',
+): BuildIdentity {
+    return {
+        claimedSha: resolveBuildSha(env, cwd),
+        bundleFingerprint: runningBundleFingerprint(entry),
+        entry: String(entry || ''),
+    };
+}

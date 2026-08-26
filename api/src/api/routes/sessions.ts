@@ -23,6 +23,11 @@ router.post('/:id/message', authenticate as any, SessionController.addMessage);
 // Compatibility alias for CommandComposer.tsx
 router.get('/:id/history', authenticate as any, SessionController.listSessionMessages);
 
+//  What this session PRODUCED — the built page and the run's log lines.
+//  The chat was always asked for; the work never was, so every reopened
+//  session showed an empty Preview and an empty Logs panel.
+router.get('/:id/workspace', authenticate as any, SessionController.sessionWorkspace);
+
 
 // Delete All Sessions
 router.delete('/', authenticate as any, SessionController.deleteAllSessions);

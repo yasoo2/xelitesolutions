@@ -12,7 +12,7 @@
  * stale one.
  */
 import { stripArabicDiacritics, foldChars } from './promptNormalizer';
-import { derivedColumns } from '../design/app-blueprints';
+import { derivedColumns, columnsAnywhereInHisRequest } from '../design/app-blueprints';
 
 export function looksLikeBuild(goalRaw: string): boolean {
     const g = String(goalRaw || '');
@@ -48,6 +48,36 @@ export function looksLikeBuild(goalRaw: string): boolean {
         // «واجهة برمجية» look like the imperative «برمج»، hijacking
         // analysis → security → API-test workflows as project builds.
         || /(?:^|[\s،:؛])(?:ابن|ابني|انشئ|أنشئ|اصنع|صمم|طور|اعمل|اصمم|سو|برمج|شيّ?د|أقم|اقم)(?=$|[\s،:؛])/.test(bare)
+        /**
+         *  ⛔ AND THE OWNER DOES NOT WRITE IN MSA.
+         *
+         *  Measured on the reference matrix, P14, from a prompt written the
+         *  way he actually writes:
+         *
+         *      أبي تعدّل صفحة النادي: خلّ العنوان أوضح، وحط زر اشتراك…
+         *      ->  Executive Summary: «Add an H1 title · Include alt text»
+         *
+         *  Four imperatives, none of them MSA, and the page was never
+         *  touched. The cause was isolated in one measurement -- the same
+         *  request in both registers, everything else identical:
+         *
+         *      أبي تعدّل صفحة النادي وحط زر…    ->  false
+         *      أريد تعديل صفحة النادي ووضع زر…  ->  true
+         *
+         *  The list above is every-verb-MSA, and this file's own comment
+         *  already warned that «a closed list of VERBS is the same defect as
+         *  a closed list of nouns». It was extended in one register only.
+         *
+         *  ⛔ It does not FAIL, it DRIFTS: Joe never said it did not
+         *  understand. It built something else and called it done, which is
+         *  the one outcome he cannot detect by looking.
+         *
+         *  The boundaries are not optional. JavaScript defines a word boundary by
+         *  [A-Za-z0-9_], so there is no boundary between two Arabic letters
+         *  and a bare «حط» matches inside «محطة» and «شيل» inside
+         *  «تشييل». Same separator class as the line above, deliberately.
+         */
+        || /(?:^|[\s،:؛])(?:ابي|أبي|حط|خل|شيل|سوي|سوّي|عمل)(?=$|[\s،:؛])/.test(bare)
         || /(^|\s)بنِ?\s/.test(g)
         || /(?:^|[\s،:؛])بن(?=$|[\s،:؛])/.test(bare)
         /**
@@ -96,7 +126,7 @@ export function looksLikeBuild(goalRaw: string): boolean {
     const asking = /(?:^|[\s،:؛])(?:بدي|بدى|ودي|ابغي|ابغى|اريد|أريد|أبغي|أبغى|عايز|عاوز|محتاج|نبي|نبغى)(?=$|[\s،:؛])/.test(bare)
         || /(?:^|[\s،:؛])(?:ابن|ابني|انشئ|اصنع|صمم|طور|اعمل|اصمم|سو|سوي|برمج|جهز)(?=$|[\s،:؛])/.test(bare)
         || /\b(?:i\s+(?:want|need)|can\s+you|could\s+you|please|make\s+me|give\s+me|build\s+me)\b/i.test(g);
-    const describesItsContents = !!derivedColumns(g);
+    const describesItsContents = !!columnsAnywhereInHisRequest(g);
     return (verb && noun) || (asking && describesItsContents);
 }
 
@@ -120,7 +150,7 @@ export function asksForSomething(goalRaw: string): boolean {
 
 /** Does the request itself say what the thing will hold? */
 export function describesItsContents(goalRaw: string): boolean {
-    return !!derivedColumns(String(goalRaw || ''));
+    return !!columnsAnywhereInHisRequest(String(goalRaw || ''));
 }
 
 

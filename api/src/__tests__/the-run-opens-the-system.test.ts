@@ -90,8 +90,14 @@ describe('the port Joe announces is the port it binds', () => {
         const d = detectStart(project({
             'package.json': JSON.stringify({ scripts: { start: 'node server.js' } }),
         }), 4600);
+        //  The property is «left alone and unforced», not the spelling of the
+        //  command. It used to read `npm start`; it now runs that script's own
+        //  program with node, so that starting a server stops opening a console
+        //  window over his work — measured: `npm start` through a shell created
+        //  three consoles, `node server.js` created none of them through cmd.
+        //  A test that pinned the old wording would have defended the window.
         expect(d.kind).toBe('npm-start');
-        expect(d.command).toBe('npm start');
+        expect(d.command).toContain('server.js');
         expect(d.forced).toBe(false);
     });
 
@@ -208,6 +214,11 @@ describe('what Joe opens is the system, not its source folder', () => {
             'package.json': JSON.stringify({ scripts: { start: 'node server.js', dev: 'vite' } }),
             'public/index.html': '<h1>packaged</h1>',
         }), 4800);
-        expect(d.command).toBe('npm start');
+        //  The property is WHICH script was chosen — start, not dev — and it is
+        //  now visible directly: the command carries the start script's program
+        //  and the dev script's (`vite`) is nowhere in it.
+        expect(d.kind).toBe('npm-start');
+        expect(d.command).toContain('server.js');
+        expect(d.command).not.toContain('vite');
     });
 });

@@ -1,4 +1,5 @@
 import fs from 'fs';
+import { isWithinRoot } from '../path-containment';
 import path from 'path';
 import { BaseTool } from '../base';
 import { ToolPermission, ToolExecutionResult } from '../types';
@@ -113,7 +114,7 @@ export class GitLocalWorkflowTool extends BaseTool {
             logs.push(`branch=${branch}`);
 
             const fullPath = path.resolve(dir, documentationPath);
-            if (!fullPath.startsWith(dir + path.sep)) throw new Error('documentation_path_escape');
+            if (!isWithinRoot(fullPath, dir)) throw new Error('documentation_path_escape');
             fs.mkdirSync(path.dirname(fullPath), { recursive: true });
             const body = [
                 '# Joe Git validation smoke test',

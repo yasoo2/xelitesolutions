@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useRef, useState, lazy, Suspense, forwardRef } from 'react';
+
+import { uiTime } from '../lib/plainText';
 import { createPortal } from 'react-dom';
 import ReactMarkdown from 'react-markdown';
+import remarkBreaks from 'remark-breaks';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
@@ -151,6 +154,8 @@ const EliteLogo = ({ size = 120, className = "" }: { size?: number; className?: 
 };
 
 const EngineeringReport = ({ report, ts, t }: { report: any; ts?: number; t: any }) => {
+    //  Written for a reader, so it follows the interface language.
+    const { i18n } = useTranslation();
   const [showRaw, setShowRaw] = useState(false);
   const md = report.engineeringReportMarkdown || '';
   
@@ -186,6 +191,26 @@ const EngineeringReport = ({ report, ts, t }: { report: any; ts?: number; t: any
 
       <div className="report-body">
         <ReactMarkdown
+            // A single newline IS a line break here.
+            //
+            // Measured on the owner's screen, from the DOM and not from the source:
+            // Joe's delivery message arrived as ONE <p> of 2107 characters carrying
+            // 39 newline characters and 0 <br> elements, with computed white-space
+            // 'normal' -- so every break collapsed to a space and a night of honest
+            // reporting reached him as a wall.
+            //
+            // Nothing was broken on either side. The producer writes chat text where
+            // a newline ends a line; the renderer applies CommonMark, where a single
+            // newline is a soft break and means a space. Two parties that must agree,
+            // maintained separately, with nothing forcing them -- so this is the line
+            // that forces them, and it is applied at EVERY renderer, because fixing
+            // the one that was seen and leaving the rest is how the same defect comes
+            // back through a second emitter.
+            //
+            // remark-breaks@4 measured through this exact renderer before adoption:
+            // 3 newlines -> 0 <br> without it, 3 <br> with it; code fences keep 0 <br>
+            // and their text intact; blank-line-separated paragraphs stay 2 <p>.
+            remarkPlugins={[remarkBreaks]}
           components={{
             h1: ({ ...props }) => <h1 style={{ fontSize: '1.2rem', margin: '0 0 1rem 0', color: 'var(--accent-primary)', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '8px' }} {...props} />,
             h2: ({ ...props }) => <h2 style={{ fontSize: '1.1rem', margin: '1.5rem 0 0.8rem 0', color: 'var(--text-primary)' }} {...props} />,
@@ -213,7 +238,7 @@ const EngineeringReport = ({ report, ts, t }: { report: any; ts?: number; t: any
       )}
 
       <div className="report-footer">
-        {new Date(ts || Date.now()).toLocaleTimeString()}
+        {uiTime(ts || Date.now(), i18n.language)}
       </div>
       <style>{`
         .engineering-report-container {
@@ -639,6 +664,26 @@ const ChatBubble = forwardRef(
             ) : (
               <>
                 <ReactMarkdown
+                    // A single newline IS a line break here.
+                    //
+                    // Measured on the owner's screen, from the DOM and not from the source:
+                    // Joe's delivery message arrived as ONE <p> of 2107 characters carrying
+                    // 39 newline characters and 0 <br> elements, with computed white-space
+                    // 'normal' -- so every break collapsed to a space and a night of honest
+                    // reporting reached him as a wall.
+                    //
+                    // Nothing was broken on either side. The producer writes chat text where
+                    // a newline ends a line; the renderer applies CommonMark, where a single
+                    // newline is a soft break and means a space. Two parties that must agree,
+                    // maintained separately, with nothing forcing them -- so this is the line
+                    // that forces them, and it is applied at EVERY renderer, because fixing
+                    // the one that was seen and leaving the rest is how the same defect comes
+                    // back through a second emitter.
+                    //
+                    // remark-breaks@4 measured through this exact renderer before adoption:
+                    // 3 newlines -> 0 <br> without it, 3 <br> with it; code fences keep 0 <br>
+                    // and their text intact; blank-line-separated paragraphs stay 2 <p>.
+                    remarkPlugins={[remarkBreaks]}
                   components={{
                     // Per-block dir="auto": each paragraph/heading/list-item takes its
                     // OWN base direction from its dominant script, so an Arabic reply

@@ -23,6 +23,7 @@
  */
 import fs from 'fs';
 import path from 'path';
+import { isWithinRoot } from '../../modules/tools/path-containment';
 
 export interface BuiltSource {
     kind: 'site' | 'project' | 'page';
@@ -128,7 +129,7 @@ export function stageForPages(src: BuiltSource, stage: string, artifactDir: stri
         // Never allow the reference to climb out of the artifacts dir.
         const rootAbs = path.resolve(artifactDir);
         const abs = path.resolve(artifactDir, rel);
-        if (!abs.startsWith(rootAbs + path.sep) || !fs.existsSync(abs) || !fs.statSync(abs).isFile()) {
+        if (!isWithinRoot(abs, rootAbs) || !fs.existsSync(abs) || !fs.statSync(abs).isFile()) {
             unresolved.push(ref);
             seen.set(ref, '');
             return null;
