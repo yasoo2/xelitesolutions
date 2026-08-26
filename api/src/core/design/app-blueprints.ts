@@ -1836,8 +1836,25 @@ export function derivedTables(requestRaw: string): DerivedTable[] {
     const out: DerivedTable[] = [];
     const seen = new Set<string>();
     for (const piece of request.split(/(?<=[.؟!\n])/u)) {
-        const cols = derivedColumns(piece);
-        if (!cols) continue;
+        const found = derivedColumns(piece);
+        if (!found) continue;
+        /**
+         *  A TABLE IS READ FROM ONE SENTENCE. HIS RULES ARE IN THE OTHERS.
+         *
+         *  Measured in the shop built on his machine: «وجدول الطلبات فيه اسم
+         *  الزبون ورقم الهاتف …» and «لا تقبل رقم هاتف أقل من ٩ أرقام» are two
+         *  sentences, and the phone column came out of the build with no
+         *  constraint of any kind — `content.js` carried no minLength at all,
+         *  while the generated app already shipped the input that would have
+         *  enforced one.
+         *
+         *  `derivedColumns(piece)` ends by applying the rules of THAT PIECE, so
+         *  a table found sentence-by-sentence is judged against one sentence's
+         *  worth of conditions. This is the third site of one class tonight —
+         *  a decision taken from a fragment when the authority is the whole
+         *  request — and it is fixed here the same way as the other two.
+         */
+        const cols = applyStatedRules(found, statedRules(request)).fields;
         const key = cols.map(c => c.label).join('|');
         if (seen.has(key)) continue;
         seen.add(key);
