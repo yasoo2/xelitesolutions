@@ -82,18 +82,40 @@ check_once() {
 }
 
 if [ "${1:-}" = "--loop" ]; then
-    #  A real wait repeats every tick, on purpose: it is the only thing that
-    #  survives a missed poll. An acknowledgement is said once and then held
-    #  quiet until something else arrives.
+    #  ⛔ AND «ALL IS WELL» IS NOT SAID EVERY TICK EITHER.
+    #
+    #  The first version of this loop printed the quiet verdict on every
+    #  pass. That is the same defect as shouting over an acknowledgement,
+    #  one step further out: a line that arrives every two and a half
+    #  minutes saying nothing happened teaches the reader to skip the
+    #  channel's output, and the one line that matters arrives into a
+    #  habit of not looking. Measured on myself within a minute of
+    #  starting it.
+    #
+    #  ⛔ BUT SILENCE CANNOT MEAN TWO THINGS. If quiet were simply mute,
+    #  a dead watcher and a calm channel would look identical -- which is
+    #  precisely the defect BLIND exists to prevent, reintroduced from the
+    #  other side. So quiet speaks on a slow heartbeat: rare enough to be
+    #  ignorable, regular enough to prove the watch is alive.
     said_ack=""
+    ticks=0
+    HEARTBEAT="${MANUS_WATCH_HEARTBEAT:-20}"
     while true; do
         out="$(check_once)"; rc=$?
-        if [ $rc -eq 3 ]; then
-            if [ "$out" != "$said_ack" ]; then printf '%s\n' "$out"; said_ack="$out"; fi
-        else
-            said_ack=""
-            printf '%s\n' "$out"
-        fi
+        case $rc in
+            0)  #  quiet: only on the heartbeat, and the first pass, so
+                #  starting it always answers «is it working?» at once.
+                if [ $((ticks % HEARTBEAT)) -eq 0 ]; then
+                    printf '%s\n' "$out (heartbeat)"
+                fi
+                said_ack="" ;;
+            3)  #  acknowledged: once, then held
+                if [ "$out" != "$said_ack" ]; then printf '%s\n' "$out"; said_ack="$out"; fi ;;
+            *)  #  waiting or blind: every tick, until it is not true any more
+                said_ack=""
+                printf '%s\n' "$out" ;;
+        esac
+        ticks=$((ticks + 1))
         sleep "$EVERY"
     done
 else
