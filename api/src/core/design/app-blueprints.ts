@@ -56,6 +56,8 @@ export interface AppField {
     min?: number;
     /** When true, the value must be strictly greater than `min`. */
     minExclusive?: boolean;
+    /**  A floor on the COUNT of characters — «٩ أرقام». */
+    minLength?: number;
     /** Shown in the compact row summary — keeps the list readable. */
     primary?: boolean;
 }
@@ -540,8 +542,43 @@ function numberIn(text: string): number | null {
     return null;
 }
 
+/**
+ *  «٩ أرقام» IS NINE DIGITS, NOT THE NUMBER NINE.
+ *
+ *  Measured on the shop he asked for: «لا تقبل رقم هاتف أقل من ٩ أرقام» was
+ *  read as `{ min: 9 }` — the same reading as «أقل من ٩» with the counted
+ *  unit thrown away. A phone whose number is «12» satisfies that bound, and
+ *  he had just forbidden anything shorter than nine digits.
+ *
+ *  The class: A BOUND ON THE COUNT OF SOMETHING READ AS A BOUND ON THE VALUE.
+ *  The word after the number is not decoration — it says what is being
+ *  counted, and dropping it changes the rule into a different rule that
+ *  happens to use the same digit.
+ *
+ *  Returned separately from `statedBound` rather than folded into it, because
+ *  they attach to different things: a floor goes on a number field, a length
+ *  goes on the text he types. Merging them is how the digit got lost.
+ */
+export function statedLengthBound(window: string): { minLength: number } | null {
+    const text = String(window || '');
+    if (!REJECTS.test(text) && !/(على\s*الأقل|at\s+least|no\s+less\s+than|minimum)/iu.test(text)) return null;
+    //  The number and its unit, adjacent — «٩ أرقام», «9 digits», «٣ أحرف».
+    const m = /(\d+|[٠-٩]+)\s*(أرقام|رقم|أرقاماً|خانات|خانة|أحرف|حرف|حرفاً|digits?|characters?|chars?|letters?)/iu
+        .exec(text.replace(/[٠-٩]/g, d => String(d.charCodeAt(0) - 0x0660)));
+    if (!m) return null;
+    const n = Number(m[1]);
+    if (!Number.isFinite(n) || n <= 0 || n > 64) return null;
+    //  «أقل من ٩ أرقام» forbids eight; «على الأقل ٩ أرقام» requires nine.
+    //  Both land on the same floor — nine — because the refused side is what
+    //  is below it either way.
+    return { minLength: n };
+}
+
 /** The lower bound a sentence states about a number, or null when it states none. */
 export function statedBound(window: string): { min: number; minExclusive: boolean } | null {
+    //  …and a counted unit is never a value bound. Measured: «أقل من ٩ أرقام»
+    //  came back as `{ min: 9 }`, which a two-digit phone satisfies.
+    if (statedLengthBound(window)) return null;
     const text = String(window || '');
     const rejecting = REJECTS.test(text);
 
@@ -1478,6 +1515,8 @@ export interface StatedRule {
     field?: string;
     min?: number;
     minExclusive?: boolean;
+    /**  «٩ أرقام» — a floor on the COUNT of characters, not on the value. */
+    minLength?: number;
     /**
      *  What KIND of rule it is, because the three cannot be judged alike.
      *
@@ -1678,6 +1717,10 @@ export function statedRules(requestRaw: string): StatedRule[] {
         //  keeps paying for: two readers drift the first time one of
         //  them learns a phrase the other does not.
         if (boundHere) { rule.min = boundHere.min; rule.minExclusive = boundHere.minExclusive; }
+        //  …and a bound on how MANY characters, which lands on a different
+        //  kind of field and must not be confused with a floor on a value.
+        const lengthHere = statedLengthBound(clause);
+        if (lengthHere) { rule.minLength = lengthHere.minLength; rule.kind = 'bound'; }
         out.push(rule);
     }
     return out;
@@ -1691,6 +1734,24 @@ export function applyStatedRules(fields: DerivedField[], rules: StatedRule[]): {
         //  A rule with no OPENING noun is not a rule with no field: the
         //  clause below can still name one. Bailing here is what kept
         //  «وارفض المبلغ إذا كان صفر أو أقل» unattached.
+        /**
+         *  A LENGTH GOES ON THE TEXT HE TYPES, NOT ON A NUMBER.
+         *
+         *  «لا تقبل رقم هاتف أقل من ٩ أرقام» attaches to «رقم الهاتف», which
+         *  is a `tel` field — and the floor loop below only ever touched
+         *  `number` fields, so his rule was read, classed as a bound, and then
+         *  dropped for want of a number to sit on. Measured: the phone column
+         *  came out with no constraint of any kind.
+         */
+        if (rule.minLength !== undefined) {
+            const said = String(rule.field || rule.text || '');
+            const target = next.find(f => (f.type === 'tel' || f.type === 'text')
+                && f.label && (String(f.label) === rule.field
+                    || String(f.label).split(/\s+/).some(w => w.length > 2 && saysWord(said, w))));
+            if (target) (target as any).minLength = rule.minLength;
+            else unapplied.push(rule);
+            continue;
+        }
         if (rule.min === undefined) { unapplied.push(rule); continue; }
         //  His own label, matched as he wrote it — «السعر» is «السعر».
         //

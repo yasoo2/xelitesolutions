@@ -178,7 +178,7 @@ ${cols}
     })()}
   ],
   fields: [
-${bp.fields.map(f => `    { key: '${q(f.key)}', label: '${q(f.label)}', type: '${q(f.type)}'${f.options ? `, options: [${f.options.map(x => `'${q(x)}'`).join(', ')}]` : ''}${f.required ? ', required: true' : ''}${f.min !== undefined ? `, min: ${f.min}` : ''}${f.minExclusive ? ', minExclusive: true' : ''}${f.primary ? ', primary: true' : ''} },`).join('\n')}
+${bp.fields.map(f => `    { key: '${q(f.key)}', label: '${q(f.label)}', type: '${q(f.type)}'${f.options ? `, options: [${f.options.map(x => `'${q(x)}'`).join(', ')}]` : ''}${f.required ? ', required: true' : ''}${f.min !== undefined ? `, min: ${f.min}` : ''}${(f as any).minLength !== undefined ? `, minLength: ${(f as any).minLength}` : ''}${f.minExclusive ? ', minExclusive: true' : ''}${f.primary ? ', primary: true' : ''} },`).join('\n')}
   ],
   metrics: [
 ${bp.metrics.map(m => `    { label: '${q(m.label)}', kind: '${q(m.kind)}'${m.field ? `, field: '${q(m.field)}'` : ''}${m.field2 ? `, field2: '${q(m.field2)}'` : ''}${m.field3 ? `, field3: '${q(m.field3)}'` : ''}${m.equals ? `, equals: '${q(m.equals)}'` : ''} },`).join('\n')}
@@ -1406,6 +1406,7 @@ export default function RecordsApp({ content }) {
                 <input type={f.type === 'number' ? 'number' : f.type === 'tel' ? 'tel' : f.type === 'email' ? 'email' : 'text'}
                   min={f.min !== undefined ? f.min : undefined}
                   step={f.type === 'number' ? 'any' : undefined}
+                  minLength={f.minLength !== undefined ? f.minLength : undefined}
                   value={parentDraft[f.key] || ''} onChange={e => setParentDraft({ ...parentDraft, [f.key]: e.target.value })} />
               </label>
             ))}
