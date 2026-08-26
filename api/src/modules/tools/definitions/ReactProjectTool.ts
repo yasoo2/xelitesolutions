@@ -136,6 +136,40 @@ const MEASURED_ABILITIES: Record<string, MeasuredAbility[]> = {
  *  The id stays at the front because other layers match on it; the reason
  *  follows a colon, readable by him and still parseable by them.
  */
+/**
+ *  «acceptance_criteria_unmet» — AND WHICH ONES?
+ *
+ *  Measured on his screen one round after the visual-audit blocker was made
+ *  to speak. The build got further, and stopped at:
+ *
+ *      Error: acceptance_criteria_unmet
+ *
+ *  The ledger knows exactly which criteria are unmet — it holds each one with
+ *  its id and the evidence it could not find — and the error carried none of
+ *  them. So he is told a judgement was made against him and not what it was,
+ *  and the only way to learn it is to read a message that may be off-screen.
+ *
+ *  This is the same defect as the visual audit's, in the next layer down: a
+ *  report that names the MECHANISM instead of the FINDING. Fixing one and
+ *  leaving the other would be fixing the instance and not the class, which
+ *  the third law forbids.
+ *
+ *  The ids come first because layers match on them, and a cap keeps a long
+ *  ledger from turning one line into a page — with the remainder counted, so
+ *  the number never lies about how much was left out.
+ */
+export function deliveryErrorForAcceptance(
+    criteria: Array<{ id: string; verdict: string }>,
+    max = 6,
+): string {
+    const id = 'acceptance_criteria_unmet';
+    const unmet = (criteria || []).filter(c => c && c.verdict === 'unmet').map(c => String(c.id));
+    if (!unmet.length) return id;
+    const shown = unmet.slice(0, max).join(', ');
+    const rest = unmet.length - Math.min(unmet.length, max);
+    return `${id}: ${shown}${rest > 0 ? ` (+${rest} more)` : ''}`;
+}
+
 export function deliveryErrorForVisualAudit(audit: { skipped?: string } | null | undefined): string {
     const id = 'required_visual_audit_not_completed';
     if (!audit) return `${id}: the audit never ran`;
@@ -5198,7 +5232,7 @@ ${built ? '✅ npm install + vite build succeeded — the production build is in
                             : askedButMissing.length
                             ? 'requested_features_not_proven'
                             : acceptanceBlocked
-                                ? 'acceptance_criteria_unmet'
+                                ? deliveryErrorForAcceptance(acceptance.criteria as any)
                                 //  EVERY BLOCKER CARRIES ITS OWN NAME.
                                 //
                                 //  `blockers` — surviving HIGH-severity audit findings — was

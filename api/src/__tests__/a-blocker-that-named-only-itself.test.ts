@@ -25,7 +25,7 @@
  * carrying the evidence that already exists to the place where it is read.
  */
 
-import { deliveryErrorForVisualAudit } from '../modules/tools/definitions/ReactProjectTool';
+import { deliveryErrorForVisualAudit, deliveryErrorForAcceptance } from '../modules/tools/definitions/ReactProjectTool';
 
 describe('a blocked delivery says what blocked it', () => {
     it('carries the audit reason verbatim', () => {
@@ -54,5 +54,39 @@ describe('a blocked delivery says what blocked it', () => {
         for (const audit of [null, {}, { skipped: 'anything at all' }]) {
             expect(deliveryErrorForVisualAudit(audit).startsWith('required_visual_audit_not_completed')).toBe(true);
         }
+    });
+});
+
+describe('and an unmet ledger says which criteria', () => {
+    const met = (id: string) => ({ id, verdict: 'met' });
+    const unmet = (id: string) => ({ id, verdict: 'unmet' });
+
+    it('names them, in order, after the id', () => {
+        expect(deliveryErrorForAcceptance([met('search'), unmet('page:page-b'), unmet('rule:1')]))
+            .toBe('acceptance_criteria_unmet: page:page-b, rule:1');
+    });
+
+    it('an «unprovable» criterion is not an unmet one', () => {
+        //  The ledger's third verdict exists so a condition Joe cannot check
+        //  is declared rather than dropped. Counting it as unmet would block
+        //  a delivery for something nobody claimed had failed.
+        expect(deliveryErrorForAcceptance([{ id: 'rule:2', verdict: 'unprovable' }, met('rtl')]))
+            .toBe('acceptance_criteria_unmet');
+    });
+
+    it('a long ledger is capped, and says how many it left out', () => {
+        //  A number that lies about what it omitted is worse than a long line.
+        const many = Array.from({ length: 9 }, (_v, i) => unmet('column:c' + i));
+        const line = deliveryErrorForAcceptance(many, 3);
+        expect(line).toContain('column:c0, column:c1, column:c2');
+        expect(line).toContain('(+6 more)');
+        expect(line).not.toContain('column:c5');
+    });
+
+    it('and the id alone survives when nothing is unmet', () => {
+        //  The negative case: the caller only reaches this line when the
+        //  ledger is blocked, but a bare id must never become «: undefined».
+        expect(deliveryErrorForAcceptance([])).toBe('acceptance_criteria_unmet');
+        expect(deliveryErrorForAcceptance(null as any)).toBe('acceptance_criteria_unmet');
     });
 });
