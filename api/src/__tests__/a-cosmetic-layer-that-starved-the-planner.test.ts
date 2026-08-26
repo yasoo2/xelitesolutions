@@ -112,6 +112,39 @@ describe('the interface author cannot spend the whole quota', () => {
         expect(r.rejected).toEqual([]);
     });
 
+    /**
+     *  ⛔ THE HOLE THIS PAIR CLOSES. Every test above uses the default 6 or
+     *  raises it to 12, so the only budgets ever exercised were «the default»
+     *  and «everything». A ceiling that silently ignored its argument and
+     *  always used 6 would have passed all of them. These two pin an
+     *  arbitrary budget from both sides.
+     */
+    it('POSITIVE — a declared budget of three, with three sections, cuts nothing', async () => {
+        let calls = 0;
+        const three = ['Hero', 'Story', 'Contact'];
+        const r = await authorComponents(spec({ components: three, maxCalls: 3 }), async (prompt: string) => {
+            calls++;
+            const name = (prompt.match(/Author ONE React component: (\w+)/) || [])[1] || 'X';
+            return JSON.stringify({ files: { [name]: GOOD(name) } });
+        });
+        expect({ calls, authored: Object.keys(r.files), rejected: r.rejected })
+            .toEqual({ calls: 3, authored: three, rejected: [] });
+    });
+
+    it('NEGATIVE — a declared budget of three, with five sections, spends exactly three', async () => {
+        const asked: string[] = [];
+        const five = ['Hero', 'Story', 'Contact', 'Gallery', 'Footer'];
+        const r = await authorComponents(spec({ components: five, maxCalls: 3 }), async (prompt: string) => {
+            const name = (prompt.match(/Author ONE React component: (\w+)/) || [])[1] || 'X';
+            asked.push(name);
+            return JSON.stringify({ files: { [name]: GOOD(name) } });
+        });
+        expect(asked).toEqual(['Hero', 'Story', 'Contact']);
+        expect(r.rejected.map(x => x.name)).toEqual(['Gallery', 'Footer']);
+        //  and the refusal names the real number, not a hardcoded one
+        expect(r.rejected[0].reasons.join(' ')).toContain('budget is 3');
+    });
+
     it('NEGATIVE — the ceiling can be raised, so it is a budget and not a cage', async () => {
         let calls = 0;
         await authorComponents(spec({ components: TWELVE, maxCalls: 12 }), async (prompt: string) => {

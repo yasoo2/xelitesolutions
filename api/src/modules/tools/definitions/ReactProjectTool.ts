@@ -4176,6 +4176,10 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 //  the content object itself, so they cannot drift from it.
                 contentShapes: describeShapes(content || {}),
                 genome: composeDesign(request),
+                //  ⛔ What each authored section REPLACES, so «it must still
+                //  work» can be measured rather than hoped for. Contact was
+                //  authored into a beautiful form that did nothing at all.
+                replacing: Object.fromEntries(names.map((c: string) => [c, files[`src/components/${c}.jsx`] || ''])),
                 tokens: [
                     '--brand', '--on-brand', '--ink', '--paper', '--card', '--panel',
                     '--line', '--muted', '--ring', '--measure', '--rhythm', '--gap',

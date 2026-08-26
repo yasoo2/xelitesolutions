@@ -164,6 +164,85 @@ export default function Hero({ content }) {
         expect(validateAuthored('Hero', bad, KEYS).join(' ')).toContain('inventedField');
     });
 
+    /**
+     *  ⛔ SAFE, HONEST, WELL-COMPOSED, AND INERT.
+     *
+     *  Measured on a live build. The deterministic `Contact` posts the message
+     *  to `content.inbox` and, when that fails, keeps it on screen and says so
+     *  — `useState`, `onSubmit`, `preventDefault`, `setSent('kept')`. The model
+     *  authored a Contact that draws the same fields and does NOTHING when you
+     *  press send. Joe's browser audit caught it and refused to deliver:
+     *
+     *      form_dead_submit — a form was filled in and submitted and nothing
+     *      happened at all, no success message and no error
+     *
+     *  ⛔ THE CLASS is the sharpest risk in letting a model author an
+     *  interface, and every other check in this file is blind to it: they all
+     *  ask whether the markup is SAFE and TRUE. None asks whether it still
+     *  WORKS. The test is a comparison against the thing being replaced — no
+     *  component names, no special cases.
+     */
+    it('⛔ NEGATIVE — a section that drops the behaviour it replaces is refused', () => {
+        const working = `import React from 'react';
+export default function Contact({ content }) {
+  const [sent, setSent] = React.useState(false);
+  const onSubmit = async (e) => { e.preventDefault(); setSent('kept'); };
+  return (<form onSubmit={onSubmit}><input name="name" /><button>{content.cta}</button></form>);
+}
+`;
+        const inert = `import React from 'react';
+export default function Contact({ content }) {
+  return (
+    <section className="wrap panel">
+      <h2>{content.contactTitle}</h2>
+      <form>
+        <input name="name" placeholder={content.brand} />
+        <button className="btn">{content.cta}</button>
+      </form>
+    </section>
+  );
+}
+`;
+        const why = validateAuthored('Contact', inert, KEYS.concat(['contactTitle']), working);
+        expect({ refused: why.length > 0, names: why.join(' ').includes('drops what the section it replaces could do') })
+            .toEqual({ refused: true, names: true });
+    });
+
+    it('POSITIVE — and one that keeps the behaviour is accepted', () => {
+        const working = `import React from 'react';
+export default function Contact({ content }) {
+  const [sent, setSent] = React.useState(false);
+  const onSubmit = async (e) => { e.preventDefault(); setSent('kept'); };
+  return (<form onSubmit={onSubmit}><input name="name" /><button>{content.cta}</button></form>);
+}
+`;
+        const reimplemented = `import React from 'react';
+
+export default function Contact({ content }) {
+  const [sent, setSent] = React.useState(false);
+  const onSubmit = (e) => { e.preventDefault(); setSent('kept'); };
+  return (
+    <section className="wrap panel">
+      <h2>{content.contactTitle}</h2>
+      <form onSubmit={onSubmit}>
+        <input name="name" placeholder={content.brand} />
+        <button className="btn">{content.cta}</button>
+      </form>
+      {sent ? <p className="lede">{content.heroLede}</p> : null}
+    </section>
+  );
+}
+`;
+        expect(validateAuthored('Contact', reimplemented, KEYS.concat(['contactTitle']), working)).toEqual([]);
+    });
+
+    it('NEGATIVE — and a section that never had behaviour is not asked for any', () => {
+        //  A rule that demanded handlers everywhere would refuse every honest
+        //  presentation section — a criterion that fires on what it was never
+        //  about, which is the mirror of one that never fires.
+        expect(validateAuthored('Hero', GOOD, KEYS, GOOD)).toEqual([]);
+    });
+
     it('NEGATIVE — a component that reads nothing at all is refused', () => {
         const hollow = `import React from 'react';
 
@@ -249,10 +328,18 @@ describe('the floor never moves — a refusal keeps the deterministic component'
  */
 describe('one component per call — the reply must never be big enough to truncate', () => {
     it('POSITIVE — twelve components mean twelve calls, not one', async () => {
+        //  ⛔ `maxCalls: 12` IS PART OF THE FIXTURE, NOT A LOOSENING.
+        //  This test asks one question only: does a twelve-section page cost
+        //  twelve small replies instead of one big truncated one? The
+        //  production budget — six calls, so the authoring cannot starve the
+        //  planner — is a different claim with its own guard next door
+        //  (`a-cosmetic-layer-that-starved-the-planner`). Leaving it implicit
+        //  here made this test go red for a reason it was never about, which
+        //  is how a guard starts measuring its neighbour instead of itself.
         const asked: string[] = [];
         const twelve = ['Navbar', 'Hero', 'Menu', 'Gallery', 'Story', 'Steps',
             'Team', 'Testimonials', 'Cta', 'Location', 'Contact', 'Footer'];
-        await authorComponents(spec({ components: twelve }), async (prompt: string) => {
+        await authorComponents(spec({ components: twelve, maxCalls: 12 }), async (prompt: string) => {
             const m = prompt.match(/Author ONE React component: (\w+)/);
             asked.push(m ? m[1] : '?');
             return JSON.stringify({ files: { [m![1]]: GOOD.replace('function Hero', `function ${m![1]}`) } });

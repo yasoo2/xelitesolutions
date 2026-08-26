@@ -75,6 +75,11 @@ export interface AuthoringSpec {
     /** CSS custom properties the stylesheet really defines. */
     tokens: string[];
     /**
+     *  The deterministic source of each component being replaced, by name.
+     *  It is what «must still work» is measured against — see `behavioursIn`.
+     */
+    replacing?: Record<string, string>;
+    /**
      *  How many model calls this build may spend on the interface. Default 6.
      *  It exists because the first version had no ceiling and starved the
      *  planner — see the note in `authorComponents`.
@@ -191,7 +196,44 @@ export function readsFromContent(src: string): Set<string> {
  *  once already: a check that can only ever fail. Both are measured against
  *  real drafts in the guard beside this file.
  */
-export function validateAuthored(name: string, code: string, contentKeys: string[]): string[] {
+/**
+ *  WHAT A COMPONENT DOES, AS OPPOSED TO WHAT IT LOOKS LIKE.
+ *
+ *  ⛔ WRITTEN BECAUSE THE AUTHORING SILENTLY TRADED BEHAVIOUR FOR APPEARANCE.
+ *
+ *  Measured on a live build. The deterministic `Contact` posts the message to
+ *  `content.inbox` and, when that fails, keeps it on screen and says so:
+ *
+ *      const [sent, setSent] = useState(false);
+ *      const onSubmit = async (e) => { e.preventDefault(); … }
+ *      if (r.ok) { setSent('delivered'); return; }
+ *      setSent('kept');
+ *
+ *  The model authored a `Contact` that renders the same fields beautifully and
+ *  does NOTHING when you press send. Joe's own browser audit caught it —
+ *  `form_dead_submit: a form was filled in and submitted and nothing happened
+ *  at all, no success message and no error` — and refused to deliver.
+ *
+ *  ⛔ THE CLASS is new and it is the sharpest risk in letting a model author an
+ *  interface: EVERY OTHER CHECK IN THIS FILE ASKS WHETHER THE MARKUP IS SAFE
+ *  AND TRUE. None of them asks whether it still WORKS. A page can be safe,
+ *  honest, well-composed, and inert.
+ *
+ *  The test is a comparison, not a list: whatever the template it replaces
+ *  could DO, the authored version must still be able to do. No component
+ *  names, no special cases — a section that had a handler keeps a handler,
+ *  and a section that never had one is not asked for one.
+ */
+export function behavioursIn(src: string): Set<string> {
+    const found = new Set<string>();
+    if (/<form\b/i.test(src)) found.add('a form');
+    if (/\bon[A-Z]\w*\s*=\s*\{/.test(src)) found.add('an event handler');
+    if (/\buseState\s*\(/.test(src)) found.add('state it keeps');
+    if (/\bpreventDefault\s*\(/.test(src)) found.add('a submit it takes over');
+    return found;
+}
+
+export function validateAuthored(name: string, code: string, contentKeys: string[], replaces?: string): string[] {
     const why: string[] = [];
     const src = String(code || '');
 
@@ -220,6 +262,20 @@ export function validateAuthored(name: string, code: string, contentKeys: string
     }
 
     for (const [re, reason] of FORBIDDEN) if (re.test(src)) why.push(reason);
+
+    /**
+     *  ⛔ AND IT MUST STILL DO WHAT THE COMPONENT IT REPLACES COULD DO.
+     *  Measured: an authored `Contact` that rendered the fields and dropped
+     *  the submit — safe, honest, well-composed, and inert.
+     */
+    if (replaces) {
+        const had = behavioursIn(replaces);
+        const has = behavioursIn(src);
+        const lost = [...had].filter(b => !has.has(b));
+        if (lost.length) {
+            why.push(`it drops what the section it replaces could do: ${lost.join(', ')}`);
+        }
+    }
 
     //  Cheap structural sanity. The real proof is the build; this only stops
     //  obviously truncated output from ever reaching it.
@@ -288,6 +344,17 @@ export function authoringPrompt(spec: AuthoringSpec, only?: string): string {
         `     no external URLs. Images come from content only.`,
         `  5. Guard every array and optional field, e.g.`,
         `     {(content.products || []).map(p => …)}`,
+        ...(behavioursIn(String(spec.replacing?.[target] || '')).size
+            ? [
+                `  6. THIS SECTION MUST KEEP WORKING. The version you are`,
+                `     replacing has ${[...behavioursIn(String(spec.replacing![target]))].join(', ')}.`,
+                `     Re-implement that behaviour, do not merely draw the`,
+                `     controls. Here is the version you are replacing:`,
+                '```jsx',
+                String(spec.replacing![target]).slice(0, 3000),
+                '```',
+            ]
+            : []),
         ``,
         `THE DESIGN THIS PROJECT WAS COMPOSED WITH — stay coherent with it:`,
         //  ⛔ `g.split` is a RATIO, but the word «split» was also the name of a
@@ -399,7 +466,7 @@ export async function authorComponents(
         //  than refusing a good file over its label.
         const code = drafts[name] || (Object.keys(drafts).length === 1 ? Object.values(drafts)[0] : '');
         if (typeof code !== 'string' || !code.trim()) return { name, reasons: ['the reply held no usable file'] };
-        const why = validateAuthored(name, code, spec.contentKeys);
+        const why = validateAuthored(name, code, spec.contentKeys, spec.replacing?.[name]);
         return why.length ? { name, reasons: why } : { name, code: code.trim() + '\n' };
     };
 
