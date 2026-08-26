@@ -66,22 +66,33 @@ describe('build checkpoints', () => {
         expect(fs.existsSync(file)).toBe(false);
     });
 
-    test('a corrupt checkpoint file is treated as absent, never a crash', () => {
+    test('a corrupt checkpoint is surfaced and preserved; saving never overwrites it', () => {
         const key = checkpointKey('s1', REQ, 'restaurant');
+        const file = path.join(dir, '.checkpoints', `${key}.json`);
+        const corruptBytes = '{broken json';
         fs.mkdirSync(path.join(dir, '.checkpoints'), { recursive: true });
-        fs.writeFileSync(path.join(dir, '.checkpoints', `${key}.json`), '{broken json', 'utf-8');
-        expect(loadCheckpoint(dir, key)).toBeNull();
-        // And saving on top of the corruption recovers cleanly.
+        fs.writeFileSync(file, corruptBytes, 'utf-8');
+        const failed = loadCheckpoint(dir, key) as any;
+        expect(failed).toEqual(expect.objectContaining({ status: 'failed', reason: expect.any(String) }));
+        expect(fs.readFileSync(file, 'utf-8')).toBe(corruptBytes);
         saveCheckpointSection(dir, key, REQ, 'hero', '<section>x</section>', 'x');
-        expect(loadCheckpoint(dir, key)!.sections.hero).toBe('<section>x</section>');
+        expect(fs.readFileSync(file, 'utf-8')).toBe(corruptBytes);
+        expect(loadCheckpoint(dir, key)).toEqual(expect.objectContaining({ status: 'failed' }));
     });
 
-    test('an empty checkpoint (no sections) loads as null', () => {
+    test('a valid empty checkpoint is distinct from missing and accepts a first section', () => {
         const key = checkpointKey('s1', REQ, 'restaurant');
+        const missingKey = checkpointKey('s1', REQ, 'dashboard');
+        const file = path.join(dir, '.checkpoints', `${key}.json`);
         fs.mkdirSync(path.join(dir, '.checkpoints'), { recursive: true });
-        fs.writeFileSync(path.join(dir, '.checkpoints', `${key}.json`),
+        fs.writeFileSync(file,
             JSON.stringify({ v: 1, key, requestPreview: '', ts: Date.now(), sections: {}, titles: {} }), 'utf-8');
-        expect(loadCheckpoint(dir, key)).toBeNull();
+        const empty = loadCheckpoint(dir, key) as any;
+        expect(empty).toEqual(expect.objectContaining({ status: 'empty', sections: {}, titles: {} }));
+        expect(loadCheckpoint(dir, missingKey)).toBeNull();
+        expect(empty).not.toBeNull();
+        saveCheckpointSection(dir, key, REQ, 'hero', '<section>x</section>', 'x');
+        expect(loadCheckpoint(dir, key)!.sections.hero).toBe('<section>x</section>');
     });
 
     test('no .tmp files are left behind by the atomic write', () => {

@@ -57,6 +57,12 @@
 |---|---|---|---|
 | A-GUARD-COMMENT-IS-A-MEASUREMENT | تعليق يشرح لماذا كُتب السطر بهذه الصورة هو قياسٌ سابقٌ لعطبٍ دُفع ثمنه، وليس دعوةً لقلب السلوك | **مفتوح حتى توثيق القياسين المطلوبين** | قبل أي تعديل في مسار Windows أو `runDetached` يجب قراءة التعليق والسياق المحيط، وقياس `pty=available` أو `pty=unavailable — using fallback` عند إقلاع Joe، وتتبع `shell_execute` إلى الدالة النهائية مع `file:line`; لا يوضع `windowsHide` في المسار المنفصل قبل هذين القياسين |
 
+## دين Claude 205 — A-CONSUMER-THAT-ASKS-ONLY-WHETHER-A-VALUE-EXISTS
+
+| المعرّف | الدرس | الحالة | معيار الإغلاق |
+|---|---|---|---|
+| A-CONSUMER-THAT-ASKS-ONLY-WHETHER-A-VALUE-EXISTS | مستهلك `loadCheckpoint` في `WebPageBuilderTool.ts:694/732` يجب أن يميّز `status:'failed'` عن `null`، وألا يحوّل القراءة الفاشلة إلى قيمة صادقة أو نجاح صامت | **مفتوح — مقيس من §201، ولم يُصلح في هذه الجولة** | مراجعة المستهلك بقرار Claude، مع regression يثبت عدم متابعة البناء فوق checkpoint غير المقروء؛ لا يُلمس `WebPageBuilderTool.ts` دون اعتماد مستقل |
+
 ## قرارات ORBIT والقبول الملزمة — 2026-08-21
 
 | القرار | الحالة | التطبيق الإلزامي |

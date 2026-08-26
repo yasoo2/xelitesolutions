@@ -81,6 +81,42 @@ export function persistJoePages(): void {
 const projectsFile = () => path.join(storeDir(), 'joe-projects.json');
 const MAX_PERSISTED_PROJECTS = 20;
 
+type ProjectStoreReadStatus = 'unknown' | 'missing' | 'empty' | 'loaded' | 'failed';
+
+export interface ProjectStoreLoadResult {
+    status: 'missing' | 'empty' | 'loaded' | 'failed' | 'already-loaded';
+    projects: Record<string, any>;
+    reason?: string;
+}
+
+export interface ProjectStoreWriteResult {
+    status: 'saved' | 'queued' | 'blocked' | 'failed';
+    reason?: string;
+}
+
+let projectReadState: { file: string; status: ProjectStoreReadStatus } = { file: '', status: 'unknown' };
+
+function projectStateFor(file: string): ProjectStoreReadStatus {
+    return projectReadState.file === file ? projectReadState.status : 'unknown';
+}
+
+function setProjectReadState(file: string, status: ProjectStoreReadStatus): void {
+    projectReadState = { file, status };
+}
+
+function projectWriteDecision(file: string): { allowed: boolean; reason?: string } {
+    const state = projectStateFor(file);
+    if (state === 'failed') return { allowed: false, reason: 'persisted project read failed; refusing to overwrite the unreadable file' };
+    if (state === 'missing' || state === 'empty' || state === 'loaded') return { allowed: true };
+    if (!fs.existsSync(file)) return { allowed: true };
+    return { allowed: false, reason: 'persisted project file exists but has not been read successfully' };
+}
+
+function projectFailure(reason: unknown): ProjectStoreLoadResult {
+    const message = String((reason as any)?.message || reason).slice(0, 160);
+    return { status: 'failed', projects: {}, reason: message };
+}
+
 /** A project identity is explicit: a real pipeline id or null, never an absent field. */
 export function normalizePipelineRunId(value: unknown): string | null {
     const id = String(value ?? '').trim();
@@ -131,43 +167,108 @@ function persistedProjects(store: Record<string, any>): Record<string, any> {
     }));
 }
 
-export function loadJoeProjects(): void {
+export function loadJoeProjects(): ProjectStoreLoadResult {
+    const file = projectsFile();
+    const g: any = global as any;
+    if (g.joeProjects && Object.keys(g.joeProjects).length > 0) {
+        const state = projectStateFor(file);
+        return {
+            status: state === 'failed' ? 'failed' : 'already-loaded',
+            projects: g.joeProjects,
+            ...(state === 'failed' ? { reason: 'persisted project read previously failed; memory was not reloaded' } : {}),
+        };
+    }
+    if (!fs.existsSync(file)) {
+        g.joeProjects = {};
+        setProjectReadState(file, 'missing');
+        return { status: 'missing', projects: g.joeProjects };
+    }
     try {
-        const g: any = global as any;
-        if (g.joeProjects && Object.keys(g.joeProjects).length > 0) return;
-        if (!fs.existsSync(projectsFile())) return;
-        const v = JSON.parse(fs.readFileSync(projectsFile(), 'utf-8'));
-        if (v && typeof v === 'object' && !Array.isArray(v)) {
-            g.joeProjects = persistedProjects(v);
-            const n = Object.keys(g.joeProjects).length;
-            if (n) console.info(`[PageStore] 💾 restored ${n} project(s) — surgical edits survive restarts.`);
+        const v = JSON.parse(fs.readFileSync(file, 'utf-8'));
+        if (!v || typeof v !== 'object' || Array.isArray(v)) {
+            const failure = projectFailure('persisted project store is not a JSON object');
+            setProjectReadState(file, 'failed');
+            console.warn(`[PageStore] could not restore projects (${failure.reason}) — refusing writeback.`);
+            return failure;
         }
-    } catch { /* start fresh */ }
+        g.joeProjects = persistedProjects(v);
+        const n = Object.keys(g.joeProjects).length;
+        setProjectReadState(file, n ? 'loaded' : 'empty');
+        if (n) console.info(`[PageStore] 💾 restored ${n} project(s) — surgical edits survive restarts.`);
+        return { status: n ? 'loaded' : 'empty', projects: g.joeProjects };
+    } catch (e: any) {
+        const failure = projectFailure(e);
+        setProjectReadState(file, 'failed');
+        console.warn(`[PageStore] could not restore projects (${failure.reason}) — refusing writeback.`);
+        return failure;
+    }
 }
 
 let projTimer: ReturnType<typeof setTimeout> | null = null;
-export function persistJoeProjects(): void {
-    if (projTimer) return;
+let projectWriteCompletion: ProjectStoreWriteResult | null = null;
+
+function consumeProjectWriteCompletion(): ProjectStoreWriteResult | null {
+    const completion = projectWriteCompletion;
+    projectWriteCompletion = null;
+    return completion;
+}
+
+export function persistJoeProjects(): ProjectStoreWriteResult {
+    const file = projectsFile();
+    const completion = consumeProjectWriteCompletion();
+    if (completion?.status === 'blocked' || completion?.status === 'failed') return completion;
+    const decision = projectWriteDecision(file);
+    if (!decision.allowed) {
+        console.warn(`[PageStore] refusing project write (${decision.reason}).`);
+        return { status: 'blocked', reason: decision.reason };
+    }
+    if (projTimer) return { status: 'queued' };
     projTimer = setTimeout(() => {
         projTimer = null;
+        const latestDecision = projectWriteDecision(file);
+        if (!latestDecision.allowed) {
+            const result: ProjectStoreWriteResult = { status: 'blocked', reason: latestDecision.reason };
+            projectWriteCompletion = result;
+            console.warn(`[PageStore] refusing project write (${latestDecision.reason}).`);
+            return;
+        }
         try {
             const g: any = global as any;
             const entries = Object.entries(g.joeProjects || {});
             entries.sort((a: any, b: any) => (Number(b[1]?.updatedAt) || 0) - (Number(a[1]?.updatedAt) || 0));
             fs.mkdirSync(storeDir(), { recursive: true });
-            fs.writeFileSync(projectsFile(), JSON.stringify(persistedProjects(Object.fromEntries(entries.slice(0, MAX_PERSISTED_PROJECTS))), null, 0), 'utf-8');
-        } catch { /* memory continues */ }
+            fs.writeFileSync(file, JSON.stringify(persistedProjects(Object.fromEntries(entries.slice(0, MAX_PERSISTED_PROJECTS))), null, 0), 'utf-8');
+            projectWriteCompletion = { status: 'saved' };
+        } catch (e: any) {
+            const reason = String(e?.message || e).slice(0, 160);
+            projectWriteCompletion = { status: 'failed', reason };
+            console.warn(`[PageStore] persist failed (${reason}) — projects continue in memory.`);
+        }
     }, DEBOUNCE_MS);
     (projTimer as any).unref?.();
+    return { status: 'queued' };
 }
 
-export function flushJoeProjects(): void {
+export function flushJoeProjects(): ProjectStoreWriteResult {
     if (projTimer) { clearTimeout(projTimer); projTimer = null; }
+    const completion = consumeProjectWriteCompletion();
+    if (completion?.status === 'blocked' || completion?.status === 'failed') return completion;
+    const file = projectsFile();
+    const decision = projectWriteDecision(file);
+    if (!decision.allowed) {
+        console.warn(`[PageStore] refusing project write (${decision.reason}).`);
+        return { status: 'blocked', reason: decision.reason };
+    }
     try {
         const g: any = global as any;
         fs.mkdirSync(storeDir(), { recursive: true });
-        fs.writeFileSync(projectsFile(), JSON.stringify(persistedProjects(g.joeProjects || {}), null, 0), 'utf-8');
-    } catch { /* best-effort */ }
+        fs.writeFileSync(file, JSON.stringify(persistedProjects(g.joeProjects || {}), null, 0), 'utf-8');
+        return { status: 'saved' };
+    } catch (e: any) {
+        const reason = String(e?.message || e).slice(0, 160);
+        console.warn(`[PageStore] project flush failed (${reason}).`);
+        return { status: 'failed', reason };
+    }
 }
 
 /** Test/shutdown hook: write NOW, no debounce. */

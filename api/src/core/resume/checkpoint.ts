@@ -37,6 +37,22 @@ export interface BuildCheckpoint {
     titles: Record<string, string>;
 }
 
+export interface CheckpointReadFailure {
+    status: 'failed';
+    reason: string;
+    /** Empty structural fields keep legacy consumers read-only while status is explicit. */
+    sections: Record<string, string>;
+    titles: Record<string, string>;
+}
+
+export interface CheckpointReadEmpty {
+    status: 'empty';
+    sections: Record<string, string>;
+    titles: Record<string, string>;
+}
+
+export type CheckpointLoadResult = BuildCheckpoint | CheckpointReadFailure | CheckpointReadEmpty | null;
+
 const TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
 const DIR_NAME = '.checkpoints';
 
@@ -48,20 +64,33 @@ function fileFor(artifactDir: string, key: string): string {
     return path.join(artifactDir, DIR_NAME, `${key}.json`);
 }
 
-export function loadCheckpoint(artifactDir: string, key: string): BuildCheckpoint | null {
+function failedCheckpoint(reason: unknown): CheckpointReadFailure {
+    return {
+        status: 'failed',
+        reason: String((reason as any)?.message || reason).slice(0, 160),
+        sections: {},
+        titles: {},
+    };
+}
+
+export function loadCheckpoint(artifactDir: string, key: string): CheckpointLoadResult {
+    const file = fileFor(artifactDir, key);
     try {
-        const file = fileFor(artifactDir, key);
         if (!fs.existsSync(file)) return null;
         const cp = JSON.parse(fs.readFileSync(file, 'utf-8')) as BuildCheckpoint;
-        if (cp?.v !== 1 || cp.key !== key) return null;
+        if (cp?.v !== 1 || cp.key !== key) return failedCheckpoint('checkpoint schema or key is invalid');
         if (Date.now() - cp.ts > TTL_MS) {
             // Expired work is deleted, not silently reused.
             try { fs.unlinkSync(file); } catch { /* already gone */ }
             return null;
         }
-        if (!cp.sections || Object.keys(cp.sections).length === 0) return null;
+        if (!cp.sections || Object.keys(cp.sections).length === 0) {
+            return { status: 'empty', sections: {}, titles: {} };
+        }
         return cp;
-    } catch { return null; }
+    } catch (e: any) {
+        return failedCheckpoint(e);
+    }
 }
 
 /** Persist one accepted section. Read-modify-write with an atomic rename. */
@@ -73,13 +102,17 @@ export function saveCheckpointSection(
     html: string,
     title: string,
 ): void {
+    const file = fileFor(artifactDir, key);
     try {
         const dir = path.join(artifactDir, DIR_NAME);
         fs.mkdirSync(dir, { recursive: true });
-        const file = fileFor(artifactDir, key);
-        let cp: BuildCheckpoint | null = null;
-        try { cp = JSON.parse(fs.readFileSync(file, 'utf-8')); } catch { /* fresh */ }
-        if (!cp || cp.v !== 1 || cp.key !== key) {
+        const existing = loadCheckpoint(artifactDir, key);
+        if (existing && 'status' in existing && existing.status === 'failed') {
+            console.warn(`[Checkpoint] refusing write (${existing.reason}) — preserving unreadable checkpoint.`);
+            return;
+        }
+        let cp: BuildCheckpoint | null = existing && !('status' in existing) ? existing : null;
+        if (!cp) {
             cp = { v: 1, key, requestPreview: request.slice(0, 200), ts: Date.now(), sections: {}, titles: {} };
         }
         cp.ts = Date.now();
@@ -88,7 +121,9 @@ export function saveCheckpointSection(
         const tmp = `${file}.tmp`;
         fs.writeFileSync(tmp, JSON.stringify(cp), 'utf-8');
         fs.renameSync(tmp, file);
-    } catch { /* checkpointing must never break the build itself */ }
+    } catch (e: any) {
+        console.warn(`[Checkpoint] write failed (${String(e?.message || e).slice(0, 160)}).`);
+    }
 }
 
 export function clearCheckpoint(artifactDir: string, key: string): void {
