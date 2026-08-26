@@ -62,3 +62,7 @@ web/.dep-stamp
 # only meant to save a code fix. They stay on disk; they leave the repository.
 uploads/
 api/uploads/
+
+# The channel ledger: which comments are mine. Local by nature — it is a
+# fact about THIS machine, and pushing it would make two machines disagree.
+.manus-watch/
