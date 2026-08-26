@@ -984,7 +984,27 @@ export function noteLocalBrainTimeout(): void {
 let localObservedMs = 0;
 let localLeashFloorMs = 0;
 const LOCAL_LEASH_MIN_MS = 30_000;
-const LOCAL_LEASH_MAX_MS = 120_000;
+/**
+ *  ⛔ THE CEILING ON PATIENCE, AND WHY IT IS NO LONGER A CONSTANT.
+ *
+ *  Measured on the owner's machine: `qwen2.5-coder:7b` answered a ONE-TOKEN
+ *  prompt in 12312ms. A planning call is hundreds of tokens, so it ran past a
+ *  two-minute leash, timed out twice, and the breaker paused the local brain
+ *  for twenty minutes — after which Joe went to a keyless provider and read
+ *  «build me a website» as «read a file».
+ *
+ *  The owner's instruction is to rely on Ollama as the primary brain. On a
+ *  machine that slow, a fixed two-minute ceiling is not patience — it is a
+ *  guarantee of falling through to something weaker. So the ceiling is his to
+ *  set, and `LOCAL_BRAIN_FIRST` raises it by default because a preferred
+ *  brain that gets diverted is not preferred at all.
+ */
+const LOCAL_BRAIN_FIRST = /^(1|true|yes)$/i.test(String(process.env.LOCAL_BRAIN_FIRST || '').trim());
+const LOCAL_LEASH_MAX_MS = (() => {
+    const t = parseInt(String(process.env.LOCAL_BRAIN_LEASH_MAX || '').trim(), 10);
+    if (Number.isFinite(t) && t > 0) return t;
+    return LOCAL_BRAIN_FIRST ? 600_000 : 120_000;
+})();
 
 /** A local call finished — remember how long this machine really takes. */
 export function noteLocalDuration(ms: number): void {
@@ -1993,8 +2013,15 @@ export async function routeToModel(
             );
             // OpenAI/Groq/Gemini and other configured providers remain ahead;
             // Ollama is inserted immediately before keyless/offline gateways.
-            meshProviders.splice(firstKeyless >= 0 ? firstKeyless : meshProviders.length, 0, local);
-            console.info('[IntelligentRouter] 🧭 Ollama/Local (Auto) is reserved before keyless and Offline fallbacks.');
+            if (LOCAL_BRAIN_FIRST) {
+                //  His machine, his brain, his choice. Everything else becomes
+                //  the fallback rather than the default.
+                meshProviders.unshift(local);
+                console.info('[IntelligentRouter] 🧭 LOCAL_BRAIN_FIRST — Ollama/Local (Auto) leads; the mesh is the fallback.');
+            } else {
+                meshProviders.splice(firstKeyless >= 0 ? firstKeyless : meshProviders.length, 0, local);
+                console.info('[IntelligentRouter] 🧭 Ollama/Local (Auto) is reserved before keyless and Offline fallbacks.');
+            }
         }
     }
 
