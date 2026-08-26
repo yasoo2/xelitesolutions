@@ -117,7 +117,53 @@ export function isVagueBuildRequest(goal: string, opts?: { hasActivePage?: boole
     //  «بدي شي أتابع فيه ديوني» has three descriptive words and not one
     //  column, so counting words would call it complete and build him a
     //  table out of thin air.
-    if (namesSomethingToTrack) return true;
+    if (namesSomethingToTrack) {
+        /**
+         *  ⛔ BUT «HE MENTIONED SAVING SOMETHING» IS NOT «HE SAID NOTHING».
+         *
+         *  Seen live, with the owner watching. He typed forty-three words and
+         *  seven explicit requirements -- a honey store named «شهد», four named
+         *  pages, six products with prices, a working contact form, a cart
+         *  that totals and saves the order, a warm and elegant design, and a
+         *  rule that no price may be zero or negative -- and Joe answered:
+         *
+         *      «The brief is thin -- asking a few questions before building»
+         *      «what do you want to record for each of your تحسب الإجمالي?»
+         *
+         *  One clause about saving an order outranked every other thing he
+         *  said. That is the fourth law broken in the one gate whose whole job
+         *  is to judge how much he said: A DECISION TAKEN FROM A FRAGMENT
+         *  WHILE THE AUTHORITY IS THE WHOLE REQUEST.
+         *
+         *  And the reason it survived is worth more than the line itself. The
+         *  escape hatch above is `describesItsContents`, which means exactly
+         *  one thing: «did he name TABLE COLUMNS?». So a request that describes
+         *  its contents in every way except columns -- pages, products,
+         *  prices, a design, a constraint -- counts as describing nothing.
+         *
+         *  So the question goes to the one reader in this system that already
+         *  answers «what did he actually ask for»: the acceptance deriver, the
+         *  fourth law’s own machinery. Measured on the real sentences:
+         *
+         *      6   his honey store
+         *      3   «اعمل لي جدول فيه الاسم والمبلغ والتاريخ»
+         *      0   «بدي جدول»
+         *      0   «بدي جدول للمواعيد»
+         *      0   «بدي شي أتابع فيه ديوني»
+         *      0   «اعمل لي جدول لمصاريف البيت الشهرية»
+         *
+         *  Every request this gate exists to stop derives ZERO. The gap is the
+         *  whole scale, so the threshold sits in it with room on both sides,
+         *  and nothing that used to be questioned stops being questioned.
+         */
+        let derived = 0;
+        try {
+            const { acceptanceFor } = require('../quality/acceptance');
+            derived = (acceptanceFor(String(goal || '')) || []).length;
+        } catch { derived = 0; }
+        if (derived >= 2) return false;
+        return true;
+    }
     //  «بدي جدول للمواعيد» and "I want a table" both named a thing and
     //  nothing else about it. Two words was a low enough bar to let a
     //  request through with a subject and no columns — and a table with no
