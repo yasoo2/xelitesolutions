@@ -114,14 +114,16 @@ describe('SelfFixService evidence-bound local import repair', () => {
     expect(plan.allowed).toBe(true);
     expect(plan.strategy).toBe('build_fix');
     expect(plan.suggestedTool).toBe('ai_write_file');
-    const suggestedInput = plan.suggestedInput;
-    if (!suggestedInput) throw new Error('an allowed build_fix plan carried no suggestedInput to hand the writer');
-    expect(suggestedInput).toMatchObject({
+    expect(plan.suggestedInput).toBeDefined();
+    if (plan.suggestedInput === undefined) {
+      throw new Error('build_fix plan is missing suggested input');
+    }
+    expect(plan.suggestedInput).toMatchObject({
       path: importer.replace(/\\\\/g, '/'),
     });
-    expect(suggestedInput.description).toMatch(/importer .* missing/i);
-    expect(suggestedInput.description).toContain('../styles/app.css');
-    expect(suggestedInput).not.toHaveProperty('filename');
+    expect(plan.suggestedInput.description).toMatch(/importer .* missing/i);
+    expect(plan.suggestedInput.description).toContain('../styles/app.css');
+    expect(plan.suggestedInput).not.toHaveProperty('filename');
 
     fs.rmSync(root, { recursive: true, force: true });
   });

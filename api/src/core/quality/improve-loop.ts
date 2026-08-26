@@ -69,6 +69,8 @@ export interface ImproveRound {
     verdict: 'improved' | 'no_change_possible' | 'no_measured_gain' | 'build_failed' | 'target_reached' | 'nothing_left';
     /** True when this round's edits were undone because they did not pay. */
     rolledBack: boolean;
+    /** The observable rollback outcome; distinguishes no snapshot from failed undo. */
+    rollback: 'none' | 'failed' | 'done';
 }
 
 export interface ImproveResult {
@@ -211,7 +213,7 @@ export async function improveUntilItStops(
              */
             rounds.push({
                 round, before: current.score, targeted: remaining, changed: [], fixed: [],
-                verdict: 'no_change_possible', rolledBack: false,
+                verdict: 'no_change_possible', rolledBack: false, rollback: 'none',
             });
             stoppedBecause = 'no_change_possible';
             say(`improve: round ${round} had nothing new to write — stopping at ${current.score}/100 instead of repeating myself`);
@@ -222,34 +224,46 @@ export async function improveUntilItStops(
         const built = await opts.rebuild().catch(() => false);
         if (!built) {
             const undone = snapshotId ? await opts.rollback(snapshotId).catch(() => false) : false;
+            const rollbackState: ImproveRound['rollback'] = snapshotId === '' ? 'none' : undone ? 'done' : 'failed';
+            const rollbackMessage = rollbackState === 'none'
+                ? 'لم آخذ نسخةً قبل الجولة، فلا رجوع — no snapshot was taken before the round; could NOT roll it back'
+                : rollbackState === 'failed'
+                    ? 'حاولت التراجع لكنه فشل — rollback was attempted but failed; could NOT roll it back'
+                    : 'تم التراجع بنجاح — rollback completed successfully; rolled it back';
             rounds.push({
                 round, before: current.score, targeted: remaining, changed, fixed: [],
-                verdict: 'build_failed', rolledBack: !!undone,
+                verdict: 'build_failed', rolledBack: !!undone, rollback: rollbackState,
             });
             stoppedBecause = 'build_failed';
-            say(`improve: round ${round} broke the build — ${undone ? 'rolled it back' : 'could NOT roll it back'} and stopped`);
+            say(`improve: round ${round} broke the build — ${rollbackMessage} and stopped`);
             break;
         }
 
         const after = await opts.measure().catch(() => ({ score: -1, findingIds: [], skipped: true } as Measurement));
         if (after.skipped || after.score <= current.score) {
             const undone = snapshotId ? await opts.rollback(snapshotId).catch(() => false) : false;
+            const rollbackState: ImproveRound['rollback'] = snapshotId === '' ? 'none' : undone ? 'done' : 'failed';
+            const rollbackMessage = rollbackState === 'none'
+                ? 'لم آخذ نسخةً قبل الجولة، فلا رجوع — no snapshot was taken before the round; could NOT roll it back'
+                : rollbackState === 'failed'
+                    ? 'حاولت التراجع لكنه فشل — rollback was attempted but failed; could NOT roll it back'
+                    : 'تم التراجع بنجاح — rollback completed successfully; rolled it back';
             rounds.push({
                 round, before: current.score, after: after.skipped ? undefined : after.score,
                 targeted: remaining, changed, fixed: [],
-                verdict: 'no_measured_gain', rolledBack: !!undone,
+                verdict: 'no_measured_gain', rolledBack: !!undone, rollback: rollbackState,
             });
             stoppedBecause = 'no_measured_gain';
             say(after.skipped
-                ? `improve: round ${round} could not be measured — ${undone ? 'rolled back' : 'left as written'}, stopping at ${current.score}/100`
-                : `improve: round ${round} measured ${current.score} → ${after.score} — no gain, ${undone ? 'rolled back' : 'left as written'}, stopping`);
+                ? `improve: round ${round} could not be measured — ${rollbackMessage}, stopping at ${current.score}/100`
+                : `improve: round ${round} measured ${current.score} → ${after.score} — no gain, ${rollbackMessage}, stopping`);
             break;
         }
 
         const fixed = remaining.filter(id => !after.findingIds.includes(id));
         rounds.push({
             round, before: current.score, after: after.score, targeted: remaining, changed, fixed,
-            verdict: 'improved', rolledBack: false,
+            verdict: 'improved', rolledBack: false, rollback: 'none',
         });
         say(`improve: round ${round} — ${current.score} → ${after.score}/100`
             + (fixed.length ? ` · gone: ${fixed.join(', ')}` : ' · the score moved but no finding closed')
@@ -304,6 +318,9 @@ export function normaliseImproveResult(
             const before = Number(raw?.before);
             const after = Number(raw?.after);
             const verdict = allowed.includes(raw?.verdict) ? raw.verdict : 'no_change_possible';
+            const rollback: ImproveRound['rollback'] = raw?.rollback === 'failed' || raw?.rollback === 'done'
+                ? raw.rollback
+                : 'none';
             return {
                 round: Number.isFinite(Number(raw?.round)) ? Number(raw.round) : index + 1,
                 before: Number.isFinite(before) ? before : first.score,
@@ -313,6 +330,7 @@ export function normaliseImproveResult(
                 fixed: normaliseStrings(raw?.fixed),
                 verdict,
                 rolledBack: raw?.rolledBack === true,
+                rollback,
             };
         })
         : [];

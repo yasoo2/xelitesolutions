@@ -43,6 +43,7 @@ const REACT = fs.readFileSync(
 const BRIEF = 'أنشئ لوحة حجوزات عربية RTL لورشة تصوير. المطلوب: لوحة مؤشرات، ستة حجوزات، بحث،'
     + ' مرشح حالة، إضافة حجز، حالات فراغ، تصدير محلي، README عربي، بناء إنتاج، ومعاينة عبر المتصفح.';
 const SHAPE_BRIEF = 'Build an app with a counter, button, title, and status message.';
+const BOUNDED_ARABIC = 'بدي جدول مبيعات فيه اسم الصنف والكمية والسعر، والسعر لا يقبل صفر';
 
 describe('the criteria come from HIS brief, never from a fixed checklist', () => {
     it('a wide brief yields every thing it asked for', () => {
@@ -100,6 +101,55 @@ describe('the criteria come from HIS brief, never from a fixed checklist', () =>
         const rule = acceptanceFor(GATE062_LIVE_PROMPT).find(c => c.id === 'rule:1');
         expect((rule as any).expectedRule.text).toBe('Do not modify existing projects');
         expect((rule as any).expectedRule.kind).toBe('forbid');
+    });
+
+    it('derives a stated numeric bound from the request and does not invent it when silent', () => {
+        const constrained = acceptanceFor(BOUNDED_ARABIC);
+        expect(constrained.map(c => c.id)).toEqual([
+            'column:text1', 'column:count1', 'column:money1', 'constraint:money1:min',
+        ]);
+        expect(constrained.find(c => c.id === 'constraint:money1:min')?.expectedBound)
+            .toEqual({ min: 0, minExclusive: true });
+
+        const withoutBound = acceptanceFor(BOUNDED_ARABIC.replace('، والسعر لا يقبل صفر', ''));
+        expect(withoutBound.map(c => c.id)).toEqual([
+            'column:text1', 'column:count1', 'column:money1',
+        ]);
+        expect(withoutBound.some(c => c.expectedBound)).toBe(false);
+    });
+
+    it('derives explicit bounds for an invented column name without a name catalogue', () => {
+        const invented = 'Build a table with columns: zqixdal_val, companion_field, third_field, and zqixdal_val must be greater than 4.';
+        const criteria = acceptanceFor(invented);
+        expect(criteria.map(c => c.id)).toEqual([
+            'column:text1',
+            'constraint:text1:min',
+            'column:text2',
+            'column:text3',
+        ]);
+        const bound = criteria.find(c => c.id === 'constraint:text1:min');
+        expect(bound?.expectedColumn).toBe('zqixdal_val');
+        expect(bound?.expectedBound).toEqual({ min: 4, minExclusive: true });
+
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-acceptance-invented-bound-'));
+        fs.mkdirSync(path.join(dir, 'src'), { recursive: true });
+        fs.writeFileSync(path.join(dir, 'src', 'App.jsx'), `const fields = [
+          { key: 'text1', label: 'zqixdal_val', type: 'number', min: 4, minExclusive: true },
+          { key: 'text2', label: 'companion_field', type: 'text' },
+          { key: 'text3', label: 'third_field', type: 'text' },
+        ];`);
+        try {
+            const judged = judgeAcceptance([bound!], { dir }, false);
+            expect(judged.criteria[0]?.verdict).toBe('met');
+            expect(judged.met).toBe(1);
+            expect(judged.unmet).toBe(0);
+        } finally {
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
+
+        const silent = acceptanceFor('Build a table with columns: zqixdal_val, companion_field, third_field.');
+        expect(silent.map(c => c.id)).toEqual(['column:text1', 'column:text2', 'column:text3']);
+        expect(silent.some(c => c.expectedBound)).toBe(false);
     });
 
     it('does not invent a record-add criterion from Create alone', () => {
@@ -288,6 +338,98 @@ describe('a criterion is met by EVIDENCE, or it is not met', () => {
         expect(a.accepted).toBe(false);
     });
 
+    it.each([
+        ['LF', '\n'],
+        ['CRLF', '\r\n'],
+    ] as const)('uses the same acceptance evidence on %s generated source endings', (_label, ending) => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-acceptance-line-endings-positive-'));
+        fs.mkdirSync(path.join(dir, 'src'), { recursive: true });
+        const source = [
+            'import { useState } from "react";',
+            'export default function App(){',
+            '  const [count, setCount] = useState(0);',
+            '  const [status, setStatus] = useState("Ready");',
+            '  return <>',
+            '    <h1>Gate 062</h1>',
+            '    <p role="status">{status}</p>',
+            '    <button onClick={() => { setCount(prev => prev + 1); setStatus("Clicked"); }}>{count}</button>',
+            '  </>;',
+            '}',
+        ].join('\n');
+        fs.writeFileSync(path.join(dir, 'src', 'App.jsx'), source.replace(/\n/g, ending));
+        try {
+            const raw = fs.readFileSync(path.join(dir, 'src', 'App.jsx'), 'utf8');
+            const newlineCount = (raw.match(/\n/g) || []).length;
+            const crlfCount = (raw.match(/\r\n/g) || []).length;
+            expect(crlfCount).toBe(ending === '\r\n' ? newlineCount : 0);
+            const judged = judgeAcceptance(acceptanceFor(SHAPE_BRIEF), { dir, built: true }, false);
+            expect(judged.criteria.map(c => c.verdict)).toEqual(['met', 'met', 'met', 'met']);
+            expect(judged.met).toBe(4);
+            expect(judged.unmet).toBe(0);
+            expect(judged.accepted).toBe(true);
+        } finally {
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    it.each([
+        ['LF', '\n'],
+        ['CRLF', '\r\n'],
+    ] as const)('rejects the same missing button evidence on %s generated source endings', (_label, ending) => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-acceptance-line-endings-negative-'));
+        fs.mkdirSync(path.join(dir, 'src'), { recursive: true });
+        const source = [
+            'import { useState } from "react";',
+            'export default function App(){',
+            '  const [count, setCount] = useState(0);',
+            '  const [status, setStatus] = useState("Ready");',
+            '  return <>',
+            '    <h1>Gate 062</h1>',
+            '    <p role="status">{status}</p>',
+            '    <input onChange={() => { setCount(prev => prev + 1); setStatus("Changed"); }} />',
+            '    <button>{count}</button>',
+            '  </>;',
+            '}',
+        ].join('\n');
+        fs.writeFileSync(path.join(dir, 'src', 'App.jsx'), source.replace(/\n/g, ending));
+        try {
+            const judged = judgeAcceptance(acceptanceFor(SHAPE_BRIEF), { dir, built: true }, false);
+            expect(judged.criteria.map(c => [c.id, c.verdict])).toEqual([
+                ['counter', 'met'],
+                ['button', 'unmet'],
+                ['title', 'met'],
+                ['status_message', 'met'],
+            ]);
+            expect(judged.met).toBe(3);
+            expect(judged.unmet).toBe(1);
+            expect(judged.accepted).toBe(false);
+        } finally {
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    it('derives an unknown-token brief by requested shape, not a project-name dictionary', () => {
+        const request = 'Build a qzzworp_stub page with a counter and a button.';
+        expect(acceptanceFor(request).map(c => c.id)).toEqual(['counter', 'button']);
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-acceptance-unknown-token-'));
+        fs.mkdirSync(path.join(dir, 'src'), { recursive: true });
+        fs.writeFileSync(path.join(dir, 'src', 'App.jsx'), `
+          import { useState } from 'react';
+          export default function App(){
+            const [count, setCount] = useState(0);
+            return <button onClick={() => setCount(prev => prev + 1)}>{count}</button>;
+          }
+        `);
+        try {
+            const judged = judgeAcceptance(acceptanceFor(request), { dir }, false);
+            expect(judged.criteria.some(c => c.id.includes('qzzworp'))).toBe(false);
+            expect(judged.criteria.every(c => c.verdict === 'met')).toBe(true);
+            expect(judged.accepted).toBe(true);
+        } finally {
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
     it('does not accept a generic XELITE landing page as the five-part Gate062 run', () => {
         const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-xelite-gate062-'));
         fs.mkdirSync(path.join(dir, 'src'), { recursive: true });
@@ -302,7 +444,13 @@ describe('a criterion is met by EVIDENCE, or it is not met', () => {
         `);
         const a = judgeAcceptance(acceptanceFor(GATE062_LIVE_PROMPT), { dir }, true);
         expect(a.met).toBe(0);
-        expect(a.unmet).toBe(5);
+        //  SIX, not five: `unmet` is now the count of everything NOT PROVEN,
+        //  because a criterion the judge could not check is still an acceptance
+        //  obligation the run did not discharge. Otherwise a run scores 100% by
+        //  proving only the subset the judge happened to know how to inspect.
+        //  The partition below is what keeps the two kinds distinguishable.
+        expect(a.unmet).toBe(6);
+        expect(a.criteria.length).toBe(6);
         expect(a.accepted).toBe(false);
         //  Five are unmet and the sixth is UNPROVABLE, which is a different
         //  answer and has to stay a different answer: «I could not check
@@ -326,6 +474,35 @@ describe('a criterion is met by EVIDENCE, or it is not met', () => {
         }
         expect(a.met).toBe(4);
         expect(a.unmet).toBe(0);
+    });
+
+    it('judges a stated bound from the generated field object and fails a mutation that removes it', () => {
+        const criteria = acceptanceFor(BOUNDED_ARABIC);
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-acceptance-bound-'));
+        fs.mkdirSync(path.join(dir, 'src'), { recursive: true });
+        const source = `const fields = [
+          { key: 'text1', label: 'اسم الصنف', type: 'text', required: true },
+          { key: 'count1', label: 'الكمية', type: 'number', required: true },
+          { key: 'money1', label: 'السعر', type: 'number', required: true, min: 0, minExclusive: true },
+        ];
+        export default function App(){ return <div>{fields.map(field => <span key={field.key}>{field.label}</span>)}</div>; }`;
+        fs.writeFileSync(path.join(dir, 'src', 'App.jsx'), source);
+        try {
+            const positive = judgeAcceptance(criteria, { dir }, true);
+            expect(positive.criteria.find(c => c.id === 'constraint:money1:min')?.verdict).toBe('met');
+            expect(positive.met).toBe(4);
+            expect(positive.unmet).toBe(0);
+            expect(positive.accepted).toBe(true);
+
+            fs.writeFileSync(path.join(dir, 'src', 'App.jsx'), source.replace(', minExclusive: true', ''));
+            const mutated = judgeAcceptance(criteria, { dir }, true);
+            expect(mutated.criteria.find(c => c.id === 'constraint:money1:min')?.verdict).toBe('unmet');
+            expect(mutated.met).toBe(3);
+            expect(mutated.unmet).toBe(1);
+            expect(mutated.accepted).toBe(false);
+        } finally {
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
     });
 
     it('extracts only a safe requested title and proves the exact heading', () => {
@@ -452,7 +629,49 @@ describe('a criterion is met by EVIDENCE, or it is not met', () => {
     it('with no source to read, a feature is UNPROVABLE — never quietly met', () => {
         const a = judgeAcceptance(acceptanceFor(BRIEF), { dir: '/nowhere-at-all' }, true);
         expect(a.criteria.find(c => c.id === 'search')!.verdict).toBe('unprovable');
+        expect(a.unmet).toBe(a.criteria.length);
         expect(a.accepted).toBe(false);
+    });
+
+    it('uses every derived criterion as the denominator for a complete and incomplete run', () => {
+        const criteria = acceptanceFor(SHAPE_BRIEF);
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-acceptance-denominator-'));
+        fs.mkdirSync(path.join(dir, 'src'), { recursive: true });
+        fs.writeFileSync(path.join(dir, 'src', 'App.jsx'), `
+          import { useState } from 'react';
+          export default function App(){
+            const [count, setCount] = useState(0);
+            const [status, setStatus] = useState('Ready');
+            return <>
+              <h1>Gate 062</h1>
+              <p role="status" aria-live="polite">{status}</p>
+              <button onClick={() => { setCount(prev => prev + 1); setStatus('Clicked'); }}>{count}</button>
+            </>;
+          }
+        `);
+
+        const complete = judgeAcceptance(criteria, { dir, built: true }, false);
+        expect(complete.met).toBe(criteria.length);
+        expect(complete.unmet).toBe(0);
+        expect(complete.accepted).toBe(true);
+        expect(acceptanceBlock(complete, false)).toContain(`all ${criteria.length}/${criteria.length} requested criteria were proven`);
+
+        const withoutEvidence = judgeAcceptance(criteria, { dir: '/no-evidence-at-all' }, false);
+        expect(withoutEvidence.met).toBe(0);
+        expect(withoutEvidence.unmet).toBe(criteria.length);
+        expect(withoutEvidence.accepted).toBe(false);
+        expect(withoutEvidence.criteria.every(c => c.verdict !== 'met')).toBe(true);
+        const blocked = acceptanceBlock(withoutEvidence, false);
+        expect(blocked).toContain(`0 of ${criteria.length} requested criteria were proven`);
+        expect(blocked).toContain(`${criteria.length} were not proven`);
+        expect(blocked).not.toContain('⏭️');
+    });
+
+    it('refuses to format an internally inconsistent ledger', () => {
+        const clean = judgeAcceptance(acceptanceFor(SHAPE_BRIEF), { dir: '/no-evidence-at-all' }, false);
+        expect(() => acceptanceBlock(clean, false)).not.toThrow();
+        const broken = { ...clean, unmet: clean.unmet + 1 };
+        expect(() => acceptanceBlock(broken, false)).toThrow('acceptance_ledger_count_mismatch');
     });
 
     it('accepted is false while a single criterion is unmet', () => {
@@ -466,10 +685,10 @@ describe('the ledger is published, in his language', () => {
     it('an incomplete run declares the judge boundary and names every known gap', () => {
         const a = judgeAcceptance(acceptanceFor(BRIEF), { dir: '/nope', built: false }, true);
         const block = acceptanceBlock(a, true);
-        expect(block).toContain('حكم القبول الجزئي');
-        expect(block).toContain('أثبتُّ 0 مما أعرف كيف أثبته');
-        expect(block).toContain('ولم أفحص بقية نص طلبك');
-        expect(block).not.toContain('0 من 11');
+        expect(block).toContain('التسليم محجوب');
+        expect(block).toContain('أثبتُّ 0 من أصل 11');
+        expect(block).toContain('11 لم يُثبت');
+        expect(block).not.toContain('ولم أفحص بقية نص طلبك');
         expect(block).toContain('❌');
         expect(block).toContain('README');
     });
@@ -481,16 +700,17 @@ describe('the ledger is published, in his language', () => {
             false,
         );
         const block = acceptanceBlock(a, false);
-        expect(block).toContain('Partial acceptance');
-        expect(block).toContain('I proved 0 things I know how to prove');
-        expect(block).toContain('I did not inspect the rest of your request');
-        expect(block).not.toContain('0 of 3 proven');
+        expect(block).toContain('Delivery blocked');
+        expect(block).toContain('0 of 3 requested criteria were proven');
+        expect(block).toContain('3 were not proven');
+        expect(block).not.toContain('I did not inspect the rest of your request');
     });
 
     it('the terminal receipt uses the same bounded judge vocabulary in both languages', () => {
-        expect(REACT).toContain('acceptance: ${acceptance.met}/${acceptance.criteria.length} مما أعرف كيف أثبته مُثبَت');
-        expect(REACT).toContain('acceptance: ${acceptance.met}/${acceptance.criteria.length} of what I know how to prove is proven');
-        expect(REACT).not.toContain('of what you asked for is proven');
+        expect(REACT).toContain('acceptance: ${acceptance.met}/${acceptance.criteria.length} معياراً مشتقاً مُثبت');
+        expect(REACT).toContain('acceptance: ${acceptance.met}/${acceptance.criteria.length} requested criteria proven');
+        expect(REACT).toContain("c.verdict !== 'met'");
+        expect(REACT).not.toContain('of what I know how to prove is proven');
     });
 
     it('a complete catalogue subset declares its boundary instead of claiming the whole request', () => {
@@ -502,9 +722,9 @@ describe('the ledger is published, in his language', () => {
             judgeAcceptance(acceptanceFor(prompt03), { dir, built: true }, true),
             true,
         );
-        expect(block).toContain('حكم القبول الجزئي');
-        expect(block).toContain('أثبتُّ 1 مما أعرف كيف أثبته');
-        expect(block).toContain('ولم أفحص بقية نص طلبك');
+        expect(block).toContain('حكم القبول:');
+        expect(block).toContain('جميع المعايير المطلوبة');
+        expect(block).not.toContain('ولم أفحص بقية نص طلبك');
         expect(block).not.toContain('كل ما طلبتَه');
         expect(block).not.toContain('كل ما طلبته');
         expect(block).not.toContain('مُثبَت بدليل.');
@@ -518,8 +738,9 @@ describe('the ledger is published, in his language', () => {
             judgeAcceptance(acceptanceFor('Create a page with a title and a list of three cities.'), { dir }, false),
             false,
         );
-        expect(block).toContain('Partial acceptance');
-        expect(block).toContain('I did not inspect the rest of your request');
+        expect(block).toContain('Acceptance accepted');
+        expect(block).toContain('requested criteria were proven');
+        expect(block).not.toContain('I did not inspect the rest of your request');
         expect(block).not.toContain('every one of the');
     });
 

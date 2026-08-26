@@ -188,7 +188,16 @@ describe('a repair that measured WORSE is taken back, not just un-reported', () 
 
     it('and it says which happened — a rollback is not silent', () => {
         const LOOP2 = read('core', 'quality', 'improve-loop.ts');
-        expect(LOOP2).toMatch(/no gain, \$\{undone \? 'rolled back' : 'left as written'\}, stopping/);
+        expect(LOOP2).toContain("rollback: 'none' | 'failed' | 'done'");
+        expect(LOOP2).toContain("const rollback: ImproveRound['rollback']");
+        expect(LOOP2).toContain('rollback: rollbackState');
+        const rollbackPhrases = [
+            'no snapshot was taken before the round',
+            'rollback was attempted but failed',
+            'rollback completed successfully',
+        ].filter(phrase => LOOP2.includes(phrase));
+        expect(rollbackPhrases).toHaveLength(3);
+        expect(new Set(rollbackPhrases).size).toBe(3);
         expect(REACT).toMatch(/await improveUntilItStops\(/);
     });
 });

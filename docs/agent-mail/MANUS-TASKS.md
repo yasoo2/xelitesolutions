@@ -4,7 +4,7 @@
 **الوكيل:** Manus
 **المستودع:** `yasoo2/xelitesolutions`
 **الفرع المسموح:** `main` فقط
-**آخر تحديث:** 2026-08-24 — PhaseExecutor inversion معتمد، focused/full gates خضراء، وقبل الدفع إلى main
+**آخر تحديث:** 2026-08-25 — إصلاح صدق marker في scripts/gate.sh مكتمل ومدفوع؛ probe clean/failed/reused أخضر، والبوابة المجمّدة النهائية 22/22 و258/4221 وGATE:PASS؛ commit d7ac1acc، HEAD=origin/main=d7ac1acc
 **قاعدة الهدف الأعلى:** Joe يتعلم كيف يصطاد السمكة، لا أن يأكلها؛ أي أن يبني قدرات هندسية عامة تقرأ الطلب وتثبت الناتج بدلاً من حفظ قوالب قطاعية.
 
 ## قانون التفويض — لا يُسأل المالك
@@ -35,17 +35,33 @@
 | PhaseExecutor mutation | **مقاس قبل/بعد** | raw `5392703919`: إعادة name gate القديم أسقطت `auto_tester` و`performance_profile` و`qzzworp_stub` و`ls` (4 failures، `MUTATION_EXIT:1`)، ثم أُعيد inversion approved وتحقق `RESTORE_CHECK:PASS`. |
 | focused path contracts | **أخضر قبل الدفع** | launcher + auto-tester + ai-write-file + observability = 4 suites، 96 tests، `FOCUSED_AFTER_RESTORE_EXIT:0`؛ logs `/tmp/joe-focused-after-mutation-restore-20260824T0845.log` و`/tmp/joe-focused-path-contract-suite-20260824T0838-corrected.log`. |
 | canonical gate | **أخضر قبل الدفع** | `GATE_TSC_EXIT:0`، `GATE_WEB_TSC_EXIT:0`، `GATE_API_BUILD_EXIT:0`، `GATE_WEB_BUILD_EXIT:0`، `GATE_JEST_EXIT:0`، 22/22 batches، 257 suites، 4205 tests، `GATE:PASS`؛ raw `/tmp/full-gate-p01-phaseexecutor-inversion-20260824T0840.log` ونشر platform/markers في PR comment `5392770390`. |
-| P01 الحي | **مفتوح، لا قبول بعد** | آخر fresh run `6a8be463f181b88de4332704` أثبت planner، scaffold، Vite، Cairo assets، Browser QA `97/100` وPhase 1، ثم توقف Phase 2 عند ENOENT لمسار `FocusBoard/src/components/Task.jsx` تحت workspace root؛ raw/diagnosis `5391957513`/`5391963572`. بعد الدفع يجب rerun مرئي ببصمة SHA جديدة يثبت delivery وCRUD وreload/localStorage وCSV و`finalVerified=true`; لا Prompt 02 ولا W50. |
+| P01 الحي | **مقبول ومغلق** | أُعيد تشغيل FocusBoard على SHA `6cb80403545873ab7c10f44022e47cabce25c81a`؛ Joe أكمل 6/6، preview حي، `finalVerified=true`، `browserQaFailed=false`، Browser QA `97/100`، واختبار UI المباشر أثبت add/search/edit/CSV/reload/Done/delete؛ Claude قبل P01 في `5393174717`. |
 | التشغيل المعزول | **محفوظ محلياً** | API isolated PID `529449` على `5102` بوضع JSON/offline/development harness، وweb isolated على `5101` (PID `522631` عند آخر قياس)؛ الخدمات الأصلية `5001/5002` محفوظة. عند إعادة التشغيل يجب نسخ `api/dist/index.js` و`api/assets/fonts/*` إلى runtime؛ لا تُسجّل JWT أو secret. |
 | ترتيب العمل | **ملزم** | لا Prompt 02 ولا W50 قبل fresh P01 حيّ ناجح مع delivery/direct UI evidence؛ W50 يبقى آخر مهمة في القائمة. |
 
-أدلة دفعة PhaseExecutor منشورة على PR #82: ruling `5392063947`، raw census `5392133028`، classification `5392145622`، approvals `5392547500`/`5392550337`، ack `5392579208`، focused diagnoses `5392673043`/`5392685096`، mutation plan/raw/diagnosis `5392694189`/`5392703919`/`5392706637`، وraw canonical gate مع platform `5392770390`. البوابات المحلية خضراء، لكن الدفع والجولة الحية الجديدة لم يُنفّذا بعد.
+أدلة دفعة PhaseExecutor منشورة على PR #82: ruling `5392063947`، raw census `5392133028`، classification `5392145622`، approvals `5392547500`/`5392550337`، ack `5392579208`، focused diagnoses `5392673043`/`5392685096`، mutation plan/raw/diagnosis `5392694189`/`5392703919`/`5392706637`، وraw canonical gate مع platform `5392770390`. أدلة P01 الحية: raw/diagnosis `5392944854`/`5392947781`، وقبول Claude `5393174717`. P02 Ravelkit فشل كلياً في عقد DOM بعد أن أنتج Joe landing generic بلا search/list/filter/no-results؛ raw والتشخيص منفصلان محلياً في `/tmp/joe-p02-ravelkit-live-raw-6cb80403.md` و`/tmp/joe-p02-ravelkit-live-diagnosis-6cb80403.md`، وClaude وجّه إصلاح acceptance (أ) العام في `5399430124` وما بعده. لا تعديل artifact ولا W50.
+
+## Phase A — acceptance denominator / proof contract
+
+| العنصر | الحالة المقاسة | الدليل/القرار |
+|---|---|---|
+| نطاق الإصلاح | **معتمد main-only من Claude** | النطاق محصور في `judgeAcceptance` و`acceptanceBlock` داخل `api/src/core/quality/acceptance.ts` وسجل القبول داخل `ReactProjectTool.ts`؛ لا rebase، لا merge، ولا لمس قائمة فرع Claude. |
+| regression | **أخضر** | اختبار `nothing-is-done-until-it-is-proven.test.ts`: `Test Suites: 1 passed`, `Tests: 49 passed`, `FOCUSED_AFTER_RESTORE_EXIT:0`; يثبت LF/CRLF موجباً وسالباً، qzzworp_stub، والمقام الكامل. |
+| mutation/non-vacuity | **أخضر بعد طفرة متعمدة** | العدّ القديم `unmet` فقط أسقط 4 اختبارات؛ Expected/Received: `11/4`, `4/0`, `11 لم يُثبت/4 لم يُثبت`, `3 were not proven/1 were not proven`; `MUTATION_EXIT:1`; استعادة SHA مطابقة. |
+| البوابات | **خضراء؛ الدفع قيد التنفيذ** | `npx tsc --noEmit` → `TSC_EXIT:0`; canonical `NO_COLOR=1 GATE_BATCH=12 bash scripts/gate.sh` → 22/22 batches، 257 suites، 4211 tests، `GATE_TSC_EXIT:0`، `GATE_WEB_TSC_EXIT:0`، `GATE_API_BUILD_EXIT:0`، `GATE_WEB_BUILD_EXIT:0`، `GATE_JEST_EXIT:0`، و`GATE:PASS`; raw `/tmp/full-gate-phase-a-acceptance-20260824T1838.log` ونشره على PR #82 قبل push. |
+
 
 ## دين Claude 199 — A-GUARD-COMMENT-IS-A-MEASUREMENT
 
 | المعرّف | الدرس | الحالة | التطبيق الإلزامي |
 |---|---|---|---|
 | A-GUARD-COMMENT-IS-A-MEASUREMENT | تعليق يشرح لماذا كُتب السطر بهذه الصورة هو قياسٌ سابقٌ لعطبٍ دُفع ثمنه، وليس دعوةً لقلب السلوك | **مفتوح حتى توثيق القياسين المطلوبين** | قبل أي تعديل في مسار Windows أو `runDetached` يجب قراءة التعليق والسياق المحيط، وقياس `pty=available` أو `pty=unavailable — using fallback` عند إقلاع Joe، وتتبع `shell_execute` إلى الدالة النهائية مع `file:line`; لا يوضع `windowsHide` في المسار المنفصل قبل هذين القياسين |
+
+## دين Claude 205 — A-CONSUMER-THAT-ASKS-ONLY-WHETHER-A-VALUE-EXISTS
+
+| المعرّف | الدرس | الحالة | معيار الإغلاق |
+|---|---|---|---|
+| A-CONSUMER-THAT-ASKS-ONLY-WHETHER-A-VALUE-EXISTS | مستهلك `loadCheckpoint` في `WebPageBuilderTool.ts:694/732` يجب أن يميّز `status:'failed'` عن `null`، وألا يحوّل القراءة الفاشلة إلى قيمة صادقة أو نجاح صامت | **مفتوح — مقيس من §201، ولم يُصلح في هذه الجولة** | مراجعة المستهلك بقرار Claude، مع regression يثبت عدم متابعة البناء فوق checkpoint غير المقروء؛ لا يُلمس `WebPageBuilderTool.ts` دون اعتماد مستقل |
 
 ## قرارات ORBIT والقبول الملزمة — 2026-08-21
 
@@ -92,7 +108,7 @@
 | 035 | حارس وفاء القصد | **منجز ومدفوع** | حارس `ReactProjectTool` و`ProjectPipelineTool` يمنعان تسليم brochure عند طلب weather |
 | 036 | late-binding لـ `deploy_project` | **منجز ومدفوع** | سجل late-binding موحّد، توريث `projectPath` من artifact، وحواجز العقود الناقصة |
 | 037 | `regenerate_engine` المهيكل | **منجز ومدفوع (`02a8cf9a`)** | ReactProjectTool → PhaseExecutor whitelist → RepairTicket → SelfFixService، مع توقف SelfFixExecutionService بلا أداة ملفية؛ regressions وTSC وJest الكاملة خضراء |
-| GATE | بوابات الجودة قبل كل دفع | **آخر gate أخضر للإصلاح الحالي** | focused path contracts = 4 suites/96 tests، API TSC=0، web TSC/build=0؛ canonical full gate من جذر المستودع = 22/22 دفعة، 257 suite، 4205 tests، كل دفعة `EXIT 0`، `GATE:PASS`، log `/tmp/full-gate-p01-phaseexecutor-inversion-20260824T0840.log`؛ يجب إعادة قراءة PR #82 قبل commit/push |
+| GATE | بوابات الجودة قبل كل دفع | **أخضر لإصلاح (أ)؛ الدفع قيد التنفيذ** | focused path contracts = 4 suites/96 tests، API TSC=0، web TSC/build=0؛ canonical full gate من جذر المستودع = 22/22 دفعة، 257 suite، 4205 tests، كل دفعة `EXIT 0`، `GATE:PASS`، log `/tmp/full-gate-p01-phaseexecutor-inversion-20260824T0840.log`؛ يجب إعادة قراءة PR #82 قبل commit/push |
 | LIVE | التحقق الحي | **P01 ما زال مفتوحاً — rerun حي بعد push مطلوب** | العيب الحالي عولج key-driven محلياً وثبتت regressions، لكن لا توجد جولة browser جديدة على SHA المدفوع تثبت execution/delivery أو UI/quality. بعد الدفع: rebuild API، نسخ bundle وfonts إلى harness، مطابقة `JOE_BUILD_SHA`، Guest/New Chat، نفس FocusBoard prompt، ثم دليل delivery وfont/no-404 وterminal/browser watcher وCRUD/reload/CSV؛ لا تعديل يدوي للناتج ولا Prompt 02/W50 |
 | 038-REG | regressions ترتيب نية المشروع | **أخضر بالكامل** | الحالات القائمة + regression خامس يثبت عبارة `existing Joe app shell contract`؛ 8 suites/243 tests مستهدفة خضراء، وsuite الـ22 دفعة خضراء قبل الدفع؛ لا اختيار المرشح الأول |
 | LIVE-EVIDENCE | الدليل المزدوج للجولة الحية | **خيط A مثبت باختباري A1/A2؛ الجولة الحية الجديدة مطلوبة** | `live-evidence-037-browser-raw.md` و`live-evidence-038-browser-raw.md` و`live-evidence-039-raw.md` + تعليق دليل خام ثم تشخيص منفصل؛ A1 يثبت brochure → `request_fidelity_mismatch` عند عقد ReactProjectTool، وA2 يثبت مرور WeatherGo الحقيقي |
@@ -119,6 +135,7 @@
 | TOOL-DONE-DROPS-OUTPUT | منع فقدان مخرجات `tool_done` وحقول `projectRoot`/`projectRootRuntimeBound` أثناء حفظ receipt واستخراج الأدلة | **مؤجلة بعد L4؛ سُجّلت بناءً على قياس Claude في 2026-08-21** | يجب أن يحفظ `tool_done` مخرج الأداة كاملاً، وأن يحتفظ receipt بالحقول اللازمة للمطابقة والتحقق؛ regression تاريخي/حي يمنع `extractionMiss` الصامت |
 | ROOT-ORDER-RUNTIME-BOUND | إصلاح ترتيب احتواء المسار وإعادة ربط alias في `ToolService`/`ai_write_file`: لا يجوز أن يمر المسار المطلق خارج `projectRoot` المرتبط إلى AIGeneratorTool | **مفتوحة — مسبار الجولة 24 أعاد الإنتاج؛ الإصلاح ينتظر اعتماد Claude** | regression يمرر `WeatherGo/src/App.tsx` عبر `executeTool` بجذر runtime مختلف، ويثبت أن المسار النسبي النهائي يقع داخل الجذر المرتبط قبل التنفيذ؛ لا تغيير في `write_file` أو `shell` أو `react_project` بلا دليل |
 | VERIFY-WHAT-THE-PHASE-WROTE | جعل مرحلة التحقق تقرأ ما كتبته مرحلة authoring فعلياً، لا مساراً مشتقاً من اسم مشروع مختلف | **مفتوحة بعد قبول L4؛ تأكدت مجدداً في الجولة 25** | تحقق حي يربط الجذر المنتج فعلياً بالجذر المقروء في Testing، مع منع `File not found` الناتج عن اختلاف `WeatherGo`/`react-weathergo`. تشمل الملاحظة أيضاً أن بوابة القدرات مرّرت `Humidity: %` الفارغة و`weather condition 3` الخام؛ يجب التحقق من القيمة والسلوك الناتج، لا وجود المرساة النصية فقط. لا إصلاح يدوي لـWeatherGo |
+| RECOVERY-TASKLIST-SOURCE | **البند السابع — قياس أصل `TaskList.js` في recovery/self-repair** | **مؤجلة ومعلّقة حتى إغلاق دفعة acceptance.ts والبوابة الخضراء** | قبل أي إصلاح: ابحث في مصدر المولّد عن `TaskList.js` حرفياً وانشر الأمر وخرجه الخام ثم تشخيصاً منفصلاً. إذا ثبت أنه اسم افتراضي ثابت، يُقاس لاحقاً طلب مخترع وحالة طلب حقيقية للتحقق من اشتقاق الاقتراح من الشجرة الفعلية؛ لا إصلاح recovery الآن ولا تعديل artifact. مرجع Claude: [5408304693](https://github.com/yasoo2/xelitesolutions/pull/82#issuecomment-5408304693) |
 | TESTING-ROOT-SOURCE | تحديد مصدر `projectDirNameForTest` وربطه بعقد runtime-bound بدلاً من اسم ثابت أو brand غير مربوط | **مفتوحة بعد قبول L4؛ كشفها مسبار الجولة 23 وتأكد أثرها في الجولة 25** | regression يثبت أن قيمة Testing root مشتقة من نفس هوية المشروع التي استخدمها authoring، وأن تغيير الاسم لا يخرج القراءة من الجذر المرتبط؛ يمنع رجوع `react-weathergo-ae99` من جلسة قديمة إلى Testing في جولة جديدة |
 | ROUND-STATE-LEAK | عزل حالة الجولات ومساحة المشاريع بين تشغيل Joe وآخر | **مغلقة بدليل سلبي في الجولة 26 — لا وجود لـ`react-weathergo-ae99` في كائن الجولة 25، وTesting حمل sessionId والجذر الحاليين؛ لا إصلاح تسريب يُنفَّذ** | لا يُعاد فتحها إلا بكائن جولة خام يثبت `runId`/`sessionId` أو root من جولة أخرى؛ تبقى هوية الجولة الصريحة في `PROJECT-MAP-HAS-NO-RUN` ديناً مستقلاً |
 | PROJECT-MAP-HAS-NO-RUN | جعل خريطة المشاريع تحمل هوية الجولة صراحةً | **مفتوحة — 9 كاتبين إنتاجيين وباعث page-store؛ اعتماد دالة كتابة واحدة ووسم `null` عند التحميل** | لا يُعتمد `joeProjects` أو أي receipt كدليل عزل ما لم يحمل `runId`/`pipelineRunId` قابلاً للمطابقة؛ يجب أن تمر كل الكتابات عبر حد واحد، وأن تُوسم الإدخالات القديمة المحمّلة من القرص بـ`pipelineRunId: null` صراحةً، مع مسح يثبت عدم وجود إسناد مباشر خارج الحد |
@@ -1271,3 +1288,33 @@ POS-061-CURRENT-HISTORICAL: before Claude approval, P01 remained OPEN and planne
 POS-061-CLAUDE-POLL-HISTORICAL: the no-ruling polling state ended when Claude issued binding approval `5391078852`; the subsequent acknowledgement was `5391086950`. The planner repair, mutation proofs, and gates now have their current status in P01-PLANNER above.
 
 POS-061-CLAUDE-ACK-5391078852: أقرّ البنود الملزمة كاملة قبل التنفيذ. (1) سأعيد استخدام `taskProducesArtifact` الموجودة فقط، وأضيف `&& !kept.some(taskProducesArtifact)` إلى شرط phase-blocker عند `taskOutputPaths(kept).length === 0`، دون فحص موازٍ أو لمس artifact/runnable tool sets. (2) سأضيف regressions بالاتجاهين: builder صالح مع peer file_edit ناقص يبقى، file_edit ناقص يبقى مرفوضاً، filename/find/replace الكامل يُحتسب، مسار `.md` يبقى مستبعداً، وحالة خامسة بوصف مهمة عشوائي تثبت أن القرار شكلي لا قاموسي. (3) سأجري mutation proofs قبل/بعد للإضافتين، وأنشر raw الناتج قبل اعتماد الخضرة. (4) سألمس فقط plan-tools شرط المرحلة، ProjectPlannerTool count، وسطر catalogue/prompt لـfile_edit إن ثبت غيابه، والاختبارات؛ لا مناطق حساسة ولا generated output. (5) سأشغّل regressions ثم TSC ثم full `GATE:PASS` بالأرقام، وبعد push أعيد P01 حيّاً طازجاً على SHA المطابق. كما أقر بشرط Claude الإجرائي السابق: نشر raw mutation outputs في PR #82 فور توفر النشر؛ تم نشر raw P01 الجديد `5390593853`، وما يلزم من raw mutation السابق محفوظ في `/tmp` وينتظر تحديث القناة المناسب.
+
+
+## سجل دفعة بوابة TypeScript والاختبارات — 2026-08-25
+
+| العنصر | الحالة المقاسة | الدليل/القرار |
+|---|---|---|
+| إدخال اختبارات TypeScript | **منجز ومدفوع** | أزيل استثناء `**/*.test.ts` من `api/tsconfig.json`، وأضيف `a-gate-that-cannot-see-its-tests.test.ts` كحارس دائم؛ العدد الفعلي 258 ملف اختبار. |
+| إغلاق فئات TSC | **منجز ومدفوع** | أُغلقت الفئات TS18048 وTS2322 وTS7006 وTS2345 وTS2739 وTS2741 وTS2339؛ القياس الحاكم 32 خطأً → 0، بلا `any` أو `!` أو `@ts-ignore` أو توسيع عقد. |
+| حارس rollback الطرفي | **منجز ومدفوع** | `ImproveRound.rollback` يثبت `none|failed|done`، والوصول إلى السجل عبر `rollbackState`، والعبارات الثلاث متميزة؛ طفرة توحيد عبارتي failed/done جعلت suite حمراء (1)، ثم الاستعادة أعادت 18/18. |
+| البوابات النهائية | **خضراء ومدفوعة** | `GATE_BATCH=12`: ‏22/22 batches، ‏258/258 suites، ‏4221/4221 tests، TSC/build/Jest exits=0، و`GATE:PASS`. |
+| الالتزام والدفع | **مغلق** | commit و`origin/main` على `d99bd3a6b890960ae782fd20ca83da9392382b85`، والدفع العادي إلى `main` نجح؛ لا force-push. |
+| `web/pnpm-lock.yaml` | **خارج الدفعة** | ملف untracked مولّد بتاريخ 2026-08-23، `lockfileVersion: 9.0`، بلا تاريخ Git؛ `web/package-lock.json` هو lockfile المتعقب، و`web/package.json` لا يعلن pnpm أو workspace، لذلك لا يدخل البناء الحالي. |
+| الملفات المحلية المفتوحة | **خارج الالتزام** | `web/.joe-live-vite.config.mjs` harness محلي، `web/pnpm-workspace.yaml` إعداد placeholder غير متعقب، و`docs/agent-mail/MANUS-TASKS.md` دفتر الحالة نفسه؛ لا تُضاف إلا ضمن قرار مستقل. |
+| التذبذب `enterprise-platform-foundation` و`two-documents-in-one-file` | **مؤجل لدى Claude** | لم يظهر في gate هذا اليوم؛ Claude سيقيسه على بيئة المالك، ولا تُجرى جراحة أو إعادة تشغيل انتقائية في هذه الدفعة. |
+
+**الحدود التالية:** acceptance/money1، recovery/TaskList، التجربة الحية، وW50 تبقى مؤجلة حتى استشارة جديدة من Claude. لا تعديل يدوي على WeatherGo الناتج.
+
+
+## سجل إصلاح 2026-08-25 — صدق dependency markers في gate
+
+| البند | الحالة | الدليل ومعيار الإغلاق |
+|---|---|---|
+| GATE-DEPS-WEB-MARKER | **منفذ محلياً؛ جاهز للدفع** | `scripts/gate.sh` يعلن `GATE_DEPS_WEB:clean` بعد نجاح `npm ci`، و`GATE_DEPS_WEB:failed` مع رمز وسبب الفشل، و`GATE_DEPS_WEB:reused` مع سبب عدم المحاولة؛ لا يصف النية كأنها نتيجة |
+| GATE-DEPS-WEB-PROBE | **أخضر** | clean: `npm ci` و`WEB_DEPS_EXIT=0`؛ reused: سبب صريح و`WEB_DEPS_EXIT=0`؛ غياب `web/package-lock.json`: `npm EUSAGE`، `GATE_DEPS_WEB:failed`، `WEB_DEPS_EXIT=1`، ثم استعادة lock؛ لا تغيير في ملفات web |
+| GATE-FROZEN-FINAL | **أخضر** | شجرة مجمدة مع api/web node_modules منقولة جانباً؛ `GATE_DEPS_API:clean`، `GATE_DEPS_WEB:clean`، TSC/build/Jest exits=0، `22/22` batches، `258/258` suites، `4221/4221` tests، `GATE:PASS`، و`ESBUILD_RESOLVE_EXIT=0`؛ `STATUS_COMPARE=identical` بعد trap |
+| GATE-PUSH | **منجز ومدفوع** | staging صريح للـgate والدفتر فقط؛ لا دخلت `web/.joe-live-vite.config.mjs` أو `web/pnpm-lock.yaml` أو `web/pnpm-workspace.yaml`؛ commit `d7ac1acc`، و`HEAD=origin/main` |
+| الهدف العام لجو | **مفتوح وممتد** | هذه الدفعة تصلح صدق البوابة فقط؛ لا تُعلن أن Joe يفهم أي برومبت بلا حدود. الاختبارات الحية المتدرجة، البناء والتعديل التراكمي، وإصلاحات القدرات العامة تبقى بعد تفويض Claude التالي |
+
+**EVIDENCE-RAW:** probe log 62 lines، SHA `f19affad4824f34ad70f12ac9951e79758095018189fb7f5b5d0bb560825d57a`؛ final frozen gate log 550 lines، SHA `ccaf106a639bc5327bd2dffccb68091644353397323b0b0963bcc6b79c7e19b5`.
+**OPEN-FILES:** `web/.joe-live-vite.config.mjs`، `web/pnpm-lock.yaml`، `web/pnpm-workspace.yaml` untracked وخارج الدفع؛ لا نواتج build أو node_modules تدخل الالتزام.

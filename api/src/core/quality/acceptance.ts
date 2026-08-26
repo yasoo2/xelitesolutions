@@ -145,6 +145,11 @@ export interface Criterion {
      *  either a field in the built app or it is not.
      */
     expectedColumn?: string;
+    /**
+     *  The explicit lower bound stated for a named numeric column, when any.
+     *  A view of the same `expectedRule` value, never a second record of it.
+     */
+    expectedBound?: { min: number; minExclusive: boolean };
 }
 
 export interface JudgedCriterion extends Criterion {
@@ -416,9 +421,58 @@ export function acceptanceFor(request: string): Criterion[] {
     //  a rule that vanishes is the one outcome with no honest reading.
     const rules = statedRules(t);
 
+    /**
+     *  A BOUND BELONGS TO ITS COLUMN, NOT TO A NUMBERED LIST.
+     *
+     *  Two readings of the same sentence grew independently — «شرطك: السعر لا
+     *  يقبل صفرًا» as `rule:1`, and «القيد على السعر» as `constraint:money1:min`
+     *  — and they met in a merge. Keeping both would have been the seam class
+     *  itself: two records of one fact, maintained separately, with nothing
+     *  forcing them to agree.
+     *
+     *  So there is ONE derivation, `statedRules`, and two presentations of it.
+     *  A rule that IS a bound and names a column he asked for is that column's
+     *  constraint and is emitted beside it, carrying both shapes so either
+     *  reader is served from the same value. Everything else — a forbid, a
+     *  require, a bound with no column to sit on — stays a numbered rule,
+     *  because a rule that vanishes is the one outcome with no honest reading.
+     */
+    const boundFor = new Map<string, typeof rules[number]>();
+    const loose: typeof rules = [];
+    for (const r of rules) {
+        const said = String(r.field || r.text || '');
+        const owner = (r.kind === 'bound' && r.min !== undefined && said)
+            ? (columns as DerivedField[]).find(col => {
+                const label = String(col.label || '');
+                if (!label) return false;
+                //  Through the language layer, both ways: he writes «سعرًا»
+                //  and the schema says «السعر». Matching raw text would read
+                //  letters, not words.
+                if (label === said || saysWord(said, label)) return true;
+                if (label.split(/\s+/).some(w => w.length > 2 && saysWord(said, w))) return true;
+                /**
+                 *  An identifier is not a word, and the word layer cannot see
+                 *  it. `zqixdal_val` segments into three pieces, so asking the
+                 *  stemmer for it always answers no — measured on an invented
+                 *  column name with no catalogue behind it.
+                 *
+                 *  Plain containment is the right test for exactly this shape
+                 *  and the wrong one for Arabic, where «العنوان» sits inside
+                 *  «العنوانين». So it is allowed only for a label carrying NO
+                 *  Arabic letter, which is where the word layer has nothing to
+                 *  offer and where the trap it guards cannot occur.
+                 */
+                if (label.length >= 3 && !/[؀-ۿ]/.test(label)) return said.includes(label);
+                return false;
+            })
+            : undefined;
+        if (owner && !boundFor.has(owner.key)) boundFor.set(owner.key, r);
+        else loose.push(r);
+    }
+
     return [
         ...catalogue,
-        ...rules.map((r, i) => ({
+        ...loose.map((r, i) => ({
             id: `rule:${i + 1}`,
             kind: 'feature' as CriterionKind,
             ar: `شرطك: «${r.text}»`,
@@ -434,13 +488,32 @@ export function acceptanceFor(request: string): Criterion[] {
             en: `a page «${p.title}» exists and carries its name`,
             expectedPage: { slug: p.slug, title: p.title },
         })),
-        ...columns.map((col: DerivedField) => ({
-            id: `column:${col.key}`,
-            kind: 'feature' as CriterionKind,
-            ar: `عمود «${col.label}» موجود في الجدول`,
-            en: `a column «${col.label}» exists in the table`,
-            expectedColumn: col.label,
-        })),
+        //  …and each column carries its own constraint immediately after it,
+        //  where he can read the two together.
+        ...(columns as DerivedField[]).flatMap((col: DerivedField) => {
+            const own: Criterion[] = [{
+                id: `column:${col.key}`,
+                kind: 'feature' as CriterionKind,
+                ar: `عمود «${col.label}» موجود في الجدول`,
+                en: `a column «${col.label}» exists in the table`,
+                expectedColumn: col.label,
+            }];
+            const r = boundFor.get(col.key);
+            if (r && r.min !== undefined) {
+                own.push({
+                    id: `constraint:${col.key}:min`,
+                    kind: 'feature' as CriterionKind,
+                    ar: `القيد «${col.label}» ${r.minExclusive ? 'أكبر من' : 'لا يقل عن'} ${r.min}`,
+                    en: `the column «${col.label}» rejects values ${r.minExclusive ? 'at or below' : 'below'} ${r.min}`,
+                    expectedColumn: col.label,
+                    expectedBound: { min: r.min, minExclusive: !!r.minExclusive },
+                    //  The same value in the shape the stronger judge reads —
+                    //  derived here, never maintained twice.
+                    expectedRule: { text: r.text, kind: r.kind, field: r.field, min: r.min, minExclusive: r.minExclusive },
+                });
+            }
+            return own;
+        }),
     ];
 }
 
@@ -726,7 +799,19 @@ export function judgeAcceptance(criteria: Criterion[], ev: Evidence, isAr = true
     const judged: JudgedCriterion[] = criteria.map(c => {
         const say = (verdict: Verdict, why: string): JudgedCriterion => ({ ...c, verdict, why });
 
-        if (c.expectedColumn) {
+        /**
+         *  ⛔ THE NARROWER CLAIM IS JUDGED FIRST.
+         *
+         *  A constraint criterion carries its column's label so the ledger can
+         *  name it, and «the column exists» is TRUE for a schema that dropped
+         *  the bound entirely. Judging by the wider claim first answers a
+         *  question nobody asked and marks the constraint met — measured: a
+         *  mutation that deleted `minExclusive: true` still scored green.
+         *
+         *  So a criterion that carries a rule is judged by its rule, and the
+         *  column it names is context, not the test.
+         */
+        if (c.expectedColumn && !c.expectedRule) {
             //  The label he wrote, quoted in the generated source. A column
             //  that is not there cannot be greped into existence.
             //  As a COLUMN, not as loose text: a label that happens to
@@ -892,7 +977,22 @@ export function judgeAcceptance(criteria: Criterion[], ev: Evidence, isAr = true
     });
 
     const met = judged.filter(c => c.verdict === 'met').length;
-    const unmet = judged.filter(c => c.verdict === 'unmet').length;
+    /**
+     *  ⛔ `unprovable` COUNTS AS NOT PROVEN — AND THAT BLOCKS DELIVERY.
+     *
+     *  This file used to hold it in a third bucket that blocked nothing, on
+     *  the reasoning that «I could not check this» is honest disclosure. It is
+     *  honest, and it is not enough: he asked for a thing, and a delivery
+     *  marked accepted is a claim it is there. Joe not knowing how to look is
+     *  a fact about Joe, never a reason to answer for the request.
+     *
+     *  The verdict keeps its own name so the ledger can still say WHICH of the
+     *  two happened — «I looked and it is absent» is not «I never looked» —
+     *  but both count against acceptance, and `met + unmet` therefore covers
+     *  every criterion, which is what makes the ledger's own count guard able
+     *  to fail at all.
+     */
+    const unmet = judged.filter(c => c.verdict !== 'met').length;
     return { criteria: judged, met, unmet, accepted: judged.length > 0 && unmet === 0 };
 }
 
@@ -904,6 +1004,17 @@ export function judgeAcceptance(criteria: Criterion[], ev: Evidence, isAr = true
  * believable.
  */
 export function acceptanceBlock(a: Acceptance, isAr: boolean): string {
+    /**
+     *  A LEDGER THAT DOES NOT ADD UP IS NOT PUBLISHED.
+     *
+     *  The counts and the rows are two records of one judgement, and nothing
+     *  but this line forces them to agree. A ledger printing «4 proven» over
+     *  eleven rows is a report that reads as an answer, so it stops here
+     *  rather than reaching him.
+     */
+    if (a.met + a.unmet !== a.criteria.length) {
+        throw new Error('acceptance_ledger_count_mismatch');
+    }
     if (!a.criteria.length) {
         return isAr
             ? '⚠️ لم أستخرج معياراً قابلاً للفحص من طلبك، لذلك لم أصدر حكم قبول.'
@@ -911,13 +1022,15 @@ export function acceptanceBlock(a: Acceptance, isAr: boolean): string {
     }
     const head = a.accepted
         ? (isAr
-            ? `✅ حكم القبول الجزئي: أثبتُّ ${a.met} مما أعرف كيف أثبته — ولم أفحص بقية نص طلبك.`
-            : `✅ Partial acceptance: I proved ${a.met} of what I know how to prove — I did not inspect the rest of your request.`)
+            ? `✅ حكم القبول: أثبتُّ جميع المعايير المطلوبة (${a.met}/${a.criteria.length}).`
+            : `✅ Acceptance accepted: all ${a.met}/${a.criteria.length} requested criteria were proven.`)
         : (isAr
-            ? `⚠️ حكم القبول الجزئي: أثبتُّ ${a.met} مما أعرف كيف أثبته — و${a.unmet} مما أعرف كيف أثبته لم أُثبته، ولم أفحص بقية نص طلبك:`
-            : `⚠️ Partial acceptance: I proved ${a.met} things I know how to prove — ${a.unmet} things I know how to prove were not proven, and I did not inspect the rest of your request:`);
+            ? `⚠️ التسليم محجوب: أثبتُّ ${a.met} من أصل ${a.criteria.length} معياراً مشتقاً — و${a.unmet} لم يُثبت:`
+            : `⚠️ Delivery blocked: ${a.met} of ${a.criteria.length} requested criteria were proven — ${a.unmet} were not proven:`);
     const lines = a.criteria.map(c => {
-        const mark = c.verdict === 'met' ? '✅' : c.verdict === 'unmet' ? '❌' : '⏭️';
+        //  Two marks, because there are two outcomes he can act on: proven,
+        //  or not. WHICH kind of not-proven is in `why`, where it belongs.
+        const mark = c.verdict === 'met' ? '✅' : '❌';
         return `   ${mark} ${isAr ? c.ar : c.en} — ${c.why}`;
     });
     return [head, ...lines].join('\n');

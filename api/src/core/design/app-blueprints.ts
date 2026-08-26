@@ -1510,6 +1510,20 @@ const TYPE_MARKS: Array<[RegExp, DerivedRole, FieldType]> = [
 export interface DerivedField { label: string; key: string; type: FieldType; role: DerivedRole; options?: string[]; min?: number; minExclusive?: boolean }
 
 /** A condition he stated, and the field it is about. */
+/**
+ *  Words that open a clause without naming anything in it. The Arabic side
+ *  needs no twin: its test is the definite article, which a conjunction
+ *  cannot wear.
+ */
+const NOT_A_FIELD_NAME = new Set([
+    'and', 'or', 'but', 'the', 'a', 'an', 'also', 'then', 'plus', 'with', 'so',
+    'it', 'this', 'that', 'they', 'there', 'here', 'each', 'every', 'all', 'any',
+    'if', 'when', 'while', 'where', 'which', 'who', 'is', 'are', 'be', 'was',
+    'must', 'should', 'shall', 'may', 'can', 'do', 'does', 'not', 'no', 'never',
+    'please', 'make', 'build', 'create', 'add', 'set', 'use', 'ensure', 'keep',
+    'let', 'give', 'show', 'allow', 'reject', 'accept', 'run', 'open',
+]);
+
 export interface StatedRule {
     text: string;
     field?: string;
@@ -1709,8 +1723,33 @@ export function statedRules(requestRaw: string): StatedRule[] {
         };
         //  Which column is it about? The clause names it, and the name is
         //  the definite noun it opens with — no vocabulary of field names.
-        const named = clause.match(/^(?:ال[ء-ي]+|[A-Za-z][A-Za-z0-9_]*)/u);
-        if (named) rule.field = named[0];
+        /**
+         *  ⛔ …AND THE ENGLISH SIDE MUST TEST SOMETHING TOO.
+         *
+         *  The Arabic branch asks for the definite article — a real claim
+         *  about the token it accepts. The English branch asked only «is it a
+         *  word», so «and zqixdal_val must be greater than 4» named the field
+         *  «and». Measured: the constraint never found its column and fell
+         *  back to a numbered rule, and a schema that dropped the bound
+         *  entirely would still have scored green.
+         *
+         *  This is the night's first class in its plainest form — a rule that
+         *  grants a claim from POSITION without testing it — and it hid because
+         *  the two languages were held to different standards inside one
+         *  pattern. So the openers are skipped, not accepted, and a function
+         *  word is never a column name.
+         */
+        let opening = clause;
+        for (let hop = 0; hop < 4; hop++) {
+            const lead = opening.match(/^([A-Za-z][A-Za-z0-9_]*)\s+/);
+            if (lead && NOT_A_FIELD_NAME.has(lead[1].toLowerCase())) {
+                opening = opening.slice(lead[0].length);
+                continue;
+            }
+            break;
+        }
+        const named = opening.match(/^(?:ال[ء-ي]+|[A-Za-z][A-Za-z0-9_]*)/u);
+        if (named && !NOT_A_FIELD_NAME.has(named[0].toLowerCase())) rule.field = named[0];
         //  THE BOUND READER ALREADY EXISTS — statedBound, above, and it
         //  knows «أقل من», «على الأقل», «موجب» and their English twins.
         //  Writing a second one here would be the duplication this file
