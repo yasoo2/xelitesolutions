@@ -2,7 +2,7 @@ import React, { Suspense, lazy } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { GoogleOAuthProvider } from '@react-oauth/google';
-import { GOOGLE_CLIENT_ID } from './config';
+import { GOOGLE_CLIENT_ID, API_URL } from './config';
 import App from './App';
 // The code viewer must work with the network unplugged — see monaco-setup.
 // It is deliberately NOT imported here: importing it eagerly put the whole
@@ -96,7 +96,14 @@ window.addEventListener(
 const SINGLE_USER_KEY = 'joe:singleUser';
 async function askServerIfSingleUser(): Promise<void> {
   try {
-    const r = await fetch('/api/health', { cache: 'no-store' });
+    //  ⛔ THE BASE COMES FROM THE ONE IMPORT, NOT FROM A LITERAL.
+    //
+    //  This read the health path as a literal beginning with the base. It
+    //  worked, because API_URL happens to
+    //  BE '/api' today -- which is exactly what makes it the kind of defect
+    //  that surfaces months later, in one panel only, when the base moves.
+    //  The repository already guards this rule; my own line broke it.
+    const r = await fetch(API_URL + '/health', { cache: 'no-store' });
     if (!r.ok) return;
     const j = await r.json();
     localStorage.setItem(SINGLE_USER_KEY, j?.singleUser === true ? '1' : '0');
