@@ -85,6 +85,29 @@ describe('a column is named by a noun, never by a verb', () => {
             .toEqual(expect.arrayContaining(['نوع الحليب']));
     });
 
+    it('POSITIVE — one column is not a list, and does not short-circuit the engine', () => {
+        //  The structural half of the same defect, measured from the source:
+        //  the short-circuit fired on length >= 1, above the archetype scoring
+        //  and above MANAGE_SIGNAL. So ONE column -- right or wrong -- ended
+        //  every reading after it. This repository already decided the same
+        //  question in the schema designer: «one table is not a design».
+        expect(detectAppKind('اعمل لي صفحة أسجل فيها مصاريفي ويطلع المجموع')).toBe('expenses');
+    });
+
+    it('NEGATIVE — TWO columns still outrank the noun, exactly as before', () => {
+        //  The boundary. Requiring two must not weaken the rule it guards:
+        //  a list he WROTE still beats a noun he happened to use.
+        expect(detectAppKind('عندي عيادة أسنان، أريد جدولاً فيه اسم المريض ورقم تلفونه ووقت الموعد')).toBe('generic');
+    });
+
+    it('NEGATIVE — a noun that OPENS with a verb letter is still a column', () => {
+        //  The case chosen to hurt: «يوم التسليم» opens with ي and is a
+        //  noun. It stands here so no future widening of the behaviour-verb
+        //  list can creep back toward reading letters instead of words.
+        expect(labels('اعمل جدول للطلبات فيه اسم الزبون ويوم التسليم'))
+            .toEqual(expect.arrayContaining(['يوم التسليم']));
+    });
+
     it('NEGATIVE — a plain column list is untouched', () => {
         expect(labels('بدي جدول للعملاء فيه الاسم والهاتف والعنوان'))
             .toEqual(['الاسم', 'الهاتف', 'العنوان']);

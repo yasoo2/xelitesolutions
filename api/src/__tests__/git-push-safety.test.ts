@@ -34,7 +34,19 @@ describe('argv is preserved — multi-word commit messages survive', () => {
     test('ExecutionEngine.runArgv spawns argv verbatim (no whitespace re-split)', () => {
         expect(engine).toMatch(/async runArgv\(file: string, args: string\[\]/);
         expect(engine).toMatch(/spawn\(file, args, \{/);
-        const argvInternal = engine.slice(engine.indexOf('runArgvInternal'));
+        //  ⛔ THE ANCHOR IS PROVEN BEFORE ANYTHING IS BUILT ON IT.
+        //
+        //  `indexOf` returns -1 when the text moves, and `slice(-1)` then
+        //  yields a one-character string -- so a NEGATIVE assertion over it
+        //  passes on nothing at all. The guard would go green for ever, and
+        //  green is the one colour nobody investigates.
+        //
+        //  Four sibling guards in this repository already do this implicitly,
+        //  with a positive assertion on the same slice before the negative
+        //  one. This is the same claim, said out loud.
+        const argvAt = engine.indexOf('runArgvInternal');
+        expect(argvAt).toBeGreaterThan(-1);
+        const argvInternal = engine.slice(argvAt);
         expect(argvInternal.slice(0, 600)).not.toMatch(/split\(\/\\s\+\//);
     });
     test('the network-op timeout is generous enough for a weak machine', () => {

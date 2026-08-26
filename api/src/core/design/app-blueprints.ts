@@ -403,7 +403,35 @@ export function detectAppKind(requestRaw: string): AppKind | null {
     //  That is the SCAFFOLD-FALLBACK-UNGUARDED debt in CLAUDE.md, reached
     //  from a new direction: not a failure to understand, but one reader
     //  answering a question another reader had already answered better.
-    if (columnsAnywhereInHisRequest(intentRequest)?.length) return 'generic';
+    /**
+     *  ⛔ ONE COLUMN IS NOT A LIST.
+     *
+     *  This fired on `length >= 1`, and it sits ABOVE the archetype scoring
+     *  and above MANAGE_SIGNAL -- so a single derived column, right or
+     *  wrong, short-circuits every reading that follows it.
+     *
+     *  Measured cost, on a sentence shaped the way the owner writes:
+     *
+     *      اعمل لي صفحة أسجل فيها مصاريفي ويطلع المجموع
+     *          -> generic, and the expenses engine that knows how to total
+     *             a column was never reached.
+     *
+     *  The rule itself is right and its comment says so: a list he WROTE
+     *  outranks a noun he happened to use. The defect is that it was never
+     *  conditioned on being a list at all.
+     *
+     *  And this repository already decided the same question one layer
+     *  over, in the schema designer's own guards:
+     *
+     *      «one table is not a design — that is what we already had»
+     *      «a table with no columns is a table with nothing in it»
+     *
+     *  Two readers of one idea, and only one of them held to it. Two is
+     *  where a name becomes an enumeration, and it needs no vocabulary and
+     *  no catalogue to know it.
+     */
+    if ((columnsAnywhereInHisRequest(intentRequest)?.length || 0) >= 2) return 'generic';
+
     /**
      * Score every registered archetype instead of returning the first keyword
      * that happens to occur in a long request. A real request often names the
