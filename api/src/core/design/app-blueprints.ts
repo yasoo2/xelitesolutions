@@ -2028,6 +2028,30 @@ function isAColumnAndNotAClause(item: string, index: number): boolean {
     //  marked another way: a question about the row rather than a name of
     //  a thing, which is exactly what ASKS_YES_OR_NO already reads.
     if (ASKS_YES_OR_NO.test(t)) return true;
+    /**
+     *  AND A BARE NOUN AMONG NAMED COLUMNS IS A COLUMN.
+     *
+     *  Measured, one word apart:
+     *
+     *      «…فيه اسم الصنف والسعر والصورة»  → 3 columns
+     *      «…فيه اسم الصنف والسعر وصورة»    → 2 — «صورة» thrown away
+     *
+     *  He writes it the second way. The definiteness test is a guard against
+     *  prose becoming a schema, and it is a good one — the file already
+     *  carries one exception to it for «مدفوع», a yes-or-no column that is
+     *  indefinite by nature.
+     *
+     *  This is the second, and it is narrow on purpose: ONE word, and only
+     *  after two columns have already been confirmed. A single noun standing
+     *  third in a run of named columns is not prose; it is the item he did
+     *  not bother to define. A longer run, or one at the head of the list,
+     *  still has to prove itself the old way.
+     */
+    if (index >= 2 && !everyItemIsADefiniteName([t])) {
+        const words = t.split(/\s+/).filter(Boolean);
+        if (words.length === 1 && t.length >= 3
+            && !ARABIC_FUNCTION_WORD.test(t) && !READS_AS_A_RULE.test(t)) return true;
+    }
     if (!everyItemIsADefiniteName([t])) return false;
     const words = t.split(/\s+/);
     return !words.slice(1).some(w => ARABIC_FUNCTION_WORD.test(w));
@@ -2454,11 +2478,41 @@ export function derivedColumns(requestRaw: string): DerivedField[] | null {
     const colon = after.indexOf(':') >= 0 ? after.indexOf(':') : after.indexOf('：');
     if (colon >= 0 && colon <= 40) after = after.slice(colon + 1);
     const sentence = after.split(/[.؟!\n]/)[0] || '';
-    let parts = sentence
+    /**
+     *  A BRACKET AFTER A COLUMN NAMES ITS ANSWERS, NOT THE NEXT COLUMN.
+     *
+     *  Measured on a real request: «جدول المنتجات فيه اسم الصنف والسعر
+     *  والحالة (متوفر أو نافد) وصورة» produced TWO columns — «اسم الصنف»
+     *  and «السعر». «الحالة» and «صورة» were both lost, because «أو» inside
+     *  his bracket is on the list separator, so the split cut the sentence
+     *  in the middle of a parenthesis and left «الحالة (متوفر» and «نافد)»,
+     *  neither of which survives the name test.
+     *
+     *  He was not listing four things and then two more. He was naming a
+     *  column and, in the same breath, saying what its answers are — which
+     *  is how anyone describes a status field. So the bracket is shielded
+     *  from the split and then read as OPTIONS, which makes «الحالة» a real
+     *  select column offering «متوفر» and «نافد» instead of a free-text box
+     *  he has to retype into every row.
+     */
+    const SHIELD = '';
+    //  The separator is REPLACED, not merely fenced. The first version wrapped
+    //  it — «متوفر،نافد» — and the comma was still a comma, so the
+    //  split cut through it exactly as before and «الحالة (متوفر» came out as a
+    //  column name. A shield that leaves the blade in place is not a shield.
+    const shielded = sentence.replace(/[(（][^)）]{1,60}[)）]/g,
+        m => m.replace(/\s*[،,]\s*|\s+و(?=\S)|\s+and\s+|\s+أو\s+|\s+او\s+|\s+or\s+/giu, SHIELD));
+    let parts = shielded
         //  Lists are joined differently in each language: «و» is a prefix on the
         //  next word, «and» is a word of its own. A reader that knows only one of
         //  them reads only one language's requests.
         .split(/\s*[،,]\s*|\s+و(?=\S)|\s+and\s+|\s+&\s+/iu)
+        //  Restored as a SEPARATOR, not a space: the option reader below
+        //  splits «متوفر، نافد» into two answers and «متوفر نافد» into one,
+        //  so joining with a space silently turned his choice into a single
+        //  meaningless value — measured, the column survived and its answers
+        //  did not.
+        .map(p => p.split(SHIELD).join('، ').replace(/\s{2,}/g, ' '))
         .map(p => p.trim()
             .replace(/^and\s+/iu, '')
             .replace(/^(?:ال)?كل\s+/u, '')
@@ -2478,6 +2532,37 @@ export function derivedColumns(requestRaw: string): DerivedField[] | null {
      *  Same reasoning as the others: he named a container, so two definite
      *  names are his table. One is a subject, not a column.
      */
+    /**
+     *  THE BRACKET IS HIS ANSWERS, AND IT IS NOT PART OF THE NAME.
+     *
+     *  Measured. «…والحالة (متوفر أو نافد)» lost the column entirely, and the
+     *  cause was not the split — it was the name test three lines down. A
+     *  name is capped at three Arabic words; «الحالة (متوفر أو نافد)» counts
+     *  as four, so the whole column was thrown away with its answers.
+     *
+     *  Bisected to be sure: «الحالة (متوفر)» survives, «الحالة (متوفر/نافد)»
+     *  survives, «الحالة (متوفر أو نافد)» does not. One word over the cap.
+     *
+     *  So the bracket comes off before the name is measured, and what was in
+     *  it becomes the column's OPTIONS — which is what he meant: a status
+     *  field offering «متوفر» and «نافد», not a free-text box he retypes into
+     *  every row. The cap still guards the name itself, which is its job.
+     */
+    const declaredOptions = new Map();
+    parts = parts.map(p => {
+        const m = /^([\s\S]*?)\s*[(（]([^)）]{1,60})[)）]\s*$/.exec(p);
+        if (!m) return p;
+        const label = m[1].trim();
+        const opts = m[2].split(/\s*[،,\/|]\s*|\s+أو\s+|\s+او\s+|\s+or\s+/iu)
+            .map(x => x.trim()).filter(x => x.length >= 1 && x.length <= 24);
+        if (label.length >= 2 && opts.length >= 2) declaredOptions.set(label, opts);
+        return label.length >= 2 ? label : p;
+    });
+    //  …and the bracket comes off BEFORE the list is cut, not after.
+    //  `columnsEndWhereHisNextRequestBegins` stops at the first part that
+    //  does not read as a column, and «الحالة (متوفر أو نافد)» does not —
+    //  so the truncation took «صورة» with it. Measured: stripping after the
+    //  cut fixed the bracket and still lost everything behind it.
     //  The list ends where his next request begins.
     parts = columnsEndWhereHisNextRequestBegins(parts);
     /**
@@ -2514,6 +2599,11 @@ export function derivedColumns(requestRaw: string): DerivedField[] | null {
     //  built, and this link never joined — so «والسعر لا يقبل صفر»
     //  reached a field with no min and zero was accepted.
     const built = fieldsFromLabels(named);
+    //  …and the answers reach the field, so the app renders a select.
+    if (built) for (const f of built) {
+        const opts = declaredOptions.get(String(f.label));
+        if (opts) { (f as any).options = opts; (f as any).type = 'select'; }
+    }
     return built ? applyStatedRules(built, statedRules(request)).fields : built;
 }
 
