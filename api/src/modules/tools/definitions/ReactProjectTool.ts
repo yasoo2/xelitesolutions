@@ -170,8 +170,52 @@ export function deliveryErrorForAcceptance(
     return `${id}: ${shown}${rest > 0 ? ` (+${rest} more)` : ''}`;
 }
 
-export function deliveryErrorForVisualAudit(audit: { skipped?: string } | null | undefined): string {
+/** What the install/build step actually did — the evidence the reporter needs. */
+export interface BuildOutcome {
+    /** false when the request forbade the network: nothing ran, so nothing failed. */
+    attempted?: boolean;
+    built?: boolean;
+    installed?: boolean;
+    npmMissing?: boolean;
+    /** -1 the binary is absent · -2 it ran out of time · otherwise the exit code. */
+    installExit?: number | null;
+    buildExit?: number | null;
+    /** The log doctor's verdict, already written in his language. */
+    diagnosis?: { id?: string; ar?: string } | null;
+}
+
+/**
+ *  A BUILD THAT NEVER PRODUCED A BUNDLE IS NOT AN AUDIT FAILURE.
+ *
+ *  The reason the audit «never ran» is not a fact about the audit. It is the
+ *  build's exit code, or npm's, and both were measured and named minutes
+ *  earlier. This carries them to the reader instead of leaving him with the
+ *  name of the one subsystem that was never at fault.
+ */
+export function deliveryErrorForBuild(state: BuildOutcome): string {
+    const id = 'build_produced_no_bundle';
+    const ranOut = (code: number | null | undefined) =>
+        code === -2 ? ' — it ran out of time' : (code === null || code === undefined) ? '' : ` — exit ${code}`;
+    if (state.npmMissing) return `${id}: npm is not on this machine, so nothing could be installed`;
+    if (state.installed === false) return `${id}: npm install did not finish${ranOut(state.installExit)}`;
+    const d = state.diagnosis;
+    if (d && (d.ar || d.id)) return `${id}: ${d.id ? `${d.id} — ` : ''}${String(d.ar || '').trim()}`.trim();
+    return `${id}: the build wrote no dist/index.html${ranOut(state.buildExit)}`;
+}
+
+export function deliveryErrorForVisualAudit(
+    audit: { skipped?: string } | null | undefined,
+    build?: BuildOutcome | null,
+): string {
     const id = 'required_visual_audit_not_completed';
+    /**
+     * Order matters, and only this order is honest. `skipped` is proof that
+     * the audit RAN and stopped for a stated reason, so it stays the thing to
+     * report even on a failed build. A null audit on an attempted-but-failed
+     * build is the opposite: the audit was never reached, and blaming it names
+     * the wrong layer.
+     */
+    if (!audit && build && build.attempted && !build.built) return deliveryErrorForBuild(build);
     if (!audit) return `${id}: the audit never ran`;
     if (audit.skipped) return `${id}: ${audit.skipped}`;
     return `${id}: the audit produced no result`;
@@ -4039,6 +4083,10 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
         // ── prove it compiles: npm install + vite build, streamed live ──────
         let installed = false, built = false, npmMissing = false;
         let buildDiagnosis: any = null;
+        // The exit codes leave this block now. They are the only witnesses to
+        // WHY there is no bundle, and the delivery below is where that is read.
+        let installExit: number | null = null;
+        let buildExit: number | null = null;
         if (!noInstall) {
             // Through the Single Execution Authority — a direct spawn here
             // BLOCKED STARTUP on the user's machine (ExecutionEnforcer).
@@ -4080,6 +4128,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             }
             if (sessionId) broadcastThinkingDetail(sessionId, isAr ? '📦 أثبّت الحزم (npm install)…' : '📦 Installing packages (npm install)…');
             const inst = await run('npm', ['install', '--no-audit', '--no-fund'], 240_000);
+            installExit = inst;
             npmMissing = inst === -1;
             installed = inst === 0;
             // The exit code is already on screen, printed by the session. What
@@ -4096,6 +4145,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 //  project) and it is the FIRST one, on a cold machine with a
                 //  cold esbuild, that decides whether he ever sees a preview.
                 let b = await run('npm', ['run', 'build'], 600_000);
+                buildExit = b;
                 built = b === 0 && fs.existsSync(path.join(proj, 'dist', 'index.html'));
                 shell.note(built
                     ? 'dist/index.html exists — this is a real bundle, not a claim'
@@ -4134,6 +4184,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                         term(`build remedy: ${remedy.note}`);
                         if (remedy.applied) {
                             b = await run('npm', ['run', 'build'], 180_000);
+                            buildExit = b;
                             built = b === 0 && fs.existsSync(path.join(proj, 'dist', 'index.html'));
                             term(`vite build (after: ${remedy.note}) → ${built ? 'OK' : `exit ${b}`}`);
                             if (built) buildDiagnosis = { ...d, healed: true, note: remedy.note };
@@ -5005,6 +5056,17 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
         // evidence is therefore a delivery blocker, just like a surviving error.
         const requestedVisualAudit = /(?:\b(?:browser|visual|preview|inspect|audit)\b|متصفح|معاينة|مرئي|بصري|دقّق|دقق|تدقيق)/i.test(request);
         const visualAuditUnavailable = requestedVisualAudit && (!audit || !!audit.skipped);
+        /**
+         * The evidence the blocker needs to name the RIGHT layer. `attempted`
+         * is the honest term: a request that forbade the network scaffolds
+         * without building, and nothing that never ran may be reported as
+         * having failed.
+         */
+        const buildOutcome: BuildOutcome = {
+            attempted: !noInstall, built, installed, npmMissing,
+            installExit, buildExit, diagnosis: buildDiagnosis,
+        };
+        const blamesTheBuild = !audit && buildOutcome.attempted && !built;
         const qualityDeliveryBlocked = blockers.length > 0 || visualAuditUnavailable;
         if (blockers.length) {
             // The artefact exists, but its final acceptance is rejected. Say both
@@ -5013,7 +5075,12 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             term(`self-QA: DELIVERED WITH ${blockers.length} BLOCKING FINDING(S) — final acceptance remains blocked: ${blockers.map(f => f.id).join(', ')}`);
         }
         if (visualAuditUnavailable) {
-            term('self-QA: DELIVERY BLOCKED — requested browser audit was not completed');
+            // …and the transcript says the same thing the error says. A terminal
+            // that blames the browser while the error blames the build is the
+            // seam this fix exists to close.
+            term(blamesTheBuild
+                ? `delivery BLOCKED — ${deliveryErrorForBuild(buildOutcome)}`
+                : 'self-QA: DELIVERY BLOCKED — requested browser audit was not completed');
         }
 
         const qaBlock = (() => {
@@ -5228,7 +5295,7 @@ ${built ? '✅ npm install + vite build succeeded — the production build is in
             ok: !deliveryBlocked,
             error: deliveryBlocked
                 ? (visualAuditUnavailable
-                    ? deliveryErrorForVisualAudit(audit)
+                    ? deliveryErrorForVisualAudit(audit, buildOutcome)
                     : fidelityEvidenceUnavailable
                         ? 'fidelity_unverifiable'
                         : fidelityMismatch
