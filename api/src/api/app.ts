@@ -62,6 +62,18 @@ function normalizeOrigin(origin: string) {
   return String(origin || '').trim().replace(/\/+$/, '');
 }
 
+/**
+ *  WHO DECIDES WHETHER THIS INSTALL HAS ACCOUNTS.
+ *
+ *  Exported so the decision can be judged directly. A guard that reads a JSON
+ *  body is testing the wiring; a guard that reads the decision is testing the
+ *  decision — and every time this project has tested the wrapper instead of
+ *  the thing, the guard turned out to be measuring spelling.
+ */
+export function joeRunsWithoutAccounts(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.NODE_ENV !== 'production' && env.ENABLE_AUTH_BYPASS === 'true';
+}
+
 export const createApp = () => {
   const app = express();
   const apiRouter = express.Router();
@@ -206,6 +218,30 @@ export const createApp = () => {
       database: dbStatus,
       uptime: process.uptime(),
       timestamp: new Date().toISOString(),
+      /**
+       *  WHO DECIDES WHETHER THIS INSTALL HAS ACCOUNTS.
+       *
+       *  Measured on the owner's own machine: he restarted Joe and was sent
+       *  to /login, asked for an email and a password — on his laptop, on his
+       *  single-user install, with `ENABLE_AUTH_BYPASS=true` set three lines
+       *  into the script that starts it.
+       *
+       *  The server was bypassing auth all along. The CLIENT was not: its
+       *  three ways past the login page are `import.meta.env.DEV`, a
+       *  build-time `VITE_` variable, and a URL parameter — all three decided
+       *  by the browser bundle, none of them by the server. He runs a
+       *  PRODUCTION web build against a DEVELOPMENT server, so the two
+       *  disagreed and the one that could not know won.
+       *
+       *  A seam again: two sides that must agree, with nothing making them.
+       *  So the server states its own mode and the client asks instead of
+       *  guessing. This is not a new permission — the server has been
+       *  answering these requests without a token the whole time; it is the
+       *  same fact, said out loud where the other side can read it. In a
+       *  production deployment, or with the bypass off, this is false and
+       *  nothing changes.
+       */
+      singleUser: joeRunsWithoutAccounts(),
       version: (() => {
         try {
           const fs = require('fs');

@@ -75,9 +75,43 @@ window.addEventListener(
   true,
 );
 
+/**
+ *  THE SERVER KNOWS WHETHER THIS INSTALL HAS ACCOUNTS. ASK IT.
+ *
+ *  Measured on the owner's machine: he restarted Joe and was sent to /login,
+ *  asked for an email and a password — on his laptop, on his single-user
+ *  install, with ENABLE_AUTH_BYPASS=true three lines into the script that
+ *  starts it. The server had been serving him without a token the whole time.
+ *
+ *  The three ways past this page were `import.meta.env.DEV`, a build-time
+ *  VITE_ variable, and a URL parameter. All three are decided by the browser
+ *  bundle; none of them asks the server. He runs a PRODUCTION web build
+ *  against a DEVELOPMENT server, so the side that could not know won.
+ *
+ *  The answer is cached because the guard below is synchronous and a redirect
+ *  cannot wait for a fetch. First paint after a fresh install may still show
+ *  the login page once; every one after it knows. That is a stated limit, not
+ *  a silent one.
+ */
+const SINGLE_USER_KEY = 'joe:singleUser';
+async function askServerIfSingleUser(): Promise<void> {
+  try {
+    const r = await fetch('/api/health', { cache: 'no-store' });
+    if (!r.ok) return;
+    const j = await r.json();
+    localStorage.setItem(SINGLE_USER_KEY, j?.singleUser === true ? '1' : '0');
+  } catch { /* offline: leave whatever was last known, never invent one */ }
+}
+void askServerIfSingleUser();
+
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const getDevBypassToken = () => {
-    if (!import.meta.env.DEV) return null;
+    //  The server's own word first, then the three client-side guesses that
+    //  were here before — kept because a dev running `vite` has no server to
+    //  ask yet, which is the case they were written for.
+    let serverSaysSingleUser = false;
+    try { serverSaysSingleUser = localStorage.getItem(SINGLE_USER_KEY) === '1'; } catch { }
+    if (!serverSaysSingleUser && !import.meta.env.DEV) return null;
     const makeToken = () => {
       try {
         const header = btoa(JSON.stringify({ alg: 'none', typ: 'JWT' }));
@@ -95,6 +129,7 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
         return 'offline_dev';
       }
     };
+    if (serverSaysSingleUser) return makeToken();
     const envFlag = String((import.meta as any).env?.VITE_ENABLE_AUTH_BYPASS || '').toLowerCase();
     if (envFlag === 'true') return makeToken();
     try {
