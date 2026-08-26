@@ -2676,7 +2676,12 @@ export function fileAppCss(): string {
 *,*::before,*::after{box-sizing:border-box}
 html,body,#root{height:100%}
 body{margin:0;background:var(--bg,#fff);color:var(--text,#111);
-  font-family:'Cairo','Segoe UI',system-ui,-apple-system,sans-serif;font-size:16px;line-height:1.6;-webkit-font-smoothing:antialiased}
+  /* One design layer, both generators. This family used to be written here
+     as a literal, so a coffee roastery, a dental clinic and a law firm all
+     came out in the same face -- while pickTypePair() sat one directory
+     away pairing faces by subject for the page builder alone. The fallback
+     keeps the old value, so a stylesheet that loses its tokens still reads. */
+  font-family:var(--font-body,'Cairo','Segoe UI',system-ui,-apple-system,sans-serif);font-size:16px;line-height:1.6;-webkit-font-smoothing:antialiased}
 h1,h2,h3{margin:0 0 8px;line-height:1.25}
 p{margin:0 0 8px}
 .app{display:flex;flex-direction:column;min-height:100%}

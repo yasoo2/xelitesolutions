@@ -3565,7 +3565,19 @@ export class ReactProjectTool extends BaseTool {
             // Joe's REAL palette tokens — the same engine every page uses. The
             // data-theme blocks make the Navbar toggle actually change the
             // colours (paletteCss alone only follows the OS preference).
-            'src/styles/tokens.css': `${paletteCss(palette)}
+            //  …AND THE TYPE PAIRING, from the same layer the page builder uses.
+            //
+            //  `pickTypePair` has paired faces by subject for a long time and had
+            //  exactly one caller: WebPageBuilderTool. So a coffee roastery, a
+            //  dental clinic and a law firm all came out of the APP path in one
+            //  hardcoded family, while the PAGE path gave each of them its own.
+            //  Two generators, one design layer, only one of them wired to it —
+            //  and each file correct on its own, which is why it lasted.
+            //  The pairing goes THROUGH paletteCss, not beside it. Written
+            //  beside it first, and a guard caught the same seam reopening one
+            //  minute after it was closed for the colours: a token the app
+            //  reads, emitted by the caller instead of by the stylesheet.
+            'src/styles/tokens.css': `${paletteCss(palette, require('../../../core/design/layouts').pickTypePair(request))}
 ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the page's default, not an OS opinion */
 :root{${darkTokenBlock(palette)}}
 :root{color-scheme:dark}

@@ -297,7 +297,21 @@ function hexAlpha(hex: string, alpha: number): string {
     return `rgb(${r} ${g} ${b} / ${alpha})`;
 }
 
-export function paletteCss(p: Palette): string {
+/**
+ *  The faces a subject was paired with. Declared structurally rather than
+ *  imported, so the token layer never depends on the layout layer -- and so
+ *  a caller that has no pairing still ships a defined --font-body instead of
+ *  a token the app reads and nobody writes.
+ */
+export interface TypeTokens { display: string; body: string; note?: string }
+
+const NEUTRAL_TYPE: TypeTokens = {
+    display: `'Segoe UI Variable Display','Segoe UI','Noto Kufi Arabic',system-ui,sans-serif`,
+    body: `'Segoe UI','Noto Sans Arabic',system-ui,-apple-system,sans-serif`,
+    note: 'neutral modern',
+};
+
+export function paletteCss(p: Palette, type: TypeTokens = NEUTRAL_TYPE): string {
     return `:root{
   --brand:${p.primary}; --brand-dark:${p.primaryDark}; --brand-light:${p.primaryLight};
   --secondary:${p.secondary}; --accent:${p.accent}; --on-brand:${p.onPrimary};
@@ -324,8 +338,15 @@ export function paletteCss(p: Palette): string {
    *  largest surface in the app with it is what made a coffee roastery and a
    *  dental clinic identical on screen. A card carries the subject's own hue
    *  at a whisper: enough that two subjects are never the same paper, far too
-   *  little to move any pair off AA.  */
-  --card:${hslCss(p.hue, 46, 99)}; --panel:${p.bg}; --chip:${p.tint}; --line:${p.border};
+   *  little to move any pair off AA.
+   *
+   *  And the tint is a real one, not a rumour of one. At 99% lightness the
+   *  card was still clinically white next to the reference the owner showed,
+   *  whose paper sits near 91%: warm enough to read as paper rather than as
+   *  the absence of colour. 97 and 94 are the compromise -- visibly the
+   *  subject's own ground, and every pair still measured AA by the guard
+   *  beside this file rather than by assurance.  */
+  --card:${hslCss(p.hue, 44, 97)}; --panel:${hslCss(p.hue, 40, 94)}; --chip:${p.tint}; --line:${p.border};
   --muted:${p.textMuted};
   --ring:${p.primary};
   --shadow-xs:0 1px 1px rgba(15,23,42,.05);
@@ -344,6 +365,12 @@ export function paletteCss(p: Palette): string {
   --step-4:clamp(2.07rem,1.75rem + 1.6vw,3rem);
   --step-5:clamp(2.49rem,2rem + 2.4vw,4rem);
   --maxw:1180px;
+  /*  The type pairing lives in the SAME stylesheet as the colours, because
+   *  the app generator reads --font-body and a token read by one file and
+   *  written by another is exactly the seam this whole change closes. It was
+   *  written here only after a guard caught me opening it again, one minute
+   *  after closing it for the colours.  */
+  --font-display:${type.display}; --font-body:${type.body};
 }
 @media (prefers-color-scheme:dark){:root{${darkTokenBlock(p)}}}`;
 }
