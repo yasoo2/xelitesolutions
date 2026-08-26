@@ -1159,12 +1159,58 @@ const SECTION_ASKS: Array<{ section: string; says: string[]; re: RegExp }> = [
 
 /**  Sections that exist to fill a page, not to answer a request. When he has
  *   named what he wants, these are the ones that stop being free.  */
+/**
+ *  ⛔ THE SHAPE OF THE SENTENCE, NOT THE NAMES IN IT.
+ *
+ *  SECTION_ASKS above names subjects: services, prices, hours. It answers
+ *  the reference prompt and nothing else -- measured, by replacing every
+ *  subject noun with an invented word and keeping every structural one:
+ *
+ *      REAL  service list with prices, opening hours, phone CTA, booking form
+ *            ->  Hero · Location · Products · Cta · Contact
+ *      FAKE  quandle list with vorps, plimming hours, phone CTA, snarfing form
+ *            ->  the fixed eight, none of them his
+ *
+ *  «list», «hours», «CTA» and «form» all survived into the invented
+ *  sentence and not one was read. Joe was reading the NAMES of sections
+ *  and never the SHAPE of the request.
+ *
+ *  AND THIS IS NOT THE CATALOGUE THE FOURTH LAW FORBIDS. «coffee -> brown»
+ *  is a fact about a SUBJECT, and listing subjects fails on the next one he
+ *  names. «<anything> list» is a fact about FORM: «list» does not say what
+ *  the thing is about, it says what shape it takes. That is grammar, and
+ *  grammar is finite in a way subjects are not. The noun beside the shape
+ *  word is left entirely alone -- a service, a quandle, or a word he
+ *  invents tomorrow.
+ *
+ *  Boundaries are not optional: «list» lives inside «listen», «form»
+ *  inside «information», and Arabic has no \b at all.
+ */
+const SHAPE_ASKS: Array<{ section: string; re: RegExp }> = [
+    //  a listing of things, whatever the things are
+    { section: 'Products', re: /\b(?:list|listing|catalogue|catalog|grid|lineup)\b|قائمة\s+[\u0600-\u06ff]{3,}|لائحة\s+[\u0600-\u06ff]{3,}/i },
+    //  a form to fill in
+    { section: 'Contact', re: /\b(?:form|signup|sign-up|enquiry|inquiry)\b|نموذج\s+[\u0600-\u06ff]{3,}|استمارة/i },
+    //  when it opens, and where it is
+    { section: 'Location', re: /\bhours\b|\bmap\b|\bdirections\b|ساعات\s+[\u0600-\u06ff]{3,}|خريطة/i },
+    //  a picture wall
+    { section: 'Gallery', re: /\b(?:gallery|photos|portfolio)\b|معرض\s+[\u0600-\u06ff]{3,}|ألبوم/i },
+    //  questions and answers
+    { section: 'Faq', re: /\bfaqs?\b|\bquestions\b|أسئلة\s+[\u0600-\u06ff]{3,}/i },
+    //  what people said
+    { section: 'Testimonials', re: /\b(?:testimonials?|reviews?|quotes)\b|آراء\s+[\u0600-\u06ff]{3,}|شهادات/i },
+    //  a sequence
+    { section: 'Steps', re: /\bsteps\b|how\s+it\s+works|خطوات\s+[\u0600-\u06ff]{3,}/i },
+];
+
 const TEMPLATE_FILLER = new Set(['Features', 'Steps', 'Stats', 'Team', 'Testimonials']);
 
 export function sectionsForRequest(request: string, kind: PageKind): string[] {
     const r = String(request || '');
     const { saysAny } = require('../../../core/language/arabic');
     const asked = new Set<string>();
+    //  Shape first: it holds for a sentence whose nouns mean nothing to us.
+    for (const entry of SHAPE_ASKS) if (entry.re.test(r)) asked.add(entry.section);
     for (const entry of SECTION_ASKS) {
         let hit = false;
         try { hit = saysAny(r, entry.says); } catch { hit = false; }
