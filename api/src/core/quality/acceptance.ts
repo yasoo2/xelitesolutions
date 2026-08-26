@@ -1061,11 +1061,31 @@ export function acceptanceBlock(a: Acceptance, isAr: boolean): string {
      *  language, with its number. He decides what to do about it; Joe only
      *  has to stop pretending it is not there.
      */
+    /**
+     *  ⛔ AND THE MARK IS THE EVIDENCE THAT REACHES HIM.
+     *
+     *  `✅` sat on «1 of 5 proven, 4 never checked» and on «5 of 5 proven»
+     *  alike — and his eye cannot tell those apart, whatever the sentence
+     *  after the mark says. That is `accepted` carrying two meanings in one
+     *  boolean, which this repository already closed once under the name
+     *  «a boolean that means two things cannot be guarded».
+     *
+     *  The two are separated where each belongs. `accepted` stays the
+     *  DELIVERY gate — nothing he asked for was looked for and missing —
+     *  because tying delivery to «everything proven» would wall off every
+     *  request carrying a criterion this judge cannot check, and the
+     *  reference prompt itself carries one, so that gate would never open
+     *  again. The MARK answers the other question: a tick means everything
+     *  he asked for was proven, and nothing less earns one.
+     *
+     *  He decides whether a partial delivery is good enough. Joe does not
+     *  decide it for him with a green tick.
+     */
     const head = a.accepted
         ? (gaps
             ? (isAr
-                ? `✅ حكم القبول: لم يسقط شيءٌ ممّا فحصتُه (${a.met}/${a.criteria.length}) — و${gaps} من طلبك لم أعرف كيف أفحصه، ولم أدَّعِ أنّي فحصتُه:`
-                : `✅ Acceptance accepted: nothing I checked failed (${a.met}/${a.criteria.length}) — and ${gaps} of your request I did not know how to check, and did not claim to have checked:`)
+                ? `⚠️ حكم قبول ناقص: لم يسقط شيءٌ ممّا فحصتُه (${a.met}/${a.criteria.length}) — و${gaps} من طلبك لم أعرف كيف أفحصه، ولم أدَّعِ أنّي فحصتُه:`
+                : `⚠️ Accepted with gaps: nothing I checked failed (${a.met}/${a.criteria.length}) — and ${gaps} of your request I did not know how to check, and did not claim to have checked:`)
             : (isAr
                 ? `✅ حكم القبول: أثبتُّ جميع المعايير المطلوبة (${a.met}/${a.criteria.length}).`
                 : `✅ Acceptance accepted: all ${a.met}/${a.criteria.length} requested criteria were proven.`))
