@@ -26,6 +26,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { deliveryErrorForVisualAudit, deliveryErrorForAcceptance } from '../modules/tools/definitions/ReactProjectTool';
 
 const SOURCE = path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ReactProjectTool.ts');
 const src = fs.readFileSync(SOURCE, 'utf8');
@@ -64,10 +65,29 @@ function blockingTerms(): string[] {
     return flat;
 }
 
-/** The ternary chain that turns a refusal into a cause the owner can read. */
+/**
+ *  The ternary chain that turns a refusal into a cause the owner can read —
+ *  PLUS what the helpers it calls actually produce.
+ *
+ *  Two blockers stopped being literals in the chain and became named functions
+ *  the day they learned to carry their reason: the visual audit now says WHY it
+ *  could not run, and the acceptance ledger names WHICH criteria are unmet. A
+ *  scan for the old string then failed, and it would have been very easy to
+ *  「fix」 that by putting the literal back somewhere useless.
+ *
+ *  So the chain is read as before, and the helpers are CALLED and their output
+ *  appended. That is the difference between testing the spelling of a source
+ *  file and testing what the owner is actually shown — which is the whole
+ *  point of this guard, and it had drifted into the first.
+ */
 function causeChain(): string {
     const at = src.indexOf('error: deliveryBlocked');
-    return at < 0 ? '' : src.slice(at, at + 3000);
+    const source = at < 0 ? '' : src.slice(at, at + 3000);
+    const spoken = [
+        deliveryErrorForVisualAudit(null),
+        deliveryErrorForAcceptance([{ id: 'x', verdict: 'unmet' }]),
+    ].join(' ');
+    return source + ' ' + spoken;
 }
 
 describe('every condition that can block a delivery also names itself', () => {

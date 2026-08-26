@@ -2585,9 +2585,9 @@ export function derivedColumns(requestRaw: string): DerivedField[] | null {
      *  select column offering «متوفر» and «نافد» instead of a free-text box
      *  he has to retype into every row.
      */
-    const SHIELD = '';
+    const SHIELD = String.fromCharCode(2);
     //  The separator is REPLACED, not merely fenced. The first version wrapped
-    //  it — «متوفر،نافد» — and the comma was still a comma, so the
+    //  it — «متوفر،نافد» — and the comma was still a comma, so the
     //  split cut through it exactly as before and «الحالة (متوفر» came out as a
     //  column name. A shield that leaves the blade in place is not a shield.
     const shielded = sentence.replace(/[(（][^)）]{1,60}[)）]/g,

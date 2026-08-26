@@ -125,14 +125,26 @@ const AR_STOP_TOKEN = new RegExp('^(?:مع|تحتوي|يحتوي|فيها|فيه
     //  words — a catalogue of ORDERS, which is a closed and different set,
     //  and one of them can never be part of a name.
     + '|اعمل|أعمل|اعرض|أعرض|اضف|أضف|اجعل|أجعل|ابن|انشئ|أنشئ|احذف|امسح|اكتب|اربط|ضع'
-    //  …and a CONTAINER opens a declaration of its own. Measured in the shop
-    //  he asked for: «صفحة الطلبات. جدول المنتجات فيه اسم الصنف…» produced a
-    //  page called «الطلبات جدول المنتجات», and that label went into the
-    //  navigation he sees. A table is not part of a page's NAME even when it
-    //  is part of the page's contents — the sentence that names it is a new
-    //  sentence, and the full stop between them said so.
-    + '|جدول|جداول|كشف|سجل|سجلّ|قائمة|قائمه'
     + ')$');
+
+/**
+ *  A CONTAINER ENDS A NAME — AND ONLY ONE THAT HAS ALREADY STARTED.
+ *
+ *  «صفحة الطلبات. جدول المنتجات فيه اسم الصنف…» produced a page called
+ *  «الطلبات جدول المنتجات», and that label went into the navigation he sees.
+ *  A table is not part of a page's NAME even when it is part of that page's
+ *  contents; the full stop between the two sentences said so.
+ *
+ *  I first put these with the tokens above, and the negative case caught the
+ *  damage in one run: «اعمل موقع فيه صفحة قائمة الطعام وصفحة الحجز» lost BOTH
+ *  pages, because «قائمة» opens the first name. CLAUDE.md names «قائمة» among
+ *  the words carrying two meanings — a LIST and a MENU — and it is a page
+ *  title far more often than it is a container.
+ *
+ *  Position settles it, exactly as it does for a preposition: a container in
+ *  FRONT of a name is part of it, and one AFTER it opens the next clause.
+ */
+const AR_CONTAINER = new RegExp('^(?:جدول|جداول|كشف|سجل|سجلّ|قائمة|قائمه)$');
 
 /**
  *  A PREPOSITION ENDS A NAME — BUT ONLY ONE THAT HAS ALREADY STARTED.
@@ -169,6 +181,7 @@ function arabicNames(probe: string): string[] {
             if (new RegExp('^و?صفح[ةه]').test(raw)) break;
             if (AR_STOP_TOKEN.test(raw)) break;
             if (name.length > 0 && AR_PREPOSITION.test(raw)) break;
+            if (name.length > 0 && AR_CONTAINER.test(raw)) break;
             //  «صفحة تواصل لشركة تنظيف»: the ل- phrase says who the site is FOR,
             //  it is not part of what he called the page. It only ends a name
             //  that has already started — «للاسئلة» as a first word is the name.
