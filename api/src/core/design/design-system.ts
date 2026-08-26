@@ -311,6 +311,39 @@ const NEUTRAL_TYPE: TypeTokens = {
     note: 'neutral modern',
 };
 
+/**
+ *  A SURFACE THE EYE READS THE SAME WHATEVER THE SUBJECT.
+ *
+ *  HSL lightness is a number, not a perception: two hues at the same L
+ *  are nowhere near the same brightness. Measured on the hues Joe's own
+ *  sector table lands on, cards built with hsl(hue, 44%, 97%):
+ *
+ *      perceived-lightness spread across five subjects   0.0093
+ *      the same cards built in OKLCH                     0.0017
+ *
+ *  Five and a half times tighter, and visibly the subject's own paper
+ *  rather than a wash of near-white. Contrast is not paid for it: text
+ *  measures above 15:1 on either.
+ *
+ *  Law six, and its warning. Three tools were measured before one was
+ *  adopted, and the best known of them -- Google's own colour utilities
+ *  -- could not be imported at all: its dynamiccolor module requires a
+ *  path with no extension and Node's ESM resolver refuses it. culori
+ *  imports, carries zero dependencies, and produced the numbers above.
+ *
+ *  It falls back to the HSL value rather than throwing: a page that
+ *  cannot be tinted must still be a page.
+ */
+function paperAt(hue: number, lightness: number, chroma: number, fallback: string): string {
+    try {
+        const { formatHex } = require('culori');
+        const hex = formatHex({ mode: 'oklch', l: lightness, c: chroma, h: ((hue % 360) + 360) % 360 });
+        return typeof hex === 'string' && /^#[0-9a-f]{6}$/i.test(hex) ? hex : fallback;
+    } catch {
+        return fallback;
+    }
+}
+
 export function paletteCss(p: Palette, type: TypeTokens = NEUTRAL_TYPE): string {
     return `:root{
   --brand:${p.primary}; --brand-dark:${p.primaryDark}; --brand-light:${p.primaryLight};
@@ -346,7 +379,7 @@ export function paletteCss(p: Palette, type: TypeTokens = NEUTRAL_TYPE): string 
    *  the absence of colour. 97 and 94 are the compromise -- visibly the
    *  subject's own ground, and every pair still measured AA by the guard
    *  beside this file rather than by assurance.  */
-  --card:${hslCss(p.hue, 44, 97)}; --panel:${hslCss(p.hue, 40, 94)}; --chip:${p.tint}; --line:${p.border};
+  --card:${paperAt(p.hue, 0.962, 0.019, hslCss(p.hue, 44, 97))}; --panel:${paperAt(p.hue, 0.935, 0.028, hslCss(p.hue, 40, 94))}; --chip:${p.tint}; --line:${p.border};
   --muted:${p.textMuted};
   --ring:${p.primary};
   --shadow-xs:0 1px 1px rgba(15,23,42,.05);
