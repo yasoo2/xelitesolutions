@@ -1,3 +1,6 @@
+import path from 'path';
+import os from 'os';
+import fs from 'fs';
 /**
  * HE STATED A CONDITION, AND IT VANISHED — NOT OBEYED, NOT CHECKED, NOT SAID.
  *
@@ -106,7 +109,37 @@ describe('what cannot be proven is DECLARED, never dropped', () => {
         //  request undeliverable — which is how a guard becomes a wall.
         const a = judgeAcceptance(rules('اعمل موقع ولا تضف صفحة تسجيل دخول'), { dir: '' } as any, true);
         expect(a.unmet).toBe(0);
-        expect(a.accepted).toBe(true);
+        expect(a.unprovable).toBe(a.criteria.length);
+        //  ⛔ The rule alone is judged here, so there is nothing proven at
+        //  all — and a run that demonstrated NOTHING is not accepted, however
+        //  little of it failed. The claim this guard makes is narrower and
+        //  exact: the unprovable rule contributes no UNMET, so it is not what
+        //  blocks. The paired case below proves that directly.
+        expect(a.accepted).toBe(false);
+    });
+
+    it('…and a real criterion beside it still carries the delivery', () => {
+        //  The same unprovable rule, now sitting next to something Joe can
+        //  actually show. If `unprovable` blocked, this would be false and
+        //  every conditional request would be undeliverable — the wall.
+        const proven = {
+            id: 'column:text1', kind: 'feature' as const,
+            ar: 'عمود', en: 'a column', expectedColumn: 'الاسم',
+        };
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-unprovable-beside-'));
+        fs.mkdirSync(path.join(dir, 'src'), { recursive: true });
+        fs.writeFileSync(path.join(dir, 'src', 'App.jsx'),
+            "const fields = [{ key: 'text1', label: 'الاسم', type: 'text' }];");
+        try {
+            const a = judgeAcceptance(
+                [...rules('اعمل موقع ولا تضف صفحة تسجيل دخول'), proven], { dir }, true);
+            expect(a.met).toBe(1);
+            expect(a.unmet).toBe(0);
+            expect(a.unprovable).toBe(1);
+            expect(a.accepted).toBe(true);
+        } finally {
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
     });
 
     it('a BOUND is provable, and unmet when no bound reached the schema', () => {

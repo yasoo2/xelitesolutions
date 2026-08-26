@@ -449,7 +449,12 @@ describe('a criterion is met by EVIDENCE, or it is not met', () => {
         //  obligation the run did not discharge. Otherwise a run scores 100% by
         //  proving only the subset the judge happened to know how to inspect.
         //  The partition below is what keeps the two kinds distinguishable.
-        expect(a.unmet).toBe(6);
+        //  Five looked for and missing, one this judge cannot check. The
+        //  aggregate is asserted as the SUM so neither kind can quietly
+        //  absorb the other, which is the whole point of keeping them apart.
+        expect(a.unmet).toBe(5);
+        expect(a.unprovable).toBe(1);
+        expect(a.unmet + a.unprovable).toBe(a.criteria.length);
         expect(a.criteria.length).toBe(6);
         expect(a.accepted).toBe(false);
         //  Five are unmet and the sixth is UNPROVABLE, which is a different
@@ -629,7 +634,7 @@ describe('a criterion is met by EVIDENCE, or it is not met', () => {
     it('with no source to read, a feature is UNPROVABLE — never quietly met', () => {
         const a = judgeAcceptance(acceptanceFor(BRIEF), { dir: '/nowhere-at-all' }, true);
         expect(a.criteria.find(c => c.id === 'search')!.verdict).toBe('unprovable');
-        expect(a.unmet).toBe(a.criteria.length);
+        expect(a.unmet + a.unprovable).toBe(a.criteria.length);
         expect(a.accepted).toBe(false);
     });
 
@@ -658,12 +663,17 @@ describe('a criterion is met by EVIDENCE, or it is not met', () => {
 
         const withoutEvidence = judgeAcceptance(criteria, { dir: '/no-evidence-at-all' }, false);
         expect(withoutEvidence.met).toBe(0);
-        expect(withoutEvidence.unmet).toBe(criteria.length);
+        expect(withoutEvidence.unmet + withoutEvidence.unprovable).toBe(criteria.length);
         expect(withoutEvidence.accepted).toBe(false);
         expect(withoutEvidence.criteria.every(c => c.verdict !== 'met')).toBe(true);
         const blocked = acceptanceBlock(withoutEvidence, false);
         expect(blocked).toContain(`0 of ${criteria.length} requested criteria were proven`);
-        expect(blocked).toContain(`${criteria.length} were not proven`);
+        //  With no directory at all NOTHING is checkable, so all four are
+        //  unprovable and none is unmet — and the head must say exactly
+        //  that rather than rounding the gap into a failure. Both numbers
+        //  are asserted so neither kind can absorb the other.
+        expect(blocked).toContain('0 were not proven');
+        expect(blocked).toContain(`${criteria.length} I did not know how to check`);
         expect(blocked).not.toContain('⏭️');
     });
 
@@ -686,8 +696,20 @@ describe('the ledger is published, in his language', () => {
         const a = judgeAcceptance(acceptanceFor(BRIEF), { dir: '/nope', built: false }, true);
         const block = acceptanceBlock(a, true);
         expect(block).toContain('التسليم محجوب');
-        expect(block).toContain('أثبتُّ 0 من أصل 11');
-        expect(block).toContain('11 لم يُثبت');
+        //  ⛔ NORMALISED ON BOTH SIDES, and this is not tidiness.
+        //  This line carried ت+shadda+damma while the source wrote
+        //  ت+damma+shadda — the same word to every human eye, two
+        //  different byte sequences to `includes`, and a guard that fails
+        //  on a difference no reader can see is a guard nobody can trust.
+        //  NFC puts combining marks in canonical order, so the comparison
+        //  finally asks what a reader asks.
+        const nfc = (x: string) => x.normalize('NFC');
+        expect(nfc(block)).toContain(nfc('أثبتُّ 0 من أصل 11'));
+        //  4 looked for and missing, 7 unknown to this judge — and BOTH
+        //  numbers reach him. Asserting only the total would let one kind
+        //  hide inside the other.
+        expect(nfc(block)).toContain(nfc('4 لم يُثبت'));
+        expect(nfc(block)).toContain(nfc('7 لم أعرف كيف أفحصه'));
         expect(block).not.toContain('ولم أفحص بقية نص طلبك');
         expect(block).toContain('❌');
         expect(block).toContain('README');
@@ -702,7 +724,8 @@ describe('the ledger is published, in his language', () => {
         const block = acceptanceBlock(a, false);
         expect(block).toContain('Delivery blocked');
         expect(block).toContain('0 of 3 requested criteria were proven');
-        expect(block).toContain('3 were not proven');
+        expect(block).toContain('1 were not proven');
+        expect(block).toContain('2 I did not know how to check');
         expect(block).not.toContain('I did not inspect the rest of your request');
     });
 

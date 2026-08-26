@@ -56,13 +56,18 @@ const ruleVerdict = (src: string) => {
     fs.writeFileSync(path.join(dir, 'src', 'content.js'), src, 'utf-8');
     const judged = judgeAcceptance(acceptanceFor(REQUEST), { dir } as any);
     fs.rmSync(dir, { recursive: true, force: true });
-    const rule = judged.criteria.find(c => c.id.startsWith('rule:'));
+    //  Located by what it CARRIES, not by what it is called. A stated bound
+    //  that names one of his columns is emitted as `constraint:<col>:min`
+    //  now, beside that column, so an id-prefix locator silently found
+    //  nothing and the whole guard passed over an empty set. Anchoring on
+    //  `expectedRule` survives the next rename and cannot go quiet.
+    const rule = judged.criteria.find(c => !!c.expectedRule);
     return rule ? { verdict: rule.verdict, why: rule.why } : null;
 };
 
 describe('a bound is proven on his column, at his number, at his strictness', () => {
     it('the criterion is derived at all — an empty judgement proves nothing', () => {
-        expect(acceptanceFor(REQUEST).some(c => c.id.startsWith('rule:'))).toBe(true);
+        expect(acceptanceFor(REQUEST).some(c => !!c.expectedRule)).toBe(true);
         expect(ruleVerdict(OBEYS)).not.toBeNull();
     });
 

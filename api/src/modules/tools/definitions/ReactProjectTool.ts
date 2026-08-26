@@ -301,6 +301,12 @@ const DYNAMIC_ACCEPTANCE_ID = [
     /^page:[A-Za-z][A-Za-z0-9_-]*$/,
     //  statedRules()         — a condition he stated
     /^rule:[0-9]+$/,
+    //  statedRules() again   — a condition that names one of HIS columns, so
+    //  it is emitted beside that column instead of in a numbered list. It is
+    //  the same derivation wearing the shape the ledger can name; this reader
+    //  had to be told, and the guard that made it tell me is the one that
+    //  refuses to deliver an id nobody downstream understands.
+    /^constraint:[A-Za-z][A-Za-z0-9_-]*:min$/,
 ];
 
 function isKnownAcceptanceId(id: string): boolean {

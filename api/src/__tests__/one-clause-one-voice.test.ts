@@ -30,7 +30,9 @@ import { acceptanceFor } from '../core/quality/acceptance';
 
 const unchecked = (r: string) => scopeReport(r, []).unchecked;
 const ruleTexts = (r: string) => acceptanceFor(r)
-    .filter(c => c.id.startsWith('rule:'))
+    //  By what it carries, not by its id — see the note in
+    //  a-tick-that-any-digit-could-earn.test.ts.
+    .filter(c => !!c.expectedRule)
     .map(c => String((c as any).expectedRule?.text || ''));
 
 const fold = (s: string) => s

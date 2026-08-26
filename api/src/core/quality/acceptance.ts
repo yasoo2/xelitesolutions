@@ -162,7 +162,9 @@ export interface Acceptance {
     criteria: JudgedCriterion[];
     met: number;
     unmet: number;
-    /** True only when every asked-for criterion is met. */
+    /** Stated, judged, and impossible for THIS judge to check. Never hidden. */
+    unprovable: number;
+    /** True only when nothing he asked for was looked for and missing. */
     accepted: boolean;
 }
 
@@ -978,22 +980,47 @@ export function judgeAcceptance(criteria: Criterion[], ev: Evidence, isAr = true
 
     const met = judged.filter(c => c.verdict === 'met').length;
     /**
-     *  ⛔ `unprovable` COUNTS AS NOT PROVEN — AND THAT BLOCKS DELIVERY.
+     *  ⛔ THREE OUTCOMES, AND ONLY ONE OF THEM MAY BLOCK.
      *
-     *  This file used to hold it in a third bucket that blocked nothing, on
-     *  the reasoning that «I could not check this» is honest disclosure. It is
-     *  honest, and it is not enough: he asked for a thing, and a delivery
-     *  marked accepted is a claim it is there. Joe not knowing how to look is
-     *  a fact about Joe, never a reason to answer for the request.
+     *  Merging two branches put two guards in one tree arguing opposite
+     *  sides, and both were written from real incidents:
      *
-     *  The verdict keeps its own name so the ledger can still say WHICH of the
-     *  two happened — «I looked and it is absent» is not «I never looked» —
-     *  but both count against acceptance, and `met + unmet` therefore covers
-     *  every criterion, which is what makes the ledger's own count guard able
-     *  to fail at all.
+     *    • «an unprovable rule does not block the delivery» — because
+     *      blocking on what Joe cannot check makes every conditional
+     *      request undeliverable, which is how a guard becomes a wall.
+     *      Every Gate062 run states «Do not modify existing projects»,
+     *      so counting it against acceptance freezes acceptance forever,
+     *      and a criterion that can NEVER be met is the same defect as
+     *      one that can never fail.
+     *
+     *    • «unmet must cover every criterion» — because otherwise a run
+     *      scores 100% by proving only the subset the judge knew how to
+     *      inspect.
+     *
+     *  Both are right, and picking one silently would have discarded a
+     *  measured incident. So the count is three-way: `unmet` blocks,
+     *  `unprovable` does not, and NEITHER is hidden — the ledger head
+     *  below never says «all proven» while an unprovable one stands, so
+     *  no claim is made that the run cannot support.
      */
-    const unmet = judged.filter(c => c.verdict !== 'met').length;
-    return { criteria: judged, met, unmet, accepted: judged.length > 0 && unmet === 0 };
+    const unmet = judged.filter(c => c.verdict === 'unmet').length;
+    const unprovable = judged.filter(c => c.verdict === 'unprovable').length;
+    /**
+     *  ⛔ AND NOTHING PROVEN IS NEVER ACCEPTED.
+     *
+     *  `unmet === 0` alone made a run where the judge could check NOTHING
+     *  come back accepted: zero proven, zero failed, every criterion
+     *  unprovable — and a green verdict over a ledger with no evidence in
+     *  it at all. That is the exact false success this file exists to stop,
+     *  and it walked in through the door opened for `unprovable`.
+     *
+     *  So acceptance needs something demonstrated, not merely nothing
+     *  refuted. One met criterion is the floor.
+     */
+    return {
+        criteria: judged, met, unmet, unprovable,
+        accepted: judged.length > 0 && unmet === 0 && met > 0,
+    };
 }
 
 /**
@@ -1012,7 +1039,7 @@ export function acceptanceBlock(a: Acceptance, isAr: boolean): string {
      *  eleven rows is a report that reads as an answer, so it stops here
      *  rather than reaching him.
      */
-    if (a.met + a.unmet !== a.criteria.length) {
+    if (a.met + a.unmet + (a.unprovable || 0) !== a.criteria.length) {
         throw new Error('acceptance_ledger_count_mismatch');
     }
     if (!a.criteria.length) {
@@ -1020,13 +1047,31 @@ export function acceptanceBlock(a: Acceptance, isAr: boolean): string {
             ? '⚠️ لم أستخرج معياراً قابلاً للفحص من طلبك، لذلك لم أصدر حكم قبول.'
             : '⚠️ I could not derive a checkable criterion from your request, so I did not issue an acceptance judgment.';
     }
+    const gaps = a.unprovable || 0;
+    /**
+     *  ⛔ «ALL PROVEN» IS A CLAIM, AND IT IS FALSE WHILE ONE IS UNCHECKED.
+     *
+     *  `unprovable` does not block delivery — blocking on what this judge
+     *  cannot check would make every conditional request undeliverable. But
+     *  not blocking is not permission to round it away: the head said «all
+     *  requested criteria were proven» over a ledger with an unchecked row
+     *  in it, which is exactly the false-success this file exists to stop.
+     *
+     *  So the gap is stated in the same sentence as the acceptance, in his
+     *  language, with its number. He decides what to do about it; Joe only
+     *  has to stop pretending it is not there.
+     */
     const head = a.accepted
-        ? (isAr
-            ? `✅ حكم القبول: أثبتُّ جميع المعايير المطلوبة (${a.met}/${a.criteria.length}).`
-            : `✅ Acceptance accepted: all ${a.met}/${a.criteria.length} requested criteria were proven.`)
+        ? (gaps
+            ? (isAr
+                ? `✅ حكم القبول: لم يسقط شيءٌ ممّا فحصتُه (${a.met}/${a.criteria.length}) — و${gaps} من طلبك لم أعرف كيف أفحصه، ولم أدَّعِ أنّي فحصتُه:`
+                : `✅ Acceptance accepted: nothing I checked failed (${a.met}/${a.criteria.length}) — and ${gaps} of your request I did not know how to check, and did not claim to have checked:`)
+            : (isAr
+                ? `✅ حكم القبول: أثبتُّ جميع المعايير المطلوبة (${a.met}/${a.criteria.length}).`
+                : `✅ Acceptance accepted: all ${a.met}/${a.criteria.length} requested criteria were proven.`))
         : (isAr
-            ? `⚠️ التسليم محجوب: أثبتُّ ${a.met} من أصل ${a.criteria.length} معياراً مشتقاً — و${a.unmet} لم يُثبت:`
-            : `⚠️ Delivery blocked: ${a.met} of ${a.criteria.length} requested criteria were proven — ${a.unmet} were not proven:`);
+            ? `⚠️ التسليم محجوب: أثبتُّ ${a.met} من أصل ${a.criteria.length} معياراً مشتقاً — و${a.unmet} لم يُثبت${gaps ? `، و${gaps} لم أعرف كيف أفحصه` : ''}:`
+            : `⚠️ Delivery blocked: ${a.met} of ${a.criteria.length} requested criteria were proven — ${a.unmet} were not proven${gaps ? `, and ${gaps} I did not know how to check` : ''}:`);
     const lines = a.criteria.map(c => {
         //  Two marks, because there are two outcomes he can act on: proven,
         //  or not. WHICH kind of not-proven is in `why`, where it belongs.
