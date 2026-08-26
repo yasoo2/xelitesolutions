@@ -609,11 +609,11 @@ export function apiSiblingOf(projectRoot: string): string | null {
 export function heDeclaredWhatItHolds(request: string): boolean {
     try {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const { derivedColumns } = require('../../../core/design/app-blueprints');
+        const { columnsAnywhereInHisRequest } = require('../../../core/design/app-blueprints');
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const { PlanningEngine } = require('../../../core/orchestrator/PlanningEngine');
         if (!PlanningEngine.looksLikeBuild(request)) return false;
-        const columns = derivedColumns(request);
+        const columns = columnsAnywhereInHisRequest(request);
         //  No floor of my own: derivedColumns already refuses one noun
         //  after «جدول» as a subject rather than a column, and two floors
         //  for one rule is how they come apart. A mutation proved this

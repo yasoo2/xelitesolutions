@@ -29,11 +29,11 @@
  * cannot test says «unprovable» rather than passing quietly — because a check
  * that cannot fail is the thing this project keeps deleting.
  */
-import { derivedColumns, statedRules, type DerivedField } from '../design/app-blueprints';
+import { derivedColumns, statedRules, type DerivedField, columnsAnywhereInHisRequest } from '../design/app-blueprints';
 import fs from 'fs';
 import path from 'path';
 import { thePagesHeNamed } from '../design/site-plan';
-import { saysAny } from '../language/arabic';
+import { saysAny, saysWord } from '../language/arabic';
 
 //  The same folding the page reader itself uses — a request written with
 //  tanween must reach it in the shape its patterns are spelled in.
@@ -108,7 +108,25 @@ export interface Criterion {
      *  `unprovable`, which is declared to him and does not block delivery.
      *  Silence is the only outcome that is never acceptable.
      */
-    expectedRule?: { text: string; kind?: 'bound' | 'forbid' | 'require' | 'change' };
+    /**
+     *  THE READER KNEW THE FIELD, THE VALUE AND THE STRICTNESS. THE JUDGE
+     *  ASKED FOR NONE OF THEM.
+     *
+     *  `StatedRule` already carries `field`, `min` and `minExclusive`, and
+     *  only `text` and `kind` were copied across. The proof left behind was
+     *  `/min:\s*-?\d/` against the WHOLE project — any digit after any `min:`
+     *  anywhere earned the ✅. So «لا تقبل سعرًا صفرًا» was reported as met by
+     *  a build whose bound sat on a different column, or carried a different
+     *  number, or — worst — omitted `minExclusive`, which is a build that
+     *  accepts the exact value he forbade while being told it obeys.
+     */
+    expectedRule?: {
+        text: string;
+        kind?: 'bound' | 'forbid' | 'require' | 'change';
+        field?: string;
+        min?: number;
+        minExclusive?: boolean;
+    };
     /**
      *  The exact column he listed, when the criterion is about one.
      *
@@ -359,7 +377,7 @@ export function acceptanceFor(request: string): Criterion[] {
 
     //  His columns, in his words, each one its own criterion. No catalogue
     //  is consulted: derivedColumns reads them from the sentence he wrote.
-    const columns = derivedColumns(t) || [];
+    const columns = columnsAnywhereInHisRequest(t) || [];
 
     /**
      *  THE PAGES HE NAMED ARE CRITERIA, exactly as his columns are.
@@ -405,7 +423,9 @@ export function acceptanceFor(request: string): Criterion[] {
             kind: 'feature' as CriterionKind,
             ar: `شرطك: «${r.text}»`,
             en: `your condition: «${r.text}»`,
-            expectedRule: { text: r.text, kind: r.kind },
+            //  Everything the reader derived, carried to the judge. Dropping
+            //  three of five fields here is what made the proof unprovable.
+            expectedRule: { text: r.text, kind: r.kind, field: r.field, min: r.min, minExclusive: r.minExclusive },
         })),
         ...pages.map((p: { slug: string; title: string }) => ({
             id: `page:${p.slug}`,
@@ -724,14 +744,64 @@ export function judgeAcceptance(criteria: Criterion[], ev: Evidence, isAr = true
             //  `if (field.type !== 'number' || field.min === undefined)`.
             //  So the proof is the value that guard needs, in the schema.
             if (c.expectedRule.kind === 'bound') {
-                const bounded = !!src && /min:\s*-?\d/.test(src);
-                return bounded
-                    ? say('met', isAr
-                        ? `الشرط مطبَّق في المخطّط: «${c.expectedRule.text}»`
-                        : `the bound is in the schema: «${c.expectedRule.text}»`)
-                    : say('unmet', isAr
-                        ? `اشترطتَ «${c.expectedRule.text}» ولم يُطبَّق حدٌّ في المخطّط`
-                        : `you asked for «${c.expectedRule.text}» and no bound reached the schema`);
+                /**
+                 *  A BOUND IS PROVEN ON A COLUMN, WITH A NUMBER, AT A
+                 *  STRICTNESS — OR IT IS NOT PROVEN.
+                 *
+                 *  This asked `/min:\s*-?\d/` of the whole project, so any
+                 *  digit after any `min:` anywhere earned the ✅ — a bound on
+                 *  the wrong column, a different number, or a build missing
+                 *  `minExclusive` and therefore ACCEPTING the exact value he
+                 *  forbade, all reported as met.
+                 *
+                 *  The schema writes one line per column, and that line is the
+                 *  unit of proof:
+                 *
+                 *    { key: 'money1', label: 'السعر', type: 'number', … min: 0, minExclusive: true },
+                 */
+                const want = c.expectedRule;
+                const labelOf = (line: string) => (/label:\s*'([^']*)'/.exec(line) || [])[1] || '';
+                const columnLines = String(src || '').split('\n')
+                    .filter(l => /label:\s*'/.test(l) && /\bmin:\s*-?\d/.test(l));
+                //  On HIS column when he named one. `saysWord` both ways,
+                //  because he writes «سعرًا» and the schema says «السعر».
+                //  `field` is only filled when the clause OPENS with the noun
+                //  — «المبلغ إذا كان صفرًا». «لا تقبل سعرًا صفرًا» opens with
+                //  the negation, so it arrives empty, and the column is named
+                //  in the middle of his sentence instead. So the CLAUSE is
+                //  asked about each column, through the language layer: it
+                //  says «سعرًا», the schema says «السعر», and one stemmer
+                //  settles it. It does not say «كمية», so «الكمية» is out.
+                const said = want.field || want.text || '';
+                const onHisColumn = columnLines.filter(l => {
+                    const label = labelOf(l);
+                    if (!label || !said) return !!label;
+                    return label === said || saysWord(said, label)
+                        || label.split(/\s+/).some(w => w.length > 2 && saysWord(said, w));
+                });
+                //  With HIS number, when the sentence carried one.
+                const withHisNumber = onHisColumn.filter(l => want.min === undefined
+                    || new RegExp('\\bmin:\\s*' + want.min + '\\b').test(l));
+                //  And at HIS strictness. «لا تقبل سعرًا صفرًا» forbids the
+                //  value itself; a schema with `min: 0` and no `minExclusive`
+                //  accepts zero, which is the opposite of what he asked.
+                const proven = withHisNumber.filter(l => !want.minExclusive || /minExclusive:\s*true/.test(l));
+                if (proven.length) {
+                    return say('met', isAr
+                        ? `الشرط مطبَّق على العمود «${labelOf(proven[0])}»: «${want.text}»`
+                        : `the bound is on the column «${labelOf(proven[0])}»: «${want.text}»`);
+                }
+                //  A verdict that says WHICH of the three failed. «unmet» on
+                //  its own sent an hour of searching in the wrong direction
+                //  the last time a bound went missing.
+                const why = onHisColumn.length === 0
+                    ? (isAr ? `لم يصل حدٌّ إلى العمود الذي سمّيتَه` : `no bound reached the column you named`)
+                    : withHisNumber.length === 0
+                        ? (isAr ? `الحدّ على العمود بقيمة غير التي ذكرتها (${want.min})` : `the bound on that column is not the number you gave (${want.min})`)
+                        : (isAr ? `الحدّ يقبل القيمة نفسها — «${want.min}» مسموحة، وأنت منعتها` : `the bound admits the value itself — «${want.min}» is allowed, and you forbade it`);
+                return say('unmet', isAr
+                    ? `اشترطتَ «${want.text}» — ${why}`
+                    : `you asked for «${want.text}» — ${why}`);
             }
             //  A PROHIBITION and a REQUIREMENT are about the whole build, and
             //  Joe has no general way to check either. It says so, in his own

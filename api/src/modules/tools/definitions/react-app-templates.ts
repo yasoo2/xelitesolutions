@@ -19,6 +19,7 @@
  * resulting program.
  */
 import type { AppBlueprint } from '../../../core/design/app-blueprints';
+import { heAskedForATable } from '../../../core/design/app-blueprints';
 import { ROLES } from '../../../core/design/roles';
 
 /** Escape for a JS single-quoted literal inside generated source. */
@@ -113,6 +114,11 @@ export const content = {
   // The words this app was built from. An edit re-derives from these,
   // so adding one column cannot silently replace all the others.
   sourceRequest: '${q(o.sourceRequest || '')}',
+  // The SHAPE he named, read from that same sentence. «اعمل جدول … فيه اسم
+  // الصنف والكمية والسعر» asked for columns and received a stack of cards
+  // — measured as «table count: 0». The word alone does not decide it,
+  // because «جدول» is also a schedule; listing the columns does.
+  asTable: ${bp.asTable === true || heAskedForATable(o.sourceRequest || '', (bp.fields || []).length)},
   fields: [
 ${bp.fields.map(f => `    { key: '${q(f.key)}', label: '${q(f.label)}', type: '${q(f.type)}'${f.options ? `, options: [${f.options.map(x => `'${q(x)}'`).join(', ')}]` : ''}${f.required ? ', required: true' : ''}${f.min !== undefined ? `, min: ${f.min}` : ''}${f.minExclusive ? ', minExclusive: true' : ''}${f.primary ? ', primary: true' : ''} },`).join('\n')}
   ],
@@ -1118,6 +1124,13 @@ export default function RecordsApp({ content }) {
     if (invalid) { setError(invalidFieldMessage(invalid)); return; }
     setError('');
     if (editing) {
+      //  A SAVE THAT CHANGES NOTHING MUST NOT LOOK LIKE A SAVE. If the row
+      //  being edited is gone — deleted here or in another tab — the map
+      //  below matches nothing and the form clears as though it worked.
+      if (!rows.some(r => r.id === editing)) {
+        setError(${T('السجلّ الذي تعدّله لم يعد موجوداً — لم أحفظ شيئاً.', 'The record you were editing no longer exists — nothing was saved.')});
+        return;
+      }
       const patch = { ...draft };
       setRows(rows.map(r => (r.id === editing ? { ...r, ...patch } : r)));
       setEditing('');
@@ -1143,6 +1156,11 @@ export default function RecordsApp({ content }) {
   const remove = async (row) => {
     if (!window.confirm(${T('حذف هذا السجلّ؟', 'Delete this record?')})) return;
     if (selected && selected.id === row.id) setSelected(null);
+    //  DELETING THE ROW ENDS THE EDIT OF IT. Without this, «حفظ التعديل»
+    //  stayed on screen pointing at a row that no longer existed: the save
+    //  matched nothing, cleared the form, and looked exactly like a
+    //  successful save. What he typed went nowhere and he was not told.
+    if (editing === row.id) { setEditing(''); setDraft(blank(fields)); }
     setRows(rows.filter(r => r.id !== row.id));
     if (server) await apiDelete(content.api, row.id);
   };
@@ -1248,6 +1266,7 @@ export default function RecordsApp({ content }) {
                 <span>{f.label}{f.required ? ' *' : ''}</span>
                 <input type={f.type === 'number' ? 'number' : f.type === 'tel' ? 'tel' : f.type === 'email' ? 'email' : 'text'}
                   min={f.min !== undefined ? f.min : undefined}
+                  step={f.type === 'number' ? 'any' : undefined}
                   value={parentDraft[f.key] || ''} onChange={e => setParentDraft({ ...parentDraft, [f.key]: e.target.value })} />
               </label>
             ))}
@@ -1280,7 +1299,13 @@ export default function RecordsApp({ content }) {
 
       <section className="panel">
         <h2>{editing ? ${T('تعديل ', 'Edit ')} + content.entityOne : ${T('إضافة ', 'Add a ')} + content.entityOne}</h2>
-        <form className="form" onSubmit={submit}>
+        {/* A MESSAGE ABOUT A PAST ATTEMPT MUST NOT READ AS A VERDICT ON THIS
+            ONE. setError('') lives inside submit, so whenever the browser
+            refuses the form itself, submit never runs and the previous
+            message stays pinned under it — measured saying «يجب أن تكون قيمة
+            السعر أكبر من 0» about a corrected price of 12.50. Change events
+            bubble, so one handler here clears it for every field. */}
+        <form className="form" onSubmit={submit} onChange={() => setError('')}>
           {fields.map(f => (
             <label className={'field' + (f.type === 'textarea' ? ' wide' : '')} key={f.key}>
               <span>{f.label}{f.required ? ' *' : ''}</span>
@@ -1316,6 +1341,7 @@ export default function RecordsApp({ content }) {
                 <input type={f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : f.type === 'time' ? 'time' : f.type === 'tel' ? 'tel' : f.type === 'email' ? 'email' : 'text'}
                   required={!!f.required}
                   min={f.min !== undefined ? f.min : undefined}
+                  step={f.type === 'number' ? 'any' : undefined}
                   value={draft[f.key] || ''} onChange={e => setDraft({ ...draft, [f.key]: e.target.value })} />
               )}
             </label>
@@ -1371,6 +1397,43 @@ export default function RecordsApp({ content }) {
         <h2 className="list-title">{content.entityMany} <em>({visible.length})</em></h2>
         {visible.length === 0 ? (
           <p className="empty">{rows.length ? ${T('لا نتائج مطابقة لبحثك.', 'Nothing matches that search.')} : content.emptyHint}</p>
+        ) : content.asTable ? (
+          {/*  THE SHAPE HE NAMED. «اعمل جدول … فيه اسم الصنف والكمية والسعر»
+              was delivered as a stack of cards — measured «table count: 0,
+              th count: 0» — and the primary column's own LABEL was dropped,
+              so «اسم الصنف» appeared nowhere. A column he named is a column
+              he can read down, with its name at the top of it.  */}
+          <div className="table-wrap">
+            <table className="rows-table">
+              <thead>
+                <tr>
+                  {fields.filter(f => f.type !== 'image').map(f => <th key={f.key} scope="col">{f.label}</th>)}
+                  {rel ? <th scope="col">{rel.one}</th> : null}
+                  <th scope="col">{${T('إجراءات', 'Actions')}}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visible.map(row => {
+                  const done = statusField && content.doneValue && row[statusField.key] === content.doneValue;
+                  const low = content.lowStock && Number(row[content.lowStock.field]) < Number(content.lowStock.below);
+                  return (
+                    <tr key={row.id} className={(done ? 'done ' : '') + (low ? 'low' : '')}>
+                      {fields.filter(f => f.type !== 'image').map(f => (
+                        <td key={f.key} className={f.type === 'number' ? 'num' : undefined}>
+                          {String(row[f.key] ?? '')}
+                        </td>
+                      ))}
+                      {rel ? <td>{parentName(row)}</td> : null}
+                      <td className="row-actions">
+                        <button className="btn tiny" type="button" onClick={() => edit(row)}>{${T('تعديل', 'Edit')}}</button>
+                        <button className="btn tiny danger" type="button" onClick={() => remove(row)}>{${T('حذف', 'Delete')}}</button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         ) : (
           <ul className="rows">
             {visible.map(row => {
@@ -1436,7 +1499,13 @@ export default function RecordsApp({ content }) {
             </dl>
             <footer className="record-modal-actions">
               <button className="btn ghost" type="button" onClick={() => setSelected(null)}>{${T('إغلاق', 'Close')}}</button>
-              <button className="btn" type="button" onClick={() => edit(selected)}>{${T('تعديل المهمة', 'Edit task')}}</button>
+              {/*  THE APP CALLS THINGS WHAT HE CALLED THEM. This said «تعديل
+                  المهمة» — «edit the task» — inside a sales register, because
+                  one archetype's word had been frozen into the shell. Every
+                  other label here is derived; this one was not.  */}
+              <button className="btn" type="button" onClick={() => edit(selected)}>
+                {${T('تعديل', 'Edit')} + ' ' + (content.entityOne || '')}
+              </button>
             </footer>
           </section>
         </div>
@@ -2534,6 +2603,19 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--accent,#06c);out
 [data-theme="dark"] .badge.on{color:#6ee7a2}
 
 .rows{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+/*  The table he asked for. It scrolls inside its own box: a wide table must
+    never make the whole page slide sideways on a phone. Numbers get tabular
+    figures so a price column lines up on the decimal point, which is the
+    entire reason a person asks for a column instead of a card.  */
+.table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--border);border-radius:12px}
+.rows-table{width:100%;border-collapse:collapse;font-size:14px}
+.rows-table th,.rows-table td{padding:10px 12px;text-align:start;border-bottom:1px solid var(--border);white-space:nowrap}
+.rows-table thead th{position:sticky;top:0;background:var(--panel);font-weight:600;color:var(--muted)}
+.rows-table tbody tr:last-child td{border-bottom:0}
+.rows-table td.num{font-variant-numeric:tabular-nums}
+.rows-table tr.done td{opacity:.55;text-decoration:line-through}
+.rows-table tr.low td{background:color-mix(in srgb,#dc2626 12%,transparent)}
+.rows-table td.row-actions{display:flex;gap:6px;white-space:nowrap}
 .row{display:flex;gap:12px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;
   border:1px solid var(--border,#e5e5e5);border-radius:var(--radius,12px);padding:12px 14px;background:var(--bg,#fff)}
 .row.done{opacity:.62}

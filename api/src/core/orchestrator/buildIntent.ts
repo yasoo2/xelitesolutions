@@ -12,7 +12,7 @@
  * stale one.
  */
 import { stripArabicDiacritics, foldChars } from './promptNormalizer';
-import { derivedColumns } from '../design/app-blueprints';
+import { derivedColumns, columnsAnywhereInHisRequest } from '../design/app-blueprints';
 
 export function looksLikeBuild(goalRaw: string): boolean {
     const g = String(goalRaw || '');
@@ -96,7 +96,7 @@ export function looksLikeBuild(goalRaw: string): boolean {
     const asking = /(?:^|[\s،:؛])(?:بدي|بدى|ودي|ابغي|ابغى|اريد|أريد|أبغي|أبغى|عايز|عاوز|محتاج|نبي|نبغى)(?=$|[\s،:؛])/.test(bare)
         || /(?:^|[\s،:؛])(?:ابن|ابني|انشئ|اصنع|صمم|طور|اعمل|اصمم|سو|سوي|برمج|جهز)(?=$|[\s،:؛])/.test(bare)
         || /\b(?:i\s+(?:want|need)|can\s+you|could\s+you|please|make\s+me|give\s+me|build\s+me)\b/i.test(g);
-    const describesItsContents = !!derivedColumns(g);
+    const describesItsContents = !!columnsAnywhereInHisRequest(g);
     return (verb && noun) || (asking && describesItsContents);
 }
 
@@ -120,7 +120,7 @@ export function asksForSomething(goalRaw: string): boolean {
 
 /** Does the request itself say what the thing will hold? */
 export function describesItsContents(goalRaw: string): boolean {
-    return !!derivedColumns(String(goalRaw || ''));
+    return !!columnsAnywhereInHisRequest(String(goalRaw || ''));
 }
 
 

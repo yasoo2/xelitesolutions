@@ -56,6 +56,60 @@ export function parseEditBlocks(raw: string): EditBlock[] {
 }
 
 /**
+ * THE WORD FOR «I CANNOT TELL», WHICH THIS LAYER DID NOT HAVE.
+ *
+ * The edit prompt ends «nothing else», so a model handed a request that names
+ * nothing to change still had to emit an edit block. It did: «سوّي لي شي حلو»
+ * rewrote a line of the owner's sales project, and the round reported success.
+ *
+ * The model is the only layer that reads BOTH the request and the file, so it
+ * is the one that can actually tell. It is now allowed to say so, and this
+ * reads the answer. Deliberately narrow: the verdict must OPEN the reply, so
+ * the phrase inside a sentence about the edit is discussion, not a refusal.
+ */
+export function modelCannotTell(raw: string): string | null {
+    const text = String(raw || '').trim()
+        .replace(/^```[a-z]*\s*/i, '')       // a fenced reply
+        .replace(/\s*```$/, '')
+        .replace(/^\*+\s*/, '')              // bold, which models add to labels
+        .trim();
+    const m = /^cannot\s+tell\s*:?\**\s*(.*)$/i.exec(text.split('\n')[0].replace(/\*\*/g, ''));
+    if (!m) return null;
+    return m[1].trim() || 'the request does not say what to change';
+}
+
+/**
+ * A RANKING'S PRIOR IS NOT ITS EVIDENCE.
+ *
+ * `content.js` is given four points before a single word of the request is
+ * looked for. That is a sound tie-breaker — when several files match, wording
+ * usually lives there — but it also means the ranked list is NEVER empty while
+ * that file exists. The guard written below the ranker tests the list, so it
+ * has never once fired, and «no evidence at all» has been indistinguishable
+ * from «weak evidence» at the only place that could have noticed.
+ *
+ * So the two are now returned apart: `scored` is the preference, `evidence` is
+ * how many files a word of the request was actually found in. The caller can
+ * ask the question it meant to ask.
+ */
+export function rankFilesForEdit(
+    request: string,
+    files: Array<{ f: string; body: string }>,
+): { scored: Array<{ f: string; body: string; score: number }>; evidence: number } {
+    const words = String(request || '').split(/[\s،,.!؟?]+/).filter(w => w.length >= 3);
+    let evidence = 0;
+    const scored = files.map(({ f, body }) => {
+        const prior = /content\.js$/.test(f) ? 4 : /components\//.test(f) ? 2 : 0;
+        let found = 0;
+        for (const w of words) if (body.includes(w)) found += 3;
+        if (found > 0) evidence += 1;
+        return { f, body, score: prior + found };
+    }).sort((a, b) => b.score - a.score).slice(0, 2)
+        .filter(x => x.body.length < 16_000);
+    return { scored, evidence };
+}
+
+/**
  * Apply one block to a file's contents. Exact match first; then a
  * whitespace-tolerant match (models re-indent what they quote). Returns null
  * when the SEARCH text simply is not there — the caller refuses the block.
@@ -920,14 +974,10 @@ export class ProjectEditTool extends BaseTool {
             const files = listFiles(dir);
             // Rank files by overlap with the request's words; content.js first
             // for wording changes, components for structure.
-            const words = request.split(/[\s،,.!؟?]+/).filter(w => w.length >= 3);
-            const scored = files.map(f => {
-                const body = fs.readFileSync(path.join(dir, f), 'utf-8');
-                let score = /content\.js$/.test(f) ? 4 : /components\//.test(f) ? 2 : 0;
-                for (const w of words) if (body.includes(w)) score += 3;
-                return { f, body, score };
-            }).sort((a, b) => b.score - a.score).slice(0, 2)
-                .filter(x => x.body.length < 16_000);
+            const { scored } = rankFilesForEdit(
+                request,
+                files.map(f => ({ f, body: fs.readFileSync(path.join(dir, f), 'utf-8') })),
+            );
             if (!scored.length) {
                 return { ok: true, output: { message: isAr ? 'لم أستطع تحديد الملف المقصود — سمِّ الملف أو الجزء المطلوب تعديله.' : 'Could not locate the file to edit — name the file or the part to change.' }, logs } as any;
             }
@@ -944,7 +994,11 @@ FILE: <relative path>
 <the replacement lines>
 >>>>>>> REPLACE
 
-Rules: the SEARCH text must be an exact quote of what is in the file. Keep edits minimal. ${isAr ? 'Any human-visible text you write must be Arabic.' : ''}`;
+Rules: the SEARCH text must be an exact quote of what is in the file. Keep edits minimal. ${isAr ? 'Any human-visible text you write must be Arabic.' : ''}
+
+If the request does NOT say what to change in these files — it names no element, no text, no colour, no file, and no behaviour that is in them — then do NOT invent one. Reply with exactly one line and nothing else:
+CANNOT TELL: <what you would need the user to say>
+This is a correct answer, not a failure. Changing something the user did not ask for is the failure.`;
             let raw = '';
             try {
                 raw = await routeToModel([
@@ -953,6 +1007,28 @@ Rules: the SEARCH text must be an exact quote of what is in the file. Keep edits
                 ], undefined, undefined, undefined, undefined, undefined, undefined, context);
             } catch (e: any) {
                 return { ok: false, error: `edit_model_failed: ${e?.message || e}`, logs } as any;
+            }
+            /**
+             * A REQUEST THAT NAMES NOTHING DOES NOT AUTHORISE A CHANGE.
+             *
+             * «سوّي لي شي حلو» edited the owner's sales project and scored the
+             * result 97/100. Nothing in that sentence points at that project,
+             * at a file, or at anything in one. Asking costs him a sentence;
+             * guessing costs him work he did not ask to have altered.
+             */
+            const cannot = modelCannotTell(raw);
+            if (cannot) {
+                logs.push(`model declined to guess: ${cannot}`);
+                return {
+                    ok: true,
+                    output: {
+                        message: isAr
+                            ? `طلبك لا يخبرني بما أغيّره في هذا المشروع، فلم أغيّر شيئاً.\nقل لي ما الذي تريد تعديله — عنصراً أو نصاً أو لوناً أو ملفاً.`
+                            : `Your request does not say what to change in this project, so I changed nothing.\nTell me what to edit — an element, some text, a colour, or a file.`,
+                        askedFor: cannot,
+                    },
+                    logs,
+                } as any;
             }
             const blocks = parseEditBlocks(raw);
             logs.push(`model returned ${blocks.length} edit block(s)`);

@@ -28,7 +28,7 @@
 import { ModelEntity, ModelField } from './data-model';
 //  The two readers that already know his columns and his word for the
 //  thing. Reading the same sentence a third way is how they drift.
-import { derivedColumns, recordedSubject, RECORD_CONTAINER } from './app-blueprints';
+import { derivedColumns, recordedSubject, RECORD_CONTAINER, columnsAnywhereInHisRequest } from './app-blueprints';
 import { hisWordsOnly } from './page-head';
 
 /* ────────────────────────────── field makers ───────────────────────────── */
@@ -454,7 +454,7 @@ function everyLabelCarriesTheContainer(labels: string[]): boolean {
 }
 
 function theOneTableHeDescribed(request: string): ModelEntity | null {
-    const columns = derivedColumns(request);
+    const columns = columnsAnywhereInHisRequest(request);
     if (!columns || columns.length < 2) return null;
     const labels = columns.map(c => String(c.label || '').trim());
     if (everyLabelCarriesTheContainer(labels)) return null;   //  several tables, not one

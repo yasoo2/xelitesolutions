@@ -27,7 +27,7 @@
 //  copy of that character set would drift the first time one of them
 //  learned a mark the other did not.
 import { stripArabicDiacritics } from '../orchestrator/promptNormalizer';
-import { saysWord } from '../language/arabic';
+import { saysWord, words, normalise } from '../language/arabic';
 import { hisWordsOnly } from './page-head';
 //  The reader that already knows which noun stands beside the container.
 import { subjectAfterContainer } from './subject-phrase';
@@ -188,6 +188,22 @@ export interface AppBlueprint {
     deps: Record<string, string>;
     /** What the app says when it has no rows yet — never fabricated rows. */
     emptyHint: string;
+    /**
+     * HE NAMED THE SHAPE, AND THE SHAPE WAS THE ONE THING NOT READ.
+     *
+     * «اعمل **جدول** مبيعات فيه اسم الصنف والكمية والسعر» — the first word of
+     * the request. Measured in the delivered app: `table count: 0, th count: 0`.
+     * Rows came back as a stack of cards, and «اسم الصنف» — one of the three
+     * columns he named — had its LABEL dropped entirely, because the card
+     * template filters the primary field out of the meta list and puts its
+     * value in a bare heading.
+     *
+     * He cannot read down a column, compare prices, or find the column he
+     * asked for. The engine had one presentation and the request's own word
+     * for the presentation was never consulted — the catalogue deciding what
+     * the sentence already said.
+     */
+    asTable?: boolean;
 }
 
 /* ── which domain the request belongs to ─────────────────────────────────── */
@@ -525,6 +541,34 @@ export function statedBound(window: string): { min: number; minExclusive: boolea
         return { min: 0, minExclusive: true };
     }
 
+    /**
+     *  AND THE FLOOR NAMED FROM THE OTHER SIDE — «بالسالب».
+     *
+     *  Measured on his own request: «لا تقبل كمية بالسالب» read as a plain
+     *  prohibition, so no bound reached the schema and negative quantities
+     *  were accepted by the app he was given. The reader knew «موجب» and
+     *  «صفر» and not the word he actually used — one constraint, several
+     *  names, one of them taught.
+     *
+     *  The strictness is NOT the same as «موجب», and the difference is his:
+     *  a man who refuses NEGATIVES has said nothing against zero, while
+     *  «موجب» excludes it. So this floor is inclusive and that one is not —
+     *  reading them alike would refuse a quantity of zero he never forbade.
+     */
+    //  `rejecting` is the whole discriminator, and it must be the only one:
+    //  a guard I added against «اقبل السالب» matched «do NOT ACCEPT a
+    //  NEGATIVE quantity» too, because the refusal is spelled with the same
+    //  verb. A sentence that permits negatives carries no refusal at all, so
+    //  it never reaches this line.
+    if (/(بالسالب|السالب|سالب|سالبة|سالبا|سالباً|بالناقص|\bnegative\b)/iu.test(text) && rejecting) {
+        return { min: 0, minExclusive: false };
+    }
+    //  «غير سالب» / non-negative states the same floor as a requirement
+    //  rather than a refusal, so it does not need the rejecting verb.
+    if (/(غير\s*سالب|غير\s*سالبة|non-?negative)/iu.test(text)) {
+        return { min: 0, minExclusive: false };
+    }
+
     const n = numberIn(text);
     if (n === null) return null;
 
@@ -769,7 +813,7 @@ export function blueprintFor(kind: AppKind, request: string, isAr: boolean): App
     const explicitColumns = fieldsFromRequest(request, isAr);
     if (explicitColumns) {
         const base = blueprintForKind(kind, request, isAr);
-        const cols = derivedColumns(request) || [];
+        const cols = columnsAnywhereInHisRequest(request) || [];
         const subject = recordedSubject(request);
         const counts = cols.filter(c => c.role === 'count');
         const monies = cols.filter(c => c.role === 'money');
@@ -1290,7 +1334,7 @@ function stockBlueprintFor(kind: AppKind, request: string, isAr: boolean): AppBl
          * And the label of each total is built from HIS words, so a clinic
          * never reads «رأس المال» about its fees.
          */
-        const cols = derivedColumns(request) || [];
+        const cols = columnsAnywhereInHisRequest(request) || [];
         const counts = cols.filter(c => c.role === 'count');
         const monies = cols.filter(c => c.role === 'money');
         const wantsTotal = /مجموع|اجمالي|إجمالي|قيمة\s*ال|كم\s|\btotal\b|\bsum\b|how much/iu.test(request);
@@ -2473,6 +2517,96 @@ export function derivedColumns(requestRaw: string): DerivedField[] | null {
     return built ? applyStatedRules(built, statedRules(request)).fields : built;
 }
 
+/**
+ *  A LIST THAT LOST TO AN EARLIER LIST IS STILL HIS LIST.
+ *
+ *  Measured on his machine, in front of him, from a long request. Bisected by
+ *  adding one sentence at a time, same columns clause throughout:
+ *
+ *      «… اعمل جدول فيه اسم القطعة ورقم القطعة و…»              → 7 columns
+ *      «… نظاماً فيه ثلاث صفحات: صفحة المخزون و… . <the same>»   → 0 columns
+ *
+ *  And it is not the colon — the same request without one also read zero. It
+ *  is ORDER. `derivedColumns` finds the first opener in the request, reads the
+ *  enumeration after it, and when that yields nothing usable it returns null
+ *  instead of looking at the next one. «فيه ثلاث صفحات» is an opener; the
+ *  pages after it are not columns; and the seven columns two sentences later
+ *  were never reached.
+ *
+ *  What Joe then said to him was worse than silence:
+ *
+ *      «One question before I start — what do you want to record for each of
+ *       your اعرض إجمالي?»
+ *
+ *  — a question whose answer he had already written, seven times, in the same
+ *  breath. The fourth law is that the request is the authority; a reader that
+ *  gives up on the first miss hands that authority back.
+ *
+ *  The class: A READER THAT TAKES THE FIRST CANDIDATE AND NEVER RETRIES. In a
+ *  short request the column list is usually the only list. In a real one it
+ *  almost never is. `derivedTables` already walks every sentence for exactly
+ *  this reason — the walk just never reached the reader everyone calls.
+ *
+ *  So: the whole request first, unchanged, because a list stated across two
+ *  sentences must stay one list. Only when that finds nothing are the
+ *  sentences tried one at a time, and the first that yields columns wins.
+ */
+export function columnsAnywhereInHisRequest(requestRaw: string): DerivedField[] | null {
+    const request = String(requestRaw || '');
+    const whole = derivedColumns(request);
+    if (whole && whole.length) return whole;
+    //  More than one sentence, or there is nothing new to try and the guard
+    //  below would only repeat the reading that just failed.
+    const pieces = request.split(/(?<=[.؟!\n])/u).map(p => p.trim()).filter(p => p.length > 8);
+    if (pieces.length < 2) return whole;
+    for (const piece of pieces) {
+        /**
+         *  A SECOND CHANCE MUST BE STRICTER THAN THE FIRST, OR IT INVENTS.
+         *
+         *  Measured the moment this loop was written. On an English brief it
+         *  returned, as a table schema:
+         *
+         *      ["accessible contrast", "helpful empty", "loading"]
+         *
+         *  — read out of «Use a clean light theme with accessible contrast and
+         *  helpful empty, loading, and error states». A sentence about colour
+         *  became three columns, and the expenses archetype that had been
+         *  right for years was overruled by it.
+         *
+         *  The whole-request read is allowed to be generous because it sees
+         *  the whole request. A per-sentence retry sees a fragment, so it must
+         *  demand the fragment DECLARE a table: «جدول», «سجل», «table»,
+         *  «list» — the container test this file already owns. His inventory
+         *  sentence says «اعمل جدول فيه…» and passes; a sentence about a
+         *  theme says nothing of the kind and is refused.
+         */
+        if (!RECORD_CONTAINER.test(piece)) continue;
+        const cols = derivedColumns(piece);
+        if (!cols || !cols.length) continue;
+        /**
+         *  HIS COLUMNS ARE IN ONE SENTENCE. HIS RULES ARE IN THE OTHERS.
+         *
+         *  Measured on his own long request. The bound was read, and applied,
+         *  and still reached the generated app as nothing:
+         *
+         *      statedRules(whole)        → { kind: 'bound', min: 0 }   ✅
+         *      applyStatedRules(…, that) → الكمية.min = 0              ✅
+         *      blueprintFor(whole)       → no field carries a min      ❌
+         *
+         *  `derivedColumns(piece)` ends by applying the rules of THAT PIECE,
+         *  and «لا تقبل كمية بالسالب» is two sentences away from «اعمل جدول
+         *  فيه اسم القطعة و…». So a reader that found his columns by looking
+         *  sentence-by-sentence then judged them against one sentence's
+         *  worth of conditions, and dropped every rule he stated elsewhere.
+         *
+         *  The same class as the search that found them: a decision made
+         *  from a fragment when the authority is the whole request.
+         */
+        return applyStatedRules(cols, statedRules(request)).fields;
+    }
+    return whole;
+}
+
 /** Turn the labels he wrote into fields, once, for every path that finds them. */
 function fieldsFromLabels(parts: string[]): DerivedField[] | null {
     const seen = new Map<DerivedRole, number>();
@@ -2597,6 +2731,37 @@ export function columnEdit(requestRaw: string): ColumnEdit {
     };
 }
 
+/**
+ * DID HE ASK FOR A TABLE, OR DID WE ASSUME A SHAPE?
+ *
+ * «اعمل **جدول** مبيعات فيه اسم الصنف والكمية والسعر» — the shape is the first
+ * word he wrote, and the engine had exactly one presentation regardless. The
+ * delivered app measured `table count: 0, th count: 0`.
+ *
+ * «جدول» carries two meanings — a TABLE and a SCHEDULE — and CLAUDE.md names
+ * that pair as a source of false criteria, so the bare word is not enough. The
+ * context that settles it is his own: a man who lists the COLUMNS is asking for
+ * a table, whatever else «جدول» could have meant. So both are required, and the
+ * word must be a word — `saysWord`, not a substring, or «الجدولة» and «جدولي»
+ * would answer for it.
+ */
+export function heAskedForATable(request: string, fieldCount: number): boolean {
+    const said = String(request || '');
+    /**
+     * The stem is too wide HERE, and that is a measurement, not a preference:
+     * `saysWord(said, 'جدول')` answers TRUE for «الجدولة الزمنية» — Snowball
+     * reduces the verbal noun to the same root, which is correct stemming and
+     * the wrong question. A man discussing scheduling has not asked for a
+     * grid. So the shape must be named by its own word, in any of the forms it
+     * really appears in, with the article and conjunction folded off.
+     */
+    const namedTheShape = words(said)
+        .map(w => normalise(w).replace(/^(?:وال|فال|بال|كال|[وفبكل]ال|ال)/, ''))
+        .some(w => w === 'جدول' || w === 'جداول')
+        || /\b(table|grid|spreadsheet)\b/i.test(said);
+    return namedTheShape && fieldCount >= 2;
+}
+
 /** Apply those changes to a set of fields, keeping every other column as it is. */
 export function applyColumnEdit(fields: AppField[], edit: ColumnEdit, isAr: boolean): AppField[] {
     let out = fields.slice();
@@ -2630,7 +2795,12 @@ export function applyColumnEdit(fields: AppField[], edit: ColumnEdit, isAr: bool
 
 
 export function fieldsFromRequest(requestRaw: string, isAr: boolean): AppField[] | null {
-    const cols = derivedColumns(requestRaw);
+    //  His list wherever he put it in the sentence — see
+    //  columnsAnywhereInHisRequest. Asking the single-shot reader here is
+    //  what sent «مخزن الورشة» to the archetype: seven columns he named,
+    //  five canned ones delivered, «سعر الشراء» and «سعر البيع» merged into
+    //  one, «اسم المورد» and «تاريخ الإدخال» gone, «الحالة» invented.
+    const cols = columnsAnywhereInHisRequest(requestRaw);
     if (!cols) return null;
     /**
      *  A COPY THAT LISTS WHAT IT KEEPS LOSES WHAT IT DOES NOT KNOW.

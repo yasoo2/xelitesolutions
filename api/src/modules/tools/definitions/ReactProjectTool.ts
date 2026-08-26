@@ -23,7 +23,7 @@ import { ToolPermission, ToolExecutionResult } from '../types';
 import { buildPalette, paletteCss, darkTokenBlock, lightTokenBlock } from '../../../core/design/design-system';
 import { brandFrom, brandFallback } from '../../../core/design/page-head';
 import { detectPageKind, type PageKind } from '../../../core/design/blueprints';
-import { derivedColumns, applyRequestFieldConstraints, detectAppKind, blueprintFor, uncoveredFeatures, derivedTables, type AppBlueprint } from '../../../core/design/app-blueprints';
+import { derivedColumns, applyRequestFieldConstraints, detectAppKind, blueprintFor, uncoveredFeatures, derivedTables, type AppBlueprint, columnsAnywhereInHisRequest } from '../../../core/design/app-blueprints';
 import { acceptanceFor as acceptanceCriteriaFor } from '../../../core/quality/acceptance';
 import { buildAppFiles, fileAppCss } from './react-app-templates';
 import { familyFor, familyCss, familyFonts, FAMILY_LABEL_AR, type DesignFamily } from '../../../core/design/families';
@@ -94,7 +94,25 @@ const MEASURED_ABILITIES: Record<string, MeasuredAbility[]> = {
     records: [
         { ar: 'إضافة وتعديل وحذف السجلات فعلياً', en: 'create, edit and delete records for real', evidence: hasAll(/setRows|add|create/i, /edit|update/i, /delete|remove/i) },
         { ar: 'تحقّق من الحقول المطلوبة قبل الحفظ', en: 'required-field validation before saving', evidence: hasAny(/required|validate|invalid/i) },
-        { ar: 'بحث وتصفية وترتيب فوري', en: 'instant search, filter and sort', evidence: hasAll(/search/i, /filter/i, /sort/i) },
+        /**
+         *  A CAPABILITY IS A CONTROL HE CAN USE, NOT A WORD IN THE SOURCE.
+         *
+         *  This was one claim — «instant search, filter and sort» — proven by
+         *  `hasAll(/search/i, /filter/i, /sort/i)`. Two of those three are
+         *  JavaScript's own array methods. `fields.filter(…)` and `.sort()`
+         *  appear in every React file ever generated, so the claim was true of
+         *  a build with no filter control at all — measured on his sales
+         *  table, which has no filter and was told it had one.
+         *
+         *  So: three claims, each proven by the STATE its control drives, and
+         *  the filter also by something to filter ON. The status filter is
+         *  conditional in the template — it renders only when a select column
+         *  exists — so the schema has to carry one, or the control is markup
+         *  that never appears.
+         */
+        { ar: 'بحث فوري في كل الأعمدة', en: 'instant search across the columns', evidence: hasAny(/setQuery\(/) },
+        { ar: 'تصفية حسب الحالة', en: 'filtering by status', evidence: hasAll(/setFilter\(/, /type:\s*'select'/) },
+        { ar: 'ترتيب الصفوف', en: 'sorting the rows', evidence: hasAny(/setSort\(/) },
         { ar: 'أرقام محسوبة من بياناتك أنت', en: 'numbers computed from YOUR rows', evidence: hasAny(/groupTotals|computeMetric|reduce\(|total/i) },
         { ar: 'حفظ دائم + تصدير CSV + قراءة من خادم المشروع إن وُجد', en: 'durable storage, CSV export, and reads from the project API when one exists', evidence: hasAll(/localStorage|fetch|api/i, /toCsv|\\.csv|download/i) },
     ],
@@ -915,7 +933,7 @@ const PAGE_SECTIONS: Record<string, string[]> = {
  *  that ignored the pages entirely left all six of its assertions green.
  */
 export function artifactLanguageIsArabic(request: string, replyIsArabic: boolean): boolean {
-    const columns = (derivedColumns(request) || []).map((c: any) => String(c.label || ''));
+    const columns = (columnsAnywhereInHisRequest(request) || []).map((c: any) => String(c.label || ''));
     const pages = thePagesHeNamed(
         String(request || '')
             .replace(/[ً-ْٰـ]/g, '')

@@ -102,7 +102,45 @@ const ALIF_MAQSURA = new RegExp('ى', 'g');
 /** THE PAGES HE NAMED — read from his sentence, not chosen from a list. */
 export interface NamedPage { title: string; slug: string; }
 
-const AR_STOP_TOKEN = new RegExp('^(?:مع|تحتوي|يحتوي|فيها|فيه|بها|ثم|بحيث|و|او|أو)$');
+/**
+ *  A PAGE NAME ENDS WHERE A NEW INSTRUCTION BEGINS.
+ *
+ *  Measured on his own request. He named three pages and this reader
+ *  returned five, three of them nonsense:
+ *
+ *      «التقارير في»                 ← «صفحة التقارير. في صفحة…»
+ *      «المخزون اعمل جدول»           ← «في صفحة المخزون اعمل جدول…»
+ *      «التقارير اعرض إجمالي قيمة»   ← «في صفحة التقارير اعرض…»
+ *
+ *  Each false page became an acceptance criterion Joe could never meet, so a
+ *  build that had done what he asked reported itself short.
+ *
+ *  Two words were missing from this list and both are grammar, not vocabulary:
+ *  bare «في» (the list knew «فيه» and «فيها» only), and the imperative that
+ *  opens his next order. A name is a noun phrase; it stops at a preposition
+ *  and it stops at a verb aimed at Joe.
+ */
+const AR_STOP_TOKEN = new RegExp('^(?:مع|تحتوي|يحتوي|فيها|فيه|بها|ثم|بحيث|و|او|أو'
+    //  The imperatives he actually writes to Joe. Not a catalogue of page
+    //  words — a catalogue of ORDERS, which is a closed and different set,
+    //  and one of them can never be part of a name.
+    + '|اعمل|أعمل|اعرض|أعرض|اضف|أضف|اجعل|أجعل|ابن|انشئ|أنشئ|احذف|امسح|اكتب|اربط|ضع'
+    + ')$');
+
+/**
+ *  A PREPOSITION ENDS A NAME — BUT ONLY ONE THAT HAS ALREADY STARTED.
+ *
+ *  «صفحة التقارير. في صفحة…» produced a page called «التقارير في», so bare
+ *  «في» had to end a name. I first put it with the tokens above, and the
+ *  negative case caught the damage immediately: «صفحة من نحن» is one of the
+ *  commonest page names there is, and «من» as its FIRST word was killed with
+ *  it — three real pages became two.
+ *
+ *  The rule the file already used for «ل» is the right one, and it is about
+ *  position rather than vocabulary: a preposition standing in FRONT of a name
+ *  belongs to it, and one standing AFTER it belongs to the next clause.
+ */
+const AR_PREPOSITION = new RegExp('^(?:في|فى|من|على|الى|إلى|عن|حتى)$');
 const AR_NOT_A_NAME = new RegExp('^(?:واحده|واحدة|فقط|جديده|جديدة|اخري|أخرى|كل|هذه|هذا|رئيسيه)$');
 const AR_PAGE_WORD  = new RegExp('صفح[ةه]', 'g');
 //  A word that says HOW MANY, or a preposition that merely stands before
@@ -123,6 +161,7 @@ function arabicNames(probe: string): string[] {
             //  the next page mention ends this one — «صفحة خدمات وصفحة اتصل»
             if (new RegExp('^و?صفح[ةه]').test(raw)) break;
             if (AR_STOP_TOKEN.test(raw)) break;
+            if (name.length > 0 && AR_PREPOSITION.test(raw)) break;
             //  «صفحة تواصل لشركة تنظيف»: the ل- phrase says who the site is FOR,
             //  it is not part of what he called the page. It only ends a name
             //  that has already started — «للاسئلة» as a first word is the name.
@@ -211,6 +250,7 @@ export function thePagesHeNamed(probe: string): NamedPage[] {
     const asked = clausesThatAsk(probe);
     const raw = [...arabicNames(asked), ...englishNames(asked)];
     const out: NamedPage[] = [];
+    const seenTitles = new Set<string>();
     let unknown = 0;
     for (const title of raw) {
         /**
@@ -250,6 +290,21 @@ export function thePagesHeNamed(probe: string): NamedPage[] {
             .replace(new RegExp('[^a-z0-9]+', 'g'), '-')
             .replace(new RegExp('^-+|-+$', 'g'), '')
             .replace(new RegExp('[0-9]', 'g'), '');
+        /**
+         *  A PAGE HE NAMED TWICE IS ONE PAGE.
+         *
+         *  He wrote «صفحة التقارير» when listing his pages and «في صفحة
+         *  التقارير اعرض…» when saying what goes on it. Deduplicating by SLUG
+         *  cannot see that: an Arabic title has no latin slug, so each mention
+         *  took the next free letter and one page became `page-c` and
+         *  `page-e` — two acceptance criteria for one page, one of which no
+         *  build could ever satisfy.
+         *
+         *  So the identity of a page is the name he gave it, folded the same
+         *  way the map above is folded, and the slug is assigned after.
+         */
+        if (seenTitles.has(key)) continue;
+        seenTitles.add(key);
         const slug = hit ? hit[1]
             : (latin.length >= 2 ? latin
                 : 'page-' + String.fromCharCode(97 + Math.min(unknown++, 24)));
