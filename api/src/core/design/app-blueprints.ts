@@ -282,6 +282,36 @@ const PAGE_SIGNAL = /صفحة\s*(?:هبوط|تعريف(?:ية)?|تسويقية)|
  * as "not a brochure" or "requiring no API key or account" cannot create a
  * false subject while an affirmative "brochure for my bakery" remains visible.
  */
+/**
+ *  ⛔ THE WORD FOR A WEBSITE IDENTIFIES A WEBSITE.
+ *
+ *  PAGE_SIGNAL above knows «landing page», «portfolio», «brochure» and
+ *  «one-pager» — and did not know «website» or «موقع», the single most
+ *  common way anyone asks for one. Measured live on the reference matrix:
+ *
+ *      Build a responsive WEBSITE for a bicycle repair studio. Include a
+ *      service list with prices, opening hours, location, phone CTA, and a
+ *      booking form.
+ *          ->  app=booking, engine=records
+ *          ->  Bookings | Providers | Add a booking | search | Export CSV
+ *
+ *  Six things asked for, one built, as a CRUD table. «booking form» is one
+ *  item of the six; it won because it was the only one the catalogue knew,
+ *  and nothing asked whether the sentence had already said what it wanted.
+ *
+ *  A site noun is not as loud as «landing page», so it does not get the same
+ *  unconditional early return: it answers only when the request does NOT
+ *  also ask for an application. «اعمل تطبيق حجوزات» stays an app,
+ *  «اعمل موقع فيه نموذج حجز» becomes the site he asked for. Reading
+ *  the whole request is the whole point.
+ */
+const SITE_NOUN = /(?:^|[^\p{L}\p{N}_])(?:موقع|موقعا|website|web\s?site)(?:[^\p{L}\p{N}_]|$)/iu;
+
+export function siteNounWithoutAppRequest(request: string): boolean {
+    const t = String(request || '');
+    return SITE_NOUN.test(t) && !APP_SIGNAL.test(t);
+}
+
 export function maskNegatedSpans(text: string): string {
     return String(text || '').replace(
         // JS `\\b` is ASCII-oriented and therefore unsafe for Arabic. Require
@@ -339,6 +369,9 @@ export function detectAppKind(requestRaw: string): AppKind | null {
     // «صفحة هبوط لتطبيق خرائط» is a page about an app — the document the user
     // named wins, exactly as classifyBuildScope decides it.
     if (PAGE_SIGNAL.test(intentRequest)) return null;
+    //  …and the plain word for a site, when nothing in the request asks for
+    //  an application. See siteNounWithoutAppRequest above for what this cost.
+    if (siteNounWithoutAppRequest(intentRequest)) return null;
     // Two named collections are a stronger contract than either word alone.
     // This prevents «notes and tasks» from becoming only a task table or a
     // React-Native-shaped scaffold; the builder receives both surfaces.
