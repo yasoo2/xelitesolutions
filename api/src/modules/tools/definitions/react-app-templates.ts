@@ -21,6 +21,7 @@
 import type { AppBlueprint } from '../../../core/design/app-blueprints';
 import { heAskedForATable } from '../../../core/design/app-blueprints';
 import { thePagesHeNamed } from '../../../core/design/site-plan';
+import { derivedTables } from '../../../core/design/app-blueprints';
 import { ROLES } from '../../../core/design/roles';
 
 /** Escape for a JS single-quoted literal inside generated source. */
@@ -89,6 +90,13 @@ export interface AppBuildOptions {
 /* ── content.js — the app's own shape, nothing borrowed from a brochure ──── */
 
 export function fileAppContentJs(bp: AppBlueprint, o: AppBuildOptions): string {
+    //  A newline as a NAMED constant. Writing the escape inline, inside a
+    //  template literal that is itself building template literals, is how a
+    //  join lost its backslash and left a real line break inside a quoted
+    //  string — an unterminated literal in every generated file. It happened
+    //  twice within a minute: once in the code and once in the comment
+    //  explaining it. Named, it cannot happen a third time.
+    const NL = String.fromCharCode(10);
     const apiResources = o.apiResources || (bp.kind === 'productivity' && o.api ? {
         notes: o.api,
         tasks: String(o.api).replace(/\/notes\/?$/i, '/tasks'),
@@ -141,6 +149,34 @@ ${(() => {
     })()}
   ],
   mainPage: '${q((thePagesHeNamed(o.sourceRequest || '')[0] || { slug: '' }).slug)}',
+  //  EVERY TABLE HE NAMED, NOT ONLY THE FIRST.
+  //
+  //  Measured: «جدول المنتجات فيه … وجدول الطلبات فيه …» was read correctly —
+  //  derivedTables returned both, with four columns and five — and the
+  //  blueprint carried only the first. The delivery then said so honestly
+  //  («بنيتُ المنتجات فقط — ولم أبنِ: الطلبات»), which is why this was a
+  //  missing capability and never a lie. It is built now.
+  //
+  //  Each table gets its own store key, so the orders he types do not land in
+  //  the products list, and its own page when he named pages. The shell hands
+  //  the records screen a content object with that table's fields, so the
+  //  screen itself did not have to change at all.
+  tables: [
+${(() => {
+        const tables = derivedTables(o.sourceRequest || '');
+        if (tables.length < 2) return '';
+        const pages = thePagesHeNamed(o.sourceRequest || '');
+        return tables.map((t, i) => {
+            const slug = (pages[i] && pages[i].slug) || `table-${i + 1}`;
+            const title = t.subject || (pages[i] && pages[i].title) || `${i + 1}`;
+            const cols = t.columns.map(f => `        { key: '${q(f.key)}', label: '${q(f.label)}', type: '${q(f.type)}'${(f as any).options ? `, options: [${(f as any).options.map((x: string) => `'${q(x)}'`).join(', ')}]` : ''}${(f as any).required ? ', required: true' : ''}${(f as any).min !== undefined ? `, min: ${(f as any).min}` : ''}${(f as any).minExclusive ? ', minExclusive: true' : ''}${(f as any).primary ? ', primary: true' : ''} },`).join(NL);
+            return `    { slug: '${q(slug)}', title: '${q(title)}', storeKey: '${q(o.storeKey)}:${q(slug)}',
+      fields: [
+${cols}
+      ] },`;
+        }).join(NL);
+    })()}
+  ],
   fields: [
 ${bp.fields.map(f => `    { key: '${q(f.key)}', label: '${q(f.label)}', type: '${q(f.type)}'${f.options ? `, options: [${f.options.map(x => `'${q(x)}'`).join(', ')}]` : ''}${f.required ? ', required: true' : ''}${f.min !== undefined ? `, min: ${f.min}` : ''}${f.minExclusive ? ', minExclusive: true' : ''}${f.primary ? ', primary: true' : ''} },`).join('\n')}
   ],
@@ -298,6 +334,8 @@ function SignIn({ api }) {
  * 40 kB and a peer-dependency tree to have one.
  */
 const ROUTES = (content.pages || []).map(p => ({ path: p.path, title: p.title, slug: p.slug }));
+/**  The table belonging to a page, when he named more than one. */
+const TABLE_FOR = (slug) => (content.tables || []).find(t => t.slug === slug) || null;
 
 function usePage() {
   const first = ROUTES.length ? ROUTES[0].slug : '';
@@ -357,7 +395,17 @@ export default function App() {
         </nav>
       ) : null}
       <main className="app-main">
-        {ROUTES.length > 1 && page !== (content.mainPage || (ROUTES[0] && ROUTES[0].slug)) ? (
+        {TABLE_FOR(page) ? (
+          //  THE TABLE HE NAMED FOR THIS PAGE.
+          //
+          //  «جدول المنتجات فيه … وجدول الطلبات فيه …» was read as two tables
+          //  all along — four columns and five — and only the first was ever
+          //  built. The screen itself needs no change: it is handed a content
+          //  object carrying THIS table's fields and its own store key, so the
+          //  orders he types cannot land in the products list.
+          <${C} content={{ ...content, fields: TABLE_FOR(page).fields, storeKey: TABLE_FOR(page).storeKey,
+            entityMany: TABLE_FOR(page).title, title: TABLE_FOR(page).title }} />
+        ) : ROUTES.length > 1 && page !== (content.mainPage || (ROUTES[0] && ROUTES[0].slug)) ? (
           <section className="page-blank">
             <h2>{(ROUTES.find(r => r.slug === page) || {}).title}</h2>
             {/*  HE NAMED THIS PAGE AND SAID NOTHING ABOUT WHAT IS ON IT.
