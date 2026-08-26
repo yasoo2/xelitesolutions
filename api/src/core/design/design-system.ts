@@ -402,9 +402,13 @@ export function lightTokenBlock(p: Palette): string {
   --bg:${p.bg}; --surface:${p.surface}; --text:${p.text};
   --text-muted:${p.textMuted}; --border:${p.border};
   --tint:${p.tint}; --on-tint:${p.onTint}; --brand-text:${p.brandText};
+  --card:${hslCss(p.hue, 44, 97)}; --panel:${hslCss(p.hue, 40, 94)}; --chip:${p.tint};
+  --line:${p.border}; --muted:${p.textMuted};
   --shadow-sm:0 1px 2px rgba(15,23,42,.06),0 1px 3px rgba(15,23,42,.08);
   --shadow-md:0 8px 24px -8px rgba(15,23,42,.18);
   --shadow-lg:0 24px 60px -16px rgba(15,23,42,.24);
+  --shadow-xs:0 1px 1px rgba(15,23,42,.05);
+  --shadow-brand:0 10px 30px -12px ${hexAlpha(p.primary, 0.45)};
 `;
 }
 
