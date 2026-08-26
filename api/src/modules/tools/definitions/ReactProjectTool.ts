@@ -3752,11 +3752,29 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             //  four look as though they had not worked.
             'src/styles/base.css': (() => {
                 const theme = require('../../../core/design/theme');
-                const layouts = require('../../../core/design/layouts');
-                const composition = layouts.pickArchetype(kind, request);
+                //  ⛔ COMPOSED, NOT CHOSEN. The line above this one used to
+                //  read pickArchetype() and take one of seven named layouts.
+                //  The owner's judgement on that: «You are putting Joe inside
+                //  limits and imprisoning him. It makes no sense for a system
+                //  as large as Joe to own seven designs.» He was right, and
+                //  it is his own fourth law: a table of seven names is a
+                //  catalogue, and the eighth business he describes tomorrow
+                //  was never on it.
+                //
+                //  composeDesign derives TEN decisions from his sentence --
+                //  rhythm, measure, split, alignment, radius, rule weight,
+                //  elevation, accent, density, texture -- each inside a band a
+                //  designer would work in. Measured on a hundred briefs: a
+                //  hundred distinct designs, and every dimension varying
+                //  independently of the others.
+                //
+                //  No model sits in this path, so the same brief still
+                //  rebuilds the same page exactly.
+                const composer = require('../../../core/design/composer');
+                const genome = composer.composeDesign(request);
                 return [
                     fileBaseCss(family) + directivesCss(directives),
-                    layouts.layoutCss(composition),
+                    composer.composedCss(genome),
                     theme.revealCss(theme.pickRevealStyle(request)),
                 //  A named constant, because a join whose separator loses its
                 //  escape puts a REAL newline inside a quoted string and the

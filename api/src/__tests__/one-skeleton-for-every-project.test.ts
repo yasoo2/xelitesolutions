@@ -42,11 +42,16 @@ const PROJECT = 'modules/tools/definitions/ReactProjectTool.ts';
 
 describe('the page itself changes, not only what fills it', () => {
     it('POSITIVE — the project generator consults the composition layer', () => {
-        expect(SRC(PROJECT)).toContain('pickArchetype');
+        //  ⛔ THE ASSERTION MOVED BECAUSE THE ANSWER DID.
+        //  This demanded pickArchetype -- selection from seven. The owner
+        //  called that a cage, and he was right: it is a catalogue. The
+        //  generator composes now, so the claim is that it consults the
+        //  COMPOSER, not that it consults the shelf.
+        expect(SRC(PROJECT)).toContain('composeDesign');
     });
 
     it('POSITIVE — and ships its stylesheet', () => {
-        expect(SRC(PROJECT)).toContain('layoutCss');
+        expect(SRC(PROJECT)).toContain('composedCss');
     });
 
     it('POSITIVE — two subjects get two compositions', () => {
