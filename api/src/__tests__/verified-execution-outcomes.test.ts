@@ -43,9 +43,11 @@ describe('verified execution outcomes', () => {
         expect(verificationGuard).toBeLessThan(recovery);
     });
 
-    it('requires all work and verification to complete before a phase returns ok', () => {
+    it('separates phase completion from the no-error signal for partial execution', () => {
         const phaseExecutor = source('modules', 'tools', 'definitions', 'PhaseExecutorTool.ts');
-        expect(phaseExecutor).toContain("const ok = status === 'completed';");
+        expect(phaseExecutor).toContain("const ok = status === 'completed'");
+        expect(phaseExecutor).toContain("status === 'partial' && executedCount > 0");
+        expect(phaseExecutor).toContain("execution?: 'ran' | 'skipped'");
         expect(phaseExecutor).toContain("task: 'Auto-build check'");
     });
 });

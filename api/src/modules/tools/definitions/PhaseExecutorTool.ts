@@ -1030,6 +1030,8 @@ export class PhaseExecutorTool implements ToolDefinition {
             phaseNumber: { type: 'number' as const },
             status: { type: 'string' as const },
             completedTasks: { type: 'number' as const },
+            executedTasks: { type: 'number' as const },
+            skippedTasks: { type: 'number' as const },
             totalTasks: { type: 'number' as const },
             results: { type: 'array' as const },
             nextPhase: { type: 'number' as const }
@@ -1065,6 +1067,7 @@ export class PhaseExecutorTool implements ToolDefinition {
             task: string;
             tool: string;
             ok: boolean;
+            execution?: 'ran' | 'skipped';
             error?: string;
             message?: string;
             command?: string;
@@ -1176,8 +1179,7 @@ export class PhaseExecutorTool implements ToolDefinition {
 
                 if (!askedFor || askedFor === 'manual') {
                     appendLog(`[PhaseExecutor] Task ${i + 1}: "${taskDesc}" — skipped (manual/no tool)`);
-                    results.push({ task: taskDesc, tool: 'manual', ok: true });
-                    completedCount++;
+                    results.push({ task: taskDesc, tool: 'manual', ok: true, execution: 'skipped' });
                     continue;
                 }
 
@@ -1198,8 +1200,7 @@ export class PhaseExecutorTool implements ToolDefinition {
                 if (!resolved.tool) {
                     appendLog(`[PhaseExecutor] ⏭️ Task ${i + 1}: "${taskDesc}" — «${askedFor}» ليست أداة في هذا النظام` +
                         `${(resolved as any).why === 'not_software' ? ' (عمل تنظيمي بشري)' : ''}. تخطّيتُها ولم أوقف البناء.`);
-                    results.push({ task: taskDesc, tool: 'manual', ok: true });
-                    completedCount++;
+                    results.push({ task: taskDesc, tool: 'manual', ok: true, execution: 'skipped' });
                     continue;
                 }
                 let toolName = resolved.tool;
@@ -1234,8 +1235,7 @@ export class PhaseExecutorTool implements ToolDefinition {
                     const why = unrunnableShellStep(rawTaskArgs.command);
                     if (why) {
                         appendLog(`[PhaseExecutor] ⏭️ Task ${i + 1}: "${taskDesc}" — ${why}`);
-                        results.push({ task: taskDesc, tool: 'manual', ok: true });
-                        completedCount++;
+                        results.push({ task: taskDesc, tool: 'manual', ok: true, execution: 'skipped' });
                         continue;
                     }
                 }
@@ -1335,16 +1335,15 @@ export class PhaseExecutorTool implements ToolDefinition {
                         task: taskDesc,
                         tool: toolName,
                         ok: true,
+                        execution: 'skipped',
                         message: 'Skipped unapproved public exposure in the local engineering pipeline; use the verified loopback project_run URL.',
                     });
-                    completedCount++;
                     continue;
                 }
                 const argsIssue = plannedArgsIssue(toolName, toolArgs);
                 if (argsIssue) {
                     appendLog(`[PhaseExecutor] ⏭️ Task ${i + 1}: "${taskDesc}" — ${argsIssue}`);
-                    results.push({ task: taskDesc, tool: 'manual', ok: true, message: argsIssue });
-                    completedCount++;
+                    results.push({ task: taskDesc, tool: 'manual', ok: true, execution: 'skipped', message: argsIssue });
                     continue;
                 }
 
@@ -1362,6 +1361,7 @@ export class PhaseExecutorTool implements ToolDefinition {
                         task: taskDesc,
                         tool: toolName,
                         ok: false,
+                        execution: 'ran',
                         error: preflightError,
                         ...(toolName === 'shell_execute' && typeof toolArgs.command === 'string'
                             ? { command: toolArgs.command.slice(0, 1000) }
@@ -1409,7 +1409,7 @@ export class PhaseExecutorTool implements ToolDefinition {
                             : '';
                         const said = String(output.message || terminalReport).trim();
                         results.push({
-                            task: taskDesc, tool: toolName, ok: true,
+                            task: taskDesc, tool: toolName, ok: true, execution: 'ran',
                             ...(said ? { message: said.slice(0, 8000) } : {}),
                         });
                         completedCount++;
@@ -1466,7 +1466,7 @@ export class PhaseExecutorTool implements ToolDefinition {
                                     });
                                     if (launcherResult.ok) {
                                         appendLog(`[PhaseExecutor] ✅ Manifest-aware launcher recovery succeeded: npm run ${launcher.script}`);
-                                        results.push({ task: taskDesc, tool: toolName, ok: true, message: `Used package.json script ${launcher.script} after the requested npm script was absent.` });
+                                        results.push({ task: taskDesc, tool: toolName, ok: true, execution: 'ran', message: `Used package.json script ${launcher.script} after the requested npm script was absent.` });
                                         completedCount++;
                                         continue;
                                     }
@@ -1495,6 +1495,7 @@ export class PhaseExecutorTool implements ToolDefinition {
                             task: taskDesc,
                             tool: toolName,
                             ok: false,
+                            execution: 'ran',
                             error: currentRunError,
                             ...((toolResult as any)?.recoverable === true ? { recoverable: true } : {}),
                             ...(failedMessage ? { message: failedMessage.slice(0, 8000) } : {}),
@@ -1539,7 +1540,7 @@ export class PhaseExecutorTool implements ToolDefinition {
                                 });
                                 if (retryResult.ok) {
                                     appendLog(`[PhaseExecutor] ✅ Retry succeeded for task ${i + 1}: ${toolName}`);
-                                    results[results.length - 1] = { task: taskDesc, tool: toolName, ok: true };
+                                    results[results.length - 1] = { task: taskDesc, tool: toolName, ok: true, execution: 'ran' };
                                     completedCount++;
                                 } else {
                                     appendLog('[PhaseExecutor] ⛔ Retry also failed. Stopping phase.');
@@ -1570,6 +1571,7 @@ export class PhaseExecutorTool implements ToolDefinition {
                         task: taskDesc,
                         tool: toolName,
                         ok: false,
+                        execution: 'ran',
                         error: currentRunError,
                         ...(runEvidenceId ? { runId: runEvidenceId } : {}),
                         ...(runEvidenceRoot ? { projectRoot: runEvidenceRoot } : {}),
@@ -1600,17 +1602,28 @@ export class PhaseExecutorTool implements ToolDefinition {
                 }
             }
 
-            const allOk = results.length > 0 && results.every(r => r.ok);
-            let status = allOk ? 'completed' : (completedCount > 0 ? 'partial' : 'failed');
+            const taskResults = results.slice();
+            const skippedCount = taskResults.filter(r => r.execution === 'skipped').length;
+            const executedCount = taskResults.filter(r => r.execution === 'ran').length;
+            const failedCount = taskResults.filter(r => r.execution === 'ran' && !r.ok).length;
+            const allOk = taskResults.length > 0 && taskResults.every(r => r.ok);
+            // `ok` remains the no-error signal for individual tasks. Phase status
+            // is the execution truth: skipped-only is never completed, while
+            // mixed work is partial rather than a failed tool run.
+            let status = allOk && skippedCount === 0
+                ? 'completed'
+                : (skippedCount > 0 && executedCount === 0
+                    ? 'skipped'
+                    : (skippedCount > 0 || completedCount > 0 ? 'partial' : 'failed'));
             // This is evidence, not merely an English error message. Downstream
             // orchestration must distinguish a code task that failed to run from
             // a phase whose explicit acceptance check disproved delivery.
             let verificationFailed = false;
             let verificationUnavailable = false;
 
-            appendLog(`[PhaseExecutor] Phase ${phaseTag} ${status}: ${completedCount}/${totalTasks} tasks completed`);
+            appendLog(`[PhaseExecutor] Phase ${phaseTag} ${status}: ${executedCount}/${totalTasks} executed · ${skippedCount} skipped${failedCount ? ` · ${failedCount} failed` : ''}`);
 
-            if (phase.verificationTask && allOk) {
+            if (phase.verificationTask && allOk && executedCount > 0) {
                 const vTask = phase.verificationTask;
                 // Same law as the tasks: a verification step that names a tool
                 // nobody has verifies nothing. project_detect always exists and
@@ -1652,7 +1665,7 @@ export class PhaseExecutorTool implements ToolDefinition {
                         const checkerError = vToolName === 'browser_run'
                             ? `verification_unavailable: ${verificationArgsIssue}`
                             : verificationArgsIssue;
-                        results.push({ task: vTaskDesc, tool: vToolName, ok: false, error: checkerError });
+                        results.push({ task: vTaskDesc, tool: vToolName, ok: false, execution: 'ran', error: checkerError });
                         verificationFailed = true;
                         verificationUnavailable = vToolName === 'browser_run';
                         status = 'partial';
@@ -1661,7 +1674,7 @@ export class PhaseExecutorTool implements ToolDefinition {
 
                         if (vResult.ok) {
                         appendLog(`[PhaseExecutor] ✅ Verification passed for Phase ${phaseTag}`);
-                        results.push({ task: vTaskDesc, tool: vToolName, ok: true });
+                        results.push({ task: vTaskDesc, tool: vToolName, ok: true, execution: 'ran' });
                         } else {
                             const vErr = String(vResult.error || 'Verification failed');
                             const checkerUnavailable = vToolName === 'browser_run'
@@ -1669,7 +1682,7 @@ export class PhaseExecutorTool implements ToolDefinition {
                             appendLog(checkerUnavailable
                                 ? `[PhaseExecutor] ⚠️ Verification unavailable: ${vErr}`
                                 : `[PhaseExecutor] ⚠️ Verification failed: ${vErr}`);
-                            results.push({ task: vTaskDesc, tool: vToolName, ok: false, error: checkerUnavailable ? `verification_unavailable: ${vErr}` : vErr });
+                            results.push({ task: vTaskDesc, tool: vToolName, ok: false, execution: 'ran', error: checkerUnavailable ? `verification_unavailable: ${vErr}` : vErr });
                             verificationFailed = true;
                             verificationUnavailable = checkerUnavailable;
                             status = 'partial';
@@ -1677,7 +1690,7 @@ export class PhaseExecutorTool implements ToolDefinition {
                     }
                 } catch (vError: any) {
                     appendLog(`[PhaseExecutor] ⚠️ Verification error: ${vError.message}`);
-                    results.push({ task: vTaskDesc, tool: vToolName, ok: false, error: vError.message });
+                    results.push({ task: vTaskDesc, tool: vToolName, ok: false, execution: 'ran', error: vError.message });
                     verificationFailed = true;
                     status = 'partial';
                 }
@@ -1686,7 +1699,7 @@ export class PhaseExecutorTool implements ToolDefinition {
             const hasCodeTasks = tasks.some((t: any) =>
                 ['ai_write_file', 'write_file', 'file_edit', 'file_edit_advanced', 'scaffold_project'].includes(String(t.tool || ''))
             );
-            if (hasCodeTasks && !phase.verificationTask && allOk && executionContext.workspaceId) {
+            if (hasCodeTasks && !phase.verificationTask && allOk && executedCount > 0 && executionContext.workspaceId) {
                 // The check must run WHERE the project lives and ONLY when there
                 // is build tooling to check. The old version ran `npm run build`
                 // at the workspace ROOT: generated projects live in subfolders,
@@ -1716,7 +1729,7 @@ export class PhaseExecutorTool implements ToolDefinition {
                         if (buildOutput.includes('BUILD_CHECK_FAILED') || !buildResult.ok) {
                             const buildError = String((buildResult as any)?.error || 'Auto-build check failed');
                             appendLog(`[PhaseExecutor] ⚠️ Auto-build check found issues — orchestrator should route to self-fix: ${buildError}`);
-                            results.push({ task: 'Auto-build check', tool: 'shell_execute', ok: false, error: buildError });
+                            results.push({ task: 'Auto-build check', tool: 'shell_execute', ok: false, execution: 'ran', error: buildError });
                             verificationFailed = true;
                             status = 'partial';
                         } else {
@@ -1731,7 +1744,8 @@ export class PhaseExecutorTool implements ToolDefinition {
             // A partial phase contains useful artefacts, but it is not verified
             // delivery. Propagating ok:true here previously let pipeline and chat
             // callers mistake a failed check for a completed engineering phase.
-            const ok = status === 'completed';
+            const ok = status === 'completed'
+                || (status === 'partial' && executedCount > 0 && allOk && !verificationFailed && !verificationUnavailable);
             const primaryError = ok ? undefined : (results.find(r => !r.ok)?.error || (status === 'partial' ? 'Phase completed only partially' : 'Phase failed'));
             // ToolService may serialize the phase result before AgentLoop starts
             // the next phase. Carry only the root already proven by this executor
@@ -1754,6 +1768,8 @@ export class PhaseExecutorTool implements ToolDefinition {
                     phaseName: phase.name,
                     status,
                     completedTasks: completedCount,
+                    executedTasks: executedCount,
+                    skippedTasks: skippedCount,
                     totalTasks,
                     results,
                     nextPhase: phase.phaseNumber + 1,
@@ -1781,6 +1797,8 @@ export class PhaseExecutorTool implements ToolDefinition {
                     phaseNumber: phase?.phaseNumber,
                     status: 'fatal_error',
                     completedTasks: completedCount,
+                    executedTasks: results.filter(r => r.execution === 'ran').length,
+                    skippedTasks: results.filter(r => r.execution === 'skipped').length,
                     totalTasks: Array.isArray(phase?.tasks) ? phase.tasks.length : 0,
                     results,
                     nextPhase: phase?.phaseNumber,

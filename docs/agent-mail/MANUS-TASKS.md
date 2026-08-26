@@ -4,7 +4,7 @@
 **الوكيل:** Manus
 **المستودع:** `yasoo2/xelitesolutions`
 **الفرع المسموح:** `main` فقط
-**آخر تحديث:** 2026-08-25 — إصلاح صدق marker في scripts/gate.sh مكتمل ومدفوع؛ probe clean/failed/reused أخضر، والبوابة المجمّدة النهائية 22/22 و258/4221 وGATE:PASS؛ commit d7ac1acc، HEAD=origin/main=d7ac1acc
+**آخر تحديث:** 2026-08-26 — أُغلق محلياً عطب PhaseExecutor الذي كان يعدّ المهام المتخطاة مكتملة ومتحققة كذباً؛ الحارس post-fix أخضر 3/3، وTSC=0، والبوابة الكاملة GATE:PASS (22/22 batches، 261 suites، 4226 tests). P01 الحي بقي FAIL (EXPECTED=PASS / ACTUAL=FAIL) حتى إعادة تشغيله على SHA مدفوع جديد؛ الدفع لهذه الجولة قيد التنفيذ.
 **قاعدة الهدف الأعلى:** Joe يتعلم كيف يصطاد السمكة، لا أن يأكلها؛ أي أن يبني قدرات هندسية عامة تقرأ الطلب وتثبت الناتج بدلاً من حفظ قوالب قطاعية.
 
 ## قانون التفويض — لا يُسأل المالك
@@ -61,7 +61,21 @@
 
 | المعرّف | الدرس | الحالة | معيار الإغلاق |
 |---|---|---|---|
-| A-CONSUMER-THAT-ASKS-ONLY-WHETHER-A-VALUE-EXISTS | مستهلك `loadCheckpoint` في `WebPageBuilderTool.ts:694/732` يجب أن يميّز `status:'failed'` عن `null`، وألا يحوّل القراءة الفاشلة إلى قيمة صادقة أو نجاح صامت | **مفتوح — مقيس من §201، ولم يُصلح في هذه الجولة** | مراجعة المستهلك بقرار Claude، مع regression يثبت عدم متابعة البناء فوق checkpoint غير المقروء؛ لا يُلمس `WebPageBuilderTool.ts` دون اعتماد مستقل |
+| A-CONSUMER-THAT-ASKS-ONLY-WHETHER-A-VALUE-EXISTS | مستهلك `loadCheckpoint` في `WebPageBuilderTool.ts:694/732` يجب أن يميّز `status:'failed'` عن `null`، وألا يحوّل القراءة الفاشلة إلى قيمة صادقة أو نجاح صامت | **مغلق محلياً ومقاس؛ الدفع في هذه الدفعة** | التغيير: `resumedCheckpoint = cp && !('status' in cp) ? cp : null`؛ regression دائم `api/src/__tests__/checkpoint-consumer.test.ts` يقيس الناتج HTML ورسائل الاستئناف للحالات الأربع: missing/empty/corrupt = `RESUME_MESSAGE_COUNT=0` وبناء fresh، وvalid+sections = `RESUME_MESSAGE_COUNT=1` و`RESUMED_SECTION_LOG_COUNT=2` و`OUTPUT_RESUMED_MARKERS=1`. الأدلة الخام §212 قبل الإصلاح و§221 بعده، وTSC=0 وfocused Jest=1/1؛ لا تغيير في page-store أو checkpoint. |
+
+## برنامج اختبار البرومبتات الحية — 2026-08-26
+
+| المعرّف | المهمة | الحالة | معيار الإغلاق |
+|---|---|---|---|
+| PROMPT-MATRIX-24 | اختبار 24 برومبتاً جديداً مرتبة من السهل إلى المركب في Joe الحقيقي، مع توقع قبلي لكل حالة، معيار قبول مشتق من نصها، ومراقبة المتصفح والملفات وvisual/behaviour/browser QA؛ عند الفشل raw ثم تشخيص مستقل ثم إصلاح عام وregression وإعادة نفس البرومبت | **معتمد من Claude §225؛ P01–P16 جاهزة للتشغيل، P17–P24 محجوزة؛ P01 الحالي FAIL ويعاد بعد إصلاح PhaseExecutor** | نشر القائمة الكاملة قبل التشغيل، تشغيل كل حالة في session منفصل، حفظ النتائج الخام، قياس دقة التوقعات، وعدم إغلاق أي حالة إلا بعد تحقق الناتج الفعلي والبوابات ودفع الإصلاحات المقبولة |
+
+## الحالة الراهنة التي تتقدم على السجلات التاريخية
+
+| المعرّف | الحالة الحالية | الدليل والشرط التالي |
+|---|---|---|
+| A-PHASE-THAT-COUNTS-A-SKIP-AS-A-COMPLETION | **مُصلح محلياً؛ GATE:PASS؛ الدفع الآن** | `PhaseExecutorTool.ts` يميز `execution: ran/skipped`، يعدّ `executedTasks` و`skippedTasks`، يستخدم `status=completed/partial/skipped/failed`، يمنع verification عند `ranCount=0`، وينشر `X/Y executed · Z skipped`. الحارس `phase-executor-skip-guard.test.ts` = 3/3، وتابعه `phase-executor-recoverable.test.ts` ضمن focused=5 suites/184 tests؛ TSC=0، البوابة الكاملة=22/22 batches، 261 suites، 4226 tests، `GATE:PASS`; commit/push وإثبات SHA بعيد هما الخطوة الحالية. |
+| P01-LIVE-2026-08-26 | **FAIL مقاس؛ لا يُغلق** | `EXPECTED=PASS`, `ACTUAL=FAIL`: Joe عرض booking/records بدلاً من service list with prices/opening hours/location/phone CTA/booking form؛ كما أن Phase 2 أعلن completed/verified رغم تخطي ai_write_file. raw `/tmp/p01-live-raw-2026-08-26.md` و`/tmp/p01-phase-status-raw-2026-08-26.md`؛ بعد دفع PhaseExecutor يُعاد P01 نفسه في جلسة جديدة، ولا يبدأ P02 ولا يُشخّص عطب catalog قبل حكم Claude. |
+| PHASE-SKIP-GUARD | **أخضر محلياً** | pre-fix §244: skipped-only وmixed مرّا كـcompleted؛ post-fix §245: skipped-only `ok=false/status=skipped/no verification`، all-ran `completed+verified`، mixed `ok=true/status=partial`; raw `/tmp/claude-phase-skip-guard-pre-fix-p01-shape-raw.md` و`/tmp/claude-phase-skip-guard-post-fix-raw.md`. |
 
 ## قرارات ORBIT والقبول الملزمة — 2026-08-21
 

@@ -692,6 +692,9 @@ ${prev!.html}`
             // design by construction.
             const cpKey = checkpointKey(sessionKey, request, kind);
             const cp = loadCheckpoint(ARTIFACT_DIR, cpKey);
+            // Only a structurally valid BuildCheckpoint can be resumed. Read failures
+            // and valid-empty checkpoints are explicit states, not resumable work.
+            const resumedCheckpoint = cp && !('status' in cp) ? cp : null;
             let resumedSections = 0;
 
             // [PROGRESSIVE PREVIEW] The page grows ON SCREEN as sections land.
@@ -729,15 +732,15 @@ ${prev!.html}`
                         : '👀 Live preview started — watch the page grow section by section');
                 } catch { /* the preview is a window, never a dependency of the build */ }
             };
-            if (cp && sessionId) broadcastThinkingDetail(sessionId, isAr
+            if (resumedCheckpoint && sessionId) broadcastThinkingDetail(sessionId, isAr
                 ? `⏯️ وجدت بناءً سابقًا غير مكتمل لنفس الطلب — أستأنف من نقطة الحفظ`
                 : `⏯️ Found an unfinished earlier build of this request — resuming from checkpoint`);
 
             for (const plan of plans) {
-                const savedHtml = cp?.sections?.[plan.id];
+                const savedHtml = resumedCheckpoint?.sections?.[plan.id];
                 if (savedHtml) {
                     written.push({ ...plan, html: savedHtml, ok: true });
-                    titles.push(cp!.titles?.[plan.id] || plan.spec.split(':')[0]);
+                    titles.push(resumedCheckpoint!.titles?.[plan.id] || plan.spec.split(':')[0]);
                     photosLeft = Math.max(0, photosLeft - (savedHtml.match(/\{\{\s*IMAGE\s*:/gi) || []).length);
                     resumedSections++;
                     streamCodeToLogs(sessionId, 'index.html', savedHtml + '\n',

@@ -2034,8 +2034,9 @@ describe('a plan may only name tools that exist', () => {
     it('the executor checks again, because a phase can arrive from anywhere', () => {
         const E = SRC('modules', 'tools', 'definitions', 'PhaseExecutorTool.ts');
         expect(E).toMatch(/resolvePlannedTool\(askedFor\)/);
-        // an unrunnable name is skipped, never counted as a failed attempt
-        expect(E).toMatch(/if \(!resolved\.tool\)[\s\S]{0,400}completedCount\+\+;[\s\S]{0,40}continue;/);
+        // an unrunnable name is skipped, never counted as executed completion
+        expect(E).toMatch(/if \(!resolved\.tool\)[\s\S]{0,400}execution:\s*['"]skipped['"][\s\S]{0,40}continue;/);
+        expect(E).not.toMatch(/if \(!resolved\.tool\)[\s\S]{0,400}completedCount\+\+/);
         // and the verification step cannot name a ghost either
         expect(E).toMatch(/resolvePlannedTool\(String\(vTask\.tool[\s\S]{0,60}\|\| 'project_detect'/);
     });
