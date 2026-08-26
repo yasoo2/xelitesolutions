@@ -3733,10 +3733,30 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             //  revealCss carries its own prefers-reduced-motion branch, and it
             //  makes the sections VISIBLE rather than merely faster -- a reveal
             //  that still moves is not a concession.
+            //  ⛔ AND THE COMPOSITION — the largest thing that was missing.
+            //
+            //  The owner, after the colours and typefaces and sections had all
+            //  been taught to follow the subject: «Joe builds bad and repeated
+            //  designs on every prompt». He was right, and every fix before
+            //  this one changed what FILLS the page and never the page.
+            //
+            //  layouts.ts has carried seven compositions for a long time --
+            //  split, centered, bento, editorial, showcase, overlap, contrast
+            //  -- chosen from the request by pickArchetype. Its callers were:
+            //  WebPageBuilderTool 1, this generator 0. So a coffee roastery, a
+            //  dental clinic and a law firm got different colours poured into
+            //  one stacked skeleton, and to an eye the skeleton IS the design.
+            //
+            //  Fifth instance of one structure: one design layer, two
+            //  generators, only one wired. This is the one that made the other
+            //  four look as though they had not worked.
             'src/styles/base.css': (() => {
                 const theme = require('../../../core/design/theme');
+                const layouts = require('../../../core/design/layouts');
+                const composition = layouts.pickArchetype(kind, request);
                 return [
                     fileBaseCss(family) + directivesCss(directives),
+                    layouts.layoutCss(composition),
                     theme.revealCss(theme.pickRevealStyle(request)),
                 //  A named constant, because a join whose separator loses its
                 //  escape puts a REAL newline inside a quoted string and the
