@@ -1548,11 +1548,37 @@ Rules:
             }
         }
 
+        /**
+         *  READING WHAT EXISTS IS NOT BUILDING WHAT DOES NOT.
+         *
+         *  Measured on his machine, deterministically. A shop he asked to have
+         *  built was planned as one step:
+         *
+         *      ▶ orders_read
+         *      «لا توجد طلبات بعد — حين يضغط زائر «اطلب الآن» في موقعك …»
+         *
+         *  One sentence of his request — «اعرض عدد الطلبات اليوم» — is a
+         *  REQUIREMENT OF THE THING BEING BUILT: a figure the shop must show.
+         *  The orders branch read it as an instruction to go and read orders
+         *  from a database, and answered a request to build a shop by
+         *  reporting that no orders had arrived.
+         *
+         *  The same class as everything else tonight: A DECISION TAKEN FROM A
+         *  FRAGMENT WHEN THE AUTHORITY IS THE WHOLE REQUEST. The three
+         *  branches below all answer «show me my existing data», and none of
+         *  them carried a build guard — each was relying on nobody writing a
+         *  build request that happens to contain their words. He just did.
+         *
+         *  So the guard is shared, and stated once: a request that reads as a
+         *  build anywhere is never a request to read existing rows.
+         */
+        const heIsAskingToBuild = PlanningEngine.looksLikeBuild(String(intent.goal || ''));
+
         // [BUSINESS PROFILE] «احفظ بيانات عملي» — Joe's business memory:
         // save/show/clear the real contact details every build injects.
         {
             const profileAsk = /(احفظ|خزن|خزّن|سجل|سجّل|اعرض|أعرض|امسح|احذف)\s*[^.\n]{0,12}?(بيانات|ملف)\s*(عملي|العمل|المشروع|النشاط|شركتي|متجري|مطعمي)|\b(business|my)\s*profile\b/i.test(probe);
-            if (profileAsk) {
+            if (profileAsk && !heIsAskingToBuild) {
                 return {
                     id: `profile_${Date.now()}`,
                     goal: intent.goal,
@@ -1566,7 +1592,7 @@ Rules:
         // the API project's database, in the chat, server up or not.
         {
             const ordersAsk = /(اعرض|أعرض|ارني|أرني|شوف|اقرأ|كم|هات)\s*[^.\n]{0,15}?(ال)?طلبات|طلبات\s*(جديدة|الزبائن|العملاء|الموقع)|كم\s*(من\s*)?طلب|هل\s*وصل[^.\n]{0,12}طلب|\b(show|list|read)\b[^.\n]{0,15}\borders\b/i.test(probe);
-            if (ordersAsk) {
+            if (ordersAsk && !heIsAskingToBuild) {
                 return {
                     id: `orders_${Date.now()}`,
                     goal: intent.goal,
@@ -1591,7 +1617,7 @@ Rules:
             const inboxAsk = SITE_INBOX.test(probe)
                 || /(اعرض|أعرض|شوف|كم|هل\s*(وصل|فيه)|اقرأ|اقرا|أقرأ|ارني|أرني|وريني|راجع|جاني|وصلني)\s*[^.\n]{0,25}?(رسائل|رساله|رسالة|الرسائل)|صندوق\s*(الرسائل|النموذج|الوارد)|من\s*راسل|form\s*(inbox|messages|submissions)/i.test(probe);
             const hasArtifact = !!((global as any).joePages?.[activeKey] || (global as any).joeProjects?.[activeKey]);
-            if (inboxAsk && hasArtifact) {
+            if (inboxAsk && hasArtifact && !heIsAskingToBuild) {
                 return {
                     id: `inbox_${Date.now()}`,
                     goal: intent.goal,
