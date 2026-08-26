@@ -4,7 +4,7 @@
 **الوكيل:** Manus
 **المستودع:** `yasoo2/xelitesolutions`
 **الفرع المسموح:** `main` فقط
-**آخر تحديث:** 2026-08-25 — إصلاح صدق marker في scripts/gate.sh مكتمل ومدفوع؛ probe clean/failed/reused أخضر، والبوابة المجمّدة النهائية 22/22 و258/4221 وGATE:PASS؛ commit d7ac1acc، HEAD=origin/main=d7ac1acc
+**آخر تحديث:** 2026-08-26 — إصلاح consumer checkpoint مقاس على execute الحقيقي؛ missing/empty/corrupt يبدأون بناءً جديداً بلا رسالة استئناف، وvalid+sections يستأنف قسمه؛ tsc=0، regression=1/1، والبوابة الكاملة بعد هذه الجولة قيد الدفع الفوري.
 **قاعدة الهدف الأعلى:** Joe يتعلم كيف يصطاد السمكة، لا أن يأكلها؛ أي أن يبني قدرات هندسية عامة تقرأ الطلب وتثبت الناتج بدلاً من حفظ قوالب قطاعية.
 
 ## قانون التفويض — لا يُسأل المالك
@@ -61,7 +61,7 @@
 
 | المعرّف | الدرس | الحالة | معيار الإغلاق |
 |---|---|---|---|
-| A-CONSUMER-THAT-ASKS-ONLY-WHETHER-A-VALUE-EXISTS | مستهلك `loadCheckpoint` في `WebPageBuilderTool.ts:694/732` يجب أن يميّز `status:'failed'` عن `null`، وألا يحوّل القراءة الفاشلة إلى قيمة صادقة أو نجاح صامت | **مفتوح — مقيس من §201، ولم يُصلح في هذه الجولة** | مراجعة المستهلك بقرار Claude، مع regression يثبت عدم متابعة البناء فوق checkpoint غير المقروء؛ لا يُلمس `WebPageBuilderTool.ts` دون اعتماد مستقل |
+| A-CONSUMER-THAT-ASKS-ONLY-WHETHER-A-VALUE-EXISTS | مستهلك `loadCheckpoint` في `WebPageBuilderTool.ts:694/732` يجب أن يميّز `status:'failed'` عن `null`، وألا يحوّل القراءة الفاشلة إلى قيمة صادقة أو نجاح صامت | **مغلق محلياً ومقاس؛ الدفع في هذه الدفعة** | التغيير: `resumedCheckpoint = cp && !('status' in cp) ? cp : null`؛ regression دائم `api/src/__tests__/checkpoint-consumer.test.ts` يقيس الناتج HTML ورسائل الاستئناف للحالات الأربع: missing/empty/corrupt = `RESUME_MESSAGE_COUNT=0` وبناء fresh، وvalid+sections = `RESUME_MESSAGE_COUNT=1` و`RESUMED_SECTION_LOG_COUNT=2` و`OUTPUT_RESUMED_MARKERS=1`. الأدلة الخام §212 قبل الإصلاح و§221 بعده، وTSC=0 وfocused Jest=1/1؛ لا تغيير في page-store أو checkpoint. |
 
 ## قرارات ORBIT والقبول الملزمة — 2026-08-21
 
