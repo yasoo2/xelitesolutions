@@ -70,22 +70,85 @@ export const KNOWN_CONTROLS: Array<{ re: RegExp; ar: string; en: string; match: 
     // this list disagree with the one that inserts the button.
     { re: /(?:ات[صّ]ل|اتص|تواصل)\s*(بنا|معنا)|contact\s*us|contact/i, ar: 'اتصل بنا', en: 'Contact', match: /(?:ات[صّ]ل|اتص|تواصل)\s*(بنا|معنا)|راسلنا|contact/i },
     { re: /التسجيل|إنشاء\s*حساب|انشاء\s*حساب|sign\s*up|register/i, ar: 'إنشاء حساب', en: 'Sign up', match: /التسجيل|إنشاء\s*حساب|انشاء\s*حساب|sign\s*up|register/i },
-    { re: /خدماتنا|services/i, ar: 'خدماتنا', en: 'Services', match: /خدمات|services/i },
+    //  Singular counts. «a service list with prices» asks for a services
+    //  section as plainly as «our services» does, and the plural-only
+    //  pattern silently dropped it from the owner's own reference brief.
+    { re: /خدماتنا|services/i, ar: 'خدماتنا', en: 'Services', match: /خدمات|\bservices?\b/i },
     { re: /الأسعار|الاسعار|pricing|prices/i, ar: 'الأسعار', en: 'Pricing', match: /سعر|أسعار|اسعار|pricing|price/i },
 ];
 
+/**
+ *  ⛔ READ IN ANY INFLECTION, NAMED IN HIS LANGUAGE.
+ *
+ *  Measured on the owner's reference prompt and its Arabic twin:
+ *
+ *      EN  «a service list with prices, opening hours, location, phone CTA,
+ *           and a booking form»          ->  sections: ["الأسعار"]
+ *      AR  «قائمة خدمات بأسعارها وساعات العمل …»  ->  sections: []
+ *
+ *  Two defects in four lines. The name was pushed from `c.ar` whatever
+ *  language the brief was written in, while the `en` twin sat unused beside
+ *  it. And extraction used `re`, which demands one exact inflection --
+ *  «خدماتنا» not «خدمات», "services" not "a service list" -- while a
+ *  looser `match` for the same concept sat one field away, used only for
+ *  verification. One concept, two patterns, and the strict one doing the
+ *  work.
+ *
+ *  Extraction goes through the language layer now, which segments with
+ *  Unicode's own rules and stems with the same stemmer Elasticsearch uses,
+ *  so «خدمات» is «خدماتنا» is «خدماتكم» -- and is never «خدم».
+ */
 export function extractRequirements(request: string): Requirements {
     const r = String(request || '');
+    const { saysAny } = require('../language/arabic');
+    //  His language decides the NAME, because a name he cannot read is a
+    //  requirement he cannot check.
+    const isAr = /[؀-ۿ]/.test(r);
+    const nameOf = (c: { ar: string; en: string }) => (isAr ? c.ar : c.en);
+    //  The concept, in any form he wrote it. `match` is the loose pattern
+    //  this table already carried for verification; extraction reads through
+    //  the word layer, and falls back to that same loose pattern for the
+    //  phrases a stemmer cannot help with.
+    const asks = (c: { re: RegExp; match: RegExp; ar: string; en: string }) =>
+        saysAny(r, [c.ar, c.en]) || c.match.test(r) || c.re.test(r);
     const buttons: string[] = [];
     // Only treat a control as REQUIRED when the user used the word "زر/button"
     // near it — otherwise every page that merely mentions contact would be
     // failed for lacking a contact button.
     const mentionsButtons = /زر|أزرار|ازرار|button/i.test(r);
+    /**
+     *  ⛔ «NEAR IT» WAS WRITTEN IN THE COMMENT AND NOWHERE ELSE.
+     *
+     *  The rule above says a control is REQUIRED as a button only when he
+     *  used the word «زر» near it. The code asked whether that word appears
+     *  ANYWHERE in the request, so «وزر اتصال» turned every recognised
+     *  control in the whole brief into a required button -- and since a
+     *  button is removed from the section list, «قائمة خدمات بأسعارها»
+     *  came back with NO sections at all.
+     *
+     *  A rule stated in a comment with nothing enforcing it is the shape this
+     *  repository keeps paying for. The window is enforced here.
+     */
+    const BUTTON_WORD = /زر|أزرار|ازرار|button/i;
+    const askedAsButton = (c: { re: RegExp; match: RegExp }): boolean => {
+        for (const re of [c.match, c.re]) {
+            const m = new RegExp(re.source, re.flags.replace('g', '') + 'g');
+            let hit: RegExpExecArray | null;
+            while ((hit = m.exec(r)) !== null) {
+                //  The word has to be beside the control, not merely present
+                //  in the same paragraph. Thirty characters is one clause.
+                const before = r.slice(Math.max(0, hit.index - 30), hit.index);
+                if (BUTTON_WORD.test(before)) return true;
+                if (m.lastIndex === hit.index) m.lastIndex++;
+            }
+        }
+        return false;
+    };
     if (mentionsButtons) {
-        for (const c of KNOWN_CONTROLS) if (c.re.test(r)) buttons.push(c.ar);
+        for (const c of KNOWN_CONTROLS) if (asks(c) && askedAsButton(c)) buttons.push(nameOf(c));
     }
     const sections: string[] = [];
-    for (const c of KNOWN_CONTROLS) if (c.re.test(r) && !buttons.includes(c.ar)) sections.push(c.ar);
+    for (const c of KNOWN_CONTROLS) if (asks(c) && !buttons.includes(nameOf(c))) sections.push(nameOf(c));
     return {
         buttons,
         sections,
