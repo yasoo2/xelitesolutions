@@ -6,6 +6,7 @@ import { compactHistoryForPrompt } from './history-compact';
 import { enrichWorkspaceToolInput } from './workspace-evidence';
 import { findActiveBuiltProject } from './active-built-project';
 import { looksLikeBuild } from './buildIntent';
+import { saysAny } from '../language/arabic';
 
 export interface ExecutionStep {
     id: string;
@@ -1029,10 +1030,42 @@ Rules:
          * it describes, without one it honestly says vision is unavailable.
          */
         {
+            /**
+             *  TWO BARE PATTERNS, AND A SHOP HE ASKED FOR BECAME A CHAT.
+             *
+             *  Measured on his machine, deterministically reproducible through
+             *  the planner itself:
+             *
+             *      «اعمل لي متجراً … فيه صفحة المنتجات وصفحة الطلبات.
+             *       جدول المنتجات فيه اسم الصنف والسعر والحالة … وصورة …
+             *       شغّل البناء الحقيقي وافتح المعاينة الحية»
+             *      → steps: ["central_answer"]
+             *
+             *  Joe answered with a plan and asked permission to proceed, after
+             *  being told to run the real build. The two matches, printed:
+             *
+             *      VERB «وصف»  inside «وصفحة الطلبات»   ← «and a page», not «describe»
+             *      NOUN «صور»  inside «وصورة»           ← a COLUMN in his table
+             *
+             *  Neither word was his. This is the Arabic \b problem the language
+             *  layer was built for: `\w` never holds an Arabic letter, so a bare
+             *  pattern reads letters where the question is about words — the same
+             *  defect as «زر» inside «أزرق» and «عدد» inside «متعدد».
+             *
+             *  So both halves go through the word reader, and the guard against
+             *  a build is widened: WANTS_BUILD_RE did not fire on «اعمل لي
+             *  متجراً» either, and one bad reader should not depend on another
+             *  bad reader to be caught. A request that reads as a build anywhere
+             *  is never an image question.
+             */
             const asksImageAnalysis =
-                /(حلل|تحليل|صِف|وصف|افحص|اقرأ|اشرح|analy[sz]e|describe|inspect|examine|explain|read)/i.test(probe)
-                && /(صور|لقط|سكرين|image|photo|picture|screenshot)/i.test(probe);
-            if (asksImageAnalysis && !WANTS_BUILD_RE.test(userGoal)) {
+                saysAny(probe, ['حلل', 'تحليل', 'وصف', 'فحص', 'قرا', 'شرح'])
+                && saysAny(probe, ['صوره', 'صور', 'لقطه', 'سكرين'])
+                || (/\b(analy[sz]e|describe|inspect|examine|explain|read)\b/i.test(probe)
+                    && /\b(image|photo|picture|screenshot)\b/i.test(probe));
+            if (asksImageAnalysis
+                && !WANTS_BUILD_RE.test(userGoal)
+                && !PlanningEngine.looksLikeBuild(String(intent.goal || ''))) {
                 console.log('[PlanningEngine] image-analysis request → direct answer (no tool circus, with or without the file)');
                 return {
                     id: `chat_${Date.now()}`,
