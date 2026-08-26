@@ -4091,7 +4091,11 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                     : `install did not finish (exit ${inst}) — the build below will say what broke`);
             if (installed) {
                 if (sessionId) broadcastThinkingDetail(sessionId, isAr ? '🏗️ أبني نسخة الإنتاج (vite build)…' : '🏗️ Building for production (vite build)…');
-                let b = await run('npm', ['run', 'build'], 180_000);
+                //  …and the build gets the same treatment. Three minutes is
+                //  ample for a warm vite build (measured: 3.77s in his own
+                //  project) and it is the FIRST one, on a cold machine with a
+                //  cold esbuild, that decides whether he ever sees a preview.
+                let b = await run('npm', ['run', 'build'], 600_000);
                 built = b === 0 && fs.existsSync(path.join(proj, 'dist', 'index.html'));
                 shell.note(built
                     ? 'dist/index.html exists — this is a real bundle, not a claim'
