@@ -90,14 +90,57 @@ const NOT_A_FEATURE = /^(?:build|make|create|website|site|app|page|responsive|de
 const OPENS_WITH_THE_ASKING = /^(?:please\s+)?(?:build|make|create|develop|design|generate|write|اعمل|ابن|انشئ|أنشئ|صمم|اصنع|اكتب|بدي|اريد|أريد)(?=\s|$)/iu;
 
 /**
+ *  ⛔ AN INSTRUCTION TO JOE IS NOT A REQUIREMENT OF THE PROJECT.
+ *
+ *  Seen on the owner's own screen, in his own Logs panel, from a prompt he
+ *  wrote himself:
+ *
+ *      ?? Actually use the browser — I did not inspect it
+ *      ?? OPEN — ?? NAVIGATE — ?? CLICK — ?? TYPE — ?? SUBMIT — ?? OBSERVE
+ *      ?? FIND PROBLEM — ?? FIX — ?? RELOAD — ?? TEST AGAIN — ?? VERIFY
+ *      ?? Number of browser actions performed — ?? Pages tested — ?? Forms tested
+ *
+ *      Error: delivery_acceptance_unmapped:req-j47i,req-k0k7,req-el2o, …14 ids
+ *
+ *  His prompt carried a procedural preamble telling JOE how to work — «actually
+ *  use the browser», «OPEN → NAVIGATE → CLICK», «report the number of browser
+ *  actions performed» — and every line of it became a project requirement.
+ *  Twenty-odd criteria, none of them a thing the built site can HAVE, and
+ *  fourteen ids flooding the delivery layer.
+ *
+ *  ⛔ THE DISTINCTION IS CLEAN AND I HAD NOT ENCODED IT: a requirement is
+ *  something the ARTEFACT has; «CLICK» is something JOE does. The existing
+ *  filter refuses the subject of the request — `build a website`, «متجر
+ *  مجوهرات فاخر» — and had nothing to say about an instruction addressed to the
+ *  builder itself.
+ *
+ *  And note where it was found. Every prompt tested all night, mine and the
+ *  gate's, was a clean five-clause build request. **The owner writes real
+ *  prompts with real preambles, and the defect exists only there.** No unit
+ *  guard could have produced its shape — watching him use it did.
+ */
+const IS_AN_INSTRUCTION_TO_JOE = new RegExp(
+    '^(?:'
+    //  Bare imperatives that address the builder, not the build.
+    + 'open|navigate|click|tap|press|type|submit|observe|inspect|verify|test|retest|reload|refresh'
+    + '|fix|repair|report|check|confirm|ensure|make\\s+sure|do\\s+not|don\'t|avoid|skip|start\\s+by'
+    + '|actually\\s+\\w+|find\\s+problem|test\\s+again'
+    //  A tally of what Joe did, which is a report about the run.
+    + '|number\\s+of\\s+\\w+|pages\\s+tested|forms\\s+tested|buttons\\s+tested'
+    + '|errors\\s+(?:discovered|fixed|found)|final\\s+verification'
+    + '|\\u0627\\u0641\\u062a\\u062d|\\u0627\\u0636\\u063a\\u0637|\\u0627\\u0643\\u062a\\u0628|\\u062a\\u062d\\u0642\\u0642|\\u0627\\u062e\\u062a\\u0628\\u0631|\\u0623\\u0639\\u062f|\\u0644\\u0627\\s+\\u062a'
+    + ')(?=\\s|$|[:،,.])', 'iu');
+
+/**
  *  A requirement must be a thing the build can FAIL to deliver. This refuses
- *  the two shapes that cannot fail: the act of asking, and a bare fragment
- *  with no content word of its own.
+ *  the three shapes that cannot: the act of asking, an instruction to Joe
+ *  about how to work, and a bare fragment with no content word of its own.
  */
 export function isJudgeable(text: string): boolean {
     const t = String(text || '').trim();
     if (t.length < 3) return false;
     if (OPENS_WITH_THE_ASKING.test(t)) return false;
+    if (IS_AN_INSTRUCTION_TO_JOE.test(t)) return false;
     const words = t.split(/[^\p{L}\p{N}]+/u).filter(w => w.length > 2 && !NOT_A_FEATURE.test(w));
     return words.length > 0;
 }
@@ -273,7 +316,14 @@ export async function namedRequirements(
         //  is stopped, and «build an online jewelry store» is met by any shop
         //  that exists — a criterion nothing can fail is not a criterion.
         if (!isJudgeable(r.text)) {
-            out.rejected.push({ text: r.text, reason: 'it is the thing you asked for, not something it must do' });
+            //  Two different refusals, because they are two different mistakes
+            //  and he should be told which one his sentence produced.
+            out.rejected.push({
+                text: r.text,
+                reason: IS_AN_INSTRUCTION_TO_JOE.test(r.text.trim())
+                    ? 'it is an instruction to me, not something the project must do'
+                    : 'it is the thing you asked for, not something it must do',
+            });
             continue;
         }
         if (!groundedIn(r.quote, req)) {
