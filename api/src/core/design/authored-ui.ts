@@ -233,7 +233,84 @@ export function behavioursIn(src: string): Set<string> {
     return found;
 }
 
-export function validateAuthored(name: string, code: string, contentKeys: string[], replaces?: string): string[] {
+/**
+ *  DOES THE CODE USE EACH FIELD THE WAY THAT FIELD REALLY IS?
+ *
+ *  ⛔ WRITTEN FROM A CRASH THE OWNER WATCHED. An authored Story section did
+ *  `content.storyBody.map(...)` and the running page died:
+ *
+ *      TypeError: c.storyBody.map is not a function
+ *
+ *  `storyBody` is a STRING. The brief already told the model so -- the shapes
+ *  are handed over -- and it assumed anyway. That is the second crash of the
+ *  same family: the first rendered `heroSecondary`, an object, as a React
+ *  child.
+ *
+ *  ⛔ THE CLASS: every check in this file asks whether a field EXISTS. None
+ *  asked whether it is being used AS WHAT IT IS. A key that exists is not a
+ *  key that can be mapped over, and «it type-checks against the key list» is
+ *  the same shape of false evidence as a pattern matching a word instead of
+ *  testing the claim.
+ *
+ *  Deterministic and general: it reads the shapes already computed from the
+ *  real content, so it needs no list of field names and it grows by itself
+ *  whenever the content does.
+ */
+export function misusedFields(src: string, shapes: Record<string, string>): string[] {
+    const wrong: string[] = [];
+    if (!shapes || !Object.keys(shapes).length) return wrong;
+
+    //  Local names bound by destructuring, so `const { storyBody } = content`
+    //  followed by `storyBody.map(...)` is caught too.
+    const local = new Map<string, string>();
+    for (const m of src.matchAll(/\{([^{}]*)\}\s*=\s*(?:props\s*\.\s*)?content\b/g)) {
+        for (const part of m[1].split(',')) {
+            const raw = part.trim();
+            const source = raw.split(/[:=]/)[0].trim().replace(/^\.\.\./, '');
+            const alias = raw.includes(':') ? raw.split(':')[1].split('=')[0].trim() : source;
+            if (/^[A-Za-z_$][\w$]*$/.test(source) && /^[A-Za-z_$][\w$]*$/.test(alias)) local.set(alias, source);
+        }
+    }
+
+    const isList = (k: string) => String(shapes[k] || '').startsWith('array');
+    const isObject = (k: string) => String(shapes[k] || '').startsWith('object');
+
+    //  1. iterating something that is not a list
+    for (const m of src.matchAll(/\bcontent\s*\??\s*\.\s*([A-Za-z_$][\w$]*)\s*(?:\|\|\s*\[\]\s*\)?)?\s*\.\s*(map|forEach|filter|slice)\s*\(/g)) {
+        if (shapes[m[1]] && !isList(m[1])) wrong.push(`it calls .${m[2]}() on «${m[1]}», which is ${shapes[m[1]]}`);
+    }
+    for (const [alias, source] of local) {
+        /**
+         *  ⛔ BUILT WITH A PLAIN STRING, NOT A TEMPLATE LITERAL.
+         *
+         *  This line read ``new RegExp(`\b${alias}\s*...`)`` — and inside a
+         *  template literal `\b` is the BACKSPACE character and `\s` is just an
+         *  `s`. The pattern could never match anything, so the check was
+         *  silently blind to every destructured name: a guard that runs,
+         *  reports nothing, and looks exactly like a clean result.
+         *
+         *  The repository already records this class from the other side —
+         *  heredocs turning `\b` into a literal 0x08 — and it cost a day then.
+         */
+        const re = new RegExp('[^.\\w$]' + alias + '[^;\\n]{0,24}?\\.\s*(map|forEach|filter|slice|join|some|every)\\s*\\(', 'g');
+        for (const m of src.matchAll(re)) {
+            if (shapes[source] && !isList(source)) wrong.push(`it calls .${m[1]}() on «${source}», which is ${shapes[source]}`);
+        }
+    }
+
+    //  2. rendering an object or a list straight into the markup
+    for (const m of src.matchAll(/\{\s*content\s*\??\s*\.\s*([A-Za-z_$][\w$]*)\s*\}/g)) {
+        if (isObject(m[1]) || isList(m[1])) wrong.push(`it renders «${m[1]}» directly, and it is ${shapes[m[1]]}`);
+    }
+    for (const [alias, source] of local) {
+        if (!(isObject(source) || isList(source))) continue;
+        if (new RegExp(`\{\s*${alias}\s*\}`).test(src)) wrong.push(`it renders «${source}» directly, and it is ${shapes[source]}`);
+    }
+
+    return [...new Set(wrong)];
+}
+
+export function validateAuthored(name: string, code: string, contentKeys: string[], replaces?: string, shapes?: Record<string, string>): string[] {
     const why: string[] = [];
     const src = String(code || '');
 
@@ -268,6 +345,9 @@ export function validateAuthored(name: string, code: string, contentKeys: string
      *  Measured: an authored `Contact` that rendered the fields and dropped
      *  the submit — safe, honest, well-composed, and inert.
      */
+    //  ⛔ Using a field as what it really is — see `misusedFields`.
+    for (const w of misusedFields(src, shapes || {})) why.push(w);
+
     if (replaces) {
         const had = behavioursIn(replaces);
         const has = behavioursIn(src);
@@ -466,7 +546,7 @@ export async function authorComponents(
         //  than refusing a good file over its label.
         const code = drafts[name] || (Object.keys(drafts).length === 1 ? Object.values(drafts)[0] : '');
         if (typeof code !== 'string' || !code.trim()) return { name, reasons: ['the reply held no usable file'] };
-        const why = validateAuthored(name, code, spec.contentKeys, spec.replacing?.[name]);
+        const why = validateAuthored(name, code, spec.contentKeys, spec.replacing?.[name], spec.contentShapes);
         return why.length ? { name, reasons: why } : { name, code: code.trim() + '\n' };
     };
 

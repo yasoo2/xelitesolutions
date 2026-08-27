@@ -407,3 +407,77 @@ describe('the brief hands over his request, not a catalogue', () => {
         }
     });
 });
+
+/**
+ *  ⛔ A FIELD THAT EXISTS IS NOT A FIELD THAT CAN BE MAPPED OVER.
+ *
+ *  Watched live by the owner. An authored Story section called
+ *  `content.storyBody.map(...)` and the running page died:
+ *
+ *      TypeError: c.storyBody.map is not a function
+ *
+ *  `storyBody` is a STRING, and the brief had already said so — the shapes are
+ *  handed to the model. It assumed anyway. Second crash of the same family:
+ *  the first rendered `heroSecondary`, an object, as a React child.
+ *
+ *  THE CLASS: every other check asks whether a field EXISTS. None asked
+ *  whether it is used AS WHAT IT IS — the same shape of false evidence as a
+ *  pattern that matches a word instead of testing the claim.
+ */
+describe('a field is used as what it really is', () => {
+    const SHAPES = {
+        brand: 'string',
+        heroTitle: 'string',
+        storyBody: 'string',
+        heroSecondary: 'object {href, label}',
+        products: 'array of {name, price}',
+    };
+    const keys = Object.keys(SHAPES);
+    const wrap = (body: string) => `import React from 'react';
+
+export default function Story({ content }) {
+  return (
+    <section className="wrap panel">
+      <h2>{content.heroTitle}</h2>
+      ${body}
+    </section>
+  );
+}
+`;
+
+    it('⛔ NEGATIVE — the exact crash: .map() on a string', () => {
+        const why = validateAuthored('Story', wrap('{content.storyBody.map((p) => (<p key={p}>{p}</p>))}'), keys, undefined, SHAPES);
+        expect({ refused: why.length > 0, named: why.join(' ').includes('storyBody') })
+            .toEqual({ refused: true, named: true });
+    });
+
+    it('NEGATIVE — and through a destructured name too', () => {
+        const code = `import React from 'react';
+
+export default function Story({ content }) {
+  const { storyBody = '', heroTitle = '' } = content || {};
+  return (<section className="wrap panel"><h2>{heroTitle}</h2>{storyBody.map((p) => <p key={p}>{p}</p>)}</section>);
+}
+`;
+        expect(validateAuthored('Story', code, keys, undefined, SHAPES).join(' ')).toContain('storyBody');
+    });
+
+    it('⛔ NEGATIVE — the earlier crash: an object rendered as a child', () => {
+        const why = validateAuthored('Story', wrap('<p>{content.heroSecondary}</p>'), keys, undefined, SHAPES);
+        expect(why.join(' ')).toContain('heroSecondary');
+    });
+
+    it('POSITIVE — mapping a real list is fine', () => {
+        expect(validateAuthored('Story', wrap('{(content.products || []).map((p) => (<li key={p.name}>{p.name}</li>))}'), keys, undefined, SHAPES)).toEqual([]);
+    });
+
+    it('POSITIVE — and reading a string as a string is fine', () => {
+        expect(validateAuthored('Story', wrap('<p className="lede">{content.storyBody}</p>'), keys, undefined, SHAPES)).toEqual([]);
+    });
+
+    it('NEGATIVE — with no shapes known, nothing is invented', () => {
+        //  A checker that refuses when it has no information would block every
+        //  build the moment the shapes stopped being passed.
+        expect(validateAuthored('Story', wrap('{content.storyBody.map((p) => <p key={p}>{p}</p>)}'), keys, undefined, {})).toEqual([]);
+    });
+});
