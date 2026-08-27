@@ -603,6 +603,45 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                     await page.goBack({ timeout: 5000 }).catch(() => { });
                     await page.waitForTimeout(200);
                 }
+                /**
+                 *  ⛔ AND THE NEXT CONTROL IS JUDGED ON A CLEAN PAGE, NOT ON
+                 *  THE ONE THIS CLICK LEFT BEHIND.
+                 *
+                 *  Measured on the owner's own store, by hand, in a browser:
+                 *
+                 *      before the click   «في السلة 0»   «السلة 0»
+                 *      after  the click   «في السلة 1»   «السلة 1»
+                 *
+                 *  — and the audit had just reported those very buttons among
+                 *  «8 of 12 controls do nothing», and refused to deliver a store
+                 *  that works.
+                 *
+                 *  The loop pressed every control in turn without ever putting
+                 *  the page back. The first click opened the cart drawer, and
+                 *  every control after it was judged from behind that drawer:
+                 *  covered, or acting on a screen the snapshot could no longer
+                 *  see change. So the FIRST control was measured honestly and
+                 *  the rest inherited its aftermath.
+                 *
+                 *  ⛔ THE CLASS: A VERDICT THAT DEPENDS ON ITS NEIGHBOURS — the
+                 *  same defect as a test whose colour depends on what ran
+                 *  before it, and this repository has already paid for that one
+                 *  in its own suite. Here it made Joe refuse honest work, which
+                 *  is the most expensive kind of false alarm he can raise.
+                 *
+                 *  Escape first, because a drawer or a modal is the common case
+                 *  and it costs nothing; a reload only when the page really did
+                 *  change, so the cheap path stays cheap.
+                 */
+                if (effect && effect !== 'navigation') {
+                    await page.keyboard.press('Escape').catch(() => { });
+                    await page.waitForTimeout(60);
+                    const settled = await page.evaluate(snapshot).catch(() => null);
+                    if (changed(before, settled)) {
+                        await page.reload({ timeout: 8000, waitUntil: 'domcontentloaded' }).catch(() => { });
+                        await page.waitForTimeout(SETTLE_MS);
+                    }
+                }
             } catch { /* the control itself is what is under test */ }
             controls.push({ label: c.label, kind: c.kind as any, worked: !!effect && effect !== 'reload', effect });
         }
