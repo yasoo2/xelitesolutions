@@ -3820,7 +3820,9 @@ export function buildAppFiles(bp: AppBlueprint, o: AppBuildOptions, slugName: st
         social: ['src/components/SocialApp.jsx', fileSocialAppJsx(o.isArabic)],
         //  The brand colour the palette derived, handed over as a hue.
         shop: ['src/components/ShopApp.jsx', fileShopAppJsx(o.isArabic,
-            require('../../../core/design/design-directives').hexToHue(o.brandColor || '') ?? undefined)],
+            require('../../../core/design/design-directives').hexToHue(o.brandColor || '') ?? undefined,
+            //  The unit he named, read from his own sentence. Silence stays silent.
+            require('../../../core/design/authored-catalogue').currencyHeNamed(o.sourceRequest || ''))],
         calculator: ['src/components/CalculatorApp.jsx', fileCalculatorAppJsx(o.isArabic)],
         productivity: ['src/components/ProductivityApp.jsx', fileProductivityAppJsx(o.isArabic)],
         finance: ['src/components/FinanceApp.jsx', fileFinanceAppJsx(o.isArabic)],
@@ -4513,7 +4515,7 @@ export default function SocialApp({ content }) {
  *  colour maths of its own, and falls back to the row-name hash exactly
  *  as cardFor already does when nobody passes one.
  */
-export function fileShopAppJsx(isAr: boolean, brandHue?: number): string {
+export function fileShopAppJsx(isAr: boolean, brandHue?: number, currency?: string): string {
     const T = (ar: string, en: string) => `'${q(isAr ? ar : en)}'`;
     return `import React, { useEffect, useMemo, useState } from 'react';
 import { createStore, uid, computeMetric, apiList, apiCreate, apiPost, apiSiblingLive , cardFor } from '../app/store.js';
@@ -4522,9 +4524,21 @@ import { createStore, uid, computeMetric, apiList, apiCreate, apiPost, apiSiblin
 //  back to the row-name hash, which is what it did before anyone passed one.
 const BRAND_HUE = ${typeof brandHue === 'number' ? String(Math.round(brandHue)) : 'undefined'};
 
+/*  A PRICE WITHOUT A UNIT IS NOT A PRICE.
+ *
+ *  Measured on a generated store: every product read <b>85</b> — a bare
+ *  number beside a product name, because this helper was toLocaleString and
+ *  nothing else. No shop in the world prices anything that way.
+ *
+ *  The unit comes from HIS REQUEST when he named one, and from nowhere else.
+ *  If he was silent the number stands alone rather than wearing a currency
+ *  Joe invented for him — a shop labelled in the wrong money is worse than
+ *  one labelled in none, and the merchant panel is where he sets it. */
+const CURRENCY = ${JSON.stringify(currency || '')};
 const money = (n) => {
   const v = Number(n || 0);
-  return (Math.round(v * 100) / 100).toLocaleString();
+  const shown = (Math.round(v * 100) / 100).toLocaleString();
+  return CURRENCY ? shown + ' ' + CURRENCY : shown;
 };
 
 /**
@@ -4677,12 +4691,35 @@ export default function ShopApp({ content }) {
 
   return (
     <div className="wrap">
+      {/*  ⛔ A SHOPFRONT DOES NOT OPEN WITH THE SHOPKEEPER'S LEDGER.
+        *
+        *  Measured on a generated store: this strip was the FIRST child, with
+        *  aria-label «the numbers», and three of its four counters are a
+        *  merchant's and mean nothing to a buyer — how many product LINES
+        *  exist, the VALUE OF STOCK ON HAND (stock x price = 23,450), and the
+        *  average price. With the search bar under it, 335px of a 900px
+        *  desktop screen and 830px of a 390x844 phone passed before a single
+        *  product appeared. On the phone the visitor saw counters and a search
+        *  box, and nothing else.
+        *
+        *  And the largest type on the page was one of these numbers: .stat b
+        *  is 1.75rem at weight 800 while a product name is 15px and its price
+        *  16px. The row counter shouted louder than anything for sale.
+        *
+        *  The owner: «the worst store I have seen in my life», and later
+        *  «Joe does not build like world-class systems». This was the largest
+        *  single reason.
+        *
+        *  The numbers are not deleted — they are a merchant's, so they live
+        *  where the merchant works. */}
+      {merchant ? (
       <section className="stats" aria-label={${T('الأرقام', 'Numbers')}}>
         {content.metrics.map((m, i) => (
           <div className="stat" key={i}><i className="stat-ico" aria-hidden="true">{({count:'🧾',sum:'💰',todaySum:'📅',todayCount:'📅',sumProduct:'📦',avg:'📈',countWhere:'✅'})[m.kind] || '📊'}</i><div><b>{computeMetric(m, products)}</b><span>{m.label}</span></div></div>
         ))}
         <div className="stat"><i className="stat-ico" aria-hidden="true">🛒</i><div><b>{count}</b><span>{${T('في السلة', 'In cart')}}</span></div></div>
       </section>
+      ) : null}
 
       <section className="panel shop-bar">
         <input
