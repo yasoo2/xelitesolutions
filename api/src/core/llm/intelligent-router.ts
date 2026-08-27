@@ -1505,6 +1505,45 @@ export async function routeToModel(
                 }
             }
                  
+            /**
+             *  ⛔ ANTHROPIC DOES NOT SPEAK THIS PROTOCOL, SO IT LEAVES HERE.
+             *
+             *  Everything below builds an OpenAI client. Anthropic's Messages
+             *  API is not OpenAI-compatible: it wants `x-api-key` rather than
+             *  a bearer token, `anthropic-version`, the system prompt as a
+             *  TOP-LEVEL string instead of a message, and `max_tokens` as a
+             *  REQUIRED field. An OpenAI-shaped call reaches the right host
+             *  and fails with a 400 that reads exactly like a bad key.
+             *
+             *  The router has named 'anthropic' in its provider union since
+             *  long before this line, and `probeProvider` answered it with
+             *  «no_key: a paid provider». A name in a union type is not a
+             *  provider — this repository's most repeated class, in its
+             *  purest form: declared in three places, built in none.
+             *
+             *  The owner asked to run Joe on Claude through the providers
+             *  button. This is that path, and it is the direct one: no
+             *  gateway in the middle, and his key never leaves his machine.
+             */
+            if (cfgProvider === 'anthropic' || cfgProvider === 'claude') {
+                const { AnthropicProvider } = require('./providers/anthropic');
+                const key = String(cfgApiKey || '').trim() || process.env.ANTHROPIC_API_KEY || '';
+                const out = await new AnthropicProvider(key).chatComplete(
+                    flatMessages,
+                    cfgModel || undefined,
+                    //  Its own bound: `providerTimeoutMs` is declared further
+                    //  down for the OpenAI client, and reaching backwards for
+                    //  it would be a use-before-declaration that tsc catches
+                    //  and a reader would not.
+                    { timeoutMs: 120_000 },
+                );
+                if (isUsableAnswer(out)) return out;
+                //  An unusable answer is not a silent fall-through: the mesh
+                //  below is a fallback, and the reason it was reached belongs
+                //  in the log where a diagnosis can find it.
+                console.warn('[IntelligentRouter] Anthropic returned nothing usable — falling through to the mesh.');
+            }
+
             const effectiveBaseUrl = cfgBaseUrl?.trim() || 
                 (cfgProvider === 'openrouter' ? 'https://openrouter.ai/api/v1' :
                  cfgProvider === 'gemini' || cfgProvider === 'google' ? 'https://generativelanguage.googleapis.com/v1beta/openai/' : undefined);
