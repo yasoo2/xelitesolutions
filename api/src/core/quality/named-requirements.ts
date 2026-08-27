@@ -47,6 +47,12 @@ export interface NamedRequirement {
 export interface ExtractionResult {
     requirements: NamedRequirement[];
     rejected: Array<{ text: string; reason: string }>;
+    /**
+     *  How many readings actually answered. Published rather than hidden: a
+     *  system that smooths away its own variance is claiming more than it
+     *  measured, which is the habit this file was written to end.
+     */
+    passes?: number;
 }
 
 /** Words that are Joe's own paperwork or the act of asking, never a feature. */
@@ -191,6 +197,42 @@ export function parseRequirements(raw: string): Array<{ text: string; quote: str
  *  refused by name — an invented requirement is worse than a missing one,
  *  because Joe would then build, and fail, something he was never asked for.
  */
+/**
+ *  ⛔ ONE CALL TO THIS BRAIN IS NOT A MEASUREMENT.
+ *
+ *  Measured twice on the owner's machine, same sentence, same build path,
+ *  hours apart:
+ *
+ *      read from your request: 5 named — a service list with prices · opening
+ *        hours · location · phone CTA · a booking form
+ *      read from your request: 1 named — a service list with prices
+ *
+ *  And it was NOT the filter. Every rejection this reader makes is printed by
+ *  name; the second run printed exactly one, the same one as the first. Four
+ *  swallowed requirements would have printed four refusals. **The model simply
+ *  never returned them** — confirmed by `git diff` showing `extractionPrompt`,
+ *  `isJudgeable`, `groundedIn` and `parseRequirements` byte-identical between
+ *  the two builds.
+ *
+ *  So the reader is not weak, it is UNSTABLE: the same question answered
+ *  differently on consecutive asks. A single call to a nondeterministic source
+ *  is a sample, and this whole file exists because a ledger can be no better
+ *  than the reading it is handed.
+ *
+ *  ⛔ AND THE REPAIR MUST NOT RELAX A SINGLE GUARD. Every candidate from
+ *  every pass still has to be judgeable and still has to be quoted from HIS
+ *  sentence — asking twice widens what is seen, never what is admitted. Five
+ *  and one union to five because the four extra ones were always his words;
+ *  nothing invented can enter through a second door that could not enter
+ *  through the first.
+ *
+ *  Two passes, not five: the cost is a model call and the return falls off
+ *  quickly. The count is published so the instability is visible rather than
+ *  smoothed away — a system that hides its own variance is back to claiming
+ *  more than it measured.
+ */
+const EXTRACTION_PASSES = 2;
+
 export async function namedRequirements(
     request: string,
     isArabic: boolean,
@@ -200,16 +242,32 @@ export async function namedRequirements(
     const req = String(request || '').trim();
     if (!req) return out;
 
-    let raw = '';
-    try {
-        raw = await call(extractionPrompt(req, isArabic));
-    } catch (e: any) {
-        out.rejected.push({ text: '*', reason: `the model could not be reached: ${String(e && e.message || e).slice(0, 120)}` });
+    const passes: string[] = [];
+    let lastError = '';
+    for (let i = 0; i < EXTRACTION_PASSES; i++) {
+        try { passes.push(await call(extractionPrompt(req, isArabic))); }
+        catch (e: any) { lastError = String(e && e.message || e); }
+    }
+    if (!passes.length) {
+        out.rejected.push({ text: '*', reason: `the model could not be reached: ${lastError.slice(0, 120)}` });
         return out;
     }
+    //  The union, in first-seen order. A requirement one pass missed and
+    //  another caught is still his — it passes the same two checks below.
+    const candidates: Array<{ text: string; quote: string }> = [];
+    const candidateSeen = new Set<string>();
+    for (const raw of passes) {
+        for (const r of parseRequirements(raw)) {
+            const key = `${r.text.trim().toLowerCase()}|${r.quote.trim().toLowerCase()}`;
+            if (candidateSeen.has(key)) continue;
+            candidateSeen.add(key);
+            candidates.push(r);
+        }
+    }
+    out.passes = passes.length;
 
     const seen = new Set<string>();
-    for (const r of parseRequirements(raw)) {
+    for (const r of candidates) {
         //  ⛔ Judged where the TEXT is, not only where the quote is. A model
         //  asked «what did he name» answers with the project itself unless it
         //  is stopped, and «build an online jewelry store» is met by any shop
