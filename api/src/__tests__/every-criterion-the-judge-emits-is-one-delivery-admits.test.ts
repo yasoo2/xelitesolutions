@@ -26,6 +26,7 @@
  */
 
 import { acceptanceFor } from '../core/quality/acceptance';
+import { namedRequirements } from '../core/quality/named-requirements';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -91,5 +92,69 @@ describe('the delivery admits every criterion the judge can emit', () => {
         expect(admitted('whatever:1')).toBe(false);
         expect(admitted('column:')).toBe(false);
         expect(admitted('rule:abc')).toBe(false);
+    });
+});
+
+/**
+ * ⛔ AND THE GUARD ABOVE HAD THIS FILE'S OWN DEFECT IN IT.
+ *
+ * Everything above generates ids from `acceptanceFor()` and requires delivery
+ * to admit them — which is right, and which is why the comment at
+ * `ReactProjectTool.ts:294` says this check «would have caught it before it
+ * reached him».
+ *
+ * It did not. Measured live on `f1958dc0`, in the owner's own Browser UI:
+ *
+ *     read from your request: 2 named — a responsive website · a service list with prices
+ *     acceptance denominator: 2 (2 read from your request + 0 structural)
+ *     Error: delivery_acceptance_unmapped:req-4fa,req-m72
+ *
+ * A SECOND producer now puts ids into `acceptance.criteria` — the request
+ * reader — and this file enumerates the families of ONE. **The guard against
+ * the second-writer defect had a second-writer defect**, and it is the same
+ * shape as the seam it was written to protect: two lists that must agree, and
+ * nothing making them.
+ *
+ * So the question it asks is changed. Not «are `acceptanceFor`'s families
+ * admitted» but «is EVERY producer's». The block below is the second producer,
+ * end to end, with no knowledge of how its ids are spelled — so a change to
+ * that spelling is caught here rather than in front of him.
+ */
+describe('EVERY producer of an acceptance id, not merely the first one', () => {
+    const HIS = 'Build a responsive website for a neighborhood bicycle repair studio called Spoke & Stem. Include a service list with prices, opening hours, location, phone CTA, and a booking form.';
+
+    /** The reader, run for real, with the model stubbed to his own words. */
+    const readHisRequest = () => namedRequirements(HIS, false, async () => JSON.stringify({
+        requirements: [
+            { text: 'a service list with prices', quote: 'a service list with prices' },
+            { text: 'opening hours', quote: 'opening hours' },
+            { text: 'a booking form', quote: 'a booking form' },
+        ],
+    }));
+
+    it('⛔ the request reader produces ids delivery admits', async () => {
+        const read = await readHisRequest();
+        expect(read.requirements.length).toBeGreaterThan(0);
+        const unknown = read.requirements.map(r => r.id).filter(id => !admitted(id));
+        //  The ids in the message, because «some id is unknown» is the report
+        //  that cost an hour the first time and a live run the second.
+        expect(`unmapped:${unknown.join(',')}`).toBe('unmapped:');
+    });
+
+    it('the family is admitted by name, and carries no delivery topic', () => {
+        //  `column:` and `page:` name things a delivery voice can speak about.
+        //  A requirement he stated is not a topic — it IS the requirement — so
+        //  an empty topic list is the correct answer and not an oversight.
+        expect(admitted('req-4fa')).toBe(true);
+        expect(admitted('req-m72')).toBe(true);
+    });
+
+    it('and a malformed member of that family is still refused', () => {
+        //  Fail-closed survives the widening. Admitting `req-` on its own, or
+        //  anything merely beginning with those letters, would trade a loud
+        //  failure for a silent pass — the exact bargain this file refuses.
+        expect(admitted('req-')).toBe(false);
+        expect(admitted('req')).toBe(false);
+        expect(admitted('request:1')).toBe(false);
     });
 });
