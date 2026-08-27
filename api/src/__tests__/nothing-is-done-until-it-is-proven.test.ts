@@ -856,7 +856,12 @@ describe('THE WIRING: the build is judged before it is delivered', () => {
 
     it('the ledger reaches the message in both languages, and the caller', () => {
         expect((REACT.match(/\$\{qaBlock\}\$\{shellBlock\}\$\{acceptBlock\}/g) || []).length).toBe(2);
-        expect(REACT).toMatch(/const acceptBlock = `\$\{acceptanceBlock\(acceptance, isAr\)\}\\n`;/);
+        //  The claim is «the ledger reaches the message», not «the line is
+        //  spelled this way». Pinned letter for letter, this went red the
+        //  moment `acceptBlock` began carrying a stand-down notice ahead of the
+        //  ledger — an addition, not a regression. A guard that cannot tell
+        //  those apart is a spelling test.
+        expect(REACT).toMatch(/const acceptBlock = `[^`]*\$\{acceptanceBlock\(acceptance, isAr\)\}\\n`;/);
         expect(REACT).toMatch(/const acceptanceBlocked = acceptance\.criteria\.length > 0 && !acceptance\.accepted;/);
         expect(REACT).toMatch(/output: \{ message, acceptance,/);
     });

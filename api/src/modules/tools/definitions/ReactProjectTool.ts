@@ -4479,6 +4479,9 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
          *  build, these go back and the build runs again.
          */
         const authoredFallback: Record<string, string> = {};
+        //  Set when the page was built from templates because no model was
+        //  reachable — carried into the delivery, not left in the terminal.
+        let authoringStoodDown = false;
         for (const c of appBp ? [] : ['Navbar', ...sections, 'Footer']) {
             const tpl = componentTemplates[c];
             if (tpl) files[`src/components/${c}.jsx`] = tpl();
@@ -4563,8 +4566,39 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 return ['Groq (Free)', 'Groq', 'Anthropic', 'OpenAI'].some((p: string) => isProviderCoolingDown(p));
             } catch { return false; }
         })());
+        /**
+         *  ⛔ A PAGE HE NEVER CHOSE, DELIVERED AS THOUGH IT WERE A CHOICE.
+         *
+         *  Measured live, three repairs deep, when the output would not change:
+         *
+         *      interface authoring stood down — the model providers are
+         *      rationing, and the planner needs that quota more than the page does
+         *
+         *      what was built: AdminPanel · OrderButton · Products · Contact
+         *      what he asked for: an ingredients list · a servings counter · a
+         *      print button
+         *
+         *  The stand-down is correct — a page must not eat the quota the
+         *  planner needs. **What was wrong is that it said so once, in the
+         *  terminal, and nowhere else.** The delivery message described a
+         *  finished site. He saw a shop, and had no way to learn that no model
+         *  had written a line of it.
+         *
+         *  ⛔ AND IT COST THREE REPAIRS THEIR EVIDENCE. Behaviour authoring,
+         *  section derivation, and the named-section filter were all measured
+         *  on runs where this branch had silently taken the other road: guards
+         *  green, code correct, path never executed. That is the same shape as
+         *  a gate reporting «0 failed» over 0 tests, and this line is where it
+         *  hid.
+         *
+         *  So it is carried into the delivery in his language. «I could not
+         *  reach a model, so the page is templates» is a sentence he can act on
+         *  — retry, add a key, choose another provider. A page that merely
+         *  looks unconsidered is a sentence he cannot.
+         */
         if (!appBp && sections.length && providersAreRationing) {
             term('interface authoring stood down — the model providers are rationing, and the planner needs that quota more than the page does');
+            authoringStoodDown = true;
         }
         if (!appBp && sections.length && !providersAreRationing) {
             const { authorComponents, describeShapes } = require('../../../core/design/authored-ui');
@@ -6381,7 +6415,16 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 ? `acceptance: ${acceptance.met}/${acceptance.criteria.length} (${scope})${notProven}${missed}`
                 : `acceptance: ${acceptance.met}/${acceptance.criteria.length} (${scope})${notProven}${missed}`);
         }
-        const acceptBlock = `${acceptanceBlock(acceptance, isAr)}\n`;
+        const standDownNotice = authoringStoodDown
+            ? (isAr
+                ? '\n\u26a0\ufe0f \u0644\u0645 \u0623\u0635\u0644 \u0625\u0644\u0649 \u0646\u0645\u0648\u0630\u062c \u0644\u063a\u0648\u064a \u0623\u062b\u0646\u0627\u0621 \u0647\u0630\u0627 \u0627\u0644\u0628\u0646\u0627\u0621\u060c '
+                    + '\u0641\u0628\u0646\u064a\u062a\u064f \u0627\u0644\u0635\u0641\u062d\u0629 \u0645\u0646 \u0642\u0648\u0627\u0644\u0628 \u062c\u0627\u0647\u0632\u0629 \u0644\u0627 \u0645\u0646 \u0637\u0644\u0628\u0643. '
+                    + '\u0623\u0639\u062f \u0627\u0644\u0645\u062d\u0627\u0648\u0644\u0629 \u0623\u0648 \u0627\u062e\u062a\u0631 \u0645\u0632\u0648\u0651\u062f\u0627\u064b \u0622\u062e\u0631 \u0645\u0646 \u0632\u0631\u0651 \u0627\u0644\u0645\u0632\u0648\u0651\u062f\u0627\u062a.\n'
+                : '\n\u26a0\ufe0f I could not reach a language model during this build, so the page was '
+                    + 'assembled from ready-made templates rather than written from your request. '
+                    + 'Retry, or pick another provider from the providers button.\n')
+            : '';
+        const acceptBlock = `${standDownNotice}${acceptanceBlock(acceptance, isAr)}\n`;
         const acceptanceBlocked = acceptance.criteria.length > 0 && !acceptance.accepted;
         // A named request is a contract, not commentary. Do not report a green
         // delivery when the engine has no evidence for one of the requested
