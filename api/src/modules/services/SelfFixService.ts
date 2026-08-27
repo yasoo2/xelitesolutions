@@ -17,6 +17,18 @@ export interface SelfFixPlan {
   suggestedInput?: Record<string, unknown>;
   /** A cure proven on this same error class in a past run — context, not a script. */
   rememberedCure?: string;
+  /**
+   *  ⛔ WHICH CRITERIA WENT UNMET — AS DATA, NOT AS PROSE.
+   *
+   *  They were already computed and already written into `reason`, where
+   *  nothing downstream can read them. The executor then re-ran the phase
+   *  with `{ phase, projectContext }` and the author began attempt two
+   *  knowing nothing about attempt one — a re-roll of a nondeterministic
+   *  generator dressed as a repair.
+   *
+   *  A sentence a human can read is not a channel. This is the channel.
+   */
+  unmetCriteria?: string[];
   safety: {
     requiresTrustedContext: boolean;
     runOnlyOnce: boolean;
@@ -645,6 +657,9 @@ export class SelfFixService {
         reason: `The acceptance gate identified unmet criteria (${acceptanceEvidence.criteria.join(', ')}). Re-run the original request-driven phase once so the authoring path can repair the generated engine, then judge it again with the same acceptance gate; no file is guessed or edited directly.`,
         maxAttempts: 1,
         strategy: 'acceptance_fix',
+        //  The same list the sentence above describes, kept whole so the
+        //  author can be told what to fix instead of guessing again.
+        unmetCriteria: acceptanceEvidence.criteria,
         safety: this.safety(),
         sourceTicket: ticket,
       };
