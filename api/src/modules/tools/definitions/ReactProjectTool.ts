@@ -2925,6 +2925,29 @@ h1,h2,h3{font-family:var(--f-head);font-weight:var(--f-head-weight)}
 .nav-links{display:flex;gap:10px;flex-wrap:wrap;min-width:0}
 .nav-links a{color:var(--text);text-decoration:none;font-weight:600;display:inline-flex;align-items:center;min-height:44px;padding:0 8px}
 .nav-links a:hover{color:var(--brand)}
+/*  ONE NAVIGATION LANGUAGE, WHEREVER JOE WRITES A NAV.
+ *
+ *  The owner circled the page tabs in a generated store and said they were
+ *  very ugly -- then: «not only in this store, in ANY interface».
+ *
+ *  Measured across the generator when he said it:
+ *      app nav      .app-nav / .app-nav-tab / .on   ZERO rules anywhere, so
+ *                   four default grey boxes, and the CURRENT page looked
+ *                   exactly like the other three
+ *      website nav  .nav-links styled, and aria-current set in the markup
+ *                   with NO visual rule attached to it -- the same defect in
+ *                   a quieter form: a nav that cannot say where you are
+ *
+ *  A navigation whose current item is indistinguishable is not a navigation.
+ *  Both now speak one language, built on the request's own tokens: no boxes,
+ *  a quiet resting state, brand colour for the current page, and a rail under
+ *  it rather than a border around it. */
+.nav-links a{border-radius:8px;transition:color .16s ease,background-color .16s ease}
+.nav-links a:hover{background:color-mix(in srgb,var(--brand) 7%,transparent)}
+.nav-links a:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.nav-links a[aria-current]{color:var(--brand);position:relative}
+.nav-links a[aria-current]::after{content:'';position:absolute;inset-inline:8px;bottom:6px;
+  height:2px;border-radius:2px;background:var(--brand)}
 .theme-toggle{background:none;border:1px solid var(--border);border-radius:10px;min-width:44px;min-height:44px;cursor:pointer;color:var(--text)}
 .hero{padding-block:clamp(72px,11vw,150px);background:radial-gradient(80% 60% at 50% 0,color-mix(in srgb,var(--tint) 30%,transparent),transparent);position:relative;overflow:hidden}
 .hero::before,.hero::after{content:'';position:absolute;border-radius:50%;filter:blur(70px);pointer-events:none}
@@ -4182,9 +4205,29 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 try {
                     const composerMod = require('../../../core/design/composer');
                     const ds = require('../../../core/design/design-system');
-                    const pair = typeof ds.pickTypePair === 'function' ? ds.pickTypePair(request) : undefined;
+                    /**
+                     *  ⛔ THE PAIRING COMES FROM `layouts`, NOT FROM HERE — AND
+                     *  IT MUST BE THE SAME ONE `tokens.css` ALREADY WROTE.
+                     *
+                     *  The first version of this line asked `design-system` for
+                     *  `pickTypePair`. It does not export it: `grep -rn` finds
+                     *  exactly one definition, at `layouts.ts:363`. So the
+                     *  guard was false, `pair` was undefined, `paletteCss`
+                     *  fell back to its neutral pair — and because `main.jsx`
+                     *  loads tokens.css BEFORE app.css, this block overwrote
+                     *  the pairing tokens.css had just derived from his
+                     *  request. Measured on a generated store:
+                     *
+                     *      tokens.css  --font-display: 'Georgia','Amiri',serif
+                     *      app.css     --font-display: 'Segoe UI', system-ui
+                     *
+                     *  I was repairing the colour and made the TYPE worse in
+                     *  the same edit — two writers of one token, which is the
+                     *  class I had just spent the day closing.
+                     */
+                    const { pickTypePair } = require('../../../core/design/layouts');
                     return [
-                        ds.paletteCss(palette, pair),
+                        ds.paletteCss(palette, pickTypePair(request)),
                         composerMod.composedCss(composerMod.composeDesign(request)),
                     ].filter(Boolean).join(String.fromCharCode(10));
                 } catch { return ''; }
