@@ -109,6 +109,48 @@ export interface ExecutionPlan {
     };
 }
 
+/**
+ *  A UI ELEMENT IS NOT SCOPE EVIDENCE.
+ *
+ *  Measured on the owner's own sentence, with the classifier itself:
+ *
+ *      «…Include a service list with prices, opening hours, location,
+ *        phone CTA, and a booking form.»            -> scope = system
+ *      the same sentence minus «booking form»       -> scope = page
+ *
+ *  One phrase moved a five-line brochure into `system`, which returns the
+ *  two-phase plan — `api_project` then `react_project` — so Joe built him a
+ *  database with a `users` table, shipped the `#/admin` screen that every
+ *  API-linked app ships, **then failed on the admin page it had invented and
+ *  blocked the site he actually asked for.** He never asked for accounts, a
+ *  database, or an admin panel.
+ *
+ *  The cause is one token in `dataSignals`: `bookings?` matches inside
+ *  «booking form». **A booking FORM is an element on a page; a bookings
+ *  SYSTEM is a system.** And it is not alone — `orders?` does the same to
+ *  «order button», `reports?` to «reports section», `payments?` to «payment
+ *  form». The signal reads the noun stripped of the thing it is attached to.
+ *
+ *  ⛔ THE FUNCTION ALREADY KNEW THIS SHAPE. It calls `stripDeclaredOptions`
+ *  because «a declared category list is field OPTIONS, not scope evidence» —
+ *  the same lesson, one step over, learned once and not carried. So the same
+ *  answer: remove what is plainly a page element BEFORE asking whether the
+ *  request owns data. A request that genuinely owns bookings says so in a way
+ *  that survives this — «a bookings system», «manage bookings», «حجوزات
+ *  بحسابات» — because none of those is a noun wearing a widget.
+ */
+function stripPageElements(text: string): string {
+    const ELEMENT_EN = '(?:form|button|link|field|input|section|panel|widget|cta|list|page|banner|badge|icon|label)';
+    const ELEMENT_AR = '(?:نموذج|استمارة|زر|رابط|حقل|قسم|قائمة|صفحة|لوحة|بطاقة|أيقونة)';
+    return String(text || '')
+        //  English is head-final: «booking form», «order button».
+        .replace(new RegExp('\\b[\\w-]+\\s+' + ELEMENT_EN + '\\b', 'gi'), ' ')
+        //  Arabic is head-initial: «نموذج حجز», «زر الطلب».
+        .replace(new RegExp(ELEMENT_AR + '\\s+\\S+', 'g'), ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
 export class PlanningEngine {
     /** Map a high-level browser action (chosen by the model) to the exact tool. */
     static browserToolForAction(action: string): string | null {
@@ -221,6 +263,7 @@ export class PlanningEngine {
             const { stripDeclaredOptions } = require('../design/app-blueprints');
             g = stripDeclaredOptions(g);
         } catch { /* the classifier still answers from the raw text */ }
+        g = stripPageElements(g);
         // Its own data, its own users → it needs a server and a database.
         /**
          * ARABIC PLURALS THE LIST DID NOT KNOW.
