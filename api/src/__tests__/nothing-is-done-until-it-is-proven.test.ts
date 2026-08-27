@@ -730,10 +730,37 @@ describe('the ledger is published, in his language', () => {
     });
 
     it('the terminal receipt uses the same bounded judge vocabulary in both languages', () => {
-        expect(REACT).toContain('acceptance: ${acceptance.met}/${acceptance.criteria.length} معياراً مشتقاً مُثبت');
-        expect(REACT).toContain('acceptance: ${acceptance.met}/${acceptance.criteria.length} requested criteria proven');
+        //  Both languages print the SAME count, and neither over-claims. This
+        //  used to pin the two sentences letter for letter, which made it a
+        //  spelling test: it went red the moment the line said MORE, not less.
+        expect(REACT).toContain('acceptance: ${acceptance.met}/${acceptance.criteria.length} (${scope})');
         expect(REACT).toContain("c.verdict !== 'met'");
         expect(REACT).not.toContain('of what I know how to prove is proven');
+    });
+
+    it('⛔ the count declares WHAT it is a count of', () => {
+        //  Measured live in his terminal, two lines apart:
+        //
+        //      acceptance denominator: 1 (known-features list — your request was not read)
+        //      acceptance: 1/1 requested criteria proven
+        //
+        //  Both true. Together they mislead, and the second is the one he
+        //  reads — a perfect score over a catalogue nobody asked for, printed
+        //  one line after Joe admitted it had not read the request. Honesty is
+        //  not a property of a sentence; it is a property of what the reader is
+        //  left believing.
+        expect(REACT).toContain('const fromHisWords = acceptance.criteria.some');
+        expect(REACT).toContain('your request was not read');
+        expect(REACT).toContain('لم يُقرأ طلبك');
+    });
+
+    it('⛔ and when it fell back, it says how many of HIS things went unproven', () => {
+        //  «1/1 from the known-features list» is honest and still hides the
+        //  shape of the failure. Five things were read from his sentence and
+        //  none of them proven — that number is the one that tells him what
+        //  actually happened, and it only appears on the fallback path.
+        expect(REACT).toMatch(/const missed = !fromHisWords && namedByHim\.length/);
+        expect(REACT).toContain('I proved none of');
     });
 
     it('a complete catalogue subset declares its boundary instead of claiming the whole request', () => {

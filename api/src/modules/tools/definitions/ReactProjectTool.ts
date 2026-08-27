@@ -6199,11 +6199,40 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
          * writing files is not evidence that the requested system was completed.
          */
         if (acceptance.criteria.length) {
+            /**
+             *  ⛔ A COUNT ABOUT A LIST HE NEVER ASKED FOR.
+             *
+             *  Measured live, two lines apart, in his own terminal:
+             *
+             *      acceptance denominator: 1 (known-features list — your request was not read)
+             *      acceptance: 1/1 requested criteria proven
+             *
+             *  Both sentences are true. Together they mislead, and the second
+             *  is the one he reads: a perfect score over a catalogue nobody
+             *  asked for, printed one line after Joe admitted it had not read
+             *  the request. **Honesty is not a property of a sentence, it is a
+             *  property of what the reader is left believing.**
+             *
+             *  So when the reading did not happen, the count says what it is a
+             *  count OF — and, when there is one, how many things he actually
+             *  named that went unproven. A number that cannot be mistaken for a
+             *  verdict on his request.
+             */
+            const fromHisWords = acceptance.criteria.some((c: any) => /^req-/.test(String(c?.id || '')));
+            const notProven = acceptance.unmet
+                ? ` — not proven: ${acceptance.criteria.filter((c: any) => c.verdict !== 'met').map((c: any) => c.id).join(', ')}`
+                : '';
+            const scope = fromHisWords
+                ? (isAr ? 'من طلبك' : 'from your request')
+                : (isAr ? 'من القائمة المحفوظة — لم يُقرأ طلبك' : 'from the known-features list — your request was not read');
+            const missed = !fromHisWords && namedByHim.length
+                ? (isAr
+                    ? ` — وقرأتُ من طلبك ${namedByHim.length} بنداً لم أُثبت منها شيئاً`
+                    : ` — and I read ${namedByHim.length} thing(s) in your request that I proved none of`)
+                : '';
             term(isAr
-                ? `acceptance: ${acceptance.met}/${acceptance.criteria.length} معياراً مشتقاً مُثبت`
-                    + (acceptance.unmet ? ` — not proven: ${acceptance.criteria.filter((c: any) => c.verdict !== 'met').map((c: any) => c.id).join(', ')}` : '')
-                : `acceptance: ${acceptance.met}/${acceptance.criteria.length} requested criteria proven`
-                    + (acceptance.unmet ? ` — not proven: ${acceptance.criteria.filter((c: any) => c.verdict !== 'met').map((c: any) => c.id).join(', ')}` : ''));
+                ? `acceptance: ${acceptance.met}/${acceptance.criteria.length} (${scope})${notProven}${missed}`
+                : `acceptance: ${acceptance.met}/${acceptance.criteria.length} (${scope})${notProven}${missed}`);
         }
         const acceptBlock = `${acceptanceBlock(acceptance, isAr)}\n`;
         const acceptanceBlocked = acceptance.criteria.length > 0 && !acceptance.accepted;
