@@ -666,11 +666,42 @@ function recordsMetricTotalEvidence(src: string): boolean {
 
 export function computedTotalEvidence(src: string): boolean {
     const BS = String.fromCharCode(92);
+    /**
+     *  ⛔ THE TOTAL REACHES THE PAGE — HOWEVER IT IS FORMATTED.
+     *
+     *  Measured on a live build the owner watched. He asked for «sa cart that
+     *  computes the total»; Joe's own store engine did exactly that:
+     *
+     *      const total = useMemo(() => lines.reduce(
+     *          (s, l) => s + Number(l.product.price || 0) * l.qty, 0), [lines]);
+     *      <p className="cart-total"><span>{'الإجمالي'}</span><b>{money(total)}</b></p>
+     *
+     *  And the judgement came back `acceptance_criteria_unmet: counter`, so the
+     *  delivery was refused. The criterion accepted `{total}` and
+     *  `{total.toLocaleString()}` — a value shown bare, or with a method called
+     *  ON it — and had no shape for a value passed THROUGH a formatter, which
+     *  is how every currency in this repository is printed.
+     *
+     *  ⛔ SO IT WAS A CRITERION JOE'S OWN GENERATOR COULD NOT SATISFY: the
+     *  mirror of one that can never fail, and worse, because it blocked a
+     *  correct delivery and told the owner his store had no total. It is the
+     *  session's most expensive class one more time — EVIDENCE MATCHING A
+     *  SPELLING INSTEAD OF TESTING THE CLAIM.
+     *
+     *  The claim is «the computed total reaches the page». All three ways of
+     *  doing that count, and nothing else does:
+     *      {total}              bare
+     *      {total.toFixed(2)}   a method on it
+     *      {money(total)}       passed through a formatter
+     */
     const foldedAndShown = foldedTotalBindings(src).some(name => {
         const n = escapeRegExp(name);
-        // …and the same name reaches the page: {total} or {total.toLocaleString()}
-        const shown = new RegExp('[{]' + BS + 's*' + n + '(?:' + BS + '.[A-Za-z_$][' + BS + 'w$]*' + BS + 's*' + BS + '([^)]*' + BS + '))?' + BS + 's*[}]', 'u');
-        return shown.test(src);
+        const IDENT = '[A-Za-z_$][' + BS + 'w$]*';
+        const bare = new RegExp('[{]' + BS + 's*' + n + BS + 's*[}]');
+        const method = new RegExp('[{]' + BS + 's*' + n + BS + '.' + IDENT + BS + 's*' + BS + '([^)]*' + BS + ')' + BS + 's*[}]');
+        //  …or handed to a formatter, which is how money is printed.
+        const formatted = new RegExp('[{]' + BS + 's*' + IDENT + BS + 's*' + BS + '([^)]*' + BS + 'b' + n + BS + 'b[^)]*' + BS + ')');
+        return bare.test(src) || method.test(src) || formatted.test(src);
     });
     return foldedAndShown || recordsMetricTotalEvidence(src);
 }

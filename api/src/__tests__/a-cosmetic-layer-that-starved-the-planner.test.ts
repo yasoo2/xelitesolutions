@@ -184,3 +184,45 @@ describe('and it stands down entirely when the providers are rationing', () => {
         expect(block).toContain('catch { return false; }');
     });
 });
+
+/**
+ *  ⛔ AND STANDING DOWN PROTECTS A QUOTA. A LOCAL BRAIN HAS NO QUOTA.
+ *
+ *  Measured on the owner's machine right after he asked to rely on Ollama: the
+ *  store built, `success: true`, and `seedRows: []`. The catalogue never ran,
+ *  because the check asked whether GROQ was rationing — on a machine whose
+ *  brain is a model on his own disk, where there is nothing to ration and
+ *  nothing to protect. He got an empty shelf so that fuel costing nothing
+ *  could be saved.
+ *
+ *  THE CLASS is the one this session keeps meeting from every side: a check
+ *  asking about something ADJACENT to its claim. The claim is «will this
+ *  starve the planner?» and a local brain cannot starve anything.
+ */
+describe('the stand-down knows what it is protecting', () => {
+    it('POSITIVE — with the local brain leading, the section author does not stand down', () => {
+        expect(SRC).toMatch(/const localBrainLeads = [^;]*LOCAL_BRAIN_FIRST/);
+        expect(SRC).toMatch(/providersAreRationing = insideATest \|\| \(!localBrainLeads/);
+    });
+
+    it('POSITIVE — and neither do the copy and catalogue authors', () => {
+        //  Guarding one of three is the «one layer, two generators» class that
+        //  produced most of this session's defects.
+        expect(SRC).toMatch(/copyProvidersRationing[\s\S]{0,300}LOCAL_BRAIN_FIRST/);
+    });
+
+    it('⛔ NEGATIVE — but a TEST still stands down, whatever the brain is', () => {
+        //  The hermetic rule outranks everything: a test that reaches Ollama is
+        //  as much «measuring the provider's mood» as one that reaches Groq,
+        //  and it would be slower.
+        expect(SRC).toMatch(/providersAreRationing = insideATest \|\|/);
+        expect(SRC).toMatch(/copyProvidersRationing = process\.env\.NODE_ENV === 'test'/);
+    });
+
+    it('NEGATIVE — and with no local brain, the mesh cooldown still silences them', () => {
+        //  The original protection must survive, or this «fix» has simply
+        //  removed the guard that stopped the planner being starved.
+        expect(SRC).toContain('isProviderCoolingDown');
+        expect(SRC).toMatch(/'Groq \(Free\)', 'Groq', 'Anthropic', 'OpenAI'/);
+    });
+});

@@ -137,6 +137,40 @@ function findControls(limit: number) {
         // A stable per-run handle: index into a list we also stamp on the element.
         const id = `joe-ctl-${out.length}`;
         el.setAttribute('data-joe-ctl', id);
+        /**
+         *  ⛔ A CONTROL'S IDENTITY IS A STAMP ON THE LIVE DOM, AND A RE-RENDER
+         *  ERASES IT. READ THIS BEFORE TRYING TO FIX «not found».
+         *
+         *  The handle is `[data-joe-ctl="n"]`, written onto the element here
+         *  and looked up later. Nothing persists it: a React route change
+         *  unmounts the tree, a reload rebuilds the document, and every stamp
+         *  is gone. The lookup then returns null and the control is recorded
+         *  with `effect: 'not found'`.
+         *
+         *  Measured on a real store, with the audit's own control table:
+         *
+         *      WORKED menu   navigation  «منتجات»
+         *      DEAD   button not found   «السلة 0»
+         *      DEAD   button not found   «أضف إلى السلة»  × 6
+         *
+         *  Four of twelve pressed — the nav links ran first and took the stamps
+         *  with them.
+         *
+         *  ⛔ TWO REPAIRS WERE TRIED FROM THE SYMPTOM AND BOTH MADE IT WORSE,
+         *  because both ADD a re-render:
+         *
+         *      restore the page between controls   dead 8/12 → 11/12   reverted
+         *      goto the collection URL on nav      pressed 4  → 2      reverted
+         *
+         *  Anything that reloads or re-routes destroys more stamps than it
+         *  recovers. A real fix has to RE-STAMP after every change and match
+         *  each control to its new element by something stable — not by a
+         *  handle that the framework is free to throw away. Six identical
+         *  «أضف إلى السلة» buttons mean the label alone is not that thing.
+         *
+         *  Until then the audit says what is true: it reports these as
+         *  UNREACHED, never as pressed-and-dead. See `judgeBehaviour`.
+         */
         out.push({ sel: `[data-joe-ctl="${id}"]`, kind, label: label(el), href: (el as HTMLAnchorElement).href });
     };
 
@@ -812,10 +846,49 @@ export function judgeBehaviour(
     jsErrors: string[] = [],
 ): { score: number; findings: BehaviourFinding[] } {
     const findings: BehaviourFinding[] = [];
-    const pressable = controls.filter(c => c.kind !== 'anchor');
+    /**
+     *  ⛔ A CONTROL THAT WAS NEVER PRESSED IS NOT A CONTROL THAT DID NOTHING.
+     *
+     *  Measured by running this audit against a store I had opened and pressed
+     *  by hand — the cart badge went 0 -> 1, the drawer showed «الإجمالي 200»,
+     *  the order form was there. The audit's own control table said:
+     *
+     *      DEAD button effect=not found  label=«السلة 0»
+     *      DEAD button effect=not found  label=«أضف إلى السلة»   × 6
+     *
+     *  and the finding it published said «8 من 12 أزرار لا تفعل شيئاً عند
+     *  الضغط» — about buttons it never pressed. `not found` means the element
+     *  was gone when the click was attempted: the nav links had been pressed
+     *  first, the route had moved, and the shop's own controls were no longer
+     *  on the page.
+     *
+     *  ⛔ THE CLASS IS THE MOST EXPENSIVE ONE HERE, BECAUSE IT IS A FALSE
+     *  STATEMENT ABOUT A MEASUREMENT: «I pressed it and nothing happened» when
+     *  nothing was pressed at all. It made Joe refuse to deliver a working
+     *  store, which is worse than a wrong number — it withholds finished work
+     *  and gives the owner a reason that is not true.
+     *
+     *  So the two are separated. A control that could not be reached is
+     *  reported as unreachable, and never counted among those that did
+     *  nothing. The audit still says it, loudly, because a control the test
+     *  could not reach is a real gap in the evidence — it is simply a
+     *  different gap from a dead button.
+     */
+    const pressable = controls.filter(c => c.kind !== 'anchor' && c.effect !== 'not found');
+    const unreachable = controls.filter(c => c.kind !== 'anchor' && c.effect === 'not found');
     const dead = pressable.filter(c => !c.worked);
     metrics.pressed = pressable.length;
     metrics.dead = dead.length;
+    metrics.unreachable = unreachable.length;
+
+    if (unreachable.length) {
+        findings.push({
+            code: 'controls_not_reached', severity: 'minor',
+            ar: `لم أصل إلى ${unreachable.length} من ${controls.length} زرّاً لأجرّبه: ${unreachable.slice(0, 3).map(d => `«${d.label}»`).join('، ')} — اختفت من الصفحة قبل الضغط، ولا أدّعي أنّها معطوبة`,
+            en: `${unreachable.length} of ${controls.length} controls were gone before I could press them: ${unreachable.slice(0, 3).map(d => `"${d.label}"`).join(', ')} — not pressed, so not judged`,
+            hint: 'the route moved while the audit was pressing; these were never tested',
+        });
+    }
 
     if (jsErrors.length) {
         findings.push({

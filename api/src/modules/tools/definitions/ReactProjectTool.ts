@@ -3389,14 +3389,17 @@ export class ReactProjectTool extends BaseTool {
          */
         //  Same rule for the copy author: both spend the same fuel and both
         //  would make a hermetic test wait on a provider.
+        //  Same rule, same reason: a brain on his own disk has no quota to
+        //  protect, so nothing about the mesh's cooldowns should silence the
+        //  copy or the catalogue. See the note beside `providersAreRationing`.
         const copyProvidersRationing = process.env.NODE_ENV === 'test'
             || !!process.env.JEST_WORKER_ID
-            || (() => {
+            || (!/^(1|true|yes)$/i.test(String(process.env.LOCAL_BRAIN_FIRST || '').trim()) && (() => {
                 try {
                     const { isProviderCoolingDown } = require('../../../core/llm/intelligent-router');
                     return ['Groq (Free)', 'Groq', 'Anthropic', 'OpenAI'].some((p: string) => isProviderCoolingDown(p));
                 } catch { return false; }
-            })();
+            })());
         if (!input?.skipAuthoredCopy && !copyProvidersRationing) {
             try {
                 const { authorCopy, COPY_FIELDS } = require('../../../core/design/authored-copy');
@@ -4069,7 +4072,60 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 generatedEnginePath: runBp.kind === 'weather' ? 'src/components/WeatherApp.jsx' : '',
             });
             if (declaration) term(declaration);
+            /**
+             *  ⛔ THE SHELVES HE ASKED FOR, FILLED FROM HIS OWN SENTENCE.
+             *
+             *  Watched live: «صفحة منتجات فيها ستة أنواع عسل مع أسعارها»
+             *  produced a real store whose every number read 0. The rows live
+             *  in browser storage, storage is empty on a first visit, and
+             *  nothing in the build ever put anything in it.
+             *
+             *  He said what to put on the shelves and Joe built the shelves.
+             *  That is the fourth law in its plainest form.
+             *
+             *  The count, and the floor he stated for prices, are read from
+             *  his sentence — not assumed, and not invented when he named
+             *  neither. If nothing survives the checks the shop opens bare,
+             *  which is honest.
+             */
+            let seedRows: Array<Record<string, any>> = [];
+            const seedFields = ((runBp as any).fields || []) as Array<any>;
+            if (!copyProvidersRationing && seedFields.length && !input?.skipAuthoredCopy) {
+                try {
+                    const { authorCatalogue, countHeAskedFor, minimumHeStated } = require('../../../core/design/authored-catalogue');
+                    const { routeToModel } = require('../../../core/llm/intelligent-router');
+                    const written = await authorCatalogue({
+                        request,
+                        brand: content.brand,
+                        isArabic: artifactIsAr,
+                        entityOne: String((runBp as any).entityOne || 'item'),
+                        fields: seedFields,
+                        wanted: countHeAskedFor(request),
+                        minNumeric: minimumHeStated(request),
+                    }, async (prompt: string) => {
+                        let timer: any;
+                        try {
+                            return await Promise.race([
+                                routeToModel([{ role: 'user', content: prompt }]),
+                                new Promise<string>((_, rej) => {
+                                    timer = setTimeout(() => rej(new Error('the model did not answer in time')), 120_000);
+                                }),
+                            ]);
+                        } finally { clearTimeout(timer); }
+                    });
+                    seedRows = written.rows;
+                    term(seedRows.length
+                        ? `catalogue written from his request: ${seedRows.length} × ${String((runBp as any).entityOne || 'item')}`
+                        : 'catalogue written from his request: none survived the checks — the shop opens empty, honestly');
+                    for (const r of written.rejected as Array<{ row: string; reason: string }>) {
+                        term(`  refused ${r.row}: ${r.reason}`);
+                    }
+                } catch (e: any) {
+                    term(`catalogue authoring skipped: ${String(e && e.message || e).slice(0, 120)}`);
+                }
+            }
             const appFiles = buildAppFiles(runBp, {
+                seedRows,
                 brand: content.brand, isArabic: artifactIsAr, api: appApi, apiResources,
                 //  The app remembers the words it was built from, so an edit can
                 //  re-derive his columns instead of replacing them with a stock set.
@@ -4176,12 +4232,28 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
          *  in `the-interface-has-an-author-now` -- that is where it belongs.
          */
         const insideATest = process.env.NODE_ENV === 'test' || !!process.env.JEST_WORKER_ID;
-        const providersAreRationing = insideATest || (() => {
+        /**
+         *  ⛔ STANDING DOWN PROTECTS A QUOTA. A LOCAL BRAIN HAS NO QUOTA.
+         *
+         *  Measured on the owner's machine, right after he asked to rely on
+         *  Ollama: the store built, `success: true`, and `seedRows: []`. The
+         *  catalogue never ran, because this check asked whether GROQ was
+         *  rationing — on a machine whose brain is a model on his own disk,
+         *  where there is nothing to ration and nothing to protect.
+         *
+         *  So the guard was refusing to spend fuel that costs nothing, and the
+         *  owner got an empty shelf for it. The class is the one this session
+         *  keeps meeting from every side: A CHECK ASKING ABOUT SOMETHING
+         *  ADJACENT TO ITS CLAIM. The claim is «will this starve the planner?»,
+         *  and a local brain cannot starve anything.
+         */
+        const localBrainLeads = /^(1|true|yes)$/i.test(String(process.env.LOCAL_BRAIN_FIRST || '').trim());
+        const providersAreRationing = insideATest || (!localBrainLeads && (() => {
             try {
                 const { isProviderCoolingDown } = require('../../../core/llm/intelligent-router');
                 return ['Groq (Free)', 'Groq', 'Anthropic', 'OpenAI'].some((p: string) => isProviderCoolingDown(p));
             } catch { return false; }
-        })();
+        })());
         if (!appBp && sections.length && providersAreRationing) {
             term('interface authoring stood down — the model providers are rationing, and the planner needs that quota more than the page does');
         }
