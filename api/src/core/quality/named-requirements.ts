@@ -47,6 +47,12 @@ export interface NamedRequirement {
 export interface ExtractionResult {
     requirements: NamedRequirement[];
     rejected: Array<{ text: string; reason: string }>;
+    /**
+     *  How many readings actually answered. Published rather than hidden: a
+     *  system that smooths away its own variance is claiming more than it
+     *  measured, which is the habit this file was written to end.
+     */
+    passes?: number;
 }
 
 /** Words that are Joe's own paperwork or the act of asking, never a feature. */
@@ -191,6 +197,42 @@ export function parseRequirements(raw: string): Array<{ text: string; quote: str
  *  refused by name — an invented requirement is worse than a missing one,
  *  because Joe would then build, and fail, something he was never asked for.
  */
+/**
+ *  ⛔ ONE CALL TO THIS BRAIN IS NOT A MEASUREMENT.
+ *
+ *  Measured twice on the owner's machine, same sentence, same build path,
+ *  hours apart:
+ *
+ *      read from your request: 5 named — a service list with prices · opening
+ *        hours · location · phone CTA · a booking form
+ *      read from your request: 1 named — a service list with prices
+ *
+ *  And it was NOT the filter. Every rejection this reader makes is printed by
+ *  name; the second run printed exactly one, the same one as the first. Four
+ *  swallowed requirements would have printed four refusals. **The model simply
+ *  never returned them** — confirmed by `git diff` showing `extractionPrompt`,
+ *  `isJudgeable`, `groundedIn` and `parseRequirements` byte-identical between
+ *  the two builds.
+ *
+ *  So the reader is not weak, it is UNSTABLE: the same question answered
+ *  differently on consecutive asks. A single call to a nondeterministic source
+ *  is a sample, and this whole file exists because a ledger can be no better
+ *  than the reading it is handed.
+ *
+ *  ⛔ AND THE REPAIR MUST NOT RELAX A SINGLE GUARD. Every candidate from
+ *  every pass still has to be judgeable and still has to be quoted from HIS
+ *  sentence — asking twice widens what is seen, never what is admitted. Five
+ *  and one union to five because the four extra ones were always his words;
+ *  nothing invented can enter through a second door that could not enter
+ *  through the first.
+ *
+ *  Two passes, not five: the cost is a model call and the return falls off
+ *  quickly. The count is published so the instability is visible rather than
+ *  smoothed away — a system that hides its own variance is back to claiming
+ *  more than it measured.
+ */
+const EXTRACTION_PASSES = 2;
+
 export async function namedRequirements(
     request: string,
     isArabic: boolean,
@@ -200,16 +242,32 @@ export async function namedRequirements(
     const req = String(request || '').trim();
     if (!req) return out;
 
-    let raw = '';
-    try {
-        raw = await call(extractionPrompt(req, isArabic));
-    } catch (e: any) {
-        out.rejected.push({ text: '*', reason: `the model could not be reached: ${String(e && e.message || e).slice(0, 120)}` });
+    const passes: string[] = [];
+    let lastError = '';
+    for (let i = 0; i < EXTRACTION_PASSES; i++) {
+        try { passes.push(await call(extractionPrompt(req, isArabic))); }
+        catch (e: any) { lastError = String(e && e.message || e); }
+    }
+    if (!passes.length) {
+        out.rejected.push({ text: '*', reason: `the model could not be reached: ${lastError.slice(0, 120)}` });
         return out;
     }
+    //  The union, in first-seen order. A requirement one pass missed and
+    //  another caught is still his — it passes the same two checks below.
+    const candidates: Array<{ text: string; quote: string }> = [];
+    const candidateSeen = new Set<string>();
+    for (const raw of passes) {
+        for (const r of parseRequirements(raw)) {
+            const key = `${r.text.trim().toLowerCase()}|${r.quote.trim().toLowerCase()}`;
+            if (candidateSeen.has(key)) continue;
+            candidateSeen.add(key);
+            candidates.push(r);
+        }
+    }
+    out.passes = passes.length;
 
     const seen = new Set<string>();
-    for (const r of parseRequirements(raw)) {
+    for (const r of candidates) {
         //  ⛔ Judged where the TEXT is, not only where the quote is. A model
         //  asked «what did he name» answers with the project itself unless it
         //  is stopped, and «build an online jewelry store» is met by any shop
@@ -305,6 +363,78 @@ export function foundInSource(evidence: string, source: string): boolean {
 const MAX_SOURCE_CHARS = 18_000;
 
 /** The whole source when it fits; otherwise a head and a tail, marked as cut. */
+/**
+ *  ⛔ A JUDGE SHOWN 27% OF A PROJECT SAID FIVE THINGS WERE ABSENT. ALL FIVE
+ *  WERE PRESENT.
+ *
+ *  Measured on `react-spoke-stem-c66ce8a2`, by grepping the built source rather
+ *  than believing the ledger:
+ *
+ *      full source    = 67522 chars
+ *      bounded source = 17936 chars   (27%)
+ *      all five requirements                -> present in the source
+ *      the judge, shown the bounded slice   -> 0/5, four of them "MISSING"
+ *
+ *  «The source does not contain any CTA specifically for phone numbers» — while
+ *  `<a href={'tel:' + content.contact.phone}>` sat in the part that was cut.
+ *
+ *  A head-and-tail slice is blind by construction: it keeps the same 27% no
+ *  matter what is being asked. So the slice is chosen FOR the question — the
+ *  windows of the source where this requirement's own words appear. A question
+ *  about a booking form is asked over the parts that mention booking or forms.
+ */
+const SLICE_WINDOW = 1_400;
+
+/** The content words of a requirement — what to look for in the source. */
+function requirementWords(r: NamedRequirement): string[] {
+    return (String(r.text || '') + ' ' + String(r.quote || ''))
+        .toLowerCase()
+        .split(/[^\p{L}\p{N}]+/u)
+        .filter(w => w.length > 3 && !/^(?:with|that|this|from|your|have|show|page|site|the|and|for)$/.test(w));
+}
+
+/**
+ *  Did the source actually contain any of this requirement's own words? When it
+ *  did not, no honest verdict of «absent» is available — only «I could not tell
+ *  from what I was shown». This is the fact `verifyNamed` enforces with.
+ */
+export function sliceCoversRequirement(r: NamedRequirement, source: string): boolean {
+    const src = String(source || '').toLowerCase();
+    return requirementWords(r).some(w => src.includes(w));
+}
+
+/** The windows of the source where this requirement's words actually appear. */
+export function sliceFor(r: NamedRequirement, source: string, max = MAX_SOURCE_CHARS): string {
+    const src = String(source || '');
+    if (src.length <= max) return src;
+    const low = src.toLowerCase();
+    const spans: Array<[number, number]> = [];
+    for (const w of requirementWords(r)) {
+        let i = low.indexOf(w);
+        while (i >= 0 && spans.length < 40) {
+            spans.push([Math.max(0, i - SLICE_WINDOW), Math.min(src.length, i + SLICE_WINDOW)]);
+            i = low.indexOf(w, i + w.length);
+        }
+    }
+    //  Nothing of his words anywhere: fall back to the old slice rather than
+    //  send an empty prompt. The enforcement downstream is what makes this safe.
+    if (!spans.length) return boundedSource(src, max);
+    spans.sort((a, b) => a[0] - b[0]);
+    const merged: Array<[number, number]> = [];
+    for (const sp of spans) {
+        const last = merged[merged.length - 1];
+        if (last && sp[0] <= last[1]) last[1] = Math.max(last[1], sp[1]);
+        else merged.push([sp[0], sp[1]]);
+    }
+    let out = '';
+    for (const [a, b] of merged) {
+        if (out.length >= max) break;
+        out += (out ? '\n\n… …\n\n' : '') + src.slice(a, Math.min(b, a + (max - out.length)));
+    }
+    return out;
+}
+
+
 export function boundedSource(source: string, max = MAX_SOURCE_CHARS): string {
     const src = String(source || '');
     if (src.length <= max) return src;
@@ -339,6 +469,57 @@ export function verificationPrompt(reqs: NamedRequirement[], source: string, isA
     ].join('\n');
 }
 
+/**
+ *  ⛔ THE MODEL ANSWERED. THIS COULD NOT READ IT.
+ *
+ *  Measured by hand against a project Joe had really built, printing the raw
+ *  bytes instead of assuming them:
+ *
+ *      prompt chars = 18730 · answered in 2238ms · raw length 157
+ *
+ *      { "req-a": { "met": false, "evidence": "",
+ *                   "why": "The source does not contain any form elements…" } }
+ *
+ *      --- parsed verdicts ---  []
+ *
+ *  A correct, useful verdict in two seconds — and Joe then told the owner «the
+ *  model returned no verdict for this item», which was **false**.
+ *
+ *  The brief asks for `{"verdicts":[{id, verdict, …}]}`. The model returned a
+ *  dictionary keyed by the id, with a boolean `met` instead of a string
+ *  `verdict`. That is a perfectly reasonable shape — arguably the natural one
+ *  when the question is about a single requirement — and this function admitted
+ *  exactly one shape and nothing else.
+ *
+ *  ⛔ THE CLASS, for the seventh time in one day: a reader that accepts one
+ *  form, a producer that emits another reasonable form, and nothing forcing
+ *  them to agree. The same defect as the second writer who never got the rule —
+ *  here the two parties are the brief and the model.
+ *
+ *  And it cost two wrong diagnoses before it was measured. The source was
+ *  bounded from 88k to 18k and five requirements were split into five calls;
+ *  **neither was the cause**. Both were real improvements, and neither cured
+ *  what it was credited with.
+ *
+ *  So: read what models actually produce. Widening the READER admits no claim
+ *  the guards would have rejected — a `met` still has to carry evidence that
+ *  `verifyNamed` can find in the source, or it is downgraded exactly as before.
+ *  This is about hearing the answer, never about believing it.
+ */
+const asVerdict = (v: any, fallbackId: string) => {
+    //  `verdict: "met"` and `met: true` are the same statement. A boolean is
+    //  what a model reaches for when the question is yes-or-no, and refusing
+    //  to understand it is not strictness, it is deafness.
+    const spoken = String(v?.verdict ?? '').trim().toLowerCase();
+    const verdict = spoken || (typeof v?.met === 'boolean' ? (v.met ? 'met' : 'unmet') : '');
+    return {
+        id: String(v?.id ?? fallbackId ?? ''),
+        verdict,
+        evidence: String(v?.evidence ?? v?.proof ?? v?.line ?? ''),
+        why: String(v?.why ?? v?.reason ?? v?.explanation ?? ''),
+    };
+};
+
 export function parseVerdicts(raw: string): Array<{ id: string; verdict: string; evidence: string; why: string }> {
     const text = String(raw || '');
     const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
@@ -346,19 +527,27 @@ export function parseVerdicts(raw: string): Array<{ id: string; verdict: string;
         const start = c.indexOf('{');
         const end = c.lastIndexOf('}');
         if (start < 0 || end <= start) continue;
-        try {
-            const parsed = JSON.parse(c.slice(start, end + 1));
-            if (Array.isArray(parsed?.verdicts)) {
-                return parsed.verdicts
-                    .filter((v: any) => v && typeof v === 'object')
-                    .map((v: any) => ({
-                        id: String(v.id ?? ''),
-                        verdict: String(v.verdict ?? ''),
-                        evidence: String(v.evidence ?? ''),
-                        why: String(v.why ?? ''),
-                    }));
-            }
-        } catch { /* try the next candidate */ }
+        let parsed: any;
+        try { parsed = JSON.parse(c.slice(start, end + 1)); } catch { continue; }
+        if (!parsed || typeof parsed !== 'object') continue;
+
+        //  1. the shape the brief asks for
+        const list = Array.isArray(parsed.verdicts) ? parsed.verdicts
+            : Array.isArray(parsed.results) ? parsed.results
+                : null;
+        if (list) {
+            const out = list.filter((v: any) => v && typeof v === 'object').map((v: any) => asVerdict(v, ''));
+            if (out.length) return out;
+        }
+
+        //  2. one verdict, unwrapped — the natural answer to a single question
+        if ('verdict' in parsed || 'met' in parsed) return [asVerdict(parsed, '')];
+
+        //  3. a dictionary keyed by the requirement id — what was actually
+        //     measured coming back from the keyless mesh
+        const entries = Object.entries(parsed)
+            .filter(([, v]) => v && typeof v === 'object' && ('verdict' in (v as any) || 'met' in (v as any)));
+        if (entries.length) return entries.map(([k, v]) => asVerdict(v, k));
     }
     return [];
 }
@@ -421,7 +610,10 @@ export async function verifyNamed(
      *  two it cannot are honestly marked instead of taking the other three
      *  down with them.
      */
+    const full = src;
+    const shownFor = new Map<string, string>();
     const answers = await Promise.all(reqs.map(async r => {
+        shownFor.set(r.id, sliceFor(r, src));
         try { return { id: r.id, raw: await call(verificationPrompt([r], src, isArabic)) }; }
         catch (e: any) { return { id: r.id, raw: '', error: String(e && e.message || e) }; }
     }));
@@ -461,6 +653,7 @@ export async function verifyNamed(
         if (answer) byId.set(a.id, { ...answer, id: a.id });
     }
     return reqs.map(r => {
+        const src = shownFor.get(r.id) || full;
         const v = byId.get(r.id);
         if (!v) return { ...r, verdict: 'unprovable' as NamedVerdict, why: NO_VERDICT(isArabic) };
         const why = v.why.trim().slice(0, 200);
@@ -483,6 +676,42 @@ export async function verifyNamed(
             };
         }
         if (v.verdict === 'unmet') {
+            /**
+             *  ⛔ AN ABSENCE NOBODY COULD SEE IS NOT AN ABSENCE.
+             *
+             *  Measured on `react-spoke-stem-c66ce8a2`: five requirements, ALL
+             *  FIVE present in a 67522-character source, all five judged
+             *  against 17936 characters of it — and four came back «MISSING»
+             *  with confident, specific reasons. «The source does not contain
+             *  any CTA specifically for phone numbers», while
+             *  `<a href={'tel:' + content.contact.phone}>` sat in the part that
+             *  had been cut away.
+             *
+             *  ⛔ AND THE BRIEF ALREADY SAID NOT TO. It says «the source above
+             *  may be CUT — if the part you need is missing, say unprovable
+             *  rather than guessing». The model did not obey. **An instruction
+             *  is not an enforcement** — this file spent a whole day proving
+             *  that a claim must be checked rather than trusted, and then
+             *  leaned on a sentence in a prompt to hold the line.
+             *
+             *  A false NEGATIVE is worse than a false positive here: it sends
+             *  whoever reads it hunting a builder defect that does not exist.
+             *  It sent me, and I published `0/5` about a build that had all
+             *  five before I checked it myself.
+             *
+             *  So it is enforced in code. If none of this requirement's own
+             *  words appear anywhere in what the judge was actually shown,
+             *  «not found» is not a finding — it is the cut talking.
+             */
+            if (src.length < full.length && !sliceCoversRequirement(r, src)) {
+                return {
+                    ...r,
+                    verdict: 'unprovable' as NamedVerdict,
+                    why: isArabic
+                        ? 'قال إنّه غير موجود، ولم يصله الجزء الذي يخصّه من المصدر — فلم أحتسب النفي'
+                        : 'it was reported absent, and the part of the source that concerns it was never shown — so I did not count the absence',
+                };
+            }
             return {
                 ...r,
                 verdict: 'unmet' as NamedVerdict,

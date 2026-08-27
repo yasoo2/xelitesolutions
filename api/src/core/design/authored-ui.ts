@@ -51,6 +51,13 @@ export interface AuthoringSpec {
     isArabic: boolean;
     /** Component names to author, e.g. ['Hero','Products','Story']. */
     components: string[];
+    /**
+     *  ⛔ WHAT THE PREVIOUS ATTEMPT FAILED TO DELIVER, when there was one.
+     *
+     *  Empty on a first build. Non-empty only on a repair, and then it is
+     *  the difference between authoring again and authoring the fix.
+     */
+    mustFix?: string[];
     /** Keys that really exist on the content object handed to each component. */
     contentKeys: string[];
     /**
@@ -406,6 +413,13 @@ export function authoringPrompt(spec: AuthoringSpec, only?: string): string {
         `Brand: ${spec.brand}`,
         `Language of the interface: ${spec.isArabic ? 'Arabic (RTL)' : 'English (LTR)'}`,
         ``,
+        ...(spec.mustFix && spec.mustFix.length ? [
+            `A PREVIOUS ATTEMPT AT THIS PROJECT FAILED THESE, and they are why you`,
+            `are being asked again. Deliver them in the source, visibly:`,
+            ...spec.mustFix.map(c => `  · ${c}`),
+            `Everything else that already worked must keep working.`,
+            ``,
+        ] : []),
         `Author ONE React component: ${target}`,
         `It sits on a page whose other sections are: ${spec.components.filter(c => c !== target).join(', ') || '(none)'} —`,
         `so it must be coherent with them without repeating what they do.`,

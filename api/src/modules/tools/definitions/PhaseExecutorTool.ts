@@ -1045,8 +1045,8 @@ export class PhaseExecutorTool implements ToolDefinition {
     auditFields = ['phase', 'projectContext'];
     mockSupported = false;
 
-    async execute(input: { phase: any; projectContext?: any }, context?: any) {
-        const { phase, projectContext } = input;
+    async execute(input: { phase: any; projectContext?: any; repairCriteria?: string[] }, context?: any) {
+        const { phase, projectContext, repairCriteria } = input;
         const MAX_PHASE_LOGS = 128;
         const MAX_PHASE_LOG_CHARS = 2_000;
         const logs: string[] = [];
@@ -1110,6 +1110,12 @@ export class PhaseExecutorTool implements ToolDefinition {
             // internal engineering run, but the old narrowed context dropped
             // these fields before delegated tools reached callLLM; generation
             // then fell back to ordinary chat deadlines and dead-brain policy.
+            //  ⛔ Carried across this boundary for the same reason `modelConfig`
+            //  is: a narrowed context that drops a field silently turns a
+            //  repair into a re-roll, and the drop is invisible from either side.
+            repairCriteria: repairCriteria && repairCriteria.length
+                ? repairCriteria
+                : (context?.repairCriteria || projectContext?.repairCriteria),
             modelConfig: context?.modelConfig || projectContext?.modelConfig,
             purpose: context?.purpose || projectContext?.purpose,
             engineeringPipeline: context?.engineeringPipeline ?? projectContext?.engineeringPipeline,

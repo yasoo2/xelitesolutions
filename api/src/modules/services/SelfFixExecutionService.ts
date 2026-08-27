@@ -308,7 +308,13 @@ export class SelfFixExecutionService {
     // engine, then let the same acceptance gate judge the result. This is a
     // bounded phase retry, not a guessed write and not an offline success.
     if (selfFixPlan.strategy === 'acceptance_fix') {
-      const rerunResult = await executeTool('phase_executor', { phase, projectContext }, {
+      //  ⛔ ATTEMPT TWO IS TOLD WHAT ATTEMPT ONE FAILED.
+      //  Without `repairCriteria` this call is a re-roll: the same request
+      //  handed to the same nondeterministic author, hoping for a different
+      //  draw. The judge had the answer the whole time.
+      const rerunResult = await executeTool('phase_executor', {
+        phase, projectContext, repairCriteria: selfFixPlan.unmetCriteria || [],
+      }, {
         ...executionContext,
         onProgress: (m: string) => executionContext.onProgress?.(`[self-fix:acceptance-rerun] ${m}`),
       });

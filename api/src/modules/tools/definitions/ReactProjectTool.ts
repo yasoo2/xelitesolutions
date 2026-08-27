@@ -3378,6 +3378,18 @@ export class ReactProjectTool extends BaseTool {
          *  catalogue floor below is a worse answer than the reading but an
          *  infinitely better one than no build.
          */
+        /**
+         *  WHAT THE LAST ATTEMPT FAILED, when this run is a repair.
+         *
+         *  The acceptance gate names the criteria it could not prove; until
+         *  now that list died in a prose `reason` one layer up, and the
+         *  author started over blind. An empty list means this is a first
+         *  attempt, which is a different thing from «nothing failed» and is
+         *  why it is only ever announced when it has members.
+         */
+        const mustFix: string[] = Array.isArray((context as any)?.repairCriteria)
+            ? (context as any).repairCriteria.map((c: any) => String(c)).filter(Boolean)
+            : [];
         const noBrainToAsk = process.env.NODE_ENV === 'test' || !!process.env.JEST_WORKER_ID;
         let namedByHim: NamedRequirement[] = [];
         if (noBrainToAsk) {
@@ -4499,8 +4511,13 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             const { composeDesign } = require('../../../core/design/composer');
             const { routeToModel } = require('../../../core/llm/intelligent-router');
             const names = ['Navbar', ...sections, 'Footer'].filter(c => componentTemplates[c]);
+            if (mustFix.length) {
+                term(`repairing a previous attempt — these were not proven: ${mustFix.join(' · ')}`);
+            }
             const authored = await authorComponents({
                 request,
+                //  ⛔ Named, so the second attempt is a repair and not a re-roll.
+                mustFix,
                 brand: content.brand,
                 isArabic: artifactIsAr,
                 components: names,
@@ -5367,7 +5384,72 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
              * second score is measured, never assumed: if the repair did not
              * help, the first number stands and says so.
              */
-            if (!audit.skipped && worthRepairing(audit.findings)) {
+            /**
+             *  The terminal audit, callable BEFORE the repair door as well as
+             *  inside it. It was previously a closure defined within the block
+             *  it could not open.
+             */
+            const terminalVerdict = async () => {
+                if (!apiDir || !fs.existsSync(path.join(apiDir, 'package.json'))) return null;
+                const { auditInTerminal } = require('../../../core/quality/terminal-audit');
+                return auditInTerminal(apiDir, {
+                    onLine: term,
+                    serveUrl: liveServer ? liveServer.url : '',
+                    tables: systemTables,
+                    timeoutMs: 25_000,
+                    //  The interface gets tested from the terminal too: its own
+                    //  dependencies, a real bundle on disk, and whether the
+                    //  bundle the server serves is the one just built.
+                    appDir: proj,
+                });
+            };
+            /**
+             *  ⛔ THE TERMINAL COULD HOLD THE LOOP OPEN AND NEVER OPEN IT.
+             *
+             *  The block below states its own contract: «BOTH INSTRUMENTS
+             *  DECIDE THE ROUND — NOT JUST THE BROWSER … the terminal is a
+             *  sixth of the verdict, which is enough for a broken table route
+             *  to hold the whole loop open.» That is true once a round is
+             *  running, and it was false at the door: `runTerminal` is defined
+             *  INSIDE this block, so nothing terminal-shaped was ever measured
+             *  before deciding whether to enter it.
+             *
+             *  `worthRepairing([])` over empty browser findings is `.some()` on
+             *  an empty array — false. So a build whose interface is visually
+             *  clean and whose `tables_answer` route returns 404 never entered
+             *  a single repair round. **The one shape the terminal audit was
+             *  added to catch is the one shape that could not trigger it** —
+             *  «a system whose interface is beautiful and whose API refuses to
+             *  answer», in the block's own words.
+             *
+             *  So the terminal speaks first, once, and either eye can open the
+             *  door. The measurement is reused inside rather than repeated,
+             *  because paying for it twice to learn the same fact is the kind
+             *  of waste that makes a loop too expensive to keep.
+             */
+            const doorTerminal = audit.skipped ? null : await terminalVerdict().catch(() => null);
+            /**
+             *  ⛔ ASKED THROUGH THE READER THAT ALREADY ANSWERS THIS.
+             *
+             *  My first version of this line tested `doorTerminal.failures` —
+             *  a field that does not exist. The audit returns
+             *  `{ score, checks, passed, total }`, so the condition would have
+             *  been permanently false and the door would have stayed shut
+             *  while every test and every type check passed. **A criterion
+             *  nothing can satisfy, written into the repair for a criterion
+             *  nothing could satisfy.**
+             *
+             *  `failingIds()` is the reader the block below already uses for
+             *  exactly this, ten lines further down. There was never a second
+             *  question to answer.
+             */
+            const doorTermFails: string[] = doorTerminal && !doorTerminal.skipped
+                ? require('../../../core/quality/terminal-audit').failingIds(doorTerminal) : [];
+            const terminalFoundSomething = doorTermFails.length > 0;
+            if (terminalFoundSomething) {
+                term(`terminal opened the repair round: ${doorTermFails.join(', ')}`);
+            }
+            if (!audit.skipped && (worthRepairing(audit.findings) || terminalFoundSomething)) {
                 if (sessionId) broadcastThinkingDetail(sessionId, isAr
                     ? '🛠️ وجدتُ ما أستطيع إصلاحه بنفسي — أصلحه وأعيد البناء وأقيس مرّة أخرى…'
                     : '🛠️ Repairing what I can fix myself, rebuilding, and measuring again…');
@@ -5419,19 +5501,13 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                  * the terminal is a sixth of the verdict, which is enough for
                  * a broken table route to hold the whole loop open.
                  */
+                //  The same reading the door already took, so a round does not
+                //  pay for it twice. `terminalVerdict` is defined above the door;
+                //  this keeps the name the rest of the block uses.
+                let doorTerminalUsed = false;
                 const runTerminal = async () => {
-                    if (!apiDir || !fs.existsSync(path.join(apiDir, 'package.json'))) return null;
-                    const { auditInTerminal } = require('../../../core/quality/terminal-audit');
-                    return auditInTerminal(apiDir, {
-                        onLine: term,
-                        serveUrl: liveServer ? liveServer.url : '',
-                        tables: systemTables,
-                        timeoutMs: 25_000,
-                        // The interface gets tested from the terminal too: its
-                        // own dependencies, a real bundle on disk, and whether
-                        // the bundle the server serves is the one just built.
-                        appDir: proj,
-                    });
+                    if (!doorTerminalUsed && doorTerminal) { doorTerminalUsed = true; return doorTerminal; }
+                    return terminalVerdict();
                 };
                 const blend = (browser: number, terminal: any) =>
                     (terminal && !terminal.skipped && terminal.total)
