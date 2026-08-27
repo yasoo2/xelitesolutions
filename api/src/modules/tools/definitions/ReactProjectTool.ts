@@ -1277,6 +1277,54 @@ const SHAPE_ASKS: Array<{ section: string; re: RegExp }> = [
 
 const TEMPLATE_FILLER = new Set(['Features', 'Steps', 'Stats', 'Team', 'Testimonials']);
 
+/**
+ *  ⛔ HE ASKED FOR A RECIPE CARD AND JOE BUILT A SHOP.
+ *
+ *  Measured on his machine, on `59f28203`, after the reader and the judge had
+ *  both been made honest:
+ *
+ *      read from your request: 5 named — a hero with the dish name · an
+ *        ingredients list · a numbered steps list · a servings counter with
+ *        plus and minus buttons · a print button
+ *
+ *      what was actually built: AdminPanel · OrderButton · Products · Contact
+ *      grep of the built source: ingredient → 0 files · serving → 0 · print → 0
+ *
+ *      MISSING an ingredients list — the judge was RIGHT
+ *
+ *  `SECTION_ASKS` holds eleven known sections — Faq, Gallery, Location, Menu,
+ *  Pricing, Products, Stats, Steps, Story, Team, Testimonials. «an ingredients
+ *  list» matches none, so `asked` came back empty and the function returned the
+ *  KIND's full template: a shop, with an admin panel and an order button he
+ *  never asked for.
+ *
+ *  ⛔ THE FOURTH LAW AT THE ONE LAYER THAT NEVER OBEYED IT. The reader reads his
+ *  sentence, the judge rules on it honestly, and the builder between them
+ *  consults a table of eleven remembered shapes. Every catalogue closed this
+ *  week was a version of this; this is the one that decides what gets WRITTEN.
+ *
+ *  So a requirement he named becomes a section named after it. `an ingredients
+ *  list` becomes `IngredientsList` — a component the authoring layer writes
+ *  from his own words, with no template behind it and none needed.
+ */
+export function sectionNameFor(requirementText: string): string {
+    const STOP = /^(?:a|an|the|and|with|that|this|for|from|of|on|in|to|is|are|it|its|his|her|their|our|your|some|any)$/i;
+    const words = String(requirementText || '')
+        .split(/[^\p{L}\p{N}]+/u)
+        .filter(w => w && !STOP.test(w))
+        .slice(0, 3);
+    if (!words.length) return '';
+    const name = words
+        .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+        .join('')
+        .replace(/[^A-Za-z0-9]/g, '');
+    //  A React component name must start with a letter and be pronounceable in
+    //  a file path. An Arabic requirement yields nothing here, and that is
+    //  correct: the caller keeps the template section in that case rather than
+    //  writing a file nobody can import.
+    return /^[A-Za-z][A-Za-z0-9]{1,40}$/.test(name) ? name : '';
+}
+
 export function sectionsForRequest(request: string, kind: PageKind): string[] {
     const r = String(request || '');
     const { saysAny } = require('../../../core/language/arabic');
@@ -3522,6 +3570,18 @@ export class ReactProjectTool extends BaseTool {
         //  From the REQUEST, with the kind answering only for his silence.
         //  This line read `sectionsForKind(kind)` and that is where a brief
         //  naming six things became a fixed eight, five of them unasked.
+        /**
+         *  ⛔ WHAT HE NAMED BECOMES WHAT GETS BUILT.
+         *
+         *  `sectionsForRequest` consults a table of eleven remembered sections;
+         *  a request naming «an ingredients list» matches none of them and gets
+         *  the kind's whole template instead. The reader has already extracted
+         *  his requirements by this point — quoted from his own sentence — and
+         *  nothing was using them to decide what to WRITE.
+         */
+        const namedSections = namedByHim
+            .map(r => sectionNameFor(r.text))
+            .filter(Boolean);
         const sections = multiPage
             ? [...new Set(pages.flatMap(p => p.sections))]
             : sectionsForRequest(request, kind);
@@ -4510,7 +4570,18 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             const { authorComponents, describeShapes } = require('../../../core/design/authored-ui');
             const { composeDesign } = require('../../../core/design/composer');
             const { routeToModel } = require('../../../core/llm/intelligent-router');
-            const names = ['Navbar', ...sections, 'Footer'].filter(c => componentTemplates[c]);
+            /**
+             *  ⛔ AND A SECTION HE NAMED IS BUILT EVEN WITH NO TEMPLATE BEHIND IT.
+             *
+             *  This line read `.filter(c => componentTemplates[c])`, so anything
+             *  without a remembered template was dropped in silence — which is
+             *  how «an ingredients list» could be asked for, recognised, and
+             *  then never appear. The authoring layer writes components from his
+             *  words; it does not need a template to write one, and requiring
+             *  one is the catalogue deciding what may exist.
+             */
+            const templated = ['Navbar', ...sections, 'Footer'].filter(c => componentTemplates[c]);
+            const names = [...new Set([...templated, ...namedSections])];
             if (mustFix.length) {
                 term(`repairing a previous attempt — these were not proven: ${mustFix.join(' · ')}`);
             }
