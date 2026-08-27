@@ -3378,6 +3378,18 @@ export class ReactProjectTool extends BaseTool {
          *  catalogue floor below is a worse answer than the reading but an
          *  infinitely better one than no build.
          */
+        /**
+         *  WHAT THE LAST ATTEMPT FAILED, when this run is a repair.
+         *
+         *  The acceptance gate names the criteria it could not prove; until
+         *  now that list died in a prose `reason` one layer up, and the
+         *  author started over blind. An empty list means this is a first
+         *  attempt, which is a different thing from «nothing failed» and is
+         *  why it is only ever announced when it has members.
+         */
+        const mustFix: string[] = Array.isArray((context as any)?.repairCriteria)
+            ? (context as any).repairCriteria.map((c: any) => String(c)).filter(Boolean)
+            : [];
         const noBrainToAsk = process.env.NODE_ENV === 'test' || !!process.env.JEST_WORKER_ID;
         let namedByHim: NamedRequirement[] = [];
         if (noBrainToAsk) {
@@ -4499,8 +4511,13 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             const { composeDesign } = require('../../../core/design/composer');
             const { routeToModel } = require('../../../core/llm/intelligent-router');
             const names = ['Navbar', ...sections, 'Footer'].filter(c => componentTemplates[c]);
+            if (mustFix.length) {
+                term(`repairing a previous attempt — these were not proven: ${mustFix.join(' · ')}`);
+            }
             const authored = await authorComponents({
                 request,
+                //  ⛔ Named, so the second attempt is a repair and not a re-roll.
+                mustFix,
                 brand: content.brand,
                 isArabic: artifactIsAr,
                 components: names,
