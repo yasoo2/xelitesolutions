@@ -1544,9 +1544,46 @@ export async function routeToModel(
                 console.warn('[IntelligentRouter] Anthropic returned nothing usable — falling through to the mesh.');
             }
 
-            const effectiveBaseUrl = cfgBaseUrl?.trim() || 
-                (cfgProvider === 'openrouter' ? 'https://openrouter.ai/api/v1' :
-                 cfgProvider === 'gemini' || cfgProvider === 'google' ? 'https://generativelanguage.googleapis.com/v1beta/openai/' : undefined);
+            /**
+             *  ⛔ A DEFAULT ADDRESS THAT KNEW TWO PROVIDERS AND SENT THE REST
+             *  TO OPENAI.
+             *
+             *  The owner asked whether choosing any provider works. I audited
+             *  all eleven entries in his menu, end to end, and four failed:
+             *
+             *      deepseek   API IS OpenAI-compatible; Joe resolved NO address
+             *                 for it, so the SDK defaulted to api.openai.com and
+             *                 sent a DeepSeek key to OpenAI
+             *      grok       address came from the UI alone; without it, the
+             *                 same silent fall to api.openai.com
+             *      anthropic  not OpenAI-compatible at all — fixed separately
+             *      hack       not a provider: `let hack: any = pollinationsProvider`
+             *                 and never referenced again
+             *
+             *  ⛔ THE SHARED ROOT IS THIS TERNARY. `undefined` is not «no
+             *  address» to the OpenAI SDK — it is `https://api.openai.com/v1`.
+             *  So an unknown provider did not fail; it QUIETLY WENT SOMEWHERE
+             *  ELSE, carrying the user's key, and came back with a 401 that
+             *  reads exactly like a bad key. The user is told his key is wrong
+             *  when Joe posted it to the wrong company.
+             *
+             *  Every address below is the vendor's own OpenAI-compatible
+             *  endpoint. The UI still wins when it sends one; this is the floor
+             *  for when it does not.
+             */
+            const VENDOR_BASE: Record<string, string> = {
+                openrouter: 'https://openrouter.ai/api/v1',
+                gemini: 'https://generativelanguage.googleapis.com/v1beta/openai/',
+                google: 'https://generativelanguage.googleapis.com/v1beta/openai/',
+                deepseek: 'https://api.deepseek.com',
+                grok: 'https://api.x.ai/v1',
+                xai: 'https://api.x.ai/v1',
+                groq: 'https://api.groq.com/openai/v1',
+                mistral: 'https://api.mistral.ai/v1',
+                cerebras: 'https://api.cerebras.ai/v1',
+                openai: 'https://api.openai.com/v1',
+            };
+            const effectiveBaseUrl = cfgBaseUrl?.trim() || VENDOR_BASE[String(cfgProvider || '').toLowerCase()] || undefined;
             // A Promise.race only releases the caller; it does not stop the HTTP
             // request that lost the race. Long NEXUS planning calls then continued
             // in the background and their late completion was logged beside the
