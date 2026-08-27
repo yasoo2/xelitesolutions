@@ -3389,14 +3389,17 @@ export class ReactProjectTool extends BaseTool {
          */
         //  Same rule for the copy author: both spend the same fuel and both
         //  would make a hermetic test wait on a provider.
+        //  Same rule, same reason: a brain on his own disk has no quota to
+        //  protect, so nothing about the mesh's cooldowns should silence the
+        //  copy or the catalogue. See the note beside `providersAreRationing`.
         const copyProvidersRationing = process.env.NODE_ENV === 'test'
             || !!process.env.JEST_WORKER_ID
-            || (() => {
+            || (!/^(1|true|yes)$/i.test(String(process.env.LOCAL_BRAIN_FIRST || '').trim()) && (() => {
                 try {
                     const { isProviderCoolingDown } = require('../../../core/llm/intelligent-router');
                     return ['Groq (Free)', 'Groq', 'Anthropic', 'OpenAI'].some((p: string) => isProviderCoolingDown(p));
                 } catch { return false; }
-            })();
+            })());
         if (!input?.skipAuthoredCopy && !copyProvidersRationing) {
             try {
                 const { authorCopy, COPY_FIELDS } = require('../../../core/design/authored-copy');
@@ -4229,12 +4232,28 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
          *  in `the-interface-has-an-author-now` -- that is where it belongs.
          */
         const insideATest = process.env.NODE_ENV === 'test' || !!process.env.JEST_WORKER_ID;
-        const providersAreRationing = insideATest || (() => {
+        /**
+         *  ⛔ STANDING DOWN PROTECTS A QUOTA. A LOCAL BRAIN HAS NO QUOTA.
+         *
+         *  Measured on the owner's machine, right after he asked to rely on
+         *  Ollama: the store built, `success: true`, and `seedRows: []`. The
+         *  catalogue never ran, because this check asked whether GROQ was
+         *  rationing — on a machine whose brain is a model on his own disk,
+         *  where there is nothing to ration and nothing to protect.
+         *
+         *  So the guard was refusing to spend fuel that costs nothing, and the
+         *  owner got an empty shelf for it. The class is the one this session
+         *  keeps meeting from every side: A CHECK ASKING ABOUT SOMETHING
+         *  ADJACENT TO ITS CLAIM. The claim is «will this starve the planner?»,
+         *  and a local brain cannot starve anything.
+         */
+        const localBrainLeads = /^(1|true|yes)$/i.test(String(process.env.LOCAL_BRAIN_FIRST || '').trim());
+        const providersAreRationing = insideATest || (!localBrainLeads && (() => {
             try {
                 const { isProviderCoolingDown } = require('../../../core/llm/intelligent-router');
                 return ['Groq (Free)', 'Groq', 'Anthropic', 'OpenAI'].some((p: string) => isProviderCoolingDown(p));
             } catch { return false; }
-        })();
+        })());
         if (!appBp && sections.length && providersAreRationing) {
             term('interface authoring stood down — the model providers are rationing, and the planner needs that quota more than the page does');
         }
