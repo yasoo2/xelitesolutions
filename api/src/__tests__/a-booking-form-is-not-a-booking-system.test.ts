@@ -76,6 +76,23 @@ describe('an element on a page is not a data service', () => {
         }
     });
 
+    it('⛔ THE FOURTH LAW TEST — a noun Joe has never seen behaves the same', () => {
+        //  Every case above uses a REAL word: booking, order, reports, payment.
+        //  A repair that passed those and failed this would be the catalogue
+        //  again in a new spot — five known nouns special-cased, and the sixth
+        //  request back to building a database for a brochure.
+        //
+        //  These invented nouns are free IF the strip reads the trailing
+        //  ELEMENT word and ignores what sits in front of it, which is the
+        //  whole design. So they are asserted rather than assumed, because
+        //  «it should work by construction» is not a measurement.
+        expect(scope('Build a page with a florbing form.')).toBe('page');
+        expect(scope('Build a landing page for a shop with a zibbet button.')).toBe('page');
+        expect(scope('اعمل صفحة فيها نموذج فلربة')).toBe('page');
+        //  ...and the same invented noun, asked for as a system, stays one.
+        expect(scope('Build a florbing system with user accounts and an admin dashboard.')).toBe('system');
+    });
+
     it('NEGATIVE — the strip removes the element, not the subject around it', () => {
         //  «a bakery with an order button» must still be recognisably a bakery
         //  site. If stripping ate the surrounding words the classifier would be
