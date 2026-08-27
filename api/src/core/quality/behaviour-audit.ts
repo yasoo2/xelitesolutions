@@ -812,10 +812,49 @@ export function judgeBehaviour(
     jsErrors: string[] = [],
 ): { score: number; findings: BehaviourFinding[] } {
     const findings: BehaviourFinding[] = [];
-    const pressable = controls.filter(c => c.kind !== 'anchor');
+    /**
+     *  ⛔ A CONTROL THAT WAS NEVER PRESSED IS NOT A CONTROL THAT DID NOTHING.
+     *
+     *  Measured by running this audit against a store I had opened and pressed
+     *  by hand — the cart badge went 0 -> 1, the drawer showed «الإجمالي 200»,
+     *  the order form was there. The audit's own control table said:
+     *
+     *      DEAD button effect=not found  label=«السلة 0»
+     *      DEAD button effect=not found  label=«أضف إلى السلة»   × 6
+     *
+     *  and the finding it published said «8 من 12 أزرار لا تفعل شيئاً عند
+     *  الضغط» — about buttons it never pressed. `not found` means the element
+     *  was gone when the click was attempted: the nav links had been pressed
+     *  first, the route had moved, and the shop's own controls were no longer
+     *  on the page.
+     *
+     *  ⛔ THE CLASS IS THE MOST EXPENSIVE ONE HERE, BECAUSE IT IS A FALSE
+     *  STATEMENT ABOUT A MEASUREMENT: «I pressed it and nothing happened» when
+     *  nothing was pressed at all. It made Joe refuse to deliver a working
+     *  store, which is worse than a wrong number — it withholds finished work
+     *  and gives the owner a reason that is not true.
+     *
+     *  So the two are separated. A control that could not be reached is
+     *  reported as unreachable, and never counted among those that did
+     *  nothing. The audit still says it, loudly, because a control the test
+     *  could not reach is a real gap in the evidence — it is simply a
+     *  different gap from a dead button.
+     */
+    const pressable = controls.filter(c => c.kind !== 'anchor' && c.effect !== 'not found');
+    const unreachable = controls.filter(c => c.kind !== 'anchor' && c.effect === 'not found');
     const dead = pressable.filter(c => !c.worked);
     metrics.pressed = pressable.length;
     metrics.dead = dead.length;
+    metrics.unreachable = unreachable.length;
+
+    if (unreachable.length) {
+        findings.push({
+            code: 'controls_not_reached', severity: 'minor',
+            ar: `لم أصل إلى ${unreachable.length} من ${controls.length} زرّاً لأجرّبه: ${unreachable.slice(0, 3).map(d => `«${d.label}»`).join('، ')} — اختفت من الصفحة قبل الضغط، ولا أدّعي أنّها معطوبة`,
+            en: `${unreachable.length} of ${controls.length} controls were gone before I could press them: ${unreachable.slice(0, 3).map(d => `"${d.label}"`).join(', ')} — not pressed, so not judged`,
+            hint: 'the route moved while the audit was pressing; these were never tested',
+        });
+    }
 
     if (jsErrors.length) {
         findings.push({
