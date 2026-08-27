@@ -275,12 +275,51 @@ export function foundInSource(evidence: string, source: string): boolean {
     return flat(source).includes(e);
 }
 
+/**
+ *  ⛔ SIXTY-EIGHT THOUSAND CHARACTERS IN ONE PROMPT.
+ *
+ *  Measured on a live run, with every repair of the day in the bundle:
+ *
+ *      read from your request: 5 named — a service list with prices · opening
+ *        hours · location · phone CTA · a booking form
+ *      the judge could not rule on any of the 5 named — the model returned no
+ *        verdict for this item
+ *      acceptance denominator: 1 (known-features list — your request was not read)
+ *
+ *  The reading was perfect and the judging returned nothing, because the prompt
+ *  carried the WHOLE built source — `chars=67815` — plus five requirements, and
+ *  asked for JSON. `readProjectSource` caps at 600KB, and nothing capped it
+ *  again on the way into a model. Any brain short of an enormous one chokes,
+ *  returns something unparseable, and every requirement comes back
+ *  `unprovable`.
+ *
+ *  ⛔ AND IT IS MY DESIGN ERROR, of a shape this repository has a name for: an
+ *  unbounded input handed to a bounded reader. The catalogue proved features by
+ *  pattern and needed no context at all; I replaced it with something that
+ *  needs context and never asked how much context there was.
+ *
+ *  So: ONE requirement per call, over a bounded slice, and the slice says it is
+ *  a slice. A judge shown part of a file must be able to answer «I could not
+ *  tell» honestly rather than be tricked into guessing.
+ */
+const MAX_SOURCE_CHARS = 18_000;
+
+/** The whole source when it fits; otherwise a head and a tail, marked as cut. */
+export function boundedSource(source: string, max = MAX_SOURCE_CHARS): string {
+    const src = String(source || '');
+    if (src.length <= max) return src;
+    const half = Math.floor((max - 120) / 2);
+    return src.slice(0, half)
+        + '\n\n\u2026 [' + String(src.length - half * 2) + ' characters of this project are not shown] …\n\n'
+        + src.slice(-half);
+}
+
 export function verificationPrompt(reqs: NamedRequirement[], source: string, isArabic: boolean): string {
     return [
         `Here is the source of a project that was just built.`,
         ``,
         `SOURCE:`,
-        source,
+        boundedSource(source),
         ``,
         `For each requirement below, decide whether the source really delivers it.`,
         ...reqs.map((r, i) => `  ${i + 1}. [${r.id}] ${r.text}   (he wrote: «${r.quote}»)`),
@@ -289,7 +328,9 @@ export function verificationPrompt(reqs: NamedRequirement[], source: string, isA
         `  · "met" ONLY if you can copy a line OUT OF THE SOURCE ABOVE that`,
         `    delivers it. Put that line, character for character, in "evidence".`,
         `  · "unmet" if the source does not deliver it.`,
-        `  · "unprovable" if you cannot tell from what you were shown.`,
+        `  · "unprovable" if you cannot tell from what you were shown. The`,
+        `    source above may be CUT — if the part you need is missing, say`,
+        `    "unprovable" rather than guessing.`,
         `  · Do not guess a line. A line you cannot find is "unprovable".`,
         `  · Write "why" in ${isArabic ? 'Arabic' : 'English'}, one short sentence.`,
         ``,
@@ -372,18 +413,53 @@ export async function verifyNamed(
     if (!reqs.length) return [];
     if (!src.trim()) return blank(NO_SOURCE(isArabic));
 
-    let raw = '';
-    try {
-        raw = await call(verificationPrompt(reqs, src, isArabic));
-    } catch (e: any) {
-        //  A brain that cannot be reached certifies nothing and condemns
-        //  nothing. Anything else here is a verdict about a build nobody read.
+    /**
+     *  ⛔ ONE AT A TIME. Five requirements and a whole project in one prompt is
+     *  a single point of failure for the entire ledger: one malformed answer
+     *  and every line reads `unprovable`, which is exactly what was measured.
+     *  Asked separately, a brain that can answer three of five DOES, and the
+     *  two it cannot are honestly marked instead of taking the other three
+     *  down with them.
+     */
+    const answers = await Promise.all(reqs.map(async r => {
+        try { return { id: r.id, raw: await call(verificationPrompt([r], src, isArabic)) }; }
+        catch (e: any) { return { id: r.id, raw: '', error: String(e && e.message || e) }; }
+    }));
+    /**
+     *  A brain that cannot be reached certifies nothing and condemns nothing.
+     *  «Not one call got through» is a different fact from «it answered and
+     *  could not tell», and only the first is about the provider — so it is
+     *  reported as the provider's, with the provider's own words.
+     */
+    if (!answers.some(a => !a.error)) {
+        const why = String(answers[0]?.error || 'unknown').slice(0, 80);
         return blank(isArabic
-            ? `لم أفحصه — تعذّر الوصول إلى النموذج: ${String(e && e.message || e).slice(0, 80)}`
-            : `I did not inspect it — the model could not be reached: ${String(e && e.message || e).slice(0, 80)}`);
+            ? `لم أفحصه — تعذّر الوصول إلى النموذج: ${why}`
+            : `I did not inspect it — the model could not be reached: ${why}`);
     }
 
-    const byId = new Map(parseVerdicts(raw).map(v => [v.id, v]));
+    const byId = new Map<string, { id: string; verdict: string; evidence: string; why: string }>();
+    for (const a of answers) {
+        const parsed = parseVerdicts(a.raw);
+        /**
+         *  ⛔ A VERDICT LABELLED WITH A DIFFERENT ID IS NOT AN ANSWER TO THIS
+         *  QUESTION.
+         *
+         *  Each call asks about ONE requirement, so the natural reading is «the
+         *  answer belongs to what I asked». It does not, always: a model can
+         *  echo an id from the brief, or answer about a neighbour. Accepting it
+         *  anyway means one requirement's verdict is silently reported as
+         *  another's — the ledger stays full and starts lying about WHICH thing
+         *  was proven, which is worse than an empty line.
+         *
+         *  So: the one that names this requirement, or the single unlabelled
+         *  one, or nothing.
+         */
+        const named = parsed.find(v => v.id === a.id);
+        const lone = parsed.length === 1 && !parsed[0].id ? parsed[0] : undefined;
+        const answer = named || lone;
+        if (answer) byId.set(a.id, { ...answer, id: a.id });
+    }
     return reqs.map(r => {
         const v = byId.get(r.id);
         if (!v) return { ...r, verdict: 'unprovable' as NamedVerdict, why: NO_VERDICT(isArabic) };

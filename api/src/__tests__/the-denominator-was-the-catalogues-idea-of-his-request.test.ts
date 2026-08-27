@@ -32,7 +32,7 @@
 import fs from 'fs';
 import path from 'path';
 import { earlyProjectDeclaration } from '../modules/tools/definitions/ReactProjectTool';
-import { verifyNamed, foundInSource, nothingWasJudged, NamedRequirement } from '../core/quality/named-requirements';
+import { verifyNamed, foundInSource, nothingWasJudged, boundedSource, verificationPrompt, NamedRequirement } from '../core/quality/named-requirements';
 
 const REACT = fs.readFileSync(
     path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ReactProjectTool.ts'),
@@ -57,6 +57,12 @@ export function BookingForm() {
 `;
 
 const answering = (payload: any) => async () => JSON.stringify(payload);
+
+/** Two of his five, used by the bounded-source block below. */
+const TWO_REQS: NamedRequirement[] = [
+    { id: 'req-a', text: 'a service list with prices', quote: 'a service list with prices' },
+    { id: 'req-b', text: 'a booking form', quote: 'a booking form' },
+];
 
 describe('what he named is what gets counted', () => {
     it('⛔ POSITIVE — the announcement says all five, not the one the table knew', () => {
@@ -266,5 +272,90 @@ describe('a judge that could not look does not condemn', () => {
         expect(REACT).toContain('const judgeWasBlind = nothingWasJudged(namedVerdicts);');
         expect(REACT).toMatch(/const namedJudged = judgeWasBlind \? \[\] : namedVerdicts;/);
         expect(REACT).toContain('the judge could not rule on any of the');
+    });
+});
+
+/**
+ * SIXTY-EIGHT THOUSAND CHARACTERS IN ONE PROMPT.
+ *
+ * Measured live on the owner's machine with every repair of the day in the
+ * bundle — run `run-1787858535545`:
+ *
+ *     read from your request: 5 named — a service list with prices · opening
+ *       hours · location · phone CTA · a booking form
+ *     the judge could not rule on any of the 5 named — the model returned no
+ *       verdict for this item
+ *     acceptance denominator: 1 (known-features list — your request was not read)
+ *     acceptance fidelity verdict: … chars=67815
+ *
+ * The reading was perfect. The judging returned nothing, because the prompt
+ * carried the WHOLE built source plus all five requirements and asked for JSON.
+ * `readProjectSource` caps at 600KB and nothing capped it again on the way into
+ * a model, so any brain short of an enormous one returns something unparseable
+ * — and then every requirement reads `unprovable` together.
+ *
+ * ⛔ AN UNBOUNDED INPUT HANDED TO A BOUNDED READER, and it is my design error.
+ * The catalogue proved features by pattern and needed no context at all; the
+ * replacement needs context and never asked how much there was.
+ */
+describe('the judge is asked one question at a time, over a bounded source', () => {
+    it('⛔ POSITIVE — a source that fits is passed whole', () => {
+        //  The bound must not damage the ordinary case; most projects are far
+        //  smaller than the cap and the model should see all of it.
+        expect(boundedSource('a'.repeat(400))).toBe('a'.repeat(400));
+    });
+
+    it('⛔ POSITIVE — a source that does not fit is CUT, and says so', () => {
+        //  A silent truncation would let the model answer «unmet» about a file
+        //  it was never shown — a false failure, which is worse than «I could
+        //  not tell» because it reads as a real defect in his build.
+        const cut = boundedSource('x'.repeat(60_000));
+        expect(cut.length).toBeLessThan(20_000);
+        expect(cut).toContain('characters of this project are not shown');
+    });
+
+    it('⛔ POSITIVE — head AND tail survive, not just the beginning', () => {
+        //  Entry files sort early and components late. Keeping only the head
+        //  would make every requirement about a component unprovable by
+        //  construction.
+        const src = 'HEAD_MARKER' + 'x'.repeat(60_000) + 'TAIL_MARKER';
+        const cut = boundedSource(src);
+        expect(cut.startsWith('HEAD_MARKER')).toBe(true);
+        expect(cut.endsWith('TAIL_MARKER')).toBe(true);
+    });
+
+    it('⛔ NEGATIVE — the brief tells the model the source may be cut', () => {
+        //  Without this the model guesses to fill the gap, and a guess dressed
+        //  as a verdict is the one thing this whole layer exists to prevent.
+        const brief = verificationPrompt(TWO_REQS, 'src', false);
+        expect(brief).toContain('may be CUT');
+        expect(brief).toContain('rather than guessing');
+    });
+
+    it('⛔ NEGATIVE — one bad answer no longer takes the others down', async () => {
+        //  The measured failure: five requirements in one call, one malformed
+        //  reply, and the ENTIRE ledger read unprovable. Asked separately, the
+        //  ones that can be answered are.
+        let n = 0;
+        const judged = await verifyNamed(TWO_REQS, SOURCE, false, async () => {
+            n += 1;
+            return n === 1
+                ? 'not json at all, the model rambled'
+                : JSON.stringify({ verdicts: [{ id: TWO_REQS[1].id, verdict: 'met', evidence: 'export function BookingForm()', why: 'the form is there' }] });
+        });
+        expect(n).toBe(2);
+        expect(judged[0].verdict).toBe('unprovable');
+        expect(judged[1].verdict).toBe('met');
+    });
+
+    it('⛔ NEGATIVE — a verdict labelled with ANOTHER id is not this one’s answer', async () => {
+        //  Each call asks about one requirement, so «the answer belongs to what
+        //  I asked» is the natural reading — and it is wrong when the model
+        //  echoes a neighbour's id. Accepting it keeps the ledger full while it
+        //  starts lying about WHICH thing was proven.
+        const judged = await verifyNamed(TWO_REQS.slice(0, 1), SOURCE, false, answering({
+            verdicts: [{ id: 'some-other-requirement', verdict: 'met', evidence: 'export function BookingForm()', why: 'ok' }],
+        }));
+        expect(judged[0].verdict).toBe('unprovable');
     });
 });
