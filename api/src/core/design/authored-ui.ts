@@ -426,6 +426,50 @@ export function authoringPrompt(spec: AuthoringSpec, only?: string): string {
         ``,
         `HARD CONTRACT — a file that breaks any of these is discarded:`,
         `  1. The only import allowed is: import React from 'react';`,
+        `     — or, when this section needs state, exactly:`,
+        `       import React, { useState } from 'react';`,
+        ``,
+        //  ⛔ THE BRIEF FORBADE WHAT THE VALIDATOR ALLOWS.
+        //
+        //  Measured on the owner's own run, from Joe's own words, before it
+        //  built anything:
+        //
+        //      I did not recognise the kind of thing you asked for … I am going
+        //      to build a generic structure instead — a presentation page, not
+        //      a working program.
+        //
+        //  and afterwards, from the audit that followed:
+        //
+        //      self-QA: 64/100 — … some_dead_controls …
+        //      improve: round 1 — 64 → 67 · gone: mobile_tap_targets
+        //      improve: round 2 — still open: some_dead_controls
+        //
+        //  A tap-target is a CSS rule and closed in one round. A dead control
+        //  needs component code, and survived every round — so the one finding
+        //  a user actually feels is the one the loop cannot act on.
+        //
+        //  ⛔ AND THE CAUSE WAS ONE SENTENCE IN THIS BRIEF. `ALLOWED_IMPORT`
+        //  already admits `import React, { useState } from 'react'` — the
+        //  optional `{…}` group is right there in the pattern — and
+        //  `the-interface-has-an-author-now` already asserts an authored
+        //  contact form using `useState`, `onSubmit`, `preventDefault`. **The
+        //  capability existed and the instruction told the model not to use
+        //  it.** The brief mentioned state, handlers or interactivity exactly
+        //  ZERO times, and a model reading «the only import allowed is React»
+        //  writes markup and stops.
+        //
+        //  So Joe could draw a servings counter and never make it count. Every
+        //  repair of this night was in the layer that JUDGES the build; this is
+        //  the first one in the layer that WRITES it.
+        `  1b. INTERACTIVITY IS PART OF THE SECTION, not decoration on it.`,
+        `     If the request asks for something that CHANGES ON SCREEN — a`,
+        `     counter, a filter, a cart total, a toggle, a quantity that`,
+        `     recalculates — implement it with useState and real handlers, in`,
+        `     this file. A control that renders but does nothing is a failure,`,
+        `     not a partial success: prefer fewer sections that work to more`,
+        `     that only look right.`,
+        `     Derive what is shown from state, so pressing the control visibly`,
+        `     changes the numbers or the list on the page.`,
         `  2. Each file: export default function <Name>({ content }) { … }`,
         `  3. Read data ONLY from these content fields — nothing else exists,`,
         `     and each one is written with the SHAPE it really has:`,
