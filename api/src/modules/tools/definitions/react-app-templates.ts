@@ -3087,7 +3087,13 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--accent,#06c);out
  *  rules; «.primary« now reads the same tokens.
  */
 .primary{background:var(--brand,#111);color:var(--on-brand,#fff);border:1px solid transparent;
-  border-radius:var(--radius-composed,10px);padding:10px 18px;min-height:44px;
+  /*  --radius, not --radius-composed: the first is emitted by paletteCss,
+   *  which every app receives; the second belongs to the composer pass and
+   *  is not guaranteed here. The old line never broke a render -- its own
+   *  fallback saw to that -- and that is exactly why the broken CONTRACT
+   *  went unnoticed: a base rule reading a token from a layer that may
+   *  not have run, hidden behind a default that always worked. */
+  border-radius:var(--radius,14px);padding:10px 18px;min-height:44px;
   font:inherit;font-weight:600;cursor:pointer;box-shadow:var(--shadow-brand,0 1px 2px rgba(0,0,0,.12))}
 .primary:hover{filter:brightness(1.08)}
 .primary:active{transform:translateY(1px)}
