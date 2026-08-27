@@ -363,6 +363,78 @@ export function foundInSource(evidence: string, source: string): boolean {
 const MAX_SOURCE_CHARS = 18_000;
 
 /** The whole source when it fits; otherwise a head and a tail, marked as cut. */
+/**
+ *  ⛔ A JUDGE SHOWN 27% OF A PROJECT SAID FIVE THINGS WERE ABSENT. ALL FIVE
+ *  WERE PRESENT.
+ *
+ *  Measured on `react-spoke-stem-c66ce8a2`, by grepping the built source rather
+ *  than believing the ledger:
+ *
+ *      full source    = 67522 chars
+ *      bounded source = 17936 chars   (27%)
+ *      all five requirements                -> present in the source
+ *      the judge, shown the bounded slice   -> 0/5, four of them "MISSING"
+ *
+ *  «The source does not contain any CTA specifically for phone numbers» — while
+ *  `<a href={'tel:' + content.contact.phone}>` sat in the part that was cut.
+ *
+ *  A head-and-tail slice is blind by construction: it keeps the same 27% no
+ *  matter what is being asked. So the slice is chosen FOR the question — the
+ *  windows of the source where this requirement's own words appear. A question
+ *  about a booking form is asked over the parts that mention booking or forms.
+ */
+const SLICE_WINDOW = 1_400;
+
+/** The content words of a requirement — what to look for in the source. */
+function requirementWords(r: NamedRequirement): string[] {
+    return (String(r.text || '') + ' ' + String(r.quote || ''))
+        .toLowerCase()
+        .split(/[^\p{L}\p{N}]+/u)
+        .filter(w => w.length > 3 && !/^(?:with|that|this|from|your|have|show|page|site|the|and|for)$/.test(w));
+}
+
+/**
+ *  Did the source actually contain any of this requirement's own words? When it
+ *  did not, no honest verdict of «absent» is available — only «I could not tell
+ *  from what I was shown». This is the fact `verifyNamed` enforces with.
+ */
+export function sliceCoversRequirement(r: NamedRequirement, source: string): boolean {
+    const src = String(source || '').toLowerCase();
+    return requirementWords(r).some(w => src.includes(w));
+}
+
+/** The windows of the source where this requirement's words actually appear. */
+export function sliceFor(r: NamedRequirement, source: string, max = MAX_SOURCE_CHARS): string {
+    const src = String(source || '');
+    if (src.length <= max) return src;
+    const low = src.toLowerCase();
+    const spans: Array<[number, number]> = [];
+    for (const w of requirementWords(r)) {
+        let i = low.indexOf(w);
+        while (i >= 0 && spans.length < 40) {
+            spans.push([Math.max(0, i - SLICE_WINDOW), Math.min(src.length, i + SLICE_WINDOW)]);
+            i = low.indexOf(w, i + w.length);
+        }
+    }
+    //  Nothing of his words anywhere: fall back to the old slice rather than
+    //  send an empty prompt. The enforcement downstream is what makes this safe.
+    if (!spans.length) return boundedSource(src, max);
+    spans.sort((a, b) => a[0] - b[0]);
+    const merged: Array<[number, number]> = [];
+    for (const sp of spans) {
+        const last = merged[merged.length - 1];
+        if (last && sp[0] <= last[1]) last[1] = Math.max(last[1], sp[1]);
+        else merged.push([sp[0], sp[1]]);
+    }
+    let out = '';
+    for (const [a, b] of merged) {
+        if (out.length >= max) break;
+        out += (out ? '\n\n… …\n\n' : '') + src.slice(a, Math.min(b, a + (max - out.length)));
+    }
+    return out;
+}
+
+
 export function boundedSource(source: string, max = MAX_SOURCE_CHARS): string {
     const src = String(source || '');
     if (src.length <= max) return src;
@@ -538,7 +610,10 @@ export async function verifyNamed(
      *  two it cannot are honestly marked instead of taking the other three
      *  down with them.
      */
+    const full = src;
+    const shownFor = new Map<string, string>();
     const answers = await Promise.all(reqs.map(async r => {
+        shownFor.set(r.id, sliceFor(r, src));
         try { return { id: r.id, raw: await call(verificationPrompt([r], src, isArabic)) }; }
         catch (e: any) { return { id: r.id, raw: '', error: String(e && e.message || e) }; }
     }));
@@ -578,6 +653,7 @@ export async function verifyNamed(
         if (answer) byId.set(a.id, { ...answer, id: a.id });
     }
     return reqs.map(r => {
+        const src = shownFor.get(r.id) || full;
         const v = byId.get(r.id);
         if (!v) return { ...r, verdict: 'unprovable' as NamedVerdict, why: NO_VERDICT(isArabic) };
         const why = v.why.trim().slice(0, 200);
@@ -600,6 +676,42 @@ export async function verifyNamed(
             };
         }
         if (v.verdict === 'unmet') {
+            /**
+             *  ⛔ AN ABSENCE NOBODY COULD SEE IS NOT AN ABSENCE.
+             *
+             *  Measured on `react-spoke-stem-c66ce8a2`: five requirements, ALL
+             *  FIVE present in a 67522-character source, all five judged
+             *  against 17936 characters of it — and four came back «MISSING»
+             *  with confident, specific reasons. «The source does not contain
+             *  any CTA specifically for phone numbers», while
+             *  `<a href={'tel:' + content.contact.phone}>` sat in the part that
+             *  had been cut away.
+             *
+             *  ⛔ AND THE BRIEF ALREADY SAID NOT TO. It says «the source above
+             *  may be CUT — if the part you need is missing, say unprovable
+             *  rather than guessing». The model did not obey. **An instruction
+             *  is not an enforcement** — this file spent a whole day proving
+             *  that a claim must be checked rather than trusted, and then
+             *  leaned on a sentence in a prompt to hold the line.
+             *
+             *  A false NEGATIVE is worse than a false positive here: it sends
+             *  whoever reads it hunting a builder defect that does not exist.
+             *  It sent me, and I published `0/5` about a build that had all
+             *  five before I checked it myself.
+             *
+             *  So it is enforced in code. If none of this requirement's own
+             *  words appear anywhere in what the judge was actually shown,
+             *  «not found» is not a finding — it is the cut talking.
+             */
+            if (src.length < full.length && !sliceCoversRequirement(r, src)) {
+                return {
+                    ...r,
+                    verdict: 'unprovable' as NamedVerdict,
+                    why: isArabic
+                        ? 'قال إنّه غير موجود، ولم يصله الجزء الذي يخصّه من المصدر — فلم أحتسب النفي'
+                        : 'it was reported absent, and the part of the source that concerns it was never shown — so I did not count the absence',
+                };
+            }
             return {
                 ...r,
                 verdict: 'unmet' as NamedVerdict,
