@@ -242,12 +242,18 @@ describe('the seed reaches the shelf, not just a variable', () => {
         expect(TPL).toMatch(/export function createStore\(key, seed\)/);
     });
 
-    it('NEGATIVE — the seed is written ONCE, only into empty storage', () => {
-        //  Writing it on every read would resurrect products he deleted, and
-        //  his own edits must outrank anything the build guessed.
-        const fn = TPL.slice(TPL.indexOf('export function createStore'), TPL.indexOf('export function createStore') + 900);
-        expect(fn).toMatch(/if \(raw\) return JSON\.parse\(raw\);/);
-        expect(fn).toMatch(/if \(Array\.isArray\(seed\) && seed\.length\)/);
+    it('NEGATIVE — the seed is written ONCE, and never over his own rows', () => {
+        //  ⛔ THIS ASSERTION USED TO PIN THE SPELLING, NOT THE CLAIM.
+        //  It required the literal line `if (raw) return JSON.parse(raw);` —
+        //  which was the DEFECT: a stored empty list is the string "[]", so a
+        //  shop opened once while empty could never be seeded. The guard went
+        //  red when that line was repaired, which is a guard defending a bug.
+        //
+        //  The claim is: stored rows always win, and the seed is offered at
+        //  most once per browser.
+        const fn = TPL.slice(TPL.indexOf('export function createStore'), TPL.indexOf('export const uid'));
+        expect(fn).toMatch(/if \(stored && stored\.length\) return stored;/);
+        expect(fn).toMatch(/if \(!offered && Array\.isArray\(seed\) && seed\.length\)/);
     });
 
     it('NEGATIVE — and the catalogue stands down with the other authors', () => {
@@ -305,5 +311,61 @@ describe('a seeded row is a real row', () => {
         //  Refusing the row for carrying `id` would empty the shelf again, for
         //  the one field the engine needs most.
         expect(refuseRow({ id: 'x', ...honey('عسل', 100) }, spec())).toBe('');
+    });
+});
+
+/**
+ *  ⛔ «EMPTY» AND «NEVER FILLED» ARE DIFFERENT THINGS, AND ONE VALUE CANNOT
+ *  SAY BOTH.
+ *
+ *  Measured on the owner's screen. `seed-1` … `seed-6` were present in the
+ *  built bundle and the page showed every metric at 0. The reader was
+ *
+ *      if (raw) return JSON.parse(raw);
+ *
+ *  and a stored empty list is the STRING "[]", which is truthy. So a shop that
+ *  anyone had ever opened while it was empty could never be seeded again: the
+ *  products shipped, and nobody ever saw them.
+ *
+ *  THE CLASS: a value used to answer a question it cannot answer. «Is there
+ *  anything stored?» and «has this browser ever been offered the seed?» are
+ *  two questions, and the raw value only knows the first. The marker is the
+ *  second — so an owner who deletes every product keeps his empty shelf, and a
+ *  browser that has never been offered the seed still gets it.
+ */
+describe('the seed can tell an empty shelf from an unseeded one', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const TPL = fs.readFileSync(path.join(__dirname, '..', 'modules/tools/definitions/react-app-templates.ts'), 'utf-8');
+    const READ = TPL.slice(TPL.indexOf('export function createStore'), TPL.indexOf('export const uid'));
+
+    it('⛔ POSITIVE — a stored EMPTY list no longer blocks the seed', () => {
+        //  The exact defect: truthiness of "[]" standing in for «has rows».
+        expect(READ).not.toMatch(/if \(raw\) return JSON\.parse\(raw\);/);
+        expect(READ).toMatch(/if \(stored && stored\.length\) return stored;/);
+    });
+
+    it('POSITIVE — and a marker records that this browser was offered the seed', () => {
+        expect(READ).toContain("':seeded'");
+        expect(READ).toMatch(/if \(!offered && Array\.isArray\(seed\) && seed\.length\)/);
+    });
+
+    it('NEGATIVE — a shelf the owner emptied himself stays empty', () => {
+        //  The marker is set at the same moment the seed is written, so a
+        //  second visit can never resurrect what he deleted.
+        expect(READ).toMatch(/localStorage\.setItem\(key, JSON\.stringify\(seed\)\); localStorage\.setItem\(mark, '1'\);/);
+    });
+
+    it('NEGATIVE — and reading the marker cannot throw the app over', () => {
+        //  Private mode makes localStorage throw on read, and a shop that
+        //  crashes rather than opening bare is worse than an unseeded one.
+        expect(READ).toMatch(/try \{ return localStorage\.getItem\(mark\) === '1'; \} catch \{ return false; \}/);
+    });
+
+    it('⛔ NEGATIVE — and no backtick may live inside the generated block', () => {
+        //  This file is a template literal. A backtick in a comment ends the
+        //  string: it happened here for the sixth time in this repository, in
+        //  the very comment explaining the fix beneath it.
+        expect(READ.includes(String.fromCharCode(96))).toBe(false);
     });
 });

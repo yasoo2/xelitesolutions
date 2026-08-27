@@ -553,12 +553,31 @@ export function createStore(key, seed) {
   const read = () => {
     try {
       const raw = localStorage.getItem(key);
-      if (raw) return JSON.parse(raw);
-      if (Array.isArray(seed) && seed.length) {
-        try { localStorage.setItem(key, JSON.stringify(seed)); } catch { /* private mode */ }
+      const stored = raw ? JSON.parse(raw) : null;
+      /**
+       *  A MARKER, BECAUSE «EMPTY» AND «NEVER FILLED» ARE DIFFERENT THINGS.
+       *
+       *  The first version returned the stored value whenever it existed — and a
+       *  stored empty list is the STRING "[]", which is truthy. So a shop
+       *  that anyone had ever opened while it was empty could never be
+       *  seeded again: the products were in the bundle, and the page showed
+       *  0. Measured on the owner's screen with seed-1..seed-6 present in
+       *  dist and every metric reading zero.
+       *
+       *  The marker separates the two states the raw value cannot:
+       *    no marker  -> this browser has never been offered the seed
+       *    marker set -> it has, and whatever is stored now is HIS, including
+       *                  an empty shelf he emptied himself
+       */
+      const mark = key + ':seeded';
+      const offered = (() => { try { return localStorage.getItem(mark) === '1'; } catch { return false; } })();
+      if (stored && stored.length) return stored;
+      if (!offered && Array.isArray(seed) && seed.length) {
+        try { localStorage.setItem(key, JSON.stringify(seed)); localStorage.setItem(mark, '1'); }
+        catch { /* private mode */ }
         return seed;
       }
-      return [];
+      return Array.isArray(stored) ? stored : [];
     }
     catch { return Array.isArray(seed) ? seed : []; }
   };
