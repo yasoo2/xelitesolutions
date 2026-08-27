@@ -57,6 +57,18 @@ function workspaceUnderAPackage(): { root: string; parent: string; child: string
     let wsRoot = '';
     try { wsRoot = String(getWorkspaceRoot(undefined) || ''); } catch { wsRoot = ''; }
     if (!wsRoot) wsRoot = path.join(__dirname, '..', '..', '..', 'data', 'projects', 'my-workspace');
+    //  ⛔ AND THE ROOT ITSELF MUST BE MADE, NOT ASSUMED.
+    //
+    //  The first version called `mkdtempSync` straight into `wsRoot`. On this
+    //  machine that folder exists because Joe has been running here for weeks;
+    //  in a fresh worktree it does not exist at all, and the fixture died in
+    //  `beforeAll` with ENOENT — so five of six assertions never reached
+    //  `NpmManagerTool` and the guard measured NOTHING while reporting failure.
+    //
+    //  A test that depends on runtime debris left by earlier runs is a test
+    //  that passes for a reason unrelated to the code, which is the same defect
+    //  this whole file is about, wearing the shape of a fixture.
+    fs.mkdirSync(wsRoot, { recursive: true });
     const parent = fs.mkdtempSync(path.join(wsRoot, 'joe-npm-containment-'));
     const child = path.join(parent, 'holds-projects');
     fs.mkdirSync(child, { recursive: true });
