@@ -322,9 +322,43 @@ export function parseVerdicts(raw: string): Array<{ id: string; verdict: string;
     return [];
 }
 
-const UNSEEN = (isArabic: boolean) => isArabic
-    ? 'لم أفحصه — لم أستطع قراءة المصدر'
-    : 'I did not inspect it — I could not read the source';
+/**
+ *  ⛔ THREE DIFFERENT CAUSES MUST NOT SHARE ONE SENTENCE.
+ *
+ *  This was a single string — «I did not inspect it — I could not read the
+ *  source» — returned for a blank source, for a model that returned no verdict
+ *  on an item, and for a model that returned a verdict with no reason. Only the
+ *  first is about the source.
+ *
+ *  Measured live on `c9f0506b`: every criterion came back with that sentence,
+ *  and the diagnosis that followed reasonably read the project source as
+ *  unextractable — when the likelier truth on a keyless mesh is that the model
+ *  never ruled on those items at all. **A report that misidentifies its own
+ *  cause sends the next hour in the wrong direction**, and this file spends its
+ *  whole length insisting that a verdict name what actually happened.
+ */
+const NO_SOURCE = (isArabic: boolean) => isArabic
+    ? 'لم أفحصه — لم أستطع قراءة مصدر المشروع'
+    : 'I did not inspect it — I could not read the project source';
+
+const NO_VERDICT = (isArabic: boolean) => isArabic
+    ? 'لم أفحصه — لم يُصدر النموذج حكماً على هذا البند'
+    : 'I did not inspect it — the model returned no verdict for this item';
+
+const CANNOT_TELL = (isArabic: boolean) => isArabic
+    ? 'لم أستطع الجزم من المصدر الذي قرأته'
+    : 'I could not tell from the source I read';
+
+/**
+ *  ⛔ DID THE JUDGE JUDGE AT ALL?
+ *
+ *  Not «did anything pass» — «was a single verdict actually reached». One real
+ *  `unmet` means the source was read and something was missing, which must
+ *  block. Everything `unprovable` means nobody looked, which must not.
+ */
+export function nothingWasJudged(judged: JudgedNamed[]): boolean {
+    return judged.length > 0 && judged.every(j => j.verdict === 'unprovable');
+}
 
 export async function verifyNamed(
     reqs: NamedRequirement[],
@@ -336,7 +370,7 @@ export async function verifyNamed(
     const blank = (why: string): JudgedNamed[] =>
         reqs.map(r => ({ ...r, verdict: 'unprovable' as NamedVerdict, why }));
     if (!reqs.length) return [];
-    if (!src.trim()) return blank(UNSEEN(isArabic));
+    if (!src.trim()) return blank(NO_SOURCE(isArabic));
 
     let raw = '';
     try {
@@ -352,7 +386,7 @@ export async function verifyNamed(
     const byId = new Map(parseVerdicts(raw).map(v => [v.id, v]));
     return reqs.map(r => {
         const v = byId.get(r.id);
-        if (!v) return { ...r, verdict: 'unprovable' as NamedVerdict, why: UNSEEN(isArabic) };
+        if (!v) return { ...r, verdict: 'unprovable' as NamedVerdict, why: NO_VERDICT(isArabic) };
         const why = v.why.trim().slice(0, 200);
         if (v.verdict === 'met') {
             //  ⛔ The one branch where a lie is expensive — so it is the one
@@ -379,6 +413,6 @@ export async function verifyNamed(
                 why: why || (isArabic ? 'لم أجده في المصدر' : 'not found in the source'),
             };
         }
-        return { ...r, verdict: 'unprovable' as NamedVerdict, why: why || UNSEEN(isArabic) };
+        return { ...r, verdict: 'unprovable' as NamedVerdict, why: why || CANNOT_TELL(isArabic) };
     });
 }
