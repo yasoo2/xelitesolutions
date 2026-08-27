@@ -52,6 +52,12 @@ const GENERATED_REQUIRED_INPUT_GUARD = `const guardRequiredInput = (value, onEmp
 export interface AppBuildOptions {
     brand: string;
     isArabic: boolean;
+    /**
+     *  The rows his request described, written once into empty storage.
+     *  Empty means nothing could be proven about what he sells — the shop
+     *  then opens honestly bare rather than stocked with invented goods.
+     */
+    seedRows?: Array<Record<string, any>>;
     /** The session's Joe API endpoint, when a backend was built first. */
     api?: string;
     /** localStorage namespace — one per project, so two apps never collide. */
@@ -115,6 +121,19 @@ export const content = {
   emptyHint: '${q(bp.emptyHint)}',
   // Everything the app stores lives under this key — survives a reload.
   storeKey: '${q(o.storeKey)}',
+  /**
+   *  THE SHELVES HE ASKED FOR, ALREADY FILLED.
+   *
+   *  «صفحة منتجات فيها ستة أنواع عسل مع أسعارها» produced a store whose every
+   *  number read 0, because the rows live in browser storage and storage is
+   *  empty on a first visit. He said what to put on the shelves and Joe built
+   *  the shelves.
+   *
+   *  Written once, only into empty storage — see createStore. An empty array
+   *  means nothing could be proven about what he sells, and the shop opens
+   *  honestly bare rather than stocked with goods he never described.
+   */
+  seedRows: ${JSON.stringify(o.seedRows || [])},
   // The session's Joe API, when a backend was built first. Empty means the
   // app is honestly local: it SAYS so in the interface rather than pretending.
   api: '${q(o.api || '')}',
@@ -519,10 +538,29 @@ export function fileAppStoreJs(): string {
  * where the data lives — with a best-effort read/write against the project's
  * own API when one exists, so a full-stack build shares rows between devices.
  */
-export function createStore(key) {
+export function createStore(key, seed) {
+  /**
+   *  A SHOP THAT OPENS WITH EMPTY SHELVES IS NOT THE SHOP HE DESCRIBED.
+   *
+   *  He asked for six kinds of honey with prices; the build was real, the
+   *  pages were his, and every number on the page read 0 -- because the rows
+   *  live in browser storage and storage is empty on a first visit.
+   *
+   *  The seed is written ONCE, only when there is nothing stored. After that
+   *  his own edits are the truth and the seed never speaks again -- otherwise
+   *  a shop would resurrect deleted products on every reload.
+   */
   const read = () => {
-    try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : []; }
-    catch { return []; }
+    try {
+      const raw = localStorage.getItem(key);
+      if (raw) return JSON.parse(raw);
+      if (Array.isArray(seed) && seed.length) {
+        try { localStorage.setItem(key, JSON.stringify(seed)); } catch { /* private mode */ }
+        return seed;
+      }
+      return [];
+    }
+    catch { return Array.isArray(seed) ? seed : []; }
   };
   const write = (rows) => {
     try { localStorage.setItem(key, JSON.stringify(rows)); } catch { /* quota or private mode */ }
@@ -4447,7 +4485,7 @@ const webImage = (raw) => {
 };
 
 export default function ShopApp({ content }) {
-  const catalogue = useMemo(() => createStore(content.storeKey + ':products'), [content.storeKey]);
+  const catalogue = useMemo(() => createStore(content.storeKey + ':products', content.seedRows), [content.storeKey]);
   const basket = useMemo(() => createStore(content.storeKey + ':cart'), [content.storeKey]);
 
   const [products, setProducts] = useState(() => catalogue.read());

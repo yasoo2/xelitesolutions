@@ -4069,7 +4069,60 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 generatedEnginePath: runBp.kind === 'weather' ? 'src/components/WeatherApp.jsx' : '',
             });
             if (declaration) term(declaration);
+            /**
+             *  ⛔ THE SHELVES HE ASKED FOR, FILLED FROM HIS OWN SENTENCE.
+             *
+             *  Watched live: «صفحة منتجات فيها ستة أنواع عسل مع أسعارها»
+             *  produced a real store whose every number read 0. The rows live
+             *  in browser storage, storage is empty on a first visit, and
+             *  nothing in the build ever put anything in it.
+             *
+             *  He said what to put on the shelves and Joe built the shelves.
+             *  That is the fourth law in its plainest form.
+             *
+             *  The count, and the floor he stated for prices, are read from
+             *  his sentence — not assumed, and not invented when he named
+             *  neither. If nothing survives the checks the shop opens bare,
+             *  which is honest.
+             */
+            let seedRows: Array<Record<string, any>> = [];
+            const seedFields = ((runBp as any).fields || []) as Array<any>;
+            if (!copyProvidersRationing && seedFields.length && !input?.skipAuthoredCopy) {
+                try {
+                    const { authorCatalogue, countHeAskedFor, minimumHeStated } = require('../../../core/design/authored-catalogue');
+                    const { routeToModel } = require('../../../core/llm/intelligent-router');
+                    const written = await authorCatalogue({
+                        request,
+                        brand: content.brand,
+                        isArabic: artifactIsAr,
+                        entityOne: String((runBp as any).entityOne || 'item'),
+                        fields: seedFields,
+                        wanted: countHeAskedFor(request),
+                        minNumeric: minimumHeStated(request),
+                    }, async (prompt: string) => {
+                        let timer: any;
+                        try {
+                            return await Promise.race([
+                                routeToModel([{ role: 'user', content: prompt }]),
+                                new Promise<string>((_, rej) => {
+                                    timer = setTimeout(() => rej(new Error('the model did not answer in time')), 120_000);
+                                }),
+                            ]);
+                        } finally { clearTimeout(timer); }
+                    });
+                    seedRows = written.rows;
+                    term(seedRows.length
+                        ? `catalogue written from his request: ${seedRows.length} × ${String((runBp as any).entityOne || 'item')}`
+                        : 'catalogue written from his request: none survived the checks — the shop opens empty, honestly');
+                    for (const r of written.rejected as Array<{ row: string; reason: string }>) {
+                        term(`  refused ${r.row}: ${r.reason}`);
+                    }
+                } catch (e: any) {
+                    term(`catalogue authoring skipped: ${String(e && e.message || e).slice(0, 120)}`);
+                }
+            }
             const appFiles = buildAppFiles(runBp, {
+                seedRows,
                 brand: content.brand, isArabic: artifactIsAr, api: appApi, apiResources,
                 //  The app remembers the words it was built from, so an edit can
                 //  re-derive his columns instead of replacing them with a stock set.
