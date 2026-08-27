@@ -25,7 +25,7 @@ import { brandFrom, brandFallback } from '../../../core/design/page-head';
 import { detectPageKind, type PageKind } from '../../../core/design/blueprints';
 import { derivedColumns, applyRequestFieldConstraints, detectAppKind, blueprintFor, uncoveredFeatures, derivedTables, type AppBlueprint, columnsAnywhereInHisRequest } from '../../../core/design/app-blueprints';
 import { acceptanceFor as acceptanceCriteriaFor } from '../../../core/quality/acceptance';
-import { namedRequirements, verifyNamed, NamedRequirement } from '../../../core/quality/named-requirements';
+import { namedRequirements, verifyNamed, nothingWasJudged, NamedRequirement } from '../../../core/quality/named-requirements';
 import { buildAppFiles, fileAppCss } from './react-app-templates';
 import { familyFor, familyCss, familyFonts, FAMILY_LABEL_AR, type DesignFamily } from '../../../core/design/families';
 import { pruneMissingFontResources } from '../../../core/design/font-resources';
@@ -5738,9 +5738,41 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
          *  silence is the only outcome that was never acceptable.
          */
         const catalogueCriteria = acceptanceCriteriaFor(request);
-        const namedJudged = namedByHim.length && !noBrainToAsk
+        const namedVerdicts = namedByHim.length && !noBrainToAsk
             ? await verifyNamed(namedByHim, projectEvidence, isAr, askTheModel)
             : [];
+        /**
+         *  ⛔ ABSENCE OF EVIDENCE IS NOT EVIDENCE OF FAILURE.
+         *
+         *  Measured live on `c9f0506b`, on a build that had actually been made:
+         *
+         *      acceptance denominator: 2 (2 read from your request + 0 structural)
+         *      ?? <each item> — I did not inspect it — I could not read the source
+         *      acceptance: 0/2 requested criteria proven
+         *      delivery: BLOCKED — acceptance ledger is not accepted
+         *
+         *  `verifyNamed`'s own comment says a brain that cannot be reached
+         *  «certifies nothing and condemns nothing». It was wired to condemn:
+         *  every item unprovable reads as `0/N proven`, and delivery blocks on
+         *  that. **The rule was written and then wired past.**
+         *
+         *  And the cost is not a corner case. P01 replaced criteria the
+         *  catalogue could prove BY PATTERN — `button`, `counter`, `title` — with
+         *  criteria only a model can prove. So on a weak brain Joe now builds
+         *  correctly and then refuses to hand anything over, a regression P01
+         *  introduced that no unit guard could see, because every one of them
+         *  injects a model that answers.
+         *
+         *  One real `unmet` still blocks: that is a source that WAS read and
+         *  something that WAS missing. Only total blindness falls back, and it
+         *  falls back out loud.
+         */
+        const judgeWasBlind = nothingWasJudged(namedVerdicts);
+        const namedJudged = judgeWasBlind ? [] : namedVerdicts;
+        if (judgeWasBlind) {
+            term(`the judge could not rule on any of the ${namedVerdicts.length} named — `
+                + `${namedVerdicts[0]?.why || 'no reason given'} — falling back to the known-features list`);
+        }
         for (const j of namedJudged) {
             term(`  ${j.verdict === 'met' ? 'OK' : j.verdict === 'unmet' ? 'MISSING' : '??'} ${j.text} — ${j.why}`);
         }

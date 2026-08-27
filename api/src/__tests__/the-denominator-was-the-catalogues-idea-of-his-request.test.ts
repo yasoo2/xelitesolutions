@@ -32,7 +32,7 @@
 import fs from 'fs';
 import path from 'path';
 import { earlyProjectDeclaration } from '../modules/tools/definitions/ReactProjectTool';
-import { verifyNamed, foundInSource, NamedRequirement } from '../core/quality/named-requirements';
+import { verifyNamed, foundInSource, nothingWasJudged, NamedRequirement } from '../core/quality/named-requirements';
 
 const REACT = fs.readFileSync(
     path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ReactProjectTool.ts'),
@@ -177,5 +177,94 @@ describe('a named requirement is proven by reading the source', () => {
             verdicts: [{ id: 'req-b', verdict: 'unmet', evidence: '', why: 'no opening hours anywhere in the build' }],
         }));
         expect(judged[0]).toMatchObject({ verdict: 'unmet', why: 'no opening hours anywhere in the build' });
+    });
+});
+
+/**
+ * ⛔ A LEDGER NOBODY COULD FILL IS NOT A FAILING LEDGER.
+ *
+ * Measured live on `c9f0506b`, on a project that had really been built:
+ *
+ *     acceptance denominator: 2 (2 read from your request + 0 structural)
+ *     ?? <each item> — I did not inspect it — I could not read the source
+ *     acceptance: 0/2 requested criteria proven
+ *     delivery: BLOCKED — acceptance ledger is not accepted
+ *
+ * `verifyNamed`'s own comment says a brain that cannot be reached «certifies
+ * nothing and condemns nothing». It was wired to condemn: every item
+ * `unprovable` reads downstream as `0/N proven`, and delivery blocks on that.
+ * **The rule was written and then wired past** — absence of evidence became
+ * evidence of failure.
+ *
+ * And the cost was not a corner case. P01 replaced criteria the catalogue could
+ * prove BY PATTERN with criteria only a model can prove, so on a weak brain Joe
+ * built correctly and then refused to hand anything over. No unit guard could
+ * see it, because every one of them injects a model that answers — which is
+ * exactly why the case below injects one that does not.
+ */
+describe('a judge that could not look does not condemn', () => {
+    const TWO: NamedRequirement[] = [
+        { id: 'req-a', text: 'a service list with prices', quote: 'a service list with prices' },
+        { id: 'req-b', text: 'a booking form', quote: 'a booking form' },
+    ];
+
+    it('⛔ POSITIVE — every item unprovable is a BLIND judge, not a failed build', async () => {
+        const judged = await verifyNamed(TWO, SOURCE, false, async () => { throw new Error('no provider'); });
+        expect(nothingWasJudged(judged)).toBe(true);
+    });
+
+    it('⛔ NEGATIVE — one real «unmet» is NOT blindness, and must still block', async () => {
+        //  The whole distinction. A source that WAS read and something that WAS
+        //  missing is a real failure, and widening the fallback to cover it
+        //  would turn this repair into the thing it is repairing.
+        const judged = await verifyNamed(TWO, SOURCE, false, answering({
+            verdicts: [
+                { id: 'req-a', verdict: 'unmet', evidence: '', why: 'no prices anywhere' },
+                { id: 'req-b', verdict: 'unprovable', evidence: '', why: 'could not tell' },
+            ],
+        }));
+        expect(nothingWasJudged(judged)).toBe(false);
+    });
+
+    it('NEGATIVE — one real «met» is not blindness either', async () => {
+        const judged = await verifyNamed(TWO, SOURCE, false, answering({
+            verdicts: [
+                { id: 'req-a', verdict: 'met', evidence: '<ul className="service-list">', why: 'the list is there' },
+                { id: 'req-b', verdict: 'unprovable', evidence: '', why: 'could not tell' },
+            ],
+        }));
+        expect(nothingWasJudged(judged)).toBe(false);
+    });
+
+    it('NEGATIVE — nothing to judge is not blindness', () => {
+        //  An empty list must not trip the fallback: a request that named
+        //  nothing is a different fact from a judge that could not look, and
+        //  merging them would make the fallback fire on every catalogue run.
+        expect(nothingWasJudged([])).toBe(false);
+    });
+
+    it('⛔ the three causes are three sentences, and each names what happened', async () => {
+        //  One string for three causes is how a diagnosis goes an hour in the
+        //  wrong direction: the live report said «I could not read the source»
+        //  when the source was fine and the model simply never ruled.
+        const noSource = await verifyNamed(TWO.slice(0, 1), '', false, answering({ verdicts: [] }));
+        expect(noSource[0].why).toContain('could not read the project source');
+
+        const noVerdict = await verifyNamed(TWO.slice(0, 1), SOURCE, false, answering({ verdicts: [] }));
+        expect(noVerdict[0].why).toContain('no verdict for this item');
+
+        const undecided = await verifyNamed(TWO.slice(0, 1), SOURCE, false, answering({
+            verdicts: [{ id: 'req-a', verdict: 'unprovable', evidence: '', why: '' }],
+        }));
+        expect(undecided[0].why).toContain('could not tell from the source');
+    });
+
+    it('⛔ NEGATIVE — the builder acts on it, and says so out loud', () => {
+        //  A silent fallback here would hide the fact that his ledger came from
+        //  the catalogue rather than from his own words — the same silence this
+        //  whole repair exists to remove.
+        expect(REACT).toContain('const judgeWasBlind = nothingWasJudged(namedVerdicts);');
+        expect(REACT).toMatch(/const namedJudged = judgeWasBlind \? \[\] : namedVerdicts;/);
+        expect(REACT).toContain('the judge could not rule on any of the');
     });
 });
