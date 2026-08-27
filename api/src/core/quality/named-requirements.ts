@@ -397,6 +397,57 @@ export function verificationPrompt(reqs: NamedRequirement[], source: string, isA
     ].join('\n');
 }
 
+/**
+ *  ⛔ THE MODEL ANSWERED. THIS COULD NOT READ IT.
+ *
+ *  Measured by hand against a project Joe had really built, printing the raw
+ *  bytes instead of assuming them:
+ *
+ *      prompt chars = 18730 · answered in 2238ms · raw length 157
+ *
+ *      { "req-a": { "met": false, "evidence": "",
+ *                   "why": "The source does not contain any form elements…" } }
+ *
+ *      --- parsed verdicts ---  []
+ *
+ *  A correct, useful verdict in two seconds — and Joe then told the owner «the
+ *  model returned no verdict for this item», which was **false**.
+ *
+ *  The brief asks for `{"verdicts":[{id, verdict, …}]}`. The model returned a
+ *  dictionary keyed by the id, with a boolean `met` instead of a string
+ *  `verdict`. That is a perfectly reasonable shape — arguably the natural one
+ *  when the question is about a single requirement — and this function admitted
+ *  exactly one shape and nothing else.
+ *
+ *  ⛔ THE CLASS, for the seventh time in one day: a reader that accepts one
+ *  form, a producer that emits another reasonable form, and nothing forcing
+ *  them to agree. The same defect as the second writer who never got the rule —
+ *  here the two parties are the brief and the model.
+ *
+ *  And it cost two wrong diagnoses before it was measured. The source was
+ *  bounded from 88k to 18k and five requirements were split into five calls;
+ *  **neither was the cause**. Both were real improvements, and neither cured
+ *  what it was credited with.
+ *
+ *  So: read what models actually produce. Widening the READER admits no claim
+ *  the guards would have rejected — a `met` still has to carry evidence that
+ *  `verifyNamed` can find in the source, or it is downgraded exactly as before.
+ *  This is about hearing the answer, never about believing it.
+ */
+const asVerdict = (v: any, fallbackId: string) => {
+    //  `verdict: "met"` and `met: true` are the same statement. A boolean is
+    //  what a model reaches for when the question is yes-or-no, and refusing
+    //  to understand it is not strictness, it is deafness.
+    const spoken = String(v?.verdict ?? '').trim().toLowerCase();
+    const verdict = spoken || (typeof v?.met === 'boolean' ? (v.met ? 'met' : 'unmet') : '');
+    return {
+        id: String(v?.id ?? fallbackId ?? ''),
+        verdict,
+        evidence: String(v?.evidence ?? v?.proof ?? v?.line ?? ''),
+        why: String(v?.why ?? v?.reason ?? v?.explanation ?? ''),
+    };
+};
+
 export function parseVerdicts(raw: string): Array<{ id: string; verdict: string; evidence: string; why: string }> {
     const text = String(raw || '');
     const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
@@ -404,19 +455,27 @@ export function parseVerdicts(raw: string): Array<{ id: string; verdict: string;
         const start = c.indexOf('{');
         const end = c.lastIndexOf('}');
         if (start < 0 || end <= start) continue;
-        try {
-            const parsed = JSON.parse(c.slice(start, end + 1));
-            if (Array.isArray(parsed?.verdicts)) {
-                return parsed.verdicts
-                    .filter((v: any) => v && typeof v === 'object')
-                    .map((v: any) => ({
-                        id: String(v.id ?? ''),
-                        verdict: String(v.verdict ?? ''),
-                        evidence: String(v.evidence ?? ''),
-                        why: String(v.why ?? ''),
-                    }));
-            }
-        } catch { /* try the next candidate */ }
+        let parsed: any;
+        try { parsed = JSON.parse(c.slice(start, end + 1)); } catch { continue; }
+        if (!parsed || typeof parsed !== 'object') continue;
+
+        //  1. the shape the brief asks for
+        const list = Array.isArray(parsed.verdicts) ? parsed.verdicts
+            : Array.isArray(parsed.results) ? parsed.results
+                : null;
+        if (list) {
+            const out = list.filter((v: any) => v && typeof v === 'object').map((v: any) => asVerdict(v, ''));
+            if (out.length) return out;
+        }
+
+        //  2. one verdict, unwrapped — the natural answer to a single question
+        if ('verdict' in parsed || 'met' in parsed) return [asVerdict(parsed, '')];
+
+        //  3. a dictionary keyed by the requirement id — what was actually
+        //     measured coming back from the keyless mesh
+        const entries = Object.entries(parsed)
+            .filter(([, v]) => v && typeof v === 'object' && ('verdict' in (v as any) || 'met' in (v as any)));
+        if (entries.length) return entries.map(([k, v]) => asVerdict(v, k));
     }
     return [];
 }
