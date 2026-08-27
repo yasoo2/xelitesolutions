@@ -73,8 +73,8 @@ const NOT_A_FEATURE = /^(?:build|make|create|website|site|app|page|responsive|de
  *  **The check has to stand where the text is, because the text is what he
  *  reads and what the ledger counts.**
  */
-//  ⛔ `` READS ASCII, SO IT NEVER SAW THE ARABIC VERB.
-//  This shipped ending in `)/i` and let «اعمل متجر مجوهرات فاخر» straight
+//  ⛔ `\b` READS ASCII, SO IT NEVER SAW THE ARABIC VERB.
+//  This shipped ending in `)\b/i` and let «اعمل متجر مجوهرات فاخر» straight
 //  through: JavaScript defines a word boundary on `\w` — ASCII letters,
 //  digits, underscore — so between «ل» and a space there is no transition to
 //  find. English matched and Arabic did not. It is this repository’s oldest
