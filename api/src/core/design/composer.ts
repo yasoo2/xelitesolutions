@@ -128,6 +128,13 @@ const SPOKEN: Array<{ says: RegExp; name: string; apply: (g: DesignGenome) => vo
         apply: g => { g.weight = 3; g.radius = Math.min(g.radius, 4); g.accent = 'block'; g.elevation = 'flat'; g.density = 'tight'; },
     },
     {
+        //  ⛔ A RULE WITH ONE SIDE IS NOT A RULE. If «warm» steers the palette,
+        //  «cool» must steer it the other way — otherwise a man who asks for a
+        //  cold, clinical look is answered by a hash of his own sentence.
+        says: /بارد|هادئ\s*الألوان|\bcool\b|\bcrisp\b|clinical/i, name: 'cool',
+        apply: () => { /* read by the palette; the dials are unaffected */ },
+    },
+    {
         says: /دافئ|حميم|warm|cosy|cozy|homely/i, name: 'warm',
         apply: g => { g.radius = Math.max(g.radius, 14); g.texture = 'grain'; g.elevation = 'soft'; },
     },
@@ -184,6 +191,31 @@ export function composeDesign(request: string): DesignGenome {
 }
 
 /** The genome as CSS custom properties and the rules that read them. */
+/**
+ *  ⛔ THE TEMPERATURE HE ASKED FOR, READ BY THE ONE READER THAT ALREADY
+ *  READS HIS DESIGN WORDS.
+ *
+ *  Measured on the store the owner called the worst he had seen:
+ *
+ *      composeDesign(request)  ->  spoken: ['warm', 'elegant']
+ *      buildPalette(request)   ->  hue: 183   (#187b81)
+ *
+ *  A honey shop described as «دافئ وفاخر» was painted in cold teal. The
+ *  composer read his words correctly; the palette picked a hue without ever
+ *  asking it. Two readers of the same sentence, and only one of them heard
+ *  that part — the class this session has met ten times.
+ *
+ *  Exported rather than reimplemented: a second warmth reader in the palette
+ *  would BE the defect, one layer down. The vocabulary lives in SPOKEN and
+ *  nowhere else.
+ */
+export function temperatureAsked(request: string): 'warm' | 'cool' | null {
+    const spoken = composeDesign(request).spoken;
+    if (spoken.includes('warm')) return 'warm';
+    if (spoken.includes('cool')) return 'cool';
+    return null;
+}
+
 export function composedCss(g: DesignGenome): string {
     const pad = Math.round(g.rhythm * 6 * g.sectionSpace);
     const gap = Math.round(g.rhythm * 2.5);

@@ -4149,7 +4149,48 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
              * edge-to-edge with unstyled inputs while the page above it was
              * centred.
              */
+            /**
+             *  ⛔ AN APP RECEIVED NONE OF THE DESIGN WORK — NOT THE PALETTE,
+             *  NOT THE COMPOSED STYLESHEET.
+             *
+             *  The owner, after a store was built for him: «the worst store I
+             *  have seen in my life». He is right, and this line was why.
+             *
+             *  Every design layer built for Joe reaches the WEBSITE branch and
+             *  stops. Measured in this file:
+             *
+             *      :4173  for (const c of appBp ? [] : ['Navbar', ...sections])
+             *      :4260  if (!appBp && sections.length && ...)      authoring
+             *      :3888  composeDesign(request) -> base.css         websites only
+             *
+             *  So a shop received the engine's own stylesheet and a webfont, and
+             *  none of the colour, rhythm, measure, radius or elevation his
+             *  sentence had already been read for. The palette was computed and
+             *  thrown away.
+             *
+             *  ⛔ THE CLASS, for the tenth time today: a layer exists and a
+             *  second generator never asks. Every earlier instance cost a
+             *  detail. This one cost the appearance of every store, dashboard
+             *  and app Joe has ever built.
+             *
+             *  The composed sheet is placed BEFORE the engine's own rules, so
+             *  behaviour still wins where it must — the cart drawer, the admin
+             *  grid and the table screens are behaviour, and behaviour outranks
+             *  decoration.
+             */
+            const appDesign = (() => {
+                try {
+                    const composerMod = require('../../../core/design/composer');
+                    const ds = require('../../../core/design/design-system');
+                    const pair = typeof ds.pickTypePair === 'function' ? ds.pickTypePair(request) : undefined;
+                    return [
+                        ds.paletteCss(palette, pair),
+                        composerMod.composedCss(composerMod.composeDesign(request)),
+                    ].filter(Boolean).join(String.fromCharCode(10));
+                } catch { return ''; }
+            })();
             files['src/styles/app.css'] = `${familyFonts(family).faces}\nbody{font-family:${familyFonts(family).body}}\n`
+                + appDesign + String.fromCharCode(10)
                 + (appFiles['src/styles/app.css'] || fileAppCss());
             fs.mkdirSync(path.join(proj, 'src', 'app'), { recursive: true });
             term(`application build: ${runBp.kind} — engine «${runBp.engine}»${Object.keys(runBp.deps || {}).length ? `, real dependencies: ${Object.keys(runBp.deps).join(', ')}` : ''}`);
