@@ -107,6 +107,32 @@ export function minimumHeStated(request: string): number | undefined {
     return refusesZero ? 1 : undefined;
 }
 
+/**
+ *  ⛔ THE CURRENCY HE NAMED, AND NOTHING WHEN HE NAMED NONE.
+ *
+ *  Measured on a generated store: every product showed a bare number —
+ *  <b>85</b> beside a product name. No shop prices anything that way.
+ *
+ *  But a currency Joe picked for him would be worse than none: a shop
+ *  labelled in the wrong money is a lie about the thing he is selling, and
+ *  this repository has spent a day removing exactly that kind of invention.
+ *  So the unit is read from his sentence, and silence returns silence.
+ */
+const CURRENCIES: Array<[RegExp, string]> = [
+    [/ريال|" + "\bSAR\b|\briyals?\b/i, 'ر.س'],
+    [/درهم|\bAED\b|\bdirhams?\b/i, 'د.إ'],
+    [/دينار|\bKWD\b|\bBHD\b|\bdinars?\b/i, 'د.ك'],
+    [/جنيه|\bEGP\b|\bpounds?\b/i, 'ج.م'],
+    [/دولار|\bUSD\b|\bdollars?\b|\$/i, '$'],
+    [/يورو|\bEUR\b|\beuros?\b|€/i, '€'],
+];
+
+export function currencyHeNamed(request: string): string {
+    const text = String(request || '');
+    for (const [re, symbol] of CURRENCIES) if (re.test(text)) return symbol;
+    return '';
+}
+
 export function cataloguePrompt(spec: CatalogueSpec): string {
     const shown = spec.fields.map(f =>
         `  ${f.key}${f.required ? ' (required)' : ''}: ${f.type || 'text'}${f.label ? ` — ${f.label}` : ''}`);

@@ -200,8 +200,43 @@ export function pickHue(request: string): number {
 
 /* ---------- the palette ----------------------------------------------------- */
 
+/**
+ *  ⛔ THE TEMPERATURE HE ASKED FOR OUTRANKS THE HUE WE GUESSED.
+ *
+ *  Measured on the store the owner called the worst he had seen:
+ *
+ *      composeDesign(request)  ->  spoken: ['warm', 'elegant']
+ *      buildPalette(request)   ->  hue: 183   (#187b81)
+ *
+ *  A honey shop described as «دافئ وفاخر» was painted in cold teal. The
+ *  composer had read his words correctly; this function never asked it. Two
+ *  readers of one sentence, and only one of them heard that part — the class
+ *  this session has met ten times, and the one that cost the appearance.
+ *
+ *  The hue is still DERIVED, not chosen from a list: whatever `pickHue`
+ *  produced is folded into the arc he named, so two warm briefs still differ
+ *  from each other. Only the arc is his; the position inside it is still the
+ *  request's own.
+ *
+ *  ⛔ And a colour he NAMED outranks everything — `pickHue` returns those from
+ *  NAMED_HUES first, and this must not overrule a man who wrote «أزرق».
+ */
+const WARM_ARC: [number, number] = [18, 58];    //  amber, gold, terracotta
+const COOL_ARC: [number, number] = [186, 254];  //  ice, steel, indigo
+
 export function buildPalette(request: string): Palette {
-    return paletteForHue(pickHue(request));
+    const base = pickHue(request);
+    let hue = base;
+    try {
+        const { temperatureAsked } = require('./composer');
+        const asked = temperatureAsked(request);
+        const named = NAMED_HUES.some(([re]: any) => re.test(probeOf(request)));
+        if (asked && !named) {
+            const [lo, hi] = asked === 'warm' ? WARM_ARC : COOL_ARC;
+            hue = (lo + (base % Math.max(1, hi - lo))) % 360;
+        }
+    } catch { /* the palette must never fail on a reader */ }
+    return paletteForHue(hue);
 }
 
 /**

@@ -2788,6 +2788,38 @@ p{margin:0 0 8px}
    div.app-bar-in, main.app-main, div.wrap.social-wrap»: not six defects, one
    defect seen from six heights. */
 .app-bar-in>*{min-width:0}
+/*  THE PAGE TABS. The owner circled these in red and said they were very ugly.
+ *
+ *  He was right, and the reason was measurable: across the whole generator
+ *  there was not one rule for .app-nav, .app-nav-tab or .on. The markup at
+ *  react-app-templates.ts:445-450 renders a nav of buttons and the stylesheet
+ *  had nothing to say about any of them, so they fell back to the browser's
+ *  default button -- four grey boxes with 1px borders, jammed into the corner,
+ *  and the ACTIVE tab looked exactly like the other three.
+ *
+ *  A navigation where the current page is indistinguishable is not a
+ *  navigation; it is four identical boxes. That is what he was pointing at.
+ *
+ *  Built on the tokens the request already produced, so a warm brief gets warm
+ *  tabs: no borders, a quiet resting state, one clear active state carrying
+ *  the brand, and a rail under the active tab rather than a box around it.
+ */
+.app-nav{max-width:var(--maxw,1180px);margin:0 auto;padding:0 16px;
+  display:flex;gap:2px;align-items:stretch;overflow-x:auto;scrollbar-width:none}
+.app-nav::-webkit-scrollbar{display:none}
+.app-nav-tab{appearance:none;background:transparent;border:0;border-radius:0;
+  padding:12px 16px;min-height:44px;font:inherit;font-weight:600;font-size:.94rem;
+  color:color-mix(in srgb,var(--text,#111) 58%,transparent);
+  cursor:pointer;white-space:nowrap;position:relative;
+  transition:color .16s ease,background-color .16s ease}
+.app-nav-tab:hover{color:var(--text,#111);
+  background:color-mix(in srgb,var(--brand,#111) 6%,transparent)}
+.app-nav-tab:focus-visible{outline:2px solid var(--brand,#111);outline-offset:-2px}
+/*  The active page says so with a rail, not a box: a border would put the four
+ *  grey rectangles straight back. */
+.app-nav-tab.on{color:var(--brand,#111)}
+.app-nav-tab.on::after{content:'';position:absolute;inset-inline:12px;bottom:0;
+  height:2px;border-radius:2px;background:var(--brand,#111)}
 .app-id{display:flex;align-items:baseline;gap:10px;min-width:0}
 /* The app's own name measured 3.25:1 against the bar — brand ink on a
    brand-tinted surface. Leaning it toward the page's text clears AA in
@@ -3031,6 +3063,35 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--accent,#06c);out
 .auth-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .auth-actions button { padding: 8px 16px; border-radius: 9px; border: 1px solid var(--line); background: transparent; color: inherit; cursor: pointer; font-size: 12.5px; }
 .auth-actions .primary { background: var(--accent, #2563eb); border-color: transparent; color: #fff; }
+/*  ⛔ THE ONE STYLED BUTTON WAS NEVER USED, AND THE USED ONE HAD NO STYLE.
+ *
+ *  Measured on a generated store, by counting both sides:
+ *
+ *      className="primary"  in ShopApp.jsx   4 uses
+ *      className="btn"      in ShopApp.jsx   0 uses
+ *      a visual rule for .primary            1, and it lives inside
+ *                                            .auth-actions — a panel that
+ *                                            never renders when there is no API
+ *
+ *  So every button a customer touches — «add to cart», «cart», «merchant
+ *  panel», «send order» — was the browser's default grey box, while «.btn«
+ *  sat in the same stylesheet carrying the brand colour, the gradient and the
+ *  shadow, styled with care and referenced by nobody.
+ *
+ *  The owner called the result the worst store he had seen. This is a large
+ *  part of why, and it is the same class as everything else this session:
+ *  two names for one thing, and only one of them wired.
+ *
+ *  Fixed here rather than by renaming every call site, because the class the
+ *  app really uses is the one that must carry the brand. «.btn« keeps its own
+ *  rules; «.primary« now reads the same tokens.
+ */
+.primary{background:var(--brand,#111);color:var(--on-brand,#fff);border:1px solid transparent;
+  border-radius:var(--radius,14px);padding:10px 18px;min-height:44px;
+  font:inherit;font-weight:600;cursor:pointer;box-shadow:var(--shadow-brand,0 1px 2px rgba(0,0,0,.12))}
+.primary:hover{filter:brightness(1.08)}
+.primary:active{transform:translateY(1px)}
+.primary:disabled{opacity:.55;cursor:not-allowed;filter:none;transform:none}
 
 /* ═══════════════════ THE DESIGN LIFT ═══════════════════
    «لا يعجبني تصميم جو في بناء المواقع والصفحات فهو يظهر بدائي.»
@@ -3759,7 +3820,9 @@ export function buildAppFiles(bp: AppBlueprint, o: AppBuildOptions, slugName: st
         social: ['src/components/SocialApp.jsx', fileSocialAppJsx(o.isArabic)],
         //  The brand colour the palette derived, handed over as a hue.
         shop: ['src/components/ShopApp.jsx', fileShopAppJsx(o.isArabic,
-            require('../../../core/design/design-directives').hexToHue(o.brandColor || '') ?? undefined)],
+            require('../../../core/design/design-directives').hexToHue(o.brandColor || '') ?? undefined,
+            //  The unit he named, read from his own sentence. Silence stays silent.
+            require('../../../core/design/authored-catalogue').currencyHeNamed(o.sourceRequest || ''))],
         calculator: ['src/components/CalculatorApp.jsx', fileCalculatorAppJsx(o.isArabic)],
         productivity: ['src/components/ProductivityApp.jsx', fileProductivityAppJsx(o.isArabic)],
         finance: ['src/components/FinanceApp.jsx', fileFinanceAppJsx(o.isArabic)],
@@ -4452,7 +4515,7 @@ export default function SocialApp({ content }) {
  *  colour maths of its own, and falls back to the row-name hash exactly
  *  as cardFor already does when nobody passes one.
  */
-export function fileShopAppJsx(isAr: boolean, brandHue?: number): string {
+export function fileShopAppJsx(isAr: boolean, brandHue?: number, currency?: string): string {
     const T = (ar: string, en: string) => `'${q(isAr ? ar : en)}'`;
     return `import React, { useEffect, useMemo, useState } from 'react';
 import { createStore, uid, computeMetric, apiList, apiCreate, apiPost, apiSiblingLive , cardFor } from '../app/store.js';
@@ -4461,9 +4524,21 @@ import { createStore, uid, computeMetric, apiList, apiCreate, apiPost, apiSiblin
 //  back to the row-name hash, which is what it did before anyone passed one.
 const BRAND_HUE = ${typeof brandHue === 'number' ? String(Math.round(brandHue)) : 'undefined'};
 
+/*  A PRICE WITHOUT A UNIT IS NOT A PRICE.
+ *
+ *  Measured on a generated store: every product read <b>85</b> — a bare
+ *  number beside a product name, because this helper was toLocaleString and
+ *  nothing else. No shop in the world prices anything that way.
+ *
+ *  The unit comes from HIS REQUEST when he named one, and from nowhere else.
+ *  If he was silent the number stands alone rather than wearing a currency
+ *  Joe invented for him — a shop labelled in the wrong money is worse than
+ *  one labelled in none, and the merchant panel is where he sets it. */
+const CURRENCY = ${JSON.stringify(currency || '')};
 const money = (n) => {
   const v = Number(n || 0);
-  return (Math.round(v * 100) / 100).toLocaleString();
+  const shown = (Math.round(v * 100) / 100).toLocaleString();
+  return CURRENCY ? shown + ' ' + CURRENCY : shown;
 };
 
 /**
@@ -4616,12 +4691,35 @@ export default function ShopApp({ content }) {
 
   return (
     <div className="wrap">
+      {/*  ⛔ A SHOPFRONT DOES NOT OPEN WITH THE SHOPKEEPER'S LEDGER.
+        *
+        *  Measured on a generated store: this strip was the FIRST child, with
+        *  aria-label «the numbers», and three of its four counters are a
+        *  merchant's and mean nothing to a buyer — how many product LINES
+        *  exist, the VALUE OF STOCK ON HAND (stock x price = 23,450), and the
+        *  average price. With the search bar under it, 335px of a 900px
+        *  desktop screen and 830px of a 390x844 phone passed before a single
+        *  product appeared. On the phone the visitor saw counters and a search
+        *  box, and nothing else.
+        *
+        *  And the largest type on the page was one of these numbers: .stat b
+        *  is 1.75rem at weight 800 while a product name is 15px and its price
+        *  16px. The row counter shouted louder than anything for sale.
+        *
+        *  The owner: «the worst store I have seen in my life», and later
+        *  «Joe does not build like world-class systems». This was the largest
+        *  single reason.
+        *
+        *  The numbers are not deleted — they are a merchant's, so they live
+        *  where the merchant works. */}
+      {merchant ? (
       <section className="stats" aria-label={${T('الأرقام', 'Numbers')}}>
         {content.metrics.map((m, i) => (
           <div className="stat" key={i}><i className="stat-ico" aria-hidden="true">{({count:'🧾',sum:'💰',todaySum:'📅',todayCount:'📅',sumProduct:'📦',avg:'📈',countWhere:'✅'})[m.kind] || '📊'}</i><div><b>{computeMetric(m, products)}</b><span>{m.label}</span></div></div>
         ))}
         <div className="stat"><i className="stat-ico" aria-hidden="true">🛒</i><div><b>{count}</b><span>{${T('في السلة', 'In cart')}}</span></div></div>
       </section>
+      ) : null}
 
       <section className="panel shop-bar">
         <input
