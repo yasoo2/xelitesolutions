@@ -68,6 +68,36 @@ const MARKS = new RegExp('[\\u0300-\\u036F\\u064B-\\u065F\\u0670\\u0640]', 'g');
 export function normalise(input: string): string {
     return String(input || '')
         .normalize('NFKD')
+        /**
+         *  ⛔ LATIN CASE IS FOLDED HERE, WHERE ARABIC ORTHOGRAPHY IS FOLDED.
+         *
+         *  Measured on the owner's own request, the one that blocked a
+         *  delivery:
+         *
+         *      «Include a service list with prices, opening hours, location,
+         *        phone CTA, and a booking form.»
+         *
+         *      saysAny('add a phone cta', ['cta'])  -> true
+         *      saysAny('add a phone CTA', ['cta'])  -> false
+         *      saysAny('a button here',   ['button'])  -> true
+         *      saysAny('a BUTTON here',   ['button'])  -> false
+         *
+         *  The same sentence written in Arabic derived a criterion; written in
+         *  English it derived NOTHING, because he had capitalised CTA. Seven
+         *  catalogue entries were moved onto this reader, and every one of them
+         *  silently stopped seeing capitalised English the day it moved.
+         *
+         *  ⛔ THE CLASS is one this repository already records — a requirement
+         *  read in one inflection and named in one language. The Arabic side of
+         *  this function folds hamzas, alef maqsura and taa marbuta so that two
+         *  spellings of one word read alike; the Latin side folded nothing at
+         *  all, so «CTA» and «cta» were two different words.
+         *
+         *  Case folding belongs beside the other foldings, not at the call
+         *  sites: a caller that must remember to lowercase is a caller that
+         *  will forget, and six of the seven already had.
+         */
+        .toLowerCase()
         .replace(MARKS, '')
         .replace(/[آأإ]/g, 'ا')
         .replace(/ى/g, 'ي')
