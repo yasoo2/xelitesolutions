@@ -34,6 +34,7 @@ import {
     groundedIn,
     parseRequirements,
     extractionPrompt,
+    isJudgeable,
 } from '../core/quality/named-requirements';
 
 const HIS = 'Build a responsive website for a neighborhood bicycle repair studio called Spoke & Stem. Include a service list with prices, opening hours, location, phone CTA, and a booking form.';
@@ -156,5 +157,88 @@ describe('every behaviour he named survives the reading', () => {
         }
         expect(extractionPrompt(HIS, false))
             .toContain('Do NOT add what a site like this usually has');
+    });
+});
+
+/**
+ * ⛔ AND THEN HE RAN IT HIMSELF, AND IT NAMED THE SHOP.
+ *
+ * From the owner's own machine, his own prompts, hours after the reader
+ * shipped — read out of `joe-session-logs.json`, not reconstructed:
+ *
+ *     read from your request: 2 named — build an online jewelry store · complete
+ *     read from your request: 2 named — متجر مجوهرات فاخر · سله مشتريات
+ *     read from your request: nothing nameable survived — falling back to the known-features list
+ *
+ * The reading ran and the denominator followed it, which is what the tests
+ * above prove. What they could not see is that half of what it named **cannot
+ * be failed**. A shop that exists satisfies «build an online jewelry store»
+ * however badly it does everything he actually asked for, so a criterion like
+ * that is met by definition — a denominator of one wearing a larger number.
+ *
+ * ⛔ AND `groundedIn` COULD NOT CATCH IT, for a reason worth keeping: it reads
+ * the QUOTE, and the model quoted a long true span of his sentence while
+ * writing scaffolding as the TEXT. **The check has to stand where the text is,
+ * because the text is what he reads and what the ledger counts** — the same
+ * lesson as the guard that had to move to the reader rather than the source.
+ *
+ * The imperative form is caught deterministically below. The bare-noun form
+ * («متجر مجوهرات فاخر» — a subject with no verb) is NOT, and the last test
+ * says so out loud rather than pretending: it is answered by the brief, which
+ * makes it depend on the brain, and that dependency is declared instead of
+ * hidden behind a heuristic that would also swallow «سلة مشتريات».
+ */
+describe('the thing he asked for is not a thing it must do', () => {
+    it('⛔ NEGATIVE — his own two failures are refused', () => {
+        expect(isJudgeable('build an online jewelry store')).toBe(false);
+        expect(isJudgeable('اعمل متجر مجوهرات فاخر')).toBe(false);
+    });
+
+    it('⛔ NEGATIVE — and the refusal reaches the ledger BY NAME, not silently', async () => {
+        //  A requirement dropped without a word is how he loses track of what
+        //  Joe did with his sentence. Refusing out loud is the whole contract.
+        const r = await namedRequirements(
+            'build an online jewelry store, complete, with a cart and a products page',
+            false,
+            async () => JSON.stringify({
+                requirements: [
+                    { text: 'build an online jewelry store', quote: 'build an online jewelry store' },
+                    { text: 'a cart', quote: 'a cart' },
+                    { text: 'a products page', quote: 'a products page' },
+                ],
+            }),
+        );
+        expect(r.requirements.map(x => x.text)).toEqual(['a cart', 'a products page']);
+        expect(r.rejected.map(x => x.text)).toContain('build an online jewelry store');
+        expect(r.rejected[0].reason).toContain('not something it must do');
+    });
+
+    it('POSITIVE — real behaviours are untouched, in either language', () => {
+        //  The filter must not become a second catalogue. Everything a build
+        //  can actually fail to deliver still passes.
+        for (const t of ['a booking form', 'opening hours', 'سلة مشتريات', 'صفحة منتجات', 'a phone CTA']) {
+            expect({ t, judgeable: isJudgeable(t) }).toEqual({ t, judgeable: true });
+        }
+    });
+
+    it('NEGATIVE — a fragment with nothing of its own is refused', () => {
+        //  «complete» was really returned as a named requirement on his machine.
+        expect(isJudgeable('a')).toBe(false);
+        expect(isJudgeable('website')).toBe(false);
+        expect(isJudgeable('   ')).toBe(false);
+    });
+
+    it('⛔ the bare-noun subject is the BRIEF\'s job, and the brief carries it', () => {
+        //  «متجر مجوهرات فاخر» has no verb to catch, and any pattern wide
+        //  enough to reject it would also reject «سلة مشتريات» — a real
+        //  requirement from the same sentence. So it is answered where it can
+        //  be answered, and this asserts the instruction is really there rather
+        //  than trusting that it is.
+        const brief = extractionPrompt('اعمل لي متجر مجوهرات', true);
+        expect(brief).toContain('Do NOT list the project itself');
+        expect(brief).toContain('could FAIL to have');
+        //  ...and it is stated with his own example, so the model is told the
+        //  shape rather than the rule alone.
+        expect(brief).toContain('a luxury jewelry shop');
     });
 });
