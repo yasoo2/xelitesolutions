@@ -172,7 +172,7 @@ export function refuseRow(row: Record<string, any>, spec: CatalogueSpec): string
             if (n < floor) return `«${f.label || f.key}» is ${n}, below the ${floor} he asked for`;
         }
     }
-    const unknown = Object.keys(row).filter(k => !spec.fields.some(f => f.key === k));
+    const unknown = Object.keys(row).filter(k => k !== 'id' && !spec.fields.some(f => f.key === k));
     if (unknown.length) return `it carries fields the store does not have: ${unknown.join(', ')}`;
     return '';
 }
@@ -214,7 +214,31 @@ export async function authorCatalogue(
         const key = label.trim().toLowerCase();
         if (seen.has(key)) { out.rejected.push({ row: label, reason: 'it repeats a row already on the shelf' }); continue; }
         seen.add(key);
-        const clean: Record<string, any> = {};
+        /**
+         *  ⛔ AND IT CARRIES AN id, BECAUSE THE ENGINE KEYS ON ONE.
+         *
+         *  Measured on the owner's screen, one build after the shelves were
+         *  finally filled. Six honeys arrived and the page reported:
+         *
+         *      console_errors  Each child in a list should have a unique "key" prop
+         *      dead_controls   8 of 12 buttons do nothing: «السلة 0»,
+         *                      «لوحة التاجر», «أضف إلى السلة»
+         *
+         *  Every row the engine creates itself gets `id: uid()`, and it keys
+         *  its lists and its cart on `row.id`. The seed walked straight past
+         *  the one line that gives a row its identity, so six products with no
+         *  id rendered as six duplicate keys and could not be added to a cart.
+         *
+         *  THE CLASS: a second writer for rows that the ONE writer's invariant
+         *  never reached — the same shape as every «one layer, two generators»
+         *  defect this session, and it produced a shop that looked complete and
+         *  could not be bought from.
+         *
+         *  The id is stable and derived from position, not from a clock: the
+         *  seed is written once into storage, and a value that changed between
+         *  a build and its audit would be a different kind of bug.
+         */
+        const clean: Record<string, any> = { id: `seed-${out.rows.length + 1}` };
         for (const f of spec.fields) {
             const v = row[f.key];
             clean[f.key] = f.type === 'number' ? Number(v ?? 0) : String(v ?? '');

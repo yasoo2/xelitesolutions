@@ -256,3 +256,54 @@ describe('the seed reaches the shelf, not just a variable', () => {
         expect(TOOL).toMatch(/if \(!copyProvidersRationing && seedFields\.length/);
     });
 });
+
+/**
+ *  ⛔ A ROW WITHOUT AN id IS A PRODUCT NOBODY CAN BUY.
+ *
+ *  Measured on the owner's screen, one build after the shelves were finally
+ *  filled. Six honeys arrived, and the page reported:
+ *
+ *      console_errors  Each child in a list should have a unique "key" prop
+ *      dead_controls   8 of 12 buttons do nothing: «السلة 0», «لوحة التاجر»,
+ *                      «أضف إلى السلة»
+ *
+ *  Every row the engine creates itself gets `id: uid()`, and it keys its lists
+ *  and its cart on `row.id`. The seed walked straight past the one line that
+ *  gives a row its identity, so six products rendered as six duplicate keys
+ *  and could not be added to a cart.
+ *
+ *  THE CLASS: a second writer for rows that the one writer's invariant never
+ *  reached — the same shape as every «one layer, two generators» defect
+ *  tonight, and it produced a shop that looked complete and could not be
+ *  bought from.
+ */
+describe('a seeded row is a real row', () => {
+    const six = [
+        honey('عسل سدر', 180), honey('عسل سمر', 140), honey('عسل أكاسيا', 160),
+        honey('عسل زهور', 120), honey('عسل بركة', 150), honey('عسل مانوكا', 320),
+    ];
+
+    it('⛔ POSITIVE — every seeded row carries an id', async () => {
+        const r = await authorCatalogue(spec(), async () => JSON.stringify({ rows: six }));
+        expect(r.rows.every(x => typeof x.id === 'string' && x.id.length > 0)).toBe(true);
+    });
+
+    it('⛔ POSITIVE — and the ids are unique, which is the whole point', async () => {
+        const r = await authorCatalogue(spec(), async () => JSON.stringify({ rows: six }));
+        expect(new Set(r.rows.map(x => x.id)).size).toBe(r.rows.length);
+    });
+
+    it('NEGATIVE — the id is stable, not a clock reading', async () => {
+        //  The seed is written once into storage; an id that changed between a
+        //  build and its audit would be a different bug wearing this one's face.
+        const a = await authorCatalogue(spec(), async () => JSON.stringify({ rows: six }));
+        const b = await authorCatalogue(spec(), async () => JSON.stringify({ rows: six }));
+        expect(a.rows.map(x => x.id)).toEqual(b.rows.map(x => x.id));
+    });
+
+    it('NEGATIVE — an id the model sends is not treated as an unknown field', () => {
+        //  Refusing the row for carrying `id` would empty the shelf again, for
+        //  the one field the engine needs most.
+        expect(refuseRow({ id: 'x', ...honey('عسل', 100) }, spec())).toBe('');
+    });
+});
