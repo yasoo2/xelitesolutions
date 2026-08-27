@@ -268,14 +268,48 @@ export async function authorCopy(
     for (const field of spec.fields) {
         if (!(field in drafts)) continue;                //  keep the current value silently
         const value = drafts[field];
-        //  `perks` is a list of three; anything else is a line of text.
-        if (field === 'perks') {
-            if (!Array.isArray(value) || value.length < 2) {
-                out.rejected.push({ field, reason: 'it is not a list of items' });
-                continue;
-            }
-        } else if (typeof value !== 'string') {
+        /**
+         *  ⛔ THE SHAPE OF THE VALUE IT REPLACES, NOT A LIST OF FIELD NAMES.
+         *
+         *  Measured on a live build the owner was watching. The model returned
+         *  every field as a line of text, including `storyBody` — which the
+         *  deterministic content writer iterates. The generator died before it
+         *  wrote a single file:
+         *
+         *      TypeError: c.storyBody.map is not a function
+         *        at fileContentJs (api/dist/index.js:38220)
+         *        at ReactProjectTool.execute
+         *
+         *  The first version of this check knew exactly one field by name:
+         *  «perks is a list, everything else is text». That is a catalogue of
+         *  two entries, and it was wrong about the third field it met.
+         *
+         *  The rule is relational instead: whatever the derived value IS — a
+         *  string, a list of strings, a list of objects — the authored value
+         *  must be the same kind of thing. It needs no field names, it covers
+         *  fields nobody has added yet, and it is the same shape of rule as
+         *  «an authored section keeps the behaviour it replaces».
+         */
+        const currently = (spec.current || {})[field];
+        const kindOf = (v: any): string => {
+            if (Array.isArray(v)) return v.length && typeof v[0] === 'object' ? 'list of objects' : 'list';
+            if (v && typeof v === 'object') return 'object';
+            return typeof v;
+        };
+        if (currently !== undefined && kindOf(value) !== kindOf(currently)) {
+            out.rejected.push({
+                field,
+                reason: `it is ${kindOf(value)} where the page needs ${kindOf(currently)}`,
+            });
+            continue;
+        }
+        //  With nothing to compare against, only a line of text is safe.
+        if (currently === undefined && typeof value !== 'string') {
             out.rejected.push({ field, reason: 'it is not a line of text' });
+            continue;
+        }
+        if (Array.isArray(value) && !value.length) {
+            out.rejected.push({ field, reason: 'it is an empty list' });
             continue;
         }
         const why = refuseCopy(field, value, spec);

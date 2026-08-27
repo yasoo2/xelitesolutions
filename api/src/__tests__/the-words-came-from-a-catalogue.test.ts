@@ -222,3 +222,72 @@ describe('⛔ and no catalogue may come back', () => {
         expect(CODE.length).toBeGreaterThan(1500);
     });
 });
+
+/**
+ *  ⛔ THE AUTHORED VALUE MUST BE THE SAME KIND OF THING IT REPLACES.
+ *
+ *  Watched live by the owner, on his honey store. The model returned every
+ *  field as a line of text — including `storyBody`, which the deterministic
+ *  content writer iterates. The generator died before writing a single file:
+ *
+ *      TypeError: c.storyBody.map is not a function
+ *        at fileContentJs (api/dist/index.js:38220)
+ *        at ReactProjectTool.execute
+ *
+ *  The first version of this check knew exactly one field by name — «perks is
+ *  a list, everything else is text» — which is a catalogue of two entries, and
+ *  it was wrong about the third field it met.
+ *
+ *  The rule is relational: whatever the derived value IS, the authored value
+ *  must be the same kind. No field names, and it covers fields nobody has
+ *  added yet.
+ */
+describe('authored copy keeps the shape of what it replaces', () => {
+    const current = {
+        heroLede: 'نص واحد',
+        storyBody: ['فقرة أولى', 'فقرة ثانية'],
+        perks: ['أ', 'ب', 'ج'],
+        products: [{ name: 'عسل سدر', price: 120 }],
+    };
+    const s = (fields: string[]) => spec({ current, fields });
+    const clean = (fields: Record<string, any>) =>
+        async (prompt: string) => prompt.startsWith('Here is what someone asked')
+            ? JSON.stringify({ fails: {} })
+            : JSON.stringify({ fields });
+
+    it('⛔ NEGATIVE — the exact crash: a string where the page iterates a list', async () => {
+        const r = await authorCopy(s(['storyBody']), clean({ storyBody: 'نحمّص كل صباح في مزرعتنا القديمة.' }));
+        expect(r.fields).toEqual({});
+        expect(r.rejected[0]).toEqual({ field: 'storyBody', reason: 'it is string where the page needs list' });
+    });
+
+    it('POSITIVE — a list where the page iterates a list is kept', async () => {
+        const r = await authorCopy(s(['storyBody']), clean({
+            storyBody: ['بدأت المزرعة بخليتين في وادٍ واحد.', 'اليوم نجني من أربعة أودية.'],
+        }));
+        expect(Object.keys(r.fields)).toEqual(['storyBody']);
+    });
+
+    it('NEGATIVE — and a list where the page shows one line is refused too', async () => {
+        //  The rule runs both ways or it is not a rule.
+        const r = await authorCopy(s(['heroLede']), clean({ heroLede: ['أ', 'ب'] }));
+        expect(r.rejected[0].reason).toContain('needs string');
+    });
+
+    it('NEGATIVE — a list of strings cannot replace a list of objects', async () => {
+        //  `products` carries name and price; a flat list would render blanks
+        //  where the prices belong, and every earlier check would pass it.
+        const r = await authorCopy(s(['products']), clean({ products: ['عسل سدر', 'عسل سمر'] }));
+        expect(r.rejected[0].reason).toContain('list of objects');
+    });
+
+    it('NEGATIVE — an empty list is refused even though its kind matches', async () => {
+        const r = await authorCopy(s(['perks']), clean({ perks: [] }));
+        expect(r.rejected[0].reason).toContain('empty list');
+    });
+
+    it('NEGATIVE — with nothing to compare against, only text is accepted', async () => {
+        const r = await authorCopy(spec({ current: {}, fields: ['tagline'] }), clean({ tagline: ['أ', 'ب'] }));
+        expect(r.rejected[0].reason).toContain('not a line of text');
+    });
+});
