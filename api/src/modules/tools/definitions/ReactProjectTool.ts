@@ -308,6 +308,27 @@ const DYNAMIC_ACCEPTANCE_ID = [
     //  had to be told, and the guard that made it tell me is the one that
     //  refuses to deliver an id nobody downstream understands.
     /^constraint:[A-Za-z][A-Za-z0-9_-]*:min$/,
+    //  namedRequirements()   — a behaviour HE named, read from his own
+    //  sentence rather than matched against a table. Measured live on
+    //  `f1958dc0`, in his Browser UI, after the reader and the denominator had
+    //  both worked perfectly:
+    //
+    //      read from your request: 2 named — a responsive website · a service list with prices
+    //      acceptance denominator: 2 (2 read from your request + 0 structural)
+    //      Error: delivery_acceptance_unmapped:req-4fa,req-m72
+    //
+    //  ⛔ A SECOND PRODUCER OF ACCEPTANCE IDS, and this list only knew the
+    //  first. The comment above says the guard beside this file «would have
+    //  caught it before it reached him» — and it did not, because it enumerates
+    //  the families of ONE producer. The guard against the second-writer defect
+    //  had a second-writer defect, which is why the repair is not this line: it
+    //  is that guard now asking about EVERY producer.
+    //
+    //  It maps to no delivery topic on purpose. `column:` and `page:` name
+    //  things a delivery voice can speak about; a requirement he stated is not
+    //  a topic, it IS the requirement, so `acceptanceTopics()` returning empty
+    //  is the correct answer rather than an oversight.
+    /^req-[a-z0-9]+$/,
 ];
 
 function isKnownAcceptanceId(id: string): boolean {
