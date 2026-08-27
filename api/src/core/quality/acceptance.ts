@@ -30,6 +30,7 @@
  * that cannot fail is the thing this project keeps deleting.
  */
 import { derivedColumns, statedRules, type DerivedField, columnsAnywhereInHisRequest, detectAppKind } from '../design/app-blueprints';
+import { hisWordsOnly } from '../design/page-head';
 import fs from 'fs';
 import path from 'path';
 import { thePagesHeNamed } from '../design/site-plan';
@@ -373,7 +374,57 @@ export function requestAsksFor(asked: RegExp, text: string): boolean {
 }
 /** The criteria THIS brief actually asks for — never a fixed checklist. */
 export function acceptanceFor(request: string): Criterion[] {
-    const t = String(request || '');
+    /**
+     *  ⛔ HIS WORDS ONLY. THE JUDGE MUST NEVER READ JOE'S OWN PAPERWORK.
+     *
+     *  Measured on a real run, from the ledger that blocked the delivery:
+     *
+     *      { "id": "rule:1", "kind": "feature",
+     *        "en": "your condition: «do not invent beyond it) ---»",
+     *        "expectedRule": { "text": "do not invent beyond it) ---",
+     *                          "kind": "forbid", "field": "invent" } }
+     *
+     *  «do not invent beyond it) ---» is not his condition. It is a fragment
+     *  of the wrapper `ProjectPipelineTool.ts:1050` appends to his sentence —
+     *  including the trailing `) ---` of the banner it was cut out of. Joe
+     *  derived the owner's requirement from Joe's own scaffolding, failed to
+     *  prove it, and refused to deliver a site it had actually built.
+     *
+     *  ⛔ AND THE REPAIR ALREADY EXISTED. `hisWordsOnly` cuts exactly that
+     *  block, it handles BOTH banners — measured in its own comment:
+     *  «AUTHORITATIVE DISCOVERY EVIDENCE» and «COMPACT REQUIREMENTS EVIDENCE»
+     *  — and `entity-inference` and `app-blueprints` have both called it for
+     *  months. The acceptance judge, the one reader whose whole job is «what
+     *  did HE ask for», never did.
+     *
+     *  That is this session's most repeated class, and its ninth appearance:
+     *  a layer exists and a second reader never asks. The guard beside the
+     *  entity reader even says it out loud — «its only caller was inside its
+     *  own file» — and the sentence was true of this file too.
+     */
+    /**
+     *  ⛔ AND THE CUT RUNS ONLY WHERE JOE'S PAPERWORK REALLY STARTS.
+     *
+     *  `hisWordsOnly` also cuts at a BLANK LINE, which is Joe's mark only
+     *  when Joe put it there. Measured on this very function while wiring it:
+     *
+     *      «اعمل لي متجراً لبيع العسل.
+
+ولا تقبل سعراً صفراً أو سالباً.»
+     *          -> «اعمل لي متجراً لبيع العسل.»
+     *
+     *  His rule, in his own second paragraph, gone. A man who writes two
+     *  paragraphs must not lose the second — and the judge losing a
+     *  CONDITION he stated is the same defect as the judge inventing one, in
+     *  the opposite direction.
+     *
+     *  So the cut is applied only when one of Joe's own banners is actually
+     *  present. When it is, `hisWordsOnly` removes it and everything after;
+     *  when it is not, his sentence is untouched, blank lines and all.
+     */
+    const raw = String(request || '');
+    const JOE_WROTE_THIS = new RegExp('(?:AUTHORITATIVE|COMPACT)[^' + String.fromCharCode(10) + ']{0,80}EVIDENCE', 'i');
+    const t = JOE_WROTE_THIS.test(raw) ? hisWordsOnly(raw) : raw;
     //  A word is asked as a word; a phrase keeps its pattern. Entries with
     //  `says` no longer touch a regex over Arabic at all.
     const catalogue = CATALOGUE.filter(c => (c.says ? saysAny(t, c.says) : requestAsksFor(c.asked, t)))
