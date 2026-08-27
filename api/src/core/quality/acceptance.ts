@@ -94,6 +94,26 @@ export interface Criterion {
     expectedPage?: { slug: string; title: string };
 
     /**
+     *  A VERDICT THAT WAS READ, NOT PATTERN-MATCHED.
+     *
+     *  Everything else on this interface is a way to PROVE a criterion with a
+     *  marker, a column, a bound. That works because the catalogue only ever
+     *  admitted criteria it already knew how to check — and that is exactly
+     *  why the denominator was one for a request that named five things.
+     *
+     *  A requirement taken from HIS sentence has no marker and must not be
+     *  given one; inventing a regex per phrase is the catalogue rebuilt under
+     *  a new name. It is proven instead by reading the built source, and the
+     *  verdict arrives here already settled, with the source line behind it.
+     *
+     *  ⛔ This is a door for a verdict that has ALREADY been grounded in the
+     *  source — see `verifyNamed`, which downgrades any `met` whose evidence
+     *  it could not find. It must never become a door for a caller that simply
+     *  wants a green mark.
+     */
+    preJudged?: { verdict: Verdict; why: string };
+
+    /**
      *  The rule he stated, when the criterion is about one.
      *
      *  Measured across a thousand requests: a request carrying an explicit
@@ -910,6 +930,13 @@ export function judgeAcceptance(criteria: Criterion[], ev: Evidence, isAr = true
 
     const judged: JudgedCriterion[] = criteria.map(c => {
         const say = (verdict: Verdict, why: string): JudgedCriterion => ({ ...c, verdict, why });
+
+        //  A verdict established by READING the source outranks every pattern
+        //  below it, because the patterns can only speak about the handful of
+        //  features the catalogue knows. Nothing here re-derives it: a settled
+        //  verdict that this function second-guessed would be two judges on one
+        //  claim, and the weaker one would win by being last.
+        if (c.preJudged) return say(c.preJudged.verdict, c.preJudged.why);
 
         /**
          *  ⛔ THE NARROWER CLAIM IS JUDGED FIRST.
