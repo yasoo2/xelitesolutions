@@ -45,21 +45,50 @@ function trimString(value: unknown, max: number): string {
     return String(value ?? '').slice(0, max);
 }
 
-function compactValue(value: unknown, depth = 0): unknown {
+/**
+ *  ⛔ A DEPTH CAP REMOVES EXACTLY THE MOST SPECIFIC EVIDENCE THERE IS.
+ *
+ *  Measured while diagnosing a real refusal. The stored envelope of a phase
+ *  kept the phase name, its description, its deliverables, its estimated
+ *  time, the project name, three ids and the full requirements text — and
+ *  showed the two fields that could explain the failure as:
+ *
+ *      phase.tasks:               [truncated evidence value]
+ *      phase.requirementsCovered: [truncated evidence value]
+ *
+ *  The nesting is `data → phase → tasks → each task`, which is depth 4
+ *  exactly. Shallow metadata always survives a depth cap; the payload never
+ *  does. Two hours went into a defect whose evidence had been collected,
+ *  stored, and stripped of its decisive half before anyone read it.
+ *
+ *  ⛔ AND RAISING THE CAP ALONE WOULD HAVE MADE IT WORSE. `MAX_EVENT_BYTES`
+ *  is the real limit, and exceeding it replaces the WHOLE payload with
+ *  `[event payload truncated]`. A deeper capture that overshoots loses
+ *  everything, not the deep part.
+ *
+ *  So the depth is no longer a fixed cliff: the event is captured as deeply
+ *  as the byte budget allows, stepping down until it fits. The last step is
+ *  4, which is exactly today's behaviour — so nothing can come out worse
+ *  than it does now, and small events keep everything.
+ */
+function compactValue(value: unknown, depth = 0, cap = 4): unknown {
     if (value === null || value === undefined) return value;
     if (typeof value === 'string') return value.slice(0, 16_000);
     if (typeof value !== 'object') return value;
-    if (depth >= 4) return '[truncated evidence value]';
-    if (Array.isArray(value)) return value.slice(0, 96).map(item => compactValue(item, depth + 1));
+    if (depth >= cap) return '[truncated evidence value]';
+    if (Array.isArray(value)) return value.slice(0, 96).map(item => compactValue(item, depth + 1, cap));
     const result: Record<string, unknown> = {};
     for (const [key, item] of Object.entries(value).slice(0, 96)) {
-        result[trimString(key, 160)] = compactValue(item, depth + 1);
+        result[trimString(key, 160)] = compactValue(item, depth + 1, cap);
     }
     return result;
 }
 
+/** Deepest first; 4 is today's behaviour and the floor. */
+export const EVIDENCE_DEPTHS = [10, 7, 5, 4] as const;
+
 function compactEvent(event: RunEvidenceEvent): RunEvidenceEvent {
-    const candidate = compactValue({
+    const shape = {
         type: trimString(event?.type, 120),
         runId: trimString(event?.runId, 180) || undefined,
         sessionId: trimString(event?.sessionId, 180) || undefined,
@@ -67,7 +96,13 @@ function compactEvent(event: RunEvidenceEvent): RunEvidenceEvent {
         seq: event?.seq,
         ts: event?.ts,
         data: event?.data,
-    }) as RunEvidenceEvent;
+    };
+    //  As deep as the byte budget allows. See the note on compactValue.
+    let candidate = compactValue(shape, 0, EVIDENCE_DEPTHS[EVIDENCE_DEPTHS.length - 1]) as RunEvidenceEvent;
+    for (const cap of EVIDENCE_DEPTHS) {
+        const attempt = compactValue(shape, 0, cap) as RunEvidenceEvent;
+        if (Buffer.byteLength(JSON.stringify(attempt), 'utf8') <= MAX_EVENT_BYTES) { candidate = attempt; break; }
+    }
     let encoded = JSON.stringify(candidate);
     if (Buffer.byteLength(encoded, 'utf8') <= MAX_EVENT_BYTES) return candidate;
     const fallback: RunEvidenceEvent = {
@@ -87,6 +122,15 @@ function compactEvent(event: RunEvidenceEvent): RunEvidenceEvent {
         sessionId: trimString(candidate.sessionId, 180) || undefined,
         data: '[event payload omitted]',
     };
+}
+
+/**
+ *  The compaction, exposed so a guard can read what a stored event really
+ *  keeps. It is the same function the store uses — a test that re-implemented
+ *  it would be testing its own copy.
+ */
+export function compactEventForTest(event: RunEvidenceEvent): RunEvidenceEvent {
+    return compactEvent(event);
 }
 
 function boundRecord(record: RunEvidenceRecord): RunEvidenceRecord {
