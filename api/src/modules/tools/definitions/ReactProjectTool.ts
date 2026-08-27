@@ -25,6 +25,7 @@ import { brandFrom, brandFallback } from '../../../core/design/page-head';
 import { detectPageKind, type PageKind } from '../../../core/design/blueprints';
 import { derivedColumns, applyRequestFieldConstraints, detectAppKind, blueprintFor, uncoveredFeatures, derivedTables, type AppBlueprint, columnsAnywhereInHisRequest } from '../../../core/design/app-blueprints';
 import { acceptanceFor as acceptanceCriteriaFor } from '../../../core/quality/acceptance';
+import { namedRequirements, verifyNamed, NamedRequirement } from '../../../core/quality/named-requirements';
 import { buildAppFiles, fileAppCss } from './react-app-templates';
 import { familyFor, familyCss, familyFonts, FAMILY_LABEL_AR, type DesignFamily } from '../../../core/design/families';
 import { pruneMissingFontResources } from '../../../core/design/font-resources';
@@ -571,6 +572,17 @@ export function earlyProjectDeclaration(input: {
     isArabic: boolean;
     appKind: string | null;
     generatedEnginePath?: string;
+    /**
+     *  ⛔ WHAT HE ACTUALLY NAMED, when the reading reached the model.
+     *
+     *  Without this the sentence below is assembled from `acceptanceCriteriaFor`
+     *  — a table of features Joe already knows how to prove — so «what I
+     *  understood from your request» could only ever list the intersection of
+     *  his sentence with that table. A request naming five things declared one.
+     *  The catalogue stays as the floor for when the reading could not happen,
+     *  and the fall is announced in the terminal rather than hidden here.
+     */
+    named?: Array<{ text: string }>;
 }): string | null {
     const request = String(input.request || '');
     if (input.appKind) {
@@ -581,8 +593,9 @@ export function earlyProjectDeclaration(input: {
             : null;
     }
 
-    const understood = acceptanceCriteriaFor(request)
-        .map(criterion => input.isArabic ? criterion.ar : criterion.en);
+    const understood = input.named && input.named.length
+        ? input.named.map(r => r.text)
+        : acceptanceCriteriaFor(request).map(criterion => input.isArabic ? criterion.ar : criterion.en);
     if (input.isArabic) {
         return `لا أعرف نوع هذا التطبيق، ولا أملك محرّكاً جاهزاً له — ما سأبنيه هيكلٌ عامّ. وهذا ما فهمتُه من طلبك: ${understood.length ? understood.join(' · ') : 'لم أحدد عنصراً تفاعلياً واضحاً'}.`;
     }
@@ -3267,6 +3280,104 @@ export class ReactProjectTool extends BaseTool {
         };
 
         /**
+         *  ⛔ WHAT HE NAMED, READ BEFORE ANYTHING IS CHOSEN.
+         *
+         *  Measured on a real run, from Joe's own terminal:
+         *
+         *      I don't know this app type and have no ready engine — I'll build
+         *      a generic structure. From your request I understood: an
+         *      interactive button.
+         *
+         *  His request had named five things: a service list with prices,
+         *  opening hours, a location, a phone CTA, a booking form. Joe kept ONE,
+         *  and the weakest of the five — and then everything downstream was
+         *  faithful to a request that had already been thrown away. The ledger
+         *  closed on «all 1/1 requested criteria were proven», which was true
+         *  and meaningless, because a ledger can never be more complete than
+         *  the reading it is handed.
+         *
+         *  ⛔ THE CAUSE WAS ONE READER DOING TWO JOBS. `acceptanceCriteriaFor`
+         *  matches a fixed table of features it already knows how to prove, and
+         *  it was serving as the EXTRACTION as well as the JUDGEMENT. So the
+         *  question «what did he ask for?» could only ever be answered with
+         *  «which of my known features did he mention?», and «I don't know this
+         *  app type» is that table speaking out loud.
+         *
+         *  This asks the other question, and it asks it FIRST — before the
+         *  kind is detected, before a template is chosen, before a file is
+         *  written. Every answer must be quoted from his own sentence, so it is
+         *  checkable against his words rather than against a memory of past
+         *  prompts, and anything that cannot be quoted is refused BY NAME in
+         *  the terminal instead of quietly joining the list.
+         *
+         *  When the reading cannot happen, the old catalogue still runs — but
+         *  the fall is ANNOUNCED. A silent fallback here would restore the exact
+         *  defect with no way for him to see it had returned.
+         */
+        const askTheModel = async (prompt: string): Promise<string> => {
+            const { routeToModel } = require('../../../core/llm/intelligent-router');
+            let timer: any;
+            try {
+                return await Promise.race([
+                    routeToModel([{ role: 'user', content: prompt }],
+                                undefined, undefined, undefined, undefined, undefined, undefined,
+                                //  ⛔ THE PROVIDER HE CHOSE. `routeToModel` reads the selected
+                                //  provider from `context.modelConfig` and from nowhere else, so a
+                                //  call made without it silently routes to the free mesh — he picks
+                                //  Claude in the providers button, pastes a real key, and every model
+                                //  call that BUILDS his site ignores it. Measured: this file had four
+                                //  model calls and not one mention of `modelConfig`.
+                                context),
+                    new Promise<string>((_, rej) => {
+                        timer = setTimeout(() => rej(new Error('the model did not answer in time')), 25_000);
+                    }),
+                ]);
+            } finally { clearTimeout(timer); }
+        };
+
+        /**
+         *  ⛔ AND IT MUST NEVER HOLD THE BUILD HOSTAGE.
+         *
+         *  Measured, by the gate, on the first tree that carried this reader:
+         *
+         *      ● the LINKED frontend gets ordersApi and the OrderButton
+         *        thrown: "Exceeded timeout of 10000 ms for a test."
+         *
+         *  Four suites, and the cause was mine: reading his request FIRST also
+         *  meant waiting for a model round trip before a single byte was
+         *  written. Under a slow brain that is a stalled build, and under a
+         *  dead one it is a build that stops before it starts — which is
+         *  precisely the failure this whole session has been closing, rebuilt
+         *  by the repair for it. **A reading that improves the outcome must
+         *  never be able to prevent the outcome.**
+         *
+         *  So: no attempt at all where there is no brain to ask (a test run
+         *  has none, and 90 seconds of waiting for that is not a measurement,
+         *  it is a hang); and a short leash everywhere else, because the
+         *  catalogue floor below is a worse answer than the reading but an
+         *  infinitely better one than no build.
+         */
+        const noBrainToAsk = process.env.NODE_ENV === 'test' || !!process.env.JEST_WORKER_ID;
+        let namedByHim: NamedRequirement[] = [];
+        if (noBrainToAsk) {
+            term('reading your request: skipped — no model in this environment; using the known-features list');
+        } else {
+            try {
+                const read = await namedRequirements(request, isAr, askTheModel);
+                namedByHim = read.requirements;
+                for (const r of read.rejected) {
+                    term(`  refused «${r.text}»: ${r.reason}`);
+                }
+                term(namedByHim.length
+                    ? `read from your request: ${namedByHim.length} named — ${namedByHim.map(r => r.text).join(' · ')}`
+                    : 'read from your request: nothing nameable survived — falling back to the known-features list');
+            } catch (e: any) {
+                term(`reading your request failed: ${String(e && e.message || e).slice(0, 120)}`
+                    + ' — falling back to the known-features list');
+            }
+        }
+
+        /**
          * THE TERMINAL IS OPENED FIRST, AND HE IS LOOKING AT IT.
          *
          * «جو لا يعتمد على الطرفية بشكل كبير وحقيقي ويجب أن يكون ذلك بشكل مرئي
@@ -3438,7 +3549,15 @@ export class ReactProjectTool extends BaseTool {
                     let timer: any;
                     try {
                         return await Promise.race([
-                            routeToModel([{ role: 'user', content: prompt }]),
+                            routeToModel([{ role: 'user', content: prompt }],
+                                undefined, undefined, undefined, undefined, undefined, undefined,
+                                //  ⛔ THE PROVIDER HE CHOSE. `routeToModel` reads the selected
+                                //  provider from `context.modelConfig` and from nowhere else, so a
+                                //  call made without it silently routes to the free mesh — he picks
+                                //  Claude in the providers button, pastes a real key, and every model
+                                //  call that BUILDS his site ignores it. Measured: this file had four
+                                //  model calls and not one mention of `modelConfig`.
+                                context),
                             new Promise<string>((_, rej) => {
                                 timer = setTimeout(() => rej(new Error('the model did not answer in time')), 90_000);
                             }),
@@ -4093,6 +4212,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 isArabic: isAr,
                 appKind,
                 generatedEnginePath: runBp.kind === 'weather' ? 'src/components/WeatherApp.jsx' : '',
+                named: namedByHim,
             });
             if (declaration) term(declaration);
             /**
@@ -4129,7 +4249,15 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                         let timer: any;
                         try {
                             return await Promise.race([
-                                routeToModel([{ role: 'user', content: prompt }]),
+                                routeToModel([{ role: 'user', content: prompt }],
+                                undefined, undefined, undefined, undefined, undefined, undefined,
+                                //  ⛔ THE PROVIDER HE CHOSE. `routeToModel` reads the selected
+                                //  provider from `context.modelConfig` and from nowhere else, so a
+                                //  call made without it silently routes to the free mesh — he picks
+                                //  Claude in the providers button, pastes a real key, and every model
+                                //  call that BUILDS his site ignores it. Measured: this file had four
+                                //  model calls and not one mention of `modelConfig`.
+                                context),
                                 new Promise<string>((_, rej) => {
                                     timer = setTimeout(() => rej(new Error('the model did not answer in time')), 120_000);
                                 }),
@@ -4240,8 +4368,12 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
         } else {
             // Generic projects have no runBp; the declaration still follows
             // the classification decision and stays visible in Joe's terminal.
+            //  The SECOND mouth that speaks this sentence. The most repeated
+            //  defect in this repository is a rule that reached one writer and
+            //  not the other, so this list is passed at both sites or at
+            //  neither — and the guard beside this file asserts exactly that.
             const declaration = earlyProjectDeclaration({
-                request, isArabic: isAr, appKind, generatedEnginePath: '',
+                request, isArabic: isAr, appKind, generatedEnginePath: '', named: namedByHim,
             });
             if (declaration) term(declaration);
         }
@@ -4375,7 +4507,15 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 let timer: any;
                 try {
                     return await Promise.race([
-                        routeToModel([{ role: 'user', content: prompt }]),
+                        routeToModel([{ role: 'user', content: prompt }],
+                                undefined, undefined, undefined, undefined, undefined, undefined,
+                                //  ⛔ THE PROVIDER HE CHOSE. `routeToModel` reads the selected
+                                //  provider from `context.modelConfig` and from nowhere else, so a
+                                //  call made without it silently routes to the free mesh — he picks
+                                //  Claude in the providers button, pastes a real key, and every model
+                                //  call that BUILDS his site ignores it. Measured: this file had four
+                                //  model calls and not one mention of `modelConfig`.
+                                context),
                         new Promise<string>((_, rej) => {
                             timer = setTimeout(() => rej(new Error('the model did not answer in time')), 120_000);
                         }),
@@ -5548,18 +5688,65 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
 
         const fileList = Object.keys(files).map(f => `  • ${f}`).join('\n');
         const { judgeAcceptance, acceptanceBlock } = require('../../../core/quality/acceptance');
-        const acceptance = judgeAcceptance(acceptanceCriteriaFor(request), {
-            dir: proj,
-            built,
-            liveUrl: previewUrl,
-            audit: audit || null,
-        }, isAr);
         const projectEvidence = (() => {
             try {
                 const { readProjectSource } = require('../../../core/quality/scope-audit');
                 return readProjectSource([proj]);
             } catch { return ''; }
         })();
+        /**
+         *  ⛔ THE DENOMINATOR IS THE LIST HE NAMED.
+         *
+         *  «all 1/1 requested criteria were proven» closed a build that had
+         *  delivered one fifth of the request. Nothing in that sentence was
+         *  false; the denominator was simply the catalogue's idea of his
+         *  request rather than his request.
+         *
+         *  So when the reading reached the model, the generic feature rows of
+         *  the catalogue step aside for the named list. What does NOT step
+         *  aside are the criteria that read his sentence STRUCTURALLY — a rule
+         *  he stated, a column he named, a page he named, a title he quoted.
+         *  Those are not table lookups: they carry his own value, they are
+         *  proven exactly, and «لا تقبل سعراً صفراً» is worth more as a bound
+         *  checked on his column than as a sentence a model agrees with.
+         *
+         *  Each named requirement is proven by READING the built source — see
+         *  `verifyNamed`, which refuses any «met» whose evidence it cannot find
+         *  in that source. A requirement Joe cannot prove comes back
+         *  `unprovable`, which is declared to him and does not block delivery;
+         *  silence is the only outcome that was never acceptable.
+         */
+        const catalogueCriteria = acceptanceCriteriaFor(request);
+        const namedJudged = namedByHim.length && !noBrainToAsk
+            ? await verifyNamed(namedByHim, projectEvidence, isAr, askTheModel)
+            : [];
+        for (const j of namedJudged) {
+            term(`  ${j.verdict === 'met' ? 'OK' : j.verdict === 'unmet' ? 'MISSING' : '??'} ${j.text} — ${j.why}`);
+        }
+        const structural = catalogueCriteria.filter((c: any) =>
+            c.expectedRule || c.expectedColumn || c.expectedPage || c.expectedText);
+        const criteriaForJudgement = namedJudged.length
+            ? [
+                ...structural,
+                ...namedJudged.map(j => ({
+                    id: j.id,
+                    kind: 'feature' as const,
+                    ar: j.text,
+                    en: j.text,
+                    preJudged: { verdict: j.verdict, why: j.why },
+                })),
+            ]
+            : catalogueCriteria;
+        term(`acceptance denominator: ${criteriaForJudgement.length}`
+            + (namedJudged.length
+                ? ` (${namedJudged.length} read from your request + ${structural.length} structural)`
+                : ' (known-features list — your request was not read)'));
+        const acceptance = judgeAcceptance(criteriaForJudgement, {
+            dir: proj,
+            built,
+            liveUrl: previewUrl,
+            audit: audit || null,
+        }, isAr);
         // What the app can actually DO — stated as capabilities only when each
         // claim has evidence in the source that was really read.
         const abilityReport = appBp

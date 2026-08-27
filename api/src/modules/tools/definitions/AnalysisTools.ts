@@ -152,7 +152,11 @@ export class AnalyzeCodebaseTool extends BaseTool {
             const summary = await routeToModel([
                 { role: 'system', content: 'You are a Senior Software Architect. Analyze the provided codebase context and generate a high-level architectural summary. Focus on: Tech Stack, Key Components, Entry Points, and Project Structure. Be concise.' },
                 { role: 'user', content: `File Structure (partial):\n${structure}\n\nKey File Contents:\n${fileContents.join('\n')}` }
-            ]);
+            ],
+            //  The provider he chose. `routeToModel` reads it from
+            //  `context.modelConfig` and from nowhere else, so a call made
+            //  without it routes to the free mesh whatever he picked.
+            undefined, undefined, undefined, undefined, undefined, undefined, context);
             return { ok: true, output: { summary: summary || 'Analysis failed' }, logs };
         } catch (e: any) {
             logs.push(`analyze.llm_error=${e.message}`);
