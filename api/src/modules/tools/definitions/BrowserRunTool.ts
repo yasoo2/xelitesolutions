@@ -24,24 +24,68 @@ export function localLivePreviewFor(sessionId: string): string {
     }
 }
 
-export function asksToOpenTheActiveApp(instructionText: string): boolean {
-    const text = String(instructionText || '').trim().toLowerCase();
+/**
+ *  ⛔ DOES THIS INSTRUCTION NAME SOMEWHERE ELSE?
+ *
+ *  Measured live, on the simplest prompt anyone has run at Joe:
+ *
+ *      prompt : Build a simple counter app with a button that increments the count.
+ *      step   : "Verify that the counter increments when the button is clicked"
+ *      result : the browser opened a DuckDuckGo search FOR THAT SENTENCE
+ *               browser_run returned ok:true
+ *
+ *  Joe built the app, then went looking for it on the internet.
+ *
+ *  ⛔ AND THE CAUSE WAS A CATALOGUE OF PAST PROJECTS. The reader that decides
+ *  «is he talking about the app I just built?» matched a hard-coded noun list:
+ *
+ *      app · application · project · site · system · page ·
+ *      weathergo · weather · city · cities · favorite · forecast ·
+ *      temperature · settings · invalid · api · istanbul
+ *
+ *  which is the WeatherGo project's vocabulary, written into a general router.
+ *  «counter» is not on it. «button» is not on it. So a counter app was
+ *  invisible to the one function whose whole job was to see it, and the final
+ *  `else` below searched the web for the sentence. **The fourth law broken in
+ *  its most literal form: a decision routed from remembered projects instead
+ *  of from the request** — the same disease as the acceptance catalogue, in a
+ *  second organ nobody had looked at. Every future app whose nouns nobody
+ *  thought to add — a todo list, an invoice table, this counter — got a search
+ *  page instead of a verification.
+ *
+ *  **So the default is inverted.** A browser step inside a build asks about
+ *  the thing that was just built unless the instruction NAMES somewhere else:
+ *  a literal address, or an external site by name. That question can be
+ *  answered without knowing anything about what kind of app it is, which is
+ *  exactly why it survives the next request and the noun list could not.
+ */
+export function namesAnExternalTarget(instructionText: string): boolean {
+    const text = String(instructionText || '').trim();
     if (!text) return false;
+    //  An address he wrote down is unambiguous and outranks everything.
+    if (/https?:\/\/[^\s]+/i.test(text)) return true;
+    //  A search engine or a public site named out loud. This list may safely
+    //  be incomplete: a name missing from it routes to the app he just built,
+    //  which is the harmless direction. The old list failed the other way.
+    if (/\b(?:google|yahoo|bing|duckduckgo|wikipedia|github\.com|stackoverflow|youtube|x\.com|twitter|facebook|linkedin|instagram|amazon|netflix|microsoft|openai|render\.com)\b/i.test(text)) return true;
+    if (/(?:جوجل|غوغل|ياهو|ويكيبيديا|يوتيوب|تويتر|فيس\s*بوك|لينكد\s*ان|انستجرام|أمازون|امازون|نتفليكس|مايكروسوفت)/i.test(text)) return true;
+    //  «search the web» / «بحث في الإنترنت» — the intent stated, not guessed
+    //  from a verb that appears in ordinary prose.
+    if (/search(?:ing)?\s+(?:the\s+)?(?:web|internet|online)\b/i.test(text)) return true;
+    if (/بحث\s+(?:في|على)\s+(?:الويب|الإنترنت|الانترنت)/i.test(text)) return true;
+    return false;
+}
 
-    // Search-engine intent is explicit and must never be hijacked by a local
-    // preview. Generic "search" wording, however, is also how an agent writes
-    // an in-app QA step ("Search Istanbul", "Search another real city").
-    // Route that wording to the active preview when it carries an application
-    // signal, while keeping web/search-engine requests on their search path.
-    const explicitExternalSearch = /(google|جوجل|غوغل|yahoo|ياهو|wikipedia|ويكيبيديا|search(?:ing)?\s+(?:the\s+)?(?:web|internet|engine)|بحث\s+(?:في|على)\s+(?:الويب|الإنترنت|الانترنت)|بحث\s+جوجل)/i.test(text);
-    if (explicitExternalSearch) return false;
-
-    const inAppDomain = /\b(?:app|application|project|site|system|page|weathergo|weather|city|cities|favorite|favorites|forecast|temperature|settings?|invalid|api|istanbul)\b|(?:المشروع|التطبيق|النظام|الطقس|مدينة|مدن|المفضلة|الإعدادات|الحرارة|التوقعات)/i;
-    const inAppQaSearch = /(?:\b(?:search|بحث)\b.*\b(?:app|application|project|site|system|page|weather|city|cities|favorite|favorites|forecast|temperature|settings?|invalid|api|istanbul)\b|\b(?:app|application|project|site|system|page|weather|city|cities|favorite|favorites|forecast|temperature|settings?|invalid|api|istanbul)\b.*\b(?:search|بحث)\b)/i.test(text);
-    const inAppQaAction = inAppDomain.test(text) && /\b(?:add|remove|save|select|set|change|open|click|check|verify|view|show|load|type|enter|choose|toggle|reload|refresh)\b|(?:أضف|احذف|احفظ|اختر|غيّر|غير|افتح|اضغط|تحقق|اعرض|اكتب|أدخل|ادخل|بدّل|بدل|أعد التحميل|اعد التحميل)/i.test(text);
-    if (inAppQaSearch || inAppQaAction) return true;
-
-    return /(open|launch|visit|load|test|verify|qa|preview|inspect|run).*(app|application|project|site|system|page)|افتح|شغّل|شغل|اختبر|تحقق|فحص|تدقيق|المشروع|التطبيق|المعاينة|النظام/i.test(text);
+/**
+ *  The question this used to ask by matching nouns, asked by elimination
+ *  instead. Anything that does not name somewhere else is about the thing this
+ *  session just built — and the caller still has to HAVE one, which is the
+ *  half that must never be papered over with a search.
+ */
+export function asksToOpenTheActiveApp(instructionText: string): boolean {
+    const text = String(instructionText || '').trim();
+    if (!text) return false;
+    return !namesAnExternalTarget(text);
 }
 
 export class BrowserRunTool extends BaseTool {
@@ -226,6 +270,28 @@ export class BrowserRunTool extends BaseTool {
             if (activePreview) {
                 actions = [{ type: 'goto', url: activePreview }, { type: 'wait', ms: 3000 }];
                 logs.push(`browser_run: resolved active live preview ${activePreview}`);
+            }
+            /**
+             *  ⛔ AND WITH NO ADDRESS AT ALL, IT REFUSES.
+             *
+             *  The chain below ends in `targetUrl = agentSearchUrl(instructionText)`
+             *  — any instruction with no recognised destination became a web
+             *  search of itself. That is how «Verify that the counter increments»
+             *  became a DuckDuckGo query, and `browser_run` returned ok:true
+             *  because a search page really did load: 105 steps, a real Browser
+             *  panel, a real page, and zero evidence.
+             *
+             *  **A search result can never verify a build.** With no preview to
+             *  open and nothing external named, the honest answer is that there
+             *  is no address — said out loud, not wandered away from.
+             */
+            if (actions.length === 0 && !namesAnExternalTarget(instructionText)) {
+                return {
+                    ok: false,
+                    error: 'no_target_for_this_instruction',
+                    message: 'لا أملك عنواناً للتطبيق المطلوب فحصه، ولن أبحث في الإنترنت بدلاً منه.',
+                    logs,
+                } as any;
             }
             const tLower = instructionText.toLowerCase();
             let targetUrl = '';
