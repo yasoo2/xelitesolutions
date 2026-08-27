@@ -52,6 +52,50 @@ export interface ExtractionResult {
 /** Words that are Joe's own paperwork or the act of asking, never a feature. */
 const NOT_A_FEATURE = /^(?:build|make|create|website|site|app|page|responsive|design|اعمل|ابن|موقع|صفحة|تطبيق|تصميم)$/i;
 
+/**
+ *  ⛔ THE THING HE IS ASKING FOR IS NOT A THING IT MUST HAVE.
+ *
+ *  Measured on the owner's own machine, from his own prompts, after the
+ *  reader shipped:
+ *
+ *      read from your request: 2 named — build an online jewelry store · complete
+ *      read from your request: 2 named — متجر مجوهرات فاخر · سله مشتريات
+ *
+ *  «build an online jewelry store» is the request. «متجر مجوهرات فاخر» is
+ *  its subject. Neither is a behaviour the build can be judged against, and
+ *  both are unfalsifiable: a shop that exists satisfies «build a shop» no
+ *  matter how badly it does everything he actually asked for. So the
+ *  denominator fills with criteria that are met by definition, which is the
+ *  same disease as a denominator of one wearing a larger number.
+ *
+ *  `groundedIn` could not catch it: it reads the QUOTE, and the model quoted
+ *  a long true span of his sentence while writing scaffolding as the TEXT.
+ *  **The check has to stand where the text is, because the text is what he
+ *  reads and what the ledger counts.**
+ */
+//  ⛔ `` READS ASCII, SO IT NEVER SAW THE ARABIC VERB.
+//  This shipped ending in `)/i` and let «اعمل متجر مجوهرات فاخر» straight
+//  through: JavaScript defines a word boundary on `\w` — ASCII letters,
+//  digits, underscore — so between «ل» and a space there is no transition to
+//  find. English matched and Arabic did not. It is this repository’s oldest
+//  defect in a new place: a pattern that reads letters instead of words.
+//  The guard caught it only because it was written from HIS logs, in both
+//  languages. A lookahead asks the question directly.
+const OPENS_WITH_THE_ASKING = /^(?:please\s+)?(?:build|make|create|develop|design|generate|write|اعمل|ابن|انشئ|أنشئ|صمم|اصنع|اكتب|بدي|اريد|أريد)(?=\s|$)/iu;
+
+/**
+ *  A requirement must be a thing the build can FAIL to deliver. This refuses
+ *  the two shapes that cannot fail: the act of asking, and a bare fragment
+ *  with no content word of its own.
+ */
+export function isJudgeable(text: string): boolean {
+    const t = String(text || '').trim();
+    if (t.length < 3) return false;
+    if (OPENS_WITH_THE_ASKING.test(t)) return false;
+    const words = t.split(/[^\p{L}\p{N}]+/u).filter(w => w.length > 2 && !NOT_A_FEATURE.test(w));
+    return words.length > 0;
+}
+
 const slug = (s: string) => {
     let h = 2166136261;
     for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
@@ -110,6 +154,10 @@ export function extractionPrompt(request: string, isArabic: boolean): string {
         `    from. If you cannot quote it, do not list it.`,
         `  · Do NOT add what a site like this usually has. Only what he wrote.`,
         `  · Do not list the act of asking — «build a website» is not a feature.`,
+        `  · Do NOT list the project itself or what it is about. «build an`,
+        `    online jewelry store» and «a luxury jewelry shop» are the thing`,
+        `    being asked for, not things it must do. Every entry must be`,
+        `    something the finished site could FAIL to have.`,
         `  · Write «text» in ${isArabic ? 'Arabic' : 'English'}.`,
         ``,
         `REPLY WITH JSON AND NOTHING ELSE:`,
@@ -162,6 +210,14 @@ export async function namedRequirements(
 
     const seen = new Set<string>();
     for (const r of parseRequirements(raw)) {
+        //  ⛔ Judged where the TEXT is, not only where the quote is. A model
+        //  asked «what did he name» answers with the project itself unless it
+        //  is stopped, and «build an online jewelry store» is met by any shop
+        //  that exists — a criterion nothing can fail is not a criterion.
+        if (!isJudgeable(r.text)) {
+            out.rejected.push({ text: r.text, reason: 'it is the thing you asked for, not something it must do' });
+            continue;
+        }
         if (!groundedIn(r.quote, req)) {
             out.rejected.push({ text: r.text, reason: `it is not in his sentence: «${r.quote.slice(0, 60)}»` });
             continue;
