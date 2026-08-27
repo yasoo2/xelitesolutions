@@ -787,7 +787,32 @@ describe('the ledger is published, in his language', () => {
 
 describe('THE WIRING: the build is judged before it is delivered', () => {
     it('the judge runs on the real evidence of THIS build', () => {
-        expect(REACT).toMatch(/const acceptance = judgeAcceptance\(acceptanceCriteriaFor\(request\), \{/);
+        /**
+         *  ⛔ THIS ASSERTION USED TO PIN THE SPELLING, AND THE SPELLING WAS THE BUG.
+         *
+         *  It read `judgeAcceptance(acceptanceCriteriaFor(request), {` and went
+         *  green on exactly the line that made the denominator one: a single
+         *  catalogue reader serving as BOTH the extraction and the judgement.
+         *  A guard cannot protect a claim it has confused with a string, and
+         *  putting that text back somewhere useless to restore the green is the
+         *  trap this repository has already been caught in once.
+         *
+         *  So it is relational now. Whatever the argument is called, it must be
+         *  assembled from the reading of HIS request — and the check follows the
+         *  identifier rather than requiring a name.
+         */
+        const arg = (/const acceptance = judgeAcceptance\((\w+), \{/.exec(REACT) || [])[1];
+        expect({ theJudgeTakesANamedList: !!arg }).toEqual({ theJudgeTakesANamedList: true });
+        const assembled = new RegExp('const ' + arg + ' = [\\s\\S]{0,900}?namedJudged').test(REACT);
+        expect({ arg, builtFromTheReadingOfHisRequest: assembled })
+            .toEqual({ arg, builtFromTheReadingOfHisRequest: true });
+        //  ...and the reading is proven against the source that was really
+        //  built, not against the request a second time.
+        expect(REACT).toMatch(/verifyNamed\(namedByHim, projectEvidence,/);
+        //  ...and the catalogue survives as the floor for when the reading
+        //  could not happen. Deleting it would trade one silent failure for
+        //  another the first time a provider is down.
+        expect(REACT).toMatch(/: catalogueCriteria;/);
         expect(REACT).toMatch(/liveUrl: previewUrl,/);
         expect(REACT).toMatch(/audit: audit \|\| null,/);
         expect(REACT).toMatch(/const reconciledVoices = reconcileDeliveryVoices\(/);
