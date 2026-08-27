@@ -1179,6 +1179,52 @@ export class NpmManagerTool extends BaseTool {
             const workDir = resolvedWorkDir.path;
             logs.push(`npm.cwd=${workDir}`);
             const installLike = ['install', 'i', 'ci'].includes(cmdParts[0]);
+            /**
+             *  ⛔ NPM CLIMBS. A DIRECTORY THAT IS NOT A PACKAGE IS NOT A TARGET.
+             *
+             *  Measured on a failed build, from the run's own two lines placed
+             *  side by side:
+             *
+             *      npm.cwd=…/data/projects/my-workspace
+             *      exec: npm install react react-dom vite @vitejs/plugin-react
+             *
+             *  and the diff landing on the REPOSITORY ROOT — four dependencies
+             *  added to Joe's own `package.json`, and the four packages
+             *  installed into Joe's own `node_modules`.
+             *
+             *  `data/projects/my-workspace` holds projects; it is not itself a
+             *  package. So npm did what npm documents: it walked UP until it
+             *  found a `package.json`, and the nearest one above it belongs to
+             *  the program doing the building. **A failed build for a user's
+             *  project edited the source tree of Joe.**
+             *
+             *  ⛔ AND IT IS THE SECOND TIME IN ONE DAY THAT A TOOL WITH NO VALID
+             *  TARGET REACHED FOR THE NEAREST THING INSTEAD OF STOPPING. The
+             *  browser step, given no address for the app it was asked to
+             *  verify, searched the open web; npm, given a directory that is
+             *  not a package, installed into its parent. Same shape, different
+             *  organ, and both produced something that looked like progress.
+             *
+             *  So the answer is the same one: with no valid target, REFUSE and
+             *  say why. A containment failure is the one class whose blast
+             *  radius is not bounded by the feature — nothing in the acceptance
+             *  ledger, the reader, or the router can notice it, because it
+             *  happens outside everything they measure.
+             */
+            if (installLike) {
+                const manifest = path.join(workDir, 'package.json');
+                let isAPackage = false;
+                try { isAPackage = fs.existsSync(manifest) && fs.statSync(manifest).isFile(); } catch { isAPackage = false; }
+                if (!isAPackage) {
+                    logs.push(`npm.refused=no_package_json_at_target`);
+                    return {
+                        ok: false,
+                        error: 'npm_install_target_is_not_a_package',
+                        message: `لا يوجد package.json في «${workDir}» — ولن أثبّت حزماً هناك، لأنّ npm سيصعد ويكتب في أقرب مشروعٍ فوقه.`,
+                        logs,
+                    };
+                }
+            }
             const installTimeoutMs = npmInstallTimeoutMs();
             const nativePackages = installLike ? likelyNativeLifecyclePackages([...pkgs, ...cmdParts.slice(1)]) : [];
             if (installLike) {

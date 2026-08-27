@@ -376,9 +376,43 @@ if ($stopped -gt 0) {
 #  حتى حين لا يجلب السحب أي جديد، أي دقيقتان مقابل لا شيء. حين يكون
 #  الهاش كما هو والبناء السابق موجوداً، نتخطّى البناء ونشغّل مباشرة.
 # ============================================================
-$skipBuild = ($before -eq $after) -and
-             (Test-Path (Join-Path $PSScriptRoot "api\dist\index.js")) -and
-             (Test-Path (Join-Path $PSScriptRoot "web\dist\index.html"))
+# ============================================================
+#  ⛔ السؤال ليس «هل تحرّك الهاش؟» بل «هل البناء يطابق الشيفرة؟»
+#
+#  قيس يوم 2026-08-27 على جهاز المالك: سحب الشيفرة كاملة، ثمّ شغّل
+#  السكربت ثانيةً فلم يتحرّك الهاش، فتُخطّي البناء — وشغّل جو
+#  حزمةً قديمةً من 17:33 لا تحوي سطراً واحداً ممّا سُحب. ثلاث تجاربٍ
+#  متتالية ماتت على عطبٍ كان إصلاحه على قرصه طوال الوقت، غير مبنيّ.
+#
+#  والفئة هي نفسها التي أُغلقت منها أعطاب اليوم كلّها: إشارةٌ تقيس
+#  شيئاً مجاوراً للادّعاء لا الادّعاء نفسه. حركةُ الهاش ليست حداثةَ البناء:
+#  بناءٌ فشل، أو سحبةٌ سابقةٌ لم تُبنَ، أو تعديلٌ محلّيّ — كلّها تترك
+#  الهاش ساكناً والحزمة متأخّرة.
+#
+#  فالشرط صار السؤال المباشر: هل الحزمة أحدث من أحدث ملفّ مصدر؟
+#  وإن لم يُقرأ المصدر لأيّ سبب، يُبنى — لأنّ بناءً زائداً يكلّف دقائق،
+#  وبناءً مفقوداً يكلّف يوماً.
+# ============================================================
+$distApi = Join-Path $PSScriptRoot "api\dist\index.js"
+$distWeb = Join-Path $PSScriptRoot "web\dist\index.html"
+$builtBoth = (Test-Path $distApi) -and (Test-Path $distWeb)
+$bundleIsCurrent = $false
+if ($builtBoth) {
+    try {
+        $srcDirs = @("api\src", "web\src") | ForEach-Object { Join-Path $PSScriptRoot $_ } | Where-Object { Test-Path $_ }
+        $newestSource = $srcDirs | ForEach-Object { Get-ChildItem $_ -Recurse -File -ErrorAction SilentlyContinue } |
+            Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
+        if ($newestSource) {
+            $oldestBundle = @($distApi, $distWeb) | ForEach-Object { (Get-Item $_).LastWriteTimeUtc } |
+                Sort-Object | Select-Object -First 1
+            $bundleIsCurrent = ($oldestBundle -gt $newestSource.LastWriteTimeUtc)
+        }
+    } catch {
+        # إن لم يُقرأ المصدر، فالإجابة «لا أعرف» — و«لا أعرف» تُبنى.
+        $bundleIsCurrent = $false
+    }
+}
+$skipBuild = ($before -eq $after) -and $builtBoth -and $bundleIsCurrent
 if ($skipBuild) {
     $env:JOE_SKIP_BUILD = "1"
     Say "[STAGE] building"
