@@ -151,6 +151,41 @@ describe('the file that holds the dead button is found, not guessed', () => {
         expect(pick.file).toBe('');
     });
 
+    /**
+     *  ⛔ THE ONE THAT WAS SILENTLY BROKEN FOR EVERY PAGE BUT THE FIRST.
+     *
+     *  `app-audit.ts:608` merges each route's controls as
+     *  `route === '/' ? c.label : `${route} ${c.label}``. So a dead button on
+     *  `/menu` arrives here labelled «/menu Add serving», and looking that up
+     *  in the component sources finds nothing at all. The road I published an
+     *  hour earlier repaired the home page and **quietly did nothing on every
+     *  other page of the site** — a failure with no error, which is the only
+     *  kind that survives.
+     *
+     *  Found by reading the producer instead of trusting my reader, which is
+     *  the same class the road itself exists to close.
+     */
+    it('⛔ POSITIVE — a control on a route other than / is still found', () => {
+        const pick = fileForBehaviour(
+            [{ evidence: [{ label: '/menu Add serving', kind: 'button' }] }],
+            sources,
+        );
+        expect(pick.file).toBe('src/components/ServingsCounter.jsx');
+        //  Both readings are kept: the prefix is absent on the home route, and
+        //  a label that legitimately begins with a slash must still match.
+        expect(pick.labels).toContain('Add serving');
+        expect(pick.labels).toContain('/menu Add serving');
+    });
+
+    it('⛔ NEGATIVE — stripping the route does not invent a match', () => {
+        //  «/menu Checkout» must still find nothing. A looser reader that
+        //  matched on any word would now hit `Footer` through «ok» — the
+        //  second chance has to be narrower, not just another chance.
+        expect(fileForBehaviour(
+            [{ evidence: [{ label: '/menu Checkout', kind: 'button' }] }], sources,
+        ).file).toBe('');
+    });
+
     it('⛔ NEGATIVE — no evidence at all picks nothing, and says why', () => {
         expect(fileForBehaviour([{ id: 'dead_controls' } as any], sources).file).toBe('');
         expect(fileForBehaviour([], sources).labels).toEqual([]);

@@ -206,10 +206,28 @@ export function fileForBehaviour(
     findings: Array<{ evidence?: any[] }>,
     sources: Record<string, string>,
 ): { file: string; labels: string[] } {
+    /**
+     *  ⛔ THE LABEL ARRIVES WEARING ITS ROUTE, AND MINE DID NOT KNOW.
+     *
+     *  `app-audit.ts:608` walks every route and merges the controls it pressed
+     *  as `route === '/' ? c.label : `${route} ${c.label}``. So a dead button on
+     *  `/menu` reaches here as «/menu Add serving», and a lookup for the literal
+     *  label finds nothing in any component — **this file-picker worked on the
+     *  home page and silently failed on every other page of the site.**
+     *
+     *  Found by measurement, an hour after I published the road, and it is the
+     *  same class the road itself closes: a producer emits one shape, a reader
+     *  admits another, and nothing forces them to agree. Both readings are kept
+     *  because the prefix is only present off the home route.
+     */
     const labels = Array.from(new Set(
         (findings || [])
             .flatMap(f => (Array.isArray(f?.evidence) ? f.evidence : []))
-            .map((e: any) => String(e?.label || '').trim())
+            .flatMap((e: any) => {
+                const raw = String(e?.label || '').trim();
+                const bare = raw.replace(/^\/\S*\s+/, '').trim();
+                return bare && bare !== raw ? [raw, bare] : [raw];
+            })
             .filter(l => l.length >= 2),
     ));
     if (!labels.length) return { file: '', labels: [] };
