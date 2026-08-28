@@ -41,10 +41,16 @@ import {
     sliceCoversRequirement,
     verifyNamed,
     NamedRequirement,
+    MAX_SOURCE_CHARS,
 } from '../core/quality/named-requirements';
 
 /** A source big enough to be cut, with the evidence deliberately in the middle. */
-const HEAD = 'import React from "react";\n'.repeat(600);
+//  Sized so the MIDDLE lands past the head half of `boundedSource`,
+//  whatever the budget is. Pinned at 600 it sat INSIDE the head once the
+//  budget rose, and the test that proves «head+tail loses the middle»
+//  stopped being able to lose it — a fixture built for one number,
+//  asserting about another.
+const HEAD = 'import React from \"react\";\n'.repeat(Math.ceil(MAX_SOURCE_CHARS / 27));
 const MIDDLE = `
 export function Contact() {
   return <a href={'tel:' + content.contact.phone}>Call the workshop</a>;
@@ -53,7 +59,18 @@ export function Hours() {
   return <p>Opening hours: Mon–Fri 9–6</p>;
 }
 `;
-const TAIL = 'export const filler = 1;\n'.repeat(600);
+//  ⛔ SIZED FROM THE BUDGET, NOT FROM A NUMBER SOMEBODY TYPED.
+//
+//  These fixtures used to be built for a budget of 18000 and asserted against
+//  the literal 18_000. When the budget rose to 40000 — because the judge is
+//  now shown `src` alone, a third the size, and a cut was costing real
+//  verdicts — three assertions here went red on correct code. They were
+//  testing the number, not the claim.
+//
+//  The claims are «a source too big for the budget is cut», «the cut is chosen
+//  for the question», and «the slice stays inside the budget». All three are
+//  about the budget, whatever it is.
+const TAIL = 'export const filler = 1;\n'.repeat(Math.ceil(MAX_SOURCE_CHARS / 12));
 const BIG = HEAD + MIDDLE + TAIL;
 
 const PHONE: NamedRequirement = { id: 'req-p', text: 'a phone CTA', quote: 'phone CTA' };
@@ -63,7 +80,7 @@ describe('the slice is chosen for the question', () => {
     it('⛔ POSITIVE — evidence in the middle survives, where head+tail lost it', () => {
         //  The measured failure, reproduced: the old slice keeps the same
         //  fixed ends no matter what is asked, so anything central is gone.
-        expect(BIG.length).toBeGreaterThan(20000);
+        expect(BIG.length).toBeGreaterThan(MAX_SOURCE_CHARS);
         expect(boundedSource(BIG)).not.toContain("tel:");
         expect(sliceFor(PHONE, BIG)).toContain("tel:");
         expect(sliceFor(HOURS, BIG)).toContain('Opening hours');
@@ -76,7 +93,7 @@ describe('the slice is chosen for the question', () => {
     it('POSITIVE — the slice stays within the budget', () => {
         //  Widening the window until everything fits would put us back at 68k
         //  in one prompt, which is where this began.
-        expect(sliceFor(PHONE, BIG).length).toBeLessThanOrEqual(18_000);
+        expect(sliceFor(PHONE, BIG).length).toBeLessThanOrEqual(MAX_SOURCE_CHARS);
     });
 
     it('NEGATIVE — a requirement whose words appear nowhere is reported as uncovered', () => {

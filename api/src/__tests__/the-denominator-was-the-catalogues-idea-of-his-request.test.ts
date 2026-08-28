@@ -32,7 +32,9 @@
 import fs from 'fs';
 import path from 'path';
 import { earlyProjectDeclaration } from '../modules/tools/definitions/ReactProjectTool';
-import { verifyNamed, foundInSource, nothingWasJudged, boundedSource, verificationPrompt, NamedRequirement } from '../core/quality/named-requirements';
+import { verifyNamed, foundInSource, nothingWasJudged, boundedSource, verificationPrompt, NamedRequirement,
+    MAX_SOURCE_CHARS,
+} from '../core/quality/named-requirements';
 
 const REACT = fs.readFileSync(
     path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ReactProjectTool.ts'),
@@ -309,8 +311,16 @@ describe('the judge is asked one question at a time, over a bounded source', () 
         //  A silent truncation would let the model answer «unmet» about a file
         //  it was never shown — a false failure, which is worse than «I could
         //  not tell» because it reads as a real defect in his build.
-        const cut = boundedSource('x'.repeat(60_000));
-        expect(cut.length).toBeLessThan(20_000);
+        //  ⛔ BOUND TO THE BUDGET, NOT TO A NUMBER TYPED BESIDE IT.
+        //
+        //  This read `60_000` and `20_000` — sized for a budget of 18000. When
+        //  the budget rose to 40000, because the judge is now shown `src`
+        //  alone instead of the whole project directory, the fixture still fit
+        //  and the assertion still expected the old ceiling. The claim is «a
+        //  source that does not fit is cut», and «fit» means MAX_SOURCE_CHARS,
+        //  whatever it is today.
+        const cut = boundedSource('x'.repeat(MAX_SOURCE_CHARS * 2));
+        expect(cut.length).toBeLessThan(MAX_SOURCE_CHARS + 4_000);
         expect(cut).toContain('characters of this project are not shown');
     });
 

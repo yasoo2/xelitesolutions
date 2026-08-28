@@ -410,7 +410,26 @@ export function foundInSource(evidence: string, source: string): boolean {
  *  a slice. A judge shown part of a file must be able to answer «I could not
  *  tell» honestly rather than be tricked into guessing.
  */
-const MAX_SOURCE_CHARS = 18_000;
+/**
+ *  ⛔ AND 18_000 WAS CHOSEN FOR A SOURCE THREE TIMES THIS SIZE.
+ *
+ *  It was the right number when the judge was handed the whole project
+ *  directory — 99321 characters on the build the owner measured. Now it is
+ *  handed `src` with `codeOnly`, which is 33862 on that same build, and a
+ *  window of 18000 still cuts it in half for no reason at all.
+ *
+ *  A cut is not free: it is the difference between «I could not tell» and a
+ *  verdict, and the owner watched it block a delivery over three controls he
+ *  had just clicked with his own hands.
+ *
+ *  40000 covers an ordinary Joe project whole — about ten thousand tokens,
+ *  which every model in the mesh and the local 7B all carry comfortably, and
+ *  the requirements are now judged in ONE call rather than five, so the source
+ *  is paid for once. Everything above it still slices, and the slice still
+ *  says it is a slice; what changed is that a normal build no longer meets a
+ *  knife it did not need.
+ */
+export const MAX_SOURCE_CHARS = 40_000;
 
 /** The whole source when it fits; otherwise a head and a tail, marked as cut. */
 /**

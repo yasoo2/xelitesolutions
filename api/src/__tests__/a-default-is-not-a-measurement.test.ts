@@ -87,7 +87,27 @@ describe('announcing a phase', () => {
     it('hands the socket layer the phase and the sentence', () => {
         const sent: any[] = [];
         jest.resetModules();
-        jest.doMock('../api/ws', () => ({ broadcastThinkingPhase: (...a: any[]) => sent.push(a) }), { virtual: true });
+        //  ⛔ `{ virtual: true }` TOLD JEST A REAL MODULE DOES NOT EXIST.
+        //
+        //  `src/api/ws.ts` is 29394 bytes on disk. `virtual` is for modules
+        //  that are NOT there, and using it on one that is registers the mock
+        //  under the literal specifier instead of the resolved path. Alone in
+        //  its file that happened to work; in the full suite the real module
+        //  was already resolved in the worker, `require('../../api/ws')` from
+        //  inside `phaseAnnounce` reached the real one, and the assertion read:
+        //
+        //      Expected length: 1
+        //      Received length: 0
+        //
+        //  — while `announcePhase` returned `true`, because it HAD reached a
+        //  socket layer. Just not this one.
+        //
+        //  ⛔ AND IT FAILED ONLY IN THE FULL RUN, WHICH IS THE WORST SHAPE OF
+        //  ALL: green in isolation, red in the gate, and every instinct says
+        //  «flaky» rather than «wrong». It reproduced twice, and pairing it
+        //  with all three other suites that mock this module did not — so the
+        //  cause was never the neighbour, it was this argument.
+        jest.doMock('../api/ws', () => ({ broadcastThinkingPhase: (...a: any[]) => sent.push(a) }));
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const fresh = require('../core/orchestrator/phaseAnnounce');
 

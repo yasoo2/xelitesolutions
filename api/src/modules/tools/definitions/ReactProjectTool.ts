@@ -6016,11 +6016,45 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
 
         const fileList = Object.keys(files).map(f => `  • ${f}`).join('\n');
         const { judgeAcceptance, acceptanceBlock } = require('../../../core/quality/acceptance');
+        /**
+         *  ⛔ THE JUDGE WAS FED THE WHOLE DIRECTORY AND THEN CUT.
+         *
+         *  The owner measured the consequence himself, in his own DOM, after
+         *  the build was blocked:
+         *
+         *      what Joe said              what he found by hand
+         *      MISSING an ingredients list   the list is there — three of them
+         *      ?? servings counter — evidence not in the source
+         *                                    it works: + three times → 4 → 7
+         *      ?? changes quantities — the source code is truncated
+         *                                    it works, and − stops at 1
+         *
+         *  «The source code is truncated» is the judge saying so in its own
+         *  words, and it was right: it was shown a cut and could not find what
+         *  was outside it. **Joe refused to deliver code that worked**, on
+         *  evidence it had cut away itself.
+         *
+         *  Measured on that project:
+         *
+         *      whole project   99321 chars   ← what was handed over
+         *      src, codeOnly   33862 chars   ← the code Joe actually wrote
+         *      slice per requirement  18000  ← what the judge got to see
+         *
+         *  The whole directory carries config, manifests, lockfile fragments —
+         *  none of which can prove a servings counter, all of which crowd it
+         *  out of the window. `src` with `codeOnly` is a third the size and
+         *  contains every one of the four keywords the requirements name.
+         *
+         *  The fallback is the old behaviour, so a project with an unusual
+         *  layout is judged on something rather than nothing.
+         */
         const projectEvidence = (() => {
+            const { readProjectSource } = require('../../../core/quality/scope-audit');
             try {
-                const { readProjectSource } = require('../../../core/quality/scope-audit');
-                return readProjectSource([proj]);
-            } catch { return ''; }
+                const authored = readProjectSource([path.join(proj, 'src')], { codeOnly: true });
+                if (authored.trim().length) return authored;
+            } catch { /* fall through to the whole tree */ }
+            try { return readProjectSource([proj]); } catch { return ''; }
         })();
         /**
          *  ⛔ THE DENOMINATOR IS THE LIST HE NAMED.
