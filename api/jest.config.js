@@ -16,6 +16,12 @@ module.exports = {
     rootDir: 'src',
     testMatch: ['**/__tests__/**/*.test.ts'],
     setupFiles: ['<rootDir>/__tests__/setup.ts'],
+    //  ⛔ RUNS IN EACH TEST PROCESS, WHICH IS THE WHOLE POINT.
+    //  globalTeardown runs in the MAIN process and cannot see a singleton a
+    //  worker process created — so its shutdownOcr() closed nothing and the
+    //  tesseract worker kept a MESSAGEPORT alive, stalling the canonical gate
+    //  at batch 31/32 with no summary and no exit code. See afterEnv.ts.
+    setupFilesAfterEnv: ['<rootDir>/__tests__/afterEnv.ts'],
     // One temporary root for the whole run, so teardown has one thing to
     // delete. Without it the suite left two directories per test file on the
     // machine, forever — see globalSetup.ts.

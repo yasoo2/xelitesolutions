@@ -156,7 +156,26 @@ interface LocalRuntimeImportEvidence {
  * .ts/.tsx without evidence would be guesswork.
  */
 function missingExplicitLocalTarget(entry: LocalRuntimeImportEvidence): string | null {
-  const importer = entry.importer.replace(/\\\\/g, '/');
+/**
+ *  ⛔ FOUR NORMALISATIONS IN THIS FILE MATCHED A DOUBLE BACKSLASH.
+ *
+ *  The regex was written `/\\\\/g`, which matches TWO consecutive
+ *  separators. A Windows path holds SINGLE ones, so these four lines did
+ *  nothing at all — and the same plan object went out with `filename`
+ *  normalised and `path` not: **one file under two different strings, so
+ *  anything comparing them found two files.**
+ *
+ *  Seventy-eight normalisations in this repository are written correctly
+ *  and these four were not, which is the ordinary shape of it: the wrong
+ *  one is never the only one, it is the one nobody re-read.
+ *
+ *  ⛔ AND IT COULD NOT HAVE BEEN CAUGHT WHERE THE GATE USED TO RUN. On
+ *  Linux a path has no backslashes, so both spellings behave identically
+ *  and every test passes. It is visible only on the machine Joe actually
+ *  runs on — and it surfaced within the hour that machine became the
+ *  only place the gate can be green.
+ */
+  const importer = entry.importer.replace(/\\/g, '/');
   const specifier = entry.specifier.split(/[?#]/u, 1)[0].trim();
   const extension = path.extname(specifier).toLowerCase();
   // `.../x` is not a meaningful relative traversal prefix. Treating it as a
@@ -167,7 +186,7 @@ function missingExplicitLocalTarget(entry: LocalRuntimeImportEvidence): string |
   if (!path.isAbsolute(importer) || !specifier.startsWith('.') || !extension) return null;
   const target = path.resolve(path.dirname(importer), specifier);
   if (fs.existsSync(target)) return null;
-  return target.replace(/\\\\/g, '/');
+  return target.replace(/\\/g, '/');
 }
 
 interface LocalImportRedirectEvidence {
@@ -303,7 +322,7 @@ function extractLocalRuntimeImportEvidence(ticket: RepairTicket): LocalRuntimeIm
     for (const item of launchabilityMarker[1].split(';')) {
       const match = item.trim().match(/^(.+?)\s*->\s*(\.[^\s,;]+)/u);
       if (!match?.[1] || !match[2]) continue;
-      const importer = match[1].trim().replace(/\\\\/g, '/');
+      const importer = match[1].trim().replace(/\\/g, '/');
       const specifier = match[2].trim();
       if (!importer || !specifier.startsWith('.')) continue;
       if (!evidence.some(entry => entry.importer === importer && entry.specifier === specifier)) {
@@ -317,7 +336,7 @@ function extractLocalRuntimeImportEvidence(ticket: RepairTicket): LocalRuntimeIm
   // instead of collapsing the failure to generic `domain_generation_failed`.
   const generationMarker = raw.match(/unresolved_local_import:\s*(.+?)\s+imports\s+(.+?),\s+but\s+no\s+file\s+resolves/i);
   if (generationMarker?.[1] && generationMarker[2]) {
-    const importer = generationMarker[1].trim().replace(/\\\\/g, '/');
+    const importer = generationMarker[1].trim().replace(/\\/g, '/');
     for (const quoted of generationMarker[2].matchAll(/["'](\.[^"']+)["']/gu)) {
       const specifier = quoted[1].trim();
       if (!importer || !specifier.startsWith('.')) continue;
