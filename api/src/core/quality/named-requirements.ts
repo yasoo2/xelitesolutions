@@ -472,22 +472,20 @@ export function sliceCoversRequirement(r: NamedRequirement, source: string): boo
     return requirementWords(r).some(w => src.includes(w));
 }
 
-/** The windows of the source where this requirement's words actually appear. */
-export function sliceFor(r: NamedRequirement, source: string, max = MAX_SOURCE_CHARS): string {
-    const src = String(source || '');
-    if (src.length <= max) return src;
+/** The windows of the source where these requirements' words actually appear. */
+function windowsFor(reqs: NamedRequirement[], src: string): Array<[number, number]> {
     const low = src.toLowerCase();
     const spans: Array<[number, number]> = [];
-    for (const w of requirementWords(r)) {
-        let i = low.indexOf(w);
-        while (i >= 0 && spans.length < 40) {
-            spans.push([Math.max(0, i - SLICE_WINDOW), Math.min(src.length, i + SLICE_WINDOW)]);
-            i = low.indexOf(w, i + w.length);
+    for (const r of reqs) {
+        for (const w of requirementWords(r)) {
+            let i = low.indexOf(w);
+            while (i >= 0 && spans.length < 40 * reqs.length) {
+                spans.push([Math.max(0, i - SLICE_WINDOW), Math.min(src.length, i + SLICE_WINDOW)]);
+                i = low.indexOf(w, i + w.length);
+            }
         }
     }
-    //  Nothing of his words anywhere: fall back to the old slice rather than
-    //  send an empty prompt. The enforcement downstream is what makes this safe.
-    if (!spans.length) return boundedSource(src, max);
+    if (!spans.length) return [];
     spans.sort((a, b) => a[0] - b[0]);
     const merged: Array<[number, number]> = [];
     for (const sp of spans) {
@@ -495,12 +493,43 @@ export function sliceFor(r: NamedRequirement, source: string, max = MAX_SOURCE_C
         if (last && sp[0] <= last[1]) last[1] = Math.max(last[1], sp[1]);
         else merged.push([sp[0], sp[1]]);
     }
+    return merged;
+}
+
+/** Join the chosen windows, marked where the source was cut between them. */
+function joinWindows(src: string, merged: Array<[number, number]>, max: number): string {
     let out = '';
     for (const [a, b] of merged) {
         if (out.length >= max) break;
         out += (out ? '\n\n… …\n\n' : '') + src.slice(a, Math.min(b, a + (max - out.length)));
     }
     return out;
+}
+
+/** The windows of the source where this requirement's words actually appear. */
+export function sliceFor(r: NamedRequirement, source: string, max = MAX_SOURCE_CHARS): string {
+    return sliceForMany([r], source, max);
+}
+
+/**
+ *  ⛔ THE SLICE THE JUDGE IS SHOWN, FOR EVERY REQUIREMENT IT IS ASKED ABOUT.
+ *
+ *  One call asks about all of them, so a slice chosen for one of them is a
+ *  blind slice for the rest. The windows of every requirement in the batch are
+ *  merged, so each one's own words are in front of the judge when it answers.
+ *
+ *  Sharing `windowsFor` with `sliceFor` is the point: the batch slice and the
+ *  per-requirement slice cannot drift apart, because there is only one place
+ *  that decides where a window is.
+ */
+export function sliceForMany(reqs: NamedRequirement[], source: string, max = MAX_SOURCE_CHARS): string {
+    const src = String(source || '');
+    if (src.length <= max) return src;
+    const merged = windowsFor(reqs, src);
+    //  Nothing of his words anywhere: fall back to the old slice rather than
+    //  send an empty prompt. The enforcement downstream is what makes this safe.
+    if (!merged.length) return boundedSource(src, max);
+    return joinWindows(src, merged, max);
 }
 
 
@@ -680,8 +709,43 @@ export async function verifyNamed(
      *  down with them.
      */
     const full = src;
+    /**
+     *  ⛔ THE SLICE THE JUDGE WAS SHOWN — NOT A SECOND SLICE COMPUTED BESIDE IT.
+     *
+     *  This map held `sliceFor(r, src)` for every requirement, and the prompt
+     *  was built from `src`. So the judge was shown a blind head-and-tail cut
+     *  while its answer was checked against a keyword slice: two windows of the
+     *  same source, maintained apart, with nothing forcing them to agree.
+     *
+     *  Measured by the owner on `react-saffron-table-e9da8816`, live:
+     *
+     *      source = 128539 chars · shown to the judge = 18000 (14%)
+     *
+     *      MISSING an ingredients list — "The source contains cooking
+     *        instructions and product listings but no ingredients list"
+     *      ?? changes the ingredient quantities on screen — "The source code is
+     *        truncated and the … logic would be in the component files that
+     *        were cut from the shown source"
+     *      ?? a servings counter with plus and minus buttons — "it was reported
+     *        present and its evidence is not in the source"
+     *
+     *      …and in the DOM of that very build: three ingredient lists, a
+     *      servings counter that took 4 to 7 and rescaled every quantity, and
+     *      three print buttons that called window.print(). ALL PRESENT.
+     *
+     *  Both failure modes came from the same gap. A requirement whose code was
+     *  cut away reads «unmet»; one whose evidence was quoted from the head the
+     *  judge WAS shown fails `foundInSource` against the keyword slice and is
+     *  downgraded. **Delivery was then blocked on working features.**
+     *
+     *  ⛔ AND `sliceFor` HAD ALREADY BEEN WRITTEN TO PREVENT EXACTLY THIS —
+     *  with its own measurement in the comment above it — and was never wired
+     *  to the prompt. Correct code on a path nothing executes.
+     *
+     *  So the rule is now structural: what a call SHOWS is what its answers are
+     *  CHECKED against, recorded at the moment the call is made.
+     */
     const shownFor = new Map<string, string>();
-    for (const r of reqs) shownFor.set(r.id, sliceFor(r, src));
 
     /**
      *  ⛔ ONE CALL FIRST, BECAUSE THE COMMENT ABOVE WAS RIGHT AND WAS MEASURED
@@ -719,10 +783,14 @@ export async function verifyNamed(
     const fromBatch = new Map<string, { id: string; verdict: string; evidence: string; why: string }>();
     let batchError = '';
     if (reqs.length > 1) {
+        const shown = sliceForMany(reqs, src);
         try {
-            const raw = await call(verificationPrompt(reqs, src, isArabic));
+            const raw = await call(verificationPrompt(reqs, shown, isArabic));
             for (const v of parseVerdicts(raw)) {
-                if (v.id && reqs.some(r => r.id === v.id)) fromBatch.set(v.id, v);
+                if (v.id && reqs.some(r => r.id === v.id)) {
+                    fromBatch.set(v.id, v);
+                    shownFor.set(v.id, shown);
+                }
             }
         } catch (e: any) {
             batchError = String(e && e.message || e);
@@ -731,7 +799,9 @@ export async function verifyNamed(
 
     const stillUnanswered = reqs.filter(r => !fromBatch.has(r.id));
     const answers = await Promise.all(stillUnanswered.map(async r => {
-        try { return { id: r.id, raw: await call(verificationPrompt([r], src, isArabic)) }; }
+        const shown = sliceFor(r, src);
+        shownFor.set(r.id, shown);
+        try { return { id: r.id, raw: await call(verificationPrompt([r], shown, isArabic)) }; }
         catch (e: any) { return { id: r.id, raw: '', error: String(e && e.message || e) }; }
     }));
     /**

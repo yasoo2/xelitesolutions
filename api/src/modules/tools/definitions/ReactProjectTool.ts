@@ -1311,23 +1311,23 @@ const TEMPLATE_FILLER = new Set(['Features', 'Steps', 'Stats', 'Team', 'Testimon
  *  list` becomes `IngredientsList` — a component the authoring layer writes
  *  from his own words, with no template behind it and none needed.
  */
-export function sectionNameFor(requirementText: string): string {
-    const STOP = /^(?:a|an|the|and|with|that|this|for|from|of|on|in|to|is|are|it|its|his|her|their|our|your|some|any)$/i;
-    const words = String(requirementText || '')
-        .split(/[^\p{L}\p{N}]+/u)
-        .filter(w => w && !STOP.test(w))
-        .slice(0, 3);
-    if (!words.length) return '';
-    const name = words
-        .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-        .join('')
-        .replace(/[^A-Za-z0-9]/g, '');
-    //  A React component name must start with a letter and be pronounceable in
-    //  a file path. An Arabic requirement yields nothing here, and that is
-    //  correct: the caller keeps the template section in that case rather than
-    //  writing a file nobody can import.
-    return /^[A-Za-z][A-Za-z0-9]{1,40}$/.test(name) ? name : '';
-}
+//  ⛔ THE RULE MOVED TO `core/design/section-name.ts`, AND IT MOVED FOR A
+//  REASON THE OWNER MEASURED IN HIS OWN BROWSER.
+//
+//  The DECLARATION — the sentence he reads before the build starts — needs the
+//  same answer this gives: «can this sentence become something Joe builds?».
+//  It had no way to ask, so it told him:
+//
+//      I have no ready engine for it … a presentation page, not a working
+//      program … I could not turn this into a deterministic path: «a servings
+//      counter with plus · a print button»
+//
+//  Both of those become components here. The sentence was false, and it was
+//  the first thing he read. Two readers of one rule, maintained apart, is the
+//  class this repository keeps paying for — so there is one rule now, and both
+//  import it.
+import { sectionNameFor } from '../../../core/design/section-name';
+export { sectionNameFor };
 
 export function sectionsForRequest(request: string, kind: PageKind): string[] {
     const r = String(request || '');

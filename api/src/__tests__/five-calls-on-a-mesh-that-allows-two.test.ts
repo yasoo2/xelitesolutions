@@ -134,7 +134,43 @@ describe('the judge asks once before it asks five times', () => {
         //  Cross-attribution is the one thing worse than an empty line: the
         //  ledger stays full and starts lying about WHICH thing was proven.
         //  The batch path enforces the same id rule as the single path.
-        expect(CODE).toContain('if (v.id && reqs.some(r => r.id === v.id)) fromBatch.set(v.id, v);');
+        //
+        //  ⛔ THIS GUARD USED TO PIN THE LINE THAT DOES IT, CHARACTER FOR
+        //  CHARACTER. It went red when that `if` grew a body — behaviour
+        //  identical, spelling changed — which is this repository's own
+        //  Category 7: a guard broken by a rename and not by an inverted
+        //  branch. So it drives the road instead of reading it: a batch that
+        //  answers with an id belonging to NOBODY here must leave every
+        //  requirement unproven, whatever the source looks like.
+        const REQS = [
+            { id: 'req-aaa', text: 'an ingredients list', quote: 'an ingredients list' },
+            { id: 'req-bbb', text: 'a print button', quote: 'a print button' },
+        ];
+        const SOURCE = 'export function IngredientsList() { return <li>rice</li>; }\n'
+            + 'export function PrintButton() { return <button onClick={() => window.print()}>Print</button>; }\n';
+        const judged = await verifyNamed(REQS, SOURCE, false, async () =>
+            //  A confident «met», for a requirement that is not in this batch.
+            JSON.stringify({ verdicts: [{ id: 'req-from-another-build', verdict: 'met',
+                evidence: 'export function IngredientsList() { return <li>rice</li>; }', why: 'stolen' }] }));
+        expect(judged.map(j => j.verdict)).toEqual(['unprovable', 'unprovable']);
+        expect(judged.every(j => j.why !== 'stolen')).toBe(true);
+
+        //  ⛔ AND THE OUTCOME ABOVE IS NOT ENOUGH ON ITS OWN — MEASURED.
+        //  Loosening the filter to `if (v.id)` leaves those two assertions
+        //  green, because the id lookup below refuses the foreign verdict a
+        //  second time. A negative case that cannot fail is not evidence, so
+        //  here is the one place the two layers disagree: a foreign verdict
+        //  counted into `fromBatch` makes the batch look ANSWERED, and a run
+        //  where nothing else got through then stops saying so.
+        const unreachable = await verifyNamed(REQS, SOURCE, false, async (p: string) => {
+            if (p.includes('req-aaa') && p.includes('req-bbb')) {
+                return JSON.stringify({ verdicts: [{ id: 'req-from-another-build', verdict: 'met', evidence: 'x', why: 'stolen' }] });
+            }
+            throw new Error('429 rate-limited');
+        });
+        //  Nothing reached a brain, and Joe must say that rather than shrug.
+        expect(unreachable.every(j => j.verdict === 'unprovable')).toBe(true);
+        expect(unreachable[0].why).toContain('could not be reached');
     });
 
     it('⛔ NEGATIVE — «could not be reached» still means NOTHING got through', async () => {

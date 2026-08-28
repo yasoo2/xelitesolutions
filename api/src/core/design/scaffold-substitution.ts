@@ -59,6 +59,7 @@
  */
 
 import { detectPageKind } from './blueprints';
+import { buildableFromWords, sectionNameFor } from './section-name';
 import { detectAppKind, uncoveredFeatures } from './app-blueprints';
 import { subjectPhrase } from './subject-phrase';
 
@@ -94,7 +95,40 @@ export function scaffoldSubstitutionFor(request: string, building: boolean): Sca
     const text = String(request || '');
     const appKind = building ? detectAppKind(text) : null;
     const pageKind = building ? String(detectPageKind(text) || '') : '';
-    const substituted = building && !appKind && (pageKind === '' || pageKind === 'generic');
+    const noEngine = building && !appKind && (pageKind === '' || pageKind === 'generic');
+    /**
+     *  ⛔ «NO ENGINE» IS NOT «NO PATH» — BUT SILENCING THE NOTICE WAS THE WRONG
+     *  CURE, AND AN EXISTING GUARD CAUGHT ME.
+     *
+     *  My first repair suppressed the declaration whenever any of his words
+     *  yielded a component name. `a-substitution-is-declared-not-silent` went
+     *  red on «metre of Arabic poetry» — which becomes `MetreArabicPoetry` and
+     *  is still something Joe has no idea how to build. **A name is not a
+     *  capability**, and a warning suppressed by the wrong test is a silence
+     *  with extra steps.
+     *
+     *  So the verdict is unchanged — no engine is no engine — and what changed
+     *  is the SENTENCE. See `scaffoldSubstitutionNotice`.
+     *
+     *  Measured by the owner, in his own browser, on his own request:
+     *
+     *      I have no ready engine for it … a presentation page, not a working
+     *      program … I could not turn this into a deterministic path from your
+     *      words: «a servings counter with plus · a print button»
+     *
+     *  **A servings counter and a print button both become components** — the
+     *  builder derives `ServingsCounterPlus` and `PrintButton` from those exact
+     *  phrases and writes them. There was no engine, and there was a path.
+     *
+     *  The declaration existed because a silent substitution is worse than an
+     *  announced one, and that is still true. But a notice that fires when Joe
+     *  CAN build what was asked is worse than either: it is the first thing he
+     *  reads, it tells him to stop, and it is wrong.
+     *
+     *  So the same rule the builder uses is asked here. If nothing in his
+     *  sentence yields a component, the notice stands exactly as it was.
+     */
+    const substituted = noEngine;
     return {
         substituted,
         appKind,
@@ -149,15 +183,43 @@ export function scaffoldSubstitutionNotice(
     const verdict = scaffoldSubstitutionFor(request, !!options?.building);
     if (!verdict.substituted) return null;
     const words = verdict.notUnderstood.join(' · ');
+    /**
+     *  ⛔ WHAT IT WILL BUILD FROM HIS WORDS, WHEN THERE IS ANYTHING.
+     *
+     *  Measured on his screen, as the FIRST thing Joe said, before a file was
+     *  written:
+     *
+     *      I could not turn this into a deterministic path from your words:
+     *      «a servings counter with plus · a print button»
+     *
+     *  Both of those become components — `ServingsCounterPlus`, `PrintButton` —
+     *  and the builder writes them. There was no ENGINE and there was a PATH,
+     *  and the sentence conflated the two while telling him to stop.
+     *
+     *  The warning is right and it stays. What is added is the half that was
+     *  missing: the sections it is going to write from those very words. A
+     *  notice that says «I cannot» about something it is about to do is worse
+     *  than no notice, because he acts on it.
+     */
+    const willBuild = buildableFromWords(verdict.notUnderstood)
+        .map(p => sectionNameFor(p))
+        .filter(Boolean)
+        .slice(0, 6);
     if (options?.isArabic) {
         return '⚠️ لم أتعرّف على نوع ما طلبته، ولا أملك محرّكاً جاهزاً له. '
             + 'سأبني بدلاً منه هيكلاً عامّاً — صفحة عرض، لا برنامجاً يعمل. '
-            + `وهذا ما لم أستطع تحويله إلى مسارٍ حتميّ من كلامك: «${words}». `
+            + `وهذا ما لا أملك له محرّكاً جاهزاً من كلامك: «${words}». `
+            + (willBuild.length
+                ? `لكنّي سأكتب هذه الأقسام من كلماتك نفسها: ${willBuild.join(' · ')}. `
+                : '')
             + 'أقول هذا قبل أن أبدأ لا بعده — إن لم يكن الهيكل العامّ ما تريد فأوقفني الآن.';
     }
     return 'I did not recognise the kind of thing you asked for, and I have no ready engine for it. '
         + 'I am going to build a generic structure instead — a presentation page, not a working program. '
-        + `This is what I could not turn into a deterministic path from your words: «${words}». `
+        + `This is what I have no ready engine for, in your words: «${words}». `
+        + (willBuild.length
+            ? `I will write these sections from those same words: ${willBuild.join(' · ')}. `
+            : '')
         + 'I am saying this before I start, not after — if a generic structure is not what you want, stop me now.';
 }
 
