@@ -5700,7 +5700,69 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                              * rolled back by the same rule.
                              */
                             if (String(process.env.JOE_MODEL_ROUND || '1') === '0') return [];
-                            const { askForCss } = require('../../../core/quality/model-round');
+                            /**
+                             *  ⛔ AND A BUTTON THAT DOES NOTHING IS NOT A
+                             *  COLOUR PROBLEM — «وعندما يكتشف هذه الاختبارات
+                             *  أي مشكلة لا يرجعها للنظام ويصلحها ثم يرجع
+                             *  يختبرها».
+                             *
+                             *  The CSS road below states its own limit: «A
+                             *  stylesheet appended to cannot change what the
+                             *  application DOES.» True, and it is exactly why
+                             *  the loop could never repair the most severe
+                             *  finding the browser produces. Measured at the
+                             *  line: `dead_controls` is CRITICAL, it reaches
+                             *  `findings` as `high` — and every id in
+                             *  REPAIRABLE_FINDINGS ∪ REPAIRS_THIS_FILE_CAN_MAKE
+                             *  is style or structure. Joe pressed the button,
+                             *  saw nothing happen, reported it honestly, and
+                             *  had nobody to hand it to.
+                             *
+                             *  So behaviour is offered the model FIRST, under
+                             *  the same four locks with only the first one
+                             *  changed: one existing component file, parsed
+                             *  before it is believed, built, and measured by
+                             *  pressing the button again. It is allowed to be
+                             *  wrong; it is not allowed to be believed.
+                             */
+                            const {
+                                askForCss, askForHandler, handlerRepairable, fileForBehaviour,
+                            } = require('../../../core/quality/model-round');
+                            const behaviourLeft = handlerRepairable(lastAudit?.findings || []);
+                            if (behaviourLeft.length) {
+                                const srcDir = path.join(proj, 'src');
+                                const sources: Record<string, string> = {};
+                                const walk = (dir: string) => {
+                                    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+                                        const p = path.join(dir, e.name);
+                                        if (e.isDirectory()) { walk(p); continue; }
+                                        if (!/\.(jsx|tsx|js|ts)$/.test(e.name)) continue;
+                                        try { sources[path.relative(proj, p).replace(/\\/g, '/')] = fs.readFileSync(p, 'utf-8'); } catch { /* unreadable */ }
+                                    }
+                                };
+                                try { if (fs.existsSync(srcDir)) walk(srcDir); } catch { /* nothing to read */ }
+                                const pick = fileForBehaviour(behaviourLeft, sources);
+                                term(`improve: ${behaviourLeft.map((f: any) => f.id).join(', ')} — no deterministic fix exists for these; asking the model to make the controls WORK${pick.file ? ` in ${pick.file}` : ''}`);
+                                if (!pick.file) {
+                                    term(`improve: the dead controls (${pick.labels.slice(0, 3).join(', ') || 'unnamed'}) match no component source — nothing written`);
+                                } else {
+                                    const fixed = await askForHandler(
+                                        behaviourLeft, pick.file, sources[pick.file], pick.labels,
+                                        { timeoutMs: 90_000, context },
+                                    );
+                                    if (!fixed.source) {
+                                        term(`improve: the behaviour round produced nothing usable (${fixed.why || 'no answer'}) — nothing written`);
+                                    } else {
+                                        try {
+                                            fs.writeFileSync(path.join(proj, pick.file), fixed.source, 'utf-8');
+                                            term(`improve: the model rewrote ${pick.file} to make ${pick.labels.slice(0, 3).join(', ') || 'the controls'} do something — the next measurement presses them again and decides whether it stays`);
+                                            return [pick.file];
+                                        } catch (e: any) {
+                                            term(`improve: could not write the repaired component (${String(e?.message || e).slice(0, 100)})`);
+                                        }
+                                    }
+                                }
+                            }
                             const rich = (lastAudit?.findings || []).filter((f: any) => f && f.id);
                             term(`improve: no deterministic fix left for ${rich.map((f: any) => f.id).join(', ') || 'the rest'} — asking the model for CSS, under a syntax gate`);
                             const got = await askForCss(rich, { timeoutMs: 45_000 });

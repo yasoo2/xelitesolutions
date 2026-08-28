@@ -34,6 +34,22 @@ export interface BehaviourFinding {
     evidence?: Array<{ sel?: string; label?: string; w?: number; h?: number; width?: number; height?: number; [key: string]: any }>;
 }
 
+/**
+ *  EVERY CODE `judgeBehaviour` CAN EMIT — declared beside the pushes.
+ *
+ *  A reader elsewhere has to know which findings came from THIS instrument in
+ *  order to decide who can repair them, and the alternative was a second list
+ *  in the repair layer that nobody would remember to update. That is the
+ *  night's most expensive class — two writers who must agree, maintained
+ *  apart, with nothing forcing them. A guard asserts this set equals the
+ *  `code:` literals in this file, so a new finding cannot be added silently.
+ */
+export const BEHAVIOUR_CODES: ReadonlySet<string> = new Set([
+    'controls_not_reached', 'dead_anchors', 'dead_controls', 'form_dead_submit',
+    'form_no_validation', 'form_reloads', 'js_errors', 'keyboard_unreachable',
+    'some_dead_controls',
+]);
+
 export interface ControlResult {
     label: string;
     kind: 'button' | 'summary' | 'anchor' | 'submit' | 'tab' | 'menu' | 'link';
@@ -913,6 +929,17 @@ export function judgeBehaviour(
             ar: `${dead.length} من ${pressable.length} أزرار لا تفعل شيئًا عند الضغط: ${dead.slice(0, 3).map(d => `«${d.label}»`).join('، ')}`,
             en: `${dead.length} of ${pressable.length} controls do nothing when clicked: ${dead.slice(0, 3).map(d => `"${d.label}"`).join(', ')}`,
             hint: 'wire real handlers in the page JS, or make them links to a real destination',
+            /**
+             *  ⛔ THE LABELS, AS DATA — so a repairer can FIND the control.
+             *
+             *  This finding named its offenders inside a sentence and nowhere
+             *  else, so anything wanting to repair them had to parse prose to
+             *  learn which button was dead. That is the shape that gave `min:`
+             *  a pass mark for matching a digit: reading a claim's WORDS
+             *  instead of its evidence. `app-audit` already forwards an
+             *  `evidence` array when one exists; this fills it.
+             */
+            evidence: dead.slice(0, 8).map(d => ({ label: d.label, kind: d.kind })),
         });
     } else if (dead.length) {
         findings.push({
@@ -920,6 +947,8 @@ export function judgeBehaviour(
             ar: `أزرار لا تستجيب: ${dead.slice(0, 3).map(d => `«${d.label}»`).join('، ')}`,
             en: `Unresponsive controls: ${dead.slice(0, 3).map(d => `"${d.label}"`).join(', ')}`,
             hint: 'each of these needs a real click handler or a real href',
+            //  Same reason as `dead_controls` above: the offenders as data.
+            evidence: dead.slice(0, 8).map(d => ({ label: d.label, kind: d.kind })),
         });
     }
     const reloaders = controls.filter(c => c.effect === 'reload');
