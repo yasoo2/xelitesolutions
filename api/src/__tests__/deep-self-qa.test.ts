@@ -185,11 +185,36 @@ describe('the interface itself is inspected — «وفحص ui»', () => {
         expect(read('core', 'quality', 'app-audit.ts')).toMatch(/setSessionViewport\(opts\.watchSessionId, w, h\)/);
     });
 
-    it('contrast is WCAG arithmetic, not a guess about colour names', () => {
+    /**
+     *  ⛔ THIS TEST WAS A SPELL-CHECK, AND IT PROVED IT BY GOING RED ON A RENAME.
+     *
+     *  It asserted the SOURCE TEXT of ui-inspection.ts contained
+     *
+     *      /0\.2126 \* a\[0\] \+ 0\.7152 \* a\[1\] \+ 0\.0722 \* a\[2\]/
+     *      /\(size >= 24 \|\| \(size >= 18\.66 && bold\)\) \? 3 : 4\.5/
+     *
+     *  Then the arithmetic moved out of `page.evaluate` into a function whose
+     *  parameter is called `sizePx` instead of `size` — **behaviour identical,
+     *  every published contrast value unchanged** — and this test failed. A
+     *  guard that a rename can break, and that an inverted branch cannot, is
+     *  testing the words of a claim rather than the claim.
+     *
+     *  The arithmetic is now proven against the W3C's own numbers in
+     *  `the-contrast-rule-was-checked-by-spelling.test.ts`: black on white is
+     *  21:1, a colour on itself is 1:1, #767676 passes AA and #777777 does
+     *  not. What is left here is the one thing that file cannot check — that
+     *  the finding still exists and still reaches him.
+     */
+    it('contrast is WCAG arithmetic, and the arithmetic is REACHABLE by a test', () => {
         const u = U();
-        expect(u).toMatch(/0\.2126 \* a\[0\] \+ 0\.7152 \* a\[1\] \+ 0\.0722 \* a\[2\]/);
-        expect(u).toMatch(/\(size >= 24 \|\| \(size >= 18\.66 && bold\)\) \? 3 : 4\.5/);
+        //  Exported, therefore testable. This is the property that was
+        //  missing, and it is the property the whole sweep is about.
+        expect(u).toMatch(/export function relativeLuminance\(/);
+        expect(u).toMatch(/export function contrastRatio\(/);
+        expect(u).toMatch(/export function requiredRatio\(/);
         expect(u).toMatch(/code: 'low_contrast'/);
+        //  And the page no longer decides: it reports what it saw.
+        expect(u).toContain('const c = { checked: raw.checked, skipped: raw.skipped, fails: judgeContrast(raw.samples) };');
     });
 
     it('and the structural checks a screen reader would fail on', () => {

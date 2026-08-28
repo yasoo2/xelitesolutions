@@ -116,7 +116,7 @@ function measureContrast() {
     var r = el.getBoundingClientRect(), st = getComputedStyle(el);
     return r.width > 0 && r.height > 0 && st.visibility !== 'hidden' && st.display !== 'none' && parseFloat(st.opacity) > 0.1;
   };
-  var seen: any = {}, fails: any[] = [], checked = 0, skipped = 0;
+  var samples: any[] = [], checked = 0, skipped = 0;
   var els: any[] = Array.prototype.slice.call(document.querySelectorAll('p,span,a,li,h1,h2,h3,h4,button,label,td,th,div'));
   for (var i = 0; i < els.length; i++) {
     var el = els[i];
@@ -128,23 +128,99 @@ function measureContrast() {
     var fg = parse(st.color); if (fg[3] === 0) continue;
     var bgc = effBg(el);
     if (!bgc) { skipped++; continue; }          // a gradient or a photo: unmeasurable
-    var rt = ratio(fg, bgc);
+    //  THE ARITHMETIC AND THE VERDICT LEFT THIS FUNCTION — see judgeContrast.
+    //  What a browser can do and Node cannot is READ the page: which elements
+    //  hold text, what colour they and their ancestors are, whether a gradient
+    //  makes the background unmeasurable. That stays here. Whether 4.53:1 is
+    //  a failure is arithmetic against a published table, and arithmetic
+    //  written inside `page.evaluate` is arithmetic nothing can test.
     var size = parseFloat(st.fontSize) || 16, bold = (parseInt(st.fontWeight, 10) || 400) >= 700;
-    var min = (size >= 24 || (size >= 18.66 && bold)) ? 3 : 4.5;
-    if (rt < min) {
-      var key = txt.slice(0, 30) + rt.toFixed(2);
-      if (!seen[key]) {
-        seen[key] = 1;
-        var r = el.getBoundingClientRect();
-        fails.push({
-          text: txt.slice(0, 40), ratio: Math.round(rt * 100) / 100, need: min,
-          x: Math.round(r.left), y: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height),
-        });
-      }
-    }
+    var r = el.getBoundingClientRect();
+    samples.push({
+      text: txt.slice(0, 40), fg: [fg[0], fg[1], fg[2]], bg: [bgc[0], bgc[1], bgc[2]],
+      size: size, bold: bold,
+      x: Math.round(r.left), y: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height),
+    });
     if (checked > 400) break;
   }
-  return { checked: checked, skipped: skipped, fails: fails.slice(0, 12) };
+  return { checked: checked, skipped: skipped, samples: samples };
+}
+
+/**
+ *  WCAG 2.1 RELATIVE LUMINANCE — in Node, where a published number can check it.
+ *
+ *  ⛔ This arithmetic lived inside `page.evaluate`, and the only thing guarding
+ *  it was a test asserting the SOURCE TEXT contained
+ *  `0.2126 * a[0] + 0.7152 * a[1] + 0.0722 * a[2]`. That is a spell-check, not
+ *  a measurement: the coefficients could be right and the branch above them
+ *  wrong, and nothing would know. `low_contrast` is REPAIRABLE, so a threshold
+ *  that is wrong by a little does not merely misreport — it sends the repairer
+ *  to change the colours of a page that was already correct.
+ *
+ *  Now it is a function, and its tests are the published values: black on
+ *  white is 21:1, white on white is 1:1, #767676 on white is 4.54 and passes,
+ *  #777777 on white is 4.48 and fails. Those numbers come from the W3C's own
+ *  examples, not from this repository.
+ */
+export function relativeLuminance(rgb: number[]): number {
+    const a = [rgb[0], rgb[1], rgb[2]].map(v => {
+        const x = Number(v) / 255;
+        return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * a[0] + 0.7152 * a[1] + 0.0722 * a[2];
+}
+
+/** The WCAG contrast ratio between two colours. Order does not matter. */
+export function contrastRatio(fg: number[], bg: number[]): number {
+    const L1 = relativeLuminance(fg);
+    const L2 = relativeLuminance(bg);
+    return (Math.max(L1, L2) + 0.05) / (Math.min(L1, L2) + 0.05);
+}
+
+/**
+ *  What AA asks of THIS text. 18pt is 24px, and 14pt bold is 18.66px — the
+ *  two boundaries in the specification, written as the specification writes
+ *  them rather than rounded to something tidier.
+ */
+export function requiredRatio(sizePx: number, bold: boolean): number {
+    return (sizePx >= 24 || (sizePx >= 18.66 && bold)) ? 3 : 4.5;
+}
+
+export interface ContrastSample {
+    text: string; fg: number[]; bg: number[]; size: number; bold: boolean;
+    x: number; y: number; width: number; height: number;
+}
+
+/**
+ *  Judge what the page reported. The dedup and the caps are here rather than
+ *  in the page for the same reason the arithmetic is: they decide what he is
+ *  told, and what he is told must be testable.
+ */
+export function judgeContrast(
+    samples: ContrastSample[] | undefined,
+): Array<{ text: string; ratio: number; need: number; x: number; y: number; width: number; height: number }> {
+    const seen = new Set<string>();
+    const fails: any[] = [];
+    for (const s of samples || []) {
+        if (!s || !Array.isArray(s.fg) || !Array.isArray(s.bg)) continue;
+        const rt = contrastRatio(s.fg, s.bg);
+        const need = requiredRatio(Number(s.size) || 16, !!s.bold);
+        if (rt >= need) continue;
+        const rounded = Math.round(rt * 100) / 100;
+        //  Same key the page used: the text and the ratio. Two different
+        //  elements reading «Read more» at the same ratio are one complaint.
+        const key = String(s.text).slice(0, 30) + rounded.toFixed(2);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        fails.push({
+            text: s.text, ratio: rounded, need,
+            x: s.x, y: s.y, width: s.width, height: s.height,
+        });
+    }
+    //  Worst first, so `fails[0]` in the sentence he reads is the worst one
+    //  and not merely the first one down the page.
+    fails.sort((a, b) => a.ratio - b.ratio);
+    return fails.slice(0, 12);
 }
 
 /* ------------------------------------------------------------------- a11y  */
@@ -281,7 +357,10 @@ export async function inspectUi(
 
     /* ---- colours ------------------------------------------------------- */
     try {
-        const c: any = await evalInPage(page, measureContrast);
+        const raw: any = await evalInPage(page, measureContrast);
+        //  The page reports what it SAW; the verdict is reached here, where a
+        //  published contrast value can check it.
+        const c = { checked: raw.checked, skipped: raw.skipped, fails: judgeContrast(raw.samples) };
         metrics.contrastChecked = c.checked;
         metrics.contrastUnmeasurable = c.skipped;
         metrics.contrastFails = c.fails.length;
