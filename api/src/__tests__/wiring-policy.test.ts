@@ -24,9 +24,19 @@ import { tools } from '../modules/tools/registry';
 import { TOOL_ALIASES } from '../modules/services/ToolService';
 
 const NAMES = tools.map((t: any) => t.name);
-const SRC = (...p: string[]) => fs.readFileSync(path.join(__dirname, '..', ...p), 'utf-8');
+/**
+ *  ⛔ A GUARD MUST NOT DEPEND ON HOW GIT CHECKED THE FILE OUT.
+ *
+ *  Patterns here match across line breaks. Git checks these sources out with
+ *  CRLF endings on Windows, so `,\n` and `();\n            const` could not
+ *  match on the owner's machine — and the failure read «Expected pattern …
+ *  Received "/**"», which looks like the source is wrong rather than the
+ *  reader. The claim is about what the source SAYS, not which two bytes end a
+ *  line.
+ */
+const SRC = (...p: string[]) => fs.readFileSync(path.join(__dirname, '..', ...p), 'utf-8').replace(/\r\n/g, '\n');
 /** The panel's own source — the other half of any wire that ends on screen. */
-const WEB = (...p: string[]) => fs.readFileSync(path.join(__dirname, '..', '..', '..', 'web', 'src', ...p), 'utf-8');
+const WEB = (...p: string[]) => fs.readFileSync(path.join(__dirname, '..', '..', '..', 'web', 'src', ...p), 'utf-8').replace(/\r\n/g, '\n');
 const resolves = (n: string) => NAMES.includes(n) || NAMES.includes(TOOL_ALIASES[n] || '');
 
 describe('every name the system can utter reaches something real', () => {
@@ -88,7 +98,7 @@ describe('nothing is written and then abandoned', () => {
         expect(SRC('modules', 'services', 'ToolService.ts')).toContain('broadcastTerminalLine(');
         // The observer hook exists because a proof needs it — and that proof uses it.
         expect(ws).toContain('export function observeBroadcasts');
-        expect(fs.readFileSync(path.join(__dirname, '..', 'tests', 'manual', 'verify_build_e2e.ts'), 'utf-8'))
+        expect(fs.readFileSync(path.join(__dirname, '..', 'tests', 'manual', 'verify_build_e2e.ts'), 'utf-8').replace(/\r\n/g, '\n'))
             .toContain('observeBroadcasts(');
     });
 

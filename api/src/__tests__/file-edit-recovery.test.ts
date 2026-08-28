@@ -7,6 +7,22 @@ import { SelfFixService } from '../modules/services/SelfFixService';
 import { phaseAfterRepair } from '../modules/services/SelfFixExecutionService';
 import { RepairTicketService } from '../modules/services/RepairTicketService';
 
+/**
+ *  ⛔ THE PLAN'S PATHS ARE POSIX, ON EVERY PLATFORM, ON PURPOSE.
+ *
+ *  `SelfFixService` normalises separators before it emits a repair plan, so
+ *  `filename` and `path` name the same file with the same string wherever the
+ *  build runs. These assertions used `path.join`, which is backslashes on
+ *  Windows — so they described the value the service used to emit when four
+ *  of its normalisations were spelled to match a DOUBLE backslash and
+ *  therefore did nothing.
+ *
+ *  Written as one helper rather than three inline `.replace` calls: the same
+ *  fact repeated three times is exactly how those four came to disagree with
+ *  the seventy-eight that were right.
+ */
+const asPlanned = (...parts: string[]) => path.join(...parts).replace(/\\/g, '/');
+
 describe('evidence-aware file edit recovery', () => {
   let root = '';
   let activeRootSpy: jest.SpyInstance;
@@ -144,7 +160,7 @@ describe('evidence-aware file edit recovery', () => {
     expect(plan.allowed).toBe(true);
     expect(plan.strategy).toBe('build_fix');
     expect(plan.suggestedTool).toBe('ai_write_file');
-    expect(plan.suggestedInput?.path).toBe(path.join(root, 'src', 'App.css'));
+    expect(plan.suggestedInput?.path).toBe(asPlanned(root, 'src', 'App.css'));
     expect(String(plan.suggestedInput?.description)).toContain('exact missing target');
     expect(String(plan.suggestedInput?.description)).toContain('not a substitute importer');
     expect(String(plan.suggestedInput?.description)).toContain('no-op placeholder');
@@ -176,7 +192,7 @@ describe('evidence-aware file edit recovery', () => {
     expect(plan.allowed).toBe(true);
     expect(plan.strategy).toBe('build_fix');
     expect(plan.suggestedTool).toBe('ai_write_file');
-    expect(plan.suggestedInput?.path).toBe(path.join(root, 'src', 'components', 'styles', 'app.css'));
+    expect(plan.suggestedInput?.path).toBe(asPlanned(root, 'src', 'components', 'styles', 'app.css'));
     expect(String(plan.reason)).toContain('proven explicit local runtime target');
     expect(String(plan.suggestedInput?.description)).toContain('not a substitute importer');
   });
@@ -214,7 +230,8 @@ describe('evidence-aware file edit recovery', () => {
     expect(plan.strategy).toBe('code_fix');
     expect(plan.suggestedTool).toBe('file_edit');
     expect(plan.suggestedInput).toEqual({
-      filename: importer,
+      //  Same reason as asPlanned above: the service emits POSIX separators.
+      filename: importer.replace(/\\/g, '/'),
       find: './styles/app.css',
       replace: '../styles/app.css',
     });
@@ -324,7 +341,7 @@ describe('evidence-aware file edit recovery', () => {
     const plan = SelfFixService.plan(ticket);
     expect(plan.allowed).toBe(true);
     expect(plan.strategy).toBe('build_fix');
-    expect(plan.suggestedInput?.path).toBe(path.join(root, 'src', 'components', 'styles', 'app.css'));
+    expect(plan.suggestedInput?.path).toBe(asPlanned(root, 'src', 'components', 'styles', 'app.css'));
 
     const securityTicket = RepairTicketService.build({
       phase: { phaseNumber: 1, name: 'Application' },

@@ -17,6 +17,31 @@ import { workspaceService } from '../modules/services/WorkspaceService';
 import { resolveToolPath } from '../modules/tools/utils';
 import { tools } from '../modules/tools/registry';
 
+/**
+ *  ⛔ AN EXPECTATION MUST BE COMPUTED THE WAY THE CODE COMPUTES IT.
+ *
+ *  These suites feed POSIX workspace literals — `/workspace/WeatherGo/...` —
+ *  as INPUT, which is right: the service is supposed to resolve whatever it is
+ *  handed. Some of them then asserted the OUTPUT was that same literal, which
+ *  is true only on Linux: `path.resolve` anchors a rootless POSIX path to the
+ *  current drive, so on the owner's machine they came back `C:\workspace\...`
+ *  and the suites failed for a reason unrelated to what they test.
+ *
+ *  ⛔ ONLY THE ASSERTIONS THAT MEASURE A RESOLVED PATH ARE WRAPPED. Most of
+ *  the literals in these files belong to assertions that expect the value
+ *  UNCHANGED — the service REFUSING to rebind is a real behaviour with its own
+ *  test, and resolving those expectations too would have deleted it. My first
+ *  attempt rewrote all twenty-one and turned six passing tests red, which is
+ *  how I know the distinction is load-bearing.
+ *
+ *  `bound()` is the OS path a tool receives. `boundPosix()` is the same path
+ *  after the service's own separator normalisation — some fields are
+ *  normalised for evidence matching and some go to `fs` untouched.
+ */
+const bound = (p: string) => path.resolve(p);
+const boundPosix = (p: string) => path.resolve(p).replace(/\\/g, '/');
+
+
 describe('PhaseExecutor manifest-aware npm launcher recovery', () => {
     it('uses the discovery-selected root for project_run only when the plan has no explicit location', () => {
         const planned: Record<string, any> = {};
@@ -98,7 +123,7 @@ describe('PhaseExecutor manifest-aware npm launcher recovery', () => {
 
         const conceptual: Record<string, any> = { action: 'build_static', projectPath: 'WeatherGo/dist' };
         inheritRuntimeProjectArguments('deploy_project', conceptual, context, logs);
-        expect(conceptual.projectPath).toBe('/workspace/react-weathergo-a7c8/dist');
+        expect(conceptual.projectPath).toBe(bound('/workspace/react-weathergo-a7c8/dist'));
 
         const explicit: Record<string, any> = { action: 'build_static', projectPath: '/workspace/other-project' };
         inheritRuntimeProjectArguments('deploy_project', explicit, context, logs);
@@ -119,12 +144,12 @@ describe('PhaseExecutor manifest-aware npm launcher recovery', () => {
         const logs: string[] = [];
         inheritRuntimeProjectArguments('project_detect', planned, context, logs);
 
-        expect(planned.path).toBe('/workspace/react-weathergo-a7c8');
+        expect(planned.path).toBe(bound('/workspace/react-weathergo-a7c8'));
         expect(logs.join('\\n')).toContain('mapped conceptual project path');
 
         const nested: Record<string, any> = { path: 'WeatherGo/src' };
         inheritRuntimeProjectArguments('analyze_project', nested, context);
-        expect(nested.path).toBe('/workspace/react-weathergo-a7c8/src');
+        expect(nested.path).toBe(bound('/workspace/react-weathergo-a7c8/src'));
 
         const escape: Record<string, any> = { path: '../outside' };
         inheritRuntimeProjectArguments('project_detect', escape, context);
@@ -173,7 +198,7 @@ describe('PhaseExecutor manifest-aware npm launcher recovery', () => {
 
         const inspect: Record<string, any> = { path: 'WeatherGo' };
         inheritRuntimeProjectArguments('inspect_directory', inspect, context, logs);
-        expect(inspect.path).toBe('/workspace/react-weathergo-a7c8');
+        expect(inspect.path).toBe(bound('/workspace/react-weathergo-a7c8'));
 
         const shell: Record<string, any> = { command: 'ls', cwd: 'WeatherGo' };
         inheritRuntimeProjectArguments('shell_execute', shell, context, logs);
@@ -207,7 +232,7 @@ describe('PhaseExecutor manifest-aware npm launcher recovery', () => {
         try {
             inheritRuntimeProjectArguments('generic_tool', planned, context, logs);
 
-            expect(planned.path).toBe('/workspace/react-weathergo-a7c8');
+            expect(planned.path).toBe(bound('/workspace/react-weathergo-a7c8'));
             expect(activeRootSpy).not.toHaveBeenCalled();
             expect(logs.join('\\n')).toContain('generic_tool: mapped conceptual path onto runtime-bound artifact');
         } finally {
@@ -248,16 +273,16 @@ describe('PhaseExecutor manifest-aware npm launcher recovery', () => {
         };
         inheritRuntimeProjectArguments('test_generator', testInput, context, logs);
 
-        expect(testInput.filePath).toBe('/workspace/react-weathergo-a7c8/src/App.jsx');
+        expect(testInput.filePath).toBe(bound('/workspace/react-weathergo-a7c8/src/App.jsx'));
         expect(testInput.files).toEqual([
-            '/workspace/react-weathergo-a7c8/src/App.jsx',
-            '/workspace/react-weathergo-a7c8/src/components/WeatherCard.jsx',
+            bound('/workspace/react-weathergo-a7c8/src/App.jsx'),
+            bound('/workspace/react-weathergo-a7c8/src/components/WeatherCard.jsx'),
         ]);
         expect(logs.join('\\n')).toContain('mapped conceptual filePath');
 
         const editInput: Record<string, any> = { filename: 'WeatherGo/src/App.jsx' };
         inheritRuntimeProjectArguments('file_edit', editInput, context);
-        expect(editInput.filename).toBe('/workspace/react-weathergo-a7c8/src/App.jsx');
+        expect(editInput.filename).toBe(bound('/workspace/react-weathergo-a7c8/src/App.jsx'));
 
         const absolute = { filePath: '/tmp/not-an-artifact/App.jsx' };
         inheritRuntimeProjectArguments('test_generator', absolute, context);
@@ -278,7 +303,7 @@ describe('PhaseExecutor manifest-aware npm launcher recovery', () => {
         inheritRuntimeProjectArguments('auto_tester', planned, context, logs);
 
         expect(planned.files).toEqual([
-            path.join(context.projectRoot, 'src', 'components', 'Task.jsx'),
+            path.resolve(context.projectRoot, 'src', 'components', 'Task.jsx'),
         ]);
         expect(logs.join('\\n')).toContain('auto_tester: mapped conceptual files');
     });
@@ -329,7 +354,7 @@ describe('PhaseExecutor manifest-aware npm launcher recovery', () => {
         };
         const performanceInput: Record<string, any> = { filePath: '../FocusBoard/src/App.jsx' };
         mapRuntimeArtifactSourceArguments('performance_profile', performanceInput, context);
-        expect(performanceInput.filePath).toBe(path.join(context.projectRoot, 'src', 'App.jsx'));
+        expect(performanceInput.filePath).toBe(path.resolve(context.projectRoot, 'src', 'App.jsx'));
 
         const qzzworpSchema = { type: 'object', properties: { filePath: { type: 'string' } } };
         const inventedInput: Record<string, any> = { filePath: '../FocusBoard/src/Task.jsx' };
@@ -337,7 +362,7 @@ describe('PhaseExecutor manifest-aware npm launcher recovery', () => {
 
         expect(Object.keys(qzzworpSchema.properties)).toEqual(['filePath']);
         expect(RUNTIME_LOGICAL_SOURCE_TOOLS.has('qzzworp_stub')).toBe(false);
-        expect(inventedInput.filePath).toBe(path.join(context.projectRoot, 'src', 'Task.jsx'));
+        expect(inventedInput.filePath).toBe(path.resolve(context.projectRoot, 'src', 'Task.jsx'));
     });
 
     it('proves an old name-gated discovery path differs from the key-driven ls result', async () => {

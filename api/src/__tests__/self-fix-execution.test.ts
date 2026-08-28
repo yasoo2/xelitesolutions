@@ -5,6 +5,31 @@ import * as ToolService from '../modules/services/ToolService';
 import { SelfFixExecutionService, phaseAfterRepair } from '../modules/services/SelfFixExecutionService';
 import { repairMemory } from '../core/memory/repair-memory';
 
+/**
+ *  ⛔ AN EXPECTATION MUST BE COMPUTED THE WAY THE CODE COMPUTES IT.
+ *
+ *  These suites feed POSIX workspace literals — `/workspace/WeatherGo/...` —
+ *  as INPUT, which is right: the service is supposed to resolve whatever it is
+ *  handed. Some of them then asserted the OUTPUT was that same literal, which
+ *  is true only on Linux: `path.resolve` anchors a rootless POSIX path to the
+ *  current drive, so on the owner's machine they came back `C:\workspace\...`
+ *  and the suites failed for a reason unrelated to what they test.
+ *
+ *  ⛔ ONLY THE ASSERTIONS THAT MEASURE A RESOLVED PATH ARE WRAPPED. Most of
+ *  the literals in these files belong to assertions that expect the value
+ *  UNCHANGED — the service REFUSING to rebind is a real behaviour with its own
+ *  test, and resolving those expectations too would have deleted it. My first
+ *  attempt rewrote all twenty-one and turned six passing tests red, which is
+ *  how I know the distinction is load-bearing.
+ *
+ *  `bound()` is the OS path a tool receives. `boundPosix()` is the same path
+ *  after the service's own separator normalisation — some fields are
+ *  normalised for evidence matching and some go to `fs` untouched.
+ */
+const bound = (p: string) => path.resolve(p);
+const boundPosix = (p: string) => path.resolve(p).replace(/\\/g, '/');
+
+
 const context = {
     sessionId: 'self-fix-session',
     workspaceId: 'self-fix-workspace',
@@ -122,7 +147,7 @@ describe('SelfFixExecutionService phase resumption', () => {
 
         expect(result.ok).toBe(true);
         expect(executeToolSpy.mock.calls[0][0]).toBe('ai_write_file');
-        expect(executeToolSpy.mock.calls[0][1].path).toBe('/workspace/WeatherGo/src/services/weatherService.js');
+        expect(executeToolSpy.mock.calls[0][1].path).toBe(bound('/workspace/WeatherGo/src/services/weatherService.js'));
         expect(executeToolSpy.mock.calls[0][1].path).not.toContain('/WeatherGo/WeatherGo/');
     });
 
@@ -282,7 +307,7 @@ describe('SelfFixExecutionService phase resumption', () => {
         }
         expect(result.followUpPlan.strategy).toBe('build_fix');
         expect(result.followUpPlan.suggestedTool).toBe('ai_write_file');
-        expect(result.followUpPlan.suggestedInput.path).toBe('/workspace/WeatherGo/src/WeatherApp.css');
+        expect(result.followUpPlan.suggestedInput.path).toBe(boundPosix('/workspace/WeatherGo/src/WeatherApp.css'));
         expect(result.followUpExecution.ok).toBe(true);
         expect(phaseReruns).toBe(2);
         expect(executeToolSpy.mock.calls.map(call => call[0])).toEqual([
@@ -624,7 +649,7 @@ describe('SelfFixExecutionService phase resumption', () => {
 
         expect(result.ok).toBe(true);
         expect(executeToolSpy.mock.calls[0][0]).toBe('write_file');
-        expect(executeToolSpy.mock.calls[0][1].filename).toBe('/workspace/WeatherGo/scripts/smoke-test.test.mjs');
+        expect(executeToolSpy.mock.calls[0][1].filename).toBe(bound('/workspace/WeatherGo/scripts/smoke-test.test.mjs'));
         expect(executeToolSpy.mock.calls[0][1].filename).not.toBe('/workspace/scripts/smoke-test.test.mjs');
     });
 });

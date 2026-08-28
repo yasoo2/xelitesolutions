@@ -6,7 +6,28 @@ import { flushJoeProjects } from '../api/page-store';
 const PAGE_STORE_SOURCE = process.env.JOE_PAGESTORE_SRC || path.join(__dirname, '..', 'api', 'page-store.ts');
 const REQUIRED_CREDENTIAL_FIELDS = ['runtimeAuth', 'ownerEmail', 'ownerPassword'] as const;
 
-function derivedPersistedFields(source: string): string[] {
+/**
+ *  ⛔ THIS GUARD STANDS OVER THE OWNER'S OWN CREDENTIALS, AND IT FOUND NOTHING.
+ *
+ *  It reads `page-store.ts` and collects every `delete copy.<field>` inside
+ *  `persistedProjects`, then asserts that `runtimeAuth`, `ownerEmail` and
+ *  `ownerPassword` are among them — that they are stripped before anything is
+ *  written to disk.
+ *
+ *  The body was located with `/…\n}\n\nexport function loadJoeProjects/`. Git
+ *  checks these sources out CRLF on Windows, so the pattern could not match,
+ *  the body came back empty, and the extractor returned **zero fields** on the
+ *  one machine that holds his real credentials.
+ *
+ *  It failed loudly here only because the next line asserts `>= 3`. Written as
+ *  a loop over the fields it would have passed over an empty list and reported
+ *  a credential guard that guards nothing — «zero failed» over zero checks,
+ *  which is the shape this repository has paid for more than any other.
+ *
+ *  The claim is about what the source SAYS, not about which bytes end a line.
+ */
+function derivedPersistedFields(rawSource: string): string[] {
+    const source = rawSource.replace(/\r\n/g, '\n');
     const persistedProjectsBody = source.match(/function persistedProjects[\s\S]*?\n}\n\nexport function loadJoeProjects/)?.[0] || '';
     return Array.from(persistedProjectsBody.matchAll(/delete\s+copy\.([A-Za-z_$][\w$]*)\s*;/g), match => match[1]);
 }

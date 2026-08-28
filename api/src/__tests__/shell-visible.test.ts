@@ -76,7 +76,7 @@ describe('explicit terminal diagnostics execute instead of merely opening a term
 
 describe('shell_execute — visible in the terminal', () => {
     const src = fs.readFileSync(
-        path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'SystemTools.ts'), 'utf-8');
+        path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'SystemTools.ts'), 'utf-8').replace(/\r\n/g, '\n');
 
     test('it broadcasts terminal_output to the owning session and visible panel stream', () => {
         expect(src).toContain('const terminalSessionId = typeof context?.sessionId');
@@ -105,9 +105,9 @@ describe('shell_execute — visible in the terminal', () => {
 
 describe('the terminal panel renders and preserves the agent stream', () => {
     const ui = fs.readFileSync(
-        path.join(__dirname, '..', '..', '..', 'web', 'src', 'components', 'terminal', 'EnterpriseTerminalPanel.tsx'), 'utf-8');
+        path.join(__dirname, '..', '..', '..', 'web', 'src', 'components', 'terminal', 'EnterpriseTerminalPanel.tsx'), 'utf-8').replace(/\r\n/g, '\n');
     const socket = fs.readFileSync(
-        path.join(__dirname, '..', '..', '..', 'web', 'src', 'services', 'socket.ts'), 'utf-8');
+        path.join(__dirname, '..', '..', '..', 'web', 'src', 'services', 'socket.ts'), 'utf-8').replace(/\r\n/g, '\n');
 
     test('incoming joe-agent output is accepted alongside the interactive session', () => {
         expect(ui).toMatch(/msg\.id === 'joe-agent'/);

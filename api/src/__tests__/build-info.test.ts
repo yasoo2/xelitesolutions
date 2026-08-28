@@ -38,11 +38,29 @@ describe('Joe startup build identity', () => {
   });
 
   it('reads the checkout HEAD from the service directory before its parent', () => {
-    expect(resolveBuildSha({}, '/workspace/api', (cwd) => cwd === '/workspace/api' ? 'feedface' : 'cafebabe')).toBe('feedface');
+    //  Passes on both platforms only because the FIRST candidate is `cwd`
+    //  unchanged. Written the same way as its sibling so the pair cannot
+    //  drift apart the next time one of them is edited.
+    const service = path.join(path.sep, 'workspace', 'api');
+    expect(resolveBuildSha({}, service, (cwd) => cwd === service ? 'feedface' : 'cafebabe')).toBe('feedface');
   });
 
+  /**
+   *  ⛔ THE PARENT IS WHATEVER `path.resolve` SAYS IT IS.
+   *
+   *  This read `cwd === '/workspace'`, which is the parent of `/workspace/api`
+   *  on Linux and `C:\\workspace` on Windows — `path.resolve` anchors a
+   *  rootless POSIX path to the current drive. So the callback never matched,
+   *  the fallback never fired, and the test reported `unknown` on the one
+   *  machine Joe actually runs on.
+   *
+   *  The claim is «it tries the parent», not «the parent is spelled with a
+   *  forward slash». It is computed the same way the code computes it.
+   */
   it('tries the repository parent when the service directory is not the checkout root', () => {
-    expect(resolveBuildSha({}, '/workspace/api', (cwd) => cwd === '/workspace' ? 'cafebabe' : null)).toBe('cafebabe');
+    const service = path.join(path.sep, 'workspace', 'api');
+    const parent = path.resolve(service, '..');
+    expect(resolveBuildSha({}, service, (cwd) => cwd === parent ? 'cafebabe' : null)).toBe('cafebabe');
   });
 
   it('prints unknown rather than inventing a build identity when every source is absent', () => {

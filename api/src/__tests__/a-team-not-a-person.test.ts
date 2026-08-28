@@ -24,7 +24,25 @@ import { fileAppStoreJs, fileAccountsJsx, fileAccountsCss, fileTablesAdminJsx, f
 import { blueprintFor } from '../core/design/app-blueprints';
 
 const SRC = path.join(__dirname, '..');
-const read = (...p: string[]) => fs.readFileSync(path.join(SRC, ...p), 'utf-8');
+/**
+ *  ⛔ A GUARD MUST NOT DEPEND ON HOW GIT CHECKED THE FILE OUT.
+ *
+ *  Every multi-line assertion in this file is a regex containing `\n`. Git
+ *  checks these sources out with CRLF endings on Windows, so
+ *
+ *      /owner_id INTEGER DEFAULT NULL,\n      created_at TEXT/
+ *
+ *  matched on Linux and could not match on the owner's machine — and the
+ *  failure said «Expected pattern … Received "/**"», which reads like the file
+ *  is wrong rather than the reader.
+ *
+ *  The claim is about what the SOURCE SAYS, not about which two bytes end a
+ *  line. Normalising here fixes every assertion in the file at once, which is
+ *  the level the fix belongs at: patching each regex would be the same fact
+ *  written a dozen times, and one of them would eventually be written wrong.
+ */
+const read = (...p: string[]) =>
+    fs.readFileSync(path.join(SRC, ...p), 'utf-8').replace(/\r\n/g, '\n');
 const API = () => read('modules', 'tools', 'definitions', 'ApiProjectTool.ts');
 
 describe('three roles, and not a fourth nobody asked for', () => {

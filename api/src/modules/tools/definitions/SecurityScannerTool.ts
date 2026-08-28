@@ -217,7 +217,13 @@ export class SecurityScannerTool implements ToolDefinition {
                 }
                 if (!entry.isFile()) continue;
                 if (!sourceExtensions.has(path.extname(entry.name).toLowerCase())) continue;
-                discovered.push(path.relative(projectPath, path.join(current, entry.name)));
+                //  ⛔ The same file, spelled the same way, on every machine.
+                //  `path.relative` returns `src\\server.js` on Windows, so the
+                //  scanned-file list he reads — and anything downstream that
+                //  matches a filename against it — differed by platform. Four
+                //  sibling call sites in this repository already normalise;
+                //  this was the fifth and did not.
+                discovered.push(path.relative(projectPath, path.join(current, entry.name)).replace(/\\/g, '/'));
             }
         };
 

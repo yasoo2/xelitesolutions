@@ -1,12 +1,26 @@
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import { DeployProjectTool } from '../modules/tools/definitions/DeployProjectTool';
 import { workspaceService } from '../modules/services/WorkspaceService';
 import { ExecutionGateway } from '../kernel/ExecutionGateway';
 
 describe('deploy_project workspace-relative paths', () => {
-    const tempRoot = fs.mkdtempSync(path.join('/tmp', 'joe-deploy-workspace-'));
-    const projectDir = path.join(tempRoot, 'NEXUS');
+    /**
+     *  ⛔ `/tmp` IS A PLACE ON ONE OPERATING SYSTEM.
+     *
+     *  `path.join('/tmp', …)` gives `\tmp\…` on Windows — a rootless path.
+     *  `mkdtempSync` then creates it on the current drive, and the tool under
+     *  test resolves it to `C:\tmp\…`, so the expectation was short by a
+     *  drive letter and the suite failed for a reason that has nothing to do
+     *  with what it is testing.
+     *
+     *  `os.tmpdir()` is the same directory on every platform and is what every
+     *  other suite here already uses. `path.resolve` makes the expectation the
+     *  same shape the tool produces.
+     */
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-deploy-workspace-'));
+    const projectDir = path.resolve(tempRoot, 'NEXUS');
     const originalGetActiveRoot = workspaceService.getActiveRoot;
 
     beforeAll(() => {

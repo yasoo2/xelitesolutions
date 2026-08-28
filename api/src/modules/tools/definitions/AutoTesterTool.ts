@@ -229,7 +229,21 @@ export class AutoTesterTool implements ToolDefinition {
                 return this.failure(`JSX/TypeScript syntax checker unavailable: ${String(error?.message || error)}`, logs, 'syntax');
             }
             for (const item of transpileFiles) {
-                const name = path.relative(projectPath, item.file) || item.file;
+                /**
+                 *  ⛔ THE SAME FILE, SPELLED THE SAME WAY, ON EVERY MACHINE.
+                 *
+                 *  `path.relative` returns `src\\App.jsx` on Windows, so the
+                 *  line he reads — «esbuild syntax passed: …» and «Syntax
+                 *  error in …» — said one thing on his laptop and another
+                 *  everywhere else. Three sibling call sites already append
+                 *  this normalisation; this one was the fourth and did not.
+                 *
+                 *  A source path in a report is written with forward slashes
+                 *  because that is how an import, a stack trace and a bundler
+                 *  error all write it. Nothing parses this message today, which
+                 *  is exactly why it was worth fixing before something does.
+                 */
+                const name = (path.relative(projectPath, item.file) || item.file).replace(/\\/g, '/');
                 const loader = item.extension === '.jsx' ? 'jsx' : 'tsx';
                 try {
                     esbuild.transformSync(fs.readFileSync(item.file, 'utf8'), {
