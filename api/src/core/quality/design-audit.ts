@@ -122,10 +122,9 @@ export function measureDesign(): any {
         const h = document.querySelector('h1') || document.querySelector('h2');
         return h ? Math.round(parseFloat(getComputedStyle(h).fontSize) || 0) : 0;
     })();
-    const bodyPx = (() => {
-        const p = textEls.find(el => /^(P|LI|SPAN|DIV)$/.test(el.tagName));
-        return p ? Math.round(parseFloat(getComputedStyle(p).fontSize) || 0) : 16;
-    })();
+    //  The census travels out; the decision is made in Node, where it can be
+    //  tested. See `bodyTextSize` below for why it is no longer made here.
+    const sizeCounts = sizes.map(([px, n]) => [px, n] as [number, number]).slice(0, 24);
 
     return {
         sizes: sizes.length,
@@ -134,10 +133,54 @@ export function measureDesign(): any {
         longLines,
         colours: colours.size,
         headingPx,
-        bodyPx,
-        ratio: bodyPx ? Math.round((headingPx / bodyPx) * 100) / 100 : 0,
+        sizeCounts,
         textNodes: textEls.length,
     };
+}
+
+/**
+ *  WHAT SIZE IS THE BODY TEXT — asked of the whole page, not of one element.
+ *
+ *  ⛔ This used to read, inside the page:
+ *
+ *      const p = textEls.find(el => /^(P|LI|SPAN|DIV)$/.test(el.tagName));
+ *      return p ? Math.round(parseFloat(getComputedStyle(p).fontSize)) : 16;
+ *
+ *  — the FIRST such element in document order, which on a real page is a nav
+ *  item, a badge, or a breadcrumb. `flat_hierarchy` is then the heading
+ *  measured against whatever happened to be first in the DOM, and it is wrong
+ *  in both directions:
+ *
+ *    · h1 20px over 18px body, with an 11px «NEW» badge first
+ *      → real ratio 1.11 (flat, and the finding exists for exactly this)
+ *      → measured 1.82, and it stays silent
+ *
+ *    · h1 40px over 16px body, with a 32px hero subtitle first
+ *      → real ratio 2.5 (fine)
+ *      → measured 1.25, and it FIRES — and `flat_hierarchy` is repairable, so
+ *        the repairer enlarges headings on a page that did not need it
+ *
+ *  Body text is the size the page is BUILT on: the one used most. The census
+ *  was already being collected two functions up and thrown away.
+ *
+ *  It lives out here rather than in the page because a function serialised
+ *  into a browser cannot be unit-tested, and a rule nobody can test is a rule
+ *  that drifts. 16 is the fallback only when there is nothing to count.
+ */
+export function bodyTextSize(sizeCounts: Array<[number, number]> | undefined): number {
+    if (!Array.isArray(sizeCounts) || !sizeCounts.length) return 16;
+    let best = 0;
+    let bestUses = -1;
+    for (const entry of sizeCounts) {
+        if (!Array.isArray(entry) || entry.length < 2) continue;
+        const px = Number(entry[0]);
+        const uses = Number(entry[1]);
+        if (!Number.isFinite(px) || px <= 0 || !Number.isFinite(uses) || uses <= 0) continue;
+        //  Most used wins; a tie goes to the SMALLER size, because body text is
+        //  what the page is mostly made of and headings are the exception.
+        if (uses > bestUses || (uses === bestUses && px < best)) { best = px; bestUses = uses; }
+    }
+    return best || 16;
 }
 
 /** Judge the measurements. Generous thresholds: this reports NO system. */
@@ -175,11 +218,15 @@ export function judgeDesign(m: any): DesignReport {
             en: `${m.colours} distinct text colours — that is not a colour system`,
         });
     }
-    if (m.headingPx && m.bodyPx && m.ratio < 1.5) {
+    const bodyPx = m.bodyPx || bodyTextSize(m.sizeCounts);
+    const ratio = bodyPx ? Math.round((Number(m.headingPx || 0) / bodyPx) * 100) / 100 : 0;
+    m.bodyPx = bodyPx;
+    m.ratio = ratio;
+    if (m.headingPx && bodyPx && ratio < 1.5) {
         findings.push({
             code: 'flat_hierarchy', severity: 'minor',
-            ar: `أكبر عنوان ${m.headingPx}px والنصّ ${m.bodyPx}px (نسبة ${m.ratio}) — لا تسلسل بصري، كل شيء يصرخ بالتساوي`,
-            en: `Largest heading ${m.headingPx}px against ${m.bodyPx}px body (ratio ${m.ratio}) — no visual hierarchy`,
+            ar: `أكبر عنوان ${m.headingPx}px والنصّ ${bodyPx}px (نسبة ${ratio}) — لا تسلسل بصري، كل شيء يصرخ بالتساوي`,
+            en: `Largest heading ${m.headingPx}px against ${bodyPx}px body (ratio ${ratio}) — no visual hierarchy`,
         });
     }
     return { findings, metrics: m };
