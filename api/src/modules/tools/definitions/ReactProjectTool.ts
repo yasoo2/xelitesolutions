@@ -3444,7 +3444,30 @@ export class ReactProjectTool extends BaseTool {
             : [];
         const noBrainToAsk = process.env.NODE_ENV === 'test' || !!process.env.JEST_WORKER_ID;
         let namedByHim: NamedRequirement[] = [];
+        /**
+         *  ⛔ «YOUR REQUEST WAS NOT READ» NAMED THE EFFECT AND HID THE CAUSE.
+         *
+         *  Seen on his own screen, in his own Joe, in the terminal panel:
+         *
+         *      acceptance denominator: 5 (known-features list — your request was not read)
+         *      acceptance: 2/5 (from the known-features list — your request was not read)
+         *
+         *  True, and useless. **Three different failures collapse into that one
+         *  sentence, and each has a different thing for him to do:**
+         *
+         *      no model was reachable   → retry, or pick another provider
+         *      the model answered and nothing survived the filters
+         *                               → his sentence named nothing testable
+         *      the reader threw         → a defect in Joe, and he can say so
+         *
+         *  It is the same shape as a page delivered from templates in silence,
+         *  which is the defect this file already carries a repair for twenty
+         *  lines from here. A reason he can act on is the whole difference
+         *  between a report and a shrug.
+         */
+        let whyNotRead = '';
         if (noBrainToAsk) {
+            whyNotRead = 'no model in this environment';
             term('reading your request: skipped — no model in this environment; using the known-features list');
         } else {
             try {
@@ -3453,10 +3476,16 @@ export class ReactProjectTool extends BaseTool {
                 for (const r of read.rejected) {
                     term(`  refused «${r.text}»: ${r.reason}`);
                 }
+                if (!namedByHim.length) {
+                    whyNotRead = read.rejected.length
+                        ? `the model named ${read.rejected.length}, and none survived the filters`
+                        : 'the model named nothing in this request';
+                }
                 term(namedByHim.length
                     ? `read from your request: ${namedByHim.length} named — ${namedByHim.map(r => r.text).join(' · ')}`
-                    : 'read from your request: nothing nameable survived — falling back to the known-features list');
+                    : `read from your request: nothing nameable survived (${whyNotRead}) — falling back to the known-features list`);
             } catch (e: any) {
+                whyNotRead = `the reader failed: ${String(e && e.message || e).slice(0, 90)}`;
                 term(`reading your request failed: ${String(e && e.message || e).slice(0, 120)}`
                     + ' — falling back to the known-features list');
             }
@@ -6040,7 +6069,11 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
         term(`acceptance denominator: ${criteriaForJudgement.length}`
             + (namedJudged.length
                 ? ` (${namedJudged.length} read from your request + ${structural.length} structural)`
-                : ' (known-features list — your request was not read)'));
+                //  The REASON travels with the effect. Without it the same
+                //  sentence covers an unreachable model, a request that named
+                //  nothing testable, and a defect in the reader — and he
+                //  cannot tell which one he is looking at.
+                : ` (known-features list — your request was not read${whyNotRead ? `: ${whyNotRead}` : ''})`));
         const acceptance = judgeAcceptance(criteriaForJudgement, {
             dir: proj,
             built,
