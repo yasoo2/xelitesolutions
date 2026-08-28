@@ -27,7 +27,7 @@
  */
 
 import {
-    relativeLuminance, contrastRatio, requiredRatio, judgeContrast,
+    relativeLuminance, contrastRatio, requiredRatio, judgeContrast, contrastSeverity,
 } from '../core/quality/ui-inspection';
 
 const WHITE = [255, 255, 255];
@@ -189,5 +189,66 @@ describe('the verdict he reads', () => {
         //  as unmeasurable there. Anything else malformed must not become a
         //  confident 1.05:1, which is the false blocker he was shown before.
         expect(judgeContrast([{ text: 'x' } as any, s({ fg: null as any })])).toEqual([]);
+    });
+});
+
+/**
+ *  ⛔ AND THE DEFECT NO UNIT TEST IN THIS SUITE COULD HAVE FOUND.
+ *
+ *  Everything above was green, and every test agreed with the rule, because
+ *  the rule was about a number none of them questioned:
+ *
+ *      severity: c.fails.length >= 4 ? 'major' : 'minor'
+ *
+ *  Then the real audit ran against a page with defects planted by hand, and
+ *  printed this:
+ *
+ *      low    low_contrast   2 text element(s) fail WCAG AA (worst 1.16:1)
+ *
+ *  **1.16:1 is near-white text on white — nobody can read it** — and it came
+ *  back `minor`, which maps to `low`, which is not in `blockers`
+ *  (severity `high`), so the build is delivered as fine. Four elements at
+ *  4.4:1, barely under the line and readable by almost everyone, would have
+ *  been `major`.
+ *
+ *  The count says how WIDESPREAD it is. Severity is a claim about how BAD it
+ *  is. They are different questions and only one was being asked.
+ *
+ *  Measured again after the fix, on the same page: `high`, and the score fell
+ *  from 57 to 45.
+ */
+describe('severity says how bad it is, not only how many there are', () => {
+    it('⛔ POSITIVE — one unreadable element is critical on its own', () => {
+        //  Below 3:1 fails for the largest, boldest text WCAG defines. There
+        //  is no size at which it is acceptable, so the count is irrelevant.
+        expect(contrastSeverity([{ ratio: 1.16 }])).toBe('critical');
+        expect(contrastSeverity([{ ratio: 2.99 }])).toBe('critical');
+    });
+
+    it('⛔ NEGATIVE — a near miss stays minor, however close it is', () => {
+        //  4.4:1 is readable by almost everyone. Blocking a delivery on it
+        //  would be the false blocker he has been shown before, and a report
+        //  that blocks on everything is a report he learns to ignore.
+        expect(contrastSeverity([{ ratio: 4.49 }])).toBe('minor');
+        expect(contrastSeverity([{ ratio: 3.0 }])).toBe('minor');
+    });
+
+    it('⛔ POSITIVE — and breadth still counts, as it did before', () => {
+        //  The old rule is not deleted, it is joined. Four near-misses is a
+        //  theme, and a theme is worth a stronger word than one.
+        const four = [{ ratio: 4.4 }, { ratio: 4.3 }, { ratio: 4.2 }, { ratio: 4.1 }];
+        expect(contrastSeverity(four)).toBe('major');
+        expect(contrastSeverity(four.slice(0, 3))).toBe('minor');
+    });
+
+    it('⛔ NEGATIVE — no failures is not a severity at all', () => {
+        expect(contrastSeverity([])).toBe('minor');
+        expect(contrastSeverity(undefined as any)).toBe('minor');
+    });
+
+    it('⛔ the WORST decides, not the first or the average', () => {
+        //  Three fine-ish and one invisible must be critical: averaging or
+        //  reading fails[0] would bury the only one that matters.
+        expect(contrastSeverity([{ ratio: 4.4 }, { ratio: 4.3 }, { ratio: 1.1 }])).toBe('critical');
     });
 });

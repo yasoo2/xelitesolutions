@@ -186,6 +186,43 @@ export function requiredRatio(sizePx: number, bold: boolean): number {
     return (sizePx >= 24 || (sizePx >= 18.66 && bold)) ? 3 : 4.5;
 }
 
+/**
+ *  HOW BAD IS IT — asked of the WORST ratio, not of how many there are.
+ *
+ *  ⛔ FOUND BY RUNNING THE REAL AUDIT AGAINST A PAGE WITH DEFECTS PLANTED BY
+ *  HAND, which is the only way it could have been found: every unit test in
+ *  the suite agreed with the old rule, because the old rule was
+ *
+ *      severity: c.fails.length >= 4 ? 'major' : 'minor'
+ *
+ *  Counted, and nothing else. The planted page returned:
+ *
+ *      low    low_contrast   2 text element(s) fail WCAG AA (worst 1.16:1)
+ *
+ *  **1.16:1 is text nobody can read** — near-white on white — and it came out
+ *  `minor`, which maps to `low`, which is not in `blockers` (severity `high`),
+ *  so the build is delivered as fine. Meanwhile four elements at 4.4:1 —
+ *  barely under the line, readable by almost everyone — would be `major`.
+ *
+ *  The count is a fact about how widespread it is. It is not a fact about how
+ *  bad it is, and severity is a claim about how bad it is. Both matter, so
+ *  both count: many failures, OR one that is far past the line.
+ *
+ *  3:1 is the boundary chosen because it is not invented here — it is WCAG's
+ *  own floor for the largest, boldest text on a page. Anything below it fails
+ *  for every size at every weight, and no reader is helped by it.
+ */
+export function contrastSeverity(
+    fails: Array<{ ratio: number }>,
+): 'critical' | 'major' | 'minor' {
+    if (!fails || !fails.length) return 'minor';
+    const worst = Math.min(...fails.map(f => Number(f.ratio) || 0));
+    //  Below WCAG's floor for even the largest text: unreadable, whatever it
+    //  is. One of these is worse for him than a dozen near-misses.
+    if (worst < 3) return 'critical';
+    return fails.length >= 4 ? 'major' : 'minor';
+}
+
 export interface ContrastSample {
     text: string; fg: number[]; bg: number[]; size: number; bold: boolean;
     x: number; y: number; width: number; height: number;
@@ -370,7 +407,7 @@ export async function inspectUi(
                 note: `تباين ضعيف: ${c.fails.length} عنصر`, tone: 'warn', holdMs: 1200,
             });
             findings.push({
-                code: 'low_contrast', severity: c.fails.length >= 4 ? 'major' : 'minor',
+                code: 'low_contrast', severity: contrastSeverity(c.fails),
                 ar: `${c.fails.length} نص لا يجتاز تباين WCAG AA (الأسوأ ${c.fails[0].ratio}:1 والمطلوب ${c.fails[0].need}:1): «${c.fails[0].text}»`,
                 en: `${c.fails.length} text element(s) fail WCAG AA contrast (worst ${c.fails[0].ratio}:1, needs ${c.fails[0].need}:1): "${c.fails[0].text}"`,
                 hint: 'darken the text or lighten its background until the ratio clears 4.5:1',
