@@ -4648,7 +4648,38 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
              *  one is the catalogue deciding what may exist.
              */
             const templated = ['Navbar', ...sections, 'Footer'].filter(c => componentTemplates[c]);
-            const names = [...new Set([...templated, ...namedSections])];
+            /**
+             *  ⛔ THE BUDGET WENT TO THE CATALOGUE AND HIS REQUEST PAID FOR IT.
+             *
+             *  Measured by the owner himself, in his own log at 15:17:43, on a
+             *  request for a recipe card:
+             *
+             *      refused HeroDishName            : the build's authoring budget is 6 sections
+             *      refused IngredientsList         : the build's authoring budget is 6 sections
+             *      refused NumberedStepsList       : the build's authoring budget is 6 sections
+             *      refused ServingsCounterPlus     : the build's authoring budget is 6 sections
+             *      refused ChangesIngredientQuantities : …
+             *      refused PrintButton             : …
+             *
+             *  **Joe derived six sections that matched his sentence word for
+             *  word, and refused every one of them** — because `authorOne`
+             *  keeps the FIRST `maxCalls` of this array, and the generic
+             *  template sections (Hero, Products, Cta, Faq…) stood in front of
+             *  them. Then the acceptance gate failed the build on the very
+             *  requirements the budget had just thrown away.
+             *
+             *  ⛔ TWO GATES FIGHTING, AND HIS REQUEST LOSING BOTH TIMES. In his
+             *  words: «الميزانية استُهلكت على أقسام القالب العامة قبل أقسام
+             *  متطلباتك — فسقطت متطلباتك كلها، ثم فشل مدقّق القبول على نفس
+             *  المتطلبات.»
+             *
+             *  The order is the whole fix, and it costs nothing: a section that
+             *  is not AUTHORED still renders — it keeps its template, which is
+             *  what the floor is for. So Navbar and Footer lose nothing by
+             *  going last, and the things he actually asked for are what the
+             *  model's six calls are spent on.
+             */
+            const names = [...new Set([...namedSections, ...templated])];
             if (mustFix.length) {
                 term(`repairing a previous attempt — these were not proven: ${mustFix.join(' · ')}`);
             }
@@ -6046,6 +6077,21 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
         const judgeWasBlind = nothingWasJudged(namedVerdicts);
         const namedJudged = judgeWasBlind ? [] : namedVerdicts;
         if (judgeWasBlind) {
+            /**
+             *  ⛔ AND THIS IS THE ONE THAT WAS ACTUALLY HAPPENING.
+             *
+             *  Measured on his machine against the real model: the reader
+             *  returns 3 of 3 and 5 of 5 in under two seconds with nothing
+             *  rejected. **His request was read perfectly every time.** What
+             *  failed was the JUDGE, one stage later — and the denominator line
+             *  underneath announced «your request was not read».
+             *
+             *  Two sentences about one event, telling different stories, and
+             *  the one he sees last is the wrong one. It sends him to rewrite a
+             *  request that was never the problem.
+             */
+            whyNotRead = `read fine, but the judge could not rule on any of the ${namedVerdicts.length}`
+                + ` — ${namedVerdicts[0]?.why || 'no reason given'}`;
             term(`the judge could not rule on any of the ${namedVerdicts.length} named — `
                 + `${namedVerdicts[0]?.why || 'no reason given'} — falling back to the known-features list`);
         }
@@ -6073,7 +6119,11 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 //  sentence covers an unreachable model, a request that named
                 //  nothing testable, and a defect in the reader — and he
                 //  cannot tell which one he is looking at.
-                : ` (known-features list — your request was not read${whyNotRead ? `: ${whyNotRead}` : ''})`));
+                //  The stage that failed, named. «Not read» is false when the
+                //  reader succeeded and the judge went blind, and a false
+                //  attribution sends him to fix the wrong thing.
+                : ` (known-features list — ${judgeWasBlind ? 'your request was read but could not be judged' : 'your request was not read'}`
+                    + `${whyNotRead ? `: ${whyNotRead}` : ''})`));
         const acceptance = judgeAcceptance(criteriaForJudgement, {
             dir: proj,
             built,

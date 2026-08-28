@@ -90,7 +90,20 @@ describe('what he named becomes what gets built', () => {
         //  Two separate gates dropped them, and repairing one without the other
         //  leaves the defect intact while looking fixed.
         expect(REACT).toMatch(/const namedSections = namedByHim\s*\n?\s*\.map\(r => sectionNameFor\(r\.text\)\)/);
-        expect(REACT).toContain('const names = [...new Set([...templated, ...namedSections])];');
+        //  ⛔ THIS PINNED THE DEFECT, and the owner found it before this guard
+        //  did. `authorOne` keeps the FIRST `maxCalls` of this array, so with
+        //  the template in front his six derived sections were all refused:
+        //
+        //      refused IngredientsList : the build's authoring budget is 6 sections
+        //      refused ServingsCounterPlus : …
+        //      refused PrintButton : …
+        //
+        //  …and then the acceptance gate failed the build on those very
+        //  requirements. The claim is «what he named reaches the builder», and
+        //  reaching it LAST is not reaching it. His sections lead now.
+        expect(REACT).toContain('const names = [...new Set([...namedSections, ...templated])];');
+        const at = REACT.indexOf('const names = [...new Set([');
+        expect(REACT.slice(at, at + 60)).toContain('...namedSections, ...templated');
     });
 
     it('⛔ NEGATIVE — the template sections are still built too', () => {

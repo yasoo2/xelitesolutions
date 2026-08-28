@@ -336,14 +336,28 @@ describe('the judge is asked one question at a time, over a bounded source', () 
         //  The measured failure: five requirements in one call, one malformed
         //  reply, and the ENTIRE ledger read unprovable. Asked separately, the
         //  ones that can be answered are.
+        //
+        //  ⛔ THE CALL COUNT CHANGED FOR A MEASURED REASON, and this guard used
+        //  to pin the old one. `verifyNamed` now tries ONE call for the whole
+        //  set first, because on the owner's free mesh five separate calls
+        //  meant five rate-limited failures:
+        //
+        //      READ:   5 named in 2 call(s)
+        //      [LLM7] rate-limited (429). Cooling down 59s
+        //      VERIFY: 5 verdicts in 33553ms   blind=true
+        //
+        //  So the sequence here is: batch (malformed, answers nobody), then one
+        //  call per requirement exactly as before. Three calls for two
+        //  requirements, and the isolation this test exists to protect is
+        //  untouched — which is what the verdicts below still prove.
         let n = 0;
         const judged = await verifyNamed(TWO_REQS, SOURCE, false, async () => {
             n += 1;
-            return n === 1
+            return n <= 2
                 ? 'not json at all, the model rambled'
                 : JSON.stringify({ verdicts: [{ id: TWO_REQS[1].id, verdict: 'met', evidence: 'export function BookingForm()', why: 'the form is there' }] });
         });
-        expect(n).toBe(2);
+        expect(n).toBe(3);
         expect(judged[0].verdict).toBe('unprovable');
         expect(judged[1].verdict).toBe('met');
     });

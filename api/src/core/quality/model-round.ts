@@ -116,7 +116,7 @@ export async function askForCss(
             routeToModel(
                 [{ role: 'user', content: cssRepairPrompt(findings) }],
                 undefined, undefined, undefined, undefined, undefined, undefined,
-                { internalCall: true },
+                { purpose: 'internal' },
             ),
             new Promise(r => setTimeout(() => r(''), Math.max(5000, opts.timeoutMs || 45_000))),
         ]);
@@ -383,12 +383,13 @@ export async function askForHandler(
             routeToModel(
                 [{ role: 'user', content: prompt }],
                 undefined, undefined, undefined, undefined, undefined, undefined,
-                //  ⛔ THE PROVIDER HE CHOSE, not the free mesh. `askForCss`
-                //  above still passes `{ internalCall: true }`, which is the
-                //  same defect four other calls in the build path had: he picks
-                //  a provider, pastes a real key, and the repair round ignores
-                //  both. Fixed here; named there rather than changed silently.
-                opts.context || { internalCall: true },
+                //  ⛔ THE PROVIDER HE CHOSE, not the free mesh — and marked
+                //  INTERNAL, so the economy at intelligent-router.ts:1477
+                //  reaches for the local brain before spending the quota the
+                //  answer needs. Both call sites in this file used to pass
+                //  `internalCall`, a key the router never reads; see the note
+                //  at the top of the file for what that cost.
+                { ...(opts.context || {}), purpose: 'internal' },
             ),
             new Promise(r => setTimeout(() => r(''), Math.max(5000, opts.timeoutMs || 90_000))),
         ]);

@@ -378,7 +378,7 @@ async function main() {
     const { routeToModel } = require('../../core/llm/intelligent-router');
     let answered = '', threw = '';
     try {
-        answered = String(await routeToModel('Reply with exactly: OK', { internalCall: true, timeoutMs: 20000 }) || '');
+        answered = String(await routeToModel('Reply with exactly: OK', { purpose: 'internal', timeoutMs: 20000 }) || '');
     } catch (e: any) { threw = String(e?.message || e); }
     if (!answered && threw) {
         // No key, no network — the honest outcome here is a NAMED failure.

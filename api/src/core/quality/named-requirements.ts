@@ -662,8 +662,56 @@ export async function verifyNamed(
      */
     const full = src;
     const shownFor = new Map<string, string>();
-    const answers = await Promise.all(reqs.map(async r => {
-        shownFor.set(r.id, sliceFor(r, src));
+    for (const r of reqs) shownFor.set(r.id, sliceFor(r, src));
+
+    /**
+     *  ⛔ ONE CALL FIRST, BECAUSE THE COMMENT ABOVE WAS RIGHT AND WAS MEASURED
+     *  UNDER A CONSTRAINT THAT NO LONGER HOLDS.
+     *
+     *  Asking separately IS more robust, and that reasoning stands. What it
+     *  assumed is that a call is available. Measured on the owner's machine,
+     *  against the free mesh he actually runs on:
+     *
+     *      READ:   5 named                                (2 calls)
+     *      [LLM7] rate-limited (429). Cooling down 59s
+     *      Pollinations Chat Failed: 402 … 429
+     *      VERIFY: 5 verdicts in 33553ms   blind=true
+     *        [unprovable] a hero with the dish name — the model returned no verdict
+     *        [unprovable] an ingredients list      — the model returned no verdict
+     *        … all five
+     *
+     *  **Five separate calls on a mesh that allows two.** So the isolation
+     *  bought nothing and cost everything: the ledger fell back to the
+     *  known-features list, and what he saw was «your request was not read» —
+     *  about a request that had been read perfectly, five out of five, in
+     *  under two seconds.
+     *
+     *  So: one call for all of them, and the per-requirement road kept for
+     *  EXACTLY the ones that call did not answer. In the common case that is
+     *  one call instead of five; in the worst case it is what it always was,
+     *  plus one. Nothing about the isolation is given up — a batch that comes
+     *  back malformed simply answers nobody, and every requirement takes the
+     *  old road.
+     *
+     *  Cross-attribution stays impossible: only a verdict whose id names a
+     *  requirement in THIS batch is accepted, which is the same rule the
+     *  single-requirement path enforces below.
+     */
+    const fromBatch = new Map<string, { id: string; verdict: string; evidence: string; why: string }>();
+    let batchError = '';
+    if (reqs.length > 1) {
+        try {
+            const raw = await call(verificationPrompt(reqs, src, isArabic));
+            for (const v of parseVerdicts(raw)) {
+                if (v.id && reqs.some(r => r.id === v.id)) fromBatch.set(v.id, v);
+            }
+        } catch (e: any) {
+            batchError = String(e && e.message || e);
+        }
+    }
+
+    const stillUnanswered = reqs.filter(r => !fromBatch.has(r.id));
+    const answers = await Promise.all(stillUnanswered.map(async r => {
         try { return { id: r.id, raw: await call(verificationPrompt([r], src, isArabic)) }; }
         catch (e: any) { return { id: r.id, raw: '', error: String(e && e.message || e) }; }
     }));
@@ -673,14 +721,21 @@ export async function verifyNamed(
      *  could not tell», and only the first is about the provider — so it is
      *  reported as the provider's, with the provider's own words.
      */
-    if (!answers.some(a => !a.error)) {
-        const why = String(answers[0]?.error || 'unknown').slice(0, 80);
+    if (!fromBatch.size && !answers.some(a => !a.error)) {
+        //  `batchError` first: it is the earliest thing that failed and so the
+        //  closest to the cause. Falling back to the per-requirement error
+        //  keeps the old message when batching was skipped for a single item.
+        const why = String(batchError || answers[0]?.error || 'unknown').slice(0, 80);
         return blank(isArabic
             ? `لم أفحصه — تعذّر الوصول إلى النموذج: ${why}`
             : `I did not inspect it — the model could not be reached: ${why}`);
     }
 
     const byId = new Map<string, { id: string; verdict: string; evidence: string; why: string }>();
+    //  What the one call answered. Everything below it — the evidence check,
+    //  the cut-detection, the id matching — applies identically, because a
+    //  verdict is judged by what it CLAIMS, never by which call carried it.
+    for (const [id, v] of fromBatch) byId.set(id, { ...v, id });
     for (const a of answers) {
         const parsed = parseVerdicts(a.raw);
         /**

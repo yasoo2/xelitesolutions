@@ -62,9 +62,15 @@ describe('the reason travels with the effect', () => {
     it('⛔ POSITIVE — and the reason reaches the line he reads', () => {
         //  The denominator line is what appeared on his screen. A reason kept
         //  in a variable nobody prints is the same defect one layer in.
-        expect(CODE).toContain(
-            '` (known-features list — your request was not read${whyNotRead ? `: ${whyNotRead}` : \'\'})`',
-        );
+        //  ⛔ Pinned letter for letter, this went red the moment the sentence
+        //  learned to name the STAGE that failed — an improvement, called a
+        //  failure by my own guard, for the third time tonight. The claim is
+        //  «the reason reaches the line he reads», so that is what is checked.
+        const at = CODE.indexOf('acceptance denominator:');
+        expect(at).toBeGreaterThan(0);
+        const sentence = CODE.slice(at, at + 700);
+        expect(sentence).toContain('known-features list');
+        expect(sentence).toContain('${whyNotRead ? `: ${whyNotRead}` : \'\'}');
     });
 
     it('⛔ NEGATIVE — a request that WAS read carries no reason at all', () => {
