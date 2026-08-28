@@ -27,6 +27,23 @@ export interface UiInspection {
 }
 
 /**
+ *  THE SMALLEST TOUCHABLE THING, AS ONE NUMBER.
+ *
+ *  ⛔ There were two. The page measures `r.width < 40 || r.height < 40` and the
+ *  finding says «أصغر من 40px» — while the note drawn on HIS panel, over the
+ *  boxes, said «أهداف لمس أصغر من 44px». He watches the overlay; the overlay
+ *  named a threshold the code does not use.
+ *
+ *  Neither number is wrong in itself (Apple says 44, Material says 48, WCAG
+ *  2.5.8 says 24) — what is wrong is that a thing he READS was maintained
+ *  apart from the thing that DECIDES, which is the class that has cost this
+ *  repository more than any other. A guard asserts the literal inside the page
+ *  function equals this constant, because a function serialised into a browser
+ *  cannot reference it.
+ */
+export const TAP_TARGET_MIN_PX = 40;
+
+/**
  *  THE VIEWPORTS A VISITOR ACTUALLY ARRIVES ON — AND DESKTOP WAS NOT ONE.
  *
  *  ⛔ The line above this one used to say «Desktop last: it is restored», and
@@ -332,7 +349,7 @@ export async function inspectUi(
             if (vp.name === 'mobile') {
                 mobileTiny = r.tiny; mobileFonts = r.smallFonts; mobileTinyNames = r.tinyNames || [];
                 mobileTinyEvidence = Array.isArray(r.tinyEvidence) ? r.tinyEvidence.slice(0, 8) : [];
-                if (r.tinyBoxes?.length) await eyes?.mark(page, r.tinyBoxes, { note: 'أهداف لمس أصغر من 44px', tone: 'warn', holdMs: 1000 });
+                if (r.tinyBoxes?.length) await eyes?.mark(page, r.tinyBoxes, { note: `أهداف لمس أصغر من ${TAP_TARGET_MIN_PX}px`, tone: 'warn', holdMs: 1000 });
             }
         } catch { /* one width failing must not lose the others */ }
     }
@@ -369,8 +386,8 @@ export async function inspectUi(
         findings.push({
             code: 'mobile_tap_targets', severity: mobileTiny >= 6 ? 'major' : 'minor',
             // Named, not counted: «6 targets» is a number nobody can act on.
-            ar: `${mobileTiny} هدف لمس أصغر من 40px على الجوّال — يصعب ضغطه بالإصبع${mobileTinyNames.length ? `: ${mobileTinyNames.slice(0, 3).join('، ')}` : ''}`,
-            en: `${mobileTiny} tap target(s) under 40px on a phone — hard to hit with a thumb${mobileTinyNames.length ? `: ${mobileTinyNames.slice(0, 3).join(', ')}` : ''}`,
+            ar: `${mobileTiny} هدف لمس أصغر من ${TAP_TARGET_MIN_PX}px على الجوّال — يصعب ضغطه بالإصبع${mobileTinyNames.length ? `: ${mobileTinyNames.slice(0, 3).join('، ')}` : ''}`,
+            en: `${mobileTiny} tap target(s) under ${TAP_TARGET_MIN_PX}px on a phone — hard to hit with a thumb${mobileTinyNames.length ? `: ${mobileTinyNames.slice(0, 3).join(', ')}` : ''}`,
             hint: 'min-height:44px and min-width:44px on buttons and nav links',
             evidence: mobileTinyEvidence,
         });

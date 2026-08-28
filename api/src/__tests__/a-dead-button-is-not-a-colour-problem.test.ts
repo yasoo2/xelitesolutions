@@ -87,7 +87,18 @@ describe('the two writers are forced to agree', () => {
         //  Reading offenders out of prose is the shape that gave `min:` a pass
         //  mark for matching a digit. `app-audit` forwards `evidence`; this is
         //  what fills it.
-        expect(BEHAVIOUR_SRC).toContain('evidence: dead.slice(0, 8).map(d => ({ label: d.label, kind: d.kind }))');
+        //  ⛔ This pinned the spelling and went red the moment the evidence
+        //  learned to carry the UNDECORATED name — an improvement, not a
+        //  regression, and my own guard called it a failure. The claim is
+        //  «the offenders arrive as data», so that is what is asserted: an
+        //  evidence array, built from the dead controls, carrying a label
+        //  and a kind. Both findings that emit it are counted.
+        const evidences = BEHAVIOUR_SRC.split('\n').filter(l => l.includes('evidence: dead.slice('));
+        expect(evidences.length).toBe(2);
+        for (const line of evidences) {
+            expect(line).toContain('label:');
+            expect(line).toContain('kind: d.kind');
+        }
     });
 });
 
