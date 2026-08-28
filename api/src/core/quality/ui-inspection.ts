@@ -26,10 +26,34 @@ export interface UiInspection {
     metrics: Record<string, any>;
 }
 
-/** The viewports a visitor actually arrives on. Desktop last: it is restored. */
+/**
+ *  THE VIEWPORTS A VISITOR ACTUALLY ARRIVES ON — AND DESKTOP WAS NOT ONE.
+ *
+ *  ⛔ The line above this one used to say «Desktop last: it is restored», and
+ *  the array under it held two widths. The comment described an intent the
+ *  code did not have, and the gap was invisible because `metrics.viewports`
+ *  APPENDED the restore width afterwards:
+ *
+ *      metrics.viewports = [...VIEWPORTS.map(…), '1280x900']
+ *
+ *  So the delivery read «3 viewport(s)» while `measureResponsive` — the only
+ *  thing that looks for horizontal scrolling, oversized boxes and unreadable
+ *  text — ran at exactly two. **Horizontal scrolling on a desktop screen, the
+ *  width he and most visitors are on, could not be detected at all**, and the
+ *  number in the report said it had been checked.
+ *
+ *  Two defects in one line: a width nobody measured, and a count of something
+ *  adjacent to what it claimed. The count is now derived from this array and
+ *  nothing is appended to it, so the two cannot drift again.
+ *
+ *  (`mobile_overflow` keeps its id — it is the key the repairer is wired to —
+ *  and its text has always carried the width it was measured at, so a desktop
+ *  overflow reports «1280px» in the sentence he reads.)
+ */
 export const VIEWPORTS = [
     { name: 'mobile', ar: 'جوّال', w: 390, h: 844 },
     { name: 'tablet', ar: 'لوحي', w: 820, h: 1180 },
+    { name: 'desktop', ar: 'سطح المكتب', w: 1280, h: 900 },
 ] as const;
 
 /* ---------------------------------------------------------------- contrast */
@@ -312,7 +336,9 @@ export async function inspectUi(
             }
         } catch { /* one width failing must not lose the others */ }
     }
-    metrics.viewports = [...VIEWPORTS.map(v => `${v.w}x${v.h}`), opts?.restore ? `${opts.restore.width}x${opts.restore.height}` : '1280x900'];
+    //  Only what was actually measured. The restore width used to be added
+    //  here, which is how a count of two became a report of three.
+    metrics.viewports = VIEWPORTS.map(v => `${v.w}x${v.h}`);
     metrics.perWidth = perWidth;
     if (opts?.restore) {
         try {

@@ -144,11 +144,40 @@ describe('the forms are filled in and sent, not counted', () => {
 describe('the interface itself is inspected — «وفحص ui»', () => {
     const U = () => read('core', 'quality', 'ui-inspection.ts');
 
-    it('at a phone width and a tablet width, then back to where it was', () => {
-        expect(VIEWPORTS.map(v => v.w)).toEqual([390, 820]);
+    /**
+     *  ⛔ THIS TEST PINNED THE DEFECT. It asserted `[390, 820]` — two widths —
+     *  while the delivery he reads said «3 viewport(s)», because
+     *  `metrics.viewports` APPENDED the restore width after the loop. So the
+     *  one thing that looks for horizontal scrolling, oversized boxes and
+     *  unreadable text never ran at a desktop width, and the number in the
+     *  report said it had.
+     *
+     *  Desktop is measured now, and the count is DERIVED from the same array
+     *  rather than assembled beside it — which is the only way the two cannot
+     *  drift again.
+     */
+    it('at a phone, a tablet AND a desktop width, then back to where it was', () => {
+        expect(VIEWPORTS.map(v => v.w)).toEqual([390, 820, 1280]);
         const u = U();
         expect(u).toMatch(/await page\.setViewportSize\(\{ width: vp\.w, height: vp\.h \}\)/);
         expect(u).toMatch(/await page\.setViewportSize\(opts\.restore\)/);
+    });
+
+    it('⛔ every width it REPORTS is a width it measured', () => {
+        //  The claim, not the spelling: the reported list comes from the array
+        //  the loop iterates, and nothing is added to it afterwards. A count
+        //  of something adjacent to what it claims is the costliest shape in
+        //  this repository, and it lived on this line.
+        //  ⛔ Comments stripped FIRST, and by lines rather than by a regex.
+        //  My first version of this check matched the defect quoted inside the
+        //  comment that EXPLAINS the defect, and went red on the fixed file.
+        //  Third time in this repository: a guard is anchored on code, never
+        //  on prose that describes code.
+        const code = U().split('\n')
+            .filter(l => !/^\s*(\/\/|\*|\/\*)/.test(l))
+            .join('\n');
+        const assignments = code.match(/metrics\.viewports\s*=\s*[^;]+;/g) || [];
+        expect(assignments).toEqual(['metrics.viewports = VIEWPORTS.map(v => `${v.w}x${v.h}`);']);
     });
 
     it('and the panel is told the page got narrower, or it draws a smear', () => {
