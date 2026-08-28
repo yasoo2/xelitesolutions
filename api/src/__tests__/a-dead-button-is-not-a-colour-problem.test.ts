@@ -42,12 +42,15 @@
 import fs from 'fs';
 import path from 'path';
 import {
-    handlerRepairable, fileForBehaviour, safeComponent, handlerRepairPrompt,
+    handlerRepairable, fileForBehaviour, safeComponent, handlerRepairPrompt, askForHandler,
 } from '../core/quality/model-round';
 import { BEHAVIOUR_CODES } from '../core/quality/behaviour-audit';
 
 const BEHAVIOUR_SRC = fs.readFileSync(
     path.join(__dirname, '..', 'core', 'quality', 'behaviour-audit.ts'), 'utf-8',
+);
+const MODEL_ROUND = fs.readFileSync(
+    path.join(__dirname, '..', 'core', 'quality', 'model-round.ts'), 'utf-8',
 );
 const REACT = fs.readFileSync(
     path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ReactProjectTool.ts'), 'utf-8',
@@ -215,6 +218,113 @@ export default function ServingsCounter() {
         expect(safeComponent('', DEAD).why).toBe('empty');
     });
 
+    /**
+     *  ⛔ MEASURED LIVE, THREE TIMES, AGAINST A REAL MODEL — and the second
+     *  run is the reason the third exists.
+     *
+     *      run 1  both buttons wired in 3.7s — and `className="count"` gone
+     *      run 2  brief says «keep every className», lock added
+     *             → REFUSED: drops className "count" that the stylesheet targets
+     *      run 3  the near miss is told what it missed, once
+     *             → 659 chars, all four locks, both handlers, class kept,
+     *               and <span className="count">{servings}</span>
+     *
+     *  Run 2 is the whole lesson twice over. **An instruction is not an
+     *  enforcement** — the model was told and did it anyway. And **a lock that
+     *  refuses every answer is a road that never opens**, which would have
+     *  been worse than the defect: a behaviour repairer that costs a model
+     *  call and repairs nothing.
+     */
+    it('⛔ POSITIVE — a class the stylesheet targets cannot be silently dropped', () => {
+        //  Verbatim from run 1: the model wired both buttons and turned
+        //  `<span className="count">4</span>` into a span with no class at all.
+        const previous = DEAD.replace('<span>4</span>', '<span className="count">4</span>');
+        expect(previous).toContain('className="count"');
+        //  GOOD wires both buttons correctly and renders `<span>{n}</span>` —
+        //  a repair that works and quietly takes the stylesheet's hook with it.
+        expect(GOOD).not.toContain('className="count"');
+        const gate = safeComponent(GOOD, previous);
+        expect(gate.ok).toBe(false);
+        expect(gate.why).toContain('drops className "count"');
+    });
+
+    it('⛔ NEGATIVE — ADDING a class is still allowed', () => {
+        //  Tokens are compared, not whole attributes. A repair that adds
+        //  `is-active` beside `count` is not a repair that deleted anything,
+        //  and refusing it would make the lock a ban on improvement.
+        const richer = GOOD.replace('className="servings"', 'className="servings is-active"');
+        expect(safeComponent(richer, DEAD).ok).toBe(true);
+    });
+
+    /**
+     *  ⛔ AND THIS TEST REPLACED ONE OF MINE THAT WAS WORTHLESS.
+     *
+     *  My first version asserted that `model-round.ts` CONTAINS the strings
+     *  `nearMiss` and «YOUR PREVIOUS ANSWER WAS REJECTED». I then disabled the
+     *  retry — `if (!nearMiss)` → `if (true)`, so no second attempt can ever
+     *  happen — and **all twenty-two tests stayed green.** A guard that
+     *  survives the removal of the thing it guards is not a guard; it is the
+     *  same defect as `min:` passing for any digit and `filter` proving a
+     *  filter exists because it is an array method.
+     *
+     *  So the road is driven instead of read. The model answers twice, and the
+     *  test asserts which answer came back.
+     */
+    it('⛔ POSITIVE — a near miss is asked AGAIN, and the second answer is the one kept', async () => {
+        const previous = DEAD.replace('<span>4</span>', '<span className="count">4</span>');
+        const misses = GOOD;                                            // drops className="count"
+        const keeps = GOOD.replace('<span>{n}</span>', '<span className="count">{n}</span>');
+        const router = require('../core/llm/intelligent-router');
+        const spy = jest.spyOn(router, 'routeToModel')
+            .mockResolvedValueOnce(misses as any)
+            .mockResolvedValueOnce(keeps as any);
+        try {
+            const got = await askForHandler(
+                [{ id: 'dead_controls', evidence: [{ label: 'Add serving' }] }] as any,
+                'src/components/ServingsCounter.jsx', previous, ['Add serving'], { timeoutMs: 5000 },
+            );
+            expect(spy).toHaveBeenCalledTimes(2);
+            expect(got.source).toContain('className="count"');
+            //  And the second prompt NAMES the failure — otherwise it is a
+            //  re-roll wearing a repair's clothes, which is the defect this
+            //  file closed one layer up.
+            const secondPrompt = String((spy.mock.calls[1][0] as any[])[0].content);
+            expect(secondPrompt).toContain('YOUR PREVIOUS ANSWER WAS REJECTED');
+            expect(secondPrompt).toContain('drops className "count"');
+        } finally { spy.mockRestore(); }
+    });
+
+    it('⛔ NEGATIVE — it is asked again ONCE, never in a loop', async () => {
+        //  A stubborn model must not be able to spend the quota the planner
+        //  needs. Two calls, then the road closes for this round and says why.
+        const previous = DEAD.replace('<span>4</span>', '<span className="count">4</span>');
+        const router = require('../core/llm/intelligent-router');
+        const spy = jest.spyOn(router, 'routeToModel').mockResolvedValue(GOOD as any);
+        try {
+            const got = await askForHandler(
+                [{ id: 'dead_controls', evidence: [{ label: 'Add serving' }] }] as any,
+                'src/components/ServingsCounter.jsx', previous, ['Add serving'], { timeoutMs: 5000 },
+            );
+            expect(spy).toHaveBeenCalledTimes(2);
+            expect(got.source).toBe('');
+            expect(got.why).toContain('told and still');
+        } finally { spy.mockRestore(); }
+    });
+
+    it('⛔ NEGATIVE — an answer that is not a near miss gets NO second chance', async () => {
+        //  Retrying garbage is spending a model call to be told no twice.
+        const router = require('../core/llm/intelligent-router');
+        const spy = jest.spyOn(router, 'routeToModel').mockResolvedValue('not source at all' as any);
+        try {
+            const got = await askForHandler(
+                [{ id: 'dead_controls', evidence: [{ label: 'Add serving' }] }] as any,
+                'src/components/ServingsCounter.jsx', DEAD, ['Add serving'], { timeoutMs: 5000 },
+            );
+            expect(spy).toHaveBeenCalledTimes(1);
+            expect(got.why).toBe('no default export');
+        } finally { spy.mockRestore(); }
+    });
+
     it('the brief names the dead controls and forbids a redesign', () => {
         const p = handlerRepairPrompt(
             [{ id: 'dead_controls', detailEn: '1 of 2 controls do nothing when clicked' }],
@@ -224,6 +334,7 @@ export default function ServingsCounter() {
         expect(p).toContain('dead_controls: 1 of 2 controls do nothing when clicked');
         expect(p).toContain('You are repairing behaviour, not redesigning');
         expect(p).toContain('Import nothing new');
+        expect(p).toContain('Keep every className exactly as it is');
         //  The current source goes with it, or the answer is a fresh unrelated
         //  file rather than a repair of this one.
         expect(p).toContain('Add serving</button>');

@@ -252,6 +252,7 @@ export function handlerRepairPrompt(
         '- Answer with the complete file source ONLY. No explanation, no markdown fence.',
         '- Make each dead control actually DO something a visitor can see: change state with useState and render that state. A counter must show a number that changes. A filter must remove rows. A toggle must show a different thing.',
         '- Keep every section, heading, and piece of text that is already there. You are repairing behaviour, not redesigning.',
+        '- Keep every className exactly as it is. The stylesheet targets those names, and a class you drop is a piece of the design you delete.',
         '- Import nothing new. React and whatever this file already imports, and nothing else.',
         '- No fetch, no network, no eval, no localStorage, no timers that never stop.',
         '- Keep the default export and its name exactly as it is.',
@@ -314,6 +315,33 @@ export function safeComponent(raw: any, previous: string): { ok: boolean; source
     } catch (e: any) {
         return { ok: false, source: '', why: `does not parse (${String(e?.message || e).slice(0, 80)})` };
     }
+    /**
+     *  A CLASS IT DROPPED IS A PIECE OF THE DESIGN IT DELETED.
+     *
+     *  ⛔ MEASURED LIVE, on the first real answer this road ever received. The
+     *  model wired both dead buttons correctly in 3.7s — and quietly turned
+     *  `<span className="count">4</span>` into `<span>Current servings:
+     *  {servings}</span>`. The behaviour was repaired and the stylesheet lost
+     *  its hook, on the very same round the CSS road may have just spent a
+     *  model call fixing that element's contrast.
+     *
+     *  The brief now says to keep them, and this checks that it did — because
+     *  an instruction written into a prompt is not an enforcement, which is a
+     *  lesson this repository has paid for more than once. Tokens are compared
+     *  rather than whole attributes, so ADDING a class is still allowed.
+     */
+    const classTokens = (t: string) => new Set(
+        (t.match(/className\s*=\s*"([^"]*)"/g) || [])
+            .flatMap(m => m.replace(/^className\s*=\s*"|"$/g, '').split(/\s+/))
+            .filter(Boolean),
+    );
+    const hadClasses = classTokens(previous);
+    const keptClasses = classTokens(src);
+    const lost = [...hadClasses].filter(c => !keptClasses.has(c));
+    if (lost.length) {
+        return { ok: false, source: '', why: `drops className "${lost[0]}" that the stylesheet targets` };
+    }
+
     return { ok: true, source: src };
 }
 
@@ -333,9 +361,9 @@ export async function askForHandler(
     try {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const { routeToModel } = require('../llm/intelligent-router');
-        const answer = await Promise.race([
+        const ask = async (prompt: string) => Promise.race([
             routeToModel(
-                [{ role: 'user', content: handlerRepairPrompt(findings, file, source, labels) }],
+                [{ role: 'user', content: prompt }],
                 undefined, undefined, undefined, undefined, undefined, undefined,
                 //  ⛔ THE PROVIDER HE CHOSE, not the free mesh. `askForCss`
                 //  above still passes `{ internalCall: true }`, which is the
@@ -346,9 +374,44 @@ export async function askForHandler(
             ),
             new Promise(r => setTimeout(() => r(''), Math.max(5000, opts.timeoutMs || 90_000))),
         ]);
-        const gate = safeComponent(answer, source);
-        if (!gate.ok) return { source: '', why: gate.why || 'refused' };
-        return { source: gate.source };
+
+        const first = handlerRepairPrompt(findings, file, source, labels);
+        const gate = safeComponent(await ask(first), source);
+        if (gate.ok) return { source: gate.source };
+
+        /**
+         *  ⛔ A LOCK THAT REFUSES EVERY ANSWER IS A ROAD THAT NEVER OPENS.
+         *
+         *  MEASURED LIVE, twice, three seconds apart. The first real answer
+         *  this road ever received wired both dead buttons correctly and
+         *  dropped `className="count"`. I added the rule to the brief AND the
+         *  lock that checks it — and the next answer dropped the same class
+         *  again. **Telling a model a constraint is not the same as getting
+         *  it**, which is the lesson this repository keeps paying for: an
+         *  instruction is not an enforcement.
+         *
+         *  Refusing there would have been honest and useless: a behaviour road
+         *  that never repairs anything is worse than the defect it replaced,
+         *  because it also costs a model call to achieve nothing.
+         *
+         *  So a NEAR MISS gets exactly one more try, with the failure named.
+         *  Not a re-roll — the same request plus the specific thing it got
+         *  wrong, which is the difference between asking again and asking
+         *  better. A second failure is reported with the reason and the road
+         *  closes for that round, so this can never become a loop.
+         */
+        const nearMiss = /^drops className|^came back far smaller|^imports something new/.test(gate.why || '');
+        if (!nearMiss) return { source: '', why: gate.why || 'refused' };
+
+        const again = [
+            first,
+            '',
+            `YOUR PREVIOUS ANSWER WAS REJECTED: it ${gate.why}.`,
+            'Fix exactly that and change nothing else about your approach. Return the complete file again.',
+        ].join('\n');
+        const second = safeComponent(await ask(again), source);
+        if (second.ok) return { source: second.source };
+        return { source: '', why: `${gate.why}; told and still ${second.why}` };
     } catch (e: any) {
         return { source: '', why: String(e?.message || e).slice(0, 120) };
     }
