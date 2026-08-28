@@ -291,18 +291,52 @@ function measureA11y() {
   });
   if (noAlt.length) issues.push({ code: 'images_without_alt', severity: 'major', count: noAlt.length, sample: noAlt[0] });
   // A field nobody named is a field nobody can fill with a screen reader.
-  var unlabelled: any[] = [];
+  var unlabelled: any[] = [], placeholderOnly: string[] = [];
   q('input,select,textarea').forEach(function (f: any) {
     var t = (f.getAttribute('type') || '').toLowerCase();
     if (t === 'hidden' || t === 'submit' || t === 'button' || t === 'image' || t === 'reset') return;
-    if (f.getAttribute('aria-label') || f.getAttribute('aria-labelledby') || f.getAttribute('title') || f.getAttribute('placeholder')) return;
+    if (f.getAttribute('aria-label') || f.getAttribute('aria-labelledby') || f.getAttribute('title')) return;
     if (f.id && document.querySelector('label[for="' + CSS.escape(f.id) + '"]')) return;
     if (f.closest('label')) return;
+    /**
+     *  ⛔ A PLACEHOLDER IS NOT A LABEL, AND IT IS NOT NOTHING EITHER.
+     *
+     *  This line used to `return` on `placeholder`, so a form whose fields
+     *  are named only by their grey hint text passed silently — and that is
+     *  the commonest form on the web, including the ones Joe writes.
+     *
+     *  But it is not the same defect as a field with NO name: a browser does
+     *  fall back to the placeholder for the accessible name, so a screen
+     *  reader says something. What it costs is different and specific — **the
+     *  hint disappears the moment you type**, so anyone who looks away, or
+     *  makes a mistake, or comes back to check, is staring at a box with no
+     *  idea what belongs in it.
+     *
+     *  ⛔ AND IT SITS HERE, NOT THREE LINES EARLIER, WHICH IS WHERE I FIRST
+     *  PUT IT. Before `label[for=…]` and `closest('label')` had been asked,
+     *  **a field with a perfectly good visible label was reported as
+     *  hint-only** — and a placeholder ALONGSIDE a label is not a defect, it
+     *  is the recommended pattern. Caught by repairing the planted page by
+     *  hand and watching the audit keep complaining about the thing I had
+     *  just fixed, which is the negative case this whole method is for.
+     *
+     *  Two different costs are two findings. Folding them into one would
+     *  either understate the field with no name or overstate this, and a
+     *  report that overstates is one he learns to skim.
+     */
+    if (f.getAttribute('placeholder')) {
+      var rp = f.getBoundingClientRect();
+      if (rp.width > 2 && rp.height > 2 && placeholderOnly.length < 8) {
+        placeholderOnly.push(f.getAttribute('name') || f.getAttribute('placeholder') || f.tagName.toLowerCase());
+      }
+      return;
+    }
     var r = f.getBoundingClientRect();
     if (!(r.width > 2 && r.height > 2)) return;
     if (unlabelled.length < 8) { unlabelled.push({ name: f.getAttribute('name') || f.tagName.toLowerCase(), x: Math.round(r.left), y: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height), label: 'no label' }); }
   });
   if (unlabelled.length) issues.push({ code: 'inputs_without_labels', severity: 'major', count: unlabelled.length, sample: unlabelled[0].name });
+  if (placeholderOnly.length) issues.push({ code: 'placeholder_as_label', severity: 'minor', count: placeholderOnly.length, sample: placeholderOnly[0] });
   return { issues: issues, hasNav: hasNav, focusables: q('a[href], button, input, select, textarea, [tabindex]').length, altBoxes: boxes, labelBoxes: unlabelled };
 }
 
@@ -365,6 +399,53 @@ function measureResponsive(vw: number) {
       }
     }
   });
+  /**
+   *  ⛔ TEXT THAT IS CUT OFF BY THE BOX IT LIVES IN.
+   *
+   *  Found by running the real audit over a page with eleven defects planted
+   *  by hand: nine were caught, and this was one of the two that were not.
+   *  Nothing structural can see it — the element is present, visible, has its
+   *  full text in the DOM, and passes contrast, alt, label and heading checks.
+   *  **A visitor sees «This sentence is far too lo» and the rest is gone.**
+   *
+   *  It belongs at this level rather than in the a11y pass because truncation
+   *  is a function of WIDTH: a card title that fits at 1280 and is cut at 390
+   *  is the commonest form of it, and this loop is the only place that looks
+   *  at the page more than once.
+   *
+   *  Narrow on purpose, because a wrong complaint here is expensive:
+   *    · the element must own its text, so a slider clipping its children
+   *      is not accused of clipping a sentence
+   *    · overflow must actually be hidden or clipped — a scrollable box shows
+   *      the rest when you scroll it, and that is a different question
+   *    · `text-overflow: ellipsis` is EXCLUDED: a designer who asked for «…»
+   *      chose truncation and said so on screen. This finding is for text
+   *      that vanishes without a word.
+   */
+  var clipped = 0, clippedEvidence: any[] = [], clippedBoxes: any[] = [];
+  Array.prototype.slice.call(document.querySelectorAll('body *'), 0, 4000).forEach(function (el: any) {
+    if (clippedEvidence.length >= 8) return;
+    var ownsText = Array.prototype.some.call(el.childNodes, function (n: any) {
+      return n.nodeType === 3 && (n.textContent || '').trim().length > 4;
+    });
+    if (!ownsText) return;
+    var cs = getComputedStyle(el);
+    if (cs.visibility === 'hidden' || cs.display === 'none') return;
+    var ox = cs.overflowX, oy = cs.overflowY;
+    var hidesX = ox === 'hidden' || ox === 'clip';
+    var hidesY = oy === 'hidden' || oy === 'clip';
+    if (!hidesX && !hidesY) return;
+    if (String(cs.textOverflow || '') === 'ellipsis') return;
+    var cutX = hidesX && el.scrollWidth > el.clientWidth + 2;
+    var cutY = hidesY && el.scrollHeight > el.clientHeight + 2;
+    if (!cutX && !cutY) return;
+    clipped++;
+    var r = el.getBoundingClientRect();
+    var txt = (el.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 40);
+    clippedEvidence.push({ sel: selectorFor(el), label: 'text cut off', text: txt, w: Math.round(r.width), h: Math.round(r.height) });
+    clippedBoxes.push({ x: Math.round(r.left), y: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height), label: 'text cut off' });
+  });
+
   var smallFonts = 0;
   Array.prototype.slice.call(document.querySelectorAll('p,span,li,a,td'), 0, 1500).forEach(function (el: any) {
     var fs = parseFloat(getComputedStyle(el).fontSize || '16');
@@ -373,6 +454,7 @@ function measureResponsive(vw: number) {
   return {
     scrollW: scrollW, overflowX: scrollW > vw + 2, wide: wide, wideEvidence: wideEvidence, boxes: boxes,
     tiny: tiny, tinyBoxes: tinyBoxes, tinyNames: tinyNames, tinyEvidence: tinyEvidence, smallFonts: smallFonts,
+    clipped: clipped, clippedEvidence: clippedEvidence, clippedBoxes: clippedBoxes,
     hasViewportMeta: !!document.querySelector('meta[name="viewport"]'),
   };
 }
@@ -428,6 +510,11 @@ export async function inspectUi(
             aria_hidden_focusable: { ar: 'عنصر تفاعلي داخل aria-hidden — يُركَّز عليه ولا يُقرأ', en: 'A focusable control inside aria-hidden — reachable but unreadable', hint: 'remove aria-hidden or take the control out of it' },
             heading_skip: { ar: 'ترتيب العناوين يتخطّى مستوى', en: 'Heading levels skip a step', hint: 'go down one level at a time' },
             images_without_alt: { ar: 'صور بلا نص بديل', en: 'Images with no alt text', hint: 'every <img> needs alt="" or a real description' },
+            placeholder_as_label: {
+                ar: 'حقول لا اسم لها غير النص الرمادي بداخلها — يختفي أول ما يكتب المستخدم فلا يعود يعرف ما المطلوب',
+                en: 'Fields named only by their placeholder — the hint vanishes on the first keystroke, so nobody can check what belongs there',
+                hint: 'add a visible <label for="…">; keep the placeholder for an example, not for the name',
+            },
             inputs_without_labels: { ar: 'حقول إدخال بلا اسم يقرؤه أحد', en: 'Form fields with no accessible name', hint: 'add a <label for> or an aria-label' },
         };
         if (a.altBoxes?.length) await eyes?.mark(page, a.altBoxes, { note: 'صور بلا نص بديل', tone: 'warn', holdMs: 900 });
@@ -445,6 +532,7 @@ export async function inspectUi(
     const perWidth: Record<string, any> = {};
     let overflowAt = '';
     let mobileTiny = 0, mobileFonts = 0, hasViewportMeta = true;
+    let clippedAt = '', clippedCount = 0, clippedEvidence: any[] = [];
     let mobileTinyNames: string[] = [];
     let overflowEvidence: any[] = [];
     let mobileTinyEvidence: any[] = [];
@@ -461,6 +549,15 @@ export async function inspectUi(
                 overflowAt = `${vp.w}px${r.wide.length ? ` — ${r.wide.join('، ')}` : ''}`;
                 overflowEvidence = Array.isArray(r.wideEvidence) ? r.wideEvidence.slice(0, 8) : [];
                 await eyes?.mark(page, r.boxes, { note: `تمرير أفقي على ${vp.w}px`, holdMs: 1200 });
+            }
+            //  The NARROWEST width that cuts text is the one worth naming:
+            //  it is where he will see it first, and a page cut at 390 and
+            //  fine at 1280 is the commonest shape of this defect.
+            if (r.clipped && !clippedAt) {
+                clippedAt = `${vp.w}px`;
+                clippedCount = r.clipped;
+                clippedEvidence = Array.isArray(r.clippedEvidence) ? r.clippedEvidence.slice(0, 8) : [];
+                if (r.clippedBoxes?.length) await eyes?.mark(page, r.clippedBoxes, { note: `نص مقصوص على ${vp.w}px`, tone: 'warn', holdMs: 1100 });
             }
             if (vp.name === 'mobile') {
                 mobileTiny = r.tiny; mobileFonts = r.smallFonts; mobileTinyNames = r.tinyNames || [];
@@ -497,6 +594,15 @@ export async function inspectUi(
             hint: 'give the offending element max-width:100% and let the grid wrap',
             evidence: overflowEvidence,
         });
+    }
+    if (clippedCount > 0) {
+        findings.push({
+            code: 'text_clipped', severity: 'major',
+            ar: `${clippedCount} عنصر نصّه مقصوص داخل صندوقه على عرض ${clippedAt} — الكلام موجود في الصفحة ولا يُرى${clippedEvidence[0]?.text ? `: «${clippedEvidence[0].text}»` : ''}`,
+            en: `${clippedCount} element(s) have their text cut off by their own box at ${clippedAt} — the words are in the page and cannot be read${clippedEvidence[0]?.text ? `: "${clippedEvidence[0].text}"` : ''}`,
+            hint: 'let the box grow, wrap the text, or add text-overflow: ellipsis so the cut is at least visible',
+            evidence: clippedEvidence,
+        } as any);
     }
     if (mobileTiny > 0) {
         findings.push({
