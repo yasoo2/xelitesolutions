@@ -1204,7 +1204,11 @@ export function sectionsForKind(kind: PageKind): string[] {
  *  exist purely to fill a template he did not ask for.
  */
 const SECTION_ASKS: Array<{ section: string; says: string[]; re: RegExp }> = [
-    { section: 'Menu', says: ['قائمة الطعام', 'menu'], re: /\bmenu\b|قائمة\s*(?:ال)?طعام|منيو/i },
+    //  ⛔ The second writer of the same rule. `blueprints.ts` decides the
+    //  KIND and this decides the SECTIONS; repairing one and not the other
+    //  leaves the defect standing while looking fixed. Same exclusion,
+    //  same reason: a navigation menu is chrome, not a kitchen.
+    { section: 'Menu', says: ['قائمة الطعام', 'menu'], re: /(?<!navigation\s)(?<!nav\s)(?<!dropdown\s)(?<!hamburger\s)(?<!side\s)(?<!main\s)(?<!mobile\s)(?<!drop-down\s)\bmenu\b|قائمة\s*(?:ال)?طعام|منيو/i },
     { section: 'Products', says: ['خدمات', 'services', 'منتجات', 'products'],
         re: /\bservices?\b|\bproducts?\b|خدمات|منتجات|بضائع/i },
     { section: 'Pricing', says: ['الأسعار', 'pricing'], re: /\bpricing\b|\bplans\b|باقات|تسعير/i },

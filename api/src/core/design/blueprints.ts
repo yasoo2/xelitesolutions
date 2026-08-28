@@ -27,7 +27,27 @@ const DETECTORS: Array<[PageKind, RegExp]> = [
     // cart, because the store pattern is checked first. (Arabic needs no \b:
     // its keywords are whole distinctive words already.)
     ['store', /متجر|تسوق|منتجات|سلة|شراء|\bshop\b|\bstores?\b|e-?commerce|\bcarts?\b|\bcheckout\b|product page|\bcatalog/i],
-    ['restaurant', /مطعم|كافيه|قهوة|مقهى|قائمة الطعام|منيو|مخبز|حلويات|restaurant|\bcafe\b|\bcoffee\b|\bmenu\b|bakery|pizza|bistro/i],
+    /**
+     *  ⛔ THE ARABIC HALF WAS CAREFUL AND THE ENGLISH HALF WAS NOT.
+     *
+     *  «قائمة الطعام» and «منيو» both demand the word for FOOD. Beside
+     *  them stood a bare `\bmenu\b` — and «a navigation menu that
+     *  collapses into a hamburger button» is a row of links at the top of
+     *  a page. Measured live: that sentence built Hero · Menu · Gallery ·
+     *  Story · Location · OrderButton. A restaurant, for a request that
+     *  never mentioned food.
+     *
+     *  The trap is named in CLAUDE.md — «قائمة» is both *list* and *menu*,
+     *  so it needs context. It was understood, written down, applied to
+     *  the Arabic, and not carried three characters across.
+     *
+     *  ⛔ AND THE COST IS NOT SYMMETRIC. A wrong archetype DISCARDS THE
+     *  WHOLE REQUEST; a missed one costs a word while the page is still
+     *  built from his sentence. So an ambiguous signal resolves to «not
+     *  this archetype». Every food word below is untouched: a real
+     *  restaurant says restaurant, café, bakery, pizza, dishes.
+     */
+    ['restaurant', /مطعم|كافيه|قهوة|مقهى|قائمة الطعام|منيو|مخبز|حلويات|restaurant|\bcafe\b|\bcoffee\b|(?<!navigation\s)(?<!nav\s)(?<!dropdown\s)(?<!hamburger\s)(?<!side\s)(?<!main\s)(?<!mobile\s)(?<!drop-down\s)\bmenu\b|bakery|pizza|bistro/i],
     ['portfolio', /بورتفوليو|معرض أعمال|معرض اعمال|سيرة ذاتية|portfolio|resume|\bcv\b|showcase|my work|photographer/i],
     ['blog', /مدونة|مقالات|أخبار|اخبار|blog|articles|magazine|newsroom/i],
     ['app', /تطبيق ويب|واجهة تطبيق|web ?app|application ui|saas app|tool ui|admin tool/i],

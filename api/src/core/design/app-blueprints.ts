@@ -212,7 +212,32 @@ export interface AppBlueprint {
 
 /** Ordered: the specific archetypes are tested before the broad ones. */
 export const APP_KIND_SIGNALS: Array<[AppKind, RegExp]> = [
-    ['maps', /خرائط|خريطة|خارطة|مواقع\s*جغرافي|ملاحة|تتبع\s*(المواقع|الموقع)|جي\s*بي\s*اس|\bmaps?\b|\bgps\b|navigation|geo\s*app/i],
+    /**
+     *  ⛔ «NAVIGATION» ALONE USED TO BE HERE, AND IT COST A WHOLE REQUEST.
+     *
+     *  Measured live on the owner's machine. He asked for a page with «a
+     *  navigation menu that collapses into a hamburger button on a phone, a
+     *  servings counter … and a print button» and received `MapApp.jsx` — 491
+     *  lines of Leaflet, place search and saved pins. The three things he
+     *  named appear in the built project exactly once: on the line of
+     *  `content.js` that stores his request text.
+     *
+     *  `\bmaps?\b` is anchored. `\bgps\b` is anchored. `geo\s*app` demands
+     *  context. **`navigation` was bare** — and «a navigation menu» is what
+     *  every website on earth calls the row of links at the top of a page.
+     *
+     *  ⛔ AND THE COST IS NOT SYMMETRIC, WHICH IS THE WHOLE ARGUMENT. A wrong
+     *  map DISCARDS THE ENTIRE REQUEST and builds a different application. A
+     *  missed map costs one word and the page is still built from his
+     *  sentence. Where a signal is ambiguous the safe direction is «not this
+     *  archetype», so navigation is admitted only with the context that makes
+     *  it mean travel: an app, turn-by-turn, or GPS.
+     *
+     *  The file already knew this. Sixty lines below, the weather entry says a
+     *  bare «forecast» cannot prove a forecast and anchors itself whole-string.
+     *  The lesson was learned once and not carried across.
+     */
+    ['maps', /خرائط|خريطة|خارطة|مواقع\s*جغرافي|ملاحة|تتبع\s*(المواقع|الموقع)|جي\s*بي\s*اس|\bmaps?\b|\bgps\b|navigation\s*app|turn[-\s]?by[-\s]?turn|gps\s*navigation|driving\s*(?:navigation|directions)|geo\s*app/i],
     ['weather', /طقس|الجو|درجات?\s*الحرارة|أحوال\s*جوية|weather|forecast|temperature app|open[- ]?meteo/i],
     // A calculator is a distinct interaction contract, not a records page.
     // Detect it before generic app/manage fallbacks so a request such as
