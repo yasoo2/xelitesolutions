@@ -605,7 +605,9 @@ export async function auditBuiltApp(
             formsWithoutValidation: 0, formsFilled: 0, fieldsFilled: 0, formsDeadSubmit: 0, formsValidated: 0, formsReloaded: 0,
         };
         const mergeProbe = (p: { controls: any[]; metrics: Record<string, any>; forms?: FormResult[] }, route: string) => {
-            for (const c of p.controls) allControls.push({ ...c, label: route === '/' ? c.label : `${route} ${c.label}` });
+            //  `bare` is the control's own name; `label` is the name plus where
+            //  it was pressed. A reader that needs to FIND the control reads bare.
+            for (const c of p.controls) allControls.push({ ...c, bare: c.label, label: route === '/' ? c.label : `${route} ${c.label}` });
             behaviourMetrics.deadAnchors += p.metrics.deadAnchors || 0;
             behaviourMetrics.formsWithoutValidation += p.metrics.formsWithoutValidation || 0;
             behaviourMetrics.keyboardUnreachable += p.metrics.keyboardUnreachable || 0;
@@ -661,6 +663,46 @@ export async function auditBuiltApp(
             }
         }
         if (routes.length) { try { await page.goto(url, { waitUntil: 'load', timeout: 15_000 }); } catch { /* home is optional now */ } }
+
+        /**
+         *  ⛔ AND THE MENU THAT ONLY EXISTS ON A PHONE — «ولا القوائم».
+         *
+         *  Every press above happens at 1280x900, because that is the size the
+         *  page was opened at and `probeControls` runs before the widths are
+         *  ever changed. And `findControls` catalogues what a visitor could
+         *  press by reading `getBoundingClientRect()` and the computed style —
+         *  so anything `display:none` at a desktop width **is not skipped as
+         *  dead, it is never seen at all.**
+         *
+         *  That is the hamburger. It is the mobile drawer, the phone-only call
+         *  button, the bottom bar. On most sites it is the ONLY way to reach
+         *  any other page from a phone, and a build where it does not open is
+         *  a build most visitors cannot use — delivered with «0 dead controls»
+         *  because the audit was looking at a screen where the button does not
+         *  exist.
+         *
+         *  So one more pass at 390px, and only for controls the desktop walk
+         *  never saw. Not a re-press of everything: the budget is shared with
+         *  the walk above and the whole point is what desktop CANNOT show.
+         */
+        const seenLabels = new Set(allControls.map((c: any) => String(c.label || '')));
+        try {
+            const back = page.viewportSize?.() || { width: 1280, height: 900 };
+            await page.setViewportSize({ width: 390, height: 844 });
+            await page.waitForTimeout(420);
+            await eyes.say(page, 'فحص ما لا يظهر إلا على الجوّال — القوائم والأزرار المخفية');
+            const phone = await probeControls(page, {
+                eyes,
+                budgetMs: Math.min(20_000, Math.max(6000, walkUntil - Date.now())),
+                seenForms,
+                maxControls: 12,
+            });
+            const fresh = (phone.controls || []).filter((c: any) => !seenLabels.has(String(c.label || '')));
+            for (const c of fresh) allControls.push({ ...c, bare: c.label, label: `الجوّال ${c.label}` });
+            behaviourMetrics.deadAnchors += phone.metrics?.deadAnchors || 0;
+            await page.setViewportSize(back);
+            await page.waitForTimeout(200);
+        } catch { /* one width failing must not lose the desktop walk */ }
 
         /**
          * AND THE UI ITSELF IS INSPECTED — «وفحص ui».

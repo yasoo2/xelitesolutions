@@ -52,6 +52,21 @@ export const BEHAVIOUR_CODES: ReadonlySet<string> = new Set([
 
 export interface ControlResult {
     label: string;
+    /**
+     *  ⛔ THE CONTROL'S OWN NAME, UNDECORATED.
+     *
+     *  `label` is what the REPORT shows, and callers decorate it with where it
+     *  was pressed — «/menu Add serving» off the home route, «الجوّال Add
+     *  serving» in the phone-width pass. A repairer looking that string up in
+     *  the component sources finds nothing, which is how a repair road can
+     *  work on one page and silently do nothing everywhere else.
+     *
+     *  Rather than teach every reader to undo every prefix that will ever be
+     *  invented — a catalogue, and therefore the same defect one iteration
+     *  later — the undecorated name travels with the decorated one, and the
+     *  evidence carries THIS.
+     */
+    bare?: string;
     kind: 'button' | 'summary' | 'anchor' | 'submit' | 'tab' | 'menu' | 'link';
     worked: boolean;
     /** What changed, for the report — 'dom', 'open', 'scroll', 'validation', ''. */
@@ -939,7 +954,7 @@ export function judgeBehaviour(
              *  instead of its evidence. `app-audit` already forwards an
              *  `evidence` array when one exists; this fills it.
              */
-            evidence: dead.slice(0, 8).map(d => ({ label: d.label, kind: d.kind })),
+            evidence: dead.slice(0, 8).map(d => ({ label: d.bare || d.label, kind: d.kind })),
         });
     } else if (dead.length) {
         findings.push({
@@ -948,7 +963,7 @@ export function judgeBehaviour(
             en: `Unresponsive controls: ${dead.slice(0, 3).map(d => `"${d.label}"`).join(', ')}`,
             hint: 'each of these needs a real click handler or a real href',
             //  Same reason as `dead_controls` above: the offenders as data.
-            evidence: dead.slice(0, 8).map(d => ({ label: d.label, kind: d.kind })),
+            evidence: dead.slice(0, 8).map(d => ({ label: d.bare || d.label, kind: d.kind })),
         });
     }
     const reloaders = controls.filter(c => c.effect === 'reload');
