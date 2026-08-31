@@ -1,3 +1,5 @@
+/// <reference path="../../types/snowball-stemmers.d.ts" />
+
 /**
  * ONE PLACE THAT KNOWS HOW ARABIC WORKS, AND NOTHING ELSE IN JOE NEEDS TO.
  *

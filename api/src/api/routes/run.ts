@@ -338,14 +338,34 @@ router.get('/:id', async (req, res) => {
     res.json({ run, execs, artifacts });
 });
 
+/**
+ *  ⛔ THIS ANSWERED `ok: true` ABOUT WORK THAT KEPT RUNNING.
+ *
+ *  Measured on the owner's machine, 2026-08-28: a build hung at
+ *  `[17:30:26] ▶ react_project`, he pressed Stop twice, this route returned
+ *  `ok: true` both times, and sixty-nine minutes later the counter still read
+ *  `68:35` with not one new log line.
+ *
+ *  It wrote a database field. It never reached the run. **Joe blocks delivery
+ *  of pages containing dead controls and shipped one** — and one that reports
+ *  the opposite of what happened, which sent him hunting a build defect that
+ *  was not there.
+ *
+ *  So it looks the run up among the live ones and trips it, and it reports
+ *  WHETHER ANYTHING STOPPED. «I did not find that run» is a fact he can act
+ *  on; `ok` over a run that continued is not.
+ */
 router.post('/stop', async (req, res) => {
-    // Basic stop logic - since orchestrator is stateless per-request in this version,
-    // we mark the run as failed in DB.
-    const { runId } = req.body;
+    const { runId, sessionId } = req.body || {};
+    const { stopRun } = require('../../core/session/attended-run');
+    //  Both ids: this route is called with a runId, the tool layer registers a
+    //  sessionId, and a stop that only travels through one of them is a stop
+    //  that works on some screens.
+    const stopped = !!stopRun(runId, sessionId);
     if (runId && mongoose.Types.ObjectId.isValid(runId)) {
         await Run.findByIdAndUpdate(runId, { $set: { status: 'failed' } });
     }
-    res.json({ ok: true });
+    res.json({ ok: true, stopped });
 });
 
 export default router;

@@ -44,6 +44,20 @@ describe('evidence-first engineering discovery', () => {
     expect(fs.readFileSync(path.join(project, 'package.json'), 'utf8')).toBe(before);
   });
 
+  test('marks a read-only audit and refuses to classify it as a new build', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-read-only-'));
+    roots.push(root);
+    fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ name: 'audit-target', scripts: { test: 'node test.js' } }));
+
+    const result: any = await new EngineeringDiscoveryTool().execute({
+      request: 'Perform a read-only audit. Do not create, edit, delete, install, build, or run anything. Only inspect and verify local files.',
+    }, { workspaceRoot: root });
+
+    expect(result.ok).toBe(true);
+    expect(result.output.evidence.constraints.readOnly).toBe(true);
+    expect(result.output.evidence.constraints.createsNewProject).toBe(false);
+  });
+
   test('recognizes an incomplete existing project root so repair can restore its missing manifest', async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-incomplete-repair-'));
     roots.push(root);

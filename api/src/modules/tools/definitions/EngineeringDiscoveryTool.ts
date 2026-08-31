@@ -4,6 +4,7 @@ import { BaseTool } from '../base';
 import { ToolPermission } from '../types';
 import { isWithinRoot, resolveToolPath } from '../utils';
 import { readJoeProjectForRun } from '../../../api/page-store';
+import { isReadOnlyRequest } from '../../../core/orchestrator/buildIntent';
 
 export type VerificationStatus = 'passed' | 'failed' | 'blocked' | 'not_run' | 'not_applicable';
 export type ExecutionStatus = 'succeeded' | 'failed' | 'blocked' | 'not_started';
@@ -52,6 +53,8 @@ export interface EngineeringEvidence {
         localOnly: boolean;
         forbidDeploy: boolean;
         userRequestedExistingProject: boolean;
+        /** The request explicitly forbids all writes and execution. */
+        readOnly?: boolean;
         /** The request creates a new project; discovered projects are not its target. */
         createsNewProject: boolean;
     };
@@ -198,6 +201,7 @@ export class EngineeringDiscoveryTool extends BaseTool {
             || (gitContext && new RegExp(`(^|[^${AR}])(?:ال)?مستودع(?=$|[^${AR}])`).test(request));
         const forbidDeploy = /(?:لا|ليس|بدون|غير|do\s+not|don't|without|no)\s+(?:(?:أي|any|external)\s+)?(?:نشر|رفع|استضافة|deploy|publish|host|go\s*live)/i.test(request);
         const localOnly = forbidDeploy || /(?:محلي|local(?:ly)?|على\s+(?:جهازي|الجهاز)|on\s+(?:my\s+)?machine)/i.test(request);
+        const readOnly = isReadOnlyRequest(request);
 
         /**
          * «WHICH OF YOUR PROJECTS DO YOU MEAN?» IS THE WRONG QUESTION TO ASK
@@ -247,7 +251,7 @@ export class EngineeringDiscoveryTool extends BaseTool {
         // a crowded workspace can turn "current generated project" into a new
         // greenfield scaffold or an ambiguity blocker.
         const targetsKnownArtifact = !!knownArtifactRoot && (continuesKnownArtifact || explicitExistingMutation);
-        const buildsSomethingNew = (explicitNewBuildIntent || PlanningEngine.looksLikeBuild(request))
+        const buildsSomethingNew = !readOnly && (explicitNewBuildIntent || PlanningEngine.looksLikeBuild(request))
             && !explicitExistingMutation
             && !remoteUrl
             && !targetsKnownArtifact
@@ -480,7 +484,7 @@ export class EngineeringDiscoveryTool extends BaseTool {
             selectedProject,
             referenceProjects,
             instructionFiles: instructionFiles.sort((a, b) => a.relativePath.localeCompare(b.relativePath)),
-            constraints: { localOnly, forbidDeploy, userRequestedExistingProject: requestedExisting, createsNewProject: buildsSomethingNew },
+            constraints: { localOnly, forbidDeploy, userRequestedExistingProject: requestedExisting, readOnly, createsNewProject: buildsSomethingNew },
 
             facts,
             blockers,

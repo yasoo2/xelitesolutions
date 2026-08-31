@@ -189,6 +189,29 @@ export function getUserRealBrowserProfile(): { userDataDir: string; channel?: st
 
 /** Per-session Chrome profile directory (isolated per user in the online model).
  *  Defaults to a stable per-OS location (not /tmp) so logins survive restarts. */
+/**
+ *  A directory NO live Chrome can already own.
+ *
+ *  ⛔ `getBrowserProfileDir` is a pure function of the session id, so every
+ *  re-run of one session aims at the SAME folder. Chrome guards a profile with
+ *  a single-process lock, and the second process does not always fail loudly:
+ *  it can hand off to the first and exit, leaving Playwright holding a context
+ *  whose browser is already gone. That is what the owner watched happen —
+ *  «Persistent profile launched … (system Chrome)» on one line and
+ *  «page.goto: Target page, context or browser has been closed» on the next.
+ *
+ *  Measured, not assumed (probe-audit-browser.js):
+ *      A  launched … still alive after 10000ms … goto OK — title="TapTwice"
+ *      B  second launch on the SAME directory
+ *         LAUNCH FAILED — Target page, context or browser has been closed
+ *
+ *  One launch on its own directory is healthy. Two on one directory is the
+ *  whole defect — the two-writers class wearing a folder.
+ */
+export function freshBrowserProfileDir(sessionId: string): string {
+    return getBrowserProfileDir(sessionId) + '-' + Date.now().toString(36);
+}
+
 export function getBrowserProfileDir(sessionId: string): string {
   const base = process.env.BROWSER_PROFILE_DIR
     || path.join(process.env.USERPROFILE || os.homedir() || '.', '.joe', 'chrome-profiles');
@@ -749,15 +772,69 @@ export async function createSession(sessionId: string) {
             );
           }
         } else {
-          // channel not installed -> retry with the bundled Chromium (dedicated profile only).
-          delete persistentOpts.channel;
-          const exe = findChromiumExecutable(); if (exe) persistentOpts.executablePath = exe;
-          const fallbackDir = real ? getBrowserProfileDir(sessionId) : profileDir;
-          if (real) fs.mkdirSync(fallbackDir, { recursive: true });
-          persistentContext = await chromium.launchPersistentContext(fallbackDir, persistentOpts);
-          usedDir = fallbackDir;
-          usedWhat = 'bundled Chromium (dedicated profile)';
+          /**
+           *  ⛔ THE OLD REPAIR RETRIED THE SAME DIRECTORY AND ASKED THE ERROR
+           *  STRING FOR PERMISSION FIRST. Both halves were wrong.
+           *
+           *  `isProfileLockError` matches ProcessSingleton / SingletonLock /
+           *  «already in use». The message Chrome actually produced here was
+           *  «Target page, context or browser has been closed» — which matches
+           *  none of them, so the lock path was never taken and the else-branch
+           *  relaunched on the very folder that had just failed, only with a
+           *  browser he never asked for. A guard that reads the SPELLING of a
+           *  failure cannot classify a failure that spells itself differently.
+           *
+           *  So the retry no longer classifies at all: whatever went wrong, a
+           *  directory is the one thing that can be replaced outright. The
+           *  channel is kept — dropping to bundled Chromium is a visible loss
+           *  (it is not his Chrome) and is now the LAST resort, not the first.
+           */
+          const fresh = freshBrowserProfileDir(sessionId);
+          fs.mkdirSync(fresh, { recursive: true });
+          try {
+            persistentContext = await chromium.launchPersistentContext(fresh, persistentOpts);
+            usedDir = fresh;
+            usedWhat += ' — on a fresh profile (the usual one was not available)';
+          } catch {
+            delete persistentOpts.channel;
+            const exe = findChromiumExecutable(); if (exe) persistentOpts.executablePath = exe;
+            const fallbackDir = freshBrowserProfileDir(sessionId);
+            fs.mkdirSync(fallbackDir, { recursive: true });
+            persistentContext = await chromium.launchPersistentContext(fallbackDir, persistentOpts);
+            usedDir = fallbackDir;
+            usedWhat = 'bundled Chromium (fresh dedicated profile)';
+          }
         }
+      }
+      /**
+       *  ⛔ A SUCCESSFUL LAUNCH IS NOT A LIVE BROWSER, AND THE LOG SAID SO.
+       *
+       *      [BrowserManager] Persistent profile launched: …4fd8edaf… (system Chrome)
+       *      required_visual_audit_not_completed: browser failed
+       *        (page.goto: Target page, context or browser has been closed)
+       *
+       *  Two lines, one run. The launch resolved and the browser behind it was
+       *  already gone — Chrome had handed the profile to the process that owned
+       *  it and exited. Everything downstream then believed it had a browser,
+       *  and the whole visual audit was skipped with a message that blamed the
+       *  navigation instead of the launch.
+       *
+       *  So the launch is asked to PROVE itself, once, by doing the smallest
+       *  real thing a live browser can do. A claim that costs one round trip to
+       *  verify is not a claim worth trusting unverified.
+       */
+      try {
+        const probe = persistentContext!.pages()[0] || await persistentContext!.newPage();
+        await probe.evaluate('1');
+      } catch (dead: any) {
+        const fresh = freshBrowserProfileDir(sessionId);
+        fs.mkdirSync(fresh, { recursive: true });
+        try { await persistentContext?.close(); } catch { }
+        persistentContext = await chromium.launchPersistentContext(fresh, persistentOpts);
+        const probe2 = persistentContext.pages()[0] || await persistentContext.newPage();
+        await probe2.evaluate('1');   // if THIS dies, the throw is the honest answer
+        usedDir = fresh;
+        usedWhat += ` — relaunched on a fresh profile (the first was dead on arrival: ${String(dead?.message || dead).slice(0, 80)})`;
       }
       try { console.log(`[BrowserManager] Persistent profile launched: ${usedDir} (${usedWhat})`); } catch { }
     } catch (e: any) {
@@ -979,9 +1056,24 @@ export async function getBrowserSession(sessionId: string) {
   if (!sid) throw new Error('sessionId_required');
   const existing = sessions.get(sid);
   if (existing) {
-    existing.lastUsedAt = Date.now();
-    ensureCleanupLoop();
-    return existing;
+    /**
+     *  ⛔ AND THE MAP REMEMBERS BROWSERS THAT ARE NO LONGER THERE.
+     *
+     *  The window can go — he closes it, Chrome exits, the profile is taken
+     *  over — while the entry stays. Every later run then reuses a corpse and
+     *  fails at the first navigation, which is exactly the shape of the audit
+     *  failure above: nothing was wrong with the CALL, the browser was gone
+     *  before it. `isClosed()` is cheap and answers the actual question.
+     */
+    let contextAlive = true;
+    try { existing.context.pages(); } catch { contextAlive = false; }
+    if (contextAlive) {
+      existing.lastUsedAt = Date.now();
+      ensureCleanupLoop();
+      return existing;
+    }
+    sessions.delete(sid);
+    try { console.log(`[BrowserManager] Dropping dead session ${sid} — its browser is gone; opening a new one.`); } catch { }
   }
   const inFlight = pendingSessions.get(sid);
   if (inFlight) return inFlight;

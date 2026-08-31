@@ -262,6 +262,22 @@ describe('the bridge tool — plan, execute phases, report honestly', () => {
         expect(src).toMatch(/require\('\.\.\/\.\.\/services\/AgentLoopService'\)/);
     });
 
+    test('routes a read-only audit to the safe pipeline before stop/run keyword paths', async () => {
+        const goal = 'You are conducting a deep, non-destructive engineering audit. Do not create, edit, delete, move, install, publish, deploy, or commit anything. Do not access external websites. You may only read project files and run read-only checks. Return the first actionable error and clear stop conditions.';
+        const plan: any = await PlanningEngine.generatePlan({ intent: { goal, complexity: 'high', riskLevel: 'medium', rawIntent: {} } as any });
+        expect(plan.steps[0].tool).toBe('project_pipeline');
+        expect(plan.metadata.matchedBy).toBe('read-only-safety-boundary');
+    });
+
+    test('read-only evidence blocks before planner and phase execution', () => {
+        const readOnlyGuard = src.indexOf('if (evidence.constraints?.readOnly === true)');
+        const planner = src.indexOf("executeTool('project_planner'");
+        expect(readOnlyGuard).toBeGreaterThan(-1);
+        expect(readOnlyGuard).toBeLessThan(planner);
+        expect(src).toMatch(/stopReason: 'read_only_request'/);
+        expect(src).toMatch(/read-only intent detected — blocking planning and execution/);
+    });
+
     test('provider preflight blocks honestly before planner when no model is healthy', () => {
         const preflight = src.indexOf('verifyProviderDirect');
         const planner = src.indexOf("executeTool('project_planner'");

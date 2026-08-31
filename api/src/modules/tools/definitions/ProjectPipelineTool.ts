@@ -989,6 +989,22 @@ export class ProjectPipelineTool implements ToolDefinition {
         }
         const evidence = discoveryResult.output.evidence;
         appendBoundedPipelineLogs(logs, discoveryResult.logs);
+        if (evidence.constraints?.readOnly === true) {
+            const summary = pick(isAr,
+                '## ⏸️ توقف آمن قبل التخطيط\n\nهذا الطلب للقراءة والتحقق فقط. لم يُخطط Joe لأي كتابة أو تثبيت أو تشغيل. حدّد مسار المشروع صراحةً لاستدعاء أداة التحليل للقراءة فقط.',
+                '## ⏸️ Safely stopped before planning\n\nThis request is read-only. Joe did not plan any write, install, or run action. Provide an explicit project path to invoke a read-only analysis tool.');
+            say('[pipeline] read-only intent detected — blocking planning and execution');
+            return {
+                ok: true,
+                output: {
+                    projectName: 'read-only-audit', completedPhases: 0, totalPhases: 0, verified: false,
+                    executionStatus: 'not_started', verificationStatus: 'not_run', deliveryStatus: 'blocked',
+                    pipelineFinal: true, stopReason: 'read_only_request', requiresUserDecision: true,
+                    evidence, summary,
+                },
+                logs,
+            };
+        }
         if (evidence.mode === 'remote_repository' || evidence.mode === 'ambiguous' || (Array.isArray(evidence.blockers) && evidence.blockers.length > 0)) {
             const details = (evidence.blockers || []).map((blocker: any) => `- ${blocker.message}${blocker.remedy ? ` (${blocker.remedy})` : ''}`).join('\n') || 'Select the project root and retry discovery.';
             const summary = pick(isAr,

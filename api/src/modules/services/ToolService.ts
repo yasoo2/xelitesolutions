@@ -808,7 +808,44 @@ export async function executeTool(name: string, input: any, context?: ToolContex
                 return await (tDef as any).execute(effectiveInput, effectiveContext);
             };
             const { workspaceService } = require('./WorkspaceService');
-            const res = contextWorkspaceId ? await workspaceService.runWithWorkspace(contextWorkspaceId, run) : await run();
+            /**
+             *  ⛔ AND SOMETHING SPEAKS WHILE IT RUNS, BECAUSE NOTHING DID.
+             *
+             *  This line read `await run()` with no deadline and no voice, and
+             *  the comment forty lines below says what that costs: the tool's
+             *  own logs are flushed only AFTER it returns, «which for a page
+             *  build means minutes of silence and then a flood».
+             *
+             *  When the tool does not return, the flood never comes. Measured
+             *  on the owner's machine: `▶ react_project` at 17:30:26, and at
+             *  18:39:55 the log count was still 271 with that same last line —
+             *  sixty-nine minutes, zero sentences, a counter ticking.
+             *
+             *  ⛔ NOT A TIMEOUT. A guessed ceiling kills legitimate long builds
+             *  and would be one more number nothing measured — 18000 was right
+             *  until the input changed. What was missing is a VOICE, and a stop
+             *  that works: the run registers here, so `/runs/stop` can find it.
+             */
+            const { attendRun, registerRun, releaseHandle } = require('../../core/session/attended-run');
+            const stopHandle = registerRun(contextSessionId, (effectiveContext as any)?.runId);
+            let res: any;
+            try {
+                res = await attendRun({
+                    work: () => (contextWorkspaceId
+                        ? workspaceService.runWithWorkspace(contextWorkspaceId, run)
+                        : run()),
+                    what: effectiveName,
+                    handle: stopHandle,
+                    say: (line: string) => {
+                        try { broadcastTerminalLine(contextSessionId, paintLine(line) + '\r\n'); } catch { /* ws optional */ }
+                    },
+                });
+            } finally {
+                //  ITS handle, not the key: a sibling tool in the same
+                //  `Promise.all` batch shares this sessionId and is still
+                //  running.
+                releaseHandle(stopHandle, contextSessionId, (effectiveContext as any)?.runId);
+            }
             let ok = !!res?.ok;
             const output = res?.output ?? null;
             const artifacts = Array.isArray(res?.artifacts) ? res.artifacts : undefined;

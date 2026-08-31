@@ -1327,6 +1327,7 @@ const TEMPLATE_FILLER = new Set(['Features', 'Steps', 'Stats', 'Team', 'Testimon
 //  class this repository keeps paying for — so there is one rule now, and both
 //  import it.
 import { sectionNameFor } from '../../../core/design/section-name';
+import { journal } from '../../../core/quality/run-journal';
 export { sectionNameFor };
 
 export function sectionsForRequest(request: string, kind: PageKind): string[] {
@@ -3350,6 +3351,24 @@ export class ReactProjectTool extends BaseTool {
             try {
                 broadcastTerminalLine(sessionId, line + '\r\n');
             } catch { /* UI optional */ }
+            /**
+             *  ⛔ AND IT IS WRITTEN DOWN, BECAUSE A PANEL IS NOT A RECORD.
+             *
+             *  Measured on his machine: the panel showed «Logs 99+» while the
+             *  build ran, and two events survived it — the request and the
+             *  final sentence. Every decision in between was broadcast to a
+             *  live socket and then gone.
+             *
+             *  So when his build answered a request for a counter and three
+             *  buttons with Hero · Features · Faq · Cta, **the line naming the
+             *  gate that threw them away had already scrolled into nothing** —
+             *  and every explanation after that was a guess. A number without
+             *  its input is not a measurement, and this is where the input was
+             *  being lost.
+             *
+             *  See `run-journal.ts`: a file per run, never able to fail a build.
+             */
+            try { journal(sessionId, line); } catch { /* never the reason a build fails */ }
         };
 
         /**
@@ -5747,8 +5766,49 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                             return rb.ok === true;
                         },
                         repair: async (round: number, _ids: string[], findings: any[]) => {
+                            //  Hoisted above the first read: `severeFirst` needs
+                            //  `handlerRepairable` before the deterministic round
+                            //  is allowed to end the round on a colour tweak.
+                            const {
+                                askForCss, askForHandler, handlerRepairable, fileForBehaviour,
+                            } = require('../../../core/quality/model-round');
                             const known = await repairRound(proj, round, { isArabic: isAr, findings });
-                            if (known.changed.length) return known.changed;
+                            /**
+                             *  ⛔ A COSMETIC FIX USED TO END THE ROUND, AND THE
+                             *  DEAD BUTTON NEVER GOT PAST IT.
+                             *
+                             *  This read `if (known.changed.length) return
+                             *  known.changed;` — so as long as the deterministic
+                             *  repairer could find ONE contrast tweak or one tap
+                             *  target, the round was over and the behaviour road
+                             *  below was never reached.
+                             *
+                             *  The owner watched the consequence four rounds
+                             *  running, in his own browser:
+                             *
+                             *      improve: round 1 — 71 → 74/100 · gone: mobile_tap_targets
+                             *      improve: round 2/4 — 74/100, still open:
+                             *        dead_anchors, dead_controls, spacing_drift
+                             *      … dead_controls still open at the end
+                             *
+                             *  **The most severe thing the browser can find was
+                             *  queued behind the least severe thing it can fix**,
+                             *  and style findings never run out — there is always
+                             *  another eight pixels somewhere. The road built for
+                             *  `dead_controls` was correct code on a path nothing
+                             *  executes, which is this repository's Category 4,
+                             *  in the repair for Category 4.
+                             *
+                             *  So a behaviour defect is asked FIRST when one is
+                             *  open, and the deterministic changes ride along in
+                             *  the same round rather than replacing it. A round
+                             *  that repairs both is still one rebuild and one
+                             *  measurement — the loop's own rollback still judges
+                             *  the pair together, so nothing about the safety
+                             *  changes.
+                             */
+                            const severeFirst = handlerRepairable(lastAudit?.findings || []).length > 0;
+                            if (known.changed.length && !severeFirst) return known.changed;
                             /**
                              * THE CEILING OF EIGHT, LIFTED.
                              *
@@ -5763,7 +5823,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                              * is a round like any other; a round it loses is
                              * rolled back by the same rule.
                              */
-                            if (String(process.env.JOE_MODEL_ROUND || '1') === '0') return [];
+                            if (String(process.env.JOE_MODEL_ROUND || '1') === '0') return known.changed;
                             /**
                              *  ⛔ AND A BUTTON THAT DOES NOTHING IS NOT A
                              *  COLOUR PROBLEM — «وعندما يكتشف هذه الاختبارات
@@ -5789,9 +5849,6 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                              *  pressing the button again. It is allowed to be
                              *  wrong; it is not allowed to be believed.
                              */
-                            const {
-                                askForCss, askForHandler, handlerRepairable, fileForBehaviour,
-                            } = require('../../../core/quality/model-round');
                             const behaviourLeft = handlerRepairable(lastAudit?.findings || []);
                             if (behaviourLeft.length) {
                                 const srcDir = path.join(proj, 'src');
@@ -5820,7 +5877,11 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                                         try {
                                             fs.writeFileSync(path.join(proj, pick.file), fixed.source, 'utf-8');
                                             term(`improve: the model rewrote ${pick.file} to make ${pick.labels.slice(0, 3).join(', ') || 'the controls'} do something — the next measurement presses them again and decides whether it stays`);
-                                            return [pick.file];
+                                            //  Both, not either: the style fixes this round already
+                                            //  wrote are real and must be measured with it, or a
+                                            //  behaviour repair silently discards them from the
+                                            //  round's ledger and the rollback judges the wrong set.
+                                            return [...known.changed, pick.file];
                                         } catch (e: any) {
                                             term(`improve: could not write the repaired component (${String(e?.message || e).slice(0, 100)})`);
                                         }

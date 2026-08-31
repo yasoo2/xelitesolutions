@@ -38,6 +38,12 @@ const inert = (over: Partial<Parameters<typeof improveUntilItStops>[1]> = {}) =>
     ...over,
 });
 
+/** The repair callback only — the claim is about that round, not the file. */
+const REPAIR = (() => {
+    const at = REACT.indexOf('repair: async (round: number');
+    return at < 0 ? REACT : REACT.slice(at, REACT.indexOf('rebuild: async ()', at));
+})();
+
 describe('every round must be different from the last', () => {
     it('the tap-target rule escalates 44 → 48 → 56', () => {
         const r1 = repairTapTargets('.btn{}', 1);
@@ -302,7 +308,22 @@ describe('the model round is contained, not trusted', () => {
     });
 
     it('it runs only after the deterministic repairer has nothing left', () => {
-        expect(REACT).toMatch(/if \(known\.changed\.length\) return known\.changed;/);
+        //  ⛔ THIS PINNED THE LINE THAT MADE THE BEHAVIOUR ROAD UNREACHABLE.
+        //
+        //  `if (known.changed.length) return known.changed;` ended the round
+        //  on ANY deterministic change — and style findings never run out,
+        //  so a dead control was permanently queued behind an eight-pixel
+        //  tap target. The owner watched `dead_controls` stay open through
+        //  four rounds while the score climbed 71 -> 74.
+        //
+        //  The claim this test makes is «the model round runs only after the
+        //  deterministic repairer has nothing left» — and that is still
+        //  true, with one measured exception: a BEHAVIOUR defect, which no
+        //  deterministic repairer can fix at all. So the early return is
+        //  asserted together with the exception that makes it honest.
+        expect(REPAIR).toMatch(/if \(known\.changed\.length && !severeFirst\) return known\.changed;/);
+        expect(REPAIR).toContain('const severeFirst = handlerRepairable(');
+
     });
 
     it('it may only append to a stylesheet, and can be switched off', () => {

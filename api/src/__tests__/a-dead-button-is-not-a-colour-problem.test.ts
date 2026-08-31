@@ -404,7 +404,12 @@ describe('the road is wired into the loop that measures', () => {
         //  Writing the file without returning it would be a repair nothing
         //  checked — «find, fix» with the «then test» missing, which is the
         //  half of his sentence this whole change is about.
-        expect(REACT).toContain('return [pick.file];');
+        //  ⛔ THIS PINNED `return [pick.file];` AND WENT RED WHEN THE ROUND
+        //  LEARNED TO CARRY BOTH SETS OF CHANGES — an improvement, called a
+        //  failure by my own guard. The claim is «the repaired file reaches the
+        //  loop», not the spelling of the array around it.
+        expect(REACT).toContain('pick.file]');
+        expect(REACT).toContain('...known.changed, pick.file');
         expect(REACT).toMatch(/fs\.writeFileSync\(path\.join\(proj, pick\.file\), fixed\.source, 'utf-8'\)/);
     });
 
@@ -413,5 +418,74 @@ describe('the road is wired into the loop that measures', () => {
         //  had pasted a real key. A new call that repeats it is the same defect
         //  with a new name.
         expect(REACT).toContain('{ timeoutMs: 90_000, context },');
+    });
+});
+
+/**
+ * ⛔ AND THE ROAD WAS UNREACHABLE FOR AS LONG AS IT HAS EXISTED.
+ *
+ * The owner watched this four rounds running, in his own browser:
+ *
+ *     improve: round 1 — 71 → 74/100 · gone: mobile_tap_targets
+ *     improve: round 2/4 — 74/100, still open: dead_anchors, dead_controls,
+ *       spacing_drift
+ *     … dead_controls still open when the loop stopped
+ *
+ * The repair callback opened with:
+ *
+ *     const known = await repairRound(…);
+ *     if (known.changed.length) return known.changed;   ← round over
+ *     …                                                  ← behaviour road, here
+ *
+ * **So one contrast tweak ended the round, and the dead button waited.** Style
+ * findings never run out — there is always another eight pixels somewhere — so
+ * the most severe thing the browser can find was permanently queued behind the
+ * least severe thing it can fix.
+ *
+ * Category 4, in the repair for Category 4: correct code on a path nothing
+ * executes. Guards green, road never taken, and the only instrument that could
+ * see it was the owner watching his own screen.
+ */
+describe('a dead control is asked before a colour is', () => {
+    const REPAIR = (() => {
+        const at = REACT.indexOf('repair: async (round: number');
+        return REACT.slice(at, REACT.indexOf('rebuild: async ()', at));
+    })();
+
+    it('⛔ POSITIVE — a behaviour defect stops the deterministic early return', () => {
+        //  The one line that made the road reachable.
+        expect(REPAIR).toContain('const severeFirst = handlerRepairable(lastAudit?.findings || []).length > 0;');
+        expect(REPAIR).toContain('if (known.changed.length && !severeFirst) return known.changed;');
+    });
+
+    it('⛔ POSITIVE — and the check comes BEFORE the early return, not after', () => {
+        //  Order is the whole claim. Computed after it, the guard would be a
+        //  comment: the function has already returned.
+        const severeAt = REPAIR.indexOf('const severeFirst =');
+        const returnAt = REPAIR.indexOf('if (known.changed.length && !severeFirst)');
+        expect(severeAt).toBeGreaterThan(0);
+        expect(severeAt).toBeLessThan(returnAt);
+    });
+
+    it('⛔ NEGATIVE — with no behaviour defect, the old economy is untouched', () => {
+        //  A round that fixed contrast and nothing else must still end there.
+        //  Paying for a model call on every cosmetic round is the waste the
+        //  early return exists to prevent, and it is kept.
+        expect(REPAIR).toContain('&& !severeFirst');
+        expect(REPAIR).not.toContain('if (known.changed.length) return known.changed;');
+    });
+
+    it('⛔ NEGATIVE — a round that repairs both reports BOTH', () => {
+        //  The style fixes already written this round are real. Returning only
+        //  the authored file would drop them from the round's ledger, and the
+        //  rollback would then judge a different set of changes than the one on
+        //  disk — a repair that measures something it did not do.
+        expect(REPAIR).toContain('return [...known.changed, pick.file];');
+    });
+
+    it('⛔ NEGATIVE — and when the model round is switched off, style still counts', () => {
+        //  `JOE_MODEL_ROUND=0` used to return an empty array, discarding the
+        //  deterministic changes of that round along with the model's.
+        expect(REPAIR).toContain("if (String(process.env.JOE_MODEL_ROUND || '1') === '0') return known.changed;");
     });
 });

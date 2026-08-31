@@ -831,8 +831,14 @@ export function classifyStructuredRuntimeEvidence(
 function fileFailureEvidence(toolName: string, args: Record<string, any>, projectContext?: Record<string, any>): Record<string, string> {
     const cwd = rebaseStaleRuntimeEvidencePath(args?.cwd ?? args?.projectPath, projectContext);
     const evidence: Record<string, string> = cwd ? { cwd: cwd.slice(0, 1000) } : {};
+    const explicitRepairFile = rebaseStaleRuntimeEvidencePath(args?.repairFile, projectContext);
     const fileTools = new Set(['write_file', 'ai_write_file', 'file_edit', 'file_edit_advanced', 'auto_tester']);
-    if (!fileTools.has(toolName)) return evidence;
+    if (!fileTools.has(toolName)) {
+        return {
+            ...evidence,
+            ...(explicitRepairFile ? { repairFile: explicitRepairFile.slice(0, 1000) } : {}),
+        };
+    }
     const file = rebaseStaleRuntimeEvidencePath(
         args?.filename ?? args?.filePath ?? args?.path ?? args?.targetPath
         ?? (Array.isArray(args?.files) ? args.files[0] : ''),
@@ -849,6 +855,7 @@ function fileFailureEvidence(toolName: string, args: Record<string, any>, projec
     return {
         ...evidence,
         ...(file ? { file: file.slice(0, 1000) } : {}),
+        ...(explicitRepairFile ? { repairFile: explicitRepairFile.slice(0, 1000) } : {}),
         ...(find ? { find: find.slice(0, 4000) } : {}),
         ...(replace ? { replace: replace.slice(0, 4000) } : {}),
         ...(description ? { description } : {}),

@@ -178,9 +178,11 @@ export class RepairTicketService {
         const repairKind = t?.repairKind === 'regenerate_engine' || t?.repairKind === 'code_fix'
           ? t.repairKind
           : undefined;
-        const repairFile = repairKind === 'code_fix' && typeof t?.repairFile === 'string'
+        const repairFile = typeof t?.repairFile === 'string'
           ? t.repairFile
-          : undefined;
+          : typeof rawArgs.repairFile === 'string'
+            ? rawArgs.repairFile
+            : undefined;
         const acceptanceUnmet = Array.isArray(t?.acceptanceUnmet)
           ? t.acceptanceUnmet
             .map((id: unknown) => String(id || '').trim())

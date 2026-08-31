@@ -5,7 +5,7 @@ import { normalizeIntentText, stripArabicDiacritics, foldChars } from './promptN
 import { compactHistoryForPrompt } from './history-compact';
 import { enrichWorkspaceToolInput } from './workspace-evidence';
 import { findActiveBuiltProject } from './active-built-project';
-import { looksLikeBuild } from './buildIntent';
+import { isReadOnlyRequest, looksLikeBuild } from './buildIntent';
 import { saysAny } from '../language/arabic';
 
 export interface ExecutionStep {
@@ -605,6 +605,27 @@ Rules:
         const probe = goalNorm && goalNorm !== userGoal.toLowerCase()
             ? `${userGoal}\n${goalNorm}` : userGoal;
         const goalLower = probe.toLowerCase();
+
+        // A read-only audit is a safety boundary, not a generic keyword route.
+        // Handle it before run/stop/build fast-paths so words such as "stop
+        // conditions" cannot be mistaken for an instruction to stop a server.
+        // The pipeline performs discovery through ToolService, then halts before
+        // planning or mutation when the evidence carries the same constraint.
+        if (isReadOnlyRequest(userGoal)) {
+            return {
+                id: `read_only_audit_${Date.now()}`,
+                goal: intent.goal,
+                steps: [{
+                    id: 'read_only_audit',
+                    description: 'استكشاف قراءة فقط دون تخطيط أو تعديل أو تشغيل',
+                    tool: 'project_pipeline',
+                    agent: 'Dev',
+                    input: { request: intent.goal },
+                    dependsOn: [],
+                }],
+                metadata: { complexity: 'medium', riskLevel: 'low', matchedBy: 'read-only-safety-boundary' },
+            };
+        }
 
         /**
          * [PROJECT QUALITY REVIEW FAST-PATH] A review of the delivered result is

@@ -14,6 +14,22 @@
 import { stripArabicDiacritics, foldChars } from './promptNormalizer';
 import { derivedColumns, columnsAnywhereInHisRequest } from '../design/app-blueprints';
 
+/**
+ * Read-only is a safety boundary, not a weaker form of build intent.
+ * Long audit prompts often mention "build" while explicitly forbidding it.
+ */
+export function isReadOnlyRequest(goalRaw: string): boolean {
+    const text = stripArabicDiacritics(String(goalRaw || '')).replace(/\s+/g, ' ').trim();
+    if (!text) return false;
+
+    const readOnlySignal = /\b(?:read[-\s]?only|readonly|only\s+(?:read|inspect|analy[sz]e|review|verify)|without\s+(?:changing|modifying|writing|creating|editing)|no\s+(?:file\s+)?(?:changes?|writes?|modifications?))\b/i.test(text)
+        || /(?:قراءة\s+فقط|للقراءة\s+فقط|بدون\s+(?:تعديل|كتابة|إنشاء|تغيير|حذف))/i.test(text);
+    const prohibitedMutation = /\b(?:do\s+not|don't|never)\b(?:\s+\w+){0,3}\s+\b(?:create|edit|delete|move|install|commit|write|modify|change|build|start|run)\b/i.test(text)
+        || /(?:لا|بدون|عدم)\s+(?:أن\s+)?(?:تنشئ|تعدل|تحذف|تنقل|تثبت|تنشر|تكتب|تبني|تشغل|تغير)/i.test(text);
+
+    return readOnlySignal && prohibitedMutation;
+}
+
 export function looksLikeBuild(goalRaw: string): boolean {
     const g = String(goalRaw || '');
     /**
