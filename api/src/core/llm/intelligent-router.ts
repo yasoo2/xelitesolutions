@@ -2189,11 +2189,14 @@ export async function routeToModel(
         }
         attemptedProvidersThisCall.add(p.name);
         try {
-            if (p.name === 'Local (Auto)' && isLocalBrainOpen()) {
+            if (p.name === 'Local (Auto)' && isLocalBrainOpen() && !autoLocalPreferred) {
                 const left = Math.max(1, Math.round((localCircuitUntil - Date.now()) / 1000));
                 console.info(`[IntelligentRouter] ⏭️ skipping the local brain (paused ${left}s more) — going straight to the mesh.`);
                 recordProviderAttempt(p.name, false, `skipped: local circuit paused for ${left}s`);
                 continue;
+            }
+            if (p.name === 'Local (Auto)' && isLocalBrainOpen() && autoLocalPreferred) {
+                console.info('[IntelligentRouter] 🧭 Auto selection keeps Ollama in front despite a transient local breaker pause.');
             }
             console.info(`[IntelligentRouter] 🔄 Attempting provider: ${p.name}...`);
 
@@ -2251,7 +2254,14 @@ export async function routeToModel(
                     // times that (floor 25s, ceiling 90s) is a leash the
                     // hardware can actually meet.
                     const { localWarmupMs } = require('./local-brain');
-                    timeoutValue = Math.min(timeoutValue, internalLeashMs(Number(localWarmupMs?.() || 0)));
+                    const measuredLeash = internalLeashMs(Number(localWarmupMs?.() || 0));
+                    // Auto is an explicit local-first choice. Planning prompts
+                    // are much larger than the warm-up token, so do not let the
+                    // generic 30s internal leash eject Ollama before it can
+                    // produce a real plan. The normal circuit breaker still
+                    // protects non-Auto routes from repeated slow failures.
+                    const autoPlanningLeash = Math.min(LOCAL_LEASH_MAX_MS, Math.max(measuredLeash, 90_000));
+                    timeoutValue = Math.min(timeoutValue, autoLocalPreferred ? autoPlanningLeash : measuredLeash);
                 }
             }
             if (p.name === 'LLM7 (Keyless)' || p.name === 'DuckAI (Keyless)') {

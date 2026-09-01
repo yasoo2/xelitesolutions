@@ -9,7 +9,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
+import { PlanningEngine, extractExactEchoRequest } from '../core/orchestrator/PlanningEngine';
 import {
     applyLiveRunOutcome,
     applyProjectQualityContractOutcome,
@@ -23,6 +23,7 @@ import {
     planContainsReactBuilder,
     planContainsUnrequestedApiBuilder,
     buildPipelineDecisionEvidence,
+    requestRequiresLocalSpecification,
 } from '../modules/tools/definitions/ProjectPipelineTool';
 import { applyPhaseExecutionEvidence } from '../modules/tools/definitions/PhaseExecutorTool';
 
@@ -96,6 +97,16 @@ describe('routing — full-project requests reach the pipeline, offline and dete
         const wrapped = buildPlannerEvidence({ mode: 'greenfield', output: { evidence: { referenceProjects } } });
         expect(wrapped.referenceProjects).toBe(referenceProjects);
         expect(wrapped.mode).toBe('greenfield');
+    });
+
+    test('greenfield planner handoff does not send an unrelated workspace catalogue', () => {
+        const referenceProjects = [{ root: '/workspace/unrelated-app', projectKinds: ['node'] }];
+        const plannerEvidence = buildPlannerEvidence({
+            mode: 'greenfield',
+            referenceProjects,
+            constraints: { createsNewProject: true },
+        });
+        expect(plannerEvidence.referenceProjects).toEqual([]);
     });
 
     test('planner failure cannot turn a multi-phase contract brief into a generic scaffold rescue', () => {
@@ -242,6 +253,30 @@ describe('routing — full-project requests reach the pipeline, offline and dete
     test('the project path outranks the page path — «تطبيق متكامل» must not become one HTML file', async () => {
         const p = await plan('اعمل لي تطبيق متكامل مع قاعدة بيانات للمواعيد');
         expect(p.steps[0].tool).toBe('project_pipeline');
+    });
+});
+
+describe('routing — exact response contracts stay deterministic', () => {
+    test('extracts the requested literal without invoking a planner', () => {
+        expect(extractExactEchoRequest('Reply with exactly OLLAMA-AUTO-OK and nothing else.')).toBe('OLLAMA-AUTO-OK');
+        expect(extractExactEchoRequest('Reply with exactly "READY" and nothing else')).toBe('READY');
+        expect(extractExactEchoRequest('Explain why the build failed.')).toBeNull();
+    });
+
+    test('routes an exact response to echo', async () => {
+        const goal = 'Reply with exactly OLLAMA-AUTO-OK and nothing else.';
+        const p = await PlanningEngine.generatePlan({ intent: { goal, complexity: 'low', riskLevel: 'low', rawIntent: {} } as any });
+        expect(p.steps).toHaveLength(1);
+        expect(p.steps[0].tool).toBe('echo');
+        expect((p.steps[0].input as any).text).toBe('OLLAMA-AUTO-OK');
+    });
+});
+
+describe('specification intent detection', () => {
+    test('does not confuse ordinary file read-back instructions with a local specification request', () => {
+        expect(requestRequiresLocalSpecification('Create a file, read the file back, then rename it.')).toBe(false);
+        expect(requestRequiresLocalSpecification('Read the local specification then implement it.')).toBe(true);
+        expect(requestRequiresLocalSpecification('Read NEXUS_SPECIFICATION.md and implement it.')).toBe(true);
     });
 });
 

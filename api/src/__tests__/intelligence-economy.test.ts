@@ -46,6 +46,10 @@ describe('the router understands internal vs answer', () => {
         expect(src).toMatch(/const autoLocalPreferred = .*provider.*=== 'auto'.*hasLocal/);
         expect(src).toMatch(/&& !autoLocalPreferred\)/);
         expect(src).toContain('LOCAL_BRAIN_FIRST || autoLocalPreferred');
+        expect(src).toContain("isLocalBrainOpen() && !autoLocalPreferred");
+        expect(src).toContain('Auto selection keeps Ollama in front despite a transient local breaker pause');
+        expect(src).toContain('Math.max(measuredLeash, 90_000)');
+        expect(src).toContain('autoLocalPreferred ? autoPlanningLeash : measuredLeash');
     });
 
     it('039 records every provider attempt and reserves Ollama before keyless Offline fallbacks', () => {
@@ -191,7 +195,8 @@ describe('internal calls never wait the full local window', () => {
         const src = read('core', 'llm', 'intelligent-router.ts');
         expect(src).toContain('if (internalCall) {');
         expect(src).toMatch(/localWarmupMs/);
-        expect(src).toMatch(/timeoutValue = Math\.min\(timeoutValue, internalLeashMs\(/);
+        expect(src).toContain('const measuredLeash = internalLeashMs');
+        expect(src).toContain('const autoPlanningLeash');
     });
     it('the leash is sized by a REAL measurement of this machine', () => {
         const brain = read('core', 'llm', 'local-brain.ts');
@@ -223,7 +228,7 @@ describe('internal calls never wait the full local window', () => {
     it('the leash lives INSIDE the Local (Auto) branch — cloud timeouts untouched', () => {
         const src = read('core', 'llm', 'intelligent-router.ts');
         const local = src.indexOf("p.name === 'Local (Auto)'", src.indexOf('for (const p of orderedProviders)'));
-        const leash = src.indexOf('timeoutValue = Math.min(timeoutValue, internalLeashMs(');
+        const leash = src.indexOf('const measuredLeash = internalLeashMs');
         const keyless = src.indexOf("if (p.name === 'LLM7 (Keyless)' || p.name === 'DuckAI (Keyless)')", local);
         expect(local).toBeGreaterThan(0);
         expect(leash).toBeGreaterThan(local);

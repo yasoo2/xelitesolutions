@@ -38,6 +38,15 @@ export function isLikelyUrl(value: string): boolean {
     return /^([A-Za-z0-9-]+\.)+[A-Za-z]{2,}$/.test(host);
 }
 
+/** Extract a deliberately exact response request before any model planning. */
+export function extractExactEchoRequest(goal: string): string | null {
+    const raw = String(goal || '').trim();
+    const match = raw.match(/^(?:reply|respond|answer)\s+with\s+exactly\s+(.+?)\s+and\s+nothing\s+else\.?$/i);
+    if (!match) return null;
+    const value = match[1].trim().replace(/^(["'`])([\s\S]*)\1$/, '$2').trim();
+    return value && value.length <= 240 ? value : null;
+}
+
 /**
  * HIS SITE'S INBOX — SAID SO PLAINLY THAT GMAIL MUST NOT ANSWER.
  *
@@ -605,6 +614,26 @@ Rules:
         const probe = goalNorm && goalNorm !== userGoal.toLowerCase()
             ? `${userGoal}\n${goalNorm}` : userGoal;
         const goalLower = probe.toLowerCase();
+
+        // Exact-response requests are complete without a planner or a second
+        // model call. Keeping this before every semantic route prevents a weak
+        // provider from turning a one-line contract into an invented build task.
+        const exactEcho = extractExactEchoRequest(userGoal);
+        if (exactEcho) {
+            return {
+                id: `echo_${Date.now()}`,
+                goal: intent.goal,
+                steps: [{
+                    id: 'exact_response',
+                    description: `Return exactly: ${exactEcho}`,
+                    tool: 'echo',
+                    agent: 'General',
+                    input: { text: exactEcho },
+                    dependsOn: [],
+                }],
+                metadata: { complexity: 'low', riskLevel: 'low', matchedBy: 'exact-response' },
+            };
+        }
 
         // A read-only audit is a safety boundary, not a generic keyword route.
         // Handle it before run/stop/build fast-paths so words such as "stop

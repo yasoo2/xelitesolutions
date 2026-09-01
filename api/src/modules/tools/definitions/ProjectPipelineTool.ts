@@ -170,6 +170,11 @@ function appendBoundedPipelineLogs(logs: string[], values: unknown): void {
     for (const value of values) appendBoundedPipelineLog(logs, value);
 }
 
+/** Only an explicit requirements/specification reference binds planning to a local source file. */
+export function requestRequiresLocalSpecification(request: string): boolean {
+    return /(?:اقرأ|قراءة)\s*(?:ال)?(?:مواصف(?:ة|ات)?|متطلبات|ملف\s+(?:المواصف|المتطلبات))|(?:read|inspect|review)\s+(?:(?:the|a|local|attached)\s+)*(?:spec(?:ification)?|requirements?|brief|prd|document)\b|(?:read|inspect|review)\s+(?:(?:the|a|local|attached)\s+)*[^\s"'`]+(?:spec|require|brief|prd)[^\s"'`]*/i.test(String(request || ''));
+}
+
 /**
  * Keep bounded scope-repair failures actionable. The UI report intentionally
  * stays concise, but the pipeline log must retain enough structured evidence
@@ -531,7 +536,14 @@ export function buildPlannerEvidence(evidence: any, specificationSources: any[] 
         evidence?.discovery?.referenceProjects,
         evidence?.discovery?.evidence?.referenceProjects,
     ].find(Array.isArray);
-    const referenceProjects = directReferences || wrappedReferences || [];
+    // A greenfield request has no existing project to inspect. Sending the
+    // entire workspace catalogue (417 projects in the live audit) only bloats
+    // the local planning prompt and can starve Ollama of time to produce the
+    // actual plan. Keep the catalogue for existing-project work, where it is
+    // evidence, but omit it from a new-project planning handoff.
+    const referenceProjects = evidence?.constraints?.createsNewProject === true
+        ? []
+        : directReferences || wrappedReferences || [];
     return {
         ...(evidence || {}),
         referenceProjects,
@@ -2186,7 +2198,7 @@ export class ProjectPipelineTool implements ToolDefinition {
      * own read_file tool.  The planner receives the complete text or nothing.
      */
     private async readRequestedSpecifications(request: string, evidence: any, context: any, logs: string[], say: (message: string) => void, isAr: boolean): Promise<{ content: string; sources: Array<{ path: string; lineCount: number }>; error?: string }> {
-        const asksToRead = /(?:اقرأ|قراءة|read|inspect|review)\s*(?:ال|a|the)?\s*(?:مواصف|spec(?:ification)?|requirements?|brief|document|ملف|file)|(?:مواصف|spec(?:ification)?|requirements?|brief)\s+(?:المحلي|local|المرفق|attached)/i.test(request);
+        const asksToRead = requestRequiresLocalSpecification(request);
         const asksToExecute = /(?:نف[ّذذ]|ابن|طو[ّو]ر|طبق|execute|implement|build|develop|create|run)/i.test(request);
         if (!asksToRead || !asksToExecute) return { content: '', sources: [] };
 
