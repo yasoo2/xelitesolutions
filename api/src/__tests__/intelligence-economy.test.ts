@@ -41,6 +41,13 @@ describe('the router understands internal vs answer', () => {
         expect(router()).toContain('if (hasFastCloud && !internalCall)');
     });
 
+    it('Auto selection keeps Ollama ahead of a cloud happy path and fallback mesh', () => {
+        const src = router();
+        expect(src).toMatch(/const autoLocalPreferred = .*provider.*=== 'auto'.*hasLocal/);
+        expect(src).toMatch(/&& !autoLocalPreferred\)/);
+        expect(src).toContain('LOCAL_BRAIN_FIRST || autoLocalPreferred');
+    });
+
     it('039 records every provider attempt and reserves Ollama before keyless Offline fallbacks', () => {
         const src = router();
         expect(src).toContain('export interface ProviderAttempt');

@@ -1751,6 +1751,10 @@ export async function routeToModel(
     const hasLocal =
         localProvider.isConfigured() &&
         String(process.env.LOCAL_LLM_DISABLE || '').trim() !== '1';
+    // Selecting Auto means local Ollama is the preferred brain whenever it is
+    // configured. Keep cloud/keyless providers available as fallbacks, but do
+    // not let the model selector or a cloud happy path silently win first.
+    const autoLocalPreferred = String(context?.modelConfig?.provider || '').trim().toLowerCase() === 'auto' && hasLocal;
     const localStrict = String(process.env.LOCAL_LLM_STRICT || '').trim() === '1';
 
     // ============================================================================
@@ -2035,7 +2039,7 @@ export async function routeToModel(
         // [INTELLIGENCE ECONOMY] Internal reasoning never takes the Groq happy
         // path while the local brain runs — the mesh (Local first) handles it.
         if (selectedModel.provider === 'groq' && hasGroqKey && !isProviderCoolingDown('Groq (Free)')
-            && !(internalCall && isLocalBrainReady())) {
+            && !(internalCall && isLocalBrainReady()) && !autoLocalPreferred) {
             // Groq is fast, but let's give it 15s
             const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 15000));
             const rawAns = await Promise.race([callGroq(selectedModel.model, effectiveMessages, onPartial, tools), timeoutPromise]) as string;
@@ -2094,11 +2098,11 @@ export async function routeToModel(
             );
             // OpenAI/Groq/Gemini and other configured providers remain ahead;
             // Ollama is inserted immediately before keyless/offline gateways.
-            if (LOCAL_BRAIN_FIRST) {
+            if (LOCAL_BRAIN_FIRST || autoLocalPreferred) {
                 //  His machine, his brain, his choice. Everything else becomes
                 //  the fallback rather than the default.
                 meshProviders.unshift(local);
-                console.info('[IntelligentRouter] 🧭 LOCAL_BRAIN_FIRST — Ollama/Local (Auto) leads; the mesh is the fallback.');
+                console.info(`[IntelligentRouter] 🧭 ${autoLocalPreferred ? 'Auto selection' : 'LOCAL_BRAIN_FIRST'} — Ollama/Local (Auto) leads; the mesh is the fallback.`);
             } else {
                 meshProviders.splice(firstKeyless >= 0 ? firstKeyless : meshProviders.length, 0, local);
                 console.info('[IntelligentRouter] 🧭 Ollama/Local (Auto) is reserved before keyless and Offline fallbacks.');
