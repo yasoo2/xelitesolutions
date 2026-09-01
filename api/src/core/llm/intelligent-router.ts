@@ -1479,12 +1479,15 @@ export async function routeToModel(
           const quotaPausedUntil = customRouteCooldownUntil.get(routeKey) || 0;
           if (failedCustomRoutes.has(routeKey)) {
             console.log(`[IntelligentRouter] Skipping known-bad custom route ${cfgProvider}/${cfgModel} (previously failed auth/config) - using FREE providers.`);
-          } else if (internalCall && isLocalBrainReady()) {
-            // [INTELLIGENCE ECONOMY] Internal reasoning — intent parsing,
-            // planning, tool selection, narration — never spends the user's
-            // daily quota when a local brain is running. The custom (Groq)
-            // route is reserved for the ANSWER the user actually reads.
-            console.log('[IntelligentRouter] 💰 internal reasoning → local brain first (daily quota reserved for the final answer)');
+          } else if (internalCall && isLocalBrainReady() && !engineeringPipeline) {
+            // [INTELLIGENCE ECONOMY] Ordinary hidden helpers (intent parsing,
+            // narration, and lightweight tool selection) may use the local
+            // brain to conserve a paid provider. An engineering pipeline is
+            // different: when the user explicitly selected a provider, its
+            // planning, authoring, verification, and repair calls must all use
+            // that provider. Otherwise the provider button lies about the
+            // brain that actually built the artifact.
+            console.log('[IntelligentRouter] 💰 ordinary internal reasoning → local brain first (engineering provider selection remains authoritative)');
           } else if (quotaPausedUntil > Date.now()) {
             const mins = Math.max(1, Math.ceil((quotaPausedUntil - Date.now()) / 60_000));
             console.log(`[IntelligentRouter] 💰 custom route ${cfgProvider}/${cfgModel} quota-paused ~${mins}min (429 said so) — using free/local mesh meanwhile.`);

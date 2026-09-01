@@ -22,6 +22,13 @@ jest.mock('../modules/tools/definitions/AIGeneratorTool', () => ({
 const { ReactProjectTool } = require('../modules/tools/definitions/ReactProjectTool');
 
 describe('React domain authoring preserves provider outages for orchestration recovery', () => {
+    it('keeps the provider fallback inside the canonical engineering path', () => {
+        const source = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ReactProjectTool.ts'), 'utf8');
+        expect(source).toMatch(/context\?\.engineeringPipeline\s*===\s*true/);
+        expect(source).toContain('request_derived_engine');
+        expect(source).toContain('same QA gates');
+    });
+
     it('returns the stable provider failure instead of domain_generation_failed', async () => {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-domain-provider-'));
         try {
@@ -29,7 +36,7 @@ describe('React domain authoring preserves provider outages for orchestration re
                 request: 'Build a React weather application called WeatherGo with live forecasts.',
                 skipInstall: true,
                 root,
-            }, { sessionId: 'domain-provider-failure-test' });
+            }, { sessionId: 'domain-provider-failure-test', allowModelAuthoringInTest: true });
 
             expect(result.ok).toBe(false);
             expect(result.error).toMatch(/^⚠️ تعذّر الوصول إلى محرّك الذكاء/);
@@ -49,7 +56,7 @@ describe('React domain authoring preserves provider outages for orchestration re
                 request: 'PRESERVE_EVIDENCE: Build a React weather application called WeatherGo.',
                 skipInstall: true,
                 root,
-            }, { sessionId: 'domain-evidence-failure-test' });
+            }, { sessionId: 'domain-evidence-failure-test', allowModelAuthoringInTest: true });
 
             expect(result.ok).toBe(false);
             expect(result.error).toMatch(/^unresolved_local_import:/);
@@ -62,6 +69,7 @@ describe('React domain authoring preserves provider outages for orchestration re
             fs.rmSync(root, { recursive: true, force: true });
         }
     }, 120000);
+
 });
 
 export {};

@@ -117,6 +117,17 @@ describe('the provider he chose is the provider that builds', () => {
         expect(router).toContain('if (context?.modelConfig) {');
     });
 
+    it('POSITIVE — an explicit provider remains authoritative across engineering calls', () => {
+        const router = fs.readFileSync(
+            path.join(__dirname, '..', 'core', 'llm', 'intelligent-router.ts'),
+            'utf-8',
+        );
+        // Local-first is correct for hidden helper calls, but it must never
+        // replace the provider selected for planning, authoring, QA, or repair.
+        expect(router).toMatch(/internalCall\s*&&\s*isLocalBrainReady\(\)\s*&&\s*!engineeringPipeline/);
+        expect(router).toContain('engineering provider selection remains authoritative');
+    });
+
     it('NEGATIVE — a call with no arguments at all would not pass', () => {
         //  Proof that the instrument can say no. Written against a synthetic
         //  file rather than by breaking a real one, so the check that guards

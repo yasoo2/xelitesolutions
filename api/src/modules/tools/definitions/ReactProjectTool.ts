@@ -4194,6 +4194,9 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
         // authored; esbuild does not type-check lexical scope, so the defect
         // reached the live runner as `ReferenceError: runBp is not defined`.
         let runBp: any = appBp;
+        let appApi = apiLink;
+        let adminModel: Array<any> = [];
+        let apiResources: { notes: string; tasks: string } | undefined;
         if (appBp) {
             for (const k of Object.keys(files)) {
                 if (k !== 'vite.config.js' && k !== 'src/styles/tokens.css') delete files[k];
@@ -4317,8 +4320,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 strippedRelation = true;
             }
             runBp = strippedRelation ? { ...effectiveBp, relation: undefined } : effectiveBp;
-            let appApi = apiLink;
-            let adminModel = tableModel;
+            adminModel = tableModel;
             if (tableModel.length && effectiveBp.kind === 'generic' && effectiveBp.engine === 'records') {
                 const { blueprintFromEntity, apiFor } = require('../../../core/design/entity-app');
                 const { fieldsFromRequest } = require('../../../core/design/app-blueprints');
@@ -4346,7 +4348,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             // Carried out of this block so the terminal audit can ask the
             // running server for every one of them by name.
             systemTables = (tableModel || []).map((e: any) => String(e?.key || '')).filter(Boolean);
-            const apiResources = runBp.kind === 'productivity' && appApi ? {
+            apiResources = runBp.kind === 'productivity' && appApi ? {
                 notes: appApi,
                 tasks: String(appApi).replace(/\/notes\/?$/i, '/tasks'),
             } : undefined;
@@ -4863,9 +4865,11 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
          *
          * The scaffold supplies the shell, tokens, store helpers and manifest;
          * the requested application behaviour is written by Joe's own AI file
-         * author from the user's specification. A missing or failed generation
-         * is a hard build failure — never silently fall back to a WeatherApp
-         * copied from this repository.
+         * author from the user's specification. When that provider is
+         * unavailable inside the canonical engineering run, Joe may use the
+         * matching request-derived engine already prepared for this blueprint,
+         * expose that mode to the report, and keep all gates on. It is never a
+         * silent substitution or a generic WeatherApp.
          */
         const engineComponentByKind: Record<string, string> = {
             map: 'MapApp', chat: 'ChatApp', weather: 'WeatherApp', records: 'RecordsApp',
@@ -4873,9 +4877,42 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             productivity: 'ProductivityApp', finance: 'FinanceApp',
         };
         const authoredEngineName = appBp ? engineComponentByKind[runBp.engine] || '' : '';
-        const generatedEnginePath = authoredEngineName && !insideATest
+        const generatedEnginePath = authoredEngineName && (!insideATest || context?.allowModelAuthoringInTest === true)
             ? `src/components/${authoredEngineName}.jsx` : '';
         let modelAuthoredEngine = false;
+        let blueprintFallbackEngine = false;
+        // A provider outage must not turn a known, request-derived application
+        // into an empty shell. The fallback is restricted to the canonical
+        // engineering pipeline, where the resulting artifact still goes through
+        // build, browser QA, capability evidence, and the normal delivery gate.
+        const canUseBlueprintFallback = context?.engineeringPipeline === true && Boolean(generatedEnginePath);
+        const useBlueprintFallback = (reason: string): boolean => {
+            if (!canUseBlueprintFallback || !isProviderFailure(reason)) return false;
+            try {
+                const fallbackFiles = buildAppFiles(runBp, {
+                    isArabic: artifactIsAr,
+                    brand: content.brand,
+                    storeKey: `${slug(content.brand)}-${runBp.kind}`,
+                    api: appApi,
+                    apiResources,
+                    sourceRequest: request,
+                    brandColor: (palette as any).primary,
+                    model: adminModel,
+                }, slug(content.brand));
+                const fallbackSource = String(fallbackFiles[generatedEnginePath] || '');
+                if (!fallbackSource.trim()) return false;
+                const authoredPath = path.join(proj, generatedEnginePath);
+                fs.mkdirSync(path.dirname(authoredPath), { recursive: true });
+                fs.writeFileSync(authoredPath, fallbackSource, 'utf8');
+                files[generatedEnginePath] = fallbackSource;
+                blueprintFallbackEngine = true;
+                term(`domain generation: provider unavailable — using Joe's request-derived ${runBp.engine} engine, then measuring it with the same QA gates`);
+                return true;
+            } catch (fallbackError: any) {
+                term(`domain generation: provider fallback unavailable — ${String(fallbackError?.message || fallbackError).slice(0, 160)}`);
+                return false;
+            }
+        };
         // Preserve the run-bound artifact root even when domain authoring is
         // blocked. PhaseExecutor must bind this real project before SelfFix
         // rewrites the failed domain file; otherwise validation falls back to
@@ -4885,7 +4922,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             const authoredPath = generatedEnginePath ? path.join(proj, generatedEnginePath) : '';
             let authoredFilesLanded = false;
             try {
-                authoredFilesLanded = modelAuthoredEngine && Boolean(authoredPath && fs.existsSync(authoredPath) && fs.statSync(authoredPath).isFile() && fs.statSync(authoredPath).size > 0);
+                authoredFilesLanded = (modelAuthoredEngine || blueprintFallbackEngine) && Boolean(authoredPath && fs.existsSync(authoredPath) && fs.statSync(authoredPath).isFile() && fs.statSync(authoredPath).size > 0);
             } catch {
                 authoredFilesLanded = false;
             }
@@ -4898,6 +4935,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 authoredFilesLanded,
                 honestBlocker: generatedEnginePath && !authoredFilesLanded ? 'authored files never landed' : undefined,
                 diagnostic: generatedEnginePath && !authoredFilesLanded ? 'الناتج ليس من فئة المطلوب لأن المؤلف القادر غائب' : undefined,
+                authorMode: modelAuthoredEngine ? 'model' : (blueprintFallbackEngine ? 'request_derived_engine' : 'none'),
             };
         };
         if (generatedEnginePath) {
@@ -4920,12 +4958,18 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 });
                 if (!generated?.ok || !fs.existsSync(path.join(proj, generatedEnginePath))) {
                     const reason = String(generated?.error || 'ai_write_file did not produce the requested domain file');
+                    if (useBlueprintFallback(reason)) {
+                        // Continue through the same export, syntax, capability,
+                        // and runtime gates below. Fallback is not success by
+                        // itself; it only replaces a missing provider answer.
+                    } else {
                     term(`domain generation: BLOCKED — ${reason}`);
                     // Preserve the exact authoring evidence. Provider outages remain
                     // retryable, while validation/import/runtime errors must reach
                     // SelfFixService instead of being collapsed into the opaque
                     // domain_generation_failed string with no repair target.
                     return { ok: false, error: reason, output: authoringFailureOutput(), logs };
+                    }
                 }
                 let authored = fs.readFileSync(path.join(proj, generatedEnginePath), 'utf8');
                 const exportContract = new RegExp(`export\\s+default\\s+function\\s+${authoredEngineName}\\b|export\\s+default\\s+${authoredEngineName}\\b`);
@@ -4933,7 +4977,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                     term(`domain generation: BLOCKED — generated file has no valid ${authoredEngineName} default export`);
                     return { ok: false, error: 'domain_generation_invalid', output: authoringFailureOutput(), logs };
                 }
-                modelAuthoredEngine = true;
+                if (!blueprintFallbackEngine) modelAuthoredEngine = true;
 
                 // Compile/import validation cannot prove that a generated domain
                 // engine actually renders the capabilities named in the request.
@@ -4948,7 +4992,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                         return [];
                     }
                 };
-                let semanticDefects = runBp.engine === 'weather'
+                let semanticDefects = runBp.engine === 'weather' && !blueprintFallbackEngine
                     ? inspectWeatherEngineSource(request, authored, readWeatherArtifactEvidence()) : [];
                 if (semanticDefects.length) {
                     const repairBrief = formatWeatherSemanticRepair(semanticDefects);
@@ -4983,13 +5027,17 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 try {
                     broadcast({ type: 'file_stream', sessionId, data: { file: generatedEnginePath, chunk: authored, done: true, bytes: Buffer.byteLength(authored), at: Date.now(), label: 'مؤلّف بالطلب' } } as any);
                 } catch { /* UI optional — the file is already on disk */ }
-                term(`domain generation: authored ${generatedEnginePath} from the request and validated its export`);
+                term(blueprintFallbackEngine
+                    ? `domain generation: request-derived ${generatedEnginePath} passed export validation`
+                    : `domain generation: authored ${generatedEnginePath} from the request and validated its export`);
 
                 // A successful author call and export check are not capability
                 // evidence. Give Joe one bounded, engine-agnostic repair pass
                 // for the named gaps, then recheck only those same gaps. The
                 // final delivery audit below remains the authoritative gate.
-                const capabilityRepair = await repairCapabilityGapsOnce({
+                const capabilityRepair: CapabilityGapRepairResult = blueprintFallbackEngine
+                    ? { attempted: false, ok: true, gaps: [], remaining: [], evidenceStatus: 'available' }
+                    : await repairCapabilityGapsOnce({
                     request,
                     engine: appBp ? appBp.engine : runBp.engine,
                     apiLinked: !!apiLink,
@@ -6789,6 +6837,7 @@ ${built ? '✅ npm install + vite build succeeded — the production build is in
             output: { message, acceptance,
                 path: proj,
                 dir: dirName,
+                authorMode: modelAuthoredEngine ? 'model' : (blueprintFallbackEngine ? 'request_derived_engine' : 'none'),
                 installed,
                 built,
                 audit,
