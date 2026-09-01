@@ -95,6 +95,16 @@ export interface AppAudit {
     viewports?: string[];
     /** Every control, with what actually changed — what a proof can read. */
     controls?: ControlResult[];
+    /** Named browser passes, so a score cannot hide which kinds of QA ran. */
+    passes?: AppAuditPass[];
+}
+
+export interface AppAuditPass {
+    id: 'runtime' | 'behaviour' | 'design';
+    label: string;
+    status: 'passed' | 'failed' | 'skipped';
+    measured: number;
+    findingIds: string[];
 }
 
 /** 100 minus what the findings earn — the same finding always costs the same. */
@@ -910,6 +920,29 @@ export async function auditBuiltApp(
             forms: allForms,
             viewports: ui.metrics.viewports || [],
             controls: allControls,
+            passes: [
+                {
+                    id: 'runtime',
+                    label: 'runtime and network',
+                    status: (pageErrors.length || consoleErrors.length || failedRequests.length || brokenRoutes.length || dom.deadImgs) ? 'failed' : 'passed',
+                    measured: routes.length + 1,
+                    findingIds: findings.filter(f => ['server_root_dead', 'page_errors', 'console_errors', 'failed_requests', 'broken_routes', 'dead_images'].includes(f.id)).map(f => f.id),
+                },
+                {
+                    id: 'behaviour',
+                    label: 'controls and forms',
+                    status: behaviour.findings.some(f => ['dead_controls', 'dead_anchors', 'forms_dead_submit', 'keyboard_unreachable'].includes(f.code)) ? 'failed' : 'passed',
+                    measured: allControls.length + allForms.length,
+                    findingIds: findings.filter(f => ['dead_controls', 'dead_anchors', 'forms_dead_submit', 'keyboard_unreachable'].includes(f.id)).map(f => f.id),
+                },
+                {
+                    id: 'design',
+                    label: 'visual, accessibility and responsive',
+                    status: ui.findings.length || dom.small.length || dom.h1s !== 1 || dom.fontLoaded === false ? 'failed' : 'passed',
+                    measured: (ui.metrics.viewports || []).length,
+                    findingIds: findings.filter(f => ui.findings.some((u: any) => u.code === f.id) || ['small_targets', 'h1_count', 'webfont_missing'].includes(f.id)).map(f => f.id),
+                },
+            ],
         };
     } catch (e: any) {
         return { skipped: `browser failed (${String(e?.message || e).slice(0, 80)})`, score: 0, findings: [] };
@@ -968,17 +1001,26 @@ export function formatAudit(a: AppAudit, isAr: boolean): string {
         + `${a.fieldsFilled ? ` (${a.fieldsFilled} حقل)` : ''}${widths ? `، ${widths} مقاسات شاشة` : ''}${authNote})`
         : `(${pages} page(s), ${a.pressed || 0} control(s) pressed, ${a.formsFilled || 0} form(s) filled and submitted`
         + `${a.fieldsFilled ? ` (${a.fieldsFilled} fields)` : ''}${widths ? `, ${widths} viewport(s)` : ''}${authNote})`;
+    const passes = (a.passes || []).map((p) => {
+        const state = p.status === 'passed' ? (isAr ? 'نجح' : 'passed') : p.status === 'failed' ? (isAr ? 'فشل' : 'failed') : (isAr ? 'تخطّي' : 'skipped');
+        return isAr
+            ? `${p.label}: ${state} (${p.measured} مقاس/عنصر، ${p.findingIds.length} ملاحظة)`
+            : `${p.label}: ${state} (${p.measured} measured, ${p.findingIds.length} finding(s))`;
+    }).join(isAr ? ' · ' : ' · ');
+    const suite = passes
+        ? (isAr ? `\n🧪 حزمة اختبارات المتصفح: ${passes}` : `\n🧪 Browser QA suite: ${passes}`)
+        : '';
     //  Named in the same breath as the score, never in a footnote.
     const where = a.visible
         ? (isAr ? 'في لوحة المتصفّح أمامك' : 'in the Browser panel, in front of you')
         : (isAr ? 'في متصفّح خاصّ لم تره' : 'in a private browser you could not see');
     if (!a.findings.length) {
         return isAr
-            ? `🔎 فحص الجودة الذاتي ${where} ${scope}: 100/100 — صفر أخطاء، كل الصور مرسومة، وكل زر ضُغط استجاب.`
-            : `🔎 Self-QA ${where} ${scope}: 100/100 — clean.`;
+            ? `🔎 فحص الجودة الذاتي ${where} ${scope}: 100/100 — صفر أخطاء، كل الصور مرسومة، وكل زر ضُغط استجاب.${suite}`
+            : `🔎 Self-QA ${where} ${scope}: 100/100 — clean.${suite}`;
     }
     const lines = a.findings.map(f => `   • ${findingText(f, isAr)}`).join('\n');
     return isAr
-        ? `🔎 فحص الجودة الذاتي ${where} ${scope}: ${a.score}/100 — وجدت:\n${lines}`
-        : `🔎 Self-QA ${where} ${scope}: ${a.score}/100:\n${lines}`;
+        ? `🔎 فحص الجودة الذاتي ${where} ${scope}: ${a.score}/100 — وجدت:\n${lines}${suite}`
+        : `🔎 Self-QA ${where} ${scope}: ${a.score}/100:\n${lines}${suite}`;
 }

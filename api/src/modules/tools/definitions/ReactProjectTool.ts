@@ -4867,8 +4867,15 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
          * is a hard build failure — never silently fall back to a WeatherApp
          * copied from this repository.
          */
-        const generatedEnginePath = appBp && runBp.kind === 'weather'
-            ? 'src/components/WeatherApp.jsx' : '';
+        const engineComponentByKind: Record<string, string> = {
+            map: 'MapApp', chat: 'ChatApp', weather: 'WeatherApp', records: 'RecordsApp',
+            social: 'SocialApp', shop: 'ShopApp', calculator: 'CalculatorApp',
+            productivity: 'ProductivityApp', finance: 'FinanceApp',
+        };
+        const authoredEngineName = appBp ? engineComponentByKind[runBp.engine] || '' : '';
+        const generatedEnginePath = authoredEngineName && !insideATest
+            ? `src/components/${authoredEngineName}.jsx` : '';
+        let modelAuthoredEngine = false;
         // Preserve the run-bound artifact root even when domain authoring is
         // blocked. PhaseExecutor must bind this real project before SelfFix
         // rewrites the failed domain file; otherwise validation falls back to
@@ -4878,7 +4885,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             const authoredPath = generatedEnginePath ? path.join(proj, generatedEnginePath) : '';
             let authoredFilesLanded = false;
             try {
-                authoredFilesLanded = Boolean(authoredPath && fs.existsSync(authoredPath) && fs.statSync(authoredPath).isFile() && fs.statSync(authoredPath).size > 0);
+                authoredFilesLanded = modelAuthoredEngine && Boolean(authoredPath && fs.existsSync(authoredPath) && fs.statSync(authoredPath).isFile() && fs.statSync(authoredPath).size > 0);
             } catch {
                 authoredFilesLanded = false;
             }
@@ -4898,8 +4905,8 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             try {
                 const { AIGeneratorTool } = require('./AIGeneratorTool');
                 const author = new AIGeneratorTool();
-                const authorContext = `buildContext: projectRoot=${proj}; generated files include src/App.jsx, src/content.js, src/app/store.js, src/styles/app.css, and package.json. The importing shell renders <WeatherApp content={content} />. The destination is ${generatedEnginePath}. Inspect the existing files and preserve their actual contracts.`;
-                const authorDescription = `Author the real domain engine for this React application from the user's request below.\n\nUSER REQUEST (authoritative):\n${request}\n\nIMPLEMENTATION CONTRACT:\n- Export a default React component named WeatherApp accepting exactly one optional prop: { content }.\n- Implement the requested weather product, not a brochure or a static demo. Every explicit feature in the request must have a concrete state, interaction, and visible result.\n- Use the real Open-Meteo geocoding and forecast APIs when the request asks for live weather. Include loading, empty, network, invalid-city, and API-error states.\n- Implement persistence with localStorage for favourites and settings, and restore it after reload.\n- Keep hourly and daily forecast data distinct; do not claim a 7-day or 24-hour view unless the rendered data comes from the corresponding API response.\n- Use only React, browser APIs, and modules already present in the generated project. Do not add packages or imports that are absent from package.json.\n- Keep the component self-contained and production-ready; no TODOs, fake API responses, random placeholder images, or explanatory prose outside the file.\n- Keep the existing Joe app shell contract: use content.brand/content.storeKey/content.isArabic where useful and do not change App.jsx, store.js, or the manifest.`;
+                const authorContext = `buildContext: projectRoot=${proj}; generated files include src/App.jsx, src/content.js, src/app/store.js, src/styles/app.css, and package.json. The importing shell renders <${authoredEngineName} content={content} />. The destination is ${generatedEnginePath}. Inspect the existing files and preserve their actual contracts.`;
+                const authorDescription = `Author the real domain engine for this React application from the user's request below.\n\nUSER REQUEST (authoritative):\n${request}\n\nIMPLEMENTATION CONTRACT:\n- Export a default React component named ${authoredEngineName} accepting exactly one optional prop: { content }.\n- Implement the requested ${runBp.engine} application, not a brochure or a static demo. Every explicit feature in the request must have a concrete state, interaction, and visible result.\n- Use the existing app shell, content object, store helpers, browser APIs, and declared packages only. Do not add packages or imports that are absent from package.json.\n- Include loading, empty, validation, network, and error states wherever the requested behavior can encounter them.\n- Persist user-created state when the request calls for persistence, and make the result visible after the action and after reload.\n- Keep the component self-contained and production-ready; no TODOs, fake API responses, random placeholder images, or explanatory prose outside the file.\n- Keep the existing Joe app shell contract: use content.brand/content.storeKey/content.isArabic where useful and do not change App.jsx, store.js, or the manifest.\n${runBp.engine === 'weather' ? '- Use the real Open-Meteo geocoding and forecast APIs when the request asks for live weather. Keep hourly and daily forecast data distinct.' : ''}`;
                 const generated = await author.execute({
                     path: path.join(proj, generatedEnginePath),
                     description: authorDescription,
@@ -4921,10 +4928,12 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                     return { ok: false, error: reason, output: authoringFailureOutput(), logs };
                 }
                 let authored = fs.readFileSync(path.join(proj, generatedEnginePath), 'utf8');
-                if (!authored.trim() || !/export\s+default\s+function\s+WeatherApp|export\s+default\s+WeatherApp/.test(authored)) {
-                    term('domain generation: BLOCKED — generated file has no valid WeatherApp default export');
+                const exportContract = new RegExp(`export\\s+default\\s+function\\s+${authoredEngineName}\\b|export\\s+default\\s+${authoredEngineName}\\b`);
+                if (!authored.trim() || !exportContract.test(authored)) {
+                    term(`domain generation: BLOCKED — generated file has no valid ${authoredEngineName} default export`);
                     return { ok: false, error: 'domain_generation_invalid', output: authoringFailureOutput(), logs };
                 }
+                modelAuthoredEngine = true;
 
                 // Compile/import validation cannot prove that a generated domain
                 // engine actually renders the capabilities named in the request.
@@ -4939,7 +4948,8 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                         return [];
                     }
                 };
-                let semanticDefects = inspectWeatherEngineSource(request, authored, readWeatherArtifactEvidence());
+                let semanticDefects = runBp.engine === 'weather'
+                    ? inspectWeatherEngineSource(request, authored, readWeatherArtifactEvidence()) : [];
                 if (semanticDefects.length) {
                     const repairBrief = formatWeatherSemanticRepair(semanticDefects);
                     term(`domain semantic QA: ${semanticDefects.map(d => d.id).join(', ')} — requesting one bounded repair`);
@@ -4960,7 +4970,8 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                         return { ok: false, error: reason, output: authoringFailureOutput(), logs };
                     }
                     authored = fs.readFileSync(path.join(proj, generatedEnginePath), 'utf8');
-                    semanticDefects = inspectWeatherEngineSource(request, authored, readWeatherArtifactEvidence());
+                    semanticDefects = runBp.engine === 'weather'
+                        ? inspectWeatherEngineSource(request, authored, readWeatherArtifactEvidence()) : [];
                     if (semanticDefects.length) {
                         const reason = `weather_semantic_contract_failed: ${formatWeatherSemanticRepair(semanticDefects)}`;
                         term(`domain semantic QA: BLOCKED — ${semanticDefects.map(d => d.id).join(', ')}`);

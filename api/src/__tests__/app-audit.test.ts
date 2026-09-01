@@ -92,6 +92,22 @@ describe('the wiring — every green build gets measured', () => {
         const verdict = formatAudit({ score: 100, findings: [], authenticated: true }, true);
         expect(verdict).toContain('دخول محمي مثبت');
     });
+
+    it('names each browser QA pass in the delivery verdict', () => {
+        const verdict = formatAudit({
+            score: 85,
+            findings: [{ id: 'dead_controls', severity: 'medium', detail: 'one control did not change state' }],
+            passes: [
+                { id: 'runtime', label: 'runtime and network', status: 'passed', measured: 2, findingIds: [] },
+                { id: 'behaviour', label: 'controls and forms', status: 'failed', measured: 7, findingIds: ['dead_controls'] },
+                { id: 'design', label: 'visual, accessibility and responsive', status: 'passed', measured: 3, findingIds: [] },
+            ],
+        }, false);
+        expect(verdict).toContain('Browser QA suite');
+        expect(verdict).toContain('runtime and network: passed');
+        expect(verdict).toContain('controls and forms: failed');
+        expect(verdict).toContain('visual, accessibility and responsive: passed');
+    });
 });
 
 describe('the early project-kind declaration is a request-level terminal behavior', () => {

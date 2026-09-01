@@ -330,6 +330,15 @@ describe('the bridge tool — plan, execute phases, report honestly', () => {
         expect(router).toMatch(/const usable = \(s: any\) => providerProbeSucceeded\(s\)/);
     });
 
+    test('Auto preflight gives a measured local Ollama brain enough time before fallback', () => {
+        const router = fs.readFileSync(
+            path.join(__dirname, '..', 'core', 'llm', 'intelligent-router.ts'), 'utf-8');
+        expect(router).toContain("localProvider.chatComplete(probe as any, pickLocalModel('code_generation'))");
+        expect(router).toContain("detail: 'local_ok'");
+        expect(router).toContain('localWarmupMs');
+        expect(router).toContain('warmup * 12');
+    });
+
     test('bounded live-run repair rediscovers the current incomplete root instead of the greenfield reference set', () => {
         expect(src).toMatch(/const repairDiscoveryRequest = \[/);
         expect(src).toMatch(/const trustedRepairRoot = String\(/);

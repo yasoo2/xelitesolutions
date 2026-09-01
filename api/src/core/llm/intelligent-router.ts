@@ -9,7 +9,7 @@ import { LLMCacheTool } from '../../modules/tools/definitions/LLMCacheTool';
 import { OpenAIProvider } from './providers/openai';
 import { GeminiProvider } from './providers/gemini';
 import { OpenRouterProvider } from './providers/openrouter';
-import { pickLocalModel, isLocalBrainReady } from './local-brain';
+import { pickLocalModel, isLocalBrainReady, localWarmupMs } from './local-brain';
 import OpenAI from 'openai';
 import { parseFirstJson } from '../../shared/utils/json';
 
@@ -2260,7 +2260,13 @@ export async function routeToModel(
                     // generic 30s internal leash eject Ollama before it can
                     // produce a real plan. The normal circuit breaker still
                     // protects non-Auto routes from repeated slow failures.
-                    const autoPlanningLeash = Math.min(LOCAL_LEASH_MAX_MS, Math.max(measuredLeash, 90_000));
+                    // A warm one-token probe is not a planning benchmark. On a
+                    // CPU-bound local model, the larger engineering prompt can
+                    // legitimately need several minutes; a 90s floor caused
+                    // Auto to abandon Ollama after a healthy preflight and then
+                    // fail against unavailable remote fallbacks.
+                    const autoPlanningFloor = (LOCAL_BRAIN_FIRST || autoLocalPreferred) ? 600_000 : 240_000;
+                    const autoPlanningLeash = Math.min(LOCAL_LEASH_MAX_MS, Math.max(measuredLeash, autoPlanningFloor));
                     timeoutValue = Math.min(timeoutValue, autoLocalPreferred ? autoPlanningLeash : measuredLeash);
                 }
             }
@@ -2565,6 +2571,25 @@ export async function verifyProviderDirect(
         // This is deliberately a bounded, uncached probe: a slow local model must
         // not make an otherwise healthy keyless/cloud fallback look unavailable.
         if (p === 'auto') {
+            // Auto is explicitly the user's local-first choice. The generic mesh
+            // probe caps local work at 8s, which is shorter than a measured cold
+            // Ollama response on a CPU machine and therefore reports a healthy
+            // local brain as unavailable before planning even starts. Probe the
+            // configured local brain directly first, using the measured warm-up
+            // time as evidence, and only then inspect fallback providers.
+            if (isLocalBrainReady() && localProvider.isConfigured()) {
+                const warmup = Number(localWarmupMs?.() || 0);
+                const localProbeTimeout = Math.min(120_000, Math.max(30_000, warmup * 12));
+                try {
+                    const localAnswer = await withTimeout(
+                        localProvider.chatComplete(probe as any, pickLocalModel('code_generation')),
+                        localProbeTimeout,
+                    );
+                    if (usable(localAnswer)) return { ok: true, provider, detail: 'local_ok' };
+                } catch (e: any) {
+                    console.warn(`[IntelligentRouter] Auto local preflight failed (${String(e?.message || e)}); checking fallback providers.`);
+                }
+            }
             const ans = await withTimeout(routeToModel(probe, undefined, undefined, undefined, undefined, undefined, undefined,
                 { modelConfig: { provider: 'auto', apiKey: 'auto-mode' }, providerHealthProbe: true }), 45_000);
             return { ok: usable(ans), provider, detail: usable(ans) ? 'mesh_ok' : 'mesh_empty' };
