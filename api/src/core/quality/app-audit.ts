@@ -93,6 +93,10 @@ export interface AppAudit {
     fieldsFilled?: number;
     forms?: FormResult[];
     viewports?: string[];
+    /** State-driven browser exploration evidence, separate from the baseline walk. */
+    statesVisited?: number;
+    exploratoryActions?: number;
+    controlsDiscovered?: number;
     /** Every control, with what actually changed — what a proof can read. */
     controls?: ControlResult[];
     /** Named browser passes, so a score cannot hide which kinds of QA ran. */
@@ -613,6 +617,7 @@ export async function auditBuiltApp(
         const behaviourMetrics: Record<string, any> = {
             pressed: 0, dead: 0, deadAnchors: 0, keyboardUnreachable: 0, keyboardUnreachableSamples: [],
             formsWithoutValidation: 0, formsFilled: 0, fieldsFilled: 0, formsDeadSubmit: 0, formsValidated: 0, formsReloaded: 0,
+            statesVisited: 0, exploratoryActions: 0, controlsDiscovered: 0,
         };
         const mergeProbe = (p: { controls: any[]; metrics: Record<string, any>; forms?: FormResult[] }, route: string) => {
             //  `bare` is the control's own name; `label` is the name plus where
@@ -622,6 +627,9 @@ export async function auditBuiltApp(
             behaviourMetrics.formsWithoutValidation += p.metrics.formsWithoutValidation || 0;
             behaviourMetrics.keyboardUnreachable += p.metrics.keyboardUnreachable || 0;
             behaviourMetrics.keyboardUnreachableSamples.push(...(p.metrics.keyboardUnreachableSamples || []));
+            behaviourMetrics.statesVisited += p.metrics.statesVisited || 0;
+            behaviourMetrics.exploratoryActions += p.metrics.exploratoryActions || 0;
+            behaviourMetrics.controlsDiscovered += p.metrics.controlsDiscovered || 0;
             for (const k of ['formsFilled', 'fieldsFilled', 'formsDeadSubmit', 'formsValidated', 'formsReloaded']) {
                 behaviourMetrics[k] += p.metrics[k] || 0;
             }
@@ -919,6 +927,9 @@ export async function auditBuiltApp(
             fieldsFilled: behaviourMetrics.fieldsFilled,
             forms: allForms,
             viewports: ui.metrics.viewports || [],
+            statesVisited: behaviourMetrics.statesVisited,
+            exploratoryActions: behaviourMetrics.exploratoryActions,
+            controlsDiscovered: behaviourMetrics.controlsDiscovered,
             controls: allControls,
             passes: [
                 {
@@ -996,11 +1007,19 @@ export function formatAudit(a: AppAudit, isAr: boolean): string {
      * really happened in the browser.
      */
     const widths = (a.viewports || []).length;
+    const discovery = (a.controlsDiscovered || 0) > 0
+        ? (isAr ? `، ${a.controlsDiscovered} عنصرًا اكتُشف` : `, ${a.controlsDiscovered} control(s) discovered`)
+        : '';
+    const exploration = (a.exploratoryActions || 0) > 0 || (a.statesVisited || 0) > 1
+        ? (isAr
+            ? `، ${a.exploratoryActions || 0} إجراء استكشافي و${a.statesVisited || 0} حالة مكتشفة`
+            : `, ${a.exploratoryActions || 0} exploratory action(s) and ${a.statesVisited || 0} state(s) discovered`)
+        : '';
     const scope = isAr
         ? `(${pages} صفحة، ${a.pressed || 0} عنصر مضغوط، ${a.formsFilled || 0} نموذج معبّأ ومُرسل`
-        + `${a.fieldsFilled ? ` (${a.fieldsFilled} حقل)` : ''}${widths ? `، ${widths} مقاسات شاشة` : ''}${authNote})`
+        + `${a.fieldsFilled ? ` (${a.fieldsFilled} حقل)` : ''}${widths ? `، ${widths} مقاسات شاشة` : ''}${discovery}${exploration}${authNote})`
         : `(${pages} page(s), ${a.pressed || 0} control(s) pressed, ${a.formsFilled || 0} form(s) filled and submitted`
-        + `${a.fieldsFilled ? ` (${a.fieldsFilled} fields)` : ''}${widths ? `, ${widths} viewport(s)` : ''}${authNote})`;
+        + `${a.fieldsFilled ? ` (${a.fieldsFilled} fields)` : ''}${widths ? `, ${widths} viewport(s)` : ''}${discovery}${exploration}${authNote})`;
     const passes = (a.passes || []).map((p) => {
         const state = p.status === 'passed' ? (isAr ? 'نجح' : 'passed') : p.status === 'failed' ? (isAr ? 'فشل' : 'failed') : (isAr ? 'تخطّي' : 'skipped');
         return isAr

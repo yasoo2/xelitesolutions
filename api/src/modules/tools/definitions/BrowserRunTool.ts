@@ -12,16 +12,29 @@ const ARTIFACT_DIR = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
 
 export function localLivePreviewFor(sessionId: string): string {
     const key = String(sessionId || '').replace(/[^a-zA-Z0-9._-]/g, '_');
-    const record = (global as any).joeProjects?.[key]?.live;
+    const project = (global as any).joeProjects?.[key];
+    const record = project?.live;
     const raw = String(record?.url || '').trim();
-    if (!raw) return '';
-    try {
-        const u = new URL(raw);
-        if (!['localhost', '127.0.0.1', '::1'].includes(u.hostname)) return '';
-        return raw;
-    } catch {
-        return '';
+    if (raw) {
+        try {
+            const u = new URL(raw);
+            if (['localhost', '127.0.0.1', '::1'].includes(u.hostname)) return raw;
+        } catch { /* fall through to the trusted local project preview */ }
     }
+
+    /**
+     * A completed build may have no live process: ReactProjectTool still
+     * publishes its dist through Joe's authenticated-session preview route.
+     * The old lookup treated a missing `live.url` as "no application", so the
+     * browser QA phase searched the web or stopped before touching the build.
+     */
+    const dir = String(project?.dir || '').trim();
+    const type = String(project?.type || '').toLowerCase();
+    if (dir && type !== 'api' && fs.existsSync(path.join(dir, 'dist', 'index.html'))) {
+        const port = String(process.env.PORT || '5002').replace(/[^0-9]/g, '') || '5002';
+        return `http://localhost:${port}/project-preview/${key}/index.html`;
+    }
+    return '';
 }
 
 /**

@@ -71,6 +71,8 @@ export interface ControlResult {
     worked: boolean;
     /** What changed, for the report — 'dom', 'open', 'scroll', 'validation', ''. */
     effect: string;
+    /** True when this control was discovered after another interaction changed the UI. */
+    exploratory?: boolean;
 }
 
 /** One form, actually filled in and actually sent. */
@@ -675,6 +677,78 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
             controls.push({ label: c.label, kind: c.kind as any, worked: !!effect && effect !== 'reload', effect });
         }
         metrics.budgetExhausted = budgetHit;
+
+        /**
+         * EXPLORE THE STATES THAT THE FIRST CATALOGUE COULD NOT SEE.
+         *
+         * Menus, tabs, carts, dialogs, filters, and route changes can create
+         * new controls after the initial snapshot. A fixed list cannot reach
+         * them, even when every click in that list is perfectly real. Keep a
+         * bounded frontier, re-catalogue after each interaction, and only add
+         * controls whose state-aware identity has not been attempted. This is
+         * deterministic and auditable, but it is not a memorised click script.
+         */
+        const controlKey = (c: { kind: string; label: string; href?: string }) =>
+            `${c.kind}|${c.label}|${c.href || ''}`;
+        const initialKeys = new Set(list.map(controlKey));
+        const discoveredKeys = new Set(initialKeys);
+        const exploredKeys = new Set<string>();
+        const stateKeys = new Set<string>();
+        const stateKey = (value: any) => {
+            try { return JSON.stringify(value).slice(0, 4000); } catch { return ''; }
+        };
+        const initialState = await page.evaluate(snapshot).catch(() => null);
+        if (initialState) stateKeys.add(stateKey(initialState));
+        metrics.statesVisited = stateKeys.size;
+        metrics.controlsDiscovered = discoveredKeys.size;
+        metrics.exploratoryActions = 0;
+        const explorationDeadline = Math.min(deadline, Date.now() + Math.max(6000, Math.min(18_000, (opts?.budgetMs || DEFAULT_BUDGET_MS) / 3)));
+        let explorationBudgetHit = false;
+        opts?.onProgress?.('exploring');
+        for (let turn = 0; turn < 12 && Date.now() < explorationDeadline; turn++) {
+            const fresh = await evalInPage(page, findControls, limit).catch(() => [] as any[]);
+            for (const c of fresh as Array<{ kind: string; label: string; href?: string }>) discoveredKeys.add(controlKey(c));
+            metrics.controlsDiscovered = discoveredKeys.size;
+            const candidate = (fresh as Array<{ sel: string; kind: string; label: string; href?: string }>)
+                .filter(c => c.kind !== 'anchor')
+                .find(c => !initialKeys.has(controlKey(c)) && !exploredKeys.has(controlKey(c)));
+            if (!candidate) break;
+            const key = controlKey(candidate);
+            exploredKeys.add(key);
+            let effect = '';
+            try {
+                const el = await page.$(candidate.sel);
+                if (!el) continue;
+                await el.scrollIntoViewIfNeeded({ timeout: 1500 }).catch(() => { });
+                await eyes.lookAt(page, await boxOf(page, candidate.sel), {
+                    note: `استكشاف ${KIND_AR[candidate.kind] || 'عنصر'}: ${candidate.label}`.slice(0, 64),
+                    tone: 'warn', moveMouse: true,
+                });
+                const before = await page.evaluate(snapshot).catch(() => null);
+                await el.click({ timeout: 2500, force: true, noWaitAfter: true }).catch(() => { });
+                await page.waitForTimeout(SETTLE_MS);
+                const after = await page.evaluate(snapshot).catch(() => null);
+                effect = changed(before, after);
+                if (effect === 'navigation') {
+                    await page.goBack({ timeout: 5000 }).catch(() => { });
+                    await page.waitForTimeout(220);
+                }
+                const afterState = await page.evaluate(snapshot).catch(() => null);
+                if (afterState) stateKeys.add(stateKey(afterState));
+                metrics.statesVisited = stateKeys.size;
+                metrics.exploratoryActions++;
+                controls.push({
+                    label: candidate.label,
+                    bare: candidate.label,
+                    kind: candidate.kind as any,
+                    worked: !!effect && effect !== 'reload',
+                    effect,
+                    exploratory: true,
+                });
+            } catch { /* discovery continues even when one state is hostile */ }
+        }
+        if (Date.now() >= explorationDeadline) explorationBudgetHit = true;
+        metrics.explorationBudgetExhausted = explorationBudgetHit;
 
         // Does an empty required form actually refuse? Native validation counts.
         const forms = await page.evaluate(() => {

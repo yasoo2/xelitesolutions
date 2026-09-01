@@ -398,6 +398,17 @@ describe('a measurement it cannot make honestly, it does not make', () => {
         const b = read('core', 'quality', 'behaviour-audit.ts');
         expect(b).toMatch(/h === 'top' \|\| h\.includes\('\/'\)/);
     });
+
+    it('re-discovers controls after interactions instead of replaying one fixed list', () => {
+        const b = read('core', 'quality', 'behaviour-audit.ts');
+        expect(b).toMatch(/EXPLORE THE STATES THAT THE FIRST CATALOGUE COULD NOT SEE/);
+        expect(b).toMatch(/evalInPage\(page, findControls, limit\)/);
+        expect(b).toMatch(/metrics\.exploratoryActions\+\+/);
+        expect(b).toMatch(/metrics\.statesVisited/);
+        const a = read('core', 'quality', 'app-audit.ts');
+        expect(a).toMatch(/exploratory action/);
+        expect(a).toMatch(/controlsDiscovered/);
+    });
 });
 
 describe('and the report counts what was actually done', () => {

@@ -1,5 +1,8 @@
 import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
 import { asksToOpenTheActiveApp, localLivePreviewFor } from '../modules/tools/definitions/BrowserRunTool';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 
 const plan = (goal: string) =>
     PlanningEngine.generatePlan({
@@ -51,6 +54,25 @@ describe('active live preview browser routing', () => {
         expect(asksToOpenTheActiveApp('Search Istanbul inside the running WeatherGo app.')).toBe(true);
         expect(asksToOpenTheActiveApp('Search another real city.')).toBe(true);
         expect(asksToOpenTheActiveApp('Add Istanbul to favorites in the app.')).toBe(true);
+    });
+
+    test('falls back to Joe project-preview when a completed build has no live process', () => {
+        const sessionId = `browser-static-${Date.now()}`;
+        const before = { ...(((global as any).joeProjects || {}) as Record<string, any>) };
+        const key = sessionId.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-preview-'));
+        fs.mkdirSync(path.join(dir, 'dist'));
+        fs.writeFileSync(path.join(dir, 'dist', 'index.html'), '<!doctype html><title>QA</title>');
+        (global as any).joeProjects = {
+            ...before,
+            [key]: { dir, type: 'react', live: undefined },
+        };
+        try {
+            expect(localLivePreviewFor(sessionId)).toBe(`http://localhost:${process.env.PORT || '5002'}/project-preview/${key}/index.html`);
+        } finally {
+            (global as any).joeProjects = before;
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
     });
 
     test('keeps multi-action browser QA in the live browser workflow', async () => {
