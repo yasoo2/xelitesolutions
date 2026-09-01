@@ -50,6 +50,11 @@ describe('«بنِ» is the same verb as «ابنِ»', () => {
         expect(PlanningEngine.looksLikeBuild('I want a table to record appointments: patient name, phone and amount paid')).toBe(true);
     });
 
+    it('recognizes product nouns that are not named site or app', () => {
+        expect(PlanningEngine.looksLikeBuild('Create a media review board with image upload, tags, preview, and delete.')).toBe(true);
+        expect(PlanningEngine.looksLikeBuild('Build a research workspace with papers, notes, search, and export.')).toBe(true);
+    });
+
     it('does not turn an information question into a build from a listed noun', () => {
         for (const question of ['بدي أعرف كم الساعة', 'ابحث لي عن سعر الدولار', 'سجّل دخولي']) {
             expect(PlanningEngine.looksLikeBuild(question)).toBe(false);

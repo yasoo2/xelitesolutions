@@ -52,4 +52,60 @@ describe('active live preview browser routing', () => {
         expect(asksToOpenTheActiveApp('Search another real city.')).toBe(true);
         expect(asksToOpenTheActiveApp('Add Istanbul to favorites in the app.')).toBe(true);
     });
+
+    test('keeps multi-action browser QA in the live browser workflow', async () => {
+        const p = await plan('Use the browser to test a local app: exercise every visible button and form field, capture console and network failures, and report the exact failing control.');
+        expect(p.steps[0].tool).toBe('browser_run');
+        expect(p.steps[0].agent).toBe('Browser');
+    });
+
+    test('does not reduce a browser e-commerce flow to a search-only action', async () => {
+        const p = await plan('Use the browser to validate an e-commerce flow: search, open a product, add it to the cart, change quantity, remove it, and verify the total.');
+        expect(p.steps[0].tool).toBe('browser_run');
+    });
+
+    test('routes an explicit repair of the active project to the same project', async () => {
+        const sessionId = `repair-route-${Date.now()}`;
+        const key = sessionId.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const before = { ...(((global as any).joeProjects || {}) as Record<string, any>) };
+        (global as any).joeProjects = {
+            ...before,
+            [key]: { dir: 'C:/workspace/repair-me', type: 'react', updatedAt: Date.now() },
+        };
+        try {
+            const p = await PlanningEngine.generatePlan(
+                { intent: { goal: 'Repair the existing project and preserve its files.', complexity: 'medium', riskLevel: 'low', rawIntent: {} } as any },
+                sessionId,
+                { sessionId },
+            );
+            expect(p.steps[0].tool).toBe('project_repair');
+            expect(p.steps[0].input).toMatchObject({
+                projectDir: 'C:/workspace/repair-me',
+                auditDir: 'C:\\workspace\\repair-me\\dist',
+            });
+        } finally {
+            (global as any).joeProjects = before;
+        }
+    });
+
+    test('uses an explicit project path when the session registry was restarted', async () => {
+        const sessionId = `repair-path-${Date.now()}`;
+        const p = await PlanningEngine.generatePlan(
+            {
+                intent: {
+                    goal: 'Repair the existing project at C:\\workspace\\repair-me in place. Preserve its files and rebuild it.',
+                    complexity: 'medium',
+                    riskLevel: 'low',
+                    rawIntent: {},
+                },
+            } as any,
+            sessionId,
+            { sessionId },
+        );
+        expect(p.steps[0].tool).toBe('project_repair');
+        expect(p.steps[0].input).toMatchObject({
+            projectDir: 'C:\\workspace\\repair-me',
+            auditDir: 'C:\\workspace\\repair-me\\dist',
+        });
+    });
 });

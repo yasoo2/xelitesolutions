@@ -7,6 +7,7 @@ import { enrichWorkspaceToolInput } from './workspace-evidence';
 import { findActiveBuiltProject } from './active-built-project';
 import { isReadOnlyRequest, looksLikeBuild } from './buildIntent';
 import { saysAny } from '../language/arabic';
+import path from 'path';
 
 export interface ExecutionStep {
     id: string;
@@ -656,6 +657,32 @@ Rules:
             };
         }
 
+        // Decide explicit repairs before broad build routes so "rebuild this
+        // project" cannot be downgraded to a fresh project run.
+        {
+            const repairVerb = /(repair|fix|modify|update)/i.test(userGoal);
+            const existingProjectWords = /(existing project|current project|same project)/i.test(userGoal);
+            const explicitProjectDir = (userGoal.match(/C:[^\s.]+/i)?.[0] || '').trim();
+            const sessionKey = String(context?.sessionId || 'default').replace(/[^a-zA-Z0-9._-]/g, '_');
+            const activeProject = ((global as any).joeProjects || {})[sessionKey];
+            const repairProjectDir = String(explicitProjectDir || activeProject?.scaffoldDir || activeProject?.dir).trim();
+            if (repairVerb && existingProjectWords && repairProjectDir) {
+                return {
+                    id: `projrepair_${Date.now()}`,
+                    goal: intent.goal,
+                    steps: [{
+                        id: 'project_repair',
+                        description: 'Re-audit and repair the existing project in place, then rebuild and verify it',
+                        tool: 'project_repair',
+                        agent: 'Dev',
+                        input: { projectDir: repairProjectDir, auditDir: path.join(repairProjectDir, 'dist'), request: intent.goal },
+                        dependsOn: [],
+                    }],
+                    metadata: { complexity: 'medium', riskLevel: 'low', matchedBy: 'explicit-existing-project-repair' },
+                };
+            }
+        }
+
         /**
          * [PROJECT QUALITY REVIEW FAST-PATH] A review of the delivered result is
          * not an integration test request. A built project without a package.json
@@ -1176,6 +1203,29 @@ Rules:
             }
         }
 
+        // A test request that also asks for repair is a repair loop, not a plain
+        // project start. Keep diagnosis, bounded repair, and rerun together so
+        // the request cannot be reduced to project_run by the word "run".
+        {
+            const testRepairRequest = /(test\s+suite|failing\s+tests?|اختبارات?\s*(المشروع|الكود)?|الاختبارات|فشل(?:ت|ت?\s+في)?\s*الاختبار)/i.test(userGoal)
+                && /(repair|fix|correct|إصلاح|اصلح|أصلح|صحح|صلح|عالج)/i.test(userGoal);
+            if (testRepairRequest) {
+                return {
+                    id: `project_repair_tests_${Date.now()}`,
+                    goal: intent.goal,
+                    steps: [{
+                        id: 'project_repair',
+                        description: 'Run the project tests, repair measured failures, and rerun the same checks',
+                        tool: 'project_repair',
+                        agent: 'Dev',
+                        input: { request: intent.goal },
+                        dependsOn: [],
+                    }],
+                    metadata: { complexity: 'medium', riskLevel: 'low', matchedBy: 'test-repair-loop' },
+                };
+            }
+        }
+
         // [RUN / STOP FAST-PATH] "شغّل المشروع" / "run the project" starts the
         // built system live and opens its preview; "أوقف المشروع" / "stop it"
         // stops it. Deterministic so a weak model can't turn "run my system"
@@ -1384,6 +1434,8 @@ Rules:
         const pageIsOpen = !!((global as any).joePages && (global as any).joePages[editKey]);
         const looksLikeEdit = /(اضف|أضف|ضيف|ضف|حط|خلي|خلّي|شيل|سوي|سوّي|غير|غيّر|عدل|عدّل|بدل|بدّل|احذف|امسح|كبر|كبّر|صغر|صغّر|رتب|رتّب|ركب|ركّب|جمل|جمّل|حسن|حسّن)/.test(String(intent.goal || ''))
             || /\b(add|change|replace|remove|make it|set the)\b/i.test(String(intent.goal || ''));
+        const explicitBrowserWorkflowRequest = /(متصفح|براوزر|browser|browser\s+qa|real\s+browser|live\s+page)/i.test(String(intent.goal || ''))
+            && /(test|exercise|verify|inspect|audit|check|click|fill|form|button|flow|retest|repair|اختبر|اختبار|تحقق|افحص|تدقيق|اضغط|انقر|نموذج|زر|إعادة\s*اختبار)/i.test(String(intent.goal || ''));
         // The capability scorer sees token overlap only. A construction request
         // has one coherent engineering contract: inspect evidence, plan, build,
         // verify, and report. It must never be claimed by a single matching tool
@@ -1392,6 +1444,7 @@ Rules:
         // correct general engineering workflow from the actual workspace.
         const capable = (pageIsOpen && looksLikeEdit)
             || localBuildContract
+            || explicitBrowserWorkflowRequest
             || PlanningEngine.looksLikeBuild(String(intent.goal || ''))
             ? null
             : capabilityRoute(String(intent.goal || ''), context);
@@ -1468,7 +1521,7 @@ Rules:
          * Not one file was written.
          */
         const webNoun = /\b(page|site|website|web ?app|landing|portfolio|dashboard|form|store|shop|html|ui|interface)\b/.test(goalLower)
-            || /\b(platform|marketplace|e-?commerce|storefront|system|app|application|software|tool|service|portal|panel|admin|backend|api|saas|crm|erp|pos|blog|editor|tracker|planner|scheduler|booking|marketplace|network|clone|table|spreadsheet|ledger|register|list)\b/.test(goalLower)
+            || /\b(platform|marketplace|e-?commerce|storefront|system|app|application|software|tool|service|portal|panel|admin|backend|api|saas|crm|erp|pos|blog|editor|tracker|planner|scheduler|booking|marketplace|network|clone|table|spreadsheet|ledger|register|list|board|workspace|library|directory|manager|log|desk)\b/.test(goalLower)
             // «نظام نقاط بيع للمطاعم مع تقارير مبيعات» named no «موقع» and no
             // «صفحة», so the build gate never opened and Joe just TALKED about it.
             // A system, a platform, a dashboard and a tool are things people ask
@@ -1750,7 +1803,10 @@ Rules:
              */
             const repairRemaining = /(أصلح|اصلح|صلّ?ح)\s*(لي\s*)?(ما\s*)?(تبقّ?ى|بقي|المتبقّ?ي|الباقي|العيوب|الأعطال)/.test(probe)
                 || /\bfix\s+(what(?:'?s| is)\s+left|the\s+(rest|remaining|defects|blockers))\b/i.test(probe);
-            if (repairRemaining && !!projEntry) {
+            const repairExisting = /\b(?:repair|fix|modify|update)\b[\s\S]{0,100}\b(?:existing|current|same)\s+project\b/i.test(probe);
+            const explicitProjectDir = (String(intent.goal || '').match(/C:[^\s.]+/i)?.[0] || '').trim();
+            const repairProjectDir = String(explicitProjectDir || projEntry?.scaffoldDir || projEntry?.dir).trim();
+            if ((repairRemaining || repairExisting) && !!repairProjectDir) {
                 return {
                     id: `projrepair_${Date.now()}`,
                     goal: intent.goal,
@@ -1758,7 +1814,9 @@ Rules:
                         id: 'project_repair',
                         description: `Re-audit and repair what is still broken in the active project`,
                         tool: 'project_repair', agent: 'Dev',
-                        input: {}, dependsOn: [],
+                        input: repairProjectDir
+                            ? { projectDir: repairProjectDir, auditDir: path.join(repairProjectDir, 'dist'), request: intent.goal }
+                            : { request: intent.goal }, dependsOn: [],
                     }],
                     metadata: { complexity: 'medium', riskLevel: 'low' },
                 };
@@ -2043,6 +2101,10 @@ Rules:
                 || /(متصفح|براوزر|موقع|صفحة|الويب|الإنترنت|الانترنت|ابحث|إبحث|بحث|جد|جِد|دوّ?ر|فتّ?ش|افتح|تصفّ?ح|عايِ?ن|لخّ?ص|حلّ?ل|دقّ?ق|افحص|انقر|اضغط|املأ|عبّ?ئ|ترجم|قارن|استخرج|browser|web|site|page|search|find|look\s*up|google|open|visit|go\s*to|summari|analy|audit|click|fill|translate|compare|extract|scrape|seo)/i.test(probe)
             )
         );
+        // A multi-action browser QA request is a workflow, even when its nouns
+        // overlap with Git, files, search, or forms. Keep it out of the
+        // capability scorer so it reaches the live observe -> decide -> act loop.
+        const browserWorkflowIntent = !buildVerb && explicitBrowserWorkflowRequest;
 
         // [LOCAL BROWSER CONSENT GATE] When Joe is configured to drive the user's own
         // local Chrome profile (persistent mode), he must ASK permission once before
@@ -2180,7 +2242,7 @@ Rules:
         // whole thing to a plain open, and it also corrupts names (نابلس->نبعلس). So
         // we resolve search deterministically FIRST, from the user's own words, and
         // send it to the VISIBLE search tool. Only when there's no explicit site URL.
-        if (looksBrowser && !urlMatch && PlanningEngine.hasSearchIntent(probe)) {
+        if (looksBrowser && !urlMatch && !browserWorkflowIntent && PlanningEngine.hasSearchIntent(probe)) {
             const q = PlanningEngine.extractSearchQuery(goalRaw) || PlanningEngine.extractSearchQuery(goalNorm);
             if (q.length >= 2) {
                 console.log(`[PlanningEngine] search priority -> browser_search query="${q}"`);
@@ -2289,6 +2351,23 @@ Rules:
             }
         }
 
+
+        if (browserWorkflowIntent && !urlMatch) {
+            console.log('[PlanningEngine] explicit browser workflow -> browser_run');
+            return {
+                id: `browser_workflow_${Date.now()}`,
+                goal: intent.goal,
+                steps: [{
+                    id: 'browser_task',
+                    description: intent.goal,
+                    tool: 'browser_run',
+                    agent: 'Browser',
+                    input: { task: intent.goal, request: intent.goal },
+                    dependsOn: [],
+                }],
+                metadata: { complexity: 'high', riskLevel: 'low', matchedBy: 'explicit-browser-workflow' },
+            };
+        }
 
         if (looksBrowser) {
             try {
