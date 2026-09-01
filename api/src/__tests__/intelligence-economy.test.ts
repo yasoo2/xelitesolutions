@@ -46,10 +46,11 @@ describe('the router understands internal vs answer', () => {
         expect(src).toMatch(/const autoLocalPreferred = .*provider.*=== 'auto'.*hasLocal/);
         expect(src).toMatch(/&& !autoLocalPreferred\)/);
         expect(src).toContain('LOCAL_BRAIN_FIRST || autoLocalPreferred');
-        expect(src).toContain("isLocalBrainOpen() && !autoLocalPreferred");
-        expect(src).toContain('Auto selection keeps Ollama in front despite a transient local breaker pause');
-        expect(src).toContain('Math.max(measuredLeash, 90_000)');
+        expect(src).toContain("p.name === 'Local (Auto)' && isLocalBrainOpen()");
+        expect(src).toContain('skipping the local brain (paused');
+        expect(src).toContain('Math.max(measuredLeash, autoPlanningFloor)');
         expect(src).toContain('autoLocalPreferred ? autoPlanningLeash : measuredLeash');
+        expect(src).toContain("detail: 'local_ready_after_warmup'");
     });
 
     it('039 records every provider attempt and reserves Ollama before keyless Offline fallbacks', () => {

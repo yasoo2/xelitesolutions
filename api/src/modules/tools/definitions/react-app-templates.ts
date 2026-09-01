@@ -588,6 +588,26 @@ export function createStore(key, seed) {
   return { read, write };
 }
 
+// Compatibility adapter for authored engines that use the documented
+// key/value store contract instead of the row-oriented createStore API.
+export function useStore(key) {
+  const readState = () => {
+    try {
+      const raw = localStorage.getItem(key);
+      const value = raw ? JSON.parse(raw) : {};
+      return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    } catch { return {}; }
+  };
+  const getItem = async (item) => readState()[item];
+  const setItem = async (item, value) => {
+    const state = readState();
+    state[item] = value;
+    try { localStorage.setItem(key, JSON.stringify(state)); } catch { /* private mode or quota */ }
+    return value;
+  };
+  return { getItem, setItem };
+}
+
 export const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 export const todayISO = () => new Date().toISOString().slice(0, 10);
 export const isToday = (v) => String(v || '').slice(0, 10) === todayISO();

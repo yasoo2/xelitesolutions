@@ -5256,7 +5256,17 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 } catch { /* the audit launches its own — exactly as before */ }
             }
             if (sessionId) broadcastThinkingDetail(sessionId, isAr ? '📦 أثبّت الحزم (npm install)…' : '📦 Installing packages (npm install)…');
-            const inst = await run('npm', ['install', '--no-audit', '--no-fund'], 240_000);
+            // Local Joe runs often have the exact React toolchain in npm's cache
+            // while outbound registry access is slow or unavailable. Use that
+            // evidence first; a fresh machine still gets one bounded network
+            // retry instead of being forced into offline-only operation.
+            const offlineInstall = await run('npm', ['install', '--offline', '--no-audit', '--no-fund'], 45_000);
+            if (offlineInstall !== 0) {
+                term('npm cache did not contain every package — retrying the bounded network install');
+            }
+            const inst = offlineInstall === 0
+                ? offlineInstall
+                : await run('npm', ['install', '--no-audit', '--no-fund'], 240_000);
             installExit = inst;
             npmMissing = inst === -1;
             installed = inst === 0;

@@ -110,6 +110,10 @@ export default function Joe() {
     const [userRole, setUserRole] = useState<string | undefined>(undefined);
     // Live "engineering company" department pipeline (BA -> Architect -> Dev -> QA -> Delivered)
     const [departmentStatus, setDepartmentStatus] = useState<any>(null);
+    // CommandComposer owns the live tool stream, while ChatPanel owns the
+    // visible conversation. Keep a small receipt here so a completed pipeline
+    // is visible in the same chat instead of disappearing with the hidden stream.
+    const visiblePipelineReportsRef = useRef<Set<string>>(new Set());
 
     const { t, i18n } = useTranslation();
 
@@ -472,6 +476,7 @@ export default function Joe() {
 
         // Always start the switched-to session from a clean slate.
         setMessages([]);
+        visiblePipelineReportsRef.current.clear();
         if (!sessionId) return;
 
         const loadMessages = async () => {
@@ -820,6 +825,40 @@ export default function Joe() {
     // Listen for errors from CommandComposer (since history is hidden there)
     const handleComposerMessages = useCallback((events: any[]) => {
         if (!events || events.length === 0) return;
+
+        // The detailed event stream is intentionally hidden inside the composer,
+        // but the final engineering report is user-facing evidence. Surface it
+        // in ChatPanel so the user can see what Joe built, tested, and found.
+        const reportEvent = [...events].reverse().find((event: any) =>
+            (event?.type === 'step_done' || event?.type === 'step_failed')
+            && event?.data?.result?.output?.orchestratedPipeline
+        );
+        const pipeline = reportEvent?.data?.result?.output?.orchestratedPipeline;
+        const reportText = typeof pipeline?.engineeringReportMarkdown === 'string'
+            ? pipeline.engineeringReportMarkdown.trim()
+            : '';
+        if (reportText) {
+            const reportKey = String(
+                pipeline?.runId
+                || reportEvent?.runId
+                || reportEvent?.data?.runId
+                || reportText.slice(0, 120)
+            );
+            if (!visiblePipelineReportsRef.current.has(reportKey)) {
+                visiblePipelineReportsRef.current.add(reportKey);
+                const reportId = `engineering-report:${reportKey}`;
+                setMessages(prev => {
+                    if (prev.some(m => m.id === reportId || m.content === reportText)) return prev;
+                    return [...prev, {
+                        id: reportId,
+                        role: 'assistant',
+                        content: reportText,
+                        timestamp: new Date(reportEvent?.ts || Date.now())
+                    }];
+                });
+            }
+        }
+
         const last = events[events.length - 1];
         if (last.type === 'error') {
             const errorId = last.id || `err-${last.ts}`;

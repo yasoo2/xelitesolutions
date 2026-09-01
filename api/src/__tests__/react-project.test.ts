@@ -11,6 +11,7 @@ import os from 'os';
 import path from 'path';
 import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
 import { ReactProjectTool, PROJECT_DIR_NAME_MAX_LENGTH, heroSecondaryDestination, requestDrivenServiceProducts } from '../modules/tools/definitions/ReactProjectTool';
+import { fileAppStoreJs } from '../modules/tools/definitions/react-app-templates';
 import { ApiProjectTool } from '../modules/tools/definitions/ApiProjectTool';
 import { ScaffoldProjectTool } from '../modules/tools/definitions/SystemTools';
 import { workspaceService } from '../modules/services/WorkspaceService';
@@ -70,6 +71,12 @@ describe('the scaffold: complete, RTL, tokenized, honest', () => {
         expect(pkg.scripts.build).toBe('vite build');
         expect(pkg.dependencies.react).toBeTruthy();
         expect(pkg.devDependencies['@vitejs/plugin-react']).toBeTruthy();
+    });
+    it('ships the key/value store contract used by authored engines', () => {
+        const store = fileAppStoreJs();
+        expect(store).toContain('export function useStore(key)');
+        expect(store).toContain('const getItem = async (item)');
+        expect(store).toContain('const setItem = async (item, value)');
     });
     it('resumeExisting preserves a repaired dependency while reusing the session scaffold', async () => {
         const sessionId = 'jest-resume-manifest';

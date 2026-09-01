@@ -2192,14 +2192,14 @@ export async function routeToModel(
         }
         attemptedProvidersThisCall.add(p.name);
         try {
-            if (p.name === 'Local (Auto)' && isLocalBrainOpen() && !autoLocalPreferred) {
+            // Auto prefers Ollama while it is healthy. Once the breaker has
+            // opened, continuing to force it first defeats the fallback mesh
+            // and makes a weak local model stall every engineering phase.
+            if (p.name === 'Local (Auto)' && isLocalBrainOpen()) {
                 const left = Math.max(1, Math.round((localCircuitUntil - Date.now()) / 1000));
                 console.info(`[IntelligentRouter] ⏭️ skipping the local brain (paused ${left}s more) — going straight to the mesh.`);
                 recordProviderAttempt(p.name, false, `skipped: local circuit paused for ${left}s`);
                 continue;
-            }
-            if (p.name === 'Local (Auto)' && isLocalBrainOpen() && autoLocalPreferred) {
-                console.info('[IntelligentRouter] 🧭 Auto selection keeps Ollama in front despite a transient local breaker pause.');
             }
             console.info(`[IntelligentRouter] 🔄 Attempting provider: ${p.name}...`);
 
@@ -2582,6 +2582,12 @@ export async function verifyProviderDirect(
             // time as evidence, and only then inspect fallback providers.
             if (isLocalBrainReady() && localProvider.isConfigured()) {
                 const warmup = Number(localWarmupMs?.() || 0);
+                // Boot warm-up already sent a real request to this model. A
+                // second immediate probe can queue behind a slow CPU model and
+                // make a healthy local brain look unavailable before planning.
+                if (warmup > 0) {
+                    return { ok: true, provider, detail: 'local_ready_after_warmup' };
+                }
                 const localProbeTimeout = Math.min(120_000, Math.max(30_000, warmup * 12));
                 try {
                     const localAnswer = await withTimeout(
