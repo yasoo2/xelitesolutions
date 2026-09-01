@@ -151,6 +151,15 @@ The next priority is improving build/TypeScript repair safely and gradually incr
 - Continue hardening across more TypeScript/build error shapes.
 - Add a later E2E test with less mocking to test real planner behavior separately.
 
+## Live Evaluation Findings
+
+These findings were confirmed during the live P01 evaluation on 2026-09-01 and are permanent quality requirements:
+
+- **Visual originality is a quality gate.** Generated pages must derive their layout, section selection, copy, imagery, and interaction model from the current request. Repeated generic scaffolds or familiar placeholder surfaces such as a default Products/Classic edition page are defects, not acceptable reuse.
+- **Browser QA must be exploratory and state-driven.** A fixed list of remembered clicks is insufficient. QA must rediscover visible controls after state changes, exercise multiple meaningful paths, and cover navigation, forms, keyboard behavior, responsive layout, visual hierarchy, and error/empty states within a bounded budget.
+- **QA evidence must be inspectable.** Reports must include states visited, controls discovered, actions performed, checks completed, failures with targets, and coverage gaps. Joe must not claim strong browser coverage when it only replayed a small deterministic sequence.
+- **No-target failures must be diagnosable.** Browser QA must resolve the active preview target explicitly and report the missing target context when it cannot. It must not silently fall back to a memorized action sequence or guess at a repair.
+
 ## Builder/Codex/Antigravity completion requirements
 
 When finishing a task, provide:
