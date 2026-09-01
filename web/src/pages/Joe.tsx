@@ -56,6 +56,8 @@ export default function Joe() {
     // Determine active session
     const activeSessionId = agentSelected || selected || undefined;
     const activeSessionKind = agentSelected ? 'agent' : (selected ? 'chat' : 'agent');
+    const activeSessionIdRef = useRef(activeSessionId);
+    activeSessionIdRef.current = activeSessionId;
 
     const { createSession } = useSessionActions();
 
@@ -823,7 +825,11 @@ export default function Joe() {
     }, [createSession]);
 
     // Listen for errors from CommandComposer (since history is hidden there)
-    const handleComposerMessages = useCallback((events: any[]) => {
+    const handleComposerMessages = useCallback((events: any[], sourceSessionId?: string) => {
+        // A composer can finish an effect from the previous render after the
+        // sidebar has already selected another session. Its events must never
+        // repaint the newly selected conversation.
+        if (sourceSessionId && sourceSessionId !== activeSessionIdRef.current) return;
         if (!events || events.length === 0) return;
 
         // The detailed event stream is intentionally hidden inside the composer,
@@ -1012,6 +1018,7 @@ export default function Joe() {
                             isArabic={String(i18n.language || '').startsWith('ar')}
                         />
                         <CommandComposer
+                            key={activeSessionId || 'no-active-session'}
                             sessionId={activeSessionId}
                             sessionKind={activeSessionKind}
                             hideHistory={true}

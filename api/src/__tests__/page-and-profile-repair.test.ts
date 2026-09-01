@@ -207,7 +207,7 @@ describe('a page Joe does not own', () => {
     });
 });
 
-describe('his real browser is the default path', () => {
+describe('Joe browser isolation', () => {
     const M = () => read('modules', 'browser', 'manager.ts');
 
     it('asking for the real profile is enough to turn persistence on', () => {
@@ -230,10 +230,10 @@ describe('his real browser is the default path', () => {
         expect(m).not.toMatch(/CLONE_PROFILE_DIRS = \[[^\]]*IndexedDB/);
     });
 
-    it('and it is switched on in the launcher, everywhere it is set', () => {
+    it('does not switch the launcher to the user Chrome profile', () => {
         const ps = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'start-joe.ps1'), 'utf-8');
-        const all = ps.match(/\$env:USE_USER_BROWSER_PROFILE\s*=\s*"(\d)"/g) || [];
-        expect(all.length).toBeGreaterThanOrEqual(2);
-        expect(all.every(s => s.includes('"1"'))).toBe(true);
+        expect(ps).toMatch(/\$env:USE_USER_BROWSER_PROFILE\s*=\s*"0"/);
+        expect(ps).toMatch(/\$env:USE_SYSTEM_CHROME\s*=\s*"0"/);
+        expect(ps).not.toMatch(/\$env:USE_SYSTEM_CHROME\s*=\s*"1"/);
     });
 });

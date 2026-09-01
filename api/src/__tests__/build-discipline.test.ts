@@ -68,6 +68,12 @@ describe('the launcher itself lives by the same discipline', () => {
         expect(startPs1).toMatch(/aliveSeconds -lt 15/);
     });
 
+    test('start-joe.ps1 keeps the visible browser inside bundled Chromium', () => {
+        expect(startPs1).toMatch(/\$env:USE_SYSTEM_CHROME\s*=\s*"0"/);
+        expect(startPs1).not.toMatch(/\$env:USE_SYSTEM_CHROME\s*=\s*"1"/);
+        expect(startPs1).toMatch(/\$env:BROWSER_HEADED\s*=\s*"1"/);
+    });
+
     test('update-joe.ps1 never hard-resets over a network failure', () => {
         expect(updatePs1).toContain('$isNetworkFailure');
         expect(updatePs1).toMatch(/Could not resolve host\|unable to access/);

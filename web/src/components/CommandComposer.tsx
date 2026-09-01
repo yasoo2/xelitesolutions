@@ -841,7 +841,7 @@ export default function CommandComposer({
   onSessionCreated?: (id: string) => void;
   onPreviewArtifact?: (content: string, lang: string) => void;
   onStepsUpdate?: (steps: any[]) => void;
-  onMessagesUpdate?: (msgs: any[]) => void;
+  onMessagesUpdate?: (msgs: any[], sourceSessionId?: string) => void;
   hideHistory?: boolean;
   workspaceId?: string | null;
   githubConnected?: boolean;
@@ -1305,7 +1305,7 @@ export default function CommandComposer({
       scrollToBottom('auto');
     }
     if (onStepsUpdate) onStepsUpdate(derived.steps);
-    if (onMessagesUpdate) onMessagesUpdate(events);
+    if (onMessagesUpdate) onMessagesUpdate(events, sessionId);
 
     // Auto-speak new assistant messages if voice mode is on
     if (isVoiceMode && events.length > 0) {

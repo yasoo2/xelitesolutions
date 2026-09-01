@@ -64,6 +64,7 @@ const ENGINE_SOURCE_MARKERS: Record<string, RegExp> = {
     calculator: /(?:function|class|const|let|var)\s+CalculatorApp\b/i,
     productivity: /(?:function|class|const|let|var)\s+ProductivityApp\b/i,
     finance: /(?:function|class|const|let|var)\s+FinanceApp\b/i,
+    custom: /(?:function|class|const|let|var)\s+CustomApp\b/i,
 };
 const MEASURED_ABILITIES: Record<string, MeasuredAbility[]> = {
     map: [
@@ -5011,7 +5012,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
         const engineComponentByKind: Record<string, string> = {
             map: 'MapApp', chat: 'ChatApp', weather: 'WeatherApp', records: 'RecordsApp',
             social: 'SocialApp', shop: 'ShopApp', calculator: 'CalculatorApp',
-            productivity: 'ProductivityApp', finance: 'FinanceApp',
+            productivity: 'ProductivityApp', finance: 'FinanceApp', custom: 'CustomApp',
         };
         const authoredEngineName = appBp ? engineComponentByKind[runBp.engine] || '' : '';
         const generatedEnginePath = authoredEngineName && (!insideATest || context?.allowModelAuthoringInTest === true)
@@ -5278,12 +5279,32 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
         // WHY there is no bundle, and the delivery below is where that is read.
         let installExit: number | null = null;
         let buildExit: number | null = null;
+        let lastLog = '';
+        const viteConfigPath = path.join(proj, 'vite.config.js');
+        const viteConfigBackup = path.join(proj, '.joe-vite-config.js');
+        const runBuild = async (timeoutMs: number): Promise<number> => {
+            let configHidden = false;
+            try {
+                if (fs.existsSync(viteConfigPath)) {
+                    fs.renameSync(viteConfigPath, viteConfigBackup);
+                    configHidden = true;
+                }
+                const r = await shell.run('npm', ['run', 'build', '--', '--base', './'], { cwd: proj, timeout: timeoutMs });
+                lastLog = r.out;
+                if (r.missing) return -1;
+                if (r.timedOut) return -2;
+                return r.exitCode as number;
+            } finally {
+                if (configHidden) {
+                    try { fs.renameSync(viteConfigBackup, viteConfigPath); } catch { /* keep the evidence; restore is best effort */ }
+                }
+            }
+        };
         if (!noInstall) {
             // Through the Single Execution Authority — a direct spawn here
             // BLOCKED STARTUP on the user's machine (ExecutionEnforcer).
             // The build's own words are kept — they are what names the missing
             // package when a build stops one `npm install` short of finishing.
-            let lastLog = '';
             /**
              * Every command here is now VISIBLE: the session prints the prompt
              * and the command before it spawns, streams the output under it,
@@ -5362,22 +5383,6 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 // for this proof build and restore it immediately afterwards.
                 // This preserves the runnable scaffold while keeping the
                 // production proof inside the project boundary.
-                const viteConfigPath = path.join(proj, 'vite.config.js');
-                const viteConfigBackup = path.join(proj, '.joe-vite-config.js');
-                const runBuild = async (timeoutMs: number): Promise<number> => {
-                    let configHidden = false;
-                    try {
-                        if (fs.existsSync(viteConfigPath)) {
-                            fs.renameSync(viteConfigPath, viteConfigBackup);
-                            configHidden = true;
-                        }
-                        return await run('npm', ['run', 'build', '--', '--base', './'], timeoutMs);
-                    } finally {
-                        if (configHidden) {
-                            try { fs.renameSync(viteConfigBackup, viteConfigPath); } catch { /* keep the evidence; restore is best effort */ }
-                        }
-                    }
-                };
                 let b = await runBuild(600_000);
                 buildExit = b;
                 built = b === 0 && fs.existsSync(path.join(proj, 'dist', 'index.html'));

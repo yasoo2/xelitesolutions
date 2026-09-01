@@ -173,6 +173,15 @@ describe('INVARIANT: no panel keeps another conversation’s state', () => {
         expect(branch).toMatch(/setText\(''\)/);
         expect(branch).toMatch(/setDraftText\(''\)/);
     });
+
+    it('remounts the composer and rejects late events when the active chat changes', () => {
+        const C = read('components', 'CommandComposer.tsx');
+        const J = read('pages', 'Joe.tsx');
+        expect(C).toMatch(/onMessagesUpdate\?: \(msgs: any\[\], sourceSessionId\?: string\) => void/);
+        expect(C).toMatch(/onMessagesUpdate\(events, sessionId\)/);
+        expect(J).toMatch(/key=\{activeSessionId \|\| 'no-active-session'\}/);
+        expect(J).toMatch(/sourceSessionId && sourceSessionId !== activeSessionIdRef\.current/);
+    });
 });
 
 /**

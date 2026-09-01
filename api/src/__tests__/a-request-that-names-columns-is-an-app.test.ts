@@ -31,7 +31,7 @@
  * an application, whatever nouns the rest of his sentence happens to contain.
  */
 
-import { detectAppKind } from '../core/design/app-blueprints';
+import { blueprintFor, detectAppKind } from '../core/design/app-blueprints';
 
 const SHOP = 'اعمل لي متجراً اسمه «حلويات أم عمر» فيه صفحة المنتجات وصفحة الطلبات. جدول المنتجات فيه اسم الصنف والسعر والحالة (متوفر أو نافد) وصورة. وجدول الطلبات فيه اسم الزبون ورقم الهاتف والصنف والكمية والإجمالي.';
 
@@ -60,5 +60,11 @@ describe('and a request that names none is still what it was', () => {
         //  reads more requests. It runs after the archetypes that carry a
         //  real contract, and this proves the order held.
         expect(detectAppKind('اعمل تطبيق طقس يعرض توقعات سبعة أيام مع بحث عن المدن')).toBe('weather');
+    });
+
+    it('an explicit unknown application goes to model authoring, not the brochure scaffold', () => {
+        const request = 'أنشئ تطبيق ويب React صغيراً باسم QA Counter: عداد يزيد وينقص ويعود إلى الصفر، مع أزرار واضحة.';
+        expect(detectAppKind(request)).toBe('custom');
+        expect(blueprintFor('custom', request, true).engine).toBe('custom');
     });
 });

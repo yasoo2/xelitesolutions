@@ -32,12 +32,12 @@ import { hisWordsOnly } from './page-head';
 //  The reader that already knows which noun stands beside the container.
 import { subjectAfterContainer } from './subject-phrase';
 
-export type AppEngine = 'map' | 'chat' | 'weather' | 'records' | 'social' | 'shop' | 'calculator' | 'productivity' | 'finance';
+export type AppEngine = 'map' | 'chat' | 'weather' | 'records' | 'social' | 'shop' | 'calculator' | 'productivity' | 'finance' | 'custom';
 
 export type AppKind =
     | 'maps' | 'chat' | 'weather' | 'social' | 'store' | 'calculator' | 'productivity'
     | 'tasks' | 'notes' | 'expenses' | 'finance' | 'inventory' | 'booking'
-    | 'pos' | 'crm' | 'lms' | 'contacts' | 'habits' | 'generic';
+    | 'pos' | 'crm' | 'lms' | 'contacts' | 'habits' | 'generic' | 'custom';
 
 /**
  * `image` is a real picture, not a text box with a URL in it: the app picks a
@@ -481,6 +481,11 @@ export function detectAppKind(requestRaw: string): AppKind | null {
     // application that owns records. It gets the records engine with an entity
     // named after the request itself.
     if (APP_SIGNAL.test(intentRequest) && MANAGE_SIGNAL.test(intentRequest)) return 'generic';
+    // An explicit application with no known domain is still an application.
+    // Send it to model authoring instead of silently turning it into the
+    // remembered brochure sections. There is no deterministic custom-app
+    // template here: the model must define the requested behavior.
+    if (APP_SIGNAL.test(intentRequest)) return 'custom';
     /**
      * WHAT THE PAGE MUST DO OUTRANKS WHAT THE USER CALLED IT.
      *
@@ -1424,6 +1429,15 @@ function stockBlueprintFor(kind: AppKind, request: string, isAr: boolean): AppBl
             metrics: [],
             deps: {},
             emptyHint: L('لا توجد عمليات بعد — ابدأ بعملية حسابية.', 'No calculations yet — start an operation.'),
+        };
+
+        case 'custom': return {
+            kind, engine: 'custom',
+            title: L('التطبيق', 'Application'),
+            lede: L('تطبيق مخصص مبني من متطلباتك مباشرة.', 'A custom application authored directly from your requirements.'),
+            entityOne: L('عنصر', 'item'), entityMany: L('العناصر', 'Items'),
+            fields: [], metrics: [], deps: {},
+            emptyHint: L('لا توجد بيانات بعد.', 'No data yet.'),
         };
 
         case 'habits': return {
@@ -3303,6 +3317,9 @@ const ENGINE_COVERS: Record<AppEngine, RegExp> = {
     // NOT payment gateways, shipping carriers or multi-vendor payouts, so a
     // «Shopify-like» request still gets an honest list of what was not built.
     shop: /product|catalog(ue)?|cart|checkout|order|price|pricing|stock|inventory|category|categories|search|storefront|shop|store|منتج|منتجات|كتالوج|سلة|طلب|طلبات|سعر|أسعار|مخزون|تصنيف|تصنيفات|بحث|متجر/i,
+    // Custom engines are authored from the request; no stock capability is
+    // assumed here, so named requirements remain visible to the quality gate.
+    custom: /(?!)/i,
 };
 
 /** Cross-cutting things the BACKEND covers when one was built alongside. */

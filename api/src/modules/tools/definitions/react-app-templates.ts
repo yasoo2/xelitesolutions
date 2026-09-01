@@ -226,7 +226,7 @@ ${bp.relation.fields.map(f => `      { key: '${q(f.key)}', label: '${q(f.label)}
 
 const ENGINE_COMPONENT: Record<AppBlueprint['engine'], string> = {
     map: 'MapApp', chat: 'ChatApp', weather: 'WeatherApp', records: 'RecordsApp', social: 'SocialApp',
-    shop: 'ShopApp', calculator: 'CalculatorApp', productivity: 'ProductivityApp', finance: 'FinanceApp',
+    shop: 'ShopApp', calculator: 'CalculatorApp', productivity: 'ProductivityApp', finance: 'FinanceApp', custom: 'CustomApp',
 };
 
 export function fileAppShellJsx(bp: AppBlueprint, isAr: boolean, hasTables = false, hasApi = false): string {
@@ -3852,6 +3852,9 @@ export function buildAppFiles(bp: AppBlueprint, o: AppBuildOptions, slugName: st
         calculator: ['src/components/CalculatorApp.jsx', fileCalculatorAppJsx(o.isArabic)],
         productivity: ['src/components/ProductivityApp.jsx', fileProductivityAppJsx(o.isArabic)],
         finance: ['src/components/FinanceApp.jsx', fileFinanceAppJsx(o.isArabic)],
+        // A custom application has no stock implementation. ReactProjectTool
+        // supplies this file through the model authoring path before build.
+        custom: ['src/components/CustomApp.jsx', ''],
     };
     const [enginePath, engineSrc] = engineFile[bp.engine];
     const generatedEnginePath = String(o.generatedEnginePath || '').trim();
