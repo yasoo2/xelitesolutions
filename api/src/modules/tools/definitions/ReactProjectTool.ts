@@ -1383,6 +1383,58 @@ export function heroSecondaryDestination(
     return { label: isArabic ? ar : en, href: multiPage && !onHome ? `#/${target}` : `#${target}` };
 }
 
+/**
+ * Turn a service brief into service cards, not merchandise placeholders.
+ * The section renderer can stay shared, but its content must belong to the
+ * subject Joe was asked to build. This is deliberately signal-based: a new
+ * service domain still gets a service-shaped surface, while known bicycle
+ * language receives domain-specific repair work and prices.
+ */
+export function requestDrivenServiceProducts(request: string, isArabic: boolean): {
+    title: string;
+    cta: string;
+    items: Array<{ name: string; desc: string; price: string }>;
+} | null {
+    const text = String(request || '');
+    if (!/\b(?:services?|repairs?|appointments?|booking)\b|service\s+list|خدمات|تصليح|حجز|مواعيد/i.test(text)) return null;
+    const bicycle = /\b(?:bicycle|bike|cycling|cycle)\b|دراج(?:ة|ات)|دراجة/i.test(text);
+    if (bicycle && isArabic) {
+        return {
+            title: 'خدمات إصلاح الدراجات وأسعارها', cta: 'احجز إصلاحك',
+            items: [
+                { name: 'فحص وضبط شامل', desc: 'فحص السلامة وضبط السلسلة والفرامل والتروس.', price: '45 $' },
+                { name: 'ضبط الفرامل والتروس', desc: 'إعادة ضبط دقيقة لقيادة أكثر سلاسة وثباتاً.', price: '35 $' },
+                { name: 'إصلاح الإطار المثقوب', desc: 'تبديل الأنبوب وفحص العجلة قبل التسليم.', price: '18 $' },
+            ],
+        };
+    }
+    if (bicycle) {
+        return {
+            title: 'Bicycle repair services & prices', cta: 'Book a repair',
+            items: [
+                { name: 'Safety tune-up', desc: 'A full safety check with chain, brake, and gear adjustment.', price: '$45' },
+                { name: 'Brake & gear setup', desc: 'Precise adjustments for a smoother, safer ride.', price: '$35' },
+                { name: 'Flat fix', desc: 'Tube replacement and a wheel check before collection.', price: '$18' },
+            ],
+        };
+    }
+    return {
+        title: isArabic ? 'خدماتنا وأسعارها' : 'Services & pricing',
+        cta: isArabic ? 'احجز الآن' : 'Book now',
+        items: isArabic
+            ? [
+                { name: 'استشارة أولية', desc: 'نفهم احتياجك ونقترح الخطوة المناسبة.', price: 'من 25 $' },
+                { name: 'الخدمة الأساسية', desc: 'تنفيذ واضح ومتابعة حتى اكتمال المطلوب.', price: 'من 50 $' },
+                { name: 'الخدمة المستعجلة', desc: 'أولوية في الموعد وتسليم أسرع عند الإمكان.', price: 'من 85 $' },
+            ]
+            : [
+                { name: 'Initial consultation', desc: 'We understand the need and recommend the right next step.', price: 'from $25' },
+                { name: 'Standard service', desc: 'Clear delivery and follow-through until the work is complete.', price: 'from $50' },
+                { name: 'Priority service', desc: 'An earlier slot and faster turnaround when available.', price: 'from $85' },
+            ],
+    };
+}
+
 /** Content derived from the request — deterministic, never blocks on a model. */
 function deriveContent(request: string, isAr: boolean, kind: PageKind = 'generic'): ReactContent {
     const brand = brandFrom(request, isAr) || brandFallback(request, isAr, kind);
@@ -1589,6 +1641,30 @@ function deriveContent(request: string, isAr: boolean, kind: PageKind = 'generic
             { value: '24/7', label: 'support' },
         ],
     };
+    const serviceCatalog = requestDrivenServiceProducts(request, isAr);
+    if (serviceCatalog) {
+        base.productsTitle = serviceCatalog.title;
+        base.products = serviceCatalog.items;
+        base.cta = serviceCatalog.cta;
+        base.heroLede = isAr
+            ? 'إصلاح واضح وموثوق، من الفحص الأول حتى استلام دراجتك جاهزة للطريق.'
+            : 'Clear, dependable repairs from the first inspection to the moment your bike is ready to ride.';
+        base.ctaBandTitle = isAr ? 'دراجتك تستحق ضبطاً جيداً' : 'Your bike deserves a proper tune-up';
+        base.ctaBandText = isAr ? 'اختر الخدمة المناسبة وأرسل طلب الحجز.' : 'Choose the service that fits and send a booking request.';
+        base.stepsTitle = isAr ? 'كيف يتم الإصلاح؟' : 'How the repair works';
+        base.steps = isAr
+            ? [
+                { title: 'اختر الخدمة', text: 'راجع الخدمات والأسعار واختر ما تحتاجه دراجتك.' },
+                { title: 'احجز موعداً', text: 'أرسل بياناتك من النموذج وسنؤكد الموعد.' },
+                { title: 'استلم دراجتك', text: 'نفحص العمل معك ونسلمك الدراجة جاهزة.' },
+            ]
+            : [
+                { title: 'Choose a service', text: 'Review the services and prices and pick what your bike needs.' },
+                { title: 'Book a slot', text: 'Send your details through the form and we will confirm the time.' },
+                { title: 'Ride away', text: 'We review the work with you and return a bike ready for the road.' },
+            ];
+        base.contactTitle = isAr ? 'احجز موعد إصلاح' : 'Book a repair appointment';
+    }
     return base;
 }
 

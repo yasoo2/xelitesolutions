@@ -10,7 +10,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
-import { ReactProjectTool, PROJECT_DIR_NAME_MAX_LENGTH, heroSecondaryDestination } from '../modules/tools/definitions/ReactProjectTool';
+import { ReactProjectTool, PROJECT_DIR_NAME_MAX_LENGTH, heroSecondaryDestination, requestDrivenServiceProducts } from '../modules/tools/definitions/ReactProjectTool';
 import { ApiProjectTool } from '../modules/tools/definitions/ApiProjectTool';
 import { ScaffoldProjectTool } from '../modules/tools/definitions/SystemTools';
 import { workspaceService } from '../modules/services/WorkspaceService';
@@ -116,6 +116,16 @@ describe('the scaffold: complete, RTL, tokenized, honest', () => {
             .toEqual({ label: 'Explore features', href: '#features' });
         expect(heroSecondaryDestination('landing', ['Hero', 'Location', 'Products', 'Contact'], false, true))
             .toEqual({ label: 'تصفح الخدمات', href: '#products' });
+    });
+    it('derives service cards from a bicycle repair brief instead of merchandise placeholders', () => {
+        const catalog = requestDrivenServiceProducts(
+            'Build a bicycle repair studio with a service list, prices, opening hours, and a booking form.',
+            false,
+        );
+        expect(catalog?.title).toBe('Bicycle repair services & prices');
+        expect(catalog?.cta).toBe('Book a repair');
+        expect(catalog?.items.map(item => item.name)).toEqual(['Safety tune-up', 'Brake & gear setup', 'Flat fix']);
+        expect(catalog?.items.map(item => item.name)).not.toContain('Classic edition');
     });
     it('the tokens come from Joe\'s real palette engine (light AND dark blocks)', () => {
         const tokens = fs.readFileSync(path.join(out.output.path, 'src', 'styles', 'tokens.css'), 'utf-8');
