@@ -1188,6 +1188,26 @@ export default function CommandComposer({
     return () => window.removeEventListener('joe:prefill', handler as any);
   }, []);
 
+  useEffect(() => {
+    const handler = (ev: Event) => {
+      const detail = (ev as CustomEvent)?.detail;
+      const report = detail?.report;
+      if (!report || !Array.isArray(report.checks)) return;
+      const next = {
+        sessionId: String(detail?.sessionId || '').trim(),
+        report: {
+          ok: Boolean(report.ok),
+          title: String(report.title || 'فحص جودة المتصفح'),
+          checks: report.checks.map(String),
+        },
+        ts: Date.now(),
+      };
+      setEvents((prev) => [...prev, { type: 'browser_quality_report', data: next, ts: next.ts }]);
+    };
+    window.addEventListener('browser:quality_report', handler);
+    return () => window.removeEventListener('browser:quality_report', handler);
+  }, []);
+
   // Save providers to localStorage on change
   useEffect(() => {
     localStorage.setItem('ai_providers', JSON.stringify(providers));
@@ -3284,6 +3304,7 @@ export default function CommandComposer({
       }
       else if (type === 'error') out.push({ kind: 'error', key: `error:${idx}`, e, idx });
       else if (type === 'artifact_created') out.push({ kind: 'artifact', key: `artifact:${idx}`, e, idx });
+      else if (type === 'browser_quality_report') out.push({ kind: 'browser_quality_report', key: `browser-quality:${idx}`, e, idx });
     }
 
     return out;
@@ -3425,6 +3446,22 @@ export default function CommandComposer({
                       report={pipeline} 
                       ts={item.e?.ts} 
                       t={t}
+                    />
+                  );
+                }
+
+                if (item.kind === 'browser_quality_report') {
+                  const report = item.e?.data?.report;
+                  if (!report) return null;
+                  const text = [`${report.ok ? '✓' : '!'} ${report.title}`, '', ...report.checks.map((check: string) => `- ${check}`)].join('\n');
+                  return (
+                    <ChatBubble
+                      key={item.key}
+                      event={{ data: { text } }}
+                      isUser={false}
+                      variant="system"
+                      tone={report.ok ? 'info' : 'danger'}
+                      ts={item.e?.ts}
                     />
                   );
                 }

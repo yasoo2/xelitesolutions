@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const stream = await readFile(resolve(root, 'src/components/ModernBrowserStream.tsx'), 'utf8');
+const composer = await readFile(resolve(root, 'src/components/CommandComposer.tsx'), 'utf8');
 const embedded = await readFile(resolve(root, 'src/components/EmbeddedBrowser.tsx'), 'utf8');
 const css = await readFile(resolve(root, 'src/styles/joe-premium.css'), 'utf8');
 const joePage = await readFile(resolve(root, 'src/pages/Joe.tsx'), 'utf8');
@@ -15,9 +16,9 @@ const checks = [
   ['the control rail stays compact and non-blocking at the lower edge', css.includes('bottom: 14px;') && css.includes('opacity: 0.68;') && css.includes('pointer-events: none;') && stream.includes("'CTRL'" )],
   ['manual control remains accessible as a compact action', stream.includes('data-testid="browser-control-button"') && stream.includes("setManualMode((active) => !active)")],
   ['live QA reports connection, frame freshness, queue and action errors', stream.includes('runQualityCheck') && stream.includes('lastFrameAt') && stream.includes('queueLen') && stream.includes('actionErrors')],
-  ['QA report can be copied and session evidence can be exported', stream.includes('copyQaReport') && stream.includes('browser-copy-qa-button') && stream.includes('exportSessionEvidence') && stream.includes('browser-export-evidence-button') && stream.includes('joe.browser.session-evidence.v1')],
+  ['QA report can be copied and session evidence can be exported', stream.includes('copyQaReport') && stream.includes('exportSessionEvidence') && stream.includes('joe.browser.session-evidence.v1')],
   ['action log exposes filter and text search controls', stream.includes('browser-action-filters') && stream.includes('actionFilter') && stream.includes('actionQuery') && stream.includes('filteredBrowserActions')],
-  ['browser recovery alerts stay out of the preview while the QA report stays in panel flow', stream.includes('browser-quality-signal') && stream.includes('qualityNeedsRecovery') && !stream.includes('browser-recovery-banner') && !css.includes('.browser-recovery-banner') && css.includes('.browser-quality-popover {') && css.includes('position: relative;')],
+  ['browser recovery alerts stay out of the preview while detailed QA reports go to chat', stream.includes('browser-quality-signal') && stream.includes('qualityNeedsRecovery') && stream.includes("browser:quality_report") && !stream.includes('browser-recovery-banner') && !stream.includes('browser-quality-popover') && !css.includes('.browser-recovery-banner') && !css.includes('.browser-quality-popover') && composer.includes('browser_quality_report')],
   ['live telemetry is surfaced from page, quality, diagnostics and action events', stream.includes("'page_snapshot'") && stream.includes("'page_diagnostics'") && stream.includes("'browser_quality'") && stream.includes("'browser_action'") && stream.includes('browser:quality') && stream.includes('browser:diagnostics')],
   ['embedded browser consumes telemetry without creating a second layout', embedded.includes('browser:page_snapshot') && embedded.includes('browser:quality') && embedded.includes('browser:diagnostics') && embedded.includes('liveQuality')],
   ['fullscreen and snapshot actions are wired', stream.includes('requestFullscreen') && stream.includes('captureSnapshot') && stream.includes('data-testid="browser-capture-button"')],

@@ -47,8 +47,6 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
   const [manualMode, setManualMode] = useState(false);
   const [lastFrameAt, setLastFrameAt] = useState<number | null>(null);
   const [frameCount, setFrameCount] = useState(0);
-  const [qualityOpen, setQualityOpen] = useState(false);
-  const [qualityReport, setQualityReport] = useState<{ ok: boolean; title: string; checks: string[] } | null>(null);
   const [startPending, setStartPending] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
   const [qualityMetrics, setQualityMetrics] = useState<Extract<WsEvent, { type: 'browser_quality' }> | null>(null);
@@ -518,8 +516,12 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
   };
 
   const runQualityCheck = () => {
-    setQualityReport(buildQualityReport());
-    setQualityOpen(true);
+    const report = buildQualityReport();
+    try {
+      window.dispatchEvent(new CustomEvent('browser:quality_report', {
+        detail: { sessionId, report, page: pageSnapshot, quality: qualityMetrics, diagnostics },
+      }));
+    } catch { }
   };
 
   const downloadJson = (filename: string, value: unknown) => {
@@ -557,7 +559,6 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
     try {
       const report = buildQualityReport();
       await copyText(JSON.stringify({ exportedAt: new Date().toISOString(), sessionId, report, page: pageSnapshot, quality: qualityMetrics, diagnostics }, null, 2));
-      setQualityReport(report);
       setCopyFeedback('copied');
       window.setTimeout(() => setCopyFeedback(null), 1800);
     } catch {
@@ -826,19 +827,6 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
         </div>
       </div>
       <div style={{ padding: 10, borderTop: '1px solid rgba(255,255,255,0.08)', background: 'rgba(0,0,0,0.35)' }}>
-        {qualityOpen && qualityReport ? (
-          <div className="browser-quality-popover" dir="rtl" role="status" aria-live="polite">
-            <div className={`browser-quality-title ${qualityReport.ok ? 'is-good' : 'is-warning'}`}>
-              <strong>{qualityReport.ok ? '✓' : '!'}</strong> {qualityReport.title}
-              <button className="browser-quality-close" onClick={() => setQualityOpen(false)} aria-label="إغلاق فحص الجودة">×</button>
-            </div>
-            <div className="browser-quality-actions">
-              <button type="button" data-testid="browser-copy-qa-button" onClick={() => void copyQaReport()}>{copyFeedback === 'copied' ? 'تم النسخ' : copyFeedback === 'error' ? 'تعذر النسخ' : 'نسخ التقرير'}</button>
-              <button type="button" data-testid="browser-export-evidence-button" onClick={exportSessionEvidence}>تصدير الدليل</button>
-            </div>
-            <div className="browser-quality-checks">{qualityReport.checks.map((check) => <div key={check}>{check}</div>)}</div>
-          </div>
-        ) : null}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
           <div style={{ color: '#fff', fontSize: 12, opacity: 0.95, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {status} · quality={qualityMetrics?.status || 'unknown'} · {w}×{h} {pageSnapshot?.title ? `· ${pageSnapshot.title.slice(0, 48)}` : ''} {lastStep ? `· ${lastStep}` : ''} {busy ? `· busy` : ''} {queueLen ? `· queue=${queueLen}` : ''}
