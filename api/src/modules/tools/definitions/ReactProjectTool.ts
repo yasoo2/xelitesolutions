@@ -5018,6 +5018,25 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             ? `src/components/${authoredEngineName}.jsx` : '';
         let modelAuthoredEngine = false;
         let blueprintFallbackEngine = false;
+        let authoredEngineFallback: { path: string; body: string } | null = null;
+        if (generatedEnginePath && appBp) {
+            try {
+                const fallbackFiles = buildAppFiles(runBp, {
+                    isArabic: artifactIsAr,
+                    brand: content.brand,
+                    storeKey: `${slug(content.brand)}-${runBp.kind}`,
+                    api: appApi,
+                    apiResources,
+                    sourceRequest: request,
+                    brandColor: (palette as any).primary,
+                    model: adminModel,
+                }, slug(content.brand));
+                const fallbackSource = String(fallbackFiles[generatedEnginePath] || '');
+                if (fallbackSource.trim()) {
+                    authoredEngineFallback = { path: generatedEnginePath, body: fallbackSource };
+                }
+            } catch { /* the deterministic engine remains optional for generic projects */ }
+        }
         // A provider outage must not turn a known, request-derived application
         // into an empty shell. The fallback is restricted to the canonical
         // engineering pipeline, where the resulting artifact still goes through
@@ -5749,12 +5768,21 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             const runtimeBlockers = ((audit?.findings || []) as any[]).filter(f =>
                 (f.severity === 'high' || f.severity === 'critical')
                 && AUTHORED_RENDER_FAULTS.has(String(f.id || f.code || '')));
-            if (runtimeBlockers.length && Object.keys(authoredFallback).length && !audit?.skipped) {
+            const canRestoreDeterministic = runtimeBlockers.length && !audit?.skipped
+                && (Object.keys(authoredFallback).length > 0 || !!authoredEngineFallback);
+            if (canRestoreDeterministic) {
                 term(`the authored interface broke the page while it RAN (${runtimeBlockers.map((f: any) => f.id || f.kind || 'high').slice(0, 3).join(', ')}) — putting the deterministic sections back`);
                 for (const [rel, body] of Object.entries(authoredFallback)) {
                     fs.writeFileSync(path.join(proj, rel), body, 'utf-8');
                 }
                 Object.keys(authoredFallback).forEach(k => delete authoredFallback[k]);
+                if (authoredEngineFallback) {
+                    fs.writeFileSync(path.join(proj, authoredEngineFallback.path), authoredEngineFallback.body, 'utf-8');
+                    files[authoredEngineFallback.path] = authoredEngineFallback.body;
+                    modelAuthoredEngine = false;
+                    blueprintFallbackEngine = true;
+                    term(`the authored domain engine broke the page while it RAN — restored ${authoredEngineFallback.path} and will re-audit it`);
+                }
                 /**
                  *  ⛔ THROUGH `shell.run`, BECAUSE JOE REFUSES TO BOOT OTHERWISE
                  *  — AND HE IS RIGHT.
@@ -5776,8 +5804,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                  *  and shown in his terminal — and a rebuild he cannot see is
                  *  a rebuild he cannot check.
                  */
-                const rbRes = await shell.run('npm', ['run', 'build'], { cwd: proj, timeout: 300_000 });
-                const rb = rbRes.missing ? -1 : rbRes.timedOut ? -2 : (rbRes.exitCode as number);
+                const rb = await runBuild(300_000);
                 buildExit = rb;
                 built = rb === 0 && fs.existsSync(path.join(proj, 'dist', 'index.html'));
                 term(`vite build (after putting the templates back) → ${built ? 'OK' : `exit ${rb}`}`);

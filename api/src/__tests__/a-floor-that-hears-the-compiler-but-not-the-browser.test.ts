@@ -62,7 +62,7 @@ describe('the authored interface is rolled back by the browser, not only by the 
             SRC.indexOf('if (audit && !someoneIsWatching)'),
         );
         expect({
-            rebuilds: block.includes("'run', 'build'"),
+            rebuilds: block.includes('runBuild('),
             reAudits: block.includes('auditBuiltApp'),
         }).toEqual({ rebuilds: true, reAudits: true });
     });
