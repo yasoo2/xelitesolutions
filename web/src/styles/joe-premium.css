@@ -3905,40 +3905,10 @@ body:not(.rtl) .joe-user-info {
 .browser-action-filters input { min-width: 150px; padding: 0 8px; }
 .browser-action-filters select { padding: 0 6px; }
 .browser-action-filters input::placeholder { color: #94a3b8; }
-.browser-recovery-banner {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    margin-top: 8px;
-    padding: 8px 10px;
-    border: 1px solid rgba(251, 191, 36, 0.32);
-    border-radius: 9px;
-    background: rgba(120, 53, 15, 0.22);
-    color: #fde68a;
-    font-size: 11px;
-    line-height: 1.4;
-}
-.browser-recovery-banner > div { min-width: 0; display: flex; gap: 8px; flex-wrap: wrap; align-items: baseline; }
-.browser-recovery-banner span { color: #fef3c7; opacity: 0.82; }
-.browser-recovery-banner button {
-    flex: 0 0 auto;
-    min-height: 26px;
-    padding: 0 9px;
-    border: 1px solid rgba(253, 230, 138, 0.35);
-    border-radius: 6px;
-    background: rgba(180, 83, 9, 0.42);
-    color: #fff7ed;
-    cursor: pointer;
-    font: 600 10px/1 Inter, ui-sans-serif, system-ui, sans-serif;
-}
-.browser-recovery-banner button:hover { background: rgba(180, 83, 9, 0.62); }
 .browser-quality-popover {
-    position: absolute;
-    left: 14px;
-    bottom: 50px;
-    z-index: 80;
-    width: min(300px, calc(100% - 28px));
+    position: relative;
+    width: min(420px, 100%);
+    margin: 0 0 10px auto;
     padding: 10px;
     border: 1px solid rgba(148, 163, 184, 0.26);
     border-radius: 10px;
@@ -3948,6 +3918,8 @@ body:not(.rtl) .joe-user-info {
     backdrop-filter: blur(14px);
     -webkit-backdrop-filter: blur(14px);
     font-size: 11px;
+    max-height: 220px;
+    overflow: auto;
 }
 .browser-quality-title {
     display: flex;
@@ -3975,7 +3947,6 @@ body:not(.rtl) .joe-user-info {
 
 @media (max-width: 900px) {
     .browser-control-rail { left: 10px; bottom: 10px; }
-    .browser-quality-popover { left: 10px; bottom: 46px; }
 }
 @media (max-width: 560px) {
     .browser-control-rail { left: 8px; bottom: 8px; gap: 2px; padding: 3px; }
@@ -3983,9 +3954,7 @@ body:not(.rtl) .joe-user-info {
     .browser-control-icon { min-width: 23px; height: 23px; }
     .browser-control-button { min-width: 29px; padding: 0 5px; }
     .browser-quality-signal { height: 23px; }
-    .browser-quality-popover { left: 8px; bottom: 42px; width: min(280px, calc(100% - 16px)); }
-    .browser-recovery-banner { align-items: flex-start; flex-direction: column; }
-    .browser-recovery-banner button { width: 100%; }
+    .browser-quality-popover { width: min(100%, 360px); }
 }
 
 :fullscreen {

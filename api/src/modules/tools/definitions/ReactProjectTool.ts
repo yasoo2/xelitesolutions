@@ -5414,11 +5414,20 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                  *  would chase a symptom, and the remedy would install
                  *  something the project never needed.
                  */
-                if (!built && Object.keys(authoredFallback).length) {
+                if (!built && (Object.keys(authoredFallback).length > 0 || !!authoredEngineFallback)) {
                     for (const [rel, body] of Object.entries(authoredFallback)) {
                         fs.writeFileSync(path.join(proj, rel), body, 'utf-8');
                     }
-                    term(`the authored interface did not build (exit ${b}) — the deterministic sections were put back: ${Object.keys(authoredFallback).map(r => r.split('/').pop()).join(', ')}`);
+                    const restored = Object.keys(authoredFallback).map(r => r.split('/').pop());
+                    Object.keys(authoredFallback).forEach(k => delete authoredFallback[k]);
+                    if (authoredEngineFallback) {
+                        fs.writeFileSync(path.join(proj, authoredEngineFallback.path), authoredEngineFallback.body, 'utf-8');
+                        files[authoredEngineFallback.path] = authoredEngineFallback.body;
+                        modelAuthoredEngine = false;
+                        blueprintFallbackEngine = true;
+                        restored.push(authoredEngineFallback.path.split('/').pop() || authoredEngineFallback.path);
+                    }
+                    term(`the authored interface did not build (exit ${b}) — the deterministic files were put back: ${restored.join(', ')}`);
                     b = await runBuild(300_000);
                     buildExit = b;
                     built = b === 0 && fs.existsSync(path.join(proj, 'dist', 'index.html'));

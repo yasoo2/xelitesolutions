@@ -648,7 +648,6 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
   const runtimeErrorCount = (qualityMetrics?.jsErrors ?? diagnostics?.jsErrors ?? 0) + (qualityMetrics?.networkErrors ?? diagnostics?.networkErrors ?? 0);
   const qualityNeedsRecovery = status === 'error' || qualitySignal === 'degraded' || qualitySignal === 'blocked' || runtimeErrorCount > 0;
   const recoveryTitle = status === 'error' ? 'بث المتصفح غير متصل' : qualitySignal === 'blocked' ? 'المتصفح محجوب ويحتاج تدخلاً' : 'جودة المتصفح تحتاج مراجعة';
-  const recoveryNextStep = status === 'error' ? 'أعد الاتصال بالجلسة' : runtimeErrorCount > 0 ? 'افتح التشخيص وراجع آخر خطأ' : 'افتح فحص الجودة وتحقق من آخر إطار';
   const waitingForPage = status === 'connected' && lastFrameAt === null && !pageSnapshot;
   const browserUnavailable = status === 'error';
 
@@ -825,6 +824,8 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
             <path className="browser-cursor-path" d="M3.5 2.2 L3.5 19.6 L8.6 15.4 L11.5 22.1 L14.3 20.8 L11.3 14.0 L18.7 14.0 Z" />
           </svg>
         </div>
+      </div>
+      <div style={{ padding: 10, borderTop: '1px solid rgba(255,255,255,0.08)', background: 'rgba(0,0,0,0.35)' }}>
         {qualityOpen && qualityReport ? (
           <div className="browser-quality-popover" dir="rtl" role="status" aria-live="polite">
             <div className={`browser-quality-title ${qualityReport.ok ? 'is-good' : 'is-warning'}`}>
@@ -838,8 +839,6 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
             <div className="browser-quality-checks">{qualityReport.checks.map((check) => <div key={check}>{check}</div>)}</div>
           </div>
         ) : null}
-      </div>
-      <div style={{ padding: 10, borderTop: '1px solid rgba(255,255,255,0.08)', background: 'rgba(0,0,0,0.35)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
           <div style={{ color: '#fff', fontSize: 12, opacity: 0.95, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {status} · quality={qualityMetrics?.status || 'unknown'} · {w}×{h} {pageSnapshot?.title ? `· ${pageSnapshot.title.slice(0, 48)}` : ''} {lastStep ? `· ${lastStep}` : ''} {busy ? `· busy` : ''} {queueLen ? `· queue=${queueLen}` : ''}
@@ -879,19 +878,6 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
             ) : null}
           </div>
         </div>
-        {qualityNeedsRecovery ? (
-          <div className="browser-recovery-banner" data-testid="browser-recovery-banner" role="alert" dir="rtl">
-            <div><strong>{recoveryTitle}</strong><span>{recoveryNextStep}</span></div>
-            <button type="button" onClick={() => {
-              if (status === 'error') void startBrowserSession();
-              else {
-                setDetailsOpen(true);
-                setActionFilter(runtimeErrorCount > 0 ? 'failed' : 'all');
-                runQualityCheck();
-              }
-            }}>{status === 'error' ? 'إعادة المحاولة' : 'مراجعة الآن'}</button>
-          </div>
-        ) : null}
         {detailsOpen ? (
           <div style={{ marginTop: 10, display: 'flex', gap: 10, alignItems: 'stretch', flexWrap: 'wrap' }}>
             {pageSnapshot ? (
