@@ -10,7 +10,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
-import { ReactProjectTool, PROJECT_DIR_NAME_MAX_LENGTH } from '../modules/tools/definitions/ReactProjectTool';
+import { ReactProjectTool, PROJECT_DIR_NAME_MAX_LENGTH, heroSecondaryDestination } from '../modules/tools/definitions/ReactProjectTool';
 import { ApiProjectTool } from '../modules/tools/definitions/ApiProjectTool';
 import { ScaffoldProjectTool } from '../modules/tools/definitions/SystemTools';
 import { workspaceService } from '../modules/services/WorkspaceService';
@@ -107,6 +107,15 @@ describe('the scaffold: complete, RTL, tokenized, honest', () => {
     it('index.html is Arabic RTL and vite.config uses base ./ (publishable)', () => {
         expect(fs.readFileSync(path.join(out.output.path, 'index.html'), 'utf-8')).toContain('dir="rtl"');
         expect(fs.readFileSync(path.join(out.output.path, 'vite.config.js'), 'utf-8')).toContain("base: './'");
+    });
+
+    it('points the hero CTA at a section selected for the page, not a removed template section', () => {
+        expect(heroSecondaryDestination('landing', ['Hero', 'Location', 'Products', 'Contact'], false))
+            .toEqual({ label: 'Browse services', href: '#products' });
+        expect(heroSecondaryDestination('landing', ['Hero', 'Features', 'Contact'], false))
+            .toEqual({ label: 'Explore features', href: '#features' });
+        expect(heroSecondaryDestination('landing', ['Hero', 'Location', 'Products', 'Contact'], false, true))
+            .toEqual({ label: 'تصفح الخدمات', href: '#products' });
     });
     it('the tokens come from Joe\'s real palette engine (light AND dark blocks)', () => {
         const tokens = fs.readFileSync(path.join(out.output.path, 'src', 'styles', 'tokens.css'), 'utf-8');

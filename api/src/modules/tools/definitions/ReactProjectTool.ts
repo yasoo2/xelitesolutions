@@ -1360,6 +1360,29 @@ export function sectionsForRequest(request: string, kind: PageKind): string[] {
     return [...new Set(out)];
 }
 
+/** Pick a hero destination that the selected page actually renders. */
+export function heroSecondaryDestination(
+    kind: PageKind,
+    homeSections: string[],
+    multiPage: boolean,
+    isArabic = false,
+): { label: string; href: string } {
+    const preferred = kind === 'restaurant' ? 'Menu' : kind === 'store' ? 'Products' : 'Features';
+    const fallback = ['Products', 'Menu', 'Features', 'Location', 'Contact']
+        .find(section => homeSections.includes(section)) || 'Contact';
+    const section = homeSections.includes(preferred) ? preferred : fallback;
+    const target = ({ Features: 'features', Menu: 'menu', Products: 'products', Contact: 'contact' } as Record<string, string>)[section] || section.toLowerCase();
+    const labels: Record<string, [string, string]> = {
+        Features: ['اكتشف المميزات', 'Explore features'],
+        Menu: ['استعرض القائمة', 'See the menu'],
+        Products: ['تصفح الخدمات', 'Browse services'],
+        Contact: ['تواصل معنا', 'Contact us'],
+    };
+    const [ar, en] = labels[section] || labels.Contact;
+    const onHome = !multiPage || homeSections.includes(section);
+    return { label: isArabic ? ar : en, href: multiPage && !onHome ? `#/${target}` : `#${target}` };
+}
+
 /** Content derived from the request — deterministic, never blocks on a model. */
 function deriveContent(request: string, isAr: boolean, kind: PageKind = 'generic'): ReactContent {
     const brand = brandFrom(request, isAr) || brandFallback(request, isAr, kind);
@@ -3786,12 +3809,7 @@ export class ReactProjectTool extends BaseTool {
         // The hero's second CTA points at the kind's main content — an
         // anchor on a single page, a real route on a multi-page app.
         (content as any).heroSecondary = (() => {
-            const target = kind === 'restaurant' ? 'menu' : kind === 'store' ? 'products' : 'features';
-            const label = isAr
-                ? (kind === 'restaurant' ? 'استعرض القائمة' : kind === 'store' ? 'تصفح المنتجات' : 'اكتشف المميزات')
-                : (kind === 'restaurant' ? 'See the menu' : kind === 'store' ? 'Browse products' : 'Explore features');
-            const onHome = !multiPage || pages[0].sections.includes(target === 'menu' ? 'Menu' : target === 'products' ? 'Products' : 'Features');
-            return { label, href: multiPage && !onHome ? `#/${target}` : `#${target}` };
+            return heroSecondaryDestination(kind, pages[0].sections, multiPage, isAr);
         })();
         // The hero ARCHETYPE comes from the kind and the family; the
         // navigation is built LATER, once it is known which sections will

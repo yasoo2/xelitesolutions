@@ -555,7 +555,10 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
             const out: Array<{ label: string; target: string; exists: boolean }> = [];
             document.querySelectorAll('a[href^="#"]').forEach(a => {
                 const h = (a.getAttribute('href') || '').slice(1);
-                if (!h || h === 'top') return;
+                // Hash-router paths such as #product/classic-edition are app
+                // routes, not in-page section anchors. Keep real section
+                // targets (for example #contact) strict and measurable.
+                if (!h || h === 'top' || h.includes('/')) return;
                 let exists = false;
                 try { exists = !!document.getElementById(h) || !!document.querySelector(`[name="${CSS.escape(h)}"]`); } catch { exists = false; }
                 out.push({ label: ((a as HTMLElement).innerText || h).trim().slice(0, 40), target: h, exists });

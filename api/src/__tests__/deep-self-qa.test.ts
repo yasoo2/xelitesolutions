@@ -393,6 +393,11 @@ describe('a measurement it cannot make honestly, it does not make', () => {
         expect(u).toMatch(/mobileTinyNames\.slice\(0, 3\)/);
         expect(u).toMatch(/sample: 'h' \+ levels\[i - 1\] \+ ' ← h' \+ levels\[i\]/);
     });
+
+    it('does not call hash-router paths missing section anchors', () => {
+        const b = read('core', 'quality', 'behaviour-audit.ts');
+        expect(b).toMatch(/h === 'top' \|\| h\.includes\('\/'\)/);
+    });
 });
 
 describe('and the report counts what was actually done', () => {
