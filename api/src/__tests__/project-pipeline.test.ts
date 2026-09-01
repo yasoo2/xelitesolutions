@@ -288,6 +288,13 @@ describe('the bridge tool — plan, execute phases, report honestly', () => {
         expect(src).toMatch(/skipProviderPreflight/);
     });
 
+    test('provider preflight does not treat the router failure apology as a healthy answer', () => {
+        const router = fs.readFileSync(
+            path.join(__dirname, '..', 'core', 'llm', 'intelligent-router.ts'), 'utf-8');
+        expect(router).toMatch(/providerProbeSucceeded[\s\S]*!isProviderFailure/);
+        expect(router).toMatch(/const usable = \(s: any\) => providerProbeSucceeded\(s\)/);
+    });
+
     test('bounded live-run repair rediscovers the current incomplete root instead of the greenfield reference set', () => {
         expect(src).toMatch(/const repairDiscoveryRequest = \[/);
         expect(src).toMatch(/const trustedRepairRoot = String\(/);

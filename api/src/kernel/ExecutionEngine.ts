@@ -327,7 +327,13 @@ export class ExecutionEngine {
 
         if (this.pty) {
             try {
-                const ptyProcess = this.pty.spawn(shell, [], {
+                // Automation terminals must not load a user's PowerShell profile:
+                // a trust prompt from PSReadLine can block the first build command
+                // while the orchestration layer is correctly waiting for output.
+                const shellArgs = process.platform === 'win32' && /(?:^|[\\/])powershell(?:\.exe)?$/i.test(shell)
+                    ? ['-NoLogo', '-NoProfile', '-NoExit']
+                    : [];
+                const ptyProcess = this.pty.spawn(shell, shellArgs, {
                     name: 'xterm-256color',
                     cols: options.cols || 80,
                     rows: options.rows || 30,
