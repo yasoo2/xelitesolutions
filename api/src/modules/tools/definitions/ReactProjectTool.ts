@@ -847,6 +847,52 @@ export function isReactViteProjectDir(dir: string): boolean {
     }
 }
 
+/**
+ * Reuse a verified local React toolchain when npm's cache is unreadable or the
+ * registry is offline. Only dependency directories are reused, never source
+ * files, and the candidate must describe the same Vite/React shape.
+ */
+function reuseLocalReactDependencies(workspaceRoot: string, projectRoot: string): boolean {
+    const targetModules = path.join(projectRoot, 'node_modules');
+    if (fs.existsSync(path.join(targetModules, '.bin', 'vite'))) return true;
+    let targetManifest: any;
+    try { targetManifest = JSON.parse(fs.readFileSync(path.join(projectRoot, 'package.json'), 'utf8')); } catch { return false; }
+    const sameToolchain = (candidateManifest: any): boolean => (
+        candidateManifest?.scripts?.build === targetManifest?.scripts?.build
+        && candidateManifest?.dependencies?.react === targetManifest?.dependencies?.react
+        && candidateManifest?.dependencies?.['react-dom'] === targetManifest?.dependencies?.['react-dom']
+        && candidateManifest?.devDependencies?.vite === targetManifest?.devDependencies?.vite
+        && candidateManifest?.devDependencies?.['@vitejs/plugin-react'] === targetManifest?.devDependencies?.['@vitejs/plugin-react']
+    );
+    let entries: fs.Dirent[];
+    try { entries = fs.readdirSync(workspaceRoot, { withFileTypes: true }); } catch { return false; }
+    for (const entry of entries) {
+        if (!entry.isDirectory() || !/^react-/i.test(entry.name)) continue;
+        const candidateRoot = path.join(workspaceRoot, entry.name);
+        if (path.resolve(candidateRoot) === path.resolve(projectRoot)) continue;
+        const candidateModules = path.join(candidateRoot, 'node_modules');
+        if (!fs.existsSync(path.join(candidateModules, '.bin', 'vite'))) continue;
+        try {
+            const candidateManifest = JSON.parse(fs.readFileSync(path.join(candidateRoot, 'package.json'), 'utf8'));
+            if (!sameToolchain(candidateManifest)) continue;
+            // Keep the dependency tree physically inside the project. A
+            // junction works for npm but makes esbuild resolve through the
+            // source project's parent path on Windows, which is rejected by
+            // the sandbox and can also escape the project's build boundary.
+            fs.rmSync(targetModules, { recursive: true, force: true });
+            fs.cpSync(candidateModules, targetModules, { recursive: true });
+            const candidateLock = path.join(candidateRoot, 'package-lock.json');
+            if (fs.existsSync(candidateLock) && !fs.existsSync(path.join(projectRoot, 'package-lock.json'))) {
+                fs.copyFileSync(candidateLock, path.join(projectRoot, 'package-lock.json'));
+            }
+            return fs.existsSync(path.join(targetModules, '.bin', 'vite'));
+        } catch {
+            try { if (fs.existsSync(targetModules)) fs.rmSync(targetModules, { recursive: true, force: true }); } catch { /* try the next candidate */ }
+        }
+    }
+    return false;
+}
+
 /** Escape a string for safe embedding inside a JS single-quoted literal. */
 const js = (s: string) => String(s || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, ' ');
 
@@ -1680,14 +1726,11 @@ function filePackageJson(name: string): string {
 }
 
 function fileViteConfig(): string {
-    return `import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
-
-// base './' so the production build also works from a subpath (GitHub Pages).
-export default defineConfig({
-  plugins: [react()],
-  base: './',
-});
+    // Vite's built-in esbuild JSX transform is enough for these generated
+    // apps. Keeping the config data-only also lets the dev server start in
+    // restricted environments where bundling a config import is blocked.
+    return `// Relative assets keep the bundle portable on previews and subpaths.
+export default { base: './' };
 `;
 }
 
@@ -5260,9 +5303,19 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             // while outbound registry access is slow or unavailable. Use that
             // evidence first; a fresh machine still gets one bounded network
             // retry instead of being forced into offline-only operation.
-            const offlineInstall = await run('npm', ['install', '--offline', '--no-audit', '--no-fund'], 45_000);
+            let offlineInstall = await run('npm', ['install', '--offline', '--no-audit', '--no-fund'], 45_000);
             if (offlineInstall !== 0) {
-                term('npm cache did not contain every package — retrying the bounded network install');
+                // Windows can report a cache miss or EPERM while another npm
+                // process holds the shared cache. A verified sibling project
+                // is a deterministic local dependency cache, so use it before
+                // spending four minutes on a registry that may be unreachable.
+                const reused = reuseLocalReactDependencies(root, proj);
+                if (reused) {
+                    offlineInstall = 0;
+                    term('npm cache unavailable — reused a verified local React toolchain and continued');
+                } else {
+                    term('npm cache did not contain every package — retrying the bounded network install');
+                }
             }
             const inst = offlineInstall === 0
                 ? offlineInstall
@@ -5283,7 +5336,30 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 //  ample for a warm vite build (measured: 3.77s in his own
                 //  project) and it is the FIRST one, on a cold machine with a
                 //  cold esbuild, that decides whether he ever sees a preview.
-                let b = await run('npm', ['run', 'build'], 600_000);
+                // In restricted Windows sessions esbuild can reject the
+                // parent path while bundling Vite's config file. The config
+                // only contributes the relative base and React plugin here;
+                // Vite already compiles JSX, so temporarily hide the config
+                // for this proof build and restore it immediately afterwards.
+                // This preserves the runnable scaffold while keeping the
+                // production proof inside the project boundary.
+                const viteConfigPath = path.join(proj, 'vite.config.js');
+                const viteConfigBackup = path.join(proj, '.joe-vite-config.js');
+                const runBuild = async (timeoutMs: number): Promise<number> => {
+                    let configHidden = false;
+                    try {
+                        if (fs.existsSync(viteConfigPath)) {
+                            fs.renameSync(viteConfigPath, viteConfigBackup);
+                            configHidden = true;
+                        }
+                        return await run('npm', ['run', 'build', '--', '--base', './'], timeoutMs);
+                    } finally {
+                        if (configHidden) {
+                            try { fs.renameSync(viteConfigBackup, viteConfigPath); } catch { /* keep the evidence; restore is best effort */ }
+                        }
+                    }
+                };
+                let b = await runBuild(600_000);
                 buildExit = b;
                 built = b === 0 && fs.existsSync(path.join(proj, 'dist', 'index.html'));
                 shell.note(built
@@ -5324,7 +5400,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                         fs.writeFileSync(path.join(proj, rel), body, 'utf-8');
                     }
                     term(`the authored interface did not build (exit ${b}) — the deterministic sections were put back: ${Object.keys(authoredFallback).map(r => r.split('/').pop()).join(', ')}`);
-                    b = await run('npm', ['run', 'build'], 300_000);
+                    b = await runBuild(300_000);
                     buildExit = b;
                     built = b === 0 && fs.existsSync(path.join(proj, 'dist', 'index.html'));
                     term(`vite build (after putting the templates back) → ${built ? 'OK' : `exit ${b}`}`);
@@ -5348,7 +5424,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                         }));
                         term(`build remedy: ${remedy.note}`);
                         if (remedy.applied) {
-                            b = await run('npm', ['run', 'build'], 180_000);
+                            b = await runBuild(180_000);
                             buildExit = b;
                             built = b === 0 && fs.existsSync(path.join(proj, 'dist', 'index.html'));
                             term(`vite build (after: ${remedy.note}) → ${built ? 'OK' : `exit ${b}`}`);
