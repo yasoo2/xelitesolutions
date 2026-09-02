@@ -576,6 +576,29 @@ const getLLM = () => {
     return fn;
 };
 
+// A provider outage must end one artifact attempt in a bounded way. The
+// caller's catch path turns this into a failed phase, so no later validation or
+// filesystem write can run after the deadline wins.
+export const LLM_GENERATION_DEADLINE_MS = 120_000;
+
+function withGenerationDeadline<T>(work: Promise<T>, label: string): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+        const timer = setTimeout(() => {
+            reject(new Error(`llm_generation_timeout: ${label} exceeded ${LLM_GENERATION_DEADLINE_MS}ms`));
+        }, LLM_GENERATION_DEADLINE_MS);
+        work.then(
+            value => {
+                clearTimeout(timer);
+                resolve(value);
+            },
+            error => {
+                clearTimeout(timer);
+                reject(error);
+            },
+        );
+    });
+}
+
 /**
  * AIGeneratorTool - Advanced AI-driven file generator
  * 
@@ -731,12 +754,15 @@ Return the complete file content now.`;
                             : retryKind === 'component'
                                 ? 'JSX COMPONENT CONTRACT RETRY'
                                 : 'FORMAT RETRY';
-                return callLLM(
-                    retryKind ? `${userPrompt}\n\n${retryInstruction}` : userPrompt,
-                    [{ role: 'system', content: retryKind
-                        ? `${systemPrompt}\n\n${retryLabel}: the previous response was rejected before writing. Re-emit one complete artifact matching the extension exactly; do not explain the repair.`
-                        : systemPrompt }],
-                    llmContext,
+                return withGenerationDeadline(
+                    Promise.resolve().then(() => callLLM(
+                        retryKind ? `${userPrompt}\n\n${retryInstruction}` : userPrompt,
+                        [{ role: 'system', content: retryKind
+                            ? `${systemPrompt}\n\n${retryLabel}: the previous response was rejected before writing. Re-emit one complete artifact matching the extension exactly; do not explain the repair.`
+                            : systemPrompt }],
+                        llmContext,
+                    )),
+                    `artifact ${filePath}${retryKind ? ` (${retryLabel.toLowerCase()})` : ''}`,
                 );
             };
 

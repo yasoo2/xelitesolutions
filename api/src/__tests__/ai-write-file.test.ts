@@ -22,7 +22,7 @@ const callLLM = jest.fn();
 const mockLlmModule: any = { callLLM: (...a: any[]) => callLLM(...a) };
 jest.mock('../core/llm', () => mockLlmModule);
 
-import { AIGeneratorTool } from '../modules/tools/definitions/AIGeneratorTool';
+import { AIGeneratorTool, LLM_GENERATION_DEADLINE_MS } from '../modules/tools/definitions/AIGeneratorTool';
 import { PROVIDER_FAILURE_PREFIX } from '../core/llm/intelligent-router';
 import { workspaceService } from '../modules/services/WorkspaceService';
 
@@ -758,6 +758,27 @@ describe('a failure is never written into the file as its contents', () => {
         expect(callLLM).toHaveBeenCalledTimes(2);
         expect(res.logs.join(' ')).toMatch(/engineering provider retry requested/);
         expect(fs.readFileSync(landsAt(rel), 'utf-8')).toBe('<main>recovered</main>');
+    });
+
+    it('fails a hung provider attempt at the generation deadline', async () => {
+        jest.useFakeTimers();
+        try {
+            const rel = scratch('hung-provider.html');
+            callLLM.mockReturnValue(new Promise(() => { /* provider never resolves */ }));
+
+            const resultPromise: Promise<any> = tool.execute(
+                { path: rel, description: 'Write the verified engineering artifact.' },
+                { engineeringPipeline: true },
+            );
+            await jest.advanceTimersByTimeAsync(LLM_GENERATION_DEADLINE_MS);
+            const res = await resultPromise;
+
+            expect(res.ok).toBe(false);
+            expect(res.error).toMatch(/llm_generation_timeout/);
+            expect(fs.existsSync(landsAt(rel))).toBe(false);
+        } finally {
+            jest.useRealTimers();
+        }
     });
 
     it('refuses an empty completion instead of truncating the file to nothing', async () => {
