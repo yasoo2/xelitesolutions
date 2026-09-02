@@ -22,7 +22,7 @@ const callLLM = jest.fn();
 const mockLlmModule: any = { callLLM: (...a: any[]) => callLLM(...a) };
 jest.mock('../core/llm', () => mockLlmModule);
 
-import { AIGeneratorTool, LLM_GENERATION_DEADLINE_MS } from '../modules/tools/definitions/AIGeneratorTool';
+import { AIGeneratorTool, ENGINEERING_LLM_GENERATION_DEADLINE_MS } from '../modules/tools/definitions/AIGeneratorTool';
 import { PROVIDER_FAILURE_PREFIX } from '../core/llm/intelligent-router';
 import { workspaceService } from '../modules/services/WorkspaceService';
 
@@ -770,7 +770,7 @@ describe('a failure is never written into the file as its contents', () => {
                 { path: rel, description: 'Write the verified engineering artifact.' },
                 { engineeringPipeline: true },
             );
-            await jest.advanceTimersByTimeAsync(LLM_GENERATION_DEADLINE_MS);
+            await jest.advanceTimersByTimeAsync(ENGINEERING_LLM_GENERATION_DEADLINE_MS);
             const res = await resultPromise;
 
             expect(res.ok).toBe(false);

@@ -580,12 +580,13 @@ const getLLM = () => {
 // caller's catch path turns this into a failed phase, so no later validation or
 // filesystem write can run after the deadline wins.
 export const LLM_GENERATION_DEADLINE_MS = 120_000;
+export const ENGINEERING_LLM_GENERATION_DEADLINE_MS = 240_000;
 
-function withGenerationDeadline<T>(work: Promise<T>, label: string): Promise<T> {
+function withGenerationDeadline<T>(work: Promise<T>, label: string, timeoutMs = LLM_GENERATION_DEADLINE_MS): Promise<T> {
     return new Promise<T>((resolve, reject) => {
         const timer = setTimeout(() => {
-            reject(new Error(`llm_generation_timeout: ${label} exceeded ${LLM_GENERATION_DEADLINE_MS}ms`));
-        }, LLM_GENERATION_DEADLINE_MS);
+            reject(new Error(`llm_generation_timeout: ${label} exceeded ${timeoutMs}ms`));
+        }, timeoutMs);
         work.then(
             value => {
                 clearTimeout(timer);
@@ -763,6 +764,9 @@ Return the complete file content now.`;
                         llmContext,
                     )),
                     `artifact ${filePath}${retryKind ? ` (${retryLabel.toLowerCase()})` : ''}`,
+                    context?.engineeringPipeline === true
+                        ? ENGINEERING_LLM_GENERATION_DEADLINE_MS
+                        : LLM_GENERATION_DEADLINE_MS,
                 );
             };
 
