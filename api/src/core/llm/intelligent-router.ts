@@ -1831,11 +1831,15 @@ export async function routeToModel(
                 // the chat/vision model and made large source artifacts appear to
                 // hang even though Ollama itself was healthy.
                 const localModel = pickLocalModel(taskAnalysis?.type || (internalCall ? 'code_generation' : undefined));
-                // Pass onPartial so the local brain streams tokens live to the panel.
+                // Streaming Ollama responses can leave a large engineering
+                // completion open without a final message on CPU. Use the
+                // bounded direct response for internal work; ordinary chat keeps
+                // token streaming for the live panel.
+                const localOnPartial = internalCall ? undefined : onPartial;
                 const localMaxCompletionTokens = Number(context?.maxCompletionTokens) > 0
                     ? Math.min(12000, Math.floor(Number(context.maxCompletionTokens)))
                     : undefined;
-                const res = await localProvider.chatComplete(flatMessages, localModel, onPartial, signal, {
+                const res = await localProvider.chatComplete(flatMessages, localModel, localOnPartial, signal, {
                     maxCompletionTokens: localMaxCompletionTokens,
                 });
                 if (!isUsableAnswer(res)) throw new Error('Local answered with nothing usable');

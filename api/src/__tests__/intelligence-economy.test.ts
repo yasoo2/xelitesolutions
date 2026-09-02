@@ -51,6 +51,7 @@ describe('the router understands internal vs answer', () => {
         expect(src).toContain('Math.max(measuredLeash, autoPlanningFloor)');
         expect(src).toContain('(LOCAL_BRAIN_FIRST || autoLocalPreferred)');
         expect(src).toContain("taskAnalysis?.type || (internalCall ? 'code_generation' : undefined)");
+        expect(src).toContain('const localOnPartial = internalCall ? undefined : onPartial');
         expect(src).toContain('(requestedTimeout ? Math.min(autoPlanningLeash, requestedTimeout) : autoPlanningLeash)');
         expect(src).toContain('? (requestedTimeout ? Math.min(autoPlanningLeash, requestedTimeout) : autoPlanningLeash)');
         expect(src).toContain(': Math.min(timeoutValue, measuredLeash)');
