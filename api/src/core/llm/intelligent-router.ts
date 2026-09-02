@@ -1826,7 +1826,11 @@ export async function routeToModel(
                 // Task-based model routing: build/code tasks get the strongest
                 // installed coder model; chat gets the fast small model. Falls back
                 // to LOCAL_LLM_MODEL when detection hasn't run.
-                const localModel = pickLocalModel(taskAnalysis?.type);
+                // Internal engineering work must use the installed coding model.
+                // With no user-facing task analysis, the old undefined type picked
+                // the chat/vision model and made large source artifacts appear to
+                // hang even though Ollama itself was healthy.
+                const localModel = pickLocalModel(taskAnalysis?.type || (internalCall ? 'code_generation' : undefined));
                 // Pass onPartial so the local brain streams tokens live to the panel.
                 const localMaxCompletionTokens = Number(context?.maxCompletionTokens) > 0
                     ? Math.min(12000, Math.floor(Number(context.maxCompletionTokens)))
