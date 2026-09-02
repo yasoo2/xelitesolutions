@@ -22,7 +22,13 @@ export function parseExplicitFileRequest(input: string): ExplicitFileRequest | n
 
     const pathMatch = raw.match(/(?:file\s+(?:named|called)|ملف\s+(?:باسم|اسمه)|اسم\s+الملف)\s*[`'"“”]?([^\s`'"“”،؛:]+)[`'"“”]?/i)
         || raw.match(/(?:create|write|save)\s+[`'"“”]?([A-Za-z0-9_\-.\/\\]+\.[A-Za-z0-9]{1,16})[`'"“”]?/i);
-    const filePath = String(pathMatch?.[1] || '').trim().replace(/[.,؛،:]+$/, '');
+    let filePath = String(pathMatch?.[1] || '').trim().replace(/[.,؛،:]+$/, '');
+    const folderMatch = raw.match(/(?:folder|directory)\s+(?:named|called)\s*[`'"“”]?([A-Za-z0-9_\-.\/\\]+)[`'"“”]?/i)
+        || raw.match(/(?:مجلد|دليل)\s+(?:باسم|اسمه)\s*[`'"“”]?([A-Za-z0-9_\-.\/\\\u0600-\u06FF]+)[`'"“”]?/i);
+    const isNested = !!folderMatch && /(?:inside\s+(?:it|the\s+folder)|داخل(?:ه|ها|ه\s+ثم)|فيه|بداخله)/i.test(raw);
+    if (isNested && folderMatch?.[1] && filePath && !filePath.includes('/')) {
+        filePath = `${folderMatch[1]}/${filePath}`;
+    }
     if (!filePath || filePath.includes('..') || filePath.startsWith('/') || /^[A-Za-z]:/i.test(filePath) || !SAFE_RELATIVE_PATH.test(filePath)) return null;
 
     const contentMatch = raw.match(/(?:containing|with\s+content|contents?)\s+(?:(?:exactly\s+)?(?:\d+|one|two|three|four|five)\s+lines?\s*:\s*)?([\s\S]*?)(?=\.\s*(?:then|after\s+that|finally)\b|\s+(?:then|after\s+that)\b|$)/i)
