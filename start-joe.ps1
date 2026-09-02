@@ -25,6 +25,13 @@ $env:ENABLE_AUTH_BYPASS = "true"   # مستخدم واحد: الأدوات تع�
 $env:AUTO_APPROVE_ALL = "1"        # موافقة تلقائية على تنفيذ الأدوات
 $env:NODE_ENV = "development"
 
+# These are launcher invariants, not discovery results. An older PowerShell
+# parent may already have LOCAL_LLM_BASE_URL, so never let that inherited value
+# skip the timeout and local-first policy below.
+$env:LOCAL_BRAIN_FIRST = "1"
+$env:LOCAL_LLM_TIMEOUT = "600000"
+$env:LOCAL_BRAIN_LEASH_MAX = "600000"
+
 # A second launcher would create a second WebSocket hub and race for port 5002,
 # which makes old sessions appear to be mixed together. Hold one machine-wide
 # lock for the whole launcher lifetime; a crashed process releases it itself.

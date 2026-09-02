@@ -76,8 +76,11 @@ describe('the launcher itself lives by the same discipline', () => {
     });
 
     test('start-joe.ps1 never inherits a short local-brain timeout', () => {
+        expect(startPs1).toContain('$env:LOCAL_BRAIN_FIRST = "1"');
         expect(startPs1).toContain('$env:LOCAL_LLM_TIMEOUT = "600000"');
         expect(startPs1).toContain('$env:LOCAL_BRAIN_LEASH_MAX = "600000"');
+        expect(startPs1).toContain('An older PowerShell');
+        expect(startPs1).toContain('LOCAL_LLM_BASE_URL');
     });
 
     test('update-joe.ps1 never hard-resets over a network failure', () => {
