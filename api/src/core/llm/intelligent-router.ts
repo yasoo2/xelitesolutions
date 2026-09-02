@@ -2292,8 +2292,11 @@ export async function routeToModel(
                     // fail against unavailable remote fallbacks.
                     const autoPlanningFloor = (LOCAL_BRAIN_FIRST || autoLocalPreferred) ? 600_000 : 240_000;
                     const autoPlanningLeash = Math.min(LOCAL_LEASH_MAX_MS, Math.max(measuredLeash, autoPlanningFloor));
+                    // A caller-provided deadline is a real contract, not a hint.
+                    // Keep Ollama first, but let the planner reach its deterministic
+                    // fallback when the selected local brain cannot answer in time.
                     timeoutValue = (LOCAL_BRAIN_FIRST || autoLocalPreferred)
-                        ? autoPlanningLeash
+                        ? (requestedTimeout ? Math.min(autoPlanningLeash, requestedTimeout) : autoPlanningLeash)
                         : Math.min(timeoutValue, measuredLeash);
                 }
             }

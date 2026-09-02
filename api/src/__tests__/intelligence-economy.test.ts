@@ -50,7 +50,8 @@ describe('the router understands internal vs answer', () => {
         expect(src).toContain('skipping the local brain (paused');
         expect(src).toContain('Math.max(measuredLeash, autoPlanningFloor)');
         expect(src).toContain('(LOCAL_BRAIN_FIRST || autoLocalPreferred)');
-        expect(src).toContain('? autoPlanningLeash');
+        expect(src).toContain('(requestedTimeout ? Math.min(autoPlanningLeash, requestedTimeout) : autoPlanningLeash)');
+        expect(src).toContain('? (requestedTimeout ? Math.min(autoPlanningLeash, requestedTimeout) : autoPlanningLeash)');
         expect(src).toContain(': Math.min(timeoutValue, measuredLeash)');
         expect(src).toContain("detail: 'local_ready_after_warmup'");
     });
