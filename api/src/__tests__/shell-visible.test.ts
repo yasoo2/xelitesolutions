@@ -9,7 +9,7 @@ import path from 'path';
 import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
 import { IntentParser } from '../core/intelligence/IntentParser';
 import { isBoundedTerminalDiagnosticRequest, isReadOnlyRequest } from '../core/orchestrator/buildIntent';
-import { parseExplicitReadFilesRequest } from '../core/orchestrator/file-intent';
+import { parseExplicitReadFilesRequest, parseExpectedReadMarkers } from '../core/orchestrator/file-intent';
 import { composeAnswer } from '../core/orchestrator/answerComposer';
 
 describe('explicit terminal diagnostics execute instead of merely opening a terminal', () => {
@@ -113,6 +113,27 @@ describe('explicit read-only file lists use the active workspace directly', () =
         expect(answer).toContain('2 lines');
         expect(answer).toContain('joe-prompt-03/README.txt');
         expect(answer).toContain('No marker value was specified');
+    });
+
+    test('checks explicitly supplied markers against the read content', async () => {
+        const goal = 'Read joe-prompt-02.txt and joe-prompt-03/README.txt. Verify that joe-prompt-02.txt contains the marker "deterministic artifact check" and joe-prompt-03/README.txt contains the marker "Nested artifact check". Do not modify anything.';
+        expect(parseExpectedReadMarkers(goal)).toEqual({
+            'joe-prompt-02.txt': 'deterministic artifact check',
+            'joe-prompt-03/README.txt': 'Nested artifact check',
+        });
+        const plan: any = await PlanningEngine.generatePlan({ intent: { goal, complexity: 'low', riskLevel: 'low', rawIntent: {} } as any });
+        expect(plan.steps.map((step: any) => step.input.expectedMarker)).toEqual([
+            'deterministic artifact check',
+            'Nested artifact check',
+        ]);
+        const answer = composeAnswer(plan.steps.map((step: any) => ({
+            ...step,
+            result: { content: step.input.expectedMarker, totalLines: 1 },
+            status: 'completed',
+        })), 'en');
+        expect(answer).toContain('joe-prompt-02.txt');
+        expect(answer).toContain('joe-prompt-03/README.txt');
+        expect(answer.match(/PASS/g)?.length).toBe(2);
     });
 });
 

@@ -79,3 +79,18 @@ export function parseExplicitReadFilesRequest(input: string): string[] | null {
     const files = [...new Set(candidates)];
     return files.length > 0 && files.length <= 8 ? files : null;
 }
+
+export function parseExpectedReadMarkers(input: string): Record<string, string> {
+    const raw = String(input || '');
+    const markers: Record<string, string> = {};
+    const pathPattern = '(?:[A-Za-z0-9_\\-\\u0600-\\u06FF]+/)*[A-Za-z0-9_\\-\\u0600-\\u06FF]+\\.[A-Za-z0-9]{1,16}';
+    const pattern = new RegExp(`\\b(${pathPattern})\\b[^.\\n]{0,80}?\\b(?:contains|includes|has)\\b[^\\"“”']{0,30}[\\"“”']([^\\"“”']{1,160})[\\"“”']`, 'gi');
+    for (const match of raw.matchAll(pattern)) {
+        const file = String(match[1] || '').replace(/\\/g, '/');
+        const marker = String(match[2] || '').trim();
+        if (file && marker && SAFE_READ_PATH.test(file) && !file.includes('..') && !file.startsWith('/') && !/^[A-Za-z]:/i.test(file)) {
+            markers[file] = marker;
+        }
+    }
+    return markers;
+}

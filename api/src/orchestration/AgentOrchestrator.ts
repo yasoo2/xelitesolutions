@@ -167,6 +167,7 @@ function runSteps(dag: AgentDAG): RunStep[] {
     id: n.id,
     task: String(n.task || '').slice(0, 8_000),
     tool: String(n.tool || '').slice(0, 200),
+    input: compactRuntimeValue(n.input),
     status: n.status,
     result: compactRuntimeValue(n.result),
   }));

@@ -32,6 +32,7 @@ export interface RunStep {
     id: string;
     task?: string;
     tool?: string;
+    input?: any;
     status?: string;
     result?: any;
 }
@@ -82,27 +83,35 @@ function join(blocks: string[]): string {
     return kept.slice(-MAX_BLOCKS).join('\n\n');
 }
 
-function readFileEvidence(step: RunStep): { file: string; content: string; totalLines: number } | null {
+function readFileEvidence(step: RunStep): { file: string; content: string; totalLines: number; expectedMarker?: string } | null {
     if (String(step.tool || '') !== 'read_file') return null;
     const raw = step.result;
     const output = raw?.output && typeof raw.output === 'object' ? raw.output : raw;
     if (!output || typeof output.content !== 'string' || typeof output.totalLines !== 'number') return null;
     const task = String(step.task || '').replace(/\s+/g, ' ').trim();
-    const file = task.match(/:\s*(\S+)$/)?.[1] || 'الملف المحدد';
-    return { file, content: output.content.trim(), totalLines: output.totalLines };
+    const file = String(step.input?.path || task.match(/:\s*(\S+)$/)?.[1] || 'الملف المحدد');
+    const expectedMarker = typeof step.input?.expectedMarker === 'string' && step.input.expectedMarker.trim()
+        ? step.input.expectedMarker.trim()
+        : undefined;
+    return { file, content: output.content.trim(), totalLines: output.totalLines, expectedMarker };
 }
 
 function composeReadFileReport(done: RunStep[], language?: string): string {
     if (!done.length || !done.every(step => String(step.tool || '') === 'read_file')) return '';
     const evidence = done.map(readFileEvidence);
     if (evidence.some(item => !item)) return '';
-    const rows = (evidence as Array<{ file: string; content: string; totalLines: number }>).map(item =>
-        `**${item.file}** — ${item.totalLines} ${item.totalLines === 1 ? 'line' : 'lines'}\n\`\`\`text\n${item.content}\n\`\`\``
+    const rows = (evidence as Array<{ file: string; content: string; totalLines: number; expectedMarker?: string }>).map(item => {
+        const marker = item.expectedMarker
+            ? `\n**Marker:** ${item.content.includes(item.expectedMarker) ? 'PASS' : 'FAIL'} — \`${item.expectedMarker}\``
+            : '';
+        return `**${item.file}** — ${item.totalLines} ${item.totalLines === 1 ? 'line' : 'lines'}${marker}\n\`\`\`text\n${item.content}\n\`\`\``;
+    }
     ).join('\n\n');
     const ar = String(language || '').startsWith('ar');
+    const hasExpectedMarkers = (evidence as Array<{ expectedMarker?: string }>).some(item => item.expectedMarker);
     return ar
-        ? `## ✅ تقرير قراءة الملفات\n\n${rows}\n\n**العلامة المتوقعة:** لم تُذكر قيمة العلامة في الطلب، لذلك لا أدّعي تحققها. لم تُجرَ أي كتابة أو تعديل.`
-        : `## ✅ File reading report\n\n${rows}\n\n**Expected marker:** No marker value was specified, so Joe cannot claim that check. No files were written or modified.`;
+        ? `## ✅ تقرير قراءة الملفات\n\n${rows}\n\n${hasExpectedMarkers ? '**حالة العلامات:** تم التحقق من كل علامة مذكورة مقابل المحتوى المقروء.' : '**العلامة المتوقعة:** لم تُذكر قيمة العلامة في الطلب، لذلك لا أدّعي تحققها.'} لم تُجرَ أي كتابة أو تعديل.`
+        : `## ✅ File reading report\n\n${rows}\n\n${hasExpectedMarkers ? '**Marker status:** Each supplied marker was checked against the file content.' : '**Expected marker:** No marker value was specified, so Joe cannot claim that check.'} No files were written or modified.`;
 }
 
 /**

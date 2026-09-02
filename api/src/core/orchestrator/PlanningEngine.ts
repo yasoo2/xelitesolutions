@@ -7,7 +7,7 @@ import { enrichWorkspaceToolInput } from './workspace-evidence';
 import { findActiveBuiltProject } from './active-built-project';
 import { isReadOnlyRequest, isBoundedTerminalDiagnosticRequest, looksLikeBuild } from './buildIntent';
 import { saysAny } from '../language/arabic';
-import { parseExplicitFileRequest, parseExplicitReadFilesRequest } from './file-intent';
+import { parseExplicitFileRequest, parseExplicitReadFilesRequest, parseExpectedReadMarkers } from './file-intent';
 import path from 'path';
 
 export interface ExecutionStep {
@@ -674,15 +674,16 @@ Rules:
         // collected evidence in the chat.
         const explicitReadFiles = parseExplicitReadFilesRequest(userGoal);
         if (isReadOnlyRequest(userGoal) && explicitReadFiles) {
+            const expectedMarkers = parseExpectedReadMarkers(userGoal);
             return {
                 id: `read_files_${Date.now()}`,
                 goal: intent.goal,
                 steps: explicitReadFiles.map((file, index) => ({
                     id: `read_file_${index}`,
-                    description: `قراءة الملف المحدد والتحقق من محتواه: ${file}`,
+                    description: `قراءة الملف المحدد والتحقق من محتواه: ${file}${expectedMarkers[file] ? ` (expected marker: ${expectedMarkers[file]})` : ''}`,
                     tool: 'read_file',
                     agent: 'Dev',
-                    input: { path: file, request: intent.goal },
+                    input: { path: file, expectedMarker: expectedMarkers[file], request: intent.goal },
                     dependsOn: index === 0 ? [] : [`read_file_${index - 1}`],
                 })),
                 metadata: { complexity: 'low', riskLevel: 'low', matchedBy: 'explicit-read-file-contract', deterministic: true, localOnly: true },
