@@ -37,6 +37,7 @@ export class LocalProvider {
         model?: string,
         onDelta?: (delta: string) => void,
         signal?: AbortSignal,
+        options?: { maxCompletionTokens?: number },
     ): Promise<string> {
         const baseURL = this.baseUrl();
         if (!baseURL) throw new Error('LOCAL_LLM_BASE_URL not configured');
@@ -49,6 +50,9 @@ export class LocalProvider {
             const t = parseInt(String(process.env.LOCAL_LLM_TIMEOUT || '').trim(), 10);
             return Number.isFinite(t) && t > 0 ? t : 180000;
         })();
+        const maxCompletionTokens = Number(options?.maxCompletionTokens) > 0
+            ? Math.min(12000, Math.floor(Number(options?.maxCompletionTokens)))
+            : undefined;
 
         const client = new OpenAI({
             apiKey: this.apiKey(),
@@ -72,6 +76,7 @@ export class LocalProvider {
                     model: model || this.model(),
                     messages: mapped,
                     keep_alive: -1,
+                    ...(maxCompletionTokens ? { max_tokens: maxCompletionTokens } : {}),
                     stream: true,
                 } as any, { timeout: timeoutMs, signal }) as any;
                 let full = '';
@@ -93,6 +98,7 @@ export class LocalProvider {
             model: model || this.model(),
             messages: mapped,
             keep_alive: -1,
+            ...(maxCompletionTokens ? { max_tokens: maxCompletionTokens } : {}),
         } as any, { timeout: timeoutMs, signal });
 
         return completion.choices[0]?.message?.content || '';

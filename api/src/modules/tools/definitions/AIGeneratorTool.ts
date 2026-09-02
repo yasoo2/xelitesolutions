@@ -729,7 +729,7 @@ Return the complete file content now.`;
 
         try {
             const llmContext = context?.engineeringPipeline === true
-                ? { ...context, purpose: 'internal', engineeringPipeline: true }
+                ? { ...context, purpose: 'internal', engineeringPipeline: true, maxCompletionTokens: 6000 }
                 : undefined;
             let runtimeRetryCandidate = '';
             const callForArtifact = (retryKind: 'format' | 'syntax' | 'imports' | 'runtime' | 'component' | 'precedence' | null = null, retryReason = '') => {

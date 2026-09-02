@@ -1828,7 +1828,12 @@ export async function routeToModel(
                 // to LOCAL_LLM_MODEL when detection hasn't run.
                 const localModel = pickLocalModel(taskAnalysis?.type);
                 // Pass onPartial so the local brain streams tokens live to the panel.
-                const res = await localProvider.chatComplete(flatMessages, localModel, onPartial, signal);
+                const localMaxCompletionTokens = Number(context?.maxCompletionTokens) > 0
+                    ? Math.min(12000, Math.floor(Number(context.maxCompletionTokens)))
+                    : undefined;
+                const res = await localProvider.chatComplete(flatMessages, localModel, onPartial, signal, {
+                    maxCompletionTokens: localMaxCompletionTokens,
+                });
                 if (!isUsableAnswer(res)) throw new Error('Local answered with nothing usable');
                 return res;
             }
