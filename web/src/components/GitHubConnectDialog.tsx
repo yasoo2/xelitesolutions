@@ -65,7 +65,7 @@ const GitHubConnectDialog: React.FC<Props> = ({ isOpen, onClose, onConnected, on
 
     return (
         <div className="dialog-overlay" onClick={onClose} style={overlayStyle}>
-            <div className="dialog-box" onClick={(e) => e.stopPropagation()} style={dialogStyle}>
+            <div className="dialog-box" role="dialog" aria-modal="true" aria-labelledby="github-dialog-title" onClick={(e) => e.stopPropagation()} style={dialogStyle}>
                 {/* Header */}
                 <div style={headerStyle}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -73,7 +73,7 @@ const GitHubConnectDialog: React.FC<Props> = ({ isOpen, onClose, onConnected, on
                             <Github size={24} />
                         </div>
                         <div>
-                            <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700 }}>
+                            <h3 id="github-dialog-title" style={{ margin: 0, fontSize: '18px', fontWeight: 700 }}>
                                 {t('connectGitHub', 'Connect GitHub')}
                             </h3>
                             {/* Live-use token failure (revoked/expired). Never
@@ -114,10 +114,15 @@ const GitHubConnectDialog: React.FC<Props> = ({ isOpen, onClose, onConnected, on
                                     </div>
                                 ) : (
                                     repos.map(repo => (
-                                        <div
+                                        <button
+                                            type="button"
                                             key={repo.id}
                                             onClick={() => setSelectedRepoId(repo.id)}
+                                            role="radio"
+                                            aria-checked={selectedRepoId === repo.id}
+                                            aria-label={`${repo.fullName} — ${repo.private ? t('repoPrivate', 'Private') : t('repoPublic', 'Public')}`}
                                             style={{
+                                                width: '100%',
                                                 padding: '10px 14px',
                                                 cursor: 'pointer',
                                                 display: 'flex',
@@ -125,7 +130,10 @@ const GitHubConnectDialog: React.FC<Props> = ({ isOpen, onClose, onConnected, on
                                                 gap: '10px',
                                                 background: selectedRepoId === repo.id ? 'rgba(99, 102, 241, 0.15)' : 'transparent',
                                                 borderBottom: '1px solid rgba(255,255,255,0.03)',
-                                                transition: 'all 0.2s'
+                                                transition: 'all 0.2s',
+                                                border: 0,
+                                                color: 'inherit',
+                                                textAlign: 'left'
                                             }}
                                         >
                                             <div style={{
@@ -137,9 +145,9 @@ const GitHubConnectDialog: React.FC<Props> = ({ isOpen, onClose, onConnected, on
                                             </div>
                                             <div style={{ flex: 1 }}>
                                                 <div style={{ fontSize: '13px', fontWeight: 500 }}>{repo.name}</div>
-                                                <div style={{ fontSize: '11px', opacity: 0.5 }}>{repo.private ? `🔒 ${t('repoPrivate', 'Private')}` : `🌐 ${t('repoPublic', 'Public')}`}</div>
+                                                <div style={{ fontSize: '11px', opacity: 0.5 }}>{repo.fullName} · {repo.private ? `🔒 ${t('repoPrivate', 'Private')}` : `🌐 ${t('repoPublic', 'Public')}`}</div>
                                             </div>
-                                        </div>
+                                        </button>
                                     ))
                                 )}
                             </div>
@@ -150,6 +158,9 @@ const GitHubConnectDialog: React.FC<Props> = ({ isOpen, onClose, onConnected, on
                             <div style={instructionsStyle}>
                                 <p style={{ margin: '0 0 8px', fontSize: '13px', opacity: 0.7 }}>
                                     {t('tokenInstructions', 'Create a Personal Access Token in your GitHub settings:')}
+                                </p>
+                                <p style={{ margin: '0 0 12px', fontSize: '12px', lineHeight: 1.55, opacity: 0.62 }}>
+                                    {t('githubAccessPolicy', 'Public repositories can be read by URL without a token. A token is needed for private repositories, repository lists, cloning, or any change.')}
                                 </p>
                                 <a
                                     href="https://github.com/settings/tokens/new?scopes=repo,read:user&description=Joe-AI-Agent"
@@ -172,6 +183,7 @@ const GitHubConnectDialog: React.FC<Props> = ({ isOpen, onClose, onConnected, on
                                     type={showToken ? 'text' : 'password'}
                                     value={token}
                                     onChange={(e) => setToken(e.target.value)}
+                                    aria-label={t('githubTokenLabel', 'GitHub personal access token')}
                                     placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
                                     onKeyDown={(e) => e.key === 'Enter' && handleConnect()}
                                     style={{ ...inputStyle, paddingRight: '40px' }}

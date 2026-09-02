@@ -831,7 +831,8 @@ export default function CommandComposer({
   hideHistory = false,
   workspaceId,
   githubConnected = false,
-  onGitClick
+  onGitClick,
+  onGithubAuthRequired
 
 }: {
   sessionId?: string;
@@ -846,6 +847,7 @@ export default function CommandComposer({
   workspaceId?: string | null;
   githubConnected?: boolean;
   onGitClick?: () => void;
+  onGithubAuthRequired?: (details: { reason?: string; needsRepo?: boolean; repoName?: string }) => void;
 
 }) {
   const { t } = useTranslation();
@@ -1617,6 +1619,26 @@ export default function CommandComposer({
             t('approvalGateInstruction', 'Type "approve" to continue or "deny" to cancel.'),
           ].filter(Boolean);
           setEvents(prev => [...prev, { type: 'text', data: lines.join('\n'), ts: Date.now() }]);
+        }
+      }
+
+      // A GitHub request can fail before any browser or file tool starts. Keep
+      // that failure actionable: the parent opens the real GitHub connection
+      // dialog so the user can authenticate and select a repository, instead of
+      // leaving a raw token error buried in the terminal log.
+      if (msg.type === 'step_failed') {
+        const stepName = String(msg?.data?.name || '').toLowerCase();
+        const result = msg?.data?.result || {};
+        const output = result?.output || {};
+        const errorText = String(result?.error || msg?.data?.error || output?.error || '');
+        const githubAuthRequired = stepName.includes('github_repo_manager')
+          && (output?.code === 'github_auth_required' || output?.needsGithubAuth === true || /github connection is required|يلزم ربط github|github token required/i.test(errorText));
+        if (githubAuthRequired) {
+          onGithubAuthRequired?.({
+            reason: errorText,
+            needsRepo: output?.needsRepo === true,
+            repoName: typeof output?.repoName === 'string' ? output.repoName : undefined,
+          });
         }
       }
 
@@ -2587,7 +2609,15 @@ export default function CommandComposer({
         // The language chosen in the switcher. Without it the server had no idea
         // which language to answer in and every reply came back Arabic, however
         // the interface was set.
-        language: (i18next.language || 'ar').split('-')[0],
+        // Read the language from the rendered document at send time. The
+        // switcher updates <html lang> immediately, while the i18next object
+        // can still hold the previous value during a language transition.
+        language: String(
+          (typeof document !== 'undefined' && document.documentElement.lang)
+            || i18next.resolvedLanguage
+            || i18next.language
+            || 'en'
+        ).split('-')[0],
         // The signed token often carries a placeholder name ('User'), while the
         // UI resolves the real one (Google profile / stored account). Send it so
         // Joe can greet the user personally («مساء الخير يا يونس»).

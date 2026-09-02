@@ -868,6 +868,10 @@ export class AgentLoopService {
             browserSessionId,
             workspaceId,
             userId,
+            // Preserve the UI-selected language across the phase boundary.
+            // ToolService uses this authoritative value for live status text;
+            // without it, an English UI could fall back to the prompt script.
+            language: opts.language,
             modelConfig,
             // Preserve the caller's engineering budget all the way to every
             // phase/verifier/repair LLM call. Without this, keyless providers

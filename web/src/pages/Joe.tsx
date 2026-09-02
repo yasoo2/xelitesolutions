@@ -216,12 +216,14 @@ export default function Joe() {
              * meant the new title only appeared after a reload.
              */
             if (msg?.type === 'sessions:refresh') return true;
+            if (msg?.type === 'connected' || msg?.type === 'disconnected') return true;
             const sid = String(msg?.sessionId || msg?.data?.sessionId || '');
-            if (!sid) return true;                       // global events (connection state)
+            // Session-owned events must fail closed. Treating an unaddressed
+            // tool/browser event as global lets a late event from another run
+            // switch this conversation's panels or append the wrong result.
+            if (!sid) return false;
             const active = String(activeSessionId || '');
-            if (!active) return true;
-            if (sid === active || sid.includes(active) || active.includes(sid)) return true;
-            return /^panel-/.test(sid) || sid === 'local_terminal';
+            return !!active && sid === active;
         };
         const unsub = SocketService.subscribe((msg: any) => {
             // Connection status
@@ -808,7 +810,12 @@ export default function Joe() {
                      *
                      *  A setting nobody sends is not a setting.
                      */
-                    language: i18n.language
+                    language: String(
+                        (typeof document !== 'undefined' && document.documentElement.lang)
+                            || i18n.resolvedLanguage
+                            || i18n.language
+                            || 'en'
+                    ).split('-')[0]
                 });
             } else {
                 await SocketService.sendMessage(targetSessionId, messageText);
@@ -889,6 +896,12 @@ export default function Joe() {
             setIsLoading(false);
         }
     }, []);
+
+    const handleGithubAuthRequired = useCallback((details: { reason?: string; needsRepo?: boolean; repoName?: string }) => {
+        const reason = String(details?.reason || '').trim();
+        setGhError(reason || t('githubAuthRequired', 'Connect GitHub and choose a repository before continuing.'));
+        setIsGitHubOpen(true);
+    }, [t]);
 
     // Theme synchronization — each mode also carries its OWN accent colour
     // (chosen in Settings, stored per mode), applied the moment the mode is.
@@ -1026,6 +1039,7 @@ export default function Joe() {
                             onMessagesUpdate={handleComposerMessages}
                             githubConnected={ghConnected}
                             onGitClick={() => setIsGitHubOpen(true)}
+                            onGithubAuthRequired={handleGithubAuthRequired}
                         />
                     </>
                 }

@@ -220,8 +220,16 @@ export async function warmUpLocalBrain(): Promise<void> {
     // burned its entire timeout before producing a word. Heavy vision models
     // (llava 7B+) are deliberately NOT pinned: on a 16GB laptop that would
     // evict the chat/code models the user talks to every minute.
-    const fastEyes = state.models.find(m => FAST_VISION.test(m));
-    if (fastEyes) models.add(fastEyes);
+    // A CPU-only machine must not keep the vision model resident beside the
+    // coding model: both Ollama workers compete for the same cores and turn a
+    // short artifact generation into a timeout. Vision remains installed and
+    // is loaded on demand by the vision path; opt in to boot pinning when the
+    // machine has enough memory/CPU for concurrent models.
+    const warmVision = String(process.env.JOE_VISION_WARMUP || '0') === '1';
+    if (warmVision) {
+        const fastEyes = state.models.find(m => FAST_VISION.test(m));
+        if (fastEyes) models.add(fastEyes);
+    }
     if (models.size === 0) return;
 
     for (const model of models) {

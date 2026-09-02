@@ -104,6 +104,16 @@ $env:USE_USER_BROWSER_PROFILE = "0"  # ملفّ خاصّ بجو — لا يتص�
 $env:BROWSER_HEADED = "0"            # لا نافذة خارجية؛ العرض داخل لوحة Browser
 $env:BROWSER_HEADFUL = "0"           # لا تسمح لإعداد موروث بفتح نافذة سطح مكتب
 $env:BROWSER_HEADLESS = "1"           # الاختبارات المرئية تصل من لوحة Browser فقط
+# Do not inherit a browser worker, executable, channel, profile, or Linux-only
+# sandbox override from another terminal/application. These are explicit opt-in
+# switches; leaving them inherited is how an unrelated Chrome window can appear.
+$env:BROWSER_WS_ENDPOINT = ""
+$env:BROWSER_EXECUTABLE_PATH = ""
+$env:CHROMIUM_PATH = ""
+$env:BROWSER_CHANNEL = ""
+$env:BROWSER_USER_DATA_DIR = ""
+$env:BROWSER_NO_SANDBOX = "0"
+$env:BROWSER_DISABLE_SANDBOX = "0"
 
 # --- الأسرار الخاصة بك (لا تُرفع إلى GitHub، لا تُمسح عند git pull) ---
 # ضع مفاتيحك (Google، إلخ) في ملف joe-secrets.ps1 بجانب هذا الملف. إنه مُتجاهَل
@@ -160,9 +170,12 @@ if (-not $env:LOCAL_LLM_BASE_URL) {
             $visionPick = $available2 | Where-Object { $_ -match 'llava|moondream|vision|minicpm-v|bakllava' } | Select-Object -First 1
             if ($visionPick) { $env:LOCAL_VISION_MODEL = $visionPick; Say "[vision] نموذج رؤية متصل: $visionPick" Green }
         }
-        # استخدم Ollama حصرياً حتى لا يضيّع جو الوقت في مزوّدين مجّانيين فاشلين، مع مهلة
-        # كافية لأول طلب (تحميل النموذج) ثم يبقى محمّلاً.
-        if (-not $env:LOCAL_LLM_STRICT)  { $env:LOCAL_LLM_STRICT = "1" }
+        # استخدم Ollama أولاً مع مهلة كافية لأول طلب (تحميل النموذج) ثم أبقِ
+        # مزوّدي Auto الاحتياطيين متاحين إذا تعثّر المحرك المحلي مؤقتاً.
+        # Auto means local-first, not local-only. A weak, paused, or temporarily
+        # overloaded Ollama must yield to the configured provider mesh instead of
+        # turning one local timeout into an immediate build failure.
+        if (-not $env:LOCAL_LLM_STRICT)  { $env:LOCAL_LLM_STRICT = "0" }
         # Do not inherit a short timeout from an older launcher process. A cold
         # qwen2.5-coder:7b request on CPU can take over two minutes even when
         # Ollama is healthy, so Auto must give the local brain the full window
@@ -190,6 +203,9 @@ if (-not $env:LOCAL_LLM_BASE_URL) {
 # ولا تختلط جلساته بجلسة جو. العرض المرئي يصل إلى لوحة Browser داخل الواجهة.
 $env:USE_SYSTEM_CHROME = "0"
 $env:BROWSER_PERSISTENT_PROFILE = "0"
+# Keep the installed vision model available, but do not pin it beside the
+# coding model on a CPU-only local machine. Browser QA loads eyes on demand.
+$env:JOE_VISION_WARMUP = "0"
 
 $apiDir = "$PSScriptRoot\api"
 
@@ -286,7 +302,9 @@ Pop-Location
 # frontend stays stale and bugs like "the browser does nothing" or "sessions do
 # not show" reappear even though the fixes were pulled.
 $webDir = "$PSScriptRoot\web"
-if (Test-Path $webDir) {
+if ($env:JOE_SKIP_BUILD -eq "1") {
+    Say "[2b/3] لا تغييرات — أستخدم بناء الواجهة الحالي." DarkGray
+} elseif (Test-Path $webDir) {
     Push-Location $webDir
     # نفس درس الـ API: تبعيات الواجهة تتغيّر مع التحديثات (مثل xterm-addon-search)
     # وتخطّي التثبيت يُفشل البناء ويُبقي واجهة قديمة تعمل بصمت.

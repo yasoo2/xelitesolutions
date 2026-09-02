@@ -1133,6 +1133,10 @@ export class PhaseExecutorTool implements ToolDefinition {
             plannerTimeoutMs: context?.plannerTimeoutMs ?? projectContext?.plannerTimeoutMs,
             plannerMaxCompletionTokens: context?.plannerMaxCompletionTokens ?? projectContext?.plannerMaxCompletionTokens,
             plannerReasoningEffort: context?.plannerReasoningEffort ?? projectContext?.plannerReasoningEffort,
+            // The phase executor is the boundary every delegated tool crosses.
+            // Dropping the user's UI language here made generic tool statuses
+            // fall back to Arabic inside an otherwise English run.
+            language: context?.language || projectContext?.language,
             onThought: (m: string) => context?.onThought?.(m),
             onProgress: (m: string) => context?.onProgress?.(m),
         };

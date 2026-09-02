@@ -374,7 +374,7 @@ describe('the bridge tool — plan, execute phases, report honestly', () => {
             path.join(__dirname, '..', 'modules', 'services', 'AgentLoopService.ts'), 'utf-8');
         expect(loop).toMatch(/browserSessionId\?:\s*string/);
         expect(loop).toMatch(/const projectContext = \{[\s\S]*browserSessionId,/);
-        expect(loop).toMatch(/const executionContext = \{[\s\S]*browserSessionId,[\s\S]*engineeringPipeline:\s*true,[\s\S]*purpose:\s*['"]internal['"]/);
+        expect(loop).toMatch(/const executionContext = \{[\s\S]*browserSessionId,[\s\S]*language:\s*opts\.language,[\s\S]*engineeringPipeline:\s*true,[\s\S]*purpose:\s*['"]internal['"]/);
     });
 
     test('a live HTTP 200 cannot bypass semantic artifact scope verification', () => {
@@ -556,6 +556,9 @@ describe('the bridge tool — plan, execute phases, report honestly', () => {
     test('the executor chain it relies on really verifies: build check after code phases', () => {
         const phaseExec = fs.readFileSync(
             path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'PhaseExecutorTool.ts'), 'utf-8');
+        // Language is part of the trusted phase context. If this boundary drops
+        // it, generic tool progress silently switches back to Arabic mid-run.
+        expect(phaseExec).toMatch(/language:\s*context\?\.language\s*\|\|\s*projectContext\?\.language/);
         expect(phaseExec).toMatch(/npm run --if-present build/);
         expect(phaseExec).toMatch(/verificationTask/);
         // The check runs in the PROJECT dir derived from the plan's own

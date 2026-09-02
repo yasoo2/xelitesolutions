@@ -9,6 +9,7 @@
  */
 import fs from 'fs';
 import path from 'path';
+import { GitHubRepoManagerTool } from '../modules/tools/definitions/GitHubRepoManagerTool';
 
 const ghRoute = fs.readFileSync(
     path.join(__dirname, '..', 'api', 'routes', 'github.ts'), 'utf-8');
@@ -62,5 +63,30 @@ describe('credentials in a git URL never leak to the visible terminal/logs', () 
     test('shell_execute redacts tokenized URLs and bare PATs', () => {
         expect(sysTools).toMatch(/https\?:\\\/\\\/\)\(\[\^:@\/\\s\]\+\):\(\[\^@\/\\s\]\+\)@/);
         expect(sysTools).toMatch(/gh\[pousr\]_\[A-Za-z0-9\]\{16,\}/);
+    });
+});
+
+describe('GitHub requests fail with an actionable connection state', () => {
+    test('missing credentials return a structured auth gate instead of a raw token error', async () => {
+        const previous = process.env.GITHUB_TOKEN;
+        delete process.env.GITHUB_TOKEN;
+        try {
+            const result = await new GitHubRepoManagerTool().execute({ action: 'analyze', language: 'en' });
+            expect(result.ok).toBe(false);
+            expect(result.code).toBe('github_auth_required');
+            expect(result.needsGithubAuth).toBe(true);
+            expect(result.needsRepo).toBe(true);
+        } finally {
+            if (previous === undefined) delete process.env.GITHUB_TOKEN;
+            else process.env.GITHUB_TOKEN = previous;
+        }
+    });
+
+    test('the UI opens the GitHub dialog when the agent hits that gate', () => {
+        expect(joePage).toMatch(/onGithubAuthRequired/);
+        expect(joePage).toMatch(/setGhError\(reason/);
+        expect(joePage).toMatch(/setIsGitHubOpen\(true\)/);
+        expect(fs.readFileSync(path.join(__dirname, '..', '..', '..', 'web', 'src', 'components', 'CommandComposer.tsx'), 'utf-8'))
+            .toMatch(/github_auth_required/);
     });
 });

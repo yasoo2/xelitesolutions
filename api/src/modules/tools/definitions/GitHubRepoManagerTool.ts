@@ -144,8 +144,32 @@ export class GitHubRepoManagerTool implements ToolDefinition {
                 }
             }
 
-            if (!githubToken && action !== 'list') {
-                throw new Error('GitHub token required. Set GITHUB_TOKEN env var, provide token in input, or set GITHUB_TOKEN in User Secrets.');
+            // Public repository analysis is a read-only operation and GitHub
+            // supports it without authentication. Account listing, private
+            // repositories, creation, deletion, and writes still require an
+            // explicit user token.
+            const publicRepoReference = String(repoName || '').trim()
+                .replace(/^https?:\/\/github\.com\//i, '')
+                .replace(/\.git$/i, '')
+                .match(/^[\w.-]+\/[\w.-]+$/u);
+            const canReadPublicRepo = action === 'analyze' && !!publicRepoReference;
+            if (!githubToken && !canReadPublicRepo) {
+                const language = githubReportLanguage(input, repoName || '');
+                const needsRepo = action === 'analyze' && !String(repoName || '').trim();
+                return {
+                    ok: false,
+                    code: 'github_auth_required',
+                    needsGithubAuth: true,
+                    needsRepo,
+                    error: language === 'ar'
+                        ? (needsRepo
+                            ? 'يلزم تحديد مستودع GitHub أولاً. أرسل رابط owner/repo أو اختر مستودعاً بعد ربط حسابك.'
+                            : 'يلزم ربط GitHub بهذا الطلب. افتح حوار GitHub وأدخل توكنك ثم اختر المستودع المطلوب.')
+                        : (needsRepo
+                            ? 'A GitHub repository is required first. Send an owner/repo URL or choose one after connecting your account.'
+                            : 'GitHub connection is required for this request. Open the GitHub dialog, enter your token, and choose the repository.'),
+                    logs,
+                };
             }
 
             switch (action) {
@@ -514,7 +538,7 @@ export class GitHubRepoManagerTool implements ToolDefinition {
                 method: method,
                 headers: {
                     'User-Agent': 'Joe-AI-Agent',
-                    'Authorization': `token ${token}`,
+                    ...(token ? { 'Authorization': `token ${token}` } : {}),
                     'Accept': 'application/vnd.github.v3+json',
                     'Content-Type': 'application/json'
                 }

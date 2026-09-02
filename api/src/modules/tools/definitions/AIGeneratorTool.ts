@@ -733,9 +733,16 @@ Return the complete file content now.`;
                     ...context,
                     purpose: 'internal',
                     engineeringPipeline: true,
-                    // CPU Ollama models spend roughly a minute on a small JSX
-                    // completion. Keep frontend artifacts compact enough to
-                    // finish, while leaving non-UI engineering files room.
+                    // A slow planner may open the local circuit before the
+                    // artifact phase begins. The artifact gets one evidence-
+                    // bound local recovery attempt; the router marks it used
+                    // on this context so retries cannot hammer Ollama.
+                    allowLocalEngineeringRecovery: true,
+                    // A React domain component is still a complete source file:
+                    // 260 tokens routinely cut it off inside a Markdown fence
+                    // before the validator can even inspect its JSX. Keep the
+                    // contract bounded, but give one component enough room to
+                    // finish its state, handlers, and accessible markup.
                     maxCompletionTokens: artifact.kind === 'frontend_asset' ? 1200 : 6000,
                 }
                 : undefined;

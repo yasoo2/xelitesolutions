@@ -101,6 +101,14 @@ export class ProjectPlannerTool implements ToolDefinition {
                 // context. Do not silently discard it and fall back to unrelated
                 // keyless providers for a long planning request.
                 modelConfig: context?.modelConfig,
+                // Keep the planner inside the same canonical engineering run.
+                // Dropping this marker made a slow local planner look like an
+                // ordinary chat outage, opened the global brain breaker, and
+                // stranded the real application phase behind it.
+                engineeringPipeline: context?.engineeringPipeline === true,
+                sessionId: context?.sessionId,
+                runId: context?.runId,
+                workspaceId: context?.workspaceId,
                 // Planning is a bounded long-running operation: the complete
                 // specification has already been read and compressed, but a
                 // multi-domain JSON plan can legitimately take longer than a

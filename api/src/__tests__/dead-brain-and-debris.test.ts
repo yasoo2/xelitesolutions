@@ -132,6 +132,13 @@ describe('dead-brain latch — no minutes-long re-walks of a mesh that just died
         expect(src).toMatch(/Math\.min\(timeoutValue, 20_000\)/);
     });
 
+    it('gives one artifact phase a bounded local recovery after a planner pause', () => {
+        expect(src).toContain('allowLocalEngineeringRecovery');
+        expect(src).toContain('!allowLocalEngineeringRecovery');
+        expect(src).toContain('localEngineeringRecoveryAttempted');
+        expect(src).toContain('localTimedOutAt && Date.now() - localTimedOutAt < 300_000 && !allowLocalEngineeringRecovery');
+    });
+
     it('keeps ordinary calls fail-fast but lets evidence-backed internal recovery reopen the mesh', () => {
         const now = 10_000;
         expect(canAttemptAfterDeadBrainLatch(9_000, now, 45_000, false, true)).toBe(false);

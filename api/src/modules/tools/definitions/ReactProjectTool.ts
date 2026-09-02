@@ -39,6 +39,7 @@ import { inspectWeatherEngineSource, formatWeatherSemanticRepair } from '../../.
 import { isProviderFailure } from '../../../core/llm/intelligent-router';
 import { validateFileWriteBatch } from '../../../shared/file-write-contract';
 import { replyLanguageCode } from '../../../shared/reply-language';
+import { useStoreContractMismatch } from '../../../core/quality/source-contract';
 import { isWithinRoot } from '../path-containment';
 import { planSite, thePagesHeNamed } from '../../../core/design/site-plan';
 
@@ -5115,13 +5116,14 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 const { AIGeneratorTool } = require('./AIGeneratorTool');
                 const author = new AIGeneratorTool();
                 const authorContext = `buildContext: projectRoot=${proj}; generated files include src/App.jsx, src/content.js, src/app/store.js, src/styles/app.css, and package.json. The importing shell renders <${authoredEngineName} content={content} />. The destination is ${generatedEnginePath}. Inspect the existing files and preserve their actual contracts.`;
-                const authorDescription = `Author the real domain engine for this React application from the user's request below.\n\nUSER REQUEST (authoritative):\n${request}\n\nIMPLEMENTATION CONTRACT:\n- Export a default React component named ${authoredEngineName} accepting exactly one optional prop: { content }.\n- Implement the requested ${runBp.engine} application, not a brochure or a static demo. Every explicit feature in the request must have a concrete state, interaction, and visible result.\n- Use the existing app shell, content object, store helpers, browser APIs, and declared packages only. Do not add packages or imports that are absent from package.json.\n- Include loading, empty, validation, network, and error states wherever the requested behavior can encounter them.\n- Persist user-created state when the request calls for persistence, and make the result visible after the action and after reload.\n- Keep the component self-contained and production-ready; no TODOs, fake API responses, random placeholder images, or explanatory prose outside the file.\n- Keep this single domain component concise (under roughly 1200 generated tokens); reuse the existing shell and styles instead of repeating them.\n- Keep the existing Joe app shell contract: use content.brand/content.storeKey/content.isArabic where useful and do not change App.jsx, store.js, or the manifest.\n${runBp.engine === 'weather' ? '- Use the real Open-Meteo geocoding and forecast APIs when the request asks for live weather. Keep hourly and daily forecast data distinct.' : ''}`;
+                const storeContractGuidance = 'The existing src/app/store.js exports useStore(key) as an object with async getItem(item) and setItem(item, value); never destructure useStore() as an array.';
+                const authorDescription = `Author the real domain engine for this React application from the user's request below.\n\nUSER REQUEST (authoritative):\n${request}\n\nIMPLEMENTATION CONTRACT:\n- Export a default React component named ${authoredEngineName} accepting exactly one optional prop: { content }.\n- Implement the requested ${runBp.engine} application, not a brochure or a static demo. Every explicit feature in the request must have a concrete state, interaction, and visible result.\n- Use the existing app shell, content object, store helpers, browser APIs, and declared packages only. Do not add packages or imports that are absent from package.json.\n- Include loading, empty, validation, network, and error states wherever the requested behavior can encounter them.\n- Persist user-created state when the request calls for persistence, and make the result visible after the action and after reload.\n- Keep the component self-contained and production-ready; no TODOs, fake API responses, random placeholder images, or explanatory prose outside the file.\n- Keep this single domain component concise (under roughly 260 generated tokens); reuse the existing shell and styles instead of repeating them.\n- Keep the existing Joe app shell contract: use content.brand/content.storeKey/content.isArabic where useful and do not change App.jsx, store.js, or the manifest.\n${runBp.engine === 'weather' ? '- Use the real Open-Meteo geocoding and forecast APIs when the request asks for live weather. Keep hourly and daily forecast data distinct.' : ''}`;
                 const generated = await author.execute({
                     path: path.join(proj, generatedEnginePath),
                     description: authorDescription,
                     language: isAr ? 'ar' : 'en',
                     aestheticMode: 'Use the existing app.css and design tokens. Prioritize a clear, responsive, accessible application surface over decorative effects.',
-                    context: authorContext,
+                    context: `${authorContext}\n${storeContractGuidance}`,
                 }, {
                     ...context,
                     projectRoot: proj,
@@ -5147,6 +5149,37 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 if (!authored.trim() || !exportContract.test(authored)) {
                     term(`domain generation: BLOCKED — generated file has no valid ${authoredEngineName} default export`);
                     return { ok: false, error: 'domain_generation_invalid', output: authoringFailureOutput(), logs };
+                }
+                // JSX compilation cannot see this runtime contract: the shell's
+                // useStore() returns an object, so array destructuring produces
+                // a blank page only after React mounts. Give the author one
+                // evidence-bound repair before browser QA measures the failure.
+                let storeContractDefect = useStoreContractMismatch(generatedEnginePath, authored);
+                if (storeContractDefect) {
+                    term(`domain runtime QA: ${storeContractDefect} — requesting one bounded repair`);
+                    const repaired = await author.execute({
+                        path: path.join(proj, generatedEnginePath),
+                        description: `${authorDescription}\n\nRUNTIME CONTRACT REPAIR REQUIRED — the existing shell exports useStore(key) as an object with async getItem(item) and setItem(item, value). The previous component incorrectly destructured useStore() as an iterable array, which crashes on first render. Preserve the requested behavior and return the complete corrected file only.`,
+                        language: isAr ? 'ar' : 'en',
+                        aestheticMode: 'Use the existing app.css and design tokens. Preserve the current interface; repair only the store API usage.',
+                        context: `${authorContext}\nThe previous authored source failed this measured runtime contract: ${storeContractDefect}. The file on disk is the previous attempt; return the complete corrected file only.`,
+                    }, {
+                        ...context,
+                        projectRoot: proj,
+                        workspaceId: context?.workspaceId,
+                    });
+                    if (!repaired?.ok || !fs.existsSync(path.join(proj, generatedEnginePath))) {
+                        const reason = String(repaired?.error || 'runtime contract repair did not produce the requested domain file');
+                        term(`domain runtime QA: BLOCKED — ${reason}`);
+                        return { ok: false, error: reason, output: authoringFailureOutput(), logs };
+                    }
+                    authored = fs.readFileSync(path.join(proj, generatedEnginePath), 'utf8');
+                    storeContractDefect = useStoreContractMismatch(generatedEnginePath, authored);
+                    if (storeContractDefect) {
+                        term(`domain runtime QA: BLOCKED — ${storeContractDefect}`);
+                        return { ok: false, error: storeContractDefect, output: authoringFailureOutput(), logs };
+                    }
+                    term('domain runtime QA: useStore contract repaired and independently rechecked');
                 }
                 if (!blueprintFallbackEngine) modelAuthoredEngine = true;
 

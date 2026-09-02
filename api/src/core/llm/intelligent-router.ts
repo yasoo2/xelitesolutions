@@ -1291,6 +1291,9 @@ export async function routeToModel(
     // and never touch the daily quota while it is available.
     const internalCall = String((context as any)?.purpose || '') === 'internal';
     const engineeringPipeline = (context as any)?.engineeringPipeline === true;
+    const allowLocalEngineeringRecovery = engineeringPipeline
+        && (context as any)?.allowLocalEngineeringRecovery === true
+        && (context as any)?.localEngineeringRecoveryAttempted !== true;
     const deadBrainRecoveryAttempted = (context as any)?.deadBrainRecoveryAttempted === true;
     const latchScope = failureLatchScope(context);
     // Provider preflight is a health probe, not a real engineering turn. It must
@@ -2230,11 +2233,15 @@ export async function routeToModel(
             // Auto prefers Ollama while it is healthy. Once the breaker has
             // opened, continuing to force it first defeats the fallback mesh
             // and makes a weak local model stall every engineering phase.
-            if (p.name === 'Local (Auto)' && isLocalBrainOpen()) {
+            if (p.name === 'Local (Auto)' && isLocalBrainOpen() && !allowLocalEngineeringRecovery) {
                 const left = Math.max(1, Math.round((localCircuitUntil - Date.now()) / 1000));
                 console.info(`[IntelligentRouter] ⏭️ skipping the local brain (paused ${left}s more) — going straight to the mesh.`);
                 recordProviderAttempt(p.name, false, `skipped: local circuit paused for ${left}s`);
                 continue;
+            }
+            if (p.name === 'Local (Auto)' && allowLocalEngineeringRecovery && context) {
+                (context as any).localEngineeringRecoveryAttempted = true;
+                console.info('[IntelligentRouter] 🩺 engineering artifact recovery gets one bounded local-brain attempt despite the circuit pause.');
             }
             console.info(`[IntelligentRouter] 🔄 Attempting provider: ${p.name}...`);
 
@@ -2261,13 +2268,13 @@ export async function routeToModel(
                 // ...but a local brain that JUST timed out gets a short probe, not
                 // another three minutes. Measured: with providers on daily quotas,
                 // the 180s local wait alone turned each failed call into minutes.
-                if (localTimedOutAt && Date.now() - localTimedOutAt < 300_000) {
+                if (localTimedOutAt && Date.now() - localTimedOutAt < 300_000 && !allowLocalEngineeringRecovery) {
                     timeoutValue = Math.min(timeoutValue, 20_000);
                 }
                 // Half-open: the pause expired, so this call IS the probe. It
                 // gets seconds, not minutes — a healthy engine answers a short
                 // prompt well inside that, and a dead one costs almost nothing.
-                if (isLocalBrainProbing()) timeoutValue = Math.min(timeoutValue, LOCAL_PROBE_TIMEOUT_MS);
+                if (isLocalBrainProbing() && !allowLocalEngineeringRecovery) timeoutValue = Math.min(timeoutValue, LOCAL_PROBE_TIMEOUT_MS);
                 // [INTELLIGENCE ECONOMY] Internal reasoning (intent/plan JSON)
                 // gets a LEASH, not the full local window: when Ollama is busy
                 // chewing a vision request, an internal planning call queued

@@ -63,3 +63,19 @@ export function undefinedJsxComponentMismatch(filePath: string, sourceRaw: strin
     if (!missing.length) return null;
     return `source_component_mismatch: ${filePath} renders JSX component(s) without an import or local declaration: ${missing.join(', ')}`;
 }
+
+/**
+ * The generated React shell exposes `useStore()` as a key/value object. JSX
+ * still parses when a model destructures it as `[state, setState]`, but the
+ * first render then throws because plain objects are not iterable.
+ */
+export function useStoreContractMismatch(filePath: string, sourceRaw: string): string | null {
+    const ext = String(filePath || '').toLowerCase().split('.').pop();
+    if (ext !== 'jsx' && ext !== 'tsx') return null;
+    const source = String(sourceRaw || '');
+    if (!/\buseStore\s*\(/u.test(source)) return null;
+    if (/\b(?:const|let|var)\s*\[[^\]]+\]\s*=\s*useStore\s*\(/u.test(source)) {
+        return `source_runtime_contract_mismatch: ${filePath} destructures useStore() as an array; use the documented { getItem, setItem } object contract`;
+    }
+    return null;
+}

@@ -15,6 +15,7 @@ import { fileAppStoreJs } from '../modules/tools/definitions/react-app-templates
 import { ApiProjectTool } from '../modules/tools/definitions/ApiProjectTool';
 import { ScaffoldProjectTool } from '../modules/tools/definitions/SystemTools';
 import { workspaceService } from '../modules/services/WorkspaceService';
+import { useStoreContractMismatch } from '../core/quality/source-contract';
 
 const FALLTHROUGH = 'llm-fallthrough';
 const route = async (goal: string): Promise<string> => {
@@ -46,6 +47,15 @@ describe('dependency reuse only trusts a complete Vite tree', () => {
         }
         expect(hasUsableReactDependencyTree(tmp)).toBe(true);
         fs.rmSync(tmp, { recursive: true, force: true });
+    });
+});
+
+describe('authored React runtime contracts', () => {
+    it('rejects array destructuring of Joe\'s key/value useStore API', () => {
+        expect(useStoreContractMismatch('src/components/CustomApp.jsx', 'const [state, setState] = useStore(key);'))
+            .toMatch(/source_runtime_contract_mismatch/);
+        expect(useStoreContractMismatch('src/components/CustomApp.jsx', 'const { getItem, setItem } = useStore(key);'))
+            .toBeNull();
     });
 });
 
