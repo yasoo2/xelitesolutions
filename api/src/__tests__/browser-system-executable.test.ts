@@ -5,11 +5,13 @@ describe('system Chromium fallback', () => {
     const previousBrowserPath = process.env.BROWSER_EXECUTABLE_PATH;
     const previousChromiumPath = process.env.CHROMIUM_PATH;
     const previousPlaywrightPath = process.env.PLAYWRIGHT_BROWSERS_PATH;
+    const previousSystemChrome = process.env.USE_SYSTEM_CHROME;
 
     beforeEach(() => {
         delete process.env.BROWSER_EXECUTABLE_PATH;
         delete process.env.CHROMIUM_PATH;
         delete process.env.PLAYWRIGHT_BROWSERS_PATH;
+        delete process.env.USE_SYSTEM_CHROME;
     });
 
     afterEach(() => {
@@ -19,6 +21,8 @@ describe('system Chromium fallback', () => {
         else process.env.CHROMIUM_PATH = previousChromiumPath;
         if (previousPlaywrightPath === undefined) delete process.env.PLAYWRIGHT_BROWSERS_PATH;
         else process.env.PLAYWRIGHT_BROWSERS_PATH = previousPlaywrightPath;
+        if (previousSystemChrome === undefined) delete process.env.USE_SYSTEM_CHROME;
+        else process.env.USE_SYSTEM_CHROME = previousSystemChrome;
         jest.restoreAllMocks();
     });
 
@@ -38,5 +42,15 @@ describe('system Chromium fallback', () => {
         ));
 
         expect(findChromiumExecutable()).toBe('/custom/joe-chromium');
+    });
+
+    it('does not fall back to the user system browser when isolation is pinned', () => {
+        process.env.USE_SYSTEM_CHROME = '0';
+        const exists = jest.spyOn(fs, 'existsSync').mockImplementation((candidate: fs.PathLike) => (
+            String(candidate) === '/usr/bin/chromium'
+        ));
+
+        expect(findChromiumExecutable()).toBeUndefined();
+        expect(exists).not.toHaveBeenCalledWith('/usr/bin/chromium');
     });
 });

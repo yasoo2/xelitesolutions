@@ -853,9 +853,20 @@ export function isReactViteProjectDir(dir: string): boolean {
  * registry is offline. Only dependency directories are reused, never source
  * files, and the candidate must describe the same Vite/React shape.
  */
+export function hasUsableReactDependencyTree(projectRoot: string): boolean {
+    const modules = path.join(projectRoot, 'node_modules');
+    const required = [
+        '.bin/vite', 'vite/package.json', 'rollup/package.json',
+        '@vitejs/plugin-react/package.json', 'react/package.json', 'react-dom/package.json',
+    ];
+    const rollupParseAst = ['rollup/dist/parseAst.js', 'rollup/dist/es/parseAst.js', 'rollup/dist/shared/parseAst.js'];
+    return required.every(rel => fs.existsSync(path.join(modules, rel)))
+        && rollupParseAst.some(rel => fs.existsSync(path.join(modules, rel)));
+}
+
 function reuseLocalReactDependencies(workspaceRoot: string, projectRoot: string): boolean {
     const targetModules = path.join(projectRoot, 'node_modules');
-    if (fs.existsSync(path.join(targetModules, '.bin', 'vite'))) return true;
+    if (hasUsableReactDependencyTree(projectRoot)) return true;
     let targetManifest: any;
     try { targetManifest = JSON.parse(fs.readFileSync(path.join(projectRoot, 'package.json'), 'utf8')); } catch { return false; }
     const sameToolchain = (candidateManifest: any): boolean => (
@@ -886,7 +897,7 @@ function reuseLocalReactDependencies(workspaceRoot: string, projectRoot: string)
             if (fs.existsSync(candidateLock) && !fs.existsSync(path.join(projectRoot, 'package-lock.json'))) {
                 fs.copyFileSync(candidateLock, path.join(projectRoot, 'package-lock.json'));
             }
-            return fs.existsSync(path.join(targetModules, '.bin', 'vite'));
+            return hasUsableReactDependencyTree(projectRoot);
         } catch {
             try { if (fs.existsSync(targetModules)) fs.rmSync(targetModules, { recursive: true, force: true }); } catch { /* try the next candidate */ }
         }
@@ -3750,7 +3761,7 @@ export class ReactProjectTool extends BaseTool {
         // Hero + Features + FAQ with a restaurant menu attached and no map at
         // all. When the request names an application, the section library is
         // skipped entirely and a working app is generated instead.
-        const appKind = detectAppKind(request) || inheritedAppKind;
+        const appKind = inheritedAppKind || detectAppKind(request);
         const appBp: AppBlueprint | null = appKind ? blueprintFor(appKind, request, artifactIsAr) : null;
         // سجّل قرار القالب نفسه، لا وعداً عاماً بالنجاح؛ هذا يكشف فوراً أي
         // تحوير لوسيط الطلب بين الخطة وأداة البناء في الاختبارات الحية.

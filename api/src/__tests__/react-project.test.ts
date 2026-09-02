@@ -10,7 +10,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
-import { ReactProjectTool, PROJECT_DIR_NAME_MAX_LENGTH, heroSecondaryDestination, requestDrivenServiceProducts } from '../modules/tools/definitions/ReactProjectTool';
+import { ReactProjectTool, PROJECT_DIR_NAME_MAX_LENGTH, hasUsableReactDependencyTree, heroSecondaryDestination, requestDrivenServiceProducts } from '../modules/tools/definitions/ReactProjectTool';
 import { fileAppStoreJs } from '../modules/tools/definitions/react-app-templates';
 import { ApiProjectTool } from '../modules/tools/definitions/ApiProjectTool';
 import { ScaffoldProjectTool } from '../modules/tools/definitions/SystemTools';
@@ -23,6 +23,31 @@ const route = async (goal: string): Promise<string> => {
     ).then(x => x.steps[0].tool).catch(() => FALLTHROUGH);
     return Promise.race([p, new Promise<string>(r => { const t = setTimeout(() => r(FALLTHROUGH), 1500); (t as any).unref?.(); })]);
 };
+
+describe('dependency reuse only trusts a complete Vite tree', () => {
+    it('rejects a partial tree that only contains the vite shim', () => {
+        const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-react-deps-'));
+        fs.mkdirSync(path.join(tmp, 'node_modules', '.bin'), { recursive: true });
+        fs.writeFileSync(path.join(tmp, 'node_modules', '.bin', 'vite'), 'shim');
+        expect(hasUsableReactDependencyTree(tmp)).toBe(false);
+        fs.rmSync(tmp, { recursive: true, force: true });
+    });
+
+    it('accepts the files Vite needs to resolve and bundle React', () => {
+        const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-react-deps-'));
+        const files = [
+            '.bin/vite', 'vite/package.json', 'rollup/package.json', 'rollup/dist/parseAst.js',
+            '@vitejs/plugin-react/package.json', 'react/package.json', 'react-dom/package.json',
+        ];
+        for (const rel of files) {
+            const file = path.join(tmp, 'node_modules', rel);
+            fs.mkdirSync(path.dirname(file), { recursive: true });
+            fs.writeFileSync(file, '');
+        }
+        expect(hasUsableReactDependencyTree(tmp)).toBe(true);
+        fs.rmSync(tmp, { recursive: true, force: true });
+    });
+});
 
 describe('routing: explicit framework requests reach the evidence-first project pipeline', () => {
     for (const t of ['ابن لي مشروع React لمقهى', 'اعمل تطبيق Vite للمخبز', 'build me a react app for a gym', 'انشئ SPA لشركة شحن']) {

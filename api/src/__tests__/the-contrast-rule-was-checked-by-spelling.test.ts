@@ -144,6 +144,11 @@ describe('the verdict he reads', () => {
         expect(near(f.ratio, 4.48, 0.02)).toBe(true);
     });
 
+    it('preserves the measured selector so the repair can reach the real rule', () => {
+        const [f] = judgeContrast([s({ sel: 'main > button.counter-button' })]);
+        expect(f.sel).toBe('main > button.counter-button');
+    });
+
     it('⛔ NEGATIVE — a passing sample is not reported at all', () => {
         expect(judgeContrast([s({ fg: [0x76, 0x76, 0x76] })])).toEqual([]);
         expect(judgeContrast([])).toEqual([]);

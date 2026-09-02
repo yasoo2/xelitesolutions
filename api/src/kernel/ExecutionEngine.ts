@@ -5,6 +5,29 @@ import { logger } from '../shared/utils/logger';
 import { traceManager } from '../modules/services/TraceManager';
 import { executionFirewall } from '../orchestration/AgentExecutionFirewall';
 
+/** Stop a timed-out shell and its descendants before the next repair starts. */
+function terminateProcessTree(child: any): Promise<void> {
+    if (process.platform !== 'win32' || !child?.pid) {
+        try { child?.kill('SIGKILL'); } catch { /* already gone */ }
+        return Promise.resolve();
+    }
+    return new Promise(resolve => {
+        let settled = false;
+        const finish = () => { if (!settled) { settled = true; resolve(); } };
+        try {
+            const killer = spawn('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], {
+                stdio: 'ignore', windowsHide: true,
+            } as any);
+            killer.once('close', finish);
+            killer.once('error', () => { try { child.kill('SIGKILL'); } catch { /* already gone */ } finish(); });
+            setTimeout(() => { try { child.kill('SIGKILL'); } catch { /* already gone */ } finish(); }, 2000);
+        } catch {
+            try { child.kill('SIGKILL'); } catch { /* already gone */ }
+            finish();
+        }
+    });
+}
+
 export interface ExecutionRequest {
     id: string;
     traceId?: string;
@@ -585,9 +608,9 @@ export class ExecutionEngine {
         let settled = false;
         const done = new Promise<{ ok: boolean; exitCode: number | null; error?: string }>((resolve) => {
             const t = rest.timeout ? setTimeout(() => {
-                if (settled) return; settled = true;
-                try { child.kill('SIGKILL'); } catch { /* already gone */ }
-                resolve({ ok: false, exitCode: 124, error: 'timeout' });
+                if (settled) return;
+                settled = true;
+                void terminateProcessTree(child).finally(() => resolve({ ok: false, exitCode: 124, error: 'timeout' }));
             }, rest.timeout) : null;
             child.on('close', (code) => {
                 if (settled) return; settled = true;
@@ -600,7 +623,7 @@ export class ExecutionEngine {
                 resolve({ ok: false, exitCode: null, error: err.message });
             });
         });
-        return { done, kill: () => { try { child.kill(); } catch { /* already gone */ } }, pid: child.pid };
+        return { done, kill: () => { void terminateProcessTree(child); }, pid: child.pid };
     }
 
     /**

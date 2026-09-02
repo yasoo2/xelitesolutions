@@ -435,9 +435,14 @@ export function findChromiumExecutable(): string | undefined {
     } catch { /* ignore */ }
   }
 
-// A local Joe installation must still work when Playwright's optional browser
-  // download was skipped. Search well-known system-browser locations last: the
-  // explicit override and a version-matched Playwright browser always win.
+  // A local Joe installation may use a system browser only when that fallback
+  // was not explicitly disabled. The local launcher pins this to 0: silently
+  // opening the user's Chrome would break the isolation contract and explain
+  // why an apparently unrelated Chrome window appeared during a Joe run.
+  if (parseBool(process.env.USE_SYSTEM_CHROME) === false) return undefined;
+
+  // Search well-known system-browser locations last: the explicit override and
+  // a version-matched Playwright browser always win.
   const programFiles = process.env.ProgramFiles || process.env.PROGRAMFILES || 'C:\\Program Files';
   const programFilesX86 = process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)';
   const systemCandidates = [

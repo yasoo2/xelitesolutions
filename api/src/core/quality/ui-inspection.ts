@@ -116,6 +116,29 @@ function measureContrast() {
     var r = el.getBoundingClientRect(), st = getComputedStyle(el);
     return r.width > 0 && r.height > 0 && st.visibility !== 'hidden' && st.display !== 'none' && parseFloat(st.opacity) > 0.1;
   };
+  // Keep each measured offender addressable in source. Colours and text prove
+  // a defect, but the repairer also needs to know which selector to change.
+  var selectorFor = function (el: any) {
+    var parts: string[] = [];
+    var node: any = el;
+    while (node && node.nodeType === 1 && node !== document.body) {
+      var tag = String(node.tagName || '').toLowerCase();
+      if (!tag) break;
+      var id = String(node.id || '');
+      var part = /^[A-Za-z][\w-]*$/.test(id) ? tag + '#' + id : tag;
+      if (part === tag) {
+        var classes = String(node.className && typeof node.className === 'string' ? node.className : '')
+          .split(/\s+/).filter(function (c: string) { return /^[A-Za-z][\w-]*$/.test(c); }).slice(0, 2);
+        if (classes.length) part += '.' + classes.join('.');
+      }
+      var same = node.parentElement ? Array.prototype.filter.call(node.parentElement.children, function (s: any) { return s.tagName === node.tagName; }) : [];
+      if (same.length > 1) part += ':nth-of-type(' + (same.indexOf(node) + 1) + ')';
+      parts.unshift(part);
+      if (node.id) break;
+      node = node.parentElement;
+    }
+    return parts.join(' > ');
+  };
   var samples: any[] = [], checked = 0, skipped = 0;
   var els: any[] = Array.prototype.slice.call(document.querySelectorAll('p,span,a,li,h1,h2,h3,h4,button,label,td,th,div'));
   for (var i = 0; i < els.length; i++) {
@@ -140,6 +163,7 @@ function measureContrast() {
       text: txt.slice(0, 40), fg: [fg[0], fg[1], fg[2]], bg: [bgc[0], bgc[1], bgc[2]],
       size: size, bold: bold,
       x: Math.round(r.left), y: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height),
+      sel: selectorFor(el),
     });
     if (checked > 400) break;
   }
@@ -226,6 +250,8 @@ export function contrastSeverity(
 export interface ContrastSample {
     text: string; fg: number[]; bg: number[]; size: number; bold: boolean;
     x: number; y: number; width: number; height: number;
+    /** Safe selector for the source-addressable measured offender. */
+    sel?: string;
 }
 
 /**
@@ -235,7 +261,7 @@ export interface ContrastSample {
  */
 export function judgeContrast(
     samples: ContrastSample[] | undefined,
-): Array<{ text: string; ratio: number; need: number; x: number; y: number; width: number; height: number }> {
+): Array<{ text: string; ratio: number; need: number; sel: string; x: number; y: number; width: number; height: number }> {
     const seen = new Set<string>();
     const fails: any[] = [];
     for (const s of samples || []) {
@@ -250,7 +276,7 @@ export function judgeContrast(
         if (seen.has(key)) continue;
         seen.add(key);
         fails.push({
-            text: s.text, ratio: rounded, need,
+            text: s.text, ratio: rounded, need, sel: s.sel || '',
             x: s.x, y: s.y, width: s.width, height: s.height,
         });
     }
