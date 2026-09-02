@@ -62,6 +62,21 @@ describe('a session that looks like a shell, because it is one', () => {
         expect(lines.some(l => /^→ exit 0 · \d+\.\d+s$/.test(l))).toBe(true);
     }, 30_000);
 
+    it('cancellation ends the child process instead of only ending Joe\'s wait', async () => {
+        const lines: string[] = [];
+        let cancel!: () => void;
+        const cancellation = new Promise<void>(resolve => { cancel = resolve; });
+        const t = openTerminal(l => lines.push(l));
+        const running = t.run(process.execPath, ['-e', 'setTimeout(() => {}, 60000)'], {
+            cwd: process.cwd(), timeout: 20_000, cancel: cancellation,
+        });
+        await new Promise(resolve => setTimeout(resolve, 100));
+        cancel();
+        const r = await running;
+        expect(r.error).toBe('cancelled');
+        expect(lines.some(l => /exit 130/.test(l))).toBe(true);
+    }, 30_000);
+
     /**
      * A transcript where failures are silent teaches him to distrust the
      * successes too.
@@ -130,7 +145,7 @@ describe('the report says how much of the build was real shell work', () => {
 
 describe('THE WIRING: both builders work in the visible shell', () => {
     it('the interface build opens the terminal panel before it writes a file', () => {
-        expect(REACT).toMatch(/const shell = openTerminal\(term\);/);
+        expect(REACT).toMatch(/const shell = openTerminal\(term, \{ cancel: cancellation \}\);/);
         expect(REACT).toMatch(/panel: 'terminal', reason: 'build_shell'/);
         // …and the panel request comes before the scaffolding, not after it.
         expect(REACT.indexOf("reason: 'build_shell'"))
@@ -138,7 +153,7 @@ describe('THE WIRING: both builders work in the visible shell', () => {
     });
 
     it('and every process it runs goes through the session', () => {
-        expect(REACT).toMatch(/const r = await shell\.run\(cmd, args, \{ cwd: proj, timeout: timeoutMs \}\);/);
+        expect(REACT).toMatch(/const r = await shell\.run\(cmd, args, \{ cwd: proj, timeout: timeoutMs, cancel: cancellation \}\);/);
         expect(REACT).toMatch(/await shell\.open\(/);
         // The old silent runner is gone — no bare streaming spawn in the build.
         expect(REACT).not.toMatch(/onLine: \(l: string\) => \{ lastLog \+= l \+ '\\n'; term\(/);

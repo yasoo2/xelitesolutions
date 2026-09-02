@@ -1249,7 +1249,13 @@ export const PROVIDER_FAILURE_PREFIX = '⚠️ تعذّر الوصول إلى م
 
 /** Is this "model output" actually the router's no-provider notice? */
 export function isProviderFailure(text: any): boolean {
-    return typeof text === 'string' && text.trimStart().startsWith(PROVIDER_FAILURE_PREFIX);
+    if (typeof text !== 'string') return false;
+    const value = text.trimStart();
+    // A generator deadline is the thrown form of the same provider outage.
+    // Treating it as an ordinary build error sent the run into a new planner
+    // graph, where it could lose the bounded request-derived fallback.
+    return value.startsWith(PROVIDER_FAILURE_PREFIX)
+        || /(?:llm_generation_timeout|model could not be reached|no\s+llm\s+provider|provider\s+(?:unavailable|timeout)|request timed out)/i.test(value);
 }
 
 /** A probe is healthy only when it returned model content, not the router's apology. */

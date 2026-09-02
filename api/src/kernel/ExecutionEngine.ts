@@ -85,6 +85,8 @@ export interface ExecutionOptions {
      * process that started, wrote nothing and died.
      */
     windowsHide?: boolean;
+    /** Resolve when the owning Joe run is cancelled; terminate the child tree. */
+    cancel?: Promise<void>;
 }
 
 export interface ExecutionSession {
@@ -104,6 +106,16 @@ export interface ExecutionSession {
  */
 /** The Windows executables that ship as .cmd shims rather than real .exe. */
 const WIN_CMD_SHIMS = new Set(['npm', 'npx', 'yarn', 'pnpm']);
+
+/** Resolve npm's JavaScript entrypoint so a cancellable run owns the real node process. */
+function resolveNpmCli(): string | null {
+    if (process.platform !== 'win32') return null;
+    const candidates = [
+        path.join(path.dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js'),
+        path.join(process.env.ProgramFiles || 'C:\\Program Files', 'nodejs', 'node_modules', 'npm', 'bin', 'npm-cli.js'),
+    ];
+    return candidates.find(candidate => fs.existsSync(candidate)) || null;
+}
 
 /**
  * A Joe session must not inherit an npm installation target from the API host.
@@ -354,7 +366,7 @@ export class ExecutionEngine {
                 // a trust prompt from PSReadLine can block the first build command
                 // while the orchestration layer is correctly waiting for output.
                 const shellArgs = process.platform === 'win32' && /(?:^|[\\/])powershell(?:\.exe)?$/i.test(shell)
-                    ? ['-NoLogo', '-NoProfile', '-NoExit']
+                    ? ['-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-NoExit']
                     : [];
                 const ptyProcess = this.pty.spawn(shell, shellArgs, {
                     name: 'xterm-256color',
@@ -533,9 +545,11 @@ export class ExecutionEngine {
         // survivable; EINVAL is not. The shell comes back, and the arguments are
         // quoted here rather than left to it.
         const isWin = process.platform === 'win32';
+        const npmCli = isWin && /^npm(?:\.cmd)?$/i.test(file) ? resolveNpmCli() : null;
         const isShim = WIN_CMD_SHIMS.has(file) || /\.(cmd|bat)$/i.test(file);
-        const needsShell = isWin && rest.shell === undefined && isShim;
-        const cmd = (isWin && WIN_CMD_SHIMS.has(file)) ? `${file}.cmd` : file;
+        const needsShell = !npmCli && isWin && rest.shell === undefined && isShim;
+        const cmd = npmCli ? process.execPath : (isWin && WIN_CMD_SHIMS.has(file)) ? `${file}.cmd` : file;
+        const spawnArgs = npmCli ? [npmCli, ...args] : args;
         /** cmd.exe quoting: wrap anything with a space or a metacharacter, and
          *  double an embedded quote — the same rule cmd.exe itself applies. */
         const quoteForCmd = (a: string) => {
@@ -558,7 +572,7 @@ export class ExecutionEngine {
          * with the code that understands the shell it is quoting for.
          */
         const useShell = rest.shell !== undefined ? rest.shell : needsShell;
-        const line = useShell ? [quoteForCmd(cmd), ...args.map(quoteForCmd)].join(' ') : '';
+        const line = useShell ? [quoteForCmd(cmd), ...spawnArgs.map(quoteForCmd)].join(' ') : '';
         const child = useShell
             ? spawn(line, [], {
                 cwd: rest.cwd || this.getWorkspaceRoot(),
@@ -593,7 +607,7 @@ export class ExecutionEngine {
                  */
                 windowsHide: (rest as any).windowsHide !== false,
             } as any)
-            : spawn(cmd, args, {
+            : spawn(cmd, spawnArgs, {
                 cwd: rest.cwd || this.getWorkspaceRoot(),
                 env: isolatedExecutionEnv(rest.env),
                 shell: false,
@@ -606,16 +620,30 @@ export class ExecutionEngine {
         child.stdout?.on('data', feed('stdout'));
         child.stderr?.on('data', feed('stderr'));
         let settled = false;
+        let cancelRequested = false;
         const done = new Promise<{ ok: boolean; exitCode: number | null; error?: string }>((resolve) => {
             const t = rest.timeout ? setTimeout(() => {
                 if (settled) return;
                 settled = true;
                 void terminateProcessTree(child).finally(() => resolve({ ok: false, exitCode: 124, error: 'timeout' }));
             }, rest.timeout) : null;
+            const cancel = () => {
+                if (settled) return;
+                cancelRequested = true;
+                void terminateProcessTree(child).finally(() => {
+                    if (settled) return;
+                    settled = true;
+                    if (t) clearTimeout(t);
+                    resolve({ ok: false, exitCode: 130, error: 'cancelled' });
+                });
+            };
+            if (rest.cancel) void rest.cancel.then(cancel).catch(() => { /* cancellation is best effort */ });
             child.on('close', (code) => {
                 if (settled) return; settled = true;
                 if (t) clearTimeout(t);
-                resolve({ ok: code === 0, exitCode: code });
+                resolve(cancelRequested
+                    ? { ok: false, exitCode: 130, error: 'cancelled' }
+                    : { ok: code === 0, exitCode: code });
             });
             child.on('error', (err) => {
                 if (settled) return; settled = true;

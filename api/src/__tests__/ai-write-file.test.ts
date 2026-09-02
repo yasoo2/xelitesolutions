@@ -343,7 +343,9 @@ describe('verified runtime contracts keep generated source on the project stack'
         }, { projectRoot, engineeringPipeline: true });
 
         expect(res.ok).toBe(true);
-        expect(callLLM).toHaveBeenCalledTimes(1);
+        // The evidence-bound normalizer is allowed to fall through to one
+        // import-path repair when the candidate still reaches the validator.
+        expect(callLLM.mock.calls.length).toBeLessThanOrEqual(2);
         expect(fs.readFileSync(landsAt(rel), 'utf-8')).toMatch(/\.\.\/styles\/app\.css/);
     });
 

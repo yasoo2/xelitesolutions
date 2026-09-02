@@ -586,10 +586,11 @@ export class AgentOrchestrator {
           // A full project has a separate LLM budget from an ordinary chat node.
           // Keep the value on the canonical context so ProjectPipelineTool can
           // carry it through PhaseExecutor, verifiers, generators, and repairs.
-          const engineeringLlmTimeoutMs = node.tool === 'project_pipeline'
+          const engineeringNode = ['project_pipeline', 'react_project', 'api_project'].includes(String(node.tool || ''));
+          const engineeringLlmTimeoutMs = engineeringNode
             ? (Number(goalContext?.providerTimeoutMs) > 0 ? Number(goalContext?.providerTimeoutMs) : 120000)
             : goalContext?.providerTimeoutMs;
-          const engineeringPlannerTimeoutMs = node.tool === 'project_pipeline'
+          const engineeringPlannerTimeoutMs = engineeringNode
             ? (Number(goalContext?.plannerTimeoutMs) > 0 ? Number(goalContext?.plannerTimeoutMs) : 120000)
             : goalContext?.plannerTimeoutMs;
           const executionContext = {
@@ -605,13 +606,13 @@ export class AgentOrchestrator {
               runId: goalContext?.runId || traceId || liveSessionId,
               memory: memory.getHistory(),
               modelConfig: goalContext?.modelConfig,
-              engineeringPipeline: goalContext?.engineeringPipeline ?? (node.tool === 'project_pipeline'),
+              engineeringPipeline: goalContext?.engineeringPipeline ?? engineeringNode,
               providerTimeoutMs: engineeringLlmTimeoutMs,
               plannerTimeoutMs: engineeringPlannerTimeoutMs,
-              plannerMaxCompletionTokens: node.tool === 'project_pipeline'
+              plannerMaxCompletionTokens: engineeringNode
                 ? (Number(goalContext?.plannerMaxCompletionTokens) > 0 ? Number(goalContext?.plannerMaxCompletionTokens) : 12000)
                 : goalContext?.plannerMaxCompletionTokens,
-              plannerReasoningEffort: node.tool === 'project_pipeline'
+              plannerReasoningEffort: engineeringNode
                 ? (goalContext?.plannerReasoningEffort || 'low')
                 : goalContext?.plannerReasoningEffort,
               language: goalContext?.language,
@@ -665,7 +666,11 @@ export class AgentOrchestrator {
             // («deadline_exceeded») and the run moves on or ends with a reason.
             // A full-project pipeline node runs many phases (installs, builds,
             // QA) — it gets the RUN budget, not a single node's slice.
-            const nodeBudget = node.tool === 'project_pipeline' ? RUN_DEADLINE_MS : NODE_DEADLINE_MS;
+            // Direct React/API builders are still full engineering runs: they
+            // install, build, launch and verify a project. Giving them the
+            // ordinary single-node budget killed them before their own bounded
+            // provider fallback and QA gates could run.
+            const nodeBudget = engineeringNode ? RUN_DEADLINE_MS : NODE_DEADLINE_MS;
             const deadline = <T,>(p: Promise<T>) =>
               withDeadline(p, nodeBudget, `node ${node.id} (${node.tool || node.agent || 'task'})`);
             if (isDirectAnswer) {

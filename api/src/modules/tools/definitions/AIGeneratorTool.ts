@@ -580,7 +580,10 @@ const getLLM = () => {
 // caller's catch path turns this into a failed phase, so no later validation or
 // filesystem write can run after the deadline wins.
 export const LLM_GENERATION_DEADLINE_MS = 120_000;
-export const ENGINEERING_LLM_GENERATION_DEADLINE_MS = 240_000;
+// A model gets enough time for a complete source artifact, but a provider that
+// cannot produce one must release the engineering fallback in a bounded way.
+// The caller still gets its one format/contract retry; this is the outer leash.
+export const ENGINEERING_LLM_GENERATION_DEADLINE_MS = 90_000;
 
 function withGenerationDeadline<T>(work: Promise<T>, label: string, timeoutMs = LLM_GENERATION_DEADLINE_MS): Promise<T> {
     return new Promise<T>((resolve, reject) => {

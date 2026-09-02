@@ -37,6 +37,18 @@ import { publicUrlFor } from '../../../shared/utils/publicUrl';
 import { repairAndRebuild, worthRepairing } from '../../../core/quality/self-repair';
 import { inspectWeatherEngineSource, formatWeatherSemanticRepair } from '../../../core/quality/weather-contract';
 import { isProviderFailure } from '../../../core/llm/intelligent-router';
+
+/**
+ * A known app may use its request-derived engine only when the model did not
+ * provide usable artifact text. Format failure is included because the author
+ * already spent its one bounded format retry; syntax/runtime failures must
+ * remain real repair targets and must never be hidden by a fallback.
+ */
+export function requestDerivedEngineFallbackEligible(reason: string): boolean {
+    const text = String(reason || '');
+    return isProviderFailure(text)
+        || /artifact_type_mismatch:\s+.*incomplete Markdown fence/i.test(text);
+}
 import { validateFileWriteBatch } from '../../../shared/file-write-contract';
 import { replyLanguageCode } from '../../../shared/reply-language';
 import { useStoreContractMismatch } from '../../../core/quality/source-contract';
@@ -3705,7 +3717,8 @@ export class ReactProjectTool extends BaseTool {
             term('recovery: resuming the existing project and preserving its installed manifest before regeneration');
         }
 
-        const shell = openTerminal(term);
+        const cancellation = context?.cancellation as Promise<void> | undefined;
+        const shell = openTerminal(term, { cancel: cancellation });
         try {
             broadcast({ type: 'panel_focus', sessionId, data: { panel: 'terminal', reason: 'build_shell' } } as any);
         } catch { /* UI optional */ }
@@ -5059,7 +5072,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
         // build, browser QA, capability evidence, and the normal delivery gate.
         const canUseBlueprintFallback = context?.engineeringPipeline === true && Boolean(generatedEnginePath);
         const useBlueprintFallback = (reason: string): boolean => {
-            if (!canUseBlueprintFallback || !isProviderFailure(reason)) return false;
+            if (!canUseBlueprintFallback || !requestDerivedEngineFallbackEligible(reason)) return false;
             try {
                 const fallbackFiles = buildAppFiles(runBp, {
                     isArabic: artifactIsAr,
@@ -5360,8 +5373,9 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
              * on this machine, -2 means it timed out.
              */
             const run = async (cmd: string, args: string[], timeoutMs: number): Promise<number> => {
-                const r = await shell.run(cmd, args, { cwd: proj, timeout: timeoutMs });
+                const r = await shell.run(cmd, args, { cwd: proj, timeout: timeoutMs, cancel: cancellation });
                 lastLog = r.out;
+                if (context?.isCancelled?.()) throw new Error('run_cancelled_by_owner');
                 if (r.missing) return -1;
                 if (r.timedOut) return -2;
                 return r.exitCode as number;

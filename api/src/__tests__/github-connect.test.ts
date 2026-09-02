@@ -54,8 +54,15 @@ describe('connecting a repo brings its files down (not just a stored name)', () 
         expect(ghService).toMatch(/async connectRepo\(/);
         expect(ghService).toMatch(/\/github\/repos\/\$\{owner\}\/\$\{repo\}\/connect/);
         expect(joePage).toMatch(/githubService\.connectRepo\(workspaceId, repo\.fullName/);
-        // name-only store remains as a fallback so selection never hard-fails.
-        expect(joePage).toMatch(/githubService\.setActiveRepo\(workspaceId, repo\.fullName\)\.catch/);
+        // GitHub selection is an independent panel operation. It must not
+        // inherit the currently running prompt's session, or sync telemetry
+        // can appear as if Joe said it in that conversation.
+        expect(joePage).not.toMatch(/githubService\.connectRepo\(workspaceId, repo\.fullName, activeSessionId/);
+        // A failed physical sync must not silently store only the repo name;
+        // that leaves the UI claiming GitHub is ready while the files are absent.
+        expect(joePage).not.toMatch(/githubService\.setActiveRepo\(workspaceId, repo\.fullName\)\.catch/);
+        expect(joePage).toMatch(/setGhError\(message\)/);
+        expect(joePage).toMatch(/setIsGitHubOpen\(true\)/);
     });
 });
 

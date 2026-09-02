@@ -801,11 +801,19 @@ export async function executeTool(name: string, input: any, context?: ToolContex
                 data: { tool: effectiveName, input: effectiveInput, sessionId: contextSessionId }
             });
 
+            const { attendRun, registerRun, releaseHandle } = require('../../core/session/attended-run');
+            const stopHandle = registerRun(contextSessionId, (effectiveContext as any)?.runId);
+            // The run-level stop must reach child processes too. Without this
+            // handoff, attendRun stops waiting while npm/build keeps running.
+            const executionContext = {
+                ...(effectiveContext || {}),
+                cancellation: stopHandle.whenCancelled,
+            };
             const run = async () => {
                 if (effectiveContext.userId && typeof (effectiveInput as any).userId !== 'string') {
                     (effectiveInput as any).userId = effectiveContext.userId;
                 }
-                return await (tDef as any).execute(effectiveInput, effectiveContext);
+                return await (tDef as any).execute(effectiveInput, executionContext);
             };
             const { workspaceService } = require('./WorkspaceService');
             /**
@@ -826,8 +834,6 @@ export async function executeTool(name: string, input: any, context?: ToolContex
              *  until the input changed. What was missing is a VOICE, and a stop
              *  that works: the run registers here, so `/runs/stop` can find it.
              */
-            const { attendRun, registerRun, releaseHandle } = require('../../core/session/attended-run');
-            const stopHandle = registerRun(contextSessionId, (effectiveContext as any)?.runId);
             let res: any;
             try {
                 res = await attendRun({

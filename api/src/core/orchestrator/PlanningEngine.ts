@@ -292,11 +292,24 @@ export class PlanningEngine {
         const ownedApiSignals = /(?:\b(?:build|create|make|develop|implement|design|provide|expose)\s+(?:an?\s+)?(?:rest\s+|graphql\s+)?api\b|\b(?:build|create|make|develop|implement|design|provide|expose|own|internal|private)\s+(?:an?\s+)?backend\b|\b(?:api|backend)\s+(?:server|service|endpoint)\b|(?:ابنِ|ابني|أنشئ|انشئ|طوّر|طور|اصنع|أنشئ)\s+(?:لي\s+)?(?:واجهة\s+)?(?:برمجية|api|backend))/i;
         // Screens and behaviour rather than a single scroll.
         const appSignals = /(تطبيق|نظام|منصّ?ة|برنامج|لوحة\s*تحكم|داشبورد|محرّ?ر|أداة\s*ويب|لعبة|محادثة|دردشة|شات|خرائط|خريطة|تتبّ?ع|حاسبة|مخطّ?ط|جدولة|مهامّ?|شبيه\s*ب|مثل\s*تطبيق|clone|dashboard|applications?\b|app\b|platform|system|editor|tracker|chat|map|game|planner|scheduler|calculator|todo|to-do|tasks?|(?:web\s+)?console|background\s+(?:jobs?|workers?)|worker\s+(?:queue|process))/i;
+        // A functional request can describe its shape without saying "app".
+        // "Create a customer directory with fields, search and filtering" is
+        // an interactive application, while a brochure with one contact form
+        // is still a page. Require at least two structural signals so a single
+        // noun such as "form" or "list" cannot promote a simple document.
+        const structuredSignals = [
+            /\bdirector(?:y|ies)\b|\bcatalog(?:ue)?\b|\brecords?\b|\btable\b|\bregister\b|\bmanager\b/i,
+            /\bfields?\b|\bcolumns?\b|\binputs?\b|حقول|أعمدة|سجلات/i,
+            /\bsearch\b|\bfilter(?:ing)?\b|\bsort(?:ing)?\b|بحث|فلترة|تصفية|فرز/i,
+            /\bvalidation\b|\bempty\b|\brequired\b|تحقّ?ق|تحقق|فارغ|إلزامي/i,
+            /\b(add|create|edit|delete|remove)\b|إضافة|أضف|تعديل|حذف|إزالة/i,
+        ];
+        const structuredInteraction = structuredSignals.filter(signal => signal.test(g)).length >= 2;
         // A single document, said outright.
         const pageSignals = /(صفحة\s*(هبوط|واحدة)?|لاندنج|بورتفوليو|معرض\s*أعمال|سيرة\s*ذاتية|بروشور|قائمة\s*طعام|منيو|landing|portfolio|brochure|one[- ]?pager|resume|cv)/i;
 
         const data = dataSignals.test(g) || ownedApiSignals.test(g);
-        const app = appSignals.test(g);
+        const app = appSignals.test(g) || structuredInteraction;
         const page = pageSignals.test(g);
 
         // «صفحة هبوط لتطبيق جوال» is a PAGE about an app, not an app: when the

@@ -11,6 +11,7 @@ import { IntentParser } from '../core/intelligence/IntentParser';
 import { isBoundedTerminalDiagnosticRequest, isReadOnlyRequest } from '../core/orchestrator/buildIntent';
 import { parseExplicitDirectoryInspectionRequest, parseExplicitReadFilesRequest, parseExpectedReadMarkers } from '../core/orchestrator/file-intent';
 import { composeAnswer } from '../core/orchestrator/answerComposer';
+import { isProviderFailure } from '../core/llm/intelligent-router';
 
 describe('explicit terminal diagnostics execute instead of merely opening a terminal', () => {
     test('a read-only local diagnostic is classified before the slow model path', async () => {
@@ -23,6 +24,47 @@ describe('explicit terminal diagnostics execute instead of merely opening a term
         const plan = await PlanningEngine.generatePlan({ intent: intent as any });
         expect(plan.steps.map(step => step.input.command)).toEqual(['node --version', 'pwd']);
         expect(plan.metadata).toMatchObject({ terminalExecution: true });
+    });
+
+    test('a clear local build request does not wait for deep intent analysis', async () => {
+        const intent = await IntentParser.parse(
+            'Create a repair-shop customer directory with name, phone, email, device, warranty expiry, repair status, empty-name validation, search, and status filtering.',
+            {} as any,
+        );
+        expect(intent.requiredTools).toEqual(['project_pipeline']);
+        expect(intent.rawIntent).toEqual(expect.objectContaining({ buildRequest: true, deterministic: true }));
+        expect(intent.suggestedAgent).toBe('Dev');
+    });
+
+    test('a fielded directory with search and validation is an app, not a static page', () => {
+        expect(PlanningEngine.classifyBuildScope(
+            'Create a repair-shop customer directory with name, phone, email, device, warranty expiry, repair status, empty-name validation, search, and status filtering.',
+        )).toBe('app');
+        const plan = PlanningEngine.generatePlan({
+            intent: {
+                goal: 'Create a repair-shop customer directory with name, phone, email, device, warranty expiry, repair status, empty-name validation, search, and status filtering.',
+                complexity: 'medium',
+                riskLevel: 'medium',
+                rawIntent: {},
+            } as any,
+        });
+        return expect(plan).resolves.toMatchObject({ steps: [{ tool: 'project_pipeline' }] });
+    });
+
+    test('a generator deadline remains on the provider-recovery path', () => {
+        expect(isProviderFailure('AI Generation failed: llm_generation_timeout: artifact RecordsApp.jsx exceeded 120000ms')).toBe(true);
+        expect(isProviderFailure('a JSX syntax error was found in the authored component')).toBe(false);
+    });
+
+    test('only unusable model artifact text may use the request-derived app fallback', () => {
+        const reactSource = fs.readFileSync(
+            path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ReactProjectTool.ts'),
+            'utf8',
+        );
+        expect(reactSource).toContain('requestDerivedEngineFallbackEligible');
+        expect(reactSource).toContain('artifact_type_mismatch:\\s+.*incomplete Markdown fence');
+        expect(reactSource).toContain('domain generation: provider unavailable');
+        expect(reactSource).toContain('Continue through the same export, syntax, capability');
     });
 
     test('Arabic acceptance request routes directly to shell_execute', async () => {

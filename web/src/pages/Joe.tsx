@@ -151,6 +151,7 @@ export default function Joe() {
 
     const handleGitHubConnected = useCallback((user: GitHubUser) => {
         setGhConnected(true);
+        setGhError(null);
         setGhUser(user);
         githubService.listRepos().then(setGhRepos).catch(() => { });
     }, []);
@@ -729,26 +730,41 @@ export default function Joe() {
         // Connect AND clone: selecting a repo used to only STORE its name, so the
         // local workspace stayed empty and Joe could never work on the real files.
         // connectRepo clones (or updates) the working tree so the next build/edit
-        // acts on the actual code. Falls back to the name-only store if the clone
-        // endpoint is unavailable, so selection never hard-fails.
+        // acts on the actual code. This is a GitHub-panel operation, not a step in
+        // the active prompt: do not pass activeSessionId here. Passing it caused
+        // the sync telemetry ("repo exists locally — fetching updates") to be
+        // attributed to the prompt that happened to be running when the user
+        // clicked Done, which made operational detail leak into its conversation.
         if (workspaceId) {
             try {
-                const r = await githubService.connectRepo(workspaceId, repo.fullName, activeSessionId || undefined);
+                const r = await githubService.connectRepo(workspaceId, repo.fullName);
                 if (!r?.ok) throw new Error(r?.error || 'connect failed');
-            } catch {
-                githubService.setActiveRepo(workspaceId, repo.fullName).catch(() => {});
+            } catch (e: any) {
+                // Never leave a stale active repo after the physical sync failed.
+                // A name-only fallback made the UI claim that GitHub was ready,
+                // then hid the real 400/401 error from the user.
+                const message = String(e?.message || t('githubConnectFailed', 'Could not connect this repository. Reconnect GitHub and try again.'));
+                setActiveRepo(null);
+                setGhCommits([]);
+                setGhConnected(false);
+                setGhError(message);
+                setIsGitHubOpen(true);
+                setGhLoading(false);
+                return;
             }
         }
 
         try {
             const commits = await githubService.getCommits(repo.fullName.split('/')[0], repo.name);
             setGhCommits(commits);
-        } catch {
-            // Commits fetch failed silently
+        } catch (e: any) {
+            const message = String(e?.message || t('githubCommitsFailed', 'Could not load repository activity. Reconnect GitHub and try again.'));
+            setGhError(message);
+            setIsGitHubOpen(true);
         } finally {
             setGhLoading(false);
         }
-    }, [workspaceId, activeSessionId]);
+    }, [workspaceId, t]);
 
     const handleSend = useCallback(async () => {
         if (!inputValue.trim() || isLoading) return;

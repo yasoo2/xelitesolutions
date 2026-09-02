@@ -72,13 +72,20 @@ export interface TerminalSession {
         quiet?: boolean;
         /** Asking the machine what it is, not doing work on his project. */
         probe?: boolean;
-    }): Promise<{ exitCode: number | null; out: string; ms: number; timedOut?: boolean; missing?: boolean }>;
+        /** Cancellation owned by the surrounding Joe run. */
+        cancel?: Promise<void>;
+    }): Promise<{ exitCode: number | null; out: string; ms: number; timedOut?: boolean; missing?: boolean; error?: string }>;
     /** A line of Joe's own, marked as his — never dressed up as process output. */
     note(line: string): void;
     /** A section heading, so a long transcript stays readable. */
     section(title: string): void;
     /** What this session did: for the delivery report, not for decoration. */
     transcript(): { commands: number; passed: number; probes: number; failed: RanCommand[]; ms: number };
+}
+
+export interface TerminalOptions {
+    /** Cancellation owned by the surrounding Joe run. */
+    cancel?: Promise<void>;
 }
 
 /** `~/…/dar-al-rifq $` — short enough to read, long enough to locate. */
@@ -95,7 +102,7 @@ function prompt(cwd: string): string {
  * that broadcasts to the panel AND keeps the line in `logs`, so what he
  * watches live and what the report replays afterwards are the same transcript.
  */
-export function openTerminal(say: (line: string) => void): TerminalSession {
+export function openTerminal(say: (line: string) => void, options: TerminalOptions = {}): TerminalSession {
     const ran: RanCommand[] = [];
     const t0 = Date.now();
     const emit = (l: string) => { try { say(l); } catch { /* the UI is optional; the work is not */ } };
@@ -141,7 +148,7 @@ export function openTerminal(say: (line: string) => void): TerminalSession {
              */
             const versions = await Promise.all(
                 ([['node', ['-v']], ['npm', ['-v']]] as Array<[string, string[]]>).map(async ([file, args]) => {
-                    const r = await session.run(file, args, { cwd, timeout: 5_000, quiet: true, probe: true });
+                    const r = await session.run(file, args, { cwd, timeout: 5_000, quiet: true, probe: true, cancel: options.cancel });
                     const v = String(r.out || '').trim().split('\n').pop() || '';
                     //  «no answer» told him nothing. Name which of the three
                     //  things happened: absent, too slow, or silent.
@@ -174,6 +181,7 @@ export function openTerminal(say: (line: string) => void): TerminalSession {
             const h = executionEngine.runArgvStreaming(file, args, {
                 cwd, timeout: opts.timeout || 120_000,
                 env: { NO_COLOR: '1', ...(opts.env || {}) },
+                cancel: opts.cancel,
                 onLine: (l: string) => {
                     out += l + '\n';
                     if (!opts.quiet) emit(`  ${String(l).slice(0, 200)}`);
@@ -194,7 +202,7 @@ export function openTerminal(say: (line: string) => void): TerminalSession {
                     ? `→ timed out after ${(ms / 1000).toFixed(1)}s`
                     : `→ exit ${r.exitCode} · ${(ms / 1000).toFixed(1)}s`);
             ran.push({ command: shown, exitCode: r.exitCode, ms, timedOut, missing, probe: (opts as any).probe === true });
-            return { exitCode: r.exitCode, out, ms, timedOut, missing };
+            return { exitCode: r.exitCode, out, ms, timedOut, missing, error: r.error };
         },
 
         transcript() {

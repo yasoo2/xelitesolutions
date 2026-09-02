@@ -85,6 +85,26 @@ export class IntentParser {
                 rawIntent: { primary: userText, fileRequest: explicitFile, deterministic: true },
             };
         }
+
+        // A clear build request without an external web target already has
+        // enough evidence for the evidence-first project pipeline. Waiting on
+        // deep intent analysis here makes a missing/slow local model block the
+        // actual engineering work before it can even inspect the workspace.
+        // The pipeline still performs the detailed planning and tool policy;
+        // this is only a provider-independent front-door classification.
+        const hasExternalWebTarget = /https?:\/\/|\b(?:www\.)[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/i.test(userText);
+        if (looksLikeBuild(userText) && !hasExternalWebTarget) {
+            console.log('[IntentParser] ⚡ Clear build request — routing directly to evidence-first project_pipeline.');
+            return {
+                goal: userText,
+                complexity: 'medium',
+                riskLevel: 'medium',
+                suggestedAgent: 'Dev',
+                requiredTools: ['project_pipeline'],
+                constraints: ['Inspect the workspace and use evidence before implementation or verification.'],
+                rawIntent: { primary: userText, buildRequest: true, deterministic: true },
+            };
+        }
         const quick = IntentParser.quickIntent(userText);
         if (quick) {
             console.log(`[IntentParser] ⚡ Deterministic fast intent (${quick.suggestedAgent}) — skipping LLM deep analysis.`);

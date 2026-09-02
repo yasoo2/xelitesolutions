@@ -1,7 +1,7 @@
 /**
  * GitHubConnectDialog - Premium dialog for connecting GitHub account
  */
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Github, Key, CheckCircle, AlertCircle, Loader2, ExternalLink, Eye, EyeOff, X, LogOut } from 'lucide-react';
 import { githubService, GitHubUser, GitHubRepo } from '../services/githubService';
@@ -27,6 +27,17 @@ const GitHubConnectDialog: React.FC<Props> = ({ isOpen, onClose, onConnected, on
     const [repoLoading, setRepoLoading] = useState(false);
     const [showToken, setShowToken] = useState(false);
     const [disconnecting, setDisconnecting] = useState(false);
+
+    // A failed repo sync can reopen this dialog after it was already showing
+    // the connected-repo view. Reset that stale view so the actual recovery
+    // action, entering a valid token again, is visible immediately.
+    useEffect(() => {
+        if (!isOpen || !tokenError) return;
+        setSuccess(null);
+        setRepos([]);
+        setSelectedRepoId(null);
+        setError(tokenError);
+    }, [isOpen, tokenError]);
 
     if (!isOpen) return null;
 
