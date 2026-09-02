@@ -219,6 +219,7 @@ export async function advancedAnalyzeTask(userMessage: string, history?: any[], 
         return analyzeTask(userMessage, history);
     }
     const hasGroq = !!(process.env.GROQ_API_KEY?.trim());
+    const localFirst = LOCAL_BRAIN_FIRST || !!String(process.env.LOCAL_LLM_BASE_URL || '').trim();
 
     const systemPrompt = `Analyze the following user request and return a JSON object.
 Be extremely strict with complexity:
@@ -248,7 +249,7 @@ Return exactly this JSON structure:
             return analyzeTask(userMessage);
         }
 
-        if (!hasGroq) {
+        if (!hasGroq && !localFirst) {
             // Attempt Gemini if Groq is missing
             const { geminiProvider } = require('./providers/gemini');
             if (geminiProvider.isAvailable()) {
@@ -266,10 +267,28 @@ Return exactly this JSON structure:
         console.info('[IntelligentRouter] ⚡ Using Groq for instant analysis');
         const analyst = 'openai/gpt-oss-20b';
 
-        const responseText = await callGroq(analyst, [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userMessage }
-        ]);
+        const responseText = localFirst
+            ? await routeToModel(
+                [
+                    { role: 'system', content: systemPrompt },
+                    { role: 'user', content: userMessage }
+                ],
+                analyzeTask(userMessage, history),
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                {
+                    modelConfig: { provider: 'auto', apiKey: 'auto-mode' },
+                    internalCall: true,
+                    engineeringPipeline: true
+                }
+            )
+            : await callGroq(analyst, [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: userMessage }
+            ]);
 
         // A greedy `/\{[\s\S]*\}/` reached for the LAST brace in the reply, so a
         // model that added one sentence after its JSON produced

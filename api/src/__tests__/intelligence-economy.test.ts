@@ -55,6 +55,14 @@ describe('the router understands internal vs answer', () => {
         expect(src).toContain("detail: 'local_ready_after_warmup'");
     });
 
+    it('advanced analysis respects local-first mode instead of bypassing the router', () => {
+        const src = router();
+        expect(src).toContain("const localFirst = LOCAL_BRAIN_FIRST || !!String(process.env.LOCAL_LLM_BASE_URL || '').trim()");
+        expect(src).toContain('if (!hasGroq && !localFirst)');
+        expect(src).toContain('internalCall: true');
+        expect(src).toMatch(/\? await routeToModel\([\s\S]*?\)\s*:\s*await callGroq\(analyst/);
+    });
+
     it('039 records every provider attempt and reserves Ollama before keyless Offline fallbacks', () => {
         const src = router();
         expect(src).toContain('export interface ProviderAttempt');
