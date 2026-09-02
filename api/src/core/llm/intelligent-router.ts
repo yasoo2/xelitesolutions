@@ -2273,10 +2273,9 @@ export async function routeToModel(
                     // fail against unavailable remote fallbacks.
                     const autoPlanningFloor = (LOCAL_BRAIN_FIRST || autoLocalPreferred) ? 600_000 : 240_000;
                     const autoPlanningLeash = Math.min(LOCAL_LEASH_MAX_MS, Math.max(measuredLeash, autoPlanningFloor));
-                    timeoutValue = Math.min(
-                        timeoutValue,
-                        (LOCAL_BRAIN_FIRST || autoLocalPreferred) ? autoPlanningLeash : measuredLeash,
-                    );
+                    timeoutValue = (LOCAL_BRAIN_FIRST || autoLocalPreferred)
+                        ? autoPlanningLeash
+                        : Math.min(timeoutValue, measuredLeash);
                 }
             }
             if (p.name === 'LLM7 (Keyless)' || p.name === 'DuckAI (Keyless)') {
