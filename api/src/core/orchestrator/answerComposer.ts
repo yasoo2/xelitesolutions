@@ -114,6 +114,32 @@ function composeReadFileReport(done: RunStep[], language?: string): string {
         : `## ✅ File reading report\n\n${rows}\n\n${hasExpectedMarkers ? '**Marker status:** Each supplied marker was checked against the file content.' : '**Expected marker:** No marker value was specified, so Joe cannot claim that check.'} No files were written or modified.`;
 }
 
+function composeDirectoryReport(done: RunStep[], language?: string): string {
+    if (!done.length || !done.every(step => String(step.tool || '') === 'inspect_directory')) return '';
+    const evidence = done.map(step => {
+        const raw = step.result;
+        const output = raw?.output && typeof raw.output === 'object' ? raw.output : raw;
+        const tree = Array.isArray(output?.tree) ? output.tree : null;
+        if (!tree) return null;
+        return { path: String(step.input?.path || 'المجلد المحدد'), tree, expectedEntry: String(step.input?.expectedEntry || '').trim() };
+    });
+    if (evidence.some(item => !item)) return '';
+    const rows = (evidence as Array<{ path: string; tree: any[]; expectedEntry: string }>).map(item => {
+        const entries = item.tree.map(entry => `- ${entry.type === 'directory' ? '[dir]' : '[file]'} ${entry.name}`).join('\n') || '- (empty)';
+        const found = item.expectedEntry
+            ? item.tree.some(entry => entry.name === item.expectedEntry || entry.name === item.expectedEntry.replace(/^[\\/]+/, '').split(/[\\/]/).pop())
+            : false;
+        const confirmation = item.expectedEntry
+            ? `\n**${found ? 'Confirmed' : 'Not found'}:** \`${item.expectedEntry}\` ${found ? 'exists in this directory.' : 'was not found in this directory.'}`
+            : '';
+        return `**${item.path}**\n${entries}${confirmation}`;
+    }).join('\n\n');
+    const ar = String(language || '').startsWith('ar');
+    return ar
+        ? `## ✅ تقرير استكشاف المجلد\n\n${rows}\n\nلم تُجرَ أي كتابة أو تعديل.`
+        : `## ✅ Directory inspection report\n\n${rows}\n\nNo files were written or modified.`;
+}
+
 /**
  * The whole run, in one message. `steps` is in plan order; anything that never
  * completed is ignored.
@@ -124,6 +150,9 @@ export function composeAnswer(steps: RunStep[], language?: string): string {
 
     const readFileReport = composeReadFileReport(done, language);
     if (readFileReport) return readFileReport;
+
+    const directoryReport = composeDirectoryReport(done, language);
+    if (directoryReport) return directoryReport;
 
     const prose = done.map(s => proseOf(s.result)).filter(Boolean);
 

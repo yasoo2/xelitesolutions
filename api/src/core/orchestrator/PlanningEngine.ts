@@ -7,7 +7,7 @@ import { enrichWorkspaceToolInput } from './workspace-evidence';
 import { findActiveBuiltProject } from './active-built-project';
 import { isReadOnlyRequest, isBoundedTerminalDiagnosticRequest, looksLikeBuild } from './buildIntent';
 import { saysAny } from '../language/arabic';
-import { parseExplicitFileRequest, parseExplicitReadFilesRequest, parseExpectedReadMarkers } from './file-intent';
+import { parseExplicitFileRequest, parseExplicitDirectoryInspectionRequest, parseExplicitReadFilesRequest, parseExpectedReadMarkers } from './file-intent';
 import path from 'path';
 
 export interface ExecutionStep {
@@ -665,6 +665,26 @@ Rules:
                 goal: intent.goal,
                 steps,
                 metadata: { complexity: 'low', riskLevel: 'low', matchedBy: 'explicit-file-contract', deterministic: true, localOnly: true },
+            };
+        }
+
+        // An explicit directory target must win over file-name extraction. A
+        // request such as "inspect directory X and confirm README.txt exists"
+        // is about opening X; README.txt is an entry to verify inside it.
+        const explicitDirectory = parseExplicitDirectoryInspectionRequest(userGoal);
+        if (isReadOnlyRequest(userGoal) && explicitDirectory) {
+            return {
+                id: `inspect_directory_${Date.now()}`,
+                goal: intent.goal,
+                steps: [{
+                    id: 'inspect_directory_target',
+                    description: `استكشاف المجلد المحدد والتحقق من محتوياته: ${explicitDirectory.path}${explicitDirectory.expectedEntry ? ` (expected entry: ${explicitDirectory.expectedEntry})` : ''}`,
+                    tool: 'inspect_directory',
+                    agent: 'Dev',
+                    input: { path: explicitDirectory.path, depth: 1, expectedEntry: explicitDirectory.expectedEntry, request: intent.goal },
+                    dependsOn: [],
+                }],
+                metadata: { complexity: 'low', riskLevel: 'low', matchedBy: 'explicit-directory-inspection', deterministic: true, localOnly: true },
             };
         }
 

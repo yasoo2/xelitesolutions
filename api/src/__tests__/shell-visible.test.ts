@@ -9,7 +9,7 @@ import path from 'path';
 import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
 import { IntentParser } from '../core/intelligence/IntentParser';
 import { isBoundedTerminalDiagnosticRequest, isReadOnlyRequest } from '../core/orchestrator/buildIntent';
-import { parseExplicitReadFilesRequest, parseExpectedReadMarkers } from '../core/orchestrator/file-intent';
+import { parseExplicitDirectoryInspectionRequest, parseExplicitReadFilesRequest, parseExpectedReadMarkers } from '../core/orchestrator/file-intent';
 import { composeAnswer } from '../core/orchestrator/answerComposer';
 
 describe('explicit terminal diagnostics execute instead of merely opening a terminal', () => {
@@ -134,6 +134,29 @@ describe('explicit read-only file lists use the active workspace directly', () =
         expect(answer).toContain('joe-prompt-02.txt');
         expect(answer).toContain('joe-prompt-03/README.txt');
         expect(answer.match(/PASS/g)?.length).toBe(2);
+    });
+});
+
+describe('explicit directory inspection keeps nested evidence in scope', () => {
+    test('opens the named directory instead of treating its README as a root file', async () => {
+        const goal = 'Inspect the directory joe-prompt-03 in the current workspace. List its entries and confirm that README.txt exists inside it. Do not modify anything.';
+        expect(parseExplicitDirectoryInspectionRequest(goal)).toEqual({ path: 'joe-prompt-03', expectedEntry: 'README.txt' });
+        expect(parseExplicitReadFilesRequest(goal)).toBeNull();
+        const plan: any = await PlanningEngine.generatePlan({ intent: { goal, complexity: 'low', riskLevel: 'low', rawIntent: {} } as any });
+        expect(plan.metadata.matchedBy).toBe('explicit-directory-inspection');
+        expect(plan.steps).toHaveLength(1);
+        expect(plan.steps[0]).toMatchObject({ tool: 'inspect_directory', input: { path: 'joe-prompt-03', expectedEntry: 'README.txt' } });
+    });
+
+    test('reports the actual directory entries and confirmation in the chat', () => {
+        const answer = composeAnswer([{
+            id: 'directory', tool: 'inspect_directory', status: 'completed', input: { path: 'joe-prompt-03', expectedEntry: 'README.txt' },
+            result: { output: { tree: [{ name: 'README.txt', type: 'file', size: 12 }] } },
+        }], 'en');
+        expect(answer).toContain('joe-prompt-03');
+        expect(answer).toContain('README.txt');
+        expect(answer).toContain('Confirmed');
+        expect(answer).toContain('No files were written or modified');
     });
 });
 

@@ -8,6 +8,39 @@ const SAFE_READ_PATH = /^[A-Za-z0-9_\-.\/\\\u0600-\u06FF]+$/;
 
 const SAFE_RELATIVE_PATH = /^[A-Za-z0-9_\-.\/\\\u0600-\u06FF]+$/;
 
+export interface ExplicitDirectoryRequest {
+    path: string;
+    expectedEntry?: string;
+}
+
+/**
+ * Extract a read-only directory inspection target before file extraction. A
+ * request can mention both a directory and a file it expects inside it; the
+ * file is evidence to check, not the directory to open from the workspace
+ * root.
+ */
+export function parseExplicitDirectoryInspectionRequest(input: string): ExplicitDirectoryRequest | null {
+    const raw = String(input || '').trim();
+    if (!raw || !/\b(?:inspect|list|show|report|confirm|verify|check|review)\b|(?:افحص|استكشف|اعرض|اعرض|تحقق|تاكد|تأكد|راجع)/i.test(raw)) return null;
+    const mutationPattern = /\b(?:create|write|save|edit|delete|modify|change|build|install|deploy)\b/gi;
+    let mutation: RegExpExecArray | null;
+    while ((mutation = mutationPattern.exec(raw)) !== null) {
+        const before = raw.slice(Math.max(0, mutation.index - 90), mutation.index);
+        if (!/\b(?:do\s+not|don't|never|without|no)\b[^.!?\n]{0,90}$/i.test(before)) return null;
+    }
+    if (/(?:انشئ|أنشئ|اكتب|عدل|عدّل|احذف|غير|غيّر|ابن|ابني)/i.test(raw)) return null;
+
+    const directoryMatch = raw.match(/\b(?:directory|folder)\s+(?:named|called)?\s*[`'"“”]?([A-Za-z0-9_\-.\/\\\u0600-\u06FF]+)[`'"“”]?/i)
+        || raw.match(/(?:مجلد|دليل)\s+(?:باسم|اسمه)?\s*[`'"“”]?([A-Za-z0-9_\-.\/\\\u0600-\u06FF]+)[`'"“”]?/i);
+    const directory = String(directoryMatch?.[1] || '').trim().replace(/[.,؛،:]+$/u, '');
+    if (!directory || directory.includes('..') || directory.startsWith('/') || /^[A-Za-z]:/i.test(directory) || !SAFE_RELATIVE_PATH.test(directory)) return null;
+
+    const entryMatch = raw.match(/\b(?:confirm|verify|check)\s+(?:that\s+)?[`'"“”]?([A-Za-z0-9_\-.\/\\\u0600-\u06FF]+\.[A-Za-z0-9]{1,16})[`'"“”]?\s+exists\b/i)
+        || raw.match(/(?:تحقق|تاكد|تأكد)\s+(?:من\s+)?(?:وجود\s+)?[`'"“”]?([A-Za-z0-9_\-.\/\\\u0600-\u06FF]+\.[A-Za-z0-9]{1,16})[`'"“”]?/i);
+    const expectedEntry = String(entryMatch?.[1] || '').trim().replace(/[.,؛،:]+$/u, '');
+    return { path: directory, ...(expectedEntry ? { expectedEntry } : {}) };
+}
+
 /**
  * Extract only an explicit, bounded file contract. This is deliberately not a
  * general language parser: vague requests still go through the normal planner.
@@ -60,6 +93,7 @@ export function parseExplicitFileRequest(input: string): ExplicitFileRequest | n
 export function parseExplicitReadFilesRequest(input: string): string[] | null {
     const raw = String(input || '').trim();
     if (!raw || !/\b(?:read|inspect|review|compare|report|list|summarize)\b|(?:اقرا|اقرأ|افحص|راجع|قارن|اعرض|لخص|استخرج)/i.test(raw)) return null;
+    if (parseExplicitDirectoryInspectionRequest(raw)) return null;
     const mutationPattern = /\b(?:create|write|save|edit|delete|modify|change|build|install|deploy)\b/gi;
     let mutation: RegExpExecArray | null;
     while ((mutation = mutationPattern.exec(raw)) !== null) {
