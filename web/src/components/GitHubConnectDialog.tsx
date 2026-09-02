@@ -3,7 +3,7 @@
  */
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Github, Key, CheckCircle, AlertCircle, Loader2, ExternalLink, Eye, EyeOff } from 'lucide-react';
+import { Github, Key, CheckCircle, AlertCircle, Loader2, ExternalLink, Eye, EyeOff, X } from 'lucide-react';
 import { githubService, GitHubUser, GitHubRepo } from '../services/githubService';
 
 interface Props {
@@ -88,6 +88,15 @@ const GitHubConnectDialog: React.FC<Props> = ({ isOpen, onClose, onConnected, on
                             </p>
                         </div>
                     </div>
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        aria-label={t('close', 'Close')}
+                        title={t('close', 'Close')}
+                        style={closeBtnStyle}
+                    >
+                        <X size={18} />
+                    </button>
                 </div>
 
                 {/* Body */}
@@ -103,7 +112,7 @@ const GitHubConnectDialog: React.FC<Props> = ({ isOpen, onClose, onConnected, on
                                 </div>
                             </div>
 
-                            <div style={{ maxHeight: '240px', overflowY: 'auto', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px' }}>
+                            <div style={{ maxHeight: 'min(240px, 32vh)', overflowY: 'auto', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px' }}>
                                 {repoLoading ? (
                                     <div style={{ padding: '20px', textAlign: 'center' }}>
                                         <Loader2 size={24} className="animate-spin" style={{ opacity: 0.5 }} />
@@ -223,9 +232,6 @@ const GitHubConnectDialog: React.FC<Props> = ({ isOpen, onClose, onConnected, on
 
                 {/* Footer */}
                 <div style={footerStyle}>
-                    <button onClick={onClose} style={cancelBtnStyle}>
-                        {success ? t('cancel', 'Cancel') : t('cancel', 'Cancel')}
-                    </button>
                     {success ? (
                         <button
                             onClick={handleConfirm}
@@ -235,20 +241,25 @@ const GitHubConnectDialog: React.FC<Props> = ({ isOpen, onClose, onConnected, on
                                 opacity: !selectedRepoId ? 0.5 : 1
                             }}
                         >
-                            {t('confirmAndOpen', 'Confirm and open')}
+                            {t('done', 'Done')}
                         </button>
                     ) : (
-                        <button
-                            onClick={handleConnect}
-                            disabled={!token.trim() || loading}
-                            style={{
-                                ...connectBtnStyle,
-                                opacity: (!token.trim() || loading) ? 0.5 : 1
-                            }}
-                        >
-                            {loading ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : null}
-                            {loading ? t('connecting', 'Connecting...') : t('connect', 'Connect account')}
-                        </button>
+                        <>
+                            <button onClick={onClose} style={cancelBtnStyle}>
+                                {t('cancel', 'Cancel')}
+                            </button>
+                            <button
+                                onClick={handleConnect}
+                                disabled={!token.trim() || loading}
+                                style={{
+                                    ...connectBtnStyle,
+                                    opacity: (!token.trim() || loading) ? 0.5 : 1
+                                }}
+                            >
+                                {loading ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : null}
+                                {loading ? t('connecting', 'Connecting...') : t('connect', 'Connect account')}
+                            </button>
+                        </>
                     )}
                 </div>
             </div>
@@ -267,12 +278,21 @@ const dialogStyle: React.CSSProperties = {
     background: 'var(--bg-secondary, #1e1e2e)',
     border: '1px solid rgba(255,255,255,0.08)',
     borderRadius: '16px', width: '440px', maxWidth: '90vw',
+    maxHeight: 'calc(100vh - 32px)', display: 'flex', flexDirection: 'column',
     boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
     overflow: 'hidden',
 };
 
 const headerStyle: React.CSSProperties = {
     padding: '20px 24px', borderBottom: '1px solid rgba(255,255,255,0.06)',
+    display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
+};
+
+const closeBtnStyle: React.CSSProperties = {
+    width: '32px', height: '32px', padding: 0, borderRadius: '8px',
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+    background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)',
+    color: 'inherit', cursor: 'pointer', opacity: 0.75,
 };
 
 const iconWrapStyle: React.CSSProperties = {
@@ -283,6 +303,8 @@ const iconWrapStyle: React.CSSProperties = {
 
 const bodyStyle: React.CSSProperties = {
     padding: '24px',
+    overflowY: 'auto',
+    minHeight: 0,
 };
 
 const instructionsStyle: React.CSSProperties = {
@@ -319,6 +341,8 @@ const successBoxStyle: React.CSSProperties = {
 const footerStyle: React.CSSProperties = {
     padding: '16px 24px', borderTop: '1px solid rgba(255,255,255,0.06)',
     display: 'flex', justifyContent: 'flex-end', gap: '10px',
+    flexShrink: 0,
+    background: 'var(--bg-secondary, #1e1e2e)',
 };
 
 const cancelBtnStyle: React.CSSProperties = {

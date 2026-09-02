@@ -1,5 +1,5 @@
 import { analyzeContextualIntent, ConversationContext, buildConversationContext } from '../llm/context-engine';
-import { looksLikeBuild } from '../orchestrator/buildIntent';
+import { looksLikeBuild, isReadOnlyRequest } from '../orchestrator/buildIntent';
 import intelligentRouter from '../llm/intelligent-router';
 import { normalizeIntentText } from '../orchestrator/promptNormalizer';
 
@@ -43,6 +43,21 @@ export class IntentParser {
                 requiredTools: ['project_pipeline'],
                 constraints: ['Inspect the workspace and use evidence before implementation or verification.'],
                 rawIntent: { primary: userText, engineeringBrief: true, deterministic: true },
+            };
+        }
+        // Read-only requests are already bounded by their explicit safety
+        // contract. A slow local model must not spend a minute deciding
+        // whether "list files and summarize README" is a build request.
+        if (isReadOnlyRequest(userText)) {
+            console.log('[IntentParser] ⚡ Explicit read-only request — skipping deep analysis.');
+            return {
+                goal: userText,
+                complexity: 'low',
+                riskLevel: 'low',
+                suggestedAgent: 'Dev',
+                requiredTools: ['project_pipeline'],
+                constraints: ['Read-only: do not mutate, install, publish, or execute project changes.'],
+                rawIntent: { primary: userText, readOnly: true, deterministic: true },
             };
         }
         const quick = IntentParser.quickIntent(userText);

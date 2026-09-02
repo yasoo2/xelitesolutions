@@ -7,6 +7,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const stream = await readFile(resolve(root, 'src/components/ModernBrowserStream.tsx'), 'utf8');
 const composer = await readFile(resolve(root, 'src/components/CommandComposer.tsx'), 'utf8');
 const embedded = await readFile(resolve(root, 'src/components/EmbeddedBrowser.tsx'), 'utf8');
+const githubDialog = await readFile(resolve(root, 'src/components/GitHubConnectDialog.tsx'), 'utf8');
 const css = await readFile(resolve(root, 'src/styles/joe-premium.css'), 'utf8');
 const joePage = await readFile(resolve(root, 'src/pages/Joe.tsx'), 'utf8');
 
@@ -30,6 +31,7 @@ const checks = [
   ],
   ['the removed full-width login banner cannot reappear accidentally', !stream.includes('loginBarHidden') && !stream.includes('joe_login_bar_hidden')],
   ['existing workspace artifacts suppress onboarding safely', joePage.includes("api.get('/project/tree')") && joePage.includes('hasVisibleArtifacts') && joePage.includes('if (!hasVisibleArtifacts) setIsOnboardingOpen(true)')],
+  ['GitHub dialog has a clear close action and Done confirmation', githubDialog.includes("aria-label={t('close', 'Close')}") && githubDialog.includes("t('done', 'Done')") && githubDialog.includes('<X size={18} />')],
 ];
 
 for (const [name, ok] of checks) {

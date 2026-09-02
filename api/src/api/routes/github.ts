@@ -26,8 +26,9 @@ const repoTool = new GitHubRepoManagerTool();
  * sentence that says what to DO. The token is never auto-deleted (a transient
  * blip must not wipe a good connection) — the user re-entering it overwrites it.
  */
-function classifyGhError(e: any): { status: number; body: any } {
+export function classifyGhError(e: any): { status: number; body: any } {
     const status = Number(e?.status) || 0;
+    const code = String(e?.code || '').toUpperCase();
     const msg = String(e?.message || '');
     if (status === 401 || /bad credentials|requires authentication/i.test(msg)) {
         return { status: 401, body: { error: 'انتهت صلاحية توكن GitHub أو تم إلغاؤه. أعِد ربط حسابك بتوكن جديد لمتابعة العمل.', connected: false, tokenInvalid: true } };
@@ -41,6 +42,17 @@ function classifyGhError(e: any): { status: number; body: any } {
     if (status === 404) {
         return { status: 404, body: { error: 'المستودع غير موجود أو لا تملك صلاحية الوصول إليه بهذا التوكن.', notFound: true } };
     }
+    if (/^(EACCES|ECONNREFUSED|ECONNRESET|ENETUNREACH|ETIMEDOUT|EAI_AGAIN|ENOTFOUND)$/.test(code)
+        || /connect (?:eacces|econnrefused|econnreset|enetunreach|etimedout|eai_again|enotfound)/i.test(msg)) {
+        return {
+            status: 503,
+            body: {
+                error: 'تعذّر الوصول إلى GitHub من الخادم الآن. هذا خطأ اتصال بالشبكة وليس دليلاً على أن التوكن غير صالح. تحقّق من السماح بالاتصال الخارجي إلى api.github.com:443 ثم أعد المحاولة.',
+                code: 'github_network_unavailable',
+                retryable: true,
+            },
+        };
+    }
     return { status: status >= 400 ? status : 500, body: { error: msg || 'خطأ غير متوقع من GitHub.' } };
 }
 
@@ -48,14 +60,20 @@ function classifyGhError(e: any): { status: number; body: any } {
 function ghApi(method: string, path: string, token: string, body?: any): Promise<any> {
     return new Promise((resolve, reject) => {
         const data = body ? JSON.stringify(body) : null;
+        // Accept a pasted raw PAT as well as a copied `Bearer ...` or
+        // `token ...` value. GitHub's current REST examples use Bearer for
+        // personal access tokens, and sending a copied scheme twice makes a
+        // valid token look invalid.
+        const cleanToken = String(token || '').trim().replace(/[\s\n\r]/g, '').replace(/^(?:bearer|token)/i, '');
         const opts: https.RequestOptions = {
             hostname: 'api.github.com',
             path,
             method,
             headers: {
                 'User-Agent': 'Joe-AI-Agent',
-                'Authorization': `token ${token.replace(/[\s\n\r]/g, '')}`,
-                'Accept': 'application/vnd.github.v3+json',
+                'Authorization': `Bearer ${cleanToken}`,
+                'Accept': 'application/vnd.github+json',
+                'X-GitHub-Api-Version': '2022-11-28',
                 ...(data ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) } : {})
             }
         };
@@ -104,7 +122,9 @@ router.post('/connect', authenticate as any, async (req: Request, res: Response)
             name: user.name || user.login
         });
     } catch (e: any) {
-        return res.status(422).json({ error: 'Invalid GitHub token', details: e.message });
+        const { status, body } = classifyGhError(e);
+        console.warn(`[GitHub] token validation failed status=${e?.status || 'unknown'} message=${String(e?.message || 'unknown').slice(0, 180)}`);
+        return res.status(status === 500 ? 502 : status).json(body);
     }
 });
 

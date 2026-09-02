@@ -17,6 +17,23 @@ const MAX_PIPELINE_LOG_CHARS = 2_000;
 const MAX_DELIVERY_FILES = 120;
 const MAX_DELIVERY_FILE_DEPTH = 6;
 
+/** A bounded workspace question can be answered without selecting a project. */
+function isWorkspaceOverviewRequest(request: string): boolean {
+    const text = String(request || '').replace(/\s+/g, ' ').trim();
+    const asksForRootListing = /\b(?:list|show|inspect)\b[^.!?\n]{0,80}\b(?:top[- ]level|root)\b[^.!?\n]{0,40}\bfiles?\b/i.test(text)
+        || /(?:اعرض|اعطِني|أعطني|اذكر|استكشف|افحص)[^.!؟\n]{0,80}(?:ملفات|محتويات)[^.!؟\n]{0,40}(?:الجذر|المستوى\s+الأعلى)/i.test(text);
+    const asksForReadme = /\b(?:readme|read\s+the\s+readme|summari[sz]e\s+(?:the\s+)?readme)\b/i.test(text)
+        || /(?:اقرأ|لخ[ّّ]ص|لخص|ملخص)[^.!؟\n]{0,40}(?:README|الملف\s+التعريفي)/i.test(text);
+    return asksForRootListing && asksForReadme;
+}
+
+function summarizeReadme(content: string): string {
+    const lines = String(content || '').split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+    const headings = lines.filter(line => /^(?:#{1,6}\s+|[A-Z][A-Za-z0-9 _-]{2,}:$)/.test(line)).slice(0, 12);
+    const prose = lines.filter(line => !/^```|^[-*]\s|^#{1,6}\s/.test(line)).slice(0, 8);
+    return [...headings, ...prose].join('\n').slice(0, 1800);
+}
+
 function listSourceFiles(projectRoot: string): string[] {
     const root = path.resolve(String(projectRoot || ''));
     if (!root || !fs.existsSync(root)) return [];
@@ -1002,6 +1019,61 @@ export class ProjectPipelineTool implements ToolDefinition {
         const evidence = discoveryResult.output.evidence;
         appendBoundedPipelineLogs(logs, discoveryResult.logs);
         if (evidence.constraints?.readOnly === true) {
+            // A root overview is a complete read-only task even when the
+            // workspace contains many projects. Do not force the user to pick
+            // one unrelated project just to list the workspace and check its
+            // own README.
+            if (isWorkspaceOverviewRequest(productRequest)) {
+                const listing = await executeTool('inspect_directory', {
+                    path: projectPath || '.', depth: 1,
+                }, context);
+                const readmeSearch = await executeTool('search_files', {
+                    pattern: 'README*', path: projectPath || '.',
+                }, context);
+                const tree = Array.isArray(listing?.output?.tree) ? listing.output.tree : [];
+                const readmeFiles = Array.isArray(readmeSearch?.output?.files) ? readmeSearch.output.files : [];
+                const root = String(evidence.workspaceRoot || '').trim();
+                const relative = (file: string) => {
+                    const rel = path.relative(root, String(file || '')).replace(/\\/g, '/');
+                    return rel && !rel.startsWith('../') && !path.isAbsolute(rel) ? rel : String(file || '');
+                };
+                const rootReadme = readmeFiles
+                    .map((file: string) => ({ file, rel: relative(file) }))
+                    .find((item: { file: string; rel: string }) => !item.rel.includes('/'));
+                let readmeSummary = '';
+                if (rootReadme) {
+                    const readme = await executeTool('read_file', { path: rootReadme.rel }, context);
+                    readmeSummary = summarizeReadme(String(readme?.output?.content || ''));
+                }
+                const names = tree.map((entry: any) => `${entry?.type === 'directory' ? '[dir] ' : ''}${entry?.name || ''}`.trim()).filter(Boolean);
+                const directoryCount = tree.filter((entry: any) => entry?.type === 'directory').length;
+                const fileCount = tree.filter((entry: any) => entry?.type === 'file').length;
+                const overview = {
+                    root,
+                    topLevelEntries: names,
+                    readme: rootReadme?.rel || null,
+                    readmeSummary: readmeSummary || null,
+                    readmeCandidates: readmeFiles.slice(0, 20).map(relative),
+                };
+                // Keep exhaustive discovery evidence in Logs; the chat answer
+                // should explain the result, not dump a filesystem listing.
+                logs.push(`workspace.overview.entries=${names.length} directories=${directoryCount} files=${fileCount}`);
+                logs.push(`workspace.overview.top_level=${names.join(' | ').slice(0, MAX_PIPELINE_LOG_CHARS)}`);
+                logs.push(`workspace.overview.readme=${rootReadme?.rel || 'missing at workspace root'}`);
+                const summary = pick(isAr,
+                    `## ✅ نظرة قراءة فقط على مساحة العمل\n\nقرأتُ جذر مساحة العمل **${root}** ووجدتُ **${names.length}** عنصرًا (${directoryCount} مجلدًا و${fileCount} ملفًا).\n\n**README:** ${rootReadme?.rel || 'لا يوجد README في جذر مساحة العمل.'}${readmeSummary ? `\n\n**الخلاصة:**\n${readmeSummary}` : ''}\n\nلم أكتب أو أعدّل أو أشغّل أي شيء. التفاصيل الكاملة موجودة في Logs.`,
+                    `## ✅ Read-only workspace overview\n\nI inspected the workspace root **${root}** and found **${names.length}** top-level entries (${directoryCount} directories and ${fileCount} files).\n\n**README:** ${rootReadme?.rel || 'No README exists at the workspace root.'}${readmeSummary ? `\n\n**Summary:**\n${readmeSummary}` : ''}\n\nNo files were written, modified, or executed. Full discovery details are available in Logs.`);
+                say(pick(isAr, '[pipeline] أقرأ جذر مساحة العمل وREADME دون اختيار مشروع أو تنفيذ تعديل', '[pipeline] Reading workspace root and README without selecting a project or executing a mutation'));
+                return {
+                    ok: true,
+                    output: {
+                        projectName: 'read-only-workspace-overview', completedPhases: 1, totalPhases: 1,
+                        verified: true, executionStatus: 'completed', verificationStatus: 'verified', deliveryStatus: 'delivered',
+                        pipelineFinal: true, stopReason: 'read_only_request', evidence, overview, summary,
+                    },
+                    logs,
+                };
+            }
             const summary = pick(isAr,
                 '## ⏸️ توقف آمن قبل التخطيط\n\nهذا الطلب للقراءة والتحقق فقط. لم يُخطط Joe لأي كتابة أو تثبيت أو تشغيل. حدّد مسار المشروع صراحةً لاستدعاء أداة التحليل للقراءة فقط.',
                 '## ⏸️ Safely stopped before planning\n\nThis request is read-only. Joe did not plan any write, install, or run action. Provide an explicit project path to invoke a read-only analysis tool.');

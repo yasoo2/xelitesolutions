@@ -20,6 +20,7 @@ import intelligentRouter from '../core/llm/intelligent-router';
 import { withDeadline, NODE_DEADLINE_MS, RUN_DEADLINE_MS } from '../shared/utils/deadline';
 import { repairMemory } from '../core/memory/repair-memory';
 import { RunStep } from '../core/orchestrator/answerComposer';
+import { CANCELLED } from '../core/session/attended-run';
 
 /** Tools the PlanningEngine picks DETERMINISTICALLY. A node carrying one of
  *  these already knows exactly what to run and with which input, so it must be
@@ -180,6 +181,15 @@ export class AgentOrchestrator {
   private context?: Record<string, any>;
 
   /**
+   * Stop is a run-level control, not merely a tool-level control. LLM calls
+   * cannot be forcibly interrupted, but every await boundary must refuse to
+   * turn a cancelled plan into real work when the response eventually arrives.
+   */
+  private throwIfCancelled(): void {
+    if (this.context?.isCancelled?.() === true) throw new Error(CANCELLED);
+  }
+
+  /**
    * WHICH LANGUAGE THIS RUN ANSWERS IN.
    *
    * «عند وضع بروميت بالانجليزية … يجب ان تكون النتيجة والذكاء العصبي كلها
@@ -266,12 +276,14 @@ export class AgentOrchestrator {
 
     let traceEnded = false;
     try {
+        this.throwIfCancelled();
         // [Departments] BA analyses the request, then the Architect plans it.
         emitDepartment(goal.id, 'analyst');
 
         // 1. Initial Dynamic Planning
         emitDepartment(goal.id, 'architect');
         const dag = await this.plan(goal.goal, undefined, goal.traceId);
+        this.throwIfCancelled();
         dag.id = goal.id;
 
         if (goal.traceId) {
@@ -287,6 +299,7 @@ export class AgentOrchestrator {
         const result = await executionFirewall.runInContext(goal.traceId, () => {
             return this.coordinate(dag, runtimeMemory, this.context, goal.traceId, goal.goal);
         }, { userId: goal.context?.userId, sessionId: goal.context?.sessionId || goal.id, runId: goal.id });
+        this.throwIfCancelled();
 
         // [Departments] QA reviews the outcome, then it's delivered.
         emitDepartment(goal.id, 'reviewer');
@@ -313,8 +326,10 @@ export class AgentOrchestrator {
    * Converts goal into a structured execution plan (DAG) dynamically
    */
   public async plan(goalText: string, memory?: ExecutionMemory, traceId?: string): Promise<AgentDAG> {
+    this.throwIfCancelled();
     const context = IntentParser.createContext('orchestrator', 'global', [], this.context);
     const intent = await IntentParser.parse(goalText, context);
+    this.throwIfCancelled();
     
     // (An `enrichedGoal` used to be built here from memory.getSummary() and
     //  then never passed to anything — the plan was always made from goalText.
@@ -327,6 +342,7 @@ export class AgentOrchestrator {
     //  once reached.
     announcePhase((this.context as any)?.sessionId, 'synthesizing', (this.context as any)?.language);
     const rawPlan = await PlanningEngine.generatePlan({ intent, memory: memory?.getHistory() }, traceId, this.context);
+    this.throwIfCancelled();
 
     // The graph the executor will actually schedule: unique ids, no dangling or
     // cyclic edges, and every {{FROM:...}} reference declared as a real
@@ -405,6 +421,7 @@ export class AgentOrchestrator {
     const giveUp = (fallback: string) => ({ ok: false, result: lastNodeError || fallback, steps: runSteps(dag) });
 
     while (completedNodes.size < dag.nodes.length) {
+      this.throwIfCancelled();
       iterations++;
       if (iterations > maxIterations) {
         dag.status = "failed";
@@ -435,6 +452,7 @@ export class AgentOrchestrator {
           return giveUp("Execution stopped: no ready nodes after recovery/replanning attempts");
         }
         const newDag = await this.plan(goalText || dag.nodes[0]?.task || "continue goal", memory, traceId);
+        this.throwIfCancelled();
         const existingIds = new Set(dag.nodes.map(n => n.id));
         const uniqueNodes = newDag.nodes.filter(n => !existingIds.has(n.id));
         if (uniqueNodes.length === 0) {
@@ -448,6 +466,7 @@ export class AgentOrchestrator {
 
       /** Executes one node: agent fit, narration, the tool itself. No bookkeeping. */
       const runNode = async (node: ExecutionNode): Promise<{ result: any; startTime: number; isDirectAnswer: boolean }> => {
+          this.throwIfCancelled();
           // [DECISION] Re-evaluate agent fit — EXCEPT for a browser node the
           // PlanningEngine pinned deterministically (tool browser_run + agent
           // Browser). Re-classification uses keyword guesses and demoted
@@ -703,10 +722,11 @@ export class AgentOrchestrator {
         broadcastThinkingDetail(memory.sessionId, say(this.replyIsArabic(memory), `⚡ ${batch.length} خطوات مستقلّة — أنفّذها معاً`, `⚡ ${batch.length} independent steps — running them together`));
       }
       const batchResults = new Map<string, any>();
-      await Promise.all(batch.map(async (node) => {
+          await Promise.all(batch.map(async (node) => {
         const r = await runNode(node);
         batchResults.set(node.id, r);
-      }));
+          }));
+      this.throwIfCancelled();
 
       for (const node of batch) {
         const ran = batchResults.get(node.id);
@@ -1116,10 +1136,12 @@ export class AgentOrchestrator {
         : `Fix and continue: ${failedNode.task}`;
 
     // Ask PlanningEngine for recovery nodes
-    const recoveryPlan = await PlanningEngine.generatePlan({
+            this.throwIfCancelled();
+            const recoveryPlan = await PlanningEngine.generatePlan({
         intent: { goal: recoveryGoal, complexity: 'high', riskLevel: 'medium', suggestedAgent: failedNode.agent, rawIntent: {} },
         memory: memory.getHistory()
-    }, traceId, this.context);
+            }, traceId, this.context);
+            this.throwIfCancelled();
 
     const planned: any[] = PlanningEngine.wireDataFlow(
       PlanningEngine.fillRequiredArgs(recoveryPlan.steps as any, recoveryGoal, this.context) as any,

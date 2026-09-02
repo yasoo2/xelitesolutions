@@ -67,6 +67,24 @@ describe('credentials in a git URL never leak to the visible terminal/logs', () 
 });
 
 describe('GitHub requests fail with an actionable connection state', () => {
+    test('PAT validation uses GitHub current auth headers and accepts pasted schemes', () => {
+        expect(ghRoute).toMatch(/Authorization.*Bearer/);
+        expect(ghRoute).toMatch(/X-GitHub-Api-Version/);
+        expect(ghRoute).toMatch(/replace\(\/\^\(\?:bearer\|token\)/i);
+        expect(ghRoute).not.toMatch(/Authorization.*`token \$\{/);
+    });
+
+    test('connection failures preserve the real authentication class', () => {
+        expect(ghRoute).toMatch(/classifyGhError\(e\)/);
+        expect(ghRoute).not.toMatch(/Invalid GitHub token.*details/);
+    });
+
+    test('network failures are explained as network failures, not invalid tokens', () => {
+        expect(ghRoute).toMatch(/github_network_unavailable/);
+        expect(ghRoute).toMatch(/EACCES\|ECONNREFUSED\|ECONNRESET\|ENETUNREACH\|ETIMEDOUT/);
+        expect(ghRoute).toMatch(/api\.github\.com:443/);
+    });
+
     test('missing credentials return a structured auth gate instead of a raw token error', async () => {
         const previous = process.env.GITHUB_TOKEN;
         delete process.env.GITHUB_TOKEN;

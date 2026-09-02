@@ -21,6 +21,7 @@ import { composeAnswer, composeFailure } from '../../core/orchestrator/answerCom
 import { compactRuntimeValue } from '../../core/orchestrator/ExecutionMemory';
 import { hasRequestFidelityMismatch, hasRequestFidelityEvidenceUnavailable } from '../tools/definitions/ProjectPipelineTool';
 import { appendRunEvidenceEvent, createRunEvidence, saveRunReceipt } from '../../shared/run-evidence-store';
+import { registerRun, releaseHandle, CANCELLED, type Cancellable } from '../../core/session/attended-run';
 
 /**
  * Lessons Joe applies to every system HE builds — each line was paid for by a
@@ -533,6 +534,11 @@ export class AgentLoopService {
             console.warn('[AgentLoopService] DB Persistence unavailable, using memory runId');
         }
 
+        // Register before any planning/model await. The browser stop button is
+        // a run control, so it must also cover the period before ToolService
+        // has registered an individual tool handle.
+        const runCancellation: Cancellable = registerRun(runId, sessionId);
+
         // Evidence is a secondary sink. It observes the same canonical run and
         // must never become a prerequisite for the live wire.
         await createRunEvidence(runId, { sessionId, status: 'running' });
@@ -575,7 +581,7 @@ export class AgentLoopService {
         try {
             // [WALL CLOCK] The whole run has a hard ceiling. Past it the user
             // gets an honest failure — never a spinner that lives forever.
-            const result = await withDeadline(orchestrator.execute({
+            const orchestration = orchestrator.execute({
                 id: runId,
                 traceId,
                 goal: effectiveGoal,
@@ -591,9 +597,17 @@ export class AgentLoopService {
                     workspaceId: workspaceId || undefined,
                     modelConfig,
                     memoryContext,
-                    language
+                    language,
+                    isCancelled: () => runCancellation.cancelled
                 }
-            }), RUN_DEADLINE_MS, 'run');
+            });
+            // The model request itself cannot be force-aborted safely, but the
+            // user-facing run must end immediately and the orchestrator's
+            // cancellation checks prevent that late response from executing.
+            const result = await withDeadline(Promise.race([
+                orchestration,
+                runCancellation.whenCancelled.then(() => { throw new Error(CANCELLED); }),
+            ]), RUN_DEADLINE_MS, 'run');
 
             // [FIX] Surface the final answer to the chat UI.
             // The /run/start route is fire-and-forget, so without this broadcast the
@@ -654,6 +668,7 @@ export class AgentLoopService {
             } catch { /* non-fatal */ }
 
             await saveRunReceipt(runId, makeRunReceipt(result, result.ok ? 'done' : 'failed', { finalText }), result.ok ? 'done' : 'failed');
+            releaseHandle(runCancellation, runId, sessionId);
             removeRunEventListener(runId);
             unregisterRunSession(runId, sessionId);
 
@@ -670,7 +685,11 @@ export class AgentLoopService {
             console.error(`[AgentLoopService] Fatal runtime error:`, error);
             // A deadline expiry is explained in the user's language, with the
             // truthful promise the checkpoints make good on.
-            const failText = error instanceof DeadlineError
+            const failText = error?.message === CANCELLED
+                ? (language === 'ar'
+                    ? '⛔ أوقفتُ التشغيل بناءً على طلبك. لم أتابع التخطيط ولم أنفّذ أي خطوة جديدة.'
+                    : '⛔ The run was stopped at your request. I did not continue planning or execute any new step.')
+                : error instanceof DeadlineError
                 ? (language === 'ar'
                     ? `⚠️ تجاوزت المهمة حدّها الزمني الكلي (${Math.round(RUN_DEADLINE_MS / 60000)} دقيقة) فأوقفتُها بصدق بدل تركها معلّقة. أعد إرسال نفس الطلب وسيستأنف البناء من نقطة الحفظ دون إعادة ما اكتمل.`
                     : `⚠️ The task exceeded its total time limit (${Math.round(RUN_DEADLINE_MS / 60000)} min) and was stopped honestly instead of hanging. Send the same request again — the build resumes from its checkpoint.`)
@@ -679,6 +698,7 @@ export class AgentLoopService {
             broadcast({ type: 'text', sessionId, data: { text: failText, sessionId }, runId } as any);
             broadcast({ type: 'run_finished', runId, data: { runId, ok: false, sessionId } } as any);
             await saveRunReceipt(runId, makeRunReceipt({}, 'failed', { selfFixReason: failText, error: String(error?.message || error || '') }), 'failed');
+            releaseHandle(runCancellation, runId, sessionId);
             removeRunEventListener(runId);
             unregisterRunSession(runId, sessionId);
             if (process.env.PERSISTENCE_MODE !== 'JSON' && process.env.OFFLINE_MODE !== 'true') {

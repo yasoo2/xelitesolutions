@@ -13,6 +13,7 @@
  */
 import { capableTools, terms, reachableCount } from '../core/orchestrator/capability-match';
 import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
+import { isReadOnlyRequest } from '../core/orchestrator/buildIntent';
 
 const names = (r: string) => capableTools(r, 3).map(c => c.name);
 
@@ -83,6 +84,14 @@ describe('and it declines rather than guesses', () => {
 });
 
 describe('the planner uses it — after its own routes, before the model', () => {
+    it('treats a short explicit read-only request as a safety boundary', async () => {
+        const goal = 'List the top-level files and summarize the README. Do not modify anything.';
+        expect(isReadOnlyRequest(goal)).toBe(true);
+        const plan: any = await PlanningEngine.generatePlan({ intent: { goal, complexity: 'low', riskLevel: 'low', rawIntent: {} } as any });
+        expect(plan.metadata.matchedBy).toBe('read-only-safety-boundary');
+        expect(plan.steps.map((step: any) => step.tool)).toEqual(['project_pipeline']);
+    });
+
     it('capabilityPlan returns a real plan, or null', () => {
         const plan: any = PlanningEngine.capabilityPlan({ goal: 'اضغط الملفات في أرشيف zip' });
         expect(plan).toBeTruthy();

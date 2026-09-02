@@ -313,6 +313,17 @@ describe('the bridge tool — plan, execute phases, report honestly', () => {
         expect(src).toMatch(/read-only intent detected — blocking planning and execution/);
     });
 
+    test('read-only workspace overview does not require choosing one child project', () => {
+        expect(src).toMatch(/isWorkspaceOverviewRequest/);
+        expect(src).toMatch(/executeTool\('inspect_directory'/);
+        expect(src).toMatch(/executeTool\('search_files'/);
+        expect(src).toMatch(/executeTool\('read_file'/);
+        expect(src).toMatch(/read-only-workspace-overview/);
+        expect(src).toMatch(/No README exists at the workspace root/);
+        expect(src).toMatch(/Full discovery details are available in Logs/);
+        expect(src).toMatch(/workspace\.overview\.top_level=/);
+    });
+
     test('provider preflight blocks honestly before planner when no model is healthy', () => {
         const preflight = src.indexOf('verifyProviderDirect');
         const planner = src.indexOf("executeTool('project_planner'");

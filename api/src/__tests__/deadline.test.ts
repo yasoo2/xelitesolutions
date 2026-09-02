@@ -49,9 +49,19 @@ describe('deadline wiring — the guards are actually in the pipeline', () => {
 
     test('the whole run is capped in AgentLoopService, with a localized explanation', () => {
         const src = read('modules/services/AgentLoopService.ts');
-        expect(src).toMatch(/withDeadline\(orchestrator\.execute\(/);
+        expect(src).toMatch(/orchestration = orchestrator\.execute[\s\S]*withDeadline\(Promise\.race\(/);
         expect(src).toContain('RUN_DEADLINE_MS');
         expect(src).toContain('DeadlineError');
         expect(src).toContain('نقطة الحفظ'); // the Arabic failure text promises the checkpoint resume
+        expect(src).toMatch(/registerRun\(runId, sessionId\)/);
+        expect(src).toContain('isCancelled: () => runCancellation.cancelled');
+        expect(src).toContain('CANCELLED');
+    });
+
+    test('cancellation is checked around planning and before execution', () => {
+        const src = read('orchestration/AgentOrchestrator.ts');
+        expect(src).toContain('private throwIfCancelled()');
+        expect(src).toMatch(/const dag = await this\.plan[\s\S]*this\.throwIfCancelled\(\)/);
+        expect(src).toMatch(/const runNode = async[\s\S]*this\.throwIfCancelled\(\)/);
     });
 });
