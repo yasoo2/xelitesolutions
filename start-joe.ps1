@@ -25,6 +25,16 @@ $env:ENABLE_AUTH_BYPASS = "true"   # مستخدم واحد: الأدوات تع�
 $env:AUTO_APPROVE_ALL = "1"        # موافقة تلقائية على تنفيذ الأدوات
 $env:NODE_ENV = "development"
 
+# A second launcher would create a second WebSocket hub and race for port 5002,
+# which makes old sessions appear to be mixed together. Hold one machine-wide
+# lock for the whole launcher lifetime; a crashed process releases it itself.
+$joeLauncherMutex = New-Object System.Threading.Mutex($false, "Global\JoeLocalLauncher5002")
+try { $joeLauncherOwnsMutex = $joeLauncherMutex.WaitOne(0) } catch { $joeLauncherOwnsMutex = $false }
+if (-not $joeLauncherOwnsMutex) {
+    Write-Host "[launcher] جو يعمل بالفعل على 5002 — لن أشغّل حلقة ثانية." -ForegroundColor DarkYellow
+    exit 0
+}
+
 # ============================================================
 #  السطر الذي تراه في زر «تحديث جو» داخل الواجهة.
 #
@@ -81,10 +91,10 @@ function Wait-ForUser($msg) {
 # --- متصفح جو ---
 # يستخدم جو Chromium المرفق بملف مستقل عن متصفحات الجهاز. لا يفتح Chrome
 # الشخصي للمستخدم ولا يشارك جلساته أو بيانات تسجيل الدخول معه.
-# BROWSER_HEADED=1 يبقي هذه النسخة مرئية للمراقبة أثناء اختبارات الجودة،
-# بينما يبقى ملفها وعمليتها منفصلين عن Chrome الموجود على جهاز المستخدم.
+# الاختبارات تعمل headless داخل Chromium المرفق، وتُعرض لقطاتها وأحداثها في
+# لوحة Browser داخل جو؛ لذلك لا تظهر نافذة سطح مكتب تشبه Chrome الشخصي.
 $env:USE_USER_BROWSER_PROFILE = "0"  # ملفّ خاصّ بجو — لا يتصادم مع كروم المالك
-$env:BROWSER_HEADED = "1"            # نافذة يراها المالك وهو يشتغل
+$env:BROWSER_HEADED = "0"            # لا نافذة خارجية؛ العرض داخل لوحة Browser
 
 # --- الأسرار الخاصة بك (لا تُرفع إلى GitHub، لا تُمسح عند git pull) ---
 # ضع مفاتيحك (Google، إلخ) في ملف joe-secrets.ps1 بجانب هذا الملف. إنه مُتجاهَل
@@ -144,7 +154,12 @@ if (-not $env:LOCAL_LLM_BASE_URL) {
         # استخدم Ollama حصرياً حتى لا يضيّع جو الوقت في مزوّدين مجّانيين فاشلين، مع مهلة
         # كافية لأول طلب (تحميل النموذج) ثم يبقى محمّلاً.
         if (-not $env:LOCAL_LLM_STRICT)  { $env:LOCAL_LLM_STRICT = "1" }
-        if (-not $env:LOCAL_LLM_TIMEOUT) { $env:LOCAL_LLM_TIMEOUT = "600000" }
+        # Do not inherit a short timeout from an older launcher process. A cold
+        # qwen2.5-coder:7b request on CPU can take over two minutes even when
+        # Ollama is healthy, so Auto must give the local brain the full window
+        # on every fresh server process.
+        $env:LOCAL_LLM_TIMEOUT = "600000"
+        $env:LOCAL_BRAIN_LEASH_MAX = "600000"
         # Auto means the user's selected local brain leads, even when a cloud key
         # is present. Cloud providers remain fallback paths after a real local
         # failure; they must not shorten local planning into a false outage.

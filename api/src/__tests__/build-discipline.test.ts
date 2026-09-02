@@ -71,7 +71,13 @@ describe('the launcher itself lives by the same discipline', () => {
     test('start-joe.ps1 keeps the visible browser inside bundled Chromium', () => {
         expect(startPs1).toMatch(/\$env:USE_SYSTEM_CHROME\s*=\s*"0"/);
         expect(startPs1).not.toMatch(/\$env:USE_SYSTEM_CHROME\s*=\s*"1"/);
-        expect(startPs1).toMatch(/\$env:BROWSER_HEADED\s*=\s*"1"/);
+        expect(startPs1).toMatch(/\$env:BROWSER_HEADED\s*=\s*"0"/);
+        expect(startPs1).toContain('Global\\JoeLocalLauncher5002');
+    });
+
+    test('start-joe.ps1 never inherits a short local-brain timeout', () => {
+        expect(startPs1).toContain('$env:LOCAL_LLM_TIMEOUT = "600000"');
+        expect(startPs1).toContain('$env:LOCAL_BRAIN_LEASH_MAX = "600000"');
     });
 
     test('update-joe.ps1 never hard-resets over a network failure', () => {
