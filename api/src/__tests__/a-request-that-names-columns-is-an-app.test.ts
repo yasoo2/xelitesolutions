@@ -67,4 +67,9 @@ describe('and a request that names none is still what it was', () => {
         expect(detectAppKind(request)).toBe('custom');
         expect(blueprintFor('custom', request, true).engine).toBe('custom');
     });
+
+    it('does not mistake QA completion language for a task-management app', () => {
+        const request = 'أنشئ تطبيق ويب React صغيراً باسم QA Counter: عداد يزيد وينقص ويعود إلى الصفر، بواجهة أصلية غير مكررة وجميلة ومتجاوبة، مع أزرار واضحة. نفّذ التطبيق فعلياً وشغّله. بعد البناء اختبره عبر متصفح جو في أكثر من جولة: العرض على سطح المكتب والهاتف، اضغط الزيادة والنقصان والتصفير، افحص console، الأزرار والروابط، التباين، المسافات، وعدم وجود overflow. إذا ظهر أي فشل أصلحه فعلياً ثم أعد الاختبار، ولا تعتبر المهمة مكتملة قبل نجاح التحقق النهائي.';
+        expect(detectAppKind(request)).toBe('custom');
+    });
 });

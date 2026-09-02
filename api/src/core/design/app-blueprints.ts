@@ -276,7 +276,11 @@ export const APP_KIND_SIGNALS: Array<[AppKind, RegExp]> = [
     ['expenses', /مصاريف|مصروفات|نفقات|expense|spending/i],
     // لوحات الإصدار والتشغيل ليست صفحات تعريفية حتى لو لم تقل «تطبيق»:
     // مؤشرات + جدول + بحث/تصفية/تفاصيل هي إشارة برنامج إدارة مهام صريحة.
-    ['tasks', /مهام|مهمة|مهمات|لوحة\s*(?:مهام|إصدار|اصدار|جاهزية)|مركز\s*جاهزية\s*(?:الإصدار|الاصدار)|جدول\s*مهام|بطاقات\s*مؤشرات|task\s*(manager|list|board)|release\s*(?:readiness|center|board)|kanban|to-?do|todo/i],
+    // A QA instruction such as «لا تعتبر المهمة مكتملة» is not a task app.
+    // Bare «مهمة» used to win classification over an explicit custom app and
+    // send it to the records scaffold. Require an app-shaped task phrase;
+    // generic completion language must stay in the user's requirements.
+    ['tasks', /(?:تطبيق|برنامج|نظام|إدارة|قائمة|جدول|لوحة|مركز)\s*(?:المهام|مهام|المهمات|مهمات)|مهمات|لوحة\s*(?:مهام|إصدار|اصدار|جاهزية)|مركز\s*جاهزية\s*(?:الإصدار|الاصدار)|جدول\s*مهام|بطاقات\s*مؤشرات|task\s*(?:app|manager|list|board)|release\s*(?:readiness|center|board)|kanban|to-?do|todo/i],
     ['notes', /ملاحظات|مذكرات|مفكرة|محرر\s*نصوص|محرر\s*نص|notes?\s*app|notepad|note\s*taking|text\s*editor|markdown/i],
     ['lms', /منصة\s*تعليم|تعليمية|طلاب|طالب|دورات|مدرسة|جامعة|درجات|\blms\b|courses?|students?|school|grade(book)?/i],
     ['crm', /عملاء|زبائن|علاقات\s*العملاء|صفقات|مبيعات\s*متابعة|\bcrm\b|leads?|pipeline|deals?/i],
