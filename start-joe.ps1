@@ -102,6 +102,8 @@ function Wait-ForUser($msg) {
 # لوحة Browser داخل جو؛ لذلك لا تظهر نافذة سطح مكتب تشبه Chrome الشخصي.
 $env:USE_USER_BROWSER_PROFILE = "0"  # ملفّ خاصّ بجو — لا يتصادم مع كروم المالك
 $env:BROWSER_HEADED = "0"            # لا نافذة خارجية؛ العرض داخل لوحة Browser
+$env:BROWSER_HEADFUL = "0"           # لا تسمح لإعداد موروث بفتح نافذة سطح مكتب
+$env:BROWSER_HEADLESS = "1"           # الاختبارات المرئية تصل من لوحة Browser فقط
 
 # --- الأسرار الخاصة بك (لا تُرفع إلى GitHub، لا تُمسح عند git pull) ---
 # ضع مفاتيحك (Google، إلخ) في ملف joe-secrets.ps1 بجانب هذا الملف. إنه مُتجاهَل
@@ -185,7 +187,7 @@ if (-not $env:LOCAL_LLM_BASE_URL) {
 # --- ضمان مسار المتصفح ---
 # يُطبَّق بعد تحميل الأسرار ليتجاوز أي إعداد قديم في joe-secrets.ps1.
 # يبقى جو داخل Chromium المرفق، حتى لا تظهر نافذة Chrome الشخصية للمستخدم
-# ولا تختلط جلساته بجلسة جو. يمكن رؤية نافذة جو لأن BROWSER_HEADED مفعّل أعلاه.
+# ولا تختلط جلساته بجلسة جو. العرض المرئي يصل إلى لوحة Browser داخل الواجهة.
 $env:USE_SYSTEM_CHROME = "0"
 $env:BROWSER_PERSISTENT_PROFILE = "0"
 

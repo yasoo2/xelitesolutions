@@ -72,6 +72,8 @@ describe('the launcher itself lives by the same discipline', () => {
         expect(startPs1).toMatch(/\$env:USE_SYSTEM_CHROME\s*=\s*"0"/);
         expect(startPs1).not.toMatch(/\$env:USE_SYSTEM_CHROME\s*=\s*"1"/);
         expect(startPs1).toMatch(/\$env:BROWSER_HEADED\s*=\s*"0"/);
+        expect(startPs1).toMatch(/\$env:BROWSER_HEADFUL\s*=\s*"0"/);
+        expect(startPs1).toMatch(/\$env:BROWSER_HEADLESS\s*=\s*"1"/);
         expect(startPs1).toContain('Global\\JoeLocalLauncher5002');
     });
 
