@@ -2,6 +2,7 @@ import { analyzeContextualIntent, ConversationContext, buildConversationContext 
 import { looksLikeBuild, isReadOnlyRequest } from '../orchestrator/buildIntent';
 import intelligentRouter from '../llm/intelligent-router';
 import { normalizeIntentText } from '../orchestrator/promptNormalizer';
+import { parseExplicitFileRequest } from '../orchestrator/file-intent';
 
 export interface StructuredIntent {
     goal: string;
@@ -58,6 +59,18 @@ export class IntentParser {
                 requiredTools: ['project_pipeline'],
                 constraints: ['Read-only: do not mutate, install, publish, or execute project changes.'],
                 rawIntent: { primary: userText, readOnly: true, deterministic: true },
+            };
+        }
+        const explicitFile = parseExplicitFileRequest(userText);
+        if (explicitFile) {
+            console.log(`[IntentParser] ⚡ Explicit file contract — skipping deep analysis (${explicitFile.path}).`);
+            return {
+                goal: userText,
+                complexity: 'low',
+                riskLevel: 'low',
+                suggestedAgent: 'Dev',
+                requiredTools: ['write_file', ...(explicitFile.readBack ? ['read_file'] : [])],
+                rawIntent: { primary: userText, fileRequest: explicitFile, deterministic: true },
             };
         }
         const quick = IntentParser.quickIntent(userText);

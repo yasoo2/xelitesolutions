@@ -50,6 +50,10 @@ class GitHubService {
         return api.post('/github/connect', { token });
     }
 
+    async disconnect(): Promise<{ ok: boolean; connected: false }> {
+        return api.post('/github/disconnect', {});
+    }
+
     async getStatus(workspaceId?: string): Promise<{ connected: boolean; activeRepo?: string } & Partial<GitHubUser>> {
         const query = workspaceId ? { 'x-workspace-id': workspaceId } : {};
         // apiClient currently doesn't add headers from query but we can use query for now or just pass it as second arg if we had one

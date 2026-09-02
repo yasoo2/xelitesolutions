@@ -28,10 +28,40 @@ export function isReadOnlyRequest(goalRaw: string): boolean {
         // formal "read-only audit" wording.
         || /\b(?:do\s+not|don't|never)\b(?:\s+\w+){0,3}\s+\b(?:create|edit|delete|move|install|commit|write|modify|change|build|start|run)\b/i.test(text)
         || /(?:قراءة\s+فقط|للقراءة\s+فقط|بدون\s+(?:تعديل|كتابة|إنشاء|تغيير|حذف))/i.test(text);
-    const prohibitedMutation = /\b(?:do\s+not|don't|never)\b(?:\s+\w+){0,3}\s+\b(?:create|edit|delete|move|install|commit|write|modify|change|build|start|run)\b/i.test(text)
+    const prohibitedMutation = /\b(?:do\s+not|don't|never)\b(?:\s+\w+){0,3}\s+\b(?:create|edit|delete|move|install|commit|write|modify|change|build|start|run|publish|deploy)\b/i.test(text)
         || /(?:لا|بدون|عدم)\s+(?:أن\s+)?(?:تنشئ|تعدل|تحذف|تنقل|تثبت|تنشر|تكتب|تبني|تشغل|تغير)/i.test(text);
 
-    return readOnlySignal && prohibitedMutation;
+    // A request can contain both a positive mutation and a scoped negative
+    // constraint: "Create A, but do not change any other files." Remove the
+    // negated clauses before looking for a positive mutation, otherwise the
+    // safety gate mistakes the whole request for a read-only audit.
+    const mutationPattern = /\b(?:create|edit|delete|move|install|commit|write|modify|change|build|start|run|publish|deploy)\b/gi;
+    let positiveMutation = false;
+    let mutationMatch: RegExpExecArray | null;
+    while ((mutationMatch = mutationPattern.exec(text)) !== null) {
+        const before = text.slice(Math.max(0, mutationMatch.index - 90), mutationMatch.index);
+        const after = text.slice(mutationMatch.index + mutationMatch[0].length);
+        const negated = /\b(?:do\s+not|don't|never)\b[^.!?\n]{0,90}$/i.test(before);
+        const readOnlyCheck = mutationMatch[0].toLowerCase() === 'run'
+            && /^\s+(?:the\s+)?read[-\s]?only\s+checks?\b/i.test(after);
+        if (!negated && !readOnlyCheck) {
+            positiveMutation = true;
+            break;
+        }
+    }
+    if (!positiveMutation) {
+        const arabicMutationPattern = /(?:ينشئ|انشئ|أنشئ|اصنع|عدّل|عدل|احذف|انقل|ثبت|ثبّت|انشر|اكتب|ابن|ابني|شغل|شغّل|غيّر|غير)/gi;
+        let arabicMatch: RegExpExecArray | null;
+        while ((arabicMatch = arabicMutationPattern.exec(text)) !== null) {
+            const before = text.slice(Math.max(0, arabicMatch.index - 70), arabicMatch.index);
+            if (!/(?:لا|بدون|عدم)\s+(?:أن\s+)?[^.!؟\n]{0,70}$/i.test(before)) {
+                positiveMutation = true;
+                break;
+            }
+        }
+    }
+
+    return readOnlySignal && prohibitedMutation && !positiveMutation;
 }
 
 export function looksLikeBuild(goalRaw: string): boolean {

@@ -7,6 +7,7 @@ import { enrichWorkspaceToolInput } from './workspace-evidence';
 import { findActiveBuiltProject } from './active-built-project';
 import { isReadOnlyRequest, looksLikeBuild } from './buildIntent';
 import { saysAny } from '../language/arabic';
+import { parseExplicitFileRequest } from './file-intent';
 import path from 'path';
 
 export interface ExecutionStep {
@@ -633,6 +634,37 @@ Rules:
                     dependsOn: [],
                 }],
                 metadata: { complexity: 'low', riskLevel: 'low', matchedBy: 'exact-response' },
+            };
+        }
+
+        // An explicit named-file contract is a real filesystem task, not a
+        // request to invent an application. Keep the plan deterministic and
+        // pass concrete arguments to the policy gateway's file tools.
+        const explicitFile = parseExplicitFileRequest(userGoal);
+        if (explicitFile) {
+            const steps: ExecutionStep[] = [{
+                id: 'file_write',
+                description: `كتابة الملف المحدد: ${explicitFile.path}`,
+                tool: 'write_file',
+                agent: 'Dev',
+                input: { path: explicitFile.path, filename: explicitFile.path, content: explicitFile.content, request: intent.goal },
+                dependsOn: [],
+            }];
+            if (explicitFile.readBack) {
+                steps.push({
+                    id: 'file_read_back',
+                    description: `قراءة ${explicitFile.path} بعد الكتابة والتحقق من محتواه`,
+                    tool: 'read_file',
+                    agent: 'Dev',
+                    input: { path: explicitFile.path, request: intent.goal },
+                    dependsOn: ['file_write'],
+                });
+            }
+            return {
+                id: `file_contract_${Date.now()}`,
+                goal: intent.goal,
+                steps,
+                metadata: { complexity: 'low', riskLevel: 'low', matchedBy: 'explicit-file-contract', deterministic: true, localOnly: true },
             };
         }
 

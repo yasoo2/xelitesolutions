@@ -31,8 +31,12 @@ describe('REST: failure classes are distinguished, not lumped into a 500', () =>
         expect((ghRoute.match(/classifyGhError\(e\)/g) || []).length).toBeGreaterThanOrEqual(5);
     });
     test('the token is never auto-deleted on a 401 (a blip must not wipe a good connection)', () => {
-        // No secret-deletion in the failure path.
-        expect(ghRoute).not.toMatch(/deleteUserSecret|removeUserSecret/);
+        // Explicit disconnect may delete the token; the 401 catch path may not.
+        const connectStart = ghRoute.indexOf("router.post('/connect'");
+        const statusStart = ghRoute.indexOf("router.get('/status'");
+        const connectRoute = ghRoute.slice(connectStart, statusStart > connectStart ? statusStart : undefined);
+        const catchStart = connectRoute.lastIndexOf('} catch');
+        expect(connectRoute.slice(catchStart)).not.toMatch(/deleteUserSecret|removeUserSecret/);
     });
 });
 

@@ -31,7 +31,7 @@ const checks = [
   ],
   ['the removed full-width login banner cannot reappear accidentally', !stream.includes('loginBarHidden') && !stream.includes('joe_login_bar_hidden')],
   ['existing workspace artifacts suppress onboarding safely', joePage.includes("api.get('/project/tree')") && joePage.includes('hasVisibleArtifacts') && joePage.includes('if (!hasVisibleArtifacts) setIsOnboardingOpen(true)')],
-  ['GitHub dialog has a clear close action and Done confirmation', githubDialog.includes("aria-label={t('close', 'Close')}") && githubDialog.includes("t('done', 'Done')") && githubDialog.includes('<X size={18} />')],
+  ['GitHub dialog has close, Done, and real disconnect actions', githubDialog.includes("aria-label={t('close', 'Close')}") && githubDialog.includes("t('done', 'Done')") && githubDialog.includes('<X size={18} />') && githubDialog.includes('onDisconnect') && githubDialog.includes('<LogOut size={15} />')],
 ];
 
 for (const [name, ok] of checks) {

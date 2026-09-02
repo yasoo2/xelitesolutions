@@ -156,7 +156,8 @@ export default function Joe() {
     }, []);
 
     const handleDisconnectGitHub = useCallback(async () => {
-        // Simple client-side disconnect for now. Server session persists.
+        // Disconnect must invalidate the durable credential before clearing the UI.
+        await githubService.disconnect();
         setGhConnected(false);
         setGhUser(null);
         setGhRepos([]);
@@ -1058,6 +1059,7 @@ export default function Joe() {
                     onClose={() => setIsGitHubOpen(false)}
                     onConnected={handleGitHubConnected}
                     onSelectRepo={handleSelectRepo}
+                    onDisconnect={handleDisconnectGitHub}
                     tokenError={ghError}
                 />
                 <ProjectOnboardingModal

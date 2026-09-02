@@ -147,6 +147,32 @@ export async function getUserSecret(
   return plain ?? null;
 }
 
+/** Remove one explicitly disconnected account credential from durable storage. */
+export async function deleteUserSecret(
+  userId: string,
+  provider: string,
+  key: string,
+): Promise<{ removed: boolean }> {
+  const uid = String(userId || '').trim();
+  const p = String(provider || '').trim();
+  const k = String(key || '').trim();
+  if (!uid || !p || !k) return { removed: false };
+
+  const mongoose = require('mongoose');
+  let removed = false;
+  if (mongoose.connection.readyState === 1) {
+    const { UserSecret } = require('../../shared/models/userSecret');
+    const result = await UserSecret.deleteOne({ userId: uid, provider: p, key: k });
+    removed = Number(result?.deletedCount || 0) > 0;
+  }
+
+  // JSON/offline mode uses the same per-user bucket as setUserSecretEncrypted.
+  const bucket = sessionSecrets.get(`user-${uid}`);
+  if (bucket?.delete(`${p}:${k}`)) removed = true;
+  if (bucket && bucket.size === 0) sessionSecrets.delete(`user-${uid}`);
+  return { removed };
+}
+
 function purgeExpired(bucket: Map<string, SecretEntry>) {
   const now = nowMs();
   for (const [k, v] of bucket.entries()) {

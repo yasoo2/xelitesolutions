@@ -3,7 +3,7 @@
  */
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Github, Key, CheckCircle, AlertCircle, Loader2, ExternalLink, Eye, EyeOff, X } from 'lucide-react';
+import { Github, Key, CheckCircle, AlertCircle, Loader2, ExternalLink, Eye, EyeOff, X, LogOut } from 'lucide-react';
 import { githubService, GitHubUser, GitHubRepo } from '../services/githubService';
 
 interface Props {
@@ -11,11 +11,12 @@ interface Props {
     onClose: () => void;
     onConnected: (user: GitHubUser) => void;
     onSelectRepo?: (repo: GitHubRepo) => void;
+    onDisconnect?: () => Promise<void> | void;
     /** A token-expired/revoked message from live use, shown as a reconnect banner. */
     tokenError?: string | null;
 }
 
-const GitHubConnectDialog: React.FC<Props> = ({ isOpen, onClose, onConnected, onSelectRepo, tokenError }) => {
+const GitHubConnectDialog: React.FC<Props> = ({ isOpen, onClose, onConnected, onSelectRepo, onDisconnect, tokenError }) => {
     const { t } = useTranslation();
     const [token, setToken] = useState('');
     const [loading, setLoading] = useState(false);
@@ -25,6 +26,7 @@ const GitHubConnectDialog: React.FC<Props> = ({ isOpen, onClose, onConnected, on
     const [selectedRepoId, setSelectedRepoId] = useState<number | null>(null);
     const [repoLoading, setRepoLoading] = useState(false);
     const [showToken, setShowToken] = useState(false);
+    const [disconnecting, setDisconnecting] = useState(false);
 
     if (!isOpen) return null;
 
@@ -61,6 +63,24 @@ const GitHubConnectDialog: React.FC<Props> = ({ isOpen, onClose, onConnected, on
             if (repo) onSelectRepo(repo);
         }
         onClose();
+    };
+
+    const handleDisconnect = async () => {
+        if (!onDisconnect || disconnecting) return;
+        if (!window.confirm(t('confirmGitHubDisconnect', 'Disconnect GitHub and remove the saved token from Joe?'))) return;
+        setDisconnecting(true);
+        setError('');
+        try {
+            await onDisconnect();
+            setSuccess(null);
+            setRepos([]);
+            setSelectedRepoId(null);
+            onClose();
+        } catch (e: any) {
+            setError(e?.message || t('githubDisconnectFailed', 'Could not disconnect GitHub.'));
+        } finally {
+            setDisconnecting(false);
+        }
     };
 
     return (
@@ -111,6 +131,19 @@ const GitHubConnectDialog: React.FC<Props> = ({ isOpen, onClose, onConnected, on
                                     </p>
                                 </div>
                             </div>
+
+                            {onDisconnect && (
+                                <button
+                                    type="button"
+                                    onClick={handleDisconnect}
+                                    disabled={disconnecting}
+                                    title={t('disconnect', 'Disconnect')}
+                                    style={{ ...disconnectBtnStyle, opacity: disconnecting ? 0.6 : 1 }}
+                                >
+                                    {disconnecting ? <Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} /> : <LogOut size={15} />}
+                                    {disconnecting ? t('disconnecting', 'Disconnecting...') : t('disconnect', 'Disconnect')}
+                                </button>
+                            )}
 
                             <div style={{ maxHeight: 'min(240px, 32vh)', overflowY: 'auto', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px' }}>
                                 {repoLoading ? (
@@ -343,6 +376,13 @@ const footerStyle: React.CSSProperties = {
     display: 'flex', justifyContent: 'flex-end', gap: '10px',
     flexShrink: 0,
     background: 'var(--bg-secondary, #1e1e2e)',
+};
+
+const disconnectBtnStyle: React.CSSProperties = {
+    alignSelf: 'flex-start', padding: '8px 12px', borderRadius: '8px',
+    background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.28)',
+    color: '#fca5a5', cursor: 'pointer', fontSize: '12px', fontWeight: 600,
+    display: 'inline-flex', alignItems: 'center', gap: '7px',
 };
 
 const cancelBtnStyle: React.CSSProperties = {

@@ -73,6 +73,15 @@ describe('GitHub requests fail with an actionable connection state', () => {
         expect(ghRoute).toMatch(/replace\(\/\^\(\?:bearer\|token\)/i);
         expect(ghRoute).not.toMatch(/Authorization.*`token \$\{/);
     });
+    test('disconnect removes the durable credential and is wired into the dialog', () => {
+        expect(ghRoute).toMatch(/router\.post\('\/disconnect'/);
+        expect(ghRoute).toMatch(/deleteUserSecret\(userId, 'github', 'GITHUB_TOKEN'\)/);
+        expect(ghService).toMatch(/async disconnect\(\)/);
+        expect(ghService).toMatch(/\/github\/disconnect/);
+        expect(joePage).toMatch(/onDisconnect=\{handleDisconnectGitHub\}/);
+        expect(ghRoute).toMatch(/broadcastTerminalLine/);
+        expect(ghRoute).not.toMatch(/const say = .*broadcastThinkingDetail/);
+    });
 
     test('connection failures preserve the real authentication class', () => {
         expect(ghRoute).toMatch(/classifyGhError\(e\)/);

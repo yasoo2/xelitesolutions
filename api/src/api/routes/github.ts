@@ -5,10 +5,10 @@
 import { Router, Request, Response } from 'express';
 import { authenticate } from '../middleware/auth';
 import { GitHubRepoManagerTool } from '../../modules/tools/definitions/GitHubRepoManagerTool';
-import { setUserSecretEncrypted, getUserSecret } from '../../modules/services/secrets';
+import { setUserSecretEncrypted, getUserSecret, deleteUserSecret } from '../../modules/services/secrets';
 import { executeTool } from '../../modules/services/ToolService';
 import { workspaceService } from '../../modules/services/WorkspaceService';
-import { broadcastThinkingDetail } from '../ws';
+import { broadcastTerminalLine } from '../ws';
 import fs from 'fs';
 import path from 'path';
 import https from 'https';
@@ -125,6 +125,19 @@ router.post('/connect', authenticate as any, async (req: Request, res: Response)
         const { status, body } = classifyGhError(e);
         console.warn(`[GitHub] token validation failed status=${e?.status || 'unknown'} message=${String(e?.message || 'unknown').slice(0, 180)}`);
         return res.status(status === 500 ? 502 : status).json(body);
+    }
+});
+
+// ─── POST /disconnect — Explicitly remove the saved GitHub credential ───
+router.post('/disconnect', authenticate as any, async (req: Request, res: Response) => {
+    try {
+        const userId = String((req as any).auth?.sub || '').trim();
+        if (!userId) return res.status(401).json({ error: 'Authentication required' });
+        await deleteUserSecret(userId, 'github', 'GITHUB_TOKEN');
+        return res.json({ ok: true, connected: false });
+    } catch (e: any) {
+        console.error(`[GitHub] disconnect failed: ${String(e?.message || e).slice(0, 180)}`);
+        return res.status(500).json({ error: 'تعذّر قطع اتصال GitHub الآن. لم يتم تغيير الاعتماد المحفوظ.' });
     }
 });
 
@@ -259,7 +272,9 @@ router.post('/repos/:owner/:repo/connect', authenticate as any, async (req: Requ
         const root = workspaceService.getActiveRoot(workspaceId);
         const hasGit = (() => { try { return fs.existsSync(path.join(root, '.git')); } catch { return false; } })();
         const dirEmpty = (() => { try { return fs.readdirSync(root).length === 0; } catch { return true; } })();
-        const say = (m: string) => { if (sessionId) { try { broadcastThinkingDetail(sessionId, m); } catch { /* optional */ } } };
+        // Repository sync is operational telemetry. Keep it in Logs/Terminal,
+        // never in the user's conversational answer or execution timeline.
+        const say = (m: string) => { if (sessionId) { try { broadcastTerminalLine(sessionId, m); } catch { /* optional */ } } };
 
         // Auth rides through git_ops' askpass (token never enters the URL or logs).
         const gitCtx = { sessionId, workspaceId };
