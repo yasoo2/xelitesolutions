@@ -736,7 +736,7 @@ Return the complete file content now.`;
                     // CPU Ollama models spend roughly a minute on a small JSX
                     // completion. Keep frontend artifacts compact enough to
                     // finish, while leaving non-UI engineering files room.
-                    maxCompletionTokens: artifact.kind === 'frontend_asset' ? 1800 : 6000,
+                    maxCompletionTokens: artifact.kind === 'frontend_asset' ? 1200 : 6000,
                 }
                 : undefined;
             let runtimeRetryCandidate = '';
