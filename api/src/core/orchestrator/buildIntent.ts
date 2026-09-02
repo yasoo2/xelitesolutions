@@ -43,7 +43,7 @@ export function isReadOnlyRequest(goalRaw: string): boolean {
         const after = text.slice(mutationMatch.index + mutationMatch[0].length);
         const negated = /\b(?:do\s+not|don't|never)\b[^.!?\n]{0,90}$/i.test(before);
         const readOnlyCheck = mutationMatch[0].toLowerCase() === 'run'
-            && /^\s+(?:the\s+)?read[-\s]?only\s+checks?\b/i.test(after);
+            && /^\s+(?:(?:the|a|an)\s+)?read[-\s]?only(?:\s+\w+){0,3}\s+(?:checks?|diagnostic)\b/i.test(after);
         if (!negated && !readOnlyCheck) {
             positiveMutation = true;
             break;
@@ -62,6 +62,33 @@ export function isReadOnlyRequest(goalRaw: string): boolean {
     }
 
     return readOnlySignal && prohibitedMutation && !positiveMutation;
+}
+
+/**
+ * A bounded diagnostic explicitly asks Joe to execute a safe local check.
+ * Keep this separate from the broader read-only boundary: the former needs
+ * shell_execute, while the latter routes to workspace inspection.
+ */
+export function isBoundedTerminalDiagnosticRequest(goalRaw: string): boolean {
+    const text = stripArabicDiacritics(String(goalRaw || '')).replace(/\s+/g, ' ').trim();
+    if (!text) return false;
+
+    const explicitlyRequestsExecution = /\bshell_execute\b/i.test(text)
+        || /(?:\b(?:run|execute|perform)\b[^\n]{0,100}\b(?:local\s+)?(?:diagnostic|check)\b)|(?:\b(?:terminal|shell|command\s*(?:line)?)\b[^\n]{0,120}\b(?:run|execute|perform|check|verify|test)\b)|(?:\b(?:نفذ|شغل|اجري|أجرِ|قم\s+ب(?:إجراء|عمل))\b[^\n]{0,120}(?:طرفي[هة]|terminal|shell|فحص|تحقق|اختبر))/i.test(text);
+    const diagnosticSignal = /\b(?:diagnostic|check|verify|test|status|version)\b|(?:فحص|تحقق|اختبر|حالة|إصدار|نسخة)/i.test(text);
+    if (!explicitlyRequestsExecution || !diagnosticSignal) return false;
+
+    const mutationPattern = /\b(?:create|edit|delete|move|install|commit|write|modify|change|build|start|run|publish|deploy)\b/gi;
+    let match: RegExpExecArray | null;
+    while ((match = mutationPattern.exec(text)) !== null) {
+        const before = text.slice(Math.max(0, match.index - 90), match.index);
+        const after = text.slice(match.index + match[0].length);
+        const negated = /\b(?:do\s+not|don't|never|without|no)\b[^.!?\n]{0,90}$/i.test(before);
+        const readOnlyRun = match[0].toLowerCase() === 'run'
+            && /^\s+(?:(?:the|a|an)\s+)?read[-\s]?only(?:\s+\w+){0,3}\s+(?:checks?|diagnostic)\b/i.test(after);
+        if (!negated && !readOnlyRun) return false;
+    }
+    return true;
 }
 
 export function looksLikeBuild(goalRaw: string): boolean {

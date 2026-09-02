@@ -1,5 +1,5 @@
 import { analyzeContextualIntent, ConversationContext, buildConversationContext } from '../llm/context-engine';
-import { looksLikeBuild, isReadOnlyRequest } from '../orchestrator/buildIntent';
+import { looksLikeBuild, isReadOnlyRequest, isBoundedTerminalDiagnosticRequest } from '../orchestrator/buildIntent';
 import intelligentRouter from '../llm/intelligent-router';
 import { normalizeIntentText } from '../orchestrator/promptNormalizer';
 import { parseExplicitFileRequest } from '../orchestrator/file-intent';
@@ -44,6 +44,18 @@ export class IntentParser {
                 requiredTools: ['project_pipeline'],
                 constraints: ['Inspect the workspace and use evidence before implementation or verification.'],
                 rawIntent: { primary: userText, engineeringBrief: true, deterministic: true },
+            };
+        }
+        if (isBoundedTerminalDiagnosticRequest(userText)) {
+            console.log('[IntentParser] ⚡ Bounded terminal diagnostic — skipping deep analysis.');
+            return {
+                goal: userText,
+                complexity: 'low',
+                riskLevel: 'low',
+                suggestedAgent: 'Dev',
+                requiredTools: ['shell_execute'],
+                constraints: ['Read-only diagnostic: use only the bounded terminal allowlist; do not mutate, install, publish, or start services.'],
+                rawIntent: { primary: userText, terminalDiagnostic: true, readOnly: true, deterministic: true },
             };
         }
         // Read-only requests are already bounded by their explicit safety

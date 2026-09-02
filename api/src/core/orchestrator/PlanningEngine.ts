@@ -5,7 +5,7 @@ import { normalizeIntentText, stripArabicDiacritics, foldChars } from './promptN
 import { compactHistoryForPrompt } from './history-compact';
 import { enrichWorkspaceToolInput } from './workspace-evidence';
 import { findActiveBuiltProject } from './active-built-project';
-import { isReadOnlyRequest, looksLikeBuild } from './buildIntent';
+import { isReadOnlyRequest, isBoundedTerminalDiagnosticRequest, looksLikeBuild } from './buildIntent';
 import { saysAny } from '../language/arabic';
 import { parseExplicitFileRequest } from './file-intent';
 import path from 'path';
@@ -673,7 +673,7 @@ Rules:
         // conditions" cannot be mistaken for an instruction to stop a server.
         // The pipeline performs discovery through ToolService, then halts before
         // planning or mutation when the evidence carries the same constraint.
-        if (isReadOnlyRequest(userGoal)) {
+        if (isReadOnlyRequest(userGoal) && !isBoundedTerminalDiagnosticRequest(userGoal)) {
             return {
                 id: `read_only_audit_${Date.now()}`,
                 goal: intent.goal,
@@ -798,15 +798,15 @@ Rules:
          * richer pipelines.
          */
         const explicitlyRequestsTerminalExecution = /\bshell_execute\b/i.test(probe)
-            || /(استخدم|استعمل|نفّ?ذ|شغّ?ل|اجري|أجرِ|قم\s+ب(?:إجراء|عمل))[^\n]{0,120}(?:طرفي[ةه]|terminal|shell|command\s*(?:line)?|سطر\s*(?:الأوامر|اوامر))|(?:طرفي[ةه]|terminal|shell)[^\n]{0,120}(?:نفّ?ذ|شغّ?ل|اجري|أجرِ|فحص|تحقّ?ق|check|verify|execute|run)/i.test(probe);
+            || /(استخدم|استعمل|نفّ?ذ|شغّ?ل|اجري|أجرِ|قم\s+ب(?:إجراء|عمل))[^\n]{0,120}(?:طرفي[ةه]|terminal|shell|command\s*(?:line)?|سطر\s*(?:الأوامر|اوامر))|(?:طرفي[ةه]|terminal|shell)[^\n]{0,120}(?:نفّ?ذ|شغّ?ل|اجري|أجرِ|فحص|تحقّ?ق|check|verify|execute|run)|(?:run|execute|perform)[^\n]{0,100}(?:local\s+)?(?:diagnostic|check)/i.test(probe);
         // The user can safely say «لا تبنِ / لا تعدّل ملفات» to constrain a
         // terminal check. Those negated verbs are NOT a request to build or edit.
         const terminalDiagnosticProbe = probe.replace(
             /(?:لا|ليس|بدون|غير|do\s+not|don't|without)\s+(?:تبن[ِي]?|ابن[ِي]?|ابني|انشئ|أنشئ|طوّ?ر|تطوير|تعدّ?ل|عدّ?ل|تعديل|أصلح|اصلح|build|create|develop|implement|modify|edit|fix)(?:\s+[^\s،؛.:!?]+){0,3}/gi,
             '',
         );
-        const boundedTerminalDiagnostic = /(فحص|تحقّ?ق|اختبر|حالة|إصدار|نسخ[ةه]|version|status|check|verify|test|diagnostic)/i.test(probe)
-            && !/(?:ابنِ|ابني|انشئ|أنشئ|طوّ?ر|تطوير|عدّ?ل|تعديل|أصلح|اصلح|build|create|develop|implement|modify|edit|fix)/i.test(terminalDiagnosticProbe);
+        const boundedTerminalDiagnostic = isBoundedTerminalDiagnosticRequest(userGoal) || (/(فحص|تحقّ?ق|اختبر|حالة|إصدار|نسخ[ةه]|version|status|check|verify|test|diagnostic)/i.test(probe)
+            && !/(?:ابنِ|ابني|انشئ|أنشئ|طوّ?ر|تطوير|عدّل|تعديل|أصلح|اصلح|build|create|develop|implement|modify|edit|fix)/i.test(terminalDiagnosticProbe));
 
         /**
          * VERIFYING AN EXISTING PROJECT IS NOT REQUESTING A NEW PROJECT.
@@ -852,7 +852,12 @@ Rules:
             // lets the user see the exact requested command and its real output.
             const requestedCommands: string[] = [];
             if (/\bpwd\b/i.test(userGoal)) requestedCommands.push('pwd');
-            if (/\bnode\s+--version\b/i.test(userGoal)) requestedCommands.push('node --version');
+            if (/\bnode\s+--version\b/i.test(userGoal) || /\bnode(?:\.js)?\b[^\n]{0,30}\bversion\b|\bversion\b[^\n]{0,30}\bnode(?:\.js)?\b/i.test(userGoal)) {
+                requestedCommands.push('node --version');
+            }
+            if (/\b(?:workspace|working\s+directory|current\s+directory)\b[^\n]{0,40}\bpath\b|\bpath\b[^\n]{0,40}\b(?:workspace|working\s+directory|current\s+directory)\b/i.test(userGoal)) {
+                requestedCommands.push('pwd');
+            }
             const echo = userGoal.match(/\becho\s+([A-Za-z0-9_.:/=-]{1,120})\b/i);
             if (echo) requestedCommands.push(`echo ${echo[1]}`);
             if (!requestedCommands.length) {

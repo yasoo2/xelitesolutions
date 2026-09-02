@@ -7,8 +7,22 @@
 import fs from 'fs';
 import path from 'path';
 import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
+import { IntentParser } from '../core/intelligence/IntentParser';
+import { isBoundedTerminalDiagnosticRequest, isReadOnlyRequest } from '../core/orchestrator/buildIntent';
 
 describe('explicit terminal diagnostics execute instead of merely opening a terminal', () => {
+    test('a read-only local diagnostic is classified before the slow model path', async () => {
+        const goal = 'Run a read-only local diagnostic in the current workspace: report the Node.js version and the current workspace path. Do not modify files, install packages, or start a server.';
+        expect(isReadOnlyRequest(goal)).toBe(true);
+        expect(isBoundedTerminalDiagnosticRequest(goal)).toBe(true);
+        const intent = await IntentParser.parse(goal, {} as any);
+        expect(intent.requiredTools).toEqual(['shell_execute']);
+        expect(intent.rawIntent).toEqual(expect.objectContaining({ terminalDiagnostic: true, deterministic: true }));
+        const plan = await PlanningEngine.generatePlan({ intent: intent as any });
+        expect(plan.steps.map(step => step.input.command)).toEqual(['node --version', 'pwd']);
+        expect(plan.metadata).toMatchObject({ terminalExecution: true });
+    });
+
     test('Arabic acceptance request routes directly to shell_execute', async () => {
         const plan = await PlanningEngine.generatePlan({
             intent: {
