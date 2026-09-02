@@ -5141,6 +5141,12 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                     ...context,
                     projectRoot: proj,
                     workspaceId: context?.workspaceId,
+                    // A known blueprint already has a request-derived engine
+                    // waiting behind this authoring gate. One provider attempt
+                    // is enough evidence before that engine takes the same
+                    // build and browser-QA path; a second long outage retry
+                    // only makes the visible run look frozen.
+                    ...(canUseBlueprintFallback ? { allowProviderRetry: false } : {}),
                 });
                 if (!generated?.ok || !fs.existsSync(path.join(proj, generatedEnginePath))) {
                     const reason = String(generated?.error || 'ai_write_file did not produce the requested domain file');

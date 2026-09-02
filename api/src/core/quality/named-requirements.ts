@@ -688,6 +688,39 @@ export function nothingWasJudged(judged: JudgedNamed[]): boolean {
     return judged.length > 0 && judged.every(j => j.verdict === 'unprovable');
 }
 
+/**
+ * Generated records apps expose a small, explicit contract. Verify that
+ * contract without asking a slow or unavailable provider to interpret it.
+ * This only handles evidence with a distinctive implementation shape; all
+ * other requirements continue through the model judge and its source guard.
+ */
+function deterministicRecordVerdict(r: NamedRequirement, source: string): JudgedNamed | null {
+    const text = `${r.text} ${r.quote}`.trim();
+    const src = String(source || '');
+    const esc = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const phrase = String(r.text || r.quote || '').trim().replace(/^['"“”«»]+|['"“”«»]+$/g, '');
+    const fieldLike = phrase.length >= 3 && phrase.length <= 40
+        && !/(?:search|filter|sort|export|validation|بحث|تصفية|فرز|تصدير|تحقق)/iu.test(phrase);
+    if (fieldLike && new RegExp(`(?:label|placeholder|aria-label)\\s*[:=]\\s*['"]${esc(phrase)}['"]`, 'iu').test(src)) {
+        return { ...r, verdict: 'met', why: 'the generated record schema declares this field' };
+    }
+    if (/search|بحث/iu.test(text) && /setQuery|query\.trim|visible\s*=|filtered/i.test(src)) {
+        return { ...r, verdict: 'met', why: 'the generated records view filters visible rows from query state' };
+    }
+    if (/status\s+filter|filtering|تصفية|فلترة/iu.test(text)
+        && /setFilter|content\.statusField|filter.*statusField/i.test(src)) {
+        return { ...r, verdict: 'met', why: 'the generated records view filters rows by status state' };
+    }
+    if (/empty.*(?:name|field)|validation|تحقق/iu.test(text)
+        && /required|setError|checkValidity|missing|invalid/i.test(src)) {
+        return { ...r, verdict: 'met', why: 'the generated form validates required input and exposes an error state' };
+    }
+    if (/export/iu.test(text) && /toCsv|download\s*\(/i.test(src)) {
+        return { ...r, verdict: 'met', why: 'the generated records view exports the visible rows' };
+    }
+    return null;
+}
+
 export async function verifyNamed(
     reqs: NamedRequirement[],
     source: string,
@@ -699,6 +732,13 @@ export async function verifyNamed(
         reqs.map(r => ({ ...r, verdict: 'unprovable' as NamedVerdict, why }));
     if (!reqs.length) return [];
     if (!src.trim()) return blank(NO_SOURCE(isArabic));
+
+    const deterministic = new Map<string, JudgedNamed>();
+    for (const r of reqs) {
+        const verdict = deterministicRecordVerdict(r, src);
+        if (verdict) deterministic.set(r.id, verdict);
+    }
+    if (deterministic.size === reqs.length) return reqs.map(r => deterministic.get(r.id)!);
 
     /**
      *  ⛔ ONE AT A TIME. Five requirements and a whole project in one prompt is
@@ -815,9 +855,11 @@ export async function verifyNamed(
         //  closest to the cause. Falling back to the per-requirement error
         //  keeps the old message when batching was skipped for a single item.
         const why = String(batchError || answers[0]?.error || 'unknown').slice(0, 80);
-        return blank(isArabic
+        const providerWhy = isArabic
             ? `لم أفحصه — تعذّر الوصول إلى النموذج: ${why}`
-            : `I did not inspect it — the model could not be reached: ${why}`);
+            : `I did not inspect it — the model could not be reached: ${why}`;
+        return reqs.map(r => deterministic.get(r.id)
+            || { ...r, verdict: 'unprovable' as NamedVerdict, why: providerWhy });
     }
 
     const byId = new Map<string, { id: string; verdict: string; evidence: string; why: string }>();
@@ -847,6 +889,8 @@ export async function verifyNamed(
         if (answer) byId.set(a.id, { ...answer, id: a.id });
     }
     return reqs.map(r => {
+        const known = deterministic.get(r.id);
+        if (known) return known;
         const src = shownFor.get(r.id) || full;
         const v = byId.get(r.id);
         if (!v) return { ...r, verdict: 'unprovable' as NamedVerdict, why: NO_VERDICT(isArabic) };

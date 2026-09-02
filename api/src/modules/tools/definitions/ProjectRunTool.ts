@@ -35,6 +35,32 @@ const RUNNING: Map<string, RunningServer> = new Map();
 const COMMON_DEV_PORTS = [5173, 5174, 3000, 3001, 4173, 8080, 8000];
 
 /**
+ * Minimal static fallback for a verified production bundle. It deliberately
+ * lives behind project_run and the ExecutionGateway, so a dev-server failure
+ * can still be inspected in the browser without depending on `serve`, npx, or
+ * another package that may be unavailable in an offline workspace.
+ */
+const STATIC_PREVIEW_SERVER_SOURCE = [
+    "const fs=require('fs'),http=require('http'),path=require('path');",
+    "const root=process.cwd(),port=Number(process.env.PORT);",
+    "const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.woff2':'font/woff2'};",
+    "const index=path.join(root,'index.html');",
+    "const safe=(pathname)=>{try{return decodeURIComponent(pathname)}catch{return null}};",
+    "http.createServer((req,res)=>{",
+    "  const pathname=safe(String(req.url||'/').split('?')[0]);",
+    "  if(!pathname){res.statusCode=400;return res.end('bad request')}",
+    "  const candidate=path.resolve(root,'.'+pathname);",
+    "  if(candidate!==root&&!candidate.startsWith(root+path.sep)){res.statusCode=403;return res.end('forbidden')}",
+    "  let file=candidate;",
+    "  try{if(fs.statSync(file).isDirectory())file=path.join(file,'index.html')}catch{}",
+    "  if(!fs.existsSync(file)||!fs.statSync(file).isFile())file=index;",
+    "  if(!fs.existsSync(file)){res.statusCode=404;return res.end('not found')}",
+    "  res.setHeader('Content-Type',types[path.extname(file).toLowerCase()]||'application/octet-stream');",
+    "  fs.createReadStream(file).on('error',()=>{if(!res.headersSent)res.statusCode=500;res.end('read error')}).pipe(res);",
+    "}).listen(port,'127.0.0.1');",
+].join('\n');
+
+/**
  * Local servers are allowed to bind either loopback family. Node's
  * `server.listen(port, 'localhost')` commonly resolves to ::1 on Linux, while
  * the previous probe only checked 127.0.0.1 and therefore called a healthy
@@ -90,6 +116,36 @@ async function answersHttp(url: string, timeoutMs = 2500): Promise<boolean> {
     }
 }
 
+function builtPreviewRoot(cwd: string): string | null {
+    for (const folder of ['dist', 'build']) {
+        const candidate = path.join(cwd, folder);
+        if (fs.existsSync(path.join(candidate, 'index.html'))) return candidate;
+    }
+    return null;
+}
+
+async function startStaticBuildPreview(root: string, port: number): Promise<{ ready: boolean; pid?: number; url?: string; error?: string }> {
+    const result = await ExecutionGateway.execute(process.execPath, ['-e', STATIC_PREVIEW_SERVER_SOURCE], {
+        cwd: root,
+        env: { ...process.env, PORT: String(port) },
+        background: true,
+        shell: false,
+        stdio: 'ignore',
+        windowsHide: true,
+    } as any);
+    const pid = Number(result.data?.pid) || undefined;
+    if (!result.success || result.data?.ok === false) {
+        return { ready: false, pid, error: result.error || result.data?.error || 'static preview process did not start' };
+    }
+    const url = `http://localhost:${port}/`;
+    const deadline = Date.now() + 10000;
+    while (Date.now() < deadline) {
+        if (await isLoopbackPortOpen(port, 500) && await answersHttp(url, 1500)) return { ready: true, pid, url };
+        await new Promise(resolve => setTimeout(resolve, 250));
+    }
+    return { ready: false, pid, error: 'static production preview did not answer within 10s' };
+}
+
 function sameExistingPath(a: string, b: string): boolean {
     if (!a || !b || !fs.existsSync(a) || !fs.existsSync(b)) return false;
     try {
@@ -108,7 +164,8 @@ function sameExistingPath(a: string, b: string): boolean {
 export function canAdoptRecordedLive(record: any, expectedCwd: string): boolean {
     const pid = Number(record?.pid);
     const recordedCwd = String(record?.cwd || '').trim();
-    if (!Number.isInteger(pid) || pid <= 0 || !sameExistingPath(recordedCwd, expectedCwd)) return false;
+    const recordedProjectCwd = String(record?.projectCwd || recordedCwd).trim();
+    if (!Number.isInteger(pid) || pid <= 0 || !sameExistingPath(recordedProjectCwd, expectedCwd)) return false;
     try {
         process.kill(pid, 0);
     } catch {
@@ -130,7 +187,7 @@ function runKey(context?: any): string {
 }
 
 /** Keep the verified server address attached to the session's active project. */
-function rememberLiveProject(context: any, cwd: string, live: { url: string; port: number; pid: number }): void {
+function rememberLiveProject(context: any, cwd: string, live: { url: string; port: number; pid: number }, projectCwd = cwd): void {
     const sessionId = String(context?.sessionId || '').trim();
     if (!sessionId || !cwd || !live.url || !live.port) return;
     const sessionKey = sessionId.replace(/[^a-zA-Z0-9._-]/g, '_');
@@ -138,8 +195,8 @@ function rememberLiveProject(context: any, cwd: string, live: { url: string; por
     const previous = projects[sessionKey] || {};
     writeJoeProject(sessionKey, {
         ...previous,
-        ...(previous.dir ? {} : { dir: cwd, type: 'runtime' }),
-        live: { url: live.url, port: live.port, pid: live.pid, cwd, at: Date.now() },
+        ...(previous.dir ? {} : { dir: projectCwd, type: 'runtime' }),
+        live: { url: live.url, port: live.port, pid: live.pid, cwd, projectCwd, at: Date.now() },
         updatedAt: Date.now(),
     }, context?.runId ?? null);
     persistJoeProjects();
@@ -798,6 +855,15 @@ export function localFileExistsWithExactCase(filePath: string): boolean {
     const relative = path.relative(root, absolute);
     if (!relative) return false;
     const segments = relative.split(path.sep).filter(Boolean);
+    // On Windows, sandboxed service accounts can deny directory enumeration
+    // even when the file itself is readable. realpath.native gives us the
+    // filesystem's actual spelling without walking each parent directory.
+    if (process.platform === 'win32') {
+        try {
+            const actual = path.relative(root, fs.realpathSync.native(absolute)).split(path.sep).filter(Boolean);
+            return actual.length === segments.length && actual.every((segment, index) => segment === segments[index]);
+        } catch { return false; }
+    }
     let current = root;
     try {
         for (let index = 0; index < segments.length; index += 1) {
@@ -1474,6 +1540,40 @@ export class ProjectRunTool implements ToolDefinition {
         if (pid) RUNNING.set(key, { pid, port: livePort || port, cwd, command: detected.command, startedAt: Date.now() });
 
         if (!livePort) {
+            // A verified bundle is still a useful browser target when a dev
+            // server cannot boot in the host environment (for example when
+            // esbuild is blocked by a Windows sandbox). Stop the failed child
+            // first, then serve only the already-built artifact through the
+            // same gateway. Browser QA remains mandatory and can still expose
+            // missing backend behaviour instead of turning this into success.
+            if (pid) await killTree(Number(pid)).catch(() => {});
+            const builtRoot = builtPreviewRoot(cwd);
+            if (builtRoot) {
+                logs.push(`project_run: dev server unconfirmed; trying verified static bundle (${builtRoot})`);
+                const fallback = await startStaticBuildPreview(builtRoot, port);
+                if (fallback.ready && fallback.url && fallback.pid) {
+                    RUNNING.set(key, { pid: fallback.pid, port, cwd: builtRoot, command: 'node static-preview', startedAt: Date.now() });
+                    rememberLiveProject(context, builtRoot, { url: fallback.url, port, pid: fallback.pid }, cwd);
+                    say(pick(isAr,
+                        `✅ الخادم التطويري لم يبدأ، لكن نسخة الإنتاج المبنية تعمل الآن — المعاينة: ${fallback.url}`,
+                        `✅ The dev server did not boot, but the verified production bundle is live — preview: ${fallback.url}`));
+                    try {
+                        const { broadcast } = require('../../../api/ws');
+                        broadcast({ type: 'preview_ready', sessionId: context?.sessionId, data: { url: fallback.url, previewUrl: fallback.url, port, live: true, mode: 'static-build-fallback' } });
+                    } catch { /* panel optional */ }
+                    return {
+                        ok: true,
+                        output: {
+                            url: fallback.url, previewUrl: fallback.url, port, ready: true, pid: fallback.pid,
+                            cwd: builtRoot, command: 'node static-preview', kind: 'static-build-fallback',
+                            devServerConfirmed: false, productionBundleConfirmed: true,
+                        },
+                        logs,
+                    };
+                }
+                logs.push(`project_run: static bundle fallback failed (${fallback.error || 'unconfirmed'})`);
+                if (fallback.pid) await killTree(Number(fallback.pid)).catch(() => {});
+            }
             /**
              * AND WHEN NOTHING ANSWERED, SAY SO — DO NOT HAND OVER AN ADDRESS.
              *

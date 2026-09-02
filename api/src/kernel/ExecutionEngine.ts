@@ -840,6 +840,25 @@ export class ExecutionEngine {
                 //  Same question, same answer — see the note in runArgvStreaming.
                 windowsHide: options.windowsHide !== false,
             } as any);
+            // An argv launch can be a long-lived local server too. Resolve once
+            // the process exists, while retaining the same gateway-owned child
+            // that project_stop can terminate later.
+            if (options.background || options.detached) {
+                let settled = false;
+                const finish = (result: any) => {
+                    if (settled) return;
+                    settled = true;
+                    resolve(result);
+                };
+                child.once('error', (err) => finish({ ok: false, error: err.message, exitCode: null, pid: child.pid }));
+                if (options.detached) child.unref();
+                setTimeout(() => finish({
+                    ok: child.exitCode === null || child.exitCode === 0,
+                    pid: child.pid,
+                    exitCode: child.exitCode,
+                }), 100);
+                return;
+            }
             let stdout = '';
             let stderr = '';
             let done = false;

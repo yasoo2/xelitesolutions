@@ -11,6 +11,8 @@ import path from 'path';
 import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
 import { canAdoptRecordedLive, declaredLaunchPrerequisitePackages, detectStart, launchPrerequisiteError, launchabilityError, missingLocalRuntimeImports, missingRuntimeDependencies, placeholderLifecycleScriptError, reconcileMissingRuntimeImports, reconcileMissingRuntimeTarget, resolveRunnableProject, shouldUseActiveProjectDirectly, ProjectRunTool } from '../modules/tools/definitions/ProjectRunTool';
 import { ExecutionGateway } from '../kernel/ExecutionGateway';
+import { executionEngine } from '../kernel/ExecutionEngine';
+import { executionFirewall } from '../orchestration/AgentExecutionFirewall';
 import { workspaceService } from '../modules/services/WorkspaceService';
 import { NpmManagerTool } from '../modules/tools/definitions/SystemTools';
 
@@ -78,6 +80,28 @@ describe('project_run really RUNS (not renders) and is Windows-safe', () => {
     });
     test('one project owns one server — a new run stops the previous', () => {
         expect(runSrc).toMatch(/await stopServer\(key, logs\)/);
+    });
+    test('a verified production bundle has a gateway-owned fallback when dev tooling cannot boot', () => {
+        expect(runSrc).toMatch(/builtPreviewRoot/);
+        expect(runSrc).toMatch(/STATIC_PREVIEW_SERVER_SOURCE/);
+        expect(runSrc).toMatch(/kind: 'static-build-fallback'/);
+        expect(runSrc).toMatch(/productionBundleConfirmed: true/);
+    });
+    test('the gateway preserves executable paths and argv with spaces', async () => {
+        const execute = jest.spyOn(executionEngine, 'execute').mockResolvedValue({ success: true, data: { ok: true }, duration: 0 });
+        try {
+            await executionFirewall.runInContext('gateway-argv-test', () => ExecutionGateway.execute(
+                'C:\\Program Files\\nodejs\\node.exe', ['-e', 'console.log("ready")'], { shell: false },
+            ));
+            expect(execute).toHaveBeenCalledWith(expect.objectContaining({
+                payload: expect.objectContaining({
+                    command: 'C:\\Program Files\\nodejs\\node.exe',
+                    args: ['-e', 'console.log("ready")'],
+                }),
+            }));
+        } finally {
+            execute.mockRestore();
+        }
     });
 });
 

@@ -20,6 +20,58 @@
 
 export type TracePhase = 'analyzing' | 'synthesizing' | 'executing' | 'idle';
 
+/** The small, human-readable work model shown above the technical trace. */
+export type WorkStage = 'understand' | 'plan' | 'build' | 'test' | 'repair' | 'verify';
+
+export const WORK_STAGES: WorkStage[] = ['understand', 'plan', 'build', 'test', 'repair', 'verify'];
+
+/**
+ * Map observed trace text to a product-level stage. This is deliberately a
+ * presentation rule, not an execution rule: the backend remains the source
+ * of truth, while the user gets a stable vocabulary instead of tool names.
+ */
+export function workStageFor(phase: TracePhase, text = ''): WorkStage {
+    const value = String(text).toLocaleLowerCase();
+    if (/repair|fix|recover|retry|إصلاح|تصحيح|تعاف|إعادة المحاولة/u.test(value)) return 'repair';
+    if (/verify|verified|acceptance|deliver|evidence|complete|تحقق|تسليم|دليل|مكتمل|نجح/u.test(value)) return 'verify';
+    if (/qa|quality|test|browser|audit|check|فحص|جودة|اختبار|متصفح|تدقيق/u.test(value)) return 'test';
+    if (/build|scaffold|write|create|install|project|file|بناء|إنشاء|تثبيت|مشروع|ملف/u.test(value)) return 'build';
+    if (/plan|planning|discover|analys|phase|خطة|تخطيط|اكتشاف|تحليل|مرحلة/u.test(value)) return 'plan';
+    if (phase === 'analyzing' || phase === 'idle') return 'understand';
+    if (phase === 'synthesizing') return 'plan';
+    return 'build';
+}
+
+/**
+ * Give common internal progress lines a user-facing label. Unknown text is
+ * retained after harmless prefix cleanup so evidence is never fabricated or
+ * silently discarded.
+ */
+export function traceDisplayKey(text = ''): string | null {
+    const value = String(text).trim();
+    if (!value) return null;
+    if (/^running:\s*terminal manager/i.test(value)) return 'neuralDetailTerminal';
+    if (/^running:\s*project pipeline/i.test(value)) return 'neuralDetailOrchestration';
+    if (/engineering discovery|\[pipeline\].*discovering/i.test(value)) return 'neuralDetailDiscovery';
+    if (/^running:\s*phase executor/i.test(value)) return 'neuralDetailPhase';
+    if (/^running:\s*(?:react project|project)/i.test(value) || /scaffolding|authoring/i.test(value)) return 'neuralDetailBuild';
+    if (/npm\s+(?:install|run)|dependencies|packages installed/i.test(value)) return 'neuralDetailDependencies';
+    if (/vite build|production build|build passed/i.test(value)) return 'neuralDetailBuildCheck';
+    if (/self-qa|browser qa|quality audit|browser.*test|فحص.*متصفح/i.test(value)) return 'neuralDetailBrowserQa';
+    if (/repairing|self-fix|repair|إصلاح|تصحيح/i.test(value)) return 'neuralDetailRepair';
+    if (/verified|acceptance|evidence|delivery|تحقق|دليل|تسليم/i.test(value)) return 'neuralDetailVerify';
+    return null;
+}
+
+/** Remove machine prefixes while preserving an otherwise unknown evidence line. */
+export function cleanTraceText(text = ''): string {
+    return String(text)
+        .replace(/^\s*\[(?:pipeline|system|agent)\]\s*/i, '')
+        .replace(/^\s*(?:running|جاري تنفيذ)\s*:\s*/i, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
 /** One line Joe showed while working, with the moment it appeared. */
 export interface TraceStep {
     /** The text exactly as it was shown. */

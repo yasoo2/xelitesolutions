@@ -22,13 +22,16 @@ export class ExecutionGateway {
         let request: ExecutionRequest;
 
         if (typeof requestOrCommand === 'string') {
-            // Convert old signature to new ExecutionRequest
-            const fullCommand = args.length > 0 ? `${requestOrCommand} ${args.join(' ')}` : requestOrCommand;
+            // Preserve argv boundaries. Concatenating a Windows executable path
+            // with its arguments turns `C:\\Program Files\\nodejs\\node.exe`
+            // into the invalid command `C:\\Program`; it also lets shell
+            // metacharacters change the meaning of a supposedly tokenized arg.
             request = {
                 id: options.sessionId || 'gate-' + Date.now(),
                 type: 'shell',
                 payload: {
-                    command: fullCommand,
+                    command: requestOrCommand,
+                    ...(args.length > 0 ? { args: [...args] } : {}),
                     options
                 },
                 priority: options.priority || 'normal'

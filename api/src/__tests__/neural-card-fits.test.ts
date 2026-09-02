@@ -15,16 +15,16 @@ const CHAT = () => fs.readFileSync(path.join(WEB, 'ChatPanel.tsx'), 'utf-8');
 const CSS = () => fs.readFileSync(path.join(WEB, '..', 'styles', 'joe-premium.css'), 'utf-8');
 
 describe('the card opens instead of hiding what it has', () => {
-    it('one step is enough — it no longer waits for four', () => {
+    it('keeps the live surface compact and does not force the timeline open', () => {
         const src = CARD();
-        expect(src).toMatch(/const TIMELINE_THRESHOLD = 1;/);
-        expect(src).not.toMatch(/const TIMELINE_THRESHOLD = 4;/);
+        expect(src).toMatch(/const showTimeline = expanded === true;/);
+        expect(src).not.toMatch(/TIMELINE_THRESHOLD/);
     });
 
     it('and he can still fold it away himself', () => {
         const src = CARD();
-        // null = follow the threshold; true/false = his decision, which wins.
-        expect(src).toMatch(/expanded === null \? steps\.length >= TIMELINE_THRESHOLD : expanded/);
+        // null starts compact; the user explicitly opens or closes the trace.
+        expect(src).toMatch(/const \[expanded, setExpanded\] = useState<boolean \| null>\(null\);/);
         expect(src).toMatch(/onClick=\{\(\) => setExpanded\(!showTimeline\)\}/);
     });
 });
@@ -42,21 +42,21 @@ describe('and it fits the chat it lives in', () => {
         expect(rule).toMatch(/min-width: 0;/);
     });
 
-    it('the shadow no longer bleeds across the border', () => {
+    it('the live surface does not render as a heavy card', () => {
         const src = CARD();
-        const blur = Number((src.match(/box-shadow: 0 \d+px (\d+)px/) || [])[1]);
-        expect(blur).toBeGreaterThan(0);
-        expect(blur).toBeLessThanOrEqual(14);   // was 22
+        const at = src.indexOf('.neural-card {');
+        const rule = src.slice(at, src.indexOf('.neural-card.bubble', at));
+        expect(rule).toMatch(/background: transparent;/);
+        expect(rule).toMatch(/box-shadow: none;/);
+        expect(rule).not.toMatch(/backdrop-filter: blur/);
+        expect(src).not.toMatch(/className="nc-track"/);
     });
 
     it('a long goal line shrinks rather than stretching the card', () => {
         const src = CARD();
         expect(src.slice(src.indexOf('.neural-head {'), src.indexOf('.neural-head {') + 120)).toMatch(/min-width: 0/);
-        const rollStart = src.indexOf('.nc-roll {');
-        const roll = src.slice(rollStart, src.indexOf('.nc-roll .mover', rollStart));
-        expect(roll).toMatch(/min-width: 0/);
-        const lineStart = src.indexOf('.nc-roll .ln {');
-        const line = src.slice(lineStart, src.indexOf('.nc-roll .ln.leaving', lineStart));
+        const lineStart = src.indexOf('.nc-detail {');
+        const line = src.slice(lineStart, src.indexOf('.nc-elapsed', lineStart));
         expect(line).toMatch(/text-overflow: ellipsis/);
         expect(line).toMatch(/white-space: nowrap/);
     });

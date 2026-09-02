@@ -21,8 +21,8 @@ import { SocketService } from '../services/socket';
 import { useTranslation } from 'react-i18next';
 import { ChevronDown } from 'lucide-react';
 import type { NeuralTrace, TraceStep } from '../lib/neuralTrace';
-import { formatDuration } from '../lib/neuralTrace';
-import { TraceTimeline, useTraceStyles, useUiDir } from './NeuralTraceView';
+import { TraceTimeline, WorkStageRail, useTraceStyles, useUiDir } from './NeuralTraceView';
+import { type WorkStage, workStageFor, traceDisplayKey, cleanTraceText } from '../lib/neuralTrace';
 
 interface NeuralThinkingIndicatorProps {
   phase?: 'analyzing' | 'synthesizing' | 'executing' | 'idle';
@@ -42,16 +42,7 @@ const phaseLabels: Record<string, { key: string; color: string }> = {
   idle: { key: 'thinkingAnalyzing', color: '#5c7f74' },
 };
 
-/**
- * OPEN, NOT SHUT.
- *
- * «القائمة مغلقة ويجب أن تكون مفتوحة لنرى التفاصيل داخلها» — and he is right:
- * the whole reason this card exists is the steps inside it. It used to stay a
- * single line until FOUR of them had arrived, so a run showing «3 steps ▾»
- * hid everything it had. One step is enough to be worth seeing; the chip is
- * still there to fold it away when he wants the conversation back.
- */
-const TIMELINE_THRESHOLD = 1;
+/** Details are opt-in. The live surface stays one readable sentence. */
 
 export default function NeuralThinkingIndicator({ phase = 'analyzing', visible, variant = 'inline', sessionId }: NeuralThinkingIndicatorProps) {
   const { t } = useTranslation();
@@ -60,7 +51,7 @@ export default function NeuralThinkingIndicator({ phase = 'analyzing', visible, 
   const [currentPhase, setCurrentPhase] = useState(phase);
   const [status, setStatus] = useState('');
   const [steps, setSteps] = useState<TraceStep[]>([]);
-  /** null = follow the step count; true/false = he decided. */
+  /** null = compact live line; true/false = the user chose the detail view. */
   const [expanded, setExpanded] = useState<boolean | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -69,7 +60,6 @@ export default function NeuralThinkingIndicator({ phase = 'analyzing', visible, 
   //  an effect — never in the render body, because React can render twice
   //  before it commits and the second pass would set the outgoing line to
   //  the incoming one, rolling the same words up against themselves.
-  const leavingRef = useRef('');
   useEffect(() => { activeSessionRef.current = sessionId; }, [sessionId]);
 
   useEffect(() => {
@@ -99,7 +89,7 @@ export default function NeuralThinkingIndicator({ phase = 'analyzing', visible, 
     return () => clearInterval(id);
   }, [visible]);
 
-  const showTimeline = expanded === null ? steps.length >= TIMELINE_THRESHOLD : expanded;
+  const showTimeline = expanded === true;
 
   useEffect(() => {
     if (visible && showTimeline && steps.length > 0) bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -138,16 +128,19 @@ export default function NeuralThinkingIndicator({ phase = 'analyzing', visible, 
   const phaseNow = phaseLabels[currentPhase] || phaseLabels.analyzing;
   const phaseText = t(phaseNow.key);
   const detail = stripPictographs(status || (steps.length ? steps[steps.length - 1].text : '')) || '';
-  const rollText = detail && detail !== phaseText ? detail : '';
-  useEffect(() => { leavingRef.current = rollText; }, [rollText]);
-
   // Single source of truth: the parent decides (per session) when to show us.
   if (!visible) return null;
 
   const current = phaseNow;
-  const sec = t('traceSecond', 's');
-  const elapsed = liveTrace ? Math.max(0, liveTrace.endedAt - liveTrace.startedAt) : 0;
   const canExpand = steps.length > 0;
+  const currentStage: WorkStage = workStageFor(currentPhase, detail);
+  const displayKey = traceDisplayKey(detail);
+  const cleanedDetail = cleanTraceText(detail);
+  // Never leak an internal English tool name into the Arabic live sentence.
+  // Known events use translated copy; unknown machine-only events stay in Logs.
+  const displayDetail = displayKey
+    ? t(displayKey)
+    : (uiDir === 'rtl' && /[A-Za-z]/u.test(cleanedDetail) ? '' : cleanedDetail);
 
   return (
     <div
@@ -159,27 +152,22 @@ export default function NeuralThinkingIndicator({ phase = 'analyzing', visible, 
         .neural-card {
           --nc: ${current.color};
           display: flex; flex-direction: column; gap: 0;
-          border-radius: 14px;
-          border: 1px solid color-mix(in srgb, var(--nc) 22%, transparent);
-          background:
-            linear-gradient(180deg, color-mix(in srgb, var(--nc) 8%, transparent), transparent),
-            var(--joe-bg-panel, rgba(22,26,30,0.85));
-          padding: 8px 11px;
+          border: 0;
+          background: transparent;
+          padding: 4px 0;
           /* It lives INSIDE a chat bubble: it takes the width it is given and
              not one pixel more. Without box-sizing the padding pushed it past
              its container's border — visible in his screenshot as a card
              overlapping the frame on both sides. */
           box-sizing: border-box;
           width: 100%;
-          backdrop-filter: blur(10px);
+          backdrop-filter: none;
           overflow: hidden;
           max-width: 100%;
           min-width: 0;
           margin-bottom: 8px;
-          /* A softer, tighter shadow: the old one bled 22px past the card and
-             read as a glow crossing the chat's own border. */
-          box-shadow: 0 3px 12px -8px color-mix(in srgb, var(--nc) 45%, transparent);
-          animation: nc-in .35s cubic-bezier(0.22,1,0.36,1);
+          box-shadow: none;
+          animation: nc-in .28s cubic-bezier(0.22,1,0.36,1);
         }
         .neural-card.bubble { margin-bottom: 0; }
         @keyframes nc-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
@@ -208,9 +196,9 @@ export default function NeuralThinkingIndicator({ phase = 'analyzing', visible, 
            the rest of Joe already uses, sage while he thinks, slate while
            he plans, ochre while he builds.
          */
-        .nc-orb { position: relative; width: 18px; height: 18px; flex: none; }
+        .nc-orb { position: relative; width: 14px; height: 14px; flex: none; }
         .nc-orb::before {
-          content: ""; position: absolute; inset: -3px; border-radius: 50%;
+          content: ""; position: absolute; inset: -4px; border-radius: 50%;
           background: rgba(47,134,214,.3);
           filter: blur(4px); animation: nc-halo 2.8s ease-in-out infinite;
         }
@@ -254,61 +242,31 @@ export default function NeuralThinkingIndicator({ phase = 'analyzing', visible, 
         }
 
         .nc-label {
-          font-size: 12px; letter-spacing: .2px; min-width: 0; flex: 1 1 auto;
-          display: flex; align-items: center; gap: 7px;
+          font-size: 12px; letter-spacing: 0; min-width: 0; flex: 1 1 auto;
+          display: flex; align-items: baseline; gap: 6px;
         }
-        /* The phase, in the phase's own colour, and it does not leave. */
-        .nc-phase { flex: none; font-weight: 700; color: var(--nc); white-space: nowrap; }
-        .nc-sep { flex: none; width: 3px; height: 3px; border-radius: 50%; background: color-mix(in srgb, var(--nc) 45%, transparent); }
-
-        /* ── the departures board ──────────────────────────────────────────
-           A step does not blink out while the next blinks in — the line
-           rides up and its successor arrives from below, the way a board
-           at a station changes.
-
-           The clip and the mover are two elements deliberately: putting
-           overflow: hidden on the element that is translated makes the
-           clip travel with it and clip nothing.
-
-           The mover RESTS at -1.4em — showing the second line — and the
-           keyframes run from 0 up to there. So when React remounts it on a
-           new key the roll plays and then the new text is simply where it
-           belongs, with no fill-mode to remember or forget.
-         */
-        .nc-roll { display: block; height: 1.4em; overflow: hidden; min-width: 0; flex: 1 1 auto; }
-        .nc-roll .mover { display: block; transform: translateY(-1.4em); animation: nc-roll .5s cubic-bezier(.65,0,.35,1); }
-        .nc-roll .ln {
-          display: block; height: 1.4em; line-height: 1.4em; font-weight: 500;
-          overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-          color: color-mix(in srgb, var(--nc) 70%, var(--joe-text, #2a2f2d));
+        /* The live sentence is the product surface; phase is a quiet prefix. */
+        .nc-phase { flex: none; font-weight: 600; color: var(--joe-text-primary, #eceef0); white-space: nowrap; }
+        .nc-stage {
+          flex: none; max-width: 35%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+          color: var(--joe-text-muted, #8b9198); font-size: 11px; font-weight: 500;
         }
-        .nc-roll .ln.leaving { opacity: .4; }
-        @keyframes nc-roll { from { transform: translateY(0); } to { transform: translateY(-1.4em); } }
+        .nc-sep { flex: none; color: var(--joe-text-muted, #8b9198); font-size: 11px; }
+        .nc-detail { min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--joe-text-secondary, #c4c9cf); font-size: 11.5px; }
 
-        .nc-elapsed {
-          flex: none; font-size: 10.5px; font-weight: 600; font-variant-numeric: tabular-nums;
-          color: var(--joe-text-muted, #6e7178);
-        }
-        /* «6 steps ▾» — the whole log, one keystroke away, never in the way. */
+        /* Details are available, but visually subordinate to the sentence. */
         .nc-chip {
           flex: none; display: inline-flex; align-items: center; gap: 4px;
           font: inherit; font-size: 10.5px; font-weight: 600;
-          color: var(--nc); background: color-mix(in srgb, var(--nc) 12%, transparent);
-          border: 1px solid color-mix(in srgb, var(--nc) 22%, transparent);
-          border-radius: 999px; padding: 2px 8px; cursor: pointer;
+          color: var(--joe-text-muted, #8b9198); background: transparent;
+          border: 0; border-bottom: 1px solid color-mix(in srgb, var(--joe-text-muted, #8b9198) 35%, transparent);
+          border-radius: 0; padding: 1px 0; cursor: pointer;
           font-variant-numeric: tabular-nums; transition: background .18s ease;
         }
-        .nc-chip:hover { background: color-mix(in srgb, var(--nc) 20%, transparent); }
+        .nc-chip:hover { color: var(--joe-text-primary, #eceef0); border-bottom-color: currentColor; }
         .nc-chip:focus-visible { outline: 2px solid var(--nc); outline-offset: 2px; }
         .nc-chip svg { transition: transform .22s cubic-bezier(.22,1,.36,1); }
         .nc-chip[aria-expanded="true"] svg { transform: rotate(180deg); }
-
-        /* thin animated progress shimmer under the header */
-        .nc-track { height: 2px; border-radius: 2px; margin-top: 8px; overflow: hidden; background: color-mix(in srgb, var(--nc) 14%, transparent); }
-        .nc-track > i { display: block; height: 100%; width: 40%; border-radius: 2px;
-          background: linear-gradient(90deg, transparent, var(--nc), transparent);
-          animation: nc-sweep 1.5s ease-in-out infinite; }
-        @keyframes nc-sweep { 0% { transform: translateX(-120%); } 100% { transform: translateX(320%); } }
 
         /* The log used to live in a 140px box behind a 3px scrollbar. It now gets
            room to be read, and still cannot swallow the conversation. */
@@ -323,48 +281,44 @@ export default function NeuralThinkingIndicator({ phase = 'analyzing', visible, 
         .nc-log::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--nc) 55%, transparent); }
 
         @media (prefers-reduced-motion: reduce) {
-          .nc-orb .skin, .nc-orb::before, .nc-track > i, .nc-roll .mover, .neural-card { animation: none !important; }
+              .nc-orb .skin, .nc-orb::before, .neural-card { animation: none !important; }
           /* And still a sphere when it cannot move: a blob frozen halfway
              through the morph is worse than no motion at all. */
           .nc-orb .skin { border-radius: 50%; transform: none; }
           .nc-chip svg { transition: none !important; }
+        }
+        @media (max-width: 560px) {
+              .neural-head { align-items: flex-start; }
+              .nc-label { flex-wrap: wrap; row-gap: 2px; }
+              .nc-detail { flex-basis: 100%; }
+              .nc-stage { max-width: 36%; }
         }
       `}</style>
 
       <div className="neural-head">
         <span className="nc-orb" aria-hidden="true"><span className="skin" /></span>
         <span className="nc-label">
-          <span className="nc-phase">{phaseText}</span>
-          {rollText && <span className="nc-sep" aria-hidden="true" />}
-          {rollText && (
-            /* dir="auto" on the LINE, not on the card: a step like
-               «جاري تنفيذ: react project» mixes scripts and used to reorder. */
-            <span className="nc-roll" key={rollText} dir="auto">
-              <span className="mover">
-                <span className="ln leaving">{leavingRef.current}</span>
-                <span className="ln">{rollText}</span>
-              </span>
-            </span>
-          )}
+          <span className="nc-phase">{t('neuralWorking', phaseText)}</span>
+          <span className="nc-sep" aria-hidden="true" />
+          <span className="nc-stage">{t(`neuralStage${currentStage[0].toUpperCase()}${currentStage.slice(1)}`)}</span>
+          {displayDetail && <span className="nc-detail" key={displayDetail} dir="auto">{displayDetail}</span>}
         </span>
-        {elapsed >= 1000 && <span className="nc-elapsed">{formatDuration(elapsed, sec)}</span>}
-        {canExpand && (
+            {canExpand && (
           <button
             type="button"
             className="nc-chip"
             aria-expanded={showTimeline}
             onClick={() => setExpanded(!showTimeline)}
           >
-            {t('traceSteps', '{{count}} steps', { count: steps.length })}
+            {t(showTimeline ? 'neuralHideDetails' : 'neuralShowDetails', '{{count}} details', { count: steps.length })}
             <ChevronDown size={11} />
           </button>
         )}
       </div>
 
-      {!showTimeline && <div className="nc-track"><i /></div>}
-
       {showTimeline && liveTrace && (
         <div className="nc-log">
+          <WorkStageRail trace={liveTrace} live />
           <TraceTimeline trace={liveTrace} live />
           <div ref={bottomRef} />
         </div>

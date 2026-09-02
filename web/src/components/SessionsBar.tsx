@@ -61,6 +61,7 @@ export default function SessionsBar({
 
     return (
         <div
+            className="joe-sessions-bar"
             style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -189,6 +190,7 @@ export default function SessionsBar({
 
                 {/* New Session Button */}
                 <button
+                    className="joe-sessions-new"
                     onClick={onNew}
                     style={{
                         display: 'flex',
@@ -230,6 +232,7 @@ function SessionChip({
     const { t } = useTranslation();
     return (
         <motion.div
+            className="joe-session-chip"
             layout
             /*
              *  A CHIP THAT DOES NOT SAY WHICH SESSION IT IS CANNOT BE MEASURED.

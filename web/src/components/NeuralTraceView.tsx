@@ -21,11 +21,15 @@ import {
     type NeuralTrace,
     type TracePhase,
     type TraceStep,
+    WORK_STAGES,
+    cleanTraceText,
     formatDuration,
     groupByPhase,
     stepDurations,
+    traceDisplayKey,
     traceDuration,
     traceToText,
+    workStageFor,
 } from '../lib/neuralTrace';
 
 /**
@@ -106,6 +110,25 @@ const TRACE_CSS = `
 .jt-ribbon { display: flex; height: 3px; border-radius: 999px; overflow: hidden; gap: 1.5px; margin-top: 8px; }
 .jt-ribbon > i { display: block; height: 100%; border-radius: 999px; background: var(--seg); min-width: 3px; }
 
+/* A product-level map of the work. It is a status model, not a fake percentage. */
+.jt-stage-rail {
+  display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 4px;
+  margin: 9px 0 2px; min-width: 0;
+}
+.jt-stage {
+  display: flex; align-items: center; gap: 4px; min-width: 0;
+  color: var(--joe-text-muted, #6e7178); font-size: 9.5px; line-height: 1.2;
+}
+.jt-stage-dot {
+  width: 7px; height: 7px; flex: none; border-radius: 50%;
+  border: 1px solid currentColor; opacity: .7;
+}
+.jt-stage-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.jt-stage.is-visited { color: var(--jt-accent, #34c48b); }
+.jt-stage.is-visited .jt-stage-dot { background: currentColor; opacity: 1; }
+.jt-stage.is-current { color: var(--joe-text-primary, #eceef0); font-weight: 700; }
+.jt-stage.is-current .jt-stage-dot { box-shadow: 0 0 0 3px color-mix(in srgb, var(--jt-accent, #34c48b) 16%, transparent); }
+
 /* ── the receipt kept in the chat ───────────────────────────────── */
 .jt-receipt { margin: 2px 0 6px; max-width: 100%; }
 .jt-rbtn {
@@ -139,6 +162,11 @@ const TRACE_CSS = `
 }
 .jt-copy:hover { color: var(--joe-text-primary, #eceef0); background: rgba(255,255,255,.05); }
 .jt-copy:focus-visible { outline: 2px solid var(--jt-accent, #34c48b); outline-offset: 2px; }
+
+@media (max-width: 560px) {
+  .jt-stage-rail { overflow-x: auto; display: flex; padding-bottom: 3px; scrollbar-width: thin; }
+  .jt-stage { flex: 0 0 auto; min-width: 78px; }
+}
 
 @media (prefers-reduced-motion: reduce) {
   .jt-chev, .jt-body { transition: none !important; animation: none !important; }
@@ -219,6 +247,8 @@ export function TraceTimeline({ trace, live = false }: TimelineProps) {
                         const idx = g.indices[si];
                         const isLast = idx === lastIndex;
                         const span = spans[idx];
+                        const displayKey = traceDisplayKey(step.text);
+                        const displayText = displayKey ? t(displayKey) : cleanTraceText(step.text);
                         return (
                             <div
                                 className={`jt-step ${step.kind}${live && isLast ? ' now' : ''}`}
@@ -226,7 +256,7 @@ export function TraceTimeline({ trace, live = false }: TimelineProps) {
                             >
                                 {/* dir="auto" per LINE — the whole card carrying one
                                     direction is what scrambled his mixed lines. */}
-                                <span className="jt-text" dir="auto">{stripPictographs(step.text)}</span>
+                                <span className="jt-text" dir="auto" title={stripPictographs(step.text)}>{displayText}</span>
                                 {(!live || !isLast) && span >= 1000 && (
                                     <span className="jt-ms">{formatDuration(span, sec)}</span>
                                 )}
@@ -234,6 +264,40 @@ export function TraceTimeline({ trace, live = false }: TimelineProps) {
                         );
                     })}
                 </div>
+            ))}
+        </div>
+    );
+}
+
+const STAGE_KEYS: Record<string, string> = {
+    understand: 'neuralStageUnderstand',
+    plan: 'neuralStagePlan',
+    build: 'neuralStageBuild',
+    test: 'neuralStageTest',
+    repair: 'neuralStageRepair',
+    verify: 'neuralStageVerify',
+};
+
+/** Show which work stages have actually appeared in the trace. */
+export function WorkStageRail({ trace, live = false }: { trace: NeuralTrace; live?: boolean }) {
+    const { t } = useTranslation();
+    const seen = new Set(trace.steps.map(step => workStageFor(step.phase, step.text)));
+    const current = live || trace.steps.length ? workStageFor(
+        trace.steps[trace.steps.length - 1]?.phase || 'idle',
+        trace.steps[trace.steps.length - 1]?.text || '',
+    ) : 'understand';
+    return (
+        <div className="jt-stage-rail" role="list" aria-label={t('neuralStageMap', 'Work stages')}>
+            {WORK_STAGES.map(stage => (
+                <span
+                    className={`jt-stage ${seen.has(stage) ? 'is-visited' : ''} ${current === stage ? 'is-current' : ''}`}
+                    key={stage}
+                    role="listitem"
+                    aria-current={current === stage ? 'step' : undefined}
+                >
+                    <span className="jt-stage-dot" aria-hidden="true" />
+                    <span className="jt-stage-label">{t(STAGE_KEYS[stage], stage)}</span>
+                </span>
             ))}
         </div>
     );
@@ -315,6 +379,7 @@ export function NeuralTraceReceipt({ trace, defaultOpen = false }: { trace: Neur
 
             {open && (
                 <div className="jt-body" id={bodyId}>
+                    <WorkStageRail trace={trace} />
                     <TraceTimeline trace={trace} />
                     <PhaseRibbon trace={trace} />
                     <div className="jt-tools">

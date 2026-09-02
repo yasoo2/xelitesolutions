@@ -8,8 +8,12 @@ const stream = await readFile(resolve(root, 'src/components/ModernBrowserStream.
 const composer = await readFile(resolve(root, 'src/components/CommandComposer.tsx'), 'utf8');
 const embedded = await readFile(resolve(root, 'src/components/EmbeddedBrowser.tsx'), 'utf8');
 const githubDialog = await readFile(resolve(root, 'src/components/GitHubConnectDialog.tsx'), 'utf8');
+const neuralIndicator = await readFile(resolve(root, 'src/components/NeuralThinkingIndicator.tsx'), 'utf8');
+const neuralTrace = await readFile(resolve(root, 'src/components/NeuralTraceView.tsx'), 'utf8');
+const neuralModel = await readFile(resolve(root, 'src/lib/neuralTrace.ts'), 'utf8');
 const css = await readFile(resolve(root, 'src/styles/joe-premium.css'), 'utf8');
 const joePage = await readFile(resolve(root, 'src/pages/Joe.tsx'), 'utf8');
+const sessionsBar = await readFile(resolve(root, 'src/components/SessionsBar.tsx'), 'utf8');
 
 const checks = [
   ['the live stream exposes a stable root test hook', stream.includes('data-testid="browser-stream-root"')],
@@ -32,6 +36,12 @@ const checks = [
   ['the removed full-width login banner cannot reappear accidentally', !stream.includes('loginBarHidden') && !stream.includes('joe_login_bar_hidden')],
   ['existing workspace artifacts suppress onboarding safely', joePage.includes("api.get('/project/tree')") && joePage.includes('hasVisibleArtifacts') && joePage.includes('if (!hasVisibleArtifacts) setIsOnboardingOpen(true)')],
   ['GitHub dialog has close, Done, and real disconnect actions', githubDialog.includes("aria-label={t('close', 'Close')}") && githubDialog.includes("t('done', 'Done')") && githubDialog.includes('<X size={18} />') && githubDialog.includes('onDisconnect') && githubDialog.includes('<LogOut size={15} />')],
+  ['neural activity separates the human summary from the expandable trace', neuralIndicator.includes('neuralWorking') && neuralIndicator.includes('WorkStageRail') && neuralIndicator.includes('nc-detail') && neuralTrace.includes('jt-stage-rail')],
+  ['neural stages derive from observed events and never invent completion percentages', neuralModel.includes('workStageFor') && neuralModel.includes('WORK_STAGES') && !neuralIndicator.includes('% complete')],
+  ['machine progress labels are translated into user-facing activity labels', neuralModel.includes('traceDisplayKey') && neuralTrace.includes('displayKey') && neuralIndicator.includes('displayKey')],
+  ['primary workspace surfaces stay flat while real detail tools remain available', css.includes('MODERN WORKSPACE SURFACES') && css.includes('backdrop-filter: none;') && css.includes('box-shadow: none !important;') && css.includes('.joe-workspace-tab.active')],
+  ['workspace tabs use a quiet active rule instead of nested pill cards', css.includes('.joe-tab-segment {') && css.includes('border: 0;') && css.includes('border-bottom-color: var(--joe-gold-primary);')],
+  ['session navigation and user messages do not render as filled card stacks', css.includes('.joe-sessions-bar') && css.includes('.joe-session-chip') && css.includes('background: transparent;') && css.includes('border-inline-end: 2px solid var(--joe-blue-primary);') && sessionsBar.includes('className="joe-sessions-new"') && sessionsBar.includes('className="joe-session-chip"')],
 ];
 
 for (const [name, ok] of checks) {

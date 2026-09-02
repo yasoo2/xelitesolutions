@@ -795,10 +795,12 @@ Return the complete file content now.`;
             // honest no-provider notice, spend exactly one bounded second walk
             // before stopping the phase. Ordinary user calls remain fail-fast;
             // no outage text is ever treated as file content.
-            if (isProviderFailure(content) && context?.engineeringPipeline === true) {
+            if (isProviderFailure(content) && context?.engineeringPipeline === true && context?.allowProviderRetry !== false) {
                 logs.push(`engineering provider retry requested for ${filePath}`);
                 await new Promise(resolve => setTimeout(resolve, 250));
                 content = await callForArtifact();
+            } else if (isProviderFailure(content) && context?.engineeringPipeline === true) {
+                logs.push(`engineering provider retry skipped for ${filePath}; a verified request-derived fallback is available`);
             }
 
             // When no provider answers, the router returns an apology STRING

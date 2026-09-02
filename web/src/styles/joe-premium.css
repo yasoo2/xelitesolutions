@@ -1,6 +1,6 @@
 /**
- * Joe Premium CSS - Design 4 (Final)
- * Dark Gold Premium Theme with Glassmorphism & Wave Effects
+ * Joe workspace styles
+ * A calm, focused surface for conversation, execution, and review.
  */
 @import './task-tracker.css';
 
@@ -3986,4 +3986,223 @@ body:not(.rtl) .joe-user-info {
     width: auto;
     max-width: none;
     border-inline-start: none;
+}
+
+/* ============================================================
+   MODERN WORKSPACE SURFACES
+
+   The primary screen is a workbench, not a stack of decorative cards. Keep
+   framing for real tools and dialogs, but let the chat, composer, and tab
+   rail use quiet surfaces so the current work remains the visual priority.
+   ============================================================ */
+:root {
+    --joe-bg-primary: #0f1417;
+    --joe-bg-secondary: #151b1f;
+    --joe-bg-panel: #151b20;
+    --joe-bg-card: #1c2429;
+    --joe-bg-hover: rgba(141, 201, 255, 0.10);
+    --joe-gold-primary: #69d5ad;
+    --joe-gold-secondary: #4ab7b5;
+    --joe-gold-dark: #2c7180;
+    --joe-gold-glow: rgba(105, 213, 173, 0.22);
+    --joe-gold-subtle: rgba(105, 213, 173, 0.12);
+    --joe-gold-border: rgba(105, 213, 173, 0.32);
+    --joe-blue-primary: #8dc9ff;
+    --joe-blue-secondary: #4d91df;
+    --joe-text-primary: #edf3f4;
+    --joe-text-secondary: #a5b4bd;
+    --joe-text-muted: #72818b;
+    --joe-text-gold: #69d5ad;
+    --joe-border: rgba(160, 187, 201, 0.22);
+    --joe-border-strong: rgba(105, 213, 173, 0.55);
+    --joe-msg-user-bg: rgba(141, 201, 255, 0.14);
+    --joe-modern-chat: #171a1d;
+    --joe-modern-workspace: #111417;
+    --joe-modern-control: #1d2226;
+    --joe-modern-rule: rgba(160, 187, 201, 0.18);
+}
+
+[data-theme="light"] {
+    --joe-bg-primary: #f6f8f8;
+    --joe-bg-secondary: #eef3f4;
+    --joe-bg-panel: #eef3f4;
+    --joe-bg-card: #ffffff;
+    --joe-bg-hover: rgba(37, 99, 166, 0.08);
+    --joe-gold-primary: #16766b;
+    --joe-gold-secondary: #197b8a;
+    --joe-gold-dark: #195c69;
+    --joe-gold-glow: rgba(22, 118, 107, 0.16);
+    --joe-gold-subtle: rgba(22, 118, 107, 0.10);
+    --joe-gold-border: rgba(22, 118, 107, 0.30);
+    --joe-blue-primary: #2563a6;
+    --joe-blue-secondary: #1d4f91;
+    --joe-text-primary: #142025;
+    --joe-text-secondary: #52636a;
+    --joe-text-muted: #718187;
+    --joe-text-gold: #16766b;
+    --joe-border: rgba(24, 48, 40, 0.16);
+    --joe-border-strong: rgba(22, 118, 107, 0.52);
+    --joe-msg-user-bg: rgba(37, 99, 166, 0.10);
+    --joe-modern-chat: #fbfcfc;
+    --joe-modern-workspace: #f0f4f4;
+    --joe-modern-control: #ffffff;
+    --joe-modern-rule: rgba(24, 48, 40, 0.15);
+}
+
+.joe-ide-layout {
+    background: var(--joe-modern-chat);
+}
+
+.joe-header {
+    background: var(--joe-modern-chat);
+    border-bottom: 1px solid var(--joe-modern-rule);
+}
+
+.joe-logo {
+    width: 34px;
+    height: 34px;
+    border: 1px solid var(--joe-border);
+    border-radius: 9px;
+    background: transparent;
+    box-shadow: none;
+}
+
+.joe-mode-btn.active {
+    background: var(--joe-gold-primary);
+    color: var(--joe-on-accent);
+    box-shadow: none;
+}
+
+.joe-header-btn {
+    background: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
+}
+
+.joe-header-btn:hover {
+    transform: none;
+    box-shadow: none;
+}
+
+.joe-main {
+    gap: 0;
+}
+
+.joe-chat-panel,
+.joe-workspace,
+.joe-files-panel {
+    background: var(--joe-modern-chat);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+.joe-workspace {
+    background: var(--joe-modern-workspace);
+}
+
+.joe-chat-messages {
+    background: transparent;
+    gap: 20px;
+}
+
+.joe-chat-input-area {
+    padding: 12px 20px 14px !important;
+    background: var(--joe-modern-chat) !important;
+}
+
+.joe-chat-input-area .input-container,
+.joe-chat-panel .input-container {
+    padding: 11px 13px 9px !important;
+    border: 1px solid var(--joe-modern-rule) !important;
+    border-radius: 10px !important;
+    background: var(--joe-modern-control) !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+.joe-chat-input-area .input-container:focus-within,
+.joe-chat-panel .input-container:focus-within {
+    border-color: var(--joe-border-strong) !important;
+    box-shadow: 0 0 0 2px rgba(52, 196, 139, 0.12) !important;
+}
+
+.joe-workspace-tabs {
+    gap: 14px;
+    padding: 7px 12px 0;
+    background: var(--joe-modern-workspace);
+    border-bottom: 1px solid var(--joe-modern-rule);
+}
+
+.joe-tab-segment {
+    gap: 14px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+}
+
+.joe-workspace-tab,
+.joe-workspace-tab.active,
+.joe-workspace-tab:hover:not(.active) {
+    padding: 8px 3px 9px;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+}
+
+.joe-workspace-tab {
+    border-bottom: 2px solid transparent;
+}
+
+.joe-workspace-tab.active {
+    border-bottom-color: var(--joe-gold-primary);
+    color: var(--joe-text-primary);
+}
+
+.joe-workspace-tab:hover:not(.active) {
+    color: var(--joe-text-primary);
+    border-bottom-color: rgba(52, 196, 139, 0.35);
+}
+
+.joe-workspace-content {
+    background: var(--joe-modern-workspace);
+}
+
+.joe-browser-bar {
+    background: var(--joe-modern-workspace);
+}
+
+.joe-message.user .joe-message-bubble {
+    background: transparent;
+    border: 0;
+    border-inline-end: 2px solid var(--joe-blue-primary);
+    border-radius: 10px 10px 3px 10px;
+    padding: 5px 12px;
+}
+
+.joe-sessions-bar {
+    background: var(--joe-modern-chat) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    border-top: 1px solid var(--joe-modern-rule) !important;
+}
+
+.joe-session-chip {
+    background: transparent !important;
+    border: 0 !important;
+    border-bottom: 2px solid transparent !important;
+    border-radius: 0 !important;
+    padding: 6px 8px !important;
+}
+
+.joe-session-chip[data-session-active="true"] {
+    background: transparent !important;
+    border-bottom-color: var(--joe-gold-primary) !important;
+}
+
+.joe-sessions-new {
+    background: var(--joe-gold-primary) !important;
+    border-radius: 8px !important;
+    box-shadow: none !important;
 }

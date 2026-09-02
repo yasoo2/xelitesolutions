@@ -27,6 +27,13 @@ describe('React domain authoring preserves provider outages for orchestration re
         expect(source).toMatch(/context\?\.engineeringPipeline\s*===\s*true/);
         expect(source).toContain('request_derived_engine');
         expect(source).toContain('same QA gates');
+        expect(source).toContain('allowProviderRetry: false');
+    });
+
+    it('does not repeat a long provider outage when a verified fallback exists', () => {
+        const source = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'AIGeneratorTool.ts'), 'utf8');
+        expect(source).toContain('context?.allowProviderRetry !== false');
+        expect(source).toContain('engineering provider retry skipped');
     });
 
     it('returns the stable provider failure instead of domain_generation_failed', async () => {

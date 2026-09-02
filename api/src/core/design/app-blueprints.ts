@@ -1598,6 +1598,7 @@ const ASKS_YES_OR_NO = /^(?:هل|is|are|was|were|has|have|did|does)(?=$|\s)|[?؟
 
 const TYPE_MARKS: Array<[RegExp, DerivedRole, FieldType]> = [
     [ASKS_YES_OR_NO, 'flag', 'select'],
+    [/status|state|مرحلة|حالة|وضع/iu, 'flag', 'select'],
     [/تلفون|هاتف|جوال|موبايل|واتس|\bphone\b|\bmobile\b|\btel\b|whatsapp/iu, 'tel', 'tel'],
     [/ايميل|إيميل|بريد\s*الكتروني|بريد\s*إلكتروني|\bemail\b|\be-?mail\b/iu, 'email', 'email'],
     [/تاريخ|يوم\s|\bdate\b|\bday\b/iu, 'date', 'date'],
@@ -2126,7 +2127,7 @@ function everyItemIsADefiniteName(items: string[]): boolean {
  *  instead of asking about a website — and a second copy would drift the
  *  first time one of them learned a word the other did not.
  */
-export const RECORD_CONTAINER = /(جدول|جداول|قائمة|كشف|سجل|سجلّ|\btable\b|\blist\b|\bsheet\b|\bledger\b|\bregister\b|\btracker\b)/iu;
+export const RECORD_CONTAINER = /(جدول|جداول|قائمة|كشف|سجل|سجلّ|\btable\b|\blist\b|\bsheet\b|\bledger\b|\bregister\b|\btracker\b|\bdirectory\b|\bregistry\b|\bcatalog(?:ue)?\b)/iu;
 
 /**
  *  WHERE THE SENTENCE ENDS AND THE FIRST COLUMN BEGINS.
@@ -2250,6 +2251,9 @@ function firstColumnBeginsAtTheName(firstRaw: string, afterAContainer: boolean):
  */
 const OPENS_A_NEW_REQUEST = /^(?:مع|plus|with|along\s+with|together\s+with|including|and)(?=$|[\s،,])/iu;
 
+/** A behaviour beside fields is an app requirement, not another column. */
+const CAPABILITY_CLAUSE = /^(?:(?:empty[-\s]+)?(?:name|field|input)\s+validation|(?:status|state)\s+(?:filter(?:ing)?|selection)|(?:text\s+)?search(?:ing)?|filter(?:ing)?|sort(?:ing)?|export(?:ing)?(?:\s+(?:csv|data|records))?|validation|(?:بحث|تصفية|فلترة|فرز|تصدير|تحقق|تحقّق|صلاحية|التحقق|التأكد|تأكيد)(?:\s|$))/iu;
+
 /**
   ⛔ AND THIS LIST IS EXPLICIT ON PURPOSE, AFTER A LETTER RULE FAILED.
  *
@@ -2294,6 +2298,9 @@ function opensAsABehaviour(word: string): boolean {
 function isAColumnAndNotAClause(item: string, index: number): boolean {
     const t = String(item || '').trim();
     if (index > 0 && OPENS_A_NEW_REQUEST.test(t)) return false;
+    // Stop at the first action phrase so "search" and "status filtering" do
+    // not become text inputs in a user-declared record schema.
+    if (index > 0 && CAPABILITY_CLAUSE.test(t)) return false;
     //  A YES-OR-NO COLUMN IS INDEFINITE BY NATURE.
     //
     //  «بدي جدول أسجل فيه الفواتير: اسم الزبون والمبلغ ومدفوع» — «مدفوع»
@@ -3012,8 +3019,13 @@ function fieldsFromLabels(parts: string[]): DerivedField[] | null {
         seen.set(role, n);
         //  The answers are written in the language of his own label, so an
         //  Arabic column offers «نعم/لا» and an English one Yes/No.
+        const status = /status|state|مرحلة|حالة|وضع/iu.test(label);
         const options = role === 'flag'
-            ? (/[\u0600-\u06FF]/.test(label) ? ['نعم', 'لا'] : ['Yes', 'No'])
+            ? status
+                ? (/[؀-ۿ]/.test(label)
+                    ? ['قيد الانتظار', 'قيد الإصلاح', 'تم الإصلاح']
+                    : ['Pending', 'In progress', 'Completed'])
+                : (/[؀-ۿ]/.test(label) ? ['نعم', 'لا'] : ['Yes', 'No'])
             : undefined;
         out.push({ label, key: `${role}${n}`, type, role, options });
     }
@@ -3374,6 +3386,37 @@ function weatherFeatureCovered(feature: string, evidence: string): boolean {
     return ENGINE_COVERS.weather.test(feature);
 }
 
+/**
+ * Records requirements need executable evidence too. A generic engine name is
+ * not proof that a requested field or action exists in the generated app.
+ */
+function recordFeatureCovered(feature: string, request: string, evidence: string): boolean {
+    const f = String(feature || '').trim();
+    const src = String(evidence || '');
+    const escaped = f.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const hasDeclaredLabel = f.length >= 3 && new RegExp(
+        `(?:label|placeholder|aria-label)\\s*[:=]\\s*['\"]${escaped}['\"]`, 'iu',
+    ).test(src);
+    if (hasDeclaredLabel) return true;
+    if (/^(?:search|text\s+search|searching|بحث|البحث)$/iu.test(f)) {
+        return /setQuery|query\.trim|filtered|visible\s*=|onChange=.*query|search/i.test(src);
+    }
+    if (/^(?:filter|filtering|status\s+filtering|status\s+filter|تصفية|فلترة|التصفية)$/iu.test(f)) {
+        return /setFilter|content\.statusField|filter\s*&&|filter.*statusField/i.test(src);
+    }
+    if (/(?:validation|تحقق|صلاحية)/iu.test(f)) {
+        return /checkValidity|required|setError|missing|invalid/i.test(src);
+    }
+    if (/^(?:export|exporting|export\s+csv|تصدير)$/iu.test(f)) {
+        return /toCsv|download\s*\(/i.test(src);
+    }
+    // Keep the generic engine contract for a request that names the engine
+    // itself, while all concrete fields/actions above require source proof.
+    return /^(?:records?|crud|table|list|directory|registry|سجل|جدول|قائمة)$/iu.test(f)
+        && ENGINE_COVERS.records.test(f)
+        && /RecordsApp|createStore|rows-table|className=.*rows/i.test(src);
+}
+
 /** Rule registries are capability contracts, not saved app bodies. */
 const FEATURE_RULES_BY_ENGINE: Partial<Record<AppEngine, Array<{ asked: RegExp; evidence: RegExp }>>> = {
     weather: WEATHER_FEATURE_RULES,
@@ -3411,6 +3454,7 @@ export function uncoveredFeatures(request: string, engine: AppEngine | null, has
     const covers = engine ? ENGINE_COVERS[engine] : null;
     return asked.filter(f => {
         if (engine === 'weather' && weatherFeatureCovered(f, evidence)) return false;
+        if (engine === 'records') return !recordFeatureCovered(f, request, evidence);
         if (engine !== 'weather' && covers && covers.test(f)) return false;
         if (hasBackend && BACKEND_COVERS.test(f)) return false;
         return true;
