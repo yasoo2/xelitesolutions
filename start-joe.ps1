@@ -219,7 +219,13 @@ function Sync-Dependencies {
     $pkg = Join-Path $dir "package.json"
     $stampFile = Join-Path $dir ".dep-stamp"
     $currentHash = (Get-FileHash -Path $pkg -Algorithm SHA256).Hash
-    $storedHash = if (Test-Path $stampFile) { (Get-Content $stampFile -Raw -ErrorAction SilentlyContinue).Trim() } else { "" }
+    $storedHash = ""
+    if (Test-Path $stampFile) {
+        $storedContent = Get-Content $stampFile -Raw -ErrorAction SilentlyContinue
+        if ($null -ne $storedContent) {
+            $storedHash = ([string]$storedContent).Trim()
+        }
+    }
     $needInstall = (-not (Test-Path (Join-Path $dir "node_modules"))) -or ($storedHash -ne $currentHash)
     if (-not $needInstall) {
         Say "`n[$label] Dependencies up to date." Green

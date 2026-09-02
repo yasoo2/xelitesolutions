@@ -138,7 +138,10 @@ describe('the scaffold: complete, RTL, tokenized, honest', () => {
     });
     it('index.html is Arabic RTL and vite.config uses base ./ (publishable)', () => {
         expect(fs.readFileSync(path.join(out.output.path, 'index.html'), 'utf-8')).toContain('dir="rtl"');
-        expect(fs.readFileSync(path.join(out.output.path, 'vite.config.js'), 'utf-8')).toContain("base: './'");
+        const viteConfig = fs.readFileSync(path.join(out.output.path, 'vite.config.js'), 'utf-8');
+        expect(viteConfig).toContain("base: './'");
+        expect(viteConfig).toContain("@vitejs/plugin-react");
+        expect(viteConfig).toContain("plugins: [react()]");
     });
 
     it('points the hero CTA at a section selected for the page, not a removed template section', () => {

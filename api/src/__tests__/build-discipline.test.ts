@@ -55,6 +55,10 @@ describe('the launcher itself lives by the same discipline', () => {
         expect(startPs1).toContain('function Sync-Dependencies');
         expect(startPs1).toContain('Get-FileHash -Path $pkg -Algorithm SHA256');
         expect(startPs1).toContain('.dep-stamp');
+        // A missing or empty stamp must not crash the launcher while trimming it.
+        expect(startPs1).toContain('$storedContent = Get-Content $stampFile -Raw');
+        expect(startPs1).toContain('if ($null -ne $storedContent)');
+        expect(startPs1).toContain('$storedHash = ([string]$storedContent).Trim()');
         // BOTH api and web go through the freshness check.
         expect(startPs1).toContain('Sync-Dependencies -dir $apiDir');
         expect(startPs1).toContain('Sync-Dependencies -dir $webDir');

@@ -1738,11 +1738,14 @@ function filePackageJson(name: string): string {
 }
 
 function fileViteConfig(): string {
-    // Vite's built-in esbuild JSX transform is enough for these generated
-    // apps. Keeping the config data-only also lets the dev server start in
-    // restricted environments where bundling a config import is blocked.
-    return `// Relative assets keep the bundle portable on previews and subpaths.
-export default { base: './' };
+    // The generated project declares @vitejs/plugin-react. Activate it so JSX
+    // authored by Joe remains runnable even when a component omits a classic
+    // React namespace import; a successful bundle must not hide a blank page.
+    return `import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+
+// Relative assets keep the bundle portable on previews and subpaths.
+export default defineConfig({ base: './', plugins: [react()] });
 `;
 }
 
