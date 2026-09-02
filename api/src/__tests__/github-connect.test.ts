@@ -98,7 +98,7 @@ describe('GitHub requests fail with an actionable connection state', () => {
         const previous = process.env.GITHUB_TOKEN;
         delete process.env.GITHUB_TOKEN;
         try {
-            const result = await new GitHubRepoManagerTool().execute({ action: 'analyze', language: 'en' });
+            const result: any = await new GitHubRepoManagerTool().execute({ action: 'analyze', language: 'en' });
             expect(result.ok).toBe(false);
             expect(result.code).toBe('github_auth_required');
             expect(result.needsGithubAuth).toBe(true);

@@ -82,6 +82,29 @@ function join(blocks: string[]): string {
     return kept.slice(-MAX_BLOCKS).join('\n\n');
 }
 
+function readFileEvidence(step: RunStep): { file: string; content: string; totalLines: number } | null {
+    if (String(step.tool || '') !== 'read_file') return null;
+    const raw = step.result;
+    const output = raw?.output && typeof raw.output === 'object' ? raw.output : raw;
+    if (!output || typeof output.content !== 'string' || typeof output.totalLines !== 'number') return null;
+    const task = String(step.task || '').replace(/\s+/g, ' ').trim();
+    const file = task.match(/:\s*(\S+)$/)?.[1] || 'الملف المحدد';
+    return { file, content: output.content.trim(), totalLines: output.totalLines };
+}
+
+function composeReadFileReport(done: RunStep[], language?: string): string {
+    if (!done.length || !done.every(step => String(step.tool || '') === 'read_file')) return '';
+    const evidence = done.map(readFileEvidence);
+    if (evidence.some(item => !item)) return '';
+    const rows = (evidence as Array<{ file: string; content: string; totalLines: number }>).map(item =>
+        `**${item.file}** — ${item.totalLines} ${item.totalLines === 1 ? 'line' : 'lines'}\n\`\`\`text\n${item.content}\n\`\`\``
+    ).join('\n\n');
+    const ar = String(language || '').startsWith('ar');
+    return ar
+        ? `## ✅ تقرير قراءة الملفات\n\n${rows}\n\n**العلامة المتوقعة:** لم تُذكر قيمة العلامة في الطلب، لذلك لا أدّعي تحققها. لم تُجرَ أي كتابة أو تعديل.`
+        : `## ✅ File reading report\n\n${rows}\n\n**Expected marker:** No marker value was specified, so Joe cannot claim that check. No files were written or modified.`;
+}
+
 /**
  * The whole run, in one message. `steps` is in plan order; anything that never
  * completed is ignored.
@@ -89,6 +112,9 @@ function join(blocks: string[]): string {
 export function composeAnswer(steps: RunStep[], language?: string): string {
     const done = (steps || []).filter(s => s && s.status !== 'failed');
     if (!done.length) return '';
+
+    const readFileReport = composeReadFileReport(done, language);
+    if (readFileReport) return readFileReport;
 
     const prose = done.map(s => proseOf(s.result)).filter(Boolean);
 

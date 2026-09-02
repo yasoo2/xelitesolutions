@@ -7,7 +7,7 @@ import { enrichWorkspaceToolInput } from './workspace-evidence';
 import { findActiveBuiltProject } from './active-built-project';
 import { isReadOnlyRequest, isBoundedTerminalDiagnosticRequest, looksLikeBuild } from './buildIntent';
 import { saysAny } from '../language/arabic';
-import { parseExplicitFileRequest } from './file-intent';
+import { parseExplicitFileRequest, parseExplicitReadFilesRequest } from './file-intent';
 import path from 'path';
 
 export interface ExecutionStep {
@@ -665,6 +665,27 @@ Rules:
                 goal: intent.goal,
                 steps,
                 metadata: { complexity: 'low', riskLevel: 'low', matchedBy: 'explicit-file-contract', deterministic: true, localOnly: true },
+            };
+        }
+
+        // An explicit read-only file list is more precise than selecting one
+        // project from a multi-project workspace. Read each safe relative path
+        // through ToolService and let the normal result composer explain the
+        // collected evidence in the chat.
+        const explicitReadFiles = parseExplicitReadFilesRequest(userGoal);
+        if (isReadOnlyRequest(userGoal) && explicitReadFiles) {
+            return {
+                id: `read_files_${Date.now()}`,
+                goal: intent.goal,
+                steps: explicitReadFiles.map((file, index) => ({
+                    id: `read_file_${index}`,
+                    description: `قراءة الملف المحدد والتحقق من محتواه: ${file}`,
+                    tool: 'read_file',
+                    agent: 'Dev',
+                    input: { path: file, request: intent.goal },
+                    dependsOn: index === 0 ? [] : [`read_file_${index - 1}`],
+                })),
+                metadata: { complexity: 'low', riskLevel: 'low', matchedBy: 'explicit-read-file-contract', deterministic: true, localOnly: true },
             };
         }
 

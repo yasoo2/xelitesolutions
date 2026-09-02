@@ -4,6 +4,8 @@ export interface ExplicitFileRequest {
     readBack: boolean;
 }
 
+const SAFE_READ_PATH = /^[A-Za-z0-9_\-.\/\\\u0600-\u06FF]+$/;
+
 const SAFE_RELATIVE_PATH = /^[A-Za-z0-9_\-.\/\\\u0600-\u06FF]+$/;
 
 /**
@@ -48,4 +50,32 @@ export function parseExplicitFileRequest(input: string): ExplicitFileRequest | n
         content,
         readBack: /(?:then|after\s+that|finally)[\s\S]{0,100}\b(?:read|report|verify)|read\s+(?:the\s+)?file\s+back|اقرأ\s+(?:ال)?ملف|قراءة\s+(?:ال)?ملف/i.test(raw),
     };
+}
+
+/**
+ * Extract named files from a read-only request. A workspace can contain many
+ * projects, but an explicit relative file path is already a precise target;
+ * forcing project selection here loses the user's actual scope.
+ */
+export function parseExplicitReadFilesRequest(input: string): string[] | null {
+    const raw = String(input || '').trim();
+    if (!raw || !/\b(?:read|inspect|review|compare|report|list|summarize)\b|(?:اقرا|اقرأ|افحص|راجع|قارن|اعرض|لخص|استخرج)/i.test(raw)) return null;
+    const mutationPattern = /\b(?:create|write|save|edit|delete|modify|change|build|install|deploy)\b/gi;
+    let mutation: RegExpExecArray | null;
+    while ((mutation = mutationPattern.exec(raw)) !== null) {
+        const before = raw.slice(Math.max(0, mutation.index - 90), mutation.index);
+        if (!/\b(?:do\s+not|don't|never|without|no)\b[^.!?\n]{0,90}$/i.test(before)) return null;
+    }
+    if (/(?:انشئ|أنشئ|اكتب|عدل|عدّل|احذف|غير|غيّر|ابن|ابني)/i.test(raw)) {
+        const positiveArabic = /(?:^|[\s،؛:])(?:انشئ|أنشئ|اكتب|عدل|عدّل|احذف|غير|غيّر|ابن|ابني)(?=$|[\s،؛:.!?])/i;
+        const negatedArabic = /(?:لا|بدون|عدم)\s+(?:أن\s+)?[^.!؟\n]{0,70}(?:انشئ|أنشئ|اكتب|عدل|عدّل|احذف|غير|غيّر|ابن|ابني)/i;
+        if (positiveArabic.test(raw) && !negatedArabic.test(raw)) return null;
+    }
+
+    const candidates = [...raw.matchAll(/\b(?:[A-Za-z0-9_\-\u0600-\u06FF]+\/)+[A-Za-z0-9_.\-\u0600-\u06FF]+\b|\b[A-Za-z0-9_\-\u0600-\u06FF]+\.[A-Za-z0-9]{1,16}\b/g)]
+        .map(match => String(match[0] || '').replace(/[.,؛،:]+$/u, ''))
+        .filter(candidate => candidate && candidate.toLowerCase() !== 'node.js')
+        .filter(candidate => SAFE_READ_PATH.test(candidate) && !candidate.includes('..') && !candidate.startsWith('/') && !/^[A-Za-z]:/i.test(candidate));
+    const files = [...new Set(candidates)];
+    return files.length > 0 && files.length <= 8 ? files : null;
 }

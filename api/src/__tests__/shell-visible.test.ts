@@ -9,6 +9,8 @@ import path from 'path';
 import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
 import { IntentParser } from '../core/intelligence/IntentParser';
 import { isBoundedTerminalDiagnosticRequest, isReadOnlyRequest } from '../core/orchestrator/buildIntent';
+import { parseExplicitReadFilesRequest } from '../core/orchestrator/file-intent';
+import { composeAnswer } from '../core/orchestrator/answerComposer';
 
 describe('explicit terminal diagnostics execute instead of merely opening a terminal', () => {
     test('a read-only local diagnostic is classified before the slow model path', async () => {
@@ -85,6 +87,32 @@ describe('explicit terminal diagnostics execute instead of merely opening a term
             } as any,
         });
         expect(plan.steps[0].tool).toBe('project_pipeline');
+    });
+});
+
+describe('explicit read-only file lists use the active workspace directly', () => {
+    test('does not confuse Node.js with a requested file path', () => {
+        expect(parseExplicitReadFilesRequest('Run a read-only local diagnostic: report the Node.js version. Do not modify files.')).toBeNull();
+    });
+
+    test('reads multiple named relative files without project selection', async () => {
+        const goal = 'Read joe-prompt-02.txt and joe-prompt-03/README.txt in the current workspace. Report the exact line count and exact content of each file. Do not modify anything.';
+        expect(parseExplicitReadFilesRequest(goal)).toEqual(['joe-prompt-02.txt', 'joe-prompt-03/README.txt']);
+        const plan: any = await PlanningEngine.generatePlan({ intent: { goal, complexity: 'low', riskLevel: 'low', rawIntent: {} } as any });
+        expect(plan.metadata.matchedBy).toBe('explicit-read-file-contract');
+        expect(plan.steps.map((step: any) => step.tool)).toEqual(['read_file', 'read_file']);
+        expect(plan.steps.map((step: any) => step.input.path)).toEqual(['joe-prompt-02.txt', 'joe-prompt-03/README.txt']);
+    });
+
+    test('reports line counts and does not invent an unspecified marker', () => {
+        const answer = composeAnswer([
+            { id: 'a', task: 'قراءة الملف المحدد: joe-prompt-02.txt', tool: 'read_file', status: 'completed', result: { content: 'one\ntwo', totalLines: 2 } },
+            { id: 'b', task: 'قراءة الملف المحدد: joe-prompt-03/README.txt', tool: 'read_file', status: 'completed', result: { content: 'nested', totalLines: 1 } },
+        ], 'en');
+        expect(answer).toContain('joe-prompt-02.txt');
+        expect(answer).toContain('2 lines');
+        expect(answer).toContain('joe-prompt-03/README.txt');
+        expect(answer).toContain('No marker value was specified');
     });
 });
 
