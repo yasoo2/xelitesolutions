@@ -144,7 +144,7 @@ if (-not $env:LOCAL_LLM_BASE_URL) {
         # استخدم Ollama حصرياً حتى لا يضيّع جو الوقت في مزوّدين مجّانيين فاشلين، مع مهلة
         # كافية لأول طلب (تحميل النموذج) ثم يبقى محمّلاً.
         if (-not $env:LOCAL_LLM_STRICT)  { $env:LOCAL_LLM_STRICT = "1" }
-        if (-not $env:LOCAL_LLM_TIMEOUT) { $env:LOCAL_LLM_TIMEOUT = "90000" }
+        if (-not $env:LOCAL_LLM_TIMEOUT) { $env:LOCAL_LLM_TIMEOUT = "600000" }
         # Auto means the user's selected local brain leads, even when a cloud key
         # is present. Cloud providers remain fallback paths after a real local
         # failure; they must not shorten local planning into a false outage.
