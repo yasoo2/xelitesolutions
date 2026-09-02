@@ -1803,13 +1803,13 @@ export async function routeToModel(
     if (hasLocal) {
         meshProviders.push({
             name: 'Local (Auto)',
-            run: async () => {
+            run: async (signal?: AbortSignal) => {
                 // Task-based model routing: build/code tasks get the strongest
                 // installed coder model; chat gets the fast small model. Falls back
                 // to LOCAL_LLM_MODEL when detection hasn't run.
                 const localModel = pickLocalModel(taskAnalysis?.type);
                 // Pass onPartial so the local brain streams tokens live to the panel.
-                const res = await localProvider.chatComplete(flatMessages, localModel, onPartial);
+                const res = await localProvider.chatComplete(flatMessages, localModel, onPartial, signal);
                 if (!isUsableAnswer(res)) throw new Error('Local answered with nothing usable');
                 return res;
             }
@@ -2101,11 +2101,14 @@ export async function routeToModel(
             );
             // OpenAI/Groq/Gemini and other configured providers remain ahead;
             // Ollama is inserted immediately before keyless/offline gateways.
-            if (LOCAL_BRAIN_FIRST || autoLocalPreferred) {
-                //  His machine, his brain, his choice. Everything else becomes
-                //  the fallback rather than the default.
+            if (LOCAL_BRAIN_FIRST) {
+                // His machine, his brain, his choice. Everything else becomes
+                // the fallback rather than the default.
                 meshProviders.unshift(local);
-                console.info(`[IntelligentRouter] 🧭 ${autoLocalPreferred ? 'Auto selection' : 'LOCAL_BRAIN_FIRST'} — Ollama/Local (Auto) leads; the mesh is the fallback.`);
+                console.info('[IntelligentRouter] 🧭 LOCAL_BRAIN_FIRST — Ollama/Local (Auto) leads; the mesh is the fallback.');
+            } else if (autoLocalPreferred) {
+                meshProviders.unshift(local);
+                console.info('[IntelligentRouter] 🧭 Auto selection — Ollama/Local (Auto) leads; the mesh is the fallback.');
             } else {
                 meshProviders.splice(firstKeyless >= 0 ? firstKeyless : meshProviders.length, 0, local);
                 console.info('[IntelligentRouter] 🧭 Ollama/Local (Auto) is reserved before keyless and Offline fallbacks.');
@@ -2270,7 +2273,10 @@ export async function routeToModel(
                     // fail against unavailable remote fallbacks.
                     const autoPlanningFloor = (LOCAL_BRAIN_FIRST || autoLocalPreferred) ? 600_000 : 240_000;
                     const autoPlanningLeash = Math.min(LOCAL_LEASH_MAX_MS, Math.max(measuredLeash, autoPlanningFloor));
-                    timeoutValue = Math.min(timeoutValue, autoLocalPreferred ? autoPlanningLeash : measuredLeash);
+                    timeoutValue = Math.min(
+                        timeoutValue,
+                        (LOCAL_BRAIN_FIRST || autoLocalPreferred) ? autoPlanningLeash : measuredLeash,
+                    );
                 }
             }
             if (p.name === 'LLM7 (Keyless)' || p.name === 'DuckAI (Keyless)') {

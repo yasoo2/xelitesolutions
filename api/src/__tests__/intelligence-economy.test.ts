@@ -49,7 +49,7 @@ describe('the router understands internal vs answer', () => {
         expect(src).toContain("p.name === 'Local (Auto)' && isLocalBrainOpen()");
         expect(src).toContain('skipping the local brain (paused');
         expect(src).toContain('Math.max(measuredLeash, autoPlanningFloor)');
-        expect(src).toContain('autoLocalPreferred ? autoPlanningLeash : measuredLeash');
+        expect(src).toContain('(LOCAL_BRAIN_FIRST || autoLocalPreferred) ? autoPlanningLeash : measuredLeash');
         expect(src).toContain("detail: 'local_ready_after_warmup'");
     });
 

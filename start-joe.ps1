@@ -105,7 +105,7 @@ if (Test-Path $secretsFile) {
 # أولاً (خلال ثوانٍ) قبل أي نموذج محلي، فيعمل الوكيل بذكاء عالٍ رغم ضعف الجهاز. النموذج
 # المحلي (إن وُجد) يبقى احتياطاً عند انقطاع الإنترنت. لا نُجبر «المحلي الحصري» حينها.
 if ($env:GROQ_API_KEY -and $env:GROQ_API_KEY.Trim().StartsWith("gsk_")) {
-    Say "[brain] Groq متصل — الدماغ الأساسي (Llama 3.3 70B، سريع وذكي). المحلي احتياطي." Green
+    Say "[brain] Groq متصل — احتياط سحابي (Llama 3.3 70B). سيبقى Ollama المحلي هو المتصدر في Auto." Green
     $env:LOCAL_LLM_STRICT = "0"
 } elseif ($env:GROQ_API_KEY) {
     Say "[brain] تحذير: GROQ_API_KEY موجود لكنه لا يبدأ بـ gsk_ — تأكّد أنك نسخت المفتاح كاملاً." DarkYellow
@@ -145,13 +145,14 @@ if (-not $env:LOCAL_LLM_BASE_URL) {
         # كافية لأول طلب (تحميل النموذج) ثم يبقى محمّلاً.
         if (-not $env:LOCAL_LLM_STRICT)  { $env:LOCAL_LLM_STRICT = "1" }
         if (-not $env:LOCAL_LLM_TIMEOUT) { $env:LOCAL_LLM_TIMEOUT = "90000" }
+        # Auto means the user's selected local brain leads, even when a cloud key
+        # is present. Cloud providers remain fallback paths after a real local
+        # failure; they must not shorten local planning into a false outage.
+        $env:LOCAL_BRAIN_FIRST = "1"
         if ($env:GROQ_API_KEY -and $env:GROQ_API_KEY.Trim().StartsWith("gsk_")) {
-            # Groq is the primary brain; Ollama is only the OFFLINE backup. Do NOT
-            # claim "exclusive local" here — that misled into thinking Joe runs on
-            # the slow local model when Groq (fast) is actually first.
-            Say "[brain] Ollama جاهز كاحتياط للطوارئ فقط — Groq هو الأساسي (النموذج المحلي: $($env:LOCAL_LLM_MODEL))" DarkGray
+            Say "[brain] Ollama جاهز — الدماغ الأساسي في Auto (النموذج: $($env:LOCAL_LLM_MODEL))، وGroq احتياط." Green
         } else {
-            Say "[brain] Ollama متصل — سيستخدمه جو حصرياً (النموذج: $($env:LOCAL_LLM_MODEL))" Green
+            Say "[brain] Ollama متصل — الدماغ الأساسي في Auto (النموذج: $($env:LOCAL_LLM_MODEL))" Green
         }
     } catch {
         Say "[brain] Ollama غير مُشغّل — سيعمل جو على الذكاء المجاني عبر الإنترنت." DarkYellow
@@ -216,9 +217,16 @@ if (-not (Sync-Dependencies -dir $apiDir -label "1/3")) {
 }
 
 # [1b/3] تثبيت محرّك المتصفح (Chromium) الذي يستخدمه جو للتصفّح — مرّة واحدة فقط.
-# نعلّم بملف صغير حتى لا يُعاد التثبيت كل تشغيل. بدونه قد تظهر رسالة browser_launch_failed.
+# نحتفظ به داخل مجلد جو نفسه، ونفحص الملف التنفيذي الحقيقي لا العلامة فقط.
+# هذا يمنع بقايا تثبيت قديم من دفع جو إلى البحث عن Chrome الشخصي.
+$env:PLAYWRIGHT_BROWSERS_PATH = "$apiDir\.joe-playwright"
 $pwMarker = "$apiDir\.playwright-chromium-installed"
-if (-not (Test-Path $pwMarker)) {
+$pwExecutableReady = $false
+try {
+    $pwExecutable = (& node -e "const fs=require('fs'); const p=require('playwright').chromium.executablePath(); process.stdout.write(p); process.exit(fs.existsSync(p) ? 0 : 1)") 2>$null
+    $pwExecutableReady = ($LASTEXITCODE -eq 0 -and [bool]$pwExecutable -and (Test-Path ([string]$pwExecutable)))
+} catch { $pwExecutableReady = $false }
+if (-not (Test-Path $pwMarker) -or -not $pwExecutableReady) {
     Say "`n[1b/3] Installing Joe's browser engine (Chromium) — first run only, قد يأخذ دقيقة..." Yellow
     npx playwright install chromium
     if ($LASTEXITCODE -eq 0) {

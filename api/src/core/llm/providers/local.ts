@@ -32,7 +32,12 @@ export class LocalProvider {
         return !!this.baseUrl();
     }
 
-    async chatComplete(messages: any[], model?: string, onDelta?: (delta: string) => void): Promise<string> {
+    async chatComplete(
+        messages: any[],
+        model?: string,
+        onDelta?: (delta: string) => void,
+        signal?: AbortSignal,
+    ): Promise<string> {
         const baseURL = this.baseUrl();
         if (!baseURL) throw new Error('LOCAL_LLM_BASE_URL not configured');
 
@@ -68,7 +73,7 @@ export class LocalProvider {
                     messages: mapped,
                     keep_alive: -1,
                     stream: true,
-                } as any, { timeout: timeoutMs }) as any;
+                } as any, { timeout: timeoutMs, signal }) as any;
                 let full = '';
                 for await (const chunk of stream) {
                     const piece = chunk?.choices?.[0]?.delta?.content || '';
@@ -76,8 +81,11 @@ export class LocalProvider {
                 }
                 if (full) return full;
                 // Empty stream (some servers don't stream): fall through to a normal call.
-            } catch {
+            } catch (error) {
                 // Streaming unsupported/failed — fall back to a single blocking call below.
+                // An aborted request must not fall through to a second request: that
+                // is how cancelled local calls accumulated behind a slow Ollama model.
+                if (signal?.aborted) throw error;
             }
         }
 
@@ -85,7 +93,7 @@ export class LocalProvider {
             model: model || this.model(),
             messages: mapped,
             keep_alive: -1,
-        } as any, { timeout: timeoutMs });
+        } as any, { timeout: timeoutMs, signal });
 
         return completion.choices[0]?.message?.content || '';
     }
