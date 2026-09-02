@@ -757,7 +757,7 @@ describe('a failure is never written into the file as its contents', () => {
         expect(res.ok).toBe(true);
         expect(callLLM).toHaveBeenCalledTimes(2);
         expect(res.logs.join(' ')).toMatch(/engineering provider retry requested/);
-        expect(callLLM.mock.calls[0][2]).toMatchObject({ maxCompletionTokens: 6000 });
+        expect(callLLM.mock.calls[0][2]).toMatchObject({ maxCompletionTokens: 3000 });
         expect(fs.readFileSync(landsAt(rel), 'utf-8')).toBe('<main>recovered</main>');
     });
 

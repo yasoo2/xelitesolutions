@@ -729,7 +729,15 @@ Return the complete file content now.`;
 
         try {
             const llmContext = context?.engineeringPipeline === true
-                ? { ...context, purpose: 'internal', engineeringPipeline: true, maxCompletionTokens: 6000 }
+                ? {
+                    ...context,
+                    purpose: 'internal',
+                    engineeringPipeline: true,
+                    // CPU Ollama models spend roughly a minute on a small JSX
+                    // completion. Keep frontend artifacts bounded enough to
+                    // finish, while leaving non-UI engineering files room.
+                    maxCompletionTokens: artifact.kind === 'frontend_asset' ? 3000 : 6000,
+                }
                 : undefined;
             let runtimeRetryCandidate = '';
             const callForArtifact = (retryKind: 'format' | 'syntax' | 'imports' | 'runtime' | 'component' | 'precedence' | null = null, retryReason = '') => {
