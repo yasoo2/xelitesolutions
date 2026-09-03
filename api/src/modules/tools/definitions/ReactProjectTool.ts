@@ -5459,18 +5459,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             // while outbound registry access is slow or unavailable. Use that
             // evidence first; a fresh machine still gets one bounded network
             // retry instead of being forced into offline-only operation.
-            // A sibling project with the exact same manifest is a stronger and
-            // faster local witness than asking npm to discover the same tree
-            // again. This matters on offline machines where npm can spend its
-            // entire timeout probing a registry even though the toolchain is
-            // already available on disk.
-            const reusedBeforeInstall = reuseLocalReactDependencies(root, proj);
-            if (reusedBeforeInstall) {
-                term('reused a verified local React toolchain — no package download needed');
-            }
-            let offlineInstall = reusedBeforeInstall
-                ? 0
-                : await run('npm', ['install', '--offline', '--no-audit', '--no-fund'], 45_000);
+            let offlineInstall = await run('npm', ['install', '--offline', '--no-audit', '--no-fund'], 45_000);
             if (offlineInstall !== 0) {
                 // Windows can report a cache miss or EPERM while another npm
                 // process holds the shared cache. A verified sibling project
