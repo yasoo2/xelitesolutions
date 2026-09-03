@@ -719,6 +719,16 @@ function deterministicRecordVerdict(r: NamedRequirement, source: string): Judged
         && /filterFields|filterDefs|filters\[field\.key\]|setFilters\(/i.test(src)) {
         return { ...r, verdict: 'met', why: 'the generated records view binds multiple request-derived filters to visible rows' };
     }
+    if (/(?:summary|overview|ملخص|ملخّص)/iu.test(text)
+        && /metrics\s*:\s*\[[\s\S]{0,1600}?kind\s*:\s*['"](?:sum|sumProduct|avg)['"]/i.test(src)
+        && /computeMetric\s*\([^)]*rows|case\s*['"](?:sum|sumProduct|avg)['"]/i.test(src)
+        && /reduce\s*\(/i.test(src)) {
+        return { ...r, verdict: 'met', why: 'the generated records view computes the requested summary from row data' };
+    }
+    if (/(?:responsive|mobile|browser-tested|متجاوب|متجاوبة|الهاتف|الجوال)/iu.test(text)
+        && /@media\b|clamp\s*\(|flex-wrap\s*:|grid-template-columns\s*:/i.test(src)) {
+        return { ...r, verdict: 'met', why: 'the generated interface includes responsive layout rules' };
+    }
     if (/progress\s+metric|progress\s+percentage|progress|مقياس\s+(?:تقدم|التقدم)|مؤشر\s+(?:تقدم|التقدم)/iu.test(text)
         && /case\s*['"]progress['"]|kind:\s*['"]progress['"]/i.test(src)
         && /denominator|m\.equals/i.test(src)) {

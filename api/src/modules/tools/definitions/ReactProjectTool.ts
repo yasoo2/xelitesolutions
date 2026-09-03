@@ -6508,7 +6508,11 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
         const projectEvidence = (() => {
             const { readProjectSource } = require('../../../core/quality/scope-audit');
             try {
-                const authored = readProjectSource([path.join(proj, 'src')], { codeOnly: true });
+                // Capability evidence must include authored styles as well as
+                // JavaScript. A responsive contract can be proven by a real
+                // @media/flex/grid rule; reading only production JS silently
+                // turns that evidence into a false delivery gap.
+                const authored = readProjectSource([path.join(proj, 'src')]);
                 if (authored.trim().length) return authored;
             } catch { /* fall through to the whole tree */ }
             try { return readProjectSource([proj]); } catch { return ''; }

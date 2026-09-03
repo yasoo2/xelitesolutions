@@ -1024,6 +1024,15 @@ const LOCAL_LEASH_MAX_MS = (() => {
     if (Number.isFinite(t) && t > 0) return t;
     return LOCAL_BRAIN_FIRST ? 600_000 : 120_000;
 })();
+// A preferred local brain still needs a bounded hand-off. Without this cap,
+// LOCAL_BRAIN_FIRST could make every internal planning call wait ten minutes
+// before Joe reached its deterministic, evidence-backed execution path.
+const ENGINEERING_LOCAL_TIMEOUT_CAP_MS = (() => {
+    const configured = parseInt(String(process.env.LOCAL_ENGINEERING_TIMEOUT_CAP || '').trim(), 10);
+    return Number.isFinite(configured) && configured > 0
+        ? Math.min(180_000, Math.max(30_000, configured))
+        : 120_000;
+})();
 
 /** A local call finished — remember how long this machine really takes. */
 export function noteLocalDuration(ms: number): void {
@@ -2317,13 +2326,24 @@ export async function routeToModel(
                     // Auto to abandon Ollama after a healthy preflight and then
                     // fail against unavailable remote fallbacks.
                     const autoPlanningFloor = (LOCAL_BRAIN_FIRST || autoLocalPreferred) ? 600_000 : 240_000;
-                    const autoPlanningLeash = Math.min(LOCAL_LEASH_MAX_MS, Math.max(measuredLeash, autoPlanningFloor));
+                    const autoPlanningLeash = Math.min(
+                        LOCAL_LEASH_MAX_MS,
+                        ENGINEERING_LOCAL_TIMEOUT_CAP_MS,
+                        Math.max(measuredLeash, autoPlanningFloor),
+                    );
                     // A caller-provided deadline is a real contract, not a hint.
                     // Keep Ollama first, but let the planner reach its deterministic
                     // fallback when the selected local brain cannot answer in time.
                     timeoutValue = (LOCAL_BRAIN_FIRST || autoLocalPreferred)
                         ? (requestedTimeout ? Math.min(autoPlanningLeash, requestedTimeout) : autoPlanningLeash)
                         : Math.min(timeoutValue, measuredLeash);
+                }
+                // A recovery call must not restore the long first-attempt leash
+                // after the same local brain has just timed out. Give it one
+                // short probe, then let the provider mesh or deterministic
+                // engineering path continue.
+                if (internalCall && localTimedOutAt && Date.now() - localTimedOutAt < 300_000) {
+                    timeoutValue = Math.min(timeoutValue, 20_000);
                 }
             }
             if (p.name === 'LLM7 (Keyless)' || p.name === 'DuckAI (Keyless)') {

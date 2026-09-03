@@ -594,7 +594,7 @@ export function acceptanceFor(request: string): Criterion[] {
 
     return [
         ...catalogue,
-        ...(requestedFilters.length > 1
+        ...(requestedFilters.length > 0
             ? requestedFilters.map(key => {
                 const field = columns.find(col => col.key === key);
                 return {

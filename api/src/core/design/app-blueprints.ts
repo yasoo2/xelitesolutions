@@ -1626,7 +1626,7 @@ const TYPE_MARKS: Array<[RegExp, DerivedRole, FieldType]> = [
     //  it as a total is a confident lie about the user's own data.
     [/سنة|عام|عمر|صفحات?|\byear\b|\bage\b|\bpages?\b/iu, 'scalar', 'number'],
     [/تقييم|تقدير|نجوم|\brating\b|\bscore\b/iu, 'scalar', 'number'],
-    [/كمي|عدد|وزن|طول|عرض|ارتفاع|مساحة|نسب|\bqty\b|\bquantity\b|\bcount\b|\bweight\b|\bsize\b/iu, 'count', 'number'],
+    [/كمي|عدد|وزن|طول|عرض|ارتفاع|مساحة|نسب|سعة|مقاعد|حضور|\bcapacity\b|\bseats?\b|\battendees?\b|\bqty\b|\bquantity\b|\bcount\b|\bweight\b|\bsize\b/iu, 'count', 'number'],
     [/ملاحظ|وصف|تفاصيل|شرح|تعليق|\bnote\b|\bdescription\b|\bdetails\b|\bcomment\b/iu, 'note', 'textarea'],
 ];
 
@@ -3405,13 +3405,27 @@ function weatherFeatureCovered(feature: string, evidence: string): boolean {
 }
 
 /** A request-derived filter contract, shared by every records-shaped app. */
-export function requestedFilterFields(requestRaw: string, fields: Array<{ key: string; label: string }>): string[] {
+export function requestedFilterFields(requestRaw: string, fields: Array<{ key: string; label: string; role?: string; type?: string }>): string[] {
     const request = String(requestRaw || '').replace(/[ً-ْـ]/g, '').toLowerCase();
-    const clause = request.match(/(?:filters?|filtering|فلترة|تصفية|فلاتر|مرشحات?)\s*(?:for|by|حسب|على|ل(?:ـ|ل)?|من)?\s*([^.!?؟\n]+)/iu)?.[1] || '';
-    if (!clause) return [];
+    const keys: string[] = [];
+    // “status filter” is a complete request even when no value follows
+    // “filter”. Bind it to the request's status/select field instead of
+    // silently returning an empty contract.
+    if (/(?:status\s+filter|filter\s+(?:for|by)\s+status|فلتر\s*الحالة|فلترة\s*(?:حسب|على)\s*الحالة|تصفية\s*(?:حسب|على)\s*الحالة)/iu.test(request)) {
+        const status = fields.find(field => field.role === 'flag'
+            || field.type === 'select'
+            || /status|state|مرحلة|حالة|وضع/iu.test(String(field.label || '')));
+        if (status) keys.push(status.key);
+    }
+    // Once “status filter” has been handled above, do not let the trailing
+    // words (“capacity summary”, for example) be mistaken for more filter
+    // fields. Other forms such as “filters for status and rating” remain
+    // available to the normal phrase parser.
+    const requestForClause = request.replace(/(?:status\s+filter|فلتر\s*الحالة|فلترة\s*(?:حسب|على)\s*الحالة|تصفية\s*(?:حسب|على)\s*الحالة)/giu, '');
+    const clause = requestForClause.match(/(?:filters?|filtering|فلترة|تصفية|فلاتر|مرشحات?)\s*(?:for|by|حسب|على|ل(?:ـ|ل)?|من)?\s*([^.!?؟\n]+)/iu)?.[1] || '';
+    if (!clause) return keys;
     const stop = clause.split(/\s+(?:plus|with|and\s+(?:a|an|the)?\s*(?:progress|metric)|ومقياس|وإضافة|واضافة)\b/iu)[0];
     const tokens = new Set(stop.split(/[^\p{L}\p{N}_]+/u).filter(t => t.length >= 2));
-    const keys: string[] = [];
     for (const field of fields) {
         const label = String(field.label || '').toLowerCase().replace(/[ً-ْـ]/g, '');
         const labelTokens = label.split(/[^\p{L}\p{N}_]+/u).filter(t => t.length >= 2);
@@ -3454,6 +3468,20 @@ function recordFeatureCovered(feature: string, request: string, evidence: string
     }
     if (/^(?:export|exporting|export\s+csv|تصدير)$/iu.test(f)) {
         return /toCsv|download\s*\(/i.test(src);
+    }
+    if (/(?:summary|overview|ملخص|ملخّص)/iu.test(f)) {
+        // A summary of a numeric field is an executable aggregate, not a
+        // heading. Require the configured metric, its row-backed renderer,
+        // and the numeric aggregation branch before accepting the claim.
+        return /metrics\s*:\s*\[[\s\S]{0,1600}?kind\s*:\s*['"](?:sum|sumProduct|avg)['"]/i.test(src)
+            && /computeMetric\s*\([^)]*rows|case\s*['"](?:sum|sumProduct|avg)['"]/i.test(src)
+            && /reduce\s*\(/i.test(src);
+    }
+    if (/(?:responsive|mobile|browser-tested|متجاوب|متجاوبة|الهاتف|الجوال)/iu.test(f)) {
+        // Responsiveness is proved by layout rules, not by the word itself in
+        // a title or comment. These are the portable signals shared by the
+        // generated app shells and authored projects.
+        return /@media\b|clamp\s*\(|flex-wrap\s*:|grid-template-columns\s*:/i.test(src);
     }
     // Keep the generic engine contract for a request that names the engine
     // itself, while all concrete fields/actions above require source proof.

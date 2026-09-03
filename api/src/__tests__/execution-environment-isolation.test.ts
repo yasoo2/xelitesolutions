@@ -28,6 +28,7 @@ describe('execution environment isolation', () => {
         expect(engineSource).toContain('function isolatedExecutionEnv');
         expect(engineSource).toContain('/^npm_config_(prefix|cache)$/i');
         expect(engineSource.match(/env: isolatedExecutionEnv\((?:options|rest)\.env\)/g)?.length).toBeGreaterThanOrEqual(5);
-        expect(engineSource).toContain('env: { ...isolatedExecutionEnv(options.env), TERM:');
+        expect(engineSource).toContain('function terminalSessionEnv');
+        expect(engineSource).toContain('env: { ...terminalSessionEnv(options.env, options.sessionId), TERM:');
     });
 });

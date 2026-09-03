@@ -211,6 +211,9 @@ describe('internal calls never wait the full local window', () => {
         expect(src).toMatch(/localWarmupMs/);
         expect(src).toContain('const measuredLeash = internalLeashMs');
         expect(src).toContain('const autoPlanningLeash');
+        expect(src).toContain('ENGINEERING_LOCAL_TIMEOUT_CAP_MS');
+        expect(src).toMatch(/ENGINEERING_LOCAL_TIMEOUT_CAP_MS,[\s\S]{0,180}Math\.max\(measuredLeash, autoPlanningFloor\)/);
+        expect(src).toMatch(/internalCall && localTimedOutAt[\s\S]{0,220}timeoutValue = Math\.min\(timeoutValue, 20_000\)/);
     });
     it('the leash is sized by a REAL measurement of this machine', () => {
         const brain = read('core', 'llm', 'local-brain.ts');

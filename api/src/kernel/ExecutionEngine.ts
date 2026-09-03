@@ -143,6 +143,14 @@ function terminalSessionEnv(overrides?: NodeJS.ProcessEnv, sessionId?: string): 
         fs.mkdirSync(path.join(appData, 'Microsoft', 'Windows', 'PowerShell', 'PSReadLine'), { recursive: true });
         env.APPDATA = appData;
         env.LOCALAPPDATA = appData;
+        // PSReadLine resolves its history through the Windows home variables
+        // on some PowerShell hosts, even when APPDATA is overridden. Keep all
+        // profile aliases session-local so a Joe terminal cannot read or write
+        // the user's real ConsoleHost_history.txt.
+        env.USERPROFILE = appData;
+        env.HOME = appData;
+        env.HOMEDRIVE = path.parse(appData).root.replace(/\\$/, '');
+        env.HOMEPATH = path.relative(env.HOMEDRIVE, appData) || '\\';
     } catch {
         // A terminal must still start if the temporary profile cannot be made.
     }

@@ -16,6 +16,7 @@
  *      builds shared one folder in the first place.
  */
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import { findingText, type AppAuditFinding } from '../core/quality/app-audit';
 import { brandFallback, brandFrom } from '../core/design/page-head';
@@ -56,7 +57,7 @@ describe('048a provenance survives compaction and delivery reporting', () => {
     });
 
     it('lists files observed on the artifact disk and exposes the literal rerun reason', () => {
-        const root = fs.mkdtempSync('/tmp/joe-delivery-');
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-delivery-'));
         try {
             fs.mkdirSync(path.join(root, 'src'), { recursive: true });
             fs.writeFileSync(path.join(root, 'src', 'Favorites.tsx'), 'export default function Favorites(){ return null; }');
