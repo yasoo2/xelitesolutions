@@ -252,6 +252,12 @@ const CATALOGUE: Array<Criterion & { asked: RegExp }> = [
         markers: [],
     },
     {
+        id: 'form_validation', kind: 'feature',
+        asked: /required\s+fields?|prevent(?:s|ing)?\s+submission|submission\s+prevention|clear\s+error\s+summary|form\s+validation|حقول?\s+(?:إلزامي|مطلوب)|منع\s+(?:الإرسال|التقديم)|ملخص\s+(?:واضح\s+)?للأخطاء/iu,
+        ar: 'منع الإرسال وملخص واضح للأخطاء', en: 'required-field validation with a clear error summary',
+        markers: [/\.required\b|fields\s*\.filter/i, /setError\(|role\s*=\s*["']alert["']|aria-live/i],
+    },
+    {
         id: 'add_row', kind: 'feature',
         asked: /(?:إضافة|اضافة|أضف|\badd\b|\bcreate\b)\s+(?:(?:a|an|the)\s+)?(?:new\s+)?(?:حجز|صف|عنصر|سجل|بيان|مهمة|مشروع|عميل|جهة|منتج|طلب|تذكرة|ملاحظة|row|record|entry|item|booking|task|project|customer|contact|product|order|ticket|note)(?:\s+(?:record|entry|item))?/iu,
         ar: 'إضافة سجلّ جديد', en: 'adding a new record',
@@ -1163,6 +1169,11 @@ export function judgeAcceptance(criteria: Criterion[], ev: Evidence, isAr = true
             hit = hasActionBoundButtonEvidence(src);
         } else if (c.id === 'status_message') {
             hit = hasStatusMessageEvidence(src);
+        } else if (c.id === 'form_validation') {
+            // The form must both identify missing required fields and expose
+            // the result through an announced error surface.
+            hit = /\.required\b|fields\s*\.filter/i.test(src)
+                && /setError\(|role\s*=\s*["']alert["']|aria-live/i.test(src);
         } else if (c.id === 'title' && c.expectedText) {
             hit = titleEvidence(src, c.expectedText);
         } else {
