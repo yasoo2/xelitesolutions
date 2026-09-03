@@ -24,6 +24,7 @@ import {
     readProjectSource,
     requestedCapabilities,
     scopeReport,
+    hasFormValidationEvidence,
 } from '../core/quality/scope-audit';
 
 const HIS_REQUEST = 'Build a world-class e-commerce platform similar to Shopify. Features: '
@@ -69,6 +70,14 @@ describe('what he asked for is read from his own words', () => {
     it('still detects shipping when the request names a shipping feature explicitly', () => {
         expect(requestedCapabilities('Add shipping options, shipment tracking, and a shipping address form.')
             .map(c => c.id)).toContain('shipping');
+    });
+
+    it('does not mistake an equipment checkout workflow for payments', () => {
+        const ids = requestedCapabilities(
+            'Build a school equipment checkout system with required fields and a clear error summary.',
+        ).map(c => c.id);
+        expect(ids).toContain('form_validation');
+        expect(ids).not.toContain('payments');
     });
 });
 
@@ -197,6 +206,18 @@ describe('what was built is read from the code, never from optimism', () => {
         expect(report.requested.map(c => c.id)).toContain('responsive');
         expect(report.built.map(c => c.id)).toContain('responsive');
         expect(report.unchecked).not.toContain('responsive event dashboard with a mobile-first layout');
+    });
+
+    it('checks form validation against both required fields and an announced error', () => {
+        const request = 'Build a form with required fields, prevent submission, and show a clear error summary.';
+        const source = mk({
+            'src/Form.jsx': "const missing = fields.filter(f => f.required); if (missing.length) setError('Required'); return <p role=\"alert\">{error}</p>;",
+        });
+        const report = scopeReport(request, [source]);
+        expect(report.requested.map(c => c.id)).toContain('form_validation');
+        expect(report.built.map(c => c.id)).toContain('form_validation');
+        expect(hasFormValidationEvidence(readProjectSource([source]))).toBe(true);
+        expect(report.unchecked).not.toContain('clear error summary');
     });
 
     it('every capability carries both languages and two distinct patterns', () => {

@@ -48,6 +48,19 @@ const SEARCH_STATE_OR_IO = /\b(?:useState|set[A-Z][A-Za-z0-9_]*|fetch|axios|XMLH
 // from authored layout rules, not inferred from a page title or a model claim.
 const RESPONSIVE_LAYOUT = /@media\b|clamp\s*\(|flex-wrap\s*:\s*[^;]+|grid-template-columns\s*:/i;
 
+// “Checkout” is also a legitimate name for non-payment workflows such as
+// lending equipment. Treat it as payments only when payment context is nearby.
+const PAYMENT_CHECKOUT = /\bcheckout\b(?=[^,.]{0,40}\b(?:payment|card|billing|purchase|order|cart)\b)/i;
+const PAYMENT_REQUEST = new RegExp(
+    `\\bpayments?\\b|\\bstripe\\b|\\bpaypal\\b|المدفوعات|بوابة دفع|${PAYMENT_CHECKOUT.source}`,
+    'i',
+);
+
+export function hasFormValidationEvidence(source: string): boolean {
+    return /fields\s*\.filter\(\s*f\s*=>\s*f\.required|f\.required\s*&&/i.test(source)
+        && /setError\(|role\s*=\s*["']alert["']|aria-live/i.test(source);
+}
+
 /**
  * Search is a runtime interaction, not merely a variable name. Accept the
  * established names as a supporting alternative, or require an interaction
@@ -93,8 +106,14 @@ export const CAPABILITIES: Capability[] = [
     },
     {
         id: 'payments', ar: 'المدفوعات', en: 'payments',
-        ask: /\bpayments?\b|\bstripe\b|\bpaypal\b|\bcheckout\b|المدفوعات|بوابة دفع/i,
+        ask: PAYMENT_REQUEST,
         evidence: /stripe|paypal|payment_?intent|\/api\/payments?|checkout_?session/i,
+    },
+    {
+        id: 'form_validation', ar: 'التحقق من النموذج', en: 'form validation',
+        ask: /required\s+fields?|prevent(?:s|ing)?\s+submission|submission\s+prevention|clear\s+error\s+summary|form\s+validation|حقول?\s+(?:إلزامي|مطلوب)|منع\s+(?:الإرسال|التقديم)|ملخص\s+(?:واضح\s+)?للأخطاء/i,
+        evidence: /fields\s*\.filter\(\s*f\s*=>\s*f\.required|f\.required\s*&&|setError\(|role\s*=\s*["']alert["']|aria-live/i,
+        evidenceCheck: hasFormValidationEvidence,
     },
     {
         id: 'shipping', ar: 'الشحن', en: 'shipping',
