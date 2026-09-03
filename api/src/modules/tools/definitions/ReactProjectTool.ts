@@ -299,7 +299,7 @@ export function requestSpokenCapabilities(
 type DeliveryTopic = 'crud' | 'required' | 'search' | 'filter' | 'sort' | 'computed' | 'storage' | 'csv' | 'api';
 const DELIVERY_TOPIC_RULES: Array<[DeliveryTopic, RegExp]> = [
     ['crud', /create|edit|delete|add|update|record|إضافة|تعديل|حذف|سجل|السجلات/iu],
-    ['required', /required|validation|validate|invalid|الحقول\s*المطلوبة|تحقّق|تحقق/iu],
+    ['required', /required|validation|validate|invalid|error\s+summary|submission\s+prevention|prevent(?:s|ing)?\s+submission|الحقول\s*المطلوبة|ملخّص\s*الأخطاء|ملخص\s*الأخطاء|منع\s*الإرسال|تحقّق|تحقق/iu],
     ['search', /search|بحث/iu],
     ['filter', /filter|مرشّح|مرشح|تصفية/iu],
     ['sort', /sort|sorting|ترتيب/iu],
@@ -458,6 +458,24 @@ export function reconcileDeliveryVoices(
         unjudged: unjudged.filter((item, index, all) => all.indexOf(item) === index),
         conflicts,
     };
+}
+
+/**
+ * Remove only delivery gaps that a source-backed acceptance criterion proved.
+ *
+ * The capability reader and acceptance judge answer different questions, but
+ * the final delivery gate must not let their two views contradict each other:
+ * a form-validation criterion can prove "clear error summary" while the
+ * broader request-feature reader still reports that phrase as uncovered.
+ * Topic mapping keeps this generic across domains and avoids matching a
+ * merely similar sentence without a met criterion behind it.
+ */
+export function gapsProvenByAcceptance(
+    gaps: string[],
+    metAcceptanceIds: string[] = [],
+): string[] {
+    const metTopics = new Set(metAcceptanceIds.flatMap(id => acceptanceTopics(String(id))));
+    return (gaps || []).filter(gap => !deliveryTopics(gap).some(topic => metTopics.has(topic)));
 }
 
 /** A preview URL is evidence only when the URL itself answered HTTP 200. */
@@ -6678,9 +6696,16 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
         // technology stack, which is rarely written as a bullet list.
         const { uncoveredFeatures } = require('../../../core/design/app-blueprints');
         const fidelity = deriveRequestFidelity(request, isAr, appBp, projectEvidence);
-        const askedButMissing: string[] = appBp && !fidelity.evidenceUnavailable
+        const rawAskedButMissing: string[] = appBp && !fidelity.evidenceUnavailable
             ? uncoveredFeatures(request, appBp.engine, !!apiLink, projectEvidence)
             : [];
+        // Acceptance is source-backed evidence. Reconcile the request-level
+        // reader with it before the hard delivery gate so one proven criterion
+        // cannot be reported as missing by a second, broader classifier.
+        const askedButMissing: string[] = gapsProvenByAcceptance(
+            rawAskedButMissing,
+            acceptance.criteria.filter((c: any) => c.verdict === 'met').map((c: any) => c.id),
+        );
         const fidelityEvidenceLength = projectEvidence.length;
         const fidelityEvidenceUnavailable = fidelity.evidenceUnavailable;
         const fidelityMismatch = fidelity.mismatch;
