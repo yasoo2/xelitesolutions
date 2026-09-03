@@ -655,6 +655,11 @@ export class AIGeneratorTool implements ToolDefinition {
         context?: string
     }, context?: any) {
         const logs: string[] = [];
+        const assertRunActive = () => {
+            if (typeof context?.isCancelled === 'function' && context.isCancelled()) {
+                throw new Error('run_cancelled_by_owner');
+            }
+        };
         // Both fields are `required` in the schema, and the schema was the only
         // thing enforcing them. Called with nothing, this tool went straight to
         // the model and spent a full generation on an empty brief before dying
@@ -674,6 +679,7 @@ export class AIGeneratorTool implements ToolDefinition {
                 logs,
             };
         }
+        assertRunActive();
         const contextWorkspaceId = context?.workspaceId;
         let callLLM: any;
         try { callLLM = getLLM(); }
@@ -972,6 +978,9 @@ Return the complete file content now.`;
             // the machine — proven, not theorised: the same pattern in the
             // unreachable twin of this tool created /etc/joe-owned.txt in a test.
             const absPath = resolveArtifactAwarePath(filePath, contextWorkspaceId, context?.projectRoot);
+            // A model response may arrive after the owner stopped the run. The
+            // late response is evidence, never permission to write a new file.
+            assertRunActive();
             const runtimeProjectRoot = String(context?.projectRoot || '').trim();
             if (runtimeProjectRoot && path.isAbsolute(runtimeProjectRoot)) {
                 const resolvedRoot = path.resolve(runtimeProjectRoot);

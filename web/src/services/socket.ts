@@ -34,6 +34,8 @@ type SessionRuntimeState = {
    * happened to emit its next event.
    */
   activeRunId: string;
+  /** Ignore late tool/builder events after a cancelled or finished run. */
+  closedAt: number;
 };
 
 const DEFAULT_SCOPE = '__unscoped__';
@@ -53,7 +55,12 @@ function eventSessionId(event: any): string {
 
 /** Event kinds that prove a run is still in flight (not its closing word). */
 function msgTypeIsLive(type: string): boolean {
-  return type !== 'run_finished' && type !== 'text' && type !== 'error';
+  return type !== 'run_finished'
+    && type !== 'run_cancelled'
+    && type !== 'run_failed'
+    && type !== 'run_completed'
+    && type !== 'text'
+    && type !== 'error';
 }
 
 function getSessionRuntime(sessionId?: string): SessionRuntimeState {
@@ -72,6 +79,7 @@ function getSessionRuntime(sessionId?: string): SessionRuntimeState {
       quietMode: false,
       lastPreviewUrl: '',
       activeRunId: '',
+      closedAt: 0,
     };
     sessionRuntime.set(key, state);
   }
@@ -387,6 +395,20 @@ async function connect() {
       // into a named session by the frontend.
       const evSid = eventSessionId(data);
       const runtime = getSessionRuntime(evSid);
+      // A cancelled tool may finish its current child process and emit a few
+      // late lines. Those lines are evidence for Logs, not a new live run. If
+      // they re-enter the live state here, the Stop button and neural row can
+      // resurrect seconds after the user stopped the task. A new run_started
+      // explicitly opens the session again.
+      if (runtime.closedAt > 0 && msgType !== 'run_started') {
+        const lateRunId = normalizeSessionId(data?.runId || data?.data?.runId);
+        const closedRunId = runtime.activeRunId;
+        const isClosingEvent = msgType === 'run_finished'
+          || msgType === 'run_cancelled'
+          || msgType === 'run_failed'
+          || msgType === 'run_completed';
+        if (!isClosingEvent || (lateRunId && closedRunId && lateRunId !== closedRunId)) return;
+      }
       // Any event of a live run names it; the first one that does adopts the id
       // for the session, so a chat switched away from and back to still knows
       // which run to stop.
@@ -450,7 +472,13 @@ async function connect() {
         if (runtime.quietMode) {
           emitPhase('executing');
         }
-      } else if (msgType === 'run_finished' || msgType === 'text') {
+      } else if (
+        msgType === 'run_finished'
+        || msgType === 'run_cancelled'
+        || msgType === 'run_failed'
+        || msgType === 'run_completed'
+        || msgType === 'text'
+      ) {
         // A finished run is not a thinking run — whether or not quiet mode was
         // ever entered. Returning to idle used to be conditional on `quietMode`,
         // which is only set by `user_input` / `step_started`; a run driven purely
@@ -458,6 +486,7 @@ async function connect() {
         // on screen saying «جو ينفّذ» after the answer had already arrived.
         runtime.quietMode = false;
         runtime.thinkingStatus = '';
+        runtime.closedAt = Date.now();
         runtime.activeRunId = '';
         emitPhase('idle');
         forSession(thinkingStatusListeners, evSid, cb => cb('', evSid));
@@ -479,6 +508,7 @@ async function connect() {
         sealTrace(evSid);
         runtime.runStartedAt = Date.now();
         runtime.runSessionId = evSid;
+        runtime.closedAt = 0;
         if (evRunId) runtime.activeRunId = evRunId;
         runtime.thinkingDetails = [];
         runtime.thinkingStatus = '';

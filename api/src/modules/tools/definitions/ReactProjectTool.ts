@@ -3611,6 +3611,12 @@ export class ReactProjectTool extends BaseTool {
             try { journal(sessionId, line); } catch { /* never the reason a build fails */ }
         };
 
+        const assertRunActive = () => {
+            if (typeof context?.isCancelled === 'function' && context.isCancelled()) {
+                throw new Error('run_cancelled_by_owner');
+            }
+        };
+
         /**
          *  ⛔ WHAT HE NAMED, READ BEFORE ANYTHING IS CHOSEN.
          *
@@ -5086,7 +5092,9 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
         // Logs panel the moment it exists on disk — the same `file_stream`
         // event the page builder emits. Without it the panel opened on a
         // React build and showed nothing being built at all.
+        assertRunActive();
         for (const [rel, body] of Object.entries(files)) {
+            assertRunActive();
             fs.mkdirSync(path.dirname(path.join(proj, rel)), { recursive: true });
             fs.writeFileSync(path.join(proj, rel), body, 'utf-8');
             try {
@@ -5144,6 +5152,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
         const canUseBlueprintFallback = context?.engineeringPipeline === true && Boolean(generatedEnginePath);
         const useBlueprintFallback = (reason: string): boolean => {
             if (!canUseBlueprintFallback || !requestDerivedEngineFallbackEligible(reason)) return false;
+            assertRunActive();
             try {
                 const fallbackFiles = buildAppFiles(runBp, {
                     isArabic: artifactIsAr,
@@ -5159,6 +5168,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 if (!fallbackSource.trim()) return false;
                 const authoredPath = path.join(proj, generatedEnginePath);
                 fs.mkdirSync(path.dirname(authoredPath), { recursive: true });
+                assertRunActive();
                 fs.writeFileSync(authoredPath, fallbackSource, 'utf8');
                 files[generatedEnginePath] = fallbackSource;
                 blueprintFallbackEngine = true;
@@ -5219,6 +5229,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                     // only makes the visible run look frozen.
                     ...(canUseBlueprintFallback ? { allowProviderRetry: false } : {}),
                 });
+                assertRunActive();
                 if (!generated?.ok || !fs.existsSync(path.join(proj, generatedEnginePath))) {
                     const reason = String(generated?.error || 'ai_write_file did not produce the requested domain file');
                     if (useBlueprintFallback(reason)) {
@@ -5401,6 +5412,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             const reconciled = pruneMissingFontResources(body, cssPath, proj);
             if (!reconciled.removed.length) continue;
             files[rel] = reconciled.css;
+            assertRunActive();
             fs.writeFileSync(cssPath, reconciled.css, 'utf-8');
             removedFontResources.push(...reconciled.removed.map((resource) => `${rel}:${resource}`));
         }
@@ -5558,12 +5570,15 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                  *  something the project never needed.
                  */
                 if (!built && (Object.keys(authoredFallback).length > 0 || !!authoredEngineFallback)) {
+                    assertRunActive();
                     for (const [rel, body] of Object.entries(authoredFallback)) {
+                        assertRunActive();
                         fs.writeFileSync(path.join(proj, rel), body, 'utf-8');
                     }
                     const restored = Object.keys(authoredFallback).map(r => r.split('/').pop());
                     Object.keys(authoredFallback).forEach(k => delete authoredFallback[k]);
                     if (authoredEngineFallback) {
+                        assertRunActive();
                         fs.writeFileSync(path.join(proj, authoredEngineFallback.path), authoredEngineFallback.body, 'utf-8');
                         files[authoredEngineFallback.path] = authoredEngineFallback.body;
                         modelAuthoredEngine = false;
@@ -5924,12 +5939,15 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             const canRestoreDeterministic = runtimeBlockers.length && !audit?.skipped
                 && (Object.keys(authoredFallback).length > 0 || !!authoredEngineFallback);
             if (canRestoreDeterministic) {
+                assertRunActive();
                 term(`the authored interface broke the page while it RAN (${runtimeBlockers.map((f: any) => f.id || f.kind || 'high').slice(0, 3).join(', ')}) — putting the deterministic sections back`);
                 for (const [rel, body] of Object.entries(authoredFallback)) {
+                    assertRunActive();
                     fs.writeFileSync(path.join(proj, rel), body, 'utf-8');
                 }
                 Object.keys(authoredFallback).forEach(k => delete authoredFallback[k]);
                 if (authoredEngineFallback) {
+                    assertRunActive();
                     fs.writeFileSync(path.join(proj, authoredEngineFallback.path), authoredEngineFallback.body, 'utf-8');
                     files[authoredEngineFallback.path] = authoredEngineFallback.body;
                     modelAuthoredEngine = false;
@@ -6296,6 +6314,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                                         term(`improve: the behaviour round produced nothing usable (${fixed.why || 'no answer'}) — nothing written`);
                                     } else {
                                         try {
+                                            assertRunActive();
                                             fs.writeFileSync(path.join(proj, pick.file), fixed.source, 'utf-8');
                                             term(`improve: the model rewrote ${pick.file} to make ${pick.labels.slice(0, 3).join(', ') || 'the controls'} do something — the next measurement presses them again and decides whether it stays`);
                                             //  Both, not either: the style fixes this round already

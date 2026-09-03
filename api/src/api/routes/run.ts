@@ -370,16 +370,40 @@ router.get('/:id', async (req, res) => {
  *  on; `ok` over a run that continued is not.
  */
 router.post('/stop', async (req, res) => {
-    const { runId, sessionId } = req.body || {};
-    const { stopRun } = require('../../core/session/attended-run');
+  const { runId, sessionId } = req.body || {};
+  const { stopRun } = require('../../core/session/attended-run');
+  const requestedRunId = String(runId || '').trim();
+  const requestedSessionId = String(sessionId || '').trim();
+  // Resolve the session before stopping. The browser normally sends both ids,
+  // but a remounted composer may only have the run id; the cancellation event
+  // still needs a concrete session so every open tab can clear its own state.
+  const activeBeforeStop = getActiveRunSessions();
+  const target = activeBeforeStop.find(run =>
+    (requestedRunId && run.runId === requestedRunId)
+    || (requestedSessionId && run.sessionId === requestedSessionId)
+  );
+  const resolvedSessionId = requestedSessionId || target?.sessionId || '';
+  const resolvedRunId = requestedRunId || target?.runId || '';
     //  Both ids: this route is called with a runId, the tool layer registers a
     //  sessionId, and a stop that only travels through one of them is a stop
     //  that works on some screens.
-    const stopped = !!stopRun(runId, sessionId);
-    if (runId && mongoose.Types.ObjectId.isValid(runId)) {
-        await Run.findByIdAndUpdate(runId, { $set: { status: 'failed' } });
-    }
-    res.json({ ok: true, stopped });
+  const stopped = !!stopRun(resolvedRunId, resolvedSessionId);
+  if (requestedRunId && mongoose.Types.ObjectId.isValid(requestedRunId)) {
+      await Run.findByIdAndUpdate(requestedRunId, { $set: { status: 'failed' } });
+  }
+  if (stopped && resolvedSessionId) {
+      broadcast({
+          type: 'run_cancelled',
+          sessionId: resolvedSessionId,
+          runId: resolvedRunId || undefined,
+          data: {
+              sessionId: resolvedSessionId,
+              runId: resolvedRunId || undefined,
+              reason: 'owner_requested',
+          },
+      } as any);
+  }
+  res.json({ ok: stopped, stopped, sessionId: resolvedSessionId || undefined });
 });
 
 export default router;

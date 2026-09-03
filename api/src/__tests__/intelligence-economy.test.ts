@@ -17,7 +17,7 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { retryAfterMsFrom, customRouteCooldownUntil } from '../core/llm/intelligent-router';
+import { retryAfterMsFrom, customRouteCooldownUntil, shouldProbeLocalBrain } from '../core/llm/intelligent-router';
 import { detectLocalModels } from '../core/llm/local-brain';
 
 const read = (...p: string[]) => fs.readFileSync(path.join(__dirname, '..', ...p), 'utf-8');
@@ -153,6 +153,24 @@ describe('local Ollama discovery is explicit and portable', () => {
             global.fetch = originalFetch;
             restoreEnv(env);
         }
+    });
+});
+
+describe('a recovered local brain gets one bounded re-entry probe', () => {
+    it('does not treat an old breaker pause as a permanent outage', () => {
+        const now = 1_000_000;
+        expect(shouldProbeLocalBrain(now, 0)).toBe(true);
+        expect(shouldProbeLocalBrain(now, now - 29_999)).toBe(false);
+        expect(shouldProbeLocalBrain(now, now - 30_000)).toBe(true);
+    });
+
+    it('keeps the actual provider call behind the probe and preserves the breaker', () => {
+        const src = read('core', 'llm', 'intelligent-router.ts');
+        expect(src).toContain('probeLocalBrainForRecovery');
+        expect(src).toContain('local recovery probe timeout');
+        expect(src).toContain('localRecoveryProbeAt = Date.now()');
+        expect(src).toContain('if (await probeLocalBrainForRecovery())');
+        expect(src).toContain('if (isLocalBrainOpen())');
     });
 });
 

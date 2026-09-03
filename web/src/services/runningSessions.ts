@@ -49,7 +49,7 @@ function note(event: any) {
         if (!running.has(sid)) { running.add(sid); emit(); }
         return;
     }
-    if (type === 'run_finished' || type === 'run_failed' || type === 'run_cancelled') {
+    if (type === 'run_finished' || type === 'run_failed' || type === 'run_cancelled' || type === 'run_completed') {
         runIds.delete(sid);
         if (running.delete(sid)) emit();
     }

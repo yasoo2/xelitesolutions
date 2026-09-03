@@ -965,6 +965,52 @@ const LOCAL_PROBE_TIMEOUT_MS = 8_000;
 let localConsecutiveTimeouts = 0;
 let localCircuitUntil = 0;
 let localBreakerWindowMs = 0;
+// A breaker protects the mesh from a genuinely stalled model, but a long pause
+// must not become a permanent verdict after Ollama has recovered. One bounded
+// liveness probe per window lets a fresh chat reopen the preferred local route.
+const LOCAL_RECOVERY_PROBE_WINDOW_MS = Math.max(
+    10_000,
+    parseInt(String(process.env.LOCAL_BRAIN_RECOVERY_PROBE_WINDOW_MS || '').trim(), 10) || 30_000,
+);
+const LOCAL_RECOVERY_PROBE_TIMEOUT_MS = Math.max(
+    5_000,
+    parseInt(String(process.env.LOCAL_BRAIN_RECOVERY_PROBE_TIMEOUT_MS || '').trim(), 10) || 30_000,
+);
+let localRecoveryProbeAt = 0;
+
+export function shouldProbeLocalBrain(now = Date.now(), lastProbeAt = localRecoveryProbeAt): boolean {
+    return !lastProbeAt || now - lastProbeAt >= LOCAL_RECOVERY_PROBE_WINDOW_MS;
+}
+
+async function probeLocalBrainForRecovery(): Promise<boolean> {
+    if (!isLocalBrainReady() || !localProvider.isConfigured() || !shouldProbeLocalBrain()) return false;
+    // Claim before awaiting so concurrent sessions cannot all wake a paused model.
+    localRecoveryProbeAt = Date.now();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+        const answer = await Promise.race([
+            localProvider.chatComplete(
+                [{ role: 'user', content: 'Reply with the single word: OK' }],
+                pickLocalModel('simple_chat'),
+                undefined,
+                undefined,
+                { maxCompletionTokens: 1 },
+            ),
+            new Promise<string>((_, reject) => {
+                timer = setTimeout(() => reject(new Error('local recovery probe timeout')), LOCAL_RECOVERY_PROBE_TIMEOUT_MS);
+            }),
+        ]);
+        if (isUsableAnswer(answer)) {
+            noteLocalBrainOk();
+            return true;
+        }
+    } catch {
+        // The normal breaker remains authoritative when the recovery probe fails.
+    } finally {
+        if (timer) clearTimeout(timer);
+    }
+    return false;
+}
 
 /** Is the local brain currently skipped? */
 export function isLocalBrainOpen(): boolean { return Date.now() < localCircuitUntil; }
@@ -1063,7 +1109,7 @@ export function noteLocalBrainOk(): void {
     localConsecutiveTimeouts = 0; localCircuitUntil = 0; localBreakerWindowMs = 0; localTimedOutAt = 0;
 }
 /** Tests only. */
-export function resetLocalBrainBreaker(): void { localConsecutiveTimeouts = 0; localCircuitUntil = 0; localBreakerWindowMs = 0; localTimedOutAt = 0; localObservedMs = 0; localLeashFloorMs = 0; }
+export function resetLocalBrainBreaker(): void { localConsecutiveTimeouts = 0; localCircuitUntil = 0; localBreakerWindowMs = 0; localTimedOutAt = 0; localRecoveryProbeAt = 0; localObservedMs = 0; localLeashFloorMs = 0; }
 export function markProviderOk(name: string): void {
     recentlyFailedProviders.delete(name);
     recentlyRateLimitedProviders.delete(name);
@@ -2249,10 +2295,19 @@ export async function routeToModel(
             // opened, continuing to force it first defeats the fallback mesh
             // and makes a weak local model stall every engineering phase.
             if (p.name === 'Local (Auto)' && isLocalBrainOpen() && !allowLocalEngineeringRecovery) {
-                const left = Math.max(1, Math.round((localCircuitUntil - Date.now()) / 1000));
-                console.info(`[IntelligentRouter] ⏭️ skipping the local brain (paused ${left}s more) — going straight to the mesh.`);
-                recordProviderAttempt(p.name, false, `skipped: local circuit paused for ${left}s`);
-                continue;
+                // A paused circuit is a failure-memory, not proof that Ollama is
+                // still down. Give a healthy, configured local daemon one small
+                // recovery probe for a fresh chat; never let every concurrent
+                // phase probe it because the probe is claimed per time window.
+                if (await probeLocalBrainForRecovery()) {
+                    console.info('[IntelligentRouter] 🩺 local recovery probe passed — reopening Ollama for this route.');
+                }
+                if (isLocalBrainOpen()) {
+                    const left = Math.max(1, Math.round((localCircuitUntil - Date.now()) / 1000));
+                    console.info(`[IntelligentRouter] ⏭️ skipping the local brain (paused ${left}s more) — going straight to the mesh.`);
+                    recordProviderAttempt(p.name, false, `skipped: local circuit paused for ${left}s`);
+                    continue;
+                }
             }
             if (p.name === 'Local (Auto)' && allowLocalEngineeringRecovery && context) {
                 (context as any).localEngineeringRecoveryAttempted = true;

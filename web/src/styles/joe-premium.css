@@ -1641,6 +1641,14 @@ body:not(.rtl) .joe-user-info {
 }
 .joe-message.assistant { align-self: stretch; }
 
+/* Live work is part of the conversation, not a second dashboard. Keep the
+   assistant row open and give its current action one quiet visual anchor. */
+.joe-live-dock { margin-top: -4px; }
+.joe-live-dock .joe-message { gap: 8px; }
+.joe-live-dock .joe-message-avatar { width: 24px; height: 24px; margin-top: 4px; }
+.joe-live-content { gap: 0 !important; }
+.joe-live-composer-content { display: flex; flex-direction: column; width: 100%; min-width: 0; max-width: 100%; gap: 8px; }
+
 /* Assistant gets a small emerald avatar; user needs none */
 .joe-message-avatar {
     display: grid;

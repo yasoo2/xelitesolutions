@@ -31,9 +31,7 @@ describe('the card opens instead of hiding what it has', () => {
 
 describe('and it fits the chat it lives in', () => {
     it('the padding cannot push it past its container', () => {
-        const src = CARD();
-        // The rule contains comments with braces, so cut at its real end —
-        // the `.neural-card.bubble` line that follows it.
+        const src = VIEW();
         const at = src.indexOf('.neural-card {');
         const rule = src.slice(at, src.indexOf('.neural-card.bubble', at));
         expect(rule).toMatch(/box-sizing: border-box;/);
@@ -43,26 +41,27 @@ describe('and it fits the chat it lives in', () => {
     });
 
     it('the live surface does not render as a heavy card', () => {
-        const src = CARD();
+        const src = VIEW();
         const at = src.indexOf('.neural-card {');
         const rule = src.slice(at, src.indexOf('.neural-card.bubble', at));
         expect(rule).toMatch(/background: transparent;/);
         expect(rule).toMatch(/box-shadow: none;/);
         expect(rule).not.toMatch(/backdrop-filter: blur/);
-        expect(src).not.toMatch(/className="nc-track"/);
+        expect(CARD()).not.toMatch(/<style>/);
     });
 
-    it('a long goal line shrinks rather than stretching the card', () => {
-        const src = CARD();
-        expect(src.slice(src.indexOf('.neural-head {'), src.indexOf('.neural-head {') + 120)).toMatch(/min-width: 0/);
-        const lineStart = src.indexOf('.nc-detail {');
-        const line = src.slice(lineStart, src.indexOf('.nc-elapsed', lineStart));
-        expect(line).toMatch(/text-overflow: ellipsis/);
-        expect(line).toMatch(/white-space: nowrap/);
+    it('a long activity line wraps rather than disappearing behind an ellipsis', () => {
+        const src = VIEW();
+        const lineStart = src.indexOf('.nc-line-text {');
+        const line = src.slice(lineStart, src.indexOf('.nc-now {', lineStart));
+        expect(line).toMatch(/overflow-wrap: anywhere/);
+        expect(line).not.toMatch(/text-overflow: ellipsis/);
+        expect(line).not.toMatch(/white-space: nowrap/);
+        expect(line).toMatch(/min-width: 0/);
     });
 
     it('and the log is chat-sized, not page-sized', () => {
-        expect(CARD()).toMatch(/max-height: min\(34vh, 300px\)/);
+        expect(VIEW()).toMatch(/max-height: min\(34vh, 300px\)/);
     });
 
     it('the timeline inside it is bounded too', () => {
@@ -97,7 +96,7 @@ describe('the column the card lives in is the column every reply lives in', () =
         // The wrapper immediately above the indicator.
         const before = chat.slice(Math.max(0, at - 700), at);
         const wrapper = before.slice(before.lastIndexOf('<div '));
-        expect(wrapper).toMatch(/className="joe-message-content"/);
+        expect(wrapper).toMatch(/className="joe-message-content/);
         expect(wrapper).not.toMatch(/width: '100%'/);
     });
 
@@ -112,6 +111,6 @@ describe('the column the card lives in is the column every reply lives in', () =
         const composer = fs.readFileSync(path.join(WEB, 'CommandComposer.tsx'), 'utf-8');
         const at = composer.indexOf('<NeuralThinkingIndicator');
         const wrapper = composer.slice(Math.max(0, at - 400), at);
-        expect(wrapper.slice(wrapper.lastIndexOf('<div '))).toMatch(/minWidth: 0/);
+        expect(wrapper.slice(wrapper.lastIndexOf('<div '))).toMatch(/joe-live-composer-content/);
     });
 });

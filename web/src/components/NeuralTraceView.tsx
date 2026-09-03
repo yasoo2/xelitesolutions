@@ -61,6 +61,48 @@ const STYLE_ID = 'joe-neural-trace-css';
 const TRACE_CSS = `
 .jt { --jt-line: color-mix(in srgb, var(--jt-accent, #34c48b) 26%, transparent); }
 
+/* The live indicator shares this sheet with the sealed trace. Keeping these
+   rules here prevents every active chat message from carrying its own style
+   tag and makes the compact surface behave consistently after navigation. */
+.neural-card {
+  --nc: var(--jt-accent, #5c7f74);
+  display: flex; flex-direction: column; gap: 0; box-sizing: border-box;
+  width: 100%; max-width: 100%; min-width: 0; margin-bottom: 8px;
+  padding: 8px 0 10px; border: 0; background: transparent;
+  overflow: visible; box-shadow: none; animation: nc-in .28s cubic-bezier(.22,1,.36,1);
+}
+.neural-card.bubble { margin-bottom: 0; }
+@keyframes nc-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+.neural-head { display: flex; align-items: center; gap: 9px; min-width: 0; margin-bottom: 9px; padding-bottom: 8px; border-bottom: 1px solid color-mix(in srgb, var(--nc) 15%, transparent); }
+.nc-orb { position: relative; width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--nc); box-shadow: 0 0 0 4px color-mix(in srgb, var(--nc) 13%, transparent); animation: nc-pulse 1.8s ease-in-out infinite; }
+.nc-orb .skin { display: none; }
+@keyframes nc-pulse { 0%,100% { opacity: .55; transform: scale(.9); } 50% { opacity: 1; transform: scale(1); } }
+.nc-label { display: flex; align-items: baseline; gap: 8px; min-width: 0; flex: 1 1 auto; }
+.nc-phase { flex: none; color: var(--joe-text-primary, #eceef0); font-size: 13px; font-weight: 700; white-space: nowrap; }
+.nc-stage { flex: none; max-width: 42%; overflow: hidden; color: var(--nc); font-size: 11px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.nc-sep { flex: none; color: var(--joe-text-muted, #8b9198); font-size: 11px; }
+.nc-stream { display: flex; flex-direction: column; gap: 7px; min-width: 0; padding-inline-start: 2px; }
+.nc-stream-line { display: flex; align-items: flex-start; gap: 8px; min-width: 0; color: var(--joe-text-secondary, #b9bec5); font-size: 12px; line-height: 1.5; opacity: .82; transition: opacity .2s ease, color .2s ease; }
+.nc-stream-line.is-current { color: var(--joe-text-primary, #eceef0); opacity: 1; }
+.nc-line-marker { width: 5px; height: 5px; flex: none; margin: .55em 2px 0 0; border-radius: 50%; background: currentColor; }
+.nc-stream-line.is-current .nc-line-marker { width: 7px; height: 7px; background: var(--nc); box-shadow: 0 0 0 3px color-mix(in srgb, var(--nc) 15%, transparent); }
+.nc-line-content { display: flex; align-items: baseline; gap: 9px; min-width: 0; flex: 1 1 auto; }
+.nc-line-stage { flex: none; color: color-mix(in srgb, var(--nc) 80%, var(--joe-text-secondary, #c4c9cf)); font-size: 10.5px; font-weight: 700; white-space: nowrap; }
+.nc-line-text { min-width: 0; overflow-wrap: anywhere; }
+.nc-now { flex: none; color: var(--nc); font-size: 9px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+.nc-current-line { display: flex; align-items: flex-start; gap: 8px; min-width: 0; margin-top: 10px; padding: 9px 10px; border-inline-start: 3px solid var(--nc); background: color-mix(in srgb, var(--nc) 9%, transparent); border-radius: 0 6px 6px 0; }
+.nc-current-kicker { flex: none; color: var(--nc); font-size: 10px; font-weight: 750; white-space: nowrap; }
+.nc-current-text { min-width: 0; overflow-wrap: anywhere; color: var(--joe-text-primary, #eceef0); font-size: 13px; font-weight: 650; line-height: 1.5; }
+.nc-chip { display: inline-flex; align-items: center; gap: 4px; flex: none; padding: 1px 0; border: 0; border-bottom: 1px solid color-mix(in srgb, var(--joe-text-muted, #8b9198) 35%, transparent); border-radius: 0; color: var(--joe-text-muted, #8b9198); background: transparent; cursor: pointer; font: inherit; font-size: 10.5px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.nc-chip:hover { color: var(--joe-text-primary, #eceef0); border-bottom-color: currentColor; }
+.nc-chip:focus-visible { outline: 2px solid var(--nc); outline-offset: 2px; }
+.nc-chip svg { transition: transform .22s cubic-bezier(.22,1,.36,1); }
+.nc-chip[aria-expanded="true"] svg { transform: rotate(180deg); }
+.nc-log { max-height: min(34vh, 300px); margin-top: 9px; padding-top: 8px; overflow-y: auto; overscroll-behavior: contain; border-top: 1px solid color-mix(in srgb, var(--nc) 14%, transparent); scrollbar-color: color-mix(in srgb, var(--nc) 40%, transparent) transparent; scrollbar-width: thin; }
+.nc-log::-webkit-scrollbar { width: 7px; }
+.nc-log::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--nc) 30%, transparent); border-radius: 8px; }
+.nc-log::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--nc) 55%, transparent); }
+
 /* ── the timeline ───────────────────────────────────────────────── */
 /* Inside a chat bubble: never wider than what it was given, and a long
    line wraps instead of pushing the card past the conversation's border. */
@@ -169,7 +211,16 @@ const TRACE_CSS = `
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .jt-chev, .jt-body { transition: none !important; animation: none !important; }
+  .jt-chev, .jt-body, .nc-orb, .neural-card { transition: none !important; animation: none !important; }
+}
+
+@media (max-width: 560px) {
+  .neural-head { align-items: center; }
+  .nc-label { gap: 5px; }
+  .nc-stage { max-width: 32%; }
+  .nc-current-line { align-items: flex-start; flex-wrap: wrap; gap: 4px 8px; }
+  .nc-current-text { flex: 1 1 100%; white-space: normal; }
+  .nc-current-line .nc-now { margin-inline-start: auto; }
 }
 `;
 

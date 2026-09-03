@@ -26,7 +26,10 @@ const DETECTORS: Array<[PageKind, RegExp]> = [
     // measured build of «restaurant website» came out as an online shop with a
     // cart, because the store pattern is checked first. (Arabic needs no \b:
     // its keywords are whole distinctive words already.)
-    ['store', /متجر|تسوق|منتجات|سلة|شراء|\bshop\b|\bstores?\b|e-?commerce|\bcarts?\b|\bcheckout\b|product page|\bcatalog/i],
+    // A catalogue can describe a museum, seed library, archive or course
+    // collection. It becomes commerce only when the request also names a
+    // transaction or explicitly calls it a shop/storefront.
+    ['store', /متجر|تسوق|منتجات|سلة|شراء|\bshop\b|\bstores?\b|e-?commerce|\bcarts?\b|\bcheckout\b|product page|\bcatalog(?:ue)?\s+(?:shop|store|products?)|(?:shop|store|products?)\s+catalog(?:ue)?/i],
     /**
      *  ⛔ THE ARABIC HALF WAS CAREFUL AND THE ENGLISH HALF WAS NOT.
      *

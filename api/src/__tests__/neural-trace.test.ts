@@ -28,6 +28,7 @@ import {
     stepDurations,
     traceDuration,
     traceToText,
+    traceDisplayKey,
     type NeuralTrace,
     type TraceStep,
 } from '../../../web/src/lib/neuralTrace';
@@ -156,6 +157,15 @@ describe('the timeline groups consecutive steps by their phase', () => {
 });
 
 describe('the three defects behind the complaint are closed in the UI', () => {
+    it('turns internal activity into safe user-facing descriptions', () => {
+        expect(traceDisplayKey('Running: browser_summarize')).toBe('neuralDetailBrowserAction');
+        expect(traceDisplayKey('Running: import_project')).toBe('neuralDetailWorkspace');
+        expect(traceDisplayKey('Cloning https://github.com/user/repo.git')).toBe('neuralDetailWorkspace');
+        expect(traceDisplayKey('Running: unknown_internal_tool')).toBe('neuralDetailAction');
+        expect(traceDisplayKey('Improvement loop: 97/100')).toBe('neuralDetailVerify');
+        expect(traceDisplayKey('Putting the steps in order before starting')).toBe('neuralDetailOrchestration');
+    });
+
     it('the steps are no longer component state that dies with the run', () => {
         const ind = read('components', 'NeuralThinkingIndicator.tsx');
         expect(ind).not.toMatch(/useState<string\[\]>\(\[\]\)/);
@@ -164,28 +174,31 @@ describe('the three defects behind the complaint are closed in the UI', () => {
         expect(socket).toMatch(/function sealTrace\(sessionId = ''\)/);
         expect(socket).toMatch(/saveTrace\(trace\)/);
         // Sealed on the way out of a run, before the live state is cleared.
-        expect(socket).toMatch(/msgType === 'run_finished' \|\| msgType === 'text'/);
+        expect(socket).toMatch(/msgType === 'run_finished'/);
+        expect(socket).toMatch(/msgType === 'run_cancelled'/);
+        expect(socket).toMatch(/sealTrace\(evSid\)/);
     });
 
     it('the log is not caged in 140px behind a 3px scrollbar', () => {
         const ind = read('components', 'NeuralThinkingIndicator.tsx');
+        const view = read('components', 'NeuralTraceView.tsx');
         expect(ind).not.toMatch(/max-height:\s*140px/);
         expect(ind).not.toMatch(/scrollbar\s*\{\s*width:\s*3px/);
         // …and it is CHAT-sized, not page-sized: 44vh made the card taller than
         // the conversation it sits in — «حجمها غير ملائم لدردشة جو».
-        expect(ind).toMatch(/max-height:\s*min\(34vh,\s*300px\)/);
+        expect(view).toMatch(/max-height:\s*min\(34vh,\s*300px\)/);
     });
 
     it('every trace line resolves its own direction', () => {
         const view = read('components', 'NeuralTraceView.tsx');
         expect(view).toMatch(/className="jt-text" dir="auto"/);
         const ind = read('components', 'NeuralThinkingIndicator.tsx');
-        expect(ind).toMatch(/className="nc-roll"[^>]*dir="auto"/);
+        expect(ind).toMatch(/className="nc-line-content" dir="auto"/);
     });
 
     it('and a finished run always returns to idle, quiet mode or not', () => {
         const socket = read('services', 'socket.ts');
-        const at = socket.indexOf("msgType === 'run_finished' || msgType === 'text'");
+        const at = socket.indexOf("msgType === 'run_finished'");
         expect(at).toBeGreaterThan(0);
 
         /**

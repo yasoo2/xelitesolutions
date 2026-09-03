@@ -57,9 +57,13 @@ export function traceDisplayKey(text = ''): string | null {
     if (/^running:\s*(?:react project|project)/i.test(value) || /scaffolding|authoring/i.test(value)) return 'neuralDetailBuild';
     if (/npm\s+(?:install|run)|dependencies|packages installed/i.test(value)) return 'neuralDetailDependencies';
     if (/vite build|production build|build passed/i.test(value)) return 'neuralDetailBuildCheck';
-    if (/self-qa|browser qa|quality audit|browser.*test|فحص.*متصفح/i.test(value)) return 'neuralDetailBrowserQa';
+    if (/browser[_\s-]+(?:summarize|summary|inspect|click|fill|test)|self-qa|browser qa|quality audit|browser.*test|فحص.*متصفح/i.test(value)) return 'neuralDetailBrowserAction';
+    if (/improvement loop|terminal votes|no round produced|coverage|finding\(s\)/i.test(value)) return 'neuralDetailVerify';
+    if (/putting the steps in order|plan(?:ning)? the work|organizing the request/i.test(value)) return 'neuralDetailOrchestration';
+    if (/(?:import[_\s-]+project|repo(?:sitory)?[_\s-]+import|clone|cloning|github\.com|مستودع|استيراد)/i.test(value)) return 'neuralDetailWorkspace';
     if (/repairing|self-fix|repair|إصلاح|تصحيح/i.test(value)) return 'neuralDetailRepair';
     if (/verified|acceptance|evidence|delivery|تحقق|دليل|تسليم/i.test(value)) return 'neuralDetailVerify';
+    if (/^running:\s*[a-z0-9_-]+/i.test(value)) return 'neuralDetailAction';
     return null;
 }
 

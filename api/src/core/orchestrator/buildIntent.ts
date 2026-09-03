@@ -22,13 +22,14 @@ export function isReadOnlyRequest(goalRaw: string): boolean {
     const text = stripArabicDiacritics(String(goalRaw || '')).replace(/\s+/g, ' ').trim();
     if (!text) return false;
 
-    const readOnlySignal = /\b(?:read[-\s]?only|readonly|only\s+(?:read|inspect|analy[sz]e|review|verify)|without\s+(?:changing|modifying|writing|creating|editing)|no\s+(?:file\s+)?(?:changes?|writes?|modifications?))\b/i.test(text)
+    const readOnlySignal = /\b(?:read[-\s]?only|readonly|only\s+(?:read|inspect|analy[sz]e|review|verify)|without\s+(?:changing|modifying|writing|creating|editing)|without\s+(?:making|any)\s+(?:file\s+)?(?:changes?|modifications?)|no\s+(?:file\s+)?(?:changes?|writes?|modifications?))\b/i.test(text)
         // "Do not modify anything" is the natural short form used by the
         // live UI prompt. It must enter the same safety boundary as the more
         // formal "read-only audit" wording.
         || /\b(?:do\s+not|don't|never)\b(?:\s+\w+){0,3}\s+\b(?:create|edit|delete|move|install|commit|write|modify|change|build|start|run)\b/i.test(text)
         || /(?:قراءة\s+فقط|للقراءة\s+فقط|بدون\s+(?:تعديل|كتابة|إنشاء|تغيير|حذف))/i.test(text);
     const prohibitedMutation = /\b(?:do\s+not|don't|never)\b(?:\s+\w+){0,3}\s+\b(?:create|edit|delete|move|install|commit|write|modify|change|build|start|run|publish|deploy)\b/i.test(text)
+        || /\bwithout\s+(?:making|any)\s+(?:file\s+)?(?:changes?|modifications?)\b/i.test(text)
         || /(?:لا|بدون|عدم)\s+(?:أن\s+)?(?:تنشئ|تعدل|تحذف|تنقل|تثبت|تنشر|تكتب|تبني|تشغل|تغير)/i.test(text);
 
     // A request can contain both a positive mutation and a scoped negative

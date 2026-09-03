@@ -62,4 +62,9 @@ describe('the page kind follows what the request is ABOUT', () => {
     it('and something with no signal at all is still generic', () => {
         expect(detectPageKind('اكتب لي شيئاً جميلاً')).toBe('generic');
     });
+
+    it('does not turn a content catalogue into an online shop', () => {
+        expect(detectPageKind('Build a public website for a community seed library with a seasonal catalog')).not.toBe('store');
+        expect(detectPageKind('Create a museum website with an exhibit catalogue and visitor hours')).not.toBe('store');
+    });
 });

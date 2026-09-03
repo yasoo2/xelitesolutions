@@ -12,11 +12,11 @@ import i18next from 'i18next';
 import { API_URL as API, WS_URL as WS } from '../config';
 import { resolveIdentity } from '../lib/userIdentity';
 import { setRunBusy } from '../lib/run-activity';
+import { markRunning } from '../services/runningSessions';
 import { SocketService } from '../services/socket';
 import { motion, AnimatePresence } from 'framer-motion';
 
 import NeuralThinkingIndicator from './NeuralThinkingIndicator';
-import TaskTracker from './TaskTracker';
 import TodosPanel from './TodosPanel';
 
 
@@ -1591,9 +1591,15 @@ export default function CommandComposer({
         return;
       }
 
-      if (msg.type === 'run_finished' || msg.type === 'run_completed') {
+      if (msg.type === 'run_finished' || msg.type === 'run_completed' || msg.type === 'run_cancelled' || msg.type === 'run_failed') {
         window.dispatchEvent(new CustomEvent('sessions:refresh'));
         setActiveRunId(null);
+        setThinkingPhase('idle');
+        clearToolTimers();
+        setStatus('idle');
+        setIsThinking(false);
+        setActiveToolName(null);
+        setToolVisible(false);
       }
 
       if (msg.type === 'artifact_created') {
@@ -2846,13 +2852,21 @@ export default function CommandComposer({
     const bid = String(browserSessionId || '').trim();
     const pendingBid = String(pendingBrowserRetryRef.current?.sessionId || '').trim();
 
+    let serverConfirmedStop = false;
     const reqs: Array<Promise<any>> = [];
-    if (rid) {
+    // The run id may arrive a moment after the session starts. The session is
+    // still an authoritative stop key, so never skip the server request when
+    // it is the only identity currently available.
+    if (rid || sid) {
       reqs.push(
         fetch(`${API}/runs/stop`, {
           method: 'POST',
           headers,
-          body: JSON.stringify({ runId: rid, ...(sid ? { sessionId: sid } : {}) }),
+          body: JSON.stringify({ ...(rid ? { runId: rid } : {}), ...(sid ? { sessionId: sid } : {}) }),
+        }).then(async response => {
+          const payload = await response.json().catch(() => null);
+          if (payload?.stopped === true) serverConfirmedStop = true;
+          return payload;
         }).catch(() => null),
       );
     }
@@ -2880,6 +2894,12 @@ export default function CommandComposer({
       } catch { }
     }
 
+    // The stop response is authoritative for this exact user action. Clear
+    // the cross-session registry immediately instead of waiting for its 2.5s
+    // recovery poll; the server's run_cancelled event remains the second wire
+    // for other tabs and a remounted composer.
+    if (serverConfirmedStop && sid) markRunning(sid, false);
+
     pendingBrowserRetryRef.current = null;
     setApproval(null);
     setSecretPrompt(null);
@@ -2890,6 +2910,7 @@ export default function CommandComposer({
     stopDraft();
     setStatus('idle');
     setIsThinking(false);
+    setThinkingPhase('idle');
     setActiveToolName(null);
     setToolVisible(false);
   }
@@ -4183,14 +4204,13 @@ export default function CommandComposer({
                 duplicated twice" the user reported. Only show it when this composer
                 also owns the history. */}
             {!hideHistory && status === 'thinking' && (
-              <div style={{ display: 'flex', flexDirection: 'column', width: '100%', minWidth: 0, maxWidth: '100%', gap: '8px' }}>
+              <div className="joe-live-composer-content">
                 <NeuralThinkingIndicator
                   visible={true}
                   phase={thinkingPhase}
                   variant="inline"
                   sessionId={sessionId}
                 />
-                <TaskTracker sessionId={sessionId} />
               </div>
             )}
 

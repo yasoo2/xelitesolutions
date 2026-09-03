@@ -808,6 +808,11 @@ export async function executeTool(name: string, input: any, context?: ToolContex
             const executionContext = {
                 ...(effectiveContext || {}),
                 cancellation: stopHandle.whenCancelled,
+                // Tool-local cancellation must be visible to every tool guard,
+                // including a tool that outlives attendRun after Stop wins the
+                // race. Without this, late browser/build work can continue and
+                // emit events after the user has already cancelled the run.
+                isCancelled: () => stopHandle.cancelled || !!(effectiveContext as any)?.isCancelled?.(),
             };
             const run = async () => {
                 if (effectiveContext.userId && typeof (effectiveInput as any).userId !== 'string') {
@@ -938,11 +943,17 @@ export async function executeTool(name: string, input: any, context?: ToolContex
     } catch (e: any) {
         const duration = Date.now() - t0;
         const errStr = formatToolError(e);
-        logs.push(`exception=${errStr} duration=${duration}ms`);
-        try {
-            const { broadcastTerminalLine } = require('../../api/ws');
-            broadcastTerminalLine(contextSessionId, `\x1b[31mERROR: internal_exception: ${errStr}\x1b[0m\r\n`);
-        } catch { /* ws is optional in isolated unit tests */ }
-        return { ok: false, error: `internal_exception: ${errStr}`, logs };
+        const cancelled = errStr.includes('run_cancelled_by_owner');
+        logs.push(`${cancelled ? 'cancelled' : 'exception'}=${errStr} duration=${duration}ms`);
+        // Owner cancellation is an expected terminal state, not an internal
+        // failure. Keep real failures red and actionable, without printing a
+        // frightening stack trace for a deliberate Stop action.
+        if (!cancelled) {
+            try {
+                const { broadcastTerminalLine } = require('../../api/ws');
+                broadcastTerminalLine(contextSessionId, `\x1b[31mERROR: internal_exception: ${errStr}\x1b[0m\r\n`);
+            } catch { /* ws is optional in isolated unit tests */ }
+        }
+        return { ok: false, error: cancelled ? 'run_cancelled_by_owner' : `internal_exception: ${errStr}`, logs };
     }
 }

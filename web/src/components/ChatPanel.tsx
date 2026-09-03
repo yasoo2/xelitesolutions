@@ -12,7 +12,6 @@ import { attachTraces, loadTraces, type NeuralTrace } from '../lib/neuralTrace';
 import JoeMark from './JoeMark';
 import { composeGreeting } from '../lib/greetings';
 import { resolveIdentity } from '../lib/userIdentity';
-import TaskTracker from './TaskTracker';
 import TodosPanel from './TodosPanel';
 import ArtifactCard from './ArtifactCard';
 import { isEngineeringReport, summarizeEngineeringReport } from '../lib/engineeringReportSummary';
@@ -389,14 +388,13 @@ export default function ChatPanel({
                     <div className="joe-live-dock" role="status" aria-live="polite">
                         <div className="joe-message assistant">
                             <div className="joe-message-avatar ai"><JoeMark size={24} /></div>
-                            <div className="joe-message-content" style={{ gap: '8px' }}>
+                            <div className="joe-message-content joe-live-content">
                                 <NeuralThinkingIndicator
                                     visible={isLoading || thinkingPhase !== 'idle'}
                                     phase={thinkingPhase}
                                     variant="bubble"
                                     sessionId={sessionId}
                                 />
-                                <TaskTracker sessionId={sessionId} />
                             </div>
                         </div>
                     </div>

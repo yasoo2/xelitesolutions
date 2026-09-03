@@ -1836,6 +1836,29 @@ describe('a run keeps going while you read another conversation', () => {
         }
     });
 
+    it('the owner stop route broadcasts a session-scoped cancellation', () => {
+        const R = SRC('api', 'routes', 'run.ts');
+        expect(R).toContain("type: 'run_cancelled'");
+        expect(R).toContain('sessionId: resolvedSessionId');
+        expect(R).toContain('const activeBeforeStop = getActiveRunSessions()');
+    });
+
+    it('the stop control clears its session immediately after a confirmed stop', () => {
+        const C = WEB('components', 'CommandComposer.tsx');
+        expect(C).toContain("import { markRunning } from '../services/runningSessions';");
+        expect(C).toMatch(/payload\?\.stopped === true/);
+        expect(C).toMatch(/serverConfirmedStop[\s\S]{0,260}markRunning\(sid, false\)/);
+        expect(C).toMatch(/if \(rid \|\| sid\)[\s\S]{0,260}runs\/stop/);
+        const S = WEB('services', 'socket.ts');
+        expect(S).toContain('closedAt: number');
+        expect(S).toContain('runtime.closedAt > 0');
+        expect(S).toContain('runtime.closedAt = 0');
+        const T = SRC('modules', 'services', 'ToolService.ts');
+        expect(T).toContain('isCancelled: () => stopHandle.cancelled');
+        expect(T).toContain("cancelled ? 'run_cancelled_by_owner'");
+        expect(T).toContain("if (!cancelled)");
+    });
+
     it('the chip marks a working session, and only a working one', () => {
         const J = WEB('pages', 'Joe.tsx');
         expect(J).toMatch(/startTrackingRuns\(\)/);
@@ -2151,7 +2174,9 @@ describe('the biggest request gets the strongest route', () => {
         expect(D).toMatch(/'npm', \['install', '--no-audit', '--no-fund', \.\.\.pkgs\]/);
         // exactly one retry — a broken project must not loop
         const heal = R.slice(R.indexOf('const d = diagnose('));
-        expect((heal.slice(0, 1400).match(/npm', \['run', 'build'\]/g) || []).length).toBe(1);
+        // The retry is centralized in runBuild so every attempt keeps the same
+        // terminal and cancellation instrumentation.
+        expect((heal.slice(0, 1400).match(/runBuild\(/g) || []).length).toBe(1);
         // and a cause with no safe remedy is stated, not papered over
         expect(R).toMatch(/البناء تعثّر، والسبب بالضبط/);
     });

@@ -25,6 +25,7 @@ import { openTerminal, transcriptLine } from '../core/quality/terminal-session';
 const read = (...p: string[]) => fs.readFileSync(path.join(__dirname, '..', ...p), 'utf-8');
 const REACT = read('modules', 'tools', 'definitions', 'ReactProjectTool.ts');
 const API = read('modules', 'tools', 'definitions', 'ApiProjectTool.ts');
+const AI_GENERATOR = read('modules', 'tools', 'definitions', 'AIGeneratorTool.ts');
 const AUDIT = read('core', 'quality', 'terminal-audit.ts');
 
 describe('a session that looks like a shell, because it is one', () => {
@@ -102,6 +103,17 @@ describe('a session that looks like a shell, because it is one', () => {
         const t = openTerminal(l => lines.push(l));
         t.note('packages installed — the server can boot now');
         expect(lines[0]).toBe('# packages installed — the server can boot now');
+    });
+
+    it('a late model response cannot write after the owner cancels', () => {
+        expect(AI_GENERATOR).toMatch(/const assertRunActive = \(\) =>/);
+        const guard = AI_GENERATOR.indexOf('assertRunActive();', AI_GENERATOR.indexOf('const absPath'));
+        const write = AI_GENERATOR.indexOf('fs.writeFileSync(absPath, finalContent', guard);
+        expect(guard).toBeGreaterThan(0);
+        expect(write).toBeGreaterThan(guard);
+        expect(REACT).toMatch(/const assertRunActive = \(\) =>/);
+        expect(REACT).toMatch(/assertRunActive\(\);\s*for \(const \[rel, body\] of Object\.entries\(files\)\)/);
+        expect(REACT).toMatch(/assertRunActive\(\);\s*fs\.writeFileSync\(path\.join\(proj, authoredEngineFallback\.path\)/);
     });
 
     it('the transcript counts what really ran, and names what failed', async () => {

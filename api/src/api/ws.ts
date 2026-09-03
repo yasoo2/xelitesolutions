@@ -225,6 +225,7 @@ export type LiveEventType =
   | 'approval_required'
   | 'approval_result'
   | 'run_finished'
+  | 'run_cancelled'
   | 'run_completed'
   | 'text'
   | 'diff'          // NEW: File diff for viewer
@@ -463,7 +464,7 @@ export function liveEventSessionId(event: Partial<LiveEvent> | any): string {
  * global by design, while these events fail closed instead of leaking.
  */
 const SESSION_SCOPED_EVENT_TYPES = new Set([
-  'run_started', 'run_finished', 'run_completed', 'step_started', 'step_progress',
+  'run_started', 'run_finished', 'run_cancelled', 'run_completed', 'step_started', 'step_progress',
   'step_done', 'step_failed', 'tool_started', 'tool_done', 'department_status',
   'text', 'diff', 'preview_ready', 'screenshot', 'browser_screenshot',
   'browser_event', 'browser_action', 'browser_action_sent', 'browser_action_done',

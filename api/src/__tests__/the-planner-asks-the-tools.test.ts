@@ -92,6 +92,14 @@ describe('the planner uses it — after its own routes, before the model', () =>
         expect(plan.steps.map((step: any) => step.tool)).toEqual(['project_pipeline']);
     });
 
+    it('recognizes the natural "without making changes" read-only contract', async () => {
+        const goal = 'List the top-level workspace files and summarize the README without making changes.';
+        expect(isReadOnlyRequest(goal)).toBe(true);
+        const plan: any = await PlanningEngine.generatePlan({ intent: { goal, complexity: 'low', riskLevel: 'low', rawIntent: {} } as any });
+        expect(plan.metadata.matchedBy).toBe('read-only-safety-boundary');
+        expect(plan.steps.map((step: any) => step.tool)).toEqual(['project_pipeline']);
+    });
+
     it('keeps a positive create request writable when the restriction is scoped to other files', () => {
         expect(isReadOnlyRequest('Create a file named joe-prompt-02.txt, then read it back. Do not change any other files.')).toBe(false);
         expect(isReadOnlyRequest('Create a file, but do not modify anything else.')).toBe(false);
