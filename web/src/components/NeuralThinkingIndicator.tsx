@@ -134,13 +134,12 @@ export default function NeuralThinkingIndicator({ phase = 'analyzing', visible, 
   const current = phaseNow;
   const canExpand = steps.length > 0;
   const currentStage: WorkStage = workStageFor(currentPhase, detail);
-  const displayKey = traceDisplayKey(detail);
-  const cleanedDetail = cleanTraceText(detail);
-  // Never leak an internal English tool name into the Arabic live sentence.
-  // Known events use translated copy; unknown machine-only events stay in Logs.
-  const displayDetail = displayKey
-    ? t(displayKey)
-    : (uiDir === 'rtl' && /[A-Za-z]/u.test(cleanedDetail) ? '' : cleanedDetail);
+  const liveSteps = steps.slice(-4);
+  const displayStep = (step: TraceStep): string => {
+    const key = traceDisplayKey(step.text);
+    const cleaned = cleanTraceText(stripPictographs(step.text));
+    return key ? t(key) : (uiDir === 'rtl' && /[A-Za-z]/u.test(cleaned) ? '' : cleaned);
+  };
 
   return (
     <div
@@ -154,7 +153,7 @@ export default function NeuralThinkingIndicator({ phase = 'analyzing', visible, 
           display: flex; flex-direction: column; gap: 0;
           border: 0;
           background: transparent;
-          padding: 4px 0;
+          padding: 8px 0 5px;
           /* It lives INSIDE a chat bubble: it takes the width it is given and
              not one pixel more. Without box-sizing the padding pushed it past
              its container's border — visible in his screenshot as a card
@@ -175,7 +174,7 @@ export default function NeuralThinkingIndicator({ phase = 'analyzing', visible, 
         /* min-width:0 all the way down, or a long goal line («Initializing
            Autonomous Brain for goal: Build a world-class e-commerce pl…»)
            refuses to shrink and stretches the card past the chat. */
-        .neural-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+        .neural-head { display: flex; align-items: center; gap: 8px; min-width: 0; margin-bottom: 7px; }
 
         /* A quiet status mark is enough. The old morphing orb made the
            thinking surface feel like a decorative card instead of a precise
@@ -185,18 +184,24 @@ export default function NeuralThinkingIndicator({ phase = 'analyzing', visible, 
         .nc-orb .skin { display: none; }
         @keyframes nc-pulse { 0%,100% { opacity: .55; transform: scale(.9); } 50% { opacity: 1; transform: scale(1); } }
 
-        .nc-label {
-          font-size: 12px; letter-spacing: 0; min-width: 0; flex: 1 1 auto;
-          display: flex; align-items: baseline; gap: 6px;
-        }
-        /* The live sentence is the product surface; phase is a quiet prefix. */
-        .nc-phase { flex: none; font-weight: 600; color: var(--joe-text-primary, #eceef0); white-space: nowrap; }
-        .nc-stage {
-          flex: none; max-width: 35%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-          color: var(--joe-text-muted, #8b9198); font-size: 11px; font-weight: 500;
-        }
+        .nc-label { font-size: 12px; letter-spacing: 0; min-width: 0; flex: 1 1 auto; display: flex; align-items: baseline; gap: 7px; }
+        .nc-phase { flex: none; font-weight: 650; color: var(--joe-text-primary, #eceef0); white-space: nowrap; }
+        .nc-stage { flex: none; max-width: 35%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--joe-text-muted, #8b9198); font-size: 11px; font-weight: 500; }
         .nc-sep { flex: none; color: var(--joe-text-muted, #8b9198); font-size: 11px; }
         .nc-detail { min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--joe-text-secondary, #c4c9cf); font-size: 11.5px; }
+
+        /* Live activity is a short, real event stream. It is deliberately not
+           a card or a fake progress list: older lines recede and the last
+           event remains the only active line. */
+        .nc-stream { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding-inline-start: 15px; border-inline-start: 1px solid color-mix(in srgb, var(--nc) 24%, transparent); }
+        .nc-stream-line { display: flex; align-items: baseline; gap: 7px; min-width: 0; color: var(--joe-text-muted, #858b93); font-size: 11.5px; line-height: 1.45; opacity: .62; transition: opacity .2s ease, color .2s ease; }
+        .nc-stream-line.is-current { color: var(--joe-text-primary, #eceef0); opacity: 1; }
+        .nc-line-marker { width: 5px; height: 5px; flex: none; border-radius: 50%; background: currentColor; margin-inline-start: -18px; }
+        .nc-stream-line.is-current .nc-line-marker { width: 7px; height: 7px; background: var(--nc); box-shadow: 0 0 0 3px color-mix(in srgb, var(--nc) 15%, transparent); }
+        .nc-line-content { display: flex; gap: 7px; min-width: 0; flex: 1 1 auto; }
+        .nc-line-stage { flex: none; color: color-mix(in srgb, var(--nc) 80%, var(--joe-text-secondary, #c4c9cf)); font-size: 10px; font-weight: 650; white-space: nowrap; }
+        .nc-line-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .nc-now { flex: none; color: var(--nc); font-size: 9px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
 
         /* Details are available, but visually subordinate to the sentence. */
         .nc-chip {
@@ -241,9 +246,8 @@ export default function NeuralThinkingIndicator({ phase = 'analyzing', visible, 
           <span className="nc-phase">{t('neuralWorking', phaseText)}</span>
           <span className="nc-sep" aria-hidden="true" />
           <span className="nc-stage">{t(`neuralStage${currentStage[0].toUpperCase()}${currentStage.slice(1)}`)}</span>
-          {displayDetail && <span className="nc-detail" key={displayDetail} dir="auto">{displayDetail}</span>}
         </span>
-            {canExpand && (
+        {canExpand && (
           <button
             type="button"
             className="nc-chip"
@@ -255,6 +259,27 @@ export default function NeuralThinkingIndicator({ phase = 'analyzing', visible, 
           </button>
         )}
       </div>
+
+      {liveSteps.length > 0 && (
+        <div className="nc-stream" aria-live="polite" aria-label={t('neuralLiveActivity', 'Live activity')}>
+          {liveSteps.map((step, index) => {
+            const text = displayStep(step);
+            if (!text) return null;
+            const isCurrent = index === liveSteps.length - 1;
+            const stage = workStageFor(step.phase, step.text);
+            return (
+              <div className={`nc-stream-line ${isCurrent ? 'is-current' : ''}`} key={`${step.at}-${index}`}>
+                <span className="nc-line-marker" aria-hidden="true" />
+                <span className="nc-line-content" dir="auto">
+                  <span className="nc-line-stage">{t(`neuralStage${stage[0].toUpperCase()}${stage.slice(1)}`)}</span>
+                  <span className="nc-line-text" title={text}>{text}</span>
+                </span>
+                {isCurrent && <span className="nc-now">{uiDir === 'rtl' ? 'الآن' : t('neuralLiveNow', 'now')}</span>}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {showTimeline && liveTrace && (
         <div className="nc-log">
