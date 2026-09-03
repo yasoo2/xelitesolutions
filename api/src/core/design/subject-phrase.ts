@@ -105,6 +105,16 @@ function phraseBeforeName(clause: string): string {
     return words.slice(-4).join(' ');
 }
 
+/** Read the subject of an English build brief before its first constraint. */
+function englishBriefSubject(request: string): string {
+    const m = String(request || '').match(
+        /\b(?:build|create|design|develop|make)\s+(?:me\s+)?(?:a|an|the)?\s*(?:(?:one|two|three|four|five|six|seven|eight|nine|ten|[0-9]+)\s*[- ]?pages?\s+)?(.+?)(?=\s+(?:website|web\s+site|site|application|app)\b|\s+(?:with|including|that|which)\b|[:.,]|$)/i,
+    );
+    if (!m) return '';
+    const subject = m[1].trim().replace(/\s+/g, ' ');
+    return subject.length >= 3 && subject.length <= 72 ? subject : '';
+}
+
 /** Split on sentence ends AND on the semicolons a brief uses for its clauses. */
 function clausesOf(request: string): string[] {
     return String(request || '')
@@ -219,6 +229,15 @@ export function subjectPhrase(request: string, maxChars = 72): string {
     for (const c of all) {
         const p = phraseBeforeName(c);
         if (p) { best = p; break; }
+    }
+    // A counted page brief has a subject before its first constraint. Without
+    // this shape, "Create a four-page science museum website: ..." fell
+    // through to the whole sentence and the generated hero repeated the
+    // user's instructions as its headline. An explicit `called`/`named`
+    // phrase above remains the stronger signal.
+    if (!best) {
+        const englishSubject = englishBriefSubject(request);
+        if (englishSubject) return englishSubject.slice(0, maxChars);
     }
     // Only the FALLBACK needs the instruction filter: with no naming phrase,
     // the shortest descriptive clause is the best guess available, and an

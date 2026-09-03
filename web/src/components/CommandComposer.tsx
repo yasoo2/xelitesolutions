@@ -829,6 +829,8 @@ export default function CommandComposer({
   onStepsUpdate,
   onMessagesUpdate,
   hideHistory = false,
+  runActive = false,
+  serverRunId,
   workspaceId,
   githubConnected = false,
   onGitClick,
@@ -844,6 +846,9 @@ export default function CommandComposer({
   onStepsUpdate?: (steps: any[]) => void;
   onMessagesUpdate?: (msgs: any[], sourceSessionId?: string) => void;
   hideHistory?: boolean;
+  /** Rehydrates the composer when the user returns to a run in another chat. */
+  runActive?: boolean;
+  serverRunId?: string;
   workspaceId?: string | null;
   githubConnected?: boolean;
   onGitClick?: () => void;
@@ -962,6 +967,7 @@ export default function CommandComposer({
   const toolVisibleRef = useRef<boolean>(toolVisible);
   const activeToolNameRef = useRef<string | null>(activeToolName);
   const statusRef = useRef<typeof status>(status);
+  const wasRunActiveRef = useRef(runActive);
   const draftTimerRef = useRef<number | null>(null);
   const lastGateSigRef = useRef<{ approval?: string; secret?: string; browserCred?: string }>({});
   const lastTextDedupRef = useRef<{ sig: string; ts: number } | null>(null);
@@ -1475,6 +1481,33 @@ export default function CommandComposer({
     }, sessionId);
     return () => unsubscribe();
   }, [sessionId]);
+
+  // The server snapshot is authoritative when a run ends while this composer
+  // is mounted. Clear any local busy state on that falling edge so a stopped
+  // session cannot leave its send button looking permanently disabled.
+  useEffect(() => {
+    const wasActive = wasRunActiveRef.current;
+    wasRunActiveRef.current = runActive;
+    if (!wasActive || runActive) return;
+    clearToolTimers();
+    setStatus('idle');
+    setIsThinking(false);
+    setActiveRunId(null);
+    setActiveToolName(null);
+    setToolVisible(false);
+  }, [runActive]);
+
+  // A session switch remounts this component. The WebSocket runtime usually
+  // restores the state, but a page refresh can only know about a live run from
+  // the server snapshot. Rehydrate the stop control from that authoritative
+  // state so returning to a running session never looks idle or loses its run id.
+  useEffect(() => {
+    if (!runActive) return;
+    setStatus('thinking');
+    setIsThinking(true);
+    const recoveredRunId = String(serverRunId || SocketService.getActiveRunId(sessionId) || '').trim();
+    if (recoveredRunId) setActiveRunId(recoveredRunId);
+  }, [runActive, serverRunId, sessionId]);
   useEffect(() => { setThinkingPhase('idle'); }, [sessionId]);
 
   const showTool = (name: string) => {
@@ -1560,6 +1593,7 @@ export default function CommandComposer({
 
       if (msg.type === 'run_finished' || msg.type === 'run_completed') {
         window.dispatchEvent(new CustomEvent('sessions:refresh'));
+        setActiveRunId(null);
       }
 
       if (msg.type === 'artifact_created') {

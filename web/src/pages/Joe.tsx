@@ -12,7 +12,7 @@ import CommandComposer from '../components/CommandComposer';
 import { useSessionStore } from '../store/sessionStore';
 import { useSessionActions } from '../hooks/useSessionActions';
 import { SocketService } from '../services/socket';
-import { startTrackingRuns, subscribeRunningSessions } from '../services/runningSessions';
+import { getRunningRunId, startTrackingRuns, subscribeRunningSessions } from '../services/runningSessions';
 import { api } from '../services/apiClient';
 import SettingsDialog from '../components/SettingsDialog';
 import GitHubConnectDialog from '../components/GitHubConnectDialog';
@@ -24,6 +24,7 @@ import { resolveIdentity, isPrivileged, loadGoogleProfile } from '../lib/userIde
 import { API_URL } from '../config';
 import { applyAccent } from '../accents';
 import { shouldOpenPreviewOnReady } from '../lib/preview-routing';
+import { isEngineeringReport, summarizeEngineeringReport } from '../lib/engineeringReportSummary';
 
 interface Message {
     id: string;
@@ -412,7 +413,10 @@ export default function Joe() {
                 (msg.sessionId === activeSessionId || msg.data?.sessionId === activeSessionId)) {
 
                 const role = msg.type === 'user_input' ? 'user' : (msg.role || 'assistant');
-                const content = msg.type === 'user_input' ? (typeof msg.data === 'string' ? msg.data : msg.data?.text || msg.data) : (msg.data?.text || msg.content);
+                const rawContent = msg.type === 'user_input' ? (typeof msg.data === 'string' ? msg.data : msg.data?.text || msg.data) : (msg.data?.text || msg.content);
+                const content = role === 'assistant' && typeof rawContent === 'string' && isEngineeringReport(rawContent)
+                    ? summarizeEngineeringReport(rawContent, i18n.language)
+                    : rawContent;
                 const id = msg.id || (msg.type === 'user_input' ? `msg-${msg.ts || Date.now()}` : `msg-${Date.now()}`);
                 // The attachments ride the echo as {files:[{id,name,…}]} — this
                 // line used to keep only the text, which is EXACTLY why the
@@ -457,7 +461,7 @@ export default function Joe() {
             }
         });
         return () => { unsub(); };
-    }, [activeSessionId]);
+    }, [activeSessionId, i18n.language]);
 
     // [AUTO-SWITCH] Listen for workspace tab switch from CommandComposer SSE events
     useEffect(() => {
@@ -505,7 +509,9 @@ export default function Joe() {
                         return [{
                             id: e.id || `msg-${e.ts}`,
                             role: 'assistant',
-                            content: e.data?.text || '',
+                            content: isEngineeringReport(e.data?.text || '')
+                                ? summarizeEngineeringReport(e.data?.text || '', i18n.language)
+                                : e.data?.text || '',
                             timestamp: new Date(e.ts || Date.now())
                         }];
                     }
@@ -524,7 +530,7 @@ export default function Joe() {
 
         loadMessages();
         return () => { cancelled = true; };
-    }, [activeSessionId]);
+    }, [activeSessionId, i18n.language]);
 
     // Workspace Management
     const [workspaceId, setWorkspaceId] = useState<string | null>(null);
@@ -856,9 +862,8 @@ export default function Joe() {
         if (sourceSessionId && sourceSessionId !== activeSessionIdRef.current) return;
         if (!events || events.length === 0) return;
 
-        // The detailed event stream is intentionally hidden inside the composer,
-        // but the final engineering report is user-facing evidence. Surface it
-        // in ChatPanel so the user can see what Joe built, tested, and found.
+        // Keep the full report in the event/Logs surface. Chat is for a clear
+        // delivery answer, not paths, shell commands, or internal tool names.
         const reportEvent = [...events].reverse().find((event: any) =>
             (event?.type === 'step_done' || event?.type === 'step_failed')
             && event?.data?.result?.output?.orchestratedPipeline
@@ -867,7 +872,8 @@ export default function Joe() {
         const reportText = typeof pipeline?.engineeringReportMarkdown === 'string'
             ? pipeline.engineeringReportMarkdown.trim()
             : '';
-        if (reportText) {
+        const reportSummary = summarizeEngineeringReport(reportText, i18n.language);
+        if (reportSummary) {
             const reportKey = String(
                 pipeline?.runId
                 || reportEvent?.runId
@@ -878,11 +884,11 @@ export default function Joe() {
                 visiblePipelineReportsRef.current.add(reportKey);
                 const reportId = `engineering-report:${reportKey}`;
                 setMessages(prev => {
-                    if (prev.some(m => m.id === reportId || m.content === reportText)) return prev;
+                    if (prev.some(m => m.id === reportId || m.content === reportSummary)) return prev;
                     return [...prev, {
                         id: reportId,
                         role: 'assistant',
-                        content: reportText,
+                        content: reportSummary,
                         timestamp: new Date(reportEvent?.ts || Date.now())
                     }];
                 });
@@ -912,7 +918,7 @@ export default function Joe() {
             });
             setIsLoading(false);
         }
-    }, []);
+    }, [i18n.language]);
 
     const handleGithubAuthRequired = useCallback((details: { reason?: string; needsRepo?: boolean; repoName?: string }) => {
         const reason = String(details?.reason || '').trim();
@@ -997,7 +1003,7 @@ export default function Joe() {
                 inputValue={inputValue}
                 onInputChange={setInputValue}
                 onSend={handleSend}
-                isLoading={isLoading}
+                isLoading={isLoading || isRunning(activeSessionId || '')}
                 workspaceTab={workspaceTab}
                 onWorkspaceTabChange={setWorkspaceTab}
                 onDeploymentsClick={() => nav('/super-admin/deployments')}
@@ -1051,6 +1057,8 @@ export default function Joe() {
                             key={activeSessionId || 'no-active-session'}
                             sessionId={activeSessionId}
                             sessionKind={activeSessionKind}
+                            runActive={isRunning(activeSessionId || '')}
+                            serverRunId={getRunningRunId(activeSessionId || '') || undefined}
                             hideHistory={true}
                             workspaceId={workspaceId}
                             onMessagesUpdate={handleComposerMessages}

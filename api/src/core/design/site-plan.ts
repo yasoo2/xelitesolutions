@@ -51,8 +51,15 @@ export interface SitePlan {
 const WANTS_SITE =
     /(موقعا?\s+(كاملا?|متكاملا?|من عدة صفحات|متعددا?)|عدة صفحات|صفحات متعددة|متعدد الصفحات|كل الصفحات|متجرا?\s+كاملا?|multi[- ]page|several pages|multiple pages|full (web)?site|whole site|complete site)/i;
 
+// A counted page brief is an explicit multi-page request even when it never
+// says "multiple pages": "a four-page museum website: Home, Exhibits ...".
+// The count is a structural signal, not a page name, so it is kept separate
+// from the named-page reader below.
+const WANTS_PAGE_COUNT =
+    /\b(?:one|two|three|four|five|six|seven|eight|nine|ten|[0-9]+)\s*[- ]?pages?\b/i;
+
 const WANTS_SINGLE =
-    /(صفحة واحدة|صفحة فقط|صفحه واحده|single page|one page|landing only|onepager|one-pager)/i;
+    /(صفحة واحدة|صفحة فقط|صفحه واحده|single page|one[- ]page|landing only|onepager|one-pager)/i;
 
 /** Pages worth building for each kind, entry page first. */
 const SITE_SHAPES: Partial<Record<PageKind, PageSpec[]>> = {
@@ -196,17 +203,28 @@ function arabicNames(probe: string): string[] {
 
 function englishNames(probe: string): string[] {
     const out: string[] = [];
+    // A counted brief may list page titles after a colon rather than repeating
+    // the word "page": "four-page museum website: Home, Exhibits, Visit,
+    // and Education, with shared header". Read only that explicit list and
+    // stop before the next instruction so prose never becomes a route.
+    const countedList = probe.match(/\b(?:one|two|three|four|five|six|seven|eight|nine|ten|[0-9]+)\s*[- ]?pages?\b[^:\n]*:\s*([^.\n]+?)(?=\s*,?\s+with\b|$)/i);
+    if (countedList) {
+        for (const part of countedList[1].split(/,|\s+and\s+/i)) {
+            const t = part.trim().replace(new RegExp('^(?:a|an|the)\\s+', 'i'), '');
+            if (t && !EN_NOT_A_NAME.test(t.toLowerCase())) out.push(t);
+        }
+    }
     const listed = probe.match(new RegExp('pages?\\s*:\\s*([^.\\n]+)', 'i'));
     if (listed) for (const part of listed[1].split(new RegExp(',| and ', 'i'))) {
         const t = part.trim().toLowerCase().replace(new RegExp('^(?:a|an|the) '), '').replace(new RegExp(' pages?$'), '');
-        if (t && !EN_NOT_A_NAME.test(t.split(' ').pop() || '')) out.push(t);
+        if (t && !EN_NOT_A_NAME.test(t.split(' ').pop() || '') && !out.some(x => x.toLowerCase() === t)) out.push(t);
     }
     const re = new RegExp('([a-z][a-z0-9-]{1,20}(?:\\s+[a-z][a-z0-9-]{1,20})?)\\s+pages?\\b', 'gi');
     let m: RegExpExecArray | null;
     while ((m = re.exec(probe))) {
         const t = m[1].toLowerCase().replace(new RegExp('^(?:a|an|the|one|another)\\s+'), '').trim();
         const last = t.split(' ').pop() || '';
-        if (t && !EN_NOT_A_NAME.test(last) && !out.includes(t)) out.push(t);
+        if (t && !EN_NOT_A_NAME.test(last) && !out.some(x => x.toLowerCase() === t)) out.push(t);
     }
     return out;
 }
@@ -268,7 +286,17 @@ function clausesThatAsk(probe: string): string {
  */
 export function thePagesHeNamed(probe: string): NamedPage[] {
     const asked = clausesThatAsk(probe);
-    const raw = [...arabicNames(asked), ...englishNames(asked)];
+    // `hisClauses` deliberately treats a colon as an instruction boundary for
+    // the rest of the planner. A page-list header is the exception: its colon
+    // separates the list from the brief, so retain the full source long
+    // enough for `englishNames` to read "four-page ...: Home, ...". The
+    // header is still checked for a prohibition before it can create routes.
+    const listHeader = String(probe).split(':', 1)[0].trim();
+    const hasExplicitEnglishList = /pages?\s*:/i.test(probe)
+        || WANTS_PAGE_COUNT.test(listHeader);
+    const explicitEnglish = hasExplicitEnglishList && !clauseForbids(listHeader)
+        ? englishNames(probe) : [];
+    const raw = [...arabicNames(asked), ...englishNames(asked), ...explicitEnglish];
     const out: NamedPage[] = [];
     const seenTitles = new Set<string>();
     let unknown = 0;
@@ -420,7 +448,9 @@ export function planSite(kind: PageKind, request: string, isArabic: boolean): Si
 
     const named = thePagesHeNamed(probe);
     const his = named.map(n => toSpec(n, kind, isArabic));
-    const wantsSite = WANTS_SITE.test(probe);
+    const wantsSite = WANTS_SITE.test(probe) || WANTS_PAGE_COUNT.test(probe);
+    const explicitPageList = /pages?\s*:/i.test(probe)
+        || (WANTS_PAGE_COUNT.test(probe) && /:\s*[A-Za-z]/.test(probe));
 
     if (!wantsSite && his.length < 2) {
         //  ONE named page is still HIS page: it keeps his title and his
@@ -442,7 +472,7 @@ export function planSite(kind: PageKind, request: string, isArabic: boolean): Si
     const pages: PageSpec[] = [];
     const push = (p: PageSpec) => { if (!pages.some(x => x.file === p.file)) pages.push(p); };
     his.forEach(push);
-    if (wantsSite && shape) shape
+    if (wantsSite && shape && !explicitPageList) shape
         .map(p => ({ ...p, title: isArabic ? p.title : (EN_TITLES[p.title] || p.title) }))
         .forEach(push);
 

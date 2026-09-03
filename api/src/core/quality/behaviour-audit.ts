@@ -537,12 +537,20 @@ export interface ProbeOptions {
      * accused twice.
      */
     seenForms?: Set<string>;
+    /** Called before every visible pointer or input action in strict QA. */
+    isEyeOpen?: () => boolean;
     onProgress?: (m: string) => void;
 }
 
 export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ controls: ControlResult[]; metrics: Record<string, any>; forms?: FormResult[] }> {
     const controls: ControlResult[] = [];
     const metrics: Record<string, any> = {};
+    const eyeIsOpen = () => {
+        if (!opts?.isEyeOpen) return true;
+        const open = opts.isEyeOpen();
+        if (!open) metrics.eyeLost = true;
+        return open;
+    };
     const eyes = opts?.eyes || new AuditEyes({ watchSessionId: opts?.watchSessionId });
     const limit = Math.max(1, Math.min(200, opts?.maxControls ?? MAX_CONTROLS));
     const deadline = Date.now() + Math.max(4000, opts?.budgetMs ?? DEFAULT_BUDGET_MS);
@@ -717,6 +725,7 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                 const beforePointer = c.kind === 'menu'
                     ? await page.evaluate(snapshot).catch(() => null)
                     : null;
+                if (!eyeIsOpen()) break;
                 await eyes.lookAt(page, await boxOf(page, current.sel), {
                     note: `${KIND_AR[c.kind] || 'عنصر'}: ${c.label}`.slice(0, 64),
                     moveMouse: true,
@@ -731,6 +740,7 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                 // button that really did increment its badge was reported as
                 // "scroll" — a true measurement of the wrong thing.
                 const before = await page.evaluate(snapshot).catch(() => null);
+                if (!eyeIsOpen()) break;
                 await eyes.press(page);
                 /**
                  * …AND A DOWNLOAD IS AN EFFECT.
@@ -744,6 +754,7 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                 page.on('download', onDownload);
                 const downloadClicksBefore = await page.evaluate('Number(globalThis.__joeQaDownloadClicks || 0)').catch(() => 0);
                 // force:true so an overlay does not turn "covered" into "broken".
+                if (!eyeIsOpen()) break;
                 await el.click({ timeout: 2500, force: true, noWaitAfter: true }).catch(() => { });
                 await page.waitForTimeout(SETTLE_MS);
                 try { page.off('download', onDownload); } catch { /* page may be gone */ }
@@ -801,14 +812,17 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
             exploredKeys.add(key);
             let effect = '';
             try {
+                if (!eyeIsOpen()) break;
                 const el = await page.$(candidate.sel);
                 if (!el) continue;
                 await el.scrollIntoViewIfNeeded({ timeout: 1500 }).catch(() => { });
+                if (!eyeIsOpen()) break;
                 await eyes.lookAt(page, await boxOf(page, candidate.sel), {
                     note: `استكشاف ${KIND_AR[candidate.kind] || 'عنصر'}: ${candidate.label}`.slice(0, 64),
                     tone: 'warn', moveMouse: true,
                 });
                 const before = await page.evaluate(snapshot).catch(() => null);
+                if (!eyeIsOpen()) break;
                 await el.click({ timeout: 2500, force: true, noWaitAfter: true }).catch(() => { });
                 await page.waitForTimeout(SETTLE_MS);
                 const after = await page.evaluate(snapshot).catch(() => null);
@@ -888,7 +902,7 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
     if (opts?.fillForms !== false) {
         try {
             const r = await probeForms(page, {
-                eyes, budgetMs: Math.max(6000, deadline - Date.now()), seenForms: opts?.seenForms,
+                eyes, budgetMs: Math.max(6000, deadline - Date.now()), seenForms: opts?.seenForms, isEyeOpen: eyeIsOpen,
             });
             filled = r.forms;
             Object.assign(metrics, r.metrics);
@@ -934,12 +948,18 @@ function valueFor(type: string, tag: string): string {
  */
 export async function probeForms(
     page: any,
-    opts?: { eyes?: AuditEyes; budgetMs?: number; maxForms?: number; seenForms?: Set<string> },
+    opts?: { eyes?: AuditEyes; budgetMs?: number; maxForms?: number; seenForms?: Set<string>; isEyeOpen?: () => boolean },
 ): Promise<{ forms: FormResult[]; metrics: Record<string, any> }> {
     const eyes = opts?.eyes || new AuditEyes({});
     const deadline = Date.now() + Math.max(4000, opts?.budgetMs ?? 30_000);
     const out: FormResult[] = [];
     const metrics: Record<string, any> = { formsFilled: 0, fieldsFilled: 0, formsDeadSubmit: 0, formsValidated: 0, formsReloaded: 0 };
+    const eyeIsOpen = () => {
+        if (!opts?.isEyeOpen) return true;
+        const open = opts.isEyeOpen();
+        if (!open) metrics.eyeLost = true;
+        return open;
+    };
 
     let forms: any[] = [];
     try {
@@ -962,13 +982,16 @@ export async function probeForms(
             opts.seenForms.add(key);
         }
         let filledCount = 0;
+        if (!eyeIsOpen()) break;
         await eyes.say(page, `تعبئة النموذج: ${f.label}`);
         for (const fld of f.fields) {
             if (Date.now() > deadline) break;
+            if (!eyeIsOpen()) break;
             try {
                 const el = await page.$(fld.sel);
                 if (!el) continue;
                 await el.scrollIntoViewIfNeeded({ timeout: 1500 }).catch(() => { });
+                if (!eyeIsOpen()) break;
                 await eyes.lookAt(page, await boxOf(page, fld.sel), { note: `${fld.type}`, tone: 'warn', moveMouse: true });
                 if (fld.tag === 'select') {
                     if (!fld.options.length) continue;
@@ -994,8 +1017,11 @@ export async function probeForms(
                 return !!form && typeof form.checkValidity === 'function' && !form.checkValidity();
             }, f.sel).catch(() => false);
             if (f.submitSel) {
+                if (!eyeIsOpen()) break;
                 await eyes.lookAt(page, await boxOf(page, f.submitSel), { note: `إرسال: ${f.label}`, moveMouse: true });
+                if (!eyeIsOpen()) break;
                 await eyes.press(page);
+                if (!eyeIsOpen()) break;
                 const sub = await page.$(f.submitSel);
                 await sub?.click({ timeout: 2500, force: true, noWaitAfter: true }).catch(() => { });
             } else {

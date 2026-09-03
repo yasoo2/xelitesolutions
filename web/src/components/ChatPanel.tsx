@@ -15,6 +15,7 @@ import { resolveIdentity } from '../lib/userIdentity';
 import TaskTracker from './TaskTracker';
 import TodosPanel from './TodosPanel';
 import ArtifactCard from './ArtifactCard';
+import { isEngineeringReport, summarizeEngineeringReport } from '../lib/engineeringReportSummary';
 
 import { SocketService } from '../services/socket';
 
@@ -121,6 +122,14 @@ export default function ChatPanel({
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages]);
 
+    // Keep the live activity at the end of this same conversation stream when
+    // it changes, without covering the messages above or the composer below.
+    useEffect(() => {
+        if (isLoading || thinkingPhase !== 'idle') {
+            messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+    }, [isLoading, thinkingPhase]);
+
     // Handle Enter key
     const handleKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === 'Enter' && !e.shiftKey) {
@@ -181,8 +190,14 @@ export default function ChatPanel({
                             <span className="joe-chat-hello-salute">{greeting.salute}</span>
                             <span className="joe-chat-hello-q">{greeting.question}</span>
                         </div>
-                        {messages.map((msg) => (
-                        <div key={msg.id} className={`joe-message ${msg.role}`}>
+                        {messages.map((msg) => {
+                        const storedContent = unescapeStoredNewlines(msg.content);
+                        const displayedContent = msg.role === 'assistant' && isEngineeringReport(storedContent)
+                            ? summarizeEngineeringReport(storedContent, i18n.language)
+                            : storedContent;
+                        const isDeliverySummary = msg.role === 'assistant' && isEngineeringReport(storedContent);
+                        return (
+                        <div key={msg.id} className={`joe-message ${msg.role}${isDeliverySummary ? ' is-delivery-summary' : ''}`}>
                             <div className={`joe-message-avatar ${msg.role === 'assistant' ? 'ai' : 'user'}`}>
                                 {msg.role === 'assistant' ? <JoeMark size={24} /> : 'U'}
                             </div>
@@ -340,7 +355,7 @@ export default function ChatPanel({
                                             }
                                         }}
                                     >
-                                        {msg.role === 'assistant' ? stripPictographs(unescapeStoredNewlines(msg.content)) : unescapeStoredNewlines(msg.content)}
+                                        {msg.role === 'assistant' ? stripPictographs(displayedContent) : displayedContent}
                                     </ReactMarkdown>
                                 </div>
                                 {msg.role === 'assistant' && (
@@ -363,34 +378,31 @@ export default function ChatPanel({
                                 )}
                             </div>
                         </div>
-                        ))}
+                        );
+                        })}
                     </>
                 )}
-                <div ref={messagesEndRef} />
-
+                {/* Live activity is a real assistant row in the conversation,
+                    not a second panel. It remains above the composer because it
+                    belongs to the scroll stream and the composer follows it. */}
                 {(isLoading || thinkingPhase !== 'idle') && (
-                    <div className="joe-message assistant">
-                        <div className="joe-message-avatar ai"><JoeMark size={24} /></div>
-                        {/* THE 42 PIXELS.
-                            This column used to be `width: 100%` — 100% of the
-                            MESSAGE ROW, which also carries a 30px avatar and a
-                            12px gap. Being `min-width: auto` it never gave those
-                            42px back, so it ran past the row and the card's right
-                            border crossed the chat's own: «الحدود متداخلة».
-                            It is the same column every other message uses now
-                            (`flex: 1; min-width: 0`), so the card lines up with
-                            the replies instead of hanging over them. */}
-                        <div className="joe-message-content" style={{ gap: '8px' }}>
-                            <NeuralThinkingIndicator
-                                visible={isLoading || thinkingPhase !== 'idle'}
-                                phase={thinkingPhase}
-                                variant="bubble"
-                                sessionId={sessionId}
-                            />
-                            <TaskTracker />
+                    <div className="joe-live-dock" role="status" aria-live="polite">
+                        <div className="joe-message assistant">
+                            <div className="joe-message-avatar ai"><JoeMark size={24} /></div>
+                            <div className="joe-message-content" style={{ gap: '8px' }}>
+                                <NeuralThinkingIndicator
+                                    visible={isLoading || thinkingPhase !== 'idle'}
+                                    phase={thinkingPhase}
+                                    variant="bubble"
+                                    sessionId={sessionId}
+                                />
+                                <TaskTracker sessionId={sessionId} />
+                            </div>
                         </div>
                     </div>
                 )}
+                <div ref={messagesEndRef} />
+
             </div>
 
             {/* Input Area - Use children if provided (for CommandComposer) */}

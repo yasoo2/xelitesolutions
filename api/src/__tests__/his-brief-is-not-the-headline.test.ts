@@ -66,6 +66,10 @@ describe('the brief becomes a headline, not a wall', () => {
         expect(subjectPhrase('ابنِ نظام عيادة بيطرية اسمها دار الرفق مع قاعدة بيانات')).toBe('نظام عيادة بيطرية');
     });
 
+    it('an English counted page brief keeps the subject out of its instructions', () => {
+        expect(subjectPhrase('Create a four-page science museum website: Home, Exhibits, Visit, and Education, with shared header')).toBe('science museum');
+    });
+
     it('a request with no subject yields NOTHING — the caller then says something neutral', () => {
         // Better a generic tagline than the user's own instructions read back.
         expect(subjectPhrase('ابن لي موقع')).toBe('');

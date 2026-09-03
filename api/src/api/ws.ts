@@ -120,6 +120,13 @@ export function unregisterRunSession(runId: string, sessionId?: string): void {
   }
 }
 
+/** Snapshot of runs still owned by this API process. Persisted receipts may
+ * contain old `running` records after a restart, so recovery must use this
+ * live registry for the answer to "is it running now?". */
+export function getActiveRunSessions(): Array<{ sessionId: string; runId: string }> {
+  return Array.from(runIdBySessionId.entries()).map(([sessionId, runId]) => ({ sessionId, runId }));
+}
+
 export function addRunEventListener(runId: string, handler: RunEventHandler): () => void {
   const rid = trimId(runId);
   if (!rid || typeof handler !== 'function') return () => {};

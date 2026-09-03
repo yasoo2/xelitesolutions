@@ -94,17 +94,19 @@ export class ProjectRepairTool extends BaseTool {
         // Chromium starts while the panel is still downloading its chunk, so
         // the first frame he sees is the page and not four white seconds.
         try { require('../../browser/manager').warmBrowserSession(PANEL_BROWSER_SID); } catch { /* the audit launches its own */ }
-            try {
-                const { waitForPanelWatcher } = require('../../../browser/wsHub');
-                const watching = await waitForPanelWatcher(watchSessionId, 4000);
+        let watching = false;
+        try {
+            const { waitForPanelWatcher } = require('../../../browser/wsHub');
+                watching = await waitForPanelWatcher(watchSessionId, 4000);
             term(watching
                 ? 'repair: the Browser panel is attached — you can watch this'
-                : 'repair: no Browser panel attached — running anyway');
+                : 'repair: no Browser panel attached — visual QA is blocked until the Browser panel is open');
         } catch { /* the hub is optional */ }
 
         say(isAr ? '🔎 أعيد القياس على البناء الحالي…' : '🔎 Re-measuring the current build…');
         const before = await auditBuiltApp(auditDir, {
             timeoutMs: 30_000, watchSessionId: watchSessionId || undefined,
+                requireVisibleBrowser: true,
                 ...(serveUrl ? { serveUrl } : {}),
                 artifactRootDir,
             onProgress: (where: string) => {
@@ -201,6 +203,7 @@ export class ProjectRepairTool extends BaseTool {
             const measured = await auditBuiltApp(auditDir, {
                 timeoutMs: 30_000,
                 watchSessionId: watchSessionId || undefined,
+                requireVisibleBrowser: true,
                 ...(serveUrl ? { serveUrl } : {}),
                 artifactRootDir,
                 onProgress: (where: string) => {

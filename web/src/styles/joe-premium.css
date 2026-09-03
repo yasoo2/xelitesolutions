@@ -4128,6 +4128,62 @@ body:not(.rtl) .joe-user-info {
     box-shadow: 0 0 0 2px rgba(52, 196, 139, 0.12) !important;
 }
 
+/* Live activity is part of the conversation stream. The final end marker
+   keeps it above the composer without turning it into a separate panel. */
+.joe-live-dock {
+    width: 100%;
+    box-sizing: border-box;
+    flex: 0 0 auto;
+    padding: 4px 0 2px;
+    background: transparent;
+}
+
+.joe-live-dock > .joe-message {
+    width: min(100%, var(--joe-chat-col));
+    margin: 0 auto;
+}
+
+.joe-live-dock .neural-card {
+    margin: 0;
+    padding: 4px 0 6px;
+}
+
+.joe-live-dock .joe-message-avatar {
+    align-self: flex-start;
+    margin-top: 7px;
+}
+
+/* Delivery answers are conversation, not a second diagnostic panel. A quiet
+   rule and a small status label give the answer structure without recreating
+   the old stacked-card treatment. */
+.joe-message.is-delivery-summary .joe-message-bubble {
+    border-inline-start: 2px solid var(--joe-gold-primary);
+    padding: 2px 0 2px 16px;
+}
+
+.joe-message.is-delivery-summary .joe-message-bubble h2 {
+    margin: 0 0 14px;
+    font-size: 18px;
+    line-height: 1.3;
+    font-weight: 700;
+    color: var(--joe-text-primary);
+}
+
+.joe-message.is-delivery-summary .joe-message-bubble p {
+    margin: 0 0 8px;
+    color: var(--joe-text-secondary);
+}
+
+.joe-message.is-delivery-summary .joe-message-bubble ul {
+    margin: 4px 0 10px;
+    padding-inline-start: 20px;
+    color: var(--joe-text-secondary);
+}
+
+@media (max-width: 720px) {
+    .joe-live-dock { padding-inline: 0; }
+}
+
 .joe-workspace-tabs {
     gap: 14px;
     padding: 7px 12px 0;
@@ -4186,6 +4242,14 @@ body:not(.rtl) .joe-user-info {
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
     border-top: 1px solid var(--joe-modern-rule) !important;
+}
+
+.joe-sessions-bar > .no-scrollbar {
+    min-width: 0;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    scrollbar-width: thin;
+    scrollbar-color: var(--joe-modern-rule) transparent;
 }
 
 .joe-session-chip {

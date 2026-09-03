@@ -11,6 +11,7 @@ import { Session } from '../../shared/models/session';
 import { traceManager } from '../../modules/services/TraceManager';
 import { broadcast } from '../ws';
 import { getRunEvidence } from '../../shared/run-evidence-store';
+import { getActiveRunSessions } from '../ws';
 
 const router = Router();
 
@@ -304,6 +305,19 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
 router.get('/', async (req, res) => {
     const runs = await Run.find().sort({ createdAt: -1 }).limit(50).lean();
     res.json(runs);
+});
+
+/** Recovery snapshot for the session switcher. WebSocket events are live, but
+ * a user who returns after run_started needs a persisted answer too. */
+router.get('/active', async (_req, res) => {
+    const runs = getActiveRunSessions();
+    res.json({
+        runs: runs.map(run => ({
+            runId: run.runId,
+            sessionId: run.sessionId,
+            status: 'running',
+        })),
+    });
 });
 
 router.get('/:id/receipt', async (req, res) => {

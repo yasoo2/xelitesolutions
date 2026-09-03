@@ -13,7 +13,6 @@ import {
     Trash2,
     ChevronLeft,
     ChevronRight,
-    MoreHorizontal
 } from 'lucide-react';
 
 interface Session {
@@ -86,7 +85,7 @@ export default function SessionsBar({
                 paddingLeft: 4
             }}>
                 <MessageSquare size={14} />
-                <span className="hide-mobile">{t('sidebar.sessions')}</span>
+                <span className="hide-mobile">{t('sidebar.sessions')} · {sessions.length}</span>
             </div>
 
             {/* Scroll Left */}
@@ -212,6 +211,7 @@ export default function SessionsBar({
                     <span className="hide-mobile">{t('sidebar.newChat')}</span>
                 </button>
             </div>
+
         </div>
     );
 }
@@ -263,6 +263,7 @@ function SessionChip({
                 whiteSpace: 'nowrap',
                 minWidth: 0,
                 maxWidth: 180,
+                flex: '0 0 auto',
             }}
             onClick={onSelect}
         >

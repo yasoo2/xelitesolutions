@@ -83,7 +83,7 @@ describe('the browser is awake before the audit needs it', () => {
  * and the reason died inside `catch { }`.
  */
 describe('the panel browser is not allowed to stay dead', () => {
-    it('a launch the machine refuses falls back to a bare headless one', () => {
+    it('a launch the machine refuses still has a safe private fallback for non-visible callers', () => {
         const m = read('modules', 'browser', 'manager.ts');
         expect(m).toMatch(/async function launchPlainChromium\(\): Promise<Browser>/);
         const fn = m.slice(m.indexOf('async function launchPlainChromium'), m.indexOf('async function launchPlainChromium') + 1200);
@@ -183,5 +183,6 @@ describe('and he is never invited to watch a browser he cannot see', () => {
         const p = read('modules', 'tools', 'definitions', 'ProjectRepairTool.ts');
         expect(p).toMatch(/where\.startsWith\('private'\)/);
         expect(p).toMatch(/تعذّر استعمال لوحة المتصفّح/);
+        expect(p).toMatch(/requireVisibleBrowser: true/);
     });
 });

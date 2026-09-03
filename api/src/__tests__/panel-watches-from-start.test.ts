@@ -53,7 +53,7 @@ describe('the audit waits for the eye it promised', () => {
     it('and says plainly whether the panel was there', () => {
         const src = REACT();
         expect(src).toMatch(/the Browser panel is attached/);
-        expect(src).toMatch(/no Browser panel attached — running anyway/);
+        expect(src).toMatch(/no Browser panel attached — visual QA is blocked/);
     });
 
     it('waits on and audits the session carried by the run, with a panel fallback only when absent', () => {
@@ -61,6 +61,7 @@ describe('the audit waits for the eye it promised', () => {
         expect(src).toMatch(/const auditSid = String\(context\?\.browserSessionId \|\| ''\)\.trim\(\) \|\| PANEL_BROWSER_SID/);
         expect(src).toMatch(/waitForPanelWatcher\(auditSid, 4000\)/);
         expect(src).toMatch(/watchSessionId: auditSid/);
+        expect(src).toMatch(/requireVisibleBrowser: true/);
         expect(src).toMatch(/auditWatching = watching/);
         expect(src).toMatch(/const someoneIsWatching = auditWatching/);
         expect(src).toMatch(/if \(audit && !someoneIsWatching\) audit\.visible = false/);

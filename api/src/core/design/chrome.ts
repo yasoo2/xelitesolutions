@@ -96,8 +96,8 @@ export function chromeCss(): string {
 .nav-links a,.nav-links .nav-link{display:inline-flex;align-items:center;gap:6px;
   background:none;border:0;padding:8px 2px;font:inherit;font-weight:600;color:var(--text);
   text-decoration:none;cursor:pointer;white-space:nowrap}
-.nav-links a:hover,.nav-links .nav-link:hover{color:var(--brand)}
-.nav-links a[aria-current],.nav-links a.active{color:var(--brand)}
+.nav-links a:hover,.nav-links .nav-link:hover{color:var(--brand-text,var(--brand))}
+.nav-links a[aria-current],.nav-links a.active{color:var(--brand-text,var(--brand))}
 .nav-actions{display:flex;align-items:center;gap:10px}
 .nav-actions .btn{padding:9px 18px;font-size:var(--step--1)}
 

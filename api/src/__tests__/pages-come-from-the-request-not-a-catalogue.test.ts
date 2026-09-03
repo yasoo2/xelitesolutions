@@ -23,6 +23,8 @@
  */
 
 import { planSite, thePagesHeNamed } from '../core/design/site-plan';
+import { readFileSync } from 'fs';
+import * as path from 'path';
 
 const fold = (s: string) => s
     .replace(/[ً-ْٰـ]/g, '')
@@ -56,6 +58,19 @@ describe('he named the pages, so he gets the pages', () => {
         const files = plan.pages.map(p => p.file);
         expect(files).toContain('pricing.html');
         expect(files).toContain('docs.html');
+    });
+
+    it('a counted English brief reads its explicit page list', () => {
+        const request = 'Create a four-page science museum website: Home, Exhibits, Visit, and Education, with shared header';
+        const plan = planSite('landing', request, false);
+        expect(plan.multiPage).toBe(true);
+        expect(plan.pages.map(p => p.file)).toEqual(['index.html', 'exhibits.html', 'visit.html', 'education.html']);
+        expect(plan.pages.map(p => p.title)).toEqual(['Home', 'Exhibits', 'Visit', 'Education']);
+    });
+
+    it('multi-page navigation uses the contrast-fitted text token in both themes', () => {
+        const source = readFileSync(path.join(__dirname, '../modules/tools/definitions/ReactProjectTool.ts'), 'utf8');
+        expect(source).toContain('.nav-links a[aria-current]{color:var(--brand-text,var(--brand));position:relative}');
     });
 
     it('«الشحن والاسترجاع» is one page, not «الشحن» and a dangling word', () => {

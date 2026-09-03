@@ -121,6 +121,8 @@ export async function auditBuiltApp(
     distDir: string,
     opts?: {
         timeoutMs?: number; watchSessionId?: string; onProgress?: (m: string) => void;
+        /** Refuse invisible fallback: every QA action must stay in the open Browser panel. */
+        requireVisibleBrowser?: boolean;
         /**
          * AUDIT THE SYSTEM, NOT THE FOLDER.
          *
@@ -285,6 +287,16 @@ export async function auditBuiltApp(
             }
         }
         if (!page) {
+            if (opts?.requireVisibleBrowser) {
+                const reason = borrowError || 'no active Browser panel watcher';
+                opts.onProgress?.(`eye_required:${reason}`);
+                return {
+                    skipped: `browser eye required (${reason})`,
+                    score: 0,
+                    findings: [],
+                    visible: false,
+                };
+            }
             /**
              * A MISSING BROWSER IS A COMMAND JOE CAN RUN, NOT A NOTE TO HIM.
              *
@@ -656,6 +668,25 @@ export async function auditBuiltApp(
          */
         const eyes = new AuditEyes({ watchSessionId: borrowed ? opts?.watchSessionId : undefined });
 
+        /** A visible QA run must lose no action to a disconnected panel. */
+        const eyeIsOpen = () => {
+            if (!opts?.requireVisibleBrowser) return true;
+            try {
+                const { panelWatcherCount } = require('../../modules/browser/wsHub');
+                return !!opts.watchSessionId && panelWatcherCount(opts.watchSessionId) > 0;
+            } catch { return false; }
+        };
+        const eyeRequiredResult = (reason = 'Browser panel watcher disconnected during QA'): AppAudit => {
+            opts?.onProgress?.(`eye_required:${reason}`);
+            return {
+                skipped: `browser eye required (${reason})`,
+                score: 0,
+                findings: [],
+                visible: false,
+            };
+        };
+        if (!eyeIsOpen()) return eyeRequiredResult('Browser panel is no longer open');
+
         opts?.onProgress?.('pressing');
         /**
          * ONE budget for the whole walk, not one per page. Five routes × a
@@ -664,12 +695,17 @@ export async function auditBuiltApp(
          */
         const walkUntil = Date.now() + Math.max(45_000, timeoutMs * 2);
         const seenForms = new Set<string>();
-        const probeOpts = () => ({ eyes, budgetMs: Math.max(6000, walkUntil - Date.now()), seenForms });
-        try { mergeProbe(await probeControls(page, probeOpts()), '/'); } catch { /* the controls are what is under test */ }
+        const probeOpts = () => ({ eyes, budgetMs: Math.max(6000, walkUntil - Date.now()), seenForms, isEyeOpen: eyeIsOpen });
+        try {
+            const homeProbe = await probeControls(page, probeOpts());
+            mergeProbe(homeProbe, '/');
+            if (homeProbe.metrics.eyeLost || !eyeIsOpen()) return eyeRequiredResult();
+        } catch { /* the controls are what is under test */ }
 
         // Every other page the app offers, audited as a page in its own right.
         const brokenRoutes: string[] = [];
         for (const r of routes) {
+            if (!eyeIsOpen()) return eyeRequiredResult();
             const target = r.startsWith('#') ? url + r : url + r;
             try {
                 await page.goto(target, { waitUntil: 'load', timeout: Math.min(timeoutMs, 20_000) });
@@ -684,7 +720,9 @@ export async function auditBuiltApp(
                     dom.smallSel = [...(dom.smallSel || []), ...d2.smallSel];
                 }
                 if (d2.h1s !== 1) brokenRoutes.push(`${r} (h1=${d2.h1s})`);
-                mergeProbe(await probeControls(page, probeOpts()), r);
+                const routeProbe = await probeControls(page, probeOpts());
+                mergeProbe(routeProbe, r);
+                if (routeProbe.metrics.eyeLost || !eyeIsOpen()) return eyeRequiredResult();
             } catch (e: any) {
                 brokenRoutes.push(`${r} (${String(e?.message || e).slice(0, 40)})`);
             }
@@ -714,6 +752,7 @@ export async function auditBuiltApp(
          */
         const seenLabels = new Set(allControls.map((c: any) => String(c.label || '')));
         try {
+            if (!eyeIsOpen()) return eyeRequiredResult();
             const back = page.viewportSize?.() || { width: 1280, height: 900 };
             await page.setViewportSize({ width: 390, height: 844 });
             await page.waitForTimeout(420);
@@ -722,8 +761,10 @@ export async function auditBuiltApp(
                 eyes,
                 budgetMs: Math.min(20_000, Math.max(6000, walkUntil - Date.now())),
                 seenForms,
+                isEyeOpen: eyeIsOpen,
                 maxControls: 12,
             });
+            if (phone.metrics.eyeLost || !eyeIsOpen()) return eyeRequiredResult();
             const fresh = (phone.controls || []).filter((c: any) => !seenLabels.has(String(c.label || '')));
             for (const c of fresh) allControls.push({ ...c, bare: c.label, label: `الجوّال ${c.label}` });
             behaviourMetrics.deadAnchors += phone.metrics?.deadAnchors || 0;
@@ -740,6 +781,7 @@ export async function auditBuiltApp(
          * three; his own builds were never put through any of them.
          */
         opts?.onProgress?.('inspecting');
+        if (!eyeIsOpen()) return eyeRequiredResult();
         let ui: { findings: any[]; metrics: Record<string, any> } = { findings: [], metrics: {} };
         try {
             const desktop = page.viewportSize?.() || { width: 1280, height: 900 };

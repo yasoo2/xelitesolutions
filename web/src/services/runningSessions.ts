@@ -17,11 +17,15 @@
  * still working" is a fact about all of them, not about the one on screen.
  */
 
+import { api } from './apiClient';
+
 type Listener = (running: Set<string>) => void;
 
 const running = new Set<string>();
+const runIds = new Map<string, string>();
 const listeners = new Set<Listener>();
 let attached = false;
+let pollTimer: ReturnType<typeof setInterval> | null = null;
 
 const norm = (v: any): string => String(v || '').trim();
 
@@ -40,10 +44,13 @@ function note(event: any) {
     if (!sid) return;
     const type = norm(event?.type);
     if (type === 'run_started') {
+        const runId = norm(event?.runId || event?.data?.runId);
+        if (runId) runIds.set(sid, runId);
         if (!running.has(sid)) { running.add(sid); emit(); }
         return;
     }
     if (type === 'run_finished' || type === 'run_failed' || type === 'run_cancelled') {
+        runIds.delete(sid);
         if (running.delete(sid)) emit();
     }
 }
@@ -55,6 +62,33 @@ export function startTrackingRuns() {
     void import('./socket').then(({ SocketService }) => {
         SocketService.subscribe(note);
     });
+    const sync = async () => {
+        try {
+            const data: any = await api.get('/runs/active');
+            const serverIds = new Set<string>(
+                (Array.isArray(data?.runs) ? data.runs : [])
+                    .map((run: any) => norm(run?.sessionId))
+                    .filter(Boolean)
+            );
+            const serverRunIds = new Map<string, string>();
+            (Array.isArray(data?.runs) ? data.runs : []).forEach((run: any) => {
+                const sid = norm(run?.sessionId);
+                if (sid) serverRunIds.set(sid, norm(run?.runId));
+            });
+            let changed = serverIds.size !== running.size;
+            if (!changed) for (const id of running) if (!serverIds.has(id)) { changed = true; break; }
+            if (!changed) for (const [sid, runId] of serverRunIds) if ((runIds.get(sid) || '') !== runId) { changed = true; break; }
+            if (changed) {
+                running.clear();
+                runIds.clear();
+                serverIds.forEach(id => running.add(id));
+                serverRunIds.forEach((runId, sid) => { if (runId) runIds.set(sid, runId); });
+                emit();
+            }
+        } catch { /* the WebSocket remains the live fallback */ }
+    };
+    void sync();
+    pollTimer = setInterval(() => { void sync(); }, 2500);
 }
 
 export function isSessionRunning(sessionId: string): boolean {
@@ -63,6 +97,11 @@ export function isSessionRunning(sessionId: string): boolean {
 
 export function getRunningSessions(): Set<string> {
     return new Set(running);
+}
+
+/** The canonical run id lets a remounted composer stop a run it rejoined. */
+export function getRunningRunId(sessionId: string): string {
+    return runIds.get(norm(sessionId)) || '';
 }
 
 export function subscribeRunningSessions(l: Listener): () => void {
@@ -76,5 +115,8 @@ export function markRunning(sessionId: string, on: boolean) {
     const sid = norm(sessionId);
     if (!sid) return;
     if (on) { if (!running.has(sid)) { running.add(sid); emit(); } }
-    else if (running.delete(sid)) emit();
+    else {
+        runIds.delete(sid);
+        if (running.delete(sid)) emit();
+    }
 }

@@ -1169,8 +1169,11 @@ export function wantsMultiPage(text: string, kind: PageKind = 'landing'): boolea
 /** Which sections carry each page a request can name. */
 const PAGE_SECTIONS: Record<string, string[]> = {
     products: ['Products', 'Gallery', 'Faq'],
+    exhibits: ['Gallery', 'Features'],
     menu: ['Menu', 'Gallery'],
     contact: ['Contact', 'Location'],
+    visit: ['Contact', 'Location'],
+    education: ['Steps', 'Features'],
     about: ['Story', 'Team', 'Testimonials'],
     services: ['Features', 'Steps', 'Cta'],
     pricing: ['Pricing', 'Compare', 'Faq'],
@@ -3248,7 +3251,7 @@ h1,h2,h3{font-family:var(--f-head);font-weight:var(--f-head-weight)}
 .header-inner{flex-wrap:wrap}
 .nav-links{display:flex;gap:10px;flex-wrap:wrap;min-width:0}
 .nav-links a{color:var(--text);text-decoration:none;font-weight:600;display:inline-flex;align-items:center;min-height:44px;padding:0 8px}
-.nav-links a:hover{color:var(--brand)}
+.nav-links a:hover{color:var(--brand-text,var(--brand))}
 /*  ONE NAVIGATION LANGUAGE, WHEREVER JOE WRITES A NAV.
  *
  *  The owner circled the page tabs in a generated store and said they were
@@ -3269,7 +3272,7 @@ h1,h2,h3{font-family:var(--f-head);font-weight:var(--f-head-weight)}
 .nav-links a{border-radius:8px;transition:color .16s ease,background-color .16s ease}
 .nav-links a:hover{background:color-mix(in srgb,var(--brand) 7%,transparent)}
 .nav-links a:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
-.nav-links a[aria-current]{color:var(--brand);position:relative}
+.nav-links a[aria-current]{color:var(--brand-text,var(--brand));position:relative}
 .nav-links a[aria-current]::after{content:'';position:absolute;inset-inline:8px;bottom:6px;
   height:2px;border-radius:2px;background:var(--brand)}
 .theme-toggle{background:none;border:1px solid var(--border);border-radius:10px;min-width:44px;min-height:44px;cursor:pointer;color:var(--text)}
@@ -5777,7 +5780,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 term(`self-QA session: ${auditSid} · watching=${watching}`);
                 term(watching
                     ? 'self-QA: the Browser panel is attached — the audit runs where you can see it'
-                    : 'self-QA: no Browser panel attached — running anyway, the findings are in the message');
+                    : 'self-QA: no Browser panel attached — visual QA is blocked until the Browser panel is open');
             } catch { /* the hub is optional — never block a build on it */ }
             const someoneIsWatching = auditWatching;
             let auditVisible = false;
@@ -5794,6 +5797,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 offline: noInstall,
                 timeoutMs: 30_000,
                 watchSessionId: auditSid,
+                requireVisibleBrowser: true,
                 ...(liveServer ? { serveUrl: liveServer.url } : {}),
                 /**
                  * And the invitation matches reality. When the audit cannot
@@ -5962,6 +5966,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                         offline: noInstall,
                         timeoutMs: 30_000,
                         watchSessionId: auditSid,
+                        requireVisibleBrowser: true,
                         ...(liveServer ? { serveUrl: liveServer.url } : {}),
                     });
                     term(`self-QA after rollback: ${audit?.skipped ? `skipped (${audit.skipped})` : `${audit.score}/100`}`);
@@ -6123,6 +6128,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 // it simply never downloads a browser to make itself possible.
                 offline: noInstall,
                         timeoutMs: 30_000, watchSessionId: auditSid,
+                        requireVisibleBrowser: true,
                         ...(liveServer ? { serveUrl: liveServer.url } : {}),
                         ...(runtimeAuth ? { credentials: runtimeAuth } : {}),
                     });
