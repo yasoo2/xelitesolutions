@@ -21,7 +21,7 @@ describe('form validation is a real acceptance criterion', () => {
         expect(result.criteria[0].verdict).toBe('met');
     });
 
-    it('does not treat an equipment checkout as a payment checkout', () => {
+    it('does not infer form validation from a required column fragment', () => {
         const ids = acceptanceFor(
             'Build a school equipment checkout system with required student and equipment fields.',
         ).map(c => c.id);

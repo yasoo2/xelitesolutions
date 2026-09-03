@@ -319,6 +319,7 @@ const ACCEPTANCE_TOPIC_IDS: Record<string, DeliveryTopic[]> = {
     title: [],
     status_message: [],
     add_row: ['crud'],
+    form_validation: ['required'],
     export: ['csv'],
     dashboard: [],
     empty_state: [],
