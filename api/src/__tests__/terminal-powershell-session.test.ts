@@ -6,5 +6,7 @@ describe('Windows terminal sessions', () => {
         const source = fs.readFileSync(
             path.join(__dirname, '..', 'kernel', 'ExecutionEngine.ts'), 'utf-8');
         expect(source).toMatch(/powershell.*NoLogo.*NoProfile.*ExecutionPolicy.*Bypass.*NoExit/s);
+        expect(source).toMatch(/terminalSessionEnv[\s\S]*APPDATA\s*=\s*appData/);
+        expect(source).toMatch(/PSReadLine/);
     });
 });

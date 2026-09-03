@@ -1,5 +1,6 @@
 import { spawn } from 'child_process';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import { logger } from '../shared/utils/logger';
 import { traceManager } from '../modules/services/TraceManager';
@@ -128,6 +129,22 @@ function isolatedExecutionEnv(overrides?: NodeJS.ProcessEnv): NodeJS.ProcessEnv 
     const env: NodeJS.ProcessEnv = { ...process.env, ...overrides };
     for (const key of Object.keys(env)) {
         if (/^npm_config_(prefix|cache)$/i.test(key)) delete env[key];
+    }
+    return env;
+}
+
+/** Keep PowerShell's interactive history away from the user's protected profile. */
+function terminalSessionEnv(overrides?: NodeJS.ProcessEnv, sessionId?: string): NodeJS.ProcessEnv {
+    const env = isolatedExecutionEnv(overrides);
+    if (process.platform !== 'win32') return env;
+    const safeId = String(sessionId || process.pid).replace(/[^a-z0-9_.-]/gi, '_');
+    const appData = path.join(os.tmpdir(), 'joe-terminal', safeId);
+    try {
+        fs.mkdirSync(path.join(appData, 'Microsoft', 'Windows', 'PowerShell', 'PSReadLine'), { recursive: true });
+        env.APPDATA = appData;
+        env.LOCALAPPDATA = appData;
+    } catch {
+        // A terminal must still start if the temporary profile cannot be made.
     }
     return env;
 }
@@ -373,7 +390,7 @@ export class ExecutionEngine {
                     cols: options.cols || 80,
                     rows: options.rows || 30,
                     cwd: cwd,
-                    env: { ...isolatedExecutionEnv(options.env), TERM: 'xterm-256color' }
+                    env: { ...terminalSessionEnv(options.env, options.sessionId), TERM: 'xterm-256color' }
                 });
 
                 return {
