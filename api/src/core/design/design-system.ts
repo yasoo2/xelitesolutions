@@ -261,12 +261,14 @@ export function paletteForHue(hue: number): Palette {
     const bg = hslCss(hue, 40, 98);
     const surface = white;
     const text = fitContrast(hue, 28, 20, surface, 12, -1);
-    const textMuted = fitContrast(hue, 16, 42, surface, 4.5, -1);
+    // Fit muted copy with headroom: browser compositing and rounded CSS
+    // channels can turn an exact 4.5:1 mathematical fit into 4.49:1.
+    const textMuted = fitContrast(hue, 16, 42, surface, 5, -1);
 
     const darkBg = hslCss(hue, 24, 8);
     const darkSurface = hslCss(hue, 20, 12);
     const darkText = fitContrast(hue, 12, 96, darkSurface, 12, 1);
-    const darkTextMuted = fitContrast(hue, 12, 74, darkSurface, 4.5, 1);
+    const darkTextMuted = fitContrast(hue, 12, 74, darkSurface, 5, 1);
 
     /**
      * A BRAND-TINTED SURFACE AND THE TEXT THAT SITS ON IT — as a pair.

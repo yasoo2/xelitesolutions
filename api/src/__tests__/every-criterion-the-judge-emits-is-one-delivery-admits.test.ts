@@ -61,6 +61,7 @@ const REQUESTS = [
     'Build a small project called Gate062. Create one polished page titled Gate 062 with a heading, a short status message, and a button that increments a visible counter. Run the real build and open the live preview. Do not modify existing projects.',
     'اعمل صفحة سياسة الخصوصية وصفحة الشروط',
     'اعمل متجر فيه صفحة المنتجات وصفحة الشحن والاسترجاع',
+    'Build a personal reading log with book title, author, pages, start date, finish date, rating, and reading status. Add filters for status and rating plus a progress metric.',
 ];
 
 describe('the delivery admits every criterion the judge can emit', () => {
@@ -83,6 +84,8 @@ describe('the delivery admits every criterion the judge can emit', () => {
         expect(admitted('column:money1')).toBe(true);
         expect(admitted('page:contact')).toBe(true);
         expect(admitted('rule:1')).toBe(true);
+        expect(admitted('filter:scalar1')).toBe(true);
+        expect(admitted('progress_metric')).toBe(true);
     });
 
     it('while a genuinely unknown id still fails loudly', () => {

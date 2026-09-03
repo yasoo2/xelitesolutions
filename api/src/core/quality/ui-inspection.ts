@@ -77,8 +77,22 @@ export const VIEWPORTS = [
 
 function measureContrast() {
   var parse = function (c: any): any[] {
-    var m = String(c || '').match(/rgba?\(([^)]+)\)/); if (!m) return [0, 0, 0, 0];
-    var p = m[1].split(',').map(function (s: string) { return parseFloat(s); });
+    var raw = String(c || '');
+    // Chromium serializes color-mix() as color(srgb ...), while older CSS
+    // keeps rgb()/rgba(). Both forms are real computed colours and must not be
+    // silently treated as transparent or black by the quality gate.
+    var srgb = raw.match(/color\(\s*srgb\s+([^)]+)\)/i);
+    if (srgb) {
+      var sp = srgb[1].replace('/', ' ').split(/\s+/).filter(Boolean).map(function (s: string) {
+        return parseFloat(s.replace('%', '')) / (/%$/.test(s) ? 100 : 1);
+      });
+      return [(sp[0] || 0) * 255, (sp[1] || 0) * 255, (sp[2] || 0) * 255, sp[3] === undefined ? 1 : sp[3]];
+    }
+    var m = raw.match(/rgba?\(([^)]+)\)/); if (!m) return [0, 0, 0, 0];
+    var p = m[1].replace('/', ' ').split(/[,\s]+/).filter(Boolean).map(function (s: string) {
+      var n = parseFloat(s.replace('%', ''));
+      return /%$/.test(s) ? n / 100 : n;
+    });
     return [p[0] || 0, p[1] || 0, p[2] || 0, p[3] === undefined ? 1 : p[3]];
   };
   var lum = function (r: any, g: any, b: any) {
@@ -102,15 +116,36 @@ function measureContrast() {
    * SKIPPED and said to be skipped, never scored.
    */
   var effBg = function (el: any): any[] | null {
-    var node = el;
+    var node = el, layers: any[] = [];
     while (node) {
       var st = getComputedStyle(node);
-      if (st.backgroundImage && st.backgroundImage !== 'none') return null;
+      // A photograph or a gradient without an opaque, parseable stop cannot
+      // be reduced to one honest background colour, so report it as skipped.
+      if (st.backgroundImage && st.backgroundImage !== 'none') {
+        if (/url\(/i.test(st.backgroundImage)) return null;
+        var stops = Array.prototype.slice.call(st.backgroundImage.matchAll(/rgba?\([^)]+\)|color\(\s*srgb[^)]+\)/gi))
+          .map(function (m: any) { return parse(m[0]); })
+          .filter(function (x: any[]) { return x[3] >= 0.995; });
+        if (stops.length) {
+          stops.sort(function (a: any[], b: any[]) { return lum(a[0], a[1], a[2]) - lum(b[0], b[1], b[2]); });
+          layers.push(stops[0]);
+          break;
+        }
+        return null;
+      }
       var bg = parse(st.backgroundColor);
-      if (bg[3] > 0) return bg;
+      if (bg[3] >= 0.995) { layers.push(bg); break; }
+      if (bg[3] > 0.004) layers.push(bg);
       node = node.parentElement;
     }
-    return [255, 255, 255, 1];
+    var out = [255, 255, 255];
+    for (var i = layers.length - 1; i >= 0; i--) {
+      var alpha = layers[i][3];
+      out = [0, 1, 2].map(function (channel: number) {
+        return layers[i][channel] * alpha + out[channel] * (1 - alpha);
+      });
+    }
+    return [out[0], out[1], out[2], 1];
   };
   var visible = function (el: any) {
     var r = el.getBoundingClientRect(), st = getComputedStyle(el);
@@ -151,6 +186,11 @@ function measureContrast() {
     var fg = parse(st.color); if (fg[3] === 0) continue;
     var bgc = effBg(el);
     if (!bgc) { skipped++; continue; }          // a gradient or a photo: unmeasurable
+    var measuredBg = bgc;
+    // Alpha text is composited over the measured background before judging.
+    if (fg[3] < 0.995) {
+      fg = [0, 1, 2].map(function (channel: number) { return fg[channel] * fg[3] + measuredBg[channel] * (1 - fg[3]); }) as any;
+    }
     //  THE ARITHMETIC AND THE VERDICT LEFT THIS FUNCTION — see judgeContrast.
     //  What a browser can do and Node cannot is READ the page: which elements
     //  hold text, what colour they and their ancestors are, whether a gradient
@@ -160,7 +200,7 @@ function measureContrast() {
     var size = parseFloat(st.fontSize) || 16, bold = (parseInt(st.fontWeight, 10) || 400) >= 700;
     var r = el.getBoundingClientRect();
     samples.push({
-      text: txt.slice(0, 40), fg: [fg[0], fg[1], fg[2]], bg: [bgc[0], bgc[1], bgc[2]],
+      text: txt.slice(0, 40), fg: [fg[0], fg[1], fg[2]], bg: [measuredBg[0], measuredBg[1], measuredBg[2]],
       size: size, bold: bold,
       x: Math.round(r.left), y: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height),
       sel: selectorFor(el),

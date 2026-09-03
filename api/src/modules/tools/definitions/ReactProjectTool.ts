@@ -65,6 +65,13 @@ type MeasuredAbilityReport = {
     unmeasured: string[];
     measured: boolean;
 };
+type AcceptanceEvidence = {
+    verdict?: string;
+    en?: string;
+    ar?: string;
+    expectedColumn?: string;
+    expectedFilter?: { field?: string; label?: string };
+};
 const hasAll = (...patterns: RegExp[]) => (source: string) => patterns.every(pattern => pattern.test(source));
 const hasAny = (...patterns: RegExp[]) => (source: string) => patterns.some(pattern => pattern.test(source));
 const ENGINE_SOURCE_MARKERS: Record<string, RegExp> = {
@@ -126,7 +133,7 @@ const MEASURED_ABILITIES: Record<string, MeasuredAbility[]> = {
          *  that never appears.
          */
         { ar: 'بحث فوري في كل الأعمدة', en: 'instant search across the columns', evidence: hasAny(/setQuery\(/) },
-        { ar: 'تصفية حسب الحالة', en: 'filtering by status', evidence: hasAll(/setFilter\(/, /type:\s*'select'/) },
+        { ar: 'تصفية حسب الحالة', en: 'filtering by status', evidence: hasAll(/setFilters?\(/, /type:\s*['"]select['"]/i) },
         { ar: 'ترتيب الصفوف', en: 'sorting the rows', evidence: hasAny(/setSort\(/) },
         { ar: 'أرقام محسوبة من بياناتك أنت', en: 'numbers computed from YOUR rows', evidence: hasAny(/groupTotals|computeMetric|reduce\(|total/i) },
         { ar: 'حفظ دائم + تصدير CSV + قراءة من خادم المشروع إن وُجد', en: 'durable storage, CSV export, and reads from the project API when one exists', evidence: hasAll(/localStorage|fetch|api/i, /toCsv|\\.csv|download/i) },
@@ -256,6 +263,39 @@ export function measuredAppAbilities(engine: string, isArabic: boolean, source: 
     return { abilities, unmeasured, measured: true };
 }
 
+/** Keep inferred gap bullets tied to words the user actually wrote and Joe did not prove. */
+export function requestSpokenCapabilities(
+    candidates: string[],
+    request: string,
+    engine: string,
+    criteria: AcceptanceEvidence[] = [],
+): string[] {
+    const requestText = String(request || '').toLocaleLowerCase();
+    const metEvidence = criteria
+        .filter(criterion => criterion?.verdict === 'met')
+        .flatMap(criterion => [
+            criterion.en,
+            criterion.ar,
+            criterion.expectedColumn,
+            criterion.expectedFilter?.label,
+        ])
+        .filter(Boolean)
+        .map(value => String(value).toLocaleLowerCase());
+    return Array.from(new Set((candidates || []).map(value => String(value || '').trim()).filter(Boolean)))
+        .filter(candidate => {
+            const normalized = candidate.toLocaleLowerCase();
+            // Records inference often turns one requested field into a broader
+            // capability ("rating" -> "reviews and ratings"). That broader
+            // claim is not the user's request and must not become a gap.
+            if (engine === 'records' && !requestText.includes(normalized)) return false;
+            // A named field or feature already proven by acceptance is not an
+            // unmet capability, even if the generic inference repeats it.
+            if (metEvidence.some(evidence => evidence.includes(normalized) || normalized.includes(evidence))) return false;
+            return true;
+        })
+        .slice(0, 12);
+}
+
 type DeliveryTopic = 'crud' | 'required' | 'search' | 'filter' | 'sort' | 'computed' | 'storage' | 'csv' | 'api';
 const DELIVERY_TOPIC_RULES: Array<[DeliveryTopic, RegExp]> = [
     ['crud', /create|edit|delete|add|update|record|إضافة|تعديل|حذف|سجل|السجلات/iu],
@@ -343,6 +383,11 @@ const DYNAMIC_ACCEPTANCE_ID = [
     //  a topic, it IS the requirement, so `acceptanceTopics()` returning empty
     //  is the correct answer rather than an oversight.
     /^req-[a-z0-9]+$/,
+    //  requestedFilterFields() — each filter the user named against the
+    //  record schema. These are structural criteria, not model catalogue ids.
+    /^filter:[A-Za-z][A-Za-z0-9_-]*$/,
+    //  wantsProgressMetric() — a row-backed percentage, when requested.
+    /^progress_metric$/,
 ];
 
 function isKnownAcceptanceId(id: string): boolean {
@@ -351,7 +396,10 @@ function isKnownAcceptanceId(id: string): boolean {
 }
 
 function acceptanceTopics(id: string): DeliveryTopic[] {
-    return ACCEPTANCE_TOPIC_IDS[id] || [];
+    if (ACCEPTANCE_TOPIC_IDS[id]) return ACCEPTANCE_TOPIC_IDS[id];
+    if (/^filter:[A-Za-z][A-Za-z0-9_-]*$/.test(id)) return ['filter'];
+    if (id === 'progress_metric') return ['computed'];
+    return [];
 }
 
 function deliveryTopics(value: string): DeliveryTopic[] {
@@ -4502,6 +4550,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                     const aligned = requestedFields
                         ? { ...derived, fields: requestedFields, metrics: effectiveBp.metrics,
                             statusField: effectiveBp.statusField, doneValue: effectiveBp.doneValue,
+                            filterFields: effectiveBp.filterFields,
                             relation: undefined }
                         : derived;
                     runBp = applyRequestFieldConstraints(aligned, request);
@@ -5410,7 +5459,18 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             // while outbound registry access is slow or unavailable. Use that
             // evidence first; a fresh machine still gets one bounded network
             // retry instead of being forced into offline-only operation.
-            let offlineInstall = await run('npm', ['install', '--offline', '--no-audit', '--no-fund'], 45_000);
+            // A sibling project with the exact same manifest is a stronger and
+            // faster local witness than asking npm to discover the same tree
+            // again. This matters on offline machines where npm can spend its
+            // entire timeout probing a registry even though the toolchain is
+            // already available on disk.
+            const reusedBeforeInstall = reuseLocalReactDependencies(root, proj);
+            if (reusedBeforeInstall) {
+                term('reused a verified local React toolchain — no package download needed');
+            }
+            let offlineInstall = reusedBeforeInstall
+                ? 0
+                : await run('npm', ['install', '--offline', '--no-audit', '--no-fund'], 45_000);
             if (offlineInstall !== 0) {
                 // Windows can report a cache miss or EPERM while another npm
                 // process holds the shared cache. A verified sibling project
@@ -6541,7 +6601,8 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             term(`  ${j.verdict === 'met' ? 'OK' : j.verdict === 'unmet' ? 'MISSING' : '??'} ${j.text} — ${j.why}`);
         }
         const structural = catalogueCriteria.filter((c: any) =>
-            c.expectedRule || c.expectedColumn || c.expectedPage || c.expectedText);
+            c.expectedRule || c.expectedColumn || c.expectedPage || c.expectedText
+            || c.expectedFilter || c.expectedProgress);
         const criteriaForJudgement = namedJudged.length
             ? [
                 ...structural,
@@ -6652,7 +6713,12 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
         const spokenCapabilities: string[] = (() => {
             try {
                 const { inferModel } = require('../../../core/design/entity-inference');
-                return (inferModel(request, 4).capabilities || []).slice(0, 12);
+                return requestSpokenCapabilities(
+                    inferModel(request, 4).capabilities || [],
+                    request,
+                    String(appBp?.engine || ''),
+                    acceptance.criteria,
+                );
             } catch { return []; }
         })();
 

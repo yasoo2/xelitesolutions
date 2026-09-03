@@ -25,7 +25,7 @@
  * the judge's vocabulary drifting apart earlier today.
  */
 
-import { scopeReport } from '../core/quality/scope-audit';
+import { requestedCapabilities, scopeReport } from '../core/quality/scope-audit';
 import { acceptanceFor } from '../core/quality/acceptance';
 
 const unchecked = (r: string) => scopeReport(r, []).unchecked;
@@ -57,6 +57,18 @@ describe('a clause the ledger judges is not also called unchecked', () => {
 });
 
 describe('and the honest silence it protects is still there', () => {
+    it('does not call a reading-log rating column a customer-review system', () => {
+        expect(requestedCapabilities('Build a reading log with title and rating')).toEqual([]);
+    });
+
+    it('does not call a named reading-status column unchecked', () => {
+        const report = scopeReport(
+            'Build a personal reading log with book title, author, pages, start date, finish date, rating, and reading status. Add filters for status and rating plus a progress metric.',
+            [],
+        );
+        expect(report.unchecked.map(value => value.toLowerCase())).not.toContain('reading status');
+    });
+
     it('a clause that is NOT a rule is still declared unchecked', () => {
         //  This audit exists because Joe used to say nothing at all about the
         //  parts of a request he could not verify. Silencing it entirely to

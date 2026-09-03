@@ -21,7 +21,7 @@
  * is inferred from good intentions, and when the evidence is ambiguous the
  * answer is «not built», because overstating is the failure being fixed here.
  */
-import { clausesBeyondTheColumns, statedRules } from '../design/app-blueprints';
+import { clausesBeyondTheColumns, columnsAnywhereInHisRequest, statedRules } from '../design/app-blueprints';
 import fs from 'fs';
 import path from 'path';
 
@@ -144,7 +144,9 @@ export const CAPABILITIES: Capability[] = [
     },
     {
         id: 'reviews', ar: 'تقييمات العملاء', en: 'customer reviews',
-        ask: /\breviews?\b|\bratings?\b|تقييمات|مراجعات/i,
+        // A bare `rating` is commonly a record column, not a customer-review
+        // system. Require review context before opening this capability gate.
+        ask: /\breviews?\b|\b(?:customer|user|product|item|star)\s+ratings?\b|تقييمات\s*(?:العملاء|المنتجات)|مراجعات/i,
         evidence: /'reviews'|"reviews"|\/api\/reviews|\brating:\s|stars?_?count/i,
     },
     {
@@ -302,10 +304,15 @@ export function scopeReport(request: string, projectDirs: string[]): ScopeReport
      *  own verdict is how one reply contradicts itself.
      */
     const claimed = statedRules(request).map(r => foldForCompare(r.text));
+    const namedColumns = (columnsAnywhereInHisRequest(request) || []).map(column => foldForCompare(column.label));
     const unchecked = clausesBeyondTheColumns(request)
         .filter(clause => !CAPABILITIES.some(c => c.ask.test(clause)))
         .filter(clause => {
             const c = foldForCompare(clause);
+            // A column reader has already classified this exact phrase as a
+            // field. It is not an unchecked capability merely because the
+            // clause splitter saw it after the list separator.
+            if (namedColumns.some(label => label === c)) return false;
             return !claimed.some(r => r === c || r.includes(c) || c.includes(r));
         });
     if (!requested.length) return { requested: [], built: [], missing: [], unchecked };

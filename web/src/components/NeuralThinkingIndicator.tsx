@@ -177,69 +177,13 @@ export default function NeuralThinkingIndicator({ phase = 'analyzing', visible, 
            refuses to shrink and stretches the card past the chat. */
         .neural-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
 
-        /* ── a drop of water that settles into a cube and lets go ─────────
-           «والكره يجب ان تكون كره مائيه تتحرك تعمل اشكال مكعب وكره بشكل
-            منسق ومرتب»
-
-           One element carries the whole thing. nc-morph owns the shape
-           and the turn; nc-surface owns the highlight sliding across it.
-           They touch different properties on purpose — a second animation
-           writing transform is how a morph like this usually dies
-           silently, with the last declaration winning and the rest doing
-           nothing.
-
-           The cycle is slow and ORDERLY, as he asked: liquid sphere, a
-           wobble, a quarter turn tightening into a cube, held there long
-           enough to be read as a cube, then released back to water.
-
-           No colour is written here. It is var(--nc) — the phase colour
-           the rest of Joe already uses, sage while he thinks, slate while
-           he plans, ochre while he builds.
-         */
-        .nc-orb { position: relative; width: 14px; height: 14px; flex: none; }
-        .nc-orb::before {
-          content: ""; position: absolute; inset: -4px; border-radius: 50%;
-          background: rgba(47,134,214,.3);
-          filter: blur(4px); animation: nc-halo 2.8s ease-in-out infinite;
-        }
-        @keyframes nc-halo { 0%,100% { opacity: .3; transform: scale(.9); } 50% { opacity: .68; transform: scale(1.1); } }
-        /*  WATER IS BLUE, IN EVERY PHASE AND AT EVERY MOMENT.
-
-            «يجب ان تكون الكره المائيه ازرق كالماء في جميع الحالات والاوقات»
-
-            The first version tinted the drop with var(--nc) so it changed
-            colour with the phase. That made it a status light, not water —
-            and a status light beside a phase name already written in the
-            phase colour says the same thing twice.
-
-            So the drop keeps its own palette and the SENTENCE carries the
-            phase. Two signals, two jobs.  */
-        .nc-orb { --water: #2f86d6; --water-deep: #0f4f8f; --water-pale: #b6e3ff; }
-        .nc-orb .skin {
-          position: absolute; inset: 0;
-          background:
-            radial-gradient(circle at 50% 30%, rgba(255,255,255,.95), rgba(255,255,255,0) 42%),
-            radial-gradient(circle at 72% 78%, var(--water-pale), rgba(182,227,255,0) 55%),
-            linear-gradient(158deg, var(--water-pale) 2%, var(--water) 46%, var(--water-deep) 100%);
-          background-size: 170% 170%, 150% 150%, 100% 100%;
-          background-position: 32% 18%, 70% 76%, 0 0;
-          box-shadow: inset 0 -2px 3px rgba(9,48,89,.55), inset 0 2px 2px rgba(255,255,255,.35);
-          animation: nc-morph 7.6s ease-in-out infinite, nc-surface 3.4s ease-in-out infinite;
-        }
-        @keyframes nc-morph {
-          0%   { border-radius: 50% 50% 50% 50% / 50% 50% 50% 50%; transform: rotate(0deg)   scale(1);    }
-          14%  { border-radius: 58% 42% 46% 54% / 44% 56% 44% 56%; transform: rotate(6deg)   scale(1.03); }
-          28%  { border-radius: 43% 57% 56% 44% / 57% 43% 57% 43%; transform: rotate(-5deg)  scale(.98);  }
-          44%  { border-radius: 22%;                               transform: rotate(45deg)  scale(.9);   }
-          58%  { border-radius: 14%;                               transform: rotate(45deg)  scale(.9);   }
-          72%  { border-radius: 32%;                               transform: rotate(22deg)  scale(.95);  }
-          88%  { border-radius: 53% 47% 45% 55% / 47% 53% 47% 53%; transform: rotate(4deg)   scale(1.02); }
-          100% { border-radius: 50% 50% 50% 50% / 50% 50% 50% 50%; transform: rotate(0deg)   scale(1);    }
-        }
-        @keyframes nc-surface {
-          0%,100% { background-position: 32% 18%, 70% 76%, 0 0; }
-          50%     { background-position: 62% 34%, 40% 62%, 0 0; }
-        }
+        /* A quiet status mark is enough. The old morphing orb made the
+           thinking surface feel like a decorative card instead of a precise
+           live signal. Motion now communicates only "active" and can disappear
+           completely for reduced-motion users. */
+        .nc-orb { position: relative; width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--nc); box-shadow: 0 0 0 4px color-mix(in srgb, var(--nc) 14%, transparent); animation: nc-pulse 1.8s ease-in-out infinite; }
+        .nc-orb .skin { display: none; }
+        @keyframes nc-pulse { 0%,100% { opacity: .55; transform: scale(.9); } 50% { opacity: 1; transform: scale(1); } }
 
         .nc-label {
           font-size: 12px; letter-spacing: 0; min-width: 0; flex: 1 1 auto;
@@ -281,21 +225,17 @@ export default function NeuralThinkingIndicator({ phase = 'analyzing', visible, 
         .nc-log::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--nc) 55%, transparent); }
 
         @media (prefers-reduced-motion: reduce) {
-              .nc-orb .skin, .nc-orb::before, .neural-card { animation: none !important; }
-          /* And still a sphere when it cannot move: a blob frozen halfway
-             through the morph is worse than no motion at all. */
-          .nc-orb .skin { border-radius: 50%; transform: none; }
+              .nc-orb, .neural-card { animation: none !important; }
           .nc-chip svg { transition: none !important; }
         }
         @media (max-width: 560px) {
-              .neural-head { align-items: flex-start; }
-              .nc-label { flex-wrap: wrap; row-gap: 2px; }
-              .nc-detail { flex-basis: 100%; }
-              .nc-stage { max-width: 36%; }
+              .neural-head { align-items: center; }
+              .nc-label { gap: 5px; }
+              .nc-stage { max-width: 32%; }
         }
       `}</style>
 
-      <div className="neural-head">
+      <div className="neural-head nc-line">
         <span className="nc-orb" aria-hidden="true"><span className="skin" /></span>
         <span className="nc-label">
           <span className="nc-phase">{t('neuralWorking', phaseText)}</span>

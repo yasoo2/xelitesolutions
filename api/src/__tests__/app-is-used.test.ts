@@ -37,6 +37,34 @@ describe('one definition of a dead control', () => {
     it('the probe shims __name — without it every evaluate throws in the page', () => {
         expect(read('core', 'quality', 'behaviour-audit.ts'))
             .toMatch(/globalThis\.__name = globalThis\.__name \|\|/);
+        expect(read('core', 'quality', 'app-audit.ts'))
+            .toMatch(/await page\.addInitScript\('globalThis\.__name = globalThis\.__name \|\|/);
+    });
+
+    it('reaches stateful controls after React replaces their DOM nodes', () => {
+        const B = read('core', 'quality', 'behaviour-audit.ts');
+        expect(B).toContain('const replacement = fresh.find');
+        expect(B).toContain('controlKey(candidate) === controlKey(c)');
+        expect(B).toContain('globalThis.__joeQaDownloadClicks');
+    });
+
+    it('uses the accessible name instead of a changing descendant-text dump', () => {
+        const B = read('core', 'quality', 'behaviour-audit.ts');
+        expect(B).toMatch(/if \(aria\) return aria;/);
+        expect(B).toContain('record opener into a moving sentence');
+    });
+
+    it('recovers from a visible modal before declaring a control unreachable', () => {
+        const B = read('core', 'quality', 'behaviour-audit.ts');
+        expect(B).toContain("[role=\"dialog\"][aria-modal=\"true\"]");
+        expect(B).toContain("page.keyboard.press('Escape')");
+        expect(B).toContain('re-measure the same semantic control');
+    });
+
+    it('does not open a dialog before the controls it can cover', () => {
+        const B = read('core', 'quality', 'behaviour-audit.ts');
+        expect(B).toContain('[aria-haspopup="dialog"]');
+        expect(B).toContain('inspect dialogs after their row actions');
     });
 });
 
@@ -56,6 +84,15 @@ describe('every page, not just the home page', () => {
     it('and the audit reports what it actually did', () => {
         expect(A()).toMatch(/routes: \['\/', \.\.\.routes\]/);
         expect(A()).toMatch(/pressed: behaviourMetrics\.pressed/);
+    });
+});
+
+describe('generated apps hold their shape on narrow screens', () => {
+    it('constrains the application shell before content can widen it', () => {
+        const template = read('modules', 'tools', 'definitions', 'react-app-templates.ts');
+        expect(template).toMatch(/\.app\{[^}]*min-width:0[^}]*max-width:100%[^}]*overflow-x:clip/);
+        expect(template).toMatch(/\.app-main\{[^}]*min-width:0[^}]*max-width:100%[^}]*overflow-x:clip/);
+        expect(template).toMatch(/\.panel,\.row,\.form,\.toolbar,\.list-title,\.row-main,\.row-acts\{min-width:0;max-width:100%\}/);
     });
 });
 

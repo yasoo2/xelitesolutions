@@ -204,6 +204,7 @@ ${bp.metrics.map(m => `    { label: '${q(m.label)}', kind: '${q(m.kind)}'${m.fie
   ],
   statusField: '${q(bp.statusField || '')}',
   doneValue: '${q(bp.doneValue || '')}',
+  filterFields: [${(bp.filterFields || []).map(key => `'${q(key)}'`).join(', ')}],
   lowStock: ${bp.lowStock ? `{ field: '${q(bp.lowStock.field)}', below: ${Number(bp.lowStock.below)} }` : 'null'},
   // The parent this app's rows belong to — «طبيب ← مواعيده». Null for a
   // one-table app, and then the picker below simply never renders.
@@ -621,6 +622,12 @@ export function computeMetric(m, rows) {
   switch (m.kind) {
     case 'count': return String(list.length);
     case 'countWhere': return String(list.filter(r => String(r[m.field] || '') === m.equals).length);
+    case 'progress': {
+      const denominator = list.length;
+      if (!denominator) return '0%';
+      const complete = list.filter(r => String(r[m.field] || '') === String(m.equals || '')).length;
+      return Math.round((complete / denominator) * 100) + '%';
+    }
     case 'sum': return round(list.reduce((a, r) => a + num(r[m.field]), 0));
     case 'sumProduct': return round(list.reduce((a, r) => a + num(r[m.field]) * num(r[m.field2]), 0));
     //  A margin is a quantity times what each unit gains: sell minus buy.
@@ -1275,6 +1282,12 @@ export default function RecordsApp({ content }) {
   // The column that holds a picture, if this collection has one.
   const imageField = fields.find(f => f.type === 'image');
   const statusField = fields.find(f => f.key === content.statusField);
+  const filterKeys = Array.isArray(content.filterFields)
+    ? content.filterFields
+    : (statusField ? [statusField.key] : []);
+  const filterDefs = filterKeys
+    .map(key => fields.find(f => f.key === key))
+    .filter(Boolean);
 
   /**
    * THE SECOND TABLE — «طبيب ← مواعيده».
@@ -1293,7 +1306,7 @@ export default function RecordsApp({ content }) {
   const [selected, setSelected] = useState(null);
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
-  const [filter, setFilter] = useState('');
+  const [filters, setFilters] = useState({});
   const [sort, setSort] = useState('new');
   const [server, setServer] = useState(false);
   const [parents, setParents] = useState(() => (rel ? parentStore.read() : []));
@@ -1438,7 +1451,16 @@ export default function RecordsApp({ content }) {
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase();
     let list = rows.filter(r => {
-      if (filter && String(r[content.statusField] || '') !== filter) return false;
+      for (const field of filterDefs) {
+        const value = String(filters[field.key] || '').trim().toLowerCase();
+        if (!value) continue;
+        const actual = String(r[field.key] ?? '').trim().toLowerCase();
+        if (field.type === 'number') {
+          if (Number(actual) !== Number(value)) return false;
+        } else if (field.type === 'select') {
+          if (actual !== value) return false;
+        } else if (!actual.includes(value)) return false;
+      }
       if (rel && parentFilter && String(r[rel.key] || '') !== parentFilter) return false;
       if (!needle) return true;
       // …and by the parent's name: «كل مواعيد د. سارة» is a search, not a join.
@@ -1449,14 +1471,14 @@ export default function RecordsApp({ content }) {
     if (sort === 'old') list.reverse();
     else if (sort === 'az') list.sort((a, b) => String(a[primary.key] || '').localeCompare(String(b[primary.key] || '')));
     return list;
-  }, [rows, query, filter, sort, fields, primary, content.statusField, rel, parentFilter, parents]);
+  }, [rows, query, filters, sort, fields, primary, filterDefs, rel, parentFilter, parents]);
 
   return (
     <div className="wrap">
       <section data-reveal-section className="stats" aria-label={${T('الأرقام', 'Numbers')}}>
         {content.metrics.map((m, i) => (
           <div className="stat" key={i}>
-            <i className="stat-ico" aria-hidden="true">{({count:'🧾',sum:'💰',todaySum:'📅',todayCount:'📅',sumProduct:'📦',avg:'📈',countWhere:'✅'})[m.kind] || '📊'}</i>
+            <i className="stat-ico" aria-hidden="true">{({count:'🧾',sum:'💰',todaySum:'📅',todayCount:'📅',sumProduct:'📦',avg:'📈',countWhere:'✅',progress:'◔'})[m.kind] || '📊'}</i>
             <div>
               <b>{computeMetric(m, rows)}</b>
               <span>{m.label}</span>
@@ -1622,12 +1644,19 @@ export default function RecordsApp({ content }) {
         <div className="toolbar">
           <input className="search" type="search" value={query} onChange={e => setQuery(e.target.value)}
             placeholder={${T('ابحث…', 'Search…')}} aria-label={${T('بحث', 'Search')}} />
-          {statusField ? (
-            <select value={filter} onChange={e => setFilter(e.target.value)} aria-label={statusField.label}>
-              <option value="">{${T('الكل', 'All')}}</option>
-              {(statusField.options || []).map(o => <option key={o} value={o}>{o}</option>)}
+          {filterDefs.map(field => field.type === 'select' ? (
+            <select key={field.key} value={filters[field.key] || ''}
+              onChange={e => setFilters(prev => ({ ...prev, [field.key]: e.target.value }))}
+              aria-label={field.label}>
+              <option value="">{${T('الكل', 'All')}} {field.label}</option>
+              {(field.options || []).map(o => <option key={o} value={o}>{o}</option>)}
             </select>
-          ) : null}
+          ) : (
+            <input key={field.key} className="filter-input" type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'search'}
+              value={filters[field.key] || ''}
+              onChange={e => setFilters(prev => ({ ...prev, [field.key]: e.target.value }))}
+              placeholder={field.label} aria-label={field.label} />
+          ))}
           {rel ? (
             <select value={parentFilter} onChange={e => setParentFilter(e.target.value)} aria-label={rel.many}>
               <option value="">{${T('كل ', 'All ')} + rel.many}</option>
@@ -2789,7 +2818,7 @@ export default function CalculatorApp({ content }) {
 export function fileAppCss(): string {
     return `/* An application's surface: dense, quiet, and built on Joe's own tokens. */
 *,*::before,*::after{box-sizing:border-box}
-html,body,#root{height:100%}
+html,body,#root{height:100%;max-width:100%;min-width:0}
 body{margin:0;background:var(--bg,#fff);color:var(--text,#111);
   /* One design layer, both generators. This family used to be written here
      as a literal, so a coffee roastery, a dental clinic and a law firm all
@@ -2799,9 +2828,9 @@ body{margin:0;background:var(--bg,#fff);color:var(--text,#111);
   font-family:var(--font-body,'Cairo','Segoe UI',system-ui,-apple-system,sans-serif);font-size:16px;line-height:1.6;-webkit-font-smoothing:antialiased}
 h1,h2,h3{margin:0 0 8px;line-height:1.25}
 p{margin:0 0 8px}
-.app{display:flex;flex-direction:column;min-height:100%}
+.app{display:flex;flex-direction:column;min-height:100%;min-width:0;max-width:100%;overflow-x:clip}
 .app-bar{position:sticky;top:0;z-index:20;background:var(--surface,#fff);border-bottom:1px solid var(--border,#e5e5e5)}
-.app-bar-in{max-width:var(--maxw,1180px);margin:0 auto;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.app-bar-in{width:100%;max-width:var(--maxw,1180px);margin:0 auto;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;overflow-x:clip}
 /* A FLEX OR GRID CHILD DEFAULTS TO min-width:auto — it refuses to shrink below
    its own content, so ONE wide child pushes the whole document sideways.
    Measured at 390px: «Horizontal scrolling — div, div.app, header.app-bar,
@@ -2844,17 +2873,18 @@ p{margin:0 0 8px}
 /* The app's own name measured 3.25:1 against the bar — brand ink on a
    brand-tinted surface. Leaning it toward the page's text clears AA in
    both themes without losing the hue. */
-.app-name{font-size:1.05rem;font-weight:800;margin:0;color:color-mix(in srgb,var(--brand,#111) 45%,var(--text,#111))}
+.app-name{font-size:1.35rem;font-weight:800;margin:0;color:color-mix(in srgb,var(--brand,#111) 45%,var(--text,#111))}
 .app-sub{color:var(--text-muted,#666);font-size:.9rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* 44px, not 38: the audit measures touch targets and it was right to. */
 .icon-btn{border:1px solid var(--border,#ddd);background:var(--surface,#fff);color:inherit;border-radius:999px;
   width:44px;height:44px;font-size:16px;cursor:pointer;line-height:1}
 .icon-btn:hover{border-color:var(--brand,#333)}
-.app-main{flex:1;width:100%}
+.app-main{flex:1;width:100%;min-width:0;max-width:100%;overflow-x:clip}
 .app-foot{max-width:var(--maxw,1180px);margin:0 auto;padding:16px;color:var(--text-muted,#666);font-size:13px;display:flex;gap:8px;flex-wrap:wrap}
 .dot{opacity:.5}
-.wrap{max-width:var(--maxw,1180px);margin:0 auto;padding:16px;display:grid;gap:16px}
+.wrap{width:100%;max-width:var(--maxw,1180px);min-width:0;margin:0 auto;padding:16px;display:grid;gap:16px}
 .wrap>*{min-width:0}
+.panel,.row,.form,.toolbar,.list-title,.row-main,.row-acts{min-width:0;max-width:100%}
 
 .stats{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
 .stat{background:var(--surface,#fff);border:1px solid var(--border,#e5e5e5);border-radius:var(--radius,12px);padding:14px 16px}

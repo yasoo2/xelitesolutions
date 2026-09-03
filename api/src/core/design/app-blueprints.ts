@@ -65,7 +65,7 @@ export interface AppField {
 /** A number worth showing at the top of the app, computed from the rows. */
 export interface AppMetric {
     label: string;
-    kind: 'count' | 'sum' | 'sumProduct' | 'sumMargin' | 'avg' | 'countWhere' | 'todayCount' | 'todaySum' | 'topGroup';
+    kind: 'count' | 'sum' | 'sumProduct' | 'sumMargin' | 'avg' | 'countWhere' | 'todayCount' | 'todaySum' | 'topGroup' | 'progress';
     field?: string;
     field3?: string;
     field2?: string;
@@ -184,6 +184,8 @@ export interface AppBlueprint {
     lowStock?: { field: string; below: number };
     doneValue?: string;
     metrics: AppMetric[];
+    /** Field keys explicitly named as filters in the request. */
+    filterFields?: string[];
     /** The parent table this system's rows belong to, when it has one. */
     relation?: AppRelation;
     /** Extra npm dependencies this engine really needs. */
@@ -964,6 +966,9 @@ export function blueprintFor(kind: AppKind, request: string, isAr: boolean): App
         const wantsTotal = /مجموع|اجمالي|إجمالي|قيمة\s*ال|كم\s|\btotal\b|\bsum\b|how much/iu.test(request);
         const lowMatch = /(?:اقل|أقل|تحت|دون|less\s+than|under|below|<)\s*(?:من\s*)?(\d{1,4})/iu.exec(request);
         const wantsAlert = /(احمر|أحمر|بالاحمر|بالأحمر|\bred\b|تنبيه|انتبه|أنتبه|\bwarn|\balert)/iu.test(request);
+        const flag = cols.find(c => c.role === 'flag');
+        const doneValue = flag ? completionOption(flag.options || [], isAr) : undefined;
+        const wantsProgress = wantsProgressMetric(request);
         const metrics: AppMetric[] = [
             { label: L('عدد السجلات', 'Records'), kind: 'count' },
             ...(wantsTotal && counts[0] && monies[0]
@@ -976,6 +981,8 @@ export function blueprintFor(kind: AppKind, request: string, isAr: boolean): App
                 ? [{ label: `${L('مجموع', 'Total')} ${monies[0].label}`, kind: 'sum', field: monies[0].key } as AppMetric] : []),
             ...(counts[0]
                 ? [{ label: `${L('مجموع', 'Total')} ${counts[0].label}`, kind: 'sum', field: counts[0].key } as AppMetric] : []),
+            ...(wantsProgress && flag && doneValue
+                ? [{ label: L('نسبة التقدم', 'Progress'), kind: 'progress', field: flag.key, equals: doneValue } as AppMetric] : []),
         ];
         return {
             ...base,
@@ -983,6 +990,7 @@ export function blueprintFor(kind: AppKind, request: string, isAr: boolean): App
             metrics,
             statusField: undefined,
             doneValue: undefined,
+            filterFields: requestedFilterFields(request, explicitColumns),
             /**
              *  AND NO PARENT HE NEVER NAMED.
              *
@@ -1014,9 +1022,8 @@ export function blueprintFor(kind: AppKind, request: string, isAr: boolean): App
              *  so a settled debt looks settled instead of holding the word
              *  «نعم» in a box.
              */
-            ...(cols.find(c => c.role === 'flag')
-                ? { statusField: cols.find(c => c.role === 'flag')!.key,
-                    doneValue: (cols.find(c => c.role === 'flag')!.options || [])[0] }
+            ...(flag
+                ? { statusField: flag.key, doneValue }
                 : {}),
             /**
              *  …AND HIS WORD FOR THE THING, WHEN HE SAID IT.
@@ -1517,26 +1524,36 @@ function stockBlueprintFor(kind: AppKind, request: string, isAr: boolean): AppBl
         const lowStock = (counts[0] && lowStockMatch && wantsAlert)
             ? { field: counts[0].key, below: Number(lowStockMatch[1]) }
             : undefined;
+        const recordFields = asked || [
+            f(['title', 'العنوان', 'Title', 'text', undefined, ['required', 'primary']], isAr),
+            f(['details', 'التفاصيل', 'Details', 'textarea'], isAr),
+            f(['amount', 'قيمة', 'Value', 'number'], isAr),
+            f(['date', 'التاريخ', 'Date', 'date'], isAr),
+            f(['status', 'الحالة', 'Status', 'select', SELECT_AR_EN(['جديد', 'قيد العمل', 'منجز'], ['New', 'In progress', 'Done'], isAr)], isAr),
+        ];
+        const requestedFilters = requestedFilterFields(request, recordFields);
+        const progress = wantsProgressMetric(request)
+            ? { label: L('نسبة التقدم', 'Progress'), kind: 'progress' as const, field: 'status', equals: L('منجز', 'Done') }
+            : undefined;
         return {
             kind: 'generic', engine: 'records',
             title: subject || L('السجلات', 'Records'),
             lede: L('أضف، عدّل، ابحث، وصدّر — تطبيق يعمل فعلاً لا صفحة تتحدث عنه.',
                 'Add, edit, search and export — an app that works, not a page about one.'),
             entityOne: L('سجلّ', 'record'), entityMany: subject || L('السجلات', 'Records'),
-            fields: asked || [
-                f(['title', 'العنوان', 'Title', 'text', undefined, ['required', 'primary']], isAr),
-                f(['details', 'التفاصيل', 'Details', 'textarea'], isAr),
-                f(['amount', 'قيمة', 'Value', 'number'], isAr),
-                f(['date', 'التاريخ', 'Date', 'date'], isAr),
-                f(['status', 'الحالة', 'Status', 'select', SELECT_AR_EN(['جديد', 'قيد العمل', 'منجز'], ['New', 'In progress', 'Done'], isAr)], isAr),
-            ],
+            fields: recordFields,
             statusField: 'status', doneValue: L('منجز', 'Done'),
+            filterFields: requestedFilters.length ? requestedFilters : undefined,
             lowStock,
-            metrics: derivedMetrics.length ? derivedMetrics : [
+            metrics: [
+                ...derivedMetrics,
+                ...(progress ? [progress] : []),
+                ...(derivedMetrics.length || progress ? [] : [
                 { label: L('كل السجلات', 'All records'), kind: 'count' },
                 { label: L('منجز', 'Done'), kind: 'countWhere', field: 'status', equals: L('منجز', 'Done') },
                 { label: L('أُضيف اليوم', 'Added today'), kind: 'todayCount', field: 'createdAt' },
-            ],
+                ]),
+            ] as AppMetric[],
             deps: {},
             emptyHint: L('لا سجلات بعد — أضف أول سجلّ من النموذج.', 'No records yet — add the first one in the form.'),
         };
@@ -1607,7 +1624,8 @@ const TYPE_MARKS: Array<[RegExp, DerivedRole, FieldType]> = [
     //  A year and an age are numbers you read, not quantities you add.
     //  Summing «سنة الإصدار» yields a number that means nothing, and printing
     //  it as a total is a confident lie about the user's own data.
-    [/سنة|عام|عمر|\byear\b|\bage\b/iu, 'scalar', 'number'],
+    [/سنة|عام|عمر|صفحات?|\byear\b|\bage\b|\bpages?\b/iu, 'scalar', 'number'],
+    [/تقييم|تقدير|نجوم|\brating\b|\bscore\b/iu, 'scalar', 'number'],
     [/كمي|عدد|وزن|طول|عرض|ارتفاع|مساحة|نسب|\bqty\b|\bquantity\b|\bcount\b|\bweight\b|\bsize\b/iu, 'count', 'number'],
     [/ملاحظ|وصف|تفاصيل|شرح|تعليق|\bnote\b|\bdescription\b|\bdetails\b|\bcomment\b/iu, 'note', 'textarea'],
 ];
@@ -3384,6 +3402,33 @@ function weatherFeatureCovered(feature: string, evidence: string): boolean {
     const rule = WEATHER_FEATURE_RULES.find(r => r.asked.test(feature));
     if (rule) return !!evidence && rule.evidence.test(evidence);
     return ENGINE_COVERS.weather.test(feature);
+}
+
+/** A request-derived filter contract, shared by every records-shaped app. */
+export function requestedFilterFields(requestRaw: string, fields: Array<{ key: string; label: string }>): string[] {
+    const request = String(requestRaw || '').replace(/[ً-ْـ]/g, '').toLowerCase();
+    const clause = request.match(/(?:filters?|filtering|فلترة|تصفية|فلاتر|مرشحات?)\s*(?:for|by|حسب|على|ل(?:ـ|ل)?|من)?\s*([^.!?؟\n]+)/iu)?.[1] || '';
+    if (!clause) return [];
+    const stop = clause.split(/\s+(?:plus|with|and\s+(?:a|an|the)?\s*(?:progress|metric)|ومقياس|وإضافة|واضافة)\b/iu)[0];
+    const tokens = new Set(stop.split(/[^\p{L}\p{N}_]+/u).filter(t => t.length >= 2));
+    const keys: string[] = [];
+    for (const field of fields) {
+        const label = String(field.label || '').toLowerCase().replace(/[ً-ْـ]/g, '');
+        const labelTokens = label.split(/[^\p{L}\p{N}_]+/u).filter(t => t.length >= 2);
+        const matches = tokens.has(label) || labelTokens.some(token => token.length >= 3 && tokens.has(token));
+        if (matches && !keys.includes(field.key)) keys.push(field.key);
+    }
+    return keys;
+}
+
+function wantsProgressMetric(requestRaw: string): boolean {
+    return /progress\s+metric|progress\s+percentage|progress|مقياس\s+(?:تقدم|التقدم)|مؤشر\s+(?:تقدم|التقدم)/iu.test(String(requestRaw || ''));
+}
+
+function completionOption(options: string[], isAr: boolean): string | undefined {
+    return options.find(option => /done|complete|completed|finished|closed|منجز|مكتمل|تم(?:ت|ّ)?(?:ت|ة)?|مغلق|منته/iu.test(option))
+        || options[options.length - 1]
+        || (isAr ? 'منجز' : 'Done');
 }
 
 /**

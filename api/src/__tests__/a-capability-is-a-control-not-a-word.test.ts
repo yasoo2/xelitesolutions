@@ -68,6 +68,11 @@ describe('a capability is claimed only when its control exists', () => {
         expect(claimed(app({ statusColumn: true }))).toContain('filtering by status');
     });
 
+    it('accepts the plural filter state used by the generated records view', () => {
+        const pluralState = app({ statusColumn: true }).replace('setFilter(', 'setFilters(');
+        expect(claimed(pluralState)).toContain('filtering by status');
+    });
+
     it('search and sort are claimed from their own controls, not from array methods', () => {
         const both = claimed(app({ statusColumn: true }));
         expect(both).toContain('instant search');

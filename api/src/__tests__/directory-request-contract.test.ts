@@ -55,4 +55,15 @@ describe('record schema evidence is not delegated to a weak provider', () => {
         ], source, false, async () => { throw new Error('provider unavailable'); });
         expect(result.map(item => item.verdict)).toEqual(['met', 'met', 'met', 'met', 'met', 'met']);
     });
+
+    it('proves list-introduced fields without asking the provider', async () => {
+        const req = (id: string, text: string): NamedRequirement => ({ id, text, quote: text });
+        const source = `label: 'rating' label: 'reading status' type: 'select'
+            filterFields: ['scalar1', 'flag1'] filters[field.key] setFilters(`;
+        const result = await verifyNamed([
+            req('rating', 'Include rating'), req('status', 'Include reading status'),
+            req('filters', 'Add filters for status'),
+        ], source, false, async () => { throw new Error('provider unavailable'); });
+        expect(result.map(item => item.verdict)).toEqual(['met', 'met', 'met']);
+    });
 });

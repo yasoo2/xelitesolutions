@@ -699,17 +699,30 @@ function deterministicRecordVerdict(r: NamedRequirement, source: string): Judged
     const src = String(source || '');
     const esc = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const phrase = String(r.text || r.quote || '').trim().replace(/^['"“”«»]+|['"“”«»]+$/g, '');
-    const fieldLike = phrase.length >= 3 && phrase.length <= 40
-        && !/(?:search|filter|sort|export|validation|بحث|تصفية|فرز|تصدير|تحقق)/iu.test(phrase);
-    if (fieldLike && new RegExp(`(?:label|placeholder|aria-label)\\s*[:=]\\s*['"]${esc(phrase)}['"]`, 'iu').test(src)) {
+    // The extractor is allowed to preserve the user's list grammar (`Include
+    // rating`). For a generated records schema, the field evidence is the
+    // semantic remainder (`rating`), not the list introducer.
+    const fieldPhrase = phrase.replace(/^(?:include|add|with)\s+(?:(?:a|an|the)\s+)?/iu, '').trim();
+    const fieldLike = fieldPhrase.length >= 3 && fieldPhrase.length <= 40
+        && !/(?:search|filter|sort|export|validation|بحث|تصفية|فرز|تصدير|تحقق)/iu.test(fieldPhrase);
+    if (fieldLike && new RegExp(`(?:label|placeholder|aria-label)\\s*[:=]\\s*['"]${esc(fieldPhrase)}['"]`, 'iu').test(src)) {
         return { ...r, verdict: 'met', why: 'the generated record schema declares this field' };
     }
     if (/search|بحث/iu.test(text) && /setQuery|query\.trim|visible\s*=|filtered/i.test(src)) {
         return { ...r, verdict: 'met', why: 'the generated records view filters visible rows from query state' };
     }
     if (/status\s+filter|filtering|تصفية|فلترة/iu.test(text)
-        && /setFilter|content\.statusField|filter.*statusField/i.test(src)) {
+        && /setFilters?|content\.statusField|filter.*statusField/i.test(src)) {
         return { ...r, verdict: 'met', why: 'the generated records view filters rows by status state' };
+    }
+    if (/filters?\s+(?:for|by)|filtering\s+(?:by|for)|فلاتر|تصفية\s+(?:حسب|على)|فلترة\s+(?:حسب|على)/iu.test(text)
+        && /filterFields|filterDefs|filters\[field\.key\]|setFilters\(/i.test(src)) {
+        return { ...r, verdict: 'met', why: 'the generated records view binds multiple request-derived filters to visible rows' };
+    }
+    if (/progress\s+metric|progress\s+percentage|progress|مقياس\s+(?:تقدم|التقدم)|مؤشر\s+(?:تقدم|التقدم)/iu.test(text)
+        && /case\s*['"]progress['"]|kind:\s*['"]progress['"]/i.test(src)
+        && /denominator|m\.equals/i.test(src)) {
+        return { ...r, verdict: 'met', why: 'the generated records view computes progress from row state' };
     }
     if (/empty.*(?:name|field)|validation|تحقق/iu.test(text)
         && /required|setError|checkValidity|missing|invalid/i.test(src)) {

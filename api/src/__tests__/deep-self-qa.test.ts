@@ -76,7 +76,7 @@ describe('every menu, every route — not fourteen buttons', () => {
 
     it('menus are catalogued FIRST — what they hide is invisible until they open', () => {
         const b = B();
-        expect(b).toMatch(/\[aria-haspopup\], \[aria-expanded\], \.menu-toggle/);
+        expect(b).toMatch(/\[aria-haspopup\].*not\(\[aria-haspopup="dialog"\]\), \[aria-expanded\], \.menu-toggle/);
         expect(b).toMatch(/\.hamburger/);
         expect(b).toMatch(/forEach\(el => push\(el, 'menu'\)\)/);
         expect(b.indexOf("push(el, 'menu')")).toBeLessThan(b.indexOf("push(el, 'button')"));
@@ -213,6 +213,13 @@ describe('the interface itself is inspected — «وفحص ui»', () => {
         expect(u).toMatch(/export function contrastRatio\(/);
         expect(u).toMatch(/export function requiredRatio\(/);
         expect(u).toMatch(/code: 'low_contrast'/);
+        // Chromium's computed style uses color(srgb ...) for color-mix().
+        // The page-side collector must understand it and composite translucent
+        // layers, otherwise a modern generated palette can be judged as black
+        // or transparent and stop a healthy build.
+        expect(u).toMatch(/color\(\s*srgb/);
+        expect(u).toContain('layers: any[] = [];');
+        expect(u).toContain('if (fg[3] < 0.995)');
         //  And the page no longer decides: it reports what it saw.
         expect(u).toContain('const c = { checked: raw.checked, skipped: raw.skipped, fails: judgeContrast(raw.samples) };');
     });
@@ -325,7 +332,8 @@ describe('a measurement it cannot make honestly, it does not make', () => {
          * the thing this must never produce.
          */
         const u = read('core', 'quality', 'ui-inspection.ts');
-        expect(u).toMatch(/if \(st\.backgroundImage && st\.backgroundImage !== 'none'\) return null;/);
+        expect(u).toMatch(/if \(st\.backgroundImage && st\.backgroundImage !== 'none'\)/);
+        expect(u).toContain('backgroundImage)) return null;');
         expect(u).toMatch(/if \(!bgc\) \{ skipped\+\+; continue; \}/);
         expect(u).toMatch(/metrics\.contrastUnmeasurable = c\.skipped;/);
     });
@@ -377,7 +385,7 @@ describe('a measurement it cannot make honestly, it does not make', () => {
     it('and a click that hands over a FILE counts as an effect', () => {
         const b = read('core', 'quality', 'behaviour-audit.ts');
         expect(b).toMatch(/page\.on\('download', onDownload\)/);
-        expect(b).toMatch(/effect = downloaded\s*\n?\s*\? 'download'\s*\n?\s*: \(changed\(before, after\)/);
+        expect(b).toMatch(/effect = downloaded \|\| downloadClicks > downloadClicksBefore\s*\n?\s*\? 'download'\s*\n?\s*: \(changed\(before, after\)/);
     });
 
     it('and a form is exercised once per audit, not once per route', () => {

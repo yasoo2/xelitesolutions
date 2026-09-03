@@ -15,11 +15,11 @@ describe('palette contrast is guaranteed by construction', () => {
     it.each([
         ['text on the brand colour', (p: any) => contrastRatio(p.onPrimary, p.primary), 4.5],
         ['body text on the surface', (p: any) => contrastRatio(p.text, p.surface), 7],
-        ['muted text on the surface', (p: any) => contrastRatio(p.textMuted, p.surface), 4.5],
+        ['muted text on the surface', (p: any) => contrastRatio(p.textMuted, p.surface), 5],
         ['white on the secondary colour', (p: any) => contrastRatio('#ffffff', p.secondary), 4.5],
         ['white on the accent colour', (p: any) => contrastRatio('#ffffff', p.accent), 4.5],
         ['dark-mode text on the dark surface', (p: any) => contrastRatio(p.darkText, p.darkSurface), 7],
-        ['dark-mode muted text on the dark surface', (p: any) => contrastRatio(p.darkTextMuted, p.darkSurface), 4.5],
+        ['dark-mode muted text on the dark surface', (p: any) => contrastRatio(p.darkTextMuted, p.darkSurface), 5],
     ])('%s clears its threshold at every hue', (_label, measure, threshold) => {
         const failures = ALL_HUES
             .map(h => ({ hue: h, ratio: measure(paletteForHue(h)) }))

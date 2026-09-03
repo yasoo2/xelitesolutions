@@ -120,9 +120,12 @@ function findControls(limit: number) {
     const label = (el: Element) => {
         const t = ((el as HTMLElement).innerText || '').trim().replace(/\s+/g, ' ').slice(0, 48);
         const aria = el.getAttribute('aria-label') || el.getAttribute('title') || '';
-        // A cart button whose only text is its badge reads as "0" in the report,
-        // which tells the user nothing. Its accessible name is the real name.
-        if (aria && (t.length < 3 || /^\d+$/.test(t))) return aria;
+        // The accessible name is the control's identity. Reading all descendant
+        // text turns a record opener into a moving sentence containing every
+        // field (and makes the same control look new after each re-render).
+        // Visible text remains the fallback for controls that have no semantic
+        // name of their own.
+        if (aria) return aria;
         return t || aria || el.tagName.toLowerCase();
     };
 
@@ -216,8 +219,8 @@ function findControls(limit: number) {
      * navigation menu that never opened meant its links were never even
      * catalogued.
      */
-    document.querySelectorAll(
-        '[aria-haspopup], [aria-expanded], .menu-toggle, .nav-toggle, .hamburger, .burger, '
+        document.querySelectorAll(
+        '[aria-haspopup]:not([aria-haspopup="dialog"]), [aria-expanded], .menu-toggle, .nav-toggle, .hamburger, .burger, '
         + '[data-menu], [class*="dropdown"] > button, nav button, header button',
     ).forEach(el => push(el, 'menu'));
     // details/summary — the cheapest correct accordion, and easy to verify.
@@ -229,8 +232,13 @@ function findControls(limit: number) {
     // Ordinary buttons — the cart, the counter, the toggle.
     document.querySelectorAll('button, [role="button"]').forEach(el => {
         if (el.closest('form')) return;                 // already covered as submit
+        if (el.getAttribute('aria-haspopup') === 'dialog') return; // inspect dialogs after their row actions
         push(el, 'button');
     });
+    // A record/details opener is a stateful dialog, not a site menu. Discover it
+    // after row actions so opening it cannot cover controls that are still to be
+    // measured on the same screen.
+    document.querySelectorAll('[aria-haspopup="dialog"]').forEach(el => push(el, 'button'));
     /**
      * AND THE ROUTES INSIDE THE APP.
      *
@@ -551,6 +559,26 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
             await evalInPage(page, findControls, limit);
         metrics.controlsFound = list.length;
 
+        const controlKey = (c: { kind: string; label: string; href?: string }) =>
+            `${c.kind}|${c.label}|${c.href || ''}`;
+
+        // A CSV download has no DOM footprint. Count the app's real download
+        // anchor click as an additional browser-side witness, while retaining
+        // Playwright's download event when the browser emits one.
+        await page.evaluate(`(() => {
+            const w = globalThis;
+            w.__joeQaDownloadClicks = 0;
+            const proto = HTMLAnchorElement.prototype;
+            if (proto.__joeQaWrappedClick) return;
+            const original = proto.click;
+            const wrapped = function () {
+                if (this && this.hasAttribute('download')) w.__joeQaDownloadClicks++;
+                return original.call(this);
+            };
+            proto.click = wrapped;
+            proto.__joeQaWrappedClick = true;
+        })()`).catch(() => { });
+
         // Anchors are checked without clicking: the question is whether the
         // destination exists, and a page that scrolls is not proof that it does.
         const anchorTargets: Array<{ label: string; target: string; exists: boolean }> = await page.evaluate(() => {
@@ -577,7 +605,19 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
             if (Date.now() > deadline) { budgetHit = true; break; }
             let effect = '';
             try {
-                const el = await page.$(c.sel);
+                // React is allowed to replace the node after a previous click.
+                // Re-discover the same semantic control before calling it dead;
+                // a stale data-joe-ctl selector is not evidence of a bad button.
+                let current = c;
+                let el = await page.$(current.sel);
+                if (!el) {
+                    const fresh = await evalInPage(page, findControls, limit).catch(() => [] as any[]);
+                    const replacement = fresh.find((candidate: any) => controlKey(candidate) === controlKey(c));
+                    if (replacement) {
+                        current = replacement;
+                        el = await page.$(current.sel);
+                    }
+                }
                 if (!el) { controls.push({ label: c.label, kind: c.kind as any, worked: false, effect: 'not found' }); continue; }
                 // An empty form with required fields is BLOCKED by the browser, so
                 // nothing in the DOM changes and a naive check calls the submit
@@ -609,6 +649,50 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                 await page.evaluate(() => {
                     if (document.documentElement.scrollHeight > window.innerHeight + 160) window.scrollBy(0, 120);
                 }).catch(() => { });
+                let reachable = await page.evaluate((sel: string) => {
+                    const node = document.querySelector(sel) as HTMLElement | null;
+                    if (!node) return false;
+                    const r = node.getBoundingClientRect();
+                    const x = Math.min(Math.max(r.left + r.width / 2, 1), window.innerWidth - 1);
+                    const y = Math.min(Math.max(r.top + r.height / 2, 1), window.innerHeight - 1);
+                    const top = document.elementFromPoint(x, y);
+                    return r.bottom > 0 && r.top < window.innerHeight &&
+                        (top === node || !!top && node.contains(top));
+                }, current.sel).catch(() => false);
+                // A details dialog can legitimately cover a control discovered
+                // on the page beneath it. Close only a visible modal, then
+                // re-resolve and re-measure the same semantic control. This is
+                // recovery from test state, not a waiver of the reachability
+                // check: the control is still reported unreachable if recovery
+                // cannot expose it.
+                if (!reachable) {
+                    const covered = await page.evaluate(() => Array.from(document.querySelectorAll('[role="dialog"][aria-modal="true"], .modal-backdrop, .record-modal-backdrop'))
+                        .some((el: any) => { const r = el.getBoundingClientRect(); const cs = getComputedStyle(el); return r.width > 4 && r.height > 4 && cs.display !== 'none' && cs.visibility !== 'hidden'; })).catch(() => false);
+                    if (covered) {
+                        await page.keyboard.press('Escape').catch(() => { });
+                        await page.waitForTimeout(180).catch(() => { });
+                        const fresh = await evalInPage(page, findControls, limit).catch(() => [] as any[]);
+                        const replacement = fresh.find((candidate: any) => controlKey(candidate) === controlKey(c));
+                        if (replacement) {
+                            current = replacement;
+                            el = await page.$(current.sel);
+                            await el?.scrollIntoViewIfNeeded({ timeout: 1500 }).catch(() => { });
+                        }
+                        reachable = await page.evaluate((sel: string) => {
+                            const node = document.querySelector(sel) as HTMLElement | null;
+                            if (!node) return false;
+                            const r = node.getBoundingClientRect();
+                            const x = Math.min(Math.max(r.left + r.width / 2, 1), window.innerWidth - 1);
+                            const y = Math.min(Math.max(r.top + r.height / 2, 1), window.innerHeight - 1);
+                            const top = document.elementFromPoint(x, y);
+                            return r.bottom > 0 && r.top < window.innerHeight && (top === node || !!top && node.contains(top));
+                        }, current.sel).catch(() => false);
+                    }
+                }
+                if (!reachable) {
+                    controls.push({ label: c.label, kind: c.kind as any, worked: false, effect: 'not found' });
+                    continue;
+                }
                 /**
                  * THE POINTER GOES THERE, AND THE ELEMENT IS OUTLINED IN RED.
                  *
@@ -633,7 +717,7 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                 const beforePointer = c.kind === 'menu'
                     ? await page.evaluate(snapshot).catch(() => null)
                     : null;
-                await eyes.lookAt(page, await boxOf(page, c.sel), {
+                await eyes.lookAt(page, await boxOf(page, current.sel), {
                     note: `${KIND_AR[c.kind] || 'عنصر'}: ${c.label}`.slice(0, 64),
                     moveMouse: true,
                 });
@@ -658,12 +742,14 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                 let downloaded = false;
                 const onDownload = () => { downloaded = true; };
                 page.on('download', onDownload);
+                const downloadClicksBefore = await page.evaluate('Number(globalThis.__joeQaDownloadClicks || 0)').catch(() => 0);
                 // force:true so an overlay does not turn "covered" into "broken".
                 await el.click({ timeout: 2500, force: true, noWaitAfter: true }).catch(() => { });
                 await page.waitForTimeout(SETTLE_MS);
                 try { page.off('download', onDownload); } catch { /* page may be gone */ }
+                const downloadClicks = await page.evaluate('Number(globalThis.__joeQaDownloadClicks || 0)').catch(() => 0);
                 const after = await page.evaluate(snapshot).catch(() => null);
-                effect = downloaded
+                effect = downloaded || downloadClicks > downloadClicksBefore
                     ? 'download'
                     : (changed(before, after) || (hoverEffect ? `hover:${hoverEffect}` : ''));
                 // A submit that reloads the page proves the form is NOT handled —
@@ -688,8 +774,6 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
          * controls whose state-aware identity has not been attempted. This is
          * deterministic and auditable, but it is not a memorised click script.
          */
-        const controlKey = (c: { kind: string; label: string; href?: string }) =>
-            `${c.kind}|${c.label}|${c.href || ''}`;
         const initialKeys = new Set(list.map(controlKey));
         const discoveredKeys = new Set(initialKeys);
         const exploredKeys = new Set<string>();

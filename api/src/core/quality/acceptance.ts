@@ -29,7 +29,7 @@
  * cannot test says «unprovable» rather than passing quietly — because a check
  * that cannot fail is the thing this project keeps deleting.
  */
-import { derivedColumns, statedRules, type DerivedField, columnsAnywhereInHisRequest, detectAppKind } from '../design/app-blueprints';
+import { derivedColumns, statedRules, type DerivedField, columnsAnywhereInHisRequest, detectAppKind, requestedFilterFields } from '../design/app-blueprints';
 import { hisWordsOnly } from '../design/page-head';
 import fs from 'fs';
 import path from 'path';
@@ -171,6 +171,10 @@ export interface Criterion {
      *  A view of the same `expectedRule` value, never a second record of it.
      */
     expectedBound?: { min: number; minExclusive: boolean };
+    /** A request-derived filter that must be wired to the named field. */
+    expectedFilter?: { field: string; label: string };
+    /** A request-derived progress metric backed by the row state. */
+    expectedProgress?: boolean;
 }
 
 export interface JudgedCriterion extends Criterion {
@@ -483,6 +487,8 @@ export function acceptanceFor(request: string): Criterion[] {
      */
     const willBuildATable = detectAppKind(t) !== null;
     const columns = willBuildATable ? (columnsAnywhereInHisRequest(t) || []) : [];
+    const requestedFilters = willBuildATable ? requestedFilterFields(t, columns) : [];
+    const wantsProgress = /progress\s+metric|progress\s+percentage|progress|مقياس\s+(?:تقدم|التقدم)|مؤشر\s+(?:تقدم|التقدم)/iu.test(t);
 
 
     /**
@@ -522,6 +528,20 @@ export function acceptanceFor(request: string): Criterion[] {
     //  a rule that vanishes is the one outcome with no honest reading.
     const rules = statedRules(t);
 
+    // A feature sentence can also begin with an edit verb such as `add`.
+    // When the feature already has a dedicated criterion, keeping the raw
+    // change as `rule:n` would make one request appear twice and can create a
+    // false unmet condition. Real constraints and edits remain untouched.
+    const changeAlreadyCovered = (rule: typeof rules[number]): boolean => {
+        if (rule.kind !== 'change') return false;
+        const text = String(rule.text || '');
+        const asksForFilters = requestedFilters.length > 0
+            && /\bfilters?\b|تصف(?:ية|يات)|فلتر/iu.test(text);
+        const asksForProgress = wantsProgress
+            && /\bprogress\b|تقدم|التقدم|مؤشر/iu.test(text);
+        return asksForFilters || asksForProgress;
+    };
+
     /**
      *  A BOUND BELONGS TO ITS COLUMN, NOT TO A NUMBERED LIST.
      *
@@ -541,6 +561,7 @@ export function acceptanceFor(request: string): Criterion[] {
     const boundFor = new Map<string, typeof rules[number]>();
     const loose: typeof rules = [];
     for (const r of rules) {
+        if (changeAlreadyCovered(r)) continue;
         const said = String(r.field || r.text || '');
         const owner = (r.kind === 'bound' && r.min !== undefined && said)
             ? (columns as DerivedField[]).find(col => {
@@ -573,6 +594,25 @@ export function acceptanceFor(request: string): Criterion[] {
 
     return [
         ...catalogue,
+        ...(requestedFilters.length > 1
+            ? requestedFilters.map(key => {
+                const field = columns.find(col => col.key === key);
+                return {
+                    id: `filter:${key}`,
+                    kind: 'feature' as CriterionKind,
+                    ar: `تصفية حسب «${field?.label || key}»`,
+                    en: `filtering by «${field?.label || key}»`,
+                    expectedFilter: { field: key, label: field?.label || key },
+                };
+            })
+            : []),
+        ...(wantsProgress ? [{
+            id: 'progress_metric',
+            kind: 'feature' as CriterionKind,
+            ar: 'مقياس تقدّم محسوب من حالات السجلات',
+            en: 'a progress metric computed from record states',
+            expectedProgress: true,
+        }] : []),
         ...loose.map((r, i) => ({
             id: `rule:${i + 1}`,
             kind: 'feature' as CriterionKind,
@@ -937,6 +977,30 @@ export function judgeAcceptance(criteria: Criterion[], ev: Evidence, isAr = true
         //  verdict that this function second-guessed would be two judges on one
         //  claim, and the weaker one would win by being last.
         if (c.preJudged) return say(c.preJudged.verdict, c.preJudged.why);
+
+        if (c.expectedFilter) {
+            const key = escapeRegExp(c.expectedFilter.field);
+            const hasContract = !!src
+                && new RegExp("\\bfilterFields\\s*:\\s*\\[[^\\]]*['\"]" + key + "['\"]", 'iu').test(src)
+                && /filterDefs|filterKeys/i.test(src)
+                && /filters\[field\.key\]|setFilters\(/i.test(src);
+            // The field label may live in content.js while this source is the
+            // view module. The field key plus filter state is the authoritative
+            // proof that the requested filter is wired to visible rows.
+            return hasContract
+                ? say('met', isAr ? `الفلتر «${c.expectedFilter.label}» مربوط بحقل وحالة عرض حقيقية` : `filter “${c.expectedFilter.label}” is wired to a real field and visible-row state`)
+                : say('unmet', isAr ? `فلتر «${c.expectedFilter.label}» غير مثبت في المصدر المولَّد` : `filter “${c.expectedFilter.label}” is not wired in the generated source`);
+        }
+        if (c.expectedProgress) {
+            const has = !!src
+                && /kind:\s*'progress'/i.test(src)
+                && /case\s*'progress'/i.test(src)
+                && /m\.equals/i.test(src)
+                && /Math\.round\s*\(\s*\(complete\s*\/\s*denominator\)/i.test(src);
+            return has
+                ? say('met', isAr ? 'نسبة التقدم محسوبة من الحالات الفعلية للسجلات' : 'progress is computed from the records’ actual state values')
+                : say('unmet', isAr ? 'مقياس التقدم غير مثبت كحساب فعلي' : 'no source evidence proves a computed progress metric');
+        }
 
         /**
          *  ⛔ THE NARROWER CLAIM IS JUDGED FIRST.

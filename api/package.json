@@ -8,7 +8,7 @@
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "dev": "ts-node --transpile-only src/api/index.ts",
-    "build": "esbuild src/api/index.ts --bundle --platform=node --outfile=dist/index.js --packages=external",
+    "build": "esbuild ./src/api/index.ts --bundle --platform=node --outfile=dist/index.js --packages=external",
     "start": "node dist/index.js",
     "lint": "eslint .",
     "test:system": "ts-node src/tests/manual/verify_system.ts",

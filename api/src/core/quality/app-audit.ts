@@ -316,6 +316,15 @@ export async function auditBuiltApp(
              */
             opts?.onProgress?.(borrowError ? `private:${borrowError}` : 'private');
         }
+        /**
+         * The bundled page probes are compiled by esbuild before Playwright
+         * evaluates them. In a borrowed panel this helper may already exist;
+         * in a fresh private page it does not. Install it before the first
+         * navigation so both audit paths measure the same application rather
+         * than turning a missing browser shim into a skipped QA run.
+         */
+        await page.addInitScript('globalThis.__name = globalThis.__name || (function (f) { return f; });').catch(() => { });
+        await page.evaluate('globalThis.__name = globalThis.__name || (function (f) { return f; });').catch(() => { });
         const pageErrors: string[] = [];
         const consoleErrors: string[] = [];
         const failedRequests: string[] = [];
