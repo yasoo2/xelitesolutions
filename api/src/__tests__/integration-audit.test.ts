@@ -370,13 +370,14 @@ describe('partial phases preserve verified blockers instead of guessing a repair
         expect(executor).toContain("failedOutput.repairKind === 'regenerate_engine'");
         expect(executor).toContain("repairKind === 'code_fix' && typeof failedOutput.repairFile === 'string'");
         expect(ticket).toContain("repairKind?: 'regenerate_engine' | 'code_fix'");
-        expect(ticket).toContain('repairKind === \'code_fix\' && typeof t?.repairFile === \'string\'');
+        expect(ticket).toContain("const repairFile = typeof t?.repairFile === 'string'");
     });
 
     it('passes compact requirements evidence into builder requests without duplicating it', () => {
         const executor = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'PhaseExecutorTool.ts'), 'utf-8');
         expect(executor).toContain("['api_project', 'react_project'].includes(toolName)");
-        expect(executor).toContain('planned.request = taskRequest');
+        expect(executor).toContain('planned.request = canonicalRequest');
+        expect(executor).toContain('const baseRequest = canonicalRequest || taskRequest');
         expect(executor).toContain("const evidenceMarker = 'COMPACT REQUIREMENTS EVIDENCE'");
     });
 

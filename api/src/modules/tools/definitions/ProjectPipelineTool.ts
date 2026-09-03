@@ -1425,6 +1425,10 @@ export class ProjectPipelineTool implements ToolDefinition {
             runId: context?.runId || `run-${Date.now()}`,
             userId: context?.userId || 'anonymous',
             workspaceId: context?.workspaceId || context?.sessionId || 'default',
+            // Keep the complete product request separate from model-authored
+            // task descriptions. A planner may summarize a task for display;
+            // the builder must still receive every user-declared capability.
+            request: productRequest,
             // Preserve the visible browser panel through the canonical phase pipeline.
             // Without this, PhaseExecutor fell back to the chat session and the
             // first real browser verification was rejected by the ownership gate.

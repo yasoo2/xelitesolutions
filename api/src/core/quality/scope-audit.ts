@@ -44,6 +44,10 @@ export interface Capability {
 const SEARCH_INTERACTION = /<form\b[^>]*(?:onSubmit|onsubmit)\s*=|type\s*=\s*["']search["']|onKey(?:Down|Press)\s*=|event\.key\s*===?\s*["']Enter["']/i;
 const SEARCH_STATE_OR_IO = /\b(?:useState|set[A-Z][A-Za-z0-9_]*|fetch|axios|XMLHttpRequest|query|searchTerm|results?|filtered|handleSearch|findCities|onSearch)\b/i;
 
+// Responsiveness is a cross-domain delivery capability. It must be judged
+// from authored layout rules, not inferred from a page title or a model claim.
+const RESPONSIVE_LAYOUT = /@media\b|clamp\s*\(|flex-wrap\s*:\s*[^;]+|grid-template-columns\s*:/i;
+
 /**
  * Search is a runtime interaction, not merely a variable name. Accept the
  * established names as a supporting alternative, or require an interaction
@@ -154,6 +158,11 @@ export const CAPABILITIES: Capability[] = [
         ask: /\bsearch\b|\bfilter\b|\bsort\b|بحث|تصفية|فرز/i,
         evidence: /setQuery|searchTerm|onSearch|sortBy|\[query,/i,
         evidenceCheck: hasSearchEvidence,
+    },
+    {
+        id: 'responsive', ar: 'واجهة متجاوبة', en: 'responsive interface',
+        ask: /responsive|mobile[- ]first|tablet|phone[- ]friendly|متجاوب(?:ة|ه)?|للهاتف|للجوال|الجوال|الهاتف/i,
+        evidence: RESPONSIVE_LAYOUT,
     },
     {
         id: 'wishlist', ar: 'قائمة الرغبات', en: 'wishlist',

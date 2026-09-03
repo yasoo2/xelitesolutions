@@ -2837,6 +2837,10 @@ p{margin:0 0 8px}
    div.app-bar-in, main.app-main, div.wrap.social-wrap»: not six defects, one
    defect seen from six heights. */
 .app-bar-in>*{min-width:0}
+/* Keep the header's identity and actions shrinkable as one composition.
+   Without an explicit zero flex basis, a long generated title can preserve
+   its max-content width and push the document beyond a phone viewport. */
+.app-id{flex:1 1 0;min-width:0;max-width:100%;overflow:hidden}
 /*  THE PAGE TABS. The owner circled these in red and said they were very ugly.
  *
  *  He was right, and the reason was measurable: across the whole generator
@@ -2885,6 +2889,7 @@ p{margin:0 0 8px}
 .wrap{width:100%;max-width:var(--maxw,1180px);min-width:0;margin:0 auto;padding:16px;display:grid;gap:16px}
 .wrap>*{min-width:0}
 .panel,.row,.form,.toolbar,.list-title,.row-main,.row-acts{min-width:0;max-width:100%}
+.panel,.row,.form,.toolbar,.list-title,.row-main,.row-acts,.field,.actions,.table-wrap{overflow-wrap:anywhere}
 
 .stats{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
 .stat{background:var(--surface,#fff);border:1px solid var(--border,#e5e5e5);border-radius:var(--radius,12px);padding:14px 16px}
@@ -2907,6 +2912,20 @@ textarea{min-height:88px;resize:vertical}
 input:focus,select:focus,textarea:focus{outline:2px solid var(--accent,#06c);outline-offset:1px}
 .actions{grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap}
 .err{grid-column:1/-1;color:#c0392b;margin:0;font-size:.9rem}
+
+/* At phone width, every layout track must be allowed to shrink. The table
+   remains independently scrollable, while the page itself never becomes wider
+   than the viewport because of a label, action row, or generated title. */
+@media (max-width: 480px){
+  .app-bar-in{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center}
+  .app-id{display:block}
+  .app-sub{display:block;max-width:100%;white-space:normal;overflow-wrap:anywhere}
+  .wrap{width:100%;padding:12px;overflow-x:clip}
+  .form{grid-template-columns:minmax(0,1fr)}
+  .toolbar>*{min-width:0;max-width:100%}
+  .toolbar .search{flex:1 1 100%;width:100%}
+  .table-wrap{width:100%;max-width:100%;overflow-x:auto}
+}
 
 .btn{background:var(--brand,#111);color:var(--on-brand,#fff);border:1px solid transparent;border-radius:10px;
   padding:10px 18px;min-height:44px;font:inherit;font-weight:600;cursor:pointer}

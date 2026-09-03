@@ -1270,7 +1270,7 @@ export class PhaseExecutorTool implements ToolDefinition {
                 if (executionContext.sessionId && typeof planned.sessionId !== 'string') planned.sessionId = executionContext.sessionId;
                 if (executionContext.workspaceId && typeof planned.workspaceId !== 'string') planned.workspaceId = executionContext.workspaceId;
                 const requirementsContext = String(projectContext?.requirementsContext || '').trim();
-                if (['api_project', 'react_project'].includes(toolName) && requirementsContext) {
+                if (['api_project', 'react_project'].includes(toolName)) {
                     // Builder tools receive their semantics through `request`,
                     // not through the narrowed execution context. Preserve the
                     // planner's request, then append the bounded evidence brief
@@ -1279,9 +1279,18 @@ export class PhaseExecutorTool implements ToolDefinition {
                     // product template or replacing an explicit builder brief.
                     const taskRequest = String(planned.request || '').trim();
                     const evidenceMarker = 'COMPACT REQUIREMENTS EVIDENCE';
-                    if (!taskRequest.includes(evidenceMarker) && !taskRequest.includes(requirementsContext.slice(0, 160))) {
-                        planned.request = taskRequest
-                            ? `${taskRequest}\n\n${requirementsContext}`
+                    const canonicalRequest = projectContext?.createsNewProject === true
+                        ? String(projectContext?.request || '').trim()
+                        : '';
+                    if (canonicalRequest) {
+                        planned.request = canonicalRequest;
+                    }
+                    if (requirementsContext
+                        && !taskRequest.includes(evidenceMarker)
+                        && !taskRequest.includes(requirementsContext.slice(0, 160))) {
+                        const baseRequest = canonicalRequest || taskRequest;
+                        planned.request = baseRequest
+                            ? `${baseRequest}\n\n${requirementsContext}`
                             : requirementsContext;
                     }
                 }

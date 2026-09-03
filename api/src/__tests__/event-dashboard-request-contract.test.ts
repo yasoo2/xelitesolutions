@@ -60,4 +60,16 @@ describe('request-derived event dashboard capabilities', () => {
             fs.rmSync(root, { recursive: true, force: true });
         }
     });
+
+    it('preserves the full request across model-authored phase descriptions', () => {
+        const agentLoop = fs.readFileSync(path.join(__dirname, '..', 'modules', 'services', 'AgentLoopService.ts'), 'utf8');
+        const pipeline = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ProjectPipelineTool.ts'), 'utf8');
+        const executor = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'PhaseExecutorTool.ts'), 'utf8');
+
+        expect(agentLoop).toContain('request: String(opts.request || \'\').trim()');
+        expect(pipeline).toContain('request: productRequest');
+        expect(executor).toContain('const canonicalRequest = projectContext?.createsNewProject === true');
+        expect(executor).toContain('planned.request = canonicalRequest');
+        expect(executor).toContain('`${baseRequest}\\n\\n${requirementsContext}`');
+    });
 });

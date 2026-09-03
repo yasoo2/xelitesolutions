@@ -190,6 +190,15 @@ describe('what was built is read from the code, never from optimism', () => {
         expect(scopeReport(HIS_REQUEST, [real]).built.map(c => c.id)).toContain('payments');
     });
 
+    it('checks responsive requests against real layout evidence', () => {
+        const request = 'Build a responsive event dashboard with a mobile-first layout.';
+        const source = mk({ 'src/app.css': '@media (max-width: 720px) { .layout { display: block; } }' });
+        const report = scopeReport(request, [source]);
+        expect(report.requested.map(c => c.id)).toContain('responsive');
+        expect(report.built.map(c => c.id)).toContain('responsive');
+        expect(report.unchecked).not.toContain('responsive event dashboard with a mobile-first layout');
+    });
+
     it('every capability carries both languages and two distinct patterns', () => {
         for (const c of CAPABILITIES) {
             expect(c.ar.trim().length).toBeGreaterThan(2);

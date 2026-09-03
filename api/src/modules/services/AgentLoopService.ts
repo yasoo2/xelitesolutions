@@ -798,6 +798,8 @@ export class AgentLoopService {
         runId: string;
         userId: string;
         workspaceId: string;
+        /** Full product request kept outside model-written task descriptions. */
+        request?: string;
         browserSessionId?: string;
         plannerResult: any;
         modelConfig?: any;
@@ -828,6 +830,7 @@ export class AgentLoopService {
         runId: string;
         userId: string;
         workspaceId: string;
+        request?: string;
         browserSessionId?: string;
         plannerResult: any;
         language?: string;
@@ -863,6 +866,7 @@ export class AgentLoopService {
             totalPhases: plannerResult.output.totalPhases || phases.length,
             runId,
             sessionId,
+            request: String(opts.request || '').trim(),
             browserSessionId,
             workspaceId,
             userId,
