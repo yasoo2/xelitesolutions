@@ -81,6 +81,22 @@ describe('an instruction to Joe is not a requirement of the project', () => {
         expect(isJudgeable('a verified badge on each product')).toBe(true);
     });
 
+    it('NEGATIVE — procedural noun phrases are not acceptance criteria', () => {
+        for (const t of [
+            'to build it and run the preview',
+            'to test it in the browser on the phone and desktop',
+            'an exploratory test',
+            'to check the fields with correct and incorrect values',
+            'to press the buttons',
+            'to observe visual errors, the console, and the network',
+            'to fix any real problems before the report',
+            'قم باختبار الصفحة في المتصفح',
+            'يجب فحص الحقول',
+        ]) {
+            expect({ t, judgeable: isJudgeable(t) }).toEqual({ t, judgeable: false });
+        }
+    });
+
     it('⛔ the refusal names WHICH mistake, because they are two different ones', async () => {
         //  «you asked me to do this» and «this is the thing you asked for» are
         //  different errors in his sentence, and he can only correct the one he

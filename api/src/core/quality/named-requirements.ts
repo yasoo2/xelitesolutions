@@ -128,7 +128,15 @@ const IS_AN_INSTRUCTION_TO_JOE = new RegExp(
     //  A tally of what Joe did, which is a report about the run.
     + '|number\\s+of\\s+\\w+|pages\\s+tested|forms\\s+tested|buttons\\s+tested'
     + '|errors\\s+(?:discovered|fixed|found)|final\\s+verification'
+    // A model often wraps an instruction in a noun phrase: "to test it in
+    // the browser" or "an exploratory test". It is still work for Joe, not a
+    // capability the generated artefact can contain. Keep these compound
+    // forms beside the bare imperatives so extraction cannot promote them to
+    // delivery criteria when the model changes its wording.
+    + '|to\\s+(?:build|make|create|run|test|check|press|observe|inspect|fix|repair|reload|verify|report|open|navigate|type|submit)'
+    + '|an?\\s+exploratory\\s+(?:test|check|report|verification)'
     + '|\\u0627\\u0641\\u062a\\u062d|\\u0627\\u0636\\u063a\\u0637|\\u0627\\u0643\\u062a\\u0628|\\u062a\\u062d\\u0642\\u0642|\\u0627\\u062e\\u062a\\u0628\\u0631|\\u0623\\u0639\\u062f|\\u0644\\u0627\\s+\\u062a'
+    + '|(?:قم|يجب|يرجى)\\s+(?:ب)?(?:اختبار|فحص|مراجعة|اضغط|ادخل|اكتب|تحقق|اصلح|إصلاح)'
     + ')(?=\\s|$|[:،,.])', 'iu');
 
 /**
