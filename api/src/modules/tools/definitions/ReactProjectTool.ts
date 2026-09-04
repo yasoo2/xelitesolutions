@@ -1417,6 +1417,10 @@ const SHAPE_ASKS: Array<{ section: string; re: RegExp }> = [
     { section: 'Products', re: /\b(?:list|listing|catalogue|catalog|grid|lineup)\b|قائمة\s+[\u0600-\u06ff]{3,}|لائحة\s+[\u0600-\u06ff]{3,}/i },
     //  a form to fill in
     { section: 'Contact', re: /\b(?:form|signup|sign-up|enquiry|inquiry)\b|نموذج\s+[\u0600-\u06ff]{3,}|استمارة/i },
+    // A field and its action are a form contract even when the user never
+    // says «form». Without this, a simple email page inherited the landing
+    // filler sections and advertised a #features anchor that rendered null.
+    { section: 'Contact', re: /\b(?:email|e-mail)\s+field\b|\bsubmit\s+button\b|حقل\s+(?:البريد|بريد(?:\s+إلكتروني)?|إيميل|ايميل)|زر\s+(?:الإرسال|إرسال|ارسال)/i },
     //  when it opens, and where it is
     { section: 'Location', re: /\bhours\b|\bmap\b|\bdirections\b|ساعات\s+[\u0600-\u06ff]{3,}|خريطة/i },
     //  a picture wall

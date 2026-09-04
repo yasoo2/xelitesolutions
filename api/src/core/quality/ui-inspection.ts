@@ -93,11 +93,27 @@ async function applyViewportSize(page: any, width: number, height: number): Prom
         const cdp = await page.context().newCDPSession(page);
         await cdp.send('Emulation.setDeviceMetricsOverride', {
             width, height, deviceScaleFactor: 1, mobile: false,
+            screenWidth: width, screenHeight: height, dontSetVisibleSize: false,
         });
         await page.waitForTimeout(180).catch(() => { });
         await cdp.detach().catch(() => { });
         actual = await evalInPage(page, function () { return { width: window.innerWidth, height: window.innerHeight }; });
     } catch { /* the caller records an instrumentation finding with the measured width */ }
+    if (Math.abs(Number(actual?.width || 0) - width) > 2) {
+        // A persistent context may apply the metrics one turn late while the
+        // page is still painting the previous frame. Give the browser one
+        // explicit retry before declaring the instrumentation broken.
+        try {
+            const retry = await page.context().newCDPSession(page);
+            await retry.send('Emulation.setDeviceMetricsOverride', {
+                width, height, deviceScaleFactor: 1, mobile: false,
+                screenWidth: width, screenHeight: height, dontSetVisibleSize: false,
+            });
+            await page.waitForTimeout(300).catch(() => { });
+            actual = await evalInPage(page, function () { return { width: window.innerWidth, height: window.innerHeight }; });
+            await retry.detach().catch(() => { });
+        } catch { /* keep the measured mismatch as evidence */ }
+    }
     if (Math.abs(Number(actual?.width || 0) - width) > 2) {
         await page.setViewportSize({ width, height }).catch(() => { });
         await page.waitForTimeout(240).catch(() => { });

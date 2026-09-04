@@ -301,6 +301,8 @@ describe('the interface itself is inspected — «وفحص ui»', () => {
         expect(u).toContain('Math.abs(actualVw - vp.w) > 2');
         expect(u).toContain('const viewports = effectiveViewports(availableWidth)');
         expect(u).toContain("Emulation.setDeviceMetricsOverride");
+        expect(u).toContain('dontSetVisibleSize: false');
+        expect(u).toContain('screenWidth: width, screenHeight: height');
         expect(u).toContain('await page.waitForTimeout(180)');
         expect(u).toContain('await page.waitForTimeout(240)');
     });
