@@ -120,9 +120,10 @@ describe('and the builder wires it without showing anything twice', () => {
         expect(r).toMatch(/if \(ownTable && !builtKeys\.has\(ownTable\)\)/);
     });
 
-    it('the app takes the first table and the admin screens take the rest', () => {
+    it('keeps small systems deduplicated and gives multi-entity systems one surface', () => {
         const r = R();
-        expect(r).toMatch(/adminModel = tableModel\.slice\(1\);/);
+        expect(r).toMatch(/unifiedTables = tableModel\.length >= 3;/);
+        expect(r).toMatch(/adminModel = unifiedTables \? tableModel : tableModel\.slice\(1\);/);
         expect(r).toMatch(/appApi = apiFor\(apiLink, lead\.key\) \|\| apiLink/);
         expect(r).toMatch(/model: adminModel,/);
     });

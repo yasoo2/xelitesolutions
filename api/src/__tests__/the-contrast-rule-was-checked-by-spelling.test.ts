@@ -147,6 +147,8 @@ describe('the verdict he reads', () => {
     it('preserves the measured selector so the repair can reach the real rule', () => {
         const [f] = judgeContrast([s({ sel: 'main > button.counter-button' })]);
         expect(f.sel).toBe('main > button.counter-button');
+        expect(f.fg).toEqual([0x77, 0x77, 0x77]);
+        expect(f.bg).toEqual(WHITE);
     });
 
     it('⛔ NEGATIVE — a passing sample is not reported at all', () => {

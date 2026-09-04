@@ -19,7 +19,7 @@ const SRC = () => fs.readFileSync(
     path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ReactProjectTool.ts'), 'utf-8');
 const AUDIT = () => fs.readFileSync(path.join(__dirname, '..', 'core', 'quality', 'app-audit.ts'), 'utf-8');
 
-describe('what counts as broken is a severity, not a score', () => {
+describe('what blocks delivery is an open finding, not a flattering score', () => {
     it('the four failures that mean «it does not work» are all high severity', () => {
         const src = AUDIT();
         for (const id of ['page_errors', 'console_errors', 'failed_requests', 'dead_images']) {
@@ -29,7 +29,7 @@ describe('what counts as broken is a severity, not a score', () => {
         }
     });
 
-    it('and cosmetics are not — a small tap target does not block a delivery', () => {
+    it('classifies cosmetic findings below runtime failures without hiding them', () => {
         const src = AUDIT();
         for (const id of ['dead_links', 'small_targets']) {
             const at = src.indexOf(`id: '${id}'`);
@@ -43,7 +43,8 @@ describe('what counts as broken is a severity, not a score', () => {
         const repair = src.indexOf('audit = after;');
         expect(blockers).toBeGreaterThan(0);
         expect(blockers).toBeGreaterThan(repair);   // the surviving ones, not the original ones
-        expect(src.slice(blockers, blockers + 160)).toMatch(/f\.severity === 'high'/);
+        expect(src).toContain('const openQualityFindings = ((audit?.findings || []) as any[])');
+        expect(src).toMatch(/qualityDeliveryBlocked = openQualityFindings\.length > 0/);
     });
 });
 
@@ -53,7 +54,7 @@ describe('and the message leads with it', () => {
         const at = src.indexOf('const qaBlock = (() => {');
         const block = src.slice(at, src.indexOf('const message = isAr', at));
         expect(block.indexOf('لا يعمل كما ينبغي')).toBeLessThan(block.indexOf('formatAudit(audit, isAr)'));
-        expect(block).toMatch(/does NOT work properly/);
+        expect(block).toMatch(/Delivery not accepted/);
     });
 
     it('names each blocking finding in words', () => {
@@ -72,28 +73,28 @@ describe('and the message leads with it', () => {
         const block = src.slice(at, src.indexOf('const message = isAr', at));
         // …in the language of the message it lands in: an English delivery
         // reading out «• 3 خطأ كونسول» was the same defect one layer down.
-        expect(block).toMatch(/for \(const f of blockers\) lines\.push\(`   • \$\{say\(f\)\}`\)/);
+        expect(block).toMatch(/for \(const f of openQualityFindings\) lines\.push\(`   • \$\{say\(f\)\}`\)/);
         expect(block).toMatch(/findingText\(f, isAr\)/);
     });
 
-    it('and offers the one command that acts on exactly those', () => {
-        expect(SRC()).toMatch(/أصلح ما تبقّى/);
+    it('does not ask the user to trigger a repair Joe already attempted', () => {
+        expect(SRC()).toMatch(/لم أدّعِ 100%/);
     });
 
     it('the headline stops claiming more than it earned — in both languages', () => {
         const src = SRC();
-        expect(src).toMatch(/blockers\.length \? 'بُني مشروع React وتجمّع — لكنه سُلّم بعيوب باقية'/);
-        expect(src).toMatch(/blockers\.length \? 'A React project that compiles — delivered WITH open defects'/);
+        expect(src).toMatch(/openQualityFindings\.length \? 'بُني مشروع React وتجمّع — لكن التسليم مرفوض مع ملاحظات جودة باقية'/);
+        expect(src).toMatch(/openQualityFindings\.length \? 'A React project that compiles — delivery blocked by open quality findings'/);
     });
 
     it('and a clean build is not tarnished — the warning is conditional', () => {
         const src = SRC();
         const at = src.indexOf('const qaBlock = (() => {');
         const block = src.slice(at, at + 900);
-        expect(block).toMatch(/if \(blockers\.length\) \{/);
+        expect(block).toMatch(/if \(openQualityFindings\.length\) \{/);
     });
 
     it('the terminal says it too, so it is in the log he pastes', () => {
-        expect(SRC()).toMatch(/DELIVERED WITH \$\{blockers\.length\} BLOCKING FINDING\(S\)/);
+        expect(SRC()).toMatch(/DELIVERY BLOCKED BY \$\{openQualityFindings\.length\} OPEN QUALITY FINDING\(S\)/);
     });
 });

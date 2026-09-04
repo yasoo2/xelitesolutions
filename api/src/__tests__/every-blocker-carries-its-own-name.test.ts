@@ -82,7 +82,8 @@ function blockingTerms(): string[] {
  */
 function causeChain(): string {
     const at = src.indexOf('error: deliveryBlocked');
-    const source = at < 0 ? '' : src.slice(at, at + 3000);
+    const end = src.indexOf('output: { message, acceptance', at);
+    const source = at < 0 ? '' : src.slice(at, end > at ? end : at + 6000);
     const spoken = [
         deliveryErrorForVisualAudit(null),
         deliveryErrorForAcceptance([{ id: 'x', verdict: 'unmet' }]),
@@ -112,9 +113,9 @@ describe('every condition that can block a delivery also names itself', () => {
         expect(causeChain()).not.toContain(`: 'react_delivery_quality_gate_failed'`);
     });
 
-    it('surviving high-severity findings are named, not counted', () => {
+    it('every surviving quality finding is named, not counted', () => {
         const chain = causeChain();
-        expect(chain).toContain('high_severity_findings_survived');
+        expect(chain).toContain('quality_findings_survived');
         //  Naming them means reading BOTH halves out of each finding: what it
         //  is called, and what it found. A count would give him a number and
         //  not a thing to fix; an id alone gives him a label.
@@ -123,7 +124,7 @@ describe('every condition that can block a delivery also names itself', () => {
         //  this line demanded the characters `blockers.map(` and went red the
         //  moment a `.slice(0, 3)` was placed between them, which is the same
         //  mistake this whole file exists to catch.
-        expect(chain).toMatch(/blockers[^;]*\.map\(/);
+        expect(chain).toMatch(/openQualityFindings[^;]*\.map\(/);
         expect(chain).toMatch(/f\.id/);
         expect(chain).toMatch(/f\.detail/);
     });

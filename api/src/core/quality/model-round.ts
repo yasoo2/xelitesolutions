@@ -180,6 +180,11 @@ export async function askForCss(
 export function handlerRepairable(
     findings: Array<{ id: string; severity?: string; detailEn?: string; detail?: string; evidence?: any[] }>,
 ): Array<{ id: string; severity?: string; detailEn?: string; detail?: string; evidence?: any[] }> {
+    // These describe the QA instrument's coverage or environment, not broken
+    // application source. Asking a model to rewrite a component because the
+    // runner lost an element after a state change is both unsafe and unlikely
+    // to improve the next measurement.
+    const NON_SOURCE_FINDINGS = new Set(['controls_not_reached', 'live_data_not_verified']);
     let behaviour: ReadonlySet<string> = new Set();
     let deterministic: ReadonlySet<string> = new Set();
     try { behaviour = require('./behaviour-audit').BEHAVIOUR_CODES || new Set(); } catch { /* older build */ }
@@ -191,7 +196,10 @@ export function handlerRepairable(
             ...(ui.REPAIRS_THIS_FILE_CAN_MAKE || []),
         ]);
     } catch { /* older build */ }
-    return (findings || []).filter(f => f && f.id && behaviour.has(f.id) && !deterministic.has(f.id));
+    return (findings || []).filter(f => f && f.id
+        && behaviour.has(f.id)
+        && !deterministic.has(f.id)
+        && !NON_SOURCE_FINDINGS.has(f.id));
 }
 
 /**

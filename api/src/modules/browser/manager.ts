@@ -1161,12 +1161,19 @@ export function startStreaming(sessionId: string) {
 
         if (!buf) return;
         recordStreamFrame(sid);
+        // The page is the authority for frame dimensions. During responsive
+        // QA it can change size between two capture ticks; declaring a fresh
+        // JPEG with stale session metadata stretches it in the Browser panel.
+        const actualViewport = s.page.viewportSize();
+        if (actualViewport?.width && actualViewport?.height) {
+          s.viewport = { w: actualViewport.width, h: actualViewport.height };
+        }
         broadcastBrowserEvent(sid, {
           type: 'stream_frame',
           ts: Date.now(),
           jpegBase64: Buffer.from(buf).toString('base64'),
-          w: s.viewport.w,
-          h: s.viewport.h,
+          w: actualViewport?.width || s.viewport.w,
+          h: actualViewport?.height || s.viewport.h,
         });
         s.lastUsedAt = Date.now();
       } catch { }

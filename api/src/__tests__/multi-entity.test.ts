@@ -77,14 +77,14 @@ describe('and the builder turns it into real tables', () => {
     it('the model is derived at build time and logged', () => {
         // The derivation moved behind the designer: a known domain still wins,
         // and anything outside the six is designed by a constrained model.
-        expect(A()).toMatch(/const designed = await designDataModel\(request, \{ onNote: \(n: string\) => term\(n\) \}\);/);
+        expect(A()).toMatch(/await designDataModel\(request, \{ onNote: \(n: string\) => term\(n\) \}\)/);
         const d = fs.readFileSync(path.join(SRC, 'core', 'design', 'schema-designer.ts'), 'utf-8');
         expect(d).toMatch(/const known = deriveDataModel\(request\);/);
         expect(d).toMatch(/data model: a known domain matched/);
     });
 
     it('entities.js is written only when there is a model', () => {
-        expect(A()).toMatch(/\.\.\.\(model\.length \? \{ 'entities\.js': fileEntitiesJs\(model\) \} : \{\}\)/);
+        expect(A()).toMatch(/\.\.\.\(model\.length \? \{ 'entities\.js': fileEntitiesJs\(model, requestForReading\) \} : \{\}\)/);
     });
 
     it('and the generated module enforces the foreign key before writing', () => {
@@ -95,12 +95,13 @@ describe('and the builder turns it into real tables', () => {
         expect(gen).toMatch(/return \{ error: f\.key \+ '_required' \};/);
         // Reading is public but SCOPED when there is a token, writing needs an
         // account that may write, and a row is only its author's to change.
-        expect(gen).toMatch(/app\.get\('\/api\/' \+ key, optionalAuth, \(req, res\) => res\.json\(\{ ok: true, \[key\]: t\.list\(scopeOf\(req\)\) \}\)\)/);
+        expect(gen).toMatch(/app\.get\('\/api\/' \+ key, optionalAuth, \(req, res\) => \{/);
+        expect(gen).toMatch(/let rows = t\.list\(scopeOf\(req\)\)/);
         expect(gen).toMatch(/app\.post\('\/api\/' \+ key, requireAuth, requireWrite,/);
         expect(gen).toMatch(/app\.delete\('\/api\/' \+ key \+ '\/:id', requireAuth, requireWrite,/);
         expect(gen).toMatch(/if \(!mayTouch\(req, cur\)\) return res\.status\(403\)\.json\(\{ ok: false, error: 'not_your_row' \}\);/);
         // The owner of a new row comes from the ACCOUNT, never from the body.
-        expect(gen).toMatch(/t\.create\(req\.body, req\.user\.id\)/);
+        expect(gen).toMatch(/t\.create\(body, req\.user\.id\)/);
         // Both backends, exactly like db.js.
         expect(gen).toMatch(/backend: 'sqlite'/);
         expect(gen).toMatch(/backend: 'json'/);

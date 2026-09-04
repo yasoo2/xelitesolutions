@@ -370,6 +370,7 @@ const FINANCE_CONTRACT = /(?:income|incomes|earnings?|salary|revenue|الدخل|
 /** A capability list for a coordinated workflow is not a record schema. */
 export function hasWorkflowApplicationContract(requestRaw: string): boolean {
     const request = maskNegatedSpans(String(requestRaw || ''));
+    const workItem = /\b(?:issues?|tickets?|cases?|tasks?|work\s+items?|review\s+queues?|approval\s+(?:queues?|workflows?|requests?))\b|قضايا|تذاكر|حالات|مهام|طابور\s*مراجعة|طلبات?\s*موافقة/iu;
     const families = [
         /\bsign[- ]?in\b|\blogin\b|\bauth(?:entication)?\b|تسجيل\s*الدخول|تسجيل\s*دخول/iu,
         /\b(?:member|manager|admin|user)\s+roles?\b|\bpermissions?\b|\brbac\b|صلاحيات|أدوار\s*(?:المستخدمين|الأعضاء|الاعضاء)?/iu,
@@ -378,7 +379,8 @@ export function hasWorkflowApplicationContract(requestRaw: string): boolean {
         /\bcomments?\b|\bcollaborat(?:e|ion|ive)\b|تعليقات|تعاون/iu,
         /\baudit(?:\s+(?:log|trail|history))?\b|\bhistory\b|سجل\s*التدقيق|تاريخ\s*التغييرات/iu,
     ];
-    return families.filter(pattern => pattern.test(request)).length >= 2
+    return workItem.test(request)
+        && families.filter(pattern => pattern.test(request)).length >= 2
         && (APP_SIGNAL.test(request) || MANAGE_SIGNAL.test(request));
 }
 
@@ -3476,6 +3478,29 @@ function recordFeatureCovered(feature: string, request: string, evidence: string
         `(?:label|placeholder|aria-label)\\s*[:=]\\s*['\"]${escaped}['\"]`, 'iu',
     ).test(src);
     if (hasDeclaredLabel) return true;
+    if (/appointment\s+scheduling[^.]*linked\s+to\s+both|مواعيد[^.]*مرتبط/iu.test(f)) {
+        return /patient_id/iu.test(src) && /doctor_id/iu.test(src)
+            && /relations[\s\S]{0,500}select|parents\[/iu.test(src);
+    }
+    if (/double[-\s]?booking|تعارض\s*المواعيد|حجز\s*مزدوج/iu.test(f)) {
+        return /double_booking/iu.test(src) && /already has an appointment|لديه موعد آخر/iu.test(src);
+    }
+    if (/status\s+transitions?|انتقالات?\s*الحالة/iu.test(f)) {
+        return /invalid_status_transition/iu.test(src)
+            && ['scheduled', 'confirmed', 'completed', 'cancelled'].every(status =>
+                new RegExp(`(?:['\"]${status}['\"]|\\b${status}\\b)`, 'iu').test(src));
+    }
+    if (/audit(?:\s+(?:log|trail|history))?|سجل\s*التدقيق|تاريخ\s*التغييرات/iu.test(f)) {
+        return /audit_history/iu.test(src)
+            && /View changes|Show changes|Audit history|عرض التغييرات|سجل التدقيق|<details|<summary/iu.test(src);
+    }
+    if (/secure\s+sign[-\s]?in|secure\s+login|دخول\s+آمن|تسجيل\s+دخول\s+آمن/iu.test(f)) {
+        return /apiLogin|auth\/login/iu.test(src)
+            && /Authorization[^\n]{0,120}Bearer|TOKEN_KEY|localStorage\.setItem\([^,]*token/iu.test(src);
+    }
+    if (/search\s+and\s+filter(?:ing)?|بحث\s+و(?:تصفية|فلترة)/iu.test(f)) {
+        return /setQuery|query\.trim/iu.test(src) && /statusFilter|Filter by status|تصفية حسب الحالة/iu.test(src);
+    }
     if (/^(?:search|text\s+search|searching|بحث|البحث)$/iu.test(f)) {
         return /setQuery|query\.trim|filtered|visible\s*=|onChange=.*query|search/i.test(src);
     }

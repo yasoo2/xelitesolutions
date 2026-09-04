@@ -13,6 +13,7 @@
 import fs from 'fs';
 import path from 'path';
 import { tools } from '../modules/tools/registry';
+import { recoverPackagedQaAuth } from '../modules/tools/definitions/ProjectRepairTool';
 
 const ENGINE = () => fs.readFileSync(
     path.join(__dirname, '..', 'core', 'orchestrator', 'PlanningEngine.ts'), 'utf-8');
@@ -22,6 +23,19 @@ const REACT = () => fs.readFileSync(
     path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ReactProjectTool.ts'), 'utf-8');
 
 describe('the tool the message points at really exists', () => {
+    it('can mint an in-memory QA token from a packaged project after Joe restarts', async () => {
+        const dir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'joe-qa-auth-'));
+        fs.writeFileSync(path.join(dir, 'db.js'), "module.exports={db:{listUsers:()=>[{id:7,email:'owner@test.local',role:'owner'}]}};");
+        fs.writeFileSync(path.join(dir, 'auth.js'), "module.exports={signToken:(user)=>'qa-token-'+user.id};");
+        try {
+            await expect(recoverPackagedQaAuth(dir)).resolves.toMatchObject({
+                token: 'qa-token-7', role: 'owner', tokenStorageKey: 'joe:auth', route: '/',
+            });
+        } finally {
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
     it('project_repair is registered', () => {
         const t = (tools as any[]).find(x => x.name === 'project_repair');
         expect(t).toBeTruthy();
@@ -29,7 +43,7 @@ describe('the tool the message points at really exists', () => {
         expect(t.rateLimitPerMinute).toBeGreaterThan(0);
     });
 
-    it('and the message that offers it is the message that has blockers', () => {
+    it('and the blocked message explains that Joe already attempted repair', () => {
         const src = REACT();
         const at = src.indexOf('const blockers =');
         //  ⛔ THE WINDOW IS THE REGION, NOT A CHARACTER COUNT.
@@ -42,7 +56,7 @@ describe('the tool the message points at really exists', () => {
         //
         //  The region ends where the next named thing begins, so it grows and
         //  shrinks with the code it is about.
-        expect(src.slice(at, src.indexOf('const message = isAr', at))).toMatch(/أصلح ما تبقّى/);
+        expect(src.slice(at, src.indexOf('const message = isAr', at))).toMatch(/لم أدّعِ 100%/);
     });
 });
 
@@ -76,7 +90,7 @@ describe('the phrase routes to it, and nothing else does', () => {
 
     it('and it needs a project — the phrase alone builds nothing', () => {
         const src = ENGINE();
-        expect(src).toMatch(/if \(repairRemaining && !!projEntry\) \{/);
+        expect(src).toMatch(/if \(\(repairRemaining \|\| repairExisting\) && !!repairProjectDir\) \{/);
     });
 });
 
@@ -134,7 +148,10 @@ describe('and the repair itself is honest', () => {
         expect(audit).toBeGreaterThan(wait);
     });
 
-    it('and says what it cannot do, rather than looping on it', () => {
-        expect(TOOL()).toMatch(/هذه لا أستطيع إصلاحها وحدي/);
+    it('blocks honestly when anything remains instead of downgrading it', () => {
+        const src = TOOL();
+        expect(src).toMatch(/ok: remaining\.length === 0/);
+        expect(src).toMatch(/لم أقبل الإصلاح/);
+        expect(src).toMatch(/verificationFailed: remaining\.length > 0/);
     });
 });

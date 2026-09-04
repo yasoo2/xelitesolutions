@@ -29,12 +29,23 @@
  */
 
 import { judgeBehaviour } from '../core/quality/behaviour-audit';
+import * as fs from 'fs';
+import * as path from 'path';
 
 const control = (over: any = {}) => ({
     label: 'زر', kind: 'button', worked: false, effect: '', ...over,
 });
 
 describe('a control that was never reached is reported as never reached', () => {
+    it('tests current-surface buttons before tabs replace that surface', () => {
+        const source = fs.readFileSync(path.join(__dirname, '..', 'core', 'quality', 'behaviour-audit.ts'), 'utf8');
+        const ordinary = source.indexOf("document.querySelectorAll('button, [role=\"button\"]')");
+        const tabs = source.indexOf("document.querySelectorAll('[role=\"tab\"], [data-tab], .tab, .filter, [data-filter]')");
+        expect(ordinary).toBeGreaterThan(0);
+        expect(tabs).toBeGreaterThan(ordinary);
+        expect(source).toContain("if (el.matches('[role=\"tab\"], [data-tab], .tab, .filter, [data-filter]')) return;");
+    });
+
     it('⛔ POSITIVE — the exact table from the live run no longer says «dead»', () => {
         const controls = [
             control({ kind: 'menu', label: 'تبديل الوضع الليلي', worked: true, effect: 'dom' }),

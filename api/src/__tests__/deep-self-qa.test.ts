@@ -38,6 +38,23 @@ describe('the pointer moves and the element under test is outlined', () => {
         expect(E()).toMatch(/await page\.mouse\.move\(px, py\)/);
     });
 
+    it('does not paint a second pointer into a stream already watched by the panel', () => {
+        const e = E();
+        expect(e).toContain('this.watched = !!this.sid;');
+        expect(e).toContain('this.paint = !this.watched && !!opts?.alwaysPaint;');
+        expect(e).toContain('get visible(): boolean { return this.watched || this.paint; }');
+    });
+
+    it('keeps phone frames contained and maps pointer and clicks into the fitted image', () => {
+        const stream = fs.readFileSync(path.join(SRC, '..', '..', 'web', 'src', 'components', 'ModernBrowserStream.tsx'), 'utf-8');
+        expect(stream).toContain('export function fittedFrameRect');
+        expect(stream).toContain('const displayFrame = fittedFrameRect(viewSize.w, viewSize.h, w, h);');
+        expect(stream).toContain('left: displayFrame.left');
+        expect(stream).toContain('width: displayFrame.width');
+        expect(stream).toContain('fitted.left + targetNorm.x * fitted.width');
+        expect(stream).toContain('if (localX < fitted.left || localX > fitted.left + fitted.width');
+    });
+
     it('the overlay lives OUTSIDE <body>, where the fingerprint cannot see it', () => {
         // A pointer drawn into the body would make every dead button look alive:
         // the verdict is a before/after hash of body's markup and node counts.
@@ -103,6 +120,8 @@ describe('every menu, every route — not fourteen buttons', () => {
         const b = B();
         expect(b).toContain('const ordinal = out.filter(candidate => candidate.kind === kind');
         expect(b).toContain("${c.kind}|${c.label}|${c.href || ''}|${c.ordinal ?? 0}");
+        expect(b).toContain('const semanticControlKey');
+        expect(b).toContain('replacementFor(fresh, c)');
     });
 
     it('the stamps from the last page are wiped — a hash route never reloads', () => {
@@ -175,17 +194,20 @@ describe('the interface itself is inspected — «وفحص ui»', () => {
      *  drift again.
      */
     it('at a phone, a tablet AND a desktop width, then back to where it was', () => {
-        expect(VIEWPORTS.map(v => v.w)).toEqual([390, 820, 1280]);
+        // Headed Chromium on Windows can retain the smaller outer-window
+        // constraint when enlarged again. Descending keeps every requested
+        // viewport exact while still measuring all three classes.
+        expect(VIEWPORTS.map(v => v.w)).toEqual([1280, 820, 390]);
         const u = U();
         expect(u).toMatch(/await page\.setViewportSize\(\{ width: vp\.w, height: vp\.h \}\)/);
         expect(u).toMatch(/await page\.setViewportSize\(opts\.restore\)/);
     });
 
     it('⛔ every width it REPORTS is a width it measured', () => {
-        //  The claim, not the spelling: the reported list comes from the array
-        //  the loop iterates, and nothing is added to it afterwards. A count
-        //  of something adjacent to what it claims is the costliest shape in
-        //  this repository, and it lived on this line.
+        //  The claim, not the spelling: the reported list is appended only
+        //  after the page proves window.innerWidth matches the requested
+        //  viewport. A failed emulation is a tool finding, never a fake app
+        //  measurement.
         //  ⛔ Comments stripped FIRST, and by lines rather than by a regex.
         //  My first version of this check matched the defect quoted inside the
         //  comment that EXPLAINS the defect, and went red on the fixed file.
@@ -195,7 +217,7 @@ describe('the interface itself is inspected — «وفحص ui»', () => {
             .filter(l => !/^\s*(\/\/|\*|\/\*)/.test(l))
             .join('\n');
         const assignments = code.match(/metrics\.viewports\s*=\s*[^;]+;/g) || [];
-        expect(assignments).toEqual(['metrics.viewports = VIEWPORTS.map(v => `${v.w}x${v.h}`);']);
+        expect(assignments).toEqual(['metrics.viewports = measuredViewports;']);
     });
 
     it('and the panel is told the page got narrower, or it draws a smear', () => {
@@ -240,6 +262,7 @@ describe('the interface itself is inspected — «وفحص ui»', () => {
         expect(u).toContain('if (fg[3] < 0.995)');
         //  And the page no longer decides: it reports what it saw.
         expect(u).toContain('const c = { checked: raw.checked, skipped: raw.skipped, fails: judgeContrast(raw.samples) };');
+        expect(u).toContain('evidence: c.fails.slice(0, 24)');
     });
 
     it('and the structural checks a screen reader would fail on', () => {
@@ -250,6 +273,14 @@ describe('the interface itself is inspected — «وفحص ui»', () => {
         expect(u).toMatch(/code: 'mobile_overflow'/);
         expect(u).toMatch(/code: 'mobile_tap_targets'/);
         expect(u).toMatch(/code: 'no_viewport_meta'/);
+    });
+
+    it('proves each responsive viewport actually applied before blaming the app', () => {
+        const u = U();
+        expect(u).toContain('actualVw: actualVw');
+        expect(u).toContain("code: 'viewport_emulation_failed'");
+        expect(u).toContain('metrics.viewports = measuredViewports');
+        expect(u).toContain('Math.abs(actualVw - vp.w) > 2');
     });
 
     it('every failing element is OUTLINED, not just listed', () => {
@@ -277,6 +308,13 @@ describe('the camera does not edit the page it is filming', () => {
         const m = read('modules', 'browser', 'manager.ts');
         expect(m).toMatch(/caret: 'initial'/);
         expect(m).toMatch(/THE STREAM MUST NOT EDIT THE PAGE IT IS FILMING/);
+    });
+
+    it('declares each streamed JPEG with the page viewport that produced it', () => {
+        const m = read('modules', 'browser', 'manager.ts');
+        expect(m).toContain('const actualViewport = s.page.viewportSize()');
+        expect(m).toContain('w: actualViewport?.width || s.viewport.w');
+        expect(m).toContain('h: actualViewport?.height || s.viewport.h');
     });
 
     it('and the fingerprint ignores it even if some other camera does it', () => {

@@ -50,7 +50,7 @@ describe('either instrument can open a repair round', () => {
     it('⛔ POSITIVE — a terminal failure alone opens the round', () => {
         //  With no browser finding at all. This is the shape that could not
         //  trigger a repair before: clean interface, broken API.
-        expect(REACT).toMatch(/if \(!audit\.skipped && \(worthRepairing\(audit\.findings\) \|\| terminalFoundSomething\)\) \{/);
+        expect(REACT).toMatch(/worthRepairing\(audit\.findings\) \|\| sourceBehaviourFindings\.length > 0 \|\| terminalFoundSomething/);
     });
 
     it('⛔ NEGATIVE — the failures are read through failingIds, not an invented field', () => {
@@ -94,7 +94,7 @@ describe('either instrument can open a repair round', () => {
         //  a failure would spend repair rounds on builds nobody inspected —
         //  the same confusion between absence of evidence and evidence of
         //  failure that this repository closed earlier today.
-        expect(REACT).toMatch(/const doorTerminal = audit\.skipped \? null : await terminalVerdict\(\)/);
+        expect(REACT).toMatch(/doorTerminal = audit\.skipped \? null : await terminalVerdict\(\)/);
         expect(REACT).toMatch(/doorTerminal && !doorTerminal\.skipped/);
     });
 

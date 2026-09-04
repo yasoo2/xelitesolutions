@@ -91,6 +91,9 @@ export interface AppAudit {
     /** …how many forms were really filled in and sent, and at how many widths. */
     formsFilled?: number;
     fieldsFilled?: number;
+    /** Semantic fields challenged with invalid and valid values. */
+    semanticFieldsTested?: number;
+    semanticValidationFailures?: number;
     forms?: FormResult[];
     viewports?: string[];
     /** State-driven browser exploration evidence, separate from the baseline walk. */
@@ -151,12 +154,17 @@ export async function auditBuiltApp(
          * application contract.
          */
         credentials?: {
-            email: string;
-            password: string;
+            email?: string;
+            password?: string;
+            /** A short-lived token minted locally from the packaged project. */
+            token?: string;
+            role?: string;
             loginPath?: string;
             tokenStorageKey?: string;
             route?: string;
         };
+        /** Require protected-state coverage when the product advertises sign-in. */
+        requireAuthenticatedCoverage?: boolean;
         /**
          * Static pages use root-absolute `/artifacts/...` URLs for shared assets,
          * while the page being audited may live in `/artifacts/<page>/`. When the
@@ -513,11 +521,32 @@ export async function auditBuiltApp(
          * pressed. If the live root was recovered from a 404, the audit uses
          * the built folder and cannot claim authenticated coverage.
          */
+        const protectedSurfaceAdvertised = !frontDoor?.recovered && await page.evaluate(() => {
+            const visible = (el: Element) => {
+                const r = (el as HTMLElement).getBoundingClientRect();
+                const s = getComputedStyle(el);
+                return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none';
+            };
+            return [...document.querySelectorAll('button, a')].some((el) =>
+                visible(el) && /^(sign in|log in|تسجيل الدخول|دخول)$/iu.test(String(el.textContent || '').trim()));
+        }).catch(() => false);
         if (opts?.credentials && !frontDoor?.recovered) {
             const c = opts.credentials;
             try {
-                const loginUrl = new URL(c.loginPath || '/api/auth/login', url).toString();
-                const result = await page.evaluate(async ({ loginUrl, email, password, tokenStorageKey }: any) => {
+                if (c.token) {
+                    await page.evaluate(({ token, role, tokenStorageKey }: any) => {
+                        localStorage.setItem(tokenStorageKey, token);
+                        if (role) localStorage.setItem(tokenStorageKey + ':role', role);
+                    }, { token: c.token, role: c.role || 'owner', tokenStorageKey: c.tokenStorageKey || 'joe:auth' });
+                    const target = new URL(c.route || '/', url).toString();
+                    await page.goto(target, { waitUntil: 'networkidle', timeout: timeoutMs });
+                    await page.waitForFunction(() => [...document.querySelectorAll('button, a')].some((el) =>
+                        /^(sign out|log out|logout|تسجيل الخروج|خروج)$/iu.test(String(el.textContent || '').trim())),
+                    { timeout: Math.min(timeoutMs, 12_000) });
+                    authenticated = true;
+                } else {
+                    const loginUrl = new URL(c.loginPath || '/api/auth/login', url).toString();
+                    const result = await page.evaluate(async ({ loginUrl, email, password, tokenStorageKey }: any) => {
                     try {
                         const response = await fetch(loginUrl, {
                             method: 'POST',
@@ -529,39 +558,60 @@ export async function auditBuiltApp(
                         try { data = text ? JSON.parse(text) : null; } catch { /* response was not JSON */ }
                         const token = String(data?.token || '');
                         if (response.ok && token) {
-                            try { localStorage.setItem(tokenStorageKey, token); } catch { /* storage may be blocked */ }
+                            try {
+                                localStorage.setItem(tokenStorageKey, token);
+                                if (data?.user?.role) localStorage.setItem(tokenStorageKey + ':role', String(data.user.role));
+                            } catch { /* storage may be blocked */ }
                         }
-                        return { ok: response.ok && !!token, status: response.status, error: data?.error || text.slice(0, 120) };
+                        return { ok: response.ok && !!token, status: response.status, role: data?.user?.role || '', error: data?.error || text.slice(0, 120) };
                     } catch (e: any) {
                         return { ok: false, status: 0, error: String(e?.message || e).slice(0, 120) };
                     }
-                }, {
+                    }, {
                     loginUrl,
                     email: c.email,
                     password: c.password,
-                    tokenStorageKey: c.tokenStorageKey || 'joe-admin-token:' + (c.email.split('@')[0] || 'app'),
-                });
-                if (!result?.ok) {
+                    // localStorage is already isolated by origin. Keeping the
+                    // token independent of pathname lets an authenticated SPA
+                    // move from `/` to `/admin` without silently signing out.
+                    tokenStorageKey: c.tokenStorageKey || 'joe:auth',
+                    });
+                    if (!result?.ok) {
                     authError = `login ${result?.status || 0}: ${String(result?.error || 'rejected').slice(0, 120)}`;
-                } else {
+                    } else {
                     // A 200 from /auth/login proves the credential, not the
                     // browser state. Reload the product and require a visible
                     // signed-in affordance before protected QA may be claimed.
                     const target = new URL(c.route || '/', url).toString();
                     await page.goto(target, { waitUntil: 'networkidle', timeout: timeoutMs });
+                    const waitForSignedInSurface = () => page.waitForFunction(() => {
+                        const visible = (el: Element) => {
+                            const r = (el as HTMLElement).getBoundingClientRect();
+                            const s = getComputedStyle(el);
+                            return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none';
+                        };
+                        return [...document.querySelectorAll('button, a')].some((el) =>
+                            visible(el) && /^(sign out|log out|logout|تسجيل الخروج|خروج)$/iu.test(String(el.textContent || '').trim()));
+                    }, { timeout: Math.min(timeoutMs, 12_000) });
                     try {
-                        await page.waitForFunction(() => {
-                            const visible = (el: Element) => {
-                                const r = (el as HTMLElement).getBoundingClientRect();
-                                const s = getComputedStyle(el);
-                                return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none';
-                            };
-                            return [...document.querySelectorAll('button, a')].some((el) =>
-                                visible(el) && /^(sign out|log out|logout|تسجيل الخروج|خروج)$/iu.test(String(el.textContent || '').trim()));
-                        }, { timeout: Math.min(timeoutMs, 5_000) });
+                        await waitForSignedInSurface();
                         authenticated = true;
                     } catch {
-                        authError = 'login API accepted the account, but the protected browser surface did not appear';
+                        // The product's real sign-in path is stronger evidence
+                        // than a storage injection. Exercise it as the recovery
+                        // path so QA proves the same controls a user relies on.
+                        try {
+                            const open = page.getByRole('button', { name: /^(sign in|log in|تسجيل الدخول|دخول)$/iu }).first();
+                            if (await open.isVisible()) await open.click();
+                            await page.locator('input[type="email"]').first().fill(c.email);
+                            await page.locator('input[type="password"]').first().fill(c.password);
+                            await page.locator('form button[type="submit"]').first().click();
+                            await waitForSignedInSurface();
+                            authenticated = true;
+                        } catch {
+                            authError = 'login API accepted the account, but the protected browser surface did not appear';
+                        }
+                    }
                     }
                 }
             } catch (e: any) {
@@ -655,6 +705,7 @@ export async function auditBuiltApp(
         const behaviourMetrics: Record<string, any> = {
             pressed: 0, dead: 0, deadAnchors: 0, keyboardUnreachable: 0, keyboardUnreachableSamples: [],
             formsWithoutValidation: 0, formsFilled: 0, fieldsFilled: 0, formsDeadSubmit: 0, formsValidated: 0, formsReloaded: 0,
+            semanticFieldsTested: 0, semanticValidationFailures: 0, semanticValidationEvidence: [],
             statesVisited: 0, exploratoryActions: 0, controlsDiscovered: 0,
         };
         const mergeProbe = (p: { controls: any[]; metrics: Record<string, any>; forms?: FormResult[] }, route: string) => {
@@ -668,9 +719,10 @@ export async function auditBuiltApp(
             behaviourMetrics.statesVisited += p.metrics.statesVisited || 0;
             behaviourMetrics.exploratoryActions += p.metrics.exploratoryActions || 0;
             behaviourMetrics.controlsDiscovered += p.metrics.controlsDiscovered || 0;
-            for (const k of ['formsFilled', 'fieldsFilled', 'formsDeadSubmit', 'formsValidated', 'formsReloaded']) {
+            for (const k of ['formsFilled', 'fieldsFilled', 'formsDeadSubmit', 'formsValidated', 'formsReloaded', 'semanticFieldsTested', 'semanticValidationFailures']) {
                 behaviourMetrics[k] += p.metrics[k] || 0;
             }
+            behaviourMetrics.semanticValidationEvidence.push(...(p.metrics.semanticValidationEvidence || []));
             for (const f of p.forms || []) allForms.push({ ...f, label: route === '/' ? f.label : `${route} ${f.label}` });
         };
 
@@ -930,57 +982,17 @@ export async function auditBuiltApp(
                 detailEn: `Authenticated QA could not log in with the supplied account: ${authError || 'the server rejected the credentials'}`,
             });
         }
-
-        /**
-         * AND HE SEES THE VERDICT ON THE PAGE ITSELF.
-         *
-         * A number in a log is not watching a check happen. When the audit is
-         * running in his own panel, the findings are painted onto the page for
-         * a few seconds — the score, and a red outline around every element
-         * that earned a deduction — so «62/100 — small_targets» stops being a
-         * word and becomes the three buttons it is actually talking about.
-         */
-        if (borrowed) {
-            try {
-                await page.evaluate(({ score, list }: any) => {
-                    document.querySelectorAll('[data-joe-audit]').forEach(e => e.remove());
-                    const mark = (sel: string) => document.querySelectorAll(sel).forEach((el: any) => {
-                        const r = el.getBoundingClientRect();
-                        if (!r.width || !r.height) return;
-                        const box = document.createElement('div');
-                        box.setAttribute('data-joe-audit', '1');
-                        box.style.cssText = `position:absolute;left:${r.left + scrollX}px;top:${r.top + scrollY}px;`
-                            + `width:${r.width}px;height:${r.height}px;border:2px solid #ef4444;border-radius:6px;`
-                            + 'pointer-events:none;z-index:2147483646;box-shadow:0 0 0 3px rgba(239,68,68,.18)';
-                        document.body.appendChild(box);
-                    });
-                    for (const id of list.map((f: any) => f.id)) {
-                        if (id === 'dead_images') mark('img');
-                        if (id === 'small_targets') mark('a.btn, button, .nav-links a');
-                        if (id === 'dead_links') mark('a[href=""], a[href="#"]');
-                    }
-                    const card = document.createElement('div');
-                    card.setAttribute('data-joe-audit', '1');
-                    card.dir = 'rtl';
-                    card.style.cssText = 'position:fixed;inset-inline-end:16px;top:16px;z-index:2147483647;'
-                        + 'background:rgba(2,6,23,.92);color:#e2e8f0;border:1px solid rgba(148,163,184,.3);'
-                        + 'border-radius:14px;padding:14px 16px;font:13px/1.7 system-ui,sans-serif;'
-                        + 'max-width:340px;box-shadow:0 18px 50px -12px rgba(0,0,0,.7)';
-                    const colour = score >= 90 ? '#34d399' : score >= 70 ? '#fbbf24' : '#f87171';
-                    card.innerHTML = `<div style="font-size:22px;font-weight:800;color:${colour}">${score}/100</div>`
-                        + '<div style="opacity:.75;margin-bottom:6px">فحص الجودة الذاتي — جو</div>'
-                        + (list.length
-                            ? '<ul style="margin:0;padding-inline-start:18px">'
-                            + list.map((f: any) => `<li>${String(f.detail).replace(/</g, '&lt;')}</li>`).join('')
-                            + '</ul>'
-                            : '<div style="color:#34d399">لا ملاحظات — نظيف تماماً.</div>');
-                    document.body.appendChild(card);
-                }, { score: scoreOf(findings), list: findings });
-                // Long enough for the frames to reach the panel and be read.
-                await page.waitForTimeout(3500);
-                await page.evaluate(() => document.querySelectorAll('[data-joe-audit]').forEach(e => e.remove()));
-            } catch { /* the overlay is a courtesy — never a failed audit */ }
+        if (opts?.requireAuthenticatedCoverage && protectedSurfaceAdvertised && !authenticated && !opts?.credentials) {
+            findings.push({
+                id: 'authenticated_coverage_missing', severity: 'high',
+                detail: 'يعرض النظام دخولًا محميًا، لكن اختبار المتصفح لم يدخل إلى الشاشات المحمية',
+                detailEn: 'The product advertises protected sign-in, but browser QA did not enter and test the protected screens',
+            });
         }
+
+        // Findings belong in Joe's chat and Logs. Injecting a verdict card into
+        // the product obscures the interface and can mix languages. Live
+        // outlines and the single panel cursor remain visible during the run.
         unhook();
 
         return {
@@ -993,6 +1005,8 @@ export async function auditBuiltApp(
             dead: allControls.filter(c => c.kind !== 'anchor' && !c.worked).map(c => c.label),
             formsFilled: behaviourMetrics.formsFilled,
             fieldsFilled: behaviourMetrics.fieldsFilled,
+            semanticFieldsTested: behaviourMetrics.semanticFieldsTested,
+            semanticValidationFailures: behaviourMetrics.semanticValidationFailures,
             forms: allForms,
             viewports: ui.metrics.viewports || [],
             statesVisited: behaviourMetrics.statesVisited,
@@ -1010,9 +1024,9 @@ export async function auditBuiltApp(
                 {
                     id: 'behaviour',
                     label: 'controls and forms',
-                    status: behaviour.findings.some(f => ['dead_controls', 'dead_anchors', 'forms_dead_submit', 'keyboard_unreachable'].includes(f.code)) ? 'failed' : 'passed',
+                    status: behaviour.findings.some(f => ['dead_controls', 'dead_anchors', 'forms_dead_submit', 'keyboard_unreachable', 'semantic_input_validation'].includes(f.code)) ? 'failed' : 'passed',
                     measured: allControls.length + allForms.length,
-                    findingIds: findings.filter(f => ['dead_controls', 'dead_anchors', 'forms_dead_submit', 'keyboard_unreachable'].includes(f.id)).map(f => f.id),
+                    findingIds: findings.filter(f => ['dead_controls', 'dead_anchors', 'forms_dead_submit', 'keyboard_unreachable', 'semantic_input_validation'].includes(f.id)).map(f => f.id),
                 },
                 {
                     id: 'design',
@@ -1083,11 +1097,14 @@ export function formatAudit(a: AppAudit, isAr: boolean): string {
             ? `، ${a.exploratoryActions || 0} إجراء استكشافي و${a.statesVisited || 0} حالة مكتشفة`
             : `, ${a.exploratoryActions || 0} exploratory action(s) and ${a.statesVisited || 0} state(s) discovered`)
         : '';
+    const semantic = (a.semanticFieldsTested || 0) > 0
+        ? (isAr ? `، ${a.semanticFieldsTested} حقلًا دلاليًا اختُبر` : `, ${a.semanticFieldsTested} semantic field(s) challenged`)
+        : '';
     const scope = isAr
         ? `(${pages} صفحة، ${a.pressed || 0} عنصر مضغوط، ${a.formsFilled || 0} نموذج معبّأ ومُرسل`
-        + `${a.fieldsFilled ? ` (${a.fieldsFilled} حقل)` : ''}${widths ? `، ${widths} مقاسات شاشة` : ''}${discovery}${exploration}${authNote})`
+        + `${a.fieldsFilled ? ` (${a.fieldsFilled} حقل)` : ''}${semantic}${widths ? `، ${widths} مقاسات شاشة` : ''}${discovery}${exploration}${authNote})`
         : `(${pages} page(s), ${a.pressed || 0} control(s) pressed, ${a.formsFilled || 0} form(s) filled and submitted`
-        + `${a.fieldsFilled ? ` (${a.fieldsFilled} fields)` : ''}${widths ? `, ${widths} viewport(s)` : ''}${discovery}${exploration}${authNote})`;
+        + `${a.fieldsFilled ? ` (${a.fieldsFilled} fields)` : ''}${semantic}${widths ? `, ${widths} viewport(s)` : ''}${discovery}${exploration}${authNote})`;
     const passes = (a.passes || []).map((p) => {
         const state = p.status === 'passed' ? (isAr ? 'نجح' : 'passed') : p.status === 'failed' ? (isAr ? 'فشل' : 'failed') : (isAr ? 'تخطّي' : 'skipped');
         return isAr

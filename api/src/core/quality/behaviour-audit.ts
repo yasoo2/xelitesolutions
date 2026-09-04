@@ -47,7 +47,7 @@ export interface BehaviourFinding {
 export const BEHAVIOUR_CODES: ReadonlySet<string> = new Set([
     'controls_not_reached', 'dead_anchors', 'dead_controls', 'form_dead_submit',
     'form_no_validation', 'form_reloads', 'js_errors', 'keyboard_unreachable',
-    'some_dead_controls',
+    'some_dead_controls', 'semantic_input_validation',
 ]);
 
 export interface ControlResult {
@@ -83,6 +83,8 @@ export interface FormResult {
     filled: number;
     /** 'submitted' | 'validation' | 'reload' | '' (nothing happened at all). */
     effect: string;
+    /** Semantic fields whose declared type and invalid-value rejection were exercised. */
+    semanticFieldsTested?: number;
 }
 
 export interface BehaviourAudit {
@@ -254,11 +256,10 @@ function findControls(limit: number) {
     document.querySelectorAll('details > summary').forEach(el => push(el, 'summary'));
     // Anything that submits.
     document.querySelectorAll('form button[type="submit"], form input[type="submit"], form button:not([type])').forEach(el => push(el, 'submit'));
-    // Tabs and filters announce themselves.
-    document.querySelectorAll('[role="tab"], [data-tab], .tab, .filter, [data-filter]').forEach(el => push(el, 'tab'));
     // Ordinary buttons — the cart, the counter, the toggle.
     document.querySelectorAll('button, [role="button"]').forEach(el => {
         if (el.closest('form')) return;                 // already covered as submit
+        if (el.matches('[role="tab"], [data-tab], .tab, .filter, [data-filter]')) return;
         if (el.getAttribute('aria-haspopup') === 'dialog') return; // inspect dialogs after their row actions
         push(el, 'button');
     });
@@ -266,6 +267,10 @@ function findControls(limit: number) {
     // after row actions so opening it cannot cover controls that are still to be
     // measured on the same screen.
     document.querySelectorAll('[aria-haspopup="dialog"]').forEach(el => push(el, 'button'));
+    // Tabs and filters can replace the whole working surface without changing
+    // the URL. Test the controls on the current surface first, then switch it.
+    // Frontier discovery will catalogue controls revealed by each new tab.
+    document.querySelectorAll('[role="tab"], [data-tab], .tab, .filter, [data-filter]').forEach(el => push(el, 'tab'));
     /**
      * AND THE ROUTES INSIDE THE APP.
      *
@@ -281,7 +286,13 @@ function findControls(limit: number) {
         if (!h || h.startsWith('/')) return;
         push(el, 'anchor');
     });
-    return out;
+    // Controls in transient surfaces must be pressed before any navigation or
+    // state reset removes the surface that made them discoverable.
+    return out.sort((a, b) => {
+        const transient = (item: any) => Number(!!document.querySelector(item.sel)?.closest(
+            '[role="dialog"], [role="status"], [aria-live], .modal, .popover, .drawer'));
+        return transient(b) - transient(a);
+    });
 }
 
 /** Runs in the page: catalogue the forms, field by field, for real filling. */
@@ -292,7 +303,7 @@ function findForms(o: { maxForms: number; maxFields: number }) {
     document.querySelectorAll('[data-joe-fld]').forEach(el => el.removeAttribute('data-joe-fld'));
     const forms: Array<{
         sel: string; label: string;
-        fields: Array<{ sel: string; tag: string; type: string; required: boolean; options: string[] }>;
+        fields: Array<{ sel: string; tag: string; type: string; required: boolean; options: string[]; name: string; pattern: string }>;
         hasSubmit: boolean; submitSel: string;
     }> = [];
     const vis = (el: Element) => {
@@ -306,7 +317,7 @@ function findForms(o: { maxForms: number; maxFields: number }) {
         if (!vis(f)) continue;
         const fid = `joe-form-${forms.length}`;
         f.setAttribute('data-joe-form', fid);
-        const fields: Array<{ sel: string; tag: string; type: string; required: boolean; options: string[] }> = [];
+        const fields: Array<{ sel: string; tag: string; type: string; required: boolean; options: string[]; name: string; pattern: string }> = [];
         const raw = Array.from(f.querySelectorAll('input,textarea,select'));
         for (const el of raw) {
             if (fields.length >= maxFields) break;
@@ -320,7 +331,14 @@ function findForms(o: { maxForms: number; maxFields: number }) {
             const options = el.tagName === 'SELECT'
                 ? Array.from((el as HTMLSelectElement).options).map(o => o.value).filter(v => v !== '')
                 : [];
-            fields.push({ sel: `[data-joe-fld="${did}"]`, tag: el.tagName.toLowerCase(), type, required: h.required === true, options: options.slice(0, 20) });
+            const labelledBy = h.id ? document.querySelector(`label[for="${CSS.escape(h.id)}"]`) : null;
+            const name = [h.name, h.id, h.getAttribute('aria-label'), h.getAttribute('placeholder'), labelledBy?.textContent, h.closest('label')?.textContent]
+                .filter(Boolean).join(' ').trim().slice(0, 160);
+            fields.push({
+                sel: `[data-joe-fld="${did}"]`, tag: el.tagName.toLowerCase(), type,
+                required: h.required === true, options: options.slice(0, 20), name,
+                pattern: h.getAttribute('pattern') || '',
+            });
         }
         const submit = f.querySelector('button[type="submit"],input[type="submit"],button:not([type])');
         let submitSel = '';
@@ -596,6 +614,14 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
 
         const controlKey = (c: { kind: string; label: string; href?: string; ordinal?: number }) =>
             `${c.kind}|${c.label}|${c.href || ''}|${c.ordinal ?? 0}`;
+        const semanticControlKey = (c: { kind: string; label: string; href?: string }) =>
+            `${c.kind}|${c.label}|${c.href || ''}`;
+        const replacementFor = (fresh: any[], original: any) =>
+            fresh.find((candidate: any) => controlKey(candidate) === controlKey(original))
+            // Row deletion can shift duplicate ordinals. An equivalent live
+            // control with the same role, name and destination is still the
+            // same behaviour and is better evidence than an obsolete stamp.
+            || fresh.find((candidate: any) => semanticControlKey(candidate) === semanticControlKey(original));
 
         // A CSV download has no DOM footprint. Count the app's real download
         // anchor click as an additional browser-side witness, while retaining
@@ -671,7 +697,7 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                 let el = await page.$(current.sel);
                 if (!el) {
                     const fresh = await evalInPage(page, findControls, limit).catch(() => [] as any[]);
-                    const replacement = fresh.find((candidate: any) => controlKey(candidate) === controlKey(c));
+                    const replacement = replacementFor(fresh, c);
                     if (replacement) {
                         current = replacement;
                         el = await page.$(current.sel);
@@ -753,7 +779,7 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                         await page.keyboard.press('Escape').catch(() => { });
                         await page.waitForTimeout(180).catch(() => { });
                         const fresh = await evalInPage(page, findControls, limit).catch(() => [] as any[]);
-                        const replacement = fresh.find((candidate: any) => controlKey(candidate) === controlKey(c));
+                        const replacement = replacementFor(fresh, c);
                         if (replacement) {
                             current = replacement;
                             el = await page.$(current.sel);
@@ -774,10 +800,14 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                 // control was discovered on probeStartUrl, so restore that
                 // exact baseline once before declaring it unreachable.
                 if (!reachable) {
-                    await page.goto(probeStartUrl, { waitUntil: 'load', timeout: 5000 }).catch(() => { });
+                    if (page.url() === probeStartUrl) {
+                        await page.reload({ waitUntil: 'load', timeout: 5000 }).catch(() => { });
+                    } else {
+                        await page.goto(probeStartUrl, { waitUntil: 'load', timeout: 5000 }).catch(() => { });
+                    }
                     await page.waitForTimeout(220).catch(() => { });
                     const fresh = await evalInPage(page, findControls, limit).catch(() => [] as any[]);
-                    const replacement = fresh.find((candidate: any) => controlKey(candidate) === controlKey(c));
+                    const replacement = replacementFor(fresh, c);
                     if (replacement) {
                         current = replacement;
                         el = await page.$(current.sel);
@@ -1057,7 +1087,10 @@ export async function probeForms(
     const eyes = opts?.eyes || new AuditEyes({});
     const deadline = Date.now() + Math.max(4000, opts?.budgetMs ?? 30_000);
     const out: FormResult[] = [];
-    const metrics: Record<string, any> = { formsFilled: 0, fieldsFilled: 0, formsDeadSubmit: 0, formsValidated: 0, formsReloaded: 0 };
+    const metrics: Record<string, any> = {
+        formsFilled: 0, fieldsFilled: 0, formsDeadSubmit: 0, formsValidated: 0, formsReloaded: 0,
+        semanticFieldsTested: 0, semanticValidationFailures: 0, semanticValidationEvidence: [],
+    };
     const runNonce = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
     const eyeIsOpen = () => {
         if (!opts?.isEyeOpen) return true;
@@ -1092,6 +1125,7 @@ export async function probeForms(
             opts.seenForms.add(key);
         }
         let filledCount = 0;
+        let semanticFieldsTested = 0;
         if (!eyeIsOpen()) break;
         await eyes.say(page, `تعبئة النموذج: ${f.label}`);
         for (const fld of f.fields) {
@@ -1109,6 +1143,31 @@ export async function probeForms(
                 } else if (fld.type === 'checkbox' || fld.type === 'radio') {
                     await el.check({ timeout: 2000, force: true });
                 } else {
+                    const semantic = /email/i.test(fld.name) ? 'email'
+                        : /phone|telephone|mobile|\btel\b/i.test(fld.name) ? 'tel'
+                        : /birth.?date|date.of.birth|\bdob\b|\bdate\b/i.test(fld.name) ? 'date'
+                        : /\btime\b|start.?time|end.?time/i.test(fld.name) ? 'time'
+                        : /age|amount|price|quantity|count|capacity|duration|score|rating/i.test(fld.name) ? 'number'
+                        : '';
+                    if (semantic) {
+                        const expected = semantic;
+                        const bad = semantic === 'email' ? 'not-an-email' : semantic === 'tel' || semantic === 'number' ? 'letters-only' : 'not-a-date';
+                        const result = await page.evaluate(({ sel, bad, expected }: any) => {
+                            const input = document.querySelector(sel) as HTMLInputElement | null;
+                            if (!input) return { rejected: false, type: '', pattern: '' };
+                            input.value = bad;
+                            input.dispatchEvent(new Event('input', { bubbles: true }));
+                            input.dispatchEvent(new Event('change', { bubbles: true }));
+                            const declared = input.type;
+                            const typeMatches = declared === expected;
+                            const rejected = input.value !== bad || !input.checkValidity();
+                            return { rejected: typeMatches && rejected, type: declared, pattern: input.pattern || '' };
+                        }, { sel: fld.sel, bad, expected });
+                        semanticFieldsTested++;
+                        metrics.semanticFieldsTested++;
+                        metrics.semanticValidationEvidence.push({ field: fld.name || fld.sel, expected, actual: result.type, rejected: result.rejected, pattern: result.pattern });
+                        if (!result.rejected) metrics.semanticValidationFailures++;
+                    }
                     // A real fill: the page's own input/change handlers run.
                     await el.fill(valueFor(fld.type, fld.tag, runNonce, pageLanguage), { timeout: 2500 });
                 }
@@ -1160,7 +1219,7 @@ export async function probeForms(
         else if (effect === 'validation') metrics.formsValidated++;
         else if (effect === 'reload') metrics.formsReloaded++;
         else if (f.fields.length) metrics.formsDeadSubmit++;
-        out.push({ label: f.label, fields: f.fields.length, filled: filledCount, effect });
+        out.push({ label: f.label, fields: f.fields.length, filled: filledCount, effect, semanticFieldsTested });
     }
     return { forms: out, metrics };
 }
@@ -1294,6 +1353,16 @@ export function judgeBehaviour(
             ar: `نموذج بلا أي حقل مطلوب — يمكن إرساله فارغًا`,
             en: 'A form has no required fields, so it can be submitted empty',
             hint: 'mark the essential inputs required and give them types (email/tel)',
+        });
+    }
+    if ((metrics.semanticValidationFailures || 0) > 0) {
+        const failed = (metrics.semanticValidationEvidence || []).filter((item: any) => !item.rejected).slice(0, 4);
+        findings.push({
+            code: 'semantic_input_validation', severity: 'major',
+            ar: `${metrics.semanticValidationFailures} حقل دلالي لا يرفض القيمة الخاطئة: ${failed.map((item: any) => `«${item.field}» يجب أن يكون ${item.expected}`).join('، ')}`,
+            en: `${metrics.semanticValidationFailures} semantic field(s) accept an invalid value: ${failed.map((item: any) => `"${item.field}" should be ${item.expected}`).join(', ')}`,
+            hint: 'use the native email, tel, number, date, or time type and a restrictive pattern where the native type permits free text',
+            evidence: failed,
         });
     }
     if ((metrics.keyboardUnreachable || 0) > 0) {

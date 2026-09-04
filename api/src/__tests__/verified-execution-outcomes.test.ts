@@ -29,6 +29,17 @@ describe('verified execution outcomes', () => {
         expect(report).toContain('لم يستجب');
     });
 
+    it('surfaces a failed quality tool explanation instead of only its internal id', () => {
+        const report = composeFailure([{
+            id: 'project_repair', task: 'Recheck the build', status: 'failed',
+            result: {
+                error: 'quality_findings_survived: mobile_overflow',
+                output: { message: 'Repair not accepted — one layout defect remains: the appointments table exceeds the phone width.' },
+            },
+        }], 'quality_findings_survived: mobile_overflow', 'en');
+        expect(report).toContain('appointments table exceeds the phone width');
+    });
+
     it('marks an unconfirmed project_run as a non-recoverable verification failure', () => {
         const runTool = source('modules', 'tools', 'definitions', 'ProjectRunTool.ts');
         const unconfirmedBlock = runTool.slice(runTool.indexOf('if (!livePort) {'), runTool.indexOf('const url = `http://localhost:${livePort}/`;'));

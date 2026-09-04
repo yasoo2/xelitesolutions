@@ -51,6 +51,14 @@ export const ENTITY_SCHEMA: Record<string, any> = {
                         },
                     },
                     belongs_to: { type: 'string' },
+                    relations: {
+                        type: 'array',
+                        items: {
+                            type: 'object',
+                            properties: { entity: { type: 'string' }, key: { type: 'string' } },
+                            required: ['entity', 'key'],
+                        },
+                    },
                 },
                 required: ['key', 'label_ar', 'label_en', 'fields'],
             },
@@ -160,15 +168,36 @@ export function validateDesign(raw: any, minEntities = 2): ModelEntity[] | null 
     // survived validation, and it must have a column to live in.
     const names = new Set(out.map(e => e.key));
     for (let i = 0; i < out.length; i++) {
-        const declared = String((list[i] as any)?.belongs_to || (list[i] as any)?.belongsTo?.entity || '').trim().toLowerCase();
-        if (!declared || !names.has(declared) || declared === out[i].key) continue;
-        const fkKey = `${declared.replace(/s$/, '')}_id`;
-        if (!SAFE.test(fkKey)) continue;
-        if (!out[i].fields.some(f => f.key === fkKey)) {
-            if (out[i].fields.length >= MAX_FIELDS) continue;
-            out[i].fields.unshift({ key: fkKey, type: 'INT' as any, ar: declared, en: declared });
+        const source = list[i] as any;
+        const requested = Array.isArray(source?.relations) ? source.relations : [];
+        const legacy = String(source?.belongs_to || source?.belongsTo?.entity || '').trim().toLowerCase();
+        const candidates = [
+            ...requested.map((relation: any) => ({
+                entity: String(relation?.entity || '').trim().toLowerCase(),
+                key: String(relation?.key || '').trim().toLowerCase(),
+            })),
+            ...(legacy ? [{ entity: legacy, key: String(source?.belongsTo?.key || '').trim().toLowerCase() }] : []),
+        ];
+        for (const field of out[i].fields.filter(field => field.key.endsWith('_id'))) {
+            const stem = field.key.slice(0, -3);
+            const parent = [...names].find(name => name === `${stem}s` || name === `${stem}es` || name.replace(/ies$/, 'y').replace(/s$/, '') === stem);
+            if (parent) candidates.push({ entity: parent, key: field.key });
         }
-        out[i].belongsTo = { entity: declared, key: fkKey };
+        const relations: Array<{ entity: string; key: string }> = [];
+        for (const candidate of candidates) {
+            if (!candidate.entity || !names.has(candidate.entity) || candidate.entity === out[i].key) continue;
+            const fkKey = SAFE.test(candidate.key) ? candidate.key : `${candidate.entity.replace(/ies$/, 'y').replace(/s$/, '')}_id`;
+            if (!SAFE.test(fkKey) || relations.some(relation => relation.key === fkKey)) continue;
+            if (!out[i].fields.some(field => field.key === fkKey)) {
+                if (out[i].fields.length >= MAX_FIELDS) continue;
+                out[i].fields.unshift({ key: fkKey, type: 'INT' as any, ar: candidate.entity, en: candidate.entity });
+            }
+            relations.push({ entity: candidate.entity, key: fkKey });
+        }
+        if (relations.length) {
+            out[i].relations = relations;
+            out[i].belongsTo = relations[0];
+        }
     }
     return out;
 }

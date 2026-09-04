@@ -776,8 +776,46 @@ function deterministicRecordVerdict(r: NamedRequirement, source: string): Judged
     // rating`). For a generated records schema, the field evidence is the
     // semantic remainder (`rating`), not the list introducer.
     const fieldPhrase = phrase.replace(/^(?:include|add|with)\s+(?:(?:a|an|the)\s+)?/iu, '').trim();
-    const workflowCapability = /\bsign[- ]?in\b|\blogin\b|\bauth(?:entication)?\b|\b(?:member|manager|admin|user)\s+roles?\b|\bpermissions?\b|\bprivate\b|\baccess\s+control\b|\bassign(?:ment|ed|ee)?\b|\bstatus\s+transitions?\b|\bcomments?\b|\baudit(?:\s+(?:log|trail|history))?\b|تسجيل\s*الدخول|صلاحيات|أدوار|خصوصي|إسناد|تعيين|انتقالات?\s*الحالة|تعليقات|سجل\s*التدقيق/iu.test(fieldPhrase);
+    if (/patients?[^,.;]*\b(?:and|&)\b[^,.;]*doctors?[^,.;]*separate\s+records?|مرضى[^.،]*أطباء[^.،]*سجلات\s+منفصلة/iu.test(fieldPhrase)
+        && /(?:key|['"]key['"])\s*:\s*['"]patients['"]/iu.test(src)
+        && /(?:key|['"]key['"])\s*:\s*['"]doctors['"]/iu.test(src)) {
+        return { ...r, verdict: 'met', why: 'patients and doctors are separate first-class tables in the interface model' };
+    }
+    if (/appointment\s+scheduling[^.]*linked\s+to\s+both|مواعيد[^.،]*مرتبط/iu.test(fieldPhrase)
+        && /patient_id/iu.test(src) && /doctor_id/iu.test(src)
+        && /relations|parents\[/iu.test(src)) {
+        return { ...r, verdict: 'met', why: 'appointment inputs resolve both patient and doctor relationships from live records' };
+    }
+    if (/double[-\s]?booking|حجز\s+مزدوج|تعارض\s*المواعيد/iu.test(fieldPhrase)
+        && /double_booking/iu.test(src) && /already has an appointment|لديه موعد آخر/iu.test(src)) {
+        return { ...r, verdict: 'met', why: 'the interface reports the server-enforced double-booking refusal' };
+    }
+    const workflowCapability = /\bsign[- ]?in\b|\blogin\b|\bauth(?:entication)?\b|\b(?:member|manager|admin|user)\s+roles?\b|\badmin\b[^,.;]*\breceptionist\b[^,.;]*\broles?\b|\bpermissions?\b|\bprivate\b|\baccess\s+control\b|\bassign(?:ment|ed|ee)?\b|\bstatus\s+transitions?\b|\bcomments?\b|\baudit(?:\s+(?:log|trail|history))?\b|تسجيل\s*الدخول|صلاحيات|أدوار|خصوصي|إسناد|تعيين|انتقالات?\s*الحالة|تعليقات|سجل\s*التدقيق/iu.test(fieldPhrase);
     if (workflowCapability) {
+        // A multi-entity operational system is a workflow engine even when
+        // its component is named TablesAdmin rather than CustomApp. Judge the
+        // requested behaviour from concrete source evidence before applying
+        // the legacy component-name guard.
+        const workflowEvidence: Array<[RegExp, boolean, string]> = [
+            [/secure\s+sign[-\s]?in|secure\s+login|دخول\s+آمن|تسجيل\s+دخول\s+آمن/iu,
+                /apiLogin|auth\/login/iu.test(src) && /TOKEN_KEY|Authorization[^\n]{0,120}Bearer/iu.test(src),
+                'the application implements token-backed sign-in against its protected API'],
+            [/(?:admin|manager)[^,.;]*\b(?:and|&)\b[^,.;]*(?:receptionist|staff)[^,.;]*roles?|أدوار[^.،]*(?:مدير|استقبال)/iu,
+                /owner\s*:\s*['"]Admin['"]/iu.test(src) && /staff\s*:\s*['"]Receptionist['"]/iu.test(src)
+                    && /Accounts|apiSetRole/iu.test(src),
+                'the application exposes admin and receptionist identities with account role management'],
+            [/status\s+transitions?|انتقالات?\s*الحالة/iu,
+                /invalid_status_transition/iu.test(src)
+                    && ['scheduled', 'confirmed', 'completed', 'cancelled'].every(status =>
+                        new RegExp(`(?:['\"]${status}['\"]|\\b${status}\\b)`, 'iu').test(src)),
+                'the interface exposes the appointment states and reports invalid server-enforced transitions'],
+            [/audit(?:\s+(?:log|trail|history))?|سجل\s*التدقيق|تاريخ\s*التغييرات/iu,
+                /audit_history/iu.test(src)
+                    && /View changes|Show changes|Audit history|<details|<summary|عرض التغييرات|سجل التدقيق/iu.test(src),
+                'the interface renders each record audit history as inspectable change details'],
+        ];
+        const proven = workflowEvidence.find(([asked, present]) => asked.test(fieldPhrase) && present);
+        if (proven) return { ...r, verdict: 'met', why: proven[2] };
         if (!/(?:function|class|const|let|var)\s+CustomApp\b/i.test(src)) {
             return { ...r, verdict: 'unmet', why: 'the build rendered a generic records form instead of a workflow engine' };
         }

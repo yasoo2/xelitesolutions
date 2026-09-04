@@ -68,9 +68,9 @@ export const TAP_TARGET_MIN_PX = 40;
  *  overflow reports «1280px» in the sentence he reads.)
  */
 export const VIEWPORTS = [
-    { name: 'mobile', ar: 'جوّال', w: 390, h: 844 },
-    { name: 'tablet', ar: 'لوحي', w: 820, h: 1180 },
     { name: 'desktop', ar: 'سطح المكتب', w: 1280, h: 900 },
+    { name: 'tablet', ar: 'لوحي', w: 820, h: 1180 },
+    { name: 'mobile', ar: 'جوّال', w: 390, h: 844 },
 ] as const;
 
 /* ---------------------------------------------------------------- contrast */
@@ -301,7 +301,7 @@ export interface ContrastSample {
  */
 export function judgeContrast(
     samples: ContrastSample[] | undefined,
-): Array<{ text: string; ratio: number; need: number; sel: string; x: number; y: number; width: number; height: number }> {
+): Array<{ text: string; ratio: number; need: number; fg: number[]; bg: number[]; sel: string; x: number; y: number; width: number; height: number }> {
     const seen = new Set<string>();
     const fails: any[] = [];
     for (const s of samples || []) {
@@ -316,7 +316,7 @@ export function judgeContrast(
         if (seen.has(key)) continue;
         seen.add(key);
         fails.push({
-            text: s.text, ratio: rounded, need, sel: s.sel || '',
+            text: s.text, ratio: rounded, need, fg: s.fg.slice(0, 3), bg: s.bg.slice(0, 3), sel: s.sel || '',
             x: s.x, y: s.y, width: s.width, height: s.height,
         });
     }
@@ -409,6 +409,8 @@ function measureA11y() {
 /* -------------------------------------------------------------- responsive */
 
 function measureResponsive(vw: number) {
+  var actualVw = Math.round(window.innerWidth || document.documentElement.clientWidth || 0);
+  var measuredVw = actualVw > 0 ? actualVw : vw;
   var doc = document.documentElement;
   var scrollW = Math.max(doc.scrollWidth, (document.body && document.body.scrollWidth) || 0);
   var wide: any[] = [], boxes: any[] = [], wideEvidence: any[] = [];
@@ -435,11 +437,11 @@ function measureResponsive(vw: number) {
   };
   Array.prototype.slice.call(document.querySelectorAll('body *'), 0, 4000).forEach(function (el: any) {
     var r = el.getBoundingClientRect();
-    if (r.width > vw + 4 && r.height > 0 && wide.length < 6) {
+    if (r.width > measuredVw + 4 && r.height > 0 && wide.length < 6) {
       var cls = (el.getAttribute('class') || '').split(/\s+/).slice(0, 2).filter(Boolean).join('.');
       wide.push(cls ? el.tagName.toLowerCase() + '.' + cls : el.tagName.toLowerCase());
       wideEvidence.push({ sel: selectorFor(el), label: 'wider than the screen', w: Math.round(r.width), h: Math.round(r.height) });
-      boxes.push({ x: Math.max(0, Math.round(r.left)), y: Math.round(r.top), width: Math.min(vw, Math.round(r.width)), height: Math.round(r.height), label: 'wider than the screen' });
+      boxes.push({ x: Math.max(0, Math.round(r.left)), y: Math.round(r.top), width: Math.min(measuredVw, Math.round(r.width)), height: Math.round(r.height), label: 'wider than the screen' });
     }
   });
   var tiny = 0, tinyBoxes: any[] = [], tinyNames: string[] = [], tinyEvidence: any[] = [];
@@ -518,7 +520,8 @@ function measureResponsive(vw: number) {
     if (fs && fs < 12) smallFonts++;
   });
   return {
-    scrollW: scrollW, overflowX: scrollW > vw + 2, wide: wide, wideEvidence: wideEvidence, boxes: boxes,
+    requestedVw: vw, actualVw: actualVw,
+    scrollW: scrollW, overflowX: scrollW > measuredVw + 2, wide: wide, wideEvidence: wideEvidence, boxes: boxes,
     tiny: tiny, tinyBoxes: tinyBoxes, tinyNames: tinyNames, tinyEvidence: tinyEvidence, smallFonts: smallFonts,
     clipped: clipped, clippedEvidence: clippedEvidence, clippedBoxes: clippedBoxes,
     hasViewportMeta: !!document.querySelector('meta[name="viewport"]'),
@@ -559,6 +562,10 @@ export async function inspectUi(
                 ar: `${c.fails.length} نص لا يجتاز تباين WCAG AA (الأسوأ ${c.fails[0].ratio}:1 والمطلوب ${c.fails[0].need}:1): «${c.fails[0].text}»`,
                 en: `${c.fails.length} text element(s) fail WCAG AA contrast (worst ${c.fails[0].ratio}:1, needs ${c.fails[0].need}:1): "${c.fails[0].text}"`,
                 hint: 'darken the text or lighten its background until the ratio clears 4.5:1',
+                // The repair loop needs the exact selector and measured colour
+                // pair. Without this, Joe can describe the failure but cannot
+                // make the evidence-bound source change it promises.
+                evidence: c.fails.slice(0, 24),
             });
         }
     } catch { /* colours are one lens, never the whole check */ }
@@ -602,6 +609,8 @@ export async function inspectUi(
     let mobileTinyNames: string[] = [];
     let overflowEvidence: any[] = [];
     let mobileTinyEvidence: any[] = [];
+    const viewportFailures: Array<{ requested: number; actual: number }> = [];
+    const measuredViewports: string[] = [];
     for (const vp of VIEWPORTS) {
         try {
             await page.setViewportSize({ width: vp.w, height: vp.h });
@@ -609,7 +618,14 @@ export async function inspectUi(
             await page.waitForTimeout(420);
             await eyes?.say(page, `فحص العرض ${vp.w}px — ${vp.ar}`);
             const r: any = await evalInPage(page, measureResponsive, vp.w);
-            perWidth[vp.name] = { overflowX: r.overflowX, wide: r.wide, tiny: r.tiny, smallFonts: r.smallFonts };
+            const actualVw = Number(r.actualVw || 0);
+            if (!actualVw || Math.abs(actualVw - vp.w) > 2) {
+                viewportFailures.push({ requested: vp.w, actual: actualVw });
+                perWidth[vp.name] = { requested: vp.w, actual: actualVw, instrumentationFailed: true };
+                continue;
+            }
+            measuredViewports.push(`${vp.w}x${vp.h}`);
+            perWidth[vp.name] = { requested: vp.w, actual: actualVw, overflowX: r.overflowX, wide: r.wide, tiny: r.tiny, smallFonts: r.smallFonts };
             hasViewportMeta = hasViewportMeta && !!r.hasViewportMeta;
             if (r.overflowX && !overflowAt) {
                 overflowAt = `${vp.w}px${r.wide.length ? ` — ${r.wide.join('، ')}` : ''}`;
@@ -634,7 +650,7 @@ export async function inspectUi(
     }
     //  Only what was actually measured. The restore width used to be added
     //  here, which is how a count of two became a report of three.
-    metrics.viewports = VIEWPORTS.map(v => `${v.w}x${v.h}`);
+    metrics.viewports = measuredViewports;
     metrics.perWidth = perWidth;
     if (opts?.restore) {
         try {
@@ -650,6 +666,16 @@ export async function inspectUi(
             ar: 'لا يوجد وسم viewport — الصفحة لن تتكيّف مع الجوّال إطلاقاً',
             en: 'No <meta name="viewport"> — the page cannot adapt to a phone at all',
             hint: '<meta name="viewport" content="width=device-width, initial-scale=1">',
+        });
+    }
+    if (viewportFailures.length) {
+        const detail = viewportFailures.map(v => `${v.requested}px->${v.actual || '?'}px`).join(', ');
+        findings.push({
+            code: 'viewport_emulation_failed', severity: 'major',
+            ar: `تعذر تطبيق مقاسات الاختبار فعلياً (${detail}) — لا أنسب نتائج الهاتف إلى التطبيق قبل إصلاح أداة القياس`,
+            en: `Viewport emulation did not apply (${detail}) — mobile findings were not attributed to the app`,
+            hint: 'repair the browser viewport instrumentation, then rerun the same responsive checks',
+            evidence: viewportFailures,
         });
     }
     if (overflowAt) {

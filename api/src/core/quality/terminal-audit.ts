@@ -350,6 +350,20 @@ export async function auditInTerminal(
      */
     const appDir = String(opts.appDir || '');
     if (appDir && fs.existsSync(path.join(appDir, 'package.json'))) {
+        const appManifest = (() => {
+            try { return JSON.parse(fs.readFileSync(path.join(appDir, 'package.json'), 'utf-8')); }
+            catch { return {}; }
+        })();
+        if (appManifest?.scripts?.test) {
+            await add('app_tests', 'npm test', async () => {
+                const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+                const r = await run(npm, ['test'], appDir, Math.max(per, 45_000), say);
+                const last = String(r.out).trim().split('\n').filter(Boolean).pop() || '';
+                return r.ok
+                    ? { ok: true, detail: 'the generated application test suite passed' }
+                    : { ok: false, detail: last.slice(0, 180) || 'the generated application test suite failed' };
+            });
+        }
         await add('app_deps_installed', `node -e "verify declared dependency packages" (${path.basename(appDir)})`, async () => {
             if (!fs.existsSync(path.join(appDir, 'node_modules'))) {
                 return { ok: false, detail: 'the interface has no node_modules — it was never installed' };

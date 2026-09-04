@@ -82,9 +82,17 @@ describe('the wiring — every green build gets measured', () => {
         expect(auditSrc).toContain('credentials?: {');
         expect(auditSrc).toContain("fetch(loginUrl, {");
         expect(auditSrc).toContain("localStorage.setItem(tokenStorageKey, token)");
+        expect(auditSrc).toContain("localStorage.setItem(tokenStorageKey + ':role'");
+        expect(auditSrc).toContain("tokenStorageKey: c.tokenStorageKey || 'joe:auth'");
+        expect(auditSrc).toContain("input[type=\"email\"]");
+        expect(auditSrc).toContain("form button[type=\"submit\"]");
+        expect(auditSrc).toContain('Math.min(timeoutMs, 12_000)');
         expect(auditSrc).toContain('the protected browser surface did not appear');
         expect(auditSrc).toContain("/^(sign out|log out|logout|تسجيل الخروج|خروج)$/iu");
         expect(auditSrc).toContain("id: 'auth_failed'");
+        expect(auditSrc).toContain("id: 'authenticated_coverage_missing'");
+        expect(auditSrc).toContain('requireAuthenticatedCoverage?: boolean');
+        expect(auditSrc).toContain('if (c.token)');
         const behaviourSrc = fs.readFileSync(path.join(__dirname, '..', 'core', 'quality', 'behaviour-audit.ts'), 'utf-8');
         expect(behaviourSrc).toContain('Session exit and destructive mutations are scenario boundaries');
         expect(behaviourSrc).toContain('sign\\s*out|log\\s*out|logout');
@@ -97,6 +105,26 @@ describe('the wiring — every green build gets measured', () => {
     it('labels a proven authenticated pass in the chat verdict', () => {
         const verdict = formatAudit({ score: 100, findings: [], authenticated: true }, true);
         expect(verdict).toContain('دخول محمي مثبت');
+    });
+    it('tests semantic field types with both valid and invalid values', () => {
+        const src = fs.readFileSync(path.join(__dirname, '..', 'core', 'quality', 'behaviour-audit.ts'), 'utf-8');
+        expect(src).toContain('semanticFieldsTested');
+        expect(src).toContain("bad = semantic === 'email' ? 'not-an-email'");
+        expect(src).toContain('input.checkValidity()');
+        expect(src).toContain("code: 'semantic_input_validation'");
+        expect(src).toContain("case 'tel': return '0555123456'");
+        expect(src).toContain("case 'date': return iso");
+    });
+    it('runs and reports a real cross-layer quality matrix for generated systems', () => {
+        const terminal = fs.readFileSync(path.join(__dirname, '..', 'core', 'quality', 'terminal-audit.ts'), 'utf-8');
+        const react = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ReactProjectTool.ts'), 'utf-8');
+        expect(terminal).toContain("await add('app_tests', 'npm test'");
+        expect(terminal).toContain("const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm'");
+        for (const label of ['Functional', 'Integration', 'System', 'Acceptance and UAT', 'Security', 'Non-functional', 'Regression']) {
+            expect(react).toContain(label);
+        }
+        expect(react).toContain('Proven quality matrix');
+        expect(react).toContain("checks.get('writes_protected') === true && !!audit?.authenticated");
     });
 
     it('names each browser QA pass in the delivery verdict', () => {

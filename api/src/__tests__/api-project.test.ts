@@ -573,7 +573,7 @@ describe('the generated site carries the owner\'s dashboard', () => {
 
     it('hands workflow credentials to the token key used by the workflow shell', () => {
         const src = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ApiProjectTool.ts'), 'utf-8');
-        expect(src).toContain("tokenStorageKey: workflowApplication ? 'joe:auth:/'");
+        expect(src).toContain("tokenStorageKey: workflowApplication ? 'joe:auth'");
         expect(src).toContain("route: workflowApplication ? '/' : '#/admin'");
     });
 

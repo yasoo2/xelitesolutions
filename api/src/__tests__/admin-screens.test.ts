@@ -56,8 +56,8 @@ describe('every table becomes a screen', () => {
     it('a link is CHOSEN from real rows, never typed as an id', () => {
         const src = jsx();
         expect(src).toMatch(/<select value=\{draft\[f\.key\] \?\? ''\}/);
-        expect(src).toMatch(/\(parentRows \|\| \[\]\)\.map\(\(p\) =>/);
-        expect(src).toMatch(/table\.belongsTo\.entity/);
+        expect(src).toMatch(/parents\[\(\(table\.relations \|\| \[\]\)\.find/);
+        expect(src).toMatch(/relation\.entity/);
     });
 
     it('and the sign-in state is LIVE — a token read once at mount never changes', () => {
@@ -104,16 +104,16 @@ describe('and the builder wires them without breaking what was there', () => {
         expect(r).toMatch(/deriveDataModel\(request\)/);
         const chain = r.slice(r.indexOf('const tableModel = apiLink'));
         expect(chain.indexOf('namedEntities(request)')).toBeLessThan(chain.indexOf('deriveDataModel(request)'));
-        // The app itself manages the FIRST table now; the admin screens carry
-        // the rest, so «النباتات» is never rendered twice.
+        // Small systems keep the first entity in their domain engine. Systems
+        // with three or more first-class entities use one unified table surface.
         expect(r).toMatch(/model: adminModel,/);
-        expect(r).toMatch(/adminModel = tableModel\.slice\(1\)/);
+        expect(r).toMatch(/adminModel = unifiedTables \? tableModel : tableModel\.slice\(1\)/);
     });
 
     it('the shell renders them, and a build without a model imports nothing', () => {
         const t = read('modules', 'tools', 'definitions', 'react-app-templates.ts');
         expect(t).toMatch(/\$\{hasTables \? "import TablesAdmin from '\.\/components\/TablesAdmin\.jsx';/);
-        expect(t).toMatch(/'src\/App\.jsx': fileAppShellJsx\(bp, o\.isArabic, !!\(o\.model && o\.model\.length\), !!o\.api\)/);
+        expect(t).toMatch(/'src\/App\.jsx': fileAppShellJsx\(bp, o\.isArabic, !!\(o\.model && o\.model\.length\), !!o\.api, roleSpecs, !!o\.unifiedTables\)/);
         expect(t).toMatch(/\.\.\.\(o\.model && o\.model\.length \? \{ 'src\/components\/TablesAdmin\.jsx'/);
     });
 

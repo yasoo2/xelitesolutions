@@ -119,6 +119,36 @@ Important limitation: this test currently uses a controlled mocked LLM plan to m
 
 ## Required tests after related changes
 
+## Quality matrix for every change batch
+
+Every code-change batch must be verified at the layers it can affect before it
+is handed over or used as the base for the next live prompt. Record the exact
+checks and their results; never replace a missing test with a claim.
+
+- Functional: focused unit and behavior tests for the changed contract.
+- Integration: exercise every changed boundary between planner, tools, API,
+  persistence, generated application, and browser as applicable.
+- System: run the affected workflow through Joe, not only by importing a helper.
+- Acceptance/UAT: replay the user's request in the real Joe UI and verify the
+  requested outcome from a user's point of view.
+- Regression: run the permanent suites for the touched area plus the required
+  architecture and self-healing gates below.
+- Security: verify authorization, workspace isolation, input validation,
+  secret handling, and destructive-action guards wherever the change can reach
+  those surfaces.
+- Non-functional: verify visual layout, accessibility, responsive behavior,
+  runtime/network health, and bounded performance/resource behavior when
+  relevant to the changed surface.
+
+For generated forms, browser QA must infer field semantics and test both valid
+and invalid values. Email, telephone, number, date, and time fields must use the
+appropriate native contract; numeric-only fields must reject letters, telephone
+fields must reject invalid characters, and invalid feedback must be observable.
+
+Any failed applicable layer stops progression until it is repaired and rerun.
+Documentation-only changes still require diff/format checks, but must not claim
+runtime test categories that cannot exercise documentation.
+
 Run these after any architecture, planner, phase execution, repair, self-fix, ToolService, package-script, or workspace-path change:
 
 ```bash

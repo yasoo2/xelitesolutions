@@ -161,11 +161,30 @@ describe('visible browser QA is part of page delivery', () => {
     it('project_repair accepts explicit pipeline evidence and audits its live URL', () => {
         const repair = read('modules/tools/definitions/ProjectRepairTool.ts');
         expect(repair).toContain('serveUrl: { type:');
+        expect(repair).toContain("request: { type: 'string'");
         expect(repair).toContain('artifactRootDir: { type:');
         expect(repair).toContain("const dir = String(input?.projectDir || built?.projectDir");
         expect(repair).toContain("...(serveUrl ? { serveUrl } : {})");
         expect(repair).toContain('artifactRootDir,');
         expect(repair).not.toContain('if (!built || !dir');
+    });
+
+    it('the quality-review fast path retains the user request and therefore its language', () => {
+        const planning = read('core/orchestrator/PlanningEngine.ts');
+        expect(planning).toContain('input: { projectDir: built.projectDir, auditDir: built.auditDir, request: intent.goal }');
+        expect(planning).toContain('browser\\s+test(?:ing)?');
+        expect(planning).toContain('delivery|deliverable');
+    });
+
+    it('project_repair revives and refreshes the packaged full stack for same-session QA', () => {
+        const repair = read('modules/tools/definitions/ProjectRepairTool.ts');
+        expect(repair).toContain("projectEntry?.live?.url");
+        expect(repair).toContain("projectEntry?.packagedInto");
+        expect(repair).toContain('browser QA includes its real API');
+        expect(repair).toContain("fs.cpSync(auditDir, target, { recursive: true })");
+        expect(repair).toContain('credentials: runtimeAuth');
+        expect(repair).toContain('Browser QA found ${before.findings.length} defect or coverage gap');
+        expect(repair).toContain('repair evidence ${finding.id}');
     });
 
     it('passes the same watched session through repair re-audits', () => {

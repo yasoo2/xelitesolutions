@@ -229,16 +229,22 @@ export function composeFailure(steps: RunStep[], rawError: string, language?: st
     const failed = (steps || []).find(s => s && s.status === 'failed');
 
     const name = failed ? stepLabel(failed.task || failed.id) : '';
+    const failedOutput = failed?.result?.output && typeof failed.result.output === 'object'
+        ? proseOf(failed.result.output)
+        : proseOf(failed?.result);
     const head = failed
         ? (ar ? `توقّفت عند الخطوة «${name}»${detail ? ` — ${detail}` : ''}`
               : `Stopped at step “${name}”${detail ? ` — ${detail}` : ''}`)
         : detail;
-    if (!list.length) return head;
+    const explained = failedOutput && !head.includes(failedOutput)
+        ? `${head}\n\n${failedOutput.slice(0, 1800)}`
+        : head;
+    if (!list.length) return explained;
 
     const lines = list.map(s => {
         const p = proseOf(s.result);
         const extra = p && !isStatusLine(p) ? `\n  ${p.split('\n')[0].slice(0, 200)}` : '';
         return `- ${stepLabel(s.task || s.tool || s.id, 90)}${extra}`;
     }).join('\n');
-    return `${head}\n\n${ar ? 'وما أُنجز قبل التوقّف — وهو باقٍ:' : 'Completed before stopping — and it is still there:'}\n${lines}`;
+    return `${explained}\n\n${ar ? 'وما أُنجز قبل التوقّف — وهو باقٍ:' : 'Completed before stopping — and it is still there:'}\n${lines}`;
 }

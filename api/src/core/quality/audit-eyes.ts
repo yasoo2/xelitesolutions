@@ -173,16 +173,20 @@ export interface EyesOptions {
 export class AuditEyes {
     private readonly sid: string;
     private readonly paint: boolean;
+    private readonly watched: boolean;
     private last = { x: 40, y: 40 };
     private step = 0;
 
     constructor(opts?: EyesOptions) {
         this.sid = String(opts?.watchSessionId || '').trim();
-        this.paint = !!(this.sid || opts?.alwaysPaint);
+        this.watched = !!this.sid;
+        // A watched run already has the panel overlay. Painting another cursor
+        // into the JPEG creates two pointers and two outlines on screen.
+        this.paint = !this.watched && !!opts?.alwaysPaint;
     }
 
     /** Is anything actually being shown? Used to skip the cost when nobody looks. */
-    get visible(): boolean { return this.paint; }
+    get visible(): boolean { return this.watched || this.paint; }
 
     private send(ev: any) {
         if (!this.sid) return;
@@ -232,7 +236,7 @@ export class AuditEyes {
              * a three-minute one — so an unwatched audit jumps straight there.
              * The mouse still really moves, so the hover still really happens.
              */
-            const hops = this.paint ? 4 : 1;
+            const hops = this.visible ? 4 : 1;
             const from = this.last;
             for (let i = 1; i <= hops; i++) {
                 const px = Math.round(from.x + (x - from.x) * (i / hops));
@@ -255,6 +259,10 @@ export class AuditEyes {
             // Long enough to be a frame in a 6-8 fps stream, short enough that
             // forty controls do not add a minute to the build.
             await page.waitForTimeout(150).catch(() => { });
+        } else if (this.watched) {
+            // Let at least one streamed frame show the panel pointer at the
+            // target without injecting a second pointer into the page.
+            await page.waitForTimeout(90).catch(() => { });
         }
     }
 

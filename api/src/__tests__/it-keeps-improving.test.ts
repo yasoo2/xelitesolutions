@@ -21,7 +21,8 @@ import path from 'path';
 import { improveUntilItStops, improveSummary, repairRound, normaliseImproveResult } from '../core/quality/improve-loop';
 import {
     repairTapTargets, repairContrast, repairFormValidation,
-    repairMeasuredTapTargets, repairMeasuredContrast, repairProjectFiles,
+    repairMeasuredTapTargets, repairMeasuredOverflow, repairMeasuredContrast, repairProjectFiles,
+    repairSemanticInputValidation, parseHex, contrastRatio,
 } from '../core/quality/ui-repair';
 import { safeCss, cssRepairPrompt } from '../core/quality/model-round';
 
@@ -241,10 +242,30 @@ describe('the offenders the browser named are fixed by name', () => {
         expect(repairMeasuredTapTargets(once.text, evid, 44).repairs).toHaveLength(0);
     });
 
+    it('constrains the exact element measured wider than the phone', () => {
+        const evidence = [{ sel: 'main.shell > section.table-panel', w: 640, h: 300 }];
+        const once = repairMeasuredOverflow('.x{}', evidence, 1);
+        expect(once.text).toContain('main.shell > section.table-panel');
+        expect(once.text).toContain('max-inline-size: 100% !important');
+        expect(repairMeasuredOverflow(once.text, evidence, 1).repairs).toHaveLength(0);
+    });
+
+    it('repairs the exact invalid phone pattern the browser measured', () => {
+        const source = "const contract = { type: 'tel', pattern: '[+0-9 ()-]{7,20}' };";
+        const fixed = repairSemanticInputValidation(source, [{
+            field: 'Phone', expected: 'tel', rejected: false, pattern: '[+0-9 ()-]{7,20}',
+        }]);
+        expect(fixed.text).toContain("pattern: '[0-9]{7,15}'");
+        expect(fixed.text).not.toContain('[+0-9 ()-]{7,20}');
+        expect(fixed.repairs).toHaveLength(1);
+    });
+
     it('a measured contrast failure is answered on ITS OWN background', () => {
         const fails = [{ sel: 'p.price', ratio: 3.2, need: 4.5, fg: [154, 154, 154], bg: [255, 255, 255] }];
         const out = repairMeasuredContrast(':root{}', fails, 0).text;
         expect(out).toMatch(/p\.price \{ color: #[0-9a-f]{6}; \}/);
+        const colour = parseHex(out.match(/color: (#[0-9a-f]{6})/)![1])!;
+        expect(contrastRatio(colour, [255, 255, 255])).toBeGreaterThanOrEqual(4.6);
     });
 
     /**

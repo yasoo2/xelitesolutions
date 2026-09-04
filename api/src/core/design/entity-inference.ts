@@ -60,6 +60,9 @@ const CAPABILITY = [
     /\b(moderation|recommendation|recommendations|personalisation|personalization|automation|verification|encryption|analytics|insights|search|notifications?|sync|backup|import|export)\b/i,
     /\b(ai|ml|machine learning|gpt|llm|chatbot|assistant)\b/i,
     /\b(dashboard|reports?|reporting|statistics|charts?)\b/i,
+    /\b(auth(?:entication)?|sign[- ]?in|logins?|roles?|permissions?|rbac)\b/i,
+    /\b(status\s+transitions?|transitions?|workflow|audit(?:\s+(?:log|trail|history))?|histories?)\b/i,
+    /\b(double[- ]?book(?:ing)?|conflict(?:s| prevention)?|preventions?|validation)\b/i,
     /(بثّ?\s*مباشر|مكالم|فيديو|صوت|إشعارات?|تحليلات|لوحة\s*تحكّ?م|تقارير|إحصاء|بحث|ذكاء\s*اصطناعي|توصيات|مزامنة|تشفير)/i,
 ];
 
@@ -115,6 +118,9 @@ export function inferKind(phrase: string): EntityKind {
 /** Is this a row, or a capability that needs infrastructure? */
 export function isCapability(phrase: string): boolean {
     const s = String(phrase || '').trim();
+    // Process nouns remain capabilities even when a role name or an entity is
+    // mentioned beside them ("receptionist roles", "appointment validation").
+    if (/\b(?:roles?|permissions?|transitions?|workflow|audit|histories?|preventions?|validation)\b/i.test(s)) return true;
     // «Ads platform» is an ads table wearing a platform hat; «live streaming»
     // is not a table at all. A capability marker only wins when the phrase has
     // no clearer noun beside it.
@@ -141,8 +147,16 @@ export function isCapability(phrase: string): boolean {
 /* ───────────────────────────── phrase → identifier ─────────────────────── */
 
 /** Latin letters only, lower case, plural, and a legal SQL identifier. */
+function entityPhrase(phrase: string): string {
+    return String(phrase || '')
+        .replace(/\s+as\s+(?:a\s+)?(?:separate|independent|individual)\s+records?.*$/i, '')
+        .replace(/\s+schedul(?:e|es|ed|ing)\b.*$/i, '')
+        .replace(/\s+linked\s+to\b.*$/i, '')
+        .trim();
+}
+
 function keyOf(phrase: string): string {
-    const bare = String(phrase || '')
+    const bare = entityPhrase(phrase)
         .replace(/\b(platform|system|module|feature|management|manager|section|page of)\b/gi, ' ')
         .replace(/[^A-Za-z0-9 ]+/g, ' ')
         .trim().toLowerCase();
@@ -532,8 +546,10 @@ export function inferModel(request: string, limit = MAX_MODEL_ENTITIES): Inferen
     const structuredKeys = new Set(structured.map(keyForPhrase));
 
     for (const phrase of phrases) {
+        const roleContext = /\broles?\b/i.test(request)
+            && /^\s*(?:admins?|receptionists?|managers?|members?|reviewers?|operators?|staff)\s*$/i.test(phrase);
         const keyCandidate = keyForPhrase(phrase);
-        if (!structuredKeys.has(keyCandidate) && isCapability(phrase)) {
+        if (!structuredKeys.has(keyCandidate) && (roleContext || isCapability(phrase))) {
             if (capabilities.length < 12 && !capabilities.includes(phrase)) capabilities.push(phrase);
             continue;
         }
@@ -541,7 +557,8 @@ export function inferModel(request: string, limit = MAX_MODEL_ENTITIES): Inferen
         if (!key || key.length < 3 || key.length > 40 || NEVER.has(key) || seen.has(key)) continue;
         seen.add(key);
         if (entities.length >= limit) continue;
-        const kind = inferKind(phrase);
+        const normalizedPhrase = entityPhrase(phrase);
+        const kind = inferKind(normalizedPhrase);
         /**
          * A TRANSLITERATION IS NOT AN ENGLISH WORD.
          *
@@ -559,9 +576,31 @@ export function inferModel(request: string, limit = MAX_MODEL_ENTITIES): Inferen
          */
         const english = englishFor(phrase);
         entities.push({
-            key, ar: phrase.replace(/^ال/, 'ال'), en: english || phrase.trim(),
+            key, ar: normalizedPhrase.replace(/^ال/, 'ال'), en: englishFor(normalizedPhrase) || normalizedPhrase,
             fields: fieldsForKind(kind),
         } as ModelEntity);
+    }
+    const multiLink = /\blinked\s+to\s+both\b|\bassociated\s+with\s+both\b|مرتبط(?:ة|ه)?\s+بكليهما/iu.test(request);
+    if (multiLink) {
+        const event = entities.find(entity => entity.fields.some(field => field.key === 'date')
+            && entity.fields.some(field => field.key === 'time'));
+        const parents = entities.filter(entity => entity !== event
+            && entity.fields.some(field => field.key === 'phone'));
+        if (event && parents.length >= 2) {
+            event.relations = parents.slice(0, 2).map(parent => ({
+                entity: parent.key,
+                key: `${parent.key.replace(/ies$/, 'y').replace(/s$/, '')}_id`,
+            }));
+            event.belongsTo = event.relations[0];
+            for (const relation of [...event.relations].reverse()) {
+                if (!event.fields.some(field => field.key === relation.key)) {
+                    event.fields.unshift({ key: relation.key, type: 'INT', required: true, ar: relation.entity, en: relation.entity });
+                }
+            }
+            event.fields = event.fields.map(field => /^(?:date|time|at|status)$/i.test(field.key)
+                ? { ...field, required: true }
+                : field);
+        }
     }
     return { entities, capabilities };
 }

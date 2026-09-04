@@ -438,6 +438,30 @@ ${sels.join(',\n')} {
     };
 }
 
+/** Repair a phone contract the browser proved accepts non-digits. */
+export function repairSemanticInputValidation(code: string, evidence: any[] = []): RepairedFile {
+    let text = String(code || '');
+    let count = 0;
+    const badPatterns = Array.from(new Set((evidence || [])
+        .filter((item: any) => item?.expected === 'tel' && item?.rejected === false)
+        .map((item: any) => String(item?.pattern || '').trim())
+        .filter((pattern: string) => pattern && pattern !== '[0-9]{7,15}')));
+    for (const pattern of badPatterns) {
+        if (!/^\[[+0-9 ()\\-]+\]\{\d+,\d+\}$/.test(pattern)) continue;
+        const next = text.split(pattern).join('[0-9]{7,15}');
+        if (next !== text) count += text.split(pattern).length - 1;
+        text = next;
+    }
+    return {
+        text,
+        repairs: count ? [{
+            id: 'semantic_input_validation', count,
+            detail: 'جعلتُ حقل الهاتف يقبل الأرقام فقط بنمط صالح',
+            detailEn: 'Made the phone field accept digits only with a valid browser pattern',
+        }] : [],
+    };
+}
+
 /**
  * A finding without a safe selector is still a measured defect, not permission
  * to give up. This fallback uses semantic regions that commonly contain the
@@ -490,18 +514,21 @@ export function repairMeasuredContrast(css: string, evidence: any[], bump = 0): 
     const seen = new Set<string>();
     for (const e of Array.isArray(evidence) ? evidence : []) {
         const sel = String((e && e.sel) || '').trim();
-        if (!sel || seen.has(sel) || /[{}@;]/.test(sel) || sel.length > 160) continue;
+        if (!sel || seen.has(sel) || /[{}@;]/.test(sel) || sel.length > 320) continue;
         const fg = Array.isArray(e?.fg) && e.fg.length === 3 ? (e.fg as [number, number, number]) : null;
         const bg = Array.isArray(e?.bg) && e.bg.length === 3 ? (e.bg as [number, number, number]) : null;
         if (!fg || !bg) continue;
-        const need = Math.min(21, Math.max(3, Number(e?.need) || 4.5) + bump);
+        // Do not aim at the rounding boundary. A computed 4.500 can paint as
+        // 4.49 after CSS colour quantisation/compositing and fail the same
+        // browser check again. A tenth point is visually negligible.
+        const need = Math.min(21, Math.max(3, Number(e?.need) || 4.5) + 0.1 + bump);
         const fixed = toHex(fixForeground(fg, bg, need));
         seen.add(sel);
         rules.push(`${sel} { color: ${fixed}; }`);
         if (rules.length >= 24) break;
     }
     if (!rules.length) return { text, repairs: [] };
-    const marker = `إصلاح جو الجراحي: تباين قيس (${rules.length}/${bump})`;
+    const marker = `إصلاح جو الجراحي: تباين قيس (${rules.length}/${bump}/هامش-0.1)`;
     if (text.includes(marker)) return { text, repairs: [] };
     return {
         text: `${text}
@@ -716,6 +743,7 @@ export const REPAIRS_THIS_FILE_CAN_MAKE: ReadonlySet<string> = new Set([
     'small_targets', 'tap_targets', 'mobile_tap_targets',
     'mobile_overflow', 'responsive',
     'line_too_long', 'type_scale_drift', 'flat_hierarchy',
+    'semantic_input_validation',
 ]);
 
 
@@ -745,6 +773,7 @@ export function repairProjectFiles(
     };
     const hasFinding = (...ids: string[]) => (opts.findings || [])
         .some(f => ids.includes(String(f?.id)));
+    const targetedRun = Array.isArray(opts.findings) && opts.findings.length > 0;
     const smallEvidence = evidenceFor('small_targets', 'tap_targets', 'mobile_tap_targets');
     const mobileTapSelectors = safeSelectors(smallEvidence);
     const mobileTapNeedsFallback = hasFinding('mobile_tap_targets', 'small_targets', 'tap_targets')
@@ -757,6 +786,7 @@ export function repairProjectFiles(
     const mobileOverflowMeasured = mobileOverflowEvidence.length > 0
         || hasFinding('mobile_overflow', 'responsive');
     const contrastEvidence = evidenceFor('low_contrast', 'contrast');
+    const semanticEvidence = evidenceFor('semantic_input_validation');
     const out: Record<string, string> = {};
     const all: Repair[] = [];
     const merge = (rs: Repair[]) => {
@@ -775,6 +805,10 @@ export function repairProjectFiles(
             const r = repairHtmlShell(text, opts);
             text = r.text; merge(r.repairs);
         } else if (/\.(jsx|tsx)$/.test(lower)) {
+            if (semanticEvidence.length) {
+                const semantic = repairSemanticInputValidation(text, semanticEvidence);
+                text = semantic.text; merge(semantic.repairs);
+            }
             for (const fix of [repairImagesAlt, repairInputLabels, repairDeadLinks, repairHeadings, repairLazyImages, repairKeyboardControls, repairFormValidation]) {
                 const r = fix(text);
                 text = r.text; merge(r.repairs);
@@ -798,6 +832,7 @@ export function repairProjectFiles(
             // tap-target rule vanished from the file it had just been added to.
             const surgical = [
                 (t: string) => repairMeasuredTapTargets(t, smallEvidence, TAP_PX[Math.min(round, TAP_PX.length) - 1]),
+                (t: string) => repairMeasuredOverflow(t, mobileOverflowEvidence, round),
                 (t: string) => repairMeasuredContrast(t, contrastEvidence, (round - 1) * 1.5),
                 // …and the design counts that have a deterministic answer.
                 (t: string) => repairMeasure(t, evidenceFor('line_too_long')),
@@ -812,8 +847,10 @@ export function repairProjectFiles(
                 text = r.text; merge(r.repairs);
             }
             for (const fix of [
-                (t: string) => repairContrast(t, round),
-                (t: string) => repairTapTargets(t, round),
+                (t: string) => !targetedRun || hasFinding('contrast', 'low_contrast')
+                    ? repairContrast(t, round) : { text: t, repairs: [] },
+                (t: string) => !targetedRun || hasFinding('small_targets', 'tap_targets', 'mobile_tap_targets')
+                    ? repairTapTargets(t, round) : { text: t, repairs: [] },
                 (t: string) => repairMobileTapFallback(t, round, mobileTapNeedsFallback),
                 (t: string) => repairResponsive(t, mobileOverflowMeasured),
             ]) {
@@ -1004,6 +1041,39 @@ p, h1, h2, h3, li, td, dd { overflow-wrap: anywhere; }
   .products, .stats, .days, .rows { grid-template-columns: 1fr !important; }
 }
 `;
+
+/** Constrain the exact elements whose rendered boxes exceeded the viewport. */
+export function repairMeasuredOverflow(css: string, evidence: any[], round = 1): RepairedFile {
+    const text = String(css || '');
+    const sels = safeSelectors(evidence);
+    if (!sels.length) return { text, repairs: [] };
+    const marker = `Joe measured overflow targets (round ${Math.max(1, round)}): ${sels.join(' | ')}`;
+    if (text.includes(marker)) return { text, repairs: [] };
+    const block = `
+/* ${marker} */
+@media (max-width: 880px) {
+${sels.join(',\n')} {
+  box-sizing: border-box !important;
+  width: auto !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  max-inline-size: 100% !important;
+  min-inline-size: 0 !important;
+  overflow-wrap: anywhere;
+}
+
+}
+`;
+    return {
+        text: text + block,
+        repairs: [{
+            id: 'mobile_overflow',
+            detail: `قيّدتُ ${sels.length} عنصراً سمّاه قياس الهاتف بدل إخفاء تجاوز الصفحة`,
+            detailEn: `Constrained the ${sels.length} element(s) named by the phone measurement instead of hiding page overflow`,
+            count: sels.length,
+        }],
+    };
+}
 
 const RESPONSIVE_MEASURED_CSS = `
 /* ── إصلاح جو الجراحي: overflow قيس على الجوال ────────────────────────

@@ -29,6 +29,17 @@ type ActionFilter = 'all' | 'success' | 'failed';
 
 type Props = { sessionId: string; showBoxes?: boolean };
 
+export function fittedFrameRect(viewW: number, viewH: number, frameW: number, frameH: number) {
+  const safeViewW = Math.max(1, viewW);
+  const safeViewH = Math.max(1, viewH);
+  const safeFrameW = Math.max(1, frameW);
+  const safeFrameH = Math.max(1, frameH);
+  const scale = Math.min(safeViewW / safeFrameW, safeViewH / safeFrameH);
+  const width = safeFrameW * scale;
+  const height = safeFrameH * scale;
+  return { left: (safeViewW - width) / 2, top: (safeViewH - height) / 2, width, height };
+}
+
 export default function ModernBrowserStream({ sessionId, showBoxes = true }: Props) {
   const { t } = useTranslation();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -37,6 +48,7 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
   const [status, setStatus] = useState<'connecting' | 'connected' | 'error'>('connecting');
   const [w, setW] = useState(1280);
   const [h, setH] = useState(720);
+  const [viewSize, setViewSize] = useState({ w: 1, h: 1 });
   const [boxes, setBoxes] = useState<Array<{ x: number; y: number; width: number; height: number; label?: string }>>([]);
   const [lastStep, setLastStep] = useState<string>('');
   const [final, setFinal] = useState<{ ok: boolean; summary: string } | null>(null);
@@ -96,7 +108,9 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
     if (!el) return;
     const update = () => {
       const rect = el.getBoundingClientRect();
-      viewSizeRef.current = { w: Math.max(1, rect.width), h: Math.max(1, rect.height) };
+      const next = { w: Math.max(1, rect.width), h: Math.max(1, rect.height) };
+      viewSizeRef.current = next;
+      setViewSize(next);
     };
     update();
     const ro = new ResizeObserver(() => update());
@@ -125,9 +139,11 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
       lastRafTsRef.current = ts;
       const dt = Math.max(0.001, Math.min(0.06, dtMs / 1000));
       const view = viewSizeRef.current;
+      const frame = frameSizeRef.current;
+      const fitted = fittedFrameRect(view.w, view.h, frame.w, frame.h);
 
-      const tx = targetNorm.x * view.w;
-      const ty = targetNorm.y * view.h;
+      const tx = fitted.left + targetNorm.x * fitted.width;
+      const ty = fitted.top + targetNorm.y * fitted.height;
       const cur = cursorPosPxRef.current || { x: tx, y: ty };
 
       const follow = 1 - Math.pow(0.0001, dt);
@@ -328,6 +344,7 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
         }
         if (!msg) return;
         if (msg.type === 'stream_frame') {
+          frameSizeRef.current = { w: msg.w, h: msg.h };
           setW(msg.w);
           setH(msg.h);
           const frameNow = Date.now();
@@ -520,6 +537,7 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
   const filteredBrowserActions = browserActions.filter(matchesAction);
   const filteredActions = actions.filter(matchesLegacyAction);
   const browserUnavailable = status === 'error';
+  const displayFrame = fittedFrameRect(viewSize.w, viewSize.h, w, h);
 
   return (
     <div data-testid="browser-stream-root" style={{ width: '100%', height: '100%', overflow: 'hidden', background: '#0b0b0b', display: 'flex', flexDirection: 'column' }}>
@@ -562,8 +580,13 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
               canvas.focus();
             } catch { }
             const rect = canvas.getBoundingClientRect();
-            const rx = (e.clientX - rect.left) / Math.max(1, rect.width);
-            const ry = (e.clientY - rect.top) / Math.max(1, rect.height);
+            const fitted = fittedFrameRect(rect.width, rect.height, w, h);
+            const localX = e.clientX - rect.left;
+            const localY = e.clientY - rect.top;
+            if (localX < fitted.left || localX > fitted.left + fitted.width
+              || localY < fitted.top || localY > fitted.top + fitted.height) return;
+            const rx = (localX - fitted.left) / Math.max(1, fitted.width);
+            const ry = (localY - fitted.top) / Math.max(1, fitted.height);
             const x = Math.max(0, Math.min(w - 1, Math.round(rx * w)));
             const y = Math.max(0, Math.min(h - 1, Math.round(ry * h)));
             void flushType().finally(() => {
@@ -642,7 +665,15 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
               }, 150); // 150ms throttle window
             }
           }}
-          style={{ width: '100%', height: '100%', display: 'block', outline: 'none' }}
+          style={{
+            position: 'absolute',
+            left: displayFrame.left,
+            top: displayFrame.top,
+            width: displayFrame.width,
+            height: displayFrame.height,
+            display: 'block',
+            outline: 'none',
+          }}
         />
         {browserUnavailable ? (
           <div

@@ -787,7 +787,7 @@ Rules:
          */
         {
             const reviewVerb = /(راجع|مراجع(?:ة|ه)|افحص|فحص|دقّ?ق|تدقيق|اختبر|اختبار|review|audit|inspect|check|verify)/i.test(probe);
-            const qualityTarget = /(جودة|الجودة|تقرير|النتيجة|النتائج|المخرجات|التسليم|quality|report|result|output|deliverable)/i.test(probe);
+            const qualityTarget = /(جودة|الجودة|تقرير|النتيجة|النتائج|المخرجات|التسليم|quality|\bqa\b|browser\s+test(?:ing)?|report|result|output|delivery|deliverable)/i.test(probe);
             const explicitQualityReview = /(تقرير\s*الجودة|النتيجة\s*النهائية|quality\s*report|final\s+(?:result|output|deliverable))/i.test(probe);
             const built = findActiveBuiltProject(context?.sessionId);
             // A construction brief may contain its own QA, audit, and acceptance
@@ -805,7 +805,7 @@ Rules:
                         description: 'إعادة تدقيق البناء في متصفح حقيقي وإصلاح ما يظهر ثم إعادة البناء والقياس',
                         tool: 'project_repair',
                         agent: 'Dev',
-                        input: { projectDir: built.projectDir, auditDir: built.auditDir },
+                        input: { projectDir: built.projectDir, auditDir: built.auditDir, request: intent.goal },
                         dependsOn: [],
                     }],
                     metadata: { complexity: 'medium', riskLevel: 'low', matchedBy: 'active-built-project-quality-review' },

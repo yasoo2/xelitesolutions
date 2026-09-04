@@ -57,6 +57,27 @@ export const ROLES: RoleSpec[] = [
     },
 ];
 
+/**
+ * Keep the permission lattice stable while speaking the role names the user
+ * requested. The privileged name maps to owner; the operational name maps to
+ * staff. Unknown or ambiguous prose keeps the conservative defaults.
+ */
+export function rolesForRequest(requestRaw: string): RoleSpec[] {
+    const request = String(requestRaw || '');
+    const pair = request.match(/\b([a-z][a-z-]*)\s+and\s+([a-z][a-z-]*)\s+roles?\b/i);
+    if (!pair) return ROLES.map(role => ({ ...role }));
+    const names = [pair[1], pair[2]].map(name => name.toLowerCase());
+    const privileged = names.find(name => /^(?:admin|administrator|manager|owner|supervisor)$/.test(name));
+    const operational = names.find(name => name !== privileged);
+    if (!privileged || !operational) return ROLES.map(role => ({ ...role }));
+    const title = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
+    return ROLES.map(role => role.key === 'owner'
+        ? { ...role, en: title(privileged), noteEn: `${title(privileged)} access: every record, account, and role.` }
+        : role.key === 'staff'
+            ? { ...role, en: title(operational), noteEn: `${title(operational)} access: create and manage assigned operational records.` }
+            : { ...role });
+}
+
 /** The column that says whose row this is. One name, in every table. */
 export const OWNER_COLUMN = 'owner_id';
 
@@ -79,8 +100,8 @@ export function roleLabel(role: string, isAr: boolean): string {
 }
 
 /** What Joe tells the owner in the chat once the system is built. */
-export function describeRoles(isAr: boolean): string {
-    return ROLES.map(r => (isAr
+export function describeRoles(isAr: boolean, roles: RoleSpec[] = ROLES): string {
+    return roles.map(r => (isAr
         ? `• **${r.ar}** — ${r.noteAr}`
         : `• **${r.en}** — ${r.noteEn}`)).join('\n');
 }

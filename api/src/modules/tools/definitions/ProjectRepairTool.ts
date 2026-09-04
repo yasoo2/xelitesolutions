@@ -18,11 +18,42 @@
  * not measure, and if the repair made things worse the project is put back.
  */
 import fs from 'fs';
+import path from 'path';
 import { findActiveBuiltProject } from '../../../core/orchestrator/active-built-project';
 import { BaseTool } from '../base';
 import { ToolPermission, ToolExecutionResult } from '../types';
 import { broadcast, broadcastTerminalLine, broadcastThinkingDetail } from '../../../api/ws';
 import { isArabicReply } from '../../../shared/reply-language';
+
+export async function recoverPackagedQaAuth(packagedDir: string): Promise<any | null> {
+    const dbFile = path.join(packagedDir, 'db.js');
+    const authFile = path.join(packagedDir, 'auth.js');
+    if (!fs.existsSync(dbFile) || !fs.existsSync(authFile)) return null;
+    try {
+        const { pathToFileURL } = require('url');
+        const nativeImport = new Function('specifier', 'return import(specifier)');
+        const nonce = `joeqa=${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        const load = async (file: string) => {
+            try {
+                const resolved = require.resolve(file);
+                delete require.cache[resolved];
+                return require(resolved);
+            } catch (error: any) {
+                if (!['ERR_REQUIRE_ESM', 'ERR_REQUIRE_ASYNC_MODULE'].includes(String(error?.code || ''))) throw error;
+                return nativeImport(`${pathToFileURL(file).href}?${nonce}`);
+            }
+        };
+        const [dbModule, authModule] = await Promise.all([load(dbFile), load(authFile)]);
+        const users = typeof dbModule?.db?.listUsers === 'function' ? dbModule.db.listUsers() : [];
+        const owner = users.find((user: any) => user?.role === 'owner') || users[0];
+        if (!owner || typeof authModule?.signToken !== 'function') return null;
+        const token = String(authModule.signToken(owner) || '');
+        if (!token) return null;
+        return { token, role: owner.role || 'owner', tokenStorageKey: 'joe:auth', route: '/' };
+    } catch {
+        return null;
+    }
+}
 
 export class ProjectRepairTool extends BaseTool {
     name = 'project_repair';
@@ -33,6 +64,7 @@ export class ProjectRepairTool extends BaseTool {
     inputSchema = {
         type: 'object' as const,
         properties: {
+            request: { type: 'string' as const, description: 'The user request, retained for response language and scope.' },
             projectDir: { type: 'string' as const, description: 'Project folder. Defaults to this session\'s active built project.' },
             auditDir: { type: 'string' as const, description: 'Optional built-output folder selected from workspace evidence.' },
             serveUrl: { type: 'string' as const, description: 'Optional live URL to audit instead of a private static preview.' },
@@ -85,8 +117,46 @@ export class ProjectRepairTool extends BaseTool {
         const { auditBuiltApp } = require('../../../core/quality/app-audit');
         const { PANEL_BROWSER_SID } = require('./BrowserSmartTools');
         const watchSessionId = String(input?.watchSessionId || context?.browserSessionId || PANEL_BROWSER_SID || '').trim();
-        const serveUrl = String(input?.serveUrl || '').trim();
+        const projectEntry = projects[sessionKey] || {};
+        let serveUrl = String(input?.serveUrl || projectEntry?.live?.url || '').trim();
+        let runtimeAuth = input?.credentials || projectEntry?.runtimeAuth;
         const artifactRootDir = String(input?.artifactRootDir || process.env.ARTIFACT_DIR || '/tmp/joe-artifacts').trim();
+
+        // A same-session repair often arrives after the original API process
+        // stopped. Auditing dist/ alone makes every real /api request look
+        // "unverified", so revive the packaged full stack before measuring.
+        // This is the system Joe built, not a mock QA server.
+        const packagedDir = String(projectEntry?.packagedInto || '').trim();
+        if (!runtimeAuth && packagedDir) {
+            runtimeAuth = await recoverPackagedQaAuth(packagedDir);
+            if (runtimeAuth) term('repair: recovered a short-lived local QA token — protected screens will be tested');
+        }
+        if ((!serveUrl || !(await this.urlAnswers(serveUrl)))
+            && packagedDir && fs.existsSync(path.join(packagedDir, 'server.js'))
+            && fs.existsSync(path.join(packagedDir, 'node_modules'))) {
+            const port = 4600 + Math.floor(Math.random() * 300);
+            try {
+                const { executionEngine } = require('../../../kernel/ExecutionEngine');
+                const child = executionEngine.runArgvStreaming(process.execPath, ['server.js'], {
+                    cwd: packagedDir,
+                    env: { PORT: String(port), NODE_NO_WARNINGS: '1' },
+                    onLine: (line: string) => term(`  ${line.slice(0, 160)}`),
+                });
+                const candidate = `http://127.0.0.1:${port}/`;
+                for (let i = 0; i < 30 && !(await this.urlAnswers(candidate)); i++) {
+                    await new Promise(resolve => setTimeout(resolve, 250));
+                }
+                if (await this.urlAnswers(candidate)) {
+                    serveUrl = candidate;
+                    projectEntry.live = { url: candidate, port, pid: child.pid, cwd: packagedDir, at: Date.now() };
+                    term(`repair: revived the packaged system at ${candidate} — browser QA includes its real API`);
+                } else {
+                    try { child.kill(); } catch { /* already stopped */ }
+                }
+            } catch (error: any) {
+                term(`repair: packaged system could not be revived — ${String(error?.message || error).slice(0, 160)}`);
+            }
+        }
 
         // Open the panel and WAIT for it, exactly as the builder does: a repair
         // he was told he could watch must not be over before he can look.
@@ -107,7 +177,9 @@ export class ProjectRepairTool extends BaseTool {
         const before = await auditBuiltApp(auditDir, {
             timeoutMs: 30_000, watchSessionId: watchSessionId || undefined,
                 requireVisibleBrowser: true,
+                requireAuthenticatedCoverage: true,
                 ...(serveUrl ? { serveUrl } : {}),
+                ...(runtimeAuth ? { credentials: runtimeAuth } : {}),
                 artifactRootDir,
             onProgress: (where: string) => {
                 if (where.startsWith('private')) {
@@ -127,6 +199,20 @@ export class ProjectRepairTool extends BaseTool {
         }
         const blockersBefore = (before.findings || []).filter((f: any) => f.severity === 'high');
         term(`repair: before = ${before.score}/100${before.findings.length ? ` — ${before.findings.map((f: any) => f.id).join(', ')}` : ' — clean'}`);
+
+        const { findingText } = require('../../../core/quality/app-audit');
+        if (before.findings.length) {
+            const visible = before.findings.slice(0, 3).map((f: any) => `• ${findingText(f, isAr)}`).join('\n');
+            say(isAr
+                ? `وجد فحص المتصفح ${before.findings.length} مشكلة أو فجوة تغطية:\n${visible}\nأحدد ملفاتها، أصلحها، ثم أعيد الاختبار نفسه.`
+                : `Browser QA found ${before.findings.length} defect or coverage gap:\n${visible}\nI am mapping each one to its source, repairing it, then rerunning the same test.`);
+            for (const finding of before.findings) {
+                term(`repair finding ${finding.id}: ${findingText(finding, false)}`);
+                if (Array.isArray(finding.evidence) && finding.evidence.length) {
+                    term(`repair evidence ${finding.id}: ${JSON.stringify(finding.evidence.slice(0, 8)).slice(0, 1400)}`);
+                }
+            }
+        }
 
         if (!before.findings.length) {
             const clean = isAr
@@ -162,6 +248,12 @@ export class ProjectRepairTool extends BaseTool {
                 onLine: (line: string) => term(`  ${line.slice(0, 200)}`),
                 onNote: term,
             }).catch(() => ({ ok: false }));
+            if (rb.ok === true && packagedDir && fs.existsSync(auditDir)) {
+                const target = path.join(packagedDir, 'public');
+                fs.rmSync(target, { recursive: true, force: true });
+                fs.cpSync(auditDir, target, { recursive: true });
+                term('repair: copied the rebuilt interface into its live API before re-measuring');
+            }
             return rb.ok === true;
         };
         const snapshot = (label: string): string => {
@@ -204,7 +296,9 @@ export class ProjectRepairTool extends BaseTool {
                 timeoutMs: 30_000,
                 watchSessionId: watchSessionId || undefined,
                 requireVisibleBrowser: true,
+                requireAuthenticatedCoverage: true,
                 ...(serveUrl ? { serveUrl } : {}),
+                ...(runtimeAuth ? { credentials: runtimeAuth } : {}),
                 artifactRootDir,
                 onProgress: (where: string) => {
                     if (where === 'watching') say(isAr ? '👁️ القياس المقيس يجري الآن أمامك في لوحة المتصفّح' : '👁️ The measured round is running in the Browser panel');
@@ -251,23 +345,25 @@ export class ProjectRepairTool extends BaseTool {
 
         // «• 3 خطأ كونسول» inside an English message: the findings carry both
         // languages now, and this picks the reader's.
-        const { findingText } = require('../../../core/quality/app-audit');
         const said = (f: any) => findingText(f, isAr);
         const lines: string[] = [];
         lines.push(isAr
             ? `🔁 دورة التحسين المقيسة: ${before.score}/100 → ${finalMeasurement.score}/100 عبر ${loop.rounds.length} جولة، وتوقفت لأن: ${loop.stoppedBecause}.`
             : `🔁 Measured improvement loop: ${before.score}/100 → ${finalMeasurement.score}/100 across ${loop.rounds.length} round(s), stopped because: ${loop.stoppedBecause}.`);
-        for (const f of paidFiles) lines.push(`   • ${isAr ? 'عُدّل' : 'edited'}: ${f}`);
-        lines.push(improveSummary(loop, isAr));
-        if (blockers.length) {
-            lines.push(isAr ? `⛔ وما زال لا يعمل كما ينبغي — ${blockers.length} عطل جوهري:` : `⛔ Still not working properly — ${blockers.length} blocking finding(s):`);
-            for (const f of blockers) lines.push(`   • ${said(f)}`);
+        if (paidFiles.length) {
             lines.push(isAr
-                ? '   ↳ هذه لا أستطيع إصلاحها وحدي — أخبرني بما تريده فيها بالضبط.'
-                : '   ↳ These I cannot fix alone — tell me exactly what you want done about them.');
-        } else if (remaining.length) {
-            lines.push(isAr ? '⚠️ بقيت ملاحظات غير جوهرية:' : '⚠️ Non-blocking findings remain:');
+                ? `عُدّلت ${paidFiles.length} ملفات مرتبطة بالمشكلة؛ أسماؤها وتغييراتها في Logs.`
+                : `Edited ${paidFiles.length} files tied to the finding; names and changes are in Logs.`);
+        }
+        lines.push(improveSummary(loop, isAr));
+        if (remaining.length) {
+            lines.push(isAr
+                ? `⛔ لم أقبل الإصلاح — بقيت ${remaining.length} مشكلة أو فجوة تغطية:`
+                : `⛔ Repair not accepted — ${remaining.length} defect or coverage gap remains:`);
             for (const f of remaining) lines.push(`   • ${said(f)}`);
+            lines.push(isAr
+                ? '   ↳ لم أنتقل للخطوة التالية، والأدلة الكاملة محفوظة في Logs.'
+                : '   ↳ I did not move to the next phase; the complete evidence remains in Logs.');
         } else {
             lines.push(isAr ? '✅ ولم يبقَ شيء.' : '✅ Nothing left.');
         }
@@ -283,7 +379,10 @@ export class ProjectRepairTool extends BaseTool {
         } catch { /* memory is a bonus */ }
 
         return {
-            ok: true,
+            ok: remaining.length === 0,
+            ...(remaining.length ? {
+                error: `quality_findings_survived: ${remaining.slice(0, 5).map((f: any) => String(f.id || 'unnamed')).join(', ')}`,
+            } : {}),
             output: {
                 message: lines.join('\n'),
                 before: before.score,
@@ -293,8 +392,16 @@ export class ProjectRepairTool extends BaseTool {
                 stoppedBecause: loop.stoppedBecause,
                 remaining: remaining.map((f: any) => f.id),
                 blockersBefore: blockersBefore.map((f: any) => f.id),
+                verificationFailed: remaining.length > 0,
             },
             logs,
         } as any;
+    }
+
+    private async urlAnswers(url: string): Promise<boolean> {
+        try {
+            const response = await fetch(String(url).replace(/\/+$/, '') + '/', { redirect: 'follow' });
+            return response.status === 200;
+        } catch { return false; }
     }
 }

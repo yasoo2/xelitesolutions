@@ -26,7 +26,7 @@ import { BaseTool } from '../base';
 import { ToolPermission, ToolExecutionResult } from '../types';
 import { brandFrom, brandFallback } from '../../../core/design/page-head';
 import { detectPageKind, type PageKind } from '../../../core/design/blueprints';
-import { ROLES, describeRoles } from '../../../core/design/roles';
+import { ROLES, describeRoles, rolesForRequest, type RoleSpec } from '../../../core/design/roles';
 import { broadcast, broadcastThinkingDetail, broadcastTerminalLine } from '../../../api/ws';
 import { openTerminal } from '../../../core/quality/terminal-session';
 import { persistJoeProjects, writeJoeProject } from '../../../api/page-store';
@@ -193,6 +193,11 @@ export function selectApiPrimary(
     ));
     const exactTokens = new Set((String(request || '').match(/[A-Za-z][A-Za-z0-9_]*/g) || [])
         .map(token => token.toLowerCase()));
+    const keyWasNamed = (key: string): boolean => {
+        const value = String(key || '').toLowerCase();
+        const singular = value.replace(/ies$/, 'y').replace(/(?:ches|shes|xes|zes)$/, match => match.slice(0, -2)).replace(/s$/, '');
+        return exactTokens.has(value) || exactTokens.has(singular);
+    };
     /**
      *  AN INTERFACE AND ITS SERVICE, NAMED BY TWO DIFFERENT READERS.
      *
@@ -228,13 +233,13 @@ export function selectApiPrimary(
             declaredKey = String(reading.entities[0]?.key || '').toLowerCase();
         }
     } catch { declaredKey = ''; }
+    const knownPrimary = !!picked.resource && picked.generic !== true && appKind !== 'generic';
     const explicitKeys = Array.from(new Set([
         ...listedKeys,
         ...(declaredKey ? [declaredKey] : []),
-        ...(designed || []).map(entity => String(entity?.key || '').toLowerCase())
-            .filter(key => key && exactTokens.has(key)),
+        ...(!knownPrimary ? (designed || []).map(entity => String(entity?.key || '').toLowerCase())
+            .filter(key => key && keyWasNamed(key)) : []),
     ]));
-    const knownPrimary = !!picked.resource && picked.generic !== true && appKind !== 'generic';
     if (knownPrimary) {
         return { promoted: null, resource: picked.resource, labelAr: picked.labelAr, explicitKeys };
     }
@@ -1225,11 +1230,42 @@ export { db };
  * Same dual backend as db.js: node:sqlite when this Node has it, a JSON file
  * with the same interface otherwise. Zero native dependencies either way.
  */
-function fileEntitiesJs(entities: any[]): string {
-    const MODEL = JSON.stringify(entities.map(e => ({
+function fileEntitiesJs(entities: any[], request = ''): string {
+    const asksAudit = /\baudit(?:\s+(?:log|trail|history))?\b|سجل\s*التدقيق|تاريخ\s*التغييرات/iu.test(request);
+    const asksDoubleBooking = /\bdouble[- ]?book(?:ing)?\b|منع\s*(?:تضارب|تكرار)\s*(?:المواعيد|الحجوزات)/iu.test(request);
+    const asksTransitions = /\bstatus\s+transitions?\b|انتقالات?\s*الحالة/iu.test(request);
+    const asksSearch = /\bsearch(?:ing)?\b|\bfilter(?:ing|s)?\b|بحث|تصفية/iu.test(request);
+    const prepared = entities.map(e => {
+        const relations = Array.isArray(e.relations) && e.relations.length ? e.relations : (e.belongsTo ? [e.belongsTo] : []);
+        const temporal = (e.fields || []).filter((field: any) => /^(?:at|date|time|starts_at|scheduled_at)$/i.test(field.key));
+        const scheduling = relations.length >= 2 && temporal.length > 0;
+        const fields = (e.fields || []).map((field: any) => ({
+            ...field,
+            required: scheduling && /^(?:at|date|time|status)$/i.test(field.key) ? true : !!field.required,
+        }));
+        if (scheduling && asksAudit && !fields.some((field: any) => field.key === 'audit_history')) {
+            fields.push({ key: 'audit_history', type: 'TEXT', required: false });
+        }
+        return { ...e, fields, relations };
+    });
+    const schedulingEntity = prepared.find(e => e.relations.length >= 2
+        && e.fields.some((field: any) => /^(?:at|date|time|starts_at|scheduled_at)$/i.test(field.key)));
+    const POLICY = schedulingEntity ? {
+        entity: schedulingEntity.key,
+        relationKeys: schedulingEntity.relations.map((relation: any) => relation.key),
+        timeKeys: schedulingEntity.fields.filter((field: any) => /^(?:at|date|time|starts_at|scheduled_at)$/i.test(field.key)).map((field: any) => field.key),
+        audit: asksAudit,
+        doubleBooking: asksDoubleBooking,
+        transitions: asksTransitions,
+        search: asksSearch,
+    } : null;
+    const MODEL = JSON.stringify(prepared.map(e => ({
         key: e.key,
         fields: e.fields.map((f: any) => ({ key: f.key, type: f.type, required: !!f.required })),
         belongsTo: e.belongsTo || null,
+        relations: Array.isArray(e.relations) && e.relations.length
+            ? e.relations
+            : (e.belongsTo ? [e.belongsTo] : []),
     })));
     return `// The system's other tables — generated from the model Joe derived from your
 // request. Each one has its own CRUD, its own validation, and a foreign key
@@ -1240,6 +1276,7 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const MODEL = ${MODEL};
+const POLICY = ${JSON.stringify(POLICY)};
 
 const cast = (c, v) => {
   if (c.type === 'REAL') return Number(v || 0);
@@ -1263,8 +1300,9 @@ function validate(entity, body, tables) {
     if (v !== undefined && f.type !== 'REAL' && String(v).length > cap) return { error: 'too_long_' + f.key };
   }
   // A link that can dangle is not a relation.
-  const rel = entity.belongsTo;
-  if (rel) {
+  const relations = Array.isArray(entity.relations) && entity.relations.length
+    ? entity.relations : (entity.belongsTo ? [entity.belongsTo] : []);
+  for (const rel of relations) {
     const raw = b[rel.key];
     if (raw !== undefined && raw !== null && String(raw) !== '') {
       const parent = tables[rel.entity];
@@ -1273,6 +1311,29 @@ function validate(entity, body, tables) {
     }
   }
   return null;
+}
+
+const policyFor = (key) => POLICY && POLICY.entity === key ? POLICY : null;
+const readAudit = (value) => {
+  try { const out = JSON.parse(String(value || '[]')); return Array.isArray(out) ? out : []; }
+  catch { return []; }
+};
+const withAudit = (body, current, actor, action) => ({
+  ...(body || {}),
+  audit_history: JSON.stringify([...readAudit(current && current.audit_history), {
+    action, actor: String(actor || ''), at: new Date().toISOString(),
+  }]),
+});
+const activeStatus = (row) => !['cancelled', 'canceled'].includes(String(row && row.status || '').toLowerCase());
+function bookingConflict(table, policy, body, skipId) {
+  if (!policy || !policy.doubleBooking) return null;
+  return table.list(null).find((row) => Number(row.id) !== Number(skipId || 0) && activeStatus(row)
+    && policy.timeKeys.every((key) => String(row[key] ?? '') === String(body[key] ?? ''))
+    && policy.relationKeys.some((key) => String(row[key] ?? '') === String(body[key] ?? ''))) || null;
+}
+function transitionAllowed(from, to) {
+  const flow = { scheduled: ['confirmed', 'cancelled'], confirmed: ['completed', 'cancelled'], completed: [], cancelled: [] };
+  return from === to || (flow[String(from || 'scheduled').toLowerCase()] || []).includes(String(to || '').toLowerCase());
 }
 
 let store;
@@ -1395,7 +1456,17 @@ export function mountEntities(app, guards) {
   const { requireAuth, optionalAuth, requireWrite, scopeOf, mayTouch } = guards;
   for (const key of Object.keys(store.tables)) {
     const t = store.tables[key];
-    app.get('/api/' + key, optionalAuth, (req, res) => res.json({ ok: true, [key]: t.list(scopeOf(req)) }));
+    app.get('/api/' + key, optionalAuth, (req, res) => {
+      let rows = t.list(scopeOf(req));
+      const policy = policyFor(key);
+      const query = String((req.query || {}).q || '').trim().toLowerCase();
+      if (policy && policy.search && query) rows = rows.filter((row) => Object.values(row).some((value) => String(value ?? '').toLowerCase().includes(query)));
+      for (const [field, value] of Object.entries(req.query || {})) {
+        if (field === 'q' || value === undefined || value === '') continue;
+        if (t.entity.fields.some((column) => column.key === field)) rows = rows.filter((row) => String(row[field] ?? '') === String(value));
+      }
+      res.json({ ok: true, [key]: rows });
+    });
     app.get('/api/' + key + '/:id', optionalAuth, (req, res) => {
       const row = t.get(req.params.id);
       if (!row) return res.status(404).json({ ok: false, error: 'not_found' });
@@ -1404,19 +1475,33 @@ export function mountEntities(app, guards) {
       res.json({ ok: true, row });
     });
     app.post('/api/' + key, requireAuth, requireWrite, (req, res) => {
-      const bad = validate(t.entity, req.body, store.tables);
+      const policy = policyFor(key);
+      let body = { ...(req.body || {}) };
+      if (policy && policy.transitions && !body.status) body.status = 'scheduled';
+      if (policy && policy.audit) body = withAudit(body, null, req.user.email, 'created');
+      const bad = validate(t.entity, body, store.tables);
       if (bad) return res.status(400).json({ ok: false, ...bad });
+      if (bookingConflict(t, policy, body, 0)) return res.status(409).json({ ok: false, error: 'double_booking' });
       // The owner of a new row is the ACCOUNT that wrote it — never a value
       // out of the body, which anyone could put there.
-      res.status(201).json({ ok: true, row: t.create(req.body, req.user.id) });
+      res.status(201).json({ ok: true, row: t.create(body, req.user.id) });
     });
     app.put('/api/' + key + '/:id', requireAuth, requireWrite, (req, res) => {
       const cur = t.get(req.params.id);
       if (!cur) return res.status(404).json({ ok: false, error: 'not_found' });
       if (!mayTouch(req, cur)) return res.status(403).json({ ok: false, error: 'not_your_row' });
-      const bad = validate(t.entity, { ...cur, ...(req.body || {}) }, store.tables);
+      const policy = policyFor(key);
+      let body = { ...cur, ...(req.body || {}) };
+      if (policy && policy.transitions && req.body && req.body.status !== undefined
+          && !transitionAllowed(cur.status, req.body.status)) {
+        return res.status(409).json({ ok: false, error: 'invalid_status_transition' });
+      }
+      if (policy && policy.audit) body = withAudit(body, cur, req.user.email,
+        String(body.status) !== String(cur.status) ? 'status_changed' : 'updated');
+      const bad = validate(t.entity, body, store.tables);
       if (bad) return res.status(400).json({ ok: false, ...bad });
-      const row = t.update(req.params.id, req.body);
+      if (bookingConflict(t, policy, body, req.params.id)) return res.status(409).json({ ok: false, error: 'double_booking' });
+      const row = t.update(req.params.id, body);
       if (!row) return res.status(404).json({ ok: false, error: 'not_found' });
       res.json({ ok: true, row });
     });
@@ -1428,8 +1513,9 @@ export function mountEntities(app, guards) {
       res.json({ ok: true });
     });
     // The children of one parent, as their own address.
-    const rel = t.entity.belongsTo;
-    if (rel) {
+    const relations = Array.isArray(t.entity.relations) && t.entity.relations.length
+      ? t.entity.relations : (t.entity.belongsTo ? [t.entity.belongsTo] : []);
+    for (const rel of relations) {
       app.get('/api/' + rel.entity + '/:id/' + key, optionalAuth, (req, res) => {
         const rows = t.list(scopeOf(req)).filter((r) => String(r[rel.key]) === String(Number(req.params.id)));
         res.json({ ok: true, [key]: rows });
@@ -1440,7 +1526,7 @@ export function mountEntities(app, guards) {
 `;
 }
 
-function fileAuthJs(): string {
+function fileAuthJs(roles: RoleSpec[] = ROLES): string {
     return `
 /**
  * auth.js — real accounts, with nothing but Node's own crypto.
@@ -1588,7 +1674,7 @@ export function optionalAuth(req, _res, next) {
  * effect the moment you press the button, not twelve hours later when their
  * token expires.
  */
-export const ROLES = ${JSON.stringify(ROLES.map(r => ({
+export const ROLES = ${JSON.stringify(roles.map(r => ({
         key: r.key, ar: r.ar, en: r.en, write: r.write, ownRowsOnly: r.ownRowsOnly, manageUsers: r.manageUsers,
     })))};
 
@@ -2329,6 +2415,7 @@ export class ApiProjectTool extends BaseTool {
          */
         const { stripDeclaredOptions } = require('../../../core/design/app-blueprints');
         const requestForReading = stripDeclaredOptions(request);
+        const roleSpecs = rolesForRequest(requestForReading);
         const kind = detectPageKind(requestForReading);
         const { detectAppKind, hasWorkflowApplicationContract } = require('../../../core/design/app-blueprints');
         // This is the authoritative application contract used to choose the
@@ -2659,8 +2746,8 @@ export class ApiProjectTool extends BaseTool {
             'package.json': filePackageJson(brand),
             'server.js': filePostsServerJs(brand, model),
             'db.js': filePostsDbJs(),
-            ...(model.length ? { 'entities.js': fileEntitiesJs(model) } : {}),
-            'auth.js': fileAuthJs(),
+            ...(model.length ? { 'entities.js': fileEntitiesJs(model, requestForReading) } : {}),
+            'auth.js': fileAuthJs(roleSpecs),
             'seed.js': fileSeedJs([], { email: ownerEmail, salt: ownerSalt, hash: ownerHash }),
             'README.md': filePostsReadme(brand),
             '.gitignore': 'node_modules\ndata.db\ndata.json\n.auth-secret\n',
@@ -2668,8 +2755,8 @@ export class ApiProjectTool extends BaseTool {
             'package.json': filePackageJson(brand),
             'server.js': fileServerJs(resource, brand, path.basename(proj), relation, model, privateWorkflow, workflowApplication),
             'db.js': fileDbJs(resource, columns, relation, !workflowApplication),
-            ...(model.length ? { 'entities.js': fileEntitiesJs(model) } : {}),
-            'auth.js': fileAuthJs(),
+            ...(model.length ? { 'entities.js': fileEntitiesJs(model, requestForReading) } : {}),
+            'auth.js': fileAuthJs(roleSpecs),
             'seed.js': fileSeedJs(seeds, { email: ownerEmail, salt: ownerSalt, hash: ownerHash }),
             'README.md': fileReadme(brand, resource, labelAr, ownerEmail, relation, privateWorkflow, workflowApplication),
             // .auth-secret holds the token-signing key: it must never be committed.
@@ -2967,6 +3054,91 @@ export class ApiProjectTool extends BaseTool {
                             }).catch(() => null);
                         }
 
+                        // A multi-table system is proved by its own tables, not
+                        // by the generic primary collection that happens to
+                        // share the server process.
+                        if (model.length) {
+                            const auth = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
+                            const madeByTable: Record<string, { id: number; body: Record<string, any>; row: any }> = {};
+                            let entityProven = true;
+                            for (const entity of model) {
+                                const body: Record<string, any> = {};
+                                const relations = Array.isArray(entity.relations) && entity.relations.length
+                                    ? entity.relations : (entity.belongsTo ? [entity.belongsTo] : []);
+                                for (const field of entity.fields || []) {
+                                    const rel = relations.find((candidate: any) => candidate.key === field.key);
+                                    if (rel && madeByTable[rel.entity]) body[field.key] = madeByTable[rel.entity].id;
+                                    else if (field.key === 'date') body[field.key] = '2030-04-02';
+                                    else if (field.key === 'time') body[field.key] = '10:30';
+                                    else if (field.key === 'at' || field.key === 'starts_at' || field.key === 'scheduled_at') body[field.key] = '2030-04-02T10:30:00Z';
+                                    else if (field.key === 'status') body[field.key] = 'scheduled';
+                                    else if (field.required) body[field.key] = field.type === 'REAL' ? 1 : field.type === 'INT' ? 1 : `Live proof ${entity.key}`;
+                                }
+                                const madeEntity: any = await fetch(`${base}/api/${entity.key}`, {
+                                    method: 'POST', headers: auth, body: JSON.stringify(body),
+                                }).then(r => r.json().then(value => ({ status: r.status, value }))).catch(() => null);
+                                const id = Number(madeEntity?.value?.row?.id || 0);
+                                const listedEntity: any = await fetch(`${base}/api/${entity.key}`, { headers: auth })
+                                    .then(r => r.json()).catch(() => null);
+                                const row = Array.isArray(listedEntity?.[entity.key])
+                                    ? listedEntity[entity.key].find((item: any) => Number(item.id) === id) : null;
+                                entityProven = entityProven && madeEntity?.status === 201 && id > 0 && !!row;
+                                madeByTable[entity.key] = { id, body, row };
+                                term(`entity proof → ${entity.key} #${id || '—'} ${row ? 'written and read back' : 'FAILED'}`);
+                            }
+
+                            const scheduled = model.find((entity: any) => {
+                                const relations = Array.isArray(entity.relations) && entity.relations.length
+                                    ? entity.relations : (entity.belongsTo ? [entity.belongsTo] : []);
+                                return relations.length >= 2 && (entity.fields || []).some((field: any) => /^(?:at|date|time|starts_at|scheduled_at)$/i.test(field.key));
+                            });
+                            if (scheduled && madeByTable[scheduled.key]) {
+                                const proof = madeByTable[scheduled.key];
+                                const wantsDoubleBooking = /\bdouble[- ]?book(?:ing)?\b|منع\s*(?:تضارب|تكرار)\s*(?:المواعيد|الحجوزات)/iu.test(requestForReading);
+                                const wantsTransitions = /\bstatus\s+transitions?\b|انتقالات?\s*الحالة/iu.test(requestForReading);
+                                const wantsAudit = /\baudit(?:\s+(?:log|trail|history))?\b|سجل\s*التدقيق|تاريخ\s*التغييرات/iu.test(requestForReading);
+                                const relations = Array.isArray(scheduled.relations) && scheduled.relations.length
+                                    ? scheduled.relations : [scheduled.belongsTo];
+                                const duplicate = await fetch(`${base}/api/${scheduled.key}`, {
+                                    method: 'POST', headers: auth, body: JSON.stringify(proof.body),
+                                }).then(r => r.status).catch(() => 0);
+                                const danglingBody = { ...proof.body, [relations[relations.length - 1].key]: 999999 };
+                                const dangling = await fetch(`${base}/api/${scheduled.key}`, {
+                                    method: 'POST', headers: auth, body: JSON.stringify(danglingBody),
+                                }).then(r => r.status).catch(() => 0);
+                                const confirmed: any = await fetch(`${base}/api/${scheduled.key}/${proof.id}`, {
+                                    method: 'PUT', headers: auth, body: JSON.stringify({ status: 'confirmed' }),
+                                }).then(r => r.json().then(value => ({ status: r.status, value }))).catch(() => null);
+                                const invalidTransition = await fetch(`${base}/api/${scheduled.key}/${proof.id}`, {
+                                    method: 'PUT', headers: auth, body: JSON.stringify({ status: 'scheduled' }),
+                                }).then(r => r.status).catch(() => 0);
+                                const searched: any = await fetch(`${base}/api/${scheduled.key}?q=${encodeURIComponent(String(proof.body.title || 'Live proof'))}`, { headers: auth })
+                                    .then(r => r.json()).catch(() => null);
+                                const filtered: any = await fetch(`${base}/api/${scheduled.key}?status=confirmed`, { headers: auth })
+                                    .then(r => r.json()).catch(() => null);
+                                const audit = (() => {
+                                    try { return JSON.parse(String(confirmed?.value?.row?.audit_history || '[]')); }
+                                    catch { return []; }
+                                })();
+                                const policyProven = (!wantsDoubleBooking || duplicate === 409) && dangling === 400
+                                    && confirmed?.status === 200 && confirmed?.value?.row?.status === 'confirmed'
+                                    && (!wantsTransitions || invalidTransition === 409)
+                                    && Array.isArray(searched?.[scheduled.key]) && searched[scheduled.key].some((row: any) => Number(row.id) === proof.id)
+                                    && Array.isArray(filtered?.[scheduled.key]) && filtered[scheduled.key].some((row: any) => Number(row.id) === proof.id)
+                                    && (!wantsAudit || (Array.isArray(audit) && ['created', 'status_changed'].every(action => audit.some((event: any) => event.action === action))));
+                                entityProven = entityProven && policyProven;
+                                term(`scheduling proof → duplicate ${duplicate}, dangling link ${dangling}, transition ${confirmed?.status || 0}, invalid transition ${invalidTransition}, search ${searched?.[scheduled.key]?.length || 0}, filter ${filtered?.[scheduled.key]?.length || 0}, audit ${audit.map((event: any) => event.action).join(',') || 'FAILED'}`);
+                            }
+                            for (const entity of [...model].reverse()) {
+                                const id = madeByTable[entity.key]?.id;
+                                if (id) await fetch(`${base}/api/${entity.key}/${id}`, {
+                                    method: 'DELETE', headers: { Authorization: `Bearer ${token}` },
+                                }).catch(() => null);
+                            }
+                            proven = proven && entityProven;
+                            term(`system model proof → ${entityProven ? 'OK' : 'FAILED'} (${Object.keys(madeByTable).length}/${model.length} tables exercised)`);
+                        }
+
                         /**
                          * THE LINK IS PROVED LIKE EVERYTHING ELSE: BY USING IT.
                          *
@@ -3085,7 +3257,7 @@ export class ApiProjectTool extends BaseTool {
                 // Coordinated workflow apps own the primary signed-in surface
                 // and use the shared store token. Presentation/catalogue apps
                 // still expose their protected surface through AdminPanel.
-                tokenStorageKey: workflowApplication ? 'joe:auth:/' : `joe-admin-token:${brand || 'app'}`,
+                tokenStorageKey: workflowApplication ? 'joe:auth' : `joe-admin-token:${brand || 'app'}`,
                 route: workflowApplication ? '/' : '#/admin',
             } } : {}),
         }, currentPipelineRunId);
@@ -3179,7 +3351,7 @@ ${model.map((e: any) => `   • ${e.ar} → /api/${e.key}${e.belongsTo ? ` (مر
    أمثلة curl جاهزة داخل README.md
 
 👥 فريقك — النظام لم يعد لشخص واحد:
-${describeRoles(true)}
+${describeRoles(true, roleSpecs)}
    إنشاء حساب: POST /api/auth/users {email, role} — كلمة مروره تُولَّد وتظهر **مرة واحدة**
    الأدوار: GET · PUT · DELETE /api/auth/users — للمالك وحده (غيره يُجاب 403)
    ⚠️ الموظّف لا يرى صفوف غيره ولا يلمسها (403 not_your_row)، والصفوف المكتوبة
@@ -3214,7 +3386,7 @@ ${model.map((e: any) => `   • ${e.en} → /api/${e.key}${e.belongsTo ? ` (link
 Protected (Bearer token from POST /api/auth/login): catalogue writes · GET /api/orders`}
 
 Team — three roles, accounts made from inside the system:
-${describeRoles(false)}
+${describeRoles(false, roleSpecs)}
    POST /api/auth/users {email, role} — the password is generated and shown ONCE.
    GET · PUT · DELETE /api/auth/users — owner only (403 for anybody else).`;
 

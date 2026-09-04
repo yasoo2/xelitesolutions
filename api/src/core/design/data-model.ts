@@ -37,6 +37,8 @@ export interface ModelEntity {
     fields: ModelField[];
     /** A real foreign key: the row cannot be created pointing at nothing. */
     belongsTo?: { entity: string; key: string };
+    /** Every verified parent when a row links to more than one collection. */
+    relations?: Array<{ entity: string; key: string }>;
 }
 
 const T = (key: string, ar: string, en: string, required = false): ModelField =>
@@ -92,7 +94,16 @@ const DOMAINS: Array<{ id: string; ask: RegExp; entities: ModelEntity[] }> = [
             {
                 key: 'appointments', ar: 'المواعيد', en: 'appointments',
                 belongsTo: { entity: 'patients', key: 'patient_id' },
-                fields: [FK('patient_id'), FK('doctor_id'), T('at', 'الموعد', 'at', true), T('status', 'الحالة', 'status')],
+                relations: [
+                    { entity: 'patients', key: 'patient_id' },
+                    { entity: 'doctors', key: 'doctor_id' },
+                ],
+                fields: [
+                    { ...FK('patient_id'), required: true },
+                    { ...FK('doctor_id'), required: true },
+                    T('at', 'الموعد', 'at', true),
+                    T('status', 'الحالة', 'status', true),
+                ],
             },
         ],
     },

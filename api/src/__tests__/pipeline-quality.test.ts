@@ -198,8 +198,8 @@ describe('the self-QA runs where the user can watch it', () => {
     });
 
     it('the findings are drawn on the page, then cleaned up', () => {
-        expect(A).toMatch(/data-joe-audit/);
-        expect(A).toMatch(/querySelectorAll\('\[data-joe-audit\]'\)\.forEach\(e => e\.remove\(\)\)/);
+        expect(A).toContain("Findings belong in Joe's chat and Logs");
+        expect(A).not.toMatch(/setAttribute\('data-joe-audit'/);
     });
 
     it('the build asks for the panel, and the interface opens it by name', () => {

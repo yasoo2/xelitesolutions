@@ -22,7 +22,7 @@ import type { AppBlueprint } from '../../../core/design/app-blueprints';
 import { hasWorkflowApplicationContract, heAskedForATable } from '../../../core/design/app-blueprints';
 import { thePagesHeNamed } from '../../../core/design/site-plan';
 import { derivedTables } from '../../../core/design/app-blueprints';
-import { ROLES } from '../../../core/design/roles';
+import { ROLES, rolesForRequest, type RoleSpec } from '../../../core/design/roles';
 
 /** Escape for a JS single-quoted literal inside generated source. */
 const q = (s: string) => String(s ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, ' ');
@@ -74,7 +74,9 @@ export interface AppBuildOptions {
      * anyone can run. Empty for a build with one collection — and then not a
      * single line of the admin screen is generated.
      */
-    model?: Array<{ key: string; ar: string; en: string; fields: any[]; belongsTo?: { entity: string; key: string } | null }>;
+    model?: Array<{ key: string; ar: string; en: string; fields: any[]; belongsTo?: { entity: string; key: string } | null; relations?: Array<{ entity: string; key: string }> }>;
+    /** The model is the primary product surface, not a secondary admin appendix. */
+    unifiedTables?: boolean;
     /** Relative engine file to be authored from the user's request by Joe's AI writer. */
     generatedEnginePath?: string;
     /**
@@ -230,10 +232,10 @@ const ENGINE_COMPONENT: Record<AppBlueprint['engine'], string> = {
     shop: 'ShopApp', calculator: 'CalculatorApp', productivity: 'ProductivityApp', finance: 'FinanceApp', custom: 'CustomApp',
 };
 
-export function fileAppShellJsx(bp: AppBlueprint, isAr: boolean, hasTables = false, hasApi = false): string {
+export function fileAppShellJsx(bp: AppBlueprint, isAr: boolean, hasTables = false, hasApi = false, roles: RoleSpec[] = ROLES, unifiedTables = false): string {
     const C = ENGINE_COMPONENT[bp.engine];
     const T = (ar: string, en: string) => `'${q(isAr ? ar : en)}'`;
-    const roleLabels = ROLES.map(r => `  ${r.key}: '${q(isAr ? r.ar : r.en)}',`).join('\n');
+    const roleLabels = roles.map(r => `  ${r.key}: '${q(isAr ? r.ar : r.en)}',`).join('\n');
     return `import React, { useEffect, useState } from 'react';
 import ${C} from './components/${C}.jsx';
 ${hasTables ? "import TablesAdmin from './components/TablesAdmin.jsx';\n" : ''}${hasApi ? "import Accounts from './components/Accounts.jsx';\n" : ''}import { content } from './content.js';
@@ -410,6 +412,12 @@ function useReveal() {
   }, []);
 }
 
+const displayName = (value) => {
+  const text = String(value || '').trim();
+  if (!text || /[A-Z]/.test(text)) return text;
+  return text.replace(/[_-]+/g, ' ').replace(/\\b[a-z]/g, (letter) => letter.toUpperCase());
+};
+
 export default function App() {
   useReveal();
   const [page, goPage] = usePage();
@@ -432,8 +440,8 @@ export default function App() {
           {/* A real <h1>: the app's own name. The self-QA in a real browser
               measured zero headings on the first application build. */}
           <div className="app-id">
-            <h1 className="app-name">{content.brand}</h1>
-            <span className="app-sub">{content.title}</span>
+            <h1 className="app-name">{displayName(content.brand)}</h1>
+            <span className="app-sub">{displayName(content.title)}</span>
           </div>
           <SignIn api={content.api} />
           <button className="icon-btn" onClick={() => setDark(v => !v)}
@@ -475,7 +483,7 @@ export default function App() {
           </section>
         ) : (
           <>
-            <${C} content={content} />
+${unifiedTables ? '' : `            <${C} content={content} />\n`}
 ${hasTables ? '            <TablesAdmin api={content.api} />\n' : ''}${hasApi ? '            <Accounts api={content.api} />\n' : ''}          </>
         )}
       </main>
@@ -793,7 +801,9 @@ export function download(name, text, type) {
  * The token is kept per app, so two Joe-built systems on the same machine do
  * not borrow each other's session.
  */
-const TOKEN_KEY = 'joe:auth:' + (typeof location !== 'undefined' ? location.pathname : '');
+// localStorage already belongs to one origin. A pathname-scoped token signs
+// the same SPA out when it moves between its root and admin route.
+const TOKEN_KEY = 'joe:auth';
 
 /**
  * AND WHICH ROLE THAT TOKEN CARRIES.
@@ -3326,13 +3336,25 @@ test('generated React app scaffold is complete and testable', () => {
  * a table nobody wrote by hand is a table nobody forgot to update.
  */
 export function fileTablesAdminJsx(model: any[], isAr: boolean): string {
+    const displayLabel = (raw: unknown, key: unknown): string => {
+        const machine = String(key || '').replace(/[_-]+/g, ' ').trim();
+        let label = String(raw || machine).trim();
+        if (!isAr && machine.endsWith('s') && label.toLowerCase() === machine.slice(0, -1).toLowerCase()) {
+            label = machine;
+        }
+        if (!isAr && !/[A-Z]/.test(label)) {
+            label = label.replace(/\b[a-z]/g, letter => letter.toUpperCase());
+        }
+        return label;
+    };
     const MODEL = JSON.stringify(model.map(e => ({
-        key: e.key, label: isAr ? e.ar : e.en,
+        key: e.key, label: displayLabel(isAr ? e.ar : e.en, e.key),
         fields: (e.fields || []).map((f: any) => ({
             key: f.key, type: f.type, required: !!f.required,
-            label: (isAr ? f.ar : f.en) || f.key,
+            label: displayLabel((isAr ? f.ar : f.en) || f.key, f.key),
         })),
         belongsTo: e.belongsTo || null,
+        relations: Array.isArray(e.relations) && e.relations.length ? e.relations : (e.belongsTo ? [e.belongsTo] : []),
     })));
     const T = (ar: string, en: string) => `'${q(isAr ? ar : en)}'`;
     return `import React, { useCallback, useEffect, useMemo, useState } from 'react';
@@ -3343,6 +3365,22 @@ const IMAGE_COL = /(^|_)(image|photo|picture|img)$/;
 
 /** The system's tables, exactly as the server declares them. */
 export const TABLES = ${MODEL};
+
+/** Use the field's meaning, not only its database storage type. */
+function inputContract(field) {
+  const key = String(field.key || '').toLowerCase();
+  if (/(^|_)(email|email_address)(_|$)/.test(key)) return { type: 'email', inputMode: 'email' };
+  if (/(^|_)(phone|telephone|mobile|tel)(_|$)/.test(key)) {
+    return { type: 'tel', inputMode: 'tel', pattern: '[0-9]{7,15}' };
+  }
+  if (/(^|_)(datetime|date_time|starts_at|ends_at)(_|$)/.test(key)) return { type: 'datetime-local' };
+  if (/(^|_)(birth_date|date_of_birth|dob|date)(_|$)/.test(key)) return { type: 'date' };
+  if (/(^|_)(time|start_time|end_time)(_|$)/.test(key)) return { type: 'time' };
+  if (field.type === 'REAL' || /(^|_)(age|amount|price|quantity|count|capacity|duration|score|rating)(_|$)/.test(key)) {
+    return { type: 'number', inputMode: 'decimal', step: 'any' };
+  }
+  return { type: 'text' };
+}
 
 /** The server answers in machine words; the screen must not. */
 function human(error, table) {
@@ -3362,14 +3400,18 @@ function human(error, table) {
   if (e === 'read_only') return ${T('حسابك للاطّلاع فقط — لا يملك صلاحية التغيير.', 'Your account is read-only — it may not change anything.')};
   if (e === 'not_your_row') return ${T('هذا الصف ليس لك — لا يعدّله إلا صاحبه أو المالك.', 'That row is not yours — only its author or the owner may change it.')};
   if (e === 'forbidden') return ${T('لا صلاحية لحسابك على هذا الإجراء.', 'Your account is not allowed to do that.')};
+  if (e === 'double_booking') return ${T('هذا الطبيب أو المريض لديه موعد آخر في التاريخ والوقت نفسيهما.', 'This doctor or patient already has an appointment at that date and time.')};
+  if (e === 'invalid_status_transition') return ${T('لا يمكن نقل الموعد إلى هذه الحالة من حالته الحالية.', 'The appointment cannot move to that status from its current state.')};
   if (e === 'save_failed' || e === 'unauthorized') {
     return ${T('سجّل الدخول أولاً — الكتابة محميّة.', 'Sign in first — writing is protected.')};
   }
   return e;
 }
 
-function TableView({ api, table, parentRows, mayWrite }) {
+function TableView({ api, table, parents, mayWrite }) {
   const [rows, setRows] = useState([]);
+  const [query, setQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
   const [draft, setDraft] = useState({});
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -3394,6 +3436,14 @@ function TableView({ api, table, parentRows, mayWrite }) {
   }, [reload]);
 
   const set = (k, v) => setDraft((d) => ({ ...d, [k]: v }));
+  const visibleRows = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    return rows.filter((row) => {
+      const matchesQuery = !needle || Object.values(row).some((value) => String(value ?? '').toLowerCase().includes(needle));
+      const matchesStatus = !statusFilter || String(row.status || '') === statusFilter;
+      return matchesQuery && matchesStatus;
+    });
+  }, [rows, query, statusFilter]);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -3426,22 +3476,48 @@ function TableView({ api, table, parentRows, mayWrite }) {
         <h3>{table.label}</h3>
         <span className="tbl-count">{rows.length}</span>
       </div>
+      <label className="tbl-search">
+        <span>{${T('بحث وتصفية', 'Search and filter')}}</span>
+        <input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={${T('ابحث في هذا الجدول', 'Search this table')}} />
+      </label>
+      {table.fields.some((f) => f.key === 'status') ? (
+        <label className="tbl-search tbl-status-filter">
+          <span>{${T('تصفية حسب الحالة', 'Filter by status')}}</span>
+          <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+            <option value="">{${T('كل الحالات', 'All statuses')}}</option>
+            <option value="scheduled">{${T('مجدول', 'Scheduled')}}</option>
+            <option value="confirmed">{${T('مؤكد', 'Confirmed')}}</option>
+            <option value="completed">{${T('مكتمل', 'Completed')}}</option>
+            <option value="cancelled">{${T('ملغي', 'Cancelled')}}</option>
+          </select>
+        </label>
+      ) : null}
 
       {mayWrite ? (
       <form className="tbl-form" onSubmit={submit}>
         {table.fields.map((f) => (
-          f.key === (table.belongsTo && table.belongsTo.key) ? (
+          (table.relations || []).some((relation) => relation.key === f.key) ? (
             <label key={f.key} className="tbl-field">
               <span>{f.label}</span>
               <select value={draft[f.key] ?? ''} onChange={(e) => set(f.key, e.target.value)}>
                 <option value="">{${T('— بلا ربط —', '— not linked —')}}</option>
-                {(parentRows || []).map((p) => (
+                {(parents[((table.relations || []).find((relation) => relation.key === f.key) || {}).entity] || []).map((p) => (
                   <option key={p.id} value={p.id}>{p.name || p.title || p.code || ('#' + p.id)}</option>
                 ))}
               </select>
             </label>
           ) : (
-            IMAGE_COL.test(f.key) ? (
+            f.key === 'status' && (table.relations || []).length >= 2 ? (
+              <label key={f.key} className="tbl-field">
+                <span>{f.label}{f.required ? ' *' : ''}</span>
+                <select required={f.required} value={draft[f.key] || 'scheduled'} onChange={(e) => set(f.key, e.target.value)}>
+                  <option value="scheduled">${isAr ? 'مجدول' : 'Scheduled'}</option>
+                  <option value="confirmed">${isAr ? 'مؤكد' : 'Confirmed'}</option>
+                  <option value="completed">${isAr ? 'مكتمل' : 'Completed'}</option>
+                  <option value="cancelled">${isAr ? 'ملغي' : 'Cancelled'}</option>
+                </select>
+              </label>
+            ) : IMAGE_COL.test(f.key) ? (
               <label key={f.key} className="tbl-field">
                 <span>{f.label}</span>
                 <div className="pic-pick">
@@ -3459,8 +3535,10 @@ function TableView({ api, table, parentRows, mayWrite }) {
             <label key={f.key} className="tbl-field">
               <span>{f.label}{f.required ? ' *' : ''}</span>
               <input
-                type={f.type === 'REAL' ? 'number' : 'text'}
-                step={f.type === 'REAL' ? 'any' : undefined}
+                type={inputContract(f).type}
+                inputMode={inputContract(f).inputMode}
+                pattern={inputContract(f).pattern}
+                step={inputContract(f).step}
                 value={draft[f.key] ?? ''}
                 onChange={(e) => set(f.key, e.target.value)}
                 required={!!f.required}
@@ -3488,11 +3566,12 @@ function TableView({ api, table, parentRows, mayWrite }) {
               <tr>
                 <th>#</th>
                 {table.fields.map((f) => <th key={f.key}>{f.label}</th>)}
+                {(table.relations || []).length >= 2 ? <th>{${T('سجل التدقيق', 'Audit history')}}</th> : null}
                 {mayWrite ? <th aria-label={${T('إجراءات', 'actions')}}></th> : null}
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => (
+              {visibleRows.map((r) => (
                 <tr key={r.id}>
                   <td>{r.id}</td>
                   {table.fields.map((f) => (
@@ -3502,6 +3581,14 @@ function TableView({ api, table, parentRows, mayWrite }) {
                       ? (r[f.key] ? <img className="tbl-pic" src={String(r[f.key])} alt="" loading="lazy" /> : '—')
                       : String(r[f.key] ?? '')}</td>
                   ))}
+                  {(table.relations || []).length >= 2 ? (
+                    <td>
+                      <details className="tbl-audit">
+                        <summary>{${T('عرض التغييرات', 'View changes')}}</summary>
+                        <pre>{(() => { try { return JSON.stringify(JSON.parse(r.audit_history || '[]'), null, 2); } catch { return String(r.audit_history || '—'); } })()}</pre>
+                      </details>
+                    </td>
+                  ) : null}
                   {mayWrite ? (
                   <td className="tbl-row-actions">
                     <button type="button" onClick={() => edit(r)}>{${T('تعديل', 'Edit')}}</button>
@@ -3548,7 +3635,7 @@ export default function TablesAdmin({ api }) {
   useEffect(() => {
     let alive = true;
     (async () => {
-      const needed = TABLES.filter((t) => t.belongsTo).map((t) => t.belongsTo.entity);
+      const needed = TABLES.flatMap((t) => (t.relations || []).map((relation) => relation.entity));
       const out = {};
       for (const key of [...new Set(needed)]) {
         const rows = await apiListOn(api, key);
@@ -3584,7 +3671,7 @@ export default function TablesAdmin({ api }) {
         api={api}
         table={table}
         mayWrite={mayWrite}
-        parentRows={table.belongsTo ? (parents[table.belongsTo.entity] || []) : []}
+        parents={parents}
       />
     </section>
   );
@@ -3601,9 +3688,9 @@ export default function TablesAdmin({ api }) {
  * server answers 403 to everybody else regardless), but because a button that
  * can only fail is a lie about what the screen can do.
  */
-export function fileAccountsJsx(isAr: boolean): string {
+export function fileAccountsJsx(isAr: boolean, roles: RoleSpec[] = ROLES): string {
     const T = (ar: string, en: string) => `'${q(isAr ? ar : en)}'`;
-    const roleRows = ROLES.map(r => `  { key: '${r.key}', label: '${q(isAr ? r.ar : r.en)}', note: '${q(isAr ? r.noteAr : r.noteEn)}' },`).join('\n');
+    const roleRows = roles.map(r => `  { key: '${r.key}', label: '${q(isAr ? r.ar : r.en)}', note: '${q(isAr ? r.noteAr : r.noteEn)}' },`).join('\n');
     return `import React, { useEffect, useState } from 'react';
 import { apiUsers, apiAddUser, apiSetRole, apiRemoveUser, isOwnerNow } from '../app/store.js';
 
@@ -3830,19 +3917,23 @@ export function fileTablesAdminCss(): string {
 }
 .admin-tables > h2 { margin: 0; font-size: 20px; }
 .tbl-note { margin: 0; color: var(--muted); font-size: 14px; }
-.tbl-tabs { display: flex; flex-wrap: wrap; gap: 8px; }
+.tbl-tabs { display: flex; flex-wrap: wrap; gap: 20px; border-bottom: 1px solid var(--line); }
 .tbl-tabs button {
-  min-height: 44px; padding: 8px 16px; border-radius: 10px; cursor: pointer;
-  border: 1px solid var(--line); background: var(--card); color: var(--text); font-size: 15px;
+  min-height: 44px; padding: 8px 2px; border: 0; border-bottom: 2px solid transparent; cursor: pointer;
+  background: transparent; color: var(--muted); font-size: 15px; font-weight: 650;
 }
-.tbl-tabs button.active { background: var(--brand); color: #fff; border-color: transparent; }
+.tbl-tabs button.active { color: var(--brand); border-bottom-color: var(--brand); }
 .tbl {
   display: flex; flex-direction: column; gap: 12px;
-  background: var(--card, #fff); border: 1px solid var(--line, #e5e5e5);
-  border-radius: var(--radius, 12px); padding: 16px;
+  background: transparent; border: 0; padding: 6px 0 16px;
 }
 .tbl-head { display: flex; align-items: baseline; gap: 10px; }
 .tbl-head h3 { margin: 0; font-size: 17px; }
+.tbl-search { display: grid; gap: 6px; color: var(--muted); font-size: 12px; }
+.tbl-search input { min-height: 42px; width: 100%; }
+.tbl-search select { min-height: 42px; width: min(280px, 100%); }
+.tbl-audit summary { min-height: 40px; display: inline-flex; align-items: center; cursor: pointer; color: var(--brand); }
+.tbl-audit pre { max-width: 360px; max-height: 180px; overflow: auto; white-space: pre-wrap; font: 12px/1.5 ui-monospace, monospace; }
 .tbl-count {
   min-width: 26px; padding: 2px 8px; border-radius: 999px; text-align: center;
   background: var(--chip); color: var(--muted); font-size: 13px;
@@ -4048,6 +4139,7 @@ export function fileWorkflowCss(): string {
 }
 
 export function buildAppFiles(bp: AppBlueprint, o: AppBuildOptions, slugName: string): Record<string, string> {
+    const roleSpecs = rolesForRequest(o.sourceRequest || '');
     const engineFile: Record<AppBlueprint['engine'], [string, string]> = {
         map: ['src/components/MapApp.jsx', fileMapAppJsx(o.isArabic)],
         chat: ['src/components/ChatApp.jsx', fileChatAppJsx(o.isArabic)],
@@ -4076,7 +4168,7 @@ export function buildAppFiles(bp: AppBlueprint, o: AppBuildOptions, slugName: st
         'index.html': fileAppIndexHtml(bp, o),
         '.gitignore': 'node_modules\ndist\n',
         'src/main.jsx': fileAppMainJsx(),
-        'src/App.jsx': fileAppShellJsx(bp, o.isArabic, !!(o.model && o.model.length), !!o.api),
+        'src/App.jsx': fileAppShellJsx(bp, o.isArabic, !!(o.model && o.model.length), !!o.api, roleSpecs, !!o.unifiedTables),
         'src/content.js': fileAppContentJs(bp, o),
         'src/app/store.js': fileAppStoreJs(),
         'scripts/smoke-test.test.mjs': fileAppSmokeTest(),
@@ -4084,7 +4176,7 @@ export function buildAppFiles(bp: AppBlueprint, o: AppBuildOptions, slugName: st
         ...(o.model && o.model.length ? { 'src/components/TablesAdmin.jsx': fileTablesAdminJsx(o.model, o.isArabic) } : {}),
         // The accounts screen ships whenever there IS a server to have accounts
         // on; it renders for the owner only, and returns null for everybody else.
-        ...(o.api ? { 'src/components/Accounts.jsx': fileAccountsJsx(o.isArabic) } : {}),
+        ...(o.api ? { 'src/components/Accounts.jsx': fileAccountsJsx(o.isArabic, roleSpecs) } : {}),
         'src/styles/app.css': fileAppCss() + (bp.engine === 'shop' ? fileShopCss() : '')
             + (bp.engine === 'calculator' ? fileCalculatorCss() : '')
             + (bp.engine === 'productivity' ? fileProductivityCss() : '')

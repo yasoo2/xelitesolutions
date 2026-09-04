@@ -134,6 +134,13 @@ describe('what a painter cannot fix reaches an author', () => {
         expect(handlerRepairable([{ id: 'server_root_dead' }, { id: 'broken_routes' }] as any)).toEqual([]);
         expect(handlerRepairable([])).toEqual([]);
     });
+
+    it('does not rewrite product source to repair a QA coverage gap', () => {
+        expect(handlerRepairable([
+            { id: 'controls_not_reached' },
+            { id: 'live_data_not_verified' },
+        ] as any)).toEqual([]);
+    });
 });
 
 describe('the file that holds the dead button is found, not guessed', () => {

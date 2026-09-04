@@ -3949,6 +3949,8 @@ export class ReactProjectTool extends BaseTool {
         // strips runtimeAuth, so a plaintext password never crosses to disk.
         const runtimeAuth = prevEntry?.type === 'api' && prevEntry?.runtimeAuth?.email && prevEntry?.runtimeAuth?.password
             ? { ...prevEntry.runtimeAuth } : null;
+        const inheritedUnifiedTables = prevEntry?.type === 'api'
+            && Array.isArray(prevEntry?.model) && prevEntry.model.length >= 3;
         const inheritedAppKind = prevEntry?.type === 'api' && typeof prevEntry?.appKind === 'string'
             ? prevEntry.appKind : null;
         const kind = detectPageKind(request);
@@ -4036,7 +4038,8 @@ export class ReactProjectTool extends BaseTool {
                     return ['Groq (Free)', 'Groq', 'Anthropic', 'OpenAI'].some((p: string) => isProviderCoolingDown(p));
                 } catch { return false; }
             })());
-        if (!input?.skipAuthoredCopy && !copyProvidersRationing && !modelUnavailableDuringBuild) {
+        if (!input?.skipAuthoredCopy && !copyProvidersRationing
+            && !modelUnavailableDuringBuild && !inheritedUnifiedTables) {
             try {
                 const { authorCopy, COPY_FIELDS } = require('../../../core/design/authored-copy');
                 const { routeToModel } = require('../../../core/llm/intelligent-router');
@@ -4082,8 +4085,10 @@ export class ReactProjectTool extends BaseTool {
                 //  a real floor, and a page with catalogue words beats no page.
                 term(`copy authoring skipped: ${String(e && e.message || e).slice(0, 120)}`);
             }
-        } else if (!input?.skipAuthoredCopy && modelUnavailableDuringBuild) {
-            term('copy authoring stood down — the selected model already failed this build; the specialized derived copy continues');
+        } else if (!input?.skipAuthoredCopy && (modelUnavailableDuringBuild || inheritedUnifiedTables)) {
+            term(modelUnavailableDuringBuild
+                ? 'copy authoring stood down — the selected model already failed this build; the specialized derived copy continues'
+                : 'copy authoring stood down — this multi-table system uses its request-derived administration copy');
         }
         // BUSINESS MEMORY: the saved real details flow into the build — the
         // brand when the request named none, and a REAL contact block (tel:,
@@ -4566,6 +4571,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
         let runBp: any = appBp;
         let appApi = apiLink;
         let adminModel: Array<any> = [];
+        let unifiedTables = false;
         let apiResources: { notes: string; tasks: string } | undefined;
         if (appBp) {
             for (const k of Object.keys(files)) {
@@ -4697,6 +4703,14 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 const { fieldsFromRequest } = require('../../../core/design/app-blueprints');
                 const lead = tableModel[0];
                 const derived = blueprintFromEntity(effectiveBp, lead, isAr);
+                // Three or more first-class entities form one operational
+                // system even when entity inference keeps the generic
+                // blueprint unchanged. Previously this flag lived inside the
+                // `derived !== effectiveBp` branch, so clinic-style models
+                // silently fell back to the single generic RecordsApp.
+                unifiedTables = tableModel.length >= 3;
+                adminModel = unifiedTables ? tableModel : tableModel.slice(1);
+                appApi = apiFor(apiLink, lead.key) || apiLink;
                 if (derived !== effectiveBp) {
                     // The request's declared fields are authoritative when they
                     // exist. Entity metadata supplies the primary table's
@@ -4711,8 +4725,6 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                             relation: undefined }
                         : derived;
                     runBp = applyRequestFieldConstraints(aligned, request);
-                    appApi = apiFor(apiLink, lead.key) || apiLink;
-                    adminModel = tableModel.slice(1);          // never the same table twice
                     term(`application: managing «${lead.key}» itself — ${runBp.fields.map((f: any) => f.key).join(', ')}`);
                 }
             }
@@ -4752,7 +4764,8 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
              */
             let seedRows: Array<Record<string, any>> = [];
             const seedFields = ((runBp as any).fields || []) as Array<any>;
-            if (!copyProvidersRationing && seedFields.length && !input?.skipAuthoredCopy) {
+            if (!copyProvidersRationing && !modelUnavailableDuringBuild && !unifiedTables
+                && seedFields.length && !input?.skipAuthoredCopy) {
                 try {
                     const { authorCatalogue, countHeAskedFor, minimumHeStated } = require('../../../core/design/authored-catalogue');
                     const { routeToModel } = require('../../../core/llm/intelligent-router');
@@ -4803,6 +4816,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 storeKey: `${slug(content.brand)}-${runBp.kind}`,
                 brandColor: (palette as any).primary,
                 model: adminModel,
+                unifiedTables,
                 // Domain code must be authored from the request, not copied from
                 // a stock WeatherApp. The writer below will fill this exact path.
                 generatedEnginePath: runBp.kind === 'weather' ? 'src/components/WeatherApp.jsx' : undefined,
@@ -5283,6 +5297,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                     sourceRequest: request,
                     brandColor: (palette as any).primary,
                     model: adminModel,
+                    unifiedTables,
                 }, slug(content.brand));
                 const fallbackSource = String(fallbackFiles[generatedEnginePath] || '');
                 if (fallbackSource.trim()) {
@@ -5318,6 +5333,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                     sourceRequest: request,
                     brandColor: (palette as any).primary,
                     model: adminModel,
+                    unifiedTables,
                 }, slug(content.brand));
                 const fallbackSource = String(fallbackFiles[generatedEnginePath] || '');
                 if (!fallbackSource.trim()) return false;
@@ -5376,7 +5392,11 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 authorMode: modelAuthoredEngine ? 'model' : (blueprintFallbackEngine ? 'request_derived_engine' : 'none'),
             };
         };
-        if (generatedEnginePath && !workflowSemanticContractPassed) {
+        // Multi-entity systems render TablesAdmin as their operational
+        // surface. RecordsApp remains in the bundle only as a dormant
+        // compatibility component, so asking a provider to rewrite it wastes
+        // minutes and can never improve the visible application.
+        if (generatedEnginePath && !workflowSemanticContractPassed && !unifiedTables) {
             term(`ai_write_file: authoring ${generatedEnginePath} from the user's requirements`);
             try {
                 const { AIGeneratorTool } = require('./AIGeneratorTool');
@@ -5572,11 +5592,25 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 if (capabilityRepair.attempted) {
                     if (!capabilityRepair.ok) {
                         const reason = capabilityRepair.error || `capability_gap_unresolved: ${capabilityRepair.remaining.join(', ')}`;
-                        term(`domain capability gap: BLOCKED — ${capabilityRepair.remaining.join(', ') || reason}`);
-                        return { ok: false, error: reason, output: authoringFailureOutput(), logs };
+                        // The provider may return a useful first draft and then
+                        // truncate the one bounded capability-repair response.
+                        // A known app already has Joe's request-derived engine
+                        // available; let it take over on that format/provider
+                        // failure and continue through the normal build,
+                        // capability, browser-QA, and delivery gates. Never use
+                        // this path for a real syntax or semantic defect.
+                        if (useBlueprintFallback(reason)) {
+                            authored = fs.readFileSync(path.join(proj, generatedEnginePath), 'utf8');
+                            modelAuthoredEngine = false;
+                            term('domain capability gap: provider repair was unusable — Joe\'s request-derived engine took over and remains subject to every final gate');
+                        } else {
+                            term(`domain capability gap: BLOCKED — ${capabilityRepair.remaining.join(', ') || reason}`);
+                            return { ok: false, error: reason, output: authoringFailureOutput(), logs };
+                        }
+                    } else {
+                        authored = fs.readFileSync(path.join(proj, generatedEnginePath), 'utf8');
+                        term(`domain capability gap: repaired and independently rechecked — ${capabilityRepair.gaps.join(', ')}`);
                     }
-                    authored = fs.readFileSync(path.join(proj, generatedEnginePath), 'utf8');
-                    term(`domain capability gap: repaired and independently rechecked — ${capabilityRepair.gaps.join(', ')}`);
                 }
             } catch (error: any) {
                 const reason = String(error?.message || error);
@@ -5933,6 +5967,8 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
         let selfRepair: { before: number; after: number; files: string[]; repairs: any[]; fixed: string[] } | null = null;
         /** The terminal's own verdict — the browser's number has a twin now. */
         let terminalAudit: any = null;
+        /** The first terminal measurement also feeds the final delivery gate. */
+        let doorTerminal: any = null;
         /** Every round of the improvement loop, kept for the delivery report. */
         let loop: any = null;
         // Set only when source rollback succeeded but the restored project
@@ -6210,6 +6246,19 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             term(audit.skipped
                 ? `self-QA: skipped (${audit.skipped})`
                 : `self-QA: ${audit.score}/100${audit.findings.length ? ` — ${audit.findings.map((f: any) => f.id).join(', ')}` : ' — clean'}`);
+            if (sessionId && !audit.skipped && audit.findings.length) {
+                const { findingText } = require('../../../core/quality/app-audit');
+                const visibleFindings = audit.findings.slice(0, 3).map((f: any) => `• ${findingText(f, isAr)}`);
+                if (audit.findings.length > visibleFindings.length) {
+                    visibleFindings.push(isAr
+                        ? `• و${audit.findings.length - visibleFindings.length} ملاحظة أخرى في السجل`
+                        : `• ${audit.findings.length - visibleFindings.length} more finding(s) in Logs`);
+                }
+                broadcastThinkingDetail(sessionId, (isAr
+                    ? `وجد فحص الجودة ${audit.findings.length} مشكلة أو فجوة تغطية. سأربط القابل للإصلاح بمصدره، أصلحه، ثم أعيد الاختبار نفسه:\n`
+                    : `QA found ${audit.findings.length} defect or coverage gap. I will map repairable findings to source, fix them, then rerun the same audit:\n`)
+                    + visibleFindings.join('\n'));
+            }
 
             /**
              * AND WHAT IT FINDS, IT FIXES — before delivery, not on request.
@@ -6273,7 +6322,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
              *  because paying for it twice to learn the same fact is the kind
              *  of waste that makes a loop too expensive to keep.
              */
-            const doorTerminal = audit.skipped ? null : await terminalVerdict().catch(() => null);
+            doorTerminal = audit.skipped ? null : await terminalVerdict().catch(() => null);
             /**
              *  ⛔ ASKED THROUGH THE READER THAT ALREADY ANSWERS THIS.
              *
@@ -6295,7 +6344,10 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             if (terminalFoundSomething) {
                 term(`terminal opened the repair round: ${doorTermFails.join(', ')}`);
             }
-            if (!audit.skipped && (worthRepairing(audit.findings) || terminalFoundSomething)) {
+            const sourceBehaviourFindings = !audit.skipped
+                ? require('../../../core/quality/model-round').handlerRepairable(audit.findings || [])
+                : [];
+            if (!audit.skipped && (worthRepairing(audit.findings) || sourceBehaviourFindings.length > 0 || terminalFoundSomething)) {
                 if (sessionId) broadcastThinkingDetail(sessionId, isAr
                     ? '🛠️ وجدتُ ما أستطيع إصلاحه بنفسي — أصلحه وأعيد البناء وأقيس مرّة أخرى…'
                     : '🛠️ Repairing what I can fix myself, rebuilding, and measuring again…');
@@ -7046,13 +7098,26 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 .filter(v => !deliveredRe.some(re => re.test(v)))
                 .filter((v, i, a) => a.indexOf(v) === i).slice(0, 24)
             : [];
+        // A provider timeout must not turn source-proven work into a false
+        // missing-feature warning. Re-judge only the candidate gaps using the
+        // deterministic evidence readers; unknown items stay honestly unmet.
+        const gapVerdicts = rawUnmet.length
+            ? await verifyNamed(
+                rawUnmet.map((text, index) => ({ id: `delivery-gap-${index}`, text, quote: text })),
+                projectEvidence,
+                isAr,
+                async () => { throw new Error('delivery reconciliation is deterministic'); },
+            )
+            : [];
+        const sourceProvenGapIds = new Set(gapVerdicts.filter(v => v.verdict === 'met').map(v => v.id));
+        const evidenceReconciledUnmet = rawUnmet.filter((_text, index) => !sourceProvenGapIds.has(`delivery-gap-${index}`));
         const acceptanceIds = acceptance.criteria.map((c: any) => c.id);
         const metAcceptanceIds = acceptance.criteria
             .filter((c: any) => c.verdict === 'met')
             .map((c: any) => c.id);
         const reconciledVoices = reconcileDeliveryVoices(
             appAbilities,
-            rawUnmet,
+            evidenceReconciledUnmet,
             metAcceptanceIds,
             acceptanceIds,
         );
@@ -7159,7 +7224,14 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
          * thing does not work, and the message leads with that instead of
          * burying it under a list of filenames.
          */
-        const blockers = ((audit?.findings || []) as any[]).filter(f => f.severity === 'high');
+        const openQualityFindings = ((audit?.findings || []) as any[]);
+        const blockers = openQualityFindings.filter(f => f.severity === 'high');
+        const terminalQualityFindings: string[] = (() => {
+            const verdict = terminalAudit || doorTerminal;
+            if (!verdict || verdict.skipped) return [];
+            try { return require('../../../core/quality/terminal-audit').failingIds(verdict); }
+            catch { return []; }
+        })();
         // A user who expressly asks Joe to open and inspect the local preview
         // asked for evidence, not merely a best-effort attempt. Missing browser
         // evidence is therefore a delivery blocker, just like a surviving error.
@@ -7176,12 +7248,16 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             installExit, buildExit, diagnosis: buildDiagnosis,
         };
         const blamesTheBuild = !audit && buildOutcome.attempted && !built;
-        const qualityDeliveryBlocked = blockers.length > 0 || visualAuditUnavailable || repairRollbackNeedsVerification;
-        if (blockers.length) {
+        const qualityDeliveryBlocked = openQualityFindings.length > 0 || terminalQualityFindings.length > 0
+            || visualAuditUnavailable || repairRollbackNeedsVerification;
+        if (openQualityFindings.length) {
             // The artefact exists, but its final acceptance is rejected. Say both
             // facts explicitly so a terminal transcript cannot turn a blocked
             // quality gate into a success claim.
-            term(`self-QA: DELIVERED WITH ${blockers.length} BLOCKING FINDING(S) — final acceptance remains blocked: ${blockers.map(f => f.id).join(', ')}`);
+            term(`self-QA: DELIVERY BLOCKED BY ${openQualityFindings.length} OPEN QUALITY FINDING(S) — ${openQualityFindings.map(f => f.id).join(', ')}`);
+        }
+        if (terminalQualityFindings.length) {
+            term(`terminal-QA: DELIVERY BLOCKED — failing checks: ${terminalQualityFindings.join(', ')}`);
         }
         if (visualAuditUnavailable) {
             // …and the transcript says the same thing the error says. A terminal
@@ -7201,14 +7277,14 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             // «• 3 خطأ كونسول» inside an English delivery. The findings carry
             // both languages now; the message must pick the reader's.
             const say = (f: any) => require('../../../core/quality/app-audit').findingText(f, isAr);
-            if (blockers.length) {
+            if (openQualityFindings.length) {
                 lines.push(isAr
-                    ? `⛔ سلّمتُه وهو **لا يعمل كما ينبغي** — ${blockers.length} عطل جوهري باقٍ:`
-                    : `⛔ Delivered, but it does NOT work properly — ${blockers.length} blocking finding(s) remain:`);
-                for (const f of blockers) lines.push(`   • ${say(f)}`);
+                    ? `⛔ لم أقبل التسليم — بقيت ${openQualityFindings.length} مشكلة أو فجوة تغطية:`
+                    : `⛔ Delivery not accepted — ${openQualityFindings.length} defect or coverage gap remains:`);
+                for (const f of openQualityFindings) lines.push(`   • ${say(f)}`);
                 lines.push(isAr
-                    ? `   ↳ قل «أصلح ما تبقّى» وسأفتح المتصفّح على هذه بالذات.`
-                    : `   ↳ Say «أصلح ما تبقّى» / "fix what is left" and I will open the browser on exactly these.`);
+                    ? `   ↳ لم أدّعِ 100%: التفاصيل والأدلة في Logs، وهذه النتيجة تمنع الانتقال للخطوة التالية.`
+                    : `   ↳ I did not claim 100%: evidence is in Logs, and this result blocks the next phase.`);
             }
             lines.push(require('../../../core/quality/app-audit').formatAudit(audit, isAr));
             if (selfRepair) {
@@ -7392,6 +7468,28 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             return line ? `${line}\n` : '';
         })();
 
+        const qualityMatrixBlock = (() => {
+            const checks = new Map<string, boolean>((terminalAudit?.checks || [])
+                .filter((c: any) => !c.skipped).map((c: any) => [String(c.id), !!c.ok]));
+            const browserPasses = new Map<string, string>((audit?.passes || [])
+                .map((p: any) => [String(p.id), String(p.status)]));
+            const state = (applicable: boolean, passed: boolean) => !applicable
+                ? (isAr ? 'غير منطبق' : 'not applicable')
+                : passed ? (isAr ? 'نجح' : 'passed') : (isAr ? 'فشل' : 'failed');
+            const has = (...ids: string[]) => ids.every(id => checks.get(id) === true);
+            const rows: Array<[string, boolean, boolean]> = [
+                [isAr ? 'وظيفي' : 'Functional', checks.has('app_tests'), checks.get('app_tests') === true],
+                [isAr ? 'تكامل' : 'Integration', checks.has('tables_answer') && checks.has('app_is_the_one_served'), has('tables_answer', 'app_is_the_one_served')],
+                [isAr ? 'نظام' : 'System', checks.has('health_answers'), checks.get('health_answers') === true],
+                [isAr ? 'قبول وUAT' : 'Acceptance and UAT', acceptance.criteria.length > 0 && !!audit, acceptance.accepted && !audit?.skipped],
+                [isAr ? 'أمان' : 'Security', checks.has('writes_protected') || !!audit?.authenticated, checks.get('writes_protected') === true && !!audit?.authenticated],
+                [isAr ? 'غير وظيفي' : 'Non-functional', !!audit, browserPasses.get('runtime') === 'passed' && browserPasses.get('design') === 'passed'],
+                [isAr ? 'انحدار' : 'Regression', checks.has('app_tests') && checks.has('app_bundle_real'), has('app_tests', 'app_bundle_real')],
+            ];
+            const heading = isAr ? 'مصفوفة الجودة المثبتة' : 'Proven quality matrix';
+            return `\n${heading}: ${rows.map(([label, applicable, passed]) => `${label}: ${state(applicable, passed)}`).join(' · ')}\n`;
+        })();
+
         /**
          * AND THE SIZE OF WHAT WAS NOT BUILT.
          *
@@ -7427,9 +7525,9 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
         })();
 
         const message = isAr
-            ? `⚛️ ${deliveryBlocked ? (blockers.length ? 'بُني مشروع React وتجمّع — لكنه سُلّم بعيوب باقية' : 'بُني مشروع React، لكن رُفض تسليمه نهائياً حتى ينجح تدقيق الجودة المطلوب') : built ? 'بُني مشروع React كاملاً وتُحقق من تجميعه' : installed ? 'أُنشئ مشروع React وثُبتت حزمه' : 'أُنشئ مشروع React كاملاً'} — «${content.brand}».
+            ? `⚛️ ${deliveryBlocked ? (openQualityFindings.length ? 'بُني مشروع React وتجمّع — لكن التسليم مرفوض مع ملاحظات جودة باقية' : 'بُني مشروع React، لكن رُفض تسليمه نهائياً حتى ينجح تدقيق الجودة المطلوب') : built ? 'بُني مشروع React كاملاً وتُحقق من تجميعه' : installed ? 'أُنشئ مشروع React وثُبتت حزمه' : 'أُنشئ مشروع React كاملاً'} — «${content.brand}».
 ${scopeBlock}${fidelityBlock}${appBlock}
-${qaBlock}${shellBlock}${acceptBlock}🎨 الطراز: ${FAMILY_LABEL_AR[family]} — قل «غيّر الطراز إلى فاخر/جريء/دافئ/بسيط» لتبديله.
+${qaBlock}${shellBlock}${qualityMatrixBlock}${acceptBlock}🎨 الطراز: ${FAMILY_LABEL_AR[family]} — قل «غيّر الطراز إلى فاخر/جريء/دافئ/بسيط» لتبديله.
 📂 المسار: ${proj}
 ${fileList}
 
@@ -7443,9 +7541,9 @@ ${buildDiagnosis ? (buildDiagnosis.healed
    • «تراجع» → استرجاع آخر تعديل بايتاً ببايت
    • «شغّل خادم التطوير» → معاينة تطوير بتحديث حي
    • «انشر المشروع» → نسخة الإنتاج بصورها على رابط دائم`
-            : `⚛️ ${deliveryBlocked ? (blockers.length ? 'A React project that compiles — delivered WITH open defects' : 'A React project was built, but final delivery is blocked until the required quality audit passes') : built ? 'A full React project, scaffolded AND verified to compile' : 'A full React project scaffolded'} — "${content.brand}".
+            : `⚛️ ${deliveryBlocked ? (openQualityFindings.length ? 'A React project that compiles — delivery blocked by open quality findings' : 'A React project was built, but final delivery is blocked until the required quality audit passes') : built ? 'A full React project, scaffolded AND verified to compile' : 'A full React project scaffolded'} — "${content.brand}".
 ${scopeBlock}${fidelityBlock}${appBlock}
-${qaBlock}${shellBlock}${acceptBlock}📂 Path: ${proj}
+${qaBlock}${shellBlock}${qualityMatrixBlock}${acceptBlock}📂 Path: ${proj}
 ${fileList}
 
 ${built ? '✅ npm install + vite build succeeded — the production build is in dist/.' : npmMissing ? '⚠️ npm is not available here — run npm install && npm run dev yourself.' : ''}`;
@@ -7477,16 +7575,18 @@ ${built ? '✅ npm install + vite build succeeded — the production build is in
                                 //
                                 //  He is not a programmer. That sentence names nothing he can
                                 //  act on, and Joe knew exactly which findings survived.
-                                : blockers.length
+                                : openQualityFindings.length
                                     //  AND IT CARRIES WHAT IT FOUND, not only what it is called.
                                     //  `broken_routes` is a label; «صفحة لم تُفتح أو بلا
                                     //  عنوان رئيسي: contact.html» is a thing he can act on, and the
                                     //  audit had already written it in his language.
-                                    ? `high_severity_findings_survived: ${blockers.slice(0, 3).map((f: any) => {
+                                    ? `quality_findings_survived: ${openQualityFindings.slice(0, 3).map((f: any) => {
                                         const id = String(f.id || f.type || 'unnamed');
                                         const said = String((isAr ? f.detail : f.detailEn) || f.detail || f.detailEn || '').trim();
                                         return said ? `${id} — ${said}` : id;
                                     }).join(' | ')}`
+                                    : terminalQualityFindings.length
+                                        ? `terminal_quality_checks_failed: ${terminalQualityFindings.slice(0, 5).join(', ')}`
                                     //  If this is ever reached, the truth is not that a
                                     //  quality gate failed — it is that something blocked
                                     //  delivery and no branch above could say what.
@@ -7519,7 +7619,7 @@ ${built ? '✅ npm install + vite build succeeded — the production build is in
                 ...(fidelityMismatch ? { repairKind: 'regenerate_engine' as const } : {}),
                 delivery: {
                     accepted: !deliveryBlocked,
-                    blockers: blockers.map((f: any) => f.id),
+                    blockers: [...openQualityFindings.map((f: any) => f.id), ...terminalQualityFindings],
                     askedButMissing,
                     fidelityMismatch,
                     fidelityEvidenceUnavailable,
