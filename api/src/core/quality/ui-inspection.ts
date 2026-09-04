@@ -80,7 +80,7 @@ export function effectiveViewports(availableWidth: number): Array<{ name: string
     return [{ name: 'available', ar: 'العرض المتاح', w: Math.max(320, Math.floor(cap)), h: 844 }];
 }
 
-async function applyViewportSize(page: any, width: number, height: number): Promise<{ width: number; height: number }> {
+export async function applyViewportSize(page: any, width: number, height: number): Promise<{ width: number; height: number }> {
     // Persistent browser contexts reject Playwright's viewport setter. That
     // is an instrumentation limitation, not evidence that the app failed its
     // responsive layout. Try the normal API, but keep going to CDP when the

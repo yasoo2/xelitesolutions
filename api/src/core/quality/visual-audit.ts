@@ -15,6 +15,7 @@
  * scores the same, and cheap enough to run once per build — one browser launch,
  * two page loads.
  */
+import { applyViewportSize } from './ui-inspection';
 
 export interface VisualFinding {
     code: string;
@@ -566,7 +567,7 @@ export async function auditVisually(fileUrl: string, opts?: {
         for (const vp of VIEWPORTS) {
             const page = borrowedPage || await browser.newPage({ viewport: { width: vp.width, height: vp.height } });
             if (borrowed) {
-                await page.setViewportSize({ width: vp.width, height: vp.height }).catch(() => { });
+                await applyViewportSize(page, vp.width, vp.height);
                 try { browserManager.setSessionViewport(opts?.watchSessionId || '', vp.width, vp.height); } catch { /* viewport sync is best effort */ }
             }
             opts?.onProgress?.(`inspecting:${vp.label}`);
@@ -657,7 +658,7 @@ export async function auditVisually(fileUrl: string, opts?: {
             if (!borrowed) { await page.close().catch(() => { }); }
         }
         if (borrowed) {
-            try { await borrowedPage.setViewportSize({ width: 1280, height: 900 }); } catch { }
+            try { await applyViewportSize(borrowedPage, 1280, 900); } catch { }
             try { browserManager.setSessionViewport(opts?.watchSessionId || '', 1280, 900); } catch { }
             opts?.onProgress?.('restored');
         }

@@ -17,6 +17,7 @@
  */
 
 import { AuditEyes, boxOf, evalInPage } from './audit-eyes';
+import { applyViewportSize } from './ui-inspection';
 
 /** What the strip over the outlined element calls it, in his language. */
 const KIND_AR: Record<string, string> = {
@@ -479,7 +480,7 @@ export async function auditBehaviour(fileUrl: string, opts?: {
     try {
         if (!page) page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
         if (borrowed) {
-            await page.setViewportSize({ width: 1280, height: 900 }).catch(() => { });
+            await applyViewportSize(page, 1280, 900);
             try { browserManager.setSessionViewport(opts?.watchSessionId || '', 1280, 900); } catch { /* viewport sync is best effort */ }
         }
         await page.addInitScript('globalThis.__name = globalThis.__name || (function (f) { return f; });').catch(() => { });
@@ -531,7 +532,7 @@ export async function auditBehaviour(fileUrl: string, opts?: {
         detach();
         if (!borrowed) { await page.close().catch(() => { }); }
         else {
-            try { await page.setViewportSize({ width: 1280, height: 900 }); } catch { }
+            try { await applyViewportSize(page, 1280, 900); } catch { }
             try { browserManager.setSessionViewport(opts?.watchSessionId || '', 1280, 900); } catch { }
             opts?.onProgress?.('restored');
         }

@@ -23,7 +23,7 @@ import path from 'path';
 import { getChromiumLaunchOptions } from '../../modules/browser/manager';
 import { probeControls, judgeBehaviour, FormResult, ControlResult } from './behaviour-audit';
 import { AuditEyes } from './audit-eyes';
-import { inspectUi } from './ui-inspection';
+import { inspectUi, applyViewportSize } from './ui-inspection';
 import { isWithinRoot } from '../../modules/tools/path-containment';
 
 export interface AppAuditFinding {
@@ -823,7 +823,7 @@ export async function auditBuiltApp(
         try {
             if (!eyeIsOpen()) return eyeRequiredResult();
             const back = page.viewportSize?.() || { width: 1280, height: 900 };
-            await page.setViewportSize({ width: 390, height: 844 });
+            await applyViewportSize(page, 390, 844);
             await page.waitForTimeout(420);
             await eyes.say(page, 'فحص ما لا يظهر إلا على الجوّال — القوائم والأزرار المخفية');
             const phone = await probeControls(page, {
@@ -837,7 +837,7 @@ export async function auditBuiltApp(
             const fresh = (phone.controls || []).filter((c: any) => !seenLabels.has(String(c.label || '')));
             for (const c of fresh) allControls.push({ ...c, bare: c.label, label: `الجوّال ${c.label}` });
             behaviourMetrics.deadAnchors += phone.metrics?.deadAnchors || 0;
-            await page.setViewportSize(back);
+            await applyViewportSize(page, back.width, back.height);
             await page.waitForTimeout(200);
         } catch { /* one width failing must not lose the desktop walk */ }
 
