@@ -1349,6 +1349,9 @@ Rules:
                 // accept optional Arabic vowel marks while still matching only a
                 // standalone explicit creation verb from the original user text.
                 || /(^|\s)(?:ابن[\u064B-\u065F]*|ابني|انشئ|أنشئ|اصنع|صمم|طور|اعمل|اصمم|برمج)(?=\s|$|[،,:؛.!])/i.test(userGoalWithoutNegatedBuildVerb);
+            const hasProjectMutation = /\b(add|change|modify|update|edit|remove|delete|implement|repair|fix)\b/i.test(userGoal)
+                || /(أضف|اضف|إضافة|اضافة|غيّر|غير|تغيير|عدّل|عدل|تعديل|حذف|إزالة|أصلح|اصلح|إصلاح|صلّح|عالج)/.test(userGoal);
+
 
             // A concrete project/server target — NOT a browser, NOT content. Word
             // boundaries keep "serve" out of "server" and "app" out of "happen".
@@ -1388,7 +1391,7 @@ Rules:
 
             const stopIntent = !isQuestion && !hasBuildVerb && projectTarget
                 && /(أوقف|اوقف|إيقاف|ايقاف|اقفل|\bstop\b|\bkill\b|shut\s*down)/i.test(probe);
-            const runIntent = !isQuestion && !hasBuildVerb && !stopIntent && projectTarget
+            const runIntent = !isQuestion && !hasBuildVerb && !hasProjectMutation && !stopIntent && projectTarget
                 && /(شغّ?ل|تشغيل|شغلي|\brun\b|\bstart\b|\blaunch\b|\bserve\b|\bpreview\b)/i.test(probe);
 
             // Deploy: the unambiguous words (deploy / go live / رابط دائم / استضف)

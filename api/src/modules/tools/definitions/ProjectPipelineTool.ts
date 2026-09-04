@@ -1031,8 +1031,18 @@ export class ProjectPipelineTool implements ToolDefinition {
             '[pipeline] أستكشف مساحة العمل والمشروع والاختبارات قبل اختيار أي تنفيذ…',
             '[pipeline] Discovering the workspace, project, and declared checks before selecting implementation…'));
         const projectPath = String(input?.path || '').trim();
+        // A fresh chat gets its own empty workspace id, but an explicit
+        // continuation such as «آخر مشروع Science Museum» refers to the
+        // user's persisted local project area. Bind only that explicit latest
+        // project request to the default root; ordinary requests retain the
+        // session-scoped root and its isolation boundary.
+        const latestProjectRequest = /(?:آخر|اخر|last|latest)\s+(?:مشروع|project)\b/iu.test(productRequest);
+        const persistedUserRoot = latestProjectRequest
+            ? path.join(path.dirname(path.resolve(workspaceService.getActiveRoot())), 'my-workspace')
+            : '';
+        const discoveryPath = projectPath || persistedUserRoot;
         const discoveryResult = await executeTool('engineering_discovery',
-            projectPath ? { request: productRequest, path: projectPath } : { request: productRequest }, context);
+            discoveryPath ? { request: productRequest, path: discoveryPath } : { request: productRequest }, context);
         if (!discoveryResult?.ok || !discoveryResult?.output?.evidence) {
             const message = discoveryResult?.error || 'Engineering discovery did not return usable evidence.';
             return {

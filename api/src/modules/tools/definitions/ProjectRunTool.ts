@@ -492,7 +492,12 @@ function requestedProjectLabel(query: unknown): string {
     // path. Accept an explicit name after Arabic/English naming phrases, but do
     // not infer a label from a generic run request.
     const named = text.match(/(?:\b(?:named|called)\b|باسم|اسمه|اسمها|يسمى|تسمى)\s*(?:المشروع\s*)?([A-Za-z0-9_\-\u0600-\u06FF]+)/iu)?.[1];
-    return normalizeProjectLabel(quoted || named || '');
+    // Continuation requests often identify the target as “the latest project
+    // Science Museum” rather than using a naming verb. Extract only the
+    // contiguous Latin project words; stop before the surrounding Arabic/English
+    // sentence so “built it” never becomes part of the identity.
+    const recent = text.match(/(?:آخر|اخر|last|latest)\s+(?:مشروع|project)\s+((?:[A-Za-z0-9][A-Za-z0-9_-]*\s*){1,4})/iu)?.[1];
+    return normalizeProjectLabel(quoted || named || recent || '');
 }
 
 /** Exported for direct regression tests; this function never starts a process. */

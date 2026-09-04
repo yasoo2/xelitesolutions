@@ -32,6 +32,15 @@ describe('workspace project discovery for project_run', () => {
         expect(result.matched).toBe(true);
     });
 
+    it('resolves a named latest project in a continuation request', () => {
+        const science = path.join(root, 'react-science-museum-00f00d5b');
+        fs.mkdirSync(science, { recursive: true });
+        fs.writeFileSync(path.join(science, 'package.json'), JSON.stringify({ scripts: { dev: 'vite' } }));
+        const result = resolveRunnableProject(root, 'افتح آخر مشروع Science Museum بنيته واقرأ ملفاته أولاً');
+        expect(result.cwd).toBe(science);
+        expect(result.matched).toBe(true);
+    });
+
     it('matches a planner name to a truncated scaffold folder without guessing another project', () => {
         const generated = path.join(root, 'Joe-System-Validation-and-Nexus-Developm');
         fs.mkdirSync(generated, { recursive: true });
