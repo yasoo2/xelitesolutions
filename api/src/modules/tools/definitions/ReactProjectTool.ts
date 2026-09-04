@@ -4476,6 +4476,25 @@ export class ReactProjectTool extends BaseTool {
                 : `🖼️ ${badSrcs.length} image address pointed at a file on your machine, not the web — replaced with a gradient instead of a broken image.`);
         }
 
+        // Final link invariant: the generated bundle must never advertise an
+        // in-page anchor that its rendered sections do not own. This is kept
+        // at the serialization boundary because late authoring/fallback paths
+        // can otherwise reintroduce the old generic CTA after the request-aware
+        // section selection has already done the right thing.
+        if (!multiPage) {
+            const renderedAnchors = new Set(sections.filter(willRender).map((sec) => SECTION_ANCHOR[sec]).filter(Boolean));
+            const heroSecondary = (content as any).heroSecondary;
+            const heroHref = typeof heroSecondary?.href === 'string' ? heroSecondary.href : '';
+            const heroAnchor = heroHref.startsWith('#') ? heroHref.slice(1) : '';
+            if (heroAnchor && !renderedAnchors.has(heroAnchor)) {
+                const repaired = heroSecondaryDestination(kind, sections.filter(willRender), false, isAr, pages);
+                (content as any).heroSecondary = repaired;
+                term(isAr
+                    ? `self-repair: أصلحت رابط الدعوة الداخلي ${heroHref} إلى ${repaired.href} لأن القسم الهدف غير مرسوم`
+                    : `self-repair: repaired internal CTA ${heroHref} to ${repaired.href} because its target section is not rendered`);
+            }
+        }
+
         const componentTemplates: Record<string, () => string> = {
             Navbar: fileNavbarJsx, Hero: fileHeroJsx, Features: fileFeaturesJsx,
             Menu: fileMenuJsx, Products: fileProductsJsx, Gallery: fileGalleryJsx, Story: fileStoryJsx, Steps: fileStepsJsx,
