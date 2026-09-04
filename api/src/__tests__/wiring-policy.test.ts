@@ -1579,7 +1579,10 @@ describe('showing a panel starts nothing', () => {
             }
         }
         // …and the one place it is named, it is named to be EXCLUDED.
-        expect(WEB('services', 'AutoOpenManager.ts')).toMatch(/const isPanelBoot = toolName === 'terminal_manager'/);
+        const autoOpen = WEB('services', 'AutoOpenManager.ts');
+        expect(autoOpen).toMatch(/normalizeAutoOpenToolName/);
+        expect(autoOpen).toMatch(/const isPanelBoot = normalizedToolName === 'terminal_manager'/);
+        expect(autoOpen).toMatch(/replace\(\/\^execute:\/i/);
     });
 
     it('no workspace defaults to a tab that spawns something', () => {

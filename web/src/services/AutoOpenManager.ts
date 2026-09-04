@@ -14,6 +14,16 @@ interface AutoOpenConfig {
 
 type EventCallback = (panel: PanelType, data?: any) => void;
 
+/** Normalize the wire name before deciding which visible panel to open. */
+export function normalizeAutoOpenToolName(toolName: unknown): string {
+    const raw = typeof toolName === 'string'
+        ? toolName
+        : (toolName && typeof toolName === 'object' && typeof (toolName as any).name === 'string'
+            ? String((toolName as any).name)
+            : String(toolName || ''));
+    return raw.trim().replace(/^execute:/i, '').trim().toLowerCase();
+}
+
 class AutoOpenManagerClass {
     private listeners: Set<EventCallback> = new Set();
     private config: AutoOpenConfig = {
@@ -58,25 +68,26 @@ class AutoOpenManagerClass {
          * firing — and `includes('terminal')` matched it twice over. A live
          * proof, not a reading, is what finally caught it.
          */
-        const isPanelBoot = toolName === 'terminal_manager';
+        const normalizedToolName = normalizeAutoOpenToolName(toolName);
+        const isPanelBoot = normalizedToolName === 'terminal_manager';
         if (
             !isPanelBoot && (
-                toolName === 'run_command' ||
-                toolName === 'execute_command' ||
-                toolName === 'shell' ||
-                toolName === 'shell_execute' ||
-                toolName === 'npm_manager' ||
-                toolName === 'npm_install' ||
-                toolName === 'npm_build' ||
-                toolName === 'enterprise_platform_foundation' ||
-                toolName.includes('terminal')
+                normalizedToolName === 'run_command' ||
+                normalizedToolName === 'execute_command' ||
+                normalizedToolName === 'shell' ||
+                normalizedToolName === 'shell_execute' ||
+                normalizedToolName === 'npm_manager' ||
+                normalizedToolName === 'npm_install' ||
+                normalizedToolName === 'npm_build' ||
+                normalizedToolName === 'enterprise_platform_foundation' ||
+                normalizedToolName.includes('terminal')
             )
         ) {
             this.triggerOpen('terminal', toolData);
         }
 
         // Browser tools
-        const tLower = (toolName || '').toLowerCase();
+        const tLower = normalizedToolName;
         if (
             tLower === 'browser_navigate' ||
             tLower === 'browser_click' ||
@@ -92,8 +103,8 @@ class AutoOpenManagerClass {
 
         // Preview triggers (after creating/modifying HTML/React files)
         if (
-            toolName === 'write_file' ||
-            toolName === 'create_file'
+            normalizedToolName === 'write_file' ||
+            normalizedToolName === 'create_file'
         ) {
             const path = toolData?.path || toolData?.filePath || '';
             if (
