@@ -3970,7 +3970,7 @@ export class ReactProjectTool extends BaseTool {
         const detectedAppKind = detectAppKind(request);
         const appKind = detectedAppKind && detectedAppKind !== 'custom'
             ? detectedAppKind
-            : inheritedAppKind || detectedAppKind;
+            : scaffoldEntry ? inheritedAppKind || detectedAppKind : detectedAppKind;
         const appBp: AppBlueprint | null = appKind ? blueprintFor(appKind, request, artifactIsAr) : null;
         // سجّل قرار القالب نفسه، لا وعداً عاماً بالنجاح؛ هذا يكشف فوراً أي
         // تحوير لوسيط الطلب بين الخطة وأداة البناء في الاختبارات الحية.

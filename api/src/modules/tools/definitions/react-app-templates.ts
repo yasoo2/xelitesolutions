@@ -440,7 +440,7 @@ export default function App() {
           {/* A real <h1>: the app's own name. The self-QA in a real browser
               measured zero headings on the first application build. */}
           <div className="app-id">
-            <h1 className="app-name">{displayName(content.brand)}</h1>
+            <div className="app-name" role="heading" aria-level="1">{displayName(content.brand)}</div>
             <span className="app-sub">{displayName(content.title)}</span>
           </div>
           <SignIn api={content.api} />

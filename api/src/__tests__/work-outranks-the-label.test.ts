@@ -55,4 +55,10 @@ describe('INVARIANT: described work chooses the engine, not a category noun', ()
         expect(detectAppKind('اعمل لي صفحة فيها قائمة مهام')).toBe('tasks');
         expect(detectAppKind('اعمل لي صفحة أسجل فيها مصاريفي ويطلع المجموع')).toBe('expenses');
     });
+
+    test('quality wording must not trigger the weather engine', () => {
+        expect(detectAppKind('أنشئ صفحة اختبار الجودة فيها حقل بريد إلكتروني وزر إرسال')).toBeNull();
+        expect(detectAppKind('ابني تطبيق طقس لمدينتي')).toBe('weather');
+        expect(detectAppKind('اعمل تطبيق عن الجودة')).toBe('custom');
+    });
 });

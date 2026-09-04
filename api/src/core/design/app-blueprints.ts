@@ -240,7 +240,10 @@ export const APP_KIND_SIGNALS: Array<[AppKind, RegExp]> = [
      *  The lesson was learned once and not carried across.
      */
     ['maps', /خرائط|خريطة|خارطة|مواقع\s*جغرافي|ملاحة|تتبع\s*(المواقع|الموقع)|جي\s*بي\s*اس|\bmaps?\b|\bgps\b|navigation\s*app|turn[-\s]?by[-\s]?turn|gps\s*navigation|driving\s*(?:navigation|directions)|geo\s*app/i],
-    ['weather', /طقس|الجو|درجات?\s*الحرارة|أحوال\s*جوية|weather|forecast|temperature app|open[- ]?meteo/i],
+    // Keep «الجو» as a standalone weather noun.  An unbounded substring
+    // match also matches «الجودة», turning unrelated quality/form requests
+    // into the weather engine.
+    ['weather', /طقس|(?<![\u0621-\u064A])الجو(?![\u0621-\u064A])|درجات?\s*الحرارة|أحوال\s*جوية|weather|forecast|temperature app|open[- ]?meteo/i],
     // A calculator is a distinct interaction contract, not a records page.
     // Detect it before generic app/manage fallbacks so a request such as
     // "Build a calculator" never becomes Hero + Features + Contact.
