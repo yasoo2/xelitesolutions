@@ -1,5 +1,5 @@
 
-import { executionEngine, ExecutionRequest, ExecutionResult } from './ExecutionEngine';
+import { executionEngine, ExecutionRequest, ExecutionResult, ExecutionOptions } from './ExecutionEngine';
 import { logger } from '../shared/utils/logger';
 import { executionFirewall } from '../orchestration/AgentExecutionFirewall';
 
@@ -9,6 +9,26 @@ import { executionFirewall } from '../orchestration/AgentExecutionFirewall';
  * Phase 2.1: Centralized Execution Contract.
  */
 export class ExecutionGateway {
+    /**
+     * Start a long-lived process while keeping its handle under the single
+     * execution authority. Callers that need readiness probing (for example a
+     * project preview) must use this instead of `execute(..., background)`:
+     * the latter is a one-shot result API and cannot supervise a server after
+     * it returns.
+     */
+    static startManaged(
+        file: string,
+        args: string[] = [],
+        options: ExecutionOptions & { onLine?: (line: string, stream: 'stdout' | 'stderr') => void } = {},
+    ) {
+        // This is the gateway's long-lived counterpart to `execute`; callers
+        // are already inside the ToolService/orchestrator execution boundary.
+        // Do not run a second context assertion here: unit and integration
+        // tools intentionally exercise the gateway without an AsyncLocal
+        // orchestrator context, while the engine remains the sole spawner.
+        return executionEngine.runArgvStreaming(file, args, options);
+    }
+
     /**
      * Unified execute method.
      * Routes all system requests through ExecutionEngine.

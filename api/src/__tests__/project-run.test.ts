@@ -66,7 +66,7 @@ describe('project_run really RUNS (not renders) and is Windows-safe', () => {
         expect(runSrc).toMatch(/\\.listen\\s\*\\\(/); // node-entry detection
     });
     test('it starts through the sanctioned gateway — never child_process', () => {
-        expect(runSrc).toMatch(/ExecutionGateway\.execute/);
+        expect(runSrc).toMatch(/ExecutionGateway\.startManaged/);
         expect(runSrc).not.toMatch(/from ['"]child_process['"]/);
     });
     test('it discovers the real port by probing (frameworks pick their own)', () => {
@@ -214,11 +214,15 @@ describe('launch prerequisite recovery stays manifest-evidence-first', () => {
             fs.writeFileSync(path.join(root, 'node_modules', 'express', 'index.js'), 'module.exports = {};\n');
             return { ok: true, output: { output: 'added express' }, logs: ['npm.args=install'] } as any;
         });
-        const gatewaySpy = jest.spyOn(ExecutionGateway, 'execute').mockImplementation(async (requestOrCommand: any) => {
-            const command = typeof requestOrCommand === 'string' ? requestOrCommand : requestOrCommand?.payload?.command;
-            if (command === 'node') return { success: true, data: { ok: true, exitCode: 0 } } as any;
-            return { success: true, data: { ok: true } } as any;
-        });
+        const gatewaySpy = jest.spyOn(ExecutionGateway, 'startManaged').mockReturnValue({
+            pid: process.pid,
+            done: Promise.resolve({ ok: true, exitCode: 0 }),
+            kill: () => {},
+        } as any);
+        const syntaxGatewaySpy = jest.spyOn(ExecutionGateway, 'execute').mockResolvedValue({
+            success: true,
+            data: { ok: true, output: '', exitCode: 0 },
+        } as any);
 
         try {
             const result: any = await new ProjectRunTool().execute({ cwd: root, port }, { workspaceId: 'project-run-install-test' });
@@ -227,6 +231,7 @@ describe('launch prerequisite recovery stays manifest-evidence-first', () => {
             expect(installSpy).toHaveBeenCalledTimes(1);
             expect(result.logs.join('\\n')).toContain('auto npm install succeeded');
         } finally {
+            syntaxGatewaySpy.mockRestore();
             gatewaySpy.mockRestore();
             installSpy.mockRestore();
             rootSpy.mockRestore();

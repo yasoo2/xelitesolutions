@@ -30,6 +30,26 @@ import { persistJoeProjects, readJoeProjectForRun, writeJoeProject } from '../..
 interface RunningServer { pid: number; port: number; cwd: string; command: string; startedAt: number; }
 const RUNNING: Map<string, RunningServer> = new Map();
 
+/** Tokenize the already-selected launcher without giving it a second shell. */
+function launcherArgv(command: string): [string, string[]] | null {
+    const source = String(command || '').trim();
+    if (!source) return null;
+    const tokens: string[] = [];
+    const tokenPattern = /"((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)'|([^\s]+)/gu;
+    let match: RegExpExecArray | null;
+    let end = 0;
+    while ((match = tokenPattern.exec(source))) {
+        if (source.slice(end, match.index).trim()) return null;
+        tokens.push((match[1] ?? match[2] ?? match[3]).replace(/\\([\\"'])/g, '$1'));
+        end = tokenPattern.lastIndex;
+    }
+    if (source.slice(end).trim() || !tokens.length) return null;
+    // Shell operators are never part of a preview launcher. Refusing them is
+    // safer than silently changing the meaning of a user-supplied command.
+    if (tokens.some((token) => /[;&|<>`]/u.test(token))) return null;
+    return [tokens[0], tokens.slice(1)];
+}
+
 // Ports frameworks commonly bind to when they ignore our PORT hint. Probed
 // after the chosen port so we DISCOVER the real one instead of guessing.
 const COMMON_DEV_PORTS = [5173, 5174, 3000, 3001, 4173, 8080, 8000];
@@ -1505,22 +1525,25 @@ export class ProjectRunTool implements ToolDefinition {
         //  machine at once, holding twenty-one ports.
         await retireRecordedServer(context, cwd, logs);
 
-        const res = await ExecutionGateway.execute(detected.command, [], {
+        const parsedLauncher = launcherArgv(detected.command);
+        if (!parsedLauncher) {
+            const message = pick(isAr,
+                `تعذّر تشغيل المعاينة بأمان: أمر التشغيل غير قابل للتحويل إلى argv دون shell: «${detected.command}»`,
+                `Cannot start the preview safely: the launcher cannot be converted to argv without a shell: “${detected.command}”`,
+            );
+            logs.push(`project_run: ${message}`);
+            return { ok: false, error: message, logs };
+        }
+        const [launcher, launcherArgs] = parsedLauncher;
+        const managed = ExecutionGateway.startManaged(launcher, launcherArgs, {
             cwd,
             env: { ...process.env, PORT: String(port), HOST: '127.0.0.1', BROWSER: 'none', CI: '1' },
-            //  Not detached: Joe keeps the handle, so a restart cannot leave
-            //  an orphan holding port 3000. Not waited for either — a server
-            //  never exits, and waiting for one would hang this tool forever.
-            detached: false,
-            background: true,
-            shell: true,
-            stdio: 'pipe',
             windowsHide: true,
-        } as any);
-        if (!res.success || res.data?.ok === false) {
-            return { ok: false, error: `تعذّر تشغيل الخادم: ${res.error || res.data?.error || 'unknown'}`, logs };
+        });
+        const pid = managed.pid;
+        if (!pid) {
+            return { ok: false, error: 'تعذّر تشغيل الخادم: لم تبدأ عملية يمكن مراقبتها.', logs };
         }
-        const pid = res.data?.pid;
 
         /**
           * Readiness — and the trap in «discover where it bound».
@@ -1546,7 +1569,20 @@ export class ProjectRunTool implements ToolDefinition {
             }
         }
 
-        if (pid) RUNNING.set(key, { pid, port: livePort || port, cwd, command: detected.command, startedAt: Date.now() });
+        if (pid) {
+            RUNNING.set(key, { pid, port: livePort || port, cwd, command: detected.command, startedAt: Date.now() });
+            // A preview that exits after readiness must not remain adoptable.
+            void managed.done.then((result) => {
+                const current = RUNNING.get(key);
+                if (current?.pid !== pid) return;
+                RUNNING.delete(key);
+                logs.push(`project_run: managed preview exited (${result.exitCode ?? 'no code'})`);
+                context?.onProgress?.(pick(isAr,
+                    `⚠️ توقفت المعاينة بعد التشغيل؛ رمز الخروج ${result.exitCode ?? 'غير متاح'}.`,
+                    `⚠️ The preview exited after launch; exit code ${result.exitCode ?? 'unavailable'}.`,
+                ));
+            }).catch(() => {});
+        }
 
         if (!livePort) {
             // A verified bundle is still a useful browser target when a dev
