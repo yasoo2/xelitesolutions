@@ -116,6 +116,12 @@ export const CAPABILITIES: Capability[] = [
         evidenceCheck: hasFormValidationEvidence,
     },
     {
+        id: 'contact_form', ar: 'نموذج التواصل أو الزيارة', en: 'Visit contact form',
+        ask: /(?:contact|enquiry|inquiry)\s+form|form\s+(?:on|for)\s+(?:the\s+)?(?:contact|visit)\s+page|نموذج\s+(?:تواصل|اتصال|زيارة)|استمارة\s+(?:تواصل|اتصال|زيارة)/iu,
+        evidence: /<form\b[^>]*(?:onSubmit|onsubmit)\s*=|type\s*=\s*["']email["']/i,
+        evidenceCheck: source => /<form\b/i.test(source) && /type\s*=\s*["']email["']/i.test(source),
+    },
+    {
         id: 'shipping', ar: 'الشحن', en: 'shipping',
         ask: /\b(?:shipping|shipments?|fulfilment|fulfillment|shipping\s+(?:options?|address|service|management)|delivery\s+(?:tracking|status|options?|address|service|management)|deliver(?:y|ies)\s+(?:orders?|packages?|products?))\b|الشحن|التوصيل/i,
         evidence: /"key":"shipments"|\/api\/shipping|tracking_?number|\bshipment_/i,
@@ -333,10 +339,25 @@ export function scopeReport(request: string, projectDirs: string[]): ScopeReport
      */
     const claimed = statedRules(request).map(r => foldForCompare(r.text));
     const namedColumns = (columnsAnywhereInHisRequest(request) || []).map(column => foldForCompare(column.label));
+    // A colon-led page list is already represented by the page acceptance
+    // ledger. Do not report one of its names as an unchecked capability just
+    // because the generic clause splitter sees the final item after `and`.
+    const pageListStart = String(request).toLocaleLowerCase().indexOf('website:') >= 0
+        ? String(request).toLocaleLowerCase().indexOf('website:') + 'website:'.length
+        : String(request).toLocaleLowerCase().indexOf('site:') >= 0
+            ? String(request).toLocaleLowerCase().indexOf('site:') + 'site:'.length
+            : -1;
+    const pageListBody = pageListStart < 0 ? '' : String(request).slice(pageListStart).split(/\s+with\b/i)[0].toLocaleLowerCase();
+    const explicitPageNames = new Set(
+        clausesBeyondTheColumns(request)
+            .filter(clause => pageListBody.includes(clause.toLocaleLowerCase()))
+            .map(value => foldForCompare(value)),
+    );
     const unchecked = clausesBeyondTheColumns(request)
         .filter(clause => !CAPABILITIES.some(c => c.ask.test(clause)))
         .filter(clause => {
             const c = foldForCompare(clause);
+            if (explicitPageNames.has(c)) return false;
             // A column reader has already classified this exact phrase as a
             // field. It is not an unchecked capability merely because the
             // clause splitter saw it after the list separator.
