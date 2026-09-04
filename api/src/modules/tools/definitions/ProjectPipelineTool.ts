@@ -8,7 +8,7 @@ import { isArabicReply, say as pick } from '../../../shared/reply-language';
 import { brandFrom } from '../../../core/design/page-head';
 import { scopeReport } from '../../../core/quality/scope-audit';
 import { verifyProviderDirect } from '../../../core/llm/intelligent-router';
-import { detectStart, missingRuntimeDependencies, reconcileMissingRuntimeTarget } from './ProjectRunTool';
+import { detectStart, missingRuntimeDependencies, reconcileMissingRuntimeTarget, resolveRunnableProject } from './ProjectRunTool';
 import { auditBuiltApp, AppAudit } from '../../../core/quality/app-audit';
 import { readJoeProjectForRun } from '../../../api/page-store';
 
@@ -1036,11 +1036,15 @@ export class ProjectPipelineTool implements ToolDefinition {
         // user's persisted local project area. Bind only that explicit latest
         // project request to the default root; ordinary requests retain the
         // session-scoped root and its isolation boundary.
-        const latestProjectRequest = /(?:آخر|اخر|last|latest)\s+(?:مشروع|project)\b/iu.test(productRequest);
+        const latestProjectRequest = /(?:آخر|اخر|last|latest)\s+(?:مشروع|project)/iu.test(productRequest);
         const persistedUserRoot = latestProjectRequest
             ? path.join(path.dirname(path.resolve(workspaceService.getActiveRoot())), 'my-workspace')
             : '';
-        const discoveryPath = projectPath || persistedUserRoot;
+        let discoveryPath = projectPath || persistedUserRoot;
+        if (!projectPath && latestProjectRequest && discoveryPath) {
+            const resolved = resolveRunnableProject(discoveryPath, productRequest);
+            if (resolved.matched && resolved.cwd) discoveryPath = resolved.cwd;
+        }
         const discoveryResult = await executeTool('engineering_discovery',
             discoveryPath ? { request: productRequest, path: discoveryPath } : { request: productRequest }, context);
         if (!discoveryResult?.ok || !discoveryResult?.output?.evidence) {
