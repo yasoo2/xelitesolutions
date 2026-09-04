@@ -1020,7 +1020,13 @@ This is a correct answer, not a failure. Changing something the user did not ask
             if (cannot) {
                 logs.push(`model declined to guess: ${cannot}`);
                 return {
-                    ok: true,
+                    // A refusal is useful evidence, but it is not a completed
+                    // edit. Returning green here let the pipeline announce a
+                    // verified phase after changing zero files.
+                    ok: false,
+                    error: isAr
+                        ? `لم يُنفّذ التعديل: ${cannot}`
+                        : `Edit not applied: ${cannot}`,
                     output: {
                         message: isAr
                             ? `طلبك لا يخبرني بما أغيّره في هذا المشروع، فلم أغيّر شيئاً.\nقل لي ما الذي تريد تعديله — عنصراً أو نصاً أو لوناً أو ملفاً.`

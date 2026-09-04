@@ -890,7 +890,11 @@ export class AgentLoopService {
             projectRoot: !createsNewProject
                 ? (String(plannerResult?.output?.projectRoot || '').trim() || undefined)
                 : undefined,
-            projectRootRuntimeBound: false,
+            // An existing-project root comes from engineering discovery and is
+            // already an evidence-backed write target. Treat it as bound before
+            // repair phases run; otherwise PhaseExecutor deliberately falls
+            // back to the workspace root and writers can modify the wrong app.
+            projectRootRuntimeBound: !createsNewProject && !!String(plannerResult?.output?.projectRoot || '').trim(),
         };
         const executionContext = {
             runId,
