@@ -81,7 +81,9 @@ describe('the build only claims an improvement it measured', () => {
         expect(R()).toMatch(/const measureNow = async \(\) => \{/);
         expect(R()).toMatch(/const a = await auditBuiltApp\(path\.join\(proj, 'dist'\)/);
         expect(read('core', 'quality', 'improve-loop.ts'))
-            .toMatch(/if \(after\.skipped \|\| after\.score <= current\.score\)/);
+            .toMatch(/const measuredGain = after\.score > current\.score/);
+        expect(read('core', 'quality', 'improve-loop.ts'))
+            .toMatch(/if \(after\.skipped \|\| !measuredGain\)/);
     });
 
     it('and keeps the first verdict when the repair did not help', () => {
@@ -89,7 +91,8 @@ describe('the build only claims an improvement it measured', () => {
         // previous score, and one that does not is rolled back, not merely
         // left unreported.
         const LOOP = read('core', 'quality', 'improve-loop.ts');
-        expect(LOOP).toMatch(/if \(after\.skipped \|\| after\.score <= current\.score\)/);
+        expect(LOOP).toMatch(/const fewerFindings = uniq\(after\.findingIds\)/);
+        expect(LOOP).toMatch(/if \(after\.skipped \|\| !measuredGain\)/);
         expect(LOOP).toMatch(/verdict: 'no_measured_gain', rolledBack: !!undone,/);
     });
 
