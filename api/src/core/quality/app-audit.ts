@@ -697,7 +697,10 @@ export async function auditBuiltApp(
                 if (/^#\/.+/.test(h)) out.add(h);                       // hash router
                 else if (/^\/?[\w-]+\.html$/i.test(h)) out.add(h.replace(/^\//, ''));   // multi-file
             });
-            return [...out].slice(0, 5);
+            // Do not silently turn a large application into a five-page smoke
+            // test. Keep the walk bounded, but preserve every route the product
+            // exposes up to the explicit browser budget.
+            return [...out].slice(0, 20);
         }).catch(() => []);
 
         const allControls: any[] = [];
@@ -840,6 +843,52 @@ export async function auditBuiltApp(
             await applyViewportSize(page, back.width, back.height);
             await page.waitForTimeout(200);
         } catch { /* one width failing must not lose the desktop walk */ }
+
+        /**
+         * RESPONSIVE QA IS PER ROUTE, NOT ONLY PER HOME.
+         *
+         * A mobile drawer, a form, or an overflowing table often exists only
+         * on a secondary screen. The old pass checked the home route at 390px
+         * and then called the rest of the application responsive by implication.
+         * Revisit each discovered route at tablet and phone widths, rediscover
+         * controls after the layout changes, and keep the same bounded budget.
+         */
+        const responsiveDeadline = Math.min(walkUntil, Date.now() + 28_000);
+        const responsiveRoutes = routes.slice(0, 20);
+        for (const r of responsiveRoutes) {
+            for (const size of [{ name: 'لوحي', w: 820, h: 1180 }, { name: 'جوّال', w: 390, h: 844 }]) {
+                if (Date.now() >= responsiveDeadline || !eyeIsOpen()) break;
+                try {
+                    const target = r.startsWith('#') ? url + r : url + r;
+                    await page.goto(target, { waitUntil: 'load', timeout: Math.min(timeoutMs, 12_000) });
+                    await applyViewportSize(page, size.w, size.h);
+                    await page.waitForTimeout(260);
+                    await eyes.say(page, `فحص ${size.name}: ${r === '/' ? 'الصفحة الرئيسية' : r}`);
+                    const responsive = await probeControls(page, {
+                        eyes,
+                        budgetMs: Math.max(3000, responsiveDeadline - Date.now()),
+                        seenForms,
+                        isEyeOpen: eyeIsOpen,
+                        maxControls: 12,
+                    });
+                    if (responsive.metrics.eyeLost || !eyeIsOpen()) return eyeRequiredResult();
+                    const prefix = `${size.name} ${r}`;
+                    for (const c of responsive.controls || []) {
+                        const label = `${prefix} ${c.label}`;
+                        allControls.push({ ...c, bare: c.label, label, responsive: size.name });
+                    }
+                    mergeProbe({ ...responsive, controls: [] }, r);
+                } catch {
+                    // The baseline route result remains authoritative; a single
+                    // responsive navigation failure must not erase prior proof.
+                }
+            }
+        }
+        try {
+            const back = page.viewportSize?.() || { width: 1280, height: 900 };
+            await applyViewportSize(page, back.width, back.height);
+            await page.goto(url, { waitUntil: 'load', timeout: Math.min(timeoutMs, 12_000) });
+        } catch { /* final inspection can use the last responsive state */ }
 
         /**
          * AND THE UI ITSELF IS INSPECTED — «وفحص ui».
