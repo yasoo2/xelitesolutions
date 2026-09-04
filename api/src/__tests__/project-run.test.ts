@@ -11,6 +11,7 @@ import path from 'path';
 import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
 import { canAdoptRecordedLive, declaredLaunchPrerequisitePackages, detectStart, launchPrerequisiteError, launchabilityError, missingLocalRuntimeImports, missingRuntimeDependencies, placeholderLifecycleScriptError, reconcileMissingRuntimeImports, reconcileMissingRuntimeTarget, resolveRunnableProject, shouldUseActiveProjectDirectly, ProjectRunTool } from '../modules/tools/definitions/ProjectRunTool';
 import { ExecutionGateway } from '../kernel/ExecutionGateway';
+import { executionFirewall } from '../orchestration/AgentExecutionFirewall';
 import { executionEngine } from '../kernel/ExecutionEngine';
 import { executionFirewall } from '../orchestration/AgentExecutionFirewall';
 import { workspaceService } from '../modules/services/WorkspaceService';
@@ -225,7 +226,8 @@ describe('launch prerequisite recovery stays manifest-evidence-first', () => {
         } as any);
 
         try {
-            const result: any = await new ProjectRunTool().execute({ cwd: root, port }, { workspaceId: 'project-run-install-test' });
+            const result: any = await executionFirewall.runInContext('project-run-install-test', () =>
+                new ProjectRunTool().execute({ cwd: root, port }, { workspaceId: 'project-run-install-test' }));
             expect(result.ok).toBe(true);
             expect(result.output.ready).toBe(true);
             expect(installSpy).toHaveBeenCalledTimes(1);

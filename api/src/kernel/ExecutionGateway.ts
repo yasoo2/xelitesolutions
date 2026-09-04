@@ -21,11 +21,9 @@ export class ExecutionGateway {
         args: string[] = [],
         options: ExecutionOptions & { onLine?: (line: string, stream: 'stdout' | 'stderr') => void } = {},
     ) {
-        // This is the gateway's long-lived counterpart to `execute`; callers
-        // are already inside the ToolService/orchestrator execution boundary.
-        // Do not run a second context assertion here: unit and integration
-        // tools intentionally exercise the gateway without an AsyncLocal
-        // orchestrator context, while the engine remains the sole spawner.
+        // The long-lived path has the same authorization boundary as execute.
+        // It must never become a side door around the orchestration firewall.
+        executionFirewall.validateExecution('ExecutionGateway:startManaged');
         return executionEngine.runArgvStreaming(file, args, options);
     }
 
