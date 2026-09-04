@@ -141,7 +141,7 @@ function findControls(limit: number) {
      */
     document.querySelectorAll('[data-joe-ctl]').forEach(el => el.removeAttribute('data-joe-ctl'));
 
-    const out: Array<{ sel: string; kind: string; label: string; href?: string; ordinal: number; disabled?: boolean }> = [];
+    const out: Array<{ sel: string; kind: string; label: string; href?: string; ordinal: number; disabled?: boolean; stateful?: boolean }> = [];
     const push = (el: Element, kind: string) => {
         if (out.length >= limit || !vis(el)) return;
         const controlLabel = label(el);
@@ -236,7 +236,10 @@ function findControls(limit: number) {
         // the matching control instead of repeatedly pressing the first copy.
         const ordinal = out.filter(candidate => candidate.kind === kind
             && candidate.label === controlLabel && (candidate.href || '') === (href || '')).length;
-        out.push({ sel: `[data-joe-ctl="${id}"]`, kind, label: controlLabel, href, ordinal });
+        const stateful = kind === 'menu' || kind === 'summary' || kind === 'tab'
+            || el.hasAttribute('aria-expanded') || el.hasAttribute('aria-haspopup')
+            || el.hasAttribute('data-menu') || el.hasAttribute('data-filter');
+        out.push({ sel: `[data-joe-ctl="${id}"]`, kind, label: controlLabel, href, ordinal, stateful });
     };
 
     /**
@@ -937,9 +940,13 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
             const fresh = await evalInPage(page, findControls, limit).catch(() => [] as any[]);
             for (const c of fresh as Array<{ kind: string; label: string; href?: string; ordinal?: number }>) discoveredKeys.add(controlKey(c));
             metrics.controlsDiscovered = discoveredKeys.size;
-            const candidate = (fresh as Array<{ sel: string; kind: string; label: string; href?: string }>)
+            const candidate = (fresh as Array<{ sel: string; kind: string; label: string; href?: string; stateful?: boolean }>)
                 .filter(c => c.kind !== 'anchor')
-                .find(c => !initialKeys.has(controlKey(c)) && !exploredKeys.has(controlKey(c)));
+                // A stateful control deserves an exploratory pass even when
+                // the baseline catalogue already pressed its first state.
+                // The fresh catalogue and stable key prevent blind repetition.
+                .find(c => !exploredKeys.has(controlKey(c))
+                    && (!initialKeys.has(controlKey(c)) || c.stateful));
             if (!candidate) break;
             const key = controlKey(candidate);
             exploredKeys.add(key);
