@@ -193,6 +193,11 @@ router.post('/nav/refresh', authenticate as any, async (req: Request, res: Respo
   }
 });
 
+export function transientNavigationError(error: unknown): boolean {
+  const text = String((error as any)?.message || error || '').toLowerCase();
+  return /econnrefused|econnreset|net::err_connection|target page.*closed|timeout.*exceed|timed out/.test(text);
+}
+
 router.post('/nav/goto', authenticate as any, async (req: Request, res: Response) => {
   try {
     const sid = String(req.body?.sessionId || '').trim();
@@ -207,12 +212,30 @@ router.post('/nav/goto', authenticate as any, async (req: Request, res: Response
     // Worse than the reload case: a failed navigation returned ok:true together
     // with s.page.url() — the address it was ALREADY on — so the client showed a
     // successful navigation to a page it had never left.
-    try {
-      await s.page.goto(u, { waitUntil: 'domcontentloaded' });
-    } catch (e: any) {
+    let lastError: any = null;
+    let attempts = 0;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      attempts++;
+      try {
+        await s.page.goto(u, { waitUntil: 'domcontentloaded' });
+        lastError = null;
+        break;
+      } catch (e: any) {
+        lastError = e;
+        // A preview server can become ready just after project_run reports its
+        // URL. Retry one transient connection failure; never retry auth, bad
+        // URLs, or arbitrary page errors.
+        if (attempt === 0 && transientNavigationError(e)) {
+          await new Promise(resolve => setTimeout(resolve, 1200));
+          continue;
+        }
+        break;
+      }
+    }
+    if (lastError) {
       return res.status(502).json({
         ok: false, error: 'nav_goto_failed', requested: u,
-        detail: String(e?.message || e), url: s.page.url(),
+        attempts, detail: String(lastError?.message || lastError), url: s.page.url(),
       });
     }
     return res.json({ ok: true, url: s.page.url() });
