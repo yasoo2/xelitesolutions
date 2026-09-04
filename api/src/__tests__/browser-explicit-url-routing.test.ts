@@ -110,6 +110,28 @@ describe('active live preview browser routing', () => {
         }
     });
 
+    test('keeps a new build with an embedded QA repair loop out of project_repair', async () => {
+        const sessionId = `build-qa-route-${Date.now()}`;
+        const key = sessionId.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const before = { ...(((global as any).joeProjects || {}) as Record<string, any>) };
+        (global as any).joeProjects = {
+            ...before,
+            [key]: { dir: 'C:/workspace/older-project', type: 'react', updatedAt: Date.now() },
+        };
+        const goal = 'أنشئ تطبيقًا صغيرًا لإدارة مواعيد عيادة باسم موعدي مع نموذج هاتف وتاريخ. ابنِ التطبيق وشغّل المعاينة، ثم اختبر الحقول والأزرار على الهاتف، وأصلح أي مشكلة حقيقية قبل التقرير.';
+        try {
+            const p = await PlanningEngine.generatePlan(
+                { intent: { goal, complexity: 'high', riskLevel: 'medium', rawIntent: {} } as any },
+                sessionId,
+                { sessionId },
+            );
+            expect(p.steps[0].tool).not.toBe('project_repair');
+            expect(['project_pipeline', 'react_project']).toContain(p.steps[0].tool);
+        } finally {
+            (global as any).joeProjects = before;
+        }
+    });
+
     test('uses an explicit project path when the session registry was restarted', async () => {
         const sessionId = `repair-path-${Date.now()}`;
         const p = await PlanningEngine.generatePlan(

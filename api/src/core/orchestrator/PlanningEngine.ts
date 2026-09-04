@@ -1901,7 +1901,13 @@ Rules:
             const repairExisting = /\b(?:repair|fix|modify|update)\b[\s\S]{0,100}\b(?:existing|current|same)\s+project\b/i.test(probe);
             const explicitProjectDir = (String(intent.goal || '').match(/C:[^\s.]+/i)?.[0] || '').trim();
             const repairProjectDir = String(explicitProjectDir || projEntry?.scaffoldDir || projEntry?.dir).trim();
-            if ((repairRemaining || repairExisting) && !!repairProjectDir) {
+            // A construction brief may contain its own QA loop: "build it,
+            // test it, and fix any real problems". With an older active
+            // project in the session, treating that final "fix" as a repair
+            // command hijacks the new build before it exists. Explicit build
+            // intent owns the route; its repair instructions belong to the
+            // builder's post-build QA cycle.
+            if ((repairRemaining || repairExisting) && !!repairProjectDir && !buildRequest) {
                 return {
                     id: `projrepair_${Date.now()}`,
                     goal: intent.goal,
