@@ -573,6 +573,33 @@ export function deterministicPhasesFor(request: string): {
 }
 
 /**
+ * An existing project with an explicit mutation has a known execution shape
+ * even when the planning provider is unavailable. This is deliberately not a
+ * product template: the edit tool still reads the selected files, produces a
+ * constrained diff, runs its syntax/build gates, and the pipeline continues
+ * into its normal runtime and browser verification gates.
+ */
+export function deterministicExistingEditPhasesFor(request: string, dir: string): {
+    projectName: string; reason: string; phases: Array<{ name: string; tasks: any[] }>;
+} | null {
+    const text = String(request || '').trim();
+    const root = String(dir || '').trim();
+    if (!text || !root || !PlanningEngineLooksLikeMutation(text)) return null;
+    return {
+        projectName: path.basename(root) || 'existing project',
+        reason: 'the request names an existing project and an explicit change; the evidence-selected editor owns the diff',
+        phases: [{
+            name: 'Evidence-bound project edit',
+            tasks: [{ tool: 'project_edit', description: text, args: { request: text, dir: root } }],
+        }],
+    };
+}
+
+function PlanningEngineLooksLikeMutation(request: string): boolean {
+    return /\b(?:add|change|modify|update|edit|remove|delete|implement|repair|fix)\b|أضف|غيّر|غير|عدّل|عدل|تعديل|حذف|إزالة|ازالة|أصلح|اصلح|إصلاح|اصلاح|صلّح|صلح|عالج/iu.test(String(request || ''));
+}
+
+/**
  * A deterministic rescue is deliberately narrow. It may keep a short, direct
  * build request alive when the planner is unavailable, but it must not turn a
  * long evaluation brief, multi-phase specification, or acceptance contract
@@ -1200,7 +1227,14 @@ export class ProjectPipelineTool implements ToolDefinition {
         if (requirementsContext) appendBoundedPipelineLog(logs, `pipeline.planning_requirements_brief_chars=${requirementsContext.length}`);
         const plannerEvidence = buildPlannerEvidence(evidence, specification.sources);
 
-        // Provider health is an execution prerequisite, not a late planner error.
+        // Provider health is an execution prerequisite for model planning. An
+        // existing, unambiguous edit has a narrower evidence-bound route below
+        // that does not invent a plan when the planner gateway is down.
+        const isGreenfield = evidence?.constraints?.createsNewProject === true;
+        const discoveredProjectRoot = isGreenfield ? '' : String(evidence?.selectedProject?.root || '').trim();
+        const deterministicExistingEdit = !isGreenfield
+            ? deterministicExistingEditPhasesFor(productRequest, discoveredProjectRoot)
+            : null;
         // Probe the exact configured provider (or the auto mesh) before spending a
         // long engineering-run budget. Tests may explicitly opt out; production
         // callers cannot silently convert an unavailable model into fake progress.
@@ -1213,7 +1247,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                 model: modelConfig.model,
             });
         appendBoundedPipelineLog(logs, `[pipeline] provider preflight ${providerHealth.provider}: ${providerHealth.ok ? 'ok' : 'blocked'} (${providerHealth.detail})`);
-        if (!providerHealth.ok) {
+        if (!providerHealth.ok && !deterministicExistingEdit) {
             const summary = pick(isAr,
                 `## ⚠️ توقف قبل التخطيط لأن مزود الذكاء الاصطناعي غير متاح\n\nالمزود: ${providerHealth.provider}\nالتفصيل: ${providerHealth.detail}\n\nلم ينشئ Joe ملفات ولم يبدأ مراحل طويلة من دون مزود صالح.`,
                 `## ⚠️ Stopped before planning because the AI provider is unavailable\n\nProvider: ${providerHealth.provider}\nDetail: ${providerHealth.detail}\n\nJoe did not write files or start a long phase run without a healthy provider.`,
@@ -1235,11 +1269,9 @@ export class ProjectPipelineTool implements ToolDefinition {
         // can be locally real but incomplete (for example src/tests without a
         // manifest); naming it from the request is not enough to find that root.
         // ProjectRunTool still owns runnable-marker validation and may refuse it.
-        const isGreenfield = evidence?.constraints?.createsNewProject === true;
         // Greenfield discovery deliberately has no write target. If a stale
         // selectedProject leaks through, it is usually Joe's own repository;
         // only existing-project work may seed the planner with that root.
-        const discoveredProjectRoot = isGreenfield ? '' : String(evidence?.selectedProject?.root || '').trim();
         const plannerReferenceProjects = Array.isArray(plannerEvidence.referenceProjects) ? plannerEvidence.referenceProjects : [];
         const plannerReferenceManifests = plannerReferenceProjects.reduce((count: number, project: any) =>
             count + (Array.isArray(project?.manifests) ? project.manifests.length : 0), 0);
@@ -1302,7 +1334,13 @@ export class ProjectPipelineTool implements ToolDefinition {
             ? Number(context.plannerTimeoutMs)
             : 180_000;
         //  When his sentence settled it, the planner is not called at all.
-        let plannerResult: any = hisPlan || await executeTool('project_planner',
+        let plannerResult: any = hisPlan || (deterministicExistingEdit
+            ? {
+                ok: true,
+                output: { projectName: deterministicExistingEdit?.projectName || 'existing project', phases: deterministicExistingEdit?.phases || [], deterministic: true, plannedWithoutModel: true, projectRoot: discoveredProjectRoot },
+                logs: providerHealth.ok ? [] : [`planner bypassed: ${providerHealth.provider} unavailable; existing edit is evidence-bound`],
+            }
+            : await executeTool('project_planner',
             { projectDescription: planningRequest, evidence: plannerEvidence },
             {
                 ...(context || {}),
@@ -1310,7 +1348,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                 engineeringPipeline: true,
                 plannerTimeoutMs,
             },
-        );
+        ));
         if (!plannerResult?.ok || plannerResult?.output?.fallback) {
             const blocker = plannerResult?.output?.blocker?.message || plannerResult?.error || 'The planner did not produce a valid evidence-backed plan.';
 
