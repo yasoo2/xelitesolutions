@@ -91,8 +91,13 @@ export async function applyViewportSize(page: any, width: number, height: number
     if (Math.abs(Number(actual?.width || 0) - width) <= 2) return actual;
     try {
         const cdp = await page.context().newCDPSession(page);
+        // Persistent/headed Chromium can keep the old visible surface unless
+        // it is resized before the device metrics are overridden. Without this
+        // pair, the audit reported 820px -> 1280px even though the CDP command
+        // itself completed successfully.
+        await cdp.send('Emulation.setVisibleSize', { width, height }).catch(() => { });
         await cdp.send('Emulation.setDeviceMetricsOverride', {
-            width, height, deviceScaleFactor: 1, mobile: false,
+            width, height, deviceScaleFactor: 1, mobile: width <= 600,
             screenWidth: width, screenHeight: height, dontSetVisibleSize: false,
         });
         await page.waitForTimeout(180).catch(() => { });
@@ -105,8 +110,9 @@ export async function applyViewportSize(page: any, width: number, height: number
         // explicit retry before declaring the instrumentation broken.
         try {
             const retry = await page.context().newCDPSession(page);
+            await retry.send('Emulation.setVisibleSize', { width, height }).catch(() => { });
             await retry.send('Emulation.setDeviceMetricsOverride', {
-                width, height, deviceScaleFactor: 1, mobile: false,
+                width, height, deviceScaleFactor: 1, mobile: width <= 600,
                 screenWidth: width, screenHeight: height, dontSetVisibleSize: false,
             });
             await page.waitForTimeout(300).catch(() => { });
