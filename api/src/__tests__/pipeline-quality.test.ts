@@ -132,7 +132,8 @@ describe('full-stack builders preserve the backend application contract', () => 
         expect(api).toMatch(/const appKind = detectAppKind\(requestForReading\)/);
         expect(api).toMatch(/\.\.\.\(appKind \? \{ appKind \} : \{\}\)/);
         expect(react).toMatch(/const inheritedAppKind = prevEntry\?\.type === 'api'/);
-        expect(react).toMatch(/const appKind = detectAppKind\(request\) \|\| inheritedAppKind/);
+        expect(react).toMatch(/const mayInheritAppKind = input\?\.resumeExisting === true \|\| explicitScaffoldDir/);
+        expect(react).toMatch(/mayInheritAppKind \? inheritedAppKind \|\| detectedAppKind : detectedAppKind/);
     });
 });
 

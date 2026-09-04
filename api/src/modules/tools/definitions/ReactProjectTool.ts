@@ -3953,6 +3953,11 @@ export class ReactProjectTool extends BaseTool {
         const scaffoldEntry = (input?.resumeExisting === true || explicitScaffoldDir || samePipelineHandoff)
             ? prevEntry
             : null;
+        // Restoring a pipeline-owned directory is not proof that its domain
+        // belongs to this request. A new chat can share a session registry key
+        // with an older run; only an explicit continuation may inherit its
+        // app kind, otherwise a stale Weather/Shop/etc. engine leaks in.
+        const mayInheritAppKind = input?.resumeExisting === true || explicitScaffoldDir;
         // Carry the API builder's in-memory account into self-QA. The page-store
         // strips runtimeAuth, so a plaintext password never crosses to disk.
         const runtimeAuth = prevEntry?.type === 'api' && prevEntry?.runtimeAuth?.email && prevEntry?.runtimeAuth?.password
@@ -3970,7 +3975,7 @@ export class ReactProjectTool extends BaseTool {
         const detectedAppKind = detectAppKind(request);
         const appKind = detectedAppKind && detectedAppKind !== 'custom'
             ? detectedAppKind
-            : scaffoldEntry ? inheritedAppKind || detectedAppKind : detectedAppKind;
+            : mayInheritAppKind ? inheritedAppKind || detectedAppKind : detectedAppKind;
         const appBp: AppBlueprint | null = appKind ? blueprintFor(appKind, request, artifactIsAr) : null;
         // سجّل قرار القالب نفسه، لا وعداً عاماً بالنجاح؛ هذا يكشف فوراً أي
         // تحوير لوسيط الطلب بين الخطة وأداة البناء في الاختبارات الحية.
