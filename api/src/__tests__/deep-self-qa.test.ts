@@ -16,7 +16,7 @@ import fs from 'fs';
 import path from 'path';
 import { judgeBehaviour } from '../core/quality/behaviour-audit';
 import { formatAudit } from '../core/quality/app-audit';
-import { VIEWPORTS } from '../core/quality/ui-inspection';
+import { VIEWPORTS, effectiveViewports } from '../core/quality/ui-inspection';
 
 const SRC = path.join(__dirname, '..');
 const read = (...p: string[]) => fs.readFileSync(path.join(SRC, ...p), 'utf-8');
@@ -199,8 +199,14 @@ describe('the interface itself is inspected — «وفحص ui»', () => {
         // viewport exact while still measuring all three classes.
         expect(VIEWPORTS.map(v => v.w)).toEqual([1280, 820, 390]);
         const u = U();
-        expect(u).toMatch(/await page\.setViewportSize\(\{ width: vp\.w, height: vp\.h \}\)/);
-        expect(u).toMatch(/await page\.setViewportSize\(opts\.restore\)/);
+        expect(u).toMatch(/await applyViewportSize\(page, vp\.w, vp\.h\)/);
+        expect(u).toMatch(/await applyViewportSize\(page, openingViewport\.width, openingViewport\.height\)/);
+    });
+
+    it('fits the responsive matrix to a visible panel without inventing a desktop width', () => {
+        expect(effectiveViewports(1280).map(v => v.w)).toEqual([1280, 820, 390]);
+        expect(effectiveViewports(820).map(v => v.w)).toEqual([820, 390]);
+        expect(effectiveViewports(390).map(v => v.w)).toEqual([390]);
     });
 
     it('⛔ every width it REPORTS is a width it measured', () => {
@@ -281,6 +287,8 @@ describe('the interface itself is inspected — «وفحص ui»', () => {
         expect(u).toContain("code: 'viewport_emulation_failed'");
         expect(u).toContain('metrics.viewports = measuredViewports');
         expect(u).toContain('Math.abs(actualVw - vp.w) > 2');
+        expect(u).toContain('const viewports = effectiveViewports(availableWidth)');
+        expect(u).toContain("Emulation.setDeviceMetricsOverride");
     });
 
     it('every failing element is OUTLINED, not just listed', () => {

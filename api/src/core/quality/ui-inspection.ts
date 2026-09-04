@@ -73,6 +73,28 @@ export const VIEWPORTS = [
     { name: 'mobile', ar: 'جوّال', w: 390, h: 844 },
 ] as const;
 
+export function effectiveViewports(availableWidth: number): Array<{ name: string; ar: string; w: number; h: number }> {
+    const cap = Number.isFinite(availableWidth) && availableWidth > 0 ? availableWidth : 1280;
+    const supported = VIEWPORTS.filter(v => v.w <= cap).map(v => ({ ...v }));
+    if (supported.length) return supported;
+    return [{ name: 'available', ar: 'العرض المتاح', w: Math.max(320, Math.floor(cap)), h: 844 }];
+}
+
+async function applyViewportSize(page: any, width: number, height: number): Promise<{ width: number; height: number }> {
+    await page.setViewportSize({ width, height });
+    let actual = await evalInPage(page, function () { return { width: window.innerWidth, height: window.innerHeight }; });
+    if (Math.abs(Number(actual?.width || 0) - width) <= 2) return actual;
+    try {
+        const cdp = await page.context().newCDPSession(page);
+        await cdp.send('Emulation.setDeviceMetricsOverride', {
+            width, height, deviceScaleFactor: 1, mobile: false,
+        });
+        await cdp.detach().catch(() => { });
+        actual = await evalInPage(page, function () { return { width: window.innerWidth, height: window.innerHeight }; });
+    } catch { /* the caller records an instrumentation finding with the measured width */ }
+    return actual;
+}
+
 /* ---------------------------------------------------------------- contrast */
 
 function measureContrast() {
@@ -611,9 +633,19 @@ export async function inspectUi(
     let mobileTinyEvidence: any[] = [];
     const viewportFailures: Array<{ requested: number; actual: number }> = [];
     const measuredViewports: string[] = [];
-    for (const vp of VIEWPORTS) {
+    let availableWidth = 1280;
+    let openingViewport = { width: 1280, height: 900 };
+    try {
+        const initial = await evalInPage(page, function () { return { width: window.innerWidth, height: window.innerHeight }; });
+        if (Number(initial?.width) > 0) {
+            availableWidth = Number(initial.width);
+            openingViewport = { width: Number(initial.width), height: Math.max(240, Number(initial.height || 900)) };
+        }
+    } catch { /* use the full desktop matrix when the opening width cannot be observed */ }
+    const viewports = effectiveViewports(availableWidth);
+    for (const vp of viewports) {
         try {
-            await page.setViewportSize({ width: vp.w, height: vp.h });
+            await applyViewportSize(page, vp.w, vp.h);
             opts?.onViewport?.(vp.w, vp.h);
             await page.waitForTimeout(420);
             await eyes?.say(page, `فحص العرض ${vp.w}px — ${vp.ar}`);
@@ -654,8 +686,8 @@ export async function inspectUi(
     metrics.perWidth = perWidth;
     if (opts?.restore) {
         try {
-            await page.setViewportSize(opts.restore);
-            opts?.onViewport?.(opts.restore.width, opts.restore.height);
+            await applyViewportSize(page, openingViewport.width, openingViewport.height);
+            opts?.onViewport?.(openingViewport.width, openingViewport.height);
             await page.waitForTimeout(250);
         } catch { /* the caller owns the page; a failed restore is reported by it */ }
     }

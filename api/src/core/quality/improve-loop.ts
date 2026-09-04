@@ -240,7 +240,9 @@ export async function improveUntilItStops(
         }
 
         const after = await opts.measure().catch(() => ({ score: -1, findingIds: [], skipped: true } as Measurement));
-        if (after.skipped || after.score <= current.score) {
+        const fewerFindings = uniq(after.findingIds).length < uniq(current.findingIds).length;
+        const measuredGain = after.score > current.score || (after.score === current.score && fewerFindings);
+        if (after.skipped || !measuredGain) {
             const undone = snapshotId ? await opts.rollback(snapshotId).catch(() => false) : false;
             const rollbackState: ImproveRound['rollback'] = snapshotId === '' ? 'none' : undone ? 'done' : 'failed';
             const rollbackMessage = rollbackState === 'none'
@@ -269,6 +271,10 @@ export async function improveUntilItStops(
             + (fixed.length ? ` · gone: ${fixed.join(', ')}` : ' · the score moved but no finding closed')
             + (after.findingIds.length ? ` · still open: ${after.findingIds.join(', ')}` : ' · nothing left'));
         current = after;
+        if (!after.findingIds.length) {
+            stoppedBecause = 'nothing_left';
+            break;
+        }
         stoppedBecause = 'improved';
     }
 
@@ -313,7 +319,7 @@ export function normaliseImproveResult(
     const rounds = Array.isArray(source.rounds)
         ? source.rounds.map((raw: any, index: number): ImproveRound => {
             const allowed: ImproveRound['verdict'][] = [
-                'improved', 'no_change_possible', 'no_measured_gain', 'build_failed', 'target_reached',
+                'improved', 'no_change_possible', 'no_measured_gain', 'build_failed', 'target_reached', 'nothing_left',
             ];
             const before = Number(raw?.before);
             const after = Number(raw?.after);
@@ -339,7 +345,7 @@ export function normaliseImproveResult(
         ? normaliseStrings(source.fixed)
         : uniq(rounds.flatMap(round => round.fixed));
     const stoppedBecause: ImproveRound['verdict'] =
-        ['improved', 'no_change_possible', 'no_measured_gain', 'build_failed', 'target_reached']
+        ['improved', 'no_change_possible', 'no_measured_gain', 'build_failed', 'target_reached', 'nothing_left']
             .includes(source.stoppedBecause as ImproveRound['verdict'])
             ? source.stoppedBecause as ImproveRound['verdict']
             // `Array.at` is ES2022; this package targets ES2020, so the call

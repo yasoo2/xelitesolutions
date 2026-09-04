@@ -25,7 +25,7 @@
 
 import { worthRepairing } from '../core/quality/self-repair';
 import { REPAIRS_THIS_FILE_CAN_MAKE } from '../core/quality/ui-repair';
-import { improveUntilItStops, improveSummary } from '../core/quality/improve-loop';
+import { improveUntilItStops, improveSummary, normaliseImproveResult } from '../core/quality/improve-loop';
 
 describe('a finding with a written fix is allowed to reach it', () => {
     // POSITIVE — his own defect, and every other id the repairer answers.
@@ -81,6 +81,42 @@ describe('the loop stops when there is nothing left, not when the score is nice'
         });
         expect(repaired).toBeGreaterThan(0);
         expect(result.final?.findingIds).toEqual([]);
+        expect(result.stoppedBecause).toBe('nothing_left');
+    });
+
+    it('keeps a repair that removes a finding even when the rounded score is unchanged', async () => {
+        let measurements = 0;
+        const result = await improveUntilItStops(round(92, ['low_contrast', 'small_targets']), {
+            say: () => { },
+            measure: async () => {
+                measurements += 1;
+                return measurements === 1
+                    ? round(92, ['small_targets'])
+                    : round(100, []);
+            },
+            repair: async (_round, remaining) => remaining.length ? ['src/styles/app.css'] : [],
+            rebuild: async () => true,
+            snapshot: () => 'snap',
+            rollback: async () => true,
+            maxRounds: 3,
+        });
+        expect(result.rounds).toHaveLength(2);
+        expect(result.rounds[0]).toMatchObject({ verdict: 'improved', rolledBack: false });
+        expect(result.final.findingIds).toEqual([]);
+        expect(result.stoppedBecause).toBe('nothing_left');
+    });
+
+    it('preserves the zero-findings verdict when a saved result is normalised', () => {
+        const clean = round(100, []);
+        const result = normaliseImproveResult({
+            first: round(92, ['low_contrast']),
+            final: clean,
+            rounds: [],
+            fixed: ['low_contrast'],
+            stoppedBecause: 'nothing_left',
+        }, clean);
+        expect(result.stoppedBecause).toBe('nothing_left');
+        expect(improveSummary(result, false)).toContain('audit found not one finding');
     });
 
     // NEGATIVE — and it never loops forever: a repair that changes nothing ends it.
