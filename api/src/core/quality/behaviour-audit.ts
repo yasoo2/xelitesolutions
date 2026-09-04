@@ -1066,6 +1066,18 @@ export function valueFor(type: string, tag: string, runNonce = '', language = 'e
     }
 }
 
+/** Infer native input semantics without treating substrings such as "message" as "age". */
+export function semanticTypeForField(tag: string, name: string): 'email' | 'tel' | 'date' | 'time' | 'number' | '' {
+    if (String(tag).toLowerCase() !== 'input') return '';
+    const label = String(name || '');
+    if (/\bemail\b|e[- ]?mail/i.test(label)) return 'email';
+    if (/\b(?:phone|telephone|mobile|tel)\b/i.test(label)) return 'tel';
+    if (/\b(?:birth\s*date|date\s*of\s*birth|dob|date)\b/i.test(label)) return 'date';
+    if (/\b(?:time|start\s*time|end\s*time)\b/i.test(label)) return 'time';
+    if (/\b(?:age|amount|price|quantity|count|capacity|duration|score|rating)\b/i.test(label)) return 'number';
+    return '';
+}
+
 /**
  * FILL THE FORM. SEND IT. SAY WHAT HAPPENED.
  *
@@ -1143,12 +1155,7 @@ export async function probeForms(
                 } else if (fld.type === 'checkbox' || fld.type === 'radio') {
                     await el.check({ timeout: 2000, force: true });
                 } else {
-                    const semantic = /email/i.test(fld.name) ? 'email'
-                        : /phone|telephone|mobile|\btel\b/i.test(fld.name) ? 'tel'
-                        : /birth.?date|date.of.birth|\bdob\b|\bdate\b/i.test(fld.name) ? 'date'
-                        : /\btime\b|start.?time|end.?time/i.test(fld.name) ? 'time'
-                        : /age|amount|price|quantity|count|capacity|duration|score|rating/i.test(fld.name) ? 'number'
-                        : '';
+                    const semantic = semanticTypeForField(fld.tag, fld.name);
                     if (semantic) {
                         const expected = semantic;
                         const bad = semantic === 'email' ? 'not-an-email' : semantic === 'tel' || semantic === 'number' ? 'letters-only' : 'not-a-date';

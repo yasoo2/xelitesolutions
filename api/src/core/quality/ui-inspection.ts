@@ -82,6 +82,7 @@ export function effectiveViewports(availableWidth: number): Array<{ name: string
 
 async function applyViewportSize(page: any, width: number, height: number): Promise<{ width: number; height: number }> {
     await page.setViewportSize({ width, height });
+    await page.waitForTimeout(180).catch(() => { });
     let actual = await evalInPage(page, function () { return { width: window.innerWidth, height: window.innerHeight }; });
     if (Math.abs(Number(actual?.width || 0) - width) <= 2) return actual;
     try {
@@ -89,9 +90,15 @@ async function applyViewportSize(page: any, width: number, height: number): Prom
         await cdp.send('Emulation.setDeviceMetricsOverride', {
             width, height, deviceScaleFactor: 1, mobile: false,
         });
+        await page.waitForTimeout(180).catch(() => { });
         await cdp.detach().catch(() => { });
         actual = await evalInPage(page, function () { return { width: window.innerWidth, height: window.innerHeight }; });
     } catch { /* the caller records an instrumentation finding with the measured width */ }
+    if (Math.abs(Number(actual?.width || 0) - width) > 2) {
+        await page.setViewportSize({ width, height }).catch(() => { });
+        await page.waitForTimeout(240).catch(() => { });
+        actual = await evalInPage(page, function () { return { width: window.innerWidth, height: window.innerHeight }; });
+    }
     return actual;
 }
 
@@ -541,11 +548,38 @@ function measureResponsive(vw: number) {
     var fs = parseFloat(getComputedStyle(el).fontSize || '16');
     if (fs && fs < 12) smallFonts++;
   });
+  var fragmentedHeader: any = null;
+  if (measuredVw <= 480) {
+    var banner: any = document.querySelector('header, [role="banner"]');
+    if (banner) {
+      var bannerBox = banner.getBoundingClientRect();
+      var layout: any = banner.querySelector(':scope > div') || banner;
+      var visibleChildren = Array.prototype.slice.call(layout.children).filter(function (child: any) {
+        var box = child.getBoundingClientRect();
+        var style = getComputedStyle(child);
+        return box.width > 2 && box.height > 2 && style.display !== 'none' && style.visibility !== 'hidden';
+      });
+      var rows = Array.from(new Set(visibleChildren.map(function (child: any) {
+        return Math.round(child.getBoundingClientRect().top / 8) * 8;
+      }))).length;
+      var offscreenControls = Array.prototype.slice.call(banner.querySelectorAll('a[href],button,[role="button"]')).filter(function (control: any) {
+        var box = control.getBoundingClientRect();
+        return box.width > 2 && box.height > 2 && (box.left < -2 || box.right > measuredVw + 2);
+      }).length;
+      if (bannerBox.height > 144 || rows >= 3 || offscreenControls > 0) {
+        fragmentedHeader = {
+          sel: selectorFor(layout), label: 'fragmented mobile header',
+          w: Math.round(bannerBox.width), h: Math.round(bannerBox.height), rows: rows, offscreenControls: offscreenControls,
+        };
+      }
+    }
+  }
   return {
     requestedVw: vw, actualVw: actualVw,
     scrollW: scrollW, overflowX: scrollW > measuredVw + 2, wide: wide, wideEvidence: wideEvidence, boxes: boxes,
     tiny: tiny, tinyBoxes: tinyBoxes, tinyNames: tinyNames, tinyEvidence: tinyEvidence, smallFonts: smallFonts,
     clipped: clipped, clippedEvidence: clippedEvidence, clippedBoxes: clippedBoxes,
+    fragmentedHeader: fragmentedHeader,
     hasViewportMeta: !!document.querySelector('meta[name="viewport"]'),
   };
 }
@@ -627,6 +661,7 @@ export async function inspectUi(
     const perWidth: Record<string, any> = {};
     let overflowAt = '';
     let mobileTiny = 0, mobileFonts = 0, hasViewportMeta = true;
+    let fragmentedHeader: any = null;
     let clippedAt = '', clippedCount = 0, clippedEvidence: any[] = [];
     let mobileTinyNames: string[] = [];
     let overflowEvidence: any[] = [];
@@ -677,6 +712,7 @@ export async function inspectUi(
                 mobileTiny = r.tiny; mobileFonts = r.smallFonts; mobileTinyNames = r.tinyNames || [];
                 mobileTinyEvidence = Array.isArray(r.tinyEvidence) ? r.tinyEvidence.slice(0, 8) : [];
                 if (r.tinyBoxes?.length) await eyes?.mark(page, r.tinyBoxes, { note: `أهداف لمس أصغر من ${TAP_TARGET_MIN_PX}px`, tone: 'warn', holdMs: 1000 });
+                if (r.fragmentedHeader) fragmentedHeader = r.fragmentedHeader;
             }
         } catch { /* one width failing must not lose the others */ }
     }
@@ -744,6 +780,15 @@ export async function inspectUi(
             ar: `${mobileFonts} عنصر بخط أصغر من 12px على الجوّال`,
             en: `${mobileFonts} element(s) render below 12px on a phone`,
             hint: 'never go under 12px for body copy',
+        });
+    }
+    if (fragmentedHeader) {
+        findings.push({
+            code: 'mobile_header_fragmented', severity: 'major',
+            ar: `رأس الصفحة على الجوّال متشظٍ إلى ${fragmentedHeader.rows} صفوف وارتفاعه ${fragmentedHeader.h}px، وعناصره الخارجة عن العرض: ${fragmentedHeader.offscreenControls || 0}`,
+            en: `The mobile header fragments into ${fragmentedHeader.rows} rows, is ${fragmentedHeader.h}px tall, and has ${fragmentedHeader.offscreenControls || 0} off-screen control(s)`,
+            hint: 'keep brand and utility action on one row, and put navigation in one compact scrollable row',
+            evidence: [fragmentedHeader],
         });
     }
     metrics.mobileTinyNames = mobileTinyNames;

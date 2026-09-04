@@ -321,6 +321,7 @@ const ACCEPTANCE_TOPIC_IDS: Record<string, DeliveryTopic[]> = {
     status_message: [],
     add_row: ['crud'],
     form_validation: ['required'],
+    contact_form: [],
     export: ['csv'],
     dashboard: [],
     empty_state: [],
@@ -3368,6 +3369,13 @@ h1,h2,h3{font-family:var(--f-head);font-weight:var(--f-head-weight)}
 .nav-links a[aria-current]::after{content:'';position:absolute;inset-inline:8px;bottom:6px;
   height:2px;border-radius:2px;background:var(--brand)}
 .theme-toggle{background:none;border:1px solid var(--border);border-radius:10px;min-width:44px;min-height:44px;cursor:pointer;color:var(--text)}
+@media(max-width:640px){
+  .header-inner{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;padding-block:8px}
+  .brand{grid-column:1;grid-row:1;margin:0;min-width:0}
+  .theme-toggle{grid-column:2;grid-row:1}
+  .nav-links{grid-column:1/-1;grid-row:2;width:100%;flex-wrap:nowrap;overflow-x:auto;justify-content:flex-start;scrollbar-width:thin}
+  .nav-links a{flex:0 0 auto}
+}
 .hero{padding-block:clamp(72px,11vw,150px);background:radial-gradient(80% 60% at 50% 0,color-mix(in srgb,var(--tint) 30%,transparent),transparent);position:relative;overflow:hidden}
 .hero::before,.hero::after{content:'';position:absolute;border-radius:50%;filter:blur(70px);pointer-events:none}
 .hero::before{width:440px;height:440px;background:color-mix(in srgb,var(--brand) 55%,transparent);top:-150px;inset-inline-end:-130px;opacity:.5}
@@ -3959,7 +3967,10 @@ export class ReactProjectTool extends BaseTool {
         // Hero + Features + FAQ with a restaurant menu attached and no map at
         // all. When the request names an application, the section library is
         // skipped entirely and a working app is generated instead.
-        const appKind = detectAppKind(request) || inheritedAppKind;
+        const detectedAppKind = detectAppKind(request);
+        const appKind = detectedAppKind && detectedAppKind !== 'custom'
+            ? detectedAppKind
+            : inheritedAppKind || detectedAppKind;
         const appBp: AppBlueprint | null = appKind ? blueprintFor(appKind, request, artifactIsAr) : null;
         // سجّل قرار القالب نفسه، لا وعداً عاماً بالنجاح؛ هذا يكشف فوراً أي
         // تحوير لوسيط الطلب بين الخطة وأداة البناء في الاختبارات الحية.
@@ -6472,12 +6483,9 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                         rollback: async (id: string) => {
                             const back = restoreVersion(proj, id);
                             if (!back?.ok) return false;
-                            const rb = await runDoctored('npm', ['run', 'build'], {
-                                cwd: proj, timeoutMs: 240_000,
-                                onLine: (l: string) => term(`  ${l.slice(0, 200)}`), onNote: term,
-                            });
-                            if (rb.ok === true && packaged) packageIntoApi(false);
-                            if (rb.ok !== true) {
+                            const rb = await runBuild(240_000);
+                            if (rb === 0 && packaged) packageIntoApi(false);
+                            if (rb !== 0) {
                                 repairRollbackNeedsVerification = true;
                                 term('rollback: source restored byte-for-byte; the post-restore build could not be verified, so delivery remains blocked');
                             }
@@ -6628,11 +6636,8 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                             return [rel];
                         },
                         rebuild: async () => {
-                            const rb = await runDoctored('npm', ['run', 'build'], {
-                                cwd: proj, timeoutMs: 240_000,
-                                onLine: (l: string) => term(`  ${l.slice(0, 200)}`), onNote: term,
-                            });
-                            if (rb.ok !== true) return false;
+                            const rb = await runBuild(240_000);
+                            if (rb !== 0) return false;
                             // The packaged copy is the OLD interface until this
                             // runs — measuring it would credit the round with a
                             // page it did not produce.

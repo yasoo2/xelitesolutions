@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { valueFor } from '../core/quality/behaviour-audit';
+import { semanticTypeForField, valueFor } from '../core/quality/behaviour-audit';
 
 const source = (...parts: string[]) => fs.readFileSync(
     path.join(__dirname, '..', ...parts),
@@ -29,5 +29,18 @@ describe('request integrity and browser QA language', () => {
             .toBe('رسالة اختبار من فحص الجودة الذاتي في جو.');
         expect(valueFor('text', 'input', 'run', 'en')).toBe('Joe QA');
         expect(valueFor('text', 'input', 'run', 'ar')).toBe('اختبار جو');
+    });
+
+    it('does not mistake message for age or impose input types on textareas', () => {
+        expect(semanticTypeForField('textarea', 'Your message Your message')).toBe('');
+        expect(semanticTypeForField('input', 'Message')).toBe('');
+    });
+
+    it('still recognises explicit native input semantics', () => {
+        expect(semanticTypeForField('input', 'Patient age')).toBe('number');
+        expect(semanticTypeForField('input', 'Mobile phone')).toBe('tel');
+        expect(semanticTypeForField('input', 'Email address')).toBe('email');
+        expect(semanticTypeForField('input', 'Birth date')).toBe('date');
+        expect(semanticTypeForField('input', 'Start time')).toBe('time');
     });
 });

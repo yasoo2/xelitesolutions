@@ -66,6 +66,8 @@ export default function Joe() {
     // State
     // [WAKIL REFACTOR] Mode is always 'agent' now. Toggle removed.
     const [messages, setMessages] = useState<Message[]>([]);
+    const [historyRefreshTick, setHistoryRefreshTick] = useState(0);
+    const loadedHistorySessionRef = useRef<string | undefined>(undefined);
     // Prompts echoed locally at send time, awaiting their server twin.
     const pendingEchoRef = useRef<Map<string, number>>(new Map());
     const [inputValue, setInputValue] = useState('');
@@ -465,7 +467,23 @@ export default function Joe() {
 
             // [Auto-Title] Handle new session titles and refreshes
             if (msg.type === 'sessions:refresh') {
-                loadAllSessions();
+                const renamedSessionId = String(msg?.data?.sessionId || '').trim();
+                const newTitle = String(msg?.data?.newTitle || '').trim();
+                if (renamedSessionId && newTitle) {
+                    useSessionStore.setState(state => ({
+                        sessions: state.sessions.map(session => session.id === renamedSessionId
+                            ? { ...session, title: newTitle }
+                            : session),
+                        agentSessions: state.agentSessions.map(session => session.id === renamedSessionId
+                            ? { ...session, title: newTitle }
+                            : session),
+                    }));
+                }
+                void loadAllSessions();
+                // The final answer is persisted before the automatic title
+                // refresh. Re-read this conversation so a missed/late socket
+                // frame cannot leave an empty chat beside a completed preview.
+                if (activeSessionId) setHistoryRefreshTick(value => value + 1);
             }
         });
         return () => { unsub(); };
@@ -492,15 +510,20 @@ export default function Joe() {
         const sessionId = activeSessionId;
         let cancelled = false;
 
-        // Always start the switched-to session from a clean slate.
-        setMessages([]);
+        const switchedSession = loadedHistorySessionRef.current !== sessionId;
+        loadedHistorySessionRef.current = sessionId;
+        // A title refresh must never erase the conversation it is renaming.
+        // Clear only when the user actually selected a different session.
+        if (switchedSession) setMessages([]);
         // Loading and department narration belong to the session that produced
         // them. A new chat must not inherit a disabled composer or a stale
         // "Joe is working" row from the conversation we just left. A genuinely
         // active destination is rehydrated independently from runningIds below.
-        setIsLoading(false);
-        setDepartmentStatus(null);
-        visiblePipelineReportsRef.current.clear();
+        if (switchedSession) {
+            setIsLoading(false);
+            setDepartmentStatus(null);
+            visiblePipelineReportsRef.current.clear();
+        }
         if (!sessionId) return;
 
         const loadMessages = async () => {
@@ -544,7 +567,7 @@ export default function Joe() {
 
         loadMessages();
         return () => { cancelled = true; };
-    }, [activeSessionId, i18n.language]);
+    }, [activeSessionId, i18n.language, historyRefreshTick]);
 
     // Workspace Management
     const [workspaceId, setWorkspaceId] = useState<string | null>(null);

@@ -17,6 +17,7 @@ import path from 'path';
 import { judgeBehaviour } from '../core/quality/behaviour-audit';
 import { formatAudit } from '../core/quality/app-audit';
 import { VIEWPORTS, effectiveViewports } from '../core/quality/ui-inspection';
+import { repairMeasuredMobileHeader } from '../core/quality/ui-repair';
 
 const SRC = path.join(__dirname, '..');
 const read = (...p: string[]) => fs.readFileSync(path.join(SRC, ...p), 'utf-8');
@@ -209,6 +210,17 @@ describe('the interface itself is inspected — «وفحص ui»', () => {
         expect(effectiveViewports(390).map(v => v.w)).toEqual([390]);
     });
 
+    it('measures a fragmented mobile header and has an evidence-bound repair', () => {
+        const u = U();
+        expect(u).toContain("code: 'mobile_header_fragmented'");
+        expect(u).toContain('bannerBox.height > 144 || rows >= 3 || offscreenControls > 0');
+        expect(u).toContain("banner.querySelectorAll('a[href],button,[role=\"button\"]')");
+        const repaired = repairMeasuredMobileHeader('.site-header{}', [{ sel: 'header.site-header > div.header-inner' }]);
+        expect(repaired.repairs[0].id).toBe('mobile_header_fragmented');
+        expect(repaired.text).toContain('grid-template-columns: minmax(0, 1fr) auto');
+        expect(repairMeasuredMobileHeader(repaired.text, [{ sel: 'header.site-header > div.header-inner' }]).repairs).toEqual([]);
+    });
+
     it('⛔ every width it REPORTS is a width it measured', () => {
         //  The claim, not the spelling: the reported list is appended only
         //  after the page proves window.innerWidth matches the requested
@@ -289,6 +301,8 @@ describe('the interface itself is inspected — «وفحص ui»', () => {
         expect(u).toContain('Math.abs(actualVw - vp.w) > 2');
         expect(u).toContain('const viewports = effectiveViewports(availableWidth)');
         expect(u).toContain("Emulation.setDeviceMetricsOverride");
+        expect(u).toContain('await page.waitForTimeout(180)');
+        expect(u).toContain('await page.waitForTimeout(240)');
     });
 
     it('every failing element is OUTLINED, not just listed', () => {

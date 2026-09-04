@@ -1,8 +1,25 @@
 import { requirementNamesPage, verifyNamed, type NamedRequirement } from '../core/quality/named-requirements';
+import { acceptanceFor, judgeAcceptance } from '../core/quality/acceptance';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 
 const requirement = (id: string, text: string): NamedRequirement => ({ id, text, quote: text });
 
 describe('a multi-page site contract survives a unavailable provider', () => {
+    it('makes the requested Visit contact form part of the acceptance denominator', () => {
+        const request = 'Create Home, Exhibits, Visit, and Education pages, with a Visit contact form.';
+        const criterion = acceptanceFor(request).find(item => item.id === 'contact_form');
+        expect(criterion).toBeDefined();
+
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-museum-form-'));
+        fs.writeFileSync(path.join(dir, 'Contact.jsx'), `export default function Contact(){return <form onSubmit={()=>{}}><input type="email" /></form>}`);
+        const result = judgeAcceptance([criterion!], { dir } as any, false);
+        expect(result.accepted).toBe(true);
+        expect(result.criteria[0].verdict).toBe('met');
+        fs.rmSync(dir, { recursive: true, force: true });
+    });
+
     it('proves routes, shared navigation, active state, internal links, and the visit form from structural source evidence', async () => {
         const source = `
             import Navbar from './components/Navbar.jsx';

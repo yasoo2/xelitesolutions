@@ -258,6 +258,12 @@ const CATALOGUE: Array<Criterion & { asked: RegExp }> = [
         markers: [/\.required\b|fields\s*\.filter/i, /setError\(|role\s*=\s*["']alert["']|aria-live/i],
     },
     {
+        id: 'contact_form', kind: 'feature',
+        asked: /(?:contact|enquiry|inquiry)\s+form|form\s+(?:on|for)\s+(?:the\s+)?(?:contact|visit)\s+page|نموذج\s+(?:تواصل|اتصال|زيارة)|استمارة\s+(?:تواصل|اتصال|زيارة)/iu,
+        ar: 'نموذج تواصل أو زيارة', en: 'a Visit contact form',
+        markers: [/<form\b/i, /type\s*=\s*["']email["']/i, /onSubmit\s*=/i],
+    },
+    {
         id: 'add_row', kind: 'feature',
         asked: /(?:إضافة|اضافة|أضف|\badd\b|\bcreate\b)\s+(?:(?:a|an|the)\s+)?(?:new\s+)?(?:حجز|صف|عنصر|سجل|بيان|مهمة|مشروع|عميل|جهة|منتج|طلب|تذكرة|ملاحظة|row|record|entry|item|booking|task|project|customer|contact|product|order|ticket|note)(?:\s+(?:record|entry|item))?/iu,
         ar: 'إضافة سجلّ جديد', en: 'adding a new record',

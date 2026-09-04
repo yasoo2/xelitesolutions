@@ -742,6 +742,7 @@ export const REPAIRS_THIS_FILE_CAN_MAKE: ReadonlySet<string> = new Set([
     'contrast', 'low_contrast',
     'small_targets', 'tap_targets', 'mobile_tap_targets',
     'mobile_overflow', 'responsive',
+    'mobile_header_fragmented',
     'line_too_long', 'type_scale_drift', 'flat_hierarchy',
     'semantic_input_validation',
 ]);
@@ -785,6 +786,7 @@ export function repairProjectFiles(
     // proof that the repairer has nothing to write.
     const mobileOverflowMeasured = mobileOverflowEvidence.length > 0
         || hasFinding('mobile_overflow', 'responsive');
+    const mobileHeaderEvidence = evidenceFor('mobile_header_fragmented');
     const contrastEvidence = evidenceFor('low_contrast', 'contrast');
     const semanticEvidence = evidenceFor('semantic_input_validation');
     const out: Record<string, string> = {};
@@ -833,6 +835,7 @@ export function repairProjectFiles(
             const surgical = [
                 (t: string) => repairMeasuredTapTargets(t, smallEvidence, TAP_PX[Math.min(round, TAP_PX.length) - 1]),
                 (t: string) => repairMeasuredOverflow(t, mobileOverflowEvidence, round),
+                (t: string) => repairMeasuredMobileHeader(t, mobileHeaderEvidence),
                 (t: string) => repairMeasuredContrast(t, contrastEvidence, (round - 1) * 1.5),
                 // …and the design counts that have a deterministic answer.
                 (t: string) => repairMeasure(t, evidenceFor('line_too_long')),
@@ -1061,7 +1064,6 @@ ${sels.join(',\n')} {
   min-inline-size: 0 !important;
   overflow-wrap: anywhere;
 }
-
 }
 `;
     return {
@@ -1071,6 +1073,40 @@ ${sels.join(',\n')} {
             detail: `قيّدتُ ${sels.length} عنصراً سمّاه قياس الهاتف بدل إخفاء تجاوز الصفحة`,
             detailEn: `Constrained the ${sels.length} element(s) named by the phone measurement instead of hiding page overflow`,
             count: sels.length,
+        }],
+    };
+}
+
+export function repairMeasuredMobileHeader(css: string, evidence: any[]): RepairedFile {
+    const text = String(css || '');
+    const sels = safeSelectors(evidence);
+    if (!sels.length || text.includes('Joe measured fragmented mobile header')) return { text, repairs: [] };
+    const selector = sels[0];
+    const block = `
+/* Joe measured fragmented mobile header: ${selector} */
+@media (max-width: 480px) {
+  ${selector} {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    align-items: center !important;
+    gap: 4px 10px !important;
+    min-height: 0 !important;
+  }
+  ${selector} > nav, ${selector} > [role="navigation"] {
+    grid-column: 1 / -1 !important;
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    max-width: 100% !important;
+  }
+}
+`;
+    return {
+        text: text + block,
+        repairs: [{
+            id: 'mobile_header_fragmented', count: 1,
+            detail: 'رتبتُ رأس الجوال المقاس في صف أدوات وصف تنقّل مضغوط',
+            detailEn: 'Reflowed the measured mobile header into a utility row and one compact navigation row',
         }],
     };
 }

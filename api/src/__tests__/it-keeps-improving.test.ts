@@ -185,7 +185,7 @@ describe('the build really drives it', () => {
 
     it('each round gets a real browser measurement, a real build, a real snapshot', () => {
         expect(REACT).toMatch(/const a = await auditBuiltApp\(path\.join\(proj, 'dist'\)/);
-        expect(REACT).toMatch(/const rb = await runDoctored\('npm', \['run', 'build'\]/);
+        expect(REACT.match(/const rb = await runBuild\(240_000\)/g)).toHaveLength(2);
         expect(REACT).toMatch(/snapshotProject\(proj, label\)\?\.id/);
         expect(REACT).toMatch(/const back = restoreVersion\(proj, id\);/);
     });
@@ -405,5 +405,14 @@ describe('legacy improvement results are safe to report', () => {
         expect(result.first.score).toBe(72);
         expect(result.final.score).toBe(72);
         expect(() => improveSummary(result, false)).not.toThrow();
+    });
+});
+
+describe('the generated project reuses its proven build recipe', () => {
+    it('uses runBuild for repair rounds and rollback verification', () => {
+        const start = REACT.indexOf('loop = await improveUntilItStops');
+        const block = REACT.slice(start, REACT.indexOf('loop = normaliseImproveResult', start));
+        expect(block.match(/const rb = await runBuild\(240_000\)/g)).toHaveLength(2);
+        expect(block).not.toContain("runDoctored('npm', ['run', 'build']");
     });
 });

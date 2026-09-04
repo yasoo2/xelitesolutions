@@ -855,7 +855,7 @@ describe('THE WIRING: the build is judged before it is delivered', () => {
     });
 
     it('the ledger reaches the message in both languages, and the caller', () => {
-        expect((REACT.match(/\$\{qaBlock\}\$\{shellBlock\}\$\{acceptBlock\}/g) || []).length).toBe(2);
+        expect((REACT.match(/\$\{qaBlock\}\$\{shellBlock\}\$\{qualityMatrixBlock\}\$\{acceptBlock\}/g) || []).length).toBe(2);
         //  The claim is «the ledger reaches the message», not «the line is
         //  spelled this way». Pinned letter for letter, this went red the
         //  moment `acceptBlock` began carrying a stand-down notice ahead of the
