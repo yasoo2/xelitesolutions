@@ -163,6 +163,25 @@ export function restoreVersion(dir: string, id?: string): RestoreResult {
         for (const rel of current) {
             try { fs.rmSync(path.join(dir, rel), { force: true }); removed.push(rel); } catch { /* best effort */ }
         }
+
+        // A successful copy loop is not enough evidence for a rollback. A
+        // failed repair must leave the source exactly as it was, including
+        // build configuration that the UI repairer never intended to touch.
+        // Verify both the restored bytes and that no post-snapshot source file
+        // survived before the caller is allowed to call the rollback safe.
+        const leftovers = sourceFiles(dir).filter(rel => !wanted.includes(rel));
+        const mismatch = wanted.find(rel => {
+            const expected = path.join(from, rel);
+            const actual = path.join(dir, rel);
+            try { return !fs.existsSync(actual) || !fs.readFileSync(expected).equals(fs.readFileSync(actual)); }
+            catch { return true; }
+        });
+        if (mismatch || leftovers.length) {
+            return {
+                ok: false, version: target, undoOf, restored, removed,
+                error: mismatch ? `verification_failed:${mismatch}` : `verification_failed:leftover:${leftovers[0]}`,
+            };
+        }
     } catch (e: any) {
         return { ok: false, version: target, undoOf, restored, removed, error: String(e?.message || e).slice(0, 160) };
     }

@@ -12,7 +12,7 @@ import { normalizeIntentText } from '../orchestrator/promptNormalizer';
 
 export type PageKind =
     | 'store' | 'landing' | 'portfolio' | 'restaurant' | 'dashboard'
-    | 'blog' | 'app' | 'event' | 'docs' | 'generic';
+    | 'blog' | 'app' | 'event' | 'docs' | 'museum' | 'generic';
 
 // Order matters: the specific kinds are tested before the broad ones. A sales
 // dashboard was being classified as a shop because «مبيعات» contains «بيع» and
@@ -21,6 +21,10 @@ const DETECTORS: Array<[PageKind, RegExp]> = [
     ['dashboard', /لوحة تحكم|لوحة قيادة|لوحة إدارة|لوحة ادارة|إحصائ|احصائ|تحليلات|مبيعات|dashboard|admin panel|analytics|kpi|metrics|report(ing)? ui/i],
     ['docs', /توثيق|وثائق|دليل استخدام|docs|documentation|api reference|developer guide/i],
     ['event', /فعالية|مؤتمر|حفل|زفاف|event|conference|meetup|webinar|wedding|summit/i],
+    // A cultural institution is a presentation system with its own information
+    // architecture, not a generic company page. Keep this before broad landing
+    // signals so "museum website" never receives SaaS copy or pricing blocks.
+    ['museum', /متحف|مركز علوم|معرض علمي|مؤسسة ثقافية|science museum|museum|science center|cultural institution|exhibitions?|visitor hours|education program/i],
     // Word-bounded Latin keywords, learned the hard way: the injected coaching
     // text contains "compare a STORED hash" and bare /store/ matched it — a
     // measured build of «restaurant website» came out as an online shop with a
@@ -176,6 +180,15 @@ const BLUEPRINTS: Record<PageKind, string[]> = {
         'ticket tiers with prices and a highlighted recommended tier',
         'venue and travel info, FAQ, footer',
     ],
+    museum: [
+        'shared header with the institution name, primary navigation, active page, and a clear visit CTA',
+        'hero with a specific exhibition-led headline, visitor invitation, and a real science or gallery photograph',
+        'exhibits programme: 3-6 named exhibits with subject, age guidance, and an explore action',
+        'visit information: opening hours, admission guidance, accessibility notes, location, and a validated contact form',
+        'education programme: school visits, workshops, family activities, and a clear enquiry path',
+        'story or mission section explaining the institution and its collection without marketing filler',
+        'footer with working links to Home, Exhibits, Visit, and Education',
+    ],
     docs: [
         'sidebar navigation with sections and active-state highlighting',
         'main article column with anchored headings',
@@ -195,7 +208,7 @@ const BLUEPRINTS: Record<PageKind, string[]> = {
 const KIND_LABEL: Record<PageKind, string> = {
     store: 'online store', landing: 'company/landing page', portfolio: 'portfolio',
     restaurant: 'restaurant/cafe site', dashboard: 'admin dashboard', blog: 'blog/magazine',
-    app: 'web application UI', event: 'event page', docs: 'documentation site', generic: 'web page',
+    app: 'web application UI', event: 'event page', docs: 'documentation site', museum: 'museum or cultural institution site', generic: 'web page',
 };
 
 /**
@@ -211,7 +224,7 @@ const KIND_LABEL: Record<PageKind, string> = {
  */
 const IMAGE_BUDGET: Record<PageKind, number> = {
     store: 9, landing: 4, portfolio: 6, restaurant: 7, dashboard: 4,
-    blog: 6, app: 2, event: 5, docs: 0, generic: 3,
+    blog: 6, app: 2, event: 5, docs: 0, museum: 6, generic: 3,
 };
 
 export function blueprintBrief(kind: PageKind): string {

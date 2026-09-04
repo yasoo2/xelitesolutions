@@ -44,7 +44,6 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
   const [busy, setBusy] = useState(false);
   const [queueLen, setQueueLen] = useState(0);
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const [manualMode, setManualMode] = useState(false);
   const [lastFrameAt, setLastFrameAt] = useState<number | null>(null);
   const [frameCount, setFrameCount] = useState(0);
   const [startPending, setStartPending] = useState(false);
@@ -52,14 +51,12 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
   const [qualityMetrics, setQualityMetrics] = useState<Extract<WsEvent, { type: 'browser_quality' }> | null>(null);
   const [pageSnapshot, setPageSnapshot] = useState<Extract<WsEvent, { type: 'page_snapshot' }> | null>(null);
   const [diagnostics, setDiagnostics] = useState<Extract<WsEvent, { type: 'page_diagnostics' }> | null>(null);
-  const [isFullscreen, setIsFullscreen] = useState(false);
   const [actions, setActions] = useState<
     Array<{ ts: number; type: 'action_sent' | 'action_ack' | 'action_done' | 'action_error'; actionId: string; actionType: string; summary?: string; reason?: string; error?: string; durationMs?: number }>
   >([]);
   const [browserActions, setBrowserActions] = useState<Array<Extract<WsEvent, { type: 'browser_action' }>>>([]);
   const [actionFilter, setActionFilter] = useState<ActionFilter>('all');
   const [actionQuery, setActionQuery] = useState('');
-  const [copyFeedback, setCopyFeedback] = useState<'copied' | 'error' | null>(null);
   // Agent narration (steps + live thinking) renders in JOE'S CHAT, not here —
   // the browser view stays clean. When the agent pauses for the user (missing
   // credential / 2FA code) the prompt now appears in JOE'S CHAT, not here.
@@ -479,129 +476,6 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
     };
   }, [wsUrl]);
 
-  useEffect(() => {
-    const onFullscreenChange = () => setIsFullscreen(document.fullscreenElement === rootRef.current);
-    document.addEventListener('fullscreenchange', onFullscreenChange);
-    return () => document.removeEventListener('fullscreenchange', onFullscreenChange);
-  }, []);
-
-  const buildQualityReport = () => {
-    const now = Date.now();
-    const ageMs = lastFrameAt === null ? null : Math.max(0, now - lastFrameAt);
-    const frameOk = ageMs !== null && ageMs < 5000;
-    const connectionOk = status === 'connected';
-    const queueOk = (qualityMetrics?.queueLength ?? queueLen) < 8;
-    const actionErrors = qualityMetrics?.actionErrors ?? actions.filter((action) => action.type === 'action_error').length;
-    const jsErrors = qualityMetrics?.jsErrors ?? diagnostics?.jsErrors ?? 0;
-    const networkErrors = qualityMetrics?.networkErrors ?? diagnostics?.networkErrors ?? 0;
-    const recentFrames = frameTimesRef.current.filter((at) => now - at <= 4000);
-    const fps = qualityMetrics?.fps ?? (recentFrames.length > 1 ? (recentFrames.length - 1) / Math.max(0.1, (recentFrames[recentFrames.length - 1] - recentFrames[0]) / 1000) : 0);
-    const jitter = qualityMetrics?.jitterMs ?? null;
-    const serverFresh = qualityMetrics ? now - qualityMetrics.ts < 8000 : false;
-    const measuredStatus = serverFresh ? qualityMetrics?.status : undefined;
-    const statusOk = measuredStatus ? measuredStatus === 'good' : connectionOk && frameOk && queueOk && actionErrors === 0 && jsErrors === 0 && networkErrors === 0;
-    const ok = statusOk && connectionOk && frameOk && queueOk && actionErrors === 0 && jsErrors === 0 && networkErrors === 0;
-    const pageState = pageSnapshot?.state || 'unknown';
-    const checks = [
-      `${connectionOk ? '✓' : '✗'} WebSocket: ${status}`,
-      `${frameOk ? '✓' : '✗'} آخر إطار: ${ageMs === null ? 'لم يصل بعد' : `${Math.round(ageMs / 100) / 10}s`}`,
-      `${fps >= 8 ? '✓' : '✗'} FPS المقاس: ${fps ? fps.toFixed(1) : '0.0'}${jitter === null ? '' : ` · jitter=${Math.round(jitter)}ms`}`,
-      `${queueOk ? '✓' : '✗'} طابور الأفعال: ${qualityMetrics?.queueLength ?? queueLen} · in-flight=${qualityMetrics?.actionsInFlight ?? (busy ? 1 : 0)}`,
-      `${actionErrors === 0 ? '✓' : '✗'} أخطاء الأفعال: ${actionErrors} · آخر زمن استجابة=${qualityMetrics?.lastActionLatencyMs == null ? 'غير مقاس' : `${Math.round(qualityMetrics.lastActionLatencyMs)}ms`}`,
-      `${jsErrors === 0 ? '✓' : '✗'} أخطاء JavaScript: ${jsErrors} · أخطاء الشبكة: ${networkErrors}`,
-      `حالة الصفحة: ${pageState}${pageSnapshot?.title ? ` · ${pageSnapshot.title.slice(0, 80)}` : ''}`,
-      `الدقة: ${w}×${h} · الإطارات المرصودة: ${frameCount}${measuredStatus ? ` · الخادم=${measuredStatus}` : ' · القياس الخادمي غير متاح'}`,
-    ];
-    return { ok, title: ok ? 'البث اجتاز فحص الجودة الحي' : 'فحص الجودة يتطلب مراجعة قبل التسليم', checks, measuredStatus, fps, ageMs, actionErrors, jsErrors, networkErrors };
-  };
-
-  const runQualityCheck = () => {
-    const report = buildQualityReport();
-    try {
-      window.dispatchEvent(new CustomEvent('browser:quality_report', {
-        detail: { sessionId, report, page: pageSnapshot, quality: qualityMetrics, diagnostics },
-      }));
-    } catch { }
-  };
-
-  const downloadJson = (filename: string, value: unknown) => {
-    try {
-      const blob = new Blob([JSON.stringify(value, null, 2)], { type: 'application/json;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.download = filename;
-      link.href = url;
-      link.click();
-      window.setTimeout(() => URL.revokeObjectURL(url), 0);
-    } catch {
-      setCopyFeedback('error');
-    }
-  };
-
-  const copyText = async (text: string) => {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(text);
-      return;
-    }
-    const textarea = document.createElement('textarea');
-    textarea.value = text;
-    textarea.setAttribute('readonly', '');
-    textarea.style.position = 'fixed';
-    textarea.style.opacity = '0';
-    document.body.appendChild(textarea);
-    textarea.select();
-    const copied = document.execCommand('copy');
-    textarea.remove();
-    if (!copied) throw new Error('clipboard unavailable');
-  };
-
-  const copyQaReport = async () => {
-    try {
-      const report = buildQualityReport();
-      await copyText(JSON.stringify({ exportedAt: new Date().toISOString(), sessionId, report, page: pageSnapshot, quality: qualityMetrics, diagnostics }, null, 2));
-      setCopyFeedback('copied');
-      window.setTimeout(() => setCopyFeedback(null), 1800);
-    } catch {
-      setCopyFeedback('error');
-    }
-  };
-
-  const exportSessionEvidence = () => {
-    const report = buildQualityReport();
-    downloadJson(`joe-browser-evidence-${new Date().toISOString().replace(/[:.]/g, '-')}.json`, {
-      schema: 'joe.browser.session-evidence.v1',
-      exportedAt: new Date().toISOString(),
-      sessionId,
-      connection: { status, frameCount, lastFrameAt, width: w, height: h },
-      page: pageSnapshot,
-      quality: qualityMetrics,
-      diagnostics,
-      qaReport: report,
-      browserActions,
-      legacyActions: actions,
-      final,
-      debug,
-    });
-  };
-
-  const toggleFullscreen = async () => {
-    try {
-      if (document.fullscreenElement) await document.exitFullscreen();
-      else await rootRef.current?.requestFullscreen();
-    } catch { }
-  };
-
-  const captureSnapshot = () => {
-    const canvas = canvasRef.current;
-    if (!canvas || !w || !h || lastFrameAt === null) return;
-    try {
-      const link = document.createElement('a');
-      link.download = `joe-browser-${new Date().toISOString().replace(/[:.]/g, '-')}.png`;
-      link.href = canvas.toDataURL('image/png');
-      link.click();
-    } catch { }
-  };
-
   const startBrowserSession = async () => {
     const sid = String(sessionId || '').trim();
     if (!sid || startPending) return;
@@ -645,34 +519,11 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
   };
   const filteredBrowserActions = browserActions.filter(matchesAction);
   const filteredActions = actions.filter(matchesLegacyAction);
-  const qualitySignal = qualityMetrics?.status || (status === 'error' ? 'blocked' : 'unknown');
-  const runtimeErrorCount = (qualityMetrics?.jsErrors ?? diagnostics?.jsErrors ?? 0) + (qualityMetrics?.networkErrors ?? diagnostics?.networkErrors ?? 0);
-  const qualityNeedsRecovery = status === 'error' || qualitySignal === 'degraded' || qualitySignal === 'blocked' || runtimeErrorCount > 0;
-  const recoveryTitle = status === 'error' ? 'بث المتصفح غير متصل' : qualitySignal === 'blocked' ? 'المتصفح محجوب ويحتاج تدخلاً' : 'جودة المتصفح تحتاج مراجعة';
-  const waitingForPage = status === 'connected' && lastFrameAt === null && !pageSnapshot;
   const browserUnavailable = status === 'error';
 
   return (
     <div data-testid="browser-stream-root" style={{ width: '100%', height: '100%', overflow: 'hidden', background: '#0b0b0b', display: 'flex', flexDirection: 'column' }}>
       <div ref={rootRef} className="joe-screen" style={{ flex: 1, minHeight: 0, position: 'relative', overflow: 'hidden' }}>
-        <div className="browser-control-rail" data-testid="browser-control-rail" dir="rtl" aria-label="أدوات البث الحي">
-          <span
-            className={`browser-quality-signal is-${qualitySignal}`}
-            data-testid="browser-quality-signal"
-            title={qualityNeedsRecovery ? recoveryTitle : `جودة المتصفح: ${qualitySignal}`}
-            aria-label={qualityNeedsRecovery ? recoveryTitle : `جودة المتصفح: ${qualitySignal}`}
-          >●</span>
-          <button
-            className={`browser-control-button ${manualMode ? 'is-active' : ''}`}
-            data-testid="browser-control-button"
-            onClick={() => { setManualMode((active) => !active); try { canvasRef.current?.focus(); } catch { } }}
-            title={manualMode ? t('browserManualActive') : t('browserTakeControl')}
-            aria-label={manualMode ? t('browserManualActive') : t('browserTakeControl')}
-          >{manualMode ? 'LIVE' : 'CTRL'}</button>
-          <button className="browser-control-icon" data-testid="browser-quality-button" onClick={runQualityCheck} title="فحص جودة البث الحي" aria-label="فحص جودة البث الحي">QA</button>
-          <button className="browser-control-icon" data-testid="browser-capture-button" onClick={captureSnapshot} title="حفظ لقطة من البث" aria-label="حفظ لقطة من البث">CAP</button>
-          <button className="browser-control-icon" data-testid="browser-fullscreen-button" onClick={() => void toggleFullscreen()} title={isFullscreen ? 'الخروج من ملء الشاشة' : 'تكبير البث'} aria-label={isFullscreen ? 'الخروج من ملء الشاشة' : 'تكبير البث'}>{isFullscreen ? '−' : '↗'}</button>
-        </div>
         <style>{`
         .browser-cursor {
           width: 26px;

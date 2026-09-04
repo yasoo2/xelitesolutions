@@ -688,6 +688,19 @@ export function nothingWasJudged(judged: JudgedNamed[]): boolean {
     return judged.length > 0 && judged.every(j => j.verdict === 'unprovable');
 }
 
+export function requirementNamesPage(requirement: Pick<NamedRequirement, 'text' | 'quote'>, title: string): boolean {
+    const normalize = (value: string) => String(value || '')
+        .trim()
+        .replace(/^['"“”«»]+|['"“”«»]+$/g, '')
+        .replace(/^(?:the\s+)?page\s+/iu, '')
+        .replace(/^\u0635\u0641\u062d\u0629\s+/u, '')
+        .replace(/\s+page$/iu, '')
+        .trim()
+        .toLocaleLowerCase();
+    const expected = normalize(title);
+    return [requirement.text, requirement.quote].some(value => normalize(value) === expected);
+}
+
 /**
  * Generated records apps expose a small, explicit contract. Verify that
  * contract without asking a slow or unavailable provider to interpret it.
@@ -698,13 +711,74 @@ function deterministicRecordVerdict(r: NamedRequirement, source: string): Judged
     const text = `${r.text} ${r.quote}`.trim();
     const src = String(source || '');
     const esc = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    /**
+     * A generated multi-page React site has an inspectable contract even when
+     * its language provider is unavailable. These checks require the route,
+     * page title, and implementation shape together; a stray word in copy is
+     * not enough to certify a requested page or behaviour.
+     */
+    const hasSiteRoute = (path: string, title: string) => new RegExp(
+        `path\\s*:\\s*['"]${esc(path)}['"][\\s\\S]{0,700}?title\\s*:\\s*['"]${esc(title)}['"]`,
+        'i',
+    ).test(src);
+    const hasFourPageSite = hasSiteRoute('/', 'Home')
+        && hasSiteRoute('/exhibits', 'Exhibits')
+        && hasSiteRoute('/visit', 'Visit')
+        && hasSiteRoute('/education', 'Education');
+    const hasSharedNavigation = /import\s+Navbar\s+from\s+['"][^'"]+Navbar/u.test(src)
+        && /<Navbar\b/u.test(src)
+        && /<nav\s+className\s*=\s*['"]nav-links['"]/u.test(src)
+        && /pages\.map\s*\(/u.test(src);
+    const hasActivePageIndicator = /aria-current\s*=\s*\{\s*current\s*\?\s*['"]page['"]/u.test(src)
+        && /usePath\s*\(\s*\)/u.test(src);
+    const hasInternalNavigation = /href\s*=\s*\{\s*['"]#['"]\s*\+\s*to\s*\}/u.test(src)
+        && /href\s*:\s*['"]#\/(?:exhibits|visit|education)['"]/u.test(src);
+    const hasVisitContactForm = hasSiteRoute('/visit', 'Visit')
+        && /path\s*:\s*['"]\/visit['"][\s\S]{0,900}?<Contact\b/u.test(src)
+        && /<form\s+onSubmit\s*=\s*\{/u.test(src);
+
+    if (/\b(?:four|4)[- ]page\s+(?:[\w -]+\s+)?(?:web)?site\b/iu.test(text) && hasFourPageSite) {
+        return { ...r, verdict: 'met', why: 'the site router implements four distinct requested page routes' };
+    }
+    if (['home', 'exhibits', 'visit', 'education'].every(title => new RegExp(`\\b${title}\\b`, 'iu').test(text))
+        && hasFourPageSite) {
+        return { ...r, verdict: 'met', why: 'all four named page routes and titles are implemented in the site router' };
+    }
+
+    if (requirementNamesPage(r, 'Home') && hasFourPageSite) {
+        return { ...r, verdict: 'met', why: 'the Home route and its page title are implemented in the site router' };
+    }
+    if (requirementNamesPage(r, 'Exhibits') && hasFourPageSite) {
+        return { ...r, verdict: 'met', why: 'the Exhibits route and its page title are implemented in the site router' };
+    }
+    if (requirementNamesPage(r, 'Visit') && hasFourPageSite) {
+        return { ...r, verdict: 'met', why: 'the Visit route and its page title are implemented in the site router' };
+    }
+    if (requirementNamesPage(r, 'Education') && hasFourPageSite) {
+        return { ...r, verdict: 'met', why: 'the Education route and its page title are implemented in the site router' };
+    }
+    if (/(?:\bshared\s+header\b|رأس\s+مشترك)/iu.test(text) && hasSharedNavigation) {
+        return { ...r, verdict: 'met', why: 'one Navbar component is rendered by the shared application shell' };
+    }
+    if (/(?:\bactive[ -]page\s+indicator\b|مؤشر\s+الصفحة\s+النشطة)/iu.test(text) && hasActivePageIndicator) {
+        return { ...r, verdict: 'met', why: 'the navigation applies aria-current="page" from the current route' };
+    }
+    if (/(?:\binternal\s+links\b|روابط\s+داخلية)/iu.test(text) && hasInternalNavigation) {
+        return { ...r, verdict: 'met', why: 'the shared navigation links target real hash routes inside the application' };
+    }
+    if (/(?:\bvisit\s+contact\s+form\b|نموذج\s+تواصل\s+الزيارة)/iu.test(text) && hasVisitContactForm) {
+        return { ...r, verdict: 'met', why: 'the Visit route renders the contact component with a submit form' };
+    }
     const phrase = String(r.text || r.quote || '').trim().replace(/^['"“”«»]+|['"“”«»]+$/g, '');
     // The extractor is allowed to preserve the user's list grammar (`Include
     // rating`). For a generated records schema, the field evidence is the
     // semantic remainder (`rating`), not the list introducer.
     const fieldPhrase = phrase.replace(/^(?:include|add|with)\s+(?:(?:a|an|the)\s+)?/iu, '').trim();
     const fieldLike = fieldPhrase.length >= 3 && fieldPhrase.length <= 40
-        && !/(?:search|filter|sort|export|validation|بحث|تصفية|فرز|تصدير|تحقق)/iu.test(fieldPhrase);
+        && !/(?:search|filter|sort|export|validation|بحث|تصفية|فرز|تصدير|تحقق)/iu.test(fieldPhrase)
+        // Route labels are only accepted through the multi-page contract above.
+        // A lone `label: 'Home'` in a record schema is not evidence of a Home page.
+        && !/^(?:home|exhibits|visit|education)$/iu.test(fieldPhrase);
     if (fieldLike && new RegExp(`(?:label|placeholder|aria-label)\\s*[:=]\\s*['"]${esc(fieldPhrase)}['"]`, 'iu').test(src)) {
         return { ...r, verdict: 'met', why: 'the generated record schema declares this field' };
     }

@@ -339,6 +339,14 @@ export default function Joe() {
                     if (isInternal) {
                         setPreviewUrl(url);
                         if (activeSessionId) previewBySession.current.set(activeSessionId, url);
+                        // The Browser panel belongs to this chat too. Keep its
+                        // visible page aligned with the newly built preview, but
+                        // only for the session that emitted this event.
+                        if (activeSessionId) {
+                            window.dispatchEvent(new CustomEvent('joe:browser-navigate', {
+                                detail: { sessionId: `browser:${activeSessionId}`, url }
+                            }));
+                        }
                         /**
                          * A PARTIAL preview (the page growing section by
                          * section) must NOT steal the tab: it fires seconds

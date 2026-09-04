@@ -639,6 +639,15 @@ export class AgentLoopService {
                 }
             } catch { /* non-fatal */ }
 
+            // The user's run is finished once its answer has been delivered and
+            // persisted. Session naming, memory learning, and receipt enrichment
+            // are post-delivery bookkeeping; keeping the live registration while
+            // they call an LLM resurrects the Stop button and a second "working"
+            // card underneath an already delivered answer.
+            releaseHandle(runCancellation, runId, sessionId);
+            removeRunEventListener(runId);
+            unregisterRunSession(runId, sessionId);
+
             /**
              * [AUTO-TITLE] Name the session now that it has a first exchange.
              *
@@ -668,9 +677,6 @@ export class AgentLoopService {
             } catch { /* non-fatal */ }
 
             await saveRunReceipt(runId, makeRunReceipt(result, result.ok ? 'done' : 'failed', { finalText }), result.ok ? 'done' : 'failed');
-            releaseHandle(runCancellation, runId, sessionId);
-            removeRunEventListener(runId);
-            unregisterRunSession(runId, sessionId);
 
             // Update run status upon completion. A caller-issued textual runId is
             // stored in the runId field; legacy runs still use Mongo _id.

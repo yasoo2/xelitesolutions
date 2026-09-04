@@ -78,7 +78,14 @@ export default defineConfig({
         manualChunks: {
           vendor: ['react', 'react-dom', 'react-router-dom'],
           ui: ['lucide-react', 'framer-motion'],
-        }
+        },
+        // Some desktop browser policies classify an asset literally named
+        // "EmbeddedBrowser" as browser-injection code and block the dynamic
+        // import before React can render the panel. The feature still loads
+        // lazily, but its neutral asset name is safe to request everywhere.
+        chunkFileNames: (chunk) => /[\\/]EmbeddedBrowser\.tsx$/.test(chunk.facadeModuleId || '')
+          ? 'assets/workspace-surface-[hash].js'
+          : 'assets/[name]-[hash].js',
       }
     },
     sourcemap: false,

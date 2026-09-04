@@ -127,7 +127,10 @@ export default function NeuralThinkingIndicator({ phase = 'analyzing', visible, 
    */
   const phaseNow = phaseLabels[currentPhase] || phaseLabels.analyzing;
   const phaseText = t(phaseNow.key);
-  const detail = stripPictographs(status || (steps.length ? steps[steps.length - 1].text : '')) || '';
+  // The latest structured event is the freshest truth. A headline status can
+  // remain mounted while a browser/QA detail stream advances, so preferring it
+  // would make the visible "Right now" line lie by showing an older action.
+  const detail = stripPictographs(steps.length ? steps[steps.length - 1].text : status) || '';
   // Single source of truth: the parent decides (per session) when to show us.
   if (!visible) return null;
 

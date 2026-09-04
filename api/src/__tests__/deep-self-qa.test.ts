@@ -87,6 +87,24 @@ describe('every menu, every route — not fourteen buttons', () => {
         expect(b).toMatch(/querySelectorAll\('a\[href\^="#\/"\]'\)\.forEach\(el => push\(el, 'link'\)\)/);
     });
 
+    it('does not accuse a footer link to the route already on screen', () => {
+        const b = B();
+        expect(b).toContain("const currentHashRoute = window.location.hash || '#/';");
+        expect(b).toContain("kind === 'link' && /^#\\//.test(routeHref) && routeHref === currentHashRoute");
+    });
+
+    it('restores the exact route after testing an in-app navigation', () => {
+        const b = B();
+        expect(b).toContain('const probeStartUrl = page.url();');
+        expect(b).toContain("await page.goto(probeStartUrl, { waitUntil: 'load', timeout: 5000 })");
+    });
+
+    it('keeps duplicate controls distinct after the page re-renders', () => {
+        const b = B();
+        expect(b).toContain('const ordinal = out.filter(candidate => candidate.kind === kind');
+        expect(b).toContain("${c.kind}|${c.label}|${c.href || ''}|${c.ordinal ?? 0}");
+    });
+
     it('the stamps from the last page are wiped — a hash route never reloads', () => {
         // This cost 34 controls: every element still carried `data-joe-ctl`, the
         // dedupe guard skipped them all, and routes 2-4 pressed nothing.
@@ -385,7 +403,8 @@ describe('a measurement it cannot make honestly, it does not make', () => {
     it('and a click that hands over a FILE counts as an effect', () => {
         const b = read('core', 'quality', 'behaviour-audit.ts');
         expect(b).toMatch(/page\.on\('download', onDownload\)/);
-        expect(b).toMatch(/effect = downloaded \|\| downloadClicks > downloadClicksBefore\s*\n?\s*\? 'download'\s*\n?\s*: \(changed\(before, after\)/);
+        expect(b).toMatch(/effect = afterUrl !== beforeUrl\s*\n?\s*\? 'navigation'/);
+        expect(b).toMatch(/: downloaded \|\| downloadClicks > downloadClicksBefore\s*\n?\s*\? 'download'\s*\n?\s*: \(changed\(before, after\)/);
     });
 
     it('and a form is exercised once per audit, not once per route', () => {

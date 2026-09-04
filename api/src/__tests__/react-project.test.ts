@@ -84,6 +84,21 @@ describe('routing: explicit framework requests reach the evidence-first project 
         expect(assigned).toBeGreaterThan(branch);
         expect(src.slice(branch, assigned)).not.toContain('let runBp: any =');
     });
+    it('bounds optional interface authoring as one build budget, not one long wait per component', () => {
+        const src = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ReactProjectTool.ts'), 'utf-8');
+        expect(src).toContain('const AUTHORING_TOTAL_BUDGET_MS = 30_000;');
+        expect(src).toContain('const remaining = AUTHORING_TOTAL_BUDGET_MS - (Date.now() - authoringStartedAt);');
+        expect(src).toContain("new Error('the interface authoring time budget was used')");
+        expect(src).not.toMatch(/authorComponents\([\s\S]{0,7000}setTimeout\(\(\) => rej\(new Error\('the model did not answer in time'\)\), 120_000\)/);
+    });
+    it('does not retry optional interface authoring after the model already failed in the same build', () => {
+        const src = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ReactProjectTool.ts'), 'utf-8');
+        expect(src).toContain('let modelUnavailableDuringBuild = false;');
+        expect(src).toContain('modelUnavailableDuringBuild = true;');
+        expect(src).toContain('!copyProvidersRationing && !modelUnavailableDuringBuild');
+        expect(src).toContain('insideATest || modelUnavailableDuringBuild ||');
+        expect(src).toContain('the selected model did not answer earlier in this build');
+    });
 });
 
 describe('the scaffold: complete, RTL, tokenized, honest', () => {
@@ -162,6 +177,29 @@ describe('the scaffold: complete, RTL, tokenized, honest', () => {
         expect(heroSecondaryDestination('landing', ['Hero', 'Location', 'Products', 'Contact'], false, true))
             .toEqual({ label: 'تصفح الخدمات', href: '#products' });
     });
+    it('routes a multi-page CTA to the page that owns the surviving fallback section', () => {
+        const pages = [
+            { path: '/', title: 'Home', titleEn: 'Home', sections: ['Hero', 'Cta'] },
+            { path: '/visit', title: 'Visit', titleEn: 'Visit', sections: ['Contact'] },
+        ];
+        expect(heroSecondaryDestination('museum', ['Hero', 'Cta'], true, false, pages))
+            .toEqual({ label: 'Contact us', href: '#/visit' });
+    });
+    it('keeps the resolved contact route and language-aware form copy in generated projects', () => {
+        const src = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ReactProjectTool.ts'), 'utf-8');
+        expect(src).toContain("contactHref: '${js((c as any).contactHref || '#contact')}'");
+        expect(src).toContain("submit: 'Send message'");
+        expect(src).toContain("delivered: '✅ Your message reached the site inbox.'");
+        expect(src).toContain('aria-label={t.name}');
+        expect(src).toContain('<Link className="brand" to="/" active={false}>');
+    });
+    it('keeps step numbers in the normal heading flow instead of overlaying the title', () => {
+        const src = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ReactProjectTool.ts'), 'utf-8');
+        expect(src).toContain('<div className="step-heading">');
+        expect(src).toContain('.step-heading{display:flex;align-items:center;gap:12px;min-height:36px;margin-bottom:12px}');
+        expect(src).toContain('.step-num{flex:0 0 34px;');
+        expect(src).not.toContain('.step-num{position:absolute;top:16px;');
+    });
     it('derives service cards from a bicycle repair brief instead of merchandise placeholders', () => {
         const catalog = requestDrivenServiceProducts(
             'Build a bicycle repair studio with a service list, prices, opening hours, and a booking form.',
@@ -196,12 +234,16 @@ describe('the scaffold: complete, RTL, tokenized, honest', () => {
         expect((contact.match(/aria-label=/g) || []).length).toBeGreaterThanOrEqual(3);
         const css = fs.readFileSync(path.join(out.output.path, 'src', 'styles', 'base.css'), 'utf-8');
         expect(css).toContain('min-height:44px');
+        expect(css).toMatch(/\.nav-links a\{[^}]*min-width:44px;min-height:44px/);
         // Measured regressions from the tinted rhythm, now pinned: prices used
         // plain --brand and read 4.43:1 on the tint; the brand link was a
         // 21×33 tap target.
         expect(css).toContain('--price:color-mix(in srgb,var(--brand) 78%,var(--text))');
         expect(css).toContain('.menu-price{color:var(--price)');
         expect(css).toMatch(/\.brand\{[^}]*min-height:44px;min-width:44px\}/);
+        // Footer links stay usable even when the label is short, such as
+        // "Visit" at phone width.
+        expect(css).toMatch(/\.footer-links a\{[^}]*min-width:44px;min-height:44px\}/);
     });
     it('the honest form: no fake delivery claim in the template', () => {
         const contact = fs.readFileSync(path.join(out.output.path, 'src', 'components', 'Contact.jsx'), 'utf-8');
@@ -230,14 +272,16 @@ describe('kind-aware React apps', () => {
         expect(sectionsForKind('store')).not.toContain('Pricing');
         expect(sectionsForKind('app')).toContain('Pricing');   // tiers belong to SaaS, not shelves
         // Every kind carries the mid-page CTA band, always before Contact.
-        for (const k of ['restaurant', 'store', 'landing', 'portfolio', 'app', 'event', 'generic'] as any[]) {
+        for (const k of ['restaurant', 'store', 'landing', 'portfolio', 'app', 'event', 'museum', 'generic'] as any[]) {
             const sec = sectionsForKind(k);
             expect(sec).toContain('Cta');
             expect(sec.indexOf('Cta')).toBeLessThan(sec.indexOf('Contact'));
         }
         expect(sectionsForKind('landing')).toContain('Stats');
         expect(sectionsForKind('generic')).toContain('Faq');
-        for (const k of ['restaurant', 'store', 'landing', 'portfolio', 'app', 'event', 'generic'] as any[]) {
+        expect(sectionsForKind('museum')).toEqual(expect.arrayContaining(['Gallery', 'Steps', 'Features', 'Contact']));
+        expect(sectionsForKind('museum')).not.toContain('Pricing');
+        for (const k of ['restaurant', 'store', 'landing', 'portfolio', 'app', 'event', 'museum', 'generic'] as any[]) {
             const s = sectionsForKind(k);
             expect(s[0]).toBe('Hero');
             expect(s[s.length - 1]).toBe('Contact');
@@ -289,6 +333,7 @@ describe('multi-page React apps', () => {
         expect(wantsMultiPage('ابن لي مشروع React متعدد الصفحات لمطعم')).toBe(true);
         expect(wantsMultiPage('build a multi-page react app')).toBe(true);
         expect(wantsMultiPage('ابن لي مشروع React لمطعم')).toBe(false);
+        expect(pagesForKind('museum').map(p => p.path)).toEqual(['/', '/exhibits', '/visit', '/education']);
     });
     it('every kind\'s page plan starts at home and ends at contact', () => {
         for (const k of ['restaurant', 'store', 'landing', 'generic'] as any[]) {
@@ -297,6 +342,7 @@ describe('multi-page React apps', () => {
             expect(pages[pages.length - 1].path).toBe('/contact');
             expect(pages.length).toBeGreaterThanOrEqual(3);
         }
+        expect(pagesForKind('museum').map(p => p.path)).toEqual(['/', '/exhibits', '/visit', '/education']);
     });
     it('a multi-page restaurant scaffold: router present, every file parses, menu on its own page', async () => {
         const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-mp-'));
@@ -547,7 +593,7 @@ describe('product pages, the team, and the build command', () => {
         // fix, spawning a .cmd without one throws EINVAL — measured on Node 24,
         // where a scaffolded React project died before `npm install` began. The
         // arguments are quoted here instead of being left to the shell.
-        expect(engine).toMatch(/const needsShell = isWin && rest\.shell === undefined && isShim/);
+        expect(engine).toMatch(/const needsShell = !npmCli && isWin && rest\.shell === undefined && isShim/);
         expect(engine).toContain('const quoteForCmd =');
         for (const t of ['ReactProjectTool', 'ApiProjectTool', 'ProjectEditTool', 'ImportProjectTool']) {
             const src = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', `${t}.ts`), 'utf-8');

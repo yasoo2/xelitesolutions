@@ -693,14 +693,17 @@ export default function WorkspacePanel({
 
             {/* Content */}
             <div className="joe-workspace-content">
-                {/* Browser Tab */}
-                {activeTab === 'browser' && (
+                {/* Keep the per-session Browser alive while another workspace tab
+                    is visible. Browser QA borrows this exact surface; unmounting
+                    it for Terminal used to make a real audit invisible just
+                    before the first frame arrived. */}
+                <div style={{ display: activeTab === 'browser' ? 'contents' : 'none', width: '100%', height: '100%' }}>
                     <ErrorBoundary fallbackTitle={t('loadBrowserFailed')}>
                         <Suspense fallback={<LoadingFallback />}>
                             <EmbeddedBrowser sessionId={browserSessionId || (sessionId ? `browser:${sessionId}` : '')} />
                         </Suspense>
                     </ErrorBoundary>
-                )}
+                </div>
 
                 {/* Terminal Tab */}
                 {activeTab === 'terminal' && (

@@ -163,6 +163,18 @@ export default function EmbeddedBrowser({
         }
     }, [sessionId]);
 
+    // A completed build publishes its preview through the session that owns
+    // this panel. It must not leave the Browser showing a prior project.
+    useEffect(() => {
+        const handlePreviewNavigation = (event: Event) => {
+            const detail = (event as CustomEvent<{ sessionId?: string; url?: string }>).detail;
+            if (detail?.sessionId !== sessionId || !detail.url) return;
+            void handleNavigate(detail.url);
+        };
+        window.addEventListener('joe:browser-navigate', handlePreviewNavigation);
+        return () => window.removeEventListener('joe:browser-navigate', handlePreviewNavigation);
+    }, [handleNavigate, sessionId]);
+
     // Browser actions
     const sendAction = useCallback(async (action: any) => {
         setIsLoading(true);

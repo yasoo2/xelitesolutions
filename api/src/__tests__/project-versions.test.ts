@@ -70,6 +70,24 @@ describe('restoring', () => {
         fs.rmSync(dir, { recursive: true, force: true });
     });
 
+    it('restores build configuration exactly when a repair accidentally removes it', () => {
+        const dir = tinyProject();
+        const config = "import { defineConfig } from 'vite';\nexport default defineConfig({ base: './' });\n";
+        fs.writeFileSync(path.join(dir, 'vite.config.js'), config);
+        const snapshot = snapshotProject(dir, 'before UI repair');
+        expect(snapshot?.id).toBeTruthy();
+
+        fs.rmSync(path.join(dir, 'vite.config.js'));
+        fs.writeFileSync(path.join(dir, 'src', 'app.css'), 'body{color:#f00}\n');
+
+        const r = restoreVersion(dir, snapshot?.id);
+        expect(r.ok).toBe(true);
+        expect(r.error).toBeUndefined();
+        expect(fs.readFileSync(path.join(dir, 'vite.config.js'), 'utf-8')).toBe(config);
+        expect(fs.readFileSync(path.join(dir, 'src', 'app.css'), 'utf-8')).toBe('body{color:#111}\n');
+        fs.rmSync(dir, { recursive: true, force: true });
+    });
+
     it('removes what was added after it — a restore is not a merge', () => {
         const dir = tinyProject();
         snapshotProject(dir, 'clean');

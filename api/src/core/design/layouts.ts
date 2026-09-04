@@ -36,6 +36,7 @@ const KIND_ARCHETYPE: Record<PageKind, Archetype> = {
     app: 'bento',
     event: 'centered',
     docs: 'editorial',
+    museum: 'showcase',
     generic: 'split',
 };
 
@@ -57,6 +58,7 @@ const KIND_ALTERNATIVES: Partial<Record<PageKind, Archetype[]>> = {
     event: ['centered', 'contrast'],
     blog: ['editorial'],
     docs: ['editorial'],
+    museum: ['showcase', 'editorial', 'overlap'],
     dashboard: ['bento'],
     app: ['bento', 'overlap'],
 };

@@ -25,7 +25,7 @@ import { brandFrom, brandFallback } from '../../../core/design/page-head';
 import { detectPageKind, type PageKind } from '../../../core/design/blueprints';
 import { derivedColumns, applyRequestFieldConstraints, detectAppKind, blueprintFor, uncoveredFeatures, derivedTables, type AppBlueprint, columnsAnywhereInHisRequest } from '../../../core/design/app-blueprints';
 import { acceptanceFor as acceptanceCriteriaFor } from '../../../core/quality/acceptance';
-import { namedRequirements, verifyNamed, nothingWasJudged, NamedRequirement } from '../../../core/quality/named-requirements';
+import { namedRequirements, verifyNamed, nothingWasJudged, requirementNamesPage, NamedRequirement } from '../../../core/quality/named-requirements';
 import { buildAppFiles, fileAppCss } from './react-app-templates';
 import { familyFor, familyCss, familyFonts, FAMILY_LABEL_AR, type DesignFamily } from '../../../core/design/families';
 import { pruneMissingFontResources } from '../../../core/design/font-resources';
@@ -1135,6 +1135,12 @@ export interface AppPage { path: string; title: string; titleEn: string; section
  */
 export function pagesForKind(kind: PageKind): AppPage[] {
     switch (kind) {
+        case 'museum': return [
+            { path: '/', title: 'الرئيسية', titleEn: 'Home', sections: ['Hero', 'Gallery', 'Story', 'Cta'] },
+            { path: '/exhibits', title: 'المعارض', titleEn: 'Exhibits', sections: ['Gallery', 'Features'] },
+            { path: '/visit', title: 'الزيارة', titleEn: 'Visit', sections: ['Contact', 'Location'] },
+            { path: '/education', title: 'التعليم', titleEn: 'Education', sections: ['Steps', 'Features'] },
+        ];
         case 'restaurant': return [
             { path: '/', title: 'الرئيسية', titleEn: 'Home', sections: ['Hero', 'Testimonials', 'Cta'] },
             { path: '/menu', title: 'القائمة', titleEn: 'Menu', sections: ['Menu', 'Gallery'] },
@@ -1296,7 +1302,7 @@ export function appPagesFor(kind: PageKind, request: string, isArabic: boolean):
  * photograph at all is centred on purpose rather than by accident.
  */
 export function heroLayoutFor(kind: PageKind, family: DesignFamily): 'overlay' | 'split' | 'centered' {
-    if (kind === 'restaurant' || kind === 'event') return 'overlay';
+    if (kind === 'restaurant' || kind === 'event' || kind === 'museum') return 'overlay';
     if (kind === 'store') return family === 'elegant' ? 'overlay' : 'split';
     // Everything else is SPLIT — a photograph beside the copy. 'centered' is
     // never wished for: it is what the component falls back to when no
@@ -1306,6 +1312,7 @@ export function heroLayoutFor(kind: PageKind, family: DesignFamily): 'overlay' |
 
 export function sectionsForKind(kind: PageKind): string[] {
     switch (kind) {
+        case 'museum': return ['Hero', 'Gallery', 'Story', 'Steps', 'Features', 'Cta', 'Location', 'Contact'];
         case 'restaurant': return ['Hero', 'Menu', 'Gallery', 'Story', 'Steps', 'Team', 'Testimonials', 'Cta', 'Location', 'Contact'];
         // Real product CARDS with photos and prices — a store sells things,
         // not subscription tiers. Pricing stays for app/dashboard kinds.
@@ -1507,9 +1514,10 @@ export function heroSecondaryDestination(
     homeSections: string[],
     multiPage: boolean,
     isArabic = false,
+    pages: AppPage[] = [],
 ): { label: string; href: string } {
-    const preferred = kind === 'restaurant' ? 'Menu' : kind === 'store' ? 'Products' : 'Features';
-    const fallback = ['Products', 'Menu', 'Features', 'Location', 'Contact']
+    const preferred = kind === 'restaurant' ? 'Menu' : kind === 'store' ? 'Products' : kind === 'museum' ? 'Gallery' : 'Features';
+    const fallback = ['Products', 'Menu', 'Gallery', 'Features', 'Location', 'Contact']
         .find(section => homeSections.includes(section)) || 'Contact';
     const section = homeSections.includes(preferred) ? preferred : fallback;
     const target = ({ Features: 'features', Menu: 'menu', Products: 'products', Contact: 'contact' } as Record<string, string>)[section] || section.toLowerCase();
@@ -1517,11 +1525,19 @@ export function heroSecondaryDestination(
         Features: ['اكتشف المميزات', 'Explore features'],
         Menu: ['استعرض القائمة', 'See the menu'],
         Products: ['تصفح الخدمات', 'Browse services'],
+        Gallery: ['استكشف المعارض', 'Explore exhibits'],
         Contact: ['تواصل معنا', 'Contact us'],
     };
     const [ar, en] = labels[section] || labels.Contact;
     const onHome = !multiPage || homeSections.includes(section);
-    return { label: isArabic ? ar : en, href: multiPage && !onHome ? `#/${target}` : `#${target}` };
+    // A multi-page site can put a surviving fallback section on a named page
+    // whose route is not derived from its component name (for example Contact
+    // on /visit). Prefer that page contract over inventing #/contact.
+    const holder = multiPage ? pages.find(page => page.sections.includes(section)) : undefined;
+    const href = multiPage && !onHome
+        ? holder ? `#${holder.path}` : `#/${target}`
+        : `#${target}`;
+    return { label: isArabic ? ar : en, href };
 }
 
 /**
@@ -1806,6 +1822,73 @@ function deriveContent(request: string, isAr: boolean, kind: PageKind = 'generic
             ];
         base.contactTitle = isAr ? 'احجز موعد إصلاح' : 'Book a repair appointment';
     }
+    if (kind === 'museum') {
+        // A museum is an information experience, not a generic SaaS landing
+        // page. Keep the shared renderers, but give every one a truthful job.
+        Object.assign(base, isAr ? {
+            tagline: 'اكتشف العالم من حولك بتجارب علمية حيّة ومفتوحة للجميع.',
+            heroTitle: 'متحف العلوم — الفضول يبدأ هنا',
+            heroLede: 'معارض تفاعلية وقصص علمية تجعل السؤال أول خطوة نحو الاكتشاف.',
+            cta: 'خطط لزيارتك',
+            featuresTitle: 'ما الذي ستكتشفه؟',
+            features: [
+                { title: 'معارض تفاعلية', text: 'المس الفكرة وجرّبها وشاهد العلم يعمل أمامك.' },
+                { title: 'تعلم لكل عمر', text: 'برامج مدرسية وورش عائلية توقظ الفضول.' },
+                { title: 'تجربة ميسّرة', text: 'مساحات واضحة وتجارب تراعي احتياجات الزوار.' },
+            ],
+            contactTitle: 'خطط لزيارتك',
+            ctaBandTitle: 'اجعل الفضول موعدك القادم',
+            ctaBandText: 'اطّلع على أوقات الزيارة أو أرسل استفسارك لفريقنا.',
+            perks: ['معارض جديدة طوال العام', 'أنشطة عملية للعائلات', 'دخول ميسّر للجميع'],
+            galleryTitle: 'من قلب المعارض',
+            storyTitle: 'رسالتنا',
+            storyBody: ['نحوّل المعرفة إلى تجربة يمكن رؤيتها ولمسها ومشاركتها.', 'أفضل معرض لا يعطيك الإجابة فقط، بل يتركك بسؤال أجمل.'],
+            stepsTitle: 'تعلّم معنا',
+            steps: [
+                { title: 'للزيارات المدرسية', text: 'مسارات تعليمية مرتبطة بالمناهج يقودها فريقنا.' },
+                { title: 'ورش عملية', text: 'اصنع واختبر وناقش أفكار العلوم في جلسات قصيرة.' },
+                { title: 'يوم عائلي', text: 'تجارب ممتعة للآباء والأطفال في كل قاعة.' },
+            ],
+            locationTitle: 'معلومات الزيارة',
+            menuTitle: 'المعارض',
+            menu: [
+                { name: 'جسم الإنسان', desc: 'رحلة تفاعلية داخل أجهزة الجسم وكيف تعمل معًا.', price: 'من 7 سنوات' },
+                { name: 'الفضاء العميق', desc: 'استكشف النجوم والكواكب والأدوات التي توسّع رؤيتنا.', price: 'لجميع الأعمار' },
+                { name: 'مختبر الطاقة', desc: 'جرّب الحركة والضوء والطاقة في محطات عملية.', price: 'من 10 سنوات' },
+            ],
+        } : {
+            tagline: 'Discover the world through live science and hands-on curiosity.',
+            heroTitle: 'Science Museum — curiosity starts here',
+            heroLede: 'Interactive exhibits and human stories that turn every question into a beginning.',
+            cta: 'Plan your visit',
+            featuresTitle: 'What will you discover?',
+            features: [
+                { title: 'Hands-on exhibits', text: 'Touch the idea, test the system, and watch science happen.' },
+                { title: 'Learning for every age', text: 'School programmes and family workshops designed to spark curiosity.' },
+                { title: 'Welcoming by design', text: 'Clear spaces and thoughtful access for every visitor.' },
+            ],
+            contactTitle: 'Plan your visit',
+            ctaBandTitle: 'Make curiosity your next destination',
+            ctaBandText: 'Check visitor hours or send a question to our team.',
+            perks: ['New exhibitions all year', 'Hands-on family activities', 'Access for every visitor'],
+            galleryTitle: 'Inside the exhibitions',
+            storyTitle: 'Our mission',
+            storyBody: ['We turn knowledge into something visitors can see, touch, and share.', 'The best exhibition does not only give you an answer; it leaves you with a better question.'],
+            stepsTitle: 'Learn with us',
+            steps: [
+                { title: 'School visits', text: 'Curriculum-linked learning paths led by our educators.' },
+                { title: 'Hands-on workshops', text: 'Make, test, and discuss science in practical short sessions.' },
+                { title: 'Family days', text: 'Playful experiments for children and adults in every gallery.' },
+            ],
+            locationTitle: 'Visitor information',
+            menuTitle: 'Exhibitions',
+            menu: [
+                { name: 'Inside the human body', desc: 'An interactive journey through the systems that keep us moving.', price: 'Ages 7+' },
+                { name: 'Deep space', desc: 'Explore stars, planets, and the tools that extend our view.', price: 'All ages' },
+                { name: 'Energy lab', desc: 'Test motion, light, and energy through practical stations.', price: 'Ages 10+' },
+            ],
+        });
+    }
     return base;
 }
 
@@ -1916,8 +1999,8 @@ export function usePath() {
   return path;
 }
 
-export function Link({ to, children, className }) {
-  const current = usePath() === to;
+export function Link({ to, children, className, active = true }) {
+  const current = active && usePath() === to;
   return (
     <a className={className} href={'#' + to} aria-current={current ? 'page' : undefined}>
       {children}
@@ -2009,7 +2092,7 @@ export default function Navbar({ content, pages }) {
   return (
     <header className="site-header">
       <div className="wrap header-inner">
-        <Link className="brand" to="/">{content.brand}</Link>
+        <Link className="brand" to="/" active={false}>{content.brand}</Link>
         <nav className="nav-links">
           {pages.map((p) => <Link key={p.path} to={p.path}>{p.title}</Link>)}
         </nav>
@@ -2126,6 +2209,9 @@ ${c.stats.map(s => `    { value: '${js(s.value)}', label: '${js(s.label)}' },`).
   ],
   // A real licensed photograph, or null — the Hero renders cleanly either way.
   heroImage: ${c.heroImage ? `{ src: '${js(c.heroImage.src)}', alt: '${js(c.heroImage.alt)}' }` : 'null'},
+  // One resolved destination for every call-to-action that leads to Contact.
+  // This is a route on multi-page builds and an in-page anchor otherwise.
+  contactHref: '${js((c as any).contactHref || '#contact')}',
   credits: [
 ${(c.credits || []).map(cr => `    { creator: '${js(cr.creator)}', license: '${js(cr.license)}', source: '${js(cr.source)}' },`).join('\n')}
   ],
@@ -2323,6 +2409,9 @@ function fileContactJsx(): string {
 export default function Contact({ content }) {
   const [sent, setSent] = useState(false);       // 'delivered' | 'kept' | false
   const [form, setForm] = useState({ name: '', email: '', msg: '' });
+  const t = content.isArabic
+    ? { name: 'الاسم', email: 'البريد الإلكتروني', message: 'رسالتك', submit: 'أرسل رسالتك', delivered: '✅ وصلت رسالتك — ستظهر في صندوق رسائل الموقع.' }
+    : { name: 'Your name', email: 'Email address', message: 'Your message', submit: 'Send message', delivered: '✅ Your message reached the site inbox.' };
   const onSubmit = async (e) => {
     e.preventDefault();
     // Joe's inbox first — real delivery when the app runs next to Joe.
@@ -2354,18 +2443,18 @@ export default function Contact({ content }) {
           </ul>
         ) : null}
         {sent === 'delivered' ? (
-          <p className="form-note">✅ وصلت رسالتك — ستظهر في صندوق رسائل الموقع.</p>
+          <p className="form-note">{t.delivered}</p>
         ) : sent ? (
           <p className="form-note">📝 {form.name ? form.name + ' — ' : ''}{form.msg || '…'}</p>
         ) : (
           <form onSubmit={onSubmit}>
-            <input required aria-label="الاسم" placeholder="الاسم" value={form.name}
+            <input required aria-label={t.name} placeholder={t.name} value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })} />
-            <input required type="email" aria-label="البريد الإلكتروني" placeholder="email@example.com" value={form.email}
+            <input required type="email" aria-label={t.email} placeholder="email@example.com" value={form.email}
               onChange={(e) => setForm({ ...form, email: e.target.value })} />
-            <textarea required aria-label="رسالتك" placeholder="رسالتك" value={form.msg}
+            <textarea required aria-label={t.message} placeholder={t.message} value={form.msg}
               onChange={(e) => setForm({ ...form, msg: e.target.value })} />
-            <button type="submit" className="btn">{content.cta}</button>
+            <button type="submit" className="btn">{t.submit}</button>
           </form>
         )}
       </div>
@@ -2942,8 +3031,10 @@ export default function Steps({ content }) {
         <ol className="steps">
           {content.steps.map((s, i) => (
             <li className="step card" key={s.title}>
-              <span className="step-num" aria-hidden="true">{i + 1}</span>
-              <h3>{s.title}</h3>
+              <div className="step-heading">
+                <span className="step-num" aria-hidden="true">{i + 1}</span>
+                <h3>{s.title}</h3>
+              </div>
               <p>{s.text}</p>
             </li>
           ))}
@@ -3250,7 +3341,7 @@ h1,h2,h3{font-family:var(--f-head);font-weight:var(--f-head-weight)}
    is the one layout defect a visitor feels immediately on a phone. */
 .header-inner{flex-wrap:wrap}
 .nav-links{display:flex;gap:10px;flex-wrap:wrap;min-width:0}
-.nav-links a{color:var(--text);text-decoration:none;font-weight:600;display:inline-flex;align-items:center;min-height:44px;padding:0 8px}
+.nav-links a{color:var(--text);text-decoration:none;font-weight:600;display:inline-flex;align-items:center;min-width:44px;min-height:44px;padding:0 8px}
 .nav-links a:hover{color:var(--brand-text,var(--brand))}
 /*  ONE NAVIGATION LANGUAGE, WHEREVER JOE WRITES A NAV.
  *
@@ -3370,12 +3461,12 @@ main > .section:nth-of-type(even):not(.band):not(.stats-band):not(.cta-band){bac
 @media (prefers-reduced-motion: reduce){[data-reveal]{opacity:1;transform:none;transition:none}.card,.btn{transition:none}}
 .credits{font-size:.85rem;opacity:.8}
 .credits a{color:inherit}
-.hero-overlay{padding:0;display:grid;isolation:isolate}
-.hero-overlay > *{grid-area:1/1}
+.hero-overlay{padding:0;display:grid;grid-template-rows:minmax(420px,60vh) auto;isolation:isolate}
+.hero-overlay > .hero-bg,.hero-overlay > .hero-scrim{grid-area:1/1/3/2}
 .hero-overlay .hero-bg{width:100%;height:100%;min-height:clamp(420px,60vh,640px);object-fit:cover}
 .hero-overlay .hero-scrim{background:linear-gradient(to top,color-mix(in srgb,var(--bg) 92%,transparent),color-mix(in srgb,var(--bg) 55%,transparent) 55%,color-mix(in srgb,var(--bg) 20%,transparent))}
-.hero-overlay .wrap{align-self:end;padding-block:clamp(40px,7vw,90px);z-index:1}
-.hero-overlay .perks-band{align-self:end;z-index:2}
+.hero-overlay > .wrap{grid-area:1/1;align-self:end;padding-block:clamp(40px,7vw,90px);z-index:1}
+.hero-overlay > .perks-band{grid-area:2/1;align-self:auto;margin-top:0;z-index:2}
 .hero-centered .hero-copy{max-width:44rem;margin-inline:auto;text-align:center}
 .hero-centered .lede{margin-inline:auto}
 .hero-centered .hero-ctas{justify-content:center}
@@ -3398,7 +3489,7 @@ main > .section:nth-of-type(even):not(.band):not(.stats-band):not(.cta-band){bac
 /* 44px, not 32. Measured at 390px: «القائمة» 45x32, «حكايتنا» 42x32 — six
    footer links a thumb keeps missing, and the only place in the build
    still shipping a 32px target. */
-.footer-links a{color:inherit;text-decoration:none;display:inline-flex;align-items:center;min-height:44px}
+.footer-links a{color:inherit;text-decoration:none;display:inline-flex;align-items:center;min-width:44px;min-height:44px}
 .footer-links a:hover{color:var(--brand)}
 .footer-bottom{border-top:1px solid var(--border);padding-top:16px;display:flex;flex-wrap:wrap;gap:8px 20px;align-items:center}
 /* The owner's way in: present, quiet, and never mistaken for a visitor CTA. */
@@ -3436,10 +3527,11 @@ main > .section:nth-of-type(even):not(.band):not(.stats-band):not(.cta-band){bac
 .story-plain .story-body p{margin-inline:auto}
 .steps{list-style:none;margin:0;padding:0;display:grid;gap:20px;grid-template-columns:1fr;counter-reset:step}
 @media(min-width:900px){.steps{grid-template-columns:repeat(3,1fr)}}
-.step{padding-top:34px}
-.step h3{margin:0 0 6px}
+.step{padding:24px}
+.step-heading{display:flex;align-items:center;gap:12px;min-height:36px;margin-bottom:12px}
+.step h3{margin:0}
 .step p{margin:0;color:var(--text-muted)}
-.step-num{position:absolute;top:16px;inset-inline-start:24px;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:var(--brand);color:var(--on-brand);font-weight:800}
+.step-num{flex:0 0 34px;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:var(--brand);color:var(--on-brand);font-weight:800}
 .table-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
 .compare{width:100%;border-collapse:collapse;min-width:520px}
 .compare th,.compare td{padding:14px 16px;text-align:start;border-bottom:1px solid var(--border)}
@@ -3709,6 +3801,11 @@ export class ReactProjectTool extends BaseTool {
             : [];
         const noBrainToAsk = process.env.NODE_ENV === 'test' || !!process.env.JEST_WORKER_ID;
         let namedByHim: NamedRequirement[] = [];
+        // A model that has already failed this build is evidence, not an
+        // invitation to repeat the same unavailable call in copy, catalogue,
+        // and component authoring. The deterministic kind-aware renderer
+        // remains the delivery floor for that attempt.
+        let modelUnavailableDuringBuild = false;
         /**
          *  ⛔ «YOUR REQUEST WAS NOT READ» NAMED THE EFFECT AND HID THE CAUSE.
          *
@@ -3741,6 +3838,9 @@ export class ReactProjectTool extends BaseTool {
                 for (const r of read.rejected) {
                     term(`  refused «${r.text}»: ${r.reason}`);
                 }
+                if (read.rejected.some((r) => /model could not be reached|model did not answer|timed out/i.test(String(r.reason)))) {
+                    modelUnavailableDuringBuild = true;
+                }
                 if (!namedByHim.length) {
                     whyNotRead = read.rejected.length
                         ? `the model named ${read.rejected.length}, and none survived the filters`
@@ -3750,6 +3850,7 @@ export class ReactProjectTool extends BaseTool {
                     ? `read from your request: ${namedByHim.length} named — ${namedByHim.map(r => r.text).join(' · ')}`
                     : `read from your request: nothing nameable survived (${whyNotRead}) — falling back to the known-features list`);
             } catch (e: any) {
+                modelUnavailableDuringBuild = true;
                 whyNotRead = `the reader failed: ${String(e && e.message || e).slice(0, 90)}`;
                 term(`reading your request failed: ${String(e && e.message || e).slice(0, 120)}`
                     + ' — falling back to the known-features list');
@@ -3926,7 +4027,7 @@ export class ReactProjectTool extends BaseTool {
                     return ['Groq (Free)', 'Groq', 'Anthropic', 'OpenAI'].some((p: string) => isProviderCoolingDown(p));
                 } catch { return false; }
             })());
-        if (!input?.skipAuthoredCopy && !copyProvidersRationing) {
+        if (!input?.skipAuthoredCopy && !copyProvidersRationing && !modelUnavailableDuringBuild) {
             try {
                 const { authorCopy, COPY_FIELDS } = require('../../../core/design/authored-copy');
                 const { routeToModel } = require('../../../core/llm/intelligent-router');
@@ -3963,11 +4064,17 @@ export class ReactProjectTool extends BaseTool {
                 for (const r of written.rejected as Array<{ field: string; reason: string }>) {
                     term(`  refused ${r.field}: ${r.reason}`);
                 }
+                if ((written.rejected as Array<{ reason: string }>).some((r) => /model could not be reached|model did not answer|timed out/i.test(String(r.reason)))) {
+                    modelUnavailableDuringBuild = true;
+                }
             } catch (e: any) {
+                modelUnavailableDuringBuild = true;
                 //  Copy is not worth failing a build over: the derived text is
                 //  a real floor, and a page with catalogue words beats no page.
                 term(`copy authoring skipped: ${String(e && e.message || e).slice(0, 120)}`);
             }
+        } else if (!input?.skipAuthoredCopy && modelUnavailableDuringBuild) {
+            term('copy authoring stood down — the selected model already failed this build; the specialized derived copy continues');
         }
         // BUSINESS MEMORY: the saved real details flow into the build — the
         // brand when the request named none, and a REAL contact block (tel:,
@@ -4030,11 +4137,6 @@ export class ReactProjectTool extends BaseTool {
          */
         const apiLink = prevEntry?.type === 'api' && prevEntry?.resource
             ? `/api/${prevEntry.resource}` : '';
-        // The hero's second CTA points at the kind's main content — an
-        // anchor on a single page, a real route on a multi-page app.
-        (content as any).heroSecondary = (() => {
-            return heroSecondaryDestination(kind, pages[0].sections, multiPage, isAr);
-        })();
         // The hero ARCHETYPE comes from the kind and the family; the
         // navigation is built LATER, once it is known which sections will
         // actually render (see buildNavLinks below).
@@ -4073,6 +4175,18 @@ export class ReactProjectTool extends BaseTool {
                     .map(s => ({ href: `#${SECTION_ANCHOR[s]}`, label: SECTION_LABEL[s][isAr ? 0 : 1] }));
         };
         buildNavLinks();
+        // The hero CTA is selected after optional sections have been resolved.
+        // A gallery without available photos renders nothing; pointing at its
+        // old #gallery anchor would be a dead link. The destination therefore
+        // follows the rendered home sections and, when necessary, the route
+        // of the page that actually owns the fallback section.
+        (content as any).heroSecondary = heroSecondaryDestination(
+            kind,
+            pages[0].sections.filter(willRender),
+            multiPage,
+            isAr,
+            pages,
+        );
 
         /**
          * WHERE «CONTACT» IS, DECIDED ONCE.
@@ -4857,7 +4971,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
          *  and a local brain cannot starve anything.
          */
         const localBrainLeads = /^(1|true|yes)$/i.test(String(process.env.LOCAL_BRAIN_FIRST || '').trim());
-        const providersAreRationing = insideATest || (!localBrainLeads && (() => {
+        const providersAreRationing = insideATest || modelUnavailableDuringBuild || (!localBrainLeads && (() => {
             try {
                 const { isProviderCoolingDown } = require('../../../core/llm/intelligent-router');
                 return ['Groq (Free)', 'Groq', 'Anthropic', 'OpenAI'].some((p: string) => isProviderCoolingDown(p));
@@ -4894,13 +5008,23 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
          *  looks unconsidered is a sentence he cannot.
          */
         if (!appBp && sections.length && providersAreRationing) {
-            term('interface authoring stood down — the model providers are rationing, and the planner needs that quota more than the page does');
+            term(modelUnavailableDuringBuild
+                ? 'interface authoring stood down — the selected model did not answer earlier in this build; the specialized deterministic interface continues'
+                : 'interface authoring stood down — the model providers are rationing, and the planner needs that quota more than the page does');
             authoringStoodDown = true;
         }
         if (!appBp && sections.length && !providersAreRationing) {
             const { authorComponents, describeShapes } = require('../../../core/design/authored-ui');
             const { composeDesign } = require('../../../core/design/composer');
             const { routeToModel } = require('../../../core/llm/intelligent-router');
+            // Interface authoring is an enhancement over the deterministic,
+            // kind-aware page. A slow provider used to receive a two-minute
+            // timeout for every component, turning one optional step into a
+            // multi-minute frozen build. The whole enhancement gets one
+            // bounded window instead; anything that does not return in time
+            // simply keeps its proven deterministic component.
+            const authoringStartedAt = Date.now();
+            const AUTHORING_TOTAL_BUDGET_MS = 30_000;
             /**
              *  ⛔ AND A SECTION HE NAMED IS BUILT EVEN WITH NO TEMPLATE BEHIND IT.
              *
@@ -4972,9 +5096,11 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                     '--section-space', '--radius-composed', '--rule', '--elevation',
                 ],
             }, async (prompt: string) => {
-                //  Bounded on purpose: a provider that hangs must cost the
-                //  build a minute, not the whole delivery. A timeout lands in
-                //  `rejected` as a reachability fact, never as a design choice.
+                const remaining = AUTHORING_TOTAL_BUDGET_MS - (Date.now() - authoringStartedAt);
+                if (remaining <= 0) throw new Error('the interface authoring time budget was used');
+                // Bound the full enhancement, not every component in it. The
+                // first batch gets a useful response window; any remaining
+                // batch shares what is left rather than restarting the clock.
                 let timer: any;
                 try {
                     return await Promise.race([
@@ -4988,7 +5114,10 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                                 //  model calls and not one mention of `modelConfig`.
                                 context),
                         new Promise<string>((_, rej) => {
-                            timer = setTimeout(() => rej(new Error('the model did not answer in time')), 120_000);
+                            timer = setTimeout(
+                                () => rej(new Error('the interface authoring time budget was used')),
+                                Math.min(20_000, remaining),
+                            );
                         }),
                     ]);
                 } finally { clearTimeout(timer); }
@@ -5724,6 +5853,10 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
         let terminalAudit: any = null;
         /** Every round of the improvement loop, kept for the delivery report. */
         let loop: any = null;
+        // Set only when source rollback succeeded but the restored project
+        // could not be rebuilt in this environment. It must remain visible to
+        // the delivery gate even when the browser-audit branch was skipped.
+        let repairRollbackNeedsVerification = false;
         if (built && !input?.skipAudit) {
             if (sessionId) broadcastThinkingDetail(sessionId, isAr ? '🔎 أفحص البناء في متصفح حقيقي قبل التسليم…' : '🔎 Self-QA in a real browser…');
             const { auditBuiltApp } = require('../../../core/quality/app-audit');
@@ -6015,6 +6148,10 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
              *  inside it. It was previously a closure defined within the block
              *  it could not open.
              */
+            // A repair can be safely rolled back even when a second build is
+            // unavailable in the environment. Keep that fact separate from a
+            // successful verification: restored source is safe; a failed
+            // verification must still block delivery.
             const terminalVerdict = async () => {
                 if (!apiDir || !fs.existsSync(path.join(apiDir, 'package.json'))) return null;
                 const { auditInTerminal } = require('../../../core/quality/terminal-audit');
@@ -6079,11 +6216,14 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 if (sessionId) broadcastThinkingDetail(sessionId, isAr
                     ? '🛠️ وجدتُ ما أستطيع إصلاحه بنفسي — أصلحه وأعيد البناء وأقيس مرّة أخرى…'
                     : '🛠️ Repairing what I can fix myself, rebuilding, and measuring again…');
-                // The terminal is a voter now, so its panel opens before the
-                // first round rather than after the last one.
-                try {
-                    broadcast({ type: 'panel_focus', sessionId, data: { panel: 'terminal', reason: 'terminal_qa' } } as any);
-                } catch { /* UI optional */ }
+                // The terminal votes on every round, but it must not steal the
+                // Browser panel while the user is watching visual QA happen.
+                // If nobody is watching, opening Terminal is still useful.
+                if (!someoneIsWatching) {
+                    try {
+                        broadcast({ type: 'panel_focus', sessionId, data: { panel: 'terminal', reason: 'terminal_qa' } } as any);
+                    } catch { /* UI optional */ }
+                }
                 term('terminal-QA: the terminal votes too — real checks against the server on every round');
                 if (sessionId) broadcastThinkingDetail(sessionId, isAr
                     ? '⌨️ الطرفية تصوّت أيضاً — أُشغّل اختبارات حقيقية على الخادم في كل جولة'
@@ -6202,7 +6342,11 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                                 onLine: (l: string) => term(`  ${l.slice(0, 200)}`), onNote: term,
                             });
                             if (rb.ok === true && packaged) packageIntoApi(false);
-                            return rb.ok === true;
+                            if (rb.ok !== true) {
+                                repairRollbackNeedsVerification = true;
+                                term('rollback: source restored byte-for-byte; the post-restore build could not be verified, so delivery remains blocked');
+                            }
+                            return true;
                         },
                         repair: async (round: number, _ids: string[], findings: any[]) => {
                             //  Hoisted above the first read: `severeFirst` needs
@@ -6637,9 +6781,13 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
         for (const j of namedJudged) {
             term(`  ${j.verdict === 'met' ? 'OK' : j.verdict === 'unmet' ? 'MISSING' : '??'} ${j.text} — ${j.why}`);
         }
-        const structural = catalogueCriteria.filter((c: any) =>
-            c.expectedRule || c.expectedColumn || c.expectedPage || c.expectedText
-            || c.expectedFilter || c.expectedProgress);
+        const structural = catalogueCriteria.filter((c: any) => {
+            const isStructural = c.expectedRule || c.expectedColumn || c.expectedPage || c.expectedText
+                || c.expectedFilter || c.expectedProgress;
+            if (!isStructural) return false;
+            if (!c.expectedPage || !namedJudged.length) return true;
+            return !namedJudged.some(j => requirementNamesPage(j, c.expectedPage.title));
+        });
         const criteriaForJudgement = namedJudged.length
             ? [
                 ...structural,
@@ -6930,7 +7078,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             installExit, buildExit, diagnosis: buildDiagnosis,
         };
         const blamesTheBuild = !audit && buildOutcome.attempted && !built;
-        const qualityDeliveryBlocked = blockers.length > 0 || visualAuditUnavailable;
+        const qualityDeliveryBlocked = blockers.length > 0 || visualAuditUnavailable || repairRollbackNeedsVerification;
         if (blockers.length) {
             // The artefact exists, but its final acceptance is rejected. Say both
             // facts explicitly so a terminal transcript cannot turn a blocked
@@ -6944,6 +7092,9 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             term(blamesTheBuild
                 ? `delivery BLOCKED — ${deliveryErrorForBuild(buildOutcome)}`
                 : 'self-QA: DELIVERY BLOCKED — requested browser audit was not completed');
+        }
+        if (repairRollbackNeedsVerification) {
+            term('delivery BLOCKED — a quality-repair rollback restored the source, but its post-restore build was not verified');
         }
 
         const qaBlock = (() => {
@@ -7161,6 +7312,15 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 const { scopeReport, formatScope } = require('../../../core/quality/scope-audit');
                 const dirs = [proj, ...(apiDir ? [apiDir] : [])];
                 const r = scopeReport(request, dirs);
+                const foldScopeLabel = (value: string) => String(value || '')
+                    .toLocaleLowerCase().replace(/\b(?:the\s+)?page\b/gu, '').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+                const judgedLabels = acceptance.criteria.flatMap((c: any) => [c.en, c.ar])
+                    .map(foldScopeLabel).filter(Boolean);
+                r.unchecked = r.unchecked.filter((clause: string) => {
+                    const folded = foldScopeLabel(clause);
+                    return !judgedLabels.some((label: string) => label === folded
+                        || (Math.min(label.length, folded.length) >= 8 && (label.includes(folded) || folded.includes(label))));
+                });
                 if (r.missing.length) {
                     term(`scope: ${r.built.length}/${r.requested.length} named capabilities are in the build — missing: ${r.missing.map((c: any) => c.id).join(', ')}`);
                 }
@@ -7203,8 +7363,10 @@ ${built ? '✅ npm install + vite build succeeded — the production build is in
                             ? 'request_fidelity_mismatch'
                             : askedButMissing.length
                             ? 'requested_features_not_proven'
-                            : acceptanceBlocked
-                                ? deliveryErrorForAcceptance(acceptance.criteria as any)
+                                : acceptanceBlocked
+                                    ? deliveryErrorForAcceptance(acceptance.criteria as any)
+                                    : repairRollbackNeedsVerification
+                                        ? 'quality_repair_rolled_back_source_but_post_restore_build_unverified'
                                 //  EVERY BLOCKER CARRIES ITS OWN NAME.
                                 //
                                 //  `blockers` — surviving HIGH-severity audit findings — was

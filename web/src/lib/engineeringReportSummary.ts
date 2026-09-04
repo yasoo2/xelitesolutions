@@ -25,11 +25,13 @@ export function summarizeEngineeringReport(markdown: string, language = 'en'): s
     const issueLines = lines
         .filter(line => /^[-•*]\s*/.test(line))
         .map(line => line.replace(/^[-•*]\s*/, '').replace(/\*\*/g, '').trim())
-        .filter(line => /unresponsive|does not exist|tap target|لا يستجيب|غير موجود|صغير|خطأ|عطل/i.test(line))
+        .filter(line => /unresponsive|does not exist|tap target|horizontal scrolling|controls? (?:were )?(?:gone|unreached)|could not (?:be )?reached|لا يستجيب|غير موجود|صغير|تمرير أفقي|لم أصل|لا يمكن الوصول|خطأ|عطل/i.test(line))
         .map(line => {
             if (/unresponsive|navigation link/i.test(line)) return isArabic ? 'بعض روابط التنقل لا تستجيب بعد.' : 'Some navigation links still need attention.';
             if (/does not exist/i.test(line)) return isArabic ? 'بعض الروابط تشير إلى أقسام غير موجودة.' : 'Some links point to sections that are not present.';
             if (/tap target|hard to hit|صغير/i.test(line)) return isArabic ? 'يوجد عنصر صغير على شاشة الهاتف ويحتاج تكبيرًا.' : 'One mobile tap target needs to be larger.';
+            if (/horizontal scrolling|تمرير أفقي/i.test(line)) return isArabic ? 'يوجد تمرير أفقي على شاشة الهاتف ويحتاج إصلاحًا.' : 'Horizontal scrolling needs to be fixed on a phone.';
+            if (/controls? (?:were )?(?:gone|unreached)|could not (?:be )?reached|لم أصل|لا يمكن الوصول/i.test(line)) return isArabic ? 'بعض عناصر الواجهة لم تصل إليها جولة الاختبار؛ يلزم إعادة التحقق.' : 'Some controls were not reached by the test and need another verification pass.';
             return isArabic ? 'بقيت ملاحظة في فحص الجودة.' : 'One quality finding remains.';
         })
         .filter((line, index, all) => all.indexOf(line) === index)
@@ -46,6 +48,8 @@ export function summarizeEngineeringReport(markdown: string, language = 'en'): s
         if (issueLines.length) {
             result.push('الملاحظات المتبقية:');
             result.push(...issueLines.map(line => `- ${line}`));
+        } else if (score && Number(score) < 100) {
+            result.push('توجد ملاحظات غير حاجبة في فحص المتصفح الأخير؛ تفاصيلها التقنية مسماة في Logs.');
         } else {
             result.push('لم تظهر ملاحظات حرجة في الفحص الأخير.');
         }
@@ -60,9 +64,11 @@ export function summarizeEngineeringReport(markdown: string, language = 'en'): s
     if (issueLines.length) {
         result.push('Remaining findings:');
         result.push(...issueLines.map(line => `- ${line}`));
-    } else {
-        result.push('No critical findings were reported in the latest check.');
-    }
+        } else if (score && Number(score) < 100) {
+            result.push('The latest browser check still has non-blocking findings; the technical trace names them in Logs.');
+        } else {
+            result.push('No critical findings were reported in the latest check.');
+        }
     result.push('', 'The complete technical trace is available in Logs.');
     return result.join('\n');
 }

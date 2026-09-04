@@ -92,6 +92,12 @@ const SITE_SHAPES: Partial<Record<PageKind, PageSpec[]>> = {
         { file: 'about.html', kind: 'landing', title: 'من نحن', purpose: 'the team, the history and the numbers' },
         { file: 'contact.html', kind: 'landing', title: 'تواصل', purpose: 'a validated contact form and the direct channels' },
     ],
+    museum: [
+        { file: 'index.html', kind: 'museum', title: 'الرئيسية', purpose: 'the welcome: current exhibition, mission, and a clear invitation to visit' },
+        { file: 'exhibits.html', kind: 'museum', title: 'المعارض', purpose: 'the exhibits programme with named galleries, subjects, and age guidance' },
+        { file: 'visit.html', kind: 'museum', title: 'الزيارة', purpose: 'opening hours, admission, accessibility, location, and a validated enquiry form' },
+        { file: 'education.html', kind: 'museum', title: 'التعليم', purpose: 'school visits, workshops, family learning, and education enquiries' },
+    ],
 };
 
 /** English titles for a non-Arabic build. */
@@ -99,6 +105,7 @@ const EN_TITLES: Record<string, string> = {
     'الرئيسية': 'Home', 'المنتجات': 'Products', 'من نحن': 'About', 'تواصل معنا': 'Contact',
     'قائمة الطعام': 'Menu', 'الحجز': 'Reservations', 'تواصل': 'Contact', 'الأعمال': 'Work',
     'نبذة': 'About', 'الأرشيف': 'Archive', 'عن المدونة': 'About', 'خدماتنا': 'Services',
+    'المعارض': 'Exhibits', 'الزيارة': 'Visit', 'التعليم': 'Education',
 };
 
 //  The folding a page-intent test needs: case endings, hamza shapes and
@@ -365,6 +372,7 @@ const PAGE_KIND: Record<string, PageKind> = {
     products: 'store', cart: 'store', shipping: 'store',
     menu: 'restaurant', reservations: 'restaurant',
     work: 'portfolio', blog: 'blog', archive: 'blog',
+    exhibits: 'museum', visit: 'museum', education: 'museum',
 };
 
 const PAGE_PURPOSE: Record<string, string> = {
@@ -383,6 +391,9 @@ const PAGE_PURPOSE: Record<string, string> = {
     cart: 'the basket, quantities, totals, and the way through to checkout',
     support: 'how to get help, which channel for what, and the response times',
     docs: 'the reference organised by task, with examples that can be copied',
+    exhibits: 'the exhibits programme with named galleries and visitor guidance',
+    visit: 'opening hours, admission, accessibility, location, and a validated enquiry form',
+    education: 'school visits, workshops, family learning, and education enquiries',
     index: 'what this is, who it is for, and the one action it wants',
 };
 

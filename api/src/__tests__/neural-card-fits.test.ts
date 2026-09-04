@@ -27,6 +27,11 @@ describe('the card opens instead of hiding what it has', () => {
         expect(src).toMatch(/const \[expanded, setExpanded\] = useState<boolean \| null>\(null\);/);
         expect(src).toMatch(/onClick=\{\(\) => setExpanded\(!showTimeline\)\}/);
     });
+
+    it('uses the newest structured event for the current action', () => {
+        const src = CARD();
+        expect(src).toMatch(/steps\.length \? steps\[steps\.length - 1\]\.text : status/);
+    });
 });
 
 describe('and it fits the chat it lives in', () => {

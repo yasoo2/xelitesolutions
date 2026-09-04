@@ -1704,6 +1704,18 @@ describe('the session title arrives during the conversation', () => {
         expect(S.indexOf('autoNameSessionAfterReply')).toBeGreaterThan(S.indexOf("role: 'assistant', content: finalText"));
     });
 
+    it('ends the visible run before post-delivery naming or memory work', () => {
+        const S = SRC('modules', 'services', 'AgentLoopService.ts');
+        const delivered = S.indexOf("broadcast({ type: 'run_finished'");
+        const unregistered = S.indexOf('unregisterRunSession(runId, sessionId)', delivered);
+        const autoTitle = S.indexOf('autoNameSessionAfterReply(sessionId)', delivered);
+        const learning = S.indexOf('learnFromConversation', delivered);
+        expect(delivered).toBeGreaterThan(-1);
+        expect(unregistered).toBeGreaterThan(delivered);
+        expect(unregistered).toBeLessThan(autoTitle);
+        expect(unregistered).toBeLessThan(learning);
+    });
+
     it('and the trigger refuses to rename what the user named', () => {
         const C = SRC('api', 'controllers', 'sessionController.ts');
         const fn = C.slice(C.indexOf('export async function autoNameSessionAfterReply'));

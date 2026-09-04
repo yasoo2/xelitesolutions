@@ -139,7 +139,7 @@ function findControls(limit: number) {
      */
     document.querySelectorAll('[data-joe-ctl]').forEach(el => el.removeAttribute('data-joe-ctl'));
 
-    const out: Array<{ sel: string; kind: string; label: string; href?: string; disabled?: boolean }> = [];
+    const out: Array<{ sel: string; kind: string; label: string; href?: string; ordinal: number; disabled?: boolean }> = [];
     const push = (el: Element, kind: string) => {
         if (out.length >= limit || !vis(el)) return;
         /**
@@ -162,6 +162,15 @@ function findControls(limit: number) {
          */
         if (el.getAttribute('aria-selected') === 'true' || el.getAttribute('aria-current') === 'true'
             || el.getAttribute('aria-current') === 'page') return;
+        /**
+         * A hash-router's current route can also appear in a footer, where it
+         * does not carry aria-current. Pressing "Visit" while already at
+         * #/visit correctly changes nothing; treating that as a dead control
+         * made valid multi-page apps fail their own QA.
+         */
+        const routeHref = el.getAttribute('href') || '';
+        const currentHashRoute = window.location.hash || '#/';
+        if (kind === 'link' && /^#\//.test(routeHref) && routeHref === currentHashRoute) return;
         /**
          * `aria-pressed` says the same thing in the other vocabulary, and the
          * feed's own filter uses it: «All» is the tab that is already on, so
@@ -207,7 +216,15 @@ function findControls(limit: number) {
          *  Until then the audit says what is true: it reports these as
          *  UNREACHED, never as pressed-and-dead. See `judgeBehaviour`.
          */
-        out.push({ sel: `[data-joe-ctl="${id}"]`, kind, label: label(el), href: (el as HTMLAnchorElement).href });
+        const controlLabel = label(el);
+        const href = (el as HTMLAnchorElement).href;
+        // "Plan your visit" can appear in the hero and again in the final
+        // call-to-action.  Label + destination identifies their behaviour,
+        // not their DOM node.  Keep the occurrence too so a re-render restores
+        // the matching control instead of repeatedly pressing the first copy.
+        const ordinal = out.filter(candidate => candidate.kind === kind
+            && candidate.label === controlLabel && (candidate.href || '') === (href || '')).length;
+        out.push({ sel: `[data-joe-ctl="${id}"]`, kind, label: controlLabel, href, ordinal });
     };
 
     /**
@@ -563,12 +580,12 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
          * found pressing zero buttons while reporting that it had run.
          */
         await page.evaluate('globalThis.__name = globalThis.__name || (function (f) { return f; });').catch(() => { });
-        const list: Array<{ sel: string; kind: string; label: string; href?: string }> =
+        const list: Array<{ sel: string; kind: string; label: string; href?: string; ordinal?: number }> =
             await evalInPage(page, findControls, limit);
         metrics.controlsFound = list.length;
 
-        const controlKey = (c: { kind: string; label: string; href?: string }) =>
-            `${c.kind}|${c.label}|${c.href || ''}`;
+        const controlKey = (c: { kind: string; label: string; href?: string; ordinal?: number }) =>
+            `${c.kind}|${c.label}|${c.href || ''}|${c.ordinal ?? 0}`;
 
         // A CSV download has no DOM footprint. Count the app's real download
         // anchor click as an additional browser-side witness, while retaining
@@ -608,11 +625,26 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
         metrics.deadAnchors = deadAnchors.length;
 
         let budgetHit = false;
+        // Each in-app navigation is a real interaction, but it must not strand
+        // the remaining controls on the destination route.  Going "back" is
+        // unreliable for hash routers: there may be no browser history entry
+        // to restore, leaving later controls absent and falsely reported as
+        // unreached.  Return to the exact route we started this probe on.
+        const probeStartUrl = page.url();
         for (const c of list) {
             if (c.kind === 'anchor') continue;                       // handled above
             if (Date.now() > deadline) { budgetHit = true; break; }
             let effect = '';
             try {
+                // Every route link is judged from the route where it was
+                // discovered. A previous React navigation may have completed
+                // after the snapshot classified its DOM effect, so restore at
+                // the start as well as after a detected navigation.
+                if (c.kind === 'link' && page.url() !== probeStartUrl) {
+                    await page.goto(probeStartUrl, { waitUntil: 'load', timeout: 5000 }).catch(() => { });
+                    await page.waitForSelector('a[href^="#/"]', { timeout: 2500 }).catch(() => { });
+                    await page.waitForTimeout(250);
+                }
                 // React is allowed to replace the node after a previous click.
                 // Re-discover the same semantic control before calling it dead;
                 // a stale data-joe-ctl selector is not evidence of a bad button.
@@ -624,6 +656,26 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                     if (replacement) {
                         current = replacement;
                         el = await page.$(current.sel);
+                    }
+                }
+                if (!el && c.kind === 'link' && c.href) {
+                    // React may rebuild the route before our temporary
+                    // data-joe-ctl stamp is observed. Recover duplicate CTAs
+                    // from their durable semantics instead: destination,
+                    // accessible text, and occurrence on the restored route.
+                    const hash = (() => { try { return new URL(c.href!).hash; } catch { return ''; } })();
+                    if (hash) {
+                        const candidates = await page.$$(`a[href=${JSON.stringify(hash)}]`).catch(() => []);
+                        const matches: any[] = [];
+                        for (const candidate of candidates) {
+                            const candidateLabel = await candidate.evaluate((node: Element) => {
+                                const aria = node.getAttribute('aria-label') || node.getAttribute('title') || '';
+                                const visible = ((node as HTMLElement).innerText || '').trim().replace(/\s+/g, ' ').slice(0, 48);
+                                return aria || visible || node.tagName.toLowerCase();
+                            }).catch(() => '');
+                            if (candidateLabel === c.label) matches.push(candidate);
+                        }
+                        el = matches[c.ordinal ?? 0] || null;
                     }
                 }
                 if (!el) { controls.push({ label: c.label, kind: c.kind as any, worked: false, effect: 'not found' }); continue; }
@@ -654,9 +706,11 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                  * A small nudge does that for anything scroll-driven and is
                  * invisible to everything else.
                  */
-                await page.evaluate(() => {
-                    if (document.documentElement.scrollHeight > window.innerHeight + 160) window.scrollBy(0, 120);
-                }).catch(() => { });
+                if (c.kind === 'button' && /(?:back\s+to\s+top|scroll\s+to\s+top|to\s+top|up|\u0644\u0644\u0623\u0639\u0644\u0649|\u0625\u0644\u0649\s+\u0627\u0644\u0623\u0639\u0644\u0649)/iu.test(c.label)) {
+                    await page.evaluate(() => {
+                        if (document.documentElement.scrollHeight > window.innerHeight + 160) window.scrollBy(0, 120);
+                    }).catch(() => { });
+                }
                 let reachable = await page.evaluate((sel: string) => {
                     const node = document.querySelector(sel) as HTMLElement | null;
                     if (!node) return false;
@@ -740,6 +794,7 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                 // button that really did increment its badge was reported as
                 // "scroll" — a true measurement of the wrong thing.
                 const before = await page.evaluate(snapshot).catch(() => null);
+                const beforeUrl = page.url();
                 if (!eyeIsOpen()) break;
                 await eyes.press(page);
                 /**
@@ -757,18 +812,24 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                 if (!eyeIsOpen()) break;
                 await el.click({ timeout: 2500, force: true, noWaitAfter: true }).catch(() => { });
                 await page.waitForTimeout(SETTLE_MS);
+                const afterUrl = page.url();
                 try { page.off('download', onDownload); } catch { /* page may be gone */ }
                 const downloadClicks = await page.evaluate('Number(globalThis.__joeQaDownloadClicks || 0)').catch(() => 0);
                 const after = await page.evaluate(snapshot).catch(() => null);
-                effect = downloaded || downloadClicks > downloadClicksBefore
+                effect = afterUrl !== beforeUrl
+                    ? 'navigation'
+                    : downloaded || downloadClicks > downloadClicksBefore
                     ? 'download'
                     : (changed(before, after) || (hoverEffect ? `hover:${hoverEffect}` : ''));
                 // A submit that reloads the page proves the form is NOT handled —
                 // an unhandled submit is the browser's default, not a feature.
                 if (c.kind === 'submit' && effect === 'navigation') effect = 'reload';
                 if (effect === 'navigation') {
-                    await page.goBack({ timeout: 5000 }).catch(() => { });
-                    await page.waitForTimeout(200);
+                    await page.goto(probeStartUrl, { waitUntil: 'load', timeout: 5000 })
+                        .catch(() => page.goBack({ timeout: 5000 }))
+                        .catch(() => { });
+                    await page.waitForSelector('a[href^="#/"]', { timeout: 2500 }).catch(() => { });
+                    await page.waitForTimeout(250);
                 }
             } catch { /* the control itself is what is under test */ }
             controls.push({ label: c.label, kind: c.kind as any, worked: !!effect && effect !== 'reload', effect });
@@ -802,7 +863,7 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
         opts?.onProgress?.('exploring');
         for (let turn = 0; turn < 12 && Date.now() < explorationDeadline; turn++) {
             const fresh = await evalInPage(page, findControls, limit).catch(() => [] as any[]);
-            for (const c of fresh as Array<{ kind: string; label: string; href?: string }>) discoveredKeys.add(controlKey(c));
+            for (const c of fresh as Array<{ kind: string; label: string; href?: string; ordinal?: number }>) discoveredKeys.add(controlKey(c));
             metrics.controlsDiscovered = discoveredKeys.size;
             const candidate = (fresh as Array<{ sel: string; kind: string; label: string; href?: string }>)
                 .filter(c => c.kind !== 'anchor')

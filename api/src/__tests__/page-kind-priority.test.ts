@@ -57,6 +57,8 @@ describe('the page kind follows what the request is ABOUT', () => {
         expect(detectPageKind('مدونة مقالات تقنية')).toBe('blog');
         expect(detectPageKind('لوحة تحكم بالإحصائيات')).toBe('dashboard');
         expect(detectPageKind('صفحة هبوط لشركة خدمات')).toBe('landing');
+        expect(detectPageKind('Create a four-page science museum website')).toBe('museum');
+        expect(detectPageKind('Build a cultural institution site with exhibitions and visitor hours')).toBe('museum');
     });
 
     it('and something with no signal at all is still generic', () => {
@@ -66,5 +68,6 @@ describe('the page kind follows what the request is ABOUT', () => {
     it('does not turn a content catalogue into an online shop', () => {
         expect(detectPageKind('Build a public website for a community seed library with a seasonal catalog')).not.toBe('store');
         expect(detectPageKind('Create a museum website with an exhibit catalogue and visitor hours')).not.toBe('store');
+        expect(detectPageKind('Create a museum website with an exhibit catalogue and visitor hours')).toBe('museum');
     });
 });

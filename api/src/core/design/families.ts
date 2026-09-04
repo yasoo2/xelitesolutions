@@ -44,6 +44,7 @@ export function familyFor(request: string, kind: PageKind): DesignFamily {
         case 'portfolio': return 'minimal';
         case 'dashboard':
         case 'app': return 'bold';
+        case 'museum': return 'elegant';
         default: return 'minimal';
     }
 }

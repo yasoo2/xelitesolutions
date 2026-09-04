@@ -23,6 +23,7 @@ const KIND_LABEL: Record<string, { ar: string; en: string }> = {
     app: { ar: 'التطبيق', en: 'App' },
     about: { ar: 'من نحن', en: 'About' },
     contact: { ar: 'اتصل بنا', en: 'Contact' },
+    museum: { ar: 'متحف العلوم', en: 'Science Museum' },
 };
 
 /**
@@ -279,6 +280,7 @@ const KIND_WORD: Record<string, { ar: string; en: string }> = {
     portfolio: { ar: 'أعمال', en: 'Studio' },
     landing: { ar: 'منصة', en: 'Works' },
     dashboard: { ar: 'لوحة', en: 'Dashboard' },
+    museum: { ar: 'متحف العلوم', en: 'Science Museum' },
     blog: { ar: 'مدونة', en: 'Journal' },
     generic: { ar: 'مشروع', en: 'Works' },
 };
@@ -340,7 +342,13 @@ export function brandFallback(request: string, isArabic: boolean, kind = 'generi
             .filter(w => !NOT_A_SUBJECT.test(w)).join(' ').trim();
         if (candidate.length >= 3) { subject = candidate; break; }
     }
-    if (!subject) return inHisScript ? 'مشروعي' : 'MyApp';
+    if (!subject) {
+        // A recognised cultural brief still has a meaningful identity even
+        // when it names no institution. Never expose the generic MyApp shell
+        // for a request that already told us what the place is.
+        if (kind === 'museum') return inHisScript ? 'متحف العلوم' : 'Science Museum';
+        return inHisScript ? 'مشروعي' : 'MyApp';
+    }
 
     /**
      *  A NAME TAKES THE LANGUAGE OF THE WORDS IT IS MADE OF.
