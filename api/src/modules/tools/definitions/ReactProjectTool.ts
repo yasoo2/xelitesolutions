@@ -7495,7 +7495,8 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
          * orchestrator can retry with a working judge/provider.
          */
         const acceptanceBlocked = acceptance.criteria.length > 0
-            && (!acceptance.accepted || (judgeWasBlind && namedByHim.length > 0));
+            && (!acceptance.accepted
+                || (namedByHim.length > 0 && (judgeWasBlind || acceptance.unprovable > 0)));
         // A named request is a contract, not commentary. Do not report a green
         // delivery when the engine has no evidence for one of the requested
         // capabilities or when the acceptance ledger contains an unmet item.

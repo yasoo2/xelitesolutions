@@ -80,6 +80,7 @@ describe('INVARIANT: described work chooses the engine, not a category noun', ()
     test('blocks catalogue acceptance when the request judge is blind', () => {
         const source = fs.readFileSync(REACT_TOOL, 'utf8');
         expect(source).toContain('judgeWasBlind && namedByHim.length > 0');
+        expect(source).toContain('acceptance.unprovable > 0');
         expect(source).toContain('catalogue fallback is diagnostic only');
         expect(source).toContain('acceptance judge could not verify');
     });
