@@ -70,6 +70,13 @@ describe('the brief becomes a headline, not a wall', () => {
         expect(subjectPhrase('Create a four-page science museum website: Home, Exhibits, Visit, and Education, with shared header')).toBe('science museum');
     });
 
+    it('keeps the complete product phrase before an English constraint', () => {
+        expect(subjectPhrase('Build a team issue tracker with sign-in, roles, comments, and audit history.'))
+            .toBe('team issue tracker');
+        expect(subjectPhrase('Create a regional service operations dashboard with filters and exports.'))
+            .toBe('regional service operations dashboard');
+    });
+
     it('a request with no subject yields NOTHING — the caller then says something neutral', () => {
         // Better a generic tagline than the user's own instructions read back.
         expect(subjectPhrase('ابن لي موقع')).toBe('');

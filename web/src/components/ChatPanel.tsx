@@ -124,7 +124,7 @@ export default function ChatPanel({
     // Keep the live activity at the end of this same conversation stream when
     // it changes, without covering the messages above or the composer below.
     useEffect(() => {
-        if (isLoading || thinkingPhase !== 'idle') {
+        if (isLoading) {
             messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
     }, [isLoading, thinkingPhase]);
@@ -384,13 +384,13 @@ export default function ChatPanel({
                 {/* Live activity is a real assistant row in the conversation,
                     not a second panel. It remains above the composer because it
                     belongs to the scroll stream and the composer follows it. */}
-                {(isLoading || thinkingPhase !== 'idle') && (
+                {isLoading && (
                     <div className="joe-live-dock" role="status" aria-live="polite">
                         <div className="joe-message assistant">
                             <div className="joe-message-avatar ai"><JoeMark size={24} /></div>
                             <div className="joe-message-content joe-live-content">
                                 <NeuralThinkingIndicator
-                                    visible={isLoading || thinkingPhase !== 'idle'}
+                                    visible={isLoading}
                                     phase={thinkingPhase}
                                     variant="bubble"
                                     sessionId={sessionId}

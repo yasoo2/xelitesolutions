@@ -541,11 +541,28 @@ export async function auditBuiltApp(
                     password: c.password,
                     tokenStorageKey: c.tokenStorageKey || 'joe-admin-token:' + (c.email.split('@')[0] || 'app'),
                 });
-                authenticated = !!result?.ok;
-                if (!authenticated) authError = `login ${result?.status || 0}: ${String(result?.error || 'rejected').slice(0, 120)}`;
-                if (authenticated && c.route) {
-                    const target = new URL(c.route, url).toString();
+                if (!result?.ok) {
+                    authError = `login ${result?.status || 0}: ${String(result?.error || 'rejected').slice(0, 120)}`;
+                } else {
+                    // A 200 from /auth/login proves the credential, not the
+                    // browser state. Reload the product and require a visible
+                    // signed-in affordance before protected QA may be claimed.
+                    const target = new URL(c.route || '/', url).toString();
                     await page.goto(target, { waitUntil: 'networkidle', timeout: timeoutMs });
+                    try {
+                        await page.waitForFunction(() => {
+                            const visible = (el: Element) => {
+                                const r = (el as HTMLElement).getBoundingClientRect();
+                                const s = getComputedStyle(el);
+                                return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none';
+                            };
+                            return [...document.querySelectorAll('button, a')].some((el) =>
+                                visible(el) && /^(sign out|log out|logout|تسجيل الخروج|خروج)$/iu.test(String(el.textContent || '').trim()));
+                        }, { timeout: Math.min(timeoutMs, 5_000) });
+                        authenticated = true;
+                    } catch {
+                        authError = 'login API accepted the account, but the protected browser surface did not appear';
+                    }
                 }
             } catch (e: any) {
                 authError = `login failed: ${String(e?.message || e).slice(0, 120)}`;

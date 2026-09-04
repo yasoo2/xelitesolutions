@@ -1334,6 +1334,15 @@ export async function routeToModel(
     tools?: any[],
     context?: any
 ): Promise<string> {
+    const callerSignal = context?.signal as AbortSignal | undefined;
+    const callerAbortError = () => {
+        const reason = callerSignal?.reason;
+        return reason instanceof Error ? reason : new Error(String(reason || 'run_cancelled_by_owner'));
+    };
+    const throwIfCallerAborted = () => {
+        if (callerSignal?.aborted) throw callerAbortError();
+    };
+    throwIfCallerAborted();
     // A run-scoped ledger makes provider routing falsifiable: the caller can see
     // every real attempt, its outcome, and the bounded reason for a failure. Do
     // not infer Offline from a prose line when this record is available.
@@ -2249,6 +2258,7 @@ export async function routeToModel(
     // — bounded by RATE_LIMIT_PATIENCE_MS — and try only providers that were not
     // already attempted in this call. The next route call owns a fresh retry.
     meshAttemptLoop: for (let meshAttempt = 0; meshAttempt < 2; meshAttempt++) {
+    throwIfCallerAborted();
 
     // Move providers that are in cooldown (recently failed) to the END of the order
     // rather than dropping them entirely — so if EVERY provider is cooling down we
@@ -2271,6 +2281,7 @@ export async function routeToModel(
     }
 
     for (const p of orderedProviders) {
+        throwIfCallerAborted();
         // Outside the try on purpose: the catch needs to know how long we were
         // willing to wait before we called the engine dead.
         let lastTimeoutUsed = 0;
@@ -2431,6 +2442,7 @@ export async function routeToModel(
             lastTimeoutUsed = timeoutValue;
             const providerAbort = new AbortController();
             let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+            let callerAbortListener: (() => void) | undefined;
             const timeoutPromise = new Promise<never>((_, reject) => {
                 timeoutHandle = setTimeout(() => {
                     providerAbort.abort(new Error(`Provider deadline exceeded after ${timeoutValue}ms`));
@@ -2440,9 +2452,27 @@ export async function routeToModel(
             const attemptStartedAt = Date.now();
             let rawAns: string;
             try {
-                rawAns = await Promise.race([p.run(providerAbort.signal), timeoutPromise]) as string;
+                const callerAbortPromise = callerSignal
+                    ? new Promise<never>((_, reject) => {
+                        callerAbortListener = () => {
+                            const error = callerAbortError();
+                            providerAbort.abort(error);
+                            reject(error);
+                        };
+                        callerSignal.addEventListener('abort', callerAbortListener, { once: true });
+                        if (callerSignal.aborted) callerAbortListener();
+                    })
+                    : null;
+                rawAns = await Promise.race([
+                    p.run(providerAbort.signal),
+                    timeoutPromise,
+                    ...(callerAbortPromise ? [callerAbortPromise] : []),
+                ]) as string;
             } finally {
                 if (timeoutHandle) clearTimeout(timeoutHandle);
+                if (callerAbortListener && callerSignal) {
+                    callerSignal.removeEventListener('abort', callerAbortListener);
+                }
             }
             // How long this machine really takes is the only honest input to
             // how long we should be willing to wait for it next time.
@@ -2487,6 +2517,7 @@ export async function routeToModel(
                 + `— counted as a failure and cooled down.`);
             markProviderFailed(p.name);
         } catch (e: any) {
+            if (callerSignal?.aborted) throw callerAbortError();
             recordProviderAttempt(p.name, false, e?.message || e);
             console.warn(`[IntelligentRouter] ${p.name} failed or timed out: ${e.message} `);
             // A rate-limit error that names its own window cools the provider

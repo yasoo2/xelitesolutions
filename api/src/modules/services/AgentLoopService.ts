@@ -932,14 +932,9 @@ export class AgentLoopService {
                 `⚙️ المرحلة ${n}/${totalPhases} — ${phase.name || 'تنفيذ'}`,
                 `⚙️ Phase ${n}/${totalPhases} — ${phase.name || 'work'}`));
             const phaseResult = await executeTool('phase_executor', { phase, projectContext }, executionContext);
-            // Keep the executor's evidence visible to the user and to the final
-            // pipeline report. Without this, a failed acceptance tool was reduced
-            // to the opaque label `verification_failed`, making diagnosis and
-            // honest self-healing impossible even though the executor had the
-            // exact tool name and error in its logs.
-            if (Array.isArray(phaseResult?.logs)) {
-                for (const log of phaseResult.logs) voice(String(log));
-            }
+            // ToolService has already streamed the executor's logs to the panel.
+            // Keep the returned copy for reports and repair diagnosis, but never
+            // speak it again here: doing so replays the completed phase verbatim.
             const status = String(phaseResult?.output?.status || 'unknown');
             // PhaseExecutor can bind the greenfield artifact inside its own
             // ToolService boundary. Rehydrate that evidence here before either

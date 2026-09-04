@@ -375,6 +375,27 @@ describe('the offline scaffold — complete, parseable, kind-aware', () => {
         expect(fs.readFileSync(path.join(res.output.path, 'README.md'), 'utf-8')).toContain('/api/orders');
     });
 
+    it('workflow systems omit unrelated commerce storage, routes, copy, and examples', async () => {
+        const res: any = await new ApiProjectTool().execute({
+            request: 'Build a team issue tracker with sign-in, member and manager roles, private issue lists, assignment, status transitions, comments, and audit history.',
+            skipInstall: true,
+            root: tmp,
+        }, { sessionId: 'api-workflow' });
+        expect(res.ok).toBe(true);
+        const db = fs.readFileSync(path.join(res.output.path, 'db.js'), 'utf-8');
+        const server = fs.readFileSync(path.join(res.output.path, 'server.js'), 'utf-8');
+        const readme = fs.readFileSync(path.join(res.output.path, 'README.md'), 'utf-8');
+        expect(db).not.toContain('CREATE TABLE IF NOT EXISTS orders');
+        expect(db).not.toContain('listOrders');
+        expect(server).not.toContain("'/api/orders'");
+        expect(server).not.toContain('notifyJoe(order)');
+        expect(readme).not.toContain('/api/orders');
+        expect(readme).not.toContain('واجهة المتجر');
+        expect(readme).not.toContain('يرى الرفّ');
+        expect(readme).toContain('"title":"تعذّر تسجيل الدخول"');
+        expect(readme).toContain('"status":"in_progress"');
+    });
+
     it('the LINKED frontend gets ordersApi and the OrderButton; unlinked ships the plain CTA', async () => {
         const { ReactProjectTool } = require('../modules/tools/definitions/ReactProjectTool');
         // Session api-t currently holds the products API from the test above.
@@ -548,6 +569,24 @@ describe('the generated site carries the owner\'s dashboard', () => {
         expect(panel).toContain("'joe-admin-token:'");
         // a rejected token signs you out instead of looping
         expect(panel).toContain('res.status === 401');
+    });
+
+    it('hands workflow credentials to the token key used by the workflow shell', () => {
+        const src = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ApiProjectTool.ts'), 'utf-8');
+        expect(src).toContain("tokenStorageKey: workflowApplication ? 'joe:auth:/'");
+        expect(src).toContain("route: workflowApplication ? '/' : '#/admin'");
+    });
+
+    it('passes workflow credentials to both the initial browser audit and repair-loop audits', () => {
+        const src = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ReactProjectTool.ts'), 'utf-8');
+        expect(src.match(/\.\.\.\(runtimeAuth \? \{ credentials: runtimeAuth \} : \{\}\)/g)).toHaveLength(2);
+    });
+
+    it('does not invent an orders endpoint for authenticated workflow applications', () => {
+        const src = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ReactProjectTool.ts'), 'utf-8');
+        expect(src).toContain('const workflowApi = hasWorkflowApplicationContract(request);');
+        expect(src).toContain('apiLink && !feedApi && !workflowApi');
+        expect(src).toContain('this app reads and writes authenticated workflow records at');
     });
 
     it('an UNLINKED site renders none of it', () => {

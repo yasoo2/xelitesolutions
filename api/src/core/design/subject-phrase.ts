@@ -210,6 +210,14 @@ export function subjectAfterContainer(requestRaw: string): string {
 }
 
 export function subjectPhrase(request: string, maxChars = 72): string {
+    // In a direct English build brief, the phrase before the first constraint
+    // is already the complete product noun phrase. Read it before the generic
+    // container-neighbour rule, which would reduce "team issue tracker" to
+    // the single word immediately before "tracker".
+    if (!NAMING.test(request)) {
+        const englishSubject = englishBriefSubject(request);
+        if (englishSubject) return englishSubject.slice(0, maxChars);
+    }
     //  What he named comes first: reading the sentence for a headline is
     //  the fallback, not the answer.
     const named = subjectAfterContainer(request);

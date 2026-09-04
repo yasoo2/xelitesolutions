@@ -142,6 +142,17 @@ function findControls(limit: number) {
     const out: Array<{ sel: string; kind: string; label: string; href?: string; ordinal: number; disabled?: boolean }> = [];
     const push = (el: Element, kind: string) => {
         if (out.length >= limit || !vis(el)) return;
+        const controlLabel = label(el);
+        /**
+         * Session exit and destructive mutations are scenario boundaries, not
+         * safe blind clicks. Pressing Sign out first erased every protected
+         * control before the audit reached it; pressing Delete can erase the
+         * owner's account or user data. Authentication is proved separately,
+         * while deletion belongs in a seeded create/delete scenario that can
+         * restore its own record.
+         */
+        if (/^(?:sign\s*out|log\s*out|logout|تسجيل\s*الخروج|خروج)$/iu.test(controlLabel)
+            || /^(?:delete|remove|حذف|إزالة)(?:\s|$)/iu.test(controlLabel)) return;
         /**
          * A DISABLED CONTROL IS NOT A BROKEN ONE.
          *
@@ -216,7 +227,6 @@ function findControls(limit: number) {
          *  Until then the audit says what is true: it reports these as
          *  UNREACHED, never as pressed-and-dead. See `judgeBehaviour`.
          */
-        const controlLabel = label(el);
         const href = (el as HTMLAnchorElement).href;
         // "Plan your visit" can appear in the hero and again in the final
         // call-to-action.  Label + destination identifies their behaviour,
@@ -625,6 +635,7 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
         metrics.deadAnchors = deadAnchors.length;
 
         let budgetHit = false;
+        let attemptedControls = 0;
         // Each in-app navigation is a real interaction, but it must not strand
         // the remaining controls on the destination route.  Going "back" is
         // unreliable for hash routers: there may be no browser history entry
@@ -636,6 +647,14 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
             if (Date.now() > deadline) { budgetHit = true; break; }
             let effect = '';
             try {
+                // Each catalogue control belongs to the initial page state. A
+                // previous button may have opened a dialog or drawer over the
+                // next one; Escape restores transient UI without paying for a
+                // full reload before every click.
+                if (attemptedControls++ > 0) {
+                    await page.keyboard.press('Escape').catch(() => { });
+                    await page.waitForTimeout(120).catch(() => { });
+                }
                 // Every route link is judged from the route where it was
                 // discovered. A previous React navigation may have completed
                 // after the snapshot classified its DOM effect, so restore at
@@ -740,6 +759,29 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                             el = await page.$(current.sel);
                             await el?.scrollIntoViewIfNeeded({ timeout: 1500 }).catch(() => { });
                         }
+                        reachable = await page.evaluate((sel: string) => {
+                            const node = document.querySelector(sel) as HTMLElement | null;
+                            if (!node) return false;
+                            const r = node.getBoundingClientRect();
+                            const x = Math.min(Math.max(r.left + r.width / 2, 1), window.innerWidth - 1);
+                            const y = Math.min(Math.max(r.top + r.height / 2, 1), window.innerHeight - 1);
+                            const top = document.elementFromPoint(x, y);
+                            return r.bottom > 0 && r.top < window.innerHeight && (top === node || !!top && node.contains(top));
+                        }, current.sel).catch(() => false);
+                    }
+                }
+                // A transient surface may not identify itself as a modal. The
+                // control was discovered on probeStartUrl, so restore that
+                // exact baseline once before declaring it unreachable.
+                if (!reachable) {
+                    await page.goto(probeStartUrl, { waitUntil: 'load', timeout: 5000 }).catch(() => { });
+                    await page.waitForTimeout(220).catch(() => { });
+                    const fresh = await evalInPage(page, findControls, limit).catch(() => [] as any[]);
+                    const replacement = fresh.find((candidate: any) => controlKey(candidate) === controlKey(c));
+                    if (replacement) {
+                        current = replacement;
+                        el = await page.$(current.sel);
+                        await el?.scrollIntoViewIfNeeded({ timeout: 1500 }).catch(() => { });
                         reachable = await page.evaluate((sel: string) => {
                             const node = document.querySelector(sel) as HTMLElement | null;
                             if (!node) return false;
@@ -973,11 +1015,12 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
 }
 
 /** What a value should be, given the field's own declared type. */
-function valueFor(type: string, tag: string): string {
+export function valueFor(type: string, tag: string, runNonce = '', language = 'en'): string {
     const today = new Date();
     const iso = today.toISOString().slice(0, 10);
+    const isAr = /^ar(?:-|$)/i.test(language);
     switch (type) {
-        case 'email': return 'joe.qa@example.com';
+        case 'email': return `joe.qa+${runNonce || 'browser'}@example.com`;
         case 'tel': return '0555123456';
         case 'number': case 'range': return '3';
         case 'date': return iso;
@@ -988,8 +1031,8 @@ function valueFor(type: string, tag: string): string {
         case 'password': return 'JoeQa!2468';
         case 'url': return 'https://example.com';
         case 'color': return '#3b82f6';
-        case 'textarea': return 'رسالة اختبار من فحص الجودة الذاتي في جو — Joe self-QA test message.';
-        default: return tag === 'textarea' ? 'Joe self-QA test message' : 'Joe QA';
+        case 'textarea': return isAr ? 'رسالة اختبار من فحص الجودة الذاتي في جو.' : 'Joe self-QA test message.';
+        default: return isAr ? 'اختبار جو' : 'Joe QA';
     }
 }
 
@@ -1015,12 +1058,18 @@ export async function probeForms(
     const deadline = Date.now() + Math.max(4000, opts?.budgetMs ?? 30_000);
     const out: FormResult[] = [];
     const metrics: Record<string, any> = { formsFilled: 0, fieldsFilled: 0, formsDeadSubmit: 0, formsValidated: 0, formsReloaded: 0 };
+    const runNonce = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
     const eyeIsOpen = () => {
         if (!opts?.isEyeOpen) return true;
         const open = opts.isEyeOpen();
         if (!open) metrics.eyeLost = true;
         return open;
     };
+    const pageLanguage = await page.evaluate(() => {
+        const lang = String(document.documentElement.lang || '').trim();
+        if (lang) return lang;
+        return document.documentElement.dir === 'rtl' ? 'ar' : 'en';
+    }).catch(() => 'en');
 
     let forms: any[] = [];
     try {
@@ -1061,7 +1110,7 @@ export async function probeForms(
                     await el.check({ timeout: 2000, force: true });
                 } else {
                     // A real fill: the page's own input/change handlers run.
-                    await el.fill(valueFor(fld.type, fld.tag), { timeout: 2500 });
+                    await el.fill(valueFor(fld.type, fld.tag, runNonce, pageLanguage), { timeout: 2500 });
                 }
                 filledCount++;
             } catch { /* one stubborn field must not lose the whole form */ }

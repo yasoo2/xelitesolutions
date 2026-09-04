@@ -367,6 +367,21 @@ const PRODUCTIVITY_CONTRACT = /(?:ملاحظات|مذكرات|مفكرة|notes?|
 /** A finance dashboard owns three first-class collections, not one generic ledger. */
 const FINANCE_CONTRACT = /(?:income|incomes|earnings?|salary|revenue|الدخل|الإيرادات?|الراتب)[\s\S]{0,320}(?:expense|expenses|spending|costs?|budget|budgets?|المصاريف?|النفقات?|الميزاني(?:ة|ات))|(?:expense|expenses|spending|costs?|budget|budgets?|المصاريف?|النفقات?|الميزاني(?:ة|ات))[\s\S]{0,320}(?:income|incomes|earnings?|salary|revenue|الدخل|الإيرادات?|الراتب)/i;
 
+/** A capability list for a coordinated workflow is not a record schema. */
+export function hasWorkflowApplicationContract(requestRaw: string): boolean {
+    const request = maskNegatedSpans(String(requestRaw || ''));
+    const families = [
+        /\bsign[- ]?in\b|\blogin\b|\bauth(?:entication)?\b|تسجيل\s*الدخول|تسجيل\s*دخول/iu,
+        /\b(?:member|manager|admin|user)\s+roles?\b|\bpermissions?\b|\brbac\b|صلاحيات|أدوار\s*(?:المستخدمين|الأعضاء|الاعضاء)?/iu,
+        /\bprivate\b|\bvisibility\b|\baccess\s+control\b|\bown(?:er|ership)?\b|خاص(?:ة|ه)?|خصوصي(?:ة|ه)|ملكي(?:ة|ه)/iu,
+        /\bassign(?:ment|ed|ee)?\b|\bworkflow\b|\bstatus\s+transitions?\b|إسناد|تعيين|سير\s*العمل|انتقالات?\s*الحالة/iu,
+        /\bcomments?\b|\bcollaborat(?:e|ion|ive)\b|تعليقات|تعاون/iu,
+        /\baudit(?:\s+(?:log|trail|history))?\b|\bhistory\b|سجل\s*التدقيق|تاريخ\s*التغييرات/iu,
+    ];
+    return families.filter(pattern => pattern.test(request)).length >= 2
+        && (APP_SIGNAL.test(request) || MANAGE_SIGNAL.test(request));
+}
+
 /**
  * WHICH application this is — or null when the request is genuinely a
  * presentation site (a café, a clinic's landing page, a shop window), which
@@ -413,6 +428,7 @@ export function detectAppKind(requestRaw: string): AppKind | null {
     // self-audit or planner context happened to mention a conversation.
     if (TASK_BOARD_CONTRACT.test(intentRequest)) return 'tasks';
     if (FINANCE_CONTRACT.test(intentRequest)) return 'finance';
+    if (hasWorkflowApplicationContract(intentRequest)) return 'custom';
     //  A LIST HE WROTE OUTRANKS A NOUN HE HAPPENED TO USE.
     //
     //  «عندي عيادة أسنان … اسم المريض ورقم تلفونه …» carries the word
@@ -2969,6 +2985,9 @@ export function derivedColumns(requestRaw: string): DerivedField[] | null {
  */
 export function columnsAnywhereInHisRequest(requestRaw: string): DerivedField[] | null {
     const request = String(requestRaw || '');
+    // Capabilities joined by commas are a workflow contract, not a declaration
+    // of record fields. Let the workflow schema own its data shape.
+    if (hasWorkflowApplicationContract(request)) return null;
     const whole = derivedColumns(request);
     if (whole && whole.length) return whole;
     //  More than one sentence, or there is nothing new to try and the guard

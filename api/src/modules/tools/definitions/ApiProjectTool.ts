@@ -94,6 +94,16 @@ export function apiResourceForKind(kind: PageKind, isAr: boolean, probe?: string
                 seeds: [],           // a real app starts empty — no fabricated rows
             };
         }
+        if (appKind === 'custom') {
+            const { hasWorkflowApplicationContract, recordedSubject } = require('../../../core/design/app-blueprints');
+            if (hasWorkflowApplicationContract(String(probe || ''))) {
+                const subject = safeKey(String(recordedSubject(String(probe || '')) || '').toLowerCase());
+                const resource = subject
+                    ? (subject.endsWith('s') ? subject : subject.endsWith('y') ? `${subject.slice(0, -1)}ies` : `${subject}s`)
+                    : 'records';
+                return { resource, labelAr: resource, seeds: [] };
+            }
+        }
     }
     return {
         resource: 'items', labelAr: 'العناصر', generic: true,
@@ -292,7 +302,20 @@ export function apiRelationForRequest(probe: string): ApiRelation | null {
 
 export function apiColumnsForRequest(probe: string): ApiColumn[] {
     try {
-        const { detectAppKind, blueprintFor } = require('../../../core/design/app-blueprints');
+        const { detectAppKind, blueprintFor, hasWorkflowApplicationContract } = require('../../../core/design/app-blueprints');
+        if (hasWorkflowApplicationContract(String(probe || ''))) {
+            const text = String(probe || '');
+            const columns: ApiColumn[] = [
+                { key: 'title', type: 'TEXT', required: true },
+                { key: 'description', type: 'TEXT', required: false },
+                { key: 'status', type: 'TEXT', required: true },
+            ];
+            if (/\bassign(?:ment|ed|ee)?\b|إسناد|تعيين/iu.test(text)) columns.push({ key: 'assignee', type: 'TEXT', required: false });
+            if (/\bprivate\b|\bvisibility\b|خصوصي|خاص(?:ة|ه)?/iu.test(text)) columns.push({ key: 'visibility', type: 'TEXT', required: false });
+            if (/\bcomments?\b|تعليقات/iu.test(text)) columns.push({ key: 'comments', type: 'TEXT', required: false });
+            if (/\baudit(?:\s+(?:log|trail|history))?\b|سجل\s*التدقيق|تاريخ\s*التغييرات/iu.test(text)) columns.push({ key: 'audit_history', type: 'TEXT', required: false });
+            return columns;
+        }
         const kind = detectAppKind(String(probe || ''));
         if (!kind) return CATALOGUE_COLUMNS;
         const bp = blueprintFor(kind, String(probe || ''), false);
@@ -830,7 +853,7 @@ npm start          # المنفذ 4100
 `;
 }
 
-function fileDbJs(resource: string, columns: ApiColumn[] = CATALOGUE_COLUMNS, relation: ApiRelation | null = null): string {
+function fileDbJs(resource: string, columns: ApiColumn[] = CATALOGUE_COLUMNS, relation: ApiRelation | null = null, includeOrders = true): string {
     const COLS = JSON.stringify(columns);
     const REL = relation ? JSON.stringify({
         resource: relation.resource, key: relation.key, labelKey: relation.labelKey, columns: relation.columns,
@@ -927,6 +950,7 @@ if (process.env.JOE_FORCE_JSON_DB !== '1') {
       },
       remove: (id) => conn.prepare('DELETE FROM ${resource} WHERE id = ?').run(Number(id)).changes > 0,
       count: () => Number(conn.prepare('SELECT COUNT(*) AS n FROM ${resource}').get().n),
+${includeOrders ? `
       listOrders: () => conn.prepare('SELECT * FROM orders ORDER BY id DESC LIMIT 500').all()
         .map((o) => ({ id: o.id, item: o.item, qty: o.qty, customer: o.customer, phone: o.phone, note: o.note, created_at: o.created_at })),
       createOrder: ({ item, qty = 1, customer, phone = '', note = '' }) => {
@@ -936,7 +960,9 @@ if (process.env.JOE_FORCE_JSON_DB !== '1') {
         return { id: o.id, item: o.item, qty: o.qty, customer: o.customer, phone: o.phone, note: o.note, created_at: o.created_at };
       },
       countOrders: () => Number(conn.prepare('SELECT COUNT(*) AS n FROM orders').get().n),
+` : ''}
     };
+${includeOrders ? `
     conn.exec(\`CREATE TABLE IF NOT EXISTS orders (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       item TEXT NOT NULL,
@@ -946,6 +972,7 @@ if (process.env.JOE_FORCE_JSON_DB !== '1') {
       note TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now'))
     )\`);
+` : ''}
     // Accounts. The password NEVER lands here in the clear: only the scrypt
     // salt and hash, and they are never selected into any response body.
     conn.exec(\`CREATE TABLE IF NOT EXISTS users (
@@ -1028,11 +1055,11 @@ if (!db) {
   const load = () => {
     try {
       const s = JSON.parse(fs.readFileSync(FILE, 'utf-8'));
-      s.orders = s.orders || []; s.oseq = s.oseq || 0;
+${includeOrders ? `      s.orders = s.orders || []; s.oseq = s.oseq || 0;` : ''}
       s.users = s.users || []; s.useq = s.useq || 0;
       s.parents = s.parents || []; s.pseq = s.pseq || 0;
       return s;
-    } catch { return { seq: 0, rows: [], oseq: 0, orders: [], useq: 0, users: [], pseq: 0, parents: [] }; }
+    } catch { return { seq: 0, rows: []${includeOrders ? ', oseq: 0, orders: []' : ''}, useq: 0, users: [], pseq: 0, parents: [] }; }
   };
   const save = (s) => fs.writeFileSync(FILE, JSON.stringify(s, null, 2));
   db = {
@@ -1068,6 +1095,7 @@ if (!db) {
       return s.rows.length < before;
     },
     count: () => load().rows.length,
+${includeOrders ? `
     listOrders: () => load().orders.slice().reverse().slice(0, 500),
     createOrder: ({ item, qty = 1, customer, phone = '', note = '' }) => {
       const s = load();
@@ -1077,6 +1105,7 @@ if (!db) {
       return order;
     },
     countOrders: () => load().orders.length,
+` : ''}
     countUsers: () => (load().users || []).length,
     userByEmail: (email) => (load().users || []).find((u) => u.email === String(email).toLowerCase()) || null,
     userById: (id) => (load().users || []).find((u) => u.id === Number(id)) || null,
@@ -1642,7 +1671,7 @@ export function seedOwner() {
 `;
 }
 
-function fileServerJs(resource: string, brand: string, dirName: string, relation: ApiRelation | null = null, model: any[] = []): string {
+function fileServerJs(resource: string, brand: string, dirName: string, relation: ApiRelation | null = null, model: any[] = [], privateRecords = false, workflow = false): string {
     /**
      * THE PARENT'S OWN ROUTES.
      *
@@ -1718,10 +1747,90 @@ app.delete('/api/${relation.resource}/:id', requireAuth, requireWrite, (req, res
   res.json({ ok: true });
 });
 `;
-    return fileServerJsBody(resource, brand, dirName, relation, relRoutes, model);
+    return fileServerJsBody(resource, brand, dirName, relation, relRoutes, model, privateRecords, workflow);
 }
 
-function fileServerJsBody(resource: string, brand: string, dirName: string, relation: ApiRelation | null, relRoutes: string, model: any[] = []): string {
+function fileServerJsBody(resource: string, brand: string, dirName: string, relation: ApiRelation | null, relRoutes: string, model: any[] = [], privateRecords = false, workflow = false): string {
+    const primaryReadGuard = privateRecords ? 'requireAuth' : 'optionalAuth';
+    const primaryList = privateRecords
+        ? "db.list(null).filter((row) => req.user.role === 'owner' || row.visibility === 'public' || Number(row.owner_id) === Number(req.user.id))"
+        : 'db.list(scopeOf(req))';
+    const primaryRowGuard = privateRecords
+        ? "if (req.user.role !== 'owner' && row.visibility !== 'public' && Number(row.owner_id) !== Number(req.user.id)) return res.status(404).json({ ok: false, error: 'not_found' });"
+        : "const mine = scopeOf(req);\n  if (mine !== null && Number(row.owner_id) !== Number(mine)) return res.status(404).json({ ok: false, error: 'not_found' });";
+    const workflowHelpers = workflow ? `
+const parseArray = (value) => {
+  if (Array.isArray(value)) return value;
+  try { const parsed = JSON.parse(String(value || '[]')); return Array.isArray(parsed) ? parsed : []; }
+  catch { return []; }
+};
+const auditEvent = (req, action, detail = '') => ({
+  actor: req.user.email, actor_id: req.user.id, action, detail,
+  timestamp: new Date().toISOString(),
+});
+const withAudit = (row, req, action, detail = '') => JSON.stringify([
+  ...parseArray(row && row.audit_history), auditEvent(req, action, detail),
+]);
+const STATUS_FLOW = {
+  open: ['in_progress'], in_progress: ['open', 'resolved'],
+  resolved: ['in_progress', 'closed'], closed: [],
+};
+` : '';
+    const workflowCreate = workflow ? `
+  value.status = String(value.status || 'open').toLowerCase();
+  if (!Object.prototype.hasOwnProperty.call(STATUS_FLOW, value.status)) return res.status(400).json({ ok: false, error: 'invalid_status' });
+  value.visibility = String(value.visibility || 'private').toLowerCase() === 'public' ? 'public' : 'private';
+  value.comments = '[]';
+  value.audit_history = JSON.stringify([auditEvent(req, 'created', value.title || '')]);
+` : '';
+    const workflowUpdate = workflow ? `
+  if (Object.prototype.hasOwnProperty.call(value, 'comments') || Object.prototype.hasOwnProperty.call(value, 'audit_history')) {
+    return res.status(400).json({ ok: false, error: 'append_only_activity' });
+  }
+  if (Object.prototype.hasOwnProperty.call(value, 'assignee') && value.assignee !== cur.assignee && req.user.role !== 'owner') {
+    return res.status(403).json({ ok: false, error: 'manager_required' });
+  }
+  if (Object.prototype.hasOwnProperty.call(value, 'status') && value.status !== cur.status) {
+    return res.status(400).json({ ok: false, error: 'use_transition_endpoint' });
+  }
+  const changed = Object.keys(value).filter((key) => String(value[key]) !== String(cur[key] ?? ''));
+  if (changed.length) value.audit_history = withAudit(cur, req, 'updated', changed.join(', '));
+` : '';
+    const workflowRoutes = workflow ? `
+app.post('/api/${resource}/:id/transition', requireAuth, requireWrite, (req, res) => {
+  const cur = db.get(req.params.id);
+  if (!cur) return res.status(404).json({ ok: false, error: 'not_found' });
+  if (!mayTouch(req, cur)) return res.status(403).json({ ok: false, error: 'not_your_row' });
+  const next = String((req.body || {}).status || '').toLowerCase();
+  const allowed = STATUS_FLOW[String(cur.status || 'open').toLowerCase()] || [];
+  if (!allowed.includes(next)) return res.status(409).json({ ok: false, error: 'invalid_transition', allowed });
+  const row = db.update(req.params.id, { status: next, audit_history: withAudit(cur, req, 'status_changed', String(cur.status || '') + ' -> ' + next) });
+  res.json({ ok: true, item: row, row });
+});
+
+app.post('/api/${resource}/:id/assign', requireAuth, requireRole('owner'), (req, res) => {
+  const cur = db.get(req.params.id);
+  if (!cur) return res.status(404).json({ ok: false, error: 'not_found' });
+  const assignee = String((req.body || {}).assignee || '').trim();
+  if (!assignee || assignee.length > 160) return res.status(400).json({ ok: false, error: 'assignee_required' });
+  const row = db.update(req.params.id, { assignee, audit_history: withAudit(cur, req, 'assigned', assignee) });
+  res.json({ ok: true, item: row, row });
+});
+
+app.post('/api/${resource}/:id/comments', requireAuth, requireWrite, (req, res) => {
+  const cur = db.get(req.params.id);
+  if (!cur) return res.status(404).json({ ok: false, error: 'not_found' });
+  if (!mayTouch(req, cur)) return res.status(403).json({ ok: false, error: 'not_your_row' });
+  const text = String((req.body || {}).text || '').trim();
+  if (!text || text.length > 2000) return res.status(400).json({ ok: false, error: 'comment_required' });
+  const comment = { author: req.user.email, author_id: req.user.id, text, timestamp: new Date().toISOString() };
+  const row = db.update(req.params.id, {
+    comments: JSON.stringify([...parseArray(cur.comments), comment]),
+    audit_history: withAudit(cur, req, 'commented'),
+  });
+  res.status(201).json({ ok: true, comment, item: row, row });
+});
+` : '';
     return `// ${brand} — a real Express API over a real database. Runs with:
 //   npm start            (port 4100)
 //   PORT=5050 npm start  (any port)
@@ -1738,7 +1847,7 @@ import {
 } from './auth.js';
 ${model.length ? "import { mountEntities, entityCounts } from './entities.js';" : ''}
 
-// THE LIVE BRIDGE to Joe: every new order is announced into the owner's
+${workflow ? '' : `// THE LIVE BRIDGE to Joe: every new order is announced into the owner's
 // chat through Joe's existing public inbox — fire-and-forget, so the
 // visitor's response NEVER waits on it and a stopped Joe changes nothing.
 const JOE_INBOX = process.env.JOE_INBOX_URL || 'http://localhost:5002/api/public/forms/${dirName}';
@@ -1751,6 +1860,7 @@ function notifyJoe(order) {
     body: JSON.stringify({ fields, page: 'orders-api' }),
   }).catch(() => { /* Joe offline — the order is safe in OUR database */ });
 }
+`}
 
 const HERE_DIR = path.dirname(fileURLToPath(import.meta.url));
 
@@ -1767,6 +1877,7 @@ app.use((req, res, next) => {
   if (req.method === 'OPTIONS') return res.end();
   next();
 });
+${workflowHelpers}
 
 /**
  * HEALTH SAYS WHOSE HEALTH IT IS.
@@ -1782,7 +1893,7 @@ app.use((req, res, next) => {
  * does not claim THIS resource is not this system's server.
  */
 app.get('/api/health', (_req, res) => res.json({
-  ok: true, backend: db.backend, count: db.count(), orders: db.countOrders(),
+  ok: true, backend: db.backend, count: db.count(),${workflow ? '' : ' orders: db.countOrders(),'}
   joe: 'api_project', resource: '${resource}',
   ${relation ? `${relation.resource}: db.rel.count(), relation: db.relation,` : ''}
   ${model.length
@@ -1899,7 +2010,7 @@ app.delete('/api/auth/users/:id', ...ownerOnly, (req, res) => {
   res.json({ ok: true });
 });
 
-// Visitor ORDERS — the frontend's «اطلب الآن» writes real rows here.
+${workflow ? '' : `// Visitor ORDERS — the frontend's «اطلب الآن» writes real rows here.
 // Reading them is the OWNER's business: names and phone numbers live here.
 app.get('/api/orders', requireAuth, (_req, res) => res.json({ ok: true, orders: db.listOrders() }));
 
@@ -1923,19 +2034,19 @@ app.post('/api/orders', (req, res) => {
   notifyJoe(order);
   res.status(201).json({ ok: true, order });
 });
+`}
 
 ${model.length ? `// The rest of the system's tables — vendors, customers, coupons…
 // Reading is public; writing needs an account, and an employee only ever
 // touches his own rows. Every rule comes from auth.js.
 mountEntities(app, { requireAuth, optionalAuth, requireWrite, scopeOf, mayTouch });
 ` : ''}${relRoutes}
-app.get('/api/${resource}', optionalAuth, (req, res) => res.json({ ok: true, ${resource}: db.list(scopeOf(req)) }));
+app.get('/api/${resource}', ${primaryReadGuard}, (req, res) => res.json({ ok: true, ${resource}: ${primaryList} }));
 
-app.get('/api/${resource}/:id', optionalAuth, (req, res) => {
+app.get('/api/${resource}/:id', ${primaryReadGuard}, (req, res) => {
   const row = db.get(req.params.id);
   if (!row) return res.status(404).json({ ok: false, error: 'not_found' });
-  const mine = scopeOf(req);
-  if (mine !== null && Number(row.owner_id) !== Number(mine)) return res.status(404).json({ ok: false, error: 'not_found' });
+  ${primaryRowGuard}
   res.json({ ok: true, item: row, row });
 });
 
@@ -1986,6 +2097,7 @@ const validate = (body, partial) => {
 app.post('/api/${resource}', requireAuth, requireWrite, (req, res) => {
   const { value, error } = validate(req.body, false);
   if (error) return res.status(400).json({ ok: false, error });
+${workflowCreate}
   // Whoever wrote the row owns it — read from the account, never from the body.
   // ONE SERVER, ONE ENVELOPE. The generated model's tables answer with a row
   // key and this one answered with an item key, so a client talking to its own
@@ -2001,10 +2113,13 @@ app.put('/api/${resource}/:id', requireAuth, requireWrite, (req, res) => {
   if (!mayTouch(req, cur)) return res.status(403).json({ ok: false, error: 'not_your_row' });
   const { value, error } = validate(req.body, true);   // a patch may be partial
   if (error) return res.status(400).json({ ok: false, error });
+${workflowUpdate}
   const row = db.update(req.params.id, value);
   if (!row) return res.status(404).json({ ok: false, error: 'not_found' });
   res.json({ ok: true, item: row, row });
 });
+
+${workflowRoutes}
 
 app.delete('/api/${resource}/:id', requireAuth, requireWrite, (req, res) => {
   const cur = db.get(req.params.id);
@@ -2033,7 +2148,7 @@ ${SERVE_PACKAGED_UI}
 app.listen(port, () => {
   console.log(\`[api] listening on http://localhost:\${port} — backend: \${db.backend}\${seeded ? \`, seeded \${seeded} rows\` : ''}\`);
   if (owner) console.log(\`[api] owner account created: \${owner} — the password was shown once in Joe's chat.\`);
-  console.log('[api] public: GET catalogue, POST /api/orders · protected: catalogue writes + GET /api/orders');
+  console.log('${workflow ? `protected team workflow: GET/POST/PUT/DELETE /api/${resource}` : 'public: GET catalogue, POST /api/orders · protected: catalogue writes + GET /api/orders'}');
   ${relation
             ? `console.log('[api] two linked tables: /api/${relation.resource} · /api/${relation.resource}/:id/${resource} — every ${resource} row carries parent_label');`
             : ''}
@@ -2041,7 +2156,11 @@ app.listen(port, () => {
 `;
 }
 
-function fileReadme(brand: string, resource: string, labelAr: string, ownerEmail: string, relation: ApiRelation | null = null): string {
+function fileReadme(brand: string, resource: string, labelAr: string, ownerEmail: string, relation: ApiRelation | null = null, privateRecords = false, workflow = false): string {
+    const createExample = workflow
+        ? '{"title":"تعذّر تسجيل الدخول","description":"خطوات إعادة المشكلة…","status":"open","visibility":"private"}'
+        : '{"name":"جديد","details":"وصف","price":"50"}';
+    const updateExample = workflow ? '{"status":"in_progress"}' : '{"price":"75"}';
     const relDoc = !relation ? '' : `
 ## جدولان مرتبطان — ${relation.labelAr} ← ${labelAr}
 
@@ -2083,8 +2202,8 @@ PORT=5050 npm start
 
 | عامّ للزوار | محميّ بحسابك |
 |---|---|
-| \`GET /api/${resource}\` و \`/:id\` — تصفّح ${labelAr} | \`POST/PUT/DELETE /api/${resource}\` — أي تغيير |
-| \`POST /api/orders\` — إرسال طلب | \`GET /api/orders\` — قراءة الطلبات (فيها أسماء وأرقام) |
+| ${privateRecords ? 'لا توجد قراءة عامة لسجلات الفريق' : `\`GET /api/${resource}\` و \`/:id\` — تصفّح ${labelAr}`} | ${privateRecords ? `\`GET/POST/PUT/DELETE /api/${resource}\` — بحسابك` : `\`POST/PUT/DELETE /api/${resource}\` — أي تغيير`} |
+${workflow ? '' : '| `POST /api/orders` — إرسال طلب | `GET /api/orders` — قراءة الطلبات (فيها أسماء وأرقام) |'}
 | \`GET /api/health\` | \`GET /api/auth/me\` · \`POST /api/auth/password\` |
 
 حسابك: **${ownerEmail}** — وكلمة المرور ظهرت مرة واحدة في محادثة جو حين بُني
@@ -2100,7 +2219,7 @@ PORT=5050 npm start
 
 \`\`\`bash
 curl http://localhost:4100/api/health
-curl http://localhost:4100/api/${resource}
+curl http://localhost:4100/api/${resource} ${privateRecords ? '-H "Authorization: Bearer $TOKEN"' : ''}
 
 # 1) سجّل الدخول واحصل على رمز
 TOKEN=$(curl -s -X POST http://localhost:4100/api/auth/login \\
@@ -2109,9 +2228,9 @@ TOKEN=$(curl -s -X POST http://localhost:4100/api/auth/login \\
 
 # 2) استعمله في كل ما يغيّر البيانات
 curl -X POST http://localhost:4100/api/${resource} -H "Authorization: Bearer $TOKEN" \\
-  -H "Content-Type: application/json" -d '{"name":"جديد","details":"وصف","price":"50"}'
+  -H "Content-Type: application/json" -d '${createExample}'
 curl -X PUT  http://localhost:4100/api/${resource}/1 -H "Authorization: Bearer $TOKEN" \\
-  -H "Content-Type: application/json" -d '{"price":"75"}'
+  -H "Content-Type: application/json" -d '${updateExample}'
 curl -X DELETE http://localhost:4100/api/${resource}/1 -H "Authorization: Bearer $TOKEN"
 \`\`\`
 
@@ -2137,12 +2256,12 @@ curl -X DELETE http://localhost:4100/api/auth/users/2 -H "Authorization: Bearer 
 - كل صفٍّ يُكتب يحمل \`owner_id\` مأخوذاً من **الحساب**، لا من جسم الطلب.
 - الموظّف يرى صفوفه هو فقط (\`GET\` برمزه)، ومحاولة تعديل صفّ غيره تُجاب **403 not_your_row**.
 - المُطّلِع تُجاب كتابته **403 read_only** — قراءةً فقط.
-- الزائر بلا حساب ما زال يرى الرفّ كاملاً: هذا هو المتجر، ولم يتغيّر.
+${workflow ? '- سجلات الفريق الخاصة لا تظهر لزائر بلا حساب، والمدير يرى جميع سجلات الفريق.' : '- الزائر بلا حساب ما زال يرى الرفّ كاملاً: هذا هو المتجر، ولم يتغيّر.'}
 - الصفوف المكتوبة قبل وجود الفريق (\`owner_id\` فارغ) تبقى للمالك — لا يرثها أحد.
 - تغيير الدور يسري فوراً على الرمز القائم: الدور يُقرأ من القاعدة في كل طلب.
 - ولا يمكن حذف آخر مالك ولا تنزيله (**409 last_owner**)، ولا حذف الحساب لنفسه.
 
-## الطلبات — تكتبها واجهة المتجر/المطعم المربوطة تلقائياً
+${workflow ? '' : `## الطلبات — تكتبها واجهة المتجر/المطعم المربوطة تلقائياً
 
 \`\`\`bash
 # الزائر يرسل طلبه بلا حساب — هذا هو المقصود
@@ -2155,6 +2274,7 @@ curl http://localhost:4100/api/orders -H "Authorization: Bearer $TOKEN"
 
 ويمكنك دائماً قراءتها داخل محادثة جو بجملة «اعرض الطلبات» — يقرؤها من القاعدة
 مباشرة، فتعمل حتى والخادم متوقّف.
+`}
 ${relDoc}
 البيانات محفوظة على القرص (\`data.db\` أو \`data.json\`) — تنجو من إعادة التشغيل.
 `;
@@ -2169,6 +2289,7 @@ export class ApiProjectTool extends BaseTool {
         type: 'object' as const,
         properties: {
             request: { type: 'string', description: 'What the API is for, in the user\'s words' },
+            projectName: { type: 'string', description: 'Canonical artifact identity supplied by the project pipeline' },
             skipInstall: { type: 'boolean', description: 'Scaffold only — no npm install, no live boot proof' },
         },
         required: ['request'],
@@ -2193,6 +2314,7 @@ export class ApiProjectTool extends BaseTool {
 
         const term = (line: string) => {
             logs.push(line);
+            context?.terminalLinesEmitted?.add(String(line));
             try {
                 broadcastTerminalLine(sessionId, line + '\r\n');
             } catch { /* UI optional */ }
@@ -2208,12 +2330,17 @@ export class ApiProjectTool extends BaseTool {
         const { stripDeclaredOptions } = require('../../../core/design/app-blueprints');
         const requestForReading = stripDeclaredOptions(request);
         const kind = detectPageKind(requestForReading);
-        const { detectAppKind } = require('../../../core/design/app-blueprints');
+        const { detectAppKind, hasWorkflowApplicationContract } = require('../../../core/design/app-blueprints');
         // This is the authoritative application contract used to choose the
         // API resource. Persist it so a later frontend phase cannot re-derive
         // a different kind from its shorter phase request.
         const appKind = detectAppKind(requestForReading);
-        const brand = brandFrom(requestForReading, isAr) || brandFallback(requestForReading, isAr, kind);
+        const workflowApplication = hasWorkflowApplicationContract(requestForReading);
+        const explicitBrand = brandFrom(requestForReading, isAr);
+        const canonicalProjectName = String(input?.projectName || '').trim();
+        const brand = explicitBrand
+            || (!/^(?:myapp|app|application|project|api)$/i.test(canonicalProjectName) && canonicalProjectName)
+            || brandFallback(requestForReading, isAr, kind);
         const picked = apiResourceForKind(kind, isAr, requestForReading);
         // The schema follows the app's own blueprint. Seeds only make sense for
         // the catalogue shape — a booking table seeded with «Dish of the day»
@@ -2281,7 +2408,9 @@ export class ApiProjectTool extends BaseTool {
          * builds it. Every failure lands on the six domains.
          */
         const { designDataModel } = require('../../../core/design/schema-designer');
-        const designed = await designDataModel(request, { onNote: (n: string) => term(n) });
+        const designed = workflowApplication
+            ? []
+            : await designDataModel(request, { onNote: (n: string) => term(n) });
 
         /**
          * AND THE SYSTEM NAMES ITS OWN PRIMARY TABLE.
@@ -2474,15 +2603,18 @@ export class ApiProjectTool extends BaseTool {
          * it is — its data is his, and deleting it silently would be worse
          * than reusing it.
          */
+        const hasDatabase = (dir: string) => fs.existsSync(path.join(dir, 'data.db'))
+            || fs.existsSync(path.join(dir, 'data.json'));
         let inheritedFrom = '';
-        if (fs.existsSync(path.join(proj, 'data.db'))) {
+        if (hasDatabase(proj)) {
             inheritedFrom = proj;
             for (let n = 2; n < 50; n++) {
                 const candidate = path.join(root, `${path.basename(proj)}-${n}`);
-                if (!fs.existsSync(path.join(candidate, 'data.db'))) { proj = candidate; break; }
+                if (!hasDatabase(candidate)) { proj = candidate; break; }
             }
             term(`fresh build: ${path.basename(inheritedFrom)} already carries a database — building in ${path.basename(proj)} instead, and leaving the old one untouched`);
         }
+        const freshDatabaseAtStart = !hasDatabase(proj);
         fs.mkdirSync(proj, { recursive: true });
 
         if (sessionId) broadcastThinkingDetail(sessionId, isAr
@@ -2511,6 +2643,8 @@ export class ApiProjectTool extends BaseTool {
         // price. A feed build gets a server whose columns and routes are the
         // ones the app actually speaks.
         const feed = isFeedResource(resource);
+        const privateWorkflow = workflowApplication
+            && /\bprivate\b|\bvisibility\b|\baccess\s+control\b|خصوصي|خاص(?:ة|ه)?/iu.test(requestForReading);
         const files: Record<string, string> = feed ? {
             /**
              * A FEED IS NOT THE WHOLE PLATFORM — «Groups Pages Messaging Ads».
@@ -2532,12 +2666,12 @@ export class ApiProjectTool extends BaseTool {
             '.gitignore': 'node_modules\ndata.db\ndata.json\n.auth-secret\n',
         } : {
             'package.json': filePackageJson(brand),
-            'server.js': fileServerJs(resource, brand, path.basename(proj), relation, model),
-            'db.js': fileDbJs(resource, columns, relation),
+            'server.js': fileServerJs(resource, brand, path.basename(proj), relation, model, privateWorkflow, workflowApplication),
+            'db.js': fileDbJs(resource, columns, relation, !workflowApplication),
             ...(model.length ? { 'entities.js': fileEntitiesJs(model) } : {}),
             'auth.js': fileAuthJs(),
             'seed.js': fileSeedJs(seeds, { email: ownerEmail, salt: ownerSalt, hash: ownerHash }),
-            'README.md': fileReadme(brand, resource, labelAr, ownerEmail, relation),
+            'README.md': fileReadme(brand, resource, labelAr, ownerEmail, relation, privateWorkflow, workflowApplication),
             // .auth-secret holds the token-signing key: it must never be committed.
             '.gitignore': 'node_modules\ndata.db\ndata.json\n.auth-secret\n',
         };
@@ -2612,9 +2746,16 @@ export class ApiProjectTool extends BaseTool {
                      *  Same shape as «left as written» and «quality gate failed»:
                      *  a report that describes the mechanism instead of the finding.
                      */
-                    let whyNot = 'the process was still starting after 15s';
+                    let whyNot = 'the process was still starting after 45s';
                     let lastLine = '';
-                    const upTimer = setTimeout(() => upResolve(false), 15_000);
+                    let serverListening = false;
+                    const resolveWhenReady = () => {
+                        if (serverListening && (!freshDatabaseAtStart || ownerCreated)) {
+                            whyNot = '';
+                            upResolve(true);
+                        }
+                    };
+                    const upTimer = setTimeout(() => upResolve(false), 45_000);
                     // A long-running process cannot be awaited like a command,
                     // but it must still be ANNOUNCED the same way — otherwise
                     // the server's own log appears under no command at all.
@@ -2637,9 +2778,15 @@ export class ApiProjectTool extends BaseTool {
                              *
                              * The server says which of the two happened. Listen.
                              */
-                            if (/owner account created/.test(l)) ownerCreated = true;
+                            if (/owner account created/.test(l)) {
+                                ownerCreated = true;
+                                resolveWhenReady();
+                            }
                             lastLine = l.slice(0, 200);
-                            if (/listening on/.test(l)) { whyNot = ''; upResolve(true); }
+                            if (/listening on/.test(l)) {
+                                serverListening = true;
+                                resolveWhenReady();
+                            }
                         },
                     });
                     child!.done.then((r: any) => {
@@ -2697,14 +2844,78 @@ export class ApiProjectTool extends BaseTool {
                             proven = createdId > 0 && !!row && liked?.count === 1 && empty === 400;
                             term(`feed proof → post #${createdId} ${row ? 'written and read back' : 'NOT read back'}, like count ${liked?.count ?? '—'}, empty post → ${empty}`);
                             term(`live proof → ${proven ? `OK (backend ${backend})` : 'FAILED'}`);
+                        } else if (workflowApplication) {
+                        const anon = await fetch(`${base}/api/${resource}`, {
+                            method: 'POST', headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ title: 'anonymous-must-be-refused' }),
+                        }).then(r => r.status).catch(() => 0);
+                        lockedOut = anon === 401;
+                        const wrongPass = await fetch(`${base}/api/auth/login`, {
+                            method: 'POST', headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ email: ownerEmail, password: 'definitely-not-the-password' }),
+                        }).then(r => r.status).catch(() => 0);
+                        const login = await fetch(`${base}/api/auth/login`, {
+                            method: 'POST', headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ email: ownerEmail, password: ownerPassword }),
+                        }).then(r => r.json()).catch(() => null);
+                        const token = String(login?.token || '');
+                        const auth = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
+                        authProven = lockedOut && wrongPass === 401 && token.split('.').length === 3;
+                        term(`workflow auth proof → anonymous create ${anon}, wrong password ${wrongPass}, owner login ${token ? 'OK' : 'FAILED'}`);
+
+                        const made = await fetch(`${base}/api/${resource}`, {
+                            method: 'POST', headers: auth,
+                            body: JSON.stringify({
+                                title: isAr ? 'قضية الإثبات الحي' : 'Live-proof issue',
+                                description: 'created through the real workflow API',
+                                status: 'open',
+                                visibility: 'private',
+                            }),
+                        }).then(r => r.json()).catch(() => null);
+                        createdId = Number(made?.item?.id || 0);
+                        const transitioned = createdId ? await fetch(`${base}/api/${resource}/${createdId}/transition`, {
+                            method: 'POST', headers: auth, body: JSON.stringify({ status: 'in_progress' }),
+                        }).then(r => r.json()).catch(() => null) : null;
+                        const assigned = createdId ? await fetch(`${base}/api/${resource}/${createdId}/assign`, {
+                            method: 'POST', headers: auth, body: JSON.stringify({ assignee: ownerEmail }),
+                        }).then(r => r.json()).catch(() => null) : null;
+                        const commented = createdId ? await fetch(`${base}/api/${resource}/${createdId}/comments`, {
+                            method: 'POST', headers: auth, body: JSON.stringify({ text: 'browser-ready workflow proof' }),
+                        }).then(r => r.json()).catch(() => null) : null;
+                        const listed: any = await fetch(`${base}/api/${resource}`, {
+                            headers: { Authorization: `Bearer ${token}` },
+                        }).then(r => r.json()).catch(() => null);
+                        const row = Array.isArray(listed?.[resource])
+                            ? listed[resource].find((item: any) => Number(item.id) === createdId) : null;
+                        const readArray = (value: any): any[] => {
+                            if (Array.isArray(value)) return value;
+                            try { const parsed = JSON.parse(String(value || '[]')); return Array.isArray(parsed) ? parsed : []; }
+                            catch { return []; }
+                        };
+                        const actions = readArray(row?.audit_history).map((event: any) => String(event?.action || ''));
+                        const comments = readArray(row?.comments);
+                        proven = authProven && createdId > 0 && row?.visibility === 'private'
+                            && transitioned?.item?.status === 'in_progress'
+                            && assigned?.item?.assignee === ownerEmail
+                            && comments.some((comment: any) => comment?.text === 'browser-ready workflow proof')
+                            && ['created', 'status_changed', 'assigned', 'commented'].every(action => actions.includes(action));
+                        term(`workflow proof → issue #${createdId || '—'}, private read ${row ? 'OK' : 'FAILED'}, transition ${transitioned?.item?.status || 'FAILED'}, assignment ${assigned?.item?.assignee ? 'OK' : 'FAILED'}, comment ${comments.length ? 'OK' : 'FAILED'}, audit ${actions.join(',') || 'FAILED'}`);
+                        term(`live proof → ${proven ? `OK (backend ${backend})` : 'FAILED'}`);
+                        if (createdId > 0) {
+                            await fetch(`${base}/api/${resource}/${createdId}`, {
+                                method: 'DELETE', headers: { Authorization: `Bearer ${token}` },
+                            }).catch(() => null);
+                        }
                         } else {
                         const anon = await fetch(`${base}/api/${resource}`, {
                             method: 'POST', headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ name: 'anonymous-must-be-refused' }),
                         }).then(r => r.status).catch(() => 0);
                         lockedOut = anon === 401;
-                        const ordersAnon = await fetch(`${base}/api/orders`).then(r => r.status).catch(() => 0);
-                        ordersLocked = ordersAnon === 401;
+                        const ordersAnon = workflowApplication
+                            ? await fetch(`${base}/api/orders`).then(r => r.status).catch(() => 0)
+                            : await fetch(`${base}/api/orders`).then(r => r.status).catch(() => 0);
+                        ordersLocked = workflowApplication ? ordersAnon === 404 : ordersAnon === 401;
                         const wrongPass = await fetch(`${base}/api/auth/login`, {
                             method: 'POST', headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ email: ownerEmail, password: 'definitely-not-the-password' }),
@@ -2715,7 +2926,7 @@ export class ApiProjectTool extends BaseTool {
                         }).then(r => r.json()).catch(() => null);
                         const token = String(login?.token || '');
                         authProven = lockedOut && ordersLocked && wrongPass === 401 && token.split('.').length === 3;
-                        term(`auth proof → anonymous write ${anon}, orders ${ordersAnon}, wrong password ${wrongPass}, owner login ${token ? 'OK' : 'FAILED'}`);
+                        term(`auth proof → anonymous write ${anon}, ${workflowApplication ? 'orders absent' : 'orders protected'} ${ordersAnon}, wrong password ${wrongPass}, owner login ${token ? 'OK' : 'FAILED'}`);
 
                         /**
                          * THE PROOF MUST SPEAK THE SCHEMA IT JUST GENERATED.
@@ -2867,13 +3078,16 @@ export class ApiProjectTool extends BaseTool {
             // Runtime-only handoff for the immediately following React build.
             // page-store strips this field before persistence; the plaintext
             // password remains out of every generated file and database record.
-            runtimeAuth: {
+            ...(authProven ? { runtimeAuth: {
                 email: ownerEmail,
                 password: ownerPassword,
                 loginPath: '/api/auth/login',
-                tokenStorageKey: `joe-admin-token:${brand || 'app'}`,
-                route: '#/admin',
-            },
+                // Coordinated workflow apps own the primary signed-in surface
+                // and use the shared store token. Presentation/catalogue apps
+                // still expose their protected surface through AdminPanel.
+                tokenStorageKey: workflowApplication ? 'joe:auth:/' : `joe-admin-token:${brand || 'app'}`,
+                route: workflowApplication ? '/' : '#/admin',
+            } } : {}),
         }, currentPipelineRunId);
         persistJoeProjects();
 
@@ -2959,8 +3173,8 @@ ${model.length ? `🗂️ جداول النظام (${model.length}) — لكلٍ
 ${model.map((e: any) => `   • ${e.ar} → /api/${e.key}${e.belongsTo ? ` (مرتبط بـ ${e.belongsTo.entity} عبر ${e.belongsTo.key} — رابط لا يتدلّى)` : ''}`).join('\n')}
 ` : ''}
 🧭 مسارات ${labelAr}:
-   عامّة للزوار: GET /api/${resource} · GET /api/${resource}/:id · POST /api/orders · GET /api/health
-   محميّة لك: POST/PUT/DELETE /api/${resource} · GET /api/orders (فيها أسماء العملاء وأرقامهم)
+   ${workflowApplication ? `خاصة بالفريق: GET/POST/PUT/DELETE /api/${resource} (بحساب صالح؛ العضو يرى العامة وصفوفه الخاصة، والمدير يرى الجميع)` : `عامّة للزوار: GET /api/${resource} · GET /api/${resource}/:id · POST /api/orders · GET /api/health
+   محميّة لك: POST/PUT/DELETE /api/${resource} · GET /api/orders (فيها أسماء العملاء وأرقامهم)`}
    الدخول: POST /api/auth/login ثم أرسل \`Authorization: Bearer <token>\`
    أمثلة curl جاهزة داخل README.md
 
@@ -2994,18 +3208,26 @@ ${authProven || ownerCreated || !installed
                 : `Owner account: ${ownerEmail} — the password is the OLD one. This project was built over an existing database, so the account was not re-created and a fresh password would not work. Delete data.db to start over, or change it from inside with POST /api/auth/password.`}
 ${model.length ? `System tables (${model.length}), each with full CRUD:
 ${model.map((e: any) => `   • ${e.en} → /api/${e.key}${e.belongsTo ? ` (linked to ${e.belongsTo.entity} by ${e.belongsTo.key} — a key that cannot dangle)` : ''}`).join('\n')}
-` : ''}Public: GET /api/${resource} · POST /api/orders · GET /api/health
-Protected (Bearer token from POST /api/auth/login): catalogue writes · GET /api/orders
+` : ''}${workflowApplication
+                ? `Team-private: GET/POST/PUT/DELETE /api/${resource} requires a valid account. Members see public rows plus their own private rows; managers see all rows.`
+                : `Public: GET /api/${resource} · POST /api/orders · GET /api/health
+Protected (Bearer token from POST /api/auth/login): catalogue writes · GET /api/orders`}
 
 Team — three roles, accounts made from inside the system:
 ${describeRoles(false)}
    POST /api/auth/users {email, role} — the password is generated and shown ONCE.
    GET · PUT · DELETE /api/auth/users — owner only (403 for anybody else).`;
 
+        const deliveryProven = proven || input?.skipInstall === true;
         return {
-            ok: true,
+            ok: deliveryProven,
+            ...(!deliveryProven ? { error: booted
+                ? 'The API booted, but its live HTTP contract proof failed.'
+                : installed
+                    ? 'The API did not become ready within the live-proof window.'
+                    : 'The API dependencies were not installed, so no live proof was possible.' } : {}),
             output: {
-                message, path: proj, dir: path.basename(proj), resource, installed, proven, authProven, backend, ownerEmail,
+                message, status: deliveryProven ? 'completed' : 'partial', path: proj, dir: path.basename(proj), resource, installed, proven, authProven, backend, ownerEmail,
                 relation: relation ? { resource: relation.resource, key: relation.key, labelKey: relation.labelKey } : null,
                 relationProven,
                 files: Object.keys(files),

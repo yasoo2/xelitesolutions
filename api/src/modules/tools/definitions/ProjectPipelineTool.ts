@@ -257,14 +257,48 @@ function deliveryCredentialFromMessage(message: unknown): { email: string; passw
     return null;
 }
 
-function trustedRuntimeProjectRoot(sessionId: unknown, workspaceId: unknown, runId: unknown): string {
+interface TrustedRuntimeProjectHandoff {
+    sourceRoot: string;
+    runtimeRoot: string;
+    runtimeAuth?: { email: string; password: string; loginPath?: string; tokenStorageKey?: string; route?: string };
+}
+
+function trustedRuntimeProjectHandoff(sessionId: unknown, workspaceId: unknown, runId: unknown): TrustedRuntimeProjectHandoff | null {
     const key = String(sessionId || '').trim().replace(/[^a-zA-Z0-9._-]/g, '_') || 'default';
-    const candidateRaw = String(readJoeProjectForRun(key, runId)?.dir || '').trim();
-    if (!candidateRaw) return '';
+    const record = readJoeProjectForRun(key, runId);
+    const candidateRaw = String(record?.dir || '').trim();
+    if (!candidateRaw) return null;
     const workspaceRoot = path.resolve(workspaceService.getActiveRoot(String(workspaceId || '')));
     const candidate = path.resolve(candidateRaw);
     const inside = isWithinRoot(candidate, workspaceRoot);
-    return inside && fs.existsSync(path.join(candidate, 'package.json')) ? candidate : '';
+    if (!inside || !fs.existsSync(path.join(candidate, 'package.json'))) return null;
+
+    const packagedRaw = String(record?.packagedInto || '').trim();
+    const packaged = packagedRaw ? path.resolve(packagedRaw) : '';
+    const packagedIsTrusted = !!packaged
+        && isWithinRoot(packaged, workspaceRoot)
+        && fs.existsSync(path.join(packaged, 'package.json'))
+        && fs.existsSync(path.join(packaged, 'server.js'))
+        && fs.existsSync(path.join(packaged, 'public', 'index.html'));
+    const auth = record?.runtimeAuth;
+    const runtimeAuth = auth?.email && auth?.password
+        ? {
+            email: String(auth.email),
+            password: String(auth.password),
+            ...(auth.loginPath ? { loginPath: String(auth.loginPath) } : {}),
+            ...(auth.tokenStorageKey ? { tokenStorageKey: String(auth.tokenStorageKey) } : {}),
+            ...(auth.route ? { route: String(auth.route) } : {}),
+        }
+        : undefined;
+    return {
+        sourceRoot: candidate,
+        runtimeRoot: packagedIsTrusted ? packaged : candidate,
+        ...(runtimeAuth ? { runtimeAuth } : {}),
+    };
+}
+
+function trustedRuntimeProjectRoot(sessionId: unknown, workspaceId: unknown, runId: unknown): string {
+    return trustedRuntimeProjectHandoff(sessionId, workspaceId, runId)?.sourceRoot || '';
 }
 
 /**
@@ -1218,14 +1252,20 @@ export class ProjectPipelineTool implements ToolDefinition {
          *  are the ones where a model genuinely has a question to answer.
          */
         let hisPlan: any = null;
+        const { hasWorkflowApplicationContract } = require('../../../core/design/app-blueprints');
+        const deterministicWorkflow = hasWorkflowApplicationContract(productRequest);
         const hisOwnSchema = evidence?.constraints?.createsNewProject
-            && heDeclaredWhatItHolds(productRequest)
+            && (heDeclaredWhatItHolds(productRequest) || deterministicWorkflow)
             ? deterministicPhasesFor(productRequest)
             : null;
         if (hisOwnSchema) {
             say(pick(isAr,
-                `[pipeline] الطلب يصرّح بأعمدته — أبني منه مباشرة بلا أن أسأل نموذجاً ما المطلوب: ${hisOwnSchema.reason}`,
-                `[pipeline] the request declares its own columns — building from it directly, with no model asked what to build: ${hisOwnSchema.reason}`));
+                deterministicWorkflow
+                    ? `[pipeline] الطلب يصرّح بسير عمل مترابط — أبني عقد النظام الكامل مباشرة: ${hisOwnSchema.reason}`
+                    : `[pipeline] الطلب يصرّح بأعمدته — أبني منه مباشرة بلا أن أسأل نموذجاً ما المطلوب: ${hisOwnSchema.reason}`,
+                deterministicWorkflow
+                    ? `[pipeline] the request declares a coordinated workflow — building its full-system contract directly: ${hisOwnSchema.reason}`
+                    : `[pipeline] the request declares its own columns — building from it directly, with no model asked what to build: ${hisOwnSchema.reason}`));
             hisPlan = {
                 ok: true,
                 output: {
@@ -1466,11 +1506,12 @@ export class ProjectPipelineTool implements ToolDefinition {
          * this is evidence, not a name-based fallback, and it also covers a
          * manifest that was written during the final phase.
          */
-        const runtimeProjectRoot = trustedRuntimeProjectRoot(
+        const runtimeProjectHandoff = trustedRuntimeProjectHandoff(
             context?.sessionId,
             context?.workspaceId || context?.sessionId || 'default',
             context?.runId,
         );
+        const runtimeProjectRoot = runtimeProjectHandoff?.sourceRoot || '';
         if (pipeline?.ok === true && !String(plannerResult?.output?.projectRoot || '').trim() && runtimeProjectRoot) {
             plannerResult.output.projectRoot = runtimeProjectRoot;
             appendBoundedPipelineLog(logs, `[pipeline] runtime phase evidence bound projectRoot=${runtimeProjectRoot}`);
@@ -1600,7 +1641,11 @@ export class ProjectPipelineTool implements ToolDefinition {
                 const plannedProjectName = String(plannerResult?.output?.projectName || '').trim();
                 const plannedProjectRoot = String(plannerResult?.output?.projectRoot || discoveredProjectRoot || '').trim();
                 const runInput: Record<string, string> = {};
-                if (plannedProjectRoot) runInput.cwd = plannedProjectRoot;
+                if (runtimeProjectHandoff?.runtimeRoot) {
+                    runInput.cwd = runtimeProjectHandoff.runtimeRoot;
+                } else if (plannedProjectRoot) {
+                    runInput.cwd = plannedProjectRoot;
+                }
                 // The pair's door is the API (it serves the built interface
                 // AND answers /api/* on one origin) — running the interface's
                 // dev server measured its own health calls as 404s (round 6).
@@ -2061,6 +2106,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                     watchSessionId: panelSid || undefined,
                     serveUrl: liveUrl,
                     artifactRootDir: artifactRoot || auditDir || runtimeRoot,
+                    ...(runtimeProjectHandoff?.runtimeAuth ? { credentials: runtimeProjectHandoff.runtimeAuth } : {}),
                     timeoutMs: 45_000,
                     onProgress: progress,
                 });
@@ -2107,6 +2153,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                                         watchSessionId: panelSid || undefined,
                                         serveUrl: liveUrl,
                                         artifactRootDir: repairProjectRoot,
+                                        ...(runtimeProjectHandoff?.runtimeAuth ? { credentials: runtimeProjectHandoff.runtimeAuth } : {}),
                                         timeoutMs: 45_000,
                                         onProgress: progress,
                                     });

@@ -124,7 +124,7 @@ describe('the forms are filled in and sent, not counted', () => {
     it('every field is typed into by its declared type', () => {
         const b = B();
         expect(b).toMatch(/export async function probeForms/);
-        expect(b).toMatch(/await el\.fill\(valueFor\(fld\.type, fld\.tag\), \{ timeout: 2500 \}\)/);
+        expect(b).toMatch(/await el\.fill\(valueFor\(fld\.type, fld\.tag, runNonce, pageLanguage\), \{ timeout: 2500 \}\)/);
         expect(b).toMatch(/await el\.selectOption\(fld\.options\[0\]/);
         expect(b).toMatch(/await el\.check\(\{ timeout: 2000, force: true \}\)/);
         for (const t of ['email', 'tel', 'date', 'password', 'url']) expect(b).toMatch(new RegExp(`case '${t}'`));

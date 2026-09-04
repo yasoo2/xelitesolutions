@@ -635,6 +635,12 @@ export class AgentOrchestrator {
           // node's output — e.g. write the browser's extracted data into a file. This
           // is what makes the browser chain with the other tools in one request.
           const nodeInput = this.resolveInputRefs(node.input, dag);
+          // The planner may use a terse node argument as an execution label.
+          // project_pipeline is the product boundary, so it must receive the
+          // user's complete goal rather than treating that label as the spec.
+          if (node.tool === 'project_pipeline') {
+            nodeInput.request = goalText;
+          }
 
           /**
            * A STEP NOBODY COULD EVER RUN IS NOT A FAILURE TO RETRY.

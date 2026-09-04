@@ -523,6 +523,16 @@ describe('named project discovery never falls back to the workspace repository',
         expect(runSrc).toContain('ignored stale or unowned live record');
     });
 
+    test('an explicit matching cwd keeps the verified server handoff adoptable', () => {
+        const adoption = runSrc.slice(
+            runSrc.indexOf('if (!input?.command && liveUrl && canAdoptRecordedLive'),
+            runSrc.indexOf('const key = runKey(context)'),
+        );
+        expect(adoption).toContain('canAdoptRecordedLive(live, cwd)');
+        expect(adoption).not.toContain('!input?.cwd');
+        expect(runSrc).toContain('const url = `http://127.0.0.1:${livePort}/`;');
+    });
+
     test('successful project_run persists the verified live preview for browser QA', () => {
         expect(runSrc).toContain('function rememberLiveProject');
         expect(runSrc).toContain('rememberLiveProject(context, cwd');

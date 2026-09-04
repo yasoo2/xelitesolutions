@@ -374,6 +374,14 @@ describe('the bridge tool — plan, execute phases, report honestly', () => {
         expect(src).toMatch(/post-phase discovery bound projectRoot/);
     });
 
+    test('final live run and browser QA use the trusted full-stack handoff', () => {
+        expect(src).toContain('const runtimeProjectHandoff = trustedRuntimeProjectHandoff(');
+        expect(src).toMatch(/if \(runtimeProjectHandoff\?\.runtimeRoot\) \{\s*runInput\.cwd = runtimeProjectHandoff\.runtimeRoot;/);
+        expect(src).toContain("fs.existsSync(path.join(packaged, 'server.js'))");
+        expect(src).toContain("fs.existsSync(path.join(packaged, 'public', 'index.html'))");
+        expect(src).toMatch(/auditBuiltApp\(auditDir, \{[\s\S]*credentials: runtimeProjectHandoff\.runtimeAuth/);
+    });
+
     test('the local engineering boundary survives the pipeline-to-phase handoff', () => {
         expect(src).toMatch(/engineeringPipeline:\s*true/);
         expect(src).toMatch(/purpose:\s*['"]internal['"]/);

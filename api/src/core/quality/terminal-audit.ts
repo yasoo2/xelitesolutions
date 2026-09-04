@@ -173,15 +173,27 @@ export async function auditInTerminal(
         say(`  ${out.skipped ? '⏭️' : out.ok ? '✅' : '❌'} ${id} — ${out.detail} (${ms}ms)`);
     };
 
+    const verifyDeclaredPackages = async (projectDir: string) => {
+        const script = [
+            "const fs=require('fs'),path=require('path');",
+            "const p=JSON.parse(fs.readFileSync('package.json','utf8'));",
+            "const names=Object.keys(Object.assign({},p.dependencies||{},p.devDependencies||{}));",
+            "const missing=names.filter(n=>!fs.existsSync(path.join('node_modules',...n.split('/'),'package.json')));",
+            "console.log(missing.length?'MISSING '+missing.join(','):'OK '+names.length);",
+            "if(missing.length)process.exitCode=1;",
+        ].join('');
+        return run(...Object.values(nodeEval(script)) as [string, string[]], projectDir, per, say);
+    };
+
     /* 1 ── every declared dependency is really installed ─────────────────── */
-    await add('deps_installed', 'npm ls --depth=0', async () => {
+    await add('deps_installed', 'node -e "verify declared dependency packages"', async () => {
         if (!fs.existsSync(path.join(dir, 'node_modules'))) {
             return { ok: false, detail: 'node_modules is missing — nothing was installed' };
         }
-        const r = await run('npm', ['ls', '--depth=0'], dir, per, say);
+        const r = await verifyDeclaredPackages(dir);
         return r.ok
             ? { ok: true, detail: 'every dependency in package.json is on disk' }
-            : { ok: false, detail: (r.out.split('\n').find(l => /missing|invalid|UNMET/i.test(l)) || 'npm ls failed').slice(0, 160) };
+            : { ok: false, detail: (r.out.split('\n').find(l => /MISSING/i.test(l)) || 'dependency inventory failed').slice(0, 160) };
     });
 
     /* 2 ── every source file this server starts from actually parses ─────── */
@@ -338,14 +350,14 @@ export async function auditInTerminal(
      */
     const appDir = String(opts.appDir || '');
     if (appDir && fs.existsSync(path.join(appDir, 'package.json'))) {
-        await add('app_deps_installed', `npm ls --depth=0 (${path.basename(appDir)})`, async () => {
+        await add('app_deps_installed', `node -e "verify declared dependency packages" (${path.basename(appDir)})`, async () => {
             if (!fs.existsSync(path.join(appDir, 'node_modules'))) {
                 return { ok: false, detail: 'the interface has no node_modules — it was never installed' };
             }
-            const r = await run('npm', ['ls', '--depth=0'], appDir, per, say);
+            const r = await verifyDeclaredPackages(appDir);
             return r.ok
                 ? { ok: true, detail: 'the interface\'s dependencies are all on disk' }
-                : { ok: false, detail: (r.out.split('\n').find(l => /missing|invalid|UNMET/i.test(l)) || 'npm ls failed').slice(0, 160) };
+                : { ok: false, detail: (r.out.split('\n').find(l => /MISSING/i.test(l)) || 'dependency inventory failed').slice(0, 160) };
         });
 
         await add('app_bundle_real', 'ls -l dist/', async () => {

@@ -1137,6 +1137,7 @@ export class PhaseExecutorTool implements ToolDefinition {
             // Dropping the user's UI language here made generic tool statuses
             // fall back to Arabic inside an otherwise English run.
             language: context?.language || projectContext?.language,
+            terminalLinesEmitted: context?.terminalLinesEmitted,
             onThought: (m: string) => context?.onThought?.(m),
             onProgress: (m: string) => context?.onProgress?.(m),
         };
@@ -1307,12 +1308,12 @@ export class PhaseExecutorTool implements ToolDefinition {
                     if (!String(planned.description || '').trim()) planned.description = taskDesc;
                 }
 
-                if (toolName === 'react_project'
+                if (['api_project', 'react_project'].includes(toolName)
                     && projectContext?.createsNewProject === true
                     && String(projectContext?.projectName || '').trim()
                     && !String(planned.projectName || '').trim()) {
                     planned.projectName = String(projectContext.projectName).trim();
-                    appendLog(`[PhaseExecutor] react_project: inherited canonical project identity (${planned.projectName})`);
+                    appendLog(`[PhaseExecutor] ${toolName}: inherited canonical project identity (${planned.projectName})`);
                 }
 
                 // Preserve the planner's structured evidence before runtime

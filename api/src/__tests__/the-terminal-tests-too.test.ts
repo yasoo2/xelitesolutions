@@ -161,6 +161,23 @@ describe('every check is a real process with a real exit code', () => {
         expect(a.checks.length).toBeGreaterThan(0);
         expect(a.checks.every(c => !!c.command)).toBe(true);
     }, 40_000);
+
+    it('checks declared packages directly without a slow npm metadata walk', async () => {
+        const project = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-tqa-deps-'));
+        try {
+            fs.writeFileSync(path.join(project, 'package.json'), JSON.stringify({
+                name: 'deps', private: true, dependencies: { missing_for_test: '1.0.0' },
+            }));
+            fs.mkdirSync(path.join(project, 'node_modules'), { recursive: true });
+            const a = await auditInTerminal(project, { timeoutMs: 8_000 });
+            const check = a.checks.find(c => c.id === 'deps_installed');
+            expect(check?.ok).toBe(false);
+            expect(check?.detail).toContain('MISSING missing_for_test');
+            expect(check?.command).toContain('verify declared dependency packages');
+        } finally {
+            fs.rmSync(project, { recursive: true, force: true });
+        }
+    }, 20_000);
 });
 
 describe('a repair that measured WORSE is taken back, not just un-reported', () => {

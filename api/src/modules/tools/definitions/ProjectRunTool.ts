@@ -1299,7 +1299,11 @@ export class ProjectRunTool implements ToolDefinition {
          */
         const live = activeProj?.live;
         const liveUrl = String(live?.url || (live?.port ? `http://localhost:${live.port}/` : ''));
-        if (!input?.cwd && !input?.command && liveUrl && canAdoptRecordedLive(live, cwd) && await answersHttp(liveUrl)) {
+        // An explicit cwd is often the pipeline's strongest handoff evidence.
+        // It must not disable adoption when the recorded server belongs to that
+        // exact cwd; doing so starts a second server and can collide with an
+        // older listener on the other loopback address family.
+        if (!input?.command && liveUrl && canAdoptRecordedLive(live, cwd) && await answersHttp(liveUrl)) {
             rememberLiveProject(context, cwd, {
                 url: liveUrl, port: Number(live.port), pid: Number(live.pid),
             });
@@ -1322,7 +1326,7 @@ export class ProjectRunTool implements ToolDefinition {
                 logs,
             };
         }
-        if (!input?.cwd && !input?.command && liveUrl) {
+        if (!input?.command && liveUrl) {
             logs.push(`project_run: ignored stale or unowned live record (${liveUrl})`);
         }
 
@@ -1608,7 +1612,10 @@ export class ProjectRunTool implements ToolDefinition {
             };
         }
 
-        const url = `http://localhost:${livePort}/`;
+        // Use the exact IPv4 address we pass to child servers. On Windows,
+        // `localhost` can resolve to ::1 while the new process owns 127.0.0.1;
+        // an old IPv6 listener on the same port would then display the wrong app.
+        const url = `http://127.0.0.1:${livePort}/`;
         rememberLiveProject(context, cwd, { url, port: livePort, pid: Number(pid) });
         say(pick(isAr,
             `✅ المشروع يعمل الآن — المعاينة الحية: ${url}`,

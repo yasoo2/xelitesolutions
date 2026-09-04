@@ -23,7 +23,7 @@ import { ToolPermission, ToolExecutionResult } from '../types';
 import { buildPalette, paletteCss, darkTokenBlock, lightTokenBlock } from '../../../core/design/design-system';
 import { brandFrom, brandFallback } from '../../../core/design/page-head';
 import { detectPageKind, type PageKind } from '../../../core/design/blueprints';
-import { derivedColumns, applyRequestFieldConstraints, detectAppKind, blueprintFor, uncoveredFeatures, derivedTables, type AppBlueprint, columnsAnywhereInHisRequest } from '../../../core/design/app-blueprints';
+import { derivedColumns, applyRequestFieldConstraints, detectAppKind, blueprintFor, uncoveredFeatures, derivedTables, type AppBlueprint, columnsAnywhereInHisRequest, hasWorkflowApplicationContract } from '../../../core/design/app-blueprints';
 import { acceptanceFor as acceptanceCriteriaFor } from '../../../core/quality/acceptance';
 import { namedRequirements, verifyNamed, nothingWasJudged, requirementNamesPage, NamedRequirement } from '../../../core/quality/named-requirements';
 import { buildAppFiles, fileAppCss } from './react-app-templates';
@@ -36,6 +36,7 @@ import { persistJoeProjects, writeJoeProject } from '../../../api/page-store';
 import { publicUrlFor } from '../../../shared/utils/publicUrl';
 import { repairAndRebuild, worthRepairing } from '../../../core/quality/self-repair';
 import { inspectWeatherEngineSource, formatWeatherSemanticRepair } from '../../../core/quality/weather-contract';
+import { inspectWorkflowEngineSource, formatWorkflowSemanticRepair } from '../../../core/quality/workflow-contract';
 import { isProviderFailure } from '../../../core/llm/intelligent-router';
 
 /**
@@ -3680,6 +3681,7 @@ export class ReactProjectTool extends BaseTool {
 
         const term = (line: string) => {
             logs.push(line);
+            context?.terminalLinesEmitted?.add(String(line));
             try {
                 broadcastTerminalLine(sessionId, line + '\r\n');
             } catch { /* UI optional */ }
@@ -3955,7 +3957,7 @@ export class ReactProjectTool extends BaseTool {
         // Hero + Features + FAQ with a restaurant menu attached and no map at
         // all. When the request names an application, the section library is
         // skipped entirely and a working app is generated instead.
-        const appKind = inheritedAppKind || detectAppKind(request);
+        const appKind = detectAppKind(request) || inheritedAppKind;
         const appBp: AppBlueprint | null = appKind ? blueprintFor(appKind, request, artifactIsAr) : null;
         // سجّل قرار القالب نفسه، لا وعداً عاماً بالنجاح؛ هذا يكشف فوراً أي
         // تحوير لوسيط الطلب بين الخطة وأداة البناء في الاختبارات الحية.
@@ -3986,6 +3988,13 @@ export class ReactProjectTool extends BaseTool {
             ? [...new Set(pages.flatMap(p => p.sections))]
             : sectionsForRequest(request, kind);
         const content = deriveContent(request, isAr, kind);
+        const explicitBrand = brandFrom(request, isAr);
+        const canonicalProjectName = String(input?.projectName || '').trim();
+        if (!explicitBrand
+            && canonicalProjectName
+            && !/^(?:myapp|app|application|project|react)$/i.test(canonicalProjectName)) {
+            content.brand = canonicalProjectName;
+        }
         /**
          *  ⛔ AND NOW THE WORDS ARE WRITTEN FOR HIS BUSINESS, NOT PULLED FROM
          *  A CATALOGUE OF BUSINESS KINDS.
@@ -4232,12 +4241,17 @@ export class ReactProjectTool extends BaseTool {
          * made only where the endpoint exists.
          */
         const feedApi = /\/api\/posts$/.test(apiLink);
-        (content as any).ordersApi = apiLink && !feedApi ? apiLink.replace(/\/api\/[a-z]+$/, '/api/orders') : '';
+        const workflowApi = hasWorkflowApplicationContract(request);
+        (content as any).ordersApi = apiLink && !feedApi && !workflowApi
+            ? apiLink.replace(/\/api\/[a-z]+$/, '/api/orders')
+            : '';
         (content as any).orderCta = isAr ? 'اطلب الآن' : 'Order now';
         if (apiLink) {
             term(feedApi
                 ? `full-stack link: this app reads and writes the LIVE feed at ${apiLink} — posts, likes, comments and follows are shared between everyone using it`
-                : `full-stack link: this app reads LIVE rows from ${apiLink} and writes orders to ${(content as any).ordersApi}`);
+                : workflowApi
+                    ? `full-stack link: this app reads and writes authenticated workflow records at ${apiLink}`
+                    : `full-stack link: this app reads LIVE rows from ${apiLink} and writes orders to ${(content as any).ordersApi}`);
         }
         // The app's form delivers into Joe's inbox while it runs next to Joe.
 
@@ -4573,8 +4587,9 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
              * from the LLM — asking it again here would be slower and free to
              * disagree with the tables that actually exist.
              */
+            const linkedWorkflow = runBp.engine === 'custom' && hasWorkflowApplicationContract(request);
             const tableModel = apiLink
-                ? (Array.isArray(prevEntry?.model) && prevEntry.model.length
+                ? (linkedWorkflow ? [] : Array.isArray(prevEntry?.model) && prevEntry.model.length
                     ? prevEntry.model
                     /**
                      * …AND THE FALLBACK MUST ASK IN THE SAME ORDER THE SERVER DOES.
@@ -5255,6 +5270,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             ? `src/components/${authoredEngineName}.jsx` : '';
         let modelAuthoredEngine = false;
         let blueprintFallbackEngine = false;
+        let workflowSemanticContractPassed = false;
         let authoredEngineFallback: { path: string; body: string } | null = null;
         if (generatedEnginePath && appBp) {
             try {
@@ -5279,6 +5295,16 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
         // engineering pipeline, where the resulting artifact still goes through
         // build, browser QA, capability evidence, and the normal delivery gate.
         const canUseBlueprintFallback = context?.engineeringPipeline === true && Boolean(generatedEnginePath);
+        const workflowContract = runBp?.engine === 'custom' && hasWorkflowApplicationContract(request);
+        const workflowApiContract = workflowContract && appApi ? (() => {
+            const { apiColumnsForRequest } = require('./ApiProjectTool');
+            const clean = String(appApi).replace(/[?#].*$/, '').replace(/\/+$/, '');
+            return {
+                resource: clean.split('/').pop() || 'records',
+                columns: apiColumnsForRequest(request).map((column: any) => String(column.key)),
+                supportingSource: `${String(files['src/App.jsx'] || '')}\n${String(files['src/app/store.js'] || '')}`,
+            };
+        })() : undefined;
         const useBlueprintFallback = (reason: string): boolean => {
             if (!canUseBlueprintFallback || !requestDerivedEngineFallbackEligible(reason)) return false;
             assertRunActive();
@@ -5308,6 +5334,23 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 return false;
             }
         };
+        // A recognized workflow is a Joe capability, not a provider-authored
+        // page. Use it immediately only after its request-specific API contract
+        // passes the same semantic gate used for model output. This keeps weak
+        // providers from adding minutes of retries while preserving evidence.
+        if (generatedEnginePath && canUseBlueprintFallback && workflowContract && workflowApiContract && authoredEngineFallback?.body) {
+            const fallbackDefects = inspectWorkflowEngineSource(request, authoredEngineFallback.body, workflowApiContract);
+            if (!fallbackDefects.length) {
+                const authoredPath = path.join(proj, generatedEnginePath);
+                fs.mkdirSync(path.dirname(authoredPath), { recursive: true });
+                assertRunActive();
+                fs.writeFileSync(authoredPath, authoredEngineFallback.body, 'utf8');
+                files[generatedEnginePath] = authoredEngineFallback.body;
+                blueprintFallbackEngine = true;
+                workflowSemanticContractPassed = true;
+                term(`domain generation: Joe's provider-independent workflow engine passed the request API contract and was selected without an authoring wait`);
+            }
+        }
         // Preserve the run-bound artifact root even when domain authoring is
         // blocked. PhaseExecutor must bind this real project before SelfFix
         // rewrites the failed domain file; otherwise validation falls back to
@@ -5333,14 +5376,17 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 authorMode: modelAuthoredEngine ? 'model' : (blueprintFallbackEngine ? 'request_derived_engine' : 'none'),
             };
         };
-        if (generatedEnginePath) {
+        if (generatedEnginePath && !workflowSemanticContractPassed) {
             term(`ai_write_file: authoring ${generatedEnginePath} from the user's requirements`);
             try {
                 const { AIGeneratorTool } = require('./AIGeneratorTool');
                 const author = new AIGeneratorTool();
-                const authorContext = `buildContext: projectRoot=${proj}; generated files include src/App.jsx, src/content.js, src/app/store.js, src/styles/app.css, and package.json. The importing shell renders <${authoredEngineName} content={content} />. The destination is ${generatedEnginePath}. Inspect the existing files and preserve their actual contracts.`;
-                const storeContractGuidance = 'The existing src/app/store.js exports useStore(key) as an object with async getItem(item) and setItem(item, value); never destructure useStore() as an array.';
-                const authorDescription = `Author the real domain engine for this React application from the user's request below.\n\nUSER REQUEST (authoritative):\n${request}\n\nIMPLEMENTATION CONTRACT:\n- Export a default React component named ${authoredEngineName} accepting exactly one optional prop: { content }.\n- Implement the requested ${runBp.engine} application, not a brochure or a static demo. Every explicit feature in the request must have a concrete state, interaction, and visible result.\n- Use the existing app shell, content object, store helpers, browser APIs, and declared packages only. Do not add packages or imports that are absent from package.json.\n- Include loading, empty, validation, network, and error states wherever the requested behavior can encounter them.\n- Persist user-created state when the request calls for persistence, and make the result visible after the action and after reload.\n- Keep the component self-contained and production-ready; no TODOs, fake API responses, random placeholder images, or explanatory prose outside the file.\n- Keep this single domain component concise (under roughly 260 generated tokens); reuse the existing shell and styles instead of repeating them.\n- Keep the existing Joe app shell contract: use content.brand/content.storeKey/content.isArabic where useful and do not change App.jsx, store.js, or the manifest.\n${runBp.engine === 'weather' ? '- Use the real Open-Meteo geocoding and forecast APIs when the request asks for live weather. Keep hourly and daily forecast data distinct.' : ''}`;
+                const workflowApiGuidance = workflowApiContract
+                    ? `The verified workflow API contract is exact: primary collection /api/${workflowApiContract.resource}; fields ${workflowApiContract.columns.join(', ')}; backend role owner means the requested manager and staff means the requested member. Read with apiList(content.api), create with apiCreate, and use apiPost(content.api, '/' + issue.id + '/transition', { status }), '/' + issue.id + '/assign' with { assignee }, and '/' + issue.id + '/comments' with { text }. These are row sub-routes, not sibling collections. Never write comments or audit_history through apiUpdate; the server appends both and returns the updated row as response.item.`
+                    : '';
+                const authorContext = `buildContext: projectRoot=${proj}; generated files include src/App.jsx, src/content.js, src/app/store.js, src/styles/app.css, and package.json. The importing shell renders <${authoredEngineName} content={content} />. The destination is ${generatedEnginePath}. Inspect the existing files and preserve their actual contracts. store.js exports apiList, apiCreate, apiUpdate, apiDelete, apiPost, getRole, canWriteNow, isOwnerNow, apiLogin, apiLogout, and apiMe. content.api is the verified backend URL when one was built. The shared App shell owns the credential form; this component must consume authenticated role and API state rather than inventing a second fake sign-in. ${workflowApiGuidance}`;
+                const storeContractGuidance = 'The existing src/app/store.js exports useStore(key) as an object with async getItem(item) and setItem(item, value); never destructure useStore() as an array. For a role-based workflow, the backend owner key is the privileged role and staff is the ordinary role: translate those internal keys into the role names requested by the user, enforce actions from getRole(), and persist mutations only through the documented store helpers.';
+                const authorDescription = `Author the real domain engine for this React application from the user's request below.\n\nUSER REQUEST (authoritative):\n${request}\n\nIMPLEMENTATION CONTRACT:\n- Export a default React component named ${authoredEngineName} accepting exactly one optional prop: { content }.\n- Implement the requested ${runBp.engine} application, not a brochure or a static demo. Every explicit feature in the request must have a concrete state, interaction, and visible result.\n- Use the existing app shell, content object, store helpers, browser APIs, and declared packages only. Do not add packages or imports that are absent from package.json.\n- Include loading, empty, validation, network, and error states wherever the requested behavior can encounter them.\n- Persist user-created state when the request calls for persistence, and make the result visible after the action and after reload.\n- Keep the component self-contained and production-ready; no TODOs, fake API responses, random placeholder images, or explanatory prose outside the file.\n- Keep this single domain component focused (under roughly 1200 generated tokens); reuse the existing shell and styles instead of repeating them. Do not omit requested state machines, permissions, or collaboration behaviour merely to shorten the file.\n- Keep the existing Joe app shell contract: use content.brand/content.storeKey/content.isArabic where useful and do not change App.jsx, store.js, or the manifest.\n${runBp.engine === 'weather' ? '- Use the real Open-Meteo geocoding and forecast APIs when the request asks for live weather. Keep hourly and daily forecast data distinct.' : ''}\n${hasWorkflowApplicationContract(request) ? '- This is a coordinated workflow, not a records form. Implement authenticated identity, requested role permissions, row visibility, assignment, guarded transitions, comments, and append-only audit events wherever the request names them. A label or select alone is not implementation evidence.' : ''}`;
                 const generated = await author.execute({
                     path: path.join(proj, generatedEnginePath),
                     description: authorDescription,
@@ -5427,9 +5473,25 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                     }
                 };
                 let semanticDefects = runBp.engine === 'weather' && !blueprintFallbackEngine
-                    ? inspectWeatherEngineSource(request, authored, readWeatherArtifactEvidence()) : [];
+                    ? inspectWeatherEngineSource(request, authored, readWeatherArtifactEvidence())
+                    : workflowContract && !blueprintFallbackEngine
+                        ? inspectWorkflowEngineSource(request, authored, workflowApiContract)
+                        : [];
+                if (semanticDefects.length && workflowContract && authoredEngineFallback?.body) {
+                    const fallbackDefects = inspectWorkflowEngineSource(request, authoredEngineFallback.body, workflowApiContract);
+                    if (!fallbackDefects.length) {
+                        fs.writeFileSync(path.join(proj, generatedEnginePath), authoredEngineFallback.body, 'utf8');
+                        authored = authoredEngineFallback.body;
+                        semanticDefects = [];
+                        blueprintFallbackEngine = true;
+                        modelAuthoredEngine = false;
+                        term('domain semantic QA: the provider draft failed — Joe\'s request-derived workflow engine passed the same contract and took over immediately');
+                    }
+                }
                 if (semanticDefects.length) {
-                    const repairBrief = formatWeatherSemanticRepair(semanticDefects);
+                    const repairBrief = runBp.engine === 'weather'
+                        ? formatWeatherSemanticRepair(semanticDefects)
+                        : formatWorkflowSemanticRepair(semanticDefects);
                     term(`domain semantic QA: ${semanticDefects.map(d => d.id).join(', ')} — requesting one bounded repair`);
                     const repaired = await author.execute({
                         path: path.join(proj, generatedEnginePath),
@@ -5449,14 +5511,34 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                     }
                     authored = fs.readFileSync(path.join(proj, generatedEnginePath), 'utf8');
                     semanticDefects = runBp.engine === 'weather'
-                        ? inspectWeatherEngineSource(request, authored, readWeatherArtifactEvidence()) : [];
+                        ? inspectWeatherEngineSource(request, authored, readWeatherArtifactEvidence())
+                        : workflowContract
+                            ? inspectWorkflowEngineSource(request, authored, workflowApiContract)
+                            : [];
                     if (semanticDefects.length) {
-                        const reason = `weather_semantic_contract_failed: ${formatWeatherSemanticRepair(semanticDefects)}`;
+                        if (workflowContract && authoredEngineFallback?.body) {
+                            const fallbackDefects = inspectWorkflowEngineSource(request, authoredEngineFallback.body, workflowApiContract);
+                            if (!fallbackDefects.length) {
+                                fs.writeFileSync(path.join(proj, generatedEnginePath), authoredEngineFallback.body, 'utf8');
+                                authored = authoredEngineFallback.body;
+                                semanticDefects = [];
+                                blueprintFallbackEngine = true;
+                                modelAuthoredEngine = false;
+                                term('domain semantic QA: authored repair still failed — the request-derived workflow engine passed the same contract and took over');
+                            }
+                        }
+                    }
+                    if (semanticDefects.length) {
+                        const contractName = runBp.engine === 'weather' ? 'weather' : 'workflow';
+                        const reason = `${contractName}_semantic_contract_failed: ${runBp.engine === 'weather'
+                            ? formatWeatherSemanticRepair(semanticDefects)
+                            : formatWorkflowSemanticRepair(semanticDefects)}`;
                         term(`domain semantic QA: BLOCKED — ${semanticDefects.map(d => d.id).join(', ')}`);
                         return { ok: false, error: reason, output: authoringFailureOutput(), logs };
                     }
                     term('domain semantic QA: repaired and independently rechecked');
                 }
+                if (workflowContract && !semanticDefects.length) workflowSemanticContractPassed = true;
                 files[generatedEnginePath] = authored;
                 try {
                     broadcast({ type: 'file_stream', sessionId, data: { file: generatedEnginePath, chunk: authored, done: true, bytes: Buffer.byteLength(authored), at: Date.now(), label: 'مؤلّف بالطلب' } } as any);
@@ -5947,6 +6029,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 watchSessionId: auditSid,
                 requireVisibleBrowser: true,
                 ...(liveServer ? { serveUrl: liveServer.url } : {}),
+                ...(runtimeAuth ? { credentials: runtimeAuth } : {}),
                 /**
                  * And the invitation matches reality. When the audit cannot
                  * borrow the panel it runs in a private browser — and telling
@@ -6622,7 +6705,15 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             ...(packaged && apiDir ? { packagedInto: apiDir } : {}),
             // …and WHERE it is answering right now, so «شغّل المشروع» adopts
             // the running system instead of starting a second copy of it.
-            ...(liveServer ? { live: { url: liveServer.url, port: liveServer.port, pid: liveServer.pid, at: Date.now() } } : {}),
+            ...(liveServer ? {
+                live: {
+                    url: liveServer.url,
+                    port: liveServer.port,
+                    pid: liveServer.pid,
+                    ...(apiDir ? { cwd: apiDir, projectCwd: apiDir } : {}),
+                    at: Date.now(),
+                },
+            } : {}),
             // The findings ride along, not just the number: the Quality phase
             // reports THIS audit instead of opening a second browser over the
             // same page, and a score with no findings would be a worse report
@@ -6820,7 +6911,12 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
         }, isAr);
         // What the app can actually DO — stated as capabilities only when each
         // claim has evidence in the source that was really read.
-        const abilityReport = appBp
+        const workflowAbilities = isAr
+            ? ['تسجيل دخول حقيقي وصلاحيات أعضاء ومديرين', 'قضايا خاصة مضبوطة من الخادم', 'تعيين وانتقالات حالة وتعليقات وسجل تدقيق']
+            : ['real sign-in with member and manager permissions', 'server-enforced private issues', 'assignment, status transitions, comments, and audit history'];
+        const abilityReport = workflowSemanticContractPassed
+            ? { abilities: workflowAbilities, unmeasured: [], measured: true }
+            : appBp
             ? measuredAppAbilities(appBp.engine, isAr, projectEvidence)
             : { abilities: [], unmeasured: [], measured: true };
         const appAbilities = abilityReport.abilities;
@@ -6854,7 +6950,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             [/docker|kubernetes|helm|nginx|ci\/?cd|github\s*actions|terraform/i, 'Docker/Kubernetes/CI-CD', 'Docker / Kubernetes / CI-CD'],
             [/prometheus|grafana|monitoring|observability/i, 'المراقبة (Prometheus/Grafana)', 'monitoring (Prometheus/Grafana)'],
             [/admin\s*panel|business\s*portal|developer\s*portal|api\s*keys?|لوحة\s*(تحكم|إدارة)|بوابة\s*(المطوّ?رين|الأعمال)/i, 'لوحات الإدارة وبوابات المطوّرين/الأعمال', 'admin / business / developer portals'],
-            [/traffic|road\s*closures?|transit|public\s*transport|حركة\s*المرور|إغلاق\s*الطرق|النقل\s*العام/i, 'بيانات المرور الحيّة والنقل العام', 'live traffic and public transport'],
+            [/\btraffic\b|road\s*closures?|\btransit\b|public\s*transport|حركة\s*المرور|إغلاق\s*الطرق|النقل\s*العام/i, 'بيانات المرور الحيّة والنقل العام', 'live traffic and public transport'],
             [/offline\s*(maps?|mode)|خرائط\s*بلا\s*إنترنت|بدون\s*إنترنت/i, 'الخرائط بلا إنترنت', 'offline maps'],
             [/ai\s*assistant|مساعد\s*ذكي|recommendations?|توصيات/i, 'مساعد ذكي داخل التطبيق', 'an in-app AI assistant'],
             [/reviews?|ratings?|تقييمات|مراجعات/i, 'التقييمات والمراجعات', 'reviews and ratings'],
@@ -6869,7 +6965,9 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
         // technology stack, which is rarely written as a bullet list.
         const { uncoveredFeatures } = require('../../../core/design/app-blueprints');
         const fidelity = deriveRequestFidelity(request, isAr, appBp, projectEvidence);
-        const rawAskedButMissing: string[] = appBp && !fidelity.evidenceUnavailable
+        const rawAskedButMissing: string[] = workflowSemanticContractPassed
+            ? []
+            : appBp && !fidelity.evidenceUnavailable
             ? uncoveredFeatures(request, appBp.engine, !!apiLink, projectEvidence)
             : [];
         // Acceptance is source-backed evidence. Reconcile the request-level

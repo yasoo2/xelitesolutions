@@ -583,22 +583,40 @@ export const LLM_GENERATION_DEADLINE_MS = 120_000;
 // A model gets enough time for a complete source artifact, but a provider that
 // cannot produce one must release the engineering fallback in a bounded way.
 // The caller still gets its one format/contract retry; this is the outer leash.
-export const ENGINEERING_LLM_GENERATION_DEADLINE_MS = 90_000;
+export const ENGINEERING_ARTIFACT_PROVIDER_DEADLINE_MS = 60_000;
+export const ENGINEERING_LLM_GENERATION_DEADLINE_MS = 180_000;
 
-function withGenerationDeadline<T>(work: Promise<T>, label: string, timeoutMs = LLM_GENERATION_DEADLINE_MS): Promise<T> {
+function withGenerationDeadline<T>(
+    work: Promise<T>,
+    label: string,
+    timeoutMs = LLM_GENERATION_DEADLINE_MS,
+    options?: { abortController?: AbortController; isCancelled?: () => boolean },
+): Promise<T> {
     return new Promise<T>((resolve, reject) => {
+        let settled = false;
+        const finish = (callback: () => void) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            if (cancelPoll) clearInterval(cancelPoll);
+            callback();
+        };
         const timer = setTimeout(() => {
-            reject(new Error(`llm_generation_timeout: ${label} exceeded ${timeoutMs}ms`));
+            const error = new Error(`llm_generation_timeout: ${label} exceeded ${timeoutMs}ms`);
+            options?.abortController?.abort(error);
+            finish(() => reject(error));
         }, timeoutMs);
+        const cancelPoll = options?.isCancelled
+            ? setInterval(() => {
+                if (!options.isCancelled?.()) return;
+                const error = new Error('run_cancelled_by_owner');
+                options.abortController?.abort(error);
+                finish(() => reject(error));
+            }, 100)
+            : undefined;
         work.then(
-            value => {
-                clearTimeout(timer);
-                resolve(value);
-            },
-            error => {
-                clearTimeout(timer);
-                reject(error);
-            },
+            value => finish(() => resolve(value)),
+            error => finish(() => reject(error)),
         );
     });
 }
@@ -737,6 +755,8 @@ Primary language for user-facing content: ${input.language === 'ar' ? 'Arabic (R
 Return the complete file content now.`;
 
         try {
+            const complexFrontendArtifact = artifact.kind === 'frontend_asset'
+                && /coordinated workflow|state machines?|role permissions?|audit events?|multi-step interaction/i.test(description);
             const llmContext = context?.engineeringPipeline === true
                 ? {
                     ...context,
@@ -747,16 +767,33 @@ Return the complete file content now.`;
                     // bound local recovery attempt; the router marks it used
                     // on this context so retries cannot hammer Ollama.
                     allowLocalEngineeringRecovery: true,
+                    // The router owns a mesh of providers, but without a
+                    // provider-level bound a local-first Auto request can spend
+                    // the entire artifact deadline on Ollama. That leaves no
+                    // time for the next provider even when it answers correctly.
+                    // Keep each attempt bounded below the whole-artifact leash so
+                    // a weak or busy provider can fail over inside this artifact
+                    // attempt instead of forcing the pipeline to start over.
+                    providerTimeoutMs: ENGINEERING_ARTIFACT_PROVIDER_DEADLINE_MS,
                     // A React domain component is still a complete source file:
                     // 260 tokens routinely cut it off inside a Markdown fence
                     // before the validator can even inspect its JSX. Keep the
                     // contract bounded, but give one component enough room to
                     // finish its state, handlers, and accessible markup.
-                    maxCompletionTokens: artifact.kind === 'frontend_asset' ? 1200 : 6000,
+                    maxCompletionTokens: artifact.kind === 'frontend_asset'
+                        ? (complexFrontendArtifact ? 2400 : 1200)
+                        : 6000,
                 }
                 : undefined;
             let runtimeRetryCandidate = '';
             const callForArtifact = (retryKind: 'format' | 'syntax' | 'imports' | 'runtime' | 'component' | 'precedence' | null = null, retryReason = '') => {
+                const generationAbort = new AbortController();
+                // Keep the router's bounded recovery ledger on one mutable
+                // artifact context. Only the signal is per attempt. Cloning the
+                // whole object here erased localEngineeringRecoveryAttempted,
+                // so every syntax/contract retry waited on the same paused local
+                // model again instead of moving directly through the mesh.
+                if (llmContext) llmContext.signal = generationAbort.signal;
                 const retryInstruction = retryKind === 'precedence'
                     ? `OPERATOR PRECEDENCE RETRY REQUIRED:\nThe previous completion contains an unparenthesized mixture of || and a ternary operator. Re-emit the complete file with the intended grouping, for example: a || (condition ? x : y). Do not silently change the intended values, do not emit Markdown fences or explanatory prose, and preserve all requested behavior.\nRepair brief:\n${retryReason || '(see the validator error above)'}`
                     : retryKind === 'syntax'
@@ -791,6 +828,10 @@ Return the complete file content now.`;
                     context?.engineeringPipeline === true
                         ? ENGINEERING_LLM_GENERATION_DEADLINE_MS
                         : LLM_GENERATION_DEADLINE_MS,
+                    {
+                        abortController: generationAbort,
+                        isCancelled: typeof context?.isCancelled === 'function' ? context.isCancelled : undefined,
+                    },
                 );
             };
 

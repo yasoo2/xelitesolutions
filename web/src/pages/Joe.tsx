@@ -494,6 +494,12 @@ export default function Joe() {
 
         // Always start the switched-to session from a clean slate.
         setMessages([]);
+        // Loading and department narration belong to the session that produced
+        // them. A new chat must not inherit a disabled composer or a stale
+        // "Joe is working" row from the conversation we just left. A genuinely
+        // active destination is rehydrated independently from runningIds below.
+        setIsLoading(false);
+        setDepartmentStatus(null);
         visiblePipelineReportsRef.current.clear();
         if (!sessionId) return;
 
@@ -985,9 +991,16 @@ export default function Joe() {
 
     // Transform sessions for SessionsBar (Unified)
     const isRunning = (id: string) => {
-        if (runningIds.has(id)) return true;
-        // The server writes the id in a few shapes («session-<id>»).
-        for (const r of runningIds) { if (r.includes(id) || id.includes(r)) return true; }
+        const target = String(id || '').trim();
+        if (!target) return false;
+        if (runningIds.has(target)) return true;
+        // Accept only the one documented alias. Substring matching made an
+        // unrelated chat appear busy whenever one id happened to contain the
+        // other, disabling its composer and leaking the previous live panel.
+        for (const raw of runningIds) {
+            const candidate = String(raw || '').trim();
+            if (candidate === `session-${target}` || target === `session-${candidate}`) return true;
+        }
         return false;
     };
     const sessionsList = [...agentSessions, ...sessions].map(s => ({

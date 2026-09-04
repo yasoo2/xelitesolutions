@@ -82,7 +82,13 @@ describe('the wiring — every green build gets measured', () => {
         expect(auditSrc).toContain('credentials?: {');
         expect(auditSrc).toContain("fetch(loginUrl, {");
         expect(auditSrc).toContain("localStorage.setItem(tokenStorageKey, token)");
+        expect(auditSrc).toContain('the protected browser surface did not appear');
+        expect(auditSrc).toContain("/^(sign out|log out|logout|تسجيل الخروج|خروج)$/iu");
         expect(auditSrc).toContain("id: 'auth_failed'");
+        const behaviourSrc = fs.readFileSync(path.join(__dirname, '..', 'core', 'quality', 'behaviour-audit.ts'), 'utf-8');
+        expect(behaviourSrc).toContain('Session exit and destructive mutations are scenario boundaries');
+        expect(behaviourSrc).toContain('sign\\s*out|log\\s*out|logout');
+        expect(behaviourSrc).toContain('delete|remove|حذف|إزالة');
         expect(reactSrc).toContain('...(runtimeAuth ? { credentials: runtimeAuth } : {}),');
         expect(reactSrc).toContain('const runtimeAuth =');
         expect(storeSrc).toContain('delete copy.runtimeAuth;');

@@ -22,7 +22,11 @@ const callLLM = jest.fn();
 const mockLlmModule: any = { callLLM: (...a: any[]) => callLLM(...a) };
 jest.mock('../core/llm', () => mockLlmModule);
 
-import { AIGeneratorTool, ENGINEERING_LLM_GENERATION_DEADLINE_MS } from '../modules/tools/definitions/AIGeneratorTool';
+import {
+    AIGeneratorTool,
+    ENGINEERING_ARTIFACT_PROVIDER_DEADLINE_MS,
+    ENGINEERING_LLM_GENERATION_DEADLINE_MS,
+} from '../modules/tools/definitions/AIGeneratorTool';
 import { PROVIDER_FAILURE_PREFIX } from '../core/llm/intelligent-router';
 import { workspaceService } from '../modules/services/WorkspaceService';
 
@@ -747,9 +751,18 @@ describe('a failure is never written into the file as its contents', () => {
 
     it('retries one transient provider failure inside an engineering pipeline', async () => {
         const rel = scratch('engineering-retry.html');
+        let firstSignal: AbortSignal | undefined;
         callLLM
-            .mockResolvedValueOnce(PROVIDER_FAILURE_PREFIX + ' (لم يستجب أي مزوّد).')
-            .mockResolvedValueOnce('<main>recovered</main>');
+            .mockImplementationOnce((_prompt: string, _messages: any[], routingContext: any) => {
+                firstSignal = routingContext.signal;
+                routingContext.localEngineeringRecoveryAttempted = true;
+                return PROVIDER_FAILURE_PREFIX + ' (لم يستجب أي مزوّد).';
+            })
+            .mockImplementationOnce((_prompt: string, _messages: any[], routingContext: any) => {
+                expect(routingContext.localEngineeringRecoveryAttempted).toBe(true);
+                expect(routingContext.signal).not.toBe(firstSignal);
+                return '<main>recovered</main>';
+            });
 
         const res: any = await tool.execute(
             { path: rel, description: 'Write the verified engineering artifact.' },
@@ -759,7 +772,12 @@ describe('a failure is never written into the file as its contents', () => {
         expect(res.ok).toBe(true);
         expect(callLLM).toHaveBeenCalledTimes(2);
         expect(res.logs.join(' ')).toMatch(/engineering provider retry requested/);
-        expect(callLLM.mock.calls[0][2]).toMatchObject({ maxCompletionTokens: 1200 });
+        expect(callLLM.mock.calls[0][2]).toMatchObject({
+            maxCompletionTokens: 1200,
+            providerTimeoutMs: ENGINEERING_ARTIFACT_PROVIDER_DEADLINE_MS,
+        });
+        expect(ENGINEERING_LLM_GENERATION_DEADLINE_MS)
+            .toBeGreaterThan(ENGINEERING_ARTIFACT_PROVIDER_DEADLINE_MS);
         expect(fs.readFileSync(landsAt(rel), 'utf-8')).toBe('<main>recovered</main>');
     });
 
@@ -778,6 +796,32 @@ describe('a failure is never written into the file as its contents', () => {
 
             expect(res.ok).toBe(false);
             expect(res.error).toMatch(/llm_generation_timeout/);
+            expect(fs.existsSync(landsAt(rel))).toBe(false);
+        } finally {
+            jest.useRealTimers();
+        }
+    });
+
+    it('aborts the in-flight provider when the owning run is cancelled', async () => {
+        jest.useFakeTimers();
+        try {
+            const rel = scratch('cancelled-provider.html');
+            let cancelled = false;
+            callLLM.mockImplementation((_prompt: string, _messages: any[], routingContext: any) => new Promise((_resolve, reject) => {
+                routingContext.signal.addEventListener('abort', () => reject(routingContext.signal.reason), { once: true });
+            }));
+
+            const resultPromise: Promise<any> = tool.execute(
+                { path: rel, description: 'Write the verified engineering artifact.' },
+                { engineeringPipeline: true, isCancelled: () => cancelled },
+            );
+            cancelled = true;
+            await jest.advanceTimersByTimeAsync(100);
+            const res = await resultPromise;
+
+            expect(res.ok).toBe(false);
+            expect(res.error).toMatch(/run_cancelled_by_owner/);
+            expect(callLLM.mock.calls[0][2].signal.aborted).toBe(true);
             expect(fs.existsSync(landsAt(rel))).toBe(false);
         } finally {
             jest.useRealTimers();

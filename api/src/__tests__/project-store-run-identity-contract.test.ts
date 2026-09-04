@@ -89,7 +89,7 @@ describe('joeProjects pipeline-run identity boundary', () => {
         const source = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ReactProjectTool.ts'), 'utf8');
         expect(source).toContain('resumeExisting');
         expect(source).toContain('samePipelineHandoff');
-        expect(source).toContain('writeJoeProject(sessionKey');
+        expect(source).toMatch(/writeJoeProject\(sessionKey, \{[\s\S]*?\}, currentPipelineRunId \|\| null\);/);
     });
 
     it('has no production map-item writer outside page-store', () => {

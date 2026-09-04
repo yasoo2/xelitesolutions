@@ -110,6 +110,8 @@ export interface ToolContext {
     projectRoot?: string;
     projectRootRuntimeBound?: boolean;
     projectName?: string;
+    /** Shared across nested tools so an outer result cannot replay child logs. */
+    terminalLinesEmitted?: Set<string>;
 }
 
 function normalizeUserId(v: any) {
@@ -304,7 +306,10 @@ export async function executeTool(name: string, input: any, context?: ToolContex
      * as it goes past, and the flush skips what the user has already read.
      * That is a fact about this run, not a promise about a tool.
      */
-    const spokenLive = new Set<string>();
+    const spokenLive = context?.terminalLinesEmitted instanceof Set
+        ? context.terminalLinesEmitted
+        : new Set<string>();
+    effectiveContext.terminalLinesEmitted = spokenLive;
     const outerProgress = (effectiveContext as any).onProgress;
     if (typeof outerProgress === 'function') {
         (effectiveContext as any).onProgress = (m: string) => {
@@ -887,7 +892,11 @@ export async function executeTool(name: string, input: any, context?: ToolContex
              * panel actually listens on — the legacy trio alone never reached
              * a live session's terminal at all.
              */
-            if (!(res as any)?.logsStreamedLive) {
+            if ((res as any)?.logsStreamedLive) {
+                // The tool owned the live broadcast. Record its returned copy so
+                // a parent pipeline that aggregates these logs cannot replay it.
+                toolLogs.forEach((line: string) => spokenLive.add(String(line)));
+            } else {
                 // ONE message per line, addressed to every tab that wants it.
                 // Ownership is established where the work starts — the only place
                 // that knows both the session and the user. Without it every
@@ -898,7 +907,10 @@ export async function executeTool(name: string, input: any, context?: ToolContex
                 } catch { /* ws optional in unit tests */ }
                 toolLogs
                     .filter((line: string) => !spokenLive.has(String(line)))
-                    .forEach((line: string) => broadcastTerminalLine(contextSessionId, paintLine(line) + '\r\n'));
+                    .forEach((line: string) => {
+                        spokenLive.add(String(line));
+                        broadcastTerminalLine(contextSessionId, paintLine(line) + '\r\n');
+                    });
             }
 
             logs.push(...toolLogs);

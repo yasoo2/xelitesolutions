@@ -160,7 +160,7 @@ describe('the system that passed the test is the system he gets', () => {
     });
 
     it('and the address is remembered on the project', () => {
-        expect(REACT).toMatch(/live: \{ url: liveServer\.url, port: liveServer\.port, pid: liveServer\.pid, at: Date\.now\(\) \}/);
+        expect(REACT).toMatch(/live:\s*\{[\s\S]*url: liveServer\.url,[\s\S]*port: liveServer\.port,[\s\S]*pid: liveServer\.pid,[\s\S]*at: Date\.now\(\)/);
     });
 });
 
@@ -194,6 +194,10 @@ describe('what Joe opens is the system, not its source folder', () => {
         expect(RUNTOOL).toMatch(/const packagedInto = String\(activeProj\?\.packagedInto \|\| activeProj\?\.linkedApiDir \|\| ''\)/);
         expect(RUNTOOL).toContain("fs.existsSync(path.join(packagedInto, 'public', 'index.html'))");
         expect(RUNTOOL).toContain("fs.existsSync(path.join(packagedInto, 'package.json'))");
+    });
+
+    it('the React handoff binds its live process to the packaged server root', () => {
+        expect(REACT).toMatch(/live:\s*\{[\s\S]*cwd: apiDir, projectCwd: apiDir/);
     });
 
     it('an explicit cwd still wins — this is a default, not a hijack', () => {

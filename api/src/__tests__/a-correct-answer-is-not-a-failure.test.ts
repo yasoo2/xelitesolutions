@@ -24,6 +24,10 @@ const read = (...p: string[]) => fs.readFileSync(path.join(__dirname, '..', ...p
 const ROUTER = read('core', 'llm', 'intelligent-router.ts');
 const RUN_ROUTE = read('api', 'routes', 'run.ts');
 const TOOLSVC = read('modules', 'services', 'ToolService.ts');
+const AGENT_LOOP = read('modules', 'services', 'AgentLoopService.ts');
+const PHASE_EXECUTOR = read('modules', 'tools', 'definitions', 'PhaseExecutorTool.ts');
+const API_PROJECT = read('modules', 'tools', 'definitions', 'ApiProjectTool.ts');
+const REACT_PROJECT = read('modules', 'tools', 'definitions', 'ReactProjectTool.ts');
 const PIPE = read('modules', 'tools', 'definitions', 'ProjectPipelineTool.ts');
 const RUNTOOL = read('modules', 'tools', 'definitions', 'ProjectRunTool.ts');
 const DESIGNER = read('core', 'design', 'schema-designer.ts');
@@ -96,7 +100,8 @@ describe('Auto preflight is a bounded health probe', () => {
 
 describe('the log does not say everything twice', () => {
     it('ToolService remembers what was already spoken live', () => {
-        expect(TOOLSVC).toContain('const spokenLive = new Set<string>();');
+        expect(TOOLSVC).toContain('context?.terminalLinesEmitted instanceof Set');
+        expect(TOOLSVC).toContain('effectiveContext.terminalLinesEmitted = spokenLive;');
         expect(TOOLSVC).toMatch(/spokenLive\.add\(String\(m\)\)/);
     });
 
@@ -105,8 +110,23 @@ describe('the log does not say everything twice', () => {
     });
 
     it('the wrapper still forwards the line — dedupe must not mute the panel', () => {
-        const at = TOOLSVC.indexOf('const spokenLive = new Set<string>();');
+        const at = TOOLSVC.indexOf('context?.terminalLinesEmitted instanceof Set');
         expect(TOOLSVC.slice(at, at + 500)).toContain('return outerProgress(m);');
+    });
+
+    it('shares streamed child evidence with the parent pipeline', () => {
+        expect(TOOLSVC).toMatch(/if \(\(res as any\)\?\.logsStreamedLive\)[\s\S]*toolLogs\.forEach\(\(line: string\) => spokenLive\.add\(String\(line\)\)\)/);
+        expect(TOOLSVC).toMatch(/spokenLive\.add\(String\(line\)\);[\s\S]*broadcastTerminalLine/);
+    });
+
+    it('records direct builder broadcasts and carries the set through phases', () => {
+        expect(API_PROJECT).toContain('context?.terminalLinesEmitted?.add(String(line));');
+        expect(REACT_PROJECT).toContain('context?.terminalLinesEmitted?.add(String(line));');
+        expect(PHASE_EXECUTOR).toContain('terminalLinesEmitted: context?.terminalLinesEmitted,');
+    });
+
+    it('does not replay a completed phase log from AgentLoopService', () => {
+        expect(AGENT_LOOP).not.toMatch(/for \(const log of phaseResult\.logs\) voice/);
     });
 });
 

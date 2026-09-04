@@ -19,7 +19,7 @@
  * resulting program.
  */
 import type { AppBlueprint } from '../../../core/design/app-blueprints';
-import { heAskedForATable } from '../../../core/design/app-blueprints';
+import { hasWorkflowApplicationContract, heAskedForATable } from '../../../core/design/app-blueprints';
 import { thePagesHeNamed } from '../../../core/design/site-plan';
 import { derivedTables } from '../../../core/design/app-blueprints';
 import { ROLES } from '../../../core/design/roles';
@@ -251,8 +251,8 @@ ${roleLabels}
  * database. The app sent no token, so «add» answered 401 and the row lived in
  * this browser only: it looked saved and was not. This is the missing half.
  *
- * It appears only when there IS a server to sign in to, and it never blocks
- * the app: signed out, everything still works locally and says so.
+ * It appears only when there IS a server to sign in to. Each domain engine
+ * decides whether signed-out use is public, local, or blocked.
  */
 function SignIn({ api }) {
   const [user, setUser] = useState(null);
@@ -304,7 +304,7 @@ function SignIn({ api }) {
           <form className="auth-card" onSubmit={submit}>
             <b>{${T('تسجيل الدخول', 'Sign in')}}</b>
             <p className="auth-note">
-              {${T('حساب المالك ظهر مرة واحدة عند بناء النظام، وحسابات الفريق يصنعها المالك من شاشة «الحسابات والصلاحيات». بدون تسجيل الدخول يعمل التطبيق محلياً فقط ولا يُحفظ على الخادم.', 'The owner account was shown once when the system was built; team accounts are created by the owner from «Accounts and permissions». Signed out, the app works locally only and nothing is saved on the server.')}}
+              {${T('حساب المالك ظهر مرة واحدة عند بناء النظام، وحسابات الفريق يصنعها المالك من شاشة «الحسابات والصلاحيات». سجّل الدخول للوصول إلى البيانات والإجراءات المسموح بها لدورك.', 'The owner account was shown once when the system was built; team accounts are created by the owner from Accounts and permissions. Sign in to access the data and actions allowed for your role.')}}
             </p>
             <label><span>{${T('البريد', 'Email')}}</span>
               <input type="email" value={email} onChange={e => setEmail(e.target.value)} autoComplete="username" required />
@@ -482,7 +482,7 @@ ${hasTables ? '            <TablesAdmin api={content.api} />\n' : ''}${hasApi ? 
       <footer className="app-foot">
         <span>{content.brand}</span>
         <span className="dot">•</span>
-        <span>${isAr ? 'بياناتك محفوظة على جهازك' : 'Your data stays on your device'}</span>
+        <span>${hasApi ? (isAr ? 'البيانات محفوظة في الخادم المتصل' : 'Data is stored on the connected server') : (isAr ? 'بياناتك محفوظة على جهازك' : 'Your data stays on your device')}</span>
       </footer>
     </div>
   );
@@ -1070,8 +1070,9 @@ export async function apiPost(api, suffix, body) {
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify(body || {}),
     });
-    if (!r.ok) return null;
-    return await r.json().catch(() => ({ ok: true }));
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) return { ok: false, status: r.status, needsAuth: r.status === 401, error: d.error || '' };
+    return d && typeof d === 'object' ? d : { ok: true };
   } catch { return null; }
 }
 
@@ -2918,8 +2919,11 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--accent,#06c);out
    than the viewport because of a label, action row, or generated title. */
 @media (max-width: 480px){
   .app-bar-in{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center}
-  .app-id{display:block}
-  .app-sub{display:block;max-width:100%;white-space:normal;overflow-wrap:anywhere}
+  .app-id{grid-column:1/-1;display:flex;align-items:baseline;gap:8px;width:100%}
+  .app-name{min-width:0;overflow-wrap:anywhere}
+  .app-sub{display:block;min-width:0;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .auth-chip{min-width:0;max-width:100%}
+  .auth-who{display:none}
   .wrap{width:100%;padding:12px;overflow-x:clip}
   .form{grid-template-columns:minmax(0,1fr)}
   .toolbar>*{min-width:0;max-width:100%}
@@ -3116,21 +3120,21 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--accent,#06c);out
 .comment b{margin-inline-end:6px}
 
 /* Owner sign-in — quiet until it is needed. */
-.auth-open { font-size: 12px; padding: 6px 12px; border-radius: 9px; border: 1px solid var(--line); background: transparent; color: inherit; cursor: pointer; }
+.auth-open { min-height: 44px; font-size: 12.5px; padding: 8px 12px; border-radius: 9px; border: 1px solid var(--line); background: transparent; color: inherit; cursor: pointer; }
 .auth-open:hover { background: var(--line); }
 .auth-chip { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; }
-.auth-chip button { font-size: 11px; padding: 4px 9px; border-radius: 8px; border: 1px solid var(--line); background: transparent; color: inherit; cursor: pointer; }
+.auth-chip button { min-height: 44px; font-size: 12px; padding: 4px 9px; border-radius: 8px; border: 1px solid var(--line); background: transparent; color: inherit; cursor: pointer; }
 .auth-who { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: .8; }
-.auth-role { padding: 2px 8px; border-radius: 999px; background: var(--chip); border: 1px solid var(--line); font-size: 11px; white-space: nowrap; }
+.auth-role { padding: 2px 8px; border-radius: 999px; background: var(--chip); border: 1px solid var(--line); font-size: 12px; white-space: nowrap; }
 .auth-dot { width: 7px; height: 7px; border-radius: 999px; background: #10b981; flex: none; }
 .auth-back { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; padding: 20px; background: rgba(2,6,23,.55); }
 .auth-card { width: min(380px, 100%); display: flex; flex-direction: column; gap: 12px; padding: 20px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); }
 .auth-card label { display: flex; flex-direction: column; gap: 5px; font-size: 12px; }
-.auth-card input { padding: 9px 11px; border-radius: 9px; border: 1px solid var(--line); background: transparent; color: inherit; font: inherit; }
-.auth-note { margin: 0; font-size: 11.5px; line-height: 1.7; opacity: .7; }
+.auth-card input { min-height: 44px; padding: 9px 11px; border-radius: 9px; border: 1px solid var(--line); background: transparent; color: inherit; font: inherit; }
+.auth-note { margin: 0; font-size: 12px; line-height: 1.7; opacity: .7; }
 .auth-error { margin: 0; font-size: 12px; color: #f87171; }
 .auth-actions { display: flex; justify-content: flex-end; gap: 8px; }
-.auth-actions button { padding: 8px 16px; border-radius: 9px; border: 1px solid var(--line); background: transparent; color: inherit; cursor: pointer; font-size: 12.5px; }
+.auth-actions button { min-height: 44px; padding: 8px 16px; border-radius: 9px; border: 1px solid var(--line); background: transparent; color: inherit; cursor: pointer; font-size: 12.5px; }
 .auth-actions .primary { background: var(--accent, #2563eb); border-color: transparent; color: #fff; }
 /*  ⛔ THE ONE STYLED BUTTON WAS NEVER USED, AND THE USED ONE HAD NO STYLE.
  *
@@ -3886,6 +3890,163 @@ export function fileCalculatorCss(): string {
 `;
 }
 
+/**
+ * Provider-independent floor for coordinated, authenticated workflows.
+ * The model still authors first. This capability engine is used only after
+ * authored code fails the measured workflow contract twice.
+ */
+export function fileWorkflowAppJsx(isAr: boolean): string {
+    const text = (ar: string, en: string) => JSON.stringify(isAr ? ar : en);
+    const child = (ar: string, en: string) => `{${text(ar, en)}}`;
+    return `import React, { useEffect, useMemo, useState } from 'react';
+import { apiCreate, apiList, apiMe, apiPost, apiUpdate, apiUsers, canWriteNow, getRole } from '../app/store.js';
+
+const FLOW = { open: ['in_progress'], in_progress: ['open', 'resolved'], resolved: ['in_progress', 'closed'], closed: [] };
+const parseActivity = (value) => {
+  if (Array.isArray(value)) return value;
+  try { const parsed = JSON.parse(String(value || '[]')); return Array.isArray(parsed) ? parsed : []; }
+  catch { return []; }
+};
+const labelOfRole = (role) => role === 'owner' ? ${text('مدير', 'Manager')} : role === 'staff' ? ${text('عضو', 'Member')} : ${text('قارئ', 'Viewer')};
+
+export default function CustomApp({ content }) {
+  const [user, setUser] = useState(null);
+  const [issues, setIssues] = useState([]);
+  const [team, setTeam] = useState([]);
+  const [selectedId, setSelectedId] = useState(null);
+  const [draft, setDraft] = useState({ title: '', description: '', visibility: 'private' });
+  const [comment, setComment] = useState('');
+  const [assignee, setAssignee] = useState('');
+  const [nextStatus, setNextStatus] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState('');
+  const role = getRole();
+  const canManage = role === 'owner';
+  const canContribute = canWriteNow();
+
+  const load = async () => {
+    setBusy(true); setNotice('');
+    const identity = await apiMe(content.api);
+    setUser(identity);
+    if (!identity) { setIssues([]); setBusy(false); return; }
+    const rows = await apiList(content.api);
+    setIssues(Array.isArray(rows) ? rows : []);
+    if (identity.role === 'owner') {
+      const users = await apiUsers(content.api);
+      setTeam(Array.isArray(users) ? users : []);
+    }
+    setBusy(false);
+  };
+
+  useEffect(() => {
+    load();
+    const sync = () => load();
+    window.addEventListener('joe:auth', sync);
+    return () => window.removeEventListener('joe:auth', sync);
+  }, [content.api]);
+
+  const visibleIssues = useMemo(() => issues.filter(issue => canManage || issue.visibility === 'public' || Number(issue.owner_id) === Number(user?.id)), [issues, canManage, user]);
+  const selected = useMemo(() => visibleIssues.find(issue => issue.id === selectedId) || visibleIssues[0] || null, [visibleIssues, selectedId]);
+  useEffect(() => {
+    if (!selected) return;
+    setAssignee(selected.assignee || '');
+    setNextStatus((FLOW[selected.status] || [])[0] || '');
+  }, [selected && selected.id, selected && selected.status]);
+  const replace = (row) => { if (row) setIssues(current => current.map(issue => issue.id === row.id ? row : issue)); };
+  const fail = (result, fallback) => { setNotice(result && result.error ? result.error.replaceAll('_', ' ') : fallback); };
+
+  const createIssue = async (event) => {
+    event.preventDefault();
+    if (!draft.title.trim()) { setNotice(${text('العنوان مطلوب.', 'A title is required.')}); return; }
+    setBusy(true);
+    const result = await apiCreate(content.api, { ...draft, title: draft.title.trim(), description: draft.description.trim(), status: 'open', assignee: '' });
+    if (result && result.ok && result.item) {
+      setIssues(current => [result.item, ...current]); setSelectedId(result.item.id);
+      setDraft({ title: '', description: '', visibility: 'private' }); setNotice(${text('تم إنشاء المشكلة.', 'Issue created.')});
+    } else fail(result, ${text('تعذر إنشاء المشكلة.', 'Could not create the issue.')});
+    setBusy(false);
+  };
+
+  const editIssue = async (event) => {
+    event.preventDefault(); if (!selected) return;
+    const form = new FormData(event.currentTarget);
+    const patch = { title: String(form.get('title') || '').trim(), description: String(form.get('description') || '').trim(), visibility: String(form.get('visibility') || 'private') };
+    if (!patch.title) { setNotice(${text('العنوان مطلوب.', 'A title is required.')}); return; }
+    setBusy(true); const result = await apiUpdate(content.api, selected.id, patch);
+    if (result && result.ok) { replace(result.item); setNotice(${text('تم حفظ التغييرات.', 'Changes saved.')}); }
+    else fail(result, ${text('تعذر حفظ التغييرات.', 'Could not save changes.')});
+    setBusy(false);
+  };
+
+  const act = async (suffix, body, success) => {
+    if (!selected) return;
+    setBusy(true); const result = await apiPost(content.api, '/' + selected.id + suffix, body);
+    if (result && result.ok && result.item) { replace(result.item); setNotice(success); }
+    else fail(result, ${text('لم يكتمل الإجراء.', 'The action could not be completed.')});
+    setBusy(false);
+  };
+  const addComment = async (event) => {
+    event.preventDefault(); const value = comment.trim();
+    if (!value) { setNotice(${text('اكتب تعليقاً أولاً.', 'Write a comment first.')}); return; }
+    await act('/comments', { text: value }, ${text('أضيف التعليق.', 'Comment added.')}); setComment('');
+  };
+
+  if (!user) return <section className="workflow-empty"><h2>{content.brand}</h2><p>${child('سجّل الدخول للوصول إلى المشكلات الخاصة.', 'Sign in to access private issues.')}</p></section>;
+  return <main className="workflow-shell">
+    <header className="workflow-head">
+      <div><span className="workflow-kicker">${child('مساحة الفريق', 'Team workspace')}</span><h2>{content.brand}</h2></div>
+      <div className="workflow-identity"><strong>{user.email}</strong><span>{labelOfRole(user.role)}</span></div>
+    </header>
+    {notice && <p className="workflow-notice" role="status">{notice}</p>}
+    <section className="workflow-create" aria-label=${text('إنشاء مشكلة', 'Create issue')}>
+      <form onSubmit={createIssue}>
+        <input required aria-label=${text('العنوان', 'Title')} placeholder=${text('عنوان المشكلة', 'Issue title')} value={draft.title} onChange={e => setDraft({ ...draft, title: e.target.value })} />
+        <input aria-label=${text('الوصف', 'Description')} placeholder=${text('وصف مختصر', 'Short description')} value={draft.description} onChange={e => setDraft({ ...draft, description: e.target.value })} />
+        <select aria-label=${text('الظهور', 'Visibility')} value={draft.visibility} onChange={e => setDraft({ ...draft, visibility: e.target.value })}><option value="private">${child('خاصة', 'Private')}</option><option value="public">${child('عامة', 'Public')}</option></select>
+        <button disabled={busy || !canContribute} type="submit">${child('إنشاء', 'Create')}</button>
+      </form>
+    </section>
+    <div className="workflow-grid">
+      <nav className="workflow-list" aria-label=${text('المشكلات', 'Issues')}>
+        <div className="workflow-list-head"><h2>${child('المشكلات', 'Issues')}</h2><span>{issues.length}</span></div>
+        {busy && !visibleIssues.length ? <p>${child('جار التحميل...', 'Loading...')}</p> : !visibleIssues.length ? <p>${child('لا توجد مشكلات بعد.', 'No issues yet.')}</p> : visibleIssues.map(issue =>
+          <button className={selected && selected.id === issue.id ? 'active' : ''} aria-pressed={selected && selected.id === issue.id} key={issue.id} onClick={() => setSelectedId(issue.id)}>
+            <strong>{issue.title}</strong><span>{issue.status.replaceAll('_', ' ')} · {issue.visibility}</span>
+          </button>)}
+      </nav>
+      <section className="workflow-detail">
+        {!selected ? <p>${child('اختر مشكلة لعرض تفاصيلها.', 'Select an issue to see its details.')}</p> : <>
+          <form className="workflow-edit" onSubmit={editIssue}>
+            <input required name="title" aria-label=${text('عنوان المشكلة', 'Issue title')} defaultValue={selected.title} key={'title-' + selected.id} />
+            <textarea name="description" aria-label=${text('وصف المشكلة', 'Issue description')} defaultValue={selected.description} key={'description-' + selected.id} />
+            <select name="visibility" aria-label=${text('ظهور المشكلة', 'Issue visibility')} defaultValue={selected.visibility} key={'visibility-' + selected.id}><option value="private">${child('خاصة', 'Private')}</option><option value="public">${child('عامة', 'Public')}</option></select>
+            <button disabled={busy || !canContribute} type="submit">${child('حفظ', 'Save')}</button>
+          </form>
+          <div className="workflow-actions">
+            <div><h3>${child('الحالة', 'Status')}</h3><div className="workflow-action-row"><select required aria-label=${text('الحالة التالية', 'Next status')} value={nextStatus} onChange={e => setNextStatus(e.target.value)} disabled={busy || !canContribute || !(FLOW[selected.status] || []).length}>{(FLOW[selected.status] || []).length ? (FLOW[selected.status] || []).map(next => <option key={next} value={next}>{next.replaceAll('_', ' ')}</option>) : <option value="">${child('لا انتقالات متاحة', 'No transitions available')}</option>}</select><button type="button" disabled={busy || !canContribute || !nextStatus} onClick={() => act('/transition', { status: nextStatus }, ${text('تم تحديث الحالة.', 'Status updated.')})}>${child('تحديث الحالة', 'Update status')}</button></div></div>
+            {canManage && <div><h3>${child('التعيين', 'Assignment')}</h3><div className="workflow-action-row"><select aria-label=${text('المكلّف', 'Assignee')} value={assignee} onChange={e => setAssignee(e.target.value)}><option value="">${child('اختر عضواً', 'Choose a member')}</option>{team.map(person => <option key={person.id} value={person.email}>{person.email}</option>)}</select><button disabled={busy || !assignee} onClick={() => act('/assign', { assignee }, ${text('تم التعيين.', 'Assignment updated.')})}>${child('تعيين', 'Assign')}</button></div></div>}
+          </div>
+          <div className="workflow-activity">
+            <section><h3>${child('التعليقات', 'Comments')}</h3>{parseActivity(selected.comments).map((entry, index) => <p key={index}><strong>{entry.author}</strong> {entry.text}<time>{new Date(entry.timestamp).toLocaleString()}</time></p>)}<form onSubmit={addComment}><input required aria-label=${text('تعليق', 'Comment')} value={comment} onChange={e => setComment(e.target.value)} placeholder=${text('أضف تعليقاً', 'Add a comment')} /><button disabled={busy || !canContribute} type="submit">${child('إرسال', 'Send')}</button></form></section>
+            <section><h3>${child('سجل التدقيق', 'Audit history')}</h3>{parseActivity(selected.audit_history).map((entry, index) => <p key={index}><strong>{entry.actor}</strong> {entry.action}<span>{entry.detail}</span><time>{new Date(entry.timestamp).toLocaleString()}</time></p>)}</section>
+          </div>
+        </>}
+      </section>
+    </div>
+  </main>;
+}
+`;
+}
+
+export function fileWorkflowCss(): string {
+    return `
+.workflow-shell{width:100%;max-width:1180px;min-width:0;margin:0 auto;padding:28px 22px 48px;overflow-x:clip}.workflow-shell>*{min-width:0;max-width:100%}.workflow-head{display:flex;align-items:end;justify-content:space-between;gap:24px;padding-bottom:22px;border-bottom:1px solid var(--line)}.workflow-head h1{margin:5px 0 0;font-size:clamp(1.8rem,4vw,3rem)}.workflow-kicker{color:var(--muted);font-size:.8rem;text-transform:uppercase}.workflow-identity{text-align:end;display:grid;gap:3px;min-width:0}.workflow-identity strong{overflow-wrap:anywhere}.workflow-identity span,.workflow-list button span{color:var(--muted);font-size:.8rem}.workflow-notice{margin:14px 0;padding:10px 0;border-bottom:1px solid var(--line)}.workflow-create{padding:18px 0;border-bottom:1px solid var(--line)}.workflow-create form{display:grid;grid-template-columns:1.1fr 1.6fr minmax(120px,.5fr) auto;gap:8px}.workflow-create form>*{min-width:0;max-width:100%}.workflow-grid{display:grid;grid-template-columns:minmax(220px,320px) minmax(0,1fr);min-height:520px}.workflow-grid>*{min-width:0}.workflow-list{padding:20px 16px 20px 0;border-inline-end:1px solid var(--line)}.workflow-list-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}.workflow-list-head h2{font-size:1rem;margin:0}.workflow-list button{width:100%;min-height:58px;text-align:start;display:grid;gap:4px;padding:10px;border:0;border-bottom:1px solid var(--line);background:transparent;color:inherit}.workflow-list button.active{background:color-mix(in srgb,var(--brand) 10%,transparent);box-shadow:inset 3px 0 var(--brand)}.workflow-detail{padding:22px 0 22px 24px;min-width:0}.workflow-edit{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:9px}.workflow-edit textarea{grid-column:1/-1;min-height:92px}.workflow-actions{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px;padding:22px 0;border-bottom:1px solid var(--line)}.workflow-actions>*{min-width:0}.workflow-actions h3,.workflow-activity h3{font-size:.9rem;margin:0 0 10px}.workflow-action-row{display:flex;gap:8px;flex-wrap:wrap;min-width:0}.workflow-action-row select{min-width:0;max-width:100%}.workflow-activity{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:24px;padding-top:22px}.workflow-activity section{min-width:0}.workflow-activity section+section{border-inline-start:1px solid var(--line);padding-inline-start:24px}.workflow-activity p{display:grid;grid-template-columns:auto minmax(0,1fr);gap:5px 10px;padding:9px 0;margin:0;border-bottom:1px solid var(--line);font-size:.86rem;overflow-wrap:anywhere}.workflow-activity time{grid-column:1/-1;color:var(--muted);font-size:.75rem}.workflow-activity form{display:flex;gap:8px;margin-top:12px;min-width:0}.workflow-activity form input{flex:1;min-width:0}.workflow-empty{width:min(680px,calc(100% - 24px));max-width:100%;margin:15vh auto;padding:24px;border-block:1px solid var(--line)}
+.workflow-create input,.workflow-create select,.workflow-create button,.workflow-edit input,.workflow-edit select,.workflow-edit button,.workflow-action-row select,.workflow-action-row button,.workflow-activity input,.workflow-activity button{min-height:44px}
+.workflow-create button,.workflow-edit button,.workflow-action-row button,.workflow-activity button{appearance:none;border:1px solid color-mix(in srgb,var(--brand) 78%,var(--line));border-radius:8px;background:var(--brand);color:var(--on-brand,#fff);padding:0 17px;font:inherit;font-weight:700;letter-spacing:0;cursor:pointer;box-shadow:0 1px 0 color-mix(in srgb,var(--brand) 55%,transparent);transition:background-color .16s ease,border-color .16s ease,transform .16s ease,opacity .16s ease}.workflow-create button:hover:not(:disabled),.workflow-edit button:hover:not(:disabled),.workflow-action-row button:hover:not(:disabled),.workflow-activity button:hover:not(:disabled){background:color-mix(in srgb,var(--brand) 82%,#000);border-color:color-mix(in srgb,var(--brand) 70%,#000);transform:translateY(-1px)}.workflow-create button:focus-visible,.workflow-edit button:focus-visible,.workflow-action-row button:focus-visible,.workflow-activity button:focus-visible{outline:3px solid color-mix(in srgb,var(--brand) 30%,transparent);outline-offset:2px}.workflow-create button:disabled,.workflow-edit button:disabled,.workflow-action-row button:disabled,.workflow-activity button:disabled{cursor:not-allowed;opacity:.48;box-shadow:none;transform:none}
+@media(max-width:760px){.workflow-shell{padding:18px 12px 32px}.workflow-head{align-items:start;flex-direction:column}.workflow-identity{text-align:start}.workflow-create form{grid-template-columns:minmax(0,1fr)}.workflow-grid{grid-template-columns:minmax(0,1fr)}.workflow-list{border-inline-end:0;border-bottom:1px solid var(--line);padding-inline-end:0;max-height:260px;overflow:auto}.workflow-detail{padding:18px 0}.workflow-edit,.workflow-actions,.workflow-activity{grid-template-columns:minmax(0,1fr)}.workflow-action-row,.workflow-activity form{display:grid;grid-template-columns:minmax(0,1fr) auto}.workflow-activity section+section{border-inline-start:0;padding-inline-start:0;border-top:1px solid var(--line);padding-top:18px}}
+`;
+}
+
 export function buildAppFiles(bp: AppBlueprint, o: AppBuildOptions, slugName: string): Record<string, string> {
     const engineFile: Record<AppBlueprint['engine'], [string, string]> = {
         map: ['src/components/MapApp.jsx', fileMapAppJsx(o.isArabic)],
@@ -3903,7 +4064,7 @@ export function buildAppFiles(bp: AppBlueprint, o: AppBuildOptions, slugName: st
         finance: ['src/components/FinanceApp.jsx', fileFinanceAppJsx(o.isArabic)],
         // A custom application has no stock implementation. ReactProjectTool
         // supplies this file through the model authoring path before build.
-        custom: ['src/components/CustomApp.jsx', ''],
+        custom: ['src/components/CustomApp.jsx', hasWorkflowApplicationContract(o.sourceRequest || '') ? fileWorkflowAppJsx(o.isArabic) : ''],
     };
     const [enginePath, engineSrc] = engineFile[bp.engine];
     const generatedEnginePath = String(o.generatedEnginePath || '').trim();
@@ -3927,6 +4088,7 @@ export function buildAppFiles(bp: AppBlueprint, o: AppBuildOptions, slugName: st
         'src/styles/app.css': fileAppCss() + (bp.engine === 'shop' ? fileShopCss() : '')
             + (bp.engine === 'calculator' ? fileCalculatorCss() : '')
             + (bp.engine === 'productivity' ? fileProductivityCss() : '')
+            + (bp.engine === 'custom' && hasWorkflowApplicationContract(o.sourceRequest || '') ? fileWorkflowCss() : '')
             + (o.model && o.model.length ? fileTablesAdminCss() : '')
             + (o.api ? fileAccountsCss() : ''),
     };

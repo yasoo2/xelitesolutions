@@ -15,7 +15,8 @@ export function summarizeEngineeringReport(markdown: string, language = 'en'): s
     const lines = source.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
     const first = lines[0] || '';
     const title = first.match(/[—-]\s*["«]([^"»]+)["»]/)?.[1]?.trim() || '';
-    const scoreMatch = source.match(/(?:Self-QA|تدقيق[^\n]*|جودة[^\n]*).*?(\d{1,3})\s*\/\s*100/i);
+    const scoreMatch = source.match(/Visible Browser QA[^\n]*?(\d{1,3})\s*\/\s*100/i)
+        || Array.from(source.matchAll(/(?:Self-QA|تدقيق[^\n]*|جودة[^\n]*).*?(\d{1,3})\s*\/\s*100/gi)).pop();
     const score = scoreMatch?.[1] || '';
     const pages = Array.from(source.matchAll(/(?:page|صفحة)\s*[«"]([^»"]+)[»"]/gi))
         .map(match => match[1].trim())
@@ -38,13 +39,21 @@ export function summarizeEngineeringReport(markdown: string, language = 'en'): s
         .slice(0, 3);
 
     const buildVerified = /verified to compile|تُحقق من تجميعه|vite build succeeded|نجحا/i.test(source);
+    const fullyVerified = buildVerified && (!score || Number(score) === 100) && issueLines.length === 0;
+    const credential = source.match(/Owner account(?:\s*\([^)]*\))?:\s*([^\s/]+)\s*\/\s*([^\s]+)/iu);
+    const liveUrl = source.match(/(?:Open at:|live at:?)\s*\*\*?(https?:\/\/[^\s*]+)/iu)?.[1];
     const checked = source.match(/\((\d+)\s+page\(s\),\s*(\d+)\s+control\(s\)[^)]*\)/i);
+    const measuredInteractions = Array.from(source.matchAll(/(\d+)\s+interaction\(s\) measured/gi)).pop()?.[1]
+        || checked?.[2]
+        || '';
 
     if (isArabic) {
-        const heading = title ? `## تم التسليم: ${title}` : '## ملخص التسليم';
-        const result = [heading, buildVerified ? 'اكتمل البناء والتحقق من تجميع المشروع.' : 'اكتمل تنفيذ المشروع، مع وجود نقاط تحتاج متابعة.'];
+        const heading = title ? `${fullyVerified ? '## تم التسليم' : '## نتيجة التنفيذ'}: ${title}` : (fullyVerified ? '## ملخص التسليم' : '## نتيجة التنفيذ');
+        const result = [heading, fullyVerified ? 'اكتمل البناء والتحقق من المشروع.' : 'اكتمل البناء، لكن التحقق لم يكتمل بعد وتوجد نقاط يجب إصلاحها.'];
+        if (liveUrl) result.push(`المعاينة الحية: ${liveUrl}`);
+        if (credential) result.push(`بيانات الاختبار: ${credential[1]} / ${credential[2]}`);
         if (pages.length) result.push(`الصفحات المنفذة: ${pages.join(' · ')}.`);
-        if (score) result.push(`فحص المتصفح: **${score}/100**${checked ? ` — ${checked[1]} صفحات و${checked[2]} تفاعلًا` : ''}.`);
+        if (score) result.push(`فحص المتصفح: **${score}/100**${checked ? ` — ${checked[1]} صفحات و${measuredInteractions} تفاعلًا` : ''}.`);
         if (issueLines.length) {
             result.push('الملاحظات المتبقية:');
             result.push(...issueLines.map(line => `- ${line}`));
@@ -57,10 +66,16 @@ export function summarizeEngineeringReport(markdown: string, language = 'en'): s
         return result.join('\n');
     }
 
-    const heading = title ? `## Delivered: ${title}` : '## Delivery summary';
-    const result = [heading, buildVerified ? 'The project was built and verified to compile.' : 'The project was implemented, with follow-up items still visible.'];
+    const heading = title ? `${fullyVerified ? '## Delivered' : '## Execution result'}: ${title}` : (fullyVerified ? '## Delivery summary' : '## Execution result');
+    const result = [heading, fullyVerified ? 'The project was built and fully verified.' : 'The project was built, but verification is incomplete and remaining findings must be fixed.'];
+    if (liveUrl) result.push(`Live preview: ${liveUrl}`);
+    if (credential) result.push(`Test account: ${credential[1]} / ${credential[2]}`);
     if (pages.length) result.push(`Implemented pages: ${pages.join(' · ')}.`);
-    if (score) result.push(`Browser QA: **${score}/100**${checked ? ` — ${checked[1]} pages and ${checked[2]} interactions` : ''}.`);
+    if (score) {
+        const pageLabel = checked?.[1] === '1' ? 'page' : 'pages';
+        const interactionLabel = measuredInteractions === '1' ? 'interaction' : 'interactions';
+        result.push(`Browser QA: **${score}/100**${checked ? ` — ${checked[1]} ${pageLabel} and ${measuredInteractions} ${interactionLabel}` : ''}.`);
+    }
     if (issueLines.length) {
         result.push('Remaining findings:');
         result.push(...issueLines.map(line => `- ${line}`));

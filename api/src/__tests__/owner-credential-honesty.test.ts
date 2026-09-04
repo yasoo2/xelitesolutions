@@ -27,7 +27,29 @@ const T = () => fs.readFileSync(
 
 describe('the owner password is only offered when it can work', () => {
     it('listens for the server saying it created the account', () => {
-        expect(T()).toMatch(/if \(\/owner account created\/\.test\(l\)\) ownerCreated = true;/);
+        const s = T();
+        expect(s).toMatch(/if \(\/owner account created\/\.test\(l\)\) \{/);
+        expect(s).toContain('ownerCreated = true;');
+        expect(s).toContain('resolveWhenReady();');
+    });
+
+    it('waits for both the listener and fresh owner initialization before proving login', () => {
+        const s = T();
+        expect(s).toContain('const freshDatabaseAtStart = !hasDatabase(proj);');
+        expect(s).toContain('serverListening && (!freshDatabaseAtStart || ownerCreated)');
+        expect(s).toContain("|| fs.existsSync(path.join(dir, 'data.json'))");
+    });
+
+    it('hands runtime credentials to the interface only after a real login proof', () => {
+        expect(T()).toMatch(/\.\.\.\(authProven \? \{ runtimeAuth: \{/);
+    });
+
+    it('cannot complete a normal build when its live API proof failed', () => {
+        const s = T();
+        expect(s).toContain("const deliveryProven = proven || input?.skipInstall === true;");
+        expect(s).toContain('ok: deliveryProven');
+        expect(s).toContain("status: deliveryProven ? 'completed' : 'partial'");
+        expect(s).toContain('45_000');
     });
 
     it('prints the password only when the login was proved, or the account is new', () => {

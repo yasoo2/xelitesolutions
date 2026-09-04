@@ -701,6 +701,8 @@ export function requirementNamesPage(requirement: Pick<NamedRequirement, 'text' 
     return [requirement.text, requirement.quote].some(value => normalize(value) === expected);
 }
 
+import { inspectWorkflowEngineSource } from './workflow-contract';
+
 /**
  * Generated records apps expose a small, explicit contract. Verify that
  * contract without asking a slow or unavailable provider to interpret it.
@@ -774,8 +776,19 @@ function deterministicRecordVerdict(r: NamedRequirement, source: string): Judged
     // rating`). For a generated records schema, the field evidence is the
     // semantic remainder (`rating`), not the list introducer.
     const fieldPhrase = phrase.replace(/^(?:include|add|with)\s+(?:(?:a|an|the)\s+)?/iu, '').trim();
+    const workflowCapability = /\bsign[- ]?in\b|\blogin\b|\bauth(?:entication)?\b|\b(?:member|manager|admin|user)\s+roles?\b|\bpermissions?\b|\bprivate\b|\baccess\s+control\b|\bassign(?:ment|ed|ee)?\b|\bstatus\s+transitions?\b|\bcomments?\b|\baudit(?:\s+(?:log|trail|history))?\b|تسجيل\s*الدخول|صلاحيات|أدوار|خصوصي|إسناد|تعيين|انتقالات?\s*الحالة|تعليقات|سجل\s*التدقيق/iu.test(fieldPhrase);
+    if (workflowCapability) {
+        if (!/(?:function|class|const|let|var)\s+CustomApp\b/i.test(src)) {
+            return { ...r, verdict: 'unmet', why: 'the build rendered a generic records form instead of a workflow engine' };
+        }
+        const defects = inspectWorkflowEngineSource(text, src);
+        return defects.length
+            ? { ...r, verdict: 'unmet', why: defects[0].message }
+            : { ...r, verdict: 'met', why: 'the custom workflow engine implements and enforces this behaviour' };
+    }
     const fieldLike = fieldPhrase.length >= 3 && fieldPhrase.length <= 40
         && !/(?:search|filter|sort|export|validation|بحث|تصفية|فرز|تصدير|تحقق)/iu.test(fieldPhrase)
+        && !workflowCapability
         // Route labels are only accepted through the multi-page contract above.
         // A lone `label: 'Home'` in a record schema is not evidence of a Home page.
         && !/^(?:home|exhibits|visit|education)$/iu.test(fieldPhrase);
