@@ -156,6 +156,13 @@ describe('the forms are filled in and sent, not counted', () => {
         expect(b).toMatch(/form\.requestSubmit \? form\.requestSubmit\(\) : form\.submit\(\)/);
     });
 
+    it('waits for an observable async submit effect within a bounded window', () => {
+        const b = B();
+        expect(b).toContain('const effectDeadline = Date.now() + 2500;');
+        expect(b).toContain('while (!effect && Date.now() < effectDeadline)');
+        expect(b).toContain('effect = changed(before, after);');
+    });
+
     it('a full form that does nothing on submit is a critical finding', () => {
         // The finding that could not exist before: nothing was ever typed, so
         // «submit is dead» and «submit works» measured identically.

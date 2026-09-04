@@ -1214,9 +1214,20 @@ export async function probeForms(
                     if (form) (form.requestSubmit ? form.requestSubmit() : form.submit());
                 }, f.sel).catch(() => { });
             }
-            await page.waitForTimeout(650);
-            const after = await page.evaluate(snapshot).catch(() => null);
+            // Submission handlers are often async (for example, a contact
+            // form posts to Joe's inbox before showing its honest fallback).
+            // A single 650ms snapshot called those real forms dead on a busy
+            // local API. Poll for a bounded window instead: the result still
+            // requires a measured DOM/state/navigation change, never merely
+            // the passage of time.
+            let after = await page.evaluate(snapshot).catch(() => null);
             effect = changed(before, after);
+            const effectDeadline = Date.now() + 2500;
+            while (!effect && Date.now() < effectDeadline) {
+                await page.waitForTimeout(250);
+                after = await page.evaluate(snapshot).catch(() => null);
+                effect = changed(before, after);
+            }
             if (effect === 'navigation') {
                 effect = 'reload';
                 await page.goBack({ timeout: 5000 }).catch(() => { });
