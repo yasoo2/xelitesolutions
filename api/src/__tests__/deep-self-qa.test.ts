@@ -316,6 +316,12 @@ describe('the interface itself is inspected — «وفحص ui»', () => {
         expect(u).toContain('await page.waitForTimeout(240)');
     });
 
+    it('does not hide a route failure in the responsive pass', () => {
+        const a = read('core', 'quality', 'app-audit.ts');
+        expect(a).toMatch(/brokenRoutes\.push\(`\$\{r\} @ \$\{size\.name\}/);
+        expect(a).toMatch(/unreachable route at one viewport is itself/);
+    });
+
     it('every failing element is OUTLINED, not just listed', () => {
         const u = U();
         expect((u.match(/eyes\?\.mark\(/g) || []).length).toBeGreaterThanOrEqual(4);

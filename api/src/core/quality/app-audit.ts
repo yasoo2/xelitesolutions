@@ -878,9 +878,11 @@ export async function auditBuiltApp(
                         allControls.push({ ...c, bare: c.label, label, responsive: size.name });
                     }
                     mergeProbe({ ...responsive, controls: [] }, r);
-                } catch {
-                    // The baseline route result remains authoritative; a single
-                    // responsive navigation failure must not erase prior proof.
+                } catch (e: any) {
+                    // Keep the baseline proof, but do not erase a responsive
+                    // failure: an unreachable route at one viewport is itself
+                    // a user-visible regression and must reach the repair loop.
+                    brokenRoutes.push(`${r} @ ${size.name} (${String(e?.message || e).slice(0, 80)})`);
                 }
             }
         }
