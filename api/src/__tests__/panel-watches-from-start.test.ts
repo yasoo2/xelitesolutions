@@ -59,7 +59,7 @@ describe('the audit waits for the eye it promised', () => {
     it('waits on and audits the session carried by the run, with a panel fallback only when absent', () => {
         const src = REACT();
         expect(src).toMatch(/const auditSid = String\(context\?\.browserSessionId \|\| ''\)\.trim\(\) \|\| PANEL_BROWSER_SID/);
-        expect(src).toMatch(/waitForPanelWatcher\(auditSid, 4000\)/);
+        expect(src).toMatch(/waitForPanelWatcher\(auditSid, 15_000\)/);
         expect(src).toMatch(/watchSessionId: auditSid/);
         expect(src).toMatch(/requireVisibleBrowser: true/);
         expect(src).toMatch(/auditWatching = watching/);

@@ -6068,7 +6068,12 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
              */
             try {
                 const { waitForPanelWatcher } = require('../../browser/wsHub');
-                const watching = await waitForPanelWatcher(auditSid, 4000);
+                // Browser is a lazy-loaded panel. Four seconds was shorter
+                // than a cold mount on this machine, so QA started before its
+                // watcher existed and was correctly (but prematurely) blocked.
+                // Keep the wait bounded, while giving the visible eye time to
+                // connect before declaring the audit impossible.
+                const watching = await waitForPanelWatcher(auditSid, 15_000);
                 auditWatching = watching;
                 //  Name the session, not just the verdict: «no panel attached»
                 //  and «attached to a panel nobody is looking at» read the same

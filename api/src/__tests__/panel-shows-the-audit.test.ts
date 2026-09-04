@@ -43,7 +43,7 @@ describe('the browser is awake before the audit needs it', () => {
         expect(warmAt).toBeGreaterThan(0);
         expect(r).toContain('browserSessionId');
         expect(r).toContain('const auditSid = String(context?.browserSessionId || \'\').trim() || PANEL_BROWSER_SID;');
-        expect(r).toContain('waitForPanelWatcher(auditSid, 4000)');
+        expect(r).toContain('waitForPanelWatcher(auditSid, 15_000)');
         expect(r).toContain('watchSessionId: auditSid');
         expect(warmAt).toBeLessThan(installAt);
         expect(installAt).toBeLessThan(auditAt);
