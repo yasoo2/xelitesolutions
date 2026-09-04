@@ -24,6 +24,10 @@
  */
 import { detectAppKind } from '../core/design/app-blueprints';
 import { heroSecondaryDestination, sectionsForRequest } from '../modules/tools/definitions/ReactProjectTool';
+import fs from 'node:fs';
+import path from 'node:path';
+
+const REACT_TOOL = path.resolve(__dirname, '../modules/tools/definitions/ReactProjectTool.ts');
 
 /** The brief as the owner typed it, verbatim. */
 const OWNER_BRIEF = 'أنا عندي محل قطع سيارات. بدي صفحة أسجل فيها كل قطعة: اسمها ورقمها والكمية وسعر الشراء وسعر البيع. لما أضيف قطعة تنحفظ وتضل موجودة لما أسكر الصفحة وأرجع أفتحها. وبدي أبحث عن القطعة باسمها أو رقمها، وبدي يطلع لي تحت مجموع رأس المال ومجموع الربح المتوقع، وإذا كمية قطعة صارت أقل من 3 يصير لونها أحمر عشان أنتبه.';
@@ -71,5 +75,12 @@ describe('INVARIANT: described work chooses the engine, not a category noun', ()
 
     test('never chooses a dead generic CTA anchor', () => {
         expect(heroSecondaryDestination('landing', ['Hero', 'Contact'], false, true).href).toBe('#contact');
+    });
+
+    test('blocks catalogue acceptance when the request judge is blind', () => {
+        const source = fs.readFileSync(REACT_TOOL, 'utf8');
+        expect(source).toContain('judgeWasBlind && namedByHim.length > 0');
+        expect(source).toContain('catalogue fallback is diagnostic only');
+        expect(source).toContain('acceptance judge could not verify');
     });
 });

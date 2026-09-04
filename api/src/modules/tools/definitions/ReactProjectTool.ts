@@ -7484,7 +7484,18 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                     + 'Retry, or pick another provider from the providers button.\n')
             : '';
         const acceptBlock = `${standDownNotice}${acceptanceBlock(acceptance, isAr)}\n`;
-        const acceptanceBlocked = acceptance.criteria.length > 0 && !acceptance.accepted;
+        /**
+         * A blind acceptance judge is not a green fallback.
+         *
+         * The catalogue is useful as a diagnostic fallback, but it is not the
+         * user's contract.  When named requirements were extracted and the
+         * judge could not rule on any of them, accepting the catalogue made a
+         * real run report 100% while admitting that the request was never
+         * verified.  Keep the evidence visible and stop at the gate so the
+         * orchestrator can retry with a working judge/provider.
+         */
+        const acceptanceBlocked = acceptance.criteria.length > 0
+            && (!acceptance.accepted || (judgeWasBlind && namedByHim.length > 0));
         // A named request is a contract, not commentary. Do not report a green
         // delivery when the engine has no evidence for one of the requested
         // capabilities or when the acceptance ledger contains an unmet item.
@@ -7493,7 +7504,9 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             term(`delivery: BLOCKED — requested capabilities not proven: ${askedButMissing.join(', ')}`);
         }
         if (acceptanceBlocked) {
-            term(`delivery: BLOCKED — acceptance ledger is not accepted (${acceptance.unmet} requested criteria not proven)`);
+            term(judgeWasBlind && namedByHim.length > 0
+                ? `delivery: BLOCKED — acceptance judge could not verify ${namedByHim.length} request requirement(s); catalogue fallback is diagnostic only`
+                : `delivery: BLOCKED — acceptance ledger is not accepted (${acceptance.unmet} requested criteria not proven)`);
         }
 
         const shellBlock = (() => {
