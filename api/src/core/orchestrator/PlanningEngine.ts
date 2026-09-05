@@ -1301,7 +1301,26 @@ Rules:
         {
             const testRepairRequest = /(test\s+suite|failing\s+tests?|اختبارات?\s*(المشروع|الكود)?|الاختبارات|فشل(?:ت|ت?\s+في)?\s*الاختبار)/i.test(userGoal)
                 && /(repair|fix|correct|إصلاح|اصلح|أصلح|صحح|صلح|عالج)/i.test(userGoal);
-            if (testRepairRequest) {
+            const existingFeatureChange = /\b(?:current|existing|same)\s+project\b|(?:المشروع|مشروع|التطبيق|تطبيق)[\s\S]{0,32}(?:الحالي|القائم|نفسه)|(?:الحالي|القائم)[\s\S]{0,32}(?:المشروع|مشروع|التطبيق|تطبيق)/i.test(userGoal)
+                && /\b(?:add|change|modify|update|edit|remove|delete|implement)\b|(?:أضف|اضف|إضافة|اضافة|غيّر|غير|تغيير|عدّل|عدل|تعديل|حذف|إزالة)/.test(userGoal);
+            const activeProjectKey = String(context?.sessionId || (intent as any)?.context?.sessionId || (intent as any)?.sessionId || 'default').replace(/[^a-zA-Z0-9._-]/g, '_');
+            const activeProject = ((global as any).joeProjects || {})[activeProjectKey];
+            if (existingFeatureChange && activeProject?.dir) {
+                return {
+                    id: `project_edit_existing_${Date.now()}`,
+                    goal: intent.goal,
+                    steps: [{
+                        id: 'project_edit',
+                        description: `Surgical edit of the active project: ${intent.goal}`,
+                        tool: 'project_edit',
+                        agent: 'Dev',
+                        input: { request: intent.goal },
+                        dependsOn: [],
+                    }],
+                    metadata: { complexity: 'medium', riskLevel: 'low' },
+                };
+            }
+            if (testRepairRequest && !existingFeatureChange) {
                 return {
                     id: `project_repair_tests_${Date.now()}`,
                     goal: intent.goal,

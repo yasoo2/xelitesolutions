@@ -55,6 +55,14 @@ export async function recoverPackagedQaAuth(packagedDir: string): Promise<any | 
     }
 }
 
+export async function verifiedRepairServeUrl(
+    candidate: unknown,
+    answers: (url: string) => Promise<boolean>,
+): Promise<string> {
+    const url = String(candidate || '').trim();
+    return url && await answers(url) ? url : '';
+}
+
 export class ProjectRepairTool extends BaseTool {
     name = 'project_repair';
     version = '1.0.0';
@@ -118,7 +126,15 @@ export class ProjectRepairTool extends BaseTool {
         const { PANEL_BROWSER_SID } = require('./BrowserSmartTools');
         const watchSessionId = String(input?.watchSessionId || context?.browserSessionId || PANEL_BROWSER_SID || '').trim();
         const projectEntry = projects[sessionKey] || {};
-        let serveUrl = String(input?.serveUrl || projectEntry?.live?.url || '').trim();
+        const recordedServeUrl = String(input?.serveUrl || projectEntry?.live?.url || '').trim();
+        let serveUrl = await verifiedRepairServeUrl(recordedServeUrl, url => this.urlAnswers(url));
+        if (recordedServeUrl && !serveUrl) {
+            // A dead remembered server must never turn a static-build audit into
+            // a connection-refused failure. Later tools will select a verified
+            // preview or revive the packaged app instead.
+            if (projectEntry?.live?.url === recordedServeUrl) delete projectEntry.live;
+            term(`repair: ignored stale live URL ${recordedServeUrl}`);
+        }
         let runtimeAuth = input?.credentials || projectEntry?.runtimeAuth;
         const artifactRootDir = String(input?.artifactRootDir || process.env.ARTIFACT_DIR || '/tmp/joe-artifacts').trim();
 
@@ -131,7 +147,7 @@ export class ProjectRepairTool extends BaseTool {
             runtimeAuth = await recoverPackagedQaAuth(packagedDir);
             if (runtimeAuth) term('repair: recovered a short-lived local QA token — protected screens will be tested');
         }
-        if ((!serveUrl || !(await this.urlAnswers(serveUrl)))
+        if (!serveUrl
             && packagedDir && fs.existsSync(path.join(packagedDir, 'server.js'))
             && fs.existsSync(path.join(packagedDir, 'node_modules'))) {
             const port = 4600 + Math.floor(Math.random() * 300);
@@ -163,7 +179,7 @@ export class ProjectRepairTool extends BaseTool {
         try { broadcast({ type: 'panel_focus', sessionId, data: { panel: 'browser', reason: 'repair' } } as any); } catch { /* UI optional */ }
         // Chromium starts while the panel is still downloading its chunk, so
         // the first frame he sees is the page and not four white seconds.
-        try { require('../../browser/manager').warmBrowserSession(PANEL_BROWSER_SID); } catch { /* the audit launches its own */ }
+        try { require('../../browser/manager').warmBrowserSession(watchSessionId); } catch { /* the audit launches its own */ }
         let watching = false;
         try {
             const { waitForPanelWatcher } = require('../../../browser/wsHub');

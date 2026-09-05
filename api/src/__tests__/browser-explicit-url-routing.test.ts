@@ -110,6 +110,26 @@ describe('active live preview browser routing', () => {
         }
     });
 
+    test('routes a current-project feature change with QA instructions to project_edit first', async () => {
+        const sessionId = `continuation-route-${Date.now()}`;
+        const key = sessionId.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const before = { ...(((global as any).joeProjects || {}) as Record<string, any>) };
+        (global as any).joeProjects = {
+            ...before,
+            [key]: { dir: 'C:/workspace/current-app', type: 'react', updatedAt: Date.now() },
+        };
+        try {
+            const p = await PlanningEngine.generatePlan(
+                { intent: { goal: 'افتح مشروع ميزانيتي الحالي ولا تنشئ مشروعاً جديداً. أضف فلتر فئة فعلياً، ثم اختبره في المتصفح وأصلح أي عيب مثبت.', complexity: 'medium', riskLevel: 'low', rawIntent: {} } as any },
+                sessionId,
+                { sessionId },
+            );
+            expect(p.steps[0].tool).toBe('project_edit');
+        } finally {
+            (global as any).joeProjects = before;
+        }
+    });
+
     test('keeps a new build with an embedded QA repair loop out of project_repair', async () => {
         const sessionId = `build-qa-route-${Date.now()}`;
         const key = sessionId.replace(/[^a-zA-Z0-9._-]/g, '_');
