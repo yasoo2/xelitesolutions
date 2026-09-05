@@ -677,8 +677,8 @@ export function repairFlatHierarchy(css: string, evidence: any[], round = 1): Re
 /* ── ${marker} ─────────────────────────────────────────────
    ${m.headingPx}px على ${body}px = ${(Number(m.headingPx) / body).toFixed(2)} — لا تسلسل.
    العنوان يرتفع إلى ${target}px، أي ${(target / body).toFixed(2)}. */
-h1 { font-size: ${target}px; line-height: 1.15; }
-h2 { font-size: ${Math.max(body + 2, Math.round(target * 0.78))}px; line-height: 1.2; }
+h1 { font-size: ${target}px !important; line-height: 1.15; }
+h2 { font-size: ${Math.max(body + 2, Math.round(target * 0.78))}px !important; line-height: 1.2; }
 `,
         repairs: [{
             id: 'flat_hierarchy',

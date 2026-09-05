@@ -17,7 +17,7 @@
  */
 import {
     repairHtmlShell, repairImagesAlt, repairInputLabels,
-    repairDeadLinks, repairHeadings, repairTapTargets, repairProjectFiles,
+    repairDeadLinks, repairHeadings, repairTapTargets, repairFlatHierarchy, repairProjectFiles,
 } from '../core/quality/ui-repair';
 import { syntaxOk } from '../modules/tools/definitions/ProjectEditTool';
 
@@ -96,6 +96,15 @@ describe('the JSX fixers survive real JSX', () => {
         const once = repairTapTargets('body{}').text;
         expect(once).toMatch(/min-height:\s*44px/);
         expect(repairTapTargets(once).text).toBe(once);
+    });
+
+    it('makes measured heading hierarchy win over component-specific CSS', () => {
+        const r = repairFlatHierarchy('.hero h2 { font-size: 18px; } body { font-size: 14px; }', [
+            { bodyPx: 14, headingPx: 18 },
+        ]);
+        expect(r.repairs).toEqual(expect.arrayContaining([expect.objectContaining({ id: 'flat_hierarchy' })]));
+        expect(r.text).toMatch(/h1\s*\{[^}]*font-size:\s*22px\s*!important/s);
+        expect(r.text).toMatch(/h2\s*\{[^}]*!important/s);
     });
 });
 
