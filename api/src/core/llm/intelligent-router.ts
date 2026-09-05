@@ -2435,7 +2435,7 @@ export async function routeToModel(
                         ? (requestedTimeout ? Math.min(autoPlanningLeash, requestedTimeout) : autoPlanningLeash)
                         : Math.min(timeoutValue, measuredLeash);
                 }
-                if (offlineMode && provider.name === 'Local (Auto)') {
+                if (offlineMode && p.name === 'Local (Auto)') {
                     timeoutValue = Math.min(timeoutValue, OFFLINE_LOCAL_TIMEOUT_MS);
                 }
                 // A recovery call must not restore the long first-attempt leash

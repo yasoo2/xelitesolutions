@@ -7,7 +7,7 @@ describe('offline local provider deadline', () => {
     it('keeps one real Ollama attempt bounded instead of waiting ten minutes', () => {
         expect(ROUTER).toContain('OFFLINE_LOCAL_TIMEOUT_MS');
         expect(ROUTER).toMatch(/OFFLINE_LOCAL_TIMEOUT_MS[\s\S]{0,500}45_000/);
-        expect(ROUTER).toContain("if (offlineMode && provider.name === 'Local (Auto)')");
+        expect(ROUTER).toContain("if (offlineMode && p.name === 'Local (Auto)')");
         expect(ROUTER).toContain('timeoutValue = Math.min(timeoutValue, OFFLINE_LOCAL_TIMEOUT_MS);');
     });
 
