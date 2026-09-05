@@ -1895,6 +1895,44 @@ function deriveContent(request: string, isAr: boolean, kind: PageKind = 'generic
             ],
         });
     }
+    if (kind === 'blog' || kind === 'archive') {
+        // A blog request still needs a useful deterministic floor when the
+        // selected model is unavailable. Keep the content request-driven:
+        // article cards and search are real behaviour, not a generic SaaS
+        // feature list disguised as a blog.
+        Object.assign(base, isAr ? {
+            tagline: 'أفكار واضحة، قصص مفيدة، وقراءات تستحق وقتك.',
+            heroTitle: 'اقرأ ما يوسّع فكرتك',
+            heroLede: 'مقالات منتقاة تجمع المعرفة العملية مع أسلوب قراءة هادئ ومباشر.',
+            cta: 'استكشف المقالات',
+            featuresTitle: 'أحدث المقالات',
+            features: [
+                { title: 'كيف نصنع فكرة قابلة للتطبيق؟', text: 'خطوات عملية لتحويل الملاحظة الأولى إلى مشروع واضح يمكن تطويره.' },
+                { title: 'التصميم الذي يخدم القارئ', text: 'لماذا تختصر البساطة الطريق، وكيف تبني صفحة مريحة من أول زيارة.' },
+            ],
+            storyTitle: 'مقال مميز',
+            storyBody: ['نكتب من تجربة حقيقية وبحث قابل للفهم، لا من عناوين عابرة.', 'كل مقال يترك للقارئ فكرة يمكن اختبارها بعد انتهاء القراءة.'],
+            ctaBandTitle: 'ابدأ من المقال الأقرب إليك',
+            ctaBandText: 'ابحث في العناوين واقرأ ما يناسب سؤالك الآن.',
+            perks: ['قراءة قصيرة ومركزة', 'موضوعات متجددة', 'بحث مباشر في المقالات'],
+        } : {
+            tagline: 'Clear ideas, useful stories, and reading worth your time.',
+            heroTitle: 'Read what moves your thinking forward',
+            heroLede: 'Thoughtful articles that pair practical knowledge with a calm, direct reading experience.',
+            cta: 'Explore articles',
+            featuresTitle: 'Latest articles',
+            features: [
+                { title: 'How do you make an idea actionable?', text: 'Practical steps for turning a first observation into a clear project you can grow.' },
+                { title: 'Design that serves the reader', text: 'Why simplicity shortens the path, and how to make a page comfortable from the first visit.' },
+            ],
+            storyTitle: 'Featured article',
+            storyBody: ['We write from real experience and readable research, not passing headlines.', 'Every article leaves readers with an idea they can test after reading.'],
+            ctaBandTitle: 'Start with the right article',
+            ctaBandText: 'Search the headlines and read what answers your question today.',
+            perks: ['Short focused reading', 'Fresh topics', 'Direct article search'],
+        });
+        (base as any).blogSearch = true;
+    }
     return base;
 }
 
@@ -2380,7 +2418,7 @@ export default function Gallery({ content }) {
 }
 
 function fileFeaturesJsx(): string {
-    return `import React from 'react';
+    return `import React, { useMemo, useState } from 'react';
 
 const ICONS = [
   <svg key="a" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg>,
@@ -2389,12 +2427,28 @@ const ICONS = [
 ];
 
 export default function Features({ content }) {
+  const [query, setQuery] = useState('');
+  const visible = useMemo(() => {
+    const items = content.features || [];
+    if (!content.blogSearch || !query.trim()) return items;
+    const q = query.trim().toLocaleLowerCase();
+    return items.filter((item) => \`\${item.title} \${item.text}\`.toLocaleLowerCase().includes(q));
+  }, [content.features, content.blogSearch, query]);
   return (
     <section className="section" id="features">
       <div className="wrap">
         <h2>{content.featuresTitle}</h2>
+        {content.blogSearch ? (
+          <form className="blog-search" role="search" onSubmit={(e) => e.preventDefault()}>
+            <label htmlFor="article-search">{content.isArabic ? 'ابحث في المقالات' : 'Search articles'}</label>
+            <div className="blog-search-row">
+              <input id="article-search" type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder={content.isArabic ? 'اكتب كلمة أو موضوعاً' : 'Type a word or topic'} />
+              <button type="submit">{content.isArabic ? 'بحث' : 'Search'}</button>
+            </div>
+          </form>
+        ) : null}
         <div className="grid-3">
-          {content.features.map((f, i) => (
+          {visible.map((f, i) => (
             <div className="card" key={f.title}>
               <div className="card-icon" aria-hidden="true">{ICONS[i % ICONS.length]}</div>
               <h3>{f.title}</h3>
@@ -2402,6 +2456,7 @@ export default function Features({ content }) {
             </div>
           ))}
         </div>
+        {content.blogSearch && !visible.length ? <p role="status">{content.isArabic ? 'لا توجد مقالات مطابقة.' : 'No matching articles.'}</p> : null}
       </div>
     </section>
   );
@@ -3395,6 +3450,11 @@ h1,h2,h3{font-family:var(--f-head);font-weight:var(--f-head-weight)}
 .btn{transition:transform .25s ease,box-shadow .25s ease,background .25s ease}
 .btn:hover{background:var(--brand-dark);transform:translateY(-2px);box-shadow:0 10px 24px -10px color-mix(in srgb,var(--brand) 55%,transparent)}
 .grid-3{display:grid;gap:22px;grid-template-columns:1fr}
+.blog-search{max-width:620px;margin:0 0 28px;padding:16px 18px;border:1px solid var(--border);border-radius:var(--f-radius);background:var(--surface)}
+.blog-search label{display:block;margin-bottom:8px;font-weight:700}
+.blog-search-row{display:flex;gap:10px;align-items:stretch}
+.blog-search input{flex:1;min-width:0;border:1px solid var(--border);border-radius:var(--f-btn-radius);padding:11px 13px;background:var(--bg);color:var(--text);font:inherit}
+.blog-search button{border:0;border-radius:var(--f-btn-radius);padding:0 20px;background:var(--brand);color:var(--on-brand);font:inherit;font-weight:700;cursor:pointer}
 @media(min-width:900px){.grid-3{grid-template-columns:repeat(3,1fr)}
 .products-grid .product-card:first-child{grid-column:span 2}
 .products-grid .product-card:first-child .product-photo{aspect-ratio:16/8}}
