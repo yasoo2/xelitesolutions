@@ -826,12 +826,12 @@ describe('evidence-aware file edit recovery', () => {
     });
 
     expect(plan.allowed).toBe(true);
-    expect(plan.suggestedTool).toBe('file_edit_advanced');
+    expect(plan.suggestedTool).toBe('ai_write_file');
     expect(plan.maxAttempts).toBe(1);
-    expect(plan.suggestedInput).toEqual({
-      filePath: 'NEXUS/agents/workflowEngine.js',
-      edits: [{ find: 'const oldValue = true;', replace: 'const newValue = true;' }],
-    });
+    expect(plan.suggestedInput).toEqual(expect.objectContaining({
+      path: 'NEXUS/agents/workflowEngine.js',
+      description: expect.stringContaining('Do not retry the rejected literal replacement.'),
+    }));
   });
 
   it('resumes a single react_project task instead of dropping request-driven authoring', () => {

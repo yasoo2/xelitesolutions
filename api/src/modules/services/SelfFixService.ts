@@ -819,16 +819,31 @@ export class SelfFixService {
 
     const failedEdit = extractFailedEdit(ticket);
     if (failedEdit && /text to replace not found|search text.*not found|find.*not found/i.test(text)) {
+      const failedTask = ticket.failedTasks.find(task =>
+        task.file === failedEdit.file && ['file_edit', 'file_edit_advanced'].includes(task.tool),
+      );
       return {
         type: 'self_fix_plan',
         allowed: true,
-        reason: `The exact file edit missed the current file. Retry once with evidence-preserving advanced edit for ${failedEdit.file}; if the current content still does not match, stop for review.`,
+        reason: `The exact file edit missed the current file. Regenerate only ${failedEdit.file} from the current file and the original task brief, then rerun the failed phase once.`,
         maxAttempts: 1,
         strategy: 'code_fix',
-        suggestedTool: 'file_edit_advanced',
+        suggestedTool: 'ai_write_file',
         suggestedInput: {
-          filePath: failedEdit.file,
-          edits: [{ find: failedEdit.find, replace: failedEdit.replace }],
+          path: failedEdit.file,
+          description: [
+            `Repair only ${failedEdit.file}; do not edit another file or package manifest.`,
+            'The previous exact text replacement did not match the current source shape. Inspect the complete current file before editing.',
+            'Implement the original task behavior using the existing exports, framework, imports, and coding style. Preserve all unrelated behavior.',
+            'Do not retry the rejected literal replacement. Return one complete source file with valid syntax and no Markdown fences or explanatory prose.',
+            `Rejected replacement evidence: find=${failedEdit.find}\nreplace=${failedEdit.replace}`,
+            ...(failedTask?.description ? [`Original task brief: ${failedTask.description}`] : []),
+          ].join('\n'),
+          context: JSON.stringify({
+            failedEdit,
+            originalTask: failedTask?.description || failedTask?.task,
+            repairTicket: ticket,
+          }),
         },
         rememberedCure: cureNote || undefined,
         safety: this.safety(),

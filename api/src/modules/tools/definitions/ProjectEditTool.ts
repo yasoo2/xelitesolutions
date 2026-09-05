@@ -79,6 +79,20 @@ export function modelCannotTell(raw: string): string | null {
 }
 
 /**
+ * A useful implementation brief can still be rejected by a weak provider.
+ * Keep the refusal for genuinely vague requests, but recognise a brief that
+ * names an action and a concrete target/behaviour so the editor can make one
+ * bounded clarification attempt instead of failing the whole phase.
+ */
+export function isActionableEditRequest(request: string): boolean {
+    const text = String(request || '').trim();
+    if (text.length < 12 || /^(?:edit|update|change|modify)\s+(?:the\s+)?(?:project|files?|app|application)\.?$/i.test(text)) return false;
+    const action = /\b(?:add|change|modify|update|edit|remove|delete|implement|wire|connect|use|replace|rename|fix|repair)\b|أضف|غيّر|غير|عدّل|عدل|تعديل|حذف|إزالة|ازالة|أصلح|اصلح|إصلاح|اصلاح|اربط|استخدم|استبدل|غيّر/iu.test(text);
+    const target = /\b(?:component|context|state|form|button|route|field|input|filter|search|storage|style|color|colour|text|file|api|handler|function|menu|dialog|list|item|validation)\b|\b[A-Z][A-Za-z0-9_]*\b|(?:مكوّن|مكون|حالة|نموذج|زر|حقل|بحث|تخزين|لون|نص|ملف|واجهة|قائمة|تحقق)/iu.test(text);
+    return action && target;
+}
+
+/**
  * A RANKING'S PRIOR IS NOT ITS EVIDENCE.
  *
  * `content.js` is given four points before a single word of the request is
@@ -1016,7 +1030,24 @@ This is a correct answer, not a failure. Changing something the user did not ask
              * at a file, or at anything in one. Asking costs him a sentence;
              * guessing costs him work he did not ask to have altered.
              */
-            const cannot = modelCannotTell(raw);
+            let cannot = modelCannotTell(raw);
+            if (cannot && isActionableEditRequest(request)) {
+                // A provider may mistake a concise, valid engineering brief
+                // for an unspecified visual edit. One stronger clarification
+                // keeps the safety boundary (the same files and request) while
+                // giving the model a chance to produce an evidence-bound diff.
+                logs.push(`model asked for clarification on an actionable brief: ${cannot} — retrying once with implementation context`);
+                const retryPrompt = `${prompt}\n\nThe request is an actionable engineering brief, not a request for a visual redesign. Implement the named behaviour using the supplied files. Derive the smallest safe SEARCH/REPLACE diff from the existing code; do not ask the user to restate a target that is already named. If the files truly cannot support the request, return CANNOT TELL again.`;
+                try {
+                    raw = await routeToModel([
+                        { role: 'system', content: retryPrompt },
+                        { role: 'user', content: `THE REQUEST: ${request}\n\n${scored.map(s => `FILE: ${s.f}\n\`\`\`\n${s.body}\n\`\`\``).join('\n\n')}` },
+                    ], undefined, undefined, undefined, undefined, undefined, undefined, context);
+                    cannot = modelCannotTell(raw);
+                } catch (e: any) {
+                    logs.push(`actionable edit clarification failed: ${String(e?.message || e).slice(0, 120)}`);
+                }
+            }
             if (cannot) {
                 logs.push(`model declined to guess: ${cannot}`);
                 return {
