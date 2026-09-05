@@ -315,6 +315,8 @@ describe('the interface itself is inspected — «وفحص ui»', () => {
         expect(u).toContain('dontSetVisibleSize: false');
         expect(u).toContain('screenWidth: width, screenHeight: height');
         expect(u).toContain('export async function applyViewportSize');
+        expect(u).toContain("typeof context?.setViewportSize === 'function'");
+        expect(u).toContain('await context.setViewportSize({ width, height });');
         expect(u).toContain('await page.waitForTimeout(180)');
         expect(u).toContain('await page.waitForTimeout(240)');
     });

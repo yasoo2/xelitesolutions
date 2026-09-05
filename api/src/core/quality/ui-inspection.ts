@@ -89,6 +89,19 @@ export async function applyViewportSize(page: any, width: number, height: number
     await page.waitForTimeout(180).catch(() => { });
     let actual = await evalInPage(page, function () { return { width: window.innerWidth, height: window.innerHeight }; }).catch(() => ({ width: 0, height: 0 }));
     if (Math.abs(Number(actual?.width || 0) - width) <= 2) return actual;
+    // A persistent Playwright profile owns the viewport at context level. In
+    // that mode page.setViewportSize can resolve while the visible document
+    // remains at its previous width. Prefer the context setter when exposed,
+    // then measure the document again before falling back to CDP emulation.
+    try {
+        const context = page.context?.();
+        if (typeof context?.setViewportSize === 'function') {
+            await context.setViewportSize({ width, height });
+            await page.waitForTimeout(180).catch(() => { });
+            actual = await evalInPage(page, function () { return { width: window.innerWidth, height: window.innerHeight }; });
+        }
+    } catch { /* CDP remains the compatibility path below */ }
+    if (Math.abs(Number(actual?.width || 0) - width) <= 2) return actual;
     try {
         const cdp = await page.context().newCDPSession(page);
         // Persistent/headed Chromium can keep the old visible surface unless
