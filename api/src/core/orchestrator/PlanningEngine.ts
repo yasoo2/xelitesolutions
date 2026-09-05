@@ -308,7 +308,16 @@ export class PlanningEngine {
         // A single document, said outright.
         const pageSignals = /(صفحة\s*(هبوط|واحدة)?|لاندنج|بورتفوليو|معرض\s*أعمال|سيرة\s*ذاتية|بروشور|قائمة\s*طعام|منيو|landing|portfolio|brochure|one[- ]?pager|resume|cv)/i;
 
-        const data = dataSignals.test(g) || ownedApiSignals.test(g);
+        // A browser application may deliberately consume a public API and
+        // explicitly forbid an owned backend. A conditional "if authentication
+        // is needed" with local/demo persistence is not evidence that Joe must
+        // invent one. Keep this exception narrow: an explicit no-backend
+        // contract and a conditional local/demo auth fallback must both exist.
+        const publicApiWithoutBackend = /\b(?:public|third[- ]party|external)\b[^.!?\n]{0,80}\bapis?\b/i.test(g)
+            && /\b(?:do\s+not|don't|without)\s+(?:build|create|implement)?\s*(?:a\s+)?(?:project[- ]owned\s+)?backend\b/i.test(g);
+        const conditionalDemoAuth = /\bif\s+authentication\s+is\s+needed\b[^.!?\n]{0,160}\b(?:local|demo)\b[^.!?\n]{0,80}\bpersistence\b/i.test(g);
+        const ownsBackend = ownedApiSignals.test(g) && !publicApiWithoutBackend;
+        const data = ownsBackend || (dataSignals.test(g) && !(publicApiWithoutBackend && conditionalDemoAuth));
         const app = appSignals.test(g) || structuredInteraction;
         const page = pageSignals.test(g);
 

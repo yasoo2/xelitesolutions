@@ -315,6 +315,7 @@ describe('the bridge tool — plan, execute phases, report honestly', () => {
 
     test('read-only workspace overview does not require choosing one child project', () => {
         expect(src).toMatch(/isWorkspaceOverviewRequest/);
+        expect(src).toMatch(/مساحة\\s\+العمل\\s\+\(\?:الرئيسية\|الأساسية\)/);
         expect(src).toMatch(/executeTool\('inspect_directory'/);
         expect(src).toMatch(/executeTool\('search_files'/);
         expect(src).toMatch(/executeTool\('read_file'/);
@@ -548,8 +549,9 @@ describe('the bridge tool — plan, execute phases, report honestly', () => {
         const orch = fs.readFileSync(
             path.join(__dirname, '..', 'orchestration', 'AgentOrchestrator.ts'), 'utf-8');
         expect(orch).toMatch(/'project_pipeline'/);
-        // And it gets the RUN budget — a multi-phase build is not one node's slice.
-        expect(orch).toMatch(/node\.tool === 'project_pipeline' \? RUN_DEADLINE_MS : NODE_DEADLINE_MS/);
+        // Engineering runs get the RUN budget — a multi-phase build is not one
+        // node's slice, whether it enters through the pipeline or a direct builder.
+        expect(orch).toMatch(/const nodeBudget = engineeringNode \? RUN_DEADLINE_MS : NODE_DEADLINE_MS/);
     });
 
     test('phase project_run uses accepted project evidence without overriding explicit arguments', () => {
