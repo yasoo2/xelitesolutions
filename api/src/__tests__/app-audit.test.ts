@@ -102,6 +102,12 @@ describe('the wiring — every green build gets measured', () => {
         expect(storeSrc).toContain('delete copy.runtimeAuth;');
         expect(storeSrc).toContain('delete copy.ownerPassword;');
     });
+
+    it('gives required Browser QA enough bounded time to cover routes and responsive states', () => {
+        const src = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ReactProjectTool.ts'), 'utf-8');
+        expect(src).toContain('timeoutMs: 180_000');
+        expect(src).not.toContain('timeoutMs: 60_000');
+    });
     it('labels a proven authenticated pass in the chat verdict', () => {
         const verdict = formatAudit({ score: 100, findings: [], authenticated: true }, true);
         expect(verdict).toContain('دخول محمي مثبت');
