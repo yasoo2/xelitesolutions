@@ -107,6 +107,28 @@ describe('the tool: colour changes are deterministic; honest without a project',
     });
 });
 
+describe('the tool: known records persistence does not wait for a model', () => {
+    let tmp: string;
+    beforeEach(() => {
+        tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-filter-persist-'));
+        fs.mkdirSync(path.join(tmp, 'src', 'components'), { recursive: true });
+        fs.writeFileSync(path.join(tmp, 'package.json'), '{"name":"ledger"}');
+        fs.writeFileSync(path.join(tmp, 'src', 'content.js'), "\n  kind: 'expenses',\n  engine: 'records',\n  storeKey: 'ledger',\n  brand: 'Ledger',\n  title: 'Ledger',\n  entityOne: 'expense',\n  entityMany: 'expenses',\n  api: '',\n  sourceRequest: 'ledger',\n  isArabic: false,\n");
+        fs.writeFileSync(path.join(tmp, 'src', 'components', 'RecordsApp.jsx'), "import React, { useEffect, useState } from 'react';\nexport default function RecordsApp({ content }) {\n  const filterKeys = ['category'];\n  const rel = null;\n  const parentStore = {};\n  const [filters, setFilters] = useState({});\n  const [parents] = useState([]);\n  useEffect(() => { if (rel) parentStore.write(parents); }, [parents, parentStore, rel]);\n  return <select value={filters.category || ''} onChange={e => setFilters({ category: e.target.value })} />;\n}");
+    });
+    afterEach(() => fs.rmSync(tmp, { recursive: true, force: true }));
+
+    it('patches only the declared filter state without calling a model', async () => {
+        const res: any = await new ProjectEditTool().execute({ request: 'احفظ فلتر الفئة بعد إعادة التحميل', dir: tmp }, { sessionId: 'pedit-filter' });
+        const source = fs.readFileSync(path.join(tmp, 'src', 'components', 'RecordsApp.jsx'), 'utf-8');
+        expect(res.ok).toBe(true);
+        expect(res.output.touched).toEqual(['src/components/RecordsApp.jsx']);
+        expect(source).toContain("const filterStoreKey = content.storeKey + ':filters';");
+        expect(source).toContain('localStorage.setItem(filterStoreKey, JSON.stringify(filters))');
+        delete (global as any).joeProjects?.['pedit-filter'];
+    });
+});
+
 describe('routing: an edit goes to the surgical editor when the project is the active artifact', () => {
     const KEY = 'pedit-route';
     const FALLTHROUGH = 'llm-fallthrough';

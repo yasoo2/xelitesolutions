@@ -357,6 +357,64 @@ export class ProjectEditTool extends BaseTool {
                 return { kind, engine, storeKey, brand: g('brand'), title: g('title'), entityOne: g('entityOne'), entityMany: g('entityMany'), api: g('api'), sourceRequest: g('sourceRequest'), isArabic: /isArabic:\s*true/.test(src) };
             } catch { return null; }
         })();
+        // A request to retain a records filter is a known, bounded change to
+        // Joe's own RecordsApp contract. Do not make the user wait for a model
+        // to rediscover the exact state/storage wiring we generated ourselves.
+        const persistFilterRequest = /(?:فلتر|تصفية|filter)[\s\S]{0,90}(?:حفظ|احتف(?:ظ)?|إعادة\s*تحميل|reload|persist)|(?:حفظ|احتف(?:ظ)?|إعادة\s*تحميل|reload|persist)[\s\S]{0,90}(?:فلتر|تصفية|filter)/iu.test(request);
+        const recordsFile = path.join(dir, 'src', 'components', 'RecordsApp.jsx');
+        if (persistFilterRequest && appMeta?.engine === 'records' && fs.existsSync(recordsFile)) {
+            const before = fs.readFileSync(recordsFile, 'utf-8');
+            if (!before.includes("const filterStoreKey = content.storeKey + ':filters';")) {
+                const stateNeedle = "  const [filters, setFilters] = useState({});";
+                const effectsNeedle = "  useEffect(() => { if (rel) parentStore.write(parents); }, [parents, parentStore, rel]);";
+                const persistedState = `  const filterStoreKey = content.storeKey + ':filters';
+  const [filters, setFilters] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(filterStoreKey) || '{}');
+      if (!saved || typeof saved !== 'object' || Array.isArray(saved)) return {};
+      return filterKeys.reduce((next, key) => {
+        if (typeof saved[key] === 'string') next[key] = saved[key];
+        return next;
+      }, {});
+    } catch { return {}; }
+  });`;
+                const persistedEffect = `${effectsNeedle}
+  useEffect(() => {
+    try { localStorage.setItem(filterStoreKey, JSON.stringify(filters)); } catch { /* private mode */ }
+  }, [filterStoreKey, filters]);`;
+                const after = before.replace(stateNeedle, persistedState).replace(effectsNeedle, persistedEffect);
+                const gate = syntaxOk('src/components/RecordsApp.jsx', after);
+                if (!gate.ok || after === before) {
+                    return { ok: true, output: { message: isAr ? 'لم أطبّق حفظ الفلتر لأن بنية التطبيق الحالية لا تطابق العقد الآمن للتعديل.' : 'I did not apply filter persistence because this app no longer matches the safe edit contract.' }, logs } as any;
+                }
+                fs.writeFileSync(recordsFile, after, 'utf-8');
+                if (fs.existsSync(path.join(dir, 'node_modules'))) {
+                    const { executionEngine } = require('../../../kernel/ExecutionEngine');
+                    buildVerified = (await executionEngine.runArgvStreaming('npm', ['run', 'build'], {
+                        cwd: dir, timeout: 240_000, env: { NO_COLOR: '1' },
+                    }).done).ok;
+                    if (!buildVerified) {
+                        fs.writeFileSync(recordsFile, before, 'utf-8');
+                        logs.push('deterministic filter persistence reverted — build failed');
+                        return { ok: true, output: { message: isAr ? 'رفضتُ التعديل لأن البناء فشل بعده، فأرجعت الملف كما كان.' : 'I rejected the change because its build failed and restored the file.' }, logs } as any;
+                    }
+                }
+                const history = (entry?.history || []).concat({ file: 'src/components/RecordsApp.jsx', before, at: Date.now() }).slice(-20);
+                writeJoeProject(sessionKey, { ...(entry || {}), dir, updatedAt: Date.now(), history, lastRequest: request.slice(0, 80) }, context?.runId ?? null);
+                persistJoeProjects();
+                logs.push('deterministic edit: persisted declared RecordsApp filters without a model');
+                return {
+                    ok: true,
+                    output: {
+                        message: isAr ? 'حفظتُ اختيار الفلتر للمشروع الحالي. سيعود اختيار الفئة بعد إعادة تحميل الصفحة، ولا تُستعاد إلا الفلاتر الظاهرة في هذه الشاشة.' : 'Saved the current filter selection. It now returns after reload, and only visible filters are restored.',
+                        dir,
+                        touched: ['src/components/RecordsApp.jsx'],
+                        buildVerified,
+                    },
+                    logs,
+                } as any;
+            }
+        }
         /** What each engine can actually deliver — asked for in the user's own words. */
         const ENGINE_ABILITY: Record<string, RegExp> = {
             map: /مسار|مسارات|طريق|الطرق|اتجاه|المسافة|مسافة|الوقت|كم\s*يبعد|ملاحة|تنقّل|تنقل|route|direction|distance|duration|navigat/i,
