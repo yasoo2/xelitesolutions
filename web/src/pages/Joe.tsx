@@ -36,6 +36,7 @@ interface Message {
 
 export default function Joe() {
     const nav = useNavigate();
+    const ACTIVE_SESSION_STORAGE_KEY = 'joe-active-session';
     // Ensures the "open one session on first launch" logic runs exactly once,
     // even though the init effect re-runs when the workspace id resolves.
     const didInitSessionRef = React.useRef(false);
@@ -59,6 +60,10 @@ export default function Joe() {
     const activeSessionKind = agentSelected ? 'agent' : (selected ? 'chat' : 'agent');
     const activeSessionIdRef = useRef(activeSessionId);
     activeSessionIdRef.current = activeSessionId;
+    useEffect(() => {
+        if (!activeSessionId) return;
+        try { localStorage.setItem('joe-active-session', activeSessionId); } catch { /* storage unavailable */ }
+    }, [activeSessionId]);
 
     const { createSession } = useSessionActions();
 
@@ -706,7 +711,30 @@ export default function Joe() {
         // first was committed, so two sessions appeared on first launch.
         loadAllSessions().then(() => {
             if (didInitSessionRef.current) return;
+            // Keep a reload on the conversation the user was actually reading.
+            // Zustand is in-memory, so without this a refresh silently opened
+            // the first/default session while the old run continued elsewhere.
             const st = useSessionStore.getState();
+            const savedId = (() => {
+                try { return String(localStorage.getItem(ACTIVE_SESSION_STORAGE_KEY) || '').trim(); } catch { return ''; }
+            })();
+            const savedAgent = savedId && st.agentSessions.some(s => s.id === savedId);
+            const savedChat = savedId && st.sessions.some(s => s.id === savedId);
+            if (savedAgent) {
+                setSelected(null);
+                setAgentSelected(savedId);
+                didInitSessionRef.current = true;
+                return;
+            }
+            if (savedChat) {
+                setAgentSelected(null);
+                setSelected(savedId);
+                didInitSessionRef.current = true;
+                return;
+            }
+            if (savedId) {
+                try { localStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY); } catch { /* storage unavailable */ }
+            }
             if (st.sessions.length === 0 && st.agentSessions.length === 0) {
                 didInitSessionRef.current = true;
                 createSession({ kind: 'agent' });
@@ -1076,6 +1104,7 @@ export default function Joe() {
                         setSelected(id);
                         setAgentSelected(null);
                     }
+                    try { localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, id); } catch { /* storage unavailable */ }
                 }}
                 onDeleteSession={deleteSession}
                 onDeleteAllSessions={deleteAllSessions}

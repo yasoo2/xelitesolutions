@@ -703,6 +703,18 @@ export class AgentLoopService {
             // Still tell the UI so it stops "thinking" and shows what went wrong.
             broadcast({ type: 'text', sessionId, data: { text: failText, sessionId }, runId } as any);
             broadcast({ type: 'run_finished', runId, data: { runId, ok: false, sessionId } } as any);
+            // A fatal path used to broadcast the answer but omit it from the
+            // offline chat archive. After a reconnect or session switch that
+            // made Joe's honest failure disappear and left only the old
+            // working line. Persist the same user-facing text as the success
+            // path so live delivery and recovery have one source of truth.
+            try {
+                if (process.env.PERSISTENCE_MODE === 'JSON' || process.env.MOCK_DB === 'true' || String(process.env.MOCK_DB) === '1') {
+                    const store: any[] = (global as any).mockMessages || ((global as any).mockMessages = []);
+                    store.push({ _id: `am-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, sessionId, role: 'assistant', content: failText, createdAt: new Date(), runId });
+                    persistChatStores();
+                }
+            } catch { /* persistence must not prevent cleanup */ }
             await saveRunReceipt(runId, makeRunReceipt({}, 'failed', { selfFixReason: failText, error: String(error?.message || error || '') }), 'failed');
             releaseHandle(runCancellation, runId, sessionId);
             removeRunEventListener(runId);

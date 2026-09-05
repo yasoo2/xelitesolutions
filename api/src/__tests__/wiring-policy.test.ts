@@ -1851,6 +1851,25 @@ describe('a run keeps going while you read another conversation', () => {
         }
     });
 
+    it('persists a fatal answer before releasing the run', () => {
+        const S = SRC('modules', 'services', 'AgentLoopService.ts');
+        const fatal = S.slice(S.indexOf('Fatal runtime error'));
+        expect(fatal).toContain("role: 'assistant'");
+        expect(fatal).toContain('content: failText');
+        expect(fatal).toContain('persistChatStores()');
+        expect(fatal.indexOf('persistChatStores()')).toBeLessThan(fatal.indexOf('releaseHandle('));
+    });
+
+    it('restores the last visible conversation after a reload', () => {
+        const J = WEB('pages', 'Joe.tsx');
+        expect(J).toContain("localStorage.getItem(ACTIVE_SESSION_STORAGE_KEY)");
+        expect(J).toContain("localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, id)");
+        expect(J).toMatch(/useEffect\(\(\) => \{[\s\S]{0,220}localStorage\.setItem\('joe-active-session', activeSessionId\)/);
+        expect(J).toMatch(/savedAgent[\s\S]{0,500}setAgentSelected\(savedId\)/);
+        expect(J).toMatch(/savedChat[\s\S]{0,500}setSelected\(savedId\)/);
+        expect(J).toContain("localStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY)");
+    });
+
     it('the owner stop route broadcasts a session-scoped cancellation', () => {
         const R = SRC('api', 'routes', 'run.ts');
         expect(R).toContain("type: 'run_cancelled'");
