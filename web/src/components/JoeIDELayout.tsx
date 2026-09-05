@@ -282,12 +282,12 @@ export default function JoeIDELayout({
     // of the previous conversation folds away with it and reopens on demand.
     useEffect(() => {
         autoOpenedRef.current = false;
-        // Switching chats should fold a transient workspace, but never fold a
-        // Browser panel the user deliberately opened. The previous effect ran
-        // after the browser-session effect and immediately hid the visible QA
-        // eye on every new session, so self-QA correctly found no watcher.
-        if (workspaceTab !== 'browser') setIsWorkspaceCollapsed(true);
-    }, [sessionId, workspaceTab]);
+        // A tab change is not a session change. Folding the whole workspace
+        // here made opening Logs hide the Browser while QA was still running.
+        // Preserve the open canvas while a browser session exists so the live
+        // watcher remains visible during QA; the user can close it explicitly.
+        if (!browserSessionId) setIsWorkspaceCollapsed(true);
+    }, [sessionId, browserSessionId]);
 
     // Force uncollapse when an explicit action requires it (e.g. from Joe.tsx tools or CommandComposer icons)
     useEffect(() => {
