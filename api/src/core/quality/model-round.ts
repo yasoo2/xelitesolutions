@@ -241,10 +241,23 @@ export function fileForBehaviour(
     if (!labels.length) return { file: '', labels: [] };
     let best = '';
     let bestHits = 0;
+    const stopWords = new Set(['the', 'and', 'for', 'with', 'button', 'زر', 'أزرار', 'حقل', 'صفحة']);
+    const tokensOf = (value: string) => String(value || '')
+        .toLocaleLowerCase()
+        .split(/[^\p{L}\p{N}_-]+/u)
+        .map(token => token.trim())
+        .filter(token => token.length >= 3 && !stopWords.has(token));
     for (const [file, src] of Object.entries(sources || {})) {
         if (!/\.(jsx|tsx|js|ts)$/.test(file)) continue;
         const text = String(src || '');
-        const hits = labels.filter(l => text.includes(l)).length;
+        const lower = text.toLocaleLowerCase();
+        const hits = labels.reduce((total, label) => {
+            if (text.includes(label)) return total + 10;
+            // Browser evidence can include a section heading plus the control
+            // name. Exact matching then misses the component even though its
+            // meaningful words are present in the source.
+            return total + tokensOf(label).filter(token => lower.includes(token)).length;
+        }, 0);
         if (hits > bestHits) { bestHits = hits; best = file; }
     }
     return bestHits > 0 ? { file: best, labels } : { file: '', labels };

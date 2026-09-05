@@ -195,6 +195,17 @@ describe('the file that holds the dead button is found, not guessed', () => {
         expect(pick.labels).toContain('/menu Add serving');
     });
 
+    it('⛔ POSITIVE — composite browser evidence still maps to its component', () => {
+        const pick = fileForBehaviour(
+            [{ evidence: [{ label: 'Filter by Category Enable Filter', kind: 'button' }] }],
+            {
+                ...sources,
+                'src/components/FilterPanel.jsx': 'export default function FilterPanel() { return <section>Filter by Category Enable Filter</section>; }',
+            },
+        );
+        expect(pick.file).toBe('src/components/FilterPanel.jsx');
+    });
+
     it('⛔ NEGATIVE — stripping the route does not invent a match', () => {
         //  «/menu Checkout» must still find nothing. A looser reader that
         //  matched on any word would now hit `Footer` through «ok» — the
