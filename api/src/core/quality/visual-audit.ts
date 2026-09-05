@@ -567,8 +567,8 @@ export async function auditVisually(fileUrl: string, opts?: {
         for (const vp of VIEWPORTS) {
             const page = borrowedPage || await browser.newPage({ viewport: { width: vp.width, height: vp.height } });
             if (borrowed) {
-                await applyViewportSize(page, vp.width, vp.height);
                 try { browserManager.setSessionViewport(opts?.watchSessionId || '', vp.width, vp.height); } catch { /* viewport sync is best effort */ }
+                await applyViewportSize(page, vp.width, vp.height);
             }
             opts?.onProgress?.(`inspecting:${vp.label}`);
             // collector() is serialised into the page; a bundler that keeps function
@@ -658,8 +658,8 @@ export async function auditVisually(fileUrl: string, opts?: {
             if (!borrowed) { await page.close().catch(() => { }); }
         }
         if (borrowed) {
-            try { await applyViewportSize(borrowedPage, 1280, 900); } catch { }
             try { browserManager.setSessionViewport(opts?.watchSessionId || '', 1280, 900); } catch { }
+            try { await applyViewportSize(borrowedPage, 1280, 900); } catch { }
             opts?.onProgress?.('restored');
         }
     } catch (e: any) {

@@ -619,7 +619,7 @@ function measureResponsive(vw: number) {
  */
 export async function inspectUi(
     page: any,
-    opts?: { eyes?: AuditEyes; restore?: { width: number; height: number }; onViewport?: (w: number, h: number) => void },
+    opts?: { eyes?: AuditEyes; restore?: { width: number; height: number }; onViewport?: (w: number, h: number) => void; beforeViewport?: (w: number, h: number) => void },
 ): Promise<UiInspection> {
     const findings: BehaviourFinding[] = [];
     const metrics: Record<string, any> = {};
@@ -706,6 +706,7 @@ export async function inspectUi(
     const viewports = effectiveViewports(availableWidth);
     for (const vp of viewports) {
         try {
+            opts?.beforeViewport?.(vp.w, vp.h);
             await applyViewportSize(page, vp.w, vp.h);
             opts?.onViewport?.(vp.w, vp.h);
             await page.waitForTimeout(420);
@@ -748,6 +749,7 @@ export async function inspectUi(
     metrics.perWidth = perWidth;
     if (opts?.restore) {
         try {
+            opts?.beforeViewport?.(openingViewport.width, openingViewport.height);
             await applyViewportSize(page, openingViewport.width, openingViewport.height);
             opts?.onViewport?.(openingViewport.width, openingViewport.height);
             await page.waitForTimeout(250);

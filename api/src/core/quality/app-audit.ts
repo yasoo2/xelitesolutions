@@ -925,6 +925,10 @@ export async function auditBuiltApp(
                 eyes, restore: desktop,
                 // The panel draws every frame at the size the session declares;
                 // without this the phone screenshot arrives in a desktop frame.
+                beforeViewport: (w, h) => {
+                    if (!borrowed || !opts?.watchSessionId) return;
+                    try { require('../../modules/browser/manager').setSessionViewport(opts.watchSessionId, w, h); } catch { /* cosmetic */ }
+                },
                 onViewport: (w, h) => {
                     if (!borrowed || !opts?.watchSessionId) return;
                     try { require('../../modules/browser/manager').setSessionViewport(opts.watchSessionId, w, h); } catch { /* cosmetic */ }
