@@ -3807,76 +3807,8 @@ body:not(.rtl) .joe-user-info {
 
 
 /* ============================================================
-   Live browser surface — compact control rail + quality feedback
+   Live browser surface — quality feedback stays in the workspace chrome
    ============================================================ */
-.browser-control-rail {
-    position: absolute;
-    left: 14px;
-    bottom: 14px;
-    z-index: 75;
-    display: inline-flex;
-    align-items: center;
-    gap: 3px;
-    padding: 3px;
-    border: 1px solid rgba(148, 163, 184, 0.22);
-    border-radius: 9px;
-    background: rgba(15, 20, 26, 0.72);
-    box-shadow: 0 5px 16px rgba(0, 0, 0, 0.22);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
-    opacity: 0.68;
-    pointer-events: none;
-    transition: opacity 0.16s ease;
-}
-.browser-control-rail:hover,
-.browser-control-rail:focus-within {
-    opacity: 1;
-}
-.browser-control-button,
-.browser-control-icon {
-    min-width: 25px;
-    height: 25px;
-    border: 1px solid rgba(203, 213, 225, 0.18);
-    border-radius: 6px;
-    background: rgba(30, 41, 59, 0.62);
-    color: #cbd5e1;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font: 700 9px/1 Inter, ui-sans-serif, system-ui, sans-serif;
-    letter-spacing: 0.04em;
-    pointer-events: auto;
-    transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease, transform 0.16s ease;
-}
-.browser-control-button { min-width: 31px; padding: 0 6px; }
-.browser-control-button:hover,
-.browser-control-icon:hover {
-    color: #f8fafc;
-    border-color: rgba(148, 163, 184, 0.52);
-    background: rgba(51, 65, 85, 0.86);
-    transform: translateY(-1px);
-}
-.browser-control-button.is-active {
-    color: #f8fafc;
-    border-color: rgba(96, 165, 250, 0.72);
-    background: rgba(37, 99, 235, 0.78);
-}
-.browser-quality-signal {
-    width: 9px;
-    height: 25px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    color: #94a3b8;
-    font-size: 9px;
-    line-height: 1;
-    pointer-events: auto;
-}
-.browser-quality-signal.is-good { color: #4ade80; }
-.browser-quality-signal.is-degraded { color: #fbbf24; }
-.browser-quality-signal.is-blocked { color: #f87171; }
-.browser-quality-signal.is-unknown { color: #94a3b8; }
 .browser-quality-actions {
     display: flex;
     gap: 6px;
@@ -3913,23 +3845,8 @@ body:not(.rtl) .joe-user-info {
 .browser-action-filters input { min-width: 150px; padding: 0 8px; }
 .browser-action-filters select { padding: 0 6px; }
 .browser-action-filters input::placeholder { color: #94a3b8; }
-@media (max-width: 900px) {
-    .browser-control-rail { left: 10px; bottom: 10px; }
-}
-@media (max-width: 560px) {
-    .browser-control-rail { left: 8px; bottom: 8px; gap: 2px; padding: 3px; }
-    .browser-control-button,
-    .browser-control-icon { min-width: 23px; height: 23px; }
-    .browser-control-button { min-width: 29px; padding: 0 5px; }
-    .browser-quality-signal { height: 23px; }
-}
-
 :fullscreen {
     background: #060a0d;
-}
-:fullscreen .browser-control-rail {
-    left: 18px;
-    bottom: 18px;
 }
 
 /* ============================================================

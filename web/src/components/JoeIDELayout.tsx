@@ -282,8 +282,12 @@ export default function JoeIDELayout({
     // of the previous conversation folds away with it and reopens on demand.
     useEffect(() => {
         autoOpenedRef.current = false;
-        setIsWorkspaceCollapsed(true);
-    }, [sessionId]);
+        // Switching chats should fold a transient workspace, but never fold a
+        // Browser panel the user deliberately opened. The previous effect ran
+        // after the browser-session effect and immediately hid the visible QA
+        // eye on every new session, so self-QA correctly found no watcher.
+        if (workspaceTab !== 'browser') setIsWorkspaceCollapsed(true);
+    }, [sessionId, workspaceTab]);
 
     // Force uncollapse when an explicit action requires it (e.g. from Joe.tsx tools or CommandComposer icons)
     useEffect(() => {
