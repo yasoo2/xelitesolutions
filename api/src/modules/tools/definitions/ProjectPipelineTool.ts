@@ -2163,6 +2163,10 @@ export class ProjectPipelineTool implements ToolDefinition {
                     watchSessionId: panelSid || undefined,
                     serveUrl: liveUrl,
                     artifactRootDir: artifactRoot || auditDir || runtimeRoot,
+                    // Delivery QA is a visible user-facing proof. Do not
+                    // silently replace it with a private headless run when
+                    // the panel is disconnected or still loading.
+                    requireVisibleBrowser: true,
                     ...(runtimeProjectHandoff?.runtimeAuth ? { credentials: runtimeProjectHandoff.runtimeAuth } : {}),
                     timeoutMs: 45_000,
                     onProgress: progress,
