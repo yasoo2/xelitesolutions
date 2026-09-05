@@ -192,6 +192,10 @@ describe('a finding speaks the language of the message it lands in', () => {
         const p = read('modules', 'tools', 'definitions', 'ProjectRepairTool.ts');
         expect(p).toMatch(/const said = \(f: any\) => findingText\(f, isAr\);/);
         expect(p).not.toMatch(/lines\.push\(`   • \$\{f\.detail\}`\)/);
+        const pipeline = read('modules', 'tools', 'definitions', 'ProjectPipelineTool.ts');
+        expect(pipeline).toMatch(/findingText\(finding as any, ar\)/);
+        expect(pipeline).toMatch(/targetSuffix/);
+        expect(pipeline).not.toMatch(/finding\.detailEn \|\| finding\.detail/);
     });
 });
 

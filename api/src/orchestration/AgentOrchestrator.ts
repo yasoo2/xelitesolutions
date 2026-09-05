@@ -860,7 +860,11 @@ export class AgentOrchestrator {
           // `quality_findings_survived` and the useful QA report disappeared
           // from the user's chat after a phase stopped.
           node.result = this.sanitizeOutput(result.output ?? result.error);
-          lastNodeError = result.error || lastNodeError;
+          // Keep the measured tool payload as the run-level failure when it
+          // exists. A short error code is useful for control flow, but it is
+          // not a user-facing QA report and used to erase the findings before
+          // composeFailure could read them.
+          lastNodeError = result.output ?? result.error ?? lastNodeError;
           node.lastError = typeof result.error === 'string' ? result.error : JSON.stringify(result.error ?? '');
           memory.record(node.id, node.task, result.error, "failed");
 
@@ -925,7 +929,7 @@ export class AgentOrchestrator {
             }
             console.error('[AgentOrchestrator] No LLM provider reachable — ending the run honestly after bounded engineering retry.');
             if (traceId) traceManager.logEvent(traceId, 'orchestrator', { event: 'recovery_skipped', nodeId: node.id, reason: 'provider_unreachable' });
-            return { ok: false, result: result.error, steps: runSteps(dag) };
+            return { ok: false, result: lastNodeError ?? result.error, steps: runSteps(dag) };
           }
 
           // A tool can prove that its requested outcome did not occur even when
@@ -946,7 +950,7 @@ export class AgentOrchestrator {
                 : 'project_run_failed';
             console.error(`[AgentOrchestrator] Final ${reason} for ${node.id} — stopping without an invented recovery.`);
             if (traceId) traceManager.logEvent(traceId, 'orchestrator', { event: 'recovery_skipped', nodeId: node.id, reason });
-            return { ok: false, result: result.error || out.message || 'Project run failed', steps: runSteps(dag) };
+            return { ok: false, result: lastNodeError ?? result.error ?? out.message ?? 'Project run failed', steps: runSteps(dag) };
           }
 
           // [DECISION] Intelligent recovery attempt (Reviewer/QA department steps in)
@@ -954,7 +958,7 @@ export class AgentOrchestrator {
           const currentRetryCount = node.retryCount || 0;
           if (currentRetryCount >= 2) {
             console.error(`[AgentOrchestrator] Max retries reached for node: ${node.id}`);
-            return { ok: false, result: result.error || "Fatal execution error: Max retries reached", steps: runSteps(dag) };
+            return { ok: false, result: lastNodeError ?? result.error ?? "Fatal execution error: Max retries reached", steps: runSteps(dag) };
           }
 
           if (this.recoveriesUsed >= MAX_RECOVERIES_PER_RUN) {
@@ -995,7 +999,7 @@ export class AgentOrchestrator {
               }
               // Nothing usable came back: surface the real reason the node failed,
               // never a description of the recovery machinery.
-              return { ok: false, result: result.error || "Fatal execution error", steps: runSteps(dag) };
+              return { ok: false, result: lastNodeError ?? result.error ?? "Fatal execution error", steps: runSteps(dag) };
             }
             node.status = "pending";
             node.retryCount = currentRetryCount + 1;
@@ -1008,7 +1012,7 @@ export class AgentOrchestrator {
             continue;
           }
 
-          return { ok: false, result: result.error || "Fatal execution error", steps: runSteps(dag) };
+          return { ok: false, result: lastNodeError ?? result.error ?? "Fatal execution error", steps: runSteps(dag) };
         }
       }
     }

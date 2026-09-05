@@ -9,7 +9,7 @@ import { brandFrom } from '../../../core/design/page-head';
 import { scopeReport } from '../../../core/quality/scope-audit';
 import { verifyProviderDirect } from '../../../core/llm/intelligent-router';
 import { detectStart, missingRuntimeDependencies, reconcileMissingRuntimeTarget, resolveRunnableProject } from './ProjectRunTool';
-import { auditBuiltApp, AppAudit } from '../../../core/quality/app-audit';
+import { auditBuiltApp, AppAudit, findingText } from '../../../core/quality/app-audit';
 import { readJoeProjectForRun } from '../../../api/page-store';
 
 const MAX_PIPELINE_LOGS = 192;
@@ -2639,8 +2639,13 @@ export class ProjectPipelineTool implements ToolDefinition {
                     ? `### Browser QA المرئي: **${browserQa.score}/100** — ${browserQa.findings.length} ملاحظة، ${high} حرجة، ${browserQa.pressed ?? 0} تفاعلاً مقاساً.`
                     : `### Visible Browser QA: **${browserQa.score}/100** — ${browserQa.findings.length} finding(s), ${high} blocking, ${browserQa.pressed ?? 0} interaction(s) measured.`);
                 if (browserQa.findings.length) {
-                    for (const finding of browserQa.findings.slice(0, 8)) {
-                        lines.push(`- ${finding.severity.toUpperCase()}: ${finding.detailEn || finding.detail}`);
+                    for (const finding of browserQa.findings.slice(0, 12)) {
+                        const evidence = Array.isArray((finding as any).evidence) ? (finding as any).evidence[0] : null;
+                        const target = evidence && typeof evidence === 'object'
+                            ? String(evidence.selector || evidence.sel || evidence.label || '').trim()
+                            : '';
+                        const targetSuffix = target ? (ar ? ` — الهدف: \`${target}\`` : ` — target: \`${target}\``) : '';
+                        lines.push(`- ${finding.severity.toUpperCase()}: ${findingText(finding as any, ar)}${targetSuffix}`);
                     }
                 }
             }

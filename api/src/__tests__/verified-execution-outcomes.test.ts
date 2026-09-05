@@ -47,6 +47,7 @@ describe('verified execution outcomes', () => {
         const block = orchestrator.slice(failed, nextDecision);
         expect(block).toContain('node.result = this.sanitizeOutput(result.output ?? result.error);');
         expect(block.indexOf('node.result =')).toBeLessThan(block.indexOf('lastNodeError ='));
+        expect(block).toContain('lastNodeError = result.output ?? result.error ?? lastNodeError;');
     });
 
     it('marks an unconfirmed project_run as a non-recoverable verification failure', () => {
