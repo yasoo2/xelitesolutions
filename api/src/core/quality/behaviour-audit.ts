@@ -621,6 +621,9 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
         const semanticControlKey = (c: { kind: string; label: string; href?: string }) =>
             `${c.kind}|${c.label}|${c.href || ''}`;
         const replacementFor = (fresh: any[], original: any) =>
+            // Equivalent to: const replacement = fresh.find(candidate =>
+            // controlKey(candidate) === controlKey(c)); keep the semantic
+            // fallback below because React may shift duplicate ordinals.
             fresh.find((candidate: any) => controlKey(candidate) === controlKey(original))
             // Row deletion can shift duplicate ordinals. An equivalent live
             // control with the same role, name and destination is still the

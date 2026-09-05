@@ -767,16 +767,28 @@ export async function auditBuiltApp(
          */
         const walkUntil = Date.now() + Math.max(45_000, timeoutMs * 2);
         const seenForms = new Set<string>();
-        const probeOpts = () => ({ eyes, budgetMs: Math.max(6000, walkUntil - Date.now()), seenForms, isEyeOpen: eyeIsOpen });
+        // One deadline governs the entire visible walk. Do not reset a small
+        // per-page minimum after the deadline: on a route-heavy app that made
+        // the browser appear frozen for minutes after "pressing" had started.
+        const remainingWalkMs = () => Math.max(0, walkUntil - Date.now());
+        const probeOpts = () => ({ eyes, budgetMs: remainingWalkMs(), seenForms, isEyeOpen: eyeIsOpen });
+        const budgetFinding = () => ({
+            id: 'qa_budget_exhausted', severity: 'medium' as const,
+            detail: 'انتهت ميزانية فحص المتصفح قبل اكتمال كل المسارات والحالات — النتيجة غير مكتملة ولا أعتبر ما لم يُختبر ناجحًا',
+            detailEn: 'The browser QA budget ended before every route and state was covered — the result is incomplete, not a pass for what was not tested',
+        });
         try {
+            if (!remainingWalkMs()) return eyeRequiredResult('Browser QA budget ended before the first page');
             const homeProbe = await probeControls(page, probeOpts());
             mergeProbe(homeProbe, '/');
+            if (homeProbe.metrics.budgetExhausted || homeProbe.metrics.explorationBudgetExhausted) behaviourMetrics.budgetExhausted = true;
             if (homeProbe.metrics.eyeLost || !eyeIsOpen()) return eyeRequiredResult();
         } catch { /* the controls are what is under test */ }
 
         // Every other page the app offers, audited as a page in its own right.
         const brokenRoutes: string[] = [];
         for (const r of routes) {
+            if (!remainingWalkMs()) { behaviourMetrics.budgetExhausted = true; break; }
             if (!eyeIsOpen()) return eyeRequiredResult();
             const target = r.startsWith('#') ? url + r : url + r;
             try {
@@ -794,6 +806,7 @@ export async function auditBuiltApp(
                 if (d2.h1s !== 1) brokenRoutes.push(`${r} (h1=${d2.h1s})`);
                 const routeProbe = await probeControls(page, probeOpts());
                 mergeProbe(routeProbe, r);
+                if (routeProbe.metrics.budgetExhausted || routeProbe.metrics.explorationBudgetExhausted) behaviourMetrics.budgetExhausted = true;
                 if (routeProbe.metrics.eyeLost || !eyeIsOpen()) return eyeRequiredResult();
             } catch (e: any) {
                 brokenRoutes.push(`${r} (${String(e?.message || e).slice(0, 40)})`);
@@ -825,18 +838,20 @@ export async function auditBuiltApp(
         const seenLabels = new Set(allControls.map((c: any) => String(c.label || '')));
         try {
             if (!eyeIsOpen()) return eyeRequiredResult();
+            if (!remainingWalkMs()) { behaviourMetrics.budgetExhausted = true; throw new Error('browser QA budget ended before mobile discovery'); }
             const back = page.viewportSize?.() || { width: 1280, height: 900 };
             await applyViewportSize(page, 390, 844);
             await page.waitForTimeout(420);
             await eyes.say(page, 'فحص ما لا يظهر إلا على الجوّال — القوائم والأزرار المخفية');
             const phone = await probeControls(page, {
                 eyes,
-                budgetMs: Math.min(20_000, Math.max(6000, walkUntil - Date.now())),
+                budgetMs: Math.min(20_000, remainingWalkMs()),
                 seenForms,
                 isEyeOpen: eyeIsOpen,
                 maxControls: 12,
             });
             if (phone.metrics.eyeLost || !eyeIsOpen()) return eyeRequiredResult();
+            if (phone.metrics.budgetExhausted || phone.metrics.explorationBudgetExhausted) behaviourMetrics.budgetExhausted = true;
             const fresh = (phone.controls || []).filter((c: any) => !seenLabels.has(String(c.label || '')));
             for (const c of fresh) allControls.push({ ...c, bare: c.label, label: `الجوّال ${c.label}` });
             behaviourMetrics.deadAnchors += phone.metrics?.deadAnchors || 0;
@@ -857,7 +872,7 @@ export async function auditBuiltApp(
         const responsiveRoutes = routes.slice(0, 20);
         for (const r of responsiveRoutes) {
             for (const size of [{ name: 'لوحي', w: 820, h: 1180 }, { name: 'جوّال', w: 390, h: 844 }]) {
-                if (Date.now() >= responsiveDeadline || !eyeIsOpen()) break;
+                if (Date.now() >= responsiveDeadline || !remainingWalkMs() || !eyeIsOpen()) { behaviourMetrics.budgetExhausted = true; break; }
                 try {
                     const target = r.startsWith('#') ? url + r : url + r;
                     await page.goto(target, { waitUntil: 'load', timeout: Math.min(timeoutMs, 12_000) });
@@ -866,12 +881,13 @@ export async function auditBuiltApp(
                     await eyes.say(page, `فحص ${size.name}: ${r === '/' ? 'الصفحة الرئيسية' : r}`);
                     const responsive = await probeControls(page, {
                         eyes,
-                        budgetMs: Math.max(3000, responsiveDeadline - Date.now()),
+                        budgetMs: Math.min(responsiveDeadline - Date.now(), remainingWalkMs()),
                         seenForms,
                         isEyeOpen: eyeIsOpen,
                         maxControls: 12,
                     });
                     if (responsive.metrics.eyeLost || !eyeIsOpen()) return eyeRequiredResult();
+                    if (responsive.metrics.budgetExhausted || responsive.metrics.explorationBudgetExhausted) behaviourMetrics.budgetExhausted = true;
                     const prefix = `${size.name} ${r}`;
                     for (const c of responsive.controls || []) {
                         const label = `${prefix} ${c.label}`;
@@ -942,6 +958,7 @@ export async function auditBuiltApp(
         behaviour.findings.push(...ui.findings);
 
         const findings: AppAuditFinding[] = [];
+        if (behaviourMetrics.budgetExhausted) findings.push(budgetFinding());
         /**
          * THE SYSTEM'S FRONT DOOR — said once, plainly, and FIRST.
          *

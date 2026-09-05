@@ -3987,10 +3987,10 @@ export class ReactProjectTool extends BaseTool {
         // build that narrates in the wrong one is a defect the user sees
         // before any test does. Record which signal decided it, so the next
         // report says whether the switcher arrived or was lost on the way.
-        term(`template classification: page=${kind || 'generic'} · app=${appKind || 'none'} · mode=${appBp ? 'interactive' : 'presentation'} · lang=${isAr ? 'ar' : 'en'} (ui=${uiLang || 'absent'})`);
+        term(`template classification: page=${kind || 'generic'} · app=${appKind || 'none'} · mode=${appBp ? 'interactive' : 'presentation'} · artifact=${artifactIsAr ? 'ar' : 'en'} · reply=${isAr ? 'ar' : 'en'} (ui=${uiLang || 'absent'})`);
         const family = familyFor(request, kind);
         const multiPage = wantsMultiPage(request, kind);
-        const pages = appPagesFor(kind, request, isAr);
+        const pages = appPagesFor(kind, request, artifactIsAr);
         //  From the REQUEST, with the kind answering only for his silence.
         //  This line read `sectionsForKind(kind)` and that is where a brief
         //  naming six things became a fixed eight, five of them unasked.
@@ -4009,8 +4009,8 @@ export class ReactProjectTool extends BaseTool {
         const sections = multiPage
             ? [...new Set(pages.flatMap(p => p.sections))]
             : sectionsForRequest(request, kind);
-        const content = deriveContent(request, isAr, kind);
-        const explicitBrand = brandFrom(request, isAr);
+        const content = deriveContent(request, artifactIsAr, kind);
+        const explicitBrand = brandFrom(request, artifactIsAr);
         const canonicalProjectName = String(input?.projectName || '').trim();
         if (!explicitBrand
             && canonicalProjectName
@@ -6684,7 +6684,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                     findingIds: [...(audit.findings || []).map((f: any) => f.id), ...firstTermFails],
                     findings: (audit.findings || []).map((f: any) => ({ id: f.id, evidence: f.evidence })),
                 });
-                term(improveSummary(loop, false));
+                term(improveSummary(loop, isAr));
                 if (sessionId) broadcastThinkingDetail(sessionId, improveSummary(loop, isAr));
 
                 // The verdict the report publishes is the LAST measurement the
