@@ -1317,7 +1317,20 @@ export default function RecordsApp({ content }) {
   const [selected, setSelected] = useState(null);
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
-  const [filters, setFilters] = useState({});
+  // Keep only the controls this screen actually exposes. A remembered filter
+  // must survive reload, but stale or hand-edited storage must never invent a
+  // hidden condition that makes the list look empty.
+  const filterStoreKey = content.storeKey + ':filters';
+  const [filters, setFilters] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(filterStoreKey) || '{}');
+      if (!saved || typeof saved !== 'object' || Array.isArray(saved)) return {};
+      return filterKeys.reduce((next, key) => {
+        if (typeof saved[key] === 'string') next[key] = saved[key];
+        return next;
+      }, {});
+    } catch { return {}; }
+  });
   const [sort, setSort] = useState('new');
   const [server, setServer] = useState(false);
   const [parents, setParents] = useState(() => (rel ? parentStore.read() : []));
@@ -1328,6 +1341,9 @@ export default function RecordsApp({ content }) {
   // Persist on every change — a reload never loses a row.
   useEffect(() => { store.write(rows); }, [rows, store]);
   useEffect(() => { if (rel) parentStore.write(parents); }, [parents, parentStore, rel]);
+  useEffect(() => {
+    try { localStorage.setItem(filterStoreKey, JSON.stringify(filters)); } catch { /* private mode */ }
+  }, [filterStoreKey, filters]);
 
   // The parent list, from the server when there is one.
   useEffect(() => {

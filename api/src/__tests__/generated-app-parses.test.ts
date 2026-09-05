@@ -153,6 +153,16 @@ const WeatherProvider: React.FC<WeatherProviderProps> = ({ children }) => {
         expect(local['src/components/RecordsApp.jsx']).toContain('apiList(content.api)');
     });
 
+    it('persists only declared record filters across a reload', () => {
+        const files = filesFor('inventory', true);
+        const records = files['src/components/RecordsApp.jsx'];
+        expect(records).toContain("const filterStoreKey = content.storeKey + ':filters';");
+        expect(records).toContain('JSON.parse(localStorage.getItem(filterStoreKey) || \'{}\')');
+        expect(records).toContain('return filterKeys.reduce((next, key) => {');
+        expect(records).toContain('localStorage.setItem(filterStoreKey, JSON.stringify(filters))');
+        expect(syntaxOk('src/components/RecordsApp.jsx', records).ok).toBe(true);
+    });
+
     it('normalizes a proven React/Vite scaffold with a missing root index.html', () => {
         const result = normalizeReactScaffoldStructure({
             'package.json': JSON.stringify({
