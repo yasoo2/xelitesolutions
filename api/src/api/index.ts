@@ -149,7 +149,9 @@ async function main() {
   });
 
   const connectWithRetry = async () => {
-    if (process.env.MOCK_DB === '1' || process.env.MOCK_DB === 'true' || process.env.PERSISTENCE_MODE === 'JSON') {
+    // Offline mode is an explicit local-storage deployment mode too. It must
+    // not enter the Mongo retry loop and later kill an otherwise healthy API.
+    if (process.env.OFFLINE_MODE === 'true' || process.env.MOCK_DB === '1' || process.env.MOCK_DB === 'true' || process.env.PERSISTENCE_MODE === 'JSON') {
       logger.info('⚠️  JSON Persistence mode enabled: Data will be saved to api/data/db');
       mongoose.set('bufferCommands', false);
       await ensureOwnerFromEnv();

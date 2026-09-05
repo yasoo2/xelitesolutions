@@ -1870,6 +1870,13 @@ describe('a run keeps going while you read another conversation', () => {
         expect(J).toContain("localStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY)");
     });
 
+    it('does not let explicit offline mode kill the API on a Mongo outage', () => {
+        const I = SRC('api', 'index.ts');
+        const connect = I.slice(I.indexOf('const connectWithRetry'));
+        expect(connect).toMatch(/process\.env\.OFFLINE_MODE === 'true'[\s\S]{0,180}process\.env\.PERSISTENCE_MODE === 'JSON'/);
+        expect(connect).toContain('MongoDB connection failed');
+    });
+
     it('the owner stop route broadcasts a session-scoped cancellation', () => {
         const R = SRC('api', 'routes', 'run.ts');
         expect(R).toContain("type: 'run_cancelled'");
