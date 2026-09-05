@@ -944,15 +944,20 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
             const fresh = await evalInPage(page, findControls, limit).catch(() => [] as any[]);
             for (const c of fresh as Array<{ kind: string; label: string; href?: string; ordinal?: number }>) discoveredKeys.add(controlKey(c));
             metrics.controlsDiscovered = discoveredKeys.size;
+            const visibleStateKey = stateKey(await page.evaluate(snapshot).catch(() => null));
             const candidate = (fresh as Array<{ sel: string; kind: string; label: string; href?: string; stateful?: boolean }>)
                 .filter(c => c.kind !== 'anchor')
                 // A stateful control deserves an exploratory pass even when
                 // the baseline catalogue already pressed its first state.
                 // The fresh catalogue and stable key prevent blind repetition.
-                .find(c => !exploredKeys.has(controlKey(c))
+                .find(c => !exploredKeys.has(`${visibleStateKey}|${controlKey(c)}`)
                     && (!initialKeys.has(controlKey(c)) || c.stateful));
             if (!candidate) break;
-            const key = controlKey(candidate);
+            // The same control can be a different test in a different visible
+            // state: a tab, dialog, expanded menu, cart, or filtered result.
+            // Keying only by label/selector silently skipped those states and
+            // made exploration look broad while pressing very little.
+            const key = `${visibleStateKey}|${controlKey(candidate)}`;
             exploredKeys.add(key);
             let effect = '';
             try {
@@ -972,7 +977,10 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                 const after = await page.evaluate(snapshot).catch(() => null);
                 effect = changed(before, after);
                 if (effect === 'navigation') {
-                    await page.goBack({ timeout: 5000 }).catch(() => { });
+                    // Hash routers and replaceState do not reliably create a
+                    // history entry. Restore the exact discovery URL so the
+                    // next frontier is never sampled from an unrelated route.
+                    await page.goto(probeStartUrl, { waitUntil: 'load', timeout: 5000 }).catch(() => { });
                     await page.waitForTimeout(220);
                 }
                 const afterState = await page.evaluate(snapshot).catch(() => null);

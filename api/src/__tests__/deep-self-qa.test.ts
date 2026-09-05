@@ -509,6 +509,9 @@ describe('a measurement it cannot make honestly, it does not make', () => {
         expect(b).toMatch(/evalInPage\(page, findControls, limit\)/);
         expect(b).toMatch(/stateful\?: boolean/);
         expect(b).toMatch(/!initialKeys\.has\(controlKey\(c\)\) \|\| c\.stateful/);
+        expect(b).toMatch(/const visibleStateKey = stateKey\(await page\.evaluate\(snapshot\)/);
+        expect(b).toMatch(/!exploredKeys\.has\(`\$\{visibleStateKey\}\|\$\{controlKey\(c\)\}`\)/);
+        expect(b).toMatch(/page\.goto\(probeStartUrl, \{ waitUntil: 'load', timeout: 5000 \}\)/);
         expect(b).toMatch(/metrics\.exploratoryActions\+\+/);
         expect(b).toMatch(/metrics\.statesVisited/);
         const a = read('core', 'quality', 'app-audit.ts');
