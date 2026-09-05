@@ -72,6 +72,18 @@ describe('…and never leaves half of two documents behind', () => {
         const strays = fs.readdirSync(DB).filter(f => f.startsWith(NAME) && f.includes('.tmp'));
         expect(strays).toEqual([]);
     });
+
+    it('cleans stale atomic leftovers but preserves a recent writer temp', async () => {
+        const stale = path.join(DB, `${NAME}.json.tmp-old-process-1`);
+        const recent = path.join(DB, `${NAME}.json.tmp-live-process-2`);
+        fs.writeFileSync(stale, 'stale');
+        fs.writeFileSync(recent, 'recent');
+        const old = new Date(Date.now() - 11 * 60 * 1000);
+        fs.utimesSync(stale, old, old);
+        new JsonStore<Row>(NAME, DB);
+        expect(fs.existsSync(stale)).toBe(false);
+        expect(fs.existsSync(recent)).toBe(true);
+    });
 });
 
 describe('a file that cannot be parsed is an empty store, not an exception', () => {

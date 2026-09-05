@@ -37,6 +37,27 @@ export class JsonStore<T extends { id?: string; _id?: any }> {
         if (!fs.existsSync(this.filePath)) {
             fs.writeFileSync(this.filePath, JSON.stringify([]));
         }
+        this.removeStaleTemps();
+    }
+
+    /**
+     * A process can die after writing its atomic temporary file but before the
+     * rename. Those files are not database records and can grow without bound
+     * during a long-running agent run. Only remove files older than a grace
+     * period so a concurrent writer still has time to finish safely.
+     */
+    private removeStaleTemps(): void {
+        const prefix = path.basename(this.filePath) + '.tmp-';
+        const cutoff = Date.now() - 10 * 60 * 1000;
+        try {
+            for (const name of fs.readdirSync(path.dirname(this.filePath))) {
+                if (!name.startsWith(prefix)) continue;
+                const candidate = path.join(path.dirname(this.filePath), name);
+                try {
+                    if (fs.statSync(candidate).mtimeMs < cutoff) fs.unlinkSync(candidate);
+                } catch { /* another writer may have completed or replaced it */ }
+            }
+        } catch { /* cleanup is best effort and never blocks database startup */ }
     }
 
     /**
@@ -105,7 +126,28 @@ export class JsonStore<T extends { id?: string; _id?: any }> {
             this.writeSeq += 1;
             const temp = this.filePath + '.tmp-' + process.pid + '-' + this.writeSeq;
             await fs.promises.writeFile(temp, JSON.stringify(items, null, 2));
-            await fs.promises.rename(temp, this.filePath);
+            try {
+                // Windows can briefly hold the destination while another Joe
+                // process is finishing its own read. Retry the atomic handoff
+                // instead of leaving a large orphaned temp file behind.
+                let lastError: unknown;
+                for (let attempt = 0; attempt < 5; attempt++) {
+                    try {
+                        await fs.promises.rename(temp, this.filePath);
+                        return;
+                    } catch (error) {
+                        lastError = error;
+                        if (attempt === 4) throw error;
+                        await new Promise(resolve => setTimeout(resolve, 40 * (attempt + 1)));
+                    }
+                }
+                throw lastError;
+            } catch (error) {
+                // A failed handoff must not turn the recovery directory into
+                // an ever-growing archive of payload-sized temporary files.
+                try { await fs.promises.unlink(temp); } catch { /* already renamed or cleaned */ }
+                throw error;
+            }
         };
         this.writeQueue = this.writeQueue.then(run, run);
         return this.writeQueue;
