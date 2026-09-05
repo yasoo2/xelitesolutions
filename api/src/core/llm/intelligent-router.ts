@@ -1079,6 +1079,14 @@ const ENGINEERING_LOCAL_TIMEOUT_CAP_MS = (() => {
         ? Math.min(180_000, Math.max(30_000, configured))
         : 120_000;
 })();
+// Offline mode intentionally makes one real local attempt, but a missing or
+// overloaded Ollama must fail fast enough for the API and UI to recover.
+const OFFLINE_LOCAL_TIMEOUT_MS = (() => {
+    const configured = parseInt(String(process.env.OFFLINE_LOCAL_TIMEOUT_MS || '').trim(), 10);
+    return Number.isFinite(configured) && configured > 0
+        ? Math.min(120_000, Math.max(10_000, configured))
+        : 45_000;
+})();
 
 /** A local call finished — remember how long this machine really takes. */
 export function noteLocalDuration(ms: number): void {
@@ -2426,6 +2434,9 @@ export async function routeToModel(
                     timeoutValue = (LOCAL_BRAIN_FIRST || autoLocalPreferred)
                         ? (requestedTimeout ? Math.min(autoPlanningLeash, requestedTimeout) : autoPlanningLeash)
                         : Math.min(timeoutValue, measuredLeash);
+                }
+                if (offlineMode && provider.name === 'Local (Auto)') {
+                    timeoutValue = Math.min(timeoutValue, OFFLINE_LOCAL_TIMEOUT_MS);
                 }
                 // A recovery call must not restore the long first-attempt leash
                 // after the same local brain has just timed out. Give it one
