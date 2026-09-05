@@ -13,7 +13,7 @@ import { isArabicReply, replyLanguageCode, say as pick } from '../../shared/repl
 import { formatAttachmentsBlock } from '../../shared/attachments';
 import { describeImageAttachments } from '../../shared/vision';
 import { withDeadline, RUN_DEADLINE_MS, DeadlineError } from '../../shared/utils/deadline';
-import { persistChatStores } from '../../api/chat-store';
+import { flushChatStores, persistChatStores } from '../../api/chat-store';
 import { clarifyGate } from '../../core/orchestrator/clarify';
 import { announceScaffoldSubstitution } from '../../core/design/scaffold-substitution';
 import { phaseDetail } from '../../core/orchestrator/phaseAnnounce';
@@ -635,7 +635,10 @@ export class AgentLoopService {
                 if (process.env.OFFLINE_MODE === 'true' || process.env.PERSISTENCE_MODE === 'JSON' || process.env.MOCK_DB === 'true' || String(process.env.MOCK_DB) === '1') {
                     const store: any[] = (global as any).mockMessages || ((global as any).mockMessages = []);
                     store.push({ _id: `am-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, sessionId, role: 'assistant', content: finalText, createdAt: new Date(), runId });
-                    persistChatStores();
+                    // The answer is already visible over WebSocket. Make the
+                    // durable copy synchronous before cleanup so a session
+                    // switch cannot reopen without the reply.
+                    flushChatStores();
                 }
             } catch { /* non-fatal */ }
 
@@ -712,7 +715,7 @@ export class AgentLoopService {
                 if (process.env.OFFLINE_MODE === 'true' || process.env.PERSISTENCE_MODE === 'JSON' || process.env.MOCK_DB === 'true' || String(process.env.MOCK_DB) === '1') {
                     const store: any[] = (global as any).mockMessages || ((global as any).mockMessages = []);
                     store.push({ _id: `am-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, sessionId, role: 'assistant', content: failText, createdAt: new Date(), runId });
-                    persistChatStores();
+                    flushChatStores();
                 }
             } catch { /* persistence must not prevent cleanup */ }
             await saveRunReceipt(runId, makeRunReceipt({}, 'failed', { selfFixReason: failText, error: String(error?.message || error || '') }), 'failed');

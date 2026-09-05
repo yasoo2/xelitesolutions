@@ -84,3 +84,15 @@ describe('every store mutation schedules a persist', () => {
         });
     }
 });
+
+describe('final chat delivery is durable before a run is released', () => {
+    it('flushes the assistant reply synchronously on success and fatal failure', () => {
+        const src = read('modules', 'services', 'AgentLoopService.ts');
+        const successPush = src.indexOf("role: 'assistant', content: finalText");
+        const fatalPush = src.indexOf("role: 'assistant', content: failText");
+        expect(successPush).toBeGreaterThan(-1);
+        expect(fatalPush).toBeGreaterThan(-1);
+        expect(src.indexOf('flushChatStores();', successPush)).toBeLessThan(src.indexOf('releaseHandle(', successPush));
+        expect(src.indexOf('flushChatStores();', fatalPush)).toBeGreaterThan(fatalPush);
+    });
+});
