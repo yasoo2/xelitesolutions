@@ -85,6 +85,13 @@ describe('the JSX fixers survive real JSX', () => {
         expect(r.text).toContain('<h2>ثانٍ</h2>');
     });
 
+    it('promotes the first static h2 when a React screen has no h1', () => {
+        const r = repairHeadings('<main><h2>قائمتي</h2><h2>العناصر</h2></main>');
+        expect(r.text).toContain('<h1>قائمتي</h1>');
+        expect(r.text).toContain('<h2>العناصر</h2>');
+        expect(r.repairs.some((item: any) => item.id === 'h1_count')).toBe(true);
+    });
+
     it('the tap-target rule lands once, however often it runs', () => {
         const once = repairTapTargets('body{}').text;
         expect(once).toMatch(/min-height:\s*44px/);

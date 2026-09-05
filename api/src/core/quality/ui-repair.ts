@@ -296,7 +296,7 @@ export function repairDeadLinks(code: string): RepairedFile {
 export function repairHeadings(code: string): RepairedFile {
     let seen = 0;
     let count = 0;
-    const text = String(code || '').replace(
+    let text = String(code || '').replace(
         /<h1\b([^>]*)>((?:(?!<\/?h1\b)[\s\S])*?)<\/h1>/g,
         (whole, attrs: string, body: string, offset: number, full: string) => {
             if (attrs.includes('=>')) return whole;
@@ -307,6 +307,19 @@ export function repairHeadings(code: string): RepairedFile {
             return `<h2${attrs}>${body}</h2>`;
         },
     );
+    // A generated React screen can contain only h2 headings. Promote its
+    // first real static heading so the document has one stable main title;
+    // leave dynamic JSX expressions alone because their value is not proven.
+    if (seen === 0) {
+        text = text.replace(
+            /<h2\b([^>]*)>([^<{]*?)<\/h2>/,
+            (whole, attrs: string, body: string) => {
+                if (attrs.includes('=>') || !body.trim()) return whole;
+                count++;
+                return `<h1${attrs}>${body}</h1>`;
+            },
+        );
+    }
     const repairs: Repair[] = [];
     add(repairs, 'h1_count', 'أبقيتُ عنواناً رئيسياً واحداً وحوّلتُ الباقي إلى عناوين فرعية', count);
     return { text, repairs };
