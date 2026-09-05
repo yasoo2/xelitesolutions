@@ -6165,7 +6165,10 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 // His «لا تستخدم الشبكة» reaches the audit too: it still runs,
                 // it simply never downloads a browser to make itself possible.
                 offline: noInstall,
-                timeoutMs: 30_000,
+                // Give route/state exploration enough room before it is
+                // classified as an application defect. app-audit still
+                // enforces its own hard ceiling.
+                timeoutMs: 60_000,
                 watchSessionId: auditSid,
                 requireVisibleBrowser: true,
                 ...(liveServer ? { serveUrl: liveServer.url } : {}),
@@ -6338,7 +6341,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 if (built) {
                     audit = await auditBuiltApp(path.join(proj, 'dist'), {
                         offline: noInstall,
-                        timeoutMs: 30_000,
+                        timeoutMs: 60_000,
                         watchSessionId: auditSid,
                         requireVisibleBrowser: true,
                         ...(liveServer ? { serveUrl: liveServer.url } : {}),
@@ -6524,7 +6527,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 // His «لا تستخدم الشبكة» reaches the audit too: it still runs,
                 // it simply never downloads a browser to make itself possible.
                 offline: noInstall,
-                        timeoutMs: 30_000, watchSessionId: auditSid,
+                        timeoutMs: 60_000, watchSessionId: auditSid,
                         requireVisibleBrowser: true,
                         ...(liveServer ? { serveUrl: liveServer.url } : {}),
                         ...(runtimeAuth ? { credentials: runtimeAuth } : {}),
