@@ -131,6 +131,10 @@ export function browserWalkBudgetMs(timeoutMs: number, routeCount: number): numb
     return Math.min(240_000, Math.max(120_000, base + routes * 8_000));
 }
 
+// A slow control must not consume the whole walk before responsive and visual
+// evidence runs. The shared deadline still governs the complete audit.
+export const CONTROL_PASS_BUDGET_MS = 45_000;
+
 export async function auditBuiltApp(
     distDir: string,
     opts?: {
@@ -785,7 +789,12 @@ export async function auditBuiltApp(
         // per-page minimum after the deadline: on a route-heavy app that made
         // the browser appear frozen for minutes after "pressing" had started.
         const remainingWalkMs = () => Math.max(0, walkUntil - Date.now());
-        const probeOpts = () => ({ eyes, budgetMs: remainingWalkMs(), seenForms, isEyeOpen: eyeIsOpen });
+        const probeOpts = () => ({
+            eyes,
+            budgetMs: Math.min(CONTROL_PASS_BUDGET_MS, remainingWalkMs()),
+            seenForms,
+            isEyeOpen: eyeIsOpen,
+        });
         const budgetFinding = () => ({
             id: 'qa_budget_exhausted', severity: 'medium' as const,
             detail: 'انتهت ميزانية فحص المتصفح قبل اكتمال كل المسارات والحالات — النتيجة غير مكتملة ولا أعتبر ما لم يُختبر ناجحًا',

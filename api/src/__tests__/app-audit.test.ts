@@ -108,6 +108,12 @@ describe('the wiring — every green build gets measured', () => {
         expect(src).toContain('timeoutMs: 180_000');
         expect(src).not.toContain('timeoutMs: 60_000');
     });
+
+    it('caps one control pass so visual and responsive evidence cannot be starved', () => {
+        const audit = fs.readFileSync(path.join(__dirname, '..', 'core', 'quality', 'app-audit.ts'), 'utf-8');
+        expect(audit).toContain('CONTROL_PASS_BUDGET_MS = 45_000');
+        expect(audit).toContain('budgetMs: Math.min(CONTROL_PASS_BUDGET_MS, remainingWalkMs())');
+    });
     it('labels a proven authenticated pass in the chat verdict', () => {
         const verdict = formatAudit({ score: 100, findings: [], authenticated: true }, true);
         expect(verdict).toContain('دخول محمي مثبت');
