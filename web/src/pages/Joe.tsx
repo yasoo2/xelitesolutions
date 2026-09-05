@@ -181,6 +181,10 @@ export default function Joe() {
      * session that produced it and restored when you return to it.
      */
     const previewBySession = useRef<Map<string, string>>(new Map());
+    // Keep the live Browser watcher mounted for the entire visible QA run.
+    // Preview and terminal events may update their data, but must not steal
+    // the panel that carries the cursor and element highlights.
+    const keepBrowserVisibleRef = useRef(false);
     useEffect(() => {
         const known = activeSessionId ? previewBySession.current.get(activeSessionId) : undefined;
         setPreviewUrl(known);
@@ -246,6 +250,10 @@ export default function Joe() {
             const triggerUncollapse = () => {
                 window.dispatchEvent(new CustomEvent('joe:workspace-uncollapse'));
             };
+            if (msg.type === 'panel_focus' && msg.data?.panel === 'browser' && msg.data?.reason === 'self_qa') {
+                keepBrowserVisibleRef.current = true;
+            }
+            const maySwitchAwayFromBrowser = !keepBrowserVisibleRef.current;
 
             // [FIX] The backend emits 'tool_started' / 'step_started' (NOT 'tool_start'),
             // and the tool NAME lives in msg.data.tool or msg.data.name ('execute:<tool>'),
@@ -266,7 +274,7 @@ export default function Joe() {
              * the field: «في البداية قام بتشغيل الثيرمال ثم انتقل الى شاشة
              * اللوغز». A panel booting itself is not a command to watch.
              */
-            if ((isToolStart && ['run_command', 'shell_execute', 'npm_manager', 'npm_install', 'npm_build'].includes(toolName))) {
+            if (maySwitchAwayFromBrowser && (isToolStart && ['run_command', 'shell_execute', 'npm_manager', 'npm_install', 'npm_build'].includes(toolName))) {
                 setWorkspaceTab('terminal');
                 triggerUncollapse();
             }
@@ -326,9 +334,9 @@ export default function Joe() {
             const buildTool = String(msg?.data?.tool || '');
             if ((isToolStart && toolName === 'web_page_builder')
                 || (msg.type === 'build_started' && (!buildTool || buildTool === 'web_page_builder'))) {
-                setWorkspaceTab('logs');
+                if (maySwitchAwayFromBrowser) setWorkspaceTab('logs');
                 triggerUncollapse();
-            } else if (isToolStart && ['dev_server', 'dev_server_start', 'website_full_pipeline', 'scaffold_project', 'scaffold_full_stack'].includes(toolName)) {
+            } else if (maySwitchAwayFromBrowser && isToolStart && ['dev_server', 'dev_server_start', 'website_full_pipeline', 'scaffold_project', 'scaffold_full_stack'].includes(toolName)) {
                 setWorkspaceTab('preview');
                 triggerUncollapse();
             }
@@ -364,7 +372,7 @@ export default function Joe() {
                          * hand) watches the page grow; only the FINISHED
                          * page flips the tab to Preview.
                          */
-                        if (shouldOpenPreviewOnReady(msg as any)) {
+                        if (shouldOpenPreviewOnReady(msg as any) && maySwitchAwayFromBrowser) {
                             setWorkspaceTab('preview');
                             triggerUncollapse();
                         }
@@ -398,7 +406,7 @@ export default function Joe() {
                         setPreviewUrl(url);
                         if (activeSessionId) previewBySession.current.set(activeSessionId, url);
                         // Also switch to preview tab if we got a fresh URL
-                        setWorkspaceTab('preview');
+                        if (maySwitchAwayFromBrowser) setWorkspaceTab('preview');
                         triggerUncollapse();
                     }
                 }
@@ -413,6 +421,7 @@ export default function Joe() {
             // Handle message finishing
             if (msg.type === 'run_finished' || msg.type === 'step_failed') {
                 setIsLoading(false);
+                keepBrowserVisibleRef.current = false;
                 // The final assistant answer is persisted before the closing
                 // frame. If that frame was missed during a reconnect, the
                 // visible conversation must rehydrate instead of leaving the
