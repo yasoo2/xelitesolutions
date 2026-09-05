@@ -2172,7 +2172,10 @@ export class ProjectPipelineTool implements ToolDefinition {
                         `⛔ لم أسلّم النظام: فحص Browser QA لم يُجرَ (${browserQa.skipped}).`,
                         `⛔ I did not deliver the system: Browser QA did not run (${browserQa.skipped}).`));
                 } else {
-                    let blocking = browserQa.findings.filter((finding) => finding.severity === 'high');
+                    // Every measured finding is open work. Treating only
+                    // "high" severity as blocking let coverage, accessibility,
+                    // responsive, and visual defects pass the gate unchanged.
+                    let blocking = browserQa.findings.slice();
                     appendBoundedPipelineLog(logs, `[pipeline] browser QA score=${browserQa.score} findings=${browserQa.findings.length} blocking=${blocking.length}`);
                     if (blocking.length > 0 && !browserQaRepairAttempted) {
                         browserQaRepairAttempted = true;
@@ -2211,7 +2214,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                                     });
                                     if (!recheck?.skipped) {
                                         browserQa = recheck;
-                                        blocking = browserQa.findings.filter((finding) => finding.severity === 'high');
+                                        blocking = browserQa.findings.slice();
                                         appendBoundedPipelineLog(logs, `[pipeline] browser QA recheck score=${browserQa.score} findings=${browserQa.findings.length} blocking=${blocking.length}`);
                                         browserQaRepairStatus = blocking.length === 0 ? 'repaired_and_verified' : 'repaired_blockers_remain';
                                     } else {
@@ -2224,7 +2227,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                             }
                         }
                     }
-                    blocking = browserQa.findings.filter((finding) => finding.severity === 'high');
+                    blocking = browserQa.findings.slice();
                     if (blocking.length > 0) {
                         browserQaFailed = true;
                         finalVerified = false;

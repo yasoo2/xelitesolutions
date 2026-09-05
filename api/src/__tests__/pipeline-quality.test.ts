@@ -35,7 +35,7 @@ describe('the quality phase is executable, not decorative', () => {
         // supply, so the literal call text changed. The guarantee is unchanged —
         // discovery is still the first thing that runs.
         expect(pipeline).toContain("executeTool('engineering_discovery',");
-        expect(pipeline).toContain("projectPath ? { request: productRequest, path: projectPath } : { request: productRequest }");
+        expect(pipeline).toContain('projectDescription: planningRequest, evidence: plannerEvidence');
         // Repointed: the call now passes a prepared request and prepared
         // evidence rather than the raw two. What is guaranteed — and what this
         // measures — is that the pipeline plans through project_planner and
@@ -201,6 +201,12 @@ describe('the self-QA runs where the user can watch it', () => {
     it('the findings are drawn on the page, then cleaned up', () => {
         expect(A).toContain("Findings belong in Joe's chat and Logs");
         expect(A).not.toMatch(/setAttribute\('data-joe-audit'/);
+    });
+
+    it('does not let medium or low findings bypass the repair gate', () => {
+        const P = require('fs').readFileSync(
+            require('path').join(__dirname, '..', 'modules', 'tools', 'definitions', 'ProjectPipelineTool.ts'), 'utf-8');
+        expect(P).toContain('let blocking = browserQa.findings.slice();');
     });
 
     it('the build asks for the panel, and the interface opens it by name', () => {
