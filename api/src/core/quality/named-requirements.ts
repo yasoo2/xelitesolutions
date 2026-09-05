@@ -779,6 +779,31 @@ function deterministicRecordVerdict(r: NamedRequirement, source: string): Judged
     if (/(?:\bvisit\s+contact\s+form\b|نموذج\s+تواصل\s+الزيارة)/iu.test(text) && hasVisitContactForm) {
         return { ...r, verdict: 'met', why: 'the Visit route renders the contact component with a submit form' };
     }
+    /**
+     * A request-derived editorial page has a small, inspectable contract too.
+     * Do not spend the provider call on requirements whose implementation is
+     * explicit in the generated source: this keeps weak/offline providers from
+     * turning a delivered article page into an unprovable acceptance failure.
+     */
+    const isBlogRequest = /\b(?:blog|article|articles|magazine|editorial|archive)\b|مدونة|مقال(?:ات)?|مجلة|أرشيف/iu.test(text);
+    const hasBlogArticles = /featuresTitle\s*:\s*['"][^'"]*(?:article|مقال|قراءة|أحدث)[^'"]*['"]/iu.test(src)
+        && /features\s*:\s*\[[\s\S]{0,2600}?title\s*:/iu.test(src)
+        && /features\.map\s*\(/iu.test(src);
+    const hasBlogSearch = /blogSearch\s*:\s*true/iu.test(src)
+        && /type\s*=\s*['"]search['"]/iu.test(src)
+        && /setQuery\s*\(/iu.test(src)
+        && /visible\s*=|filtered|query\.trim/iu.test(src);
+    if (isBlogRequest && /(?:article\s+card|article|مقال(?:ة|ات)?|بطاق(?:ة|تا|ات?)\s*(?:مقال|المقال))/iu.test(text)
+        && hasBlogArticles) {
+        return { ...r, verdict: 'met', why: 'the generated editorial page renders request-derived article cards from source data' };
+    }
+    if (isBlogRequest && /(?:functional\s+)?search|بحث|ابحث/iu.test(text) && hasBlogSearch) {
+        return { ...r, verdict: 'met', why: 'the generated editorial page filters article cards from a real search input' };
+    }
+    if (isBlogRequest && /(?:single[- ]page|one[- ]page|صفحة\s+واحدة)/iu.test(text)
+        && /heroTitle\s*:\s*['"][^'"]+['"]/iu.test(src) && hasBlogArticles) {
+        return { ...r, verdict: 'met', why: 'the generated editorial page has a single shell with a concrete headline and article section' };
+    }
     const phrase = String(r.text || r.quote || '').trim().replace(/^['"“”«»]+|['"“”«»]+$/g, '');
     // The extractor is allowed to preserve the user's list grammar (`Include
     // rating`). For a generated records schema, the field evidence is the

@@ -765,7 +765,10 @@ export async function auditBuiltApp(
          * per-page budget is how a self-check turns into a five-minute stall on
          * a build that was supposed to take two.
          */
-        const walkUntil = Date.now() + Math.max(45_000, timeoutMs * 2);
+        // Exploration needs room for route discovery, state changes, and the
+        // responsive passes. Keep one shared deadline so it cannot loop
+        // forever, but do not let the old 60s floor truncate real QA runs.
+        const walkUntil = Date.now() + Math.min(180_000, Math.max(90_000, timeoutMs * 4));
         const seenForms = new Set<string>();
         // One deadline governs the entire visible walk. Do not reset a small
         // per-page minimum after the deadline: on a route-heavy app that made

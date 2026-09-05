@@ -134,7 +134,7 @@ describe('every menu, every route — not fourteen buttons', () => {
     });
 
     it('and the whole walk shares one budget instead of one per page', () => {
-        expect(read('core', 'quality', 'app-audit.ts')).toMatch(/const walkUntil = Date\.now\(\) \+ Math\.max\(45_000, timeoutMs \* 2\)/);
+        expect(read('core', 'quality', 'app-audit.ts')).toMatch(/const walkUntil = Date\.now\(\) \+ Math\.min\(180_000, Math\.max\(90_000, timeoutMs \* 4\)\)/);
     });
 });
 

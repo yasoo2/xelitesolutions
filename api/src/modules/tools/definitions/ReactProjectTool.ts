@@ -1895,7 +1895,7 @@ function deriveContent(request: string, isAr: boolean, kind: PageKind = 'generic
             ],
         });
     }
-    if (kind === 'blog' || kind === 'archive') {
+    if (kind === 'blog' || (kind as string) === 'archive') {
         // A blog request still needs a useful deterministic floor when the
         // selected model is unavailable. Keep the content request-driven:
         // article cards and search are real behaviour, not a generic SaaS
