@@ -113,6 +113,8 @@ describe('the wiring — every green build gets measured', () => {
         const audit = fs.readFileSync(path.join(__dirname, '..', 'core', 'quality', 'app-audit.ts'), 'utf-8');
         expect(audit).toContain('CONTROL_PASS_BUDGET_MS = 45_000');
         expect(audit).toContain('budgetMs: Math.min(CONTROL_PASS_BUDGET_MS, remainingWalkMs())');
+        expect(audit).toContain("const responsiveRoutes = (routes.length ? routes : ['/']).slice(0, 20);");
+        expect(audit).toContain('&& !remainingWalkMs()) behaviourMetrics.budgetExhausted = true');
     });
     it('labels a proven authenticated pass in the chat verdict', () => {
         const verdict = formatAudit({ score: 100, findings: [], authenticated: true }, true);

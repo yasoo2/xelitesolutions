@@ -52,6 +52,16 @@ const BOUND_HEADING = [
     '<h1 className="app-name">{content.brand}</h1>',
 ].join(String.fromCharCode(10));
 
+describe('INVARIANT: generated applications use a semantic document title', () => {
+    test('the shared application shell emits a real h1 instead of an ARIA imitation', () => {
+        const fs = require('fs');
+        const path = require('path');
+        const template = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'react-app-templates.ts'), 'utf8');
+        expect(template).toContain('<h1 className="app-name">{displayName(content.brand)}</h1>');
+        expect(template).not.toContain('className="app-name" role="heading" aria-level="1"');
+    });
+});
+
 describe('INVARIANT: a heading bound to a value counts as that heading', () => {
     test('the binding resolves, one hop, to the requested name', () => {
         expect(titleEvidence(BOUND_HEADING, 'مصاريفي')).toBe(true);

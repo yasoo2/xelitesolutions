@@ -804,7 +804,9 @@ export async function auditBuiltApp(
             if (!remainingWalkMs()) return eyeRequiredResult('Browser QA budget ended before the first page');
             const homeProbe = await probeControls(page, probeOpts());
             mergeProbe(homeProbe, '/');
-            if (homeProbe.metrics.budgetExhausted || homeProbe.metrics.explorationBudgetExhausted) behaviourMetrics.budgetExhausted = true;
+            // A local control-pass cap preserves time for responsive and visual
+            // checks. It is not proof that the shared browser-walk budget ended.
+            if ((homeProbe.metrics.budgetExhausted || homeProbe.metrics.explorationBudgetExhausted) && !remainingWalkMs()) behaviourMetrics.budgetExhausted = true;
             if (homeProbe.metrics.eyeLost || !eyeIsOpen()) return eyeRequiredResult();
         } catch { /* the controls are what is under test */ }
 
@@ -829,7 +831,7 @@ export async function auditBuiltApp(
                 if (d2.h1s !== 1) brokenRoutes.push(`${r} (h1=${d2.h1s})`);
                 const routeProbe = await probeControls(page, probeOpts());
                 mergeProbe(routeProbe, r);
-                if (routeProbe.metrics.budgetExhausted || routeProbe.metrics.explorationBudgetExhausted) behaviourMetrics.budgetExhausted = true;
+                if ((routeProbe.metrics.budgetExhausted || routeProbe.metrics.explorationBudgetExhausted) && !remainingWalkMs()) behaviourMetrics.budgetExhausted = true;
                 if (routeProbe.metrics.eyeLost || !eyeIsOpen()) return eyeRequiredResult();
             } catch (e: any) {
                 brokenRoutes.push(`${r} (${String(e?.message || e).slice(0, 40)})`);
@@ -874,7 +876,7 @@ export async function auditBuiltApp(
                 maxControls: 12,
             });
             if (phone.metrics.eyeLost || !eyeIsOpen()) return eyeRequiredResult();
-            if (phone.metrics.budgetExhausted || phone.metrics.explorationBudgetExhausted) behaviourMetrics.budgetExhausted = true;
+            if ((phone.metrics.budgetExhausted || phone.metrics.explorationBudgetExhausted) && !remainingWalkMs()) behaviourMetrics.budgetExhausted = true;
             const fresh = (phone.controls || []).filter((c: any) => !seenLabels.has(String(c.label || '')));
             for (const c of fresh) allControls.push({ ...c, bare: c.label, label: `الجوّال ${c.label}` });
             behaviourMetrics.deadAnchors += phone.metrics?.deadAnchors || 0;
@@ -891,7 +893,10 @@ export async function auditBuiltApp(
          * Revisit each discovered route at tablet and phone widths, rediscover
          * controls after the layout changes, and keep the same bounded budget.
          */
-        const responsiveRoutes = routes.slice(0, 20);
+        // A single-page app still needs desktop, tablet, and phone evidence.
+        // Without this fallback, route-less generated tools never ran the
+        // responsive control pass beyond their initial desktop page.
+        const responsiveRoutes = (routes.length ? routes : ['/']).slice(0, 20);
         const responsiveBudget = Math.min(90_000, Math.max(28_000, responsiveRoutes.length * 8_000));
         const responsiveDeadline = Math.min(walkUntil, Date.now() + responsiveBudget);
         for (const r of responsiveRoutes) {
@@ -911,7 +916,7 @@ export async function auditBuiltApp(
                         maxControls: 12,
                     });
                     if (responsive.metrics.eyeLost || !eyeIsOpen()) return eyeRequiredResult();
-                    if (responsive.metrics.budgetExhausted || responsive.metrics.explorationBudgetExhausted) behaviourMetrics.budgetExhausted = true;
+                    if ((responsive.metrics.budgetExhausted || responsive.metrics.explorationBudgetExhausted) && !remainingWalkMs()) behaviourMetrics.budgetExhausted = true;
                     const prefix = `${size.name} ${r}`;
                     for (const c of responsive.controls || []) {
                         const label = `${prefix} ${c.label}`;
