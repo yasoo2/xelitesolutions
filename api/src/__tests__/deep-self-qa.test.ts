@@ -133,8 +133,11 @@ describe('every menu, every route — not fourteen buttons', () => {
         expect(b).toMatch(/querySelectorAll\('\[data-joe-fld\]'\)\.forEach/);
     });
 
-    it('and the whole walk shares one budget instead of one per page', () => {
-        expect(read('core', 'quality', 'app-audit.ts')).toMatch(/const walkUntil = Date\.now\(\) \+ Math\.min\(180_000, Math\.max\(90_000, timeoutMs \* 4\)\)/);
+    it('and the whole walk shares one route-aware bounded budget instead of one per page', () => {
+        const a = read('core', 'quality', 'app-audit.ts');
+        expect(a).toContain('browserWalkBudgetMs(timeoutMs, routes.length)');
+        expect(a).toContain('const responsiveBudget = Math.min(90_000');
+        expect(a).toContain('Math.min(240_000');
     });
 });
 

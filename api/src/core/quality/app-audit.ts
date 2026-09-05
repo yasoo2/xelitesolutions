@@ -120,6 +120,17 @@ export function scoreOf(findings: AppAuditFinding[]): number {
     return Math.max(0, findings.reduce((s, f) => s - cost[f.severity], 100));
 }
 
+/**
+ * Allocate one bounded walk budget across the app's discovered surface.
+ * Route-heavy apps need more time for real navigation and responsive checks,
+ * but the hard ceiling prevents a broken page from holding the agent forever.
+ */
+export function browserWalkBudgetMs(timeoutMs: number, routeCount: number): number {
+    const routes = Math.max(0, Math.min(20, Math.floor(Number(routeCount) || 0)));
+    const base = Math.max(90_000, Number(timeoutMs) * 4 || 0);
+    return Math.min(240_000, Math.max(120_000, base + routes * 8_000));
+}
+
 export async function auditBuiltApp(
     distDir: string,
     opts?: {
@@ -768,7 +779,7 @@ export async function auditBuiltApp(
         // Exploration needs room for route discovery, state changes, and the
         // responsive passes. Keep one shared deadline so it cannot loop
         // forever, but do not let the old 60s floor truncate real QA runs.
-        const walkUntil = Date.now() + Math.min(180_000, Math.max(90_000, timeoutMs * 4));
+        const walkUntil = Date.now() + browserWalkBudgetMs(timeoutMs, routes.length);
         const seenForms = new Set<string>();
         // One deadline governs the entire visible walk. Do not reset a small
         // per-page minimum after the deadline: on a route-heavy app that made
@@ -871,8 +882,9 @@ export async function auditBuiltApp(
          * Revisit each discovered route at tablet and phone widths, rediscover
          * controls after the layout changes, and keep the same bounded budget.
          */
-        const responsiveDeadline = Math.min(walkUntil, Date.now() + 28_000);
         const responsiveRoutes = routes.slice(0, 20);
+        const responsiveBudget = Math.min(90_000, Math.max(28_000, responsiveRoutes.length * 8_000));
+        const responsiveDeadline = Math.min(walkUntil, Date.now() + responsiveBudget);
         for (const r of responsiveRoutes) {
             for (const size of [{ name: 'لوحي', w: 820, h: 1180 }, { name: 'جوّال', w: 390, h: 844 }]) {
                 if (Date.now() >= responsiveDeadline || !remainingWalkMs() || !eyeIsOpen()) { behaviourMetrics.budgetExhausted = true; break; }
