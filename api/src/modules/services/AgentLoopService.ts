@@ -353,7 +353,7 @@ export class AgentLoopService {
                 broadcast({ type: 'text', sessionId, data: { text: gate.text, sessionId }, runId: clarifyRunId } as any);
                 broadcast({ type: 'run_finished', runId: clarifyRunId, data: { runId: clarifyRunId, ok: true, sessionId } } as any);
                 try {
-                    if (process.env.PERSISTENCE_MODE === 'JSON' || process.env.MOCK_DB === 'true' || String(process.env.MOCK_DB) === '1') {
+                    if (process.env.OFFLINE_MODE === 'true' || process.env.PERSISTENCE_MODE === 'JSON' || process.env.MOCK_DB === 'true' || String(process.env.MOCK_DB) === '1') {
                         const store: any[] = (global as any).mockMessages || ((global as any).mockMessages = []);
                         store.push({ _id: `am-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, sessionId, role: 'assistant', content: gate.text, createdAt: new Date() });
                         persistChatStores();
@@ -632,7 +632,7 @@ export class AgentLoopService {
 
             // Persist Joe's reply too (offline/JSON mode) so reloads show it.
             try {
-                if (process.env.PERSISTENCE_MODE === 'JSON' || process.env.MOCK_DB === 'true' || String(process.env.MOCK_DB) === '1') {
+                if (process.env.OFFLINE_MODE === 'true' || process.env.PERSISTENCE_MODE === 'JSON' || process.env.MOCK_DB === 'true' || String(process.env.MOCK_DB) === '1') {
                     const store: any[] = (global as any).mockMessages || ((global as any).mockMessages = []);
                     store.push({ _id: `am-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, sessionId, role: 'assistant', content: finalText, createdAt: new Date(), runId });
                     persistChatStores();
@@ -709,7 +709,7 @@ export class AgentLoopService {
             // working line. Persist the same user-facing text as the success
             // path so live delivery and recovery have one source of truth.
             try {
-                if (process.env.PERSISTENCE_MODE === 'JSON' || process.env.MOCK_DB === 'true' || String(process.env.MOCK_DB) === '1') {
+                if (process.env.OFFLINE_MODE === 'true' || process.env.PERSISTENCE_MODE === 'JSON' || process.env.MOCK_DB === 'true' || String(process.env.MOCK_DB) === '1') {
                     const store: any[] = (global as any).mockMessages || ((global as any).mockMessages = []);
                     store.push({ _id: `am-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, sessionId, role: 'assistant', content: failText, createdAt: new Date(), runId });
                     persistChatStores();

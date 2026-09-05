@@ -512,7 +512,7 @@ export async function listSessionMessages(req: Request, res: Response) {
     const isPersistenceDisabled = process.env.PERSISTENCE_MODE === 'JSON';
     try {
         // [OFFLINE MODE] Return empty if DB is down
-        if (mongoose.connection.readyState !== 1 && !isPersistenceDisabled) {
+        if (mongoose.connection.readyState !== 1 && !isPersistenceDisabled && process.env.OFFLINE_MODE !== 'true') {
             console.warn('[SessionController] DB offline - returning empty message list');
             return res.json({ events: [] });
         }

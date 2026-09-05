@@ -1877,6 +1877,15 @@ describe('a run keeps going while you read another conversation', () => {
         expect(connect).toContain('MongoDB connection failed');
     });
 
+    it('serves persisted chat history in explicit offline mode', () => {
+        const S = SRC('api', 'controllers', 'sessionController.ts');
+        expect(S).toMatch(/readyState !== 1 && !isPersistenceDisabled && process\.env\.OFFLINE_MODE !== 'true'/);
+        expect(S).toContain("messages = mockMessages.filter((m: any) => m.sessionId === sessionId)");
+        for (const file of [SRC('api', 'routes', 'run.ts'), SRC('modules', 'services', 'AgentLoopService.ts')]) {
+            expect(file).toMatch(/process\.env\.OFFLINE_MODE === 'true'[\s\S]{0,180}PERSISTENCE_MODE === 'JSON'/);
+        }
+    });
+
     it('the owner stop route broadcasts a session-scoped cancellation', () => {
         const R = SRC('api', 'routes', 'run.ts');
         expect(R).toContain("type: 'run_cancelled'");

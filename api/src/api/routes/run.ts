@@ -224,7 +224,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     // message and rebuilt into the history events.
     const attachmentMeta = () => attachments.map(a => ({ id: a.id, name: a.name, mimeType: a.mimeType, size: a.size }));
     try {
-        if (process.env.PERSISTENCE_MODE === 'JSON' || process.env.MOCK_DB === 'true' || String(process.env.MOCK_DB) === '1') {
+        if (process.env.OFFLINE_MODE === 'true' || process.env.PERSISTENCE_MODE === 'JSON' || process.env.MOCK_DB === 'true' || String(process.env.MOCK_DB) === '1') {
             const store: any[] = (global as any).mockMessages || ((global as any).mockMessages = []);
             store.push({ _id: `um-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, sessionId, role: 'user', content: text, attachments: attachmentMeta(), createdAt: new Date() });
             persistChatStores();
@@ -328,7 +328,7 @@ router.get('/:id/receipt', async (req, res) => {
 
 router.get('/:id', async (req, res) => {
     const id = String(req.params.id || '').trim();
-    const jsonMode = process.env.PERSISTENCE_MODE === 'JSON' || process.env.MOCK_DB === 'true' || String(process.env.MOCK_DB) === '1';
+    const jsonMode = process.env.OFFLINE_MODE === 'true' || process.env.PERSISTENCE_MODE === 'JSON' || process.env.MOCK_DB === 'true' || String(process.env.MOCK_DB) === '1';
     if (jsonMode) {
         const evidence = await getRunEvidence(id);
         if (!evidence) return res.status(404).json({ error: 'Run not found' });
