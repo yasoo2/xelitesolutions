@@ -2136,7 +2136,10 @@ export class ProjectPipelineTool implements ToolDefinition {
                 try { require('../../browser/manager').warmBrowserSession(panelSid); } catch { /* audit reports private fallback */ }
                 try {
                     const { waitForPanelWatcher } = require('../../browser/wsHub');
-                    const watching = await waitForPanelWatcher(panelSid, 4000);
+                    // The Browser panel is lazy-loaded. Give the UI enough
+                    // time to mount after panel_focus before declaring that
+                    // visible QA has no audience.
+                    const watching = await waitForPanelWatcher(panelSid, 15_000);
                     say(pick(isAr,
                         watching ? '👁️ أبدأ فحص الجودة المرئي الآن داخل لوحة المتصفح…' : '🔒 لا توجد مشاهدة للوحة؛ سأجري الفحص الخاص وأذكر ذلك صراحةً…',
                         watching ? '👁️ Starting visible Browser QA in the Browser panel…' : '🔒 No Browser watcher is attached; I will run private QA and say so explicitly…'));

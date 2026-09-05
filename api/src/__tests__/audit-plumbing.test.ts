@@ -143,7 +143,7 @@ describe('visible browser QA is part of page delivery', () => {
         expect(pipeline).not.toContain("if (finalVerified && liveUrl) {");
         expect(pipeline).toContain("reason: 'pipeline_qa'");
         expect(pipeline).toContain('warmBrowserSession(panelSid)');
-        expect(pipeline).toContain('waitForPanelWatcher(panelSid, 4000)');
+        expect(pipeline).toContain('waitForPanelWatcher(panelSid, 15_000)');
         expect(pipeline).toContain('watchSessionId: panelSid || undefined');
         expect(pipeline).toContain('serveUrl: liveUrl');
         expect(pipeline).toContain('browserQaFailed = true');

@@ -167,7 +167,10 @@ export class ProjectRepairTool extends BaseTool {
         let watching = false;
         try {
             const { waitForPanelWatcher } = require('../../../browser/wsHub');
-                watching = await waitForPanelWatcher(watchSessionId, 4000);
+                // Rechecks must get the same realistic panel-attach window as
+                // the initial pipeline audit; otherwise repair looks blind
+                // even when the Browser panel is still mounting.
+                watching = await waitForPanelWatcher(watchSessionId, 15_000);
             term(watching
                 ? 'repair: the Browser panel is attached — you can watch this'
                 : 'repair: no Browser panel attached — visual QA is blocked until the Browser panel is open');
