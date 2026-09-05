@@ -40,6 +40,15 @@ describe('verified execution outcomes', () => {
         expect(report).toContain('appointments table exceeds the phone width');
     });
 
+    it('preserves a failed tool output so the orchestrator can compose its report', () => {
+        const orchestrator = source('orchestration', 'AgentOrchestrator.ts');
+        const failed = orchestrator.indexOf('node.status = "failed";');
+        const nextDecision = orchestrator.indexOf('const userActionMarker', failed);
+        const block = orchestrator.slice(failed, nextDecision);
+        expect(block).toContain('node.result = this.sanitizeOutput(result.output ?? result.error);');
+        expect(block.indexOf('node.result =')).toBeLessThan(block.indexOf('lastNodeError ='));
+    });
+
     it('marks an unconfirmed project_run as a non-recoverable verification failure', () => {
         const runTool = source('modules', 'tools', 'definitions', 'ProjectRunTool.ts');
         const unconfirmedBlock = runTool.slice(runTool.indexOf('if (!livePort) {'), runTool.indexOf('const url = `http://localhost:${livePort}/`;'));

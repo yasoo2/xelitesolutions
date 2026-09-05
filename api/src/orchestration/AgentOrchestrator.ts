@@ -855,6 +855,11 @@ export class AgentOrchestrator {
           }
 
           node.status = "failed";
+          // Keep the tool's measured explanation on the failed step as well as
+          // its short error code. Without this, composeFailure could only see
+          // `quality_findings_survived` and the useful QA report disappeared
+          // from the user's chat after a phase stopped.
+          node.result = this.sanitizeOutput(result.output ?? result.error);
           lastNodeError = result.error || lastNodeError;
           node.lastError = typeof result.error === 'string' ? result.error : JSON.stringify(result.error ?? '');
           memory.record(node.id, node.task, result.error, "failed");
