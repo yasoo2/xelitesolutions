@@ -1,4 +1,4 @@
-import { transientNavigationError } from '../api/routes/browser';
+import { navigationNeedsCleanSlate, transientNavigationError } from '../api/routes/browser';
 
 describe('browser navigation recovery classification', () => {
   test('retries transient preview connection failures', () => {
@@ -9,5 +9,11 @@ describe('browser navigation recovery classification', () => {
   test('does not retry invalid or authorization failures', () => {
     expect(transientNavigationError(new Error('HTTP 401 unauthorized'))).toBe(false);
     expect(transientNavigationError(new Error('Invalid URL'))).toBe(false);
+  });
+
+  test('clears a poisoned Chromium error document before reopening a valid preview', () => {
+    expect(navigationNeedsCleanSlate(null, 'chrome-error://chromewebdata/')).toBe(true);
+    expect(navigationNeedsCleanSlate(new Error('Navigation interrupted by another navigation to chrome-error://chromewebdata'), 'http://localhost:5002/project-preview/run/index.html')).toBe(true);
+    expect(navigationNeedsCleanSlate(null, 'http://localhost:5002/project-preview/run/index.html')).toBe(false);
   });
 });

@@ -143,7 +143,7 @@ export default function EmbeddedBrowser({
 
         try {
             const token = localStorage.getItem('token');
-            await fetch(`${API_URL}/browser/nav/goto`, {
+            const response = await fetch(`${API_URL}/browser/nav/goto`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -154,10 +154,15 @@ export default function EmbeddedBrowser({
                     url: targetUrl
                 })
             });
-            setCurrentUrl(targetUrl);
-            setInputUrl(targetUrl);
+            const result = await response.json().catch(() => null);
+            if (!response.ok || !result?.ok) throw new Error(String(result?.error || 'nav_goto_failed'));
+            const resolvedUrl = String(result.url || targetUrl);
+            setCurrentUrl(resolvedUrl);
+            setInputUrl(resolvedUrl);
         } catch {
-            // Navigation failed silently
+            // The stream will show the actual page; do not present a failed
+            // navigation as if the requested URL opened successfully.
+            setLiveQuality('degraded');
         } finally {
             setIsLoading(false);
         }

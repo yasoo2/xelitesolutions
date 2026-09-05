@@ -869,6 +869,54 @@ function deterministicRecordVerdict(r: NamedRequirement, source: string): Judged
     if (/search|بحث/iu.test(text) && /setQuery|query\.trim|visible\s*=|filtered/i.test(src)) {
         return { ...r, verdict: 'met', why: 'the generated records view filters visible rows from query state' };
     }
+    /**
+     * A records application has a concrete, reusable implementation contract.
+     * Do not make an available form, numeric guard, metric, or local store
+     * disappear from the acceptance ledger merely because an optional model
+     * judge is slow or unavailable. Each proof below requires the behaviour's
+     * implementation shape, rather than matching its words in generated copy.
+     */
+    const hasRecordForm = /function\s+RecordsApp|function\s+.*Records?/iu.test(src)
+        && /<form\b[^>]*onSubmit\s*=|onSubmit\s*=\s*\{submit/iu.test(src)
+        && /setRows\s*\(/iu.test(src)
+        && /fields\s*\.map\s*\(/iu.test(src);
+    const hasSemanticRecordFields = /primary\s*:\s*true/iu.test(src)
+        && /type\s*:\s*['"]number['"]/iu.test(src)
+        && /type\s*:\s*['"]select['"]/iu.test(src)
+        && /type\s*:\s*['"]date['"]/iu.test(src);
+    const hasPositiveNumberGuard = /invalidNumericField/iu.test(src)
+        && /Number\.isFinite\s*\(/iu.test(src)
+        && /minExclusive\s*\?\s*value\s*<=\s*field\.min/iu.test(src);
+    const hasComputedTotal = /metrics\s*:\s*\[[\s\S]{0,1600}?kind\s*:\s*['"]sum['"]/iu.test(src)
+        && /computeMetric\s*\([^)]*rows/iu.test(src)
+        && /case\s*['"]sum['"][\s\S]{0,500}?reduce\s*\(/iu.test(src);
+    const hasEditAndConfirmedDelete = /setEditing\s*\(/iu.test(src)
+        && /window\.confirm\s*\(/iu.test(src)
+        && /setRows\s*\(\s*rows\.filter/iu.test(src);
+    const hasDurableLocalRows = /createStore\s*\(/iu.test(src)
+        && /localStorage\.getItem\s*\(/iu.test(src)
+        && /localStorage\.setItem\s*\(/iu.test(src)
+        && /store\.write\s*\(/iu.test(src);
+    if (/(?:add|create)\s+(?:an?\s+)?(?:expense|record|entry)|إضافة\s+(?:مصروف|سجل)/iu.test(text)
+        && hasRecordForm && hasSemanticRecordFields) {
+        return { ...r, verdict: 'met', why: 'the records form creates rows with a primary field plus number, category, and date inputs' };
+    }
+    if (/(?:non[- ]?numeric|non[- ]?positive|positive\s+(?:amount|number)|رقمي|موجب|غير\s+صالح)/iu.test(text)
+        && hasPositiveNumberGuard) {
+        return { ...r, verdict: 'met', why: 'the records form rejects non-numeric and non-positive values before writing a row' };
+    }
+    if (/(?:calculate|running|show|display)\s+(?:the\s+)?total|total\s+(?:that|which)|الإجمالي|المجموع/iu.test(text)
+        && hasComputedTotal) {
+        return { ...r, verdict: 'met', why: 'the records view computes the displayed total from the current rows' };
+    }
+    if (/(?:edit\s+and\s+delete|delete\s+with\s+confirmation|تعديل\s+وحذف|حذف\s+مع\s+تأكيد)/iu.test(text)
+        && hasEditAndConfirmedDelete) {
+        return { ...r, verdict: 'met', why: 'the records view enters edit state and confirms before deleting a row' };
+    }
+    if (/(?:save|keep|persist|durable)[\s\S]{0,80}(?:reload|refresh|localstorage)|(?:reload|refresh)[\s\S]{0,80}(?:save|keep|persist|durable)|حفظ[\s\S]{0,80}(?:إعادة\s+التحميل|التحديث)/iu.test(text)
+        && hasDurableLocalRows) {
+        return { ...r, verdict: 'met', why: 'the records store reads and writes rows through localStorage across reloads' };
+    }
     if (/status\s+filter|filtering|تصفية|فلترة/iu.test(text)
         && /setFilters?|content\.statusField|filter.*statusField/i.test(src)) {
         return { ...r, verdict: 'met', why: 'the generated records view filters rows by status state' };

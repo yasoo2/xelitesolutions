@@ -3277,9 +3277,36 @@ select{appearance:none;-webkit-appearance:none;padding-inline-end:38px;
 
 /* ── package.json — the engine's real dependencies ──────────────────────── */
 
+/**
+ * The directory/brand may deliberately use any writing system. npm package
+ * identifiers may not. Keep the human name at the product layer and give npm
+ * a deterministic ASCII identity instead of rejecting an otherwise valid app.
+ */
+export function npmPackageNameForTest(name: string): string {
+    const source = String(name || '').trim();
+    const ascii = source
+        .normalize('NFKD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9._~-]+/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^[-._]+|[-._]+$/g, '')
+        .slice(0, 80);
+    if (ascii && /^[a-z0-9]/.test(ascii)) return ascii;
+
+    // FNV-1a is stable across processes and avoids turning every non-Latin
+    // project into the same package name. It is metadata, not user-facing copy.
+    let hash = 0x811c9dc5;
+    for (const unit of Array.from(source)) {
+        hash ^= unit.codePointAt(0) || 0;
+        hash = Math.imul(hash, 0x01000193) >>> 0;
+    }
+    return `joe-app-${hash.toString(36)}`;
+}
+
 export function fileAppPackageJson(name: string, bp: AppBlueprint): string {
     return JSON.stringify({
-        name, private: true, version: '0.1.0', type: 'module',
+        name: npmPackageNameForTest(name), private: true, version: '0.1.0', type: 'module',
         scripts: {
             dev: 'vite',
             build: 'vite build',

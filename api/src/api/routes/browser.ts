@@ -198,6 +198,14 @@ export function transientNavigationError(error: unknown): boolean {
   return /econnrefused|econnreset|net::err_connection|target page.*closed|timeout.*exceed|timed out/.test(text);
 }
 
+/** A failed Chromium navigation leaves a reusable session on an internal
+ * chrome-error page. The next valid preview must not inherit that failure. */
+export function navigationNeedsCleanSlate(error: unknown, currentUrl: string): boolean {
+  const text = String((error as any)?.message || error || '').toLowerCase();
+  return /chrome-error:\/\/|interrupted by another navigation/.test(text)
+    || /^chrome-error:\/\//i.test(String(currentUrl || '').trim());
+}
+
 router.post('/nav/goto', authenticate as any, async (req: Request, res: Response) => {
   try {
     const sid = String(req.body?.sessionId || '').trim();
@@ -217,6 +225,10 @@ router.post('/nav/goto', authenticate as any, async (req: Request, res: Response
     for (let attempt = 0; attempt < 2; attempt++) {
       attempts++;
       try {
+        if (navigationNeedsCleanSlate(null, s.page.url())) {
+          try { await s.page.goto('about:blank', { waitUntil: 'domcontentloaded', timeout: 8_000 }); } catch { /* best effort */ }
+          await s.page.waitForTimeout(250);
+        }
         await s.page.goto(u, { waitUntil: 'domcontentloaded' });
         lastError = null;
         break;
@@ -225,7 +237,10 @@ router.post('/nav/goto', authenticate as any, async (req: Request, res: Response
         // A preview server can become ready just after project_run reports its
         // URL. Retry one transient connection failure; never retry auth, bad
         // URLs, or arbitrary page errors.
-        if (attempt === 0 && transientNavigationError(e)) {
+        if (attempt === 0 && (transientNavigationError(e) || navigationNeedsCleanSlate(e, s.page.url()))) {
+          if (navigationNeedsCleanSlate(e, s.page.url())) {
+            try { await s.page.goto('about:blank', { waitUntil: 'domcontentloaded', timeout: 8_000 }); } catch { /* best effort */ }
+          }
           await new Promise(resolve => setTimeout(resolve, 1200));
           continue;
         }
