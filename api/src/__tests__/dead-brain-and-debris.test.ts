@@ -114,6 +114,17 @@ describe('keyless planner deadlines — explicit patience is not overwritten by 
     });
 });
 
+describe('offline routing — no network retry storm when offline is explicit', () => {
+    it('keeps only the local brain in OFFLINE_MODE', () => {
+        const src = read('core/llm/intelligent-router.ts');
+        expect(src).toContain("const offlineMode = /^(?:1|true|yes|on)$/i.test");
+        expect(src).toContain("const networkProviders = new Set([");
+        expect(src).toContain("if (offlineMode) {");
+        expect(src).toContain("network providers disabled; using Local (Auto) only");
+        expect(src).toContain("if (networkProviders.has(meshProviders[i].name)) meshProviders.splice(i, 1);");
+    });
+});
+
 describe('dead-brain latch — no minutes-long re-walks of a mesh that just died', () => {
     const src = read('core/llm/intelligent-router.ts');
 

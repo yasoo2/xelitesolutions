@@ -1851,6 +1851,7 @@ export async function routeToModel(
     // not let the model selector or a cloud happy path silently win first.
     const autoLocalPreferred = String(context?.modelConfig?.provider || '').trim().toLowerCase() === 'auto' && hasLocal;
     const localStrict = String(process.env.LOCAL_LLM_STRICT || '').trim() === '1';
+    const offlineMode = /^(?:1|true|yes|on)$/i.test(String(process.env.OFFLINE_MODE || '').trim());
 
     // ============================================================================
     // FREE-FIRST Multi-Provider Mesh ("Chain of Steel")
@@ -2068,6 +2069,28 @@ export async function routeToModel(
                 return res;
             }
         });
+    }
+
+    /**
+     * OFFLINE MODE IS A NETWORK CONTRACT, NOT A PREFERENCE.
+     *
+     * A local run previously still walked keyless/cloud gateways here. When
+     * the network was unavailable, one prompt paid several provider deadlines
+     * and could make the API appear frozen while its caller waited. Keep only
+     * the private local brain; the normal honest failure below explains when it
+     * is unavailable instead of pretending an offline gateway might recover.
+     */
+    if (offlineMode) {
+        const networkProviders = new Set([
+            'Pollinations (Forced)', 'Gemini (Free)', 'Groq (Free)',
+            'Cerebras (Free)', 'OpenRouter (Free)', 'Mistral (Free)',
+            'HuggingFace (Free)', 'OpenAI (Direct)', 'LLM7 (Keyless)',
+            'DuckAI (Keyless)', 'DeepSeek (Pollinations)', 'Pollinations (Backup)',
+        ]);
+        for (let i = meshProviders.length - 1; i >= 0; i--) {
+            if (networkProviders.has(meshProviders[i].name)) meshProviders.splice(i, 1);
+        }
+        console.info('[IntelligentRouter] 📴 OFFLINE_MODE — network providers disabled; using Local (Auto) only.');
     }
 
     // Keep configured free/cloud providers ahead of keyless gateways, but in a
