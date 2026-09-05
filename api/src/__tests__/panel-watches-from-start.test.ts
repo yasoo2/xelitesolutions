@@ -18,6 +18,7 @@ import path from 'path';
 const HUB = () => fs.readFileSync(path.join(__dirname, '..', 'modules', 'browser', 'wsHub.ts'), 'utf-8');
 const AUDIT = () => fs.readFileSync(path.join(__dirname, '..', 'core', 'quality', 'app-audit.ts'), 'utf-8');
 const REACT = () => fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ReactProjectTool.ts'), 'utf-8');
+const JOE_UI = () => fs.readFileSync(path.join(__dirname, '..', '..', '..', 'web', 'src', 'pages', 'Joe.tsx'), 'utf-8');
 
 describe('the audit waits for the eye it promised', () => {
     it('the hub can say whether anyone is watching', () => {
@@ -54,6 +55,15 @@ describe('the audit waits for the eye it promised', () => {
         const src = REACT();
         expect(src).toMatch(/the Browser panel is attached/);
         expect(src).toMatch(/no Browser panel attached — visual QA is blocked/);
+    });
+
+    it('reveals the Browser tab when the server explicitly focuses visible QA', () => {
+        const src = JOE_UI();
+        const focus = src.indexOf("msg.type === 'panel_focus' && msg.data?.panel === 'browser' && msg.data?.reason === 'self_qa'");
+        expect(focus).toBeGreaterThan(0);
+        const block = src.slice(focus, focus + 700);
+        expect(block).toMatch(/setWorkspaceTab\('browser'\)/);
+        expect(block).toMatch(/triggerUncollapse\(\)/);
     });
 
     it('waits on and audits the session carried by the run, with a panel fallback only when absent', () => {

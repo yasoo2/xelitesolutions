@@ -252,6 +252,11 @@ export default function Joe() {
             };
             if (msg.type === 'panel_focus' && msg.data?.panel === 'browser' && msg.data?.reason === 'self_qa') {
                 keepBrowserVisibleRef.current = true;
+                // QA is only trustworthy when its browser is actually on screen.
+                // Keeping the panel mounted in the background is not enough: the
+                // focus event is the server's explicit instruction to reveal it.
+                setWorkspaceTab('browser');
+                triggerUncollapse();
             }
             const maySwitchAwayFromBrowser = !keepBrowserVisibleRef.current;
 
