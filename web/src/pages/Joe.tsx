@@ -408,6 +408,14 @@ export default function Joe() {
             // Handle message finishing
             if (msg.type === 'run_finished' || msg.type === 'step_failed') {
                 setIsLoading(false);
+                // The final assistant answer is persisted before the closing
+                // frame. If that frame was missed during a reconnect, the
+                // visible conversation must rehydrate instead of leaving the
+                // last "working" line on screen forever.
+                const finishedSessionId = String(msg.sessionId || msg.data?.sessionId || '').trim();
+                if (finishedSessionId && finishedSessionId === activeSessionId) {
+                    setHistoryRefreshTick(value => value + 1);
+                }
                 // Clear the department card shortly after the run ends.
                 setTimeout(() => setDepartmentStatus(null), 4000);
             }
