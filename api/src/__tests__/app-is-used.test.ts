@@ -61,6 +61,13 @@ describe('one definition of a dead control', () => {
         expect(B).toContain('re-measure the same semantic control');
     });
 
+    it('reserves time for real form and semantic-field checks', () => {
+        const B = read('core', 'quality', 'behaviour-audit.ts');
+        expect(B).toContain('const FORM_QA_RESERVE_MS = 20_000;');
+        expect(B).toContain('const controlBudgetMs = opts?.fillForms === false');
+        expect(B).toContain('totalBudgetMs - Math.min(FORM_QA_RESERVE_MS');
+    });
+
     it('does not open a dialog before the controls it can cover', () => {
         const B = read('core', 'quality', 'behaviour-audit.ts');
         expect(B).toContain('[aria-haspopup="dialog"]');

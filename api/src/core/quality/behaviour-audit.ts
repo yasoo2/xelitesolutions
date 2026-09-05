@@ -112,6 +112,8 @@ const SETTLE_MS = 320;
 /** Forms are filled for real. This is how many, and how big, per page. */
 const MAX_FORMS = 6;
 const MAX_FIELDS_PER_FORM = 14;
+/** Keep semantic input validation from being starved by a large control surface. */
+const FORM_QA_RESERVE_MS = 20_000;
 
 /** Runs in the page: catalogue everything a visitor could press. */
 function findControls(limit: number) {
@@ -602,7 +604,14 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
     };
     const eyes = opts?.eyes || new AuditEyes({ watchSessionId: opts?.watchSessionId });
     const limit = Math.max(1, Math.min(200, opts?.maxControls ?? MAX_CONTROLS));
-    const deadline = Date.now() + Math.max(4000, opts?.budgetMs ?? DEFAULT_BUDGET_MS);
+    const totalBudgetMs = Math.max(4000, opts?.budgetMs ?? DEFAULT_BUDGET_MS);
+    // Button exploration is useful, but a quality run that never reaches its
+    // forms cannot prove the input contract the user relies on. Reserve a
+    // bounded slice for real field filling and semantic invalid-value checks.
+    const controlBudgetMs = opts?.fillForms === false
+        ? totalBudgetMs
+        : Math.max(4000, totalBudgetMs - Math.min(FORM_QA_RESERVE_MS, Math.floor(totalBudgetMs / 3)));
+    const deadline = Date.now() + controlBudgetMs;
     {
         /**
          * The functions below are compiled by esbuild before they are handed to
