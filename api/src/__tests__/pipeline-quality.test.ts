@@ -209,6 +209,14 @@ describe('the self-QA runs where the user can watch it', () => {
         expect(P).toContain('let blocking = browserQa.findings.slice();');
     });
 
+    it('retries incomplete browser coverage before spending the source repair attempt', () => {
+        const P = require('fs').readFileSync(
+            require('path').join(__dirname, '..', 'modules', 'tools', 'definitions', 'ProjectPipelineTool.ts'), 'utf-8');
+        expect(P).toContain("finding.id === 'qa_budget_exhausted'");
+        expect(P).toContain('browserQaCoverageRetryAttempted');
+        expect(P).toContain('timeoutMs: 90_000');
+    });
+
     it('the build asks for the panel, and the interface opens it by name', () => {
         const R = require('fs').readFileSync(
             require('path').join(__dirname, '..', 'modules', 'tools', 'definitions', 'ReactProjectTool.ts'), 'utf-8');

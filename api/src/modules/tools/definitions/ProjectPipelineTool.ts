@@ -1676,6 +1676,8 @@ export class ProjectPipelineTool implements ToolDefinition {
         let liveRepairStatus = 'not_attempted';
         let browserQaRepairAttempted = false;
         let browserQaRepairStatus = 'not_attempted';
+        let browserQaCoverageRetryAttempted = false;
+        let browserQaCoverageRetryStatus = 'not_attempted';
         let scopeRepairAttempted = false;
         let scopeRepairStatus = 'not_attempted';
         let scopeCoverageFailed = false;
@@ -2172,6 +2174,36 @@ export class ProjectPipelineTool implements ToolDefinition {
                         `⛔ لم أسلّم النظام: فحص Browser QA لم يُجرَ (${browserQa.skipped}).`,
                         `⛔ I did not deliver the system: Browser QA did not run (${browserQa.skipped}).`));
                 } else {
+                    // A coverage timeout is an instrumentation limit, not an
+                    // application defect. Give the exploratory walker one
+                    // larger, still bounded pass before spending the single
+                    // source-repair attempt on real findings.
+                    const coverageTimedOut = browserQa.findings.some((finding: any) => finding.id === 'qa_budget_exhausted');
+                    if (coverageTimedOut && !browserQaCoverageRetryAttempted) {
+                        browserQaCoverageRetryAttempted = true;
+                        browserQaCoverageRetryStatus = 'attempted';
+                        say(pick(isAr,
+                            '🔎 لم تكتمل تغطية المتصفح؛ سأعيد الاستكشاف بمهلة موسّعة ومحدودة قبل إصلاح الملفات.',
+                            '🔎 Browser coverage was incomplete; I will rerun bounded exploration with a larger budget before editing files.'));
+                        appendBoundedPipelineLog(logs, '[pipeline] browser QA coverage retry start timeoutMs=90000');
+                        const coverageRetry = await auditBuiltApp(auditDir, {
+                            watchSessionId: panelSid || undefined,
+                            serveUrl: liveUrl,
+                            artifactRootDir: artifactRoot || auditDir || runtimeRoot,
+                            ...(runtimeProjectHandoff?.runtimeAuth ? { credentials: runtimeProjectHandoff.runtimeAuth } : {}),
+                            timeoutMs: 90_000,
+                            onProgress: progress,
+                        });
+                        if (!coverageRetry?.skipped) {
+                            browserQa = coverageRetry;
+                            browserQaCoverageRetryStatus = browserQa.findings.some((finding: any) => finding.id === 'qa_budget_exhausted')
+                                ? 'still_incomplete' : 'complete';
+                            appendBoundedPipelineLog(logs, `[pipeline] browser QA coverage retry result=${browserQaCoverageRetryStatus} score=${browserQa.score} findings=${browserQa.findings.length}`);
+                        } else {
+                            browserQaCoverageRetryStatus = `skipped:${String(coverageRetry?.skipped || 'unknown')}`;
+                            appendBoundedPipelineLog(logs, `[pipeline] browser QA coverage retry skipped=${String(coverageRetry?.skipped || 'unknown')}`);
+                        }
+                    }
                     // Every measured finding is open work. Treating only
                     // "high" severity as blocking let coverage, accessibility,
                     // responsive, and visual defects pass the gate unchanged.
@@ -2341,6 +2373,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                 ...(liveRunVerificationFailed ? { honestBlocker: true } : {}),
                 ...(liveRepairAttempted ? { liveRepairAttempted: true, liveRepairStatus } : {}),
                 ...(browserQaRepairAttempted ? { browserQaRepairAttempted: true, browserQaRepairStatus } : {}),
+                ...(browserQaCoverageRetryAttempted ? { browserQaCoverageRetryAttempted: true, browserQaCoverageRetryStatus } : {}),
                 ...(scopeRepairAttempted ? { scopeRepairAttempted: true, scopeRepairStatus } : {}),
                 ...(scopeCoverageFailed ? { scopeCoverageFailed: true } : {}),
                 ...(partialDelivery ? { partialDelivery: true } : {}),
