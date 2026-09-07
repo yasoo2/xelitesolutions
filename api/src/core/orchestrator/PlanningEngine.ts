@@ -7,7 +7,7 @@ import { enrichWorkspaceToolInput } from './workspace-evidence';
 import { findActiveBuiltProject } from './active-built-project';
 import { isReadOnlyRequest, isBoundedTerminalDiagnosticRequest, looksLikeBuild } from './buildIntent';
 import { saysAny } from '../language/arabic';
-import { parseExplicitFileRequest, parseExplicitDirectoryInspectionRequest, parseExplicitReadFilesRequest, parseExpectedReadMarkers } from './file-intent';
+import { parseExplicitAppendFileRequest, parseExplicitFileRequest, parseExplicitDirectoryInspectionRequest, parseExplicitReadFilesRequest, parseExpectedReadMarkers } from './file-intent';
 import path from 'path';
 
 export interface ExecutionStep {
@@ -656,6 +656,51 @@ Rules:
                     dependsOn: [],
                 }],
                 metadata: { complexity: 'low', riskLevel: 'low', matchedBy: 'exact-response' },
+            };
+        }
+
+        // Appending literal content to an existing file is a deterministic
+        // mutation contract. It must win before the broader create/write route
+        // and must never ask a provider to guess how to preserve the file.
+        const explicitAppend = parseExplicitAppendFileRequest(userGoal);
+        if (explicitAppend) {
+            const appendAr = /[\u0600-\u06FF]/.test(userGoal);
+            const steps: ExecutionStep[] = [{
+                id: 'file_append',
+                description: appendAr
+                    ? `إضافة المحتوى المحدد إلى الملف الموجود: ${explicitAppend.path}`
+                    : `Append the specified content to the existing file: ${explicitAppend.path}`,
+                tool: 'write_file',
+                agent: 'Dev',
+                input: {
+                    path: explicitAppend.path,
+                    filename: explicitAppend.path,
+                    content: explicitAppend.content,
+                    mode: 'append',
+                    requireExisting: true,
+                    ensureSingleAppend: true,
+                    expectedFinalLineCount: explicitAppend.expectedFinalLineCount,
+                    request: intent.goal,
+                },
+                dependsOn: [],
+            }];
+            if (explicitAppend.readBack) {
+                steps.push({
+                    id: 'file_read_back',
+                    description: appendAr
+                        ? `قراءة ${explicitAppend.path} بعد الإضافة والتحقق من محتواه وعدد أسطره`
+                        : `Read ${explicitAppend.path} back and verify its content and line count`,
+                    tool: 'read_file',
+                    agent: 'Dev',
+                    input: { path: explicitAppend.path, request: intent.goal },
+                    dependsOn: ['file_append'],
+                });
+            }
+            return {
+                id: `file_append_contract_${Date.now()}`,
+                goal: intent.goal,
+                steps,
+                metadata: { complexity: 'low', riskLevel: 'low', matchedBy: 'explicit-file-append-contract', deterministic: true, localOnly: true },
             };
         }
 

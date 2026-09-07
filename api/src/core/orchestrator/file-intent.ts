@@ -4,6 +4,13 @@ export interface ExplicitFileRequest {
     readBack: boolean;
 }
 
+export interface ExplicitAppendFileRequest {
+    path: string;
+    content: string;
+    readBack: boolean;
+    expectedFinalLineCount?: number;
+}
+
 const SAFE_READ_PATH = /^[A-Za-z0-9_\-.\/\\\u0600-\u06FF]+$/;
 
 const SAFE_RELATIVE_PATH = /^[A-Za-z0-9_\-.\/\\\u0600-\u06FF]+$/;
@@ -82,6 +89,41 @@ export function parseExplicitFileRequest(input: string): ExplicitFileRequest | n
         path: filePath,
         content,
         readBack: /(?:then|after\s+that|finally)[\s\S]{0,100}\b(?:read|report|verify)|read\s+(?:the\s+)?file\s+back|اقرأ\s+(?:ال)?ملف|قراءة\s+(?:ال)?ملف/i.test(raw),
+    };
+}
+
+/**
+ * Extract a bounded request to append literal text to an existing file. This
+ * is deliberately separate from file creation: "append" promises to preserve
+ * the existing bytes and must fail if the named file is absent.
+ */
+export function parseExplicitAppendFileRequest(input: string): ExplicitAppendFileRequest | null {
+    const raw = String(input || '').trim();
+    if (!raw || !/\b(?:append|add)\b|(?:أضف|اضف|ألحق|الحق)/i.test(raw)) return null;
+
+    const pathMatch = raw.match(/\b(?:to|into)\s+(?:the\s+)?(?:file\s+)?[`'\"“”]?([A-Za-z0-9_\-.\/\\\u0600-\u06FF]+\.[A-Za-z0-9]{1,16})[`'\"“”]?/i)
+        || raw.match(/(?:إلى|الى|في)\s+(?:ملف|الملف)?\s*[`'\"“”]?([A-Za-z0-9_\-.\/\\\u0600-\u06FF]+\.[A-Za-z0-9]{1,16})[`'\"“”]?/i);
+    const filePath = String(pathMatch?.[1] || '').trim().replace(/[.,؛،:]+$/u, '');
+    if (!filePath || filePath.includes('..') || filePath.startsWith('/') || /^[A-Za-z]:/i.test(filePath) || !SAFE_RELATIVE_PATH.test(filePath)) return null;
+
+    const linePrefix = '(?:exactly\\s+)?(?:(?:one|a|the)\\s+)?(?:(?:first|second|third|fourth|fifth|\\d+(?:st|nd|rd|th)?)\\s+)?(?:new\\s+)?line';
+    const english = new RegExp(`\\b(?:append|add)\\s+${linePrefix}\\s+[` + "`'\"“”" + `]([^` + "`'\"“”" + `\\r\\n]+)[` + "`'\"“”" + `]`, 'i');
+    const contentMatch = raw.match(english)
+        || raw.match(/(?:أضف|اضف|ألحق|الحق)\s+(?:بالضبط\s+)?(?:سطر(?:اً|ا)?|السطر)\s*[`'\"“”]([^`'\"“”\r\n]+)[`'\"“”]/i);
+    const content = String(contentMatch?.[1] || '').trim();
+    if (!content) return null;
+
+    const ordinal = raw.match(/\b(first|second|third|fourth|fifth|\d+)(?:st|nd|rd|th)?\s+line\b/i);
+    const ordinalWords: Record<string, number> = { first: 1, second: 2, third: 3, fourth: 4, fifth: 5 };
+    const expectedFinalLineCount = ordinal
+        ? (Number(ordinal[1]) || ordinalWords[ordinal[1].toLowerCase()])
+        : undefined;
+
+    return {
+        path: filePath,
+        content,
+        readBack: /read\s+(?:the\s+)?(?:whole\s+)?file\s+back|report\s+(?:the\s+)?final\s+line\s+count|اقر[أا]\s+(?:الملف|محتواه)|عدد\s+الأسطر/i.test(raw),
+        ...(expectedFinalLineCount ? { expectedFinalLineCount } : {}),
     };
 }
 

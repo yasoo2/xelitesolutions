@@ -459,10 +459,14 @@ export async function executeTool(name: string, input: any, context?: ToolContex
             const abs = containPath(fp, contextWorkspaceId);
             if (!abs.ok) return { ok: false, error: abs.error, logs };
 
-            try {
-                const dir = path.dirname(abs.path);
-                if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-            } catch { }
+            // An append-to-existing contract must not create even a parent
+            // directory before proving that its target already exists.
+            if ((effectiveInput as any)?.mode !== 'append' && (effectiveInput as any)?.requireExisting !== true) {
+                try {
+                    const dir = path.dirname(abs.path);
+                    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+                } catch { }
+            }
 
             (effectiveInput as any).path = abs.path;
             (effectiveInput as any).filename = abs.path;

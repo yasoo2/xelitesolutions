@@ -942,9 +942,11 @@ export class AgentOrchestrator {
           // Surface its evidence and let the user choose the next action instead.
           const isDeterministicRunFailure = node.tool === 'project_run';
           const isFinalPipelineFailure = isFinalPipelineOutcome(node.tool, out);
-          if (out.verificationFailed === true || isDeterministicRunFailure || isFinalPipelineFailure) {
+          if (out.nonRecoverable === true || out.verificationFailed === true || isDeterministicRunFailure || isFinalPipelineFailure) {
             const reason = out.verificationFailed === true
               ? 'verification_failed'
+              : out.nonRecoverable === true
+                ? 'non_recoverable_precondition'
               : isFinalPipelineFailure
                 ? 'pipeline_final'
                 : 'project_run_failed';

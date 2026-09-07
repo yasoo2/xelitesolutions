@@ -700,7 +700,10 @@ export default function WorkspacePanel({
                 <div style={{ display: activeTab === 'browser' ? 'contents' : 'none', width: '100%', height: '100%' }}>
                     <ErrorBoundary fallbackTitle={t('loadBrowserFailed')}>
                         <Suspense fallback={<LoadingFallback />}>
-                            <EmbeddedBrowser sessionId={browserSessionId || (sessionId ? `browser:${sessionId}` : '')} />
+                            <EmbeddedBrowser
+                                key={browserSessionId || (sessionId ? `browser:${sessionId}` : 'browser:no-session')}
+                                sessionId={browserSessionId || (sessionId ? `browser:${sessionId}` : '')}
+                            />
                         </Suspense>
                     </ErrorBoundary>
                 </div>

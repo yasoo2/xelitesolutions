@@ -140,6 +140,25 @@ function composeDirectoryReport(done: RunStep[], language?: string): string {
         : `## ✅ Directory inspection report\n\n${rows}\n\nNo files were written or modified.`;
 }
 
+function composeWriteAndReadReport(done: RunStep[], language?: string): string {
+    const append = done.find(step => String(step.tool || '') === 'write_file');
+    const read = done.find(step => String(step.tool || '') === 'read_file');
+    if (!append || !read) return '';
+    const evidence = readFileEvidence(read);
+    if (!evidence) return '';
+    const raw = append.result?.output && typeof append.result.output === 'object' ? append.result.output : append.result;
+    const ar = String(language || '').startsWith('ar');
+    const appendMode = append.input?.mode === 'append';
+    const state = appendMode
+        ? raw?.alreadySatisfied
+            ? (ar ? 'كان المحتوى المطلوب موجوداً بالفعل، فلم أكرره.' : 'The requested content was already present, so Joe did not duplicate it.')
+            : (ar ? 'تمت الإضافة مرة واحدة مع إبقاء المحتوى السابق كما هو.' : 'The content was appended once and the existing content was preserved.')
+        : (ar ? 'تمت كتابة الملف ثم قراءته للتحقق من النتيجة.' : 'The file was written and then read back to verify the result.');
+    return ar
+        ? `## تم تحديث ${evidence.file}\n\n${state}\n\n**عدد الأسطر النهائي:** ${evidence.totalLines}\n\n\`\`\`text\n${evidence.content}\n\`\`\``
+        : `## Updated ${evidence.file}\n\n${state}\n\n**Final line count:** ${evidence.totalLines}\n\n\`\`\`text\n${evidence.content}\n\`\`\``;
+}
+
 /**
  * The whole run, in one message. `steps` is in plan order; anything that never
  * completed is ignored.
@@ -147,6 +166,9 @@ function composeDirectoryReport(done: RunStep[], language?: string): string {
 export function composeAnswer(steps: RunStep[], language?: string): string {
     const done = (steps || []).filter(s => s && s.status !== 'failed');
     if (!done.length) return '';
+
+    const writeAndReadReport = composeWriteAndReadReport(done, language);
+    if (writeAndReadReport) return writeAndReadReport;
 
     const readFileReport = composeReadFileReport(done, language);
     if (readFileReport) return readFileReport;

@@ -853,7 +853,7 @@ export class DeleteFileTool extends BaseTool {
 
 export class WriteFileTool extends BaseTool {
     name = 'write_file';
-    description = 'Write content to a file. Overwrites if exists.';
+    description = 'Write content to a file, or append literal content to an existing file when mode is append.';
     version = '1.0.0';
     tags = ['fs', 'write', 'create'];
     inputSchema = {
@@ -861,7 +861,11 @@ export class WriteFileTool extends BaseTool {
         properties: {
             filename: { type: 'string' },
             path: { type: 'string' },
-            content: { type: 'string' }
+            content: { type: 'string' },
+            mode: { type: 'string', enum: ['overwrite', 'append'] },
+            requireExisting: { type: 'boolean' },
+            ensureSingleAppend: { type: 'boolean' },
+            expectedFinalLineCount: { type: 'number' }
         },
         required: ['content']
     };
@@ -876,8 +880,9 @@ export class WriteFileTool extends BaseTool {
         const rawPath = String(input?.filename || input?.path || '').trim();
         const content = String(input?.content ?? '');
         if (!rawPath) return { ok: false, error: 'filename or path is required', logs: [] };
-        const prepared = prepareArtifactContent(rawPath, content);
-        if (prepared.error) {
+        const appendMode = input?.mode === 'append';
+        const prepared = appendMode ? { content } : prepareArtifactContent(rawPath, content);
+        if ('error' in prepared && prepared.error) {
             return { ok: false, error: prepared.error, logs: [...logs, 'artifact was not written because its destination contract failed'] };
         }
         const safeContent = prepared.content;
@@ -888,6 +893,11 @@ export class WriteFileTool extends BaseTool {
         if (!resolved.ok) return { ok: false, error: resolved.error, logs };
         const full = resolved.path;
 
+        if ((appendMode || input?.requireExisting === true) && !fs.existsSync(full)) {
+            const message = `The file ${rawPath} does not exist in the current workspace. Nothing was created or changed.`;
+            return { ok: false, error: `precondition_failed: ${message}`, output: { nonRecoverable: true, code: 'file_not_found', path: rawPath, message }, logs };
+        }
+
         const dir = path.dirname(full);
         if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
@@ -895,15 +905,46 @@ export class WriteFileTool extends BaseTool {
             return { ok: false, error: `EISDIR: Cannot write file content to a directory path (${rawPath}). Please specify a full filename like '${rawPath}/index.html'.`, logs: [] };
         }
 
-        fs.writeFileSync(full, safeContent);
-        logs.push(`write=${rawPath}`);
+        let finalContent = safeContent;
+        let appended = false;
+        let alreadySatisfied = false;
+        if (appendMode) {
+            const existing = fs.readFileSync(full, 'utf8');
+            const ending = existing.includes('\r\n') ? '\r\n' : '\n';
+            const normalizedAppend = safeContent.replace(/\r\n?/g, '\n').split('\n').join(ending);
+            const logicalLines = (value: string) => value.replace(/\r\n?/g, '\n').replace(/\n$/, '').split('\n').filter((_, i, all) => all.length > 1 || all[i] !== '').length;
+            const currentLines = logicalLines(existing);
+            const appendLines = logicalLines(normalizedAppend);
+            const expectedFinal = Number(input?.expectedFinalLineCount || 0);
+            const suffix = existing.endsWith(normalizedAppend)
+                || existing.endsWith(`${ending}${normalizedAppend}`);
 
-        const lines = safeContent.split('\n');
+            if (input?.ensureSingleAppend === true && suffix && (!expectedFinal || currentLines === expectedFinal)) {
+                finalContent = existing;
+                alreadySatisfied = true;
+            } else {
+                if (expectedFinal && currentLines + appendLines !== expectedFinal) {
+                    const message = `Expected ${rawPath} to have ${expectedFinal - appendLines} line(s) before appending, but found ${currentLines}. Nothing was changed.`;
+                    return { ok: false, error: `precondition_failed: ${message}`, output: { nonRecoverable: true, code: 'line_count_mismatch', path: rawPath, message }, logs };
+                }
+                const separator = existing && !existing.endsWith('\n') && !existing.endsWith('\r') ? ending : '';
+                finalContent = `${existing}${separator}${normalizedAppend}`;
+                fs.writeFileSync(full, finalContent);
+                appended = true;
+            }
+            logs.push(`${alreadySatisfied ? 'append_already_satisfied' : 'append'}=${rawPath}`);
+        } else {
+            fs.writeFileSync(full, safeContent);
+            logs.push(`write=${rawPath}`);
+        }
+
+        const diffContent = appendMode ? content : safeContent;
+        const lines = diffContent.split('\n');
         broadcast({
             type: 'diff',
             data: {
                 path: rawPath,
-                content: safeContent,
+                content: finalContent,
                 additions: lines.length,
                 deletions: 0,
                 lines: lines.map((line, i) => ({ type: 'add', content: line, lineNumber: i + 1 }))
@@ -923,16 +964,17 @@ export class WriteFileTool extends BaseTool {
                 data: {
                     sessionId: context?.sessionId,
                     file: rawPath,
-                    chunk: safeContent.slice(0, 60_000),
+                    chunk: finalContent.slice(0, 60_000),
                     done: true,
                     label: 'written to disk',
-                    bytes: Buffer.byteLength(safeContent),
+                    bytes: Buffer.byteLength(finalContent),
                     at: Date.now(),
                 },
             } as any);
         } catch { /* the live view is a window, never a dependency of the write */ }
 
-        return { ok: true, output: { success: true }, logs };
+        const totalLines = finalContent.replace(/\r\n?/g, '\n').replace(/\n$/, '').split('\n').filter((_, i, all) => all.length > 1 || all[i] !== '').length;
+        return { ok: true, output: { success: true, path: rawPath, operation: appendMode ? 'append' : 'overwrite', appended, alreadySatisfied, totalLines }, logs };
     }
 }
 
