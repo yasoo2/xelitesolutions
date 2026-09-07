@@ -49,6 +49,37 @@ const SEARCH_STATE_OR_IO = /\b(?:useState|set[A-Z][A-Za-z0-9_]*|fetch|axios|XMLH
 // from authored layout rules, not inferred from a page title or a model claim.
 const RESPONSIVE_LAYOUT = /@media\b|clamp\s*\(|flex-wrap\s*:\s*[^;]+|grid-template-columns\s*:/i;
 
+/** An Arabic claim needs both direction metadata and real authored Arabic copy. */
+export function hasArabicRtlEvidence(source: string): boolean {
+    const src = String(source || '');
+    const arabicLetters = src.match(/[\u0621-\u064A]/gu)?.length || 0;
+    const rtlDocument = /<html\b(?=[^>]*\blang=["']ar(?:-[^"']+)?["'])(?=[^>]*\bdir=["']rtl["'])[^>]*>/iu.test(src)
+        || /document\.documentElement\.(?:dir|setAttribute\s*\(\s*["']dir["'])[^\n]{0,100}["']rtl["']/iu.test(src);
+    return rtlDocument && arabicLetters >= 20;
+}
+
+/** A services section is a rendered collection, not the word "services" in copy. */
+export function hasServicesSectionEvidence(source: string): boolean {
+    const src = String(source || '');
+    const directSection = /<(?:section|div)\b[^>]*(?:id|class(?:Name)?)=["'][^"']*services?[^"']*["'][^>]*>/iu.test(src)
+        && /<(?:h[1-6]|header)\b[^>]*>[\s\S]{0,180}(?:services?|خدمات)/iu.test(src);
+    const generatedCollection = /<(?:Services|Products)\b/u.test(src)
+        && /(?:services?|products)Title\s*:\s*["'][^"']*(?:services?|خدمات)[^"']*["']/iu.test(src)
+        && /(?:services?|products)\s*:\s*\[[\s\S]{0,5000}?\b(?:name|title)\s*:/iu.test(src)
+        && /(?:services?|products|rows)\.map\s*\(/iu.test(src);
+    return directSection || generatedCollection;
+}
+
+/** A contact CTA must render a visible command whose resolved destination is contact. */
+export function hasContactCtaEvidence(source: string): boolean {
+    const src = String(source || '');
+    const direct = /<a\b(?=[^>]*\bclass(?:Name)?=["'][^"']*(?:btn|button|cta)[^"']*["'])(?=[^>]*\bhref=["'](?:#contact|tel:|mailto:)[^"']*["'])[^>]*>[\s\S]{1,160}<\/a>/iu.test(src);
+    const dynamic = /contactHref\s*:\s*["'](?:#contact|tel:|mailto:)[^"']*["']/iu.test(src)
+        && /\bcta\s*:\s*["'][^"']{2,80}["']/iu.test(src)
+        && /<a\b(?=[^>]*\bclassName=["'][^"']*btn[^"']*["'])(?=[^>]*\bhref=\{\s*content\.contactHref)[^>]*>[\s\S]{0,100}\{\s*content\.cta\s*\}[\s\S]{0,60}<\/a>/iu.test(src);
+    return direct || dynamic;
+}
+
 // “Checkout” is also a legitimate name for non-payment workflows such as
 // lending equipment. Treat it as payments only when payment context is nearby.
 const PAYMENT_CHECKOUT = /\bcheckout\b(?=[^,.]{0,40}\b(?:payment|card|billing|purchase|order|cart)\b)/i;
@@ -214,6 +245,24 @@ export const CAPABILITIES: Capability[] = [
         id: 'responsive', ar: 'واجهة متجاوبة', en: 'responsive interface',
         ask: /responsive|mobile[- ]first|tablet|phone[- ]friendly|متجاوب(?:ة|ه)?|للهاتف|للجوال|الجوال|الهاتف/i,
         evidence: RESPONSIVE_LAYOUT,
+    },
+    {
+        id: 'arabic_rtl', ar: 'واجهة عربية RTL', en: 'Arabic RTL interface',
+        ask: /arabic\s+(?:rtl\s+)?interface|interface\s+in\s+arabic|واجهة\s+عربي(?:ة|ه)|واجهة\s+باللغة\s+العربية|اتجاه\s+عربي/iu,
+        evidence: /<html\b(?=[^>]*\blang=["']ar(?:-[^"']+)?["'])(?=[^>]*\bdir=["']rtl["'])[^>]*>/iu,
+        evidenceCheck: hasArabicRtlEvidence,
+    },
+    {
+        id: 'services_section', ar: 'قسم خدمات', en: 'a services section',
+        ask: /services?\s+(?:section|list)|section\s+(?:for|of)\s+services?|قسم\s+(?:ال)?خدمات|قائمة\s+(?:ال)?خدمات/iu,
+        evidence: /<(?:section|div)\b[^>]*(?:id|class(?:Name)?)=["'][^"']*services?[^"']*["']/iu,
+        evidenceCheck: hasServicesSectionEvidence,
+    },
+    {
+        id: 'contact_cta', ar: 'زر تواصل واضح', en: 'a clear contact button',
+        ask: /(?:clear\s+)?contact\s+(?:button|cta)|(?:button|cta)\s+(?:for|to)\s+contact|زر\s+(?:تواصل|اتصال)(?:\s+واضح)?/iu,
+        evidence: /<a\b[^>]*href=["'](?:#contact|tel:|mailto:)[^"']*["'][^>]*>/iu,
+        evidenceCheck: hasContactCtaEvidence,
     },
     {
         id: 'wishlist', ar: 'قائمة الرغبات', en: 'wishlist',

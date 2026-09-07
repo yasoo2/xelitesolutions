@@ -27,29 +27,16 @@
 
 import { acceptanceFor } from '../core/quality/acceptance';
 import { namedRequirements } from '../core/quality/named-requirements';
-import * as fs from 'fs';
-import * as path from 'path';
+import { reconcileDeliveryVoices } from '../modules/tools/definitions/ReactProjectTool';
 
-/**
- * The admitting side, read from the source it lives in.
- *
- * Read rather than imported because `isKnownAcceptanceId` is module-private
- * and exporting it only for a test would change the shape of the thing under
- * test. The patterns are what matter and they are unambiguous on the page.
- */
-const DELIVERY = (() => {
-    const src = fs.readFileSync(
-        path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ReactProjectTool.ts'), 'utf8');
-    const at = src.indexOf('const DYNAMIC_ACCEPTANCE_ID');
-    const end = src.indexOf('];', at);
-    const block = at < 0 ? '' : src.slice(at, end);
-    const dynamic = [...block.matchAll(/\/\^([^/]+)\/[a-z]*,/g)].map(m => new RegExp('^' + m[1]));
-    const topics = src.slice(src.indexOf('ACCEPTANCE_TOPIC_IDS'), src.indexOf('};', src.indexOf('ACCEPTANCE_TOPIC_IDS')));
-    const fixed = new Set([...topics.matchAll(/^\s{4}([a-z_]+):/gm)].map(m => m[1]));
-    return { dynamic, fixed };
-})();
-
-const admitted = (id: string) => DELIVERY.fixed.has(id) || DELIVERY.dynamic.some(re => re.test(id));
+const admitted = (id: string) => {
+    try {
+        reconcileDeliveryVoices([], [], [], [id]);
+        return true;
+    } catch {
+        return false;
+    }
+};
 
 /** Requests that between them exercise every family the judge can read. */
 const REQUESTS = [
@@ -62,12 +49,14 @@ const REQUESTS = [
     'اعمل صفحة سياسة الخصوصية وصفحة الشروط',
     'اعمل متجر فيه صفحة المنتجات وصفحة الشحن والاسترجاع',
     'Build a personal reading log with book title, author, pages, start date, finish date, rating, and reading status. Add filters for status and rating plus a progress metric.',
+    'تصميم موقع حديث لشركة برمجيات بعنوان مدار، بواجهة عربية متجاوبة وقسم خدمات وزر تواصل واضح.',
 ];
 
 describe('the delivery admits every criterion the judge can emit', () => {
-    it('the two lists were both found — an empty comparison proves nothing', () => {
-        expect(DELIVERY.fixed.size).toBeGreaterThan(5);
-        expect(DELIVERY.dynamic.length).toBeGreaterThanOrEqual(3);
+    it('the real delivery validator is active — an empty comparison proves nothing', () => {
+        expect(admitted('search')).toBe(true);
+        expect(admitted('column:money1')).toBe(true);
+        expect(admitted('future_criterion')).toBe(false);
     });
 
     it.each(REQUESTS.map(r => [r]))('%s', (request) => {

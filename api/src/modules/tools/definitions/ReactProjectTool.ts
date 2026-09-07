@@ -25,6 +25,7 @@ import { brandFrom, brandFallback } from '../../../core/design/page-head';
 import { detectPageKind, type PageKind } from '../../../core/design/blueprints';
 import { derivedColumns, applyRequestFieldConstraints, detectAppKind, blueprintFor, uncoveredFeatures, derivedTables, type AppBlueprint, columnsAnywhereInHisRequest, hasWorkflowApplicationContract } from '../../../core/design/app-blueprints';
 import { acceptanceFor as acceptanceCriteriaFor } from '../../../core/quality/acceptance';
+import { CAPABILITIES } from '../../../core/quality/scope-audit';
 import { namedRequirements, requirementsFromRequestClauses, verifyNamed, nothingWasJudged, requirementNamesPage, NamedRequirement } from '../../../core/quality/named-requirements';
 import { buildAppFiles, fileAppCss } from './react-app-templates';
 import { familyFor, familyCss, familyFonts, FAMILY_LABEL_AR, type DesignFamily } from '../../../core/design/families';
@@ -368,6 +369,7 @@ const ACCEPTANCE_TOPIC_IDS: Record<string, DeliveryTopic[]> = {
     preview: [],
     browser_check: [],
 };
+const CAPABILITY_ACCEPTANCE = new Map(CAPABILITIES.map(capability => [capability.id, capability]));
 
 /**
  *  CRITERIA READ OUT OF HIS REQUEST ARE NOT A FINITE CATALOGUE.
@@ -438,11 +440,14 @@ const DYNAMIC_ACCEPTANCE_ID = [
 
 function isKnownAcceptanceId(id: string): boolean {
     return Object.prototype.hasOwnProperty.call(ACCEPTANCE_TOPIC_IDS, id)
+        || CAPABILITY_ACCEPTANCE.has(id)
         || DYNAMIC_ACCEPTANCE_ID.some(re => re.test(id));
 }
 
 function acceptanceTopics(id: string): DeliveryTopic[] {
     if (ACCEPTANCE_TOPIC_IDS[id]) return ACCEPTANCE_TOPIC_IDS[id];
+    const capability = CAPABILITY_ACCEPTANCE.get(id);
+    if (capability) return deliveryTopics(`${capability.en} ${capability.ar}`);
     if (/^filter:[A-Za-z][A-Za-z0-9_-]*$/.test(id)) return ['filter'];
     if (id === 'progress_metric') return ['computed'];
     // Request-clause ids are generated from the user's own short, judgeable
@@ -7199,7 +7204,9 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 // @media/flex/grid rule; reading only production JS silently
                 // turns that evidence into a false delivery gap.
                 const authored = readProjectSource([path.join(proj, 'src')]);
-                if (authored.trim().length) return authored;
+                const entry = path.join(proj, 'index.html');
+                const documentHead = fs.existsSync(entry) ? fs.readFileSync(entry, 'utf-8').slice(0, 64 * 1024) : '';
+                if (authored.trim().length) return `${documentHead}\n${authored}`;
             } catch { /* fall through to the whole tree */ }
             try { return readProjectSource([proj]); } catch { return ''; }
         })();

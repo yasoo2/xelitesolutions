@@ -17,6 +17,8 @@ const createApiShim = () => {
   return (_req: any, _res: any, next: any) => next();
 };
 
+const apiTarget = 'http://127.0.0.1:5000';
+
 export default defineConfig({
   plugins: [
     react()
@@ -36,7 +38,7 @@ export default defineConfig({
     allowedHosts: true,
     proxy: {
       '/api': {
-        target: 'http://localhost:5000',
+        target: apiTarget,
         changeOrigin: true,
         ws: true,
         configure: (proxy, _options) => {
@@ -56,8 +58,11 @@ export default defineConfig({
         ws: true,
       },
       '/artifacts': {
-        // [FIX] تغيير المنفذ إلى 8080 (المنفذ الافتراضي للـ API)
-        target: 'http://127.0.0.1:8080',
+        target: apiTarget,
+        changeOrigin: true,
+      },
+      '/project-preview': {
+        target: apiTarget,
         changeOrigin: true,
       }
     },

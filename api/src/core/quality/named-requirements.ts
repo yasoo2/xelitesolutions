@@ -757,6 +757,7 @@ export function requirementNamesPage(requirement: Pick<NamedRequirement, 'text' 
 }
 
 import { inspectWorkflowEngineSource } from './workflow-contract';
+import { capabilityEvidence, requestedCapabilities } from './scope-audit';
 
 /**
  * Generated records apps expose a small, explicit contract. Verify that
@@ -764,7 +765,7 @@ import { inspectWorkflowEngineSource } from './workflow-contract';
  * This only handles evidence with a distinctive implementation shape; all
  * other requirements continue through the model judge and its source guard.
  */
-function deterministicRecordVerdict(r: NamedRequirement, source: string): JudgedNamed | null {
+function deterministicSourceVerdict(r: NamedRequirement, source: string): JudgedNamed | null {
     const text = `${r.text} ${r.quote}`.trim();
     const src = String(source || '');
     const esc = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -1026,6 +1027,10 @@ function deterministicRecordVerdict(r: NamedRequirement, source: string): Judged
     if (/export/iu.test(text) && /toCsv|download\s*\(/i.test(src)) {
         return { ...r, verdict: 'met', why: 'the generated records view exports the visible rows' };
     }
+    const knownCapabilities = requestedCapabilities(text);
+    if (knownCapabilities.length && knownCapabilities.every(capability => capabilityEvidence(capability, src))) {
+        return { ...r, verdict: 'met', why: `the generated source proves: ${knownCapabilities.map(item => item.en).join(', ')}` };
+    }
     return null;
 }
 
@@ -1043,7 +1048,7 @@ export async function verifyNamed(
 
     const deterministic = new Map<string, JudgedNamed>();
     for (const r of reqs) {
-        const verdict = deterministicRecordVerdict(r, src);
+        const verdict = deterministicSourceVerdict(r, src);
         if (verdict) deterministic.set(r.id, verdict);
     }
     if (deterministic.size === reqs.length) return reqs.map(r => deterministic.get(r.id)!);

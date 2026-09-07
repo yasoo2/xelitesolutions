@@ -35,6 +35,7 @@ import fs from 'fs';
 import path from 'path';
 import { thePagesHeNamed } from '../design/site-plan';
 import { saysAny, saysWord } from '../language/arabic';
+import { requestedCapabilities, type Capability } from './scope-audit';
 
 //  The same folding the page reader itself uses — a request written with
 //  tanween must reach it in the shape its patterns are spelled in.
@@ -76,6 +77,8 @@ export interface Criterion {
     says?: string[];
     /** Source markers that prove a FEATURE was really generated. */
     markers?: RegExp[];
+    /** Shape-aware proof shared with the request capability reader. */
+    evidenceCheck?: (source: string) => boolean;
     /** Exact user-requested title text, when it can be extracted safely. */
     expectedText?: string;
     /**
@@ -317,6 +320,50 @@ const CATALOGUE: Array<Criterion & { asked: RegExp }> = [
     },
 ];
 
+/**
+ * Older acceptance ids that already represent a capability from the shared
+ * request reader. Reuse the stable id, but strengthen its label and evidence
+ * with the capability contract. This keeps one fact from becoming two checks.
+ */
+const CAPABILITY_CATALOGUE_ALIAS: Record<string, string> = {
+    search: 'search',
+    filtering: 'filter',
+    form_validation: 'form_validation',
+    contact_form: 'contact_form',
+    arabic_rtl: 'rtl',
+    contact_cta: 'button',
+};
+
+function mergeRequestedCapabilities(catalogue: Criterion[], request: string): Criterion[] {
+    const requested = requestedCapabilities(request);
+    const consumed = new Set<string>();
+    const strengthened = catalogue.map(criterion => {
+        const capability = requested.find(candidate =>
+            (CAPABILITY_CATALOGUE_ALIAS[candidate.id] || candidate.id) === criterion.id,
+        );
+        if (!capability) return criterion;
+        consumed.add(capability.id);
+        return {
+            ...criterion,
+            ar: capability.ar,
+            en: capability.en,
+            markers: [capability.evidence],
+            evidenceCheck: capability.evidenceCheck,
+        };
+    });
+    const additional = requested
+        .filter(capability => !consumed.has(capability.id))
+        .map((capability: Capability): Criterion => ({
+            id: capability.id,
+            kind: 'feature',
+            ar: capability.ar,
+            en: capability.en,
+            markers: [capability.evidence],
+            evidenceCheck: capability.evidenceCheck,
+        }));
+    return [...strengthened, ...additional];
+}
+
 /** Extract a literal title only when the request gives a safe structural boundary. */
 function extractRequestedTitle(request: string): string | undefined {
     const patterns = [
@@ -463,11 +510,11 @@ export function acceptanceFor(request: string): Criterion[] {
     const t = JOE_WROTE_THIS.test(raw) ? hisWordsOnly(raw) : raw;
     //  A word is asked as a word; a phrase keeps its pattern. Entries with
     //  `says` no longer touch a regex over Arabic at all.
-    const catalogue = CATALOGUE.filter(c => (c.says ? saysAny(t, c.says) : requestAsksFor(c.asked, t)))
+    const catalogue = mergeRequestedCapabilities(CATALOGUE.filter(c => (c.says ? saysAny(t, c.says) : requestAsksFor(c.asked, t)))
         .map(({ asked, ...rest }) => rest)
         .map(c => c.id === 'title'
             ? { ...c, expectedText: titleTextFrom(t) }
-        : c);
+        : c), t);
 
     //  His columns, in his words, each one its own criterion. No catalogue
     //  is consulted: derivedColumns reads them from the sentence he wrote.
@@ -1180,7 +1227,9 @@ export function judgeAcceptance(criteria: Criterion[], ev: Evidence, isAr = true
         }
         let hit: boolean;
         let counterProvedByTotal = false;
-        if (c.id === 'counter') {
+        if (c.evidenceCheck) {
+            hit = c.evidenceCheck(src);
+        } else if (c.id === 'counter') {
             hit = hasCounterEvidence(src);
             if (!hit && computedTotalEvidence(src)) { hit = true; counterProvedByTotal = true; }
         } else if (c.id === 'button') {
