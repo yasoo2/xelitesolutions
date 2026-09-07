@@ -504,8 +504,9 @@ ${sels.join(',\n')} {
 export function repairSemanticInputValidation(code: string, evidence: any[] = []): RepairedFile {
     let text = String(code || '');
     let count = 0;
-    const badPatterns = Array.from(new Set((evidence || [])
-        .filter((item: any) => item?.expected === 'tel' && item?.rejected === false)
+    const failedTelEvidence = (evidence || [])
+        .filter((item: any) => item?.expected === 'tel' && item?.rejected === false);
+    const badPatterns = Array.from(new Set(failedTelEvidence
         .map((item: any) => String(item?.pattern || '').trim())
         .filter((pattern: string) => pattern && pattern !== '[0-9]{7,15}')));
     for (const pattern of badPatterns) {
@@ -513,6 +514,19 @@ export function repairSemanticInputValidation(code: string, evidence: any[] = []
         const next = text.split(pattern).join('[0-9]{7,15}');
         if (next !== text) count += text.split(pattern).length - 1;
         text = next;
+    }
+    if (failedTelEvidence.some((item: any) => !String(item?.pattern || '').trim())) {
+        text = text.replace(/<input\b([^>]*?)(\/?)>/gs, (tag, attrs: string, close: string) => {
+            if (/\bpattern\s*=/.test(attrs)) return tag;
+            if (/\btype\s*=\s*["']tel["']/.test(attrs)) {
+                count++;
+                return `<input${attrs} pattern="[0-9]{7,15}" inputMode="numeric"${close}>`;
+            }
+            const variable = attrs.match(/\b([A-Za-z_$][\w$]*)\.type\b/)?.[1];
+            if (!variable || !/["']tel["']/.test(attrs)) return tag;
+            count++;
+            return `<input${attrs} pattern={${variable}.type === 'tel' ? '[0-9]{7,15}' : undefined} inputMode={${variable}.type === 'tel' ? 'numeric' : undefined}${close}>`;
+        });
     }
     return {
         text,

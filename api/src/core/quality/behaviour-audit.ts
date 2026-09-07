@@ -1192,7 +1192,7 @@ export function semanticTypeForField(tag: string, name: string): 'email' | 'tel'
     const label = String(name || '');
     if (/\bemail\b|e[- ]?mail/i.test(label)) return 'email';
     if (/\b(?:phone|telephone|mobile|tel)\b/i.test(label)) return 'tel';
-    if (/\b(?:birth\s*date|date\s*of\s*birth|dob|date)\b/i.test(label)) return 'date';
+    if (/\b(?:birth\s*date|date\s*of\s*birth|dob|date|expiry|expiration|deadline|due\s+date)\b/i.test(label)) return 'date';
     if (/\b(?:time|start\s*time|end\s*time)\b/i.test(label)) return 'time';
     if (/\b(?:age|amount|price|quantity|count|capacity|duration|score|rating)\b/i.test(label)) return 'number';
     return '';

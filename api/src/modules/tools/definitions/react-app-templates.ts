@@ -1656,6 +1656,8 @@ export default function RecordsApp({ content }) {
               <label className="field" key={f.key}>
                 <span>{f.label}{f.required ? ' *' : ''}</span>
                 <input type={f.type === 'number' ? 'number' : f.type === 'tel' ? 'tel' : f.type === 'email' ? 'email' : 'text'}
+                  inputMode={f.type === 'tel' ? 'numeric' : undefined}
+                  pattern={f.type === 'tel' ? '[0-9]{7,15}' : undefined}
                   required={!!f.required}
                   min={f.min !== undefined ? f.min : undefined}
                   step={f.type === 'number' ? 'any' : undefined}
@@ -1732,6 +1734,8 @@ export default function RecordsApp({ content }) {
                 </select>
               ) : (
                 <input type={f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : f.type === 'time' ? 'time' : f.type === 'tel' ? 'tel' : f.type === 'email' ? 'email' : 'text'}
+                  inputMode={f.type === 'tel' ? 'numeric' : undefined}
+                  pattern={f.type === 'tel' ? '[0-9]{7,15}' : undefined}
                   required={!!f.required}
                   min={f.min !== undefined ? f.min : undefined}
                   step={f.type === 'number' ? 'any' : undefined}

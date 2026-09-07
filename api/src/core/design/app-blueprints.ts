@@ -1696,7 +1696,7 @@ const TYPE_MARKS: Array<[RegExp, DerivedRole, FieldType]> = [
     [/status|state|مرحلة|حالة|وضع/iu, 'flag', 'select'],
     [/تلفون|هاتف|جوال|موبايل|واتس|\bphone\b|\bmobile\b|\btel\b|whatsapp/iu, 'tel', 'tel'],
     [/ايميل|إيميل|بريد\s*الكتروني|بريد\s*إلكتروني|\bemail\b|\be-?mail\b/iu, 'email', 'email'],
-    [/تاريخ|يوم\s|\bdate\b|\bday\b/iu, 'date', 'date'],
+    [/تاريخ|يوم\s|انتهاء|صلاحية|\bdate\b|\bday\b|\bexpiry\b|\bexpiration\b|\bexpires?\b|\bdeadline\b|\bdue\s+date\b/iu, 'date', 'date'],
     [/وقت|ساعة|موعد|\btime\b|\bhour\b/iu, 'time', 'time'],
     [/سعر|مبلغ|تكلفة|ثمن|قيمة|راتب|اجرة|أجرة|رسوم|دفع|مدفوع|\bprice\b|\bamount\b|\bcost\b|\bfee\b|\bsalary\b|\bpaid\b|\btotal\b/iu, 'money', 'number'],
     //  A year and an age are numbers you read, not quantities you add.
@@ -2678,7 +2678,7 @@ function theListAnIntroducerHandedOver(request: string): DerivedField[] | null {
         // behavior: "add amount, category, date, and note; validate...".
         // Keeping that clause attached makes the last label fail the bounded
         // name check and silently falls back to a stock schema.
-        const tail = rawTail.split(/\s*(?:[;；]\s*|(?=(?:required(?:[-\s]field)?\s+validation|validation|allow|add|delete|ensure|fix|persist|show|test|validate|verify)\b))/iu)[0];
+        const tail = rawTail.split(/\s*(?:[;；]\s*|(?=(?:(?:empty|blank|missing)[-\s]+(?:name|field|input)\s+validation|required(?:[-\s]field)?\s+validation|validation|allow|add|delete|ensure|fix|persist|show|test|validate|verify)\b))/iu)[0];
         const rawItems = tail
             .split(/\s*[,，]\s*|\s+and\s+|\s+&\s+/iu)
             // Parenthetical type hints describe the field contract; they are

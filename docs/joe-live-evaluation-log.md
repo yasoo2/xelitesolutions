@@ -101,3 +101,19 @@ The exact prompt was then replayed through Joe's real command box in a clean ses
 - The repaired append route uses no model call: it recognises a literal line and safe relative path, requires the file to exist in the active workspace, verifies any stated final-line ordinal, appends once, and reads the file back.
 - Replaying the same append safely is idempotent when the expected final count and suffix are already satisfied. A mismatched initial count is a terminal precondition failure and leaves the file unchanged.
 - The live same-conversation sequence proved continuation: create three lines, then issue a short follow-up to append the fourth. Joe's chat and the persisted file independently showed `alpha=1`, `beta=2`, `gamma=3`, `delta=4` and a final count of four.
+
+## 2026-09-08 Arabic Reader Wiring Follow-up
+
+The Arabic package the user remembered is `snowball-stemmers`, used as the Snowball Arabic stemmer in `core/language/arabic.ts` together with the platform's `Intl.Segmenter('ar')`. It is declared in `api/package.json`, locked, installed locally, and directly imported by five production readers: application blueprints, acceptance, content contracts, PlanningEngine, and ReactProjectTool. A separate `promptNormalizer.ts` layer owns dialect, spelling, and action-phrase normalization.
+
+The package was therefore present, but the overall language path was only partially connected. A direct probe showed why both layers are needed: the reader tokenizes `تصميم موقع حديث` correctly and recognizes `تصميم`, but stemming does not turn the verbal noun `تصميم` into the imperative `صمم`. The normalizer already knew that semantic mapping, while the front-door `looksLikeBuild()` classifier was still testing the unnormalized prompt.
+
+The classifier now evaluates the original and normalized readings while preserving question intent. `تصميم موقع حديث لشركة برمجيات` and the polite `هل يمكنك تصميم صفحة...؟` route as build requests; `ما رأيك في تصميم موقع؟`, `كيف أصمم موقعاً؟`, and `هل تصميم موقع مكلف؟` remain conversations. An initial broad question guard broke a separate clinic brief containing a later `كم`; the focused regression caught it, and the guard was narrowed to question openings before proceeding.
+
+Live proof used Joe's real command box with Auto:
+
+> تصميم موقع حديث لشركة برمجيات بعنوان مدار، بواجهة عربية متجاوبة وقسم خدمات وزر تواصل واضح.
+
+The running API logged direct routing to the evidence-first `project_pipeline` and deterministic React builder without depending on Ollama. The first run exposed a second general defect: `بعنوان` was not an explicit brand marker. After adding Arabic and English title markers and replaying the exact prompt, Joe generated `react-مدار`; direct artifact inspection found `مدار` in the HTML title, social metadata, package name, and content contract. Focused routing/title verification passed 5 suites and 111 tests, and the ten permanent architecture/self-healing gates passed.
+
+This is not a claim that every Arabic expression is solved. Snowball remains directly wired into only five production areas, and semantic normalization must continue to replace scattered literal readers as failures are observed. The rerun also left a separate open delivery defect: after completion, the embedded Browser canvas appeared blank and the final response called verification incomplete despite a reported `100/100`; that inconsistency is recorded for repair and is not counted as a clean prompt pass.

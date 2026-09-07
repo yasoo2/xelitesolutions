@@ -21,6 +21,8 @@ describe('a natural-language directory request keeps fields and behaviours separ
         expect(bp.fields.map(field => field.label)).toEqual([
             'name', 'phone', 'email', 'device', 'warranty expiry', 'repair status',
         ]);
+        expect(bp.fields.find(field => field.label === 'phone')?.type).toBe('tel');
+        expect(bp.fields.find(field => field.label === 'warranty expiry')?.type).toBe('date');
         expect(bp.statusField).toBe('flag1');
         expect(bp.fields.find(field => field.key === bp.statusField)?.options)
             .toEqual(['Pending', 'In progress', 'Completed']);

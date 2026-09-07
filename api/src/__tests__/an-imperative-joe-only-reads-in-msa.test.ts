@@ -61,6 +61,17 @@ describe('an order is an order in the register he actually writes', () => {
         }
     });
 
+    it('POSITIVE — an Arabic verbal noun at the front is an action brief', () => {
+        for (const request of [
+            'تصميم موقع حديث لشركة برمجيات',
+            'بناء لوحة تحكم لمتابعة المبيعات',
+            'هل يمكنك تصميم صفحة لمعرض فني؟',
+        ]) {
+            expect({ request, build: looksLikeBuild(request) })
+                .toEqual({ request, build: true });
+        }
+    });
+
     it('POSITIVE — and MSA still reads as it always did', () => {
         //  The half that already worked. A fix that traded one register for
         //  the other would be the same defect facing the other way.
@@ -79,6 +90,9 @@ describe('an order is an order in the register he actually writes', () => {
             'ما هي عاصمة فرنسا؟',
             'كيف أشغّل جو على جهازي؟',
             'وش الفرق بين React وVue؟',
+            'ما رأيك في تصميم موقع المطعم؟',
+            'كيف أصمم موقعاً متجاوباً؟',
+            'هل تصميم موقع جديد مكلف؟',
         ]) {
             expect({ request, build: looksLikeBuild(request) })
                 .toEqual({ request, build: false });

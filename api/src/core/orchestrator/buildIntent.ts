@@ -11,7 +11,7 @@
  * regex are two answers to the same question, and one of them is always the
  * stale one.
  */
-import { stripArabicDiacritics, foldChars } from './promptNormalizer';
+import { normalizeIntentText, stripArabicDiacritics, foldChars } from './promptNormalizer';
 import { derivedColumns, columnsAnywhereInHisRequest } from '../design/app-blueprints';
 
 /**
@@ -123,8 +123,23 @@ export function looksLikeBuild(goalRaw: string): boolean {
      * queuing. Strip the marks once and match the letters — the harakat
      * are decoration on a word, never a break between two.
      */
-    const bare = stripArabicDiacritics(g);
-    const verb = /\b(build|create|make|develop|generate|scaffold|implement|code)\b/i.test(g)
+    const rawBare = stripArabicDiacritics(g);
+    const normalized = normalizeIntentText(g);
+    const probe = normalized && normalized !== g.toLowerCase() ? `${g}\n${normalized}` : g;
+    const bare = stripArabicDiacritics(probe);
+
+    // A verbal noun at the start of a short brief is a perfectly ordinary
+    // Arabic command: «تصميم موقع شركة». The normalizer turns it into the
+    // canonical imperative «صمم», but that same word may also occur inside an
+    // information question. Admit the canonical reading only after preserving
+    // that distinction. Polite action questions («هل يمكنك تصميم…؟») are
+    // requests, while opinion/how-to questions remain conversations.
+    const informationQuestion = /^\s*(?:ما|ماذا|لماذا|ليش|كيف|متى|اين|أين|كم|ايهما|أيهما|وش\s+معنى|شو\s+معنى|ما\s+رايك|ما\s+رأيك)(?=$|[\s،:؛؟])/i.test(rawBare)
+        || /^\s*هل(?=$|[\s،:؛])/.test(rawBare);
+    const politeActionRequest = /(?:^|[\s،:؛])هل\s+(?:يمكنك|تستطيع|تقدر)|(?:^|[\s،:؛])ممكن\s+(?:ان\s+|أن\s+)?(?:تصمم|تصميم|تبني|بناء|تنشئ|انشاء|إنشاء)/i.test(rawBare);
+    if (informationQuestion && !politeActionRequest) return false;
+
+    const verb = /\b(build|create|make|develop|generate|scaffold|implement|code)\b/i.test(probe)
         // Require verb boundaries in Arabic too. A bare substring made
         // «واجهة برمجية» look like the imperative «برمج»، hijacking
         // analysis → security → API-test workflows as project builds.
@@ -180,7 +195,7 @@ export function looksLikeBuild(goalRaw: string): boolean {
          */
         || /(?:^|[\s،:؛])(?:بدي|بدى|ودي|ابغي|ابغى|اريد|أريد|أبغي|أبغى|عايز|عاوز|محتاج|نبي|نبغى)(?:\s+\S+){0,2}\s+\S*(?:موقع|صفح|تطبيق|متجر|نظام|منص|لوح|واجه|اداه|برنامج|بوابه|خدمه|جدول|قائم)/.test(bare)
         || /\b(?:i\s+(?:want|need)|can\s+you\s+(?:make|build|create)|could\s+you\s+(?:make|build|create)|please\s+(?:make|build|create))\b(?:\s+\S+){0,3}\s+(?:a|an|the|my)?\s*\S*(?:site|website|page|app|application|system|dashboard|panel|store|shop|portal|tool|tracker|table|list)/i.test(g);
-    const noun = /\b(platform|marketplace|storefront|e-?commerce|site|website|page|app|application|software|system|dashboard|panel|console|admin|store|shop|portal|api|backend|tool|service|saas|crm|erp|pos|blog|editor|tracker|game|table|spreadsheet|list|ledger|register|board|workspace|library|directory|manager|log|desk)\b/i.test(g)
+    const noun = /\b(platform|marketplace|storefront|e-?commerce|site|website|page|app|application|software|system|dashboard|panel|console|admin|store|shop|portal|api|backend|tool|service|saas|crm|erp|pos|blog|editor|tracker|game|table|spreadsheet|list|ledger|register|board|workspace|library|directory|manager|log|desk)\b/i.test(probe)
         || /(موقع|صفحة|تطبيق|متجر|نظام|منصّ?ة|لوحة|واجهة|أداة|اداة|برنامج|بوابة|خدمة|جدول|قائمة|كشف)/.test(bare);
     /**
      *  A LIST OF NOUNS IS A CATALOGUE OF WORDS.

@@ -168,7 +168,7 @@ export function brandFrom(request: string, _isArabic?: boolean): string {
     // The marker must be a WORD, not a fragment inside one: «باسمه» is a
     // possessive pronoun, and matching «اسمه» inside it named a whole project
     // after the remainder of his sentence.
-    const introduced = req.match(/(?:^|[\s،:؛.«»"])(?:اسمها|اسمه|إسمها|إسمه|تسمى|يسمى|باسم|called|named|by the name of)\s*:?[\s\r\n]*(?:["«“]([^"«»“”]{2,40})["»”]|(.{2,60}))/i);
+    const introduced = req.match(/(?:^|[\s،:؛.«»"])(?:اسمها|اسمه|إسمها|إسمه|تسمى|يسمى|باسم|بعنوان|تحت\s+عنوان|called|named|by the name of|titled)\s*:?[\s\r\n]*(?:["«“]([^"«»“”]{2,40})["»”]|(.{2,60}))/i);
     if (introduced) {
         const b = trimBrand(introduced[1] || nameSpan(introduced[2] || ''));
         if (b) return b;

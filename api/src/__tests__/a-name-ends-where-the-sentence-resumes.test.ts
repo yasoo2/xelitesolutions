@@ -49,6 +49,9 @@ describe('the name comes from his words, and only the part that is a name', () =
         ['called + فاصلة', 'Build a project called SpendWise, a personal expense tracker for one user.', 'SpendWise'],
         ['called + نقطة', 'Build a small project called Gate062. Create one polished page titled Gate 062 with a heading.', 'Gate062'],
         ['named + and', 'Create an app named TaskFlow and make it responsive', 'TaskFlow'],
+        ['بعنوان + فاصلة', 'تصميم موقع حديث لشركة برمجيات بعنوان مدار، بواجهة عربية متجاوبة وقسم خدمات', 'مدار'],
+        ['تحت عنوان', 'صمم صفحة لشركة برمجيات تحت عنوان أفق، واجعلها متجاوبة', 'أفق'],
+        ['titled', 'Design a software company website titled Orbit, with a services section', 'Orbit'],
     ])('%s → %s', (_label, request, expected) => {
         expect(brand(request)).toBe(expected);
     });

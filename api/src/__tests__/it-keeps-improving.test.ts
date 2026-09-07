@@ -260,6 +260,19 @@ describe('the offenders the browser named are fixed by name', () => {
         expect(fixed.repairs).toHaveLength(1);
     });
 
+    it('adds a missing phone constraint to static and field-driven JSX inputs', () => {
+        const source = `<><input type="tel" /><input type={f.type === 'tel' ? 'tel' : 'text'} /></>`;
+        const fixed = repairSemanticInputValidation(source, [{
+            field: 'Phone', expected: 'tel', rejected: false, pattern: '',
+        }]);
+        expect(fixed.text).toContain('pattern="[0-9]{7,15}" inputMode="numeric"');
+        expect(fixed.text).toContain("pattern={f.type === 'tel' ? '[0-9]{7,15}' : undefined}");
+        expect(fixed.repairs).toEqual([expect.objectContaining({ id: 'semantic_input_validation', count: 2 })]);
+        expect(repairSemanticInputValidation(fixed.text, [{
+            field: 'Phone', expected: 'tel', rejected: false, pattern: '',
+        }]).repairs).toHaveLength(0);
+    });
+
     it('a measured contrast failure is answered on ITS OWN background', () => {
         const fails = [{ sel: 'p.price', ratio: 3.2, need: 4.5, fg: [154, 154, 154], bg: [255, 255, 255] }];
         const out = repairMeasuredContrast(':root{}', fails, 0).text;
