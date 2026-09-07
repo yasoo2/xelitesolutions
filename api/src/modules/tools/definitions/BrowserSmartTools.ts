@@ -2068,6 +2068,8 @@ export class BrowserOpenTool implements ToolDefinition {
         type: 'object' as const,
         properties: {
             url: { type: 'string' as const, description: 'URL to open. Optional — defaults to a start page.' },
+            readContent: { type: 'boolean' as const, description: 'Return the visible page text after navigation.' },
+            request: { type: 'string' as const, description: 'Original user request, used for response language and evidence.' },
         },
         required: [],
     };
@@ -2077,6 +2079,8 @@ export class BrowserOpenTool implements ToolDefinition {
     async execute(input: any, context?: any) {
         const sessionId = browserSid(context);
         const raw = String(input?.url || input?.link || input?.request || '').trim();
+        const request = String(input?.request || raw).trim();
+        const readContent = input?.readContent === true;
         const urlInText = raw.match(/https?:\/\/[^\s]+|\b[a-z0-9-]+\.(?:com|org|net|io|dev|ai|co|app|sa|eg|me|gov|edu)(?:\/[^\s]*)?/i);
         const target = urlInText ? normalizeUrl(urlInText[0]) : (process.env.BROWSER_HOME_URL || 'https://www.google.com');
         try {
@@ -2087,11 +2091,31 @@ export class BrowserOpenTool implements ToolDefinition {
                 const { page, url: finalUrl } = await openPage(sessionId, target);
                 await page.waitForTimeout(500);
                 const title = await page.title().catch(() => '');
+                const visibleText = readContent
+                    ? await page.evaluate(() => String(document.body?.innerText || '')
+                        .replace(/\s+/g, ' ')
+                        .trim()
+                        .slice(0, 6000)).catch(() => '')
+                    : '';
                 const buf = await page.screenshot({ type: 'jpeg', quality: 62, animations: 'disabled' });
                 const shot = publishShot(sessionId, Buffer.from(buf), finalUrl);
-                const message = `🌐 فتحتُ المتصفح على: ${finalUrl}${title ? `\n📄 ${title}` : ''}\nالبثّ الحي يعمل الآن — يمكنك أن تطلب مني تصفّح الصفحة أو تحليلها أو النقر فيها.`;
-                narrateFinal(sessionId, true, `فتح المتصفح: ${title || finalUrl}`);
-                return { ok: true, output: { message, url: finalUrl, title, screenshot: shot, live: true } };
+                if (readContent && !visibleText) {
+                    const emptyMessage = isAr(request)
+                        ? `فتحت ${finalUrl}، لكن الصفحة لم تعرض نصاً يمكن قراءته.`
+                        : `Opened ${finalUrl}, but the page displayed no readable text.`;
+                    narrateFinal(sessionId, false, emptyMessage);
+                    return { ok: false, error: 'page_content_empty', output: { message: emptyMessage, url: finalUrl, title, screenshot: shot, live: true, visibleText: '' } };
+                }
+                const ar = isAr(request);
+                const message = readContent
+                    ? (ar
+                        ? `فتحت ${finalUrl}${title ? `\nالعنوان: ${title}` : ''}\nالمحتوى الظاهر:\n${visibleText}`
+                        : `Opened ${finalUrl}${title ? `\nTitle: ${title}` : ''}\nVisible page content:\n${visibleText}`)
+                    : (ar
+                        ? `فتحت المتصفح على ${finalUrl}${title ? `\nالعنوان: ${title}` : ''}`
+                        : `Opened the browser at ${finalUrl}${title ? `\nTitle: ${title}` : ''}`);
+                narrateFinal(sessionId, true, ar ? `تم فتح ${title || finalUrl}` : `Opened ${title || finalUrl}`);
+                return { ok: true, output: { message, url: finalUrl, title, visibleText, screenshot: shot, live: true } };
             });
         } catch (e: any) {
             return { ok: false, error: `open_failed: ${e?.message || e}`, output: { message: `⚠️ تعذّر فتح المتصفح: ${e?.message || e}` } };

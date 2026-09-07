@@ -25,6 +25,20 @@ describe('explicit URL browser routing', () => {
         expect(p.steps[0].tool).toBe('browser_readability');
         expect(p.steps[0].input).toMatchObject({ url: 'https://example.com' });
     });
+
+    test('reads visible content from an explicit URL despite a no-file-change constraint', async () => {
+        const p = await plan('Open http://127.0.0.1:5000/api/health in your browser and report the status shown. Do not modify any files.');
+
+        expect(p.metadata?.matchedBy).toBe('explicit-browser-open');
+        expect(p.steps).toHaveLength(1);
+        expect(p.steps[0]).toMatchObject({
+            tool: 'browser_launch',
+            input: {
+                url: 'http://127.0.0.1:5000/api/health',
+                readContent: true,
+            },
+        });
+    });
 });
 
 describe('active live preview browser routing', () => {

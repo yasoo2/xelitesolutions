@@ -710,6 +710,39 @@ Rules:
             };
         }
 
+        // A URL is a browser target even when the user also says "do not
+        // modify files". Resolve bounded navigation and observation before the
+        // workspace read-only boundary so an IP address or domain is never
+        // reinterpreted as a local file or project audit.
+        const earlyUrlMatch = userGoal.match(/https?:\/\/[^\s<>'\"]+/i)
+            || userGoal.match(/\b[a-z0-9-]+\.(?:com|org|net|io|dev|ai|co|app|sa|eg|me)(?:\/[^\s<>'\"]*)?/i);
+        const earlyOpenIntent = /(افتح|لفتح|فتح|اذهب|انتقل|زر|ادخل|go\s*to|open|visit|navigate)/i.test(probe);
+        const earlyTitleOnly = /(عنوان\s*(ال)?صفحة|title\s*(of\s*(the\s*)?)?page|page\s*title)/i.test(probe);
+        const earlyPageWork = /(لخّ?ص|تلخيص|حلّ?ل|تحليل|استخرج|استخراج|انقر|اضغط|املأ|عبّ?ئ|سجّ?ل|تسجيل|دخول|summari[sz]e|analy[sz]e|extract|click|fill|log\s*-?\s*in|sign\s*-?\s*in)/i.test(probe);
+        const earlyVisibleContent = /(اقر[أا]|اعرض|أظهر|اظهر|الحالة|المحتوى|النص\s+الظاهر|report|read|show|displayed|visible\s+(?:text|content)|page\s+content|response\s+body|status\s+(?:shown|displayed|returned)?)/i.test(probe);
+        if (earlyUrlMatch && earlyOpenIntent && (earlyTitleOnly || !earlyPageWork)) {
+            const url = earlyUrlMatch[0].startsWith('http') ? earlyUrlMatch[0] : `https://${earlyUrlMatch[0]}`;
+            const readContent = !earlyTitleOnly && earlyVisibleContent;
+            console.log(`[PlanningEngine] early explicit URL open -> browser_launch ${url}${readContent ? ' + visible content' : ''}`);
+            return {
+                id: `browser_open_${Date.now()}`,
+                goal: intent.goal,
+                steps: [{
+                    id: 'browser_open',
+                    description: earlyTitleOnly
+                        ? `افتح ${url} وأعد عنوان الصفحة`
+                        : readContent
+                            ? `افتح ${url} واقرأ المحتوى الظاهر`
+                            : `افتح ${url}`,
+                    tool: 'browser_launch',
+                    agent: 'Browser',
+                    input: { url, request: intent.goal, readContent },
+                    dependsOn: [],
+                }],
+                metadata: { complexity: 'low', riskLevel: 'low', matchedBy: 'explicit-browser-open' },
+            };
+        }
+
         // An explicit read-only file list is more precise than selecting one
         // project from a multi-project workspace. Read each safe relative path
         // through ToolService and let the normal result composer explain the
@@ -988,33 +1021,6 @@ Rules:
                 goal: intent.goal,
                 steps,
                 metadata: { complexity: requestsBoundedLocalGitWorkflow ? 'high' : 'medium', riskLevel: 'medium' },
-            };
-        }
-
-        // [EARLY EXPLICIT URL OPEN] A bounded navigation request is a hard
-        // prerequisite for any page-local tool. Resolve it before capability
-        // chains and model-guided routing, which cannot safely search a page
-        // that has not been opened yet.
-        const earlyUrlMatch = userGoal.match(/https?:\/\/[^\s<>'\"]+/i)
-            || userGoal.match(/\b[a-z0-9-]+\.(?:com|org|net|io|dev|ai|co|app|sa|eg|me)(?:\/[^\s<>'\"]*)?/i);
-        const earlyOpenIntent = /(افتح|لفتح|فتح|اذهب|انتقل|زر|ادخل|go\s*to|open|visit|navigate)/i.test(probe);
-        const earlyTitleOnly = /(عنوان\s*(ال)?صفحة|title\s*(of\s*(the\s*)?)?page|page\s*title)/i.test(probe);
-        const earlyPageWork = /(لخّ?ص|تلخيص|حلّ?ل|تحليل|استخرج|استخراج|انقر|اضغط|املأ|عبّ?ئ|سجّ?ل|تسجيل|دخول|summari[sz]e|analy[sz]e|extract|click|fill|log\s*-?\s*in|sign\s*-?\s*in)/i.test(probe);
-        if (earlyUrlMatch && earlyOpenIntent && (earlyTitleOnly || !earlyPageWork)) {
-            const url = earlyUrlMatch[0].startsWith('http') ? earlyUrlMatch[0] : `https://${earlyUrlMatch[0]}`;
-            console.log(`[PlanningEngine] early explicit URL open -> browser_launch ${url}`);
-            return {
-                id: `browser_open_${Date.now()}`,
-                goal: intent.goal,
-                steps: [{
-                    id: 'browser_open',
-                    description: earlyTitleOnly ? `افتح ${url} وأعد عنوان الصفحة` : `افتح ${url}`,
-                    tool: 'browser_launch',
-                    agent: 'Browser',
-                    input: { url, request: intent.goal },
-                    dependsOn: [],
-                }],
-                metadata: { complexity: 'low', riskLevel: 'low' },
             };
         }
 

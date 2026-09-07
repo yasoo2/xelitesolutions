@@ -106,7 +106,11 @@ export function parseExplicitReadFilesRequest(input: string): string[] | null {
         if (positiveArabic.test(raw) && !negatedArabic.test(raw)) return null;
     }
 
-    const candidates = [...raw.matchAll(/\b(?:[A-Za-z0-9_\-\u0600-\u06FF]+\/)+[A-Za-z0-9_.\-\u0600-\u06FF]+\b|\b[A-Za-z0-9_\-\u0600-\u06FF]+\.[A-Za-z0-9]{1,16}\b/g)]
+    // URLs contain strings that look exactly like local files (127.0,
+    // example.com, api/health). Remove complete web targets before extracting
+    // workspace paths, while keeping any real file mentioned elsewhere.
+    const fileOnlyText = raw.replace(/\bhttps?:\/\/[^\s<>'"`]+/gi, ' ');
+    const candidates = [...fileOnlyText.matchAll(/\b(?:[A-Za-z0-9_\-\u0600-\u06FF]+\/)+[A-Za-z0-9_.\-\u0600-\u06FF]+\b|\b[A-Za-z0-9_\-\u0600-\u06FF]+\.[A-Za-z0-9]{1,16}\b/g)]
         .map(match => String(match[0] || '').replace(/[.,؛،:]+$/u, ''))
         .filter(candidate => candidate && candidate.toLowerCase() !== 'node.js')
         .filter(candidate => SAFE_READ_PATH.test(candidate) && !candidate.includes('..') && !candidate.startsWith('/') && !/^[A-Za-z]:/i.test(candidate));
