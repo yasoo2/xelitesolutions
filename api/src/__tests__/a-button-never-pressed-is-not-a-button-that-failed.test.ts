@@ -98,6 +98,43 @@ describe('a control that was never reached is reported as never reached', () => 
             .toEqual({ pressed: 3, dead: 2, unreachable: 1 });
     });
 
+    it('keeps proven success when the same control is pressed idempotently later', () => {
+        const controls = [
+            control({ label: 'تعديل', bare: 'تعديل', instance: 0, context: 'phone:/', worked: true, effect: 'dom' }),
+            control({ label: 'تعديل', bare: 'تعديل', instance: 0, context: 'phone:/', worked: false, effect: '' }),
+        ];
+        const metrics: Record<string, any> = {};
+        const { findings } = judgeBehaviour(controls as any, metrics, []);
+        expect(findings.some(f => f.code === 'some_dead_controls' || f.code === 'dead_controls')).toBe(false);
+        expect({ pressed: metrics.pressed, dead: metrics.dead }).toEqual({ pressed: 1, dead: 0 });
+    });
+
+    it('does not let desktop success hide a genuinely dead phone control', () => {
+        const controls = [
+            control({ label: 'تعديل', bare: 'تعديل', instance: 0, context: 'desktop:/', worked: true, effect: 'dom' }),
+            control({ label: 'الجوّال تعديل', bare: 'تعديل', instance: 0, context: 'phone:/', worked: false, effect: '' }),
+        ];
+        const { findings } = judgeBehaviour(controls as any, {}, []);
+        expect(findings.some(f => f.code === 'some_dead_controls')).toBe(true);
+    });
+
+    it('keeps equal labels on separate rows as separate evidence', () => {
+        const controls = [
+            control({ label: 'تعديل', bare: 'تعديل', instance: 0, context: 'desktop:/', worked: true, effect: 'dom' }),
+            control({ label: 'تعديل', bare: 'تعديل', instance: 1, context: 'desktop:/', worked: false, effect: '' }),
+        ];
+        const metrics: Record<string, any> = {};
+        const { findings } = judgeBehaviour(controls as any, metrics, []);
+        expect(findings.some(f => f.code === 'some_dead_controls')).toBe(true);
+        expect(metrics.pressed).toBe(2);
+    });
+
+    it('keeps Joe instrumentation out of application state identity', () => {
+        const source = fs.readFileSync(path.join(__dirname, '..', 'core', 'quality', 'behaviour-audit.ts'), 'utf8');
+        expect(source).toContain('data-joe-(?:ctl|form|fld|sub|qa-[\\w-]+)');
+        expect(source).toContain('successfulSemanticKeys');
+    });
+
     it('NEGATIVE — the dead ratio is taken over what was PRESSED, not over everything', () => {
         //  Two dead out of three pressed is 0.67 and must still fire. If the
         //  unreachable ones stayed in the denominator it would read 0.5 — the

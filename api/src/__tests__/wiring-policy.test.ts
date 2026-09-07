@@ -1899,6 +1899,11 @@ describe('a run keeps going while you read another conversation', () => {
         expect(C).toMatch(/payload\?\.stopped === true/);
         expect(C).toMatch(/serverConfirmedStop[\s\S]{0,260}markRunning\(sid, false\)/);
         expect(C).toMatch(/if \(rid \|\| sid\)[\s\S]{0,260}runs\/stop/);
+        expect(C).toContain("fetch(`${API}/runs/active`, { headers })");
+        const unconfirmed = C.indexOf('if (!serverConfirmedStop && (rid || sid))');
+        const reset = C.indexOf("setStatus('idle');", unconfirmed);
+        expect(unconfirmed).toBeGreaterThan(0);
+        expect(C.slice(unconfirmed, reset)).toContain('return;');
         const S = WEB('services', 'socket.ts');
         expect(S).toContain('closedAt: number');
         expect(S).toContain('runtime.closedAt > 0');

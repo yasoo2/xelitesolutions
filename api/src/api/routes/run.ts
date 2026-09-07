@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import mongoose from 'mongoose';
 import { AgentLoopService } from '../../modules/services/AgentLoopService';
-import { authenticateOptional } from '../middleware/auth';
+import { authenticate, authenticateOptional } from '../middleware/auth';
 import { loadUploadedFiles } from './files';
 import { persistChatStores } from '../chat-store';
 import { Run } from '../../shared/models/run';
@@ -11,9 +11,30 @@ import { Session } from '../../shared/models/session';
 import { traceManager } from '../../modules/services/TraceManager';
 import { broadcast } from '../ws';
 import { getRunEvidence } from '../../shared/run-evidence-store';
-import { getActiveRunSessions } from '../ws';
+import { getActiveRunSessions, registerRunSession, unregisterRunSession, sessionOwnerOf, runOwnerOf } from '../ws';
+import { registerRun, releaseHandle } from '../../core/session/attended-run';
 
 const router = Router();
+
+function usesJsonRunStore(): boolean {
+    return process.env.OFFLINE_MODE === 'true'
+        || process.env.PERSISTENCE_MODE === 'JSON'
+        || process.env.MOCK_DB === 'true'
+        || String(process.env.MOCK_DB) === '1';
+}
+
+/** A supplied session id is a capability only for its authenticated owner. */
+async function mayUseRunSession(sessionId: string, userId: string): Promise<boolean> {
+    const id = String(sessionId || '').trim();
+    if (!id || !userId) return !id;
+    if (usesJsonRunStore()) {
+        const session = ((global as any).mockSessions || []).find((item: any) =>
+            String(item.id ?? item._id) === id || String(item._id) === id);
+        return !session || String(session.userId || '') === userId;
+    }
+    const session = await Session.findById(id).select('userId').lean();
+    return !session || String((session as any).userId || '') === userId;
+}
 
 /**
  * ATTACHMENT MEMORY (per session, in-process). Maps a sessionId to the file
@@ -105,8 +126,8 @@ router.post('/verify', authenticateOptional as any, async (req: Request, res: Re
  * This route now delegates all intelligence to the AgentOrchestrator.
  * Legacy simulation logic has been decommissioned.
  */
-router.post('/start', authenticateOptional as any, async (req: Request, res: Response) => {
-    const { text, sessionId, browserSessionId, workspaceId, userId: bodyUserId, provider, model, apiKey, baseUrl, language } = req.body || {};
+router.post('/start', authenticate as any, async (req: Request, res: Response) => {
+    const { text, sessionId, browserSessionId, workspaceId, provider, model, apiKey, baseUrl, language } = req.body || {};
     // The UI language the user picked. Everything Joe SAYS must follow it —
     // previously nothing carried it here, so every reply came back in Arabic no
     // matter which language the switcher was set to. Fall back to the browser's
@@ -114,7 +135,8 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     const uiLanguage = String(language || '').trim().toLowerCase().split('-')[0]
         || String(req.headers['accept-language'] || '').trim().toLowerCase().split(',')[0].split('-')[0]
         || 'en';
-    const userId = (req as any).auth?.sub || bodyUserId || 'anonymous';
+    const userId = String((req as any).auth?.sub || '').trim();
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
     // The user's display name, threaded to the tools so Joe can greet them
     // personally («مساء الخير يا يونس»). Local tokens often carry the literal
     // placeholder 'User', so prefer, in order: a real token name, the name the
@@ -130,6 +152,21 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     // Joe works on every task (e.g. terminal-first building). Previously the UI
     // sent this field and the server silently dropped it.
     const systemInstructions = String(req.body?.systemInstructions || '').trim().slice(0, 4000);
+
+    if (!text) {
+        return res.status(400).json({ error: 'Goal text is required' });
+    }
+
+    // Resolve the identity before touching any state. A fresh composer does not
+    // have a saved session yet, but attachments, history, ownership, tracing,
+    // and WebSocket frames must still all describe the same run.
+    const runSessionId = String(sessionId || '').trim()
+        || `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const effectiveBrowserSessionId = String(browserSessionId || '').trim()
+        || `browser:${runSessionId}`;
+    if (!(await mayUseRunSession(runSessionId, userId))) {
+        return res.status(404).json({ error: 'Session not found' });
+    }
 
     /**
      * THE PAPERCLIP'S MISSING HALF. The composer uploads each attachment,
@@ -150,7 +187,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             }
             // Remember what this session attached — the NEXT message may refer
             // to it without re-attaching (see below).
-            if (attachments.length) rememberSessionFiles(String(sessionId || ''), fileIds);
+            if (attachments.length) rememberSessionFiles(runSessionId, fileIds);
         } catch (e: any) {
             console.warn('[RunRoute] Loading attachments failed (continuing without):', e?.message || e);
         }
@@ -170,7 +207,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         if (recallMode !== 'none') {
             // Strong reference (الصوره، الملف، حللها…) recalls within the full
             // TTL; a weak one (هذا، فيها، this…) only while the file is FRESH.
-            const remembered = recallSessionFiles(String(sessionId || ''), recallMode === 'strong' ? undefined : WEAK_REFERENCE_WINDOW_MS);
+            const remembered = recallSessionFiles(runSessionId, recallMode === 'strong' ? undefined : WEAK_REFERENCE_WINDOW_MS);
             if (remembered.length) {
                 try {
                     attachments = await loadUploadedFiles(remembered);
@@ -178,7 +215,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
                         console.log(`[RunRoute] 🧷 Re-attached ${attachments.length} earlier file(s) — ${recallMode} reference (attachment memory)`);
                         // Touch the memory so a CHAIN of follow-ups keeps the
                         // picture on the table («حلل» → «هل هذا هاتف؟» → «وماذا عن…»).
-                        rememberSessionFiles(String(sessionId || ''), remembered);
+                        rememberSessionFiles(runSessionId, remembered);
                     }
                 } catch (e: any) {
                     console.warn('[RunRoute] Attachment memory reload failed (continuing without):', e?.message || e);
@@ -187,11 +224,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
         }
     }
     
-    console.log(`[RunRoute] Unified execution requested for session: ${sessionId}`);
-
-    if (!text) {
-        return res.status(400).json({ error: 'Goal text is required' });
-    }
+    console.log(`[RunRoute] Unified execution requested for session: ${runSessionId}`);
 
     /**
      *  A RUN WITHOUT A BROWSER SESSION CAN NEVER BE WATCHED.
@@ -212,10 +245,6 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
      *  Derive it here instead, from whatever session this run ends up with.
      *  One place, every client, first message included.
      */
-    const runSessionId = String(sessionId || '').trim();
-    const effectiveBrowserSessionId = String(browserSessionId || '').trim()
-        || (runSessionId ? `browser:${runSessionId}` : '');
-
     // Persist the user message in offline/JSON mode so the chat shows the FULL
     // conversation (user + Joe) and it survives reloads. Agent runs go through this
     // route, which previously saved nothing — so only Joe's reply ever appeared.
@@ -226,7 +255,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     try {
         if (process.env.OFFLINE_MODE === 'true' || process.env.PERSISTENCE_MODE === 'JSON' || process.env.MOCK_DB === 'true' || String(process.env.MOCK_DB) === '1') {
             const store: any[] = (global as any).mockMessages || ((global as any).mockMessages = []);
-            store.push({ _id: `um-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, sessionId, role: 'user', content: text, attachments: attachmentMeta(), createdAt: new Date() });
+            store.push({ _id: `um-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, sessionId: runSessionId, role: 'user', content: text, attachments: attachmentMeta(), createdAt: new Date() });
             persistChatStores();
         }
     } catch { /* non-fatal */ }
@@ -235,6 +264,13 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     // persisted event addresses the same execution.
     const tempRunId = `run-${Date.now()}`;
 
+    // A Stop request may arrive as soon as the client receives the start
+    // response. Register its real cancellation handle before scheduling the
+    // background executor, otherwise the first asynchronous setup gap turns
+    // Stop into a visual-only control.
+    const runCancellation = registerRun(tempRunId, runSessionId);
+    registerRunSession(tempRunId, runSessionId);
+
     // OWNERSHIP AT THE DOOR. The very first frames of a run — the echo of what
     // the user typed, and the run_started the panels wait for — used to be
     // emitted before anyone had claimed the session, so they resolved to
@@ -242,28 +278,28 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
     // user read the sentence you typed. Claim it here, before the first frame.
     try {
         const { registerSessionOwner } = require('../ws');
-        if (userId && userId !== 'anonymous') registerSessionOwner(sessionId, String(userId));
+        if (userId && userId !== 'anonymous') registerSessionOwner(runSessionId, String(userId));
     } catch { /* the wire is optional in tests */ }
 
     // Echo the user's message to the chat via WebSocket so it shows in the
     // conversation. The composer that posts here does not add it client-side, so
     // without this only Joe's reply would appear.
     try {
-        broadcast({ type: 'user_input', sessionId, runId: tempRunId, data: { text, sessionId, runId: tempRunId, files: attachmentMeta() }, id: `uin-${Date.now()}` } as any);
+        broadcast({ type: 'user_input', sessionId: runSessionId, runId: tempRunId, data: { text, sessionId: runSessionId, runId: tempRunId, files: attachmentMeta() }, id: `uin-${Date.now()}` } as any);
         // The panels listen for the RUN starting — that is when the workspace
         // reveals itself and the live file list clears. They were listening
         // for an event the server never sent; the auto-open only happened
         // later, by luck, on the first tool.
-        broadcast({ type: 'run_started', sessionId, runId: tempRunId, data: { sessionId, runId: tempRunId, text: String(text || '').slice(0, 200) }, id: `run-${Date.now()}` } as any);
+        broadcast({ type: 'run_started', sessionId: runSessionId, runId: tempRunId, data: { sessionId: runSessionId, runId: tempRunId, text: String(text || '').slice(0, 200) }, id: `run-${Date.now()}` } as any);
     } catch { /* non-fatal */ }
 
     try {
-        const traceId = traceManager.startTrace(sessionId || 'anonymous', text);
+        const traceId = traceManager.startTrace(runSessionId, text);
         
         // [ELITE FIX] Make execution non-blocking to prevent Nginx timeouts and frontend hang
         // The background process will handle its own errors and broadcast status via WS
         AgentLoopService.execute(text, {
-            sessionId,
+            sessionId: runSessionId,
             // لا تستبدل جلسة لوحة المتصفح بجلسة الدردشة؛ تستخدمها browser_run
             // للتحكم في الصفحة نفسها التي تعرضها الواجهة.
             browserSessionId: effectiveBrowserSessionId || undefined,
@@ -276,6 +312,7 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             attachments,
             traceId,
             runId: tempRunId,
+            cancellationHandle: runCancellation,
             language: uiLanguage,
             modelConfig: {
                 provider,
@@ -285,13 +322,19 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
             }
         }).catch(err => {
             console.error(`[RunRoute] Background execution fatal error:`, err);
+        }).finally(() => {
+            // AgentLoopService releases this handle during normal completion;
+            // this second, idempotent cleanup covers exits before it begins.
+            releaseHandle(runCancellation, tempRunId, runSessionId);
+            unregisterRunSession(tempRunId, runSessionId);
         });
 
         // Return immediately so the frontend can start listening for WS updates
         return res.json({
             ok: true,
             runId: tempRunId,
-            traceId
+            traceId,
+            sessionId: runSessionId,
         });
     } catch (error: any) {
         console.error('[RunRoute] Execution failed:', error);
@@ -302,17 +345,22 @@ router.post('/start', authenticateOptional as any, async (req: Request, res: Res
 /**
  * Basic Run Management Routes
  */
-router.get('/', async (req, res) => {
-    const runs = await Run.find().sort({ createdAt: -1 }).limit(50).lean();
+router.get('/', authenticate as any, async (req, res) => {
+    const userId = String((req as any).auth?.sub || '').trim();
+    if (usesJsonRunStore()) return res.json([]);
+    const sessions = await Session.find({ userId }).select('_id').lean();
+    const runs = await Run.find({ sessionId: { $in: sessions.map((session: any) => String(session._id)) } })
+        .sort({ createdAt: -1 }).limit(50).lean();
     res.json(runs);
 });
 
 /** Recovery snapshot for the session switcher. WebSocket events are live, but
  * a user who returns after run_started needs a persisted answer too. */
-router.get('/active', async (_req, res) => {
+router.get('/active', authenticate as any, async (req, res) => {
+    const userId = String((req as any).auth?.sub || '').trim();
     const runs = getActiveRunSessions();
     res.json({
-        runs: runs.map(run => ({
+        runs: runs.filter(run => sessionOwnerOf(run.sessionId) === userId || runOwnerOf(run.runId) === userId).map(run => ({
             runId: run.runId,
             sessionId: run.sessionId,
             status: 'running',
@@ -320,18 +368,24 @@ router.get('/active', async (_req, res) => {
     });
 });
 
-router.get('/:id/receipt', async (req, res) => {
+router.get('/:id/receipt', authenticate as any, async (req, res) => {
     const evidence = await getRunEvidence(req.params.id);
     if (!evidence) return res.status(404).json({ error: 'No receipt for this run' });
+    if (!(await mayUseRunSession(String(evidence.sessionId || ''), String((req as any).auth?.sub || '').trim()))) {
+        return res.status(404).json({ error: 'No receipt for this run' });
+    }
     res.json({ ...evidence, ...(evidence.receipt || {}) });
 });
 
-router.get('/:id', async (req, res) => {
+router.get('/:id', authenticate as any, async (req, res) => {
     const id = String(req.params.id || '').trim();
     const jsonMode = process.env.OFFLINE_MODE === 'true' || process.env.PERSISTENCE_MODE === 'JSON' || process.env.MOCK_DB === 'true' || String(process.env.MOCK_DB) === '1';
     if (jsonMode) {
         const evidence = await getRunEvidence(id);
         if (!evidence) return res.status(404).json({ error: 'Run not found' });
+        if (!(await mayUseRunSession(String(evidence.sessionId || ''), String((req as any).auth?.sub || '').trim()))) {
+            return res.status(404).json({ error: 'Run not found' });
+        }
         return res.json({
             run: { _id: evidence.id || id, runId: evidence.runId, sessionId: evidence.sessionId, status: evidence.status, createdAt: evidence.startedAt, updatedAt: evidence.updatedAt },
             execs: evidence.events || [],
@@ -344,6 +398,9 @@ router.get('/:id', async (req, res) => {
         : { runId: id };
     const run = await Run.findOne(query).lean();
     if (!run) return res.status(404).json({ error: 'Run not found' });
+    if (!(await mayUseRunSession(String((run as any).sessionId || ''), String((req as any).auth?.sub || '').trim()))) {
+        return res.status(404).json({ error: 'Run not found' });
+    }
 
     const runKeys = [id, String((run as any)._id || '')].filter(Boolean);
     const execs = await ToolExecution.find({ runId: { $in: runKeys } }).lean();
@@ -369,7 +426,7 @@ router.get('/:id', async (req, res) => {
  *  WHETHER ANYTHING STOPPED. «I did not find that run» is a fact he can act
  *  on; `ok` over a run that continued is not.
  */
-router.post('/stop', async (req, res) => {
+router.post('/stop', authenticate as any, async (req, res) => {
   const { runId, sessionId } = req.body || {};
   const { stopRun } = require('../../core/session/attended-run');
   const requestedRunId = String(runId || '').trim();
@@ -384,6 +441,11 @@ router.post('/stop', async (req, res) => {
   );
   const resolvedSessionId = requestedSessionId || target?.sessionId || '';
   const resolvedRunId = requestedRunId || target?.runId || '';
+  const userId = String((req as any).auth?.sub || '').trim();
+  const liveOwner = sessionOwnerOf(resolvedSessionId) || runOwnerOf(resolvedRunId);
+  if (!userId || !resolvedSessionId || liveOwner && liveOwner !== userId || !(await mayUseRunSession(resolvedSessionId, userId))) {
+    return res.status(404).json({ error: 'Run not found' });
+  }
     //  Both ids: this route is called with a runId, the tool layer registers a
     //  sessionId, and a stop that only travels through one of them is a stop
     //  that works on some screens.

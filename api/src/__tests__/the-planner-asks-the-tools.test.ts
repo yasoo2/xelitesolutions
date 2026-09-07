@@ -13,7 +13,7 @@
  */
 import { capableTools, terms, reachableCount } from '../core/orchestrator/capability-match';
 import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
-import { isReadOnlyRequest } from '../core/orchestrator/buildIntent';
+import { isReadOnlyRequest, looksLikeBuild } from '../core/orchestrator/buildIntent';
 
 const names = (r: string) => capableTools(r, 3).map(c => c.name);
 
@@ -95,6 +95,15 @@ describe('the planner uses it — after its own routes, before the model', () =>
     it('recognizes the natural "without making changes" read-only contract', async () => {
         const goal = 'List the top-level workspace files and summarize the README without making changes.';
         expect(isReadOnlyRequest(goal)).toBe(true);
+        const plan: any = await PlanningEngine.generatePlan({ intent: { goal, complexity: 'low', riskLevel: 'low', rawIntent: {} } as any });
+        expect(plan.metadata.matchedBy).toBe('read-only-safety-boundary');
+        expect(plan.steps.map((step: any) => step.tool)).toEqual(['project_pipeline']);
+    });
+
+    it('recognizes the short negative imperative used in ordinary requests', async () => {
+        const goal = 'List the top-level files of this workspace only. Do not make changes.';
+        expect(isReadOnlyRequest(goal)).toBe(true);
+        expect(looksLikeBuild(goal)).toBe(false);
         const plan: any = await PlanningEngine.generatePlan({ intent: { goal, complexity: 'low', riskLevel: 'low', rawIntent: {} } as any });
         expect(plan.metadata.matchedBy).toBe('read-only-safety-boundary');
         expect(plan.steps.map((step: any) => step.tool)).toEqual(['project_pipeline']);

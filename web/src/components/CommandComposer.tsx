@@ -889,11 +889,58 @@ export default function CommandComposer({
     files: Array<{ id: string; name: string; size?: number; type?: string; preview?: string; uploadSuccess?: boolean }>;
   }>>([]);
   const [queuePaused, setQueuePaused] = useState(false);
+  // The queue belongs to the conversation, not to a mounted composer.  A
+  // reload, a session switch, or a local API restart must not silently erase
+  // work the user has already asked Joe to do.
+  const queueLoadedSessionRef = useRef<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const [events, setEvents] = useState<Array<{ type: string; data: any; duration?: number; expanded?: boolean }>>([]);
   const [userName, setUserName] = useState<string>('');
   const [userPicture, setUserPicture] = useState<string>('');
+
+  useEffect(() => {
+    const sid = String(sessionId || '').trim();
+    let current = true;
+    queueLoadedSessionRef.current = null;
+    if (!sid) {
+      setPendingQueue([]);
+      setQueuePaused(false);
+      return () => { current = false; };
+    }
+    void fetch(`${API}/sessions/${encodeURIComponent(sid)}/queue`)
+      .then(async (response) => response.ok ? response.json() : { items: [], paused: false })
+      .then((saved) => {
+        if (!current) return;
+        setPendingQueue(Array.isArray(saved?.items) ? saved.items : []);
+        setQueuePaused(saved?.paused === true);
+        queueLoadedSessionRef.current = sid;
+      })
+      .catch(() => {
+        if (!current) return;
+        // A queue unavailable on the server is never silently dispatched from
+        // stale client state. It remains empty until the next successful read.
+        setPendingQueue([]);
+        setQueuePaused(false);
+        queueLoadedSessionRef.current = sid;
+      });
+    return () => { current = false; };
+  }, [sessionId]);
+
+  useEffect(() => {
+    const sid = String(sessionId || '').trim();
+    if (!sid || queueLoadedSessionRef.current !== sid) return;
+    const items = pendingQueue.map(({ id, text, files }) => ({
+      id,
+      text,
+      files: files.map(({ id: fileId, name, size, type }) => ({ id: fileId, name, size, type })),
+    }));
+    void fetch(`${API}/sessions/${encodeURIComponent(sid)}/queue`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items, paused: queuePaused }),
+    }).catch(() => { /* the next queue mutation retries; do not discard work locally */ });
+  }, [sessionId, pendingQueue, queuePaused]);
 
   useEffect(() => {
     try {
@@ -971,6 +1018,8 @@ export default function CommandComposer({
   const draftTimerRef = useRef<number | null>(null);
   const lastGateSigRef = useRef<{ approval?: string; secret?: string; browserCred?: string }>({});
   const lastTextDedupRef = useRef<{ sig: string; ts: number } | null>(null);
+  const terminalRunIdsRef = useRef<Set<string>>(new Set());
+  const terminalSessionRef = useRef(false);
   const pendingBrowserRetryRef = useRef<{ url: string; sessionId: string } | null>(null);
   const lastAutoOpenedHrefRef = useRef<string>('');
 
@@ -1579,8 +1628,24 @@ export default function CommandComposer({
       if (typeof msg?.seq === 'number' && Number.isFinite(msg.seq)) {
         if (msg.seq > lastLiveSeqRef.current) lastLiveSeqRef.current = msg.seq;
       }
-      if (typeof msg?.runId === 'string' && msg.runId.trim()) {
-        setActiveRunId(msg.runId.trim());
+      const messageRunId = String(msg?.runId || msg?.data?.runId || '').trim();
+      const isTerminalRunEvent = ['run_finished', 'run_completed', 'run_cancelled', 'run_failed'].includes(msg?.type);
+      if (isTerminalRunEvent && messageRunId) {
+        terminalRunIdsRef.current.add(messageRunId);
+        // Keep this bounded: run ids are unique, but a long-lived Joe tab
+        // must not accumulate an unbounded event tombstone list.
+        if (terminalRunIdsRef.current.size > 128) terminalRunIdsRef.current.clear();
+      } else if (msg.type === 'user_input' && messageRunId) {
+        // A fresh, identified user request opens the next run for this session.
+        terminalSessionRef.current = false;
+      } else if (terminalSessionRef.current || (messageRunId && terminalRunIdsRef.current.has(messageRunId))) {
+        // An executor can finish its cancellation race after the user-facing
+        // run has closed. Those stale frames must never resurrect the live
+        // state or Stop button in the completed conversation.
+        return;
+      }
+      if (messageRunId) {
+        setActiveRunId(messageRunId);
       }
       if (msg.type === 'user_input') {
         clearToolTimers();
@@ -1591,7 +1656,8 @@ export default function CommandComposer({
         return;
       }
 
-      if (msg.type === 'run_finished' || msg.type === 'run_completed' || msg.type === 'run_cancelled' || msg.type === 'run_failed') {
+      if (isTerminalRunEvent) {
+        terminalSessionRef.current = true;
         window.dispatchEvent(new CustomEvent('sessions:refresh'));
         setActiveRunId(null);
         setThinkingPhase('idle');
@@ -2294,6 +2360,21 @@ export default function CommandComposer({
     // ALLOW empty text if files are attached
     if (!inputText.trim() && filesForRun.length === 0) return;
 
+    // A prompt arriving while Joe is working is future work, not an
+    // instruction to replace the active run. Keep its position in the
+    // session-backed queue. The explicit Stop control still exists when the
+    // composer is empty, so queuing never makes cancellation unreachable.
+    if (!composerIdle && !approval && !secretPrompt) {
+      setPendingQueue(prev => [...prev, {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        text: inputText.trim(),
+        files: [...filesForRun],
+      }]);
+      if (overrideText === undefined) setText('');
+      if (!overrideFiles) setAttachedFiles([]);
+      return;
+    }
+
     if (isUploading) {
       alert(t('waitUpload', 'Please wait for files to finish uploading...'));
       return;
@@ -2399,6 +2480,43 @@ export default function CommandComposer({
       return;
     }
 
+    // A first prompt must have a session before its first live event. Letting
+    // the API mint one during /runs/start means user_input, run_started, and
+    // an early Stop can be emitted before this component knows what chat owns
+    // them. Create and adopt the session at the client boundary instead.
+    let runSessionId = String(sessionId || '').trim();
+    if (!runSessionId) {
+      try {
+        const bootstrapToken = localStorage.getItem('token');
+        const created = await fetch(`${API}/sessions`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(bootstrapToken ? { Authorization: `Bearer ${bootstrapToken}` } : {}),
+          },
+          body: JSON.stringify({ kind: 'agent' }),
+        });
+        if (created.status === 401) {
+          handleUnauthorized();
+          return;
+        }
+        const session = await created.json().catch(() => null);
+        runSessionId = String(session?.id || session?._id || '').trim();
+        if (!created.ok || !runSessionId) throw new Error('session_creation_failed');
+        onSessionCreated?.(runSessionId);
+        // Give the remounted, session-scoped composer one turn to subscribe
+        // before the run route broadcasts its first event.
+        await new Promise(resolve => window.setTimeout(resolve, 0));
+      } catch (error: any) {
+        setEvents(prev => [...prev, {
+          type: 'error',
+          data: String(error?.message || 'Unable to create a conversation for this task.'),
+          ts: Date.now(),
+        }]);
+        return;
+      }
+    }
+
     clearToolTimers();
     setStatus('thinking');
     setIsThinking(true);
@@ -2420,10 +2538,10 @@ export default function CommandComposer({
     // instead of waiting out the server's run initialization (measured 7-15s).
     SocketService.injectLocal({
       type: 'user_input',
-      sessionId,
+      sessionId: runSessionId,
       id: `local-${Date.now()}`,
       ts: Date.now(),
-      data: { text: inputText, files: [...filesForRun], sessionId },
+      data: { text: inputText, files: [...filesForRun], sessionId: runSessionId },
     });
     if (overrideText === undefined) setText('');
     // setAttachedFiles([]) moved to after payload construction
@@ -2510,7 +2628,7 @@ export default function CommandComposer({
     };
 
     const ensureBrowserSession = async () => {
-      const sid = String(sessionId || '').trim();
+      const sid = runSessionId;
       if (!sid) throw new Error('sessionId_required');
       const b = String(browserSessionId || '').trim();
       if (b) return { sessionId: b };
@@ -2542,9 +2660,9 @@ export default function CommandComposer({
        *  «one browser session per Joe session», as the interface's own rule
        *  already says one file away.
        */
-      let effectiveBrowserSessionId = browserSessionId || (sessionId ? `browser:${sessionId}` : undefined);
-      // Allow auto-open in chat mode too. Skip if no sessionId yet (first message).
-      if (sessionId && (sessionKind === 'agent' || sessionKind === 'chat') && !effectiveBrowserSessionId && needsBrowserForText(inputText)) {
+      let effectiveBrowserSessionId = browserSessionId || (runSessionId ? `browser:${runSessionId}` : undefined);
+      // Allow auto-open in chat mode too. Every first message now owns a session.
+      if (runSessionId && (sessionKind === 'agent' || sessionKind === 'chat') && !effectiveBrowserSessionId && needsBrowserForText(inputText)) {
         const inputNorm = normalizeForIntent(inputText);
         const urlMatch = inputText.match(/https?:\/\/[^\s"'<>]+/i);
         const directUrl = urlMatch?.[0];
@@ -2598,7 +2716,7 @@ export default function CommandComposer({
         } catch (e: any) {
           const msg = String(e?.message || e || 'فشل فتح المتصفح');
           setEvents(prev => [...prev, { type: 'error', data: msg, ts: Date.now() }]);
-          const sid = String(sessionId || '').trim();
+          const sid = runSessionId;
           const looksLikeUnauthorizedWorker = /worker_error=401\b|unauthorized\b|غير مصرح/i.test(msg);
           const looksLikeUnreachableWorker = /worker_unhealthy\b|ECONNREFUSED\b|fetch failed\b/i.test(msg);
           if (sid && (looksLikeUnauthorizedWorker || looksLikeUnreachableWorker)) {
@@ -2638,7 +2756,7 @@ export default function CommandComposer({
       const payload: any = {
         type: 'run_start',
         text: inputText,
-        sessionId,
+        sessionId: runSessionId,
         browserSessionId: effectiveBrowserSessionId || undefined,
         fileIds: filesForRun.map(f => f.id),
         provider: providerToSend,
@@ -2853,21 +2971,27 @@ export default function CommandComposer({
     const pendingBid = String(pendingBrowserRetryRef.current?.sessionId || '').trim();
 
     let serverConfirmedStop = false;
+    const requestStop = async (runId: string) => {
+      const response = await fetch(`${API}/runs/stop`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ ...(runId ? { runId } : {}), ...(sid ? { sessionId: sid } : {}) }),
+      });
+      if (response.status === 401) {
+        handleUnauthorized();
+        return null;
+      }
+      const payload = await response.json().catch(() => null);
+      if (payload?.stopped === true) serverConfirmedStop = true;
+      return payload;
+    };
     const reqs: Array<Promise<any>> = [];
     // The run id may arrive a moment after the session starts. The session is
     // still an authoritative stop key, so never skip the server request when
     // it is the only identity currently available.
     if (rid || sid) {
       reqs.push(
-        fetch(`${API}/runs/stop`, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({ ...(rid ? { runId: rid } : {}), ...(sid ? { sessionId: sid } : {}) }),
-        }).then(async response => {
-          const payload = await response.json().catch(() => null);
-          if (payload?.stopped === true) serverConfirmedStop = true;
-          return payload;
-        }).catch(() => null),
+        requestStop(rid).catch(() => null),
       );
     }
     if (bid) {
@@ -2894,11 +3018,39 @@ export default function CommandComposer({
       } catch { }
     }
 
+    // A websocket reconnect or a session switch can leave the composer without
+    // its run id even though the server still has one. Resolve it from the
+    // active-run registry and retry before changing the visible state. A Stop
+    // control is a command with a real effect, never a client-side disguise.
+    if (!serverConfirmedStop && sid) {
+      try {
+        const response = await fetch(`${API}/runs/active`, { headers });
+        const active = await response.json().catch(() => null);
+        const recoveredRunId = Array.isArray(active?.runs)
+          ? String(active.runs.find((run: any) => String(run?.sessionId || '') === sid)?.runId || '').trim()
+          : '';
+        if (recoveredRunId && recoveredRunId !== rid) await requestStop(recoveredRunId);
+      } catch { }
+    }
+
     // The stop response is authoritative for this exact user action. Clear
     // the cross-session registry immediately instead of waiting for its 2.5s
     // recovery poll; the server's run_cancelled event remains the second wire
     // for other tabs and a remounted composer.
     if (serverConfirmedStop && sid) markRunning(sid, false);
+    if (serverConfirmedStop) terminalSessionRef.current = true;
+
+    // Do not clear a visibly active conversation until the server has said
+    // that the actual run was cancelled. Leaving the live state in place lets
+    // the owner retry or see the eventual terminal event instead of believing
+    // a task vanished when it is still consuming tools in the background.
+    if (!serverConfirmedStop && (rid || sid)) {
+      setActiveToolName('Unable to confirm that the run stopped; it is still active.');
+      setToolVisible(true);
+      setStatus('thinking');
+      setIsThinking(true);
+      return;
+    }
 
     pendingBrowserRetryRef.current = null;
     setApproval(null);
@@ -4506,6 +4658,10 @@ export default function CommandComposer({
                 className={`send-btn ${status !== 'idle' || !!approval || !!secretPrompt ? 'is-busy' : ''}`}
                 onClick={() => {
                   if (status !== 'idle' || !!approval || !!secretPrompt) {
+                    if ((text.trim() || attachedFiles.length > 0) && !isUploading && !approval && !secretPrompt) {
+                      queueCurrentDraft();
+                      return;
+                    }
                     stopCurrentRun();
                     return;
                   }

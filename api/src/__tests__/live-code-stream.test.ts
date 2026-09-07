@@ -19,7 +19,7 @@
 
 import fs from 'fs';
 import path from 'path';
-import { shouldOpenPreviewOnReady } from '../../../web/src/lib/preview-routing';
+import { belongsToActiveSession, shouldOpenPreviewOnReady } from '../../../web/src/lib/preview-routing';
 
 const BUILDER = fs.readFileSync(
     path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'WebPageBuilderTool.ts'), 'utf-8');
@@ -94,6 +94,13 @@ describe('the tab choreography matches the request', () => {
         ['unrelated event', { type: 'file_stream', data: { url: 'http://localhost:4173' } }, false],
     ])('%s selects Preview iff the page is complete and internal', (_label, event, expected) => {
         expect(shouldOpenPreviewOnReady(event)).toBe(expected);
+    });
+});
+
+describe('preview events remain inside their chat session', () => {
+    it('refuses another session’s ready event instead of replacing the active preview', () => {
+        expect(belongsToActiveSession({ type: 'preview_ready', sessionId: 'other', data: { url: 'http://127.0.0.1:4301/' } }, 'current')).toBe(false);
+        expect(belongsToActiveSession({ type: 'preview_ready', sessionId: 'current', data: { url: 'http://127.0.0.1:4601/' } }, 'current')).toBe(true);
     });
 });
 

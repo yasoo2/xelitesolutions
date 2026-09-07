@@ -1,5 +1,6 @@
 import { ExecutionEnforcer } from '../kernel/ExecutionEnforcer';
 import { ExecutionGuard } from '../kernel/ExecutionGuard';
+import { reconcileInterruptedRunEvidence } from '../shared/run-evidence-store';
 
 // Phase 1.8: Hard Architecture Enforcement
 ExecutionEnforcer.validateIntegrity();
@@ -108,6 +109,10 @@ async function main() {
   logger.info('🚀 JOE API STARTUP INITIATED...');
 
   const app = createApp();
+  const interruptedRuns = await reconcileInterruptedRunEvidence();
+  if (interruptedRuns.length) {
+    logger.warn({ count: interruptedRuns.length }, 'Recovered interrupted runs left by the previous API process');
+  }
   const server = http.createServer(app);
   attachWebSocket(server);
 
@@ -123,11 +128,13 @@ async function main() {
   // reach it while the single-user switches are still on, say so — and refuse
   // rather than serve everyone with every permission.
   // eslint-disable-next-line @typescript-eslint/no-var-requires
-  require('../shared/go-live').assertSafeToServe();
+  const { assertSafeToServe, serverBindHost } = require('../shared/go-live');
+  assertSafeToServe();
+  const bindHost = serverBindHost();
 
-  server.listen(config.port, '0.0.0.0', () => {
+  server.listen(config.port, bindHost, () => {
     noteActivity('serving');
-    logger.info({ port: config.port, crashLog: crashLogPath() }, 'API server listening and WebSocket attached');
+    logger.info({ port: config.port, bindHost, crashLog: crashLogPath() }, 'API server listening and WebSocket attached');
 
     // Local Brain: detect installed Ollama models, choose a fast chat model +
     // the strongest coding model, and warm them up so the first request is fast.

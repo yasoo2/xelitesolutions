@@ -23,7 +23,7 @@
  *  because that is him naming the thing outright; the noun beside the
  *  container comes next; and a verb is never a name.
  */
-import { blueprintFor, detectAppKind, recordedSubject } from '../core/design/app-blueprints';
+import { blueprintFor, detectAppKind, namedProductTitle, recordedSubject } from '../core/design/app-blueprints';
 
 const titleOf = (request: string) =>
     (blueprintFor(detectAppKind(request) as never, request, true) as { title?: string }).title;
@@ -51,6 +51,20 @@ describe('the app is named for the thing, not for the sentence', () => {
 });
 
 describe('…and the reader that was already right still wins', () => {
+    it('keeps a product name separate from the records it contains', () => {
+        // A naming clause identifies the application. It must never turn into
+        // copy such as "Add a named Pocket" in the records form.
+        expect(recordedSubject(
+            'Create a small personal expense tracker named Pocket Ledger. Add amount, category, date, and note.',
+        )).toBe('expense');
+        expect(recordedSubject(
+            'Create a customer directory called Northstar. Add name, email, and phone.',
+        )).toBe('customer');
+        const request = 'Create a small personal expense tracker named Pocket Ledger. Add amount, category, date, and note.';
+        expect(namedProductTitle(request)).toBe('Pocket Ledger');
+        expect(titleOf(request)).toBe('Pocket Ledger');
+    });
+
     it('what he declared after a recording verb outranks the container', () => {
         //  «جدول أسجل فيه المواعيد» puts «أسجل» beside the container. The
         //  thing he named is «المواعيد», and he named it after the verb.

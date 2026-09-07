@@ -296,3 +296,50 @@ export async function getRunEvidence(runId: string): Promise<RunEvidenceRecord |
         return null;
     }
 }
+
+/**
+ * A process restart cannot preserve an in-memory executor. Any durable record
+ * that still says `running` when this API boots is therefore an orphan, not an
+ * active run. Close it explicitly so clients never mistake stale evidence for
+ * live work and so the conversation can explain how to continue.
+ */
+export async function reconcileInterruptedRunEvidence(): Promise<string[]> {
+    const interrupted: string[] = [];
+    let records: RunEvidenceRecord[] = [];
+    try {
+        records = await runEvidenceStore.find({ status: 'running' });
+    } catch {
+        return interrupted;
+    }
+
+    for (const record of records) {
+        const runId = trimString(record?.runId, 180);
+        if (!runId) continue;
+        await enqueue(runId, async () => {
+            try {
+                const current = await runEvidenceStore.findOne({ runId });
+                if (!current || current.status !== 'running') return;
+                const now = new Date().toISOString();
+                await upsertRecord({
+                    ...current,
+                    updatedAt: now,
+                    status: 'interrupted',
+                    events: [
+                        ...(current.events || []),
+                        compactEvent({
+                            type: 'run_interrupted',
+                            runId,
+                            sessionId: current.sessionId,
+                            ts: Date.now(),
+                            data: { reason: 'api_restart' },
+                        }),
+                    ],
+                });
+                interrupted.push(runId);
+            } catch {
+                // Recovery evidence is best-effort; startup must remain available.
+            }
+        });
+    }
+    return interrupted;
+}

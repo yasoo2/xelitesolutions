@@ -48,7 +48,8 @@ export interface BehaviourFinding {
 export const BEHAVIOUR_CODES: ReadonlySet<string> = new Set([
     'controls_not_reached', 'dead_anchors', 'dead_controls', 'form_dead_submit',
     'form_no_validation', 'form_reloads', 'js_errors', 'keyboard_unreachable',
-    'some_dead_controls', 'semantic_input_validation',
+    'some_dead_controls', 'semantic_input_validation', 'form_persistence_unproven',
+    'qa_created_record_not_deletable',
 ]);
 
 export interface ControlResult {
@@ -74,6 +75,10 @@ export interface ControlResult {
     effect: string;
     /** True when this control was discovered after another interaction changed the UI. */
     exploratory?: boolean;
+    /** Stable occurrence among controls with the same role, name and destination. */
+    instance?: number;
+    /** Route and viewport in which this evidence was measured. */
+    context?: string;
 }
 
 /** One form, actually filled in and actually sent. */
@@ -310,7 +315,7 @@ function findForms(o: { maxForms: number; maxFields: number }) {
     const forms: Array<{
         sel: string; label: string;
         fields: Array<{ sel: string; tag: string; type: string; required: boolean; options: string[]; name: string; pattern: string }>;
-        hasSubmit: boolean; submitSel: string;
+        hasSubmit: boolean; submitSel: string; expectsPersistence: boolean;
     }> = [];
     const vis = (el: Element) => {
         const r = (el as HTMLElement).getBoundingClientRect();
@@ -354,7 +359,11 @@ function findForms(o: { maxForms: number; maxFields: number }) {
         const label = ((submit as HTMLElement)?.innerText
             || (f.querySelector('legend,h1,h2,h3,h4') as HTMLElement)?.innerText
             || f.getAttribute('aria-label') || f.getAttribute('name') || f.id || 'form').trim().replace(/\s+/g, ' ').slice(0, 40);
-        forms.push({ sel: `[data-joe-form="${fid}"]`, label, fields, hasSubmit: !!submit, submitSel });
+        const persistenceContext = [
+            label, f.getAttribute('aria-label'), f.getAttribute('name'), f.id, f.className, f.getAttribute('action'),
+        ].filter(Boolean).join(' ');
+        const expectsPersistence = /\b(?:add|create|save|order|register|book|reserve|new record)\b|أضف|اضف|إنشاء|انشاء|حفظ|طلب|تسجيل|حجز|احجز/i.test(persistenceContext);
+        forms.push({ sel: `[data-joe-form="${fid}"]`, label, fields, hasSubmit: !!submit, submitSel, expectsPersistence });
     }
     return forms;
 }
@@ -391,12 +400,22 @@ function snapshot() {
      */
     const html = (document.body.innerHTML || '').slice(0, 200000)
         .replace(/caret-color:\s*transparent\s*!important;?\s*/gi, '')
+        // These handles belong to Joe's instrument, not the application.
+        .replace(/\sdata-joe-(?:ctl|form|fld|sub|qa-[\w-]+)="[^"]*"/gi, '')
         .replace(/\sstyle="\s*"/gi, '');
     return {
         text: hash(text),
         html: hash(html),
         nodes: document.querySelectorAll('body *').length,
         visible, openDetails, active,
+        // A theme switch is a user-visible state change even when the app
+        // correctly keeps its text, node count, and route intact. The old
+        // fingerprint missed `data-theme` and `aria-pressed`, then reported
+        // a working accessibility control as dead.
+        theme: document.documentElement.getAttribute('data-theme') || '',
+        pressed: hash(Array.from(document.querySelectorAll('[aria-pressed]'))
+            .map(el => `${el.getAttribute('aria-label') || el.textContent || ''}:${el.getAttribute('aria-pressed') || ''}`)
+            .join('|')),
         scroll: Math.round(window.scrollY),
         url: location.href,
         // Digits are how a cart badge, a counter and a total announce themselves.
@@ -409,6 +428,7 @@ function snapshot() {
 
 function changed(a: any, b: any): string {
     if (!a || !b) return '';
+    if (b.theme !== a.theme || b.pressed !== a.pressed) return 'state';
     if (b.openDetails !== a.openDetails) return 'open';
     if (b.active !== a.active) return 'state';
     if (b.url !== a.url) return 'navigation';
@@ -579,6 +599,15 @@ export interface ProbeOptions {
     /** Fill and submit the forms for real. On by default. */
     fillForms?: boolean;
     /**
+     * Restore the route before each baseline control after the first action.
+     * Responsive passes use this so a menu, edit action, or theme switch cannot
+     * remove a later control before that control receives its own phone/tablet
+     * test. Every control is still really pressed at that viewport.
+     */
+    isolateBaselineControls?: boolean;
+    /** Reapply the borrowed-panel layout size after any isolating reload. */
+    baselineViewport?: { width: number; height: number };
+    /**
      * A form is exercised ONCE per audit, not once per route.
      *
      * A hash route does not rebuild the document, so the contact form on page
@@ -596,6 +625,8 @@ export interface ProbeOptions {
 export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ controls: ControlResult[]; metrics: Record<string, any>; forms?: FormResult[] }> {
     const controls: ControlResult[] = [];
     const metrics: Record<string, any> = {};
+    // Retain form evidence after the bounded control pass completes.
+    let filled: FormResult[] = [];
     const eyeIsOpen = () => {
         if (!opts?.isEyeOpen) return true;
         const open = opts.isEyeOpen();
@@ -638,6 +669,20 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
             // control with the same role, name and destination is still the
             // same behaviour and is better evidence than an obsolete stamp.
             || fresh.find((candidate: any) => semanticControlKey(candidate) === semanticControlKey(original));
+        const handleLabel = (handle: any) => handle?.evaluate((node: Element) => {
+            const aria = node.getAttribute('aria-label') || node.getAttribute('title') || '';
+            const visible = ((node as HTMLElement).innerText || '').trim().replace(/\s+/g, ' ').slice(0, 48);
+            return aria || visible || node.tagName.toLowerCase();
+        }).catch(() => '');
+        const stableHandle = async (original: any, handle: any) => {
+            // Framework re-renders may remove Joe's temporary stamp and reuse
+            // the same selector on another node between observation and click.
+            // Re-check the accessible identity at the last possible moment.
+            if (handle && await handleLabel(handle) === original.label) return handle;
+            const fresh = await evalInPage(page, findControls, limit).catch(() => [] as any[]);
+            const replacement = replacementFor(fresh, original);
+            return replacement ? page.$(replacement.sel) : null;
+        };
 
         // A CSV download has no DOM footprint. Count the app's real download
         // anchor click as an additional browser-side witness, while retaining
@@ -678,17 +723,33 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
 
         let budgetHit = false;
         let attemptedControls = 0;
+        let baselineMayBeDirty = false;
         // Each in-app navigation is a real interaction, but it must not strand
         // the remaining controls on the destination route.  Going "back" is
         // unreliable for hash routers: there may be no browser history entry
         // to restore, leaving later controls absent and falsely reported as
         // unreached.  Return to the exact route we started this probe on.
         const probeStartUrl = page.url();
+        const restoreProbeStart = async () => {
+            if (page.url() === probeStartUrl) {
+                await page.reload({ waitUntil: 'load', timeout: 5000 }).catch(() => { });
+            } else {
+                await page.goto(probeStartUrl, { waitUntil: 'load', timeout: 5000 }).catch(() => { });
+            }
+            if (opts?.baselineViewport) {
+                await applyViewportSize(page, opts.baselineViewport.width, opts.baselineViewport.height).catch(() => { });
+            }
+            await page.waitForTimeout(180).catch(() => { });
+        };
         for (const c of list) {
             if (c.kind === 'anchor') continue;                       // handled above
             if (Date.now() > deadline) { budgetHit = true; break; }
             let effect = '';
             try {
+                if (opts?.isolateBaselineControls && baselineMayBeDirty) {
+                    await restoreProbeStart();
+                    baselineMayBeDirty = false;
+                }
                 // Each catalogue control belongs to the initial page state. A
                 // previous button may have opened a dialog or drawer over the
                 // next one; Escape restores transient UI without paying for a
@@ -702,9 +763,8 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                 // after the snapshot classified its DOM effect, so restore at
                 // the start as well as after a detected navigation.
                 if (c.kind === 'link' && page.url() !== probeStartUrl) {
-                    await page.goto(probeStartUrl, { waitUntil: 'load', timeout: 5000 }).catch(() => { });
+                    await restoreProbeStart();
                     await page.waitForSelector('a[href^="#/"]', { timeout: 2500 }).catch(() => { });
-                    await page.waitForTimeout(250);
                 }
                 // React is allowed to replace the node after a previous click.
                 // Re-discover the same semantic control before calling it dead;
@@ -739,7 +799,7 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                         el = matches[c.ordinal ?? 0] || null;
                     }
                 }
-                if (!el) { controls.push({ label: c.label, kind: c.kind as any, worked: false, effect: 'not found' }); continue; }
+                if (!el) { controls.push({ label: c.label, kind: c.kind as any, worked: false, effect: 'not found', instance: c.ordinal }); continue; }
                 // An empty form with required fields is BLOCKED by the browser, so
                 // nothing in the DOM changes and a naive check calls the submit
                 // button dead. Refusing to submit an empty form is the behaviour
@@ -750,7 +810,7 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                         const form = btn?.closest('form') as HTMLFormElement | null;
                         return !!form && typeof form.checkValidity === 'function' && !form.checkValidity();
                     }, c.sel).catch(() => false);
-                    if (blocked) { controls.push({ label: c.label, kind: 'submit', worked: true, effect: 'validation' }); continue; }
+                    if (blocked) { controls.push({ label: c.label, kind: 'submit', worked: true, effect: 'validation', instance: c.ordinal }); continue; }
                 }
                 await el.scrollIntoViewIfNeeded({ timeout: 2000 }).catch(() => { });
                 /**
@@ -816,12 +876,7 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                 // control was discovered on probeStartUrl, so restore that
                 // exact baseline once before declaring it unreachable.
                 if (!reachable) {
-                    if (page.url() === probeStartUrl) {
-                        await page.reload({ waitUntil: 'load', timeout: 5000 }).catch(() => { });
-                    } else {
-                        await page.goto(probeStartUrl, { waitUntil: 'load', timeout: 5000 }).catch(() => { });
-                    }
-                    await page.waitForTimeout(220).catch(() => { });
+                    await restoreProbeStart();
                     const fresh = await evalInPage(page, findControls, limit).catch(() => [] as any[]);
                     const replacement = replacementFor(fresh, c);
                     if (replacement) {
@@ -840,9 +895,12 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                     }
                 }
                 if (!reachable) {
-                    controls.push({ label: c.label, kind: c.kind as any, worked: false, effect: 'not found' });
+                    controls.push({ label: c.label, kind: c.kind as any, worked: false, effect: 'not found', instance: c.ordinal });
                     continue;
                 }
+                // From this point onward the pointer, hover, or click may alter
+                // state even when the final DOM fingerprint is unchanged.
+                baselineMayBeDirty = true;
                 /**
                  * THE POINTER GOES THERE, AND THE ELEMENT IS OUTLINED IN RED.
                  *
@@ -896,9 +954,18 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                 const onDownload = () => { downloaded = true; };
                 page.on('download', onDownload);
                 const downloadClicksBefore = await page.evaluate('Number(globalThis.__joeQaDownloadClicks || 0)').catch(() => 0);
-                // force:true so an overlay does not turn "covered" into "broken".
                 if (!eyeIsOpen()) break;
-                await el.click({ timeout: 2500, force: true, noWaitAfter: true }).catch(() => { });
+                el = await stableHandle(c, el);
+                if (!el) {
+                    controls.push({ label: c.label, kind: c.kind as any, worked: false, effect: 'not found', instance: c.ordinal });
+                    continue;
+                }
+                // Use Playwright's stability check. A forced coordinate click
+                // can land on a different node while React is laying out.
+                await el.click({ timeout: 2500, noWaitAfter: true }).catch((error: any) => {
+                    metrics.controlClickErrors = metrics.controlClickErrors || [];
+                    metrics.controlClickErrors.push({ label: c.label, message: String(error?.message || error).slice(0, 180) });
+                });
                 await page.waitForTimeout(SETTLE_MS);
                 const afterUrl = page.url();
                 try { page.off('download', onDownload); } catch { /* page may be gone */ }
@@ -913,14 +980,11 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                 // an unhandled submit is the browser's default, not a feature.
                 if (c.kind === 'submit' && effect === 'navigation') effect = 'reload';
                 if (effect === 'navigation') {
-                    await page.goto(probeStartUrl, { waitUntil: 'load', timeout: 5000 })
-                        .catch(() => page.goBack({ timeout: 5000 }))
-                        .catch(() => { });
+                    await restoreProbeStart();
                     await page.waitForSelector('a[href^="#/"]', { timeout: 2500 }).catch(() => { });
-                    await page.waitForTimeout(250);
                 }
             } catch { /* the control itself is what is under test */ }
-            controls.push({ label: c.label, kind: c.kind as any, worked: !!effect && effect !== 'reload', effect });
+            controls.push({ label: c.label, kind: c.kind as any, worked: !!effect && effect !== 'reload', effect, instance: c.ordinal });
         }
         metrics.budgetExhausted = budgetHit;
 
@@ -934,9 +998,39 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
          * controls whose state-aware identity has not been attempted. This is
          * deterministic and auditable, but it is not a memorised click script.
          */
+        /*
+         * A submitted form can create the first meaningful application state:
+         * a transaction row reveals Delete, a booking reveals Cancel, and a
+         * cart reveals its quantity controls.  Exploring before the form pass
+         * made those controls invisible, so QA claimed only the empty screen
+         * had been examined. Fill before state exploration, then let the
+         * frontier discover what the successful submit created.
+         */
+        if (opts?.fillForms !== false) {
+            try {
+                // State-changing forms must be tested before generic controls:
+                // their successful submit often reveals the most important
+                // follow-up action (delete, cancel, checkout, edit).
+                opts?.onProgress?.('forms');
+                const r = await probeForms(page, {
+                    eyes, budgetMs: Math.max(6000, deadline - Date.now()), seenForms: opts?.seenForms, isEyeOpen: eyeIsOpen,
+                });
+                filled = r.forms;
+                Object.assign(metrics, r.metrics);
+                // A custom React validation path can deliberately use
+                // `noValidate` and an accessible alert instead of native
+                // `required`. Judge the empty submission we just performed,
+                // not only the HTML attribute inventory.
+                metrics.formsWithoutValidation = Math.max(0,
+                    Number(metrics.formsWithoutValidation || 0) - Number(r.metrics.formsEmptyRejected || 0));
+            } catch { /* a form that fights back is a finding, not a crash */ }
+        }
+
         const initialKeys = new Set(list.map(controlKey));
         const discoveredKeys = new Set(initialKeys);
         const exploredKeys = new Set<string>();
+        const successfulSemanticKeys = new Set(controls.filter(control => control.worked)
+            .map(control => `${control.kind}|${control.bare || control.label}|${control.instance ?? 0}`));
         const stateKeys = new Set<string>();
         const stateKey = (value: any) => {
             try { return JSON.stringify(value).slice(0, 4000); } catch { return ''; }
@@ -954,14 +1048,16 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
             for (const c of fresh as Array<{ kind: string; label: string; href?: string; ordinal?: number }>) discoveredKeys.add(controlKey(c));
             metrics.controlsDiscovered = discoveredKeys.size;
             const visibleStateKey = stateKey(await page.evaluate(snapshot).catch(() => null));
-            const candidate = (fresh as Array<{ sel: string; kind: string; label: string; href?: string; stateful?: boolean }>)
+            const candidate = (fresh as Array<{ sel: string; kind: string; label: string; href?: string; ordinal?: number; stateful?: boolean }>)
                 .filter(c => c.kind !== 'anchor')
                 // A stateful control deserves an exploratory pass even when
                 // the baseline catalogue already pressed its first state.
                 // The fresh catalogue and stable key prevent blind repetition.
                 .find(c => !exploredKeys.has(`${visibleStateKey}|${controlKey(c)}`)
+                    && (c.stateful || !successfulSemanticKeys.has(`${c.kind}|${c.label}|${c.ordinal ?? 0}`))
                     && (!initialKeys.has(controlKey(c)) || c.stateful));
             if (!candidate) break;
+            opts?.onProgress?.(`state:${candidate.kind}:${candidate.label}`);
             // The same control can be a different test in a different visible
             // state: a tab, dialog, expanded menu, cart, or filtered result.
             // Keying only by label/selector silently skipped those states and
@@ -971,7 +1067,7 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
             let effect = '';
             try {
                 if (!eyeIsOpen()) break;
-                const el = await page.$(candidate.sel);
+                let el = await page.$(candidate.sel);
                 if (!el) continue;
                 await el.scrollIntoViewIfNeeded({ timeout: 1500 }).catch(() => { });
                 if (!eyeIsOpen()) break;
@@ -979,9 +1075,14 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                     note: `استكشاف ${KIND_AR[candidate.kind] || 'عنصر'}: ${candidate.label}`.slice(0, 64),
                     tone: 'warn', moveMouse: true,
                 });
+                el = await stableHandle(candidate, el);
+                if (!el) continue;
                 const before = await page.evaluate(snapshot).catch(() => null);
                 if (!eyeIsOpen()) break;
-                await el.click({ timeout: 2500, force: true, noWaitAfter: true }).catch(() => { });
+                await el.click({ timeout: 2500, noWaitAfter: true }).catch((error: any) => {
+                    metrics.controlClickErrors = metrics.controlClickErrors || [];
+                    metrics.controlClickErrors.push({ label: candidate.label, message: String(error?.message || error).slice(0, 180) });
+                });
                 await page.waitForTimeout(SETTLE_MS);
                 const after = await page.evaluate(snapshot).catch(() => null);
                 effect = changed(before, after);
@@ -989,21 +1090,23 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                     // Hash routers and replaceState do not reliably create a
                     // history entry. Restore the exact discovery URL so the
                     // next frontier is never sampled from an unrelated route.
-                    await page.goto(probeStartUrl, { waitUntil: 'load', timeout: 5000 }).catch(() => { });
-                    await page.waitForTimeout(220);
+                    await restoreProbeStart();
                 }
                 const afterState = await page.evaluate(snapshot).catch(() => null);
                 if (afterState) stateKeys.add(stateKey(afterState));
                 metrics.statesVisited = stateKeys.size;
                 metrics.exploratoryActions++;
+                const worked = !!effect && effect !== 'reload';
                 controls.push({
                     label: candidate.label,
                     bare: candidate.label,
                     kind: candidate.kind as any,
-                    worked: !!effect && effect !== 'reload',
+                    worked,
                     effect,
                     exploratory: true,
+                    instance: candidate.ordinal,
                 });
+                if (worked) successfulSemanticKeys.add(`${candidate.kind}|${candidate.label}|${candidate.ordinal ?? 0}`);
             } catch { /* discovery continues even when one state is hostile */ }
         }
         if (Date.now() >= explorationDeadline) explorationBudgetHit = true;
@@ -1058,17 +1161,6 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
         (metrics as any).keyboardUnreachableSamples = keyboardUnreachable;
     }
 
-    /* ---- and now the forms are actually FILLED IN and actually SENT ---- */
-    let filled: FormResult[] = [];
-    if (opts?.fillForms !== false) {
-        try {
-            const r = await probeForms(page, {
-                eyes, budgetMs: Math.max(6000, deadline - Date.now()), seenForms: opts?.seenForms, isEyeOpen: eyeIsOpen,
-            });
-            filled = r.forms;
-            Object.assign(metrics, r.metrics);
-        } catch { /* a form that fights back is a finding, not a crash */ }
-    }
     return { controls, metrics, forms: filled };
 }
 
@@ -1129,6 +1221,8 @@ export async function probeForms(
     const out: FormResult[] = [];
     const metrics: Record<string, any> = {
         formsFilled: 0, fieldsFilled: 0, formsDeadSubmit: 0, formsValidated: 0, formsReloaded: 0,
+        formsEmptyRejected: 0,
+        formsPersisted: 0, formsPersistenceUnproven: 0, qaRecordsDeleted: 0, qaRecordsNotDeleted: 0,
         semanticFieldsTested: 0, semanticValidationFailures: 0, semanticValidationEvidence: [],
     };
     const runNonce = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
@@ -1166,8 +1260,32 @@ export async function probeForms(
         }
         let filledCount = 0;
         let semanticFieldsTested = 0;
+        // A nonce is deliberately placed only in QA-created values. It lets us
+        // find and remove our own record without ever touching visitor data.
+        const persistenceAnchors: string[] = [];
         if (!eyeIsOpen()) break;
         await eyes.say(page, `تعبئة النموذج: ${f.label}`);
+
+        // Prove that an empty submission is rejected before introducing valid
+        // values. This covers both native constraints and custom validation
+        // that renders an alert after an `onSubmit` handler runs.
+        const emptyInvalid = await page.evaluate((sel: string) => {
+            const form = document.querySelector(sel) as HTMLFormElement | null;
+            return !!form && typeof form.checkValidity === 'function' && !form.checkValidity();
+        }, f.sel).catch(() => false);
+        let emptyEffect = '';
+        if (!emptyInvalid && f.submitSel && eyeIsOpen()) {
+            const beforeEmpty = await page.evaluate(snapshot).catch(() => null);
+            const submit = await page.$(f.submitSel);
+            await submit?.click({ timeout: 2500, force: true, noWaitAfter: true }).catch(() => { });
+            const deadlineEmpty = Date.now() + 1200;
+            while (!emptyEffect && Date.now() < deadlineEmpty) {
+                await page.waitForTimeout(150);
+                emptyEffect = changed(beforeEmpty, await page.evaluate(snapshot).catch(() => null));
+            }
+        }
+        if (emptyInvalid || emptyEffect) metrics.formsEmptyRejected++;
+
         for (const fld of f.fields) {
             if (Date.now() > deadline) break;
             if (!eyeIsOpen()) break;
@@ -1204,7 +1322,12 @@ export async function probeForms(
                         if (!result.rejected) metrics.semanticValidationFailures++;
                     }
                     // A real fill: the page's own input/change handlers run.
-                    await el.fill(valueFor(fld.type, fld.tag, runNonce, pageLanguage), { timeout: 2500 });
+                    let value = valueFor(fld.type, fld.tag, runNonce, pageLanguage);
+                    if ((fld.type === 'text' || fld.type === 'search' || fld.tag === 'textarea') && runNonce) {
+                        value = `${value} ${runNonce}`;
+                    }
+                    if (value.includes(runNonce)) persistenceAnchors.push(value);
+                    await el.fill(value, { timeout: 2500 });
                 }
                 filledCount++;
             } catch { /* one stubborn field must not lose the whole form */ }
@@ -1265,6 +1388,54 @@ export async function probeForms(
         else if (effect === 'validation') metrics.formsValidated++;
         else if (effect === 'reload') metrics.formsReloaded++;
         else if (f.fields.length) metrics.formsDeadSubmit++;
+
+        // A successful-looking submit is not enough for an application that
+        // promises a saved record. First find the exact QA record, then reload
+        // the real page and verify it survived. Finally test only that record's
+        // delete action, keeping the test reversible and data-safe.
+        const anchor = persistenceAnchors.find(value => value.length > 4);
+        if (effect === 'submitted' && f.expectsPersistence && anchor && Date.now() < deadline && eyeIsOpen()) {
+            const appeared = await page.evaluate((needle: string) => document.body.innerText.includes(needle), anchor).catch(() => false);
+            if (!appeared) {
+                metrics.formsPersistenceUnproven++;
+            } else {
+                await eyes.say(page, 'أتحقق من حفظ النتيجة بعد تحديث الصفحة');
+                await page.reload({ waitUntil: 'domcontentloaded', timeout: 6000 }).catch(() => null);
+                await page.waitForTimeout(300);
+                const persisted = await page.evaluate((needle: string) => document.body.innerText.includes(needle), anchor).catch(() => false);
+                if (!persisted) {
+                    metrics.formsPersistenceUnproven++;
+                } else {
+                    metrics.formsPersisted++;
+                    const deleteSelector = await page.evaluate((needle: string) => {
+                        const isDelete = (el: Element) => /delete|remove|حذف|إزالة/i.test([
+                            el.getAttribute('aria-label'), el.getAttribute('title'), (el as HTMLElement).innerText,
+                        ].filter(Boolean).join(' '));
+                        const candidates = Array.from(document.querySelectorAll('button,[role="button"],a'))
+                            .filter(isDelete) as HTMLElement[];
+                        const target = candidates.find(el => {
+                            const record = el.closest('li,tr,[data-item],[data-row],.row,.item,.transaction,.entry,article');
+                            return !!record && (record as HTMLElement).innerText.includes(needle);
+                        });
+                        if (!target) return '';
+                        target.setAttribute('data-joe-qa-delete-own-record', 'true');
+                        return '[data-joe-qa-delete-own-record="true"]';
+                    }, anchor).catch(() => '');
+                    if (deleteSelector) {
+                        await eyes.say(page, 'أختبر إزالة السجل الذي أنشأه الفحص فقط');
+                        await page.$(deleteSelector).then((el: any) => el?.click({ timeout: 2500, force: true, noWaitAfter: true })).catch(() => { });
+                        const removalDeadline = Date.now() + 1800;
+                        let removed = false;
+                        while (!removed && Date.now() < removalDeadline) {
+                            await page.waitForTimeout(150);
+                            removed = await page.evaluate((needle: string) => !document.body.innerText.includes(needle), anchor).catch(() => false);
+                        }
+                        if (removed) metrics.qaRecordsDeleted++;
+                        else metrics.qaRecordsNotDeleted++;
+                    }
+                }
+            }
+        }
         out.push({ label: f.label, fields: f.fields.length, filled: filledCount, effect, semanticFieldsTested });
     }
     return { forms: out, metrics };
@@ -1307,8 +1478,22 @@ export function judgeBehaviour(
      *  could not reach is a real gap in the evidence — it is simply a
      *  different gap from a dead button.
      */
-    const pressable = controls.filter(c => c.kind !== 'anchor' && c.effect !== 'not found');
-    const unreachable = controls.filter(c => c.kind !== 'anchor' && c.effect === 'not found');
+    // State exploration can encounter the same control more than once. Keep
+    // route, viewport and occurrence independent, while allowing measured
+    // success to dominate a later idempotent press of that exact control.
+    const evidence = new Map<string, ControlResult>();
+    controls.forEach((control, index) => {
+        // Legacy/external evidence without an occurrence id remains distinct;
+        // equal labels alone never prove two buttons are the same element.
+        const occurrence = control.instance === undefined ? `legacy-${index}` : String(control.instance);
+        const key = `${control.context || ''}|${control.kind}|${control.bare || control.label}|${occurrence}`;
+        const previous = evidence.get(key);
+        if (!previous || (!previous.worked && control.worked)
+            || (previous.effect === 'not found' && control.effect !== 'not found')) evidence.set(key, control);
+    });
+    const judgedControls = [...evidence.values()];
+    const pressable = judgedControls.filter(c => c.kind !== 'anchor' && c.effect !== 'not found');
+    const unreachable = judgedControls.filter(c => c.kind !== 'anchor' && c.effect === 'not found');
     const dead = pressable.filter(c => !c.worked);
     metrics.pressed = pressable.length;
     metrics.dead = dead.length;
@@ -1317,8 +1502,8 @@ export function judgeBehaviour(
     if (unreachable.length) {
         findings.push({
             code: 'controls_not_reached', severity: 'minor',
-            ar: `لم أصل إلى ${unreachable.length} من ${controls.length} زرّاً لأجرّبه: ${unreachable.slice(0, 3).map(d => `«${d.label}»`).join('، ')} — اختفت من الصفحة قبل الضغط، ولا أدّعي أنّها معطوبة`,
-            en: `${unreachable.length} of ${controls.length} controls were gone before I could press them: ${unreachable.slice(0, 3).map(d => `"${d.label}"`).join(', ')} — not pressed, so not judged`,
+            ar: `لم أصل إلى ${unreachable.length} من ${judgedControls.length} زرّاً لأجرّبه: ${unreachable.slice(0, 3).map(d => `«${d.label}»`).join('، ')} — اختفت من الصفحة قبل الضغط، ولا أدّعي أنّها معطوبة`,
+            en: `${unreachable.length} of ${judgedControls.length} controls were gone before I could press them: ${unreachable.slice(0, 3).map(d => `"${d.label}"`).join(', ')} — not pressed, so not judged`,
             hint: 'the route moved while the audit was pressing; these were never tested',
         });
     }
@@ -1409,6 +1594,22 @@ export function judgeBehaviour(
             en: `${metrics.semanticValidationFailures} semantic field(s) accept an invalid value: ${failed.map((item: any) => `"${item.field}" should be ${item.expected}`).join(', ')}`,
             hint: 'use the native email, tel, number, date, or time type and a restrictive pattern where the native type permits free text',
             evidence: failed,
+        });
+    }
+    if ((metrics.formsPersistenceUnproven || 0) > 0) {
+        findings.push({
+            code: 'form_persistence_unproven', severity: 'major',
+            ar: `${metrics.formsPersistenceUnproven} نتيجة نموذج ظهرت لحظياً، لكن الفحص لم يثبت بقاءها بعد تحديث الصفحة`,
+            en: `${metrics.formsPersistenceUnproven} form result(s) appeared temporarily, but the audit could not prove they survived a page refresh`,
+            hint: 'persist the created record and render it again after reload; do not treat a transient success message as saved work',
+        });
+    }
+    if ((metrics.qaRecordsNotDeleted || 0) > 0) {
+        findings.push({
+            code: 'qa_created_record_not_deletable', severity: 'major',
+            ar: `تعذر حذف سجل أنشأه فحص الجودة نفسه`,
+            en: 'A record created by the QA run itself could not be deleted',
+            hint: 'make the record-level removal action reachable and update the visible state after deletion',
         });
     }
     if ((metrics.keyboardUnreachable || 0) > 0) {

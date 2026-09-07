@@ -18,13 +18,17 @@ const MAX_DELIVERY_FILES = 120;
 const MAX_DELIVERY_FILE_DEPTH = 6;
 
 /** A bounded workspace question can be answered without selecting a project. */
-function isWorkspaceOverviewRequest(request: string): boolean {
+export function isWorkspaceOverviewRequest(request: string): boolean {
     const text = String(request || '').replace(/\s+/g, ' ').trim();
     const asksForRootListing = /\b(?:list|show|inspect)\b[^.!?\n]{0,80}\b(?:top[- ]level|root)\b[^.!?\n]{0,40}\bfiles?\b/i.test(text)
         || /(?:اعرض|اعطِني|أعطني|اذكر|استكشف|افحص)[^.!؟\n]{0,80}(?:ملفات|محتويات)[^.!؟\n]{0,40}(?:الجذر|المستوى\s+الأعلى|مساحة\s+العمل\s+(?:الرئيسية|الأساسية))/i.test(text);
     const asksForReadme = /\b(?:readme|read\s+the\s+readme|summari[sz]e\s+(?:the\s+)?readme)\b/i.test(text)
         || /(?:اقرأ|لخ[ّّ]ص|لخص|ملخص)[^.!؟\n]{0,40}(?:README|الملف\s+التعريفي)/i.test(text);
-    return asksForRootListing && asksForReadme;
+    // Listing the workspace root and reading its README are each bounded,
+    // non-destructive questions. Requiring both made a plain "list the
+    // top-level files" request ask the user for a project path even though
+    // the active workspace is the exact safe target.
+    return asksForRootListing || asksForReadme;
 }
 
 function summarizeReadme(content: string): string {
@@ -540,7 +544,7 @@ export function alignGreenfieldPlanIdentity(plan: any, request: string, isGreenf
 }
 
 export function deterministicPhasesFor(request: string): {
-    projectName: string; reason: string; phases: Array<{ name: string; tasks: any[] }>;
+    projectName: string; reason: string; phases: Array<{ phaseNumber: number; name: string; tasks: any[] }>;
 } | null {
     const { PlanningEngine } = require('../../../core/orchestrator/PlanningEngine');
     if (!PlanningEngine.looksLikeBuild(request)) return null;
@@ -557,8 +561,8 @@ export function deterministicPhasesFor(request: string): {
             projectName,
             reason: 'declared entities require their own data service, and the interface depends on it',
             phases: [
-                { name: 'Data service and schema', tasks: [{ tool: 'api_project', description: `Backend and database for: ${request}`, args: { request } }] },
-                { name: 'Interface on the service', tasks: [{ tool: 'react_project', description: `Interface for: ${request}`, args: { request } }] },
+                { phaseNumber: 1, name: 'Data service and schema', tasks: [{ tool: 'api_project', description: `Backend and database for: ${request}`, args: { request } }] },
+                { phaseNumber: 2, name: 'Interface on the service', tasks: [{ tool: 'react_project', description: `Interface for: ${request}`, args: { request } }] },
             ],
         };
     }
@@ -566,6 +570,7 @@ export function deterministicPhasesFor(request: string): {
         projectName,
         reason: scope === 'page' ? 'a single page was asked for; no data service is implied' : 'an application was asked for with no declared data service',
         phases: [{
+            phaseNumber: 1,
             name: scope === 'page' ? 'Page' : 'Application',
             tasks: [{ tool: scope === 'page' ? 'web_page_builder' : 'react_project', description: request, args: { request } }],
         }],
@@ -619,7 +624,7 @@ export function buildPlannerEvidence(evidence: any, specificationSources: any[] 
     // the local planning prompt and can starve Ollama of time to produce the
     // actual plan. Keep the catalogue for existing-project work, where it is
     // evidence, but omit it from a new-project planning handoff.
-    const referenceProjects = evidence?.constraints?.createsNewProject === true
+    const referenceProjects = (evidence?.constraints?.createsNewProject === true || evidence?.mode === 'greenfield')
         ? []
         : directReferences || wrappedReferences || [];
     return {
@@ -704,6 +709,15 @@ export function heDeclaredWhatItHolds(request: string): boolean {
         const { PlanningEngine } = require('../../../core/orchestrator/PlanningEngine');
         if (!PlanningEngine.looksLikeBuild(request)) return false;
         const columns = columnsAnywhereInHisRequest(request);
+        // A product brief often names an application's fields without calling
+        // them a table: "It must provide amount, category, date, note". That
+        // is still an explicit schema, not a question for a slow provider.
+        // Keep this narrow: it requires a field-introducing phrase and at least
+        // two concrete field names, so prose about visual features cannot turn
+        // into a records application.
+        const directFieldList = /\b(?:must\s+provide|should\s+provide|provide|include|with|needs?|requires?|has)\b[^.!?\n]{0,220}\b(?:amount|category|date|note|name|title|phone|email|quantity|price)\b/iu.test(request);
+        const directFieldCount = (request.match(/\b(?:amount|category|date|note|name|title|phone|email|quantity|price)\b/giu) || []).length;
+        if (directFieldList && directFieldCount >= 2) return true;
         //  No floor of my own: derivedColumns already refuses one noun
         //  after «جدول» as a subject rather than a column, and two floors
         //  for one rule is how they come apart. A mutation proved this
@@ -1052,12 +1066,74 @@ export class ProjectPipelineTool implements ToolDefinition {
             appendBoundedPipelineLog(logs, `pipeline.embedded_product_request_extracted chars=${productRequest.length}`);
         }
 
+        const projectPath = String(input?.path || '').trim();
+
+        // A workspace overview is not an engineering task.  In particular, do
+        // not run project discovery first: it can enumerate every project in a
+        // large workspace before learning that no project needs to be selected.
+        // Keep this bounded to a one-level listing and an optional README at
+        // that exact root, with every read still travelling through ToolService.
+        if (isWorkspaceOverviewRequest(productRequest)) {
+            say(pick(isAr,
+                '[pipeline] أقرأ جذر مساحة العمل وREADME دون اختيار مشروع أو تنفيذ تعديل',
+                '[pipeline] Reading workspace root and README without selecting a project or executing a mutation'));
+            const listing = await executeTool('inspect_directory', {
+                path: projectPath || '.', depth: 1,
+            }, context);
+            if (!listing?.ok) {
+                const message = String(listing?.error || 'The workspace root could not be read.');
+                return {
+                    ok: false,
+                    error: message,
+                    output: {
+                        projectName: 'read-only-workspace-overview', completedPhases: 0, totalPhases: 1,
+                        verified: false, executionStatus: 'blocked', verificationStatus: 'not_run', deliveryStatus: 'blocked',
+                        pipelineFinal: true,
+                        summary: pick(isAr, `## ⚠️ تعذر قراءة جذر مساحة العمل\n\n${message}`, `## ⚠️ Could not read the workspace root\n\n${message}`),
+                    },
+                    logs: boundedPipelineLogs(logs, listing?.logs),
+                };
+            }
+            const tree = Array.isArray(listing?.output?.tree) ? listing.output.tree : [];
+            const root = path.resolve(projectPath || workspaceService.getActiveRoot(context?.workspaceId));
+            const rootReadme = tree.find((entry: any) => entry?.type === 'file' && /^readme(?:\.[a-z0-9_-]+)?$/i.test(String(entry?.name || '')));
+            let readmeSummary = '';
+            if (rootReadme?.name) {
+                const readme = await executeTool('read_file', { path: rootReadme.name }, context);
+                readmeSummary = summarizeReadme(String(readme?.output?.content || ''));
+                appendBoundedPipelineLogs(logs, readme?.logs);
+            }
+            const names = tree.map((entry: any) => `${entry?.type === 'directory' ? '[dir] ' : ''}${entry?.name || ''}`.trim()).filter(Boolean);
+            const directoryCount = tree.filter((entry: any) => entry?.type === 'directory').length;
+            const fileCount = tree.filter((entry: any) => entry?.type === 'file').length;
+            const overview = {
+                root,
+                topLevelEntries: names,
+                readme: rootReadme?.name || null,
+                readmeSummary: readmeSummary || null,
+            };
+            logs.push(`workspace.overview.entries=${names.length} directories=${directoryCount} files=${fileCount}`);
+            logs.push(`workspace.overview.top_level=${names.join(' | ').slice(0, MAX_PIPELINE_LOG_CHARS)}`);
+            logs.push(`workspace.overview.readme=${rootReadme?.name || 'missing at workspace root'}`);
+            const summary = pick(isAr,
+                `## ✅ نظرة قراءة فقط على مساحة العمل\n\nقرأتُ جذر مساحة العمل **${root}** ووجدتُ **${names.length}** عنصرًا (${directoryCount} مجلدًا و${fileCount} ملفًا).\n\n**README:** ${rootReadme?.name || 'لا يوجد README في جذر مساحة العمل.'}${readmeSummary ? `\n\n**الخلاصة:**\n${readmeSummary}` : ''}\n\nلم أكتب أو أعدّل أو أشغّل أي شيء. التفاصيل الكاملة موجودة في Logs.`,
+                `## ✅ Read-only workspace overview\n\nI inspected the workspace root **${root}** and found **${names.length}** top-level entries (${directoryCount} directories and ${fileCount} files).\n\n**README:** ${rootReadme?.name || 'No README exists at the workspace root.'}${readmeSummary ? `\n\n**Summary:**\n${readmeSummary}` : ''}\n\nNo files were written, modified, or executed. Full discovery details are available in Logs.`);
+            return {
+                ok: true,
+                output: {
+                    projectName: 'read-only-workspace-overview', completedPhases: 1, totalPhases: 1,
+                    verified: true, executionStatus: 'completed', verificationStatus: 'verified', deliveryStatus: 'delivered',
+                    pipelineFinal: true, stopReason: 'read_only_request', overview, summary,
+                },
+                logs,
+            };
+        }
+
         // Discovery is mandatory before any engineering write. Product names and
         // business nouns are evidence only; they never select a named foundation.
         say(pick(isAr,
             '[pipeline] أستكشف مساحة العمل والمشروع والاختبارات قبل اختيار أي تنفيذ…',
             '[pipeline] Discovering the workspace, project, and declared checks before selecting implementation…'));
-        const projectPath = String(input?.path || '').trim();
         // A fresh chat gets its own empty workspace id, but an explicit
         // continuation such as «آخر مشروع Science Museum» refers to the
         // user's persisted local project area. Bind only that explicit latest
@@ -1094,61 +1170,6 @@ export class ProjectPipelineTool implements ToolDefinition {
         const evidence = discoveryResult.output.evidence;
         appendBoundedPipelineLogs(logs, discoveryResult.logs);
         if (evidence.constraints?.readOnly === true) {
-            // A root overview is a complete read-only task even when the
-            // workspace contains many projects. Do not force the user to pick
-            // one unrelated project just to list the workspace and check its
-            // own README.
-            if (isWorkspaceOverviewRequest(productRequest)) {
-                const listing = await executeTool('inspect_directory', {
-                    path: projectPath || '.', depth: 1,
-                }, context);
-                const readmeSearch = await executeTool('search_files', {
-                    pattern: 'README*', path: projectPath || '.',
-                }, context);
-                const tree = Array.isArray(listing?.output?.tree) ? listing.output.tree : [];
-                const readmeFiles = Array.isArray(readmeSearch?.output?.files) ? readmeSearch.output.files : [];
-                const root = String(evidence.workspaceRoot || '').trim();
-                const relative = (file: string) => {
-                    const rel = path.relative(root, String(file || '')).replace(/\\/g, '/');
-                    return rel && !rel.startsWith('../') && !path.isAbsolute(rel) ? rel : String(file || '');
-                };
-                const rootReadme = readmeFiles
-                    .map((file: string) => ({ file, rel: relative(file) }))
-                    .find((item: { file: string; rel: string }) => !item.rel.includes('/'));
-                let readmeSummary = '';
-                if (rootReadme) {
-                    const readme = await executeTool('read_file', { path: rootReadme.rel }, context);
-                    readmeSummary = summarizeReadme(String(readme?.output?.content || ''));
-                }
-                const names = tree.map((entry: any) => `${entry?.type === 'directory' ? '[dir] ' : ''}${entry?.name || ''}`.trim()).filter(Boolean);
-                const directoryCount = tree.filter((entry: any) => entry?.type === 'directory').length;
-                const fileCount = tree.filter((entry: any) => entry?.type === 'file').length;
-                const overview = {
-                    root,
-                    topLevelEntries: names,
-                    readme: rootReadme?.rel || null,
-                    readmeSummary: readmeSummary || null,
-                    readmeCandidates: readmeFiles.slice(0, 20).map(relative),
-                };
-                // Keep exhaustive discovery evidence in Logs; the chat answer
-                // should explain the result, not dump a filesystem listing.
-                logs.push(`workspace.overview.entries=${names.length} directories=${directoryCount} files=${fileCount}`);
-                logs.push(`workspace.overview.top_level=${names.join(' | ').slice(0, MAX_PIPELINE_LOG_CHARS)}`);
-                logs.push(`workspace.overview.readme=${rootReadme?.rel || 'missing at workspace root'}`);
-                const summary = pick(isAr,
-                    `## ✅ نظرة قراءة فقط على مساحة العمل\n\nقرأتُ جذر مساحة العمل **${root}** ووجدتُ **${names.length}** عنصرًا (${directoryCount} مجلدًا و${fileCount} ملفًا).\n\n**README:** ${rootReadme?.rel || 'لا يوجد README في جذر مساحة العمل.'}${readmeSummary ? `\n\n**الخلاصة:**\n${readmeSummary}` : ''}\n\nلم أكتب أو أعدّل أو أشغّل أي شيء. التفاصيل الكاملة موجودة في Logs.`,
-                    `## ✅ Read-only workspace overview\n\nI inspected the workspace root **${root}** and found **${names.length}** top-level entries (${directoryCount} directories and ${fileCount} files).\n\n**README:** ${rootReadme?.rel || 'No README exists at the workspace root.'}${readmeSummary ? `\n\n**Summary:**\n${readmeSummary}` : ''}\n\nNo files were written, modified, or executed. Full discovery details are available in Logs.`);
-                say(pick(isAr, '[pipeline] أقرأ جذر مساحة العمل وREADME دون اختيار مشروع أو تنفيذ تعديل', '[pipeline] Reading workspace root and README without selecting a project or executing a mutation'));
-                return {
-                    ok: true,
-                    output: {
-                        projectName: 'read-only-workspace-overview', completedPhases: 1, totalPhases: 1,
-                        verified: true, executionStatus: 'completed', verificationStatus: 'verified', deliveryStatus: 'delivered',
-                        pipelineFinal: true, stopReason: 'read_only_request', evidence, overview, summary,
-                    },
-                    logs,
-                };
-            }
             const summary = pick(isAr,
                 '## ⏸️ توقف آمن قبل التخطيط\n\nهذا الطلب للقراءة والتحقق فقط. لم يُخطط Joe لأي كتابة أو تثبيت أو تشغيل. حدّد مسار المشروع صراحةً لاستدعاء أداة التحليل للقراءة فقط.',
                 '## ⏸️ Safely stopped before planning\n\nThis request is read-only. Joe did not plan any write, install, or run action. Provide an explicit project path to invoke a read-only analysis tool.');
@@ -1230,24 +1251,41 @@ export class ProjectPipelineTool implements ToolDefinition {
         // Provider health is an execution prerequisite for model planning. An
         // existing, unambiguous edit has a narrower evidence-bound route below
         // that does not invent a plan when the planner gateway is down.
-        const isGreenfield = evidence?.constraints?.createsNewProject === true;
+        // `mode` is the discovery verdict. A workspace root is always present
+        // in local development and must not turn a declared greenfield request
+        // into an existing-project edit that waits for an LLM plan.
+        const isGreenfield = evidence?.constraints?.createsNewProject === true || evidence?.mode === 'greenfield';
         const discoveredProjectRoot = isGreenfield ? '' : String(evidence?.selectedProject?.root || '').trim();
         const deterministicExistingEdit = !isGreenfield
             ? deterministicExistingEditPhasesFor(productRequest, discoveredProjectRoot)
             : null;
-        // Probe the exact configured provider (or the auto mesh) before spending a
-        // long engineering-run budget. Tests may explicitly opt out; production
-        // callers cannot silently convert an unavailable model into fake progress.
+        const { hasWorkflowApplicationContract } = require('../../../core/design/app-blueprints');
+        const deterministicWorkflow = hasWorkflowApplicationContract(productRequest);
+        // Discovery is authoritative about whether a project already exists,
+        // but older/newer discovery callers do not always populate the
+        // convenience `createsNewProject` flag consistently.
+        const confirmedGreenfield = isGreenfield;
+        const hisOwnSchema = confirmedGreenfield
+            && (heDeclaredWhatItHolds(productRequest) || deterministicWorkflow)
+            ? deterministicPhasesFor(productRequest)
+            : null;
+        // The provider is a prerequisite for model planning, not for an
+        // evidence-backed plan the request has already made deterministic.
+        // Otherwise a clear form request waits behind a weak Ollama even though
+        // neither its schema nor its phase graph needs an LLM decision.
+        const requiresModelPlanning = !hisOwnSchema && !deterministicExistingEdit;
         const modelConfig = context?.modelConfig || {};
         const providerHealth = context?.skipProviderPreflight === true
             ? { ok: true, provider: String(modelConfig.provider || 'auto'), detail: 'skipped_by_test_harness' }
-            : await verifyProviderDirect(String(modelConfig.provider || 'auto'), {
+            : !requiresModelPlanning
+                ? { ok: true, provider: 'deterministic', detail: 'request_contract_complete' }
+                : await verifyProviderDirect(String(modelConfig.provider || 'auto'), {
                 apiKey: modelConfig.apiKey,
                 baseUrl: modelConfig.baseUrl,
                 model: modelConfig.model,
             });
         appendBoundedPipelineLog(logs, `[pipeline] provider preflight ${providerHealth.provider}: ${providerHealth.ok ? 'ok' : 'blocked'} (${providerHealth.detail})`);
-        if (!providerHealth.ok && !deterministicExistingEdit) {
+        if (!providerHealth.ok && requiresModelPlanning) {
             const summary = pick(isAr,
                 `## ⚠️ توقف قبل التخطيط لأن مزود الذكاء الاصطناعي غير متاح\n\nالمزود: ${providerHealth.provider}\nالتفصيل: ${providerHealth.detail}\n\nلم ينشئ Joe ملفات ولم يبدأ مراحل طويلة من دون مزود صالح.`,
                 `## ⚠️ Stopped before planning because the AI provider is unavailable\n\nProvider: ${providerHealth.provider}\nDetail: ${providerHealth.detail}\n\nJoe did not write files or start a long phase run without a healthy provider.`,
@@ -1298,12 +1336,6 @@ export class ProjectPipelineTool implements ToolDefinition {
          *  are the ones where a model genuinely has a question to answer.
          */
         let hisPlan: any = null;
-        const { hasWorkflowApplicationContract } = require('../../../core/design/app-blueprints');
-        const deterministicWorkflow = hasWorkflowApplicationContract(productRequest);
-        const hisOwnSchema = evidence?.constraints?.createsNewProject
-            && (heDeclaredWhatItHolds(productRequest) || deterministicWorkflow)
-            ? deterministicPhasesFor(productRequest)
-            : null;
         if (hisOwnSchema) {
             say(pick(isAr,
                 deterministicWorkflow
@@ -1370,7 +1402,7 @@ export class ProjectPipelineTool implements ToolDefinition {
              * the request declares too little to plan from, this falls through
              * and stops honestly, exactly as before.
              */
-            const deterministic = evidence?.constraints?.createsNewProject && deterministicRescueForDeadPlanner(productRequest)
+            const deterministic = isGreenfield && deterministicRescueForDeadPlanner(productRequest)
                 ? deterministicPhasesFor(productRequest)
                 : null;
             if (deterministic) {
@@ -1409,7 +1441,7 @@ export class ProjectPipelineTool implements ToolDefinition {
          * away. Both are the same fact: no plan arrived.
          */
         if ((!Array.isArray(plannerResult?.output?.phases) || plannerResult.output.phases.length === 0)
-            && evidence?.constraints?.createsNewProject) {
+            && isGreenfield) {
             const rescue = deterministicRescueForDeadPlanner(productRequest) ? deterministicPhasesFor(productRequest) : null;
             if (rescue) {
                 say(pick(isAr,
@@ -1456,7 +1488,7 @@ export class ProjectPipelineTool implements ToolDefinition {
             const unrequestedApiBuilder = planContainsUnrequestedApiBuilder(productRequest, planPhases);
             const requiresDeterministicRescue = !touchesRunnable || missingConcreteUiBuilder || unrequestedApiBuilder;
             if (planPhases.length > 0 && requiresDeterministicRescue
-                && evidence?.constraints?.createsNewProject
+                && isGreenfield
                 && plannerResult?.output?.deterministic !== true
                 && (deterministicRescueAllowed(productRequest) || requiresConcreteUiBuilder)) {
                 const rescue = deterministicPhasesFor(productRequest);

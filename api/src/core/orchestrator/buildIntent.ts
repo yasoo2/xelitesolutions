@@ -26,9 +26,9 @@ export function isReadOnlyRequest(goalRaw: string): boolean {
         // "Do not modify anything" is the natural short form used by the
         // live UI prompt. It must enter the same safety boundary as the more
         // formal "read-only audit" wording.
-        || /\b(?:do\s+not|don't|never)\b(?:\s+\w+){0,3}\s+\b(?:create|edit|delete|move|install|commit|write|modify|change|build|start|run)\b/i.test(text)
+        || /\b(?:do\s+not|don't|never)\b(?:\s+\w+){0,3}\s+\b(?:create|edit|delete|move|install|commit|write|modify|changes?|build|start|run)\b/i.test(text)
         || /(?:قراءة\s+فقط|للقراءة\s+فقط|(?:من\s+)?دون\s+(?:أي\s+)?(?:تعديل|كتابة|إنشاء|تغيير|حذف)|بدون\s+(?:أي\s+)?(?:تعديل|كتابة|إنشاء|تغيير|حذف))/i.test(text);
-    const prohibitedMutation = /\b(?:do\s+not|don't|never)\b(?:\s+\w+){0,3}\s+\b(?:create|edit|delete|move|install|commit|write|modify|change|build|start|run|publish|deploy)\b/i.test(text)
+    const prohibitedMutation = /\b(?:do\s+not|don't|never)\b(?:\s+\w+){0,3}\s+\b(?:create|edit|delete|move|install|commit|write|modify|changes?|build|start|run|publish|deploy)\b/i.test(text)
         || /\bwithout\s+(?:making|any)\s+(?:file\s+)?(?:changes?|modifications?)\b/i.test(text)
         || /(?:لا|بدون|دون|عدم)\s+(?:أن\s+)?(?:أي\s+)?(?:تنشئ|تعدل|تحذف|تنقل|تثبت|تنشر|تكتب|تبني|تشغل|تغير|تعديل|كتابة|إنشاء|تغيير|حذف)/i.test(text);
 
@@ -94,6 +94,9 @@ export function isBoundedTerminalDiagnosticRequest(goalRaw: string): boolean {
 
 export function looksLikeBuild(goalRaw: string): boolean {
     const g = String(goalRaw || '');
+    // "Do not make changes" contains a build verb, but expresses a safety
+    // boundary. Evaluate it before the broad verb-and-noun build classifier.
+    if (isReadOnlyRequest(g)) return false;
     /**
      * «بنِ» IS THE SAME VERB AS «ابنِ».
      *

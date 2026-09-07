@@ -25,7 +25,9 @@ export function authenticate(req: Request, res: Response, next: NextFunction) {
         (req as AuthenticatedRequest).auth = payload;
         return next();
       } catch {
-        // Token invalid — fall through to bypass check
+        // A supplied invalid credential must never be downgraded into the
+        // shared local development identity.
+        return res.status(401).json({ error: 'Invalid token' });
       }
     }
   }
@@ -52,13 +54,7 @@ export function authenticateOptional(req: Request, res: Response, next: NextFunc
         (req as AuthenticatedRequest).auth = payload;
         return next();
       } catch {
-        // Invalid token - in dev mode with bypass, continue anyway
-        if (isDev && process.env.ENABLE_AUTH_BYPASS === 'true') {
-          console.warn('[AUTH] Invalid token provided, but auth bypass is active (dev mode)');
-          (req as AuthenticatedRequest).auth = { sub: config.localUserId, role: 'OWNER' };
-          return next();
-        }
-        // In production or without bypass, reject invalid tokens
+        // Bypass is only for an absent credential, never a failed login.
         return res.status(401).json({ error: 'Invalid token' });
       }
     }

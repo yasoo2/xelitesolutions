@@ -5166,21 +5166,20 @@ html[data-theme="light"] .input-actions {
   background: rgba(239, 68, 68, 0.1);
 }
 
-/* ABSOLUTE SCROLL FORCE - KILLING ALL LOCKS */
+/* The application shell owns the viewport. Broad scroll overrides made the
+   embedded browser, live trace, and session rail compete for page scroll. */
 html,
 body,
 #root,
 .app {
-  overflow: auto !important;
-  overflow-y: auto !important;
-  height: auto !important;
-  min-height: 100vh !important;
-  position: static !important;
+  height: 100%;
+  min-height: 100%;
+  overflow: hidden;
+  background: var(--joe-bg-primary, var(--bg-primary, #111417));
 }
 
-/* Specificity override for any system/harness locks */
-html:root body.antigravity-scroll-lock,
-html:root body[style*="overflow: hidden"] {
-  overflow: auto !important;
+/* Individual content regions deliberately manage their own scrolling. */
+body.antigravity-scroll-lock {
+  overflow: hidden !important;
   position: static !important;
 }

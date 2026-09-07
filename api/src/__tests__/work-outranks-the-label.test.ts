@@ -46,6 +46,11 @@ describe('INVARIANT: described work chooses the engine, not a category noun', ()
         expect(detectAppKind('I want a page where I record every part and search by number')).not.toBeNull();
     });
 
+    test('an unseen collection with CRUD and persistence is a working records app', () => {
+        expect(detectAppKind('Create a minimal reading list with title, add item, remove item, and stored items after refresh.'))
+            .toBe('generic');
+    });
+
     test('IS NOT VACUOUS: a recording verb alone proves nothing', () => {
         //  «سجّل دخولي» is a login, not a ledger.
         expect(detectAppKind('سجّل دخولي بالإيميل')).toBeNull();

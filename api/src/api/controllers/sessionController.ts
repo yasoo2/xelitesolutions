@@ -12,6 +12,44 @@ import { sessionLogLines } from '../../core/session/session-log-store';
 import { logTextFor, logStampFor } from '../../core/session/log-line';
 import { publicUrlFor } from '../../shared/utils/publicUrl';
 
+function isOfflineSessionStore(): boolean {
+    return mongoose.connection.readyState !== 1
+        || process.env.OFFLINE_MODE === 'true'
+        || process.env.PERSISTENCE_MODE === 'JSON';
+}
+
+function requestUserId(req: Request): string {
+    return String((req as any).auth?.sub || '').trim();
+}
+
+function ownsSession(session: any, userId: string): boolean {
+    return !!session && !!userId && String(session.userId || '') === userId;
+}
+
+/** Never reveal whether a session exists to a different user. */
+async function requireOwnedSession(req: Request, res: Response, sessionId: string): Promise<any | null> {
+    const userId = requestUserId(req);
+    if (!userId) {
+        res.status(401).json({ error: 'Unauthorized' });
+        return null;
+    }
+    if (isOfflineSessionStore()) {
+        const session = ((global as any).mockSessions || []).find((item: any) =>
+            String(item.id ?? item._id) === sessionId || String(item._id) === sessionId);
+        if (!ownsSession(session, userId)) {
+            res.status(404).json({ error: 'Session not found' });
+            return null;
+        }
+        return session;
+    }
+    const session = await Session.findOne({ _id: sessionId, userId });
+    if (!session) {
+        res.status(404).json({ error: 'Session not found' });
+        return null;
+    }
+    return session;
+}
+
 export async function createSession(req: Request, res: Response) {
     const rawTitle = typeof req.body?.title === 'string' ? req.body.title : '';
     const title = rawTitle && rawTitle.trim() ? rawTitle.trim() : 'New Session';
@@ -38,11 +76,10 @@ export async function createSession(req: Request, res: Response) {
             );
         }
 
-        // [Workspace] Ensure personal workspace exists
-        let workspace: any = { _id: new mongoose.Types.ObjectId() };
-        if (!isOffline) {
-            workspace = await workspaceService.ensurePersonalWorkspace(userId);
-        }
+        // A chat belongs to its owner's personal workspace in every persistence
+        // mode. JSON mode used to mint an unrelated ObjectId per chat and then
+        // route all of those ids into one shared on-disk directory.
+        const workspace: any = await workspaceService.ensurePersonalWorkspace(String(userId || ''));
 
         try {
             if (isOffline) {
@@ -111,7 +148,7 @@ export function updateMockSessionTitle(sessionId: string, newTitle: string) {
 }
 
 export async function listSessions(req: Request, res: Response) {
-    const userId = (req as any).auth?.sub;
+    const userId = requestUserId(req);
     const isPersistenceDisabled = process.env.PERSISTENCE_MODE === 'JSON';
     try {
         // [OFFLINE MODE] Return mock sessions if DB is down
@@ -127,11 +164,9 @@ export async function listSessions(req: Request, res: Response) {
                 (global as any).mockSessions = [];
             }
 
-            return res.json((global as any).mockSessions);
+            return res.json(((global as any).mockSessions || []).filter((session: any) => ownsSession(session, userId)));
         }
-        // NOTE: sessions may be stored with different userId formats (ObjectId vs string).
-        // Return all sessions sorted by updatedAt for single-tenant use.
-        const sessions = await Session.find({}).sort({ updatedAt: -1 }).limit(200);
+        const sessions = await Session.find({ userId }).sort({ updatedAt: -1 }).limit(200);
         return res.json(sessions);
     } catch (e) {
         return res.status(500).json({ error: 'Failed to list sessions' });
@@ -142,6 +177,8 @@ export async function deleteSession(req: Request, res: Response) {
     const id = req.params.id as string;
     const isOffline = mongoose.connection.readyState !== 1 || process.env.OFFLINE_MODE === 'true' || process.env.PERSISTENCE_MODE === 'JSON';
     try {
+        const owned = await requireOwnedSession(req, res, id);
+        if (!owned) return;
         if (isOffline) {
             // [OFFLINE] Remove from the mock store (the X button lives here in JSON mode).
             const list: any[] = (global as any).mockSessions || [];
@@ -151,7 +188,7 @@ export async function deleteSession(req: Request, res: Response) {
             persistChatStores();
             return res.json({ ok: true });
         }
-        await Session.findByIdAndDelete(id);
+        await Session.deleteOne({ _id: id, userId: requestUserId(req) });
         return res.json({ ok: true });
     } catch (e) {
         return res.status(500).json({ error: 'Failed to delete session' });
@@ -160,21 +197,28 @@ export async function deleteSession(req: Request, res: Response) {
 
 export async function deleteAllSessions(req: Request, res: Response) {
     const isOffline = mongoose.connection.readyState !== 1 || process.env.OFFLINE_MODE === 'true' || process.env.PERSISTENCE_MODE === 'JSON';
+    const userId = requestUserId(req);
     try {
         if (isOffline) {
-            (global as any).mockSessions = [];
-            (global as any).mockMessages = [];
+            const ownIds = new Set(((global as any).mockSessions || [])
+                .filter((session: any) => ownsSession(session, userId))
+                .map((session: any) => String(session.id ?? session._id)));
+            (global as any).mockSessions = ((global as any).mockSessions || [])
+                .filter((session: any) => !ownsSession(session, userId));
+            (global as any).mockMessages = ((global as any).mockMessages || [])
+                .filter((message: any) => !ownIds.has(String(message.sessionId)));
             persistChatStores();
-            return res.json({ ok: true, count: 0 });
+            return res.json({ ok: true, count: ownIds.size });
         }
-        // NOTE: listSessions uses find({}) without userId filter (single-tenant, inconsistent userId formats).
-        // deleteMany must match the same scope, otherwise it deletes 0 documents.
-        const result = await Session.deleteMany({});
+        const ownSessions = await Session.find({ userId }).select('_id').lean();
+        const sessionIds = ownSessions.map((session: any) => session._id);
+        const result = await Session.deleteMany({ userId });
 
-        // Also clean up orphaned messages and tool executions
+        // Messages and tool executions belong to the session, so their owner
+        // scope is the owner's session id set, never the entire database.
         await Promise.all([
-            Message.deleteMany({}),
-            ToolExecution.deleteMany({})
+            Message.deleteMany({ sessionId: { $in: sessionIds } }),
+            ToolExecution.deleteMany({ sessionId: { $in: sessionIds } })
         ]);
 
         return res.json({ ok: true, count: result.deletedCount });
@@ -188,21 +232,17 @@ export async function togglePin(req: Request, res: Response) {
     const id = req.params.id as string;
     const isOffline = mongoose.connection.readyState !== 1 || process.env.OFFLINE_MODE === 'true' || process.env.PERSISTENCE_MODE === 'JSON';
     try {
+        const owned = await requireOwnedSession(req, res, id);
+        if (!owned) return;
         if (isOffline) {
-            const list: any[] = (global as any).mockSessions || [];
-            const ms = list.find((x: any) => String(x.id ?? x._id) === String(id) || String(x._id) === String(id));
-            if (!ms) return res.status(404).json({ error: 'Session not found' });
-            ms.isPinned = !ms.isPinned;
-            ms.updatedAt = new Date();
-            return res.json(ms);
+            owned.isPinned = !owned.isPinned;
+            owned.updatedAt = new Date();
+            persistChatStores();
+            return res.json(owned);
         }
-        const s = await Session.findById(id);
-        if (s) {
-            s.isPinned = !s.isPinned;
-            await s.save();
-            return res.json(s);
-        }
-        return res.status(404).json({ error: 'Session not found' });
+        owned.isPinned = !owned.isPinned;
+        await owned.save();
+        return res.json(owned);
     } catch (e) {
         return res.status(500).json({ error: 'Failed to toggle pin' });
     }
@@ -214,6 +254,10 @@ export async function mergeSessions(req: Request, res: Response) {
     if (!sourceId || !targetId) return res.status(400).json({ error: 'sourceId and targetId are required' });
     const isOffline = mongoose.connection.readyState !== 1 || process.env.OFFLINE_MODE === 'true' || process.env.PERSISTENCE_MODE === 'JSON';
     try {
+        const source = await requireOwnedSession(req, res, String(sourceId));
+        if (!source) return;
+        const target = await requireOwnedSession(req, res, String(targetId));
+        if (!target) return;
         if (isOffline) {
             const msgs: any[] = (global as any).mockMessages || [];
             for (const m of msgs) if (String(m.sessionId) === String(sourceId)) m.sessionId = targetId;
@@ -222,7 +266,7 @@ export async function mergeSessions(req: Request, res: Response) {
             return res.json({ ok: true });
         }
         await Message.updateMany({ sessionId: sourceId }, { $set: { sessionId: targetId } });
-        await Session.findByIdAndDelete(sourceId);
+        await Session.deleteOne({ _id: sourceId, userId: requestUserId(req) });
         return res.json({ ok: true });
     } catch (e) {
         return res.status(500).json({ error: 'Failed to merge sessions' });
@@ -234,14 +278,17 @@ export async function moveSession(req: Request, res: Response) {
     const folderId = req.body.folderId;
     const isOffline = mongoose.connection.readyState !== 1 || process.env.OFFLINE_MODE === 'true' || process.env.PERSISTENCE_MODE === 'JSON';
     try {
+        const owned = await requireOwnedSession(req, res, id);
+        if (!owned) return;
         if (isOffline) {
-            const list: any[] = (global as any).mockSessions || [];
-            const ms = list.find((x: any) => String(x.id ?? x._id) === String(id) || String(x._id) === String(id));
-            if (ms) { ms.folderId = folderId; ms.updatedAt = new Date(); }
-            return res.json(ms || null);
+            owned.folderId = folderId;
+            owned.updatedAt = new Date();
+            persistChatStores();
+            return res.json(owned);
         }
-        const s = await Session.findByIdAndUpdate(id, { folderId }, { new: true });
-        return res.json(s);
+        owned.folderId = folderId;
+        await owned.save();
+        return res.json(owned);
     } catch (e) {
         return res.status(500).json({ error: 'Failed to move session' });
     }
@@ -260,15 +307,10 @@ export async function addMessage(req: Request, res: Response) {
     const isOffline = mongoose.connection.readyState !== 1 || process.env.OFFLINE_MODE === 'true' || isPersistenceDisabled;
 
     try {
+        const owned = await requireOwnedSession(req, res, sessionId);
+        if (!owned) return;
         if (!isOffline) {
-            const session = await Session.findById(sessionId);
-            if (!session) {
-                return res.status(404).json({ error: 'Session not found' });
-            }
-
-            if (session.userId !== userId) {
-                return res.status(403).json({ error: 'Unauthorized' });
-            }
+            // requireOwnedSession already verified the authenticated owner.
         }
 
         // Save User Message
@@ -474,6 +516,8 @@ export async function updateSecrets(req: Request, res: Response) {
     }
 
     try {
+        const owned = await requireOwnedSession(req, res, id);
+        if (!owned) return;
         const { setSessionSecretEncrypted, setUserSecretEncrypted } = await import('../../modules/services/secrets');
         const { AgentLoopService } = await import('../../modules/services/AgentLoopService');
 
@@ -499,6 +543,73 @@ export async function updateSecrets(req: Request, res: Response) {
     }
 }
 
+type QueuedRun = {
+    id: string;
+    text: string;
+    files: Array<{ id: string; name: string; size?: number; type?: string }>;
+};
+
+function normalizeRunQueue(raw: unknown): QueuedRun[] {
+    if (!Array.isArray(raw)) return [];
+    return raw.slice(0, 50).flatMap((item: any) => {
+        const id = String(item?.id || '').trim();
+        const text = String(item?.text || '').trim();
+        const files = Array.isArray(item?.files) ? item.files.slice(0, 12).flatMap((file: any) => {
+            const fileId = String(file?.id || '').trim();
+            const name = String(file?.name || '').trim();
+            return fileId && name ? [{
+                id: fileId,
+                name: name.slice(0, 240),
+                ...(Number.isFinite(Number(file?.size)) ? { size: Number(file.size) } : {}),
+                ...(typeof file?.type === 'string' ? { type: file.type.slice(0, 120) } : {}),
+            }] : [];
+        }) : [];
+        return id && (text || files.length) ? [{ id, text: text.slice(0, 20_000), files }] : [];
+    });
+}
+
+function queueState(session: any) {
+    const saved = session?.metadata?.runQueue;
+    return {
+        items: normalizeRunQueue(saved?.items),
+        paused: saved?.paused === true,
+    };
+}
+
+export async function getSessionQueue(req: Request, res: Response) {
+    const id = String(req.params.id || '').trim();
+    if (!id) return res.status(400).json({ error: 'Missing session id' });
+    try {
+        const session = await requireOwnedSession(req, res, id);
+        if (!session) return;
+        return res.json(queueState(session));
+    } catch (error) {
+        return res.status(500).json({ error: 'Could not read session queue' });
+    }
+}
+
+export async function replaceSessionQueue(req: Request, res: Response) {
+    const id = String(req.params.id || '').trim();
+    const state = { items: normalizeRunQueue(req.body?.items), paused: req.body?.paused === true };
+    const isOffline = mongoose.connection.readyState !== 1 || process.env.OFFLINE_MODE === 'true' || process.env.PERSISTENCE_MODE === 'JSON';
+    if (!id) return res.status(400).json({ error: 'Missing session id' });
+    try {
+        const owned = await requireOwnedSession(req, res, id);
+        if (!owned) return;
+        if (isOffline) {
+            owned.metadata = { ...(owned.metadata || {}), runQueue: state };
+            owned.updatedAt = new Date();
+            persistChatStores();
+            return res.json(state);
+        }
+        owned.metadata = { ...(owned.metadata || {}), runQueue: state };
+        await owned.save();
+        return res.json(state);
+    } catch (error) {
+        return res.status(500).json({ error: 'Could not save session queue' });
+    }
+}
+
 // ... (existing imports)
 import { Message } from '../../shared/models/message';
 import { ToolExecution } from '../../shared/models/toolExecution';
@@ -511,6 +622,8 @@ export async function listSessionMessages(req: Request, res: Response) {
 
     const isPersistenceDisabled = process.env.PERSISTENCE_MODE === 'JSON';
     try {
+        const owned = await requireOwnedSession(req, res, sessionId);
+        if (!owned) return;
         // [OFFLINE MODE] Return empty if DB is down
         if (mongoose.connection.readyState !== 1 && !isPersistenceDisabled && process.env.OFFLINE_MODE !== 'true') {
             console.warn('[SessionController] DB offline - returning empty message list');
@@ -534,15 +647,7 @@ export async function listSessionMessages(req: Request, res: Response) {
 
             console.warn('[SessionController] DB offline - returning mock session detail from store. Count:', mockSessions.length);
 
-            // Try to find session in store
-            let foundSession = mockSessions.find((s: any) => s.id === sessionId || String(s._id || s.id) === sessionId);
-            if (!foundSession) {
-                // Fallback if not found (e.g. init mocks)
-                if (sessionId === 'mock-session-1') foundSession = { _id: 'mock-session-1', id: 'mock-session-1', title: 'New Session', userId };
-                else foundSession = { _id: queryId, id: sessionId, title: 'New Session', userId };
-            }
-
-            session = foundSession;
+            session = owned;
             messages = mockMessages.filter((m: any) => m.sessionId === sessionId);
         } else {
             const results = await Promise.all([
@@ -603,6 +708,27 @@ export async function listSessionMessages(req: Request, res: Response) {
                 });
             }
         });
+
+        // A process restart ends the in-memory executor. Preserve that fact in
+        // the conversation history instead of leaving a lone user message and
+        // a durable run record that still appears to be working forever.
+        try {
+            const runs = await getRunEvidenceForSession(sessionId);
+            for (const run of runs) {
+                if (run.status !== 'interrupted') continue;
+                const alreadyAnswered = messages.some((message: any) =>
+                    message.role === 'assistant' && String(message.runId || '') === String(run.runId || ''));
+                if (alreadyAnswered) continue;
+                const interruption = [...(run.events || [])].reverse().find((event: any) => event.type === 'run_interrupted');
+                events.push({
+                    type: 'run_interrupted',
+                    runId: run.runId,
+                    data: { reason: interruption?.data?.reason || 'api_restart' },
+                    ts: Number(interruption?.ts) || new Date(run.updatedAt).getTime(),
+                    id: `interrupted-${run.runId}`,
+                });
+            }
+        } catch { /* missing recovery evidence must not hide normal messages */ }
 
         tools.forEach((t: any) => {
             const ts = new Date(t.createdAt).getTime();
@@ -697,6 +823,8 @@ export async function searchSessions(req: Request, res: Response) {
 export async function sessionWorkspace(req: Request, res: Response) {
     const sessionId = String(req.params.id || '').trim();
     if (!sessionId) return res.status(400).json({ error: 'session_id_required' });
+    const owned = await requireOwnedSession(req, res, sessionId);
+    if (!owned) return;
 
     //  A conversation read, not a pipeline read: null run id on purpose.
     let preview: { url: string; brand?: string; dir?: string; type?: string; at?: number } | null = null;

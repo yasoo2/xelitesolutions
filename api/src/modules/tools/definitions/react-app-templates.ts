@@ -228,7 +228,7 @@ ${bp.relation.fields.map(f => `      { key: '${q(f.key)}', label: '${q(f.label)}
 /* ── the shell ───────────────────────────────────────────────────────────── */
 
 const ENGINE_COMPONENT: Record<AppBlueprint['engine'], string> = {
-    map: 'MapApp', chat: 'ChatApp', weather: 'WeatherApp', records: 'RecordsApp', social: 'SocialApp',
+    map: 'MapApp', chat: 'ChatApp', weather: 'WeatherApp', records: 'RecordsApp', ledger: 'LedgerApp', social: 'SocialApp',
     shop: 'ShopApp', calculator: 'CalculatorApp', productivity: 'ProductivityApp', finance: 'FinanceApp', custom: 'CustomApp',
 };
 
@@ -1242,6 +1242,94 @@ export async function apiDelete(api, id) {
 `;
 }
 
+/* ── ledger — purpose-built quick entry for money movement ───────────────── */
+
+export function fileLedgerAppJsx(isAr: boolean): string {
+    const T = (ar: string, en: string) => q(isAr ? ar : en);
+    return `import React, { useEffect, useMemo, useState } from 'react';
+import { createStore, uid, todayISO } from '../app/store.js';
+
+const initial = (fields) => fields.reduce((draft, field) => ({
+  ...draft,
+  [field.key]: field.type === 'date' ? todayISO() : field.type === 'select' ? ((field.options || [])[0] || '') : ''
+}), {});
+
+export default function LedgerApp({ content }) {
+  const store = useMemo(() => createStore(content.storeKey + ':ledger'), [content.storeKey]);
+  const fields = content.fields;
+  const amountField = fields.find(field => field.key === 'amount' || field.type === 'number');
+  const [entries, setEntries] = useState(() => store.read());
+  const [draft, setDraft] = useState(() => initial(fields));
+  const [error, setError] = useState('');
+  const [editingId, setEditingId] = useState(null);
+  const [categoryFilter, setCategoryFilter] = useState('');
+  const [monthFilter, setMonthFilter] = useState('');
+
+  useEffect(() => { store.write(entries); }, [entries, store]);
+  const visibleEntries = useMemo(() => entries.filter(entry => {
+    const categoryMatches = !categoryFilter || String(entry.category || '') === categoryFilter;
+    const monthMatches = !monthFilter || String(entry.date || '').slice(0, 7) === monthFilter;
+    return categoryMatches && monthMatches;
+  }), [entries, categoryFilter, monthFilter]);
+  const total = useMemo(() => visibleEntries.reduce((sum, entry) => sum + (Number(entry[amountField?.key] || 0) || 0), 0), [visibleEntries, amountField]);
+  const byCategory = useMemo(() => entries.reduce((groups, entry) => {
+    const name = String(entry.category || ${JSON.stringify(T('غير مصنف', 'Uncategorised'))});
+    groups[name] = (groups[name] || 0) + (Number(entry[amountField?.key] || 0) || 0);
+    return groups;
+  }, {}), [entries, amountField]);
+  const update = (field, value) => setDraft(current => ({ ...current, [field.key]: value }));
+  const submit = (event) => {
+    event.preventDefault();
+    const raw = String(draft[amountField?.key] || '').trim();
+    const amount = Number(raw);
+    if (!raw || !Number.isFinite(amount) || amount <= 0) {
+      setError(${JSON.stringify(T('أدخل مبلغًا رقميًا أكبر من صفر.', 'Enter a numeric amount greater than zero.'))});
+      return;
+    }
+    const missing = fields.filter(field => field.required && !String(draft[field.key] || '').trim());
+    if (missing.length) { setError(${JSON.stringify(T('أكمل الحقول المطلوبة أولاً.', 'Complete the required fields first.'))}); return; }
+    const saved = { ...draft, [amountField.key]: amount };
+    setEntries(current => editingId
+      ? current.map(entry => entry.id === editingId ? { ...entry, ...saved } : entry)
+      : [{ ...saved, id: uid(), createdAt: new Date().toISOString() }, ...current]);
+    setDraft(initial(fields));
+    setEditingId(null);
+    setError('');
+  };
+  const edit = entry => { setDraft(fields.reduce((next, field) => ({ ...next, [field.key]: entry[field.key] ?? '' }), {})); setEditingId(entry.id); setError(''); };
+  const cancelEdit = () => { setDraft(initial(fields)); setEditingId(null); setError(''); };
+  const remove = entry => {
+    if (!window.confirm(${JSON.stringify(T('هل تريد حذف هذا المصروف؟', 'Delete this expense?'))})) return;
+    setEntries(current => current.filter(item => item.id !== entry.id));
+    if (editingId === entry.id) cancelEdit();
+  };
+  const money = value => new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(value || 0);
+
+  return <main className="ledger-shell">
+    <header className="ledger-header"><div><p>${T('دفتر شخصي', 'PERSONAL LEDGER')}</p><h2>{content.title}</h2><span>{content.lede}</span></div><strong aria-label={${JSON.stringify(T('الإجمالي الجاري', 'Running total'))}}>{money(total)}</strong></header>
+    <section className="ledger-workspace" aria-label={${JSON.stringify(T('إدخال مصروف', 'Expense entry'))}}>
+      <form className="ledger-entry" onSubmit={submit}>
+        <div className="ledger-entry-head"><h2>{editingId ? ${JSON.stringify(T('تعديل المصروف', 'Edit expense'))} : ${JSON.stringify(T('أضف عملية', 'Add an entry'))}}</h2><span>${T('يُحفظ تلقائيًا على هذا الجهاز', 'Saved automatically on this device')}</span></div>
+        <div className="ledger-fields">{fields.map(field => <label key={field.key}>{field.label}
+          {field.type === 'textarea' ? <textarea aria-label={field.label} required={field.required} value={draft[field.key]} onChange={event => update(field, event.target.value)} />
+            : field.type === 'select' ? <select aria-label={field.label} required={field.required} value={draft[field.key]} onChange={event => update(field, event.target.value)}>{(field.options || []).map(option => <option key={option} value={option}>{option}</option>)}</select>
+            : <input aria-label={field.label} type={field.type === 'number' ? 'number' : field.type} inputMode={field.type === 'number' ? 'decimal' : undefined} min={field.type === 'number' ? '0.01' : undefined} step={field.type === 'number' ? '0.01' : undefined} required={field.required} value={draft[field.key]} onChange={event => update(field, event.target.value)} />}
+        </label>)}</div>
+        {error && <p className="ledger-error" role="alert">{error}</p>}
+        <div className="ledger-form-actions"><button type="submit">{editingId ? ${JSON.stringify(T('حفظ التعديل', 'Save changes'))} : ${JSON.stringify(T('إضافة المصروف', 'Add expense'))}}</button>{editingId ? <button type="button" className="ledger-secondary" onClick={cancelEdit}>${T('إلغاء', 'Cancel')}</button> : null}</div>
+      </form>
+      <aside className="ledger-summary"><h2>${T('نظرة سريعة', 'At a glance')}</h2><p><span>${T('العمليات', 'Entries')}</span><strong>{entries.length}</strong></p><p><span>${T('الإجمالي', 'Total')}</span><strong>{money(total)}</strong></p><div>{Object.entries(byCategory).slice(0, 4).map(([name, value]) => <p key={name}><span>{name}</span><strong>{money(value)}</strong></p>)}</div></aside>
+    </section>
+    <section className="ledger-history" aria-live="polite"><div className="ledger-history-head"><div><p>${T('السجل', 'ACTIVITY')}</p><h2>${T('آخر العمليات', 'Recent entries')}</h2></div><div className="ledger-filters"><label>${T('التصنيف', 'Category')}<select value={categoryFilter} onChange={event => setCategoryFilter(event.target.value)}><option value="">${T('الكل', 'All')}</option>{Array.from(new Set(entries.map(entry => entry.category).filter(Boolean))).map(category => <option key={category} value={category}>{category}</option>)}</select></label><label>${T('الشهر', 'Month')}<input type="month" value={monthFilter} onChange={event => setMonthFilter(event.target.value)} /></label></div></div>{visibleEntries.length === 0 ? <p className="ledger-empty">{entries.length ? ${JSON.stringify(T('لا توجد نتائج لهذه التصفية.', 'No entries match these filters.'))} : content.emptyHint}</p> : <ol>{visibleEntries.map(entry => <li key={entry.id}><div><strong>{entry.note || entry.category || ${JSON.stringify(T('مصروف', 'Expense'))}}</strong><span>{entry.date || entry.createdAt?.slice(0, 10)}</span></div><div><strong>{money(Number(entry[amountField?.key] || 0))}</strong><span className="ledger-row-actions"><button type="button" onClick={() => edit(entry)}>${T('تعديل', 'Edit')}</button><button type="button" aria-label={${JSON.stringify(T('حذف العملية', 'Delete entry'))} + ' ' + String(entry.id)} onClick={() => remove(entry)}>${T('حذف', 'Delete')}</button></span></div></li>)}</ol>}</section>
+  </main>;
+}
+`;
+}
+
+export function fileLedgerCss(): string {
+  return `.ledger-shell{width:min(1120px,100%);margin:0 auto;padding:34px 22px 56px}.ledger-header{display:flex;justify-content:space-between;gap:24px;align-items:end;padding:0 0 28px;border-bottom:1px solid var(--line)}.ledger-header p,.ledger-history-head p{margin:0;color:var(--muted);font-size:.75rem;font-weight:700;letter-spacing:0}.ledger-header h2{margin:7px 0;font-size:2.75rem;line-height:1}.ledger-header span{color:var(--muted)}.ledger-header>strong{font-size:2rem;white-space:nowrap}.ledger-workspace{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(230px,.75fr);gap:38px;padding:30px 0;border-bottom:1px solid var(--line)}.ledger-entry-head{display:flex;justify-content:space-between;gap:12px;align-items:baseline}.ledger-entry h2,.ledger-summary h2,.ledger-history h2{font-size:1.1rem;margin:0}.ledger-entry-head span{color:var(--muted);font-size:.82rem}.ledger-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:20px 0}.ledger-fields label{display:grid;gap:7px;font-size:.82rem;font-weight:700}.ledger-fields textarea{min-height:86px;resize:vertical}.ledger-fields label:has(textarea){grid-column:1/-1}.ledger-entry button{min-height:46px;padding:0 18px;border:0;border-radius:7px;background:var(--brand);color:var(--on-brand,#fff);font:inherit;font-weight:700;cursor:pointer}.ledger-form-actions{display:flex;gap:8px;flex-wrap:wrap}.ledger-entry .ledger-secondary{background:transparent;color:var(--text);border:1px solid var(--line)}.ledger-error{margin:0 0 12px;color:var(--danger,#c44);font-weight:700}.ledger-summary{border-inline-start:1px solid var(--line);padding-inline-start:28px}.ledger-summary h2{margin-bottom:15px}.ledger-summary p{display:flex;justify-content:space-between;gap:12px;margin:0;padding:11px 0;border-bottom:1px solid var(--line)}.ledger-summary span,.ledger-history span{color:var(--muted)}.ledger-history{padding-top:30px}.ledger-history-head{display:flex;align-items:end;justify-content:space-between;gap:18px;margin-bottom:14px}.ledger-filters{display:flex;gap:10px;flex-wrap:wrap}.ledger-filters label{display:grid;gap:4px;color:var(--muted);font-size:.75rem}.ledger-filters select,.ledger-filters input{min-width:150px}.ledger-history ol{list-style:none;margin:0;padding:0}.ledger-history li{display:flex;justify-content:space-between;gap:18px;padding:15px 0;border-top:1px solid var(--line)}.ledger-history li>div{display:grid;gap:4px}.ledger-history li>div:last-child{text-align:end}.ledger-row-actions{display:flex;justify-content:flex-end;gap:10px}.ledger-history button{min-width:44px;min-height:44px;border:0;background:transparent;color:var(--muted);font:inherit;font-size:.78rem;text-decoration:underline;cursor:pointer;padding:0 6px}.ledger-empty{margin:0;color:var(--muted);padding:28px 0;border-top:1px solid var(--line)}@media(max-width:720px){.ledger-shell{padding:22px 14px 38px}.ledger-header,.ledger-workspace{grid-template-columns:1fr;display:grid}.ledger-header{align-items:start}.ledger-header h2{font-size:2rem}.ledger-header>strong{font-size:1.6rem}.ledger-workspace{gap:24px}.ledger-summary{border-inline-start:0;border-top:1px solid var(--line);padding:20px 0 0}.ledger-fields{grid-template-columns:1fr}.ledger-history-head,.ledger-history li{align-items:start;display:grid}.ledger-filters{width:100%}.ledger-filters label{flex:1 1 140px}.ledger-filters select,.ledger-filters input{min-width:0;width:100%}.ledger-header>strong{white-space:normal}}`;
+}
+
 /* ── engine 1: records — create, edit, delete, search, filter, totals ────── */
 
 export function fileRecordsAppJsx(isAr: boolean): string {
@@ -1568,6 +1656,7 @@ export default function RecordsApp({ content }) {
               <label className="field" key={f.key}>
                 <span>{f.label}{f.required ? ' *' : ''}</span>
                 <input type={f.type === 'number' ? 'number' : f.type === 'tel' ? 'tel' : f.type === 'email' ? 'email' : 'text'}
+                  required={!!f.required}
                   min={f.min !== undefined ? f.min : undefined}
                   step={f.type === 'number' ? 'any' : undefined}
                   minLength={f.minLength !== undefined ? f.minLength : undefined}
@@ -1602,7 +1691,7 @@ export default function RecordsApp({ content }) {
       ) : null}
 
       <section data-reveal-section className="panel">
-        <h2>{editing ? ${T('تعديل ', 'Edit ')} + content.entityOne : ${T('إضافة ', 'Add a ')} + content.entityOne}</h2>
+        <h2>{editing ? ${T('تعديل ', 'Edit ')} + content.entityOne : ${T('إضافة ', 'Add ')} + content.entityOne}</h2>
         {/* A MESSAGE ABOUT A PAST ATTEMPT MUST NOT READ AS A VERDICT ON THIS
             ONE. setError('') lives inside submit, so whenever the browser
             refuses the form itself, submit never runs and the previous
@@ -2904,7 +2993,7 @@ p{margin:0 0 8px}
 /* The app's own name measured 3.25:1 against the bar — brand ink on a
    brand-tinted surface. Leaning it toward the page's text clears AA in
    both themes without losing the hue. */
-.app-name{font-size:1.35rem;font-weight:800;margin:0;color:color-mix(in srgb,var(--brand,#111) 45%,var(--text,#111))}
+.app-name{font-size:1.75rem;font-weight:800;line-height:1.15;margin:0;color:color-mix(in srgb,var(--brand,#111) 45%,var(--text,#111))}
 .app-sub{color:var(--text-muted,#666);font-size:.9rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* 44px, not 38: the audit measures touch targets and it was right to. */
 .icon-btn{border:1px solid var(--border,#ddd);background:var(--surface,#fff);color:inherit;border-radius:999px;
@@ -4183,11 +4272,19 @@ export function fileWorkflowCss(): string {
 
 export function buildAppFiles(bp: AppBlueprint, o: AppBuildOptions, slugName: string): Record<string, string> {
     const roleSpecs = rolesForRequest(o.sourceRequest || '');
+    // The local ledger is intentionally small and offline-first. Once a real
+    // API is attached, use the records engine that already proves authenticated
+    // list/create/update/delete synchronization instead of pretending the
+    // local-only ledger is connected.
+    const builtBp: AppBlueprint = bp.engine === 'ledger' && !!o.api
+        ? { ...bp, engine: 'records' }
+        : bp;
     const engineFile: Record<AppBlueprint['engine'], [string, string]> = {
         map: ['src/components/MapApp.jsx', fileMapAppJsx(o.isArabic)],
         chat: ['src/components/ChatApp.jsx', fileChatAppJsx(o.isArabic)],
         weather: ['src/components/WeatherApp.jsx', fileWeatherAppJsx(o.isArabic)],
         records: ['src/components/RecordsApp.jsx', fileRecordsAppJsx(o.isArabic)],
+        ledger: ['src/components/LedgerApp.jsx', fileLedgerAppJsx(o.isArabic)],
         social: ['src/components/SocialApp.jsx', fileSocialAppJsx(o.isArabic)],
         //  The brand colour the palette derived, handed over as a hue.
         shop: ['src/components/ShopApp.jsx', fileShopAppJsx(o.isArabic,
@@ -4201,18 +4298,18 @@ export function buildAppFiles(bp: AppBlueprint, o: AppBuildOptions, slugName: st
         // supplies this file through the model authoring path before build.
         custom: ['src/components/CustomApp.jsx', hasWorkflowApplicationContract(o.sourceRequest || '') ? fileWorkflowAppJsx(o.isArabic) : ''],
     };
-    const [enginePath, engineSrc] = engineFile[bp.engine];
+    const [enginePath, engineSrc] = engineFile[builtBp.engine];
     const generatedEnginePath = String(o.generatedEnginePath || '').trim();
     const engineEntry = generatedEnginePath
         ? {}
         : { [enginePath]: engineSrc };
     return {
-        'package.json': fileAppPackageJson(slugName, bp),
-        'index.html': fileAppIndexHtml(bp, o),
+        'package.json': fileAppPackageJson(slugName, builtBp),
+        'index.html': fileAppIndexHtml(builtBp, o),
         '.gitignore': 'node_modules\ndist\n',
         'src/main.jsx': fileAppMainJsx(),
-        'src/App.jsx': fileAppShellJsx(bp, o.isArabic, !!(o.model && o.model.length), !!o.api, roleSpecs, !!o.unifiedTables),
-        'src/content.js': fileAppContentJs(bp, o),
+        'src/App.jsx': fileAppShellJsx(builtBp, o.isArabic, !!(o.model && o.model.length), !!o.api, roleSpecs, !!o.unifiedTables),
+        'src/content.js': fileAppContentJs(builtBp, o),
         'src/app/store.js': fileAppStoreJs(),
         'scripts/smoke-test.test.mjs': fileAppSmokeTest(),
         ...engineEntry,
@@ -4220,10 +4317,11 @@ export function buildAppFiles(bp: AppBlueprint, o: AppBuildOptions, slugName: st
         // The accounts screen ships whenever there IS a server to have accounts
         // on; it renders for the owner only, and returns null for everybody else.
         ...(o.api ? { 'src/components/Accounts.jsx': fileAccountsJsx(o.isArabic, roleSpecs) } : {}),
-        'src/styles/app.css': fileAppCss() + (bp.engine === 'shop' ? fileShopCss() : '')
-            + (bp.engine === 'calculator' ? fileCalculatorCss() : '')
-            + (bp.engine === 'productivity' ? fileProductivityCss() : '')
-            + (bp.engine === 'custom' && hasWorkflowApplicationContract(o.sourceRequest || '') ? fileWorkflowCss() : '')
+        'src/styles/app.css': fileAppCss() + (builtBp.engine === 'ledger' ? fileLedgerCss() : '')
+            + (builtBp.engine === 'shop' ? fileShopCss() : '')
+            + (builtBp.engine === 'calculator' ? fileCalculatorCss() : '')
+            + (builtBp.engine === 'productivity' ? fileProductivityCss() : '')
+            + (builtBp.engine === 'custom' && hasWorkflowApplicationContract(o.sourceRequest || '') ? fileWorkflowCss() : '')
             + (o.model && o.model.length ? fileTablesAdminCss() : '')
             + (o.api ? fileAccountsCss() : ''),
     };

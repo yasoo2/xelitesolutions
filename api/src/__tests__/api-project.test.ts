@@ -245,11 +245,11 @@ describe('the offline scaffold — complete, parseable, kind-aware', () => {
             expect.objectContaining({ key: 'categories' }),
         ]));
         const db = fs.readFileSync(path.join(res.output.path, 'db.js'), 'utf-8');
-        expect(db).toContain('"key":"title"');
+        expect(db).toContain('"key":"description"');
         expect(db).toContain('"key":"amount"');
         expect(db).toContain('"key":"category"');
         expect(db).toContain('"key":"date"');
-        expect(db).toContain('"key":"note"');
+        expect(db).not.toContain('"key":"price"');
     });
 
     it('the linked Prompt 01 React handoff keeps the API primary and its request fields', async () => {
@@ -261,7 +261,7 @@ describe('the offline scaffold — complete, parseable, kind-aware', () => {
         const content = fs.readFileSync(path.join(linked.output.path, 'src', 'content.js'), 'utf-8');
         const records = fs.readFileSync(path.join(linked.output.path, 'src', 'components', 'RecordsApp.jsx'), 'utf-8');
         const keys = [...content.matchAll(/key: '([^']+)'/g)].map((m: RegExpMatchArray) => m[1]);
-        expect(keys).toEqual(expect.arrayContaining(['title', 'amount', 'category', 'date', 'note']));
+        expect(keys).toEqual(expect.arrayContaining(['description', 'amount', 'category', 'date']));
         expect(keys).not.toContain('price');
         expect(keys).not.toContain('quantity');
         expect(content).toContain("api: '/api/expenses'");
@@ -592,9 +592,9 @@ describe('the generated site carries the owner\'s dashboard', () => {
     it('an UNLINKED site renders none of it', () => {
         const dir = plain.output.path;
         expect(fs.readFileSync(path.join(dir, 'src', 'content.js'), 'utf-8')).toContain("api: ''");
-        // the file ships (App imports it unconditionally) but returns null
-        const panel = fs.readFileSync(path.join(dir, 'src', 'components', 'AdminPanel.jsx'), 'utf-8');
-        expect(panel).toContain('if (!content.api || !open) return null;');
+        // No API means there is no privileged surface to expose or pretend exists.
+        expect(fs.existsSync(path.join(dir, 'src', 'components', 'AdminPanel.jsx'))).toBe(false);
+        expect(fs.readFileSync(path.join(dir, 'src', 'App.jsx'), 'utf-8')).not.toContain('AdminPanel');
         expect(fs.readFileSync(path.join(dir, 'src', 'components', 'Footer.jsx'), 'utf-8')).toContain('content.api ?');
     });
 });

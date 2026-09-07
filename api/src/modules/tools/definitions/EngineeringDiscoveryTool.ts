@@ -65,6 +65,17 @@ export interface EngineeringEvidence {
 type Candidate = NonNullable<EngineeringEvidence['selectedProject']>;
 
 /**
+ * Discovery may inspect a workspace with hundreds of generated projects.
+ * Keep the scan complete, but periodically return the event loop to the API
+ * so run-status polling and the visible Joe session never freeze behind it.
+ */
+export const DISCOVERY_YIELD_EVERY = 24;
+
+export function yieldToDiscoveryScheduler(): Promise<void> {
+    return new Promise(resolve => setImmediate(resolve));
+}
+
+/**
  * Read-only discovery is the first engineering action for project work.
  * It deliberately does not infer an implementation stack from business words:
  * it reports what exists, which checks the project declares, and what evidence
@@ -309,21 +320,31 @@ export class EngineeringDiscoveryTool extends BaseTool {
          * dependency/build directories instead; ambiguity is resolved only
          * after the complete bounded scan, never by truncating candidates.
          */
-        const visit = (dir: string, depth: number) => {
+        let visitedDirectories = 0;
+        const yieldIfNeeded = async () => {
+            visitedDirectories += 1;
+            if (visitedDirectories % DISCOVERY_YIELD_EVERY === 0) await yieldToDiscoveryScheduler();
+        };
+        const visit = async (dir: string, depth: number): Promise<void> => {
             if (depth > maxDepth) return;
             let entries: fs.Dirent[] = [];
-            try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+            try { entries = await fs.promises.readdir(dir, { withFileTypes: true }); } catch { return; }
+            await yieldIfNeeded();
             const names = new Set(entries.map(entry => entry.name));
             const hasManifest = names.has('package.json') || names.has('pyproject.toml') || names.has('requirements.txt') || names.has('go.mod');
             const isIncompleteProjectRoot = !hasManifest
                 && hasImplementationSignal(entries)
                 && (depth === 0 || names.has('.git'));
             if (hasManifest || isIncompleteProjectRoot) roots.add(dir);
+            // Greenfield work never edits reference projects. Once a project
+            // root is found, keep its manifest-level evidence and stop: walking
+            // hundreds of reference source trees delays the actual request.
+            if (buildsSomethingNew && hasManifest && depth > 0) return;
             for (const entry of entries) {
                 const entryPath = path.join(dir, entry.name);
                 if (entry.isFile() && isInstructionFile(entry.name) && instructionFiles.length < 32) {
                     try {
-                        const lineCount = fs.readFileSync(entryPath, 'utf8').split('\n').length;
+                        const lineCount = (await fs.promises.readFile(entryPath, 'utf8')).split('\n').length;
                         const relativePath = path.relative(workspaceRoot, entryPath).replace(/\\/g, '/');
                         // Discovery only emits paths that later tools may safely
                         // receive. `entryPath` is a host-local implementation
@@ -334,12 +355,20 @@ export class EngineeringDiscoveryTool extends BaseTool {
                     } catch { /* unreadable documents are not evidence */ }
                 }
                 if (!entry.isDirectory() || entry.name.startsWith('.') || ignored.has(entry.name)) continue;
-                visit(entryPath, depth + 1);
+                await visit(entryPath, depth + 1);
             }
         };
-        visit(workspaceRoot, 0);
+        await visit(workspaceRoot, 0);
 
-        const candidates = [...roots].sort((a, b) => a.localeCompare(b)).map(root => this.inspectProject(root));
+        const candidates: Candidate[] = [];
+        for (const root of [...roots].sort((a, b) => a.localeCompare(b))) {
+            // A greenfield request must never turn every historical project
+            // into a recursive source/test scan. Those projects are only
+            // read-only stack references; detailed evidence is required only
+            // for the selected project that Joe may actually change.
+            candidates.push(this.inspectProject(root, !buildsSomethingNew, buildsSomethingNew));
+            await yieldIfNeeded();
+        }
         for (const candidate of candidates) {
             if (candidate.manifests.length === 0 && (candidate.likelyEntrypoints.length > 0 || (candidate.testFiles || []).length > 0)) {
                 facts.push({
@@ -497,7 +526,7 @@ export class EngineeringDiscoveryTool extends BaseTool {
         return { ok: true, output: { evidence }, logs };
     }
 
-    private inspectProject(root: string): Candidate {
+    private inspectProject(root: string, includeFileInventory = true, referenceOnly = false): Candidate {
         const manifests: Candidate['manifests'] = [];
         const kinds = new Set<Candidate['projectKinds'][number]>();
         const checks: Candidate['candidateChecks'] = [];
@@ -538,10 +567,14 @@ export class EngineeringDiscoveryTool extends BaseTool {
         if (!kinds.size) kinds.add('other');
 
         const entryCandidates = ['src/index.ts', 'src/main.ts', 'src/main.tsx', 'src/index.tsx', 'src/App.tsx', 'src/App.jsx', 'index.ts', 'index.js', 'main.py', 'app.py', 'main.go'];
-        const likelyEntrypoints = entryCandidates.filter(file => fs.existsSync(path.join(root, file))).map(file => path.join(root, file));
-        const sourceFiles = this.inspectSourceFiles(root);
-        const testFiles = this.inspectTestFiles(root);
-        const git = this.inspectGit(root);
+        // Historical projects are stack references for greenfield work only.
+        // Do not synchronously probe their source entrypoints or Git metadata.
+        const likelyEntrypoints = referenceOnly
+            ? []
+            : entryCandidates.filter(file => fs.existsSync(path.join(root, file))).map(file => path.join(root, file));
+        const sourceFiles = includeFileInventory ? this.inspectSourceFiles(root) : undefined;
+        const testFiles = includeFileInventory ? this.inspectTestFiles(root) : undefined;
+        const git = referenceOnly ? { isRepository: false } : this.inspectGit(root);
         return { root: path.resolve(root), projectKinds: [...kinds], manifests, git, likelyEntrypoints, sourceFiles, testFiles, candidateChecks: checks };
     }
 

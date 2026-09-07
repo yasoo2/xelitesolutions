@@ -11,7 +11,6 @@ interface JoeHeaderProps {
     userEmail?: string;
     userRole?: string;
     onSettingsClick?: () => void;
-    onNewProject?: () => void;
     onDeploymentsClick?: () => void;
     onSystemClick?: () => void;
     theme?: 'dark' | 'light';
@@ -30,7 +29,6 @@ export default function JoeHeader({
     userEmail,
     userRole,
     onSettingsClick,
-    onNewProject,
     onDeploymentsClick,
     onSystemClick,
     theme = 'dark',

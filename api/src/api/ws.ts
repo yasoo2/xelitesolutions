@@ -3,13 +3,28 @@ import type { Server, IncomingMessage } from 'http';
 import jwt from 'jsonwebtoken';
 import mongoose from 'mongoose';
 import { config } from '../shared/config';
-import { attachBrowserWss } from '../modules/browser/wsHub';
+import { attachBrowserWss, canAccessBrowserSession } from '../modules/browser/wsHub';
 import { attachExtensionWss } from '../modules/extension/gateway';
 import { startStreaming, stopStreaming } from '../modules/browser/manager';
 import { ServerConfigModel } from '../shared/models/ServerConfigModel';
 
 let liveWssRef: WebSocketServer | null = null;
 let browserWssRef: WebSocketServer | null = null;
+
+/**
+ * Joe's local development UI deliberately supports a guest workspace. The
+ * browser panel used to be the one exception: it required a JWT even though
+ * the HTTP run route accepts the same local guest. That left every visible
+ * audit unwatched. Keep this capability narrower than auth bypass: only the
+ * development server, and only a connection arriving through loopback, may
+ * receive the local owner identity.
+ */
+export function localDevelopmentBrowserUser(req: IncomingMessage): string {
+  if (process.env.NODE_ENV === 'production') return '';
+  const address = String(req.socket.remoteAddress || '').replace(/^::ffff:/, '');
+  if (address !== '127.0.0.1' && address !== '::1') return '';
+  return String(config.localUserId || '').trim();
+}
 let liveSeq = 0;
 let thinkingEventSeq = 0; // Unique counter for thinking events to avoid dedup collisions
 
@@ -57,8 +72,35 @@ export function registerSessionOwner(sessionId: string, userId: string) {
   const sid = trimId(sessionId);
   const uid = trimId(userId);
   if (!sid || !uid) return;
+  const existing = sessionOwnerBySessionId.get(sid);
+  if (existing && existing.userId !== uid) return;
   sessionOwnerBySessionId.set(sid, { userId: uid, at: Date.now() });
   pruneOwners(sessionOwnerBySessionId);
+}
+
+/** The registered owner of a live session, if it is still in the bounded map. */
+export function sessionOwnerOf(sessionId: string): string {
+  return sessionOwnerBySessionId.get(trimId(sessionId))?.userId || '';
+}
+
+export async function authorizedLiveSessions(userId: string, sessionIds: unknown[]): Promise<string[]> {
+  const uid = trimId(userId);
+  if (!uid) return [];
+  const ids = [...new Set(sessionIds.slice(0, 100).filter(id => typeof id === 'string').map(trimId).filter(Boolean))];
+  const authorized = await Promise.all(ids.map(async sid => {
+    const owner = sessionOwnerOf(sid);
+    if (owner) return owner === uid;
+    // Bare ids require a persisted chat; they cannot use the legacy
+    // browser:<userId> account-stream fallback.
+    if (sid.startsWith('browser:')) return false;
+    return canAccessBrowserSession(uid, sid);
+  }));
+  return ids.filter((_, index) => authorized[index]);
+}
+
+/** The registered owner of a live run, if it is still in the bounded map. */
+export function runOwnerOf(runId: string): string {
+  return runOwnerByRunId.get(trimId(runId))?.userId || '';
 }
 
 /**
@@ -257,19 +299,27 @@ export function attachWebSocket(server: Server) {
       url = null;
     }
 
-    const authBypass = process.env.ENABLE_AUTH_BYPASS === 'true';
     const token = url?.searchParams.get('token') || '';
-    if (!authBypass && token && token !== 'null') {
+    if (token) {
       try {
         const payload = jwt.verify(token, config.jwtSecret);
         (req as any).auth = payload;
       } catch {
         try { ws.close(1008, 'unauthorized_invalid_token'); } catch { }
-        return;
+      return;
       }
     }
 
+    const localGuestUserId = localDevelopmentBrowserUser(req);
+    if (!(req as any).auth && process.env.ENABLE_AUTH_BYPASS === 'true' && localGuestUserId) {
+      (req as any).auth = { sub: localGuestUserId, role: 'OWNER' };
+    }
+
     const userId = trimId((req as any)?.auth?.sub);
+    if (!userId) {
+      try { ws.close(1008, 'unauthorized'); } catch { }
+      return;
+    }
     const role = (req as any)?.auth?.role;
     // A live socket may serve several Joe tabs, but it must explicitly declare
     // which session streams it is currently rendering. Same-user sessions are
@@ -297,18 +347,20 @@ export function attachWebSocket(server: Server) {
       (ws as any).isAlive = false;
       try { ws.ping(); } catch { }
     }, 30000);
-    ws.on('message', (data) => {
+    let subscriptionRevision = 0;
+    ws.on('message', async (data) => {
       try {
         const msg = JSON.parse(data.toString());
         if (msg.type === 'ping') ws.send(JSON.stringify({ type: 'pong' }));
         if (msg.type === 'session_subscribe') {
           const next = Array.isArray(msg.sessionIds) ? msg.sessionIds : [msg.sessionId];
           const subscriptions = (ws as any).sessionSubscriptions as Set<string>;
+          const revision = ++subscriptionRevision;
           subscriptions.clear();
-          for (const sid of next) {
-            const normalizedSid = trimId(sid);
-            if (normalizedSid) subscriptions.add(normalizedSid);
-          }
+          const allowed = await authorizedLiveSessions(userId, next);
+          if (revision !== subscriptionRevision || ws.readyState !== WebSocket.OPEN) return;
+          for (const sid of allowed) subscriptions.add(sid);
+          ws.send(JSON.stringify({ type: 'session_subscribed', sessionIds: allowed }));
           return;
         }
 
@@ -394,11 +446,8 @@ export function attachWebSocket(server: Server) {
       console.log('[WS] Upgrading browser connection');
       const authBypass = process.env.ENABLE_AUTH_BYPASS === 'true';
       const token = url.searchParams.get('token') || '';
-      if (!authBypass) {
-        if (!token) {
-          console.warn('[WS] Browser upgrade rejected: Missing token');
-          return reject(401, 'Unauthorized: Missing token');
-        }
+      const localGuestUserId = localDevelopmentBrowserUser(req);
+      if (token) {
         try {
           const payload = jwt.verify(token, config.jwtSecret);
           (req as any).auth = payload;
@@ -406,6 +455,11 @@ export function attachWebSocket(server: Server) {
           console.warn(`[WS] Browser upgrade rejected: Invalid token - ${e.message}`);
           return reject(401, 'Unauthorized: Invalid token');
         }
+      } else if (authBypass && localGuestUserId) {
+        (req as any).auth = { sub: localGuestUserId, role: 'OWNER' };
+      } else {
+        console.warn('[WS] Browser upgrade rejected: Missing token');
+        return reject(401, 'Unauthorized: Missing token');
       }
 
       if (!browserWssRef) {
@@ -425,15 +479,15 @@ export function attachWebSocket(server: Server) {
       const token = url.searchParams.get('token') || '';
       if (token) {
         try { (req as any).auth = jwt.verify(token, config.jwtSecret); }
-        catch (e: any) { if (!authBypass) return reject(401, 'Unauthorized: Invalid token'); }
-      } else if (!authBypass) {
+        catch (e: any) { return reject(401, 'Unauthorized: Invalid token'); }
+      } else if (!(authBypass && localDevelopmentBrowserUser(req))) {
         return reject(401, 'Unauthorized: Missing token');
       }
       // In local single-user (bypass) mode with no token, pin the extension socket
       // to the SAME canonical id the HTTP panel resolves to, so /api/extension/status
       // and /action find this socket instead of reporting "not connected".
       if (!(req as any).auth && authBypass) {
-        (req as any).auth = { sub: config.localUserId, role: 'OWNER' };
+        (req as any).auth = { sub: localDevelopmentBrowserUser(req), role: 'OWNER' };
       }
       if (!extensionWss) return reject(503, 'Service Unavailable');
       extensionWss.handleUpgrade(req, socket, head, (ws) => {
@@ -503,7 +557,6 @@ export function canUseTerminalForSession(terminalId: string, sessionId: string):
 export function broadcast(
   event: LiveEvent | { type: string; data: any; id?: string; runId?: string; seq?: number; ts?: number }
 ) {
-  const authBypass = process.env.ENABLE_AUTH_BYPASS === 'true';
   const normalized: LiveEvent = {
     ...(event as any),
     ts: typeof (event as any)?.ts === 'number' ? (event as any).ts : Date.now(),
@@ -545,12 +598,12 @@ export function broadcast(
   const eventSessionId = liveEventSessionId(normalized);
 
   // Fix: Ensure "undefined" string is treated as empty
-  let targetUserId = authBypass ? '' : resolveEventUserId(normalized);
+  let targetUserId = resolveEventUserId(normalized);
   if (targetUserId === 'undefined') targetUserId = '';
   // An unaddressed event reaches everyone — acceptable for status chatter, never
   // for a shell. A terminal line whose owner cannot be resolved is dropped
   // rather than shown to whoever happens to be connected.
-  if (!authBypass && !targetUserId && normalized.type === 'terminal_output') {
+  if (!targetUserId && normalized.type === 'terminal_output') {
     console.warn(`[WS] dropped terminal_output with no resolvable owner (id=${(normalized as any).id})`);
     return;
   }
@@ -565,15 +618,13 @@ export function broadcast(
     if (client.readyState === WebSocket.OPEN) {
       const sessionSubscriptions = (client as any).sessionSubscriptions as Set<string> | undefined;
       if (!canDeliverLiveEventToSession(normalized, sessionSubscriptions)) return;
-      if (!authBypass) {
-        if (targetUserId === 'SUPER_ADMIN_ROLE') {
-          const clientRole = (client as any).role;
-          if (clientRole !== 'SUPER_ADMIN') return;
-        } else if (targetUserId) {
-          const clientUserId = trimId((client as any).userId);
-          if (!clientUserId || clientUserId !== targetUserId) {
-            return;
-          }
+      if (targetUserId === 'SUPER_ADMIN_ROLE') {
+        const clientRole = (client as any).role;
+        if (clientRole !== 'SUPER_ADMIN') return;
+      } else if (targetUserId) {
+        const clientUserId = trimId((client as any).userId);
+        if (!clientUserId || clientUserId !== targetUserId) {
+          return;
         }
       }
       client.send(payload);

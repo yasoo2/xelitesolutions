@@ -55,7 +55,7 @@ const DETECTORS: Array<[PageKind, RegExp]> = [
      *  restaurant says restaurant, café, bakery, pizza, dishes.
      */
     ['restaurant', /مطعم|كافيه|قهوة|مقهى|قائمة الطعام|منيو|مخبز|حلويات|restaurant|\bcafe\b|\bcoffee\b|(?<!navigation\s)(?<!nav\s)(?<!dropdown\s)(?<!hamburger\s)(?<!side\s)(?<!main\s)(?<!mobile\s)(?<!drop-down\s)\bmenu\b|bakery|pizza|bistro/i],
-    ['portfolio', /بورتفوليو|معرض أعمال|معرض اعمال|سيرة ذاتية|portfolio|resume|\bcv\b|showcase|my work|photographer/i],
+    ['portfolio', /بورتفوليو|معرض أعمال|معرض اعمال|سيرة ذاتية|استوديو\s+تصوير|مصور|تصوير\s+(?:فوتوغرافي|احترافي)|portfolio|resume|\bcv\b|showcase|my work|photographer|photography studio/i],
     ['blog', /مدونة|مقالات|أخبار|اخبار|blog|articles|magazine|newsroom/i],
     ['app', /تطبيق ويب|واجهة تطبيق|web ?app|application ui|saas app|tool ui|admin tool/i],
     ['landing', /هبوط|صفحة تعريف|شركة|خدمات|عياد|طبيب|أسنان|اسنان|مركز|مكتب|وكالة|landing|homepage|company|agency|startup|service|clinic|studio|firm/i],

@@ -812,6 +812,15 @@ export async function executeTool(name: string, input: any, context?: ToolContex
 
             const { attendRun, registerRun, releaseHandle } = require('../../core/session/attended-run');
             const stopHandle = registerRun(contextSessionId, (effectiveContext as any)?.runId);
+            const parentCancellation = (effectiveContext as any)?.cancellation;
+            // A parent run can be stopped before this tool is registered, or
+            // while it is already waiting on a child process. Bridge that
+            // signal into this tool's own handle so attendRun and the tool
+            // implementation agree on the same terminal state.
+            if ((effectiveContext as any)?.isCancelled?.()) stopHandle.cancel();
+            if (parentCancellation && typeof parentCancellation.then === 'function') {
+                void parentCancellation.then(() => stopHandle.cancel());
+            }
             // The run-level stop must reach child processes too. Without this
             // handoff, attendRun stops waiting while npm/build keeps running.
             const executionContext = {

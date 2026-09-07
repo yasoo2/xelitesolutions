@@ -32,7 +32,7 @@ import { hisWordsOnly } from './page-head';
 //  The reader that already knows which noun stands beside the container.
 import { subjectAfterContainer } from './subject-phrase';
 
-export type AppEngine = 'map' | 'chat' | 'weather' | 'records' | 'social' | 'shop' | 'calculator' | 'productivity' | 'finance' | 'custom';
+export type AppEngine = 'map' | 'chat' | 'weather' | 'records' | 'ledger' | 'social' | 'shop' | 'calculator' | 'productivity' | 'finance' | 'custom';
 
 export type AppKind =
     | 'maps' | 'chat' | 'weather' | 'social' | 'store' | 'calculator' | 'productivity'
@@ -433,6 +433,14 @@ export function detectAppKind(requestRaw: string): AppKind | null {
     // self-audit or planner context happened to mention a conversation.
     if (TASK_BOARD_CONTRACT.test(intentRequest)) return 'tasks';
     if (FINANCE_CONTRACT.test(intentRequest)) return 'finance';
+    /**
+     * A named expense tracker or ledger is a domain declaration, not an
+     * incidental noun beside a list of fields.  The user's columns still
+     * replace the stock schema in `blueprintFor`, but retaining this kind lets
+     * the build use the financial vocabulary, metrics and workflow rather
+     * than rendering every new ledger as the same anonymous records screen.
+     */
+    if (/(?:expense|expenses|spending|costs?|مصروفات?|نفقات|إنفاق)[\s\S]{0,80}(?:tracker|ledger|register|app|application|dashboard|تطبيق|متابع|سجل|دفتر)|(?:tracker|ledger|register|app|application|dashboard|تطبيق|متابع|سجل|دفتر)[\s\S]{0,80}(?:expense|expenses|spending|costs?|مصروفات?|نفقات|إنفاق)/iu.test(intentRequest)) return 'expenses';
     if (hasWorkflowApplicationContract(intentRequest)) return 'custom';
     //  A LIST HE WROTE OUTRANKS A NOUN HE HAPPENED TO USE.
     //
@@ -539,8 +547,18 @@ export function detectAppKind(requestRaw: string): AppKind | null {
     const RECORD_SURFACE = /(جدول|قائمة|قائمه|لائحة|كشف|\btable\b|\blist\b|\bregister\b|\bsheet\b|\binventory\b|مخزون)/i;
     const RECORD_MATH = /(مجموع|إجمالي|اجمالي|ربح|\btotal\b|\bsum\b|\bprofit\b)/i;
     const RECORD_FIND = /(أبحث|ابحث|بحث|فلتر|تصفية|\bsearch\b|\bfilter\b)/i;
+    // A CRUD contract is stronger evidence than a domain noun. A reading
+    // list, packing list, or a future domain Joe has never catalogued still
+    // needs a working records app when it names a collection plus lifecycle
+    // actions and persistence.
+    const RECORD_ACTION = /(أضيف|اضيف|احذف|أحذف|حذف|احفظ|أحفظ|تعديل|عدّل|\b(?:add|create|remove|delete|save|edit)\b)/i;
+    const RECORD_PERSISTENCE = /(بعد\s*(?:تحديث|إعادة\s*تحميل)|يبقى|تظل|تبقى|محفوظ|local\s*storage|\b(?:persist|stored?|save[ds]?)\b[\s\S]{0,48}\b(?:refresh|reload|return)\b|\bafter\s+(?:a\s+)?(?:refresh|reload)\b)/i;
     if (RECORD_VERB.test(intentRequest)
         && (RECORD_SURFACE.test(intentRequest) || RECORD_MATH.test(intentRequest) || RECORD_FIND.test(intentRequest))) {
+        return 'generic';
+    }
+    const actionCount = (intentRequest.match(new RegExp(RECORD_ACTION.source, 'gi')) || []).length;
+    if (RECORD_SURFACE.test(intentRequest) && actionCount >= 2 && RECORD_PERSISTENCE.test(intentRequest)) {
         return 'generic';
     }
     return null;
@@ -960,6 +978,26 @@ export function recordedSubject(requestRaw: string): string | null {
     return bare.length >= 3 ? bare : theNounBesideTheContainer(request);
 }
 
+/**
+ * A title explicitly attached to an application-shaped noun. This is kept
+ * separate from `recordedSubject`: "expense tracker named Pocket Ledger"
+ * names the product Pocket Ledger and its records expenses.
+ */
+export function namedProductTitle(requestRaw: string): string | null {
+    const request = String(requestRaw || '');
+    const english = request.match(
+        /\b(?:app(?:lication)?|website|web\s*site|site|project|tracker|directory|ledger|system|tool)\b\s+(?:named|called)\s+["'“”]?([A-Za-z0-9][A-Za-z0-9 &'’-]{1,58}?)["'“”]?(?=[.،,؛;\n]|$)/i,
+    );
+    const arabic = request.match(
+        /(?:تطبيق|موقع|مشروع|نظام|أداة|اداة|سجل|متابع[ةة])\s+(?:اسمه|اسمها|باسم|يسمى|تسمى)\s+[«"“]?([^«»"“”.،,؛;\n]{2,60})/u,
+    );
+    const title = String(english?.[1] || arabic?.[1] || '')
+        .replace(/[«»"“”]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+    return title.length >= 2 ? title : null;
+}
+
 export function blueprintFor(kind: AppKind, request: string, isAr: boolean): AppBlueprint {
     /**
      * AN EXPLICIT LIST BEATS EVERY ARCHETYPE, WHATEVER THE DOMAIN LOOKS LIKE.
@@ -977,11 +1015,28 @@ export function blueprintFor(kind: AppKind, request: string, isAr: boolean): App
      * threshold — for every kind, not only for `generic`.
      */
     const L = (ar: string, en: string) => (isAr ? ar : en);
-    const explicitColumns = fieldsFromRequest(request, isAr);
-    if (explicitColumns) {
+    const requestedColumns = fieldsFromRequest(request, isAr);
+    if (requestedColumns) {
         const base = blueprintForKind(kind, request, isAr);
+        // An explicit schema owns its labels and ordering. When it names one
+        // of the archetype's canonical fields exactly, retain that field's
+        // native contract too (for example the expense category select and
+        // the required amount).
+        const explicitColumns = requestedColumns.map(field => {
+            const native = base.fields.find(candidate => candidate.key === field.key);
+            if (!native) return field;
+            return {
+                ...native,
+                ...field,
+                type: field.type === 'text' && native.type === 'select' ? native.type : field.type,
+                ...(field.options ? { options: field.options } : native.options ? { options: native.options } : {}),
+                ...(field.required || native.required ? { required: true } : {}),
+                ...(field.primary || native.primary ? { primary: true } : {}),
+            };
+        });
         const cols = columnsAnywhereInHisRequest(request) || [];
         const subject = recordedSubject(request);
+        const productTitle = namedProductTitle(request);
         const counts = cols.filter(c => c.role === 'count');
         const monies = cols.filter(c => c.role === 'money');
         const wantsTotal = /مجموع|اجمالي|إجمالي|قيمة\s*ال|كم\s|\btotal\b|\bsum\b|how much/iu.test(request);
@@ -1055,7 +1110,7 @@ export function blueprintFor(kind: AppKind, request: string, isAr: boolean): App
              *  named nothing — never an overwrite of a man who did.
              */
             ...(subject ? {
-                title: subject,
+                title: productTitle || subject,
                 entityOne: subject,
                 entityMany: subject,
                 lede: isAr ? `أضف ${subject}، وابحث فيها، ورتّبها، وصدّرها.`
@@ -1214,16 +1269,18 @@ function stockBlueprintFor(kind: AppKind, request: string, isAr: boolean): AppBl
         };
 
         case 'expenses': return {
-            kind, engine: 'records',
+            // Expenses are a ledger, not a generic admin table. Keeping this
+            // separate prevents every request with fields from becoming the
+            // same records screen and preserves the quick-entry workflow.
+            kind, engine: 'ledger',
             title: L('المصاريف', 'Expenses'),
             lede: L('سجّل كل مصروف، وشاهد إجماليك يتحدّث فوراً.', 'Log every expense and watch the totals move.'),
             entityOne: L('مصروف', 'expense'), entityMany: L('المصاريف', 'Expenses'),
             fields: [
-                f(['title', 'البند', 'Item', 'text', undefined, ['required', 'primary']], isAr),
                 f(['amount', 'المبلغ', 'Amount', 'number', undefined, ['required']], isAr),
                 f(['category', 'الفئة', 'Category', 'select', SELECT_AR_EN(['طعام', 'مواصلات', 'فواتير', 'تسوّق', 'أخرى'], ['Food', 'Transport', 'Bills', 'Shopping', 'Other'], isAr)], isAr),
                 f(['date', 'التاريخ', 'Date', 'date'], isAr),
-                f(['note', 'ملاحظة', 'Note', 'textarea'], isAr),
+                f(['note', 'ملاحظة', 'Note', 'textarea', undefined, ['primary']], isAr),
             ],
             statusField: 'category',
             metrics: [
@@ -2582,25 +2639,65 @@ export function clausesBeyondTheColumns(requestRaw: string): string[] {
  *  difference with a closed class of three words, and that is the
  *  whole test: no catalogue of page names, no list of field names.
  */
-const ENGLISH_INTRODUCES_A_LIST = /(?:^|[.!?]\s+|[\s,;:(])(?:include(?:s|d)?|containing|consisting\s+of|made\s+up\s+of|with)(?=\s)/iu;
+const ENGLISH_INTRODUCES_A_LIST = /(?:^|[.!?]\s+|[\s,;:(])(?:(?:must|should)\s+(?:provide|include|have)|add|include(?:s|d)?|containing|consisting\s+of|made\s+up\s+of|with)(?=\s)/iu;
 const OPENS_WITH_AN_ARTICLE = /^(?:a|an|the)\s+/iu;
 
+/**
+ * A long product brief can contain several English `with` clauses. The first
+ * one may describe the page, while the list inside a form names the data the
+ * application must actually collect. Prefer that bounded, structural signal
+ * over a later visual-state list such as "accessible contrast, loading and
+ * error states".
+ */
+function fieldsDeclaredInsideAForm(request: string): DerivedField[] | null {
+    const match = /\bform\b[^.\n]{0,180}?\bwith\s+([^.\n]{6,260})/iu.exec(request);
+    if (!match) return null;
+    const tail = match[1].split(/\s*(?:[;；]\s*|(?=(?:required(?:[-\s]field)?\s+validation|validation|allow|add|delete|ensure|fix|persist|show|test|validate|verify)\b))/iu)[0];
+    const parts = tail
+        .split(/\s*[,，]\s*|\s+and\s+|\s+&\s+/iu)
+        .map(part => part.replace(/^(?:a|an|the|and)\s+/iu, '').replace(/\s*\([^)]{0,80}\)\s*$/u, '').trim())
+        .filter(part => part.length >= 2 && part.length <= 32);
+    if (parts.length < 3) return null;
+    // A form's controls are data fields; its buttons and display states are
+    // not. This keeps a request for a search form from becoming a fake table.
+    if (parts.some(part => /\b(?:button|state|theme|layout|dashboard|title|link|page|preview|build|loading|error)\b/iu.test(part))) return null;
+    if (parts.some(part => !isAName(part) || !notAContainerItself(part))) return null;
+    const built = fieldsFromLabels(parts);
+    return built ? applyStatedRules(built, statedRules(request)).fields : null;
+}
+
 function theListAnIntroducerHandedOver(request: string): DerivedField[] | null {
-    for (const sentence of String(request || '').split(/[.؟!\n]/)) {
+    const formFields = fieldsDeclaredInsideAForm(request);
+    if (formFields) return formFields;
+    for (const rawSentence of String(request || '').split(/[.؟!\n]/)) {
+        const sentence = rawSentence.trim();
         const at = ENGLISH_INTRODUCES_A_LIST.exec(sentence);
         if (!at) continue;
-        const tail = sentence.slice((at.index || 0) + at[0].length);
-        const items = tail
+        const rawTail = sentence.slice((at.index || 0) + at[0].length);
+        // A semicolon often separates the declared schema from the next
+        // behavior: "add amount, category, date, and note; validate...".
+        // Keeping that clause attached makes the last label fail the bounded
+        // name check and silently falls back to a stock schema.
+        const tail = rawTail.split(/\s*(?:[;；]\s*|(?=(?:required(?:[-\s]field)?\s+validation|validation|allow|add|delete|ensure|fix|persist|show|test|validate|verify)\b))/iu)[0];
+        const rawItems = tail
             .split(/\s*[,，]\s*|\s+and\s+|\s+&\s+/iu)
-            .map(part => part.trim())
+            // Parenthetical type hints describe the field contract; they are
+            // not part of the user's field name ("amount (numeric only)").
+            .map(part => part.replace(/^and\s+/iu, '').replace(/\s*\([^)]{0,80}\)\s*$/u, '').trim())
             .filter(part => part.length >= 2 && part.length <= 32);
+        const items = rawItems.map(part => part
+            .replace(/^(?:a|an|the)\s+/iu, '')
+            // "numeric-only amount" declares the amount's contract; it is
+            // not the label a person should see on the form.
+            .replace(/^(?:numeric|number)(?:[-\s]only)?\s+/iu, '')
+            .trim());
         //  No floor here: the run check below is the same floor, and
         //  columnsEndWhereHisNextRequestBegins never grows a list. A
         //  mutation proved this one could never decide anything — with it
         //  lowered to two, all four two-item sentences read identically.
         //  An article means he is asking for the THING, not naming a
         //  column of one.
-        if (items.some(part => OPENS_WITH_AN_ARTICLE.test(part))) continue;
+        if (rawItems.length && rawItems.every(part => OPENS_WITH_AN_ARTICLE.test(part))) continue;
         const run = columnsEndWhereHisNextRequestBegins(items);
         if (run.length < 3) continue;
         const named = run.filter(isAName).filter(notAContainerItself);
@@ -2649,6 +2746,11 @@ export function hisSentence(request: string): string {
 export function derivedColumns(requestRaw: string): DerivedField[] | null {
     requestRaw = hisSentence(requestRaw);
     const request = String(requestRaw || '');
+    // A nested form schema is more specific than the surrounding tracker or
+    // dashboard container. Read it before the broad container reader can
+    // mistake a later visual-quality list for record fields.
+    const formFields = fieldsDeclaredInsideAForm(request);
+    if (formFields) return formFields;
     /**
      * A LIST OF COLUMNS IS INTRODUCED BY THE ACT OF RECORDING.
      *
@@ -2721,6 +2823,12 @@ export function derivedColumns(requestRaw: string): DerivedField[] | null {
      *  or no word at all, just a colon.
      */
     if (!opener) {
+        // A direct English field list is more specific than a broad container
+        // noun such as "tracker". The list reader rejects UI nouns beginning
+        // with an article, so this precedence keeps "Add a button" out while
+        // preserving "Add amount, category, date, and note" as a schema.
+        const handed = theListAnIntroducerHandedOver(request);
+        if (handed) return handed;
         const holder = RECORD_CONTAINER.exec(request);
         if (!holder) {
             //  ORDER IS THE WHOLE ARGUMENT HERE.
@@ -2731,8 +2839,6 @@ export function derivedColumns(requestRaw: string): DerivedField[] | null {
             //  and the container reader is the one that knows what «table»
             //  means. An introducer is what you reach for when nothing
             //  better answered, so it runs where nothing better did.
-            const handed = theListAnIntroducerHandedOver(request);
-            if (handed) return handed;
             //  And grammar last of all.
             return entityAndItsAttributes(request);
         }
@@ -3048,8 +3154,28 @@ export function columnsAnywhereInHisRequest(requestRaw: string): DerivedField[] 
 }
 
 /** Turn the labels he wrote into fields, once, for every path that finds them. */
+/**
+ * Preserve the stable identity of a universally understood field only when
+ * the person named it exactly. Role-based keys remain necessary for distinct
+ * values such as purchase and sale price.
+ */
+function canonicalFieldKey(label: string): string | null {
+    const normalized = stripArabicDiacritics(String(label || ''))
+        .trim()
+        .toLocaleLowerCase()
+        .replace(/\s+/gu, ' ')
+        .replace(/\s+(?:field|fields|حقل|الحقول)$/iu, '');
+    if (/^(?:amount|المبلغ)$/iu.test(normalized)) return 'amount';
+    if (/^(?:category|الفئة|التصنيف)$/iu.test(normalized)) return 'category';
+    if (/^(?:date|التاريخ)$/iu.test(normalized)) return 'date';
+    if (/^(?:description|الوصف)$/iu.test(normalized)) return 'description';
+    if (/^(?:note|ملاحظة)$/iu.test(normalized)) return 'note';
+    return null;
+}
+
 function fieldsFromLabels(parts: string[]): DerivedField[] | null {
     const seen = new Map<DerivedRole, number>();
+    const usedKeys = new Set<string>();
     const out: DerivedField[] = [];
     for (const label of parts) {
         let role: DerivedRole = 'text';
@@ -3059,6 +3185,9 @@ function fieldsFromLabels(parts: string[]): DerivedField[] | null {
         }
         const n = (seen.get(role) || 0) + 1;
         seen.set(role, n);
+        const canonicalKey = canonicalFieldKey(label);
+        const key = canonicalKey && !usedKeys.has(canonicalKey) ? canonicalKey : `${role}${n}`;
+        usedKeys.add(key);
         //  The answers are written in the language of his own label, so an
         //  Arabic column offers «نعم/لا» and an English one Yes/No.
         const status = /status|state|مرحلة|حالة|وضع/iu.test(label);
@@ -3069,7 +3198,7 @@ function fieldsFromLabels(parts: string[]): DerivedField[] | null {
                     : ['Pending', 'In progress', 'Completed'])
                 : (/[؀-ۿ]/.test(label) ? ['نعم', 'لا'] : ['Yes', 'No'])
             : undefined;
-        out.push({ label, key: `${role}${n}`, type, role, options });
+        out.push({ label, key, type, role, options });
     }
     //  THE SAME FLOOR, WRITTEN TWICE — AND ONE COPY WAS NOT MOVED.
     //
@@ -3368,6 +3497,7 @@ const ENGINE_COVERS: Record<AppEngine, RegExp> = {
     weather: /^(?:current\s+weather|temperature|feels\s+like|humidity|wind(?:\s+speed)?|weather\s+condition|sunrise|sunset|طقس(?:\s+الحالي)?|حرارة|رطوبة|رياح(?:\s+السرعة)?|شروق|غروب)$/i,
     social: /post|feed|timeline|like|comment|follow|profile|share|newsfeed|wall|منشور|منشورات|خيط|إعجاب|تعليق|متابع|ملف\s*شخصي|مشاركة/i,
     records: /list|record|crud|table|entry|entries|manage|track|inventory|booking|order|task|note|expense|customer|student|contact|report|search|filter|export|relation(ship)?s?|foreign\s*key|linked|belongs\s*to|قائمة|سجل|إدارة|تتبع|حجز|طلب|مهمة|ملاحظة|مصروف|عميل|طالب|تقرير|بحث|تصدير|علاقات?|ربط|جداول|مرتبط/i,
+    ledger: /expense|spending|money|amount|category|total|budget|مصروف|مصاريف|مبلغ|فئة|إجمالي|ميزانية/i,
     productivity: /task|todo|to-do|note|notes|checklist|habit|routine|productivity|مهمة|مهام|ملاحظة|ملاحظات|قائمة|عادات|إنتاجية/i,
     finance: /finance|financial|budget|income|revenue|salary|earning|expense|spending|money|accounting|مالية|ميزانية|دخل|إيراد|راتب|مصاريف|إنفاق|مال|محاسبة/i,
     calculator: /calculator|calc|arithmetic|addition|subtraction|multiplication|division|decimal|percentage|percent|backspace|clear|sign\s*toggle|history|آلة\s*حاسبة|حاسبة|جمع|طرح|ضرب|قسمة|عشري|نسبة|حذف|مسح|إشارة|سجل\s*العمليات/i,

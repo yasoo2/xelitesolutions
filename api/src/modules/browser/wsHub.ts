@@ -18,84 +18,27 @@ export function setBrowserActionObserver(observer: BrowserActionObserver | null)
 }
 
 const clientsBySession = new Map<string, Set<Client>>();
-type OwnerEntry = { userId: string; at: number };
-const ownerByBrowserSessionId = new Map<string, OwnerEntry>();
-const OWNER_TTL_MS = 24 * 60 * 60 * 1000;
-const OWNER_MAX_ENTRIES = 5000;
-
-function pruneOwners() {
-  if (ownerByBrowserSessionId.size <= OWNER_MAX_ENTRIES) return;
-  const now = Date.now();
-  for (const [k, v] of ownerByBrowserSessionId) {
-    if (now - v.at > OWNER_TTL_MS) ownerByBrowserSessionId.delete(k);
-  }
-  if (ownerByBrowserSessionId.size <= OWNER_MAX_ENTRIES) return;
-  let removed = 0;
-  for (const k of ownerByBrowserSessionId.keys()) {
-    ownerByBrowserSessionId.delete(k);
-    removed += 1;
-    if (removed >= Math.ceil(OWNER_MAX_ENTRIES / 3)) break;
-  }
-}
-
-function extractOwnerHint(sessionId: string, userId: string) {
-  const sid = String(sessionId || '').trim();
-  const uid = String(userId || '').trim();
-  if (!sid || !uid) return { type: 'none' as const, value: '' };
-  if (mongoose.Types.ObjectId.isValid(sid)) return { type: 'mongoSession' as const, value: sid };
-  if (!sid.startsWith('browser:')) return { type: 'none' as const, value: '' };
-  const parts = sid.split(':').map((p) => p.trim()).filter(Boolean);
-  const second = parts[1] || '';
-  if (!second) return { type: 'none' as const, value: '' };
-  // `browser:<id>` is the panel's local stream namespace. The suffix may be
-  // a chat/session ObjectId, but it is not itself a Mongo Session ownership
-  // claim. Treating it as one made local panels fail in JSON/mock mode (and
-  // whenever that chat id had no matching Session document). Only the
-  // explicit `browser:<userId>` form carries an ownership hint; all other
-  // browser-prefixed ids are claimed in the in-memory panel-owner map below.
-  if (second === uid) return { type: 'userId' as const, value: uid };
-  return { type: 'none' as const, value: '' };
-}
-
-async function canAccessSession(userId: string, sessionId: string) {
-  const uid = String(userId || '').trim();
-  const sid = String(sessionId || '').trim();
-  if (!uid || !sid) return false;
-
-  const hint = extractOwnerHint(sid, uid);
-  if (hint.type === 'userId') return true;
-  if (hint.type !== 'mongoSession') return false;
-  if (mongoose.connection.readyState !== 1) return false;
-  const found = await Session.findOne({ _id: hint.value, userId: uid }).select('_id').lean();
-  return !!found;
-}
-
 export async function canAccessBrowserSession(userId: string, sessionId: string) {
   const uid = String(userId || '').trim();
   const sid = String(sessionId || '').trim();
   if (!uid || !sid) return false;
 
-  const hint = extractOwnerHint(sid, uid);
-  if (hint.type === 'userId' || hint.type === 'mongoSession') {
-    return canAccessSession(uid, sid);
+  const chatId = sid.startsWith('browser:') ? sid.slice('browser:'.length) : sid;
+  if (!chatId || chatId.includes(':')) return false;
+  // The stream follows persisted chat ownership, including before its first
+  // viewer connects and after a restart. A client cannot claim an unknown id.
+  const offline = process.env.PERSISTENCE_MODE === 'JSON'
+    || process.env.OFFLINE_MODE === 'true' || mongoose.connection.readyState !== 1;
+  let session: any;
+  if (offline) {
+    session = ((global as any).mockSessions || []).find((item: any) =>
+      String(item.id ?? item._id) === chatId || String(item._id) === chatId);
+  } else if (mongoose.Types.ObjectId.isValid(chatId)) {
+    session = await Session.findById(chatId).select('userId').lean();
   }
-
-  // A LOCAL SESSION ID NOBODY HAS CLAIMED YET BELONGS TO WHOEVER ASKS FIRST.
-  // Returning false here meant `browser_run` answered a bare «forbidden» to any
-  // request made before the browser PANEL had connected — «افتح جيت هاب وسجّل
-  // الدخول» simply refused, with no reason a person could read. Claiming is
-  // safe: it never takes a session that already has an owner, and ids that
-  // belong to the online model (a Mongo session id, or browser:<userId>) never
-  // reach this branch — they were verified above, against the database.
-  const cur = ownerByBrowserSessionId.get(sid);
-  if (!cur) {
-    ownerByBrowserSessionId.set(sid, { userId: uid, at: Date.now() });
-    pruneOwners();
-    return true;
-  }
-  if (cur.userId !== uid) return false;
-  cur.at = Date.now();
-  return true;
+  if (session) return String(session.userId || '') === uid;
+  // Legacy account-scoped streams are usable only by that exact account.
+  return sid === `browser:${uid}`;
 }
 
 export function attachBrowserWss(wss: WebSocketServer, hooks?: BrowserWssHooks) {
@@ -107,38 +50,19 @@ export function attachBrowserWss(wss: WebSocketServer, hooks?: BrowserWssHooks) 
       return;
     }
 
-    const authBypass = process.env.ENABLE_AUTH_BYPASS === 'true';
     const userId = String(((req as any)?.auth?.sub || '')).trim();
-    if (!authBypass) {
-      if (!userId) {
-        try { ws.close(1008, 'unauthorized'); } catch { }
+    if (!userId) {
+      try { ws.close(1008, 'unauthorized'); } catch { }
+      return;
+    }
+    try {
+      if (!await canAccessBrowserSession(userId, sessionId)) {
+        try { ws.close(1008, 'forbidden'); } catch { }
         return;
       }
-      try {
-        const ownerHint = extractOwnerHint(sessionId, userId);
-        if (ownerHint.type === 'mongoSession' || ownerHint.type === 'userId') {
-          const ok = await canAccessSession(userId, sessionId);
-          if (!ok) {
-            try { ws.close(1008, 'forbidden'); } catch { }
-            return;
-          }
-        } else {
-          const cur = ownerByBrowserSessionId.get(sessionId);
-          if (cur && cur.userId !== userId) {
-            try { ws.close(1008, 'forbidden'); } catch { }
-            return;
-          }
-          if (!cur) {
-            ownerByBrowserSessionId.set(sessionId, { userId, at: Date.now() });
-            pruneOwners();
-          } else {
-            cur.at = Date.now();
-          }
-        }
-      } catch {
-        try { ws.close(1011, 'internal_error'); } catch { }
-        return;
-      }
+    } catch {
+      try { ws.close(1011, 'internal_error'); } catch { }
+      return;
     }
 
     const client: Client = { ws, sessionId };

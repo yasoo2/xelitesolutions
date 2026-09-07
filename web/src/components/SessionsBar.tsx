@@ -3,7 +3,7 @@
  * Shows at the bottom of the screen
  */
 
-import React, { useRef, useState, useCallback } from 'react';
+import React, { useRef, useState, useCallback, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import {
@@ -45,6 +45,25 @@ export default function SessionsBar({
     const { t } = useTranslation();
     const scrollRef = useRef<HTMLDivElement>(null);
     const [hoveredId, setHoveredId] = useState<string | null>(null);
+    const [windowStart, setWindowStart] = useState(0);
+    const WINDOW_SIZE = 24;
+    const activeIndex = sessions.findIndex(session => session.isActive);
+    const maxWindowStart = Math.max(0, sessions.length - WINDOW_SIZE);
+    const visibleSessions = useMemo(
+        () => sessions.slice(windowStart, windowStart + WINDOW_SIZE),
+        [sessions, windowStart],
+    );
+
+    // Keep the current conversation in the horizontal shelf without mounting
+    // every historical chip (and their full accessible labels) at once.
+    useEffect(() => {
+        if (activeIndex < 0 || (activeIndex >= windowStart && activeIndex < windowStart + WINDOW_SIZE)) return;
+        setWindowStart(Math.max(0, Math.min(maxWindowStart, activeIndex - Math.floor(WINDOW_SIZE / 2))));
+    }, [activeIndex, maxWindowStart, windowStart]);
+
+    useEffect(() => {
+        setWindowStart(start => Math.min(start, maxWindowStart));
+    }, [maxWindowStart]);
 
     const handleDeleteAll = () => {
         if (window.confirm(t('sidebar.deleteAllConfirm'))) {
@@ -57,6 +76,12 @@ export default function SessionsBar({
         const amount = direction === 'left' ? -200 : 200;
         scrollRef.current.scrollBy({ left: amount, behavior: 'smooth' });
     }, []);
+
+    const page = useCallback((direction: 'previous' | 'next') => {
+        setWindowStart(start => direction === 'previous'
+            ? Math.max(0, start - WINDOW_SIZE)
+            : Math.min(maxWindowStart, start + WINDOW_SIZE));
+    }, [maxWindowStart]);
 
     return (
         <div
@@ -90,7 +115,8 @@ export default function SessionsBar({
 
             {/* Scroll Left */}
             <button
-                onClick={() => scroll('right')}
+                onClick={() => page('previous')}
+                disabled={windowStart === 0}
                 style={{
                     background: 'none',
                     border: 'none',
@@ -117,7 +143,7 @@ export default function SessionsBar({
                 }}
                 className="no-scrollbar"
             >
-                {sessions.map(session => (
+                {visibleSessions.map(session => (
                     <SessionChip
                         key={session.id}
                         session={session}
@@ -143,7 +169,8 @@ export default function SessionsBar({
 
             {/* Scroll Right */}
             <button
-                onClick={() => scroll('left')}
+                onClick={() => page('next')}
+                disabled={windowStart >= maxWindowStart}
                 style={{
                     background: 'none',
                     border: 'none',
@@ -190,6 +217,8 @@ export default function SessionsBar({
                 {/* New Session Button */}
                 <button
                     className="joe-sessions-new"
+                    aria-label={t('sidebar.newChat')}
+                    title={t('sidebar.newChat')}
                     onClick={onNew}
                     style={{
                         display: 'flex',

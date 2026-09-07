@@ -289,6 +289,7 @@ export class ProjectRepairTool extends BaseTool {
         };
         const rollback = async (id: string): Promise<boolean> => {
             try {
+                let restored = false;
                 const memory = memorySnapshots.get(id);
                 if (memory) {
                     const now = collectSources(dir);
@@ -301,15 +302,32 @@ export class ProjectRepairTool extends BaseTool {
                         fs.writeFileSync(abs, text, 'utf-8');
                     }
                     memorySnapshots.delete(id);
+                    restored = true;
                 } else {
-                    const restored = restoreVersion(dir, id);
-                    if (!restored?.ok) return false;
+                    const restoreResult = restoreVersion(dir, id);
+                    if (!restoreResult?.ok) return false;
+                    restored = true;
                 }
                 const rebuilt = await rebuild();
                 if (rebuilt) term('repair: rollback verified by a successful rebuild');
-                return rebuilt;
+                else term('repair: source rollback verified; the build environment is unavailable, so no build claim is made');
+                // restoreVersion verifies every restored byte and removes files that
+                // were added after the snapshot. A blocked build runner must not
+                // turn that verified source recovery into a false "rollback failed".
+                return restored;
             } catch { return false; }
         };
+
+        // Do not let a repair write to a project when this execution context
+        // cannot build the untouched baseline. The repair loop's evidence is
+        // only meaningful when it can rebuild and measure the edited project.
+        if (hasBuildScript() && !(await rebuild())) {
+            const message = isAr
+                ? 'تعذّر بدء الإصلاح بأمان: بيئة التنفيذ لا تستطيع بناء النسخة الحالية، لذلك لم أعدّل أي ملف.'
+                : 'Safe repair could not start: this execution environment cannot build the current project, so no files were changed.';
+            term(`repair: baseline build preflight failed for ${dir}`);
+            return { ok: false, output: { message, before: before.score, after: before.score, changed: [], remaining: before.findings || [], buildPreflightFailed: true }, logs } as any;
+        }
         const measure = async () => {
             const measured = await auditBuiltApp(auditDir, {
                 timeoutMs: 30_000,

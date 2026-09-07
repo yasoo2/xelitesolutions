@@ -1,10 +1,18 @@
 export interface PreviewReadyEvent {
     type?: string;
+    sessionId?: unknown;
     data?: {
         url?: unknown;
         previewUrl?: unknown;
         partial?: unknown;
     };
+}
+
+/** A preview event must never cross the active chat-session boundary. */
+export function belongsToActiveSession(event: PreviewReadyEvent, activeSessionId: unknown): boolean {
+    const active = String(activeSessionId || '').trim();
+    const emitted = String(event?.sessionId || '').trim();
+    return !active ? !emitted : emitted === active;
 }
 
 /**

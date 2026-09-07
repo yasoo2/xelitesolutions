@@ -317,7 +317,7 @@ export class AgentLoopService {
      * Unified Autonomous Execution Entry Point
      * Everything is now dynamic and agent-driven at runtime.
      */
-    static async execute(goal: string, options: { sessionId?: string; browserSessionId?: string; workspaceId?: string; userId?: string; userName?: string; systemInstructions?: string; attachments?: import('../../shared/attachments').AttachmentInput[]; traceId?: string; modelConfig?: any; language?: string; runId?: string } = {}) {
+    static async execute(goal: string, options: { sessionId?: string; browserSessionId?: string; workspaceId?: string; userId?: string; userName?: string; systemInstructions?: string; attachments?: import('../../shared/attachments').AttachmentInput[]; traceId?: string; modelConfig?: any; language?: string; runId?: string; cancellationHandle?: Cancellable } = {}) {
         const sessionId = options.sessionId || `session-${Date.now()}`;
         const userId = options.userId || 'anonymous';
         const userName = String(options.userName || '').trim();
@@ -537,7 +537,7 @@ export class AgentLoopService {
         // Register before any planning/model await. The browser stop button is
         // a run control, so it must also cover the period before ToolService
         // has registered an individual tool handle.
-        const runCancellation: Cancellable = registerRun(runId, sessionId);
+        const runCancellation: Cancellable = options.cancellationHandle || registerRun(runId, sessionId);
 
         // Evidence is a secondary sink. It observes the same canonical run and
         // must never become a prerequisite for the live wire.
@@ -549,6 +549,23 @@ export class AgentLoopService {
 
         const makeRunReceipt = (source: any, status: string, extra: Record<string, unknown> = {}) =>
             extractRunReceiptEvidence(source, runId, sessionId, status, extra);
+
+        const finishCancelledBeforeOrchestration = () => {
+            if (!runCancellation.cancelled) return false;
+            const text = language === 'ar'
+                ? 'أوقفتُ التشغيل بناءً على طلبك قبل تنفيذ أي خطوة جديدة.'
+                : 'The run was stopped at your request before any new step was executed.';
+            broadcast({ type: 'text', sessionId, data: { text, sessionId }, runId } as any);
+            broadcast({ type: 'run_finished', runId, data: { runId, ok: false, sessionId } } as any);
+            releaseHandle(runCancellation, runId, sessionId);
+            removeRunEventListener(runId);
+            unregisterRunSession(runId, sessionId);
+            return true;
+        };
+
+        if (finishCancelledBeforeOrchestration()) {
+            return { ok: false, result: { cancelled: true } };
+        }
 
         // WHOSE RUN IS THIS? Both owner registries existed and neither was ever
         // called, so every event this run emits — Joe's replies included —
@@ -579,6 +596,9 @@ export class AgentLoopService {
         } catch { /* non-fatal */ }
 
         try {
+            if (finishCancelledBeforeOrchestration()) {
+                return { ok: false, result: { cancelled: true } };
+            }
             // [WALL CLOCK] The whole run has a hard ceiling. Past it the user
             // gets an honest failure — never a spinner that lives forever.
             const orchestration = orchestrator.execute({
@@ -598,7 +618,8 @@ export class AgentLoopService {
                     modelConfig,
                     memoryContext,
                     language,
-                    isCancelled: () => runCancellation.cancelled
+                    isCancelled: () => runCancellation.cancelled,
+                    cancellation: runCancellation.whenCancelled,
                 }
             });
             // The model request itself cannot be force-aborted safely, but the

@@ -1,7 +1,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { EngineeringDiscoveryTool } from '../modules/tools/definitions/EngineeringDiscoveryTool';
+import { DISCOVERY_YIELD_EVERY, EngineeringDiscoveryTool } from '../modules/tools/definitions/EngineeringDiscoveryTool';
 
 import { heDeclaredWhatItHolds } from '../modules/tools/definitions/ProjectPipelineTool';
 
@@ -42,6 +42,43 @@ describe('evidence-first engineering discovery', () => {
     expect(result.output.evidence.selectedProject.testFiles).toContain(path.join(project, 'src', '__tests__', 'main.test.ts'));
     expect(result.output.evidence.constraints.forbidDeploy).toBe(true);
     expect(fs.readFileSync(path.join(project, 'package.json'), 'utf8')).toBe(before);
+  });
+
+  test('yields to the server before completing a large bounded workspace scan', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-discovery-yield-'));
+    roots.push(root);
+    for (let index = 0; index < DISCOVERY_YIELD_EVERY * 3; index += 1) {
+      const project = path.join(root, `project-${index}`);
+      fs.mkdirSync(project, { recursive: true });
+      fs.writeFileSync(path.join(project, 'package.json'), JSON.stringify({ name: `project-${index}` }));
+    }
+
+    let completed = false;
+    const run = new EngineeringDiscoveryTool().execute({ request: 'Inspect the existing project locally.' }, { workspaceRoot: root })
+      .finally(() => { completed = true; });
+    await new Promise<void>(resolve => setImmediate(resolve));
+
+    expect(completed).toBe(false);
+    await expect(run).resolves.toEqual(expect.objectContaining({ ok: true }));
+  });
+
+  test('keeps greenfield reference discovery shallow instead of recursively scanning every old project', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-discovery-greenfield-'));
+    roots.push(root);
+    for (let index = 0; index < 12; index += 1) {
+      const project = path.join(root, `old-project-${index}`);
+      fs.mkdirSync(path.join(project, 'src', 'nested'), { recursive: true });
+      fs.writeFileSync(path.join(project, 'package.json'), JSON.stringify({ name: `old-project-${index}` }));
+      fs.writeFileSync(path.join(project, 'src', 'nested', 'legacy.ts'), 'export const legacy = true;\n');
+    }
+
+    const result: any = await new EngineeringDiscoveryTool().execute({
+      request: 'Create a new browser application named Fresh Ledger. Do not modify existing projects.',
+    }, { workspaceRoot: root });
+
+    expect(result.output.evidence.mode).toBe('greenfield');
+    expect(result.output.evidence.referenceProjects).toHaveLength(12);
+    expect(result.output.evidence.referenceProjects.every((project: any) => project.sourceFiles === undefined && project.testFiles === undefined)).toBe(true);
   });
 
   test('marks a read-only audit and refuses to classify it as a new build', async () => {
@@ -205,6 +242,11 @@ describe('evidence-first engineering discovery', () => {
     //  product name, a domain guess or anything a catalogue could hold.
     expect(source).toContain('heDeclaredWhatItHolds(productRequest)');
     expect(source).toContain('evidence?.constraints?.createsNewProject');
+    // Discovery's explicit mode is also a valid greenfield fact.  This keeps
+    // an optional convenience flag from sending a fully-described local form
+    // through an unnecessary provider wait.
+    expect(source).toContain("evidence?.mode === 'greenfield'");
+    expect(source).toContain("const isGreenfield = evidence?.constraints?.createsNewProject === true || evidence?.mode === 'greenfield';");
 
     //  …and it is a decision, not a preference: with no declared schema
     //  the planner is still what runs.
@@ -466,7 +508,11 @@ describe('local specification evidence', () => {
   test('reads a discovered local specification through read_file before asking the planner to plan', () => {
     const source = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ProjectPipelineTool.ts'), 'utf8');
     const specificationRead = source.indexOf('await this.readRequestedSpecifications(productRequest, evidence, context, logs, say, isAr)');
-    const planner = source.search(/(?:const|let) plannerResult[^\n]*executeTool\('project_planner'/);
+    // The planner can be selected through a conditional expression, so its
+    // declaration and execution need not share one physical source line.
+    // The invariant is ordering: read the established specification first,
+    // then invoke the planner with that evidence.
+    const planner = source.indexOf("await executeTool('project_planner'");
 
     expect(specificationRead).toBeGreaterThanOrEqual(0);
     expect(planner).toBeGreaterThan(specificationRead);

@@ -23,6 +23,11 @@ router.post('/:id/message', authenticate as any, SessionController.addMessage);
 // Compatibility alias for CommandComposer.tsx
 router.get('/:id/history', authenticate as any, SessionController.listSessionMessages);
 
+// Session-bound work queue.  The composer keeps a friendly local rendering,
+// while this endpoint makes the ordered work survive a reload or API restart.
+router.get('/:id/queue', authenticate as any, SessionController.getSessionQueue);
+router.put('/:id/queue', authenticate as any, SessionController.replaceSessionQueue);
+
 //  What this session PRODUCED — the built page and the run's log lines.
 //  The chat was always asked for; the work never was, so every reopened
 //  session showed an empty Preview and an empty Logs panel.

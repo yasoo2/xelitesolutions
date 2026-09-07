@@ -9,7 +9,7 @@ import http from 'http';
 import os from 'os';
 import path from 'path';
 import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
-import { canAdoptRecordedLive, declaredLaunchPrerequisitePackages, detectStart, launchPrerequisiteError, launchabilityError, missingLocalRuntimeImports, missingRuntimeDependencies, placeholderLifecycleScriptError, reconcileMissingRuntimeImports, reconcileMissingRuntimeTarget, resolveRunnableProject, shouldUseActiveProjectDirectly, ProjectRunTool } from '../modules/tools/definitions/ProjectRunTool';
+import { canAdoptRecordedLive, declaredLaunchPrerequisitePackages, detectStart, launchPrerequisiteError, launchabilityError, liveProjectRecord, missingLocalRuntimeImports, missingRuntimeDependencies, placeholderLifecycleScriptError, reconcileMissingRuntimeImports, reconcileMissingRuntimeTarget, resolveRunnableProject, shouldUseActiveProjectDirectly, ProjectRunTool } from '../modules/tools/definitions/ProjectRunTool';
 import { ExecutionGateway } from '../kernel/ExecutionGateway';
 import { executionFirewall } from '../orchestration/AgentExecutionFirewall';
 import { executionEngine } from '../kernel/ExecutionEngine';
@@ -188,7 +188,7 @@ describe('launch prerequisite recovery stays manifest-evidence-first', () => {
         }), 'utf-8');
 
         expect(launchPrerequisiteError(root, {
-            command: 'npm run dev -- --port 4300 --strictPort --host localhost',
+            command: 'npm run dev -- --port 4300 --strictPort --host 127.0.0.1',
             kind: 'dev-server',
         })).toBe('vite');
         expect(declaredLaunchPrerequisitePackages(root, 'vite')).toEqual(['vite']);
@@ -240,7 +240,7 @@ describe('launch prerequisite recovery stays manifest-evidence-first', () => {
             server.close();
             fs.rmSync(root, { recursive: true, force: true });
         }
-    });
+    }, 20_000);
 });
 
 describe('runtime import dependency preflight', () => {
@@ -537,7 +537,19 @@ describe('named project discovery never falls back to the workspace repository',
         );
         expect(adoption).toContain('canAdoptRecordedLive(live, cwd)');
         expect(adoption).not.toContain('!input?.cwd');
-        expect(runSrc).toContain('const url = `http://127.0.0.1:${livePort}/`;');
+        expect(runSrc).toContain('const url = confirmedLiveUrl;');
+    });
+
+    test('the announced preview origin must answer HTTP on the same loopback family', () => {
+        fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({
+            scripts: { dev: 'vite' },
+            devDependencies: { vite: '^5.0.0' },
+        }), 'utf-8');
+        const detected = detectStart(root, 4300);
+        expect(detected.command).toContain('--host 127.0.0.1');
+        expect(runSrc).toContain('const answeringUrl = await answeringLoopbackUrl(p, 1500);');
+        expect(runSrc).toContain('if (answeringUrl) { livePort = p; confirmedLiveUrl = answeringUrl; break; }');
+        expect(runSrc).not.toContain('const url = `http://127.0.0.1:${livePort}/`;');
     });
 
     test('successful project_run persists the verified live preview for browser QA', () => {
@@ -548,9 +560,31 @@ describe('named project discovery never falls back to the workspace repository',
             runSrc.indexOf('\n}', runSrc.indexOf('function rememberLiveProject')),
         );
         expect(remember).toContain('live.url');
-        expect(remember).toMatch(/live:\s*\{[^}]*\burl\b[^}]*\bport\b[^}]*\bpid\b[^}]*\bcwd\b/);
+        expect(remember).toContain('liveProjectRecord(previous, projectCwd, live)');
+        expect(remember).toContain('record.live.cwd = cwd');
         expect(remember).toMatch(/\bwriteJoeProject\s*\(/);
         expect(remember).toMatch(/\bpersistJoeProjects\s*\(/);
+    });
+
+    test('a verified run replaces the old session project identity before publishing its preview', () => {
+        const recordBuilder = runSrc.slice(
+            runSrc.indexOf('export function liveProjectRecord'),
+            runSrc.indexOf('/** Keep the verified server address', runSrc.indexOf('export function liveProjectRecord')),
+        );
+        expect(recordBuilder).toContain('dir: projectCwd');
+        expect(recordBuilder).not.toContain("...(previous.dir ? {} : { dir: projectCwd");
+    });
+
+    test('a new verified preview cannot retain an older project directory in its session record', () => {
+        const record = liveProjectRecord(
+            { dir: '/workspace/team-issue-tracker', type: 'react', brand: 'Issue Tracker' },
+            '/workspace/pocket-ledger',
+            { url: 'http://127.0.0.1:4601/', port: 4601, pid: process.pid },
+            123,
+        );
+        expect(record.dir).toBe('/workspace/pocket-ledger');
+        expect(record.live).toMatchObject({ projectCwd: '/workspace/pocket-ledger', at: 123 });
+        expect(record.brand).toBe('Issue Tracker');
     });
 });
 

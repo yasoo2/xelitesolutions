@@ -23,6 +23,7 @@
 import fs from 'fs';
 import path from 'path';
 import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
+import { ensureReactRuntimeImport } from '../modules/tools/definitions/ReactProjectTool';
 
 const SRC = path.join(__dirname, '..');
 
@@ -118,5 +119,27 @@ describe('a build does not die because a planner ran out of quota', () => {
         expect(block).toMatch(/PlanningEngine\.classifyBuildScope/);
         expect(block).toMatch(/tool: 'project_pipeline'/);
         expect(block).not.toMatch(/central_answer/);
+    });
+});
+
+describe('a slow optional authoring call cannot hold a React build hostage', () => {
+    it('uses one bounded configurable timeout instead of minute-long per-call waits', () => {
+        const source = fs.readFileSync(path.join(SRC, 'modules', 'tools', 'definitions', 'ReactProjectTool.ts'), 'utf-8');
+        expect(source).toMatch(/JOE_OPTIONAL_MODEL_TIMEOUT_MS/);
+        expect(source).toMatch(/optionalModelTimeoutMs/);
+        expect(source).not.toMatch(/the model did not answer in time'\)\), 90_000/);
+        expect(source).not.toMatch(/the model did not answer in time'\)\), 120_000/);
+    });
+});
+
+describe('a generated JSX engine is portable across React runtimes', () => {
+    it('adds the default React binding when a component imports hooks only', () => {
+        const source = "import { useState } from 'react';\nexport default function RecordsApp() { return <main />; }";
+        expect(ensureReactRuntimeImport(source)).toContain("import React, { useState } from 'react';");
+    });
+
+    it('does not duplicate a React binding that is already present', () => {
+        const source = "import React, { useState } from 'react';\nexport default function RecordsApp() { return <main />; }";
+        expect(ensureReactRuntimeImport(source)).toBe(source);
     });
 });

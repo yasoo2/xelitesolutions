@@ -34,9 +34,24 @@ export class ExecutionGuard {
             execFileSync: cp.execFileSync
         };
 
-        const checkBypass = (method: string, command: string) => {
+        const checkBypass = (method: string, command: string, args?: any[], options?: any) => {
             const stack = new Error().stack || '';
             const cmdStr = String(command || '');
+            // Timeout cleanup belongs to the execution boundary itself. In a
+            // bundled build the originating source filename is not reliably
+            // present in the stack, so the old stack-only exception blocked
+            // ExecutionEngine from killing its own timed-out child tree.
+            // This is deliberately narrower than a command allowlist: the
+            // marker, executable, and complete argv shape must all match.
+            const isInternalTreeCleanup = method === 'spawn'
+                && options?.__joeExecutionTreeCleanup === true
+                && /^taskkill(?:\.exe)?$/iu.test(cmdStr)
+                && Array.isArray(args)
+                && args.length === 4
+                && args[0] === '/PID'
+                && /^\d+$/u.test(String(args[1] || ''))
+                && args[2] === '/T'
+                && args[3] === '/F';
             const isBrowserProcess = stack.includes('playwright') || 
                                     stack.includes('modules/browser') || 
                                     stack.includes('manager') ||
@@ -44,14 +59,14 @@ export class ExecutionGuard {
                                     cmdStr.includes('chromium');
 
             // Allow ExecutionEngine, internal bootstrap, and browser worker launch
-            if (!stack.includes('ExecutionEngine') && !stack.includes('internal_system_bootstrap') && !isBrowserProcess) {
+            if (!stack.includes('ExecutionEngine') && !stack.includes('internal_system_bootstrap') && !isBrowserProcess && !isInternalTreeCleanup) {
                 console.error(`[ExecutionGuard] BLOCKED direct ${method}: ${command}`);
                 throw new Error(`[ExecutionGuard] Direct ${method} blocked. All execution must route through ExecutionEngine.`);
             }
         };
 
         cp.spawn = function(command: string, args: any[], options: any) {
-            checkBypass('spawn', command);
+            checkBypass('spawn', command, args, options);
             return originals.spawn.apply(this, [command, args, options]);
         };
 

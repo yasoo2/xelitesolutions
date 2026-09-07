@@ -1,1 +1,14 @@
 body { font-family: sans-serif; }
+/* ── إصلاح جو: التجاوب ──────────────────────────────────────────────────
+   قيست الصفحة على 390×844 فخرجت عن حدّ الشاشة أفقياً. هذه القواعد تمنع
+   التمرير الأفقي من مصدره: الوسائط لا تتجاوز عرض حاويتها، والجداول
+   والشيفرة تمرّر داخل صندوقها بدل دفع الصفحة كلها. */
+html, body { max-width: 100%; overflow-x: hidden; }
+img, video, canvas, svg, iframe { max-width: 100%; height: auto; }
+table, pre, code { max-width: 100%; overflow-x: auto; }
+/* كلمة طويلة واحدة (رابط، بريد) كانت تكفي لتوسيع الصفحة كلها. */
+p, h1, h2, h3, li, td, dd { overflow-wrap: anywhere; }
+@media (max-width: 480px) {
+  /* شبكات ثابتة الأعمدة تُجبَر على عمود واحد على الجوال. */
+  .products, .stats, .days, .rows { grid-template-columns: 1fr !important; }
+}

@@ -24,6 +24,15 @@ export interface GoLiveVerdict {
 
 const LOCAL_HOST = /^(localhost|127\.0\.0\.1|\[::1\]|0\.0\.0\.0)(:\d+)?$/i;
 
+/** Bind explicitly for local single-user runs without changing the production
+ * default. Only known interface literals are accepted so a misspelled value
+ * cannot silently broaden or redirect the listening surface. */
+export function serverBindHost(env: NodeJS.ProcessEnv = process.env): string {
+    const host = String(env.JOE_BIND_HOST || '0.0.0.0').trim();
+    if (/^(?:127\.0\.0\.1|localhost|::1|0\.0\.0\.0)$/.test(host)) return host;
+    throw new Error(`invalid_joe_bind_host:${host}`);
+}
+
 /** A URL that names a real host is the clearest evidence Joe is being shared. */
 export function looksPublic(env: NodeJS.ProcessEnv = process.env): boolean {
     if (String(env.JOE_PUBLIC || '').trim() === '1') return true;

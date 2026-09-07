@@ -12,7 +12,7 @@
  * with, stays silent on a private machine, and refuses to serve the world with
  * single-user switches on.
  */
-import { goLiveCheck, goLiveBanner, looksPublic, assertSafeToServe } from '../shared/go-live';
+import { goLiveCheck, goLiveBanner, looksPublic, assertSafeToServe, serverBindHost } from '../shared/go-live';
 
 const LOCAL: any = { ENABLE_AUTH_BYPASS: 'true', AUTO_APPROVE_ALL: '1', SUPER_ADMIN_EMAILS: '', JWT_SECRET: 'x' };
 const PUBLIC_SAFE: any = {
@@ -31,6 +31,18 @@ describe('what counts as public', () => {
         expect(looksPublic({ PUBLIC_URL: 'https://joe.example.com' } as any)).toBe(true);
         expect(looksPublic({ JOE_PUBLIC: '1' } as any)).toBe(true);
         expect(looksPublic({} as any)).toBe(false);
+    });
+});
+
+describe('server bind scope', () => {
+    it('keeps the production-compatible default and supports loopback-only development', () => {
+        expect(serverBindHost({} as any)).toBe('0.0.0.0');
+        expect(serverBindHost({ JOE_BIND_HOST: '127.0.0.1' } as any)).toBe('127.0.0.1');
+        expect(serverBindHost({ JOE_BIND_HOST: '::1' } as any)).toBe('::1');
+    });
+
+    it('rejects an unexpected interface value', () => {
+        expect(() => serverBindHost({ JOE_BIND_HOST: 'public.example.com' } as any)).toThrow('invalid_joe_bind_host');
     });
 });
 
@@ -94,5 +106,6 @@ describe('the check runs at boot, before the door opens', () => {
         const I = fs.readFileSync(path.join(__dirname, '..', 'api', 'index.ts'), 'utf-8');
         expect(I).toMatch(/assertSafeToServe\(\)/);
         expect(I.indexOf('assertSafeToServe()')).toBeLessThan(I.indexOf('server.listen('));
+        expect(I).toContain('server.listen(config.port, bindHost');
     });
 });

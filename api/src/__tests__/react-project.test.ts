@@ -10,7 +10,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
-import { ReactProjectTool, PROJECT_DIR_NAME_MAX_LENGTH, hasUsableReactDependencyTree, heroSecondaryDestination, requestDrivenServiceProducts } from '../modules/tools/definitions/ReactProjectTool';
+import { ReactProjectTool, PROJECT_DIR_NAME_MAX_LENGTH, applyBundledPhotographyFallback, hasUsableReactDependencyTree, heroSecondaryDestination, requestDrivenServiceProducts, withoutViteConfigForBuild } from '../modules/tools/definitions/ReactProjectTool';
 import { fileAppStoreJs } from '../modules/tools/definitions/react-app-templates';
 import { ApiProjectTool } from '../modules/tools/definitions/ApiProjectTool';
 import { ScaffoldProjectTool } from '../modules/tools/definitions/SystemTools';
@@ -47,6 +47,52 @@ describe('dependency reuse only trusts a complete Vite tree', () => {
         }
         expect(hasUsableReactDependencyTree(tmp)).toBe(true);
         fs.rmSync(tmp, { recursive: true, force: true });
+    });
+});
+
+describe('restricted Windows Vite builds', () => {
+    it('hides the generated config only during the build and restores it afterward', async () => {
+        const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-vite-config-'));
+        const config = path.join(tmp, 'vite.config.js');
+        fs.writeFileSync(config, 'export default { base: "./" };', 'utf8');
+        try {
+            await withoutViteConfigForBuild(tmp, async () => {
+                expect(fs.existsSync(config)).toBe(false);
+                expect(fs.readdirSync(tmp).some(name => name.startsWith('.vite.config.joe-build-'))).toBe(true);
+            });
+            expect(fs.readFileSync(config, 'utf8')).toContain('base');
+        } finally {
+            fs.rmSync(tmp, { recursive: true, force: true });
+        }
+    });
+
+    it('restores the generated config when the build throws', async () => {
+        const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-vite-config-'));
+        const config = path.join(tmp, 'vite.config.js');
+        fs.writeFileSync(config, 'original config', 'utf8');
+        try {
+            await expect(withoutViteConfigForBuild(tmp, async () => {
+                throw new Error('build failed');
+            })).rejects.toThrow('build failed');
+            expect(fs.readFileSync(config, 'utf8')).toBe('original config');
+        } finally {
+            fs.rmSync(tmp, { recursive: true, force: true });
+        }
+    });
+});
+
+describe('offline photography visuals', () => {
+    it('bundles a real raster fallback and keeps the requested work section renderable', () => {
+        const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-photo-fallback-'));
+        const content: any = { heroImage: null, gallery: [] };
+        try {
+            expect(applyBundledPhotographyFallback(tmp, content)).toBe(true);
+            expect(content.heroImage?.src).toBe('images/photography-studio.png');
+            expect(content.gallery).toHaveLength(1);
+            expect(fs.statSync(path.join(tmp, 'public', 'images', 'photography-studio.png')).size).toBeGreaterThan(10_000);
+        } finally {
+            fs.rmSync(tmp, { recursive: true, force: true });
+        }
     });
 });
 

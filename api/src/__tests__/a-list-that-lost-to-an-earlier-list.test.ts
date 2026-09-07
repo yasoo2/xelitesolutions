@@ -73,6 +73,11 @@ describe('his column list is found wherever he put it', () => {
         const across = 'بدي جدول أسجل فيه: اسم العميل والمبلغ والتاريخ ورقم الفاتورة';
         expect(labels(across).length).toBe(4);
     });
+
+    it('ends an explicit field list before later behavior clauses', () => {
+        const prompt = 'Create an expense tracker. Add amount (numeric only), category, date, and note; validate required fields; add and delete transactions.';
+        expect(labels(prompt)).toEqual(['amount', 'category', 'date', 'note']);
+    });
 });
 
 describe('and a request that names no columns still names none', () => {

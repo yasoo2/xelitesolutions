@@ -185,6 +185,18 @@ export function subjectAfterContainer(requestRaw: string): string {
     let subject = words.join(' ').trim();
 
     /**
+     * A product name is not the name of a row.
+     *
+     * `Create an expense tracker named Pocket Ledger` used to make the
+     * records engine call every row `named Pocket`. The words after a
+     * container can name the container itself, but `named` / `called` is a
+     * project-identifying clause. In that shape English puts the data noun on
+     * the other side: `expense tracker`, so read the word before the
+     * container instead.
+     */
+    const namesTheProduct = /^(?:named|called)\b/i.test(subject);
+
+    /**
      *  AND ENGLISH PUTS IT ON THE OTHER SIDE.
      *
      *  «جدول مبيعات» is a table OF sales and the noun follows. «A clients
@@ -203,7 +215,7 @@ export function subjectAfterContainer(requestRaw: string): string {
         if (/^(?:a|an|the|my|our|بدي|أريد|اريد|أبغى|ابغى)$/i.test(last)) return '';
         return last;
     };
-    if (!subject || /\s/.test(subject) === false && subject.length < 3) subject = beforeTheContainer();
+    if (namesTheProduct || !subject || /\s/.test(subject) === false && subject.length < 3) subject = beforeTheContainer();
     if (subject.split(/\s+/).length > 2) subject = beforeTheContainer() || subject;
     //  One letter is not a name; a whole clause is not one either.
     return subject.length >= 3 && subject.length <= 40 ? subject : '';

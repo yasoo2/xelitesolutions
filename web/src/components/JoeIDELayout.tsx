@@ -74,7 +74,6 @@ interface JoeIDELayoutProps {
 
     // Callbacks
     onSettingsClick?: () => void;
-    onNewProject?: () => void;
     onNewFile?: () => void;
     onNewFolder?: () => void;
     onGitChanges?: () => void;
@@ -142,7 +141,6 @@ export default function JoeIDELayout({
 
     // Callbacks
     onSettingsClick,
-    onNewProject,
     onNewFile,
     onNewFolder,
     onGitChanges,
@@ -759,7 +757,6 @@ export default function JoeIDELayout({
     // Command Palette actions — wired to the real app actions in scope.
     const paletteCommands: Command[] = React.useMemo(() => [
         { id: 'new-chat', label: 'محادثة جديدة', hint: 'New chat', icon: '＋', keywords: 'session جلسة جديد', run: () => onNewSession && onNewSession() },
-        { id: 'new-project', label: 'مشروع جديد', hint: 'New project', icon: '📁', keywords: 'project onboarding', run: () => onNewProject && onNewProject() },
         { id: 'tab-preview', label: 'فتح المعاينة', hint: 'Preview', icon: '👁', keywords: 'preview معاينة', run: () => handleWorkspaceTabChange('preview') },
         { id: 'tab-terminal', label: 'فتح الطرفية', hint: 'Terminal', icon: '⌘', keywords: 'terminal طرفية shell', run: () => handleWorkspaceTabChange('terminal') },
         { id: 'tab-browser', label: 'فتح المتصفح', hint: 'Browser', icon: '🌐', keywords: 'browser متصفح', run: () => handleWorkspaceTabChange('browser') },
@@ -768,7 +765,7 @@ export default function JoeIDELayout({
         { id: 'git', label: 'تغييرات Git', hint: 'Git', icon: '⎇', keywords: 'git github changes', run: () => handleGitChanges() },
         { id: 'theme', label: 'تبديل المظهر (فاتح/داكن)', hint: 'Theme', icon: '◐', keywords: 'theme dark light مظهر', run: () => onThemeToggle && onThemeToggle() },
         { id: 'settings', label: 'الإعدادات', hint: 'Settings', icon: '⚙', keywords: 'settings إعدادات', run: () => onSettingsClick && onSettingsClick() },
-    ], [onNewSession, onNewProject, handleWorkspaceTabChange, toggleWorkspace, toggleExplorer, handleGitChanges, onThemeToggle, onSettingsClick]);
+    ], [onNewSession, handleWorkspaceTabChange, toggleWorkspace, toggleExplorer, handleGitChanges, onThemeToggle, onSettingsClick]);
 
     // For CommandComposer, we need an active session ID and browser session ID
     const activeSessionId = sessionId; // Assuming sessionId is the active one
@@ -794,7 +791,6 @@ export default function JoeIDELayout({
                 isChatCollapsed={isChatCollapsed}
                 isExplorerCollapsed={isExplorerCollapsed}
                 isWorkspaceCollapsed={isWorkspaceCollapsed}
-                onNewProject={onNewProject}
             />
 
             {/* Main Content Area */}

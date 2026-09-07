@@ -80,11 +80,33 @@ export function effectiveViewports(availableWidth: number): Array<{ name: string
     return [{ name: 'available', ar: 'العرض المتاح', w: Math.max(320, Math.floor(cap)), h: 844 }];
 }
 
+// Device metrics belong to the CDP session that applies them. Detaching that
+// session can restore the preceding viewport a moment later, which made a
+// desktop -> tablet -> phone audit measure 390px as 820px. Keep one session
+// attached for the lifetime of the Playwright page; the WeakMap releases it
+// with the page and avoids a cross-run global browser state.
+const viewportCdpSessions = new WeakMap<object, any>();
+
+async function getViewportCdpSession(page: any): Promise<any> {
+    const known = viewportCdpSessions.get(page);
+    if (known) return known;
+    const created = await page.context().newCDPSession(page);
+    // Clear inherited emulation once. Clearing before every transition races
+    // the live frame capture and can snap tablet/phone measurements back to
+    // the context's 1280px default between applying and reading the viewport.
+    await created.send('Emulation.clearDeviceMetricsOverride').catch(() => { });
+    viewportCdpSessions.set(page, created);
+    return created;
+}
+
 export async function applyViewportSize(page: any, width: number, height: number): Promise<{ width: number; height: number }> {
     // Persistent browser contexts reject Playwright's viewport setter. That
     // is an instrumentation limitation, not evidence that the app failed its
     // responsive layout. Try the normal API, but keep going to CDP when the
     // borrowed/persistent page refuses it.
+    // A previous override is replaced on the persistent CDP session below.
+    // Do not clear it here: the live screenshot loop may capture between clear
+    // and set, restoring the context's desktop dimensions during measurement.
     try { await page.setViewportSize({ width, height }); } catch { /* use CDP below */ }
     await page.waitForTimeout(180).catch(() => { });
     let actual = await evalInPage(page, function () { return { width: window.innerWidth, height: window.innerHeight }; }).catch(() => ({ width: 0, height: 0 }));
@@ -103,18 +125,17 @@ export async function applyViewportSize(page: any, width: number, height: number
     } catch { /* CDP remains the compatibility path below */ }
     if (Math.abs(Number(actual?.width || 0) - width) <= 2) return actual;
     try {
-        const cdp = await page.context().newCDPSession(page);
+        const cdp = await getViewportCdpSession(page);
         // Persistent/headed Chromium can keep the old visible surface unless
         // it is resized before the device metrics are overridden. Without this
         // pair, the audit reported 820px -> 1280px even though the CDP command
         // itself completed successfully.
         await cdp.send('Emulation.setVisibleSize', { width, height }).catch(() => { });
         await cdp.send('Emulation.setDeviceMetricsOverride', {
-            width, height, deviceScaleFactor: 1, mobile: width <= 600,
+            width, height, deviceScaleFactor: 1, mobile: false,
             screenWidth: width, screenHeight: height, dontSetVisibleSize: false,
         });
         await page.waitForTimeout(180).catch(() => { });
-        await cdp.detach().catch(() => { });
         actual = await evalInPage(page, function () { return { width: window.innerWidth, height: window.innerHeight }; });
     } catch { /* the caller records an instrumentation finding with the measured width */ }
     if (Math.abs(Number(actual?.width || 0) - width) > 2) {
@@ -122,15 +143,14 @@ export async function applyViewportSize(page: any, width: number, height: number
         // page is still painting the previous frame. Give the browser one
         // explicit retry before declaring the instrumentation broken.
         try {
-            const retry = await page.context().newCDPSession(page);
+            const retry = await getViewportCdpSession(page);
             await retry.send('Emulation.setVisibleSize', { width, height }).catch(() => { });
             await retry.send('Emulation.setDeviceMetricsOverride', {
-                width, height, deviceScaleFactor: 1, mobile: width <= 600,
+                width, height, deviceScaleFactor: 1, mobile: false,
                 screenWidth: width, screenHeight: height, dontSetVisibleSize: false,
             });
             await page.waitForTimeout(300).catch(() => { });
             actual = await evalInPage(page, function () { return { width: window.innerWidth, height: window.innerHeight }; });
-            await retry.detach().catch(() => { });
         } catch { /* keep the measured mismatch as evidence */ }
     }
     if (Math.abs(Number(actual?.width || 0) - width) > 2) {

@@ -1380,7 +1380,11 @@ Rules:
                     metadata: { complexity: 'medium', riskLevel: 'low' },
                 };
             }
-            if (testRepairRequest && !existingFeatureChange) {
+            // A new construction brief may explicitly require a complete QA
+            // and repair cycle. Those clauses belong to the builder after it
+            // creates the artifact; they are not evidence that an existing
+            // project is available to repair before the first build step.
+            if (testRepairRequest && !existingFeatureChange && !buildRequest) {
                 return {
                     id: `project_repair_tests_${Date.now()}`,
                     goal: intent.goal,

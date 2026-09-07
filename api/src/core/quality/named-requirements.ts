@@ -696,6 +696,53 @@ export function nothingWasJudged(judged: JudgedNamed[]): boolean {
     return judged.length > 0 && judged.every(j => j.verdict === 'unprovable');
 }
 
+/**
+ * A provider outage must not make Joe forget a clear request. This deliberately
+ * extracts only short, action-shaped clauses from the user's own sentence; it
+ * is a deterministic floor, not a substitute for deeper model reading.
+ */
+export function requirementsFromRequestClauses(requestRaw: string): NamedRequirement[] {
+    const request = String(requestRaw || '').replace(/\s+/g, ' ').trim();
+    if (!request) return [];
+    const actionClauses = request
+        .split(/(?:[.;!?؟]+|\s*,\s*(?=(?:add|create|edit|delete|remove|validate|show|display|persist|save|test|عرض|أضف|انشئ|إنشئ|عدّل|عدل|احذف|تحقق|اعرض|احفظ)\b))/iu)
+        .map(value => value.trim().replace(/^(?:and|then|و)\s+/iu, '').replace(/[,:;]+$/u, '').trim())
+        .filter(value => /^(?:add|create|edit|delete|remove|validate|show|display|persist|save|test|عرض|أضف|انشئ|إنشئ|عدّل|عدل|احذف|تحقق|اعرض|احفظ)\b/iu.test(value))
+        // A behavior list may continue after the first imperative: "add and
+        // delete records, a live total, and persistence after refresh".
+        // Preserve field lists such as "add name, date and note" while
+        // splitting only the independently judgeable behavior phrases.
+        .flatMap(value => value.split(/\s*,\s*(?=(?:a|an|the)\s+|and\s+(?:persistence|persist|saved?|validation|responsive|accessibility|security)\b|(?:persistence|persist|saved?|validation|responsive|accessibility|security)\b)/iu))
+        .map(value => value.trim().replace(/^(?:and|then)\s+/iu, ''))
+        .filter(isJudgeable);
+    // A provider outage must not erase a declarative field contract just
+    // because the user wrote "it must provide" or "it needs" instead of
+    // "add". The grammar establishes that this is an inventory of the
+    // artifact's fields; articles still reject lists of pages or other things
+    // to build.
+    const declaredFields: string[] = [];
+    for (const sentence of request.split(/[.!?؟]+/u)) {
+        const match = sentence.match(/\b(?:(?:it\s+)?(?:must|should)\s+(?:provide|include|have)|(?:it\s+)?(?:needs?|requires?|has))\s+(.+)/iu);
+        if (!match) continue;
+        const fieldPart = match[1]
+            .split(/\s*(?:;|,\s*(?=(?:required(?:[-\s]field)?\s+validation|validation|allow|add|delete|ensure|persist|show|test|validate|verify)\b))/iu)[0];
+        const items = fieldPart
+            .split(/\s*,\s*|\s+and\s+/iu)
+            .map(item => item.trim().replace(/^(?:a|an|the)\s+/iu, ''))
+            .filter(item => item.length >= 2 && item.length <= 64)
+            .filter(item => !/^(?:a|an|the)\s+/iu.test(item))
+            .filter(isJudgeable);
+        if (items.length >= 2) declaredFields.push(...items);
+    }
+    const clauses = [...declaredFields, ...actionClauses];
+    const unique = clauses.filter((value, index) => clauses.findIndex(other => other.toLowerCase() === value.toLowerCase()) === index);
+    return unique.slice(0, 20).map((text, index) => ({
+        id: `request-clause-${index + 1}-${text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '').slice(0, 36)}`,
+        text,
+        quote: text,
+    }));
+}
+
 export function requirementNamesPage(requirement: Pick<NamedRequirement, 'text' | 'quote'>, title: string): boolean {
     const normalize = (value: string) => String(value || '')
         .trim()
@@ -808,7 +855,9 @@ function deterministicRecordVerdict(r: NamedRequirement, source: string): Judged
     // The extractor is allowed to preserve the user's list grammar (`Include
     // rating`). For a generated records schema, the field evidence is the
     // semantic remainder (`rating`), not the list introducer.
-    const fieldPhrase = phrase.replace(/^(?:include|add|with)\s+(?:(?:a|an|the)\s+)?/iu, '').trim();
+    const fieldPhrase = phrase
+        .replace(/^(?:include|add|with|provide|have)\s+(?:(?:a|an|the)\s+)?/iu, '')
+        .trim();
     if (/patients?[^,.;]*\b(?:and|&)\b[^,.;]*doctors?[^,.;]*separate\s+records?|مرضى[^.،]*أطباء[^.،]*سجلات\s+منفصلة/iu.test(fieldPhrase)
         && /(?:key|['"]key['"])\s*:\s*['"]patients['"]/iu.test(src)
         && /(?:key|['"]key['"])\s*:\s*['"]doctors['"]/iu.test(src)) {
@@ -857,13 +906,39 @@ function deterministicRecordVerdict(r: NamedRequirement, source: string): Judged
             ? { ...r, verdict: 'unmet', why: defects[0].message }
             : { ...r, verdict: 'met', why: 'the custom workflow engine implements and enforces this behaviour' };
     }
-    const fieldLike = fieldPhrase.length >= 3 && fieldPhrase.length <= 40
+    // A field may carry a type hint in the request: "amount (numeric only)"
+    // is still the `amount` field. The annotation belongs to the contract we
+    // verify below, not to the schema label stored in source.
+    const fieldName = fieldPhrase
+        // The numeric constraint is verified below; it is not part of the label.
+        .replace(/^(?:(?:numeric|number)(?:[-\s]only)?|رقمي(?:\s+فقط)?|أرقام?\s+فقط)\s+/iu, '')
+        .replace(/\s*\([^)]{0,80}\)\s*$/u, '')
+        .replace(/\s+(?:field|input)$/iu, '')
+        .trim();
+    const hasDeclaredField = (name: string) => new RegExp(
+        `(?:label|placeholder|aria-label)\\s*[:=]\\s*['"]${esc(name)}['"]`, 'iu',
+    ).test(src);
+    const hasFieldType = (name: string, type: string) => new RegExp(
+        `(?:label|placeholder|aria-label)\\s*[:=]\\s*['"]${esc(name)}['"][\\s\\S]{0,260}?type\\s*:\\s*['"]${esc(type)}['"]|type\\s*:\\s*['"]${esc(type)}['"][\\s\\S]{0,260}?(?:label|placeholder|aria-label)\\s*[:=]\\s*['"]${esc(name)}['"]`, 'iu',
+    ).test(src);
+    const fieldLike = fieldName.length >= 3 && fieldName.length <= 40
         && !/(?:search|filter|sort|export|validation|بحث|تصفية|فرز|تصدير|تحقق)/iu.test(fieldPhrase)
         && !workflowCapability
         // Route labels are only accepted through the multi-page contract above.
         // A lone `label: 'Home'` in a record schema is not evidence of a Home page.
         && !/^(?:home|exhibits|visit|education)$/iu.test(fieldPhrase);
-    if (fieldLike && new RegExp(`(?:label|placeholder|aria-label)\\s*[:=]\\s*['"]${esc(fieldPhrase)}['"]`, 'iu').test(src)) {
+    const asksNumericOnly = /(?:numeric|number|رقمي|أرقام|ارقام)/iu.test(fieldPhrase);
+    if (fieldLike && asksNumericOnly && hasFieldType(fieldName, 'number')
+        && /invalidNumericField|Number\.isFinite\s*\(/iu.test(src)) {
+        return { ...r, verdict: 'met', why: 'the declared numeric field is rendered as a number input and is guarded before a row is written' };
+    }
+    if (fieldLike && /(?:^|\s)date(?:$|\s)|تاريخ/iu.test(fieldName) && hasFieldType(fieldName, 'date')) {
+        return { ...r, verdict: 'met', why: 'the declared date field uses the browser date input contract' };
+    }
+    if (fieldLike && /(?:^|\s)note(?:$|\s)|ملاحظ/iu.test(fieldName) && hasFieldType(fieldName, 'textarea')) {
+        return { ...r, verdict: 'met', why: 'the declared note field uses a multi-line text input' };
+    }
+    if (fieldLike && hasDeclaredField(fieldName)) {
         return { ...r, verdict: 'met', why: 'the generated record schema declares this field' };
     }
     if (/search|بحث/iu.test(text) && /setQuery|query\.trim|visible\s*=|filtered/i.test(src)) {
@@ -882,7 +957,7 @@ function deterministicRecordVerdict(r: NamedRequirement, source: string): Judged
         && /fields\s*\.map\s*\(/iu.test(src);
     const hasSemanticRecordFields = /primary\s*:\s*true/iu.test(src)
         && /type\s*:\s*['"]number['"]/iu.test(src)
-        && /type\s*:\s*['"]select['"]/iu.test(src)
+        && /type\s*:\s*['"](?:select|text)['"]/iu.test(src)
         && /type\s*:\s*['"]date['"]/iu.test(src);
     const hasPositiveNumberGuard = /invalidNumericField/iu.test(src)
         && /Number\.isFinite\s*\(/iu.test(src)
@@ -890,9 +965,9 @@ function deterministicRecordVerdict(r: NamedRequirement, source: string): Judged
     const hasComputedTotal = /metrics\s*:\s*\[[\s\S]{0,1600}?kind\s*:\s*['"]sum['"]/iu.test(src)
         && /computeMetric\s*\([^)]*rows/iu.test(src)
         && /case\s*['"]sum['"][\s\S]{0,500}?reduce\s*\(/iu.test(src);
-    const hasEditAndConfirmedDelete = /setEditing\s*\(/iu.test(src)
-        && /window\.confirm\s*\(/iu.test(src)
+    const hasConfirmedDelete = /window\.confirm\s*\(/iu.test(src)
         && /setRows\s*\(\s*rows\.filter/iu.test(src);
+    const hasEditAndConfirmedDelete = /setEditing\s*\(/iu.test(src) && hasConfirmedDelete;
     const hasDurableLocalRows = /createStore\s*\(/iu.test(src)
         && /localStorage\.getItem\s*\(/iu.test(src)
         && /localStorage\.setItem\s*\(/iu.test(src)
@@ -905,13 +980,17 @@ function deterministicRecordVerdict(r: NamedRequirement, source: string): Judged
         && hasPositiveNumberGuard) {
         return { ...r, verdict: 'met', why: 'the records form rejects non-numeric and non-positive values before writing a row' };
     }
-    if (/(?:calculate|running|show|display)\s+(?:the\s+)?total|total\s+(?:that|which)|الإجمالي|المجموع/iu.test(text)
+    if (/(?:calculate|running|show|display|live|current|updated)\s+(?:the\s+)?total|total\s+(?:that|which)|الإجمالي|المجموع/iu.test(text)
         && hasComputedTotal) {
         return { ...r, verdict: 'met', why: 'the records view computes the displayed total from the current rows' };
     }
     if (/(?:edit\s+and\s+delete|delete\s+with\s+confirmation|تعديل\s+وحذف|حذف\s+مع\s+تأكيد)/iu.test(text)
         && hasEditAndConfirmedDelete) {
         return { ...r, verdict: 'met', why: 'the records view enters edit state and confirms before deleting a row' };
+    }
+    if (/(?:add|create)[\s\S]{0,60}(?:delete|remove)|(?:إضافة|اضافة)[\s\S]{0,60}(?:حذف|إزالة|ازالة)/iu.test(text)
+        && hasRecordForm && hasConfirmedDelete) {
+        return { ...r, verdict: 'met', why: 'the records form writes rows and the list removes a selected row only after confirmation' };
     }
     if (/(?:save|keep|persist|durable)[\s\S]{0,80}(?:reload|refresh|localstorage)|(?:reload|refresh)[\s\S]{0,80}(?:save|keep|persist|durable)|حفظ[\s\S]{0,80}(?:إعادة\s+التحميل|التحديث)/iu.test(text)
         && hasDurableLocalRows) {
@@ -940,7 +1019,7 @@ function deterministicRecordVerdict(r: NamedRequirement, source: string): Judged
         && /denominator|m\.equals/i.test(src)) {
         return { ...r, verdict: 'met', why: 'the generated records view computes progress from row state' };
     }
-    if (/empty.*(?:name|field)|validation|تحقق/iu.test(text)
+    if (/empty.*(?:name|field)|validation|required\s+(?:field|input)|تحقق/iu.test(text)
         && /required|setError|checkValidity|missing|invalid/i.test(src)) {
         return { ...r, verdict: 'met', why: 'the generated form validates required input and exposes an error state' };
     }

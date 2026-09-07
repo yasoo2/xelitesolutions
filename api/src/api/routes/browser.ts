@@ -35,6 +35,8 @@ router.post('/session/clear', authenticate as any, async (req: Request, res: Res
 router.get('/session/status', authenticate as any, async (req: Request, res: Response) => {
   const sid = String(req.query?.sessionId || '').trim();
   if (!sid) return res.status(400).json({ error: 'sessionId required' });
+  const access = await ensureBrowserSessionAccess(req, res, sid);
+  if (!access.ok) return res.status(access.status).json(access.body);
   return res.json({ ok: true, saved: hasSavedBrowserSession(sid) });
 });
 
@@ -42,8 +44,6 @@ router.get('/session/status', authenticate as any, async (req: Request, res: Res
 const activeBrowserRuns = new Map<string, number>();
 
 async function ensureBrowserSessionAccess(req: Request, res: Response, sessionId: string) {
-  const authBypass = process.env.ENABLE_AUTH_BYPASS === 'true';
-  if (authBypass) return { ok: true as const, userId: 'bypass-user' };
   const userId = String((req as any).auth?.sub || '').trim();
   if (!userId) return { ok: false as const, status: 401, body: { error: 'unauthorized' } };
   const ok = await canAccessBrowserSession(userId, sessionId);

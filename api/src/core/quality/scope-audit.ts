@@ -22,6 +22,7 @@
  * answer is «not built», because overstating is the failure being fixed here.
  */
 import { clausesBeyondTheColumns, columnsAnywhereInHisRequest, statedRules } from '../design/app-blueprints';
+import { intentProbe } from '../orchestrator/promptNormalizer';
 import fs from 'fs';
 import path from 'path';
 
@@ -67,8 +68,21 @@ export function hasFormValidationEvidence(source: string): boolean {
  * shape paired with state, a handler, or a data fetch/update.
  */
 export function hasSearchEvidence(source: string): boolean {
-    return /setQuery|searchTerm|onSearch|sortBy|\[query,/i.test(source)
+    return /setQuery|searchTerm|onSearch|\[query,/i.test(source)
         || (SEARCH_INTERACTION.test(source) && SEARCH_STATE_OR_IO.test(source));
+}
+
+/** Filtering must change the rendered collection from one or more controls. */
+export function hasFilterEvidence(source: string): boolean {
+    const hasFilterState = /\b[A-Za-z][A-Za-z0-9_]*Filter\b|\bset[A-Za-z0-9_]*Filter\b/i.test(source);
+    const hasFilterControl = /<(?:select|input)\b[^>]*onChange\s*=/i.test(source);
+    return hasFilterState && hasFilterControl && /\.filter\s*\(/i.test(source);
+}
+
+/** Sorting is separate from search and filtering and needs an executable order change. */
+export function hasSortingEvidence(source: string): boolean {
+    return /\.sort\s*\(/i.test(source)
+        && /\bsort(?:By|Order|Direction|Key)?\b|\bsetSort[A-Za-z0-9_]*\b/i.test(source);
 }
 
 export const CAPABILITIES: Capability[] = [
@@ -179,10 +193,22 @@ export const CAPABILITIES: Capability[] = [
         evidence: /'reviews'|"reviews"|\/api\/reviews|\brating:\s|stars?_?count/i,
     },
     {
-        id: 'search', ar: 'البحث والفرز', en: 'search and sorting',
-        ask: /\bsearch\b|\bfilter\b|\bsort\b|بحث|تصفية|فرز/i,
-        evidence: /setQuery|searchTerm|onSearch|sortBy|\[query,/i,
+        id: 'search', ar: 'البحث', en: 'search',
+        ask: /\bsearch(?:ing)?\b|بحث|ابحث/iu,
+        evidence: /setQuery|searchTerm|onSearch|\[query,/i,
         evidenceCheck: hasSearchEvidence,
+    },
+    {
+        id: 'filtering', ar: 'التصفية', en: 'filtering',
+        ask: /\bfilters?\b|\bfiltering\b|تصفية|فلترة|فلاتر|مرشحات?/iu,
+        evidence: /\b[A-Za-z][A-Za-z0-9_]*Filter\b|\bset[A-Za-z0-9_]*Filter\b/i,
+        evidenceCheck: hasFilterEvidence,
+    },
+    {
+        id: 'sorting', ar: 'الفرز', en: 'sorting',
+        ask: /\bsort(?:ing)?\b|فرز|ترتيب\s+(?:حسب|وفق)/iu,
+        evidence: /\bsort(?:By|Order|Direction|Key)?\b|\bsetSort[A-Za-z0-9_]*\b/i,
+        evidenceCheck: hasSortingEvidence,
     },
     {
         id: 'responsive', ar: 'واجهة متجاوبة', en: 'responsive interface',
@@ -208,7 +234,7 @@ export const CAPABILITIES: Capability[] = [
 
 /** Which capabilities the request actually names. */
 export function requestedCapabilities(request: string): Capability[] {
-    const text = String(request || '');
+    const text = intentProbe(String(request || ''));
     if (!text.trim()) return [];
     return CAPABILITIES.filter(c => c.ask.test(text));
 }
@@ -354,7 +380,7 @@ export function scopeReport(request: string, projectDirs: string[]): ScopeReport
             .map(value => foldForCompare(value)),
     );
     const unchecked = clausesBeyondTheColumns(request)
-        .filter(clause => !CAPABILITIES.some(c => c.ask.test(clause)))
+        .filter(clause => !CAPABILITIES.some(c => c.ask.test(intentProbe(clause))))
         .filter(clause => {
             const c = foldForCompare(clause);
             if (explicitPageNames.has(c)) return false;

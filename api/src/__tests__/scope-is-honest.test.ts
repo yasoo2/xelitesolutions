@@ -21,6 +21,8 @@ import {
     CAPABILITIES,
     formatScope,
     hasSearchEvidence,
+    hasFilterEvidence,
+    hasSortingEvidence,
     readProjectSource,
     requestedCapabilities,
     scopeReport,
@@ -70,6 +72,18 @@ describe('what he asked for is read from his own words', () => {
     it('still detects shipping when the request names a shipping feature explicitly', () => {
         expect(requestedCapabilities('Add shipping options, shipment tracking, and a shipping address form.')
             .map(c => c.id)).toContain('shipping');
+    });
+
+    it('keeps Arabic search, filtering, and sorting as three independent capabilities', () => {
+        const ids = requestedCapabilities('أضف بحثاً وتصفية حسب التصنيف وفرزاً حسب التاريخ').map(c => c.id);
+        expect(ids).toEqual(expect.arrayContaining(['search', 'filtering', 'sorting']));
+    });
+
+    it('understands the expense request without inventing search or sorting', () => {
+        const request = 'أنشئ تطبيق ويب عربي لإدارة مصروفات شخصية: تصفية حسب التصنيف والشهر، وتصميم أصلي متجاوب.';
+        const ids = requestedCapabilities(request).map(c => c.id);
+        expect(ids).toEqual(expect.arrayContaining(['filtering', 'responsive']));
+        expect(ids).not.toEqual(expect.arrayContaining(['search', 'sorting']));
     });
 
     it('does not mistake an equipment checkout workflow for payments', () => {
@@ -197,6 +211,25 @@ describe('what was built is read from the code, never from optimism', () => {
         expect(scopeReport(HIS_REQUEST, [talk]).built.map(c => c.id)).not.toContain('payments');
         const real = mk({ 'server.js': "const stripe = require('stripe'); app.post('/api/payments', ...)" });
         expect(scopeReport(HIS_REQUEST, [real]).built.map(c => c.id)).toContain('payments');
+    });
+
+    it('recognizes category and month filtering as filtering, not search or sorting', () => {
+        const ledger = mk({
+            'src/Ledger.jsx': [
+                "const [categoryFilter, setCategoryFilter] = useState('');",
+                "const [monthFilter, setMonthFilter] = useState('');",
+                'const visibleEntries = entries.filter(entry => (!categoryFilter || entry.category === categoryFilter) && (!monthFilter || entry.date.startsWith(monthFilter)));',
+                '<select value={categoryFilter} onChange={event => setCategoryFilter(event.target.value)} />',
+                '<input type="month" value={monthFilter} onChange={event => setMonthFilter(event.target.value)} />',
+            ].join('\n'),
+        });
+        const source = readProjectSource([ledger]);
+        const report = scopeReport('تصفية حسب التصنيف والشهر', [ledger]);
+        expect(report.built.map(c => c.id)).toContain('filtering');
+        expect(report.missing).toEqual([]);
+        expect(hasFilterEvidence(source)).toBe(true);
+        expect(hasSearchEvidence(source)).toBe(false);
+        expect(hasSortingEvidence(source)).toBe(false);
     });
 
     it('checks responsive requests against real layout evidence', () => {

@@ -10,6 +10,32 @@ import { archiveProject, extractProject } from '../../core/transfer/project-arch
 
 const router = Router();
 
+// Project files are private workspace data. Resolve the caller's workspace
+// before every explorer, read, export, import, or mutation route so a caller
+// cannot select another account's id (or fall back to the historic shared root).
+router.use(authenticate as any);
+router.use(async (req: Request, res: Response, next) => {
+  try {
+    const userId = String((req as any).auth?.sub || '').trim();
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+    const requested = String(
+      req.headers['x-workspace-id'] || (req.query as any)?.workspaceId || (req.body as any)?.workspaceId || ''
+    ).trim();
+    const workspace = requested
+      ? await workspaceService.getWorkspace(requested, userId)
+      : await workspaceService.ensurePersonalWorkspace(userId);
+    if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
+    const workspaceId = String((workspace as any)._id || (workspace as any).id || '').trim();
+    if (!workspaceId) return res.status(404).json({ error: 'Workspace not found' });
+    req.headers['x-workspace-id'] = workspaceId;
+    if (req.query && !(req.query as any).workspaceId) (req.query as any).workspaceId = workspaceId;
+    if (req.body && !(req.body as any).workspaceId) (req.body as any).workspaceId = workspaceId;
+    return next();
+  } catch {
+    return res.status(403).json({ error: 'Workspace access denied' });
+  }
+});
+
 /**
  * [EXPORT] The active project as ONE downloadable zip (with a manifest).
  * The path is decided SERVER-side from the workspace — the client cannot

@@ -209,6 +209,24 @@ export class WorkspaceService {
         // `rootsByWorkspaceId`, so the explorer showed one folder and
         // `shell_execute` ran in a stale sibling. Resolve the shared visible root
         // before consulting that cache, and refresh the cache only as bookkeeping.
+        if (this.isLocalSingleUserMode && wsId) {
+            // JSON persistence is still multi-account persistence. Keep a
+            // deterministic directory per logical workspace so a local guest
+            // cannot inspect or overwrite another account's generated project.
+            const rememberedRoot = this.rootsByWorkspaceId.get(wsId);
+            if (rememberedRoot) return rememberedRoot;
+            const safeWorkspaceDir = wsId.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 120) || safeObjectIdHex(wsId);
+            const root = path.join(this.externalRoot, safeWorkspaceDir);
+            try {
+                if (!fs.existsSync(root)) fs.mkdirSync(root, { recursive: true });
+            } catch (e) {
+                console.warn(`[WorkspaceService] Could not create workspace directory: ${root}`, e);
+                return this.externalRoot;
+            }
+            this.rootsByWorkspaceId.set(wsId, root);
+            return root;
+        }
+
         if (this.isLocalSingleUserMode) {
             const local = this.localRoot;
             if (!fs.existsSync(local)) {
@@ -272,7 +290,11 @@ export class WorkspaceService {
             }
             await import('fs').then(fs => fs.promises.access(newPath));
             const wsId = this.resolveWorkspaceId(workspaceId);
-            if (this.isLocalSingleUserMode) {
+            if (this.isLocalSingleUserMode && wsId) {
+                // A selected directory is scoped to this workspace. Never turn
+                // one account's picker action into the process-wide root.
+                this.rootsByWorkspaceId.set(wsId, newPath);
+            } else if (this.isLocalSingleUserMode) {
                 // The location picker is global in local mode: persist it even if
                 // an API caller happened to supply the current chat workspace id.
                 this.currentRoot = newPath;
@@ -294,7 +316,9 @@ export class WorkspaceService {
 
     resetToSystem(workspaceId?: string) {
         const wsId = this.resolveWorkspaceId(workspaceId);
-        if (this.isLocalSingleUserMode) {
+        if (this.isLocalSingleUserMode && wsId) {
+            this.rootsByWorkspaceId.delete(wsId);
+        } else if (this.isLocalSingleUserMode) {
             this.rootsByWorkspaceId.clear();
             this.currentRoot = process.cwd();
             this.localRoot = path.join(this.externalRoot, 'my-workspace');

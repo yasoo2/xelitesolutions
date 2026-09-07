@@ -6,6 +6,7 @@ import { workspaceService } from '../../services/WorkspaceService';
 import { isPortOpen } from '../../../shared/utils/network';
 import { isArabicReply, say as pick } from '../../../shared/reply-language';
 import * as fs from 'fs';
+import * as http from 'http';
 import * as path from 'path';
 import { builtinModules } from 'module';
 import { persistJoeProjects, readJoeProjectForRun, writeJoeProject } from '../../../api/page-store';
@@ -125,15 +126,36 @@ async function findFreePort(start = 4300): Promise<number> {
  * least we should know before calling it «your system».
  */
 async function answersHttp(url: string, timeoutMs = 2500): Promise<boolean> {
-    try {
-        const ac = new AbortController();
-        const t = setTimeout(() => ac.abort(), timeoutMs);
-        const res = await fetch(url, { signal: ac.signal, redirect: 'follow' });
-        clearTimeout(t);
-        return res.status < 500;
-    } catch {
-        return false;
-    }
+    return new Promise(resolve => {
+        let settled = false;
+        const finish = (value: boolean) => {
+            if (settled) return;
+            settled = true;
+            resolve(value);
+        };
+        try {
+            const req = http.get(url, res => {
+                res.resume();
+                finish(Number(res.statusCode || 0) < 500);
+            });
+            req.setTimeout(timeoutMs, () => {
+                req.destroy();
+                finish(false);
+            });
+            req.on('error', () => finish(false));
+        } catch {
+            finish(false);
+        }
+    });
+}
+
+/** Return the exact loopback origin that answers HTTP, not merely an open port. */
+async function answeringLoopbackUrl(port: number, timeoutMs = 1500): Promise<string> {
+    const ipv4 = `http://127.0.0.1:${port}/`;
+    if (await answersHttp(ipv4, timeoutMs)) return ipv4;
+    const ipv6 = `http://[::1]:${port}/`;
+    if (await answersHttp(ipv6, timeoutMs)) return ipv6;
+    return '';
 }
 
 function builtPreviewRoot(cwd: string): string | null {
@@ -157,7 +179,7 @@ async function startStaticBuildPreview(root: string, port: number): Promise<{ re
     if (!result.success || result.data?.ok === false) {
         return { ready: false, pid, error: result.error || result.data?.error || 'static preview process did not start' };
     }
-    const url = `http://localhost:${port}/`;
+    const url = `http://127.0.0.1:${port}/`;
     const deadline = Date.now() + 10000;
     while (Date.now() < deadline) {
         if (await isLoopbackPortOpen(port, 500) && await answersHttp(url, 1500)) return { ready: true, pid, url };
@@ -206,6 +228,21 @@ function runKey(context?: any): string {
     return String(context?.workspaceId || context?.sessionId || 'default');
 }
 
+export function liveProjectRecord(previous: Record<string, any>, projectCwd: string, live: { url: string; port: number; pid: number }, at = Date.now()): Record<string, any> {
+    return {
+        ...previous,
+        // The live preview belongs to the project this run just verified.
+        // Keeping `previous.dir` here made the conversation's preview route
+        // serve a different, older application after a new project had run.
+        // A session has one active delivery target; it must move atomically
+        // with the verified live process rather than preserving stale state.
+        dir: projectCwd,
+        type: previous.type || 'runtime',
+        live: { url: live.url, port: live.port, pid: live.pid, cwd: projectCwd, projectCwd, at },
+        updatedAt: at,
+    };
+}
+
 /** Keep the verified server address attached to the session's active project. */
 function rememberLiveProject(context: any, cwd: string, live: { url: string; port: number; pid: number }, projectCwd = cwd): void {
     const sessionId = String(context?.sessionId || '').trim();
@@ -213,12 +250,9 @@ function rememberLiveProject(context: any, cwd: string, live: { url: string; por
     const sessionKey = sessionId.replace(/[^a-zA-Z0-9._-]/g, '_');
     const projects: Record<string, any> = (global as any).joeProjects || ((global as any).joeProjects = {});
     const previous = projects[sessionKey] || {};
-    writeJoeProject(sessionKey, {
-        ...previous,
-        ...(previous.dir ? {} : { dir: projectCwd, type: 'runtime' }),
-        live: { url: live.url, port: live.port, pid: live.pid, cwd, projectCwd, at: Date.now() },
-        updatedAt: Date.now(),
-    }, context?.runId ?? null);
+    const record = liveProjectRecord(previous, projectCwd, live);
+    record.live.cwd = cwd;
+    writeJoeProject(sessionKey, record, context?.runId ?? null);
     persistJoeProjects();
 }
 
@@ -253,10 +287,10 @@ function devServerPortFlags(cwd: string, port: number): string {
     } catch { /* malformed package.json — fall through to the file probe */ }
 
     if (deps.vite || has('vite.config.js') || has('vite.config.ts')) {
-        return ` -- --port ${port} --strictPort --host localhost`;
+        return ` -- --port ${port} --strictPort --host 127.0.0.1`;
     }
     if (deps.next || has('next.config.js') || has('next.config.mjs')) {
-        return ` -- --port ${port} --hostname localhost`;
+        return ` -- --port ${port} --hostname 127.0.0.1`;
     }
     // Create React App, Parcel, Angular and plain `node` servers all read PORT
     // from the environment, which is already set.
@@ -1561,11 +1595,14 @@ export class ProjectRunTool implements ToolDefinition {
           */
         const probeList = buildProbeList(port, detected.forced, preExistingCommonPorts);
         let livePort = 0;
+        let confirmedLiveUrl = '';
         const deadline = Date.now() + 45000; // weak machines + npm cold start
         while (Date.now() < deadline && !livePort) {
             await new Promise(r => setTimeout(r, 700));
             for (const p of probeList) {
-                if (await isLoopbackPortOpen(p, 750)) { livePort = p; break; }
+                if (!await isLoopbackPortOpen(p, 750)) continue;
+                const answeringUrl = await answeringLoopbackUrl(p, 1500);
+                if (answeringUrl) { livePort = p; confirmedLiveUrl = answeringUrl; break; }
             }
         }
 
@@ -1656,7 +1693,7 @@ export class ProjectRunTool implements ToolDefinition {
         // Use the exact IPv4 address we pass to child servers. On Windows,
         // `localhost` can resolve to ::1 while the new process owns 127.0.0.1;
         // an old IPv6 listener on the same port would then display the wrong app.
-        const url = `http://127.0.0.1:${livePort}/`;
+        const url = confirmedLiveUrl;
         rememberLiveProject(context, cwd, { url, port: livePort, pid: Number(pid) });
         say(pick(isAr,
             `✅ المشروع يعمل الآن — المعاينة الحية: ${url}`,

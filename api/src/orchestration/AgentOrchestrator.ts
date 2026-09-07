@@ -604,6 +604,11 @@ export class AgentOrchestrator {
               systemInstructions: goalContext?.systemInstructions,
               traceId,
               runId: goalContext?.runId || traceId || liveSessionId,
+              // The run-level stop signal must survive the orchestration
+              // boundary. ToolService uses both values to refuse a late node
+              // and to interrupt an already-attended tool.
+              isCancelled: goalContext?.isCancelled,
+              cancellation: goalContext?.cancellation,
               memory: memory.getHistory(),
               modelConfig: goalContext?.modelConfig,
               engineeringPipeline: goalContext?.engineeringPipeline ?? engineeringNode,

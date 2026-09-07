@@ -12,6 +12,7 @@
 import fs from 'fs';
 import path from 'path';
 import { readDeclaredOptions, blueprintFor, detectAppKind, violatesFieldConstraint, derivedColumns, recordedSubject } from '../core/design/app-blueprints';
+import { buildAppFiles } from '../modules/tools/definitions/react-app-templates';
 
 const SRC = path.join(__dirname, '..');
 const read = (...p: string[]) => fs.readFileSync(path.join(SRC, ...p), 'utf-8');
@@ -111,6 +112,39 @@ describe('the declaration reaches ONLY the field it belongs to', () => {
 });
 
 describe('the blueprint obeys the declaration', () => {
+    it('sends expense tracking to its own ledger interaction, not the generic records grid', () => {
+        const bp = blueprintFor('expenses', 'Create a compact personal expense tracker with amount, category, date and note fields', false);
+        expect(bp.engine).toBe('ledger');
+        expect(bp.fields.map(field => field.key)).toEqual(['amount', 'category', 'date', 'note']);
+        expect(bp.fields.find(field => field.key === 'amount')).toMatchObject({ type: 'number', required: true });
+        expect(bp.fields.find(field => field.key === 'category')).toMatchObject({ type: 'select', options: ['Food', 'Transport', 'Bills', 'Shopping', 'Other'] });
+    });
+
+    it('keeps distinct money fields distinct instead of overusing the amount identity', () => {
+        const cols = derivedColumns('Build a sales table with purchase price, sale price and date') || [];
+        expect(cols.map(field => field.key)).toEqual(['money1', 'money2', 'date']);
+    });
+
+    it('ships a native, labelled ledger engine rather than letting an author replace the contract', () => {
+        const bp = blueprintFor('expenses', 'Create an expense tracker', false);
+        const files = buildAppFiles(bp, { isArabic: false, brand: 'Pocket Ledger', storeKey: 'pocket', sourceRequest: 'Create an expense tracker' } as any, 'pocket-ledger');
+        const source = files['src/components/LedgerApp.jsx'];
+        expect(source).toContain("type={field.type === 'number' ? 'number' : field.type}");
+        expect(source).toContain('inputMode={field.type === \'number\' ? \'decimal\' : undefined}');
+        expect(source).toContain('required={field.required}');
+        expect(source).not.toContain('onSubmit={submit} noValidate');
+        expect(source).toContain('<label key={field.key}>{field.label}');
+        expect(source).toContain('store.write(entries)');
+        expect(source).not.toContain('<h1>{content.title}</h1>');
+        expect(source).toContain("setError(\"Enter a numeric amount greater than zero.\")");
+        expect(source).toContain("entry.note || entry.category || \"Expense\"");
+        expect(source).toContain('aria-label={"Running total"}');
+        expect(source).toContain('aria-label={"Expense entry"}');
+        expect(source).toContain('type="month"');
+        expect(source).toContain('setEditingId(entry.id)');
+        expect(source).toContain('window.confirm("Delete this expense?")');
+        expect(source).toContain('visibleEntries.map(entry =>');
+    });
     it('declared categories replace the stock ones on the expenses select', () => {
         const bp = blueprintFor('expenses', 'تطبيق مصاريف بفئات: طعام، مواصلات، فواتير، ترفيه', true);
         const cat = bp.fields.find(f => f.key === 'category')!;

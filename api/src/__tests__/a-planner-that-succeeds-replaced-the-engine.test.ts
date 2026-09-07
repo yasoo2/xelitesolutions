@@ -32,6 +32,8 @@ describe('when his sentence names the columns, nothing is asked about them', () 
         'بدي جدول للموظفين فيه الاسم والراتب والقسم',
         'بدي برنامج يحفظ لي زبائني وارقام تلفوناتهم وعناوينهم',
         'Build a clients table with name, phone and address',
+        'Create an expense tracker. It must provide amount, category, date, and note.',
+        'Create an expense tracker. It needs an amount field, category, date, and note.',
     ];
     for (const request of HIS) {
         it(request.slice(0, 46), () => expect(heDeclaredWhatItHolds(request)).toBe(true));
@@ -46,6 +48,9 @@ describe('when his sentence names the columns, nothing is asked about them', () 
     it('and the phases it builds are Joe\u2019s own generators', () => {
         const plan = deterministicPhasesFor('بدي جدول للفواتير فيه رقم الفاتورة والمبلغ والتاريخ');
         expect(plan).not.toBeNull();
+        expect(plan!.phases.map(phase => phase.phaseNumber)).toEqual(
+            plan!.phases.map((_phase, index) => index + 1),
+        );
         const tools = (plan!.phases || []).flatMap(p => (p.tasks || []).map((t: { tool: string }) => t.tool));
         expect(tools.length).toBeGreaterThan(0);
         for (const tool of tools) expect(['api_project', 'react_project']).toContain(tool);

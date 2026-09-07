@@ -497,8 +497,20 @@ export function acceptanceFor(request: string): Criterion[] {
      *  them: a coffee list with its prices becomes a listing, not four
      *  columns nobody can point at.
      */
-    const willBuildATable = detectAppKind(t) !== null;
-    const columns = willBuildATable ? (columnsAnywhereInHisRequest(t) || []) : [];
+    const detectedKind = detectAppKind(t);
+    const willBuildATable = detectedKind !== null;
+    const derived = willBuildATable ? (columnsAnywhereInHisRequest(t) || []) : [];
+    const explicitSchema = /\b(?:fields?|columns?|records?|table|form)\b|(?:حقول?|أعمدة|اعمدة|سجلات?|جدول|نموذج)/iu.test(t);
+    const uiOnlyLabel = (label: string) => /^(?:a\s+|an\s+|the\s+)?(?:counter|button|title|heading|status\s+message|عداد|زر|عنوان|رسالة\s+حالة)$/iu
+        .test(String(label || '').trim());
+    // A list of visible widgets is not a record schema. Without an explicit
+    // table/form/field declaration, suppress a derived run made entirely of
+    // UI shapes that the acceptance catalogue already checks directly.
+    const columns = !explicitSchema && detectedKind === 'generic'
+        ? []
+        : !explicitSchema && derived.length > 0 && derived.every(column => uiOnlyLabel(column.label))
+        ? []
+        : derived;
     const requestedFilters = willBuildATable ? requestedFilterFields(t, columns) : [];
     const wantsProgress = /progress\s+metric|progress\s+percentage|progress|مقياس\s+(?:تقدم|التقدم)|مؤشر\s+(?:تقدم|التقدم)/iu.test(t);
 

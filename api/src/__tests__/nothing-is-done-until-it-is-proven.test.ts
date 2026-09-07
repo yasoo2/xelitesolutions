@@ -225,6 +225,25 @@ describe('delivery voices cannot contradict one another', () => {
         expect(() => reconcileDeliveryVoices([], [], [], ['future_criterion']))
             .toThrow(/delivery_acceptance_unmapped:future_criterion/);
     });
+
+    it('admits deterministic request-clause criteria without opening the ledger to arbitrary ids', () => {
+        expect(reconcileDeliveryVoices([], [], [], ['request-clause-1-add-delete-controls']).unmet).toEqual([]);
+        expect(() => reconcileDeliveryVoices([], [], [], ['request-clause-x-untrusted']))
+            .toThrow(/delivery_acceptance_unmapped/);
+    });
+
+    it('reconciles request-clause evidence through shared capability topics', () => {
+        const ids = ['request-clause-1-add-delete-controls', 'request-clause-2-a-running-total-and-saved-transactions'];
+        const reconciled = reconcileDeliveryVoices(
+            ['add and delete controls are exercised', 'the running total updates from saved rows'],
+            ['add and delete controls', 'a running total and saved transactions'],
+            ids,
+            ids,
+        );
+        expect(reconciled.unmet).toEqual([]);
+        expect(reconciled.unjudged).toEqual([]);
+        expect(reconciled.abilities).toHaveLength(2);
+    });
 });
 
 describe('preview claims require a measured HTTP response', () => {
@@ -862,7 +881,7 @@ describe('THE WIRING: the build is judged before it is delivered', () => {
         //  ledger — an addition, not a regression. A guard that cannot tell
         //  those apart is a spelling test.
         expect(REACT).toMatch(/const acceptBlock = `[^`]*\$\{acceptanceBlock\(acceptance, isAr\)\}\\n`;/);
-        expect(REACT).toMatch(/const acceptanceBlocked = acceptance\.criteria\.length > 0 && !acceptance\.accepted;/);
+        expect(REACT).toMatch(/const acceptanceBlocked = acceptance\.criteria\.length > 0[\s\S]{0,220}!acceptance\.accepted/);
         expect(REACT).toMatch(/output: \{ message, acceptance,/);
     });
 

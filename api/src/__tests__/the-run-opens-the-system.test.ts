@@ -16,6 +16,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { detectStart } from '../modules/tools/definitions/ProjectRunTool';
+import { canRetireSupersededLiveServer } from '../modules/tools/definitions/ReactProjectTool';
 
 const RUNTOOL = fs.readFileSync(
     path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ProjectRunTool.ts'), 'utf-8');
@@ -154,9 +155,16 @@ describe('the system that passed the test is the system he gets', () => {
         expect(block).toContain('url: liveServer.url');
     });
 
-    it('a previous build\'s server is stopped, so ports do not pile up', () => {
+    it('a prior generated-project server can be stopped, but Joe itself never becomes a candidate', () => {
         const at = REACT.indexOf('self-QA: the system stays UP');
-        expect(REACT.slice(Math.max(0, at - 400), at)).toContain('process.kill(prevPid)');
+        const block = REACT.slice(Math.max(0, at - 650), at);
+        expect(block).toContain('canRetireSupersededLiveServer(prevEntry, workspaceRoot, liveServer.pid)');
+        expect(block).toContain('process.kill(prevPid)');
+        const root = path.join(__dirname, 'fixtures-workspace');
+        expect(canRetireSupersededLiveServer({ live: { pid: process.pid, cwd: root } }, root, 43210)).toBe(false);
+        expect(canRetireSupersededLiveServer({ live: { pid: 43210, cwd: root } }, root, 43210)).toBe(false);
+        expect(canRetireSupersededLiveServer({ live: { pid: 987654321, cwd: path.resolve(root, '..', 'outside') } }, root, 43210)).toBe(false);
+        expect(canRetireSupersededLiveServer({ live: { pid: 987654321, cwd: path.join(root, 'generated-app') } }, root, 43210)).toBe(true);
     });
 
     it('and the address is remembered on the project', () => {

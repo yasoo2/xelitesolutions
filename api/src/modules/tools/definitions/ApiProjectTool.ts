@@ -326,7 +326,7 @@ export function apiColumnsForRequest(probe: string): ApiColumn[] {
         const bp = blueprintFor(kind, String(probe || ''), false);
         // Only the engines that own ROWS have a table to shape. A map, a chat
         // and a feed have their own servers already.
-        if (bp.engine !== 'records' && bp.engine !== 'shop') return CATALOGUE_COLUMNS;
+        if (bp.engine !== 'records' && bp.engine !== 'ledger' && bp.engine !== 'shop') return CATALOGUE_COLUMNS;
         const cols = columnsFromFields(bp.fields);
         // A blueprint with no usable fields is not a schema; keep the catalogue.
         if (!cols.length) return CATALOGUE_COLUMNS;
@@ -3240,7 +3240,21 @@ export class ApiProjectTool extends BaseTool {
          * the interface's main screen manages exactly what the server calls
          * primary.
          */
-        const handedModel = promoted ? [promoted, ...model] : model;
+        const primaryModel = !promoted && columns !== CATALOGUE_COLUMNS
+            ? [{
+                key: resource,
+                ar: labelAr,
+                en: resource,
+                belongsTo: null,
+                fields: columns.map(column => ({
+                    key: column.key,
+                    label: column.key,
+                    type: column.type === 'REAL' || column.type === 'INT' ? 'number' : 'text',
+                    required: column.required,
+                })),
+            }]
+            : [];
+        const handedModel = promoted ? [promoted, ...model] : [...primaryModel, ...model];
         writeJoeProject(sessionKey, {
             dir: proj, type: 'api', brand, resource, port: 4100, updatedAt: Date.now(),
             lastRequest: request.slice(0, 80),

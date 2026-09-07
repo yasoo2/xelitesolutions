@@ -253,7 +253,7 @@ describe('one front door for scaffolds — the tool-picker cannot bypass the ver
 });
 
 describe('the inbox notifies the owner LIVE', () => {
-    const { ownerSessionOf } = require('../api/routes/formsPublic');
+    const { ownerSessionOf, isQaSubmission } = require('../api/routes/formsPublic');
     afterEach(() => {
         delete (global as any).joePages?.['own-a'];
         delete (global as any).joeProjects?.['own-b'];
@@ -269,8 +269,15 @@ describe('the inbox notifies the owner LIVE', () => {
     it('an unowned site notifies nobody (and never throws)', () => {
         expect(ownerSessionOf('stranger-site')).toBeNull();
     });
+    it('recognises browser-QA submissions without hiding ordinary visitor messages', () => {
+        expect(isQaSubmission({ name: 'اختبار جو abc123', email: 'joe.qa+abc123@example.com' })).toBe(true);
+        expect(isQaSubmission({ name: 'Joe QA abc123', email: 'joe.qa+abc123@example.com' })).toBe(true);
+        expect(isQaSubmission({ name: 'Joe Customer', email: 'joe@example.com' })).toBe(false);
+        expect(isQaSubmission({ name: 'اختبار جو', email: 'customer@example.com' })).toBe(false);
+    });
     it('the POST handler notifies after storing', () => {
         const src = fs.readFileSync(path.join(__dirname, '..', 'api', 'routes', 'formsPublic.ts'), 'utf-8');
+        expect(src.indexOf('if (isQaSubmission(fields))')).toBeLessThan(src.indexOf('appendSubmission(site, fields'));
         const storeAt = src.indexOf('appendSubmission(site, fields');
         const notifyAt = src.indexOf('notifyOwner(site, entry.fields)');
         expect(storeAt).toBeGreaterThan(0);
@@ -286,7 +293,8 @@ describe('project-run preserves the user-selected workspace and task boundary', 
         const route = fs.readFileSync(path.join(__dirname, '..', 'api', 'routes', 'run.ts'), 'utf-8');
         const loop = fs.readFileSync(path.join(__dirname, '..', 'modules', 'services', 'AgentLoopService.ts'), 'utf-8');
         expect(web).toContain('workspaceId: workspaceId || undefined');
-        expect(route).toContain('browserSessionId, workspaceId, userId: bodyUserId');
+        expect(route).toContain('browserSessionId: effectiveBrowserSessionId || undefined');
+        expect(route).toContain("workspaceId: String(workspaceId || '').trim() || undefined");
         expect(route).toContain("workspaceId: String(workspaceId || '').trim() || undefined");
         expect(loop).toContain('workspaceId?: string');
         expect(loop).toContain("const workspaceId = String(options.workspaceId || '').trim();");
@@ -439,7 +447,8 @@ describe('planner provider and requirements-boundary contracts', () => {
         const pipeline = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ProjectPipelineTool.ts'), 'utf-8');
         expect(pipeline).toContain('const requirementsContext = this.buildRequirementsContext(productRequest, specification.content);');
         expect(pipeline).toContain('const productRequest = this.extractEmbeddedProductRequest(request);');
-        expect(pipeline).toContain('projectPath ? { request: productRequest, path: projectPath } : { request: productRequest }');
+        expect(pipeline).toContain("{ projectDescription: planningRequest, evidence: plannerEvidence }");
+        expect(pipeline).toContain('if (discoveredProjectRoot) plannerResult.output.projectRoot = discoveredProjectRoot;');
         expect(pipeline).toContain('COMPACT REQUIREMENTS EVIDENCE');
         expect(pipeline).toContain('pipeline.planning_requirements_brief_chars=');
         expect(pipeline).toContain("slice(0, 12000)");

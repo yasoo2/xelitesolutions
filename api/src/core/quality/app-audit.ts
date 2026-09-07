@@ -91,6 +91,11 @@ export interface AppAudit {
     /** …how many forms were really filled in and sent, and at how many widths. */
     formsFilled?: number;
     fieldsFilled?: number;
+    /** QA-created form records proven to survive reload, and records that did not. */
+    formsPersisted?: number;
+    formsPersistenceUnproven?: number;
+    qaRecordsDeleted?: number;
+    qaRecordsNotDeleted?: number;
     /** Semantic fields challenged with invalid and valid values. */
     semanticFieldsTested?: number;
     semanticValidationFailures?: number;
@@ -114,10 +119,22 @@ export interface AppAuditPass {
     findingIds: string[];
 }
 
-/** 100 minus what the findings earn — the same finding always costs the same. */
+/**
+ * 100 minus what the findings earn — the same finding always costs the same.
+ *
+ * Coverage is not a cosmetic deduction.  A browser walk which runs out of
+ * time has evidence about the surface it visited, but none about the rest of
+ * the product.  Returning 92/100 for "one page, five interactions" trained
+ * the delivery UI to look reassuring precisely when it should have stopped.
+ * Keep normal findings additive, then cap an incomplete audit below a passing
+ * score.  The finding remains in the report so the missing proof is explicit.
+ */
 export function scoreOf(findings: AppAuditFinding[]): number {
     const cost = { high: 15, medium: 8, low: 3 } as const;
-    return Math.max(0, findings.reduce((s, f) => s - cost[f.severity], 100));
+    const measuredScore = Math.max(0, findings.reduce((s, f) => s - cost[f.severity], 100));
+    return findings.some(f => f.id === 'qa_budget_exhausted')
+        ? Math.min(measuredScore, 49)
+        : measuredScore;
 }
 
 /**
@@ -127,8 +144,17 @@ export function scoreOf(findings: AppAuditFinding[]): number {
  */
 export function browserWalkBudgetMs(timeoutMs: number, routeCount: number): number {
     const routes = Math.max(0, Math.min(20, Math.floor(Number(routeCount) || 0)));
-    const base = Math.max(90_000, Number(timeoutMs) * 4 || 0);
-    return Math.min(240_000, Math.max(120_000, base + routes * 8_000));
+    // `timeoutMs` is the audit's stated wall-clock budget, not a multiplier for
+    // a second, much longer hidden budget.  A page that keeps a control busy
+    // must end with an honest coverage gap, not leave the conversation running
+    // indefinitely while the user watches an unchanged Browser panel.
+    const requested = Number(timeoutMs) || 0;
+    // Interactive applications need enough time for valid and invalid form
+    // paths, state discovery, and three responsive measurements. A 120s
+    // ceiling repeatedly exhausted on a single records page, reporting a
+    // coverage defect before the audit had actually finished its job.
+    const base = Math.min(180_000, Math.max(150_000, requested));
+    return Math.min(240_000, base + routes * 6_000);
 }
 
 // A slow control must not consume the whole walk before responsive and visual
@@ -195,6 +221,9 @@ export async function auditBuiltApp(
     },
 ): Promise<AppAudit> {
     const timeoutMs = opts?.timeoutMs ?? 30_000;
+    // Navigation is one action within an audit, never permission for a single
+    // page load to consume the complete QA window.
+    const navigationTimeoutMs = Math.min(20_000, Math.max(5_000, timeoutMs));
     if (!fs.existsSync(path.join(distDir, 'index.html'))) {
         return { skipped: 'no index.html to audit', score: 0, findings: [] };
     }
@@ -351,6 +380,24 @@ export async function auditBuiltApp(
              */
             opts?.onProgress?.(borrowError ? `private:${borrowError}` : 'private');
         }
+        // A borrowed page can stay visually present while a single protocol
+        // call waits forever.  Put the same bounded contract on every locator
+        // and navigation before the audit begins; coverage gaps are reportable,
+        // a frozen conversation is not.
+        try {
+            page.setDefaultTimeout?.(5_000);
+            page.setDefaultNavigationTimeout?.(navigationTimeoutMs);
+        } catch { /* a minimal browser adapter may not expose Playwright defaults */ }
+        // Responsive checks must leave the visible Browser panel in a useful
+        // desktop state. Reading the viewport after a phone pass only remembers
+        // the transient test size and strands the user in a tiny preview.
+        const deliveryViewport = { width: 1280, height: 900 };
+        try {
+            await applyViewportSize(page, deliveryViewport.width, deliveryViewport.height);
+            if (borrowed && opts?.watchSessionId) {
+                require('../../modules/browser/manager').setSessionViewport(opts.watchSessionId, deliveryViewport.width, deliveryViewport.height);
+            }
+        } catch { /* QA can still inspect a constrained browser session */ }
         /**
          * The bundled page probes are compiled by esbuild before Playwright
          * evaluates them. In a borrowed panel this helper may already exist;
@@ -363,6 +410,15 @@ export async function auditBuiltApp(
         const pageErrors: string[] = [];
         const consoleErrors: string[] = [];
         const failedRequests: string[] = [];
+        // A failure in Joe's inspector is evidence that QA is unavailable, not
+        // evidence that the application under inspection is broken. Keeping
+        // these separate prevents a faulty probe from restoring a generic
+        // scaffold over a working, request-specific interface.
+        const auditErrors: string[] = [];
+        const isAuditInfrastructureError = (error: unknown) => {
+            const stack = String((error as any)?.stack || (error as any)?.message || error || '');
+            return /(?:behaviour-audit|app-audit|ui-inspection|audit-eyes)/iu.test(stack);
+        };
         /**
          * THE APP ASKING ITS OWN BACKEND, WITH NO BACKEND RUNNING.
          *
@@ -502,7 +558,21 @@ export async function auditBuiltApp(
          *   2. it does not give up: it falls back to serving the built
          *      interface itself, so the report is still about the product.
          */
-        const landing = await page.goto(url, { waitUntil: 'networkidle', timeout: timeoutMs });
+        // `project_run` announces the preview to the visible panel immediately
+        // before this final audit borrows that same page. The panel navigation
+        // and this navigation can cancel each other with net::ERR_ABORTED even
+        // though the server is healthy. Retry only that transient cancellation,
+        // against the same URL; every other navigation failure remains evidence.
+        const openAuditTarget = async (target: string) => {
+            try {
+                return await page.goto(target, { waitUntil: 'networkidle', timeout: navigationTimeoutMs });
+            } catch (error: any) {
+                if (!/ERR_ABORTED/iu.test(String(error?.message || error))) throw error;
+                await page.waitForTimeout(350).catch(() => { });
+                return page.goto(target, { waitUntil: 'networkidle', timeout: navigationTimeoutMs });
+            }
+        };
+        const landing = await openAuditTarget(url);
         const doorStatus = Number(landing?.status?.() || 0);
         let authenticated = false;
         let authError = '';
@@ -514,7 +584,7 @@ export async function auditBuiltApp(
                 await new Promise<void>(r => srv.listen(0, '127.0.0.1', () => r()));
                 const fallback = `http://127.0.0.1:${(srv.address() as any).port}/`;
                 try {
-                    const second = await page.goto(fallback, { waitUntil: 'networkidle', timeout: timeoutMs });
+                    const second = await page.goto(fallback, { waitUntil: 'networkidle', timeout: navigationTimeoutMs });
                     if (Number(second?.status?.() || 0) < 400) {
                         frontDoor.recovered = true;
                         // Everything counted while standing on the error page
@@ -554,7 +624,7 @@ export async function auditBuiltApp(
                         if (role) localStorage.setItem(tokenStorageKey + ':role', role);
                     }, { token: c.token, role: c.role || 'owner', tokenStorageKey: c.tokenStorageKey || 'joe:auth' });
                     const target = new URL(c.route || '/', url).toString();
-                    await page.goto(target, { waitUntil: 'networkidle', timeout: timeoutMs });
+                    await page.goto(target, { waitUntil: 'networkidle', timeout: navigationTimeoutMs });
                     await page.waitForFunction(() => [...document.querySelectorAll('button, a')].some((el) =>
                         /^(sign out|log out|logout|تسجيل الخروج|خروج)$/iu.test(String(el.textContent || '').trim())),
                     { timeout: Math.min(timeoutMs, 12_000) });
@@ -598,7 +668,7 @@ export async function auditBuiltApp(
                     // browser state. Reload the product and require a visible
                     // signed-in affordance before protected QA may be claimed.
                     const target = new URL(c.route || '/', url).toString();
-                    await page.goto(target, { waitUntil: 'networkidle', timeout: timeoutMs });
+                    await page.goto(target, { waitUntil: 'networkidle', timeout: navigationTimeoutMs });
                     const waitForSignedInSurface = () => page.waitForFunction(() => {
                         const visible = (el: Element) => {
                             const r = (el as HTMLElement).getBoundingClientRect();
@@ -670,9 +740,13 @@ export async function auditBuiltApp(
                 }).length,
                 small,
                 smallSel,
-                h1s: document.querySelectorAll('h1').length,
+                h1s: Array.from(document.querySelectorAll('h1')).filter((el: any) => {
+                    const rect = el.getBoundingClientRect();
+                    const style = getComputedStyle(el);
+                    return rect.width > 2 && rect.height > 2 && style.display !== 'none' && style.visibility !== 'hidden';
+                }).length,
                 bg: getComputedStyle(document.body).backgroundColor,
-                hasToggle: !!document.querySelector('.theme-toggle'),
+                hasToggle: !!document.querySelector('.theme-toggle,[aria-label="Toggle dark mode"],[aria-label="تبديل الوضع الليلي"]'),
                 declaredFont: getComputedStyle(document.body).fontFamily.split(',')[0].replace(/["']/g, '').trim(),
                 fontLoaded: (() => {
                     const first = getComputedStyle(document.body).fontFamily.split(',')[0].replace(/["']/g, '').trim();
@@ -685,10 +759,28 @@ export async function auditBuiltApp(
 
         let toggleWorks = true;
         if (dom.hasToggle) {
-            await page.click('.theme-toggle');
-            await page.waitForTimeout(150);
-            const bg2 = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
-            toggleWorks = bg2 !== dom.bg;
+            // The theme check is one optional visual probe.  A delayed or
+            // re-rendered toggle must be recorded as evidence, never abort the
+            // form, state, and control exploration that follows it.
+            try {
+                const clicked = await page.evaluate(() => {
+                    const selector = '.theme-toggle,[aria-label="Toggle dark mode"],[aria-label="تبديل الوضع الليلي"]';
+                    const toggle = Array.from(document.querySelectorAll(selector)).find((candidate: any) => {
+                        const rect = candidate.getBoundingClientRect();
+                        const style = getComputedStyle(candidate);
+                        return rect.width > 2 && rect.height > 2 && style.display !== 'none' && style.visibility !== 'hidden';
+                    }) as HTMLElement | undefined;
+                    toggle?.click();
+                    return !!toggle;
+                });
+                if (!clicked) throw new Error('visible theme toggle disappeared before the probe');
+                await page.waitForTimeout(150);
+                const bg2 = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+                toggleWorks = bg2 !== dom.bg;
+            } catch (error: any) {
+                toggleWorks = false;
+                auditErrors.push(`theme toggle probe: ${String(error?.message || error).slice(0, 160)}`);
+            }
         }
 
         /**
@@ -723,13 +815,14 @@ export async function auditBuiltApp(
         const behaviourMetrics: Record<string, any> = {
             pressed: 0, dead: 0, deadAnchors: 0, keyboardUnreachable: 0, keyboardUnreachableSamples: [],
             formsWithoutValidation: 0, formsFilled: 0, fieldsFilled: 0, formsDeadSubmit: 0, formsValidated: 0, formsReloaded: 0,
+            formsPersisted: 0, formsPersistenceUnproven: 0, qaRecordsDeleted: 0, qaRecordsNotDeleted: 0,
             semanticFieldsTested: 0, semanticValidationFailures: 0, semanticValidationEvidence: [],
             statesVisited: 0, exploratoryActions: 0, controlsDiscovered: 0,
         };
         const mergeProbe = (p: { controls: any[]; metrics: Record<string, any>; forms?: FormResult[] }, route: string) => {
             //  `bare` is the control's own name; `label` is the name plus where
             //  it was pressed. A reader that needs to FIND the control reads bare.
-            for (const c of p.controls) allControls.push({ ...c, bare: c.label, label: route === '/' ? c.label : `${route} ${c.label}` });
+            for (const c of p.controls) allControls.push({ ...c, bare: c.label, context: `desktop:${route}`, label: route === '/' ? c.label : `${route} ${c.label}` });
             behaviourMetrics.deadAnchors += p.metrics.deadAnchors || 0;
             behaviourMetrics.formsWithoutValidation += p.metrics.formsWithoutValidation || 0;
             behaviourMetrics.keyboardUnreachable += p.metrics.keyboardUnreachable || 0;
@@ -737,7 +830,7 @@ export async function auditBuiltApp(
             behaviourMetrics.statesVisited += p.metrics.statesVisited || 0;
             behaviourMetrics.exploratoryActions += p.metrics.exploratoryActions || 0;
             behaviourMetrics.controlsDiscovered += p.metrics.controlsDiscovered || 0;
-            for (const k of ['formsFilled', 'fieldsFilled', 'formsDeadSubmit', 'formsValidated', 'formsReloaded', 'semanticFieldsTested', 'semanticValidationFailures']) {
+            for (const k of ['formsFilled', 'fieldsFilled', 'formsDeadSubmit', 'formsValidated', 'formsReloaded', 'formsPersisted', 'formsPersistenceUnproven', 'qaRecordsDeleted', 'qaRecordsNotDeleted', 'semanticFieldsTested', 'semanticValidationFailures']) {
                 behaviourMetrics[k] += p.metrics[k] || 0;
             }
             behaviourMetrics.semanticValidationEvidence.push(...(p.metrics.semanticValidationEvidence || []));
@@ -774,7 +867,7 @@ export async function auditBuiltApp(
         };
         if (!eyeIsOpen()) return eyeRequiredResult('Browser panel is no longer open');
 
-        opts?.onProgress?.('pressing');
+        opts?.onProgress?.('discovering');
         /**
          * ONE budget for the whole walk, not one per page. Five routes × a
          * per-page budget is how a self-check turns into a five-minute stall on
@@ -794,6 +887,11 @@ export async function auditBuiltApp(
             budgetMs: Math.min(CONTROL_PASS_BUDGET_MS, remainingWalkMs()),
             seenForms,
             isEyeOpen: eyeIsOpen,
+            // The behavioural probe already knows when it is challenging a
+            // field, submitting a form, or entering a newly revealed state.
+            // Preserve that evidence at the caller instead of replacing it
+            // with a generic "pressing controls" status.
+            onProgress: opts?.onProgress,
         });
         const budgetFinding = () => ({
             id: 'qa_budget_exhausted', severity: 'medium' as const,
@@ -808,7 +906,9 @@ export async function auditBuiltApp(
             // checks. It is not proof that the shared browser-walk budget ended.
             if ((homeProbe.metrics.budgetExhausted || homeProbe.metrics.explorationBudgetExhausted) && !remainingWalkMs()) behaviourMetrics.budgetExhausted = true;
             if (homeProbe.metrics.eyeLost || !eyeIsOpen()) return eyeRequiredResult();
-        } catch { /* the controls are what is under test */ }
+        } catch (e: any) {
+            if (isAuditInfrastructureError(e)) auditErrors.push(String(e?.message || e).slice(0, 160));
+        }
 
         // Every other page the app offers, audited as a page in its own right.
         const brokenRoutes: string[] = [];
@@ -834,7 +934,9 @@ export async function auditBuiltApp(
                 if ((routeProbe.metrics.budgetExhausted || routeProbe.metrics.explorationBudgetExhausted) && !remainingWalkMs()) behaviourMetrics.budgetExhausted = true;
                 if (routeProbe.metrics.eyeLost || !eyeIsOpen()) return eyeRequiredResult();
             } catch (e: any) {
-                brokenRoutes.push(`${r} (${String(e?.message || e).slice(0, 40)})`);
+                const detail = String(e?.message || e).slice(0, 80);
+                if (isAuditInfrastructureError(e)) auditErrors.push(`${r}: ${detail}`);
+                else brokenRoutes.push(`${r} (${detail.slice(0, 40)})`);
             }
         }
         if (routes.length) { try { await page.goto(url, { waitUntil: 'load', timeout: 15_000 }); } catch { /* home is optional now */ } }
@@ -864,7 +966,6 @@ export async function auditBuiltApp(
         try {
             if (!eyeIsOpen()) return eyeRequiredResult();
             if (!remainingWalkMs()) { behaviourMetrics.budgetExhausted = true; throw new Error('browser QA budget ended before mobile discovery'); }
-            const back = page.viewportSize?.() || { width: 1280, height: 900 };
             await applyViewportSize(page, 390, 844);
             await page.waitForTimeout(420);
             await eyes.say(page, 'فحص ما لا يظهر إلا على الجوّال — القوائم والأزرار المخفية');
@@ -874,13 +975,15 @@ export async function auditBuiltApp(
                 seenForms,
                 isEyeOpen: eyeIsOpen,
                 maxControls: 12,
+                isolateBaselineControls: true,
+                baselineViewport: { width: 390, height: 844 },
             });
             if (phone.metrics.eyeLost || !eyeIsOpen()) return eyeRequiredResult();
             if ((phone.metrics.budgetExhausted || phone.metrics.explorationBudgetExhausted) && !remainingWalkMs()) behaviourMetrics.budgetExhausted = true;
             const fresh = (phone.controls || []).filter((c: any) => !seenLabels.has(String(c.label || '')));
-            for (const c of fresh) allControls.push({ ...c, bare: c.label, label: `الجوّال ${c.label}` });
+            for (const c of fresh) allControls.push({ ...c, bare: c.label, context: 'phone:/', label: `الجوّال ${c.label}` });
             behaviourMetrics.deadAnchors += phone.metrics?.deadAnchors || 0;
-            await applyViewportSize(page, back.width, back.height);
+            await applyViewportSize(page, deliveryViewport.width, deliveryViewport.height);
             await page.waitForTimeout(200);
         } catch { /* one width failing must not lose the desktop walk */ }
 
@@ -914,26 +1017,29 @@ export async function auditBuiltApp(
                         seenForms,
                         isEyeOpen: eyeIsOpen,
                         maxControls: 12,
+                        isolateBaselineControls: true,
+                        baselineViewport: { width: size.w, height: size.h },
                     });
                     if (responsive.metrics.eyeLost || !eyeIsOpen()) return eyeRequiredResult();
                     if ((responsive.metrics.budgetExhausted || responsive.metrics.explorationBudgetExhausted) && !remainingWalkMs()) behaviourMetrics.budgetExhausted = true;
                     const prefix = `${size.name} ${r}`;
                     for (const c of responsive.controls || []) {
                         const label = `${prefix} ${c.label}`;
-                        allControls.push({ ...c, bare: c.label, label, responsive: size.name });
+                        allControls.push({ ...c, bare: c.label, context: `${size.name}:${r}`, label, responsive: size.name });
                     }
                     mergeProbe({ ...responsive, controls: [] }, r);
                 } catch (e: any) {
                     // Keep the baseline proof, but do not erase a responsive
                     // failure: an unreachable route at one viewport is itself
                     // a user-visible regression and must reach the repair loop.
-                    brokenRoutes.push(`${r} @ ${size.name} (${String(e?.message || e).slice(0, 80)})`);
+                    const detail = String(e?.message || e).slice(0, 80);
+                    if (isAuditInfrastructureError(e)) auditErrors.push(`${r} @ ${size.name}: ${detail}`);
+                    else brokenRoutes.push(`${r} @ ${size.name} (${detail})`);
                 }
             }
         }
         try {
-            const back = page.viewportSize?.() || { width: 1280, height: 900 };
-            await applyViewportSize(page, back.width, back.height);
+            await applyViewportSize(page, deliveryViewport.width, deliveryViewport.height);
             await page.goto(url, { waitUntil: 'load', timeout: Math.min(timeoutMs, 12_000) });
         } catch { /* final inspection can use the last responsive state */ }
 
@@ -949,7 +1055,7 @@ export async function auditBuiltApp(
         if (!eyeIsOpen()) return eyeRequiredResult();
         let ui: { findings: any[]; metrics: Record<string, any> } = { findings: [], metrics: {} };
         try {
-            const desktop = page.viewportSize?.() || { width: 1280, height: 900 };
+            const desktop = deliveryViewport;
             ui = await inspectUi(page, {
                 eyes, restore: desktop,
                 // The panel draws every frame at the size the session declares;
@@ -1017,7 +1123,7 @@ export async function auditBuiltApp(
          * control and no form at all, that IS the finding — grading contrast
          * on such a page is how an error page scored 41/100.
          */
-        if (!allControls.length && !allForms.length) {
+        if (!allControls.length && !allForms.length && !auditErrors.length) {
             findings.push({
                 id: 'empty_page', severity: 'high',
                 detail: 'لا زر ولا رابط ولا نموذج على الصفحة — هذه ليست واجهة تطبيق، ولم أقِس شكلها لأن لا شيء فيها ليُقاس',
@@ -1025,6 +1131,11 @@ export async function auditBuiltApp(
             });
         }
         if (pageErrors.length) findings.push({ id: 'page_errors', severity: 'high', detail: `${pageErrors.length} خطأ صفحة: ${pageErrors[0]}`, detailEn: `${pageErrors.length} page error(s): ${pageErrors[0]}` });
+        if (auditErrors.length) findings.push({
+            id: 'qa_infrastructure', severity: 'high',
+            detail: `تعذّر على فاحص الجودة إكمال القياس: ${auditErrors[0]}`,
+            detailEn: `The quality inspector could not complete its measurement: ${auditErrors[0]}`,
+        });
         if (consoleErrors.length) findings.push({ id: 'console_errors', severity: 'high', detail: `${consoleErrors.length} خطأ كونسول: ${consoleErrors[0]}`, detailEn: `${consoleErrors.length} console error(s): ${consoleErrors[0]}` });
         if (failedRequests.length) findings.push({ id: 'failed_requests', severity: 'high', detail: `${failedRequests.length} ملف لم يصل: ${failedRequests[0]}`, detailEn: `${failedRequests.length} request(s) never arrived: ${failedRequests[0]}` });
         // Said out loud and costed at the lowest weight: nothing is broken, and
@@ -1106,6 +1217,10 @@ export async function auditBuiltApp(
             dead: allControls.filter(c => c.kind !== 'anchor' && !c.worked).map(c => c.label),
             formsFilled: behaviourMetrics.formsFilled,
             fieldsFilled: behaviourMetrics.fieldsFilled,
+            formsPersisted: behaviourMetrics.formsPersisted,
+            formsPersistenceUnproven: behaviourMetrics.formsPersistenceUnproven,
+            qaRecordsDeleted: behaviourMetrics.qaRecordsDeleted,
+            qaRecordsNotDeleted: behaviourMetrics.qaRecordsNotDeleted,
             semanticFieldsTested: behaviourMetrics.semanticFieldsTested,
             semanticValidationFailures: behaviourMetrics.semanticValidationFailures,
             forms: allForms,
@@ -1118,21 +1233,27 @@ export async function auditBuiltApp(
                 {
                     id: 'runtime',
                     label: 'runtime and network',
-                    status: (pageErrors.length || consoleErrors.length || failedRequests.length || brokenRoutes.length || dom.deadImgs) ? 'failed' : 'passed',
+                    status: behaviourMetrics.budgetExhausted
+                        ? 'skipped'
+                        : (pageErrors.length || consoleErrors.length || failedRequests.length || brokenRoutes.length || dom.deadImgs) ? 'failed' : 'passed',
                     measured: routes.length + 1,
                     findingIds: findings.filter(f => ['server_root_dead', 'page_errors', 'console_errors', 'failed_requests', 'broken_routes', 'dead_images'].includes(f.id)).map(f => f.id),
                 },
                 {
                     id: 'behaviour',
                     label: 'controls and forms',
-                    status: behaviour.findings.some(f => ['dead_controls', 'dead_anchors', 'forms_dead_submit', 'keyboard_unreachable', 'semantic_input_validation'].includes(f.code)) ? 'failed' : 'passed',
+                    status: behaviourMetrics.budgetExhausted
+                        ? 'skipped'
+                        : behaviour.findings.some(f => ['dead_controls', 'dead_anchors', 'forms_dead_submit', 'keyboard_unreachable', 'semantic_input_validation', 'form_persistence_unproven', 'qa_created_record_not_deletable'].includes(f.code)) ? 'failed' : 'passed',
                     measured: allControls.length + allForms.length,
-                    findingIds: findings.filter(f => ['dead_controls', 'dead_anchors', 'forms_dead_submit', 'keyboard_unreachable', 'semantic_input_validation'].includes(f.id)).map(f => f.id),
+                    findingIds: findings.filter(f => ['dead_controls', 'dead_anchors', 'forms_dead_submit', 'keyboard_unreachable', 'semantic_input_validation', 'form_persistence_unproven', 'qa_created_record_not_deletable'].includes(f.id)).map(f => f.id),
                 },
                 {
                     id: 'design',
                     label: 'visual, accessibility and responsive',
-                    status: ui.findings.length || dom.small.length || dom.h1s !== 1 || dom.fontLoaded === false ? 'failed' : 'passed',
+                    status: behaviourMetrics.budgetExhausted
+                        ? 'skipped'
+                        : ui.findings.length || dom.small.length || dom.h1s !== 1 || dom.fontLoaded === false ? 'failed' : 'passed',
                     measured: (ui.metrics.viewports || []).length,
                     findingIds: findings.filter(f => ui.findings.some((u: any) => u.code === f.id) || ['small_targets', 'h1_count', 'webfont_missing'].includes(f.id)).map(f => f.id),
                 },
@@ -1201,11 +1322,16 @@ export function formatAudit(a: AppAudit, isAr: boolean): string {
     const semantic = (a.semanticFieldsTested || 0) > 0
         ? (isAr ? `، ${a.semanticFieldsTested} حقلًا دلاليًا اختُبر` : `, ${a.semanticFieldsTested} semantic field(s) challenged`)
         : '';
+    const durability = (a.formsPersisted || 0) || (a.formsPersistenceUnproven || 0)
+        ? (isAr
+            ? `، حفظ بعد التحديث: ${a.formsPersisted || 0} مثبت${a.formsPersistenceUnproven ? `، ${a.formsPersistenceUnproven} غير مثبت` : ''}${a.qaRecordsDeleted ? `، وحُذف ${a.qaRecordsDeleted} سجل اختبار بأمان` : ''}`
+            : `, persistence after reload: ${a.formsPersisted || 0} proven${a.formsPersistenceUnproven ? `, ${a.formsPersistenceUnproven} unproven` : ''}${a.qaRecordsDeleted ? `, ${a.qaRecordsDeleted} QA record(s) safely deleted` : ''}`)
+        : '';
     const scope = isAr
         ? `(${pages} صفحة، ${a.pressed || 0} عنصر مضغوط، ${a.formsFilled || 0} نموذج معبّأ ومُرسل`
-        + `${a.fieldsFilled ? ` (${a.fieldsFilled} حقل)` : ''}${semantic}${widths ? `، ${widths} مقاسات شاشة` : ''}${discovery}${exploration}${authNote})`
+        + `${a.fieldsFilled ? ` (${a.fieldsFilled} حقل)` : ''}${semantic}${durability}${widths ? `، ${widths} مقاسات شاشة` : ''}${discovery}${exploration}${authNote})`
         : `(${pages} page(s), ${a.pressed || 0} control(s) pressed, ${a.formsFilled || 0} form(s) filled and submitted`
-        + `${a.fieldsFilled ? ` (${a.fieldsFilled} fields)` : ''}${semantic}${widths ? `, ${widths} viewport(s)` : ''}${discovery}${exploration}${authNote})`;
+        + `${a.fieldsFilled ? ` (${a.fieldsFilled} fields)` : ''}${semantic}${durability}${widths ? `, ${widths} viewport(s)` : ''}${discovery}${exploration}${authNote})`;
     const passes = (a.passes || []).map((p) => {
         const state = p.status === 'passed' ? (isAr ? 'نجح' : 'passed') : p.status === 'failed' ? (isAr ? 'فشل' : 'failed') : (isAr ? 'تخطّي' : 'skipped');
         return isAr

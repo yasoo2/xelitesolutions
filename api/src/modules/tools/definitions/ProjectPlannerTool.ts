@@ -94,9 +94,22 @@ export class ProjectPlannerTool implements ToolDefinition {
                 scopeRepairMode,
                 scopeRepairTargets,
             );
-            let response: any = await callLLM(planningPrompt, [
-                { role: 'system', content: 'You are a senior software project manager. Return only valid JSON.' }
-            ], {
+            // A self-contained, greenfield browser request can be planned from
+            // its explicit contract alone. Do that before contacting an
+            // unavailable provider: it keeps a local-only build from waiting
+            // through provider retries, while all existing/external work still
+            // requires evidence-backed model planning.
+            const constrainedPlan = context?.engineeringPipeline === true
+                ? this.constrainedFrontendPlan(projectDescription, evidence)
+                : null;
+            let response: any;
+            if (constrainedPlan) {
+                response = JSON.stringify(constrainedPlan);
+                logs.push('Planner derived one constrained frontend phase from the explicit request and discovery evidence; no provider call was needed.');
+            } else {
+                response = await callLLM(planningPrompt, [
+                    { role: 'system', content: 'You are a senior software project manager. Return only valid JSON.' }
+                ], {
                 // The user-selected compatible gateway is part of the live tool
                 // context. Do not silently discard it and fall back to unrelated
                 // keyless providers for a long planning request.
@@ -116,8 +129,9 @@ export class ProjectPlannerTool implements ToolDefinition {
                 providerTimeoutMs: Number(context?.plannerTimeoutMs) > 0 ? Number(context.plannerTimeoutMs) : 120000,
                 maxCompletionTokens: Number(context?.plannerMaxCompletionTokens) > 0 ? Number(context.plannerMaxCompletionTokens) : 12000,
                 reasoningEffort: context?.plannerReasoningEffort || 'low',
-                purpose: 'internal',
-            });
+                    purpose: 'internal',
+                });
+            }
 
             if (isProviderFailure(response)) {
                 console.warn(`[ProjectPlanner] provider-failure ${JSON.stringify({ response: this.responseDiagnostic(response) })}`);
@@ -168,6 +182,19 @@ export class ProjectPlannerTool implements ToolDefinition {
                     }
                 }
                 if (isProviderFailure(response)) {
+                    const outageConstrainedPlan = context?.engineeringPipeline === true
+                        ? this.constrainedFrontendPlan(projectDescription, evidence)
+                        : null;
+                    if (outageConstrainedPlan) {
+                        // A provider outage must not block a self-contained UI
+                        // request whose only safe implementation path is already
+                        // explicit. This remains planner-only: the normal
+                        // validator and phase executor still own all execution.
+                        response = JSON.stringify(outageConstrainedPlan);
+                        logs.push('Planner provider unavailable; derived one constrained frontend phase from the explicit request and discovery evidence.');
+                    }
+                }
+                if (isProviderFailure(response)) {
                     logs.push('Planner provider unavailable; no plan was invented from the outage message.');
                     return {
                         ok: false,
@@ -182,7 +209,7 @@ export class ProjectPlannerTool implements ToolDefinition {
                 }
             }
 
-            logs.push('LLM planning completed');
+            logs.push(constrainedPlan ? 'Constrained planning completed without a model response.' : 'LLM planning completed');
 
             let plan: any;
             try {
@@ -1573,6 +1600,55 @@ ${projectDescription}
 ${analysis ? `ANALYSIS:\n${JSON.stringify(analysis, null, 2)}\n` : ''}${evidence ? `ENGINEERING_EVIDENCE:\n${JSON.stringify(evidence, null, 2)}\n` : ''}
 ${DEPENDENCY_RESOLUTION_CONTRACT}
 ${this.scopePlanningInstructions(projectDescription)}`;
+    }
+
+    /**
+     * A deliberately narrow outage fallback for self-contained browser apps.
+     * It never applies to an existing workspace or to a request that needs a
+     * server, identity, or an external system. Those still require an actual,
+     * evidence-backed planning response.
+     */
+    private constrainedFrontendPlan(projectDescription: string, evidence?: EngineeringEvidence): any | null {
+        const request = String(projectDescription || '').trim();
+        const lower = request.toLowerCase();
+        const createsFrontend = /\b(?:create|build|make|design|implement)\b/i.test(request)
+            && /\b(?:app|application|website|web site|webpage|page|dashboard|tracker|form)\b/i.test(request);
+        const externalOrStateful = /\b(?:api|backend|server|database|postgres|mysql|mongo|redis|oauth|login|sign[ -]?in|payment|stripe|deploy|docker|kubernetes)\b/i.test(request);
+        const existingWorkspace = evidence?.mode === 'existing_workspace'
+            || Boolean(evidence?.selectedProject?.root)
+            || evidence?.constraints?.userRequestedExistingProject === true;
+        if (!createsFrontend || externalOrStateful || existingWorkspace) return null;
+
+        const scope = this.requirementScope(request);
+        const projectName = brandFrom(request, /[؀-ۿ]/u.test(request)) || 'Requested web application';
+        return {
+            projectName,
+            projectVibe: 'Constrained self-contained frontend delivery',
+            totalPhases: 1,
+            estimatedDuration: 'bounded local build and browser verification',
+            dependencies: {},
+            derivedFromExplicitRequest: true,
+            phases: [{
+                phaseNumber: 1,
+                name: 'React browser application',
+                // This is an explicit, bounded stack decision made by the
+                // planner from the browser-only contract and the registered
+                // React builder. It prevents the generic greenfield validator
+                // from discarding this safe plan and then calling a provider
+                // solely to restate the same decision.
+                description: 'Technical stack decision: use the registered React and Vite browser builder because the requested application is self-contained and browser-delivered; create and verify it locally.',
+                requirementsCovered: scope.targets.map((_, index) => `R${index + 1}`),
+                deliverables: ['A runnable local React application and a production build.'],
+                estimatedTime: 'bounded by local build and browser QA',
+                tasks: [{
+                    task: 'Build the requested React browser application from the user request.',
+                    tool: 'react_project',
+                    args: { request, projectName },
+                    priority: 'high',
+                    realisticMinutes: 10,
+                }],
+            }],
+        };
     }
 
     /**

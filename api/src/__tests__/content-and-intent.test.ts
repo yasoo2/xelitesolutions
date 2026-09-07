@@ -40,6 +40,12 @@ describe('Arabic normalisation folds spellings a reader treats as identical', ()
         expect(() => normalizeIntentText('')).not.toThrow();
         expect(() => normalizeIntentText('؟؟؟ !!!')).not.toThrow();
     });
+
+    it('understands design and filtering terms instead of dropping their intent', () => {
+        expect(normalizeIntentText('أريد تصميم واجهة')).toContain('صمم');
+        expect(normalizeIntentText('فلترة حسب الشهر')).toContain('تصفية');
+        expect(normalizeIntentText('التصميم متجاوب')).toContain('صمم');
+    });
 });
 
 describe('engineering briefs are not hijacked by the browser fast path', () => {

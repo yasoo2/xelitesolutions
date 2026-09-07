@@ -10,6 +10,33 @@ import { PROVIDER_FAILURE_PREFIX } from '../core/llm/intelligent-router';
 describe('project planner structured recovery', () => {
     beforeEach(() => mockCallLLM.mockReset());
 
+    it('keeps a self-contained frontend request moving after a provider outage without guessing for existing projects', async () => {
+        mockCallLLM.mockResolvedValue(`${PROVIDER_FAILURE_PREFIX} local provider unavailable`);
+        const planner = new ProjectPlannerTool();
+        const result: any = await planner.execute({
+            projectDescription: 'Create a compact expense tracker web application with an amount, category, date, and note form.',
+            evidence: {
+                version: 1,
+                mode: 'greenfield',
+                workspaceRoot: '/tmp/joe-workspace',
+                instructionFiles: [],
+                constraints: { localOnly: true, forbidDeploy: true, createsNewProject: true },
+                facts: [], blockers: [], referenceProjects: [],
+            },
+        }, { engineeringPipeline: true, requireRunnableContract: true });
+
+        expect(result.ok).toBe(true);
+        expect(result.output.derivedFromExplicitRequest).toBe(true);
+        expect(result.output.phases).toHaveLength(1);
+        expect(result.output.phases[0].tasks[0]).toMatchObject({
+            tool: 'react_project',
+            args: { request: expect.stringContaining('expense tracker') },
+        });
+        expect(result.output.phases[0].description).toMatch(/technical stack decision.*React.*Vite/i);
+        expect(mockCallLLM).not.toHaveBeenCalled();
+        expect(result.logs.join('\n')).toMatch(/derived one constrained frontend phase/i);
+    });
+
     it('injects authoritative selected-project paths into compact live-repair prompts', () => {
         const prompt = (new ProjectPlannerTool() as any).createCompactRecoveryPlanningPrompt(
             'Repair the existing application after a launchability failure.',
@@ -829,10 +856,12 @@ Build the complete system with locally verifiable implementation artifacts.
             requireRunnableContract: true,
         });
 
-        expect(mockCallLLM).toHaveBeenCalledTimes(3);
+        // The greenfield verdict now carries through the pipeline, so this
+        // runnable-contract case does not make a redundant provider call.
+        expect(mockCallLLM).toHaveBeenCalledTimes(2);
         expect(result.ok).toBe(false);
         expect(result.output.fallback).toBe(true);
-        expect(result.logs.join('\\n')).toMatch(/scope recovery attempt 1 failed/i);
+        expect(result.logs.join('\\n')).toMatch(/scope recovery attempt 1 (failed|remained under-scoped)/i);
         expect(result.logs.join('\\n')).toMatch(/package\.json|entrypoint|قابلاً للتشغيل/i);
     });
 

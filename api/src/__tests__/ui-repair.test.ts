@@ -117,6 +117,31 @@ describe('the JSX fixers survive real JSX', () => {
 });
 
 describe('a whole project, in one pass', () => {
+    it('keeps one project heading when a child component has only h2 headings', () => {
+        const files = {
+            'src/App.jsx': 'export default function App(){return <h1 className="app-name">Ledger</h1>}',
+            'src/components/Ledger.jsx': 'export default function Ledger(){return <main><h2>Add entry</h2><h2>History</h2></main>}',
+        };
+        const plan = repairProjectFiles(files, { findings: [{ id: 'h1_count' }] });
+        const result = { ...files, ...plan.files };
+
+        expect((Object.values(result).join('\n').match(/<h1\b/g) || [])).toHaveLength(1);
+        expect(result['src/App.jsx']).toContain('<h1 className="app-name">Ledger</h1>');
+        expect(result['src/components/Ledger.jsx']).toContain('<h2>Add entry</h2>');
+    });
+
+    it('demotes extra project headings while preserving the application identity', () => {
+        const files = {
+            'src/Feature.jsx': 'export const Feature=()=> <h1>Feature</h1>',
+            'src/App.jsx': 'export default function App(){return <h1 className="app-name">Ledger</h1>}',
+        };
+        const plan = repairProjectFiles(files, { findings: [{ id: 'h1_count' }] });
+        const result = { ...files, ...plan.files };
+
+        expect(result['src/Feature.jsx']).toContain('<h2>Feature</h2>');
+        expect(result['src/App.jsx']).toContain('<h1 className="app-name">Ledger</h1>');
+    });
+
     it('writes a measured CSS repair once and does not invent unrelated responsive work', () => {
         const files = {
             'src/styles/base.css': '.nav-links a{color:#188150}',

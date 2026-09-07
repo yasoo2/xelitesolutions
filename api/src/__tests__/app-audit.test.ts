@@ -22,6 +22,13 @@ describe('the audit arithmetic', () => {
         ])).toBe(74);
         expect(scoreOf(Array.from({ length: 10 }, (_, i) => ({ id: String(i), severity: 'high' as const, detail: '' })))).toBe(0);
     });
+    it('never presents an incomplete browser walk as a passing score', () => {
+        expect(scoreOf([{ id: 'qa_budget_exhausted', severity: 'medium', detail: '' }])).toBe(49);
+        expect(scoreOf([
+            { id: 'qa_budget_exhausted', severity: 'medium', detail: '' },
+            { id: 'dead_controls', severity: 'medium', detail: '' },
+        ])).toBe(49);
+    });
     it('the chat verdict names every finding and never buries a skip', () => {
         expect(formatAudit({ score: 100, findings: [] }, true)).toContain('100/100');
         const withFindings = formatAudit({ score: 85, findings: [{ id: 'dead_images', severity: 'high', detail: '3 صورة لم تُرسم' }] }, true);
@@ -115,6 +122,12 @@ describe('the wiring — every green build gets measured', () => {
         expect(audit).toContain('budgetMs: Math.min(CONTROL_PASS_BUDGET_MS, remainingWalkMs())');
         expect(audit).toContain("const responsiveRoutes = (routes.length ? routes : ['/']).slice(0, 20);");
         expect(audit).toContain('&& !remainingWalkMs()) behaviourMetrics.budgetExhausted = true');
+    });
+
+    it('retries only a preview navigation cancelled by the visible panel race', () => {
+        const audit = fs.readFileSync(path.join(__dirname, '..', 'core', 'quality', 'app-audit.ts'), 'utf-8');
+        expect(audit).toContain("if (!/ERR_ABORTED/iu.test(String(error?.message || error))) throw error;");
+        expect(audit).toContain('const landing = await openAuditTarget(url);');
     });
     it('labels a proven authenticated pass in the chat verdict', () => {
         const verdict = formatAudit({ score: 100, findings: [], authenticated: true }, true);

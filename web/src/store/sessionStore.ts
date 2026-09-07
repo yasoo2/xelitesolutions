@@ -3,6 +3,24 @@ import { api } from '../services/apiClient';
 import { API_URL } from '../config';
 import { isValidToken } from '../utils/auth';
 
+let sessionLoadRetry: ReturnType<typeof window.setTimeout> | null = null;
+let sessionLoadRetryAttempt = 0;
+
+/**
+ * A reload while Joe's local API is restarting must not look like every chat
+ * vanished. Retry a bounded number of times and keep the shelf honest while
+ * the service comes back; a later successful response owns the selection.
+ */
+function retrySessionLoad() {
+  if (sessionLoadRetry || sessionLoadRetryAttempt >= 4) return;
+  const delay = Math.min(8_000, 750 * (2 ** sessionLoadRetryAttempt));
+  sessionLoadRetryAttempt += 1;
+  sessionLoadRetry = window.setTimeout(() => {
+    sessionLoadRetry = null;
+    void useSessionStore.getState().loadAllSessions();
+  }, delay);
+}
+
 export interface Session {
   id: string;
   title: string;
@@ -19,13 +37,12 @@ export interface Folder {
 
 // Helper to ensure token exists (for dev environment auto-creation)
 // SECURITY: Only auto-creates dev tokens on localhost AND when not in production build
-async function ensureToken() {
+async function ensureToken(forceRefresh = false) {
   const existing = localStorage.getItem('token');
-  if (existing) {
+  if (existing && !forceRefresh) {
     if (isValidToken(existing)) return existing;
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
   }
+  if (existing) localStorage.removeItem('token');
 
   // Only allow dev token auto-creation on localhost - never in production
   const isLocal = /localhost|127\.0\.0\.1/.test(window.location.hostname);
@@ -80,10 +97,23 @@ export const useSessionStore = create<SessionState>((set) => ({
     try {
       const token = await ensureToken();
       if (!token) {
-        set({ sessions: [], agentSessions: [] });
+        // The local dev token endpoint can be briefly unavailable while the
+        // API restarts. Do not erase the visible shelf for that transient.
+        retrySessionLoad();
         return;
       }
-      const data: any = await api.get('/sessions', { kind: 'chat,agent' });
+      let data: any;
+      try {
+        data = await api.get('/sessions', { kind: 'chat,agent' });
+      } catch (e: any) {
+        // A development API restart can rotate its signing secret while the
+        // browser still holds a structurally valid JWT. Reissue locally once;
+        // do not turn a recoverable authentication mismatch into an empty shelf.
+        if (e?.message !== 'Unauthorized' && !e?.message?.includes('Invalid token')) throw e;
+        const refreshed = await ensureToken(true);
+        if (!refreshed) throw e;
+        data = await api.get('/sessions', { kind: 'chat,agent' });
+      }
       const rawList = Array.isArray(data) ? data : (data.sessions || []);
       const allSessions = rawList.map((s: any) => ({ ...s, id: s.id || s._id }));
 
@@ -113,9 +143,15 @@ export const useSessionStore = create<SessionState>((set) => ({
         }
         return { sessions: chatSessions, agentSessions, selected, agentSelected };
       });
-    } catch (e: any) {
-      if (e.message === 'Unauthorized' || e.message?.includes('Invalid token')) return;
-      // Session load failed silently
+      sessionLoadRetryAttempt = 0;
+      if (sessionLoadRetry) {
+        window.clearTimeout(sessionLoadRetry);
+        sessionLoadRetry = null;
+      }
+    } catch {
+      // Keep the currently rendered shelf on a transient request failure.
+      // Clearing it would falsely imply that the user's conversations vanished.
+      retrySessionLoad();
     }
   },
 

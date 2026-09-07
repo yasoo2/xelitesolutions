@@ -19,7 +19,7 @@ import { undefinedJsxComponentMismatch } from '../core/quality/source-contract';
 import { unparenthesizedLogicalTernaryError } from '../modules/tools/definitions/AIGeneratorTool';
 import { capabilityEvidenceNotice, repairCapabilityGapsOnce } from '../modules/tools/definitions/ReactProjectTool';
 
-const KINDS: AppKind[] = ['store', 'booking', 'tasks', 'social', 'chat', 'maps', 'weather', 'crm', 'inventory', 'calculator', 'productivity'];
+const KINDS: AppKind[] = ['store', 'booking', 'tasks', 'social', 'chat', 'maps', 'weather', 'crm', 'inventory', 'calculator', 'productivity', 'expenses'];
 
 const filesFor = (kind: AppKind, isArabic: boolean) => buildAppFiles(
     blueprintFor(kind, 'اختبار', isArabic),
@@ -115,7 +115,7 @@ const WeatherProvider: React.FC<WeatherProviderProps> = ({ children }) => {
         expect(constrainedAmount).toContain('min: 0');
         expect(constrainedAmount).toContain('minExclusive: true');
         expect(syntaxOk('src/content.js', constrainedFiles['src/content.js']).ok).toBe(true);
-        expect(syntaxOk('src/components/RecordsApp.jsx', constrainedFiles['src/components/RecordsApp.jsx']).ok).toBe(true);
+        expect(syntaxOk('src/components/LedgerApp.jsx', constrainedFiles['src/components/LedgerApp.jsx']).ok).toBe(true);
 
         const silent = blueprintFor('expenses', 'Build a quiet expense ledger', false);
         const silentFiles = buildAppFiles(silent, {
@@ -148,9 +148,10 @@ const WeatherProvider: React.FC<WeatherProviderProps> = ({ children }) => {
         );
         const localContent = local['src/content.js'];
         expect(localContent).toContain("api: ''");
-        // The same RecordsApp stays reusable; an empty endpoint yields no
-        // server claim, while the local store remains the visible truth.
-        expect(local['src/components/RecordsApp.jsx']).toContain('apiList(content.api)');
+        // With no endpoint the purpose-built local ledger remains the visible
+        // truth and does not claim a server connection.
+        expect(local['src/components/LedgerApp.jsx']).toContain('createStore(content.storeKey');
+        expect(local['src/components/LedgerApp.jsx']).not.toContain('apiList(content.api)');
     });
 
     it('persists only declared record filters across a reload', () => {

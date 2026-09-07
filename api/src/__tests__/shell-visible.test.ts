@@ -137,6 +137,12 @@ describe('explicit read-only file lists use the active workspace directly', () =
         expect(parseExplicitReadFilesRequest('Run a read-only local diagnostic: report the Node.js version. Do not modify files.')).toBeNull();
     });
 
+    test('does not extract domains, IP fragments, or URL paths as local files', () => {
+        expect(parseExplicitReadFilesRequest('Open http://127.0.0.1:5000/api/health and report the status. Do not modify files.')).toBeNull();
+        expect(parseExplicitReadFilesRequest('Read https://example.com/docs/index.html and report its content.')).toBeNull();
+        expect(parseExplicitReadFilesRequest('Open https://example.com, then read local README.md without modifying it.')).toEqual(['README.md']);
+    });
+
     test('reads multiple named relative files without project selection', async () => {
         const goal = 'Read joe-prompt-02.txt and joe-prompt-03/README.txt in the current workspace. Report the exact line count and exact content of each file. Do not modify anything.';
         expect(parseExplicitReadFilesRequest(goal)).toEqual(['joe-prompt-02.txt', 'joe-prompt-03/README.txt']);

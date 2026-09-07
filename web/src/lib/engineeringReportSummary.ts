@@ -39,7 +39,12 @@ export function summarizeEngineeringReport(markdown: string, language = 'en'): s
         .slice(0, 3);
 
     const buildVerified = /verified to compile|تُحقق من تجميعه|vite build succeeded|نجحا/i.test(source);
-    const fullyVerified = buildVerified && (!score || Number(score) === 100) && issueLines.length === 0;
+    // The report can contain a clean build-stage audit followed by a failed
+    // final live-run audit. The final machine verdict always outranks an older
+    // 100/100; otherwise the chat says "fully verified" while Logs say
+    // finalVerified=false and browserQaFailed=true.
+    const finalVerificationFailed = /finalVerified:\s*`?false`?|browserQaFailed:\s*`?true`?|Build stopped honestly|Visible Browser QA:\s*\*\*not run\*\*|I did not deliver the system|لم أسلّم النظام/iu.test(source);
+    const fullyVerified = buildVerified && !finalVerificationFailed && (!score || Number(score) === 100) && issueLines.length === 0;
     const credential = source.match(/Owner account(?:\s*\([^)]*\))?:\s*([^\s/]+)\s*\/\s*([^\s]+)/iu);
     const liveUrl = source.match(/(?:Open at:|live at:?)\s*\*\*?(https?:\/\/[^\s*]+)/iu)?.[1];
     const checked = source.match(/\((\d+)\s+page\(s\),\s*(\d+)\s+control\(s\)[^)]*\)/i);
@@ -57,6 +62,8 @@ export function summarizeEngineeringReport(markdown: string, language = 'en'): s
         if (issueLines.length) {
             result.push('الملاحظات المتبقية:');
             result.push(...issueLines.map(line => `- ${line}`));
+        } else if (finalVerificationFailed) {
+            result.push('لم يكتمل التحقق النهائي من التشغيل الحي؛ يجب إعادة الفحص قبل التسليم.');
         } else if (score && Number(score) < 100) {
             result.push('توجد ملاحظات غير حاجبة في فحص المتصفح الأخير؛ تفاصيلها التقنية مسماة في Logs.');
         } else {
@@ -79,6 +86,8 @@ export function summarizeEngineeringReport(markdown: string, language = 'en'): s
     if (issueLines.length) {
         result.push('Remaining findings:');
         result.push(...issueLines.map(line => `- ${line}`));
+        } else if (finalVerificationFailed) {
+            result.push('Final live verification did not complete; the system must be checked again before delivery.');
         } else if (score && Number(score) < 100) {
             result.push('The latest browser check still has non-blocking findings; the technical trace names them in Logs.');
         } else {

@@ -30,12 +30,13 @@ export default defineConfig({
     //  protects the case none of us would notice.
     fs: { allow: ['..'] },
     host: '0.0.0.0',
-    port: 5001,
+    // Joe's local user-facing address. Keep the API on its own port so a
+    // browser refresh never restores a UI that is wired back to itself.
+    port: 5002,
     allowedHosts: true,
     proxy: {
       '/api': {
-        // [FIX] محاولة الاتصال بـ API على منافذ متعددة
-        target: 'http://localhost:5002',
+        target: 'http://localhost:5000',
         changeOrigin: true,
         ws: true,
         configure: (proxy, _options) => {
@@ -51,7 +52,7 @@ export default defineConfig({
         },
       },
       '/ws': {
-        target: 'ws://127.0.0.1:5002',
+        target: 'ws://127.0.0.1:5000',
         ws: true,
       },
       '/artifacts': {

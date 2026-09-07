@@ -564,7 +564,14 @@ async function httpStatusOf(url: string): Promise<number | null> {
 }
 
 export async function verifiedPreviewUrl(url: string): Promise<string> {
-    return previewUrlFromStatus(await httpStatusOf(url), url);
+    for (let attempt = 0; attempt < 3; attempt++) {
+        const status = await httpStatusOf(url);
+        const verified = previewUrlFromStatus(status, url);
+        if (verified) return verified;
+        if (status !== null && status < 500 && ![408, 425, 429].includes(status)) return '';
+        if (attempt < 2) await new Promise(resolve => setTimeout(resolve, 250 * (attempt + 1)));
+    }
+    return '';
 }
 
 // Combining marks are not letters: «كِفاح» is ك + ◌ِ + فاح to this regex, so
@@ -4997,7 +5004,12 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 strippedRelation = true;
             }
             runBp = strippedRelation ? { ...effectiveBp, relation: undefined } : effectiveBp;
-            adminModel = tableModel;
+            // The domain engine already renders the API's primary resource.
+            // Only genuinely additional collections belong in TablesAdmin;
+            // otherwise the same expense/task/etc. form appears twice.
+            adminModel = effectiveBp.kind === 'generic'
+                ? tableModel
+                : tableModel.filter((entity: any) => String(entity?.key || '') !== String(prevEntry?.resource || ''));
             if (tableModel.length && effectiveBp.kind === 'generic' && effectiveBp.engine === 'records') {
                 const { blueprintFromEntity, apiFor } = require('../../../core/design/entity-app');
                 const { fieldsFromRequest } = require('../../../core/design/app-blueprints');

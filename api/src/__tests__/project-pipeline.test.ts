@@ -84,19 +84,19 @@ describe('routing — full-project requests reach the pipeline, offline and dete
         expect(p.steps[0].tool).toBe('react_project');
     });
 
-    test('planner handoff preserves direct and wrapped reference-project evidence', () => {
+    test('planner handoff preserves direct and wrapped reference-project evidence for an existing project', () => {
         const referenceProjects = [{
             root: '/workspace/reference-app',
             projectKinds: ['node'],
             manifests: [{ path: '/workspace/reference-app/package.json', kind: 'package.json' }],
         }];
-        const direct = buildPlannerEvidence({ mode: 'greenfield', referenceProjects });
+        const direct = buildPlannerEvidence({ mode: 'existing', referenceProjects });
         expect(direct.referenceProjects).toBe(referenceProjects);
-        expect(direct.mode).toBe('greenfield');
+        expect(direct.mode).toBe('existing');
 
-        const wrapped = buildPlannerEvidence({ mode: 'greenfield', output: { evidence: { referenceProjects } } });
+        const wrapped = buildPlannerEvidence({ mode: 'existing', output: { evidence: { referenceProjects } } });
         expect(wrapped.referenceProjects).toBe(referenceProjects);
-        expect(wrapped.mode).toBe('greenfield');
+        expect(wrapped.mode).toBe('existing');
     });
 
     test('greenfield planner handoff does not send an unrelated workspace catalogue', () => {
@@ -280,6 +280,15 @@ describe('specification intent detection', () => {
     });
 });
 
+describe('read-only workspace discovery', () => {
+    test('answers either root listing or README request without forcing an unrelated project choice', () => {
+        const { isWorkspaceOverviewRequest } = require('../modules/tools/definitions/ProjectPipelineTool');
+        expect(isWorkspaceOverviewRequest('Inspect the workspace and list its top-level files without making changes.')).toBe(true);
+        expect(isWorkspaceOverviewRequest('Summarize the workspace README without making changes.')).toBe(true);
+        expect(isWorkspaceOverviewRequest('Create a website and list its files.')).toBe(false);
+    });
+});
+
 describe('the bridge tool — plan, execute phases, report honestly', () => {
     const src = fs.readFileSync(
         path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ProjectPipelineTool.ts'), 'utf-8');
@@ -317,12 +326,20 @@ describe('the bridge tool — plan, execute phases, report honestly', () => {
         expect(src).toMatch(/isWorkspaceOverviewRequest/);
         expect(src).toMatch(/مساحة\\s\+العمل\\s\+\(\?:الرئيسية\|الأساسية\)/);
         expect(src).toMatch(/executeTool\('inspect_directory'/);
-        expect(src).toMatch(/executeTool\('search_files'/);
         expect(src).toMatch(/executeTool\('read_file'/);
         expect(src).toMatch(/read-only-workspace-overview/);
         expect(src).toMatch(/No README exists at the workspace root/);
         expect(src).toMatch(/Full discovery details are available in Logs/);
         expect(src).toMatch(/workspace\.overview\.top_level=/);
+    });
+
+    test('routes a bounded workspace overview before broad engineering discovery', () => {
+        const overview = src.indexOf('if (isWorkspaceOverviewRequest(productRequest))');
+        const discovery = src.indexOf("executeTool('engineering_discovery'");
+        expect(overview).toBeGreaterThan(-1);
+        expect(discovery).toBeGreaterThan(-1);
+        expect(overview).toBeLessThan(discovery);
+        expect(src).not.toMatch(/executeTool\('search_files',\s*\{\s*pattern:\s*'README\*'/);
     });
 
     test('provider preflight blocks honestly before planner when no model is healthy', () => {
@@ -333,6 +350,12 @@ describe('the bridge tool — plan, execute phases, report honestly', () => {
         expect(src).toMatch(/stopReason: 'provider_unavailable'/);
         expect(src).toMatch(/provider preflight/);
         expect(src).toMatch(/skipProviderPreflight/);
+    });
+
+    test('a complete request-derived schema bypasses provider preflight rather than waiting on Ollama', () => {
+        expect(src).toContain('const requiresModelPlanning = !hisOwnSchema && !deterministicExistingEdit;');
+        expect(src).toContain("provider: 'deterministic', detail: 'request_contract_complete'");
+        expect(src).toContain('if (!providerHealth.ok && requiresModelPlanning)');
     });
 
     test('provider preflight does not treat the router failure apology as a healthy answer', () => {

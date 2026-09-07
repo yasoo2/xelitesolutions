@@ -15,7 +15,7 @@
 import fs from 'fs';
 import path from 'path';
 import { judgeBehaviour } from '../core/quality/behaviour-audit';
-import { formatAudit } from '../core/quality/app-audit';
+import { browserWalkBudgetMs, formatAudit } from '../core/quality/app-audit';
 import { VIEWPORTS, effectiveViewports } from '../core/quality/ui-inspection';
 import { repairMeasuredMobileHeader } from '../core/quality/ui-repair';
 
@@ -137,7 +137,11 @@ describe('every menu, every route — not fourteen buttons', () => {
         const a = read('core', 'quality', 'app-audit.ts');
         expect(a).toContain('browserWalkBudgetMs(timeoutMs, routes.length)');
         expect(a).toContain('const responsiveBudget = Math.min(90_000');
-        expect(a).toContain('Math.min(240_000');
+        expect(a).toContain('Math.min(180_000');
+        expect(a).toContain('page.setDefaultTimeout?.(5_000)');
+        expect(a).toContain('page.setDefaultNavigationTimeout?.(navigationTimeoutMs)');
+        expect(browserWalkBudgetMs(180_000, 0)).toBe(180_000);
+        expect(browserWalkBudgetMs(180_000, 20)).toBe(240_000);
     });
 });
 
@@ -147,7 +151,8 @@ describe('the forms are filled in and sent, not counted', () => {
     it('every field is typed into by its declared type', () => {
         const b = B();
         expect(b).toMatch(/export async function probeForms/);
-        expect(b).toMatch(/await el\.fill\(valueFor\(fld\.type, fld\.tag, runNonce, pageLanguage\), \{ timeout: 2500 \}\)/);
+        expect(b).toContain('let value = valueFor(fld.type, fld.tag, runNonce, pageLanguage);');
+        expect(b).toMatch(/await el\.fill\(value, \{ timeout: 2500 \}\)/);
         expect(b).toMatch(/await el\.selectOption\(fld\.options\[0\]/);
         expect(b).toMatch(/await el\.check\(\{ timeout: 2000, force: true \}\)/);
         for (const t of ['email', 'tel', 'date', 'password', 'url']) expect(b).toMatch(new RegExp(`case '${t}'`));
@@ -157,6 +162,14 @@ describe('the forms are filled in and sent, not counted', () => {
         const b = B();
         expect(b).toMatch(/const sub = await page\.\$\(f\.submitSel\)/);
         expect(b).toMatch(/form\.requestSubmit \? form\.requestSubmit\(\) : form\.submit\(\)/);
+    });
+
+    it('proves a QA-created record survives refresh and tests only its own removal', () => {
+        const b = B();
+        expect(b).toContain('أتحقق من حفظ النتيجة بعد تحديث الصفحة');
+        expect(b).toContain("page.reload({ waitUntil: 'domcontentloaded', timeout: 6000 })");
+        expect(b).toContain('data-joe-qa-delete-own-record');
+        expect(b).toContain('qaRecordsDeleted');
     });
 
     it('waits for an observable async submit effect within a bounded window', () => {
@@ -310,7 +323,12 @@ describe('the interface itself is inspected — «وفحص ui»', () => {
         expect(u).toContain('metrics.viewports = measuredViewports');
         expect(u).toContain('Math.abs(actualVw - vp.w) > 2');
         expect(u).toContain('const viewports = effectiveViewports(availableWidth)');
+        expect(u).toContain("Emulation.clearDeviceMetricsOverride");
         expect(u).toContain("Emulation.setDeviceMetricsOverride");
+        expect(u.indexOf("Emulation.clearDeviceMetricsOverride")).toBeLessThan(u.indexOf('export async function applyViewportSize'));
+        expect(u).toContain('const viewportCdpSessions = new WeakMap<object, any>();');
+        expect(u).toContain('await getViewportCdpSession(page)');
+        expect(u).not.toContain('await retry.detach()');
         expect(u).toContain("Emulation.setVisibleSize");
         expect(u).toContain('dontSetVisibleSize: false');
         expect(u).toContain('screenWidth: width, screenHeight: height');
@@ -522,6 +540,14 @@ describe('a measurement it cannot make honestly, it does not make', () => {
         const a = read('core', 'quality', 'app-audit.ts');
         expect(a).toMatch(/exploratory action/);
         expect(a).toMatch(/controlsDiscovered/);
+    });
+
+    it('submits a form before exploring the controls that its first state creates', () => {
+        const b = read('core', 'quality', 'behaviour-audit.ts');
+        const formPass = b.indexOf('const r = await probeForms(page');
+        const frontier = b.indexOf('const initialKeys = new Set(list.map(controlKey));');
+        expect(formPass).toBeGreaterThan(-1);
+        expect(frontier).toBeGreaterThan(formPass);
     });
 });
 

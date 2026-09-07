@@ -64,4 +64,14 @@ describe('deadline wiring — the guards are actually in the pipeline', () => {
         expect(src).toMatch(/const dag = await this\.plan[\s\S]*this\.throwIfCancelled\(\)/);
         expect(src).toMatch(/const runNode = async[\s\S]*this\.throwIfCancelled\(\)/);
     });
+
+    test('a stop signal reaches every tool, not only the orchestrator', () => {
+        const orchestrator = read('orchestration/AgentOrchestrator.ts');
+        const tools = read('modules/services/ToolService.ts');
+        const loop = read('modules/services/AgentLoopService.ts');
+        expect(loop).toContain('cancellation: runCancellation.whenCancelled');
+        expect(orchestrator).toContain('isCancelled: goalContext?.isCancelled');
+        expect(orchestrator).toContain('cancellation: goalContext?.cancellation');
+        expect(tools).toContain('parentCancellation.then(() => stopHandle.cancel())');
+    });
 });

@@ -325,6 +325,55 @@ export function repairHeadings(code: string): RepairedFile {
     return { text, repairs };
 }
 
+/** Normalize heading ownership across a React project, not one component at a time. */
+function repairProjectHeadings(files: Record<string, string>): ProjectRepairPlan {
+    const reactFiles = Object.entries(files).filter(([rel]) => /\.(jsx|tsx)$/i.test(rel));
+    const candidates: Array<{ rel: string; offset: number; preferred: boolean }> = [];
+
+    for (const [rel, source] of reactFiles) {
+        const matcher = /<h1\b([^>]*)>((?:(?!<\/?h1\b)[\s\S])*?)<\/h1>/g;
+        for (let match = matcher.exec(source); match; match = matcher.exec(source)) {
+            if (insideComment(source, match.index) || String(match[1]).includes('=>')) continue;
+            candidates.push({
+                rel,
+                offset: match.index,
+                preferred: /(?:className|class)\s*=\s*["'][^"']*\bapp-name\b/i.test(match[1]),
+            });
+        }
+    }
+
+    if (candidates.length === 1) return { files: { ...files }, repairs: [] };
+
+    const out = { ...files };
+    let count = 0;
+    if (candidates.length > 1) {
+        const keep = candidates.find(candidate => candidate.preferred) || candidates[0];
+        for (const [rel, source] of reactFiles) {
+            out[rel] = source.replace(
+                /<h1\b([^>]*)>((?:(?!<\/?h1\b)[\s\S])*?)<\/h1>/g,
+                (whole, attrs: string, body: string, offset: number, full: string) => {
+                    if (insideComment(full, offset) || attrs.includes('=>')) return whole;
+                    if (rel === keep.rel && offset === keep.offset) return whole;
+                    count++;
+                    return `<h2${attrs}>${body}</h2>`;
+                },
+            );
+        }
+    } else {
+        const firstStatic = reactFiles.find(([, source]) => /<h2\b[^>]*>[^<{]+<\/h2>/.test(source));
+        if (firstStatic) {
+            const [rel, source] = firstStatic;
+            const repaired = repairHeadings(source);
+            out[rel] = repaired.text;
+            count += repaired.repairs.reduce((sum, repair) => sum + repair.count, 0);
+        }
+    }
+
+    const repairs: Repair[] = [];
+    add(repairs, 'h1_count', 'أبقيتُ عنواناً رئيسياً واحداً على مستوى المشروع كله', count);
+    return { files: out, repairs };
+}
+
 /* ── the stylesheet ──────────────────────────────────────────────────────── */
 
 export const TAP_TARGET_CSS = `
@@ -804,6 +853,10 @@ export function repairProjectFiles(
     const semanticEvidence = evidenceFor('semantic_input_validation');
     const out: Record<string, string> = {};
     const all: Repair[] = [];
+    const headingPlan = !targetedRun || hasFinding('h1_count')
+        ? repairProjectHeadings(files)
+        : { files: { ...files }, repairs: [] };
+    const workingFiles = headingPlan.files;
     const normalizedCss = Object.keys(files)
         .filter(rel => rel.toLowerCase().endsWith('.css'))
         .map(rel => rel.replace(/\\/g, '/').toLowerCase());
@@ -825,8 +878,10 @@ export function repairProjectFiles(
             else all.push({ ...r });
         }
     };
+    merge(headingPlan.repairs);
 
-    for (const [rel, original] of Object.entries(files)) {
+    for (const [rel, original] of Object.entries(workingFiles)) {
+        const sourceOriginal = String(files[rel] ?? '');
         let text = String(original ?? '');
         const lower = rel.toLowerCase();
 
@@ -838,7 +893,7 @@ export function repairProjectFiles(
                 const semantic = repairSemanticInputValidation(text, semanticEvidence);
                 text = semantic.text; merge(semantic.repairs);
             }
-            for (const fix of [repairImagesAlt, repairInputLabels, repairDeadLinks, repairHeadings, repairLazyImages, repairKeyboardControls, repairFormValidation]) {
+            for (const fix of [repairImagesAlt, repairInputLabels, repairDeadLinks, repairLazyImages, repairKeyboardControls, repairFormValidation]) {
                 const r = fix(text);
                 text = r.text; merge(r.repairs);
             }
@@ -894,7 +949,7 @@ export function repairProjectFiles(
             }
         }
 
-        if (text !== original) out[rel] = text;
+        if (text !== sourceOriginal) out[rel] = text;
     }
     return { files: out, repairs: all };
 }

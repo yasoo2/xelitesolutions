@@ -45,9 +45,9 @@ describe('a control that only exists on a phone is pressed too', () => {
     it('⛔ POSITIVE — there is a pass at 390px, after the desktop walk', () => {
         //  After, not instead: the desktop walk is the main measurement and
         //  this pass exists for what desktop CANNOT show.
-        expect(APP).toContain("await page.setViewportSize({ width: 390, height: 844 });");
-        const walkAt = APP.indexOf("mergeProbe(await probeControls(page, probeOpts()), '/')");
-        const phoneAt = APP.indexOf("await page.setViewportSize({ width: 390, height: 844 });");
+        expect(APP).toContain('await applyViewportSize(page, 390, 844);');
+        const walkAt = APP.indexOf('const homeProbe = await probeControls(page, probeOpts());');
+        const phoneAt = APP.indexOf('await applyViewportSize(page, 390, 844);');
         expect(walkAt).toBeGreaterThan(0);
         expect(phoneAt).toBeGreaterThan(walkAt);
     });
@@ -59,18 +59,29 @@ describe('a control that only exists on a phone is pressed too', () => {
         expect(APP).toContain('const fresh = (phone.controls || []).filter((c: any) => !seenLabels.has(String(c.label || \'\')));');
     });
 
+    it('isolates responsive controls without replacing real phone presses with desktop proof', () => {
+        expect(APP.match(/isolateBaselineControls: true/g)?.length).toBe(2);
+        expect(BEHAVIOUR).toContain('if (opts?.isolateBaselineControls && baselineMayBeDirty)');
+        expect(BEHAVIOUR).toContain("await page.reload({ waitUntil: 'load', timeout: 5000 })");
+        expect(BEHAVIOUR).toContain('baselineMayBeDirty = true;');
+        expect(BEHAVIOUR).toContain('await applyViewportSize(page, opts.baselineViewport.width, opts.baselineViewport.height)');
+        expect(APP).toContain('baselineViewport: { width: 390, height: 844 }');
+        expect(APP).toContain('baselineViewport: { width: size.w, height: size.h }');
+        expect(BEHAVIOUR).not.toContain("effect: 'reachable'");
+    });
+
     it('⛔ NEGATIVE — and the width is put back afterwards', () => {
         //  Everything measured after this runs at the size the caller set. A
         //  pass that leaves the page 390px wide would make the design audit
         //  judge a phone layout as a desktop one.
-        expect(APP).toContain('const back = page.viewportSize?.() || { width: 1280, height: 900 };');
-        expect(APP).toContain('await page.setViewportSize(back);');
+        expect(APP).toContain('const deliveryViewport = { width: 1280, height: 900 };');
+        expect(APP).toContain('await applyViewportSize(page, deliveryViewport.width, deliveryViewport.height);');
     });
 
     it('⛔ NEGATIVE — a failure there must not cost the desktop walk', () => {
         //  The phone pass is additive. If setting a viewport throws, the forty
         //  controls already pressed are still the measurement.
-        const at = APP.indexOf("await page.setViewportSize({ width: 390, height: 844 });");
+        const at = APP.indexOf('await applyViewportSize(page, 390, 844);');
         const tail = APP.slice(at, at + 1800);
         expect(tail).toContain('catch { /* one width failing must not lose the desktop walk */ }');
     });
@@ -81,11 +92,12 @@ describe('the decorated name and the real name are both kept', () => {
         //  The class that has cost the most this week: two places writing the
         //  same thing, one taught the rule and the other not. Both are asserted
         //  here because fixing either alone looks exactly like fixing both.
-        expect(APP).toContain('allControls.push({ ...c, bare: c.label, label: route === \'/\' ? c.label : `${route} ${c.label}` })');
-        expect(APP).toContain('allControls.push({ ...c, bare: c.label, label: `الجوّال ${c.label}` })');
+        expect(APP).toContain('allControls.push({ ...c, bare: c.label, context: `desktop:${route}`, label: route === \'/\' ? c.label : `${route} ${c.label}` })');
+        expect(APP).toContain("allControls.push({ ...c, bare: c.label, context: 'phone:/', label: `الجوّال ${c.label}` })");
+        expect(APP).toContain('allControls.push({ ...c, bare: c.label, context: `${size.name}:${r}`, label, responsive: size.name })');
         //  …and nothing pushes a control without it.
         const pushes = APP.match(/allControls\.push\(\{[^}]*\}/g) || [];
-        expect(pushes.length).toBe(2);
+        expect(pushes.length).toBe(3);
         for (const p of pushes) expect(p).toContain('bare: c.label');
     });
 

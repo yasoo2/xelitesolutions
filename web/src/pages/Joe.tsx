@@ -16,14 +16,13 @@ import { getRunningRunId, startTrackingRuns, subscribeRunningSessions } from '..
 import { api } from '../services/apiClient';
 import SettingsDialog from '../components/SettingsDialog';
 import GitHubConnectDialog from '../components/GitHubConnectDialog';
-import ProjectOnboardingModal from '../components/ProjectOnboardingModal';
 import DepartmentStatusCard from '../components/DepartmentStatusCard';
 import { githubService, GitHubRepo, GitHubUser, GitHubCommit } from '../services/githubService';
 import { useTranslation } from 'react-i18next';
 import { resolveIdentity, isPrivileged, loadGoogleProfile } from '../lib/userIdentity';
 import { API_URL } from '../config';
 import { applyAccent } from '../accents';
-import { shouldOpenPreviewOnReady } from '../lib/preview-routing';
+import { belongsToActiveSession, shouldOpenPreviewOnReady } from '../lib/preview-routing';
 import { isEngineeringReport, summarizeEngineeringReport } from '../lib/engineeringReportSummary';
 
 interface Message {
@@ -60,6 +59,8 @@ export default function Joe() {
     const activeSessionKind = agentSelected ? 'agent' : (selected ? 'chat' : 'agent');
     const activeSessionIdRef = useRef(activeSessionId);
     activeSessionIdRef.current = activeSessionId;
+    const terminalRunIdsRef = useRef<Set<string>>(new Set());
+    const terminalSessionIdsRef = useRef<Set<string>>(new Set());
     useEffect(() => {
         if (!activeSessionId) return;
         try { localStorage.setItem('joe-active-session', activeSessionId); } catch { /* storage unavailable */ }
@@ -115,7 +116,6 @@ export default function Joe() {
     // clear backend message so the UI can prompt the user to reconnect.
     const [ghError, setGhError] = useState<string | null>(null);
     const [previewUrl, setPreviewUrl] = useState<string | undefined>(undefined);
-    const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
     const [workspace, setWorkspace] = useState<any>(null);
     const [userRole, setUserRole] = useState<string | undefined>(undefined);
     // Live "engineering company" department pipeline (BA -> Architect -> Dev -> QA -> Delivered)
@@ -246,6 +246,21 @@ export default function Joe() {
             // Everything below paints THIS conversation's panels — a run in
             // another session must never steal its tabs or its preview.
             if (!mine(msg)) return;
+            const messageRunId = String(msg?.runId || msg?.data?.runId || '').trim();
+            const messageSessionId = String(msg?.sessionId || msg?.data?.sessionId || '').trim();
+            const isTerminalRunEvent = ['run_finished', 'run_completed', 'run_cancelled', 'run_failed'].includes(msg?.type);
+            if (isTerminalRunEvent && messageRunId) {
+                terminalRunIdsRef.current.add(messageRunId);
+                if (messageSessionId) terminalSessionIdsRef.current.add(messageSessionId);
+                if (terminalRunIdsRef.current.size > 128) terminalRunIdsRef.current.clear();
+                setDepartmentStatus(null);
+            } else if (msg.type === 'user_input' && messageRunId && messageSessionId) {
+                terminalSessionIdsRef.current.delete(messageSessionId);
+            } else if (terminalSessionIdsRef.current.has(messageSessionId) || (messageRunId && terminalRunIdsRef.current.has(messageRunId))) {
+                // Never let delayed department/tool frames put a finished run
+                // back into the live state after the user has stopped it.
+                return;
+            }
 
             const triggerUncollapse = () => {
                 window.dispatchEvent(new CustomEvent('joe:workspace-uncollapse'));
@@ -347,7 +362,7 @@ export default function Joe() {
             }
 
             // [AUTO-PREVIEW] Handle preview_ready event specifically
-            if (msg.type === 'preview_ready') {
+            if (msg.type === 'preview_ready' && belongsToActiveSession(msg as any, activeSessionId)) {
                 const url = msg.data?.url || msg.data?.previewUrl;
                 if (url && typeof url === 'string') {
                     // Only auto-switch to preview for local/internal proxy URLs
@@ -579,6 +594,17 @@ export default function Joe() {
                             timestamp: new Date(e.ts || Date.now())
                         }];
                     }
+                    if (e.type === 'run_interrupted') {
+                        const arabic = String(i18n.language || '').toLowerCase().startsWith('ar');
+                        return [{
+                            id: e.id || `interrupted-${e.runId || e.ts}`,
+                            role: 'assistant',
+                            content: arabic
+                                ? 'توقف التنفيذ لأن خدمة جو أُعيد تشغيلها قبل اكتماله. أرسل «أكمل» للمتابعة من آخر حالة محفوظة.'
+                                : 'The run was interrupted because Joe restarted before it finished. Send “Continue” to resume from the last saved state.',
+                            timestamp: new Date(e.ts || Date.now())
+                        }];
+                    }
                     return [];
                 });
 
@@ -609,29 +635,6 @@ export default function Joe() {
                 setWorkspaceId(wsId);
                 setWorkspace(ws);
 
-                // Do not reopen onboarding over an existing local artifact. The
-                // workspace flag can remain false after a restart or an interrupted
-                // run, while the shared local root already contains the project the
-                // user is actively inspecting. The tree endpoint is the source of
-                // truth for visible workspace content; if it cannot be read we keep
-                // the conservative first-run behaviour and show onboarding.
-                if (!ws.projectInitialized) {
-                    try {
-                        const treeResult: any = await api.get('/project/tree');
-                        const entries = Array.isArray(treeResult?.tree)
-                            ? treeResult.tree
-                            : Array.isArray(treeResult)
-                                ? treeResult
-                                : [];
-                        const hasVisibleArtifacts = entries.some((entry: any) =>
-                            entry && typeof entry === 'object' && String(entry.name || '').trim()
-                        );
-                        if (!hasVisibleArtifacts) setIsOnboardingOpen(true);
-                    } catch {
-                        setIsOnboardingOpen(true);
-                    }
-                }
-
                 return wsId;
             }
 
@@ -641,7 +644,6 @@ export default function Joe() {
                 const wsId = newWs._id || newWs.id;
                 setWorkspaceId(wsId);
                 setWorkspace(newWs);
-                setIsOnboardingOpen(true);
                 return wsId;
             }
         } catch {
@@ -649,38 +651,6 @@ export default function Joe() {
         }
         return null;
     }, []);
-
-    const handleSelectLocal = useCallback(async () => {
-        if (!workspaceId) return;
-        try {
-            await api.put(`/workspaces/${workspaceId}`, {
-                kind: 'local',
-                projectInitialized: true
-            });
-            setIsOnboardingOpen(false);
-
-            // Reload workspace
-            const updated: any = await api.get(`/workspaces/${workspaceId}`);
-            setWorkspace(updated);
-
-            // Immediate AI Welcome Message for Local
-            setMessages(prev => [...prev, {
-                id: `sys-${Date.now()}`,
-                role: 'assistant',
-                content: t('projectReadyMsg')
-            }]);
-        } catch {
-            // Silently handle local project init errors
-        }
-    }, [workspaceId]);
-
-    const handleSelectGitHub = useCallback(() => {
-        // We keep the modal open but swap it for the GitHub dialog 
-        // OR close and open GitHub. Let's close and open to avoid overlay stack.
-        setIsOnboardingOpen(false);
-        setTimeout(() => setIsGitHubOpen(true), 300); // Smooth transition
-    }, []);
-
 
     // Also update projectInitialized when GitHub is connected and repo is selected
     useEffect(() => {
@@ -875,11 +845,23 @@ export default function Joe() {
                     await loadAllSessions();
                 }
             } catch {
-                return;
+                // A local API may be in JSON/offline mode while its session
+                // catalogue is recovering. Never start a run without an owner:
+                // the run, browser stream, and chat must share one stable id.
+                targetSessionId = `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+                kind = 'agent';
+                setAgentSelected(targetSessionId);
             }
         }
 
         if (!targetSessionId) return;
+
+        // State updates for a new session land after this handler returns. Use
+        // the exact target id here instead of a browser id captured from the
+        // previous chat, or the first visual QA run watches the wrong panel.
+        const targetBrowserSessionId = kind === 'agent'
+            ? `browser:${targetSessionId}`
+            : browserSessionId;
 
         const messageText = inputValue;
         const userMessage: Message = {
@@ -900,12 +882,19 @@ export default function Joe() {
             }
 
             if (kind === 'agent') {
-                await api.post('/run/start', {
+                // On the first message, mount the target session's Browser
+                // stream before the API starts visual QA. Without this small
+                // handoff the backend audits before the panel has subscribed
+                // and honestly (but needlessly) reports that no eye is open.
+                if (activeSessionId !== targetSessionId) {
+                    await new Promise<void>(resolve => window.setTimeout(resolve, 450));
+                }
+                const started: any = await api.post('/run/start', {
                     text: messageText,
                     sessionId: targetSessionId,
                     workspaceId: currentWorkspaceId,
                     // Keep browser_run on the same visible page owned by the target chat.
-                    browserSessionId: browserSessionId || `browser:${targetSessionId}`,
+                    browserSessionId: targetBrowserSessionId || undefined,
                     /**
                      *  THE LANGUAGE SWITCH WAS NEVER CONNECTED.
                      *
@@ -927,6 +916,12 @@ export default function Joe() {
                             || 'en'
                     ).split('-')[0]
                 });
+                // The API may mint a session when an older client reaches it
+                // without one. Adopt that concrete id before later events.
+                if (started?.sessionId && started.sessionId !== targetSessionId) {
+                    targetSessionId = String(started.sessionId);
+                    setAgentSelected(targetSessionId);
+                }
             } else {
                 await SocketService.sendMessage(targetSessionId, messageText);
             }
@@ -1126,7 +1121,6 @@ export default function Joe() {
                 theme={theme}
                 onThemeToggle={toggleTheme}
                 onSettingsClick={() => setIsSettingsOpen(true)}
-                onNewProject={() => setIsOnboardingOpen(true)}
                 isConnected={isConnected}
                 branch="main"
                 onGitChanges={() => {
@@ -1156,6 +1150,15 @@ export default function Joe() {
                             serverRunId={getRunningRunId(activeSessionId || '') || undefined}
                             hideHistory={true}
                             workspaceId={workspaceId}
+                            onSessionCreated={(id) => {
+                                // The first prompt can create its session on the
+                                // server. Adopt that id immediately so stop,
+                                // completion, and browser events remain scoped
+                                // to the conversation the user is looking at.
+                                setAgentSelected(id);
+                                setSelected(null);
+                                void loadAllSessions();
+                            }}
                             onMessagesUpdate={handleComposerMessages}
                             githubConnected={ghConnected}
                             onGitClick={() => setIsGitHubOpen(true)}
@@ -1180,12 +1183,6 @@ export default function Joe() {
                     onSelectRepo={handleSelectRepo}
                     onDisconnect={handleDisconnectGitHub}
                     tokenError={ghError}
-                />
-                <ProjectOnboardingModal
-                    isOpen={isOnboardingOpen}
-                    onClose={() => setIsOnboardingOpen(false)}
-                    onSelectLocal={handleSelectLocal}
-                    onSelectGitHub={handleSelectGitHub}
                 />
             </JoeIDELayout>
         </ErrorBoundary>

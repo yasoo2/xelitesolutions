@@ -201,8 +201,15 @@ function PanelToolbar({ filter, onFilterChange, onCopyAll, onClear, count, label
 // ─── Enhanced Logs Panel ───────────────────────────────────────────
 /** One growing file: name, size, state, and the code itself. */
 function LiveFileCard({ f }: { f: LiveFile }) {
-    const [open, setOpen] = useState(true);
+    // A long run can finish dozens of files. Keeping every completed source
+    // file mounted made the Logs tab render megabytes of text and eventually
+    // crash the very browser Joe is meant to observe. The active file remains
+    // inspectable while it streams; completed files are available on demand.
+    const [open, setOpen] = useState(!f.done);
     const preRef = useRef<HTMLPreElement>(null);
+    useEffect(() => {
+        if (f.done) setOpen(false);
+    }, [f.done]);
     // Follow the code as it arrives, like a terminal does.
     useEffect(() => {
         if (open && preRef.current) preRef.current.scrollTop = preRef.current.scrollHeight;
@@ -334,13 +341,19 @@ function EnhancedLogsPanel({ logs, liveFiles = [], buildStatus = null }: { logs:
     const filtered = filter
         ? visibleLogs.filter(l => l.toLowerCase().includes(filter.toLowerCase()))
         : visibleLogs;
+    // The retained log is evidence, not a requirement to mount every line.
+    // Search and copy still work against all retained logs; the screen renders
+    // a bounded recent window so a long build stays responsive and observable.
+    const RENDERED_LOG_LIMIT = 220;
+    const renderedLogs = filter ? filtered : filtered.slice(-RENDERED_LOG_LIMIT);
+    const hiddenLogCount = filtered.length - renderedLogs.length;
 
     // Auto-scroll
     useEffect(() => {
         if (autoScroll && scrollRef.current) {
             scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
         }
-    }, [filtered.length, autoScroll, liveFiles.reduce((n, f) => n + f.content.length, 0)]);
+    }, [renderedLogs.length, autoScroll, liveFiles.reduce((n, f) => n + f.content.length, 0)]);
 
     const handleCopyAll = () => {
         // Everything the panel SHOWS is what "copy all" copies: the live file
@@ -398,6 +411,11 @@ function EnhancedLogsPanel({ logs, liveFiles = [], buildStatus = null }: { logs:
                 {liveFiles.length > 0 && filtered.length > 0 && (
                     <SectionHeading label={t('wsLogCount', { n: filtered.length })} />
                 )}
+                {hiddenLogCount > 0 && (
+                    <div style={{ padding: '4px 12px', color: 'var(--joe-text-muted)', fontSize: 11 }}>
+                        {`Showing the latest ${RENDERED_LOG_LIMIT} lines. Search to inspect older retained evidence.`}
+                    </div>
+                )}
                 {filtered.length === 0 && liveFiles.length === 0 ? (
                     <div style={{
                         padding: 24, textAlign: 'center',
@@ -406,9 +424,9 @@ function EnhancedLogsPanel({ logs, liveFiles = [], buildStatus = null }: { logs:
                         {t('wsNoLogs')}
                     </div>
                 ) : (
-                    filtered.map((log, i) => (
+                    renderedLogs.map((log, i) => (
                         <div
-                            key={clearIndex + i}
+                            key={clearIndex + hiddenLogCount + i}
                             className="log-entry"
                             style={{
                                 display: 'flex', alignItems: 'flex-start', gap: 6,
@@ -639,6 +657,9 @@ export default function WorkspacePanel({
                         <button
                             key={tab.id}
                             className={`joe-workspace-tab ${activeTab === tab.id ? 'active' : ''}`}
+                            aria-label={tab.label}
+                            aria-pressed={activeTab === tab.id}
+                            title={tab.label}
                             onClick={() => handleTabChange(tab.id)}
                         >
                             {tab.icon}

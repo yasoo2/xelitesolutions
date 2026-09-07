@@ -18,6 +18,9 @@ function terminateProcessTree(child: any): Promise<void> {
         try {
             const killer = spawn('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], {
                 stdio: 'ignore', windowsHide: true,
+                // ExecutionGuard validates this exact cleanup argv; it is not
+                // a general direct-spawn escape hatch.
+                __joeExecutionTreeCleanup: true,
             } as any);
             killer.once('close', finish);
             killer.once('error', () => { try { child.kill('SIGKILL'); } catch { /* already gone */ } finish(); });
