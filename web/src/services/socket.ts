@@ -600,17 +600,39 @@ async function connect() {
 
     const reason = String((ev as any)?.reason || '');
     if (ev?.code === 1008 || reason.startsWith('unauthorized')) {
-      try {
-        localStorage.removeItem('token');
-      } catch { }
-      try {
-        window.dispatchEvent(new CustomEvent('auth:unauthorized'));
-      } catch { }
-      if (connectTimer) {
-        window.clearTimeout(connectTimer);
-        connectTimer = null;
+      const tokenNow = (() => {
+        try { return localStorage.getItem('token'); } catch { return null; }
+      })();
+      const invalidate = (detail: string) => {
+        try { localStorage.removeItem('token'); } catch { }
+        try { window.dispatchEvent(new CustomEvent('auth:unauthorized')); } catch { }
+        if (connectTimer) {
+          window.clearTimeout(connectTimer);
+          connectTimer = null;
+        }
+        setStatus('unauthorized', detail);
+      };
+
+      // A proxy can close the socket with a policy code while the API is
+      // restarting. Do not destroy the signed identity on a WebSocket hint:
+      // only an explicit HTTP 401 is authoritative. This keeps guest-owned
+      // sessions reachable across a normal local service restart.
+      if (!tokenNow || !isValidToken(tokenNow)) {
+        invalidate(reason || `code:${String(ev?.code || '')}`);
+        return;
       }
-      setStatus('unauthorized', reason || `code:${String(ev?.code || '')}`);
+      setStatus('checking_auth', reason || `code:${String(ev?.code || '')}`);
+      void probeAuth(tokenNow).then((result) => {
+        if (result === 'unauthorized') {
+          invalidate('probe_401');
+          return;
+        }
+        connectAttempts += 1;
+        const delay = result === 'error'
+          ? Math.min(8000, 750 * Math.pow(2, Math.max(0, connectAttempts - 1)))
+          : 250;
+        connectTimer = window.setTimeout(() => void connect(), delay);
+      });
       return;
     }
     const closedEarly = !opened && Date.now() - startedAt < 2000;

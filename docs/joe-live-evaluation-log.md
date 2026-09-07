@@ -58,7 +58,9 @@ This is a continuation capability check and does not increment the numbered P01-
 - Source inspection then found that the repair block had been appended to both `src/styles/base.css` and `src/styles/tokens.css`, together with unrelated responsive rules. This was rejected as an over-broad repair even though the score was clean.
 - `repairProjectFiles` now selects one primary CSS target for evidence-driven repairs and gates responsive CSS on an actual responsive finding. A new regression proves a low-contrast finding changes only `base.css` and does not invent responsive work.
 - Verification after the narrower fix: focused project-edit/UI-repair/self-repair suites `57/57`; improvement-loop suites `114/114`; production API build; and all ten permanent architecture/self-healing commands passed.
-- Restarting the API invalidated the visible guest identity and the UI reopened with `Sessions · 0`, so the planned UI undo plus exact rerun could not be completed in that conversation. This is a real guest-session continuity defect and is the next repair target; the narrower CSS behavior is not marked live-proven yet.
+- Restarting the API initially invalidated the visible guest identity because the WebSocket client deleted a valid token immediately on a policy close. The client now asks the authenticated HTTP boundary first and clears the token only on an explicit `401`.
+- Live continuity proof: a fresh guest created `SESSION_RESTART_PROBE` and reached `Sessions · 1`; after a forced API restart the same tab retained the completed message, and a newly opened Joe tab rehydrated the same conversation and `Sessions · 1`. The ownership/restart regression suite passed `26/26`, and the web production build completed with 4,281 transformed modules.
+- The interrupted old guest conversation cannot be recovered after its token was already deleted, so the narrower one-file CSS repair remains regression-proven but still needs a fresh measured app rerun.
 
 ## 2026-09-07 Account-Isolation Follow-up
 
