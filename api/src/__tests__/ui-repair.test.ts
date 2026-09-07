@@ -17,7 +17,8 @@
  */
 import {
     repairHtmlShell, repairImagesAlt, repairInputLabels,
-    repairDeadLinks, repairHeadings, repairTapTargets, repairFlatHierarchy, repairProjectFiles,
+    repairDeadLinks, repairHeadings, repairTapTargets, repairFlatHierarchy, repairFormValidation,
+    repairProjectFiles, REPAIRS_THIS_FILE_CAN_MAKE,
 } from '../core/quality/ui-repair';
 import { syntaxOk } from '../modules/tools/definitions/ProjectEditTool';
 
@@ -106,9 +107,33 @@ describe('the JSX fixers survive real JSX', () => {
         expect(r.text).toMatch(/h1\s*\{[^}]*font-size:\s*22px\s*!important/s);
         expect(r.text).toMatch(/h2\s*\{[^}]*!important/s);
     });
+
+    it('exposes form validation as an actionable repair capability', () => {
+        const r = repairFormValidation('<form><input type="text" value={name} /></form>');
+        expect(r.text).toContain('required />');
+        expect(r.repairs).toEqual(expect.arrayContaining([expect.objectContaining({ id: 'form_no_validation' })]));
+        expect(REPAIRS_THIS_FILE_CAN_MAKE.has('form_no_validation')).toBe(true);
+    });
 });
 
 describe('a whole project, in one pass', () => {
+    it('writes a measured CSS repair once and does not invent unrelated responsive work', () => {
+        const files = {
+            'src/styles/base.css': '.nav-links a{color:#188150}',
+            'src/styles/tokens.css': ':root{--brand:#188150}',
+        };
+        const plan = repairProjectFiles(files, {
+            findings: [{
+                id: 'low_contrast',
+                evidence: [{ sel: '.nav-links a', fg: [24, 129, 80], bg: [24, 129, 80], need: 4.5 }],
+            }],
+        });
+
+        expect(Object.keys(plan.files)).toEqual(['src/styles/base.css']);
+        expect(plan.files['src/styles/base.css']).toContain('إصلاح جو الجراحي: تباين قيس');
+        expect(plan.files['src/styles/base.css']).not.toContain('إصلاح جو: التجاوب');
+    });
+
     it('every changed file still parses', () => {
         const files = {
             'index.html': '<html><head></head><body></body></html>',

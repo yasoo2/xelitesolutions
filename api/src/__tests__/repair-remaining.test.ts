@@ -90,7 +90,7 @@ describe('the phrase routes to it, and nothing else does', () => {
 
     it('and it needs a project — the phrase alone builds nothing', () => {
         const src = ENGINE();
-        expect(src).toMatch(/if \(\(repairRemaining \|\| repairExisting\) && !!repairProjectDir\) \{/);
+        expect(src).toMatch(/if \(\(repairRemaining \|\| repairExisting\) && !!repairProjectDir && !buildRequest\) \{/);
     });
 });
 

@@ -36,7 +36,7 @@ The live retest reproduced the user action while another prompt was executing: o
 
 ## Current Gaps
 
-- The live sequence has verified thirteen prompts so far; it is not evidence that Joe handles the remaining 37 or all real-world task classes.
+- This log contains P01-P14 attempts with mixed outcomes; P09 and P14 retain open failures. It does not establish thirteen clean sequential passes. The current objective is 500 sequential UI prompts; security regression checks do not increment that count.
 - GitHub disconnect is implemented and statically covered, but the connected-state click still needs a live session with a valid user token.
 - Browser QA and existing-project continuation require the next progressively harder prompts and independent artifact checks.
 - P10 passed its requested acceptance and browser gates, but the environment still needs a dedicated offline-install regression test so a cached toolchain is reused before npm waits on the registry.
@@ -47,3 +47,43 @@ The live retest reproduced the user action while another prompt was executing: o
 - The neural activity surface is being upgraded from a one-line status card to a compact four-event live stream, with the newest real WebSocket event marked as the current action and full history still available in details/Logs.
 - P13 exposed and fixed a session-refresh recovery defect: title refresh now updates the visible chip immediately and rehydrates the active conversation from persisted history without clearing it. It also added general mobile-header fragmentation detection and repair, and promoted contact forms to explicit acceptance criteria.
 - P13 follow-up fixed a contradictory scope warning: contact-form evidence is now part of the capability audit, and explicitly listed page names are excluded from unchecked-clause warnings.
+
+## Short Follow-up Continuation Evaluation
+
+This is a continuation capability check and does not increment the numbered P01-P14 sequence.
+
+- Entered through Joe's real command box in the existing `عدسة` conversation: `غيّر نص زر «احجز موعدك» إلى «احجز جلستك»، ثم اختبر التعديل في المتصفح.`
+- Joe kept the same project, changed only the requested source label first, completed the production build, and opened the Browser panel. Visual inspection confirmed the new button text.
+- The first browser pass measured `85/100` with `low_contrast`. Joe did not deliver at that score: it announced a measured repair, rebuilt, reran the browser audit, and reported `85 → 100/100` with the finding removed.
+- Source inspection then found that the repair block had been appended to both `src/styles/base.css` and `src/styles/tokens.css`, together with unrelated responsive rules. This was rejected as an over-broad repair even though the score was clean.
+- `repairProjectFiles` now selects one primary CSS target for evidence-driven repairs and gates responsive CSS on an actual responsive finding. A new regression proves a low-contrast finding changes only `base.css` and does not invent responsive work.
+- Verification after the narrower fix: focused project-edit/UI-repair/self-repair suites `57/57`; improvement-loop suites `114/114`; production API build; and all ten permanent architecture/self-healing commands passed.
+- Restarting the API invalidated the visible guest identity and the UI reopened with `Sessions · 0`, so the planned UI undo plus exact rerun could not be completed in that conversation. This is a real guest-session continuity defect and is the next repair target; the narrower CSS behavior is not marked live-proven yet.
+
+## 2026-09-07 Account-Isolation Follow-up
+
+The user reported seeing the same project from an authenticated account and a guest view. This batch extends the earlier session/workspace fixes to browser ownership. It is a security regression batch, not a new numbered prompt.
+
+- Confirmed implementation defect: unknown `browser:<chatId>` streams were assigned to the first requesting account. HTTP and WebSocket paths now check the persisted chat owner in JSON or Mongo mode. Unknown streams are denied; the legacy exact `browser:<userId>` namespace is account-bound.
+- The saved-browser-login status route now checks ownership before reading metadata.
+- Live chat subscriptions now authorize persisted sessions even before a run registers an in-memory owner. Anonymous live sockets and supplied invalid tokens are rejected. A subscription revision prevents a slow old request from replacing a newer session selection.
+- Focused verification: `npm test -- --runInBand --silent src/__tests__/live-subscription-ownership.test.ts src/__tests__/session-isolation.test.ts src/__tests__/browser-session-ownership.test.ts src/__tests__/browser-session-status-isolation.test.ts src/__tests__/session-controller-isolation.test.ts src/__tests__/local-guest-browser-panel.test.ts src/__tests__/browser-session-wiring.test.ts` passed: 7 suites, 25 tests.
+- API `npm run build` passed after retrying outside the filesystem sandbox (the initial esbuild invocation was denied directory access). The local API was restarted with the new bundle.
+- `node scripts/verify-browser-account-isolation.cjs` passed against the running API: owner metadata access 200; foreign metadata 403; foreign history/workspace 404; foreign browser socket closed 1008; foreign live subscriptions empty; owner live subscription accepted; invalid HTTP and live tokens rejected. The synthetic session was deleted by the test.
+- UI check in the isolated in-app Guest tab: selecting Browser still connects the owner's panel. Screenshot shows an empty canvas labelled `No page loaded`, as expected for the read-only session. This is connection/access evidence, not a rendered-page QA pass.
+- Remaining security review: `projectPreview.ts` explicitly serves project builds without authentication. This source-level finding needs a scoped preview authorization design and isolated runtime reproduction. No full-account-isolation completion claim is made.
+- Required gates completed with exit code 0: `guard:architecture`, `guard:package-scripts`, `test:joe:engineer-flow`, `test:self-fix:build-context`, `test:self-fix:execution-safety`, `test:self-fix:typescript-repair`, `test:self-fix:typescript-missing-name`, `test:self-fix:typescript-number-to-string`, `test:self-healing:failure`, `test:self-healing:success`. The engineer-flow plan is controlled/mocked, as documented in AGENTS.md; it does not prove unrestricted planning.
+- UI follow-up: at a narrow viewport the workspace tabs and New Chat control lost their accessible names when their labels were hidden. Added explicit accessible labels/tooltips in `WorkspacePanel.tsx` and `SessionsBar.tsx`; the live accessibility tree now retains those names. New Chat was clicked in the real UI and opened directly, with empty Logs and an independently connected Browser panel. Frontend `npm run build` passed TypeScript and Vite (4,281 modules; Vite completed in 2m 15s).
+- GitHub synchronization is not yet verified for this batch. No new numbered prompt is claimed.
+
+### Browser Prompt Regression: Failed, Requires Repair
+
+Entered and submitted through Joe's command box in the in-app browser, with Auto selected and Browser visible:
+
+> Open http://127.0.0.1:5000/api/health in your browser and report the status shown. Do not modify any files.
+
+Session: `6a9de7c44402a4c682685f88` (API Health Check). Joe stopped after 8 steps / 3:10 with `Read the file '127.0' if found` / `File not found`; Browser remained `No page loaded`. The live UI showed a repair/search detour for the invented local file. This is a failure, not a browser or prompt pass.
+
+Root cause confirmed in source and `joe-isolation-verified.out`: `parseExplicitReadFilesRequest` extracts filename-looking fragments directly from the entire prompt, including URL hosts and paths. PlanningEngine selected `read_file_0` with path `127.0`. A second boundary also needs repair: after correcting file extraction, the broad read-only audit route currently precedes browser routing and would still reinterpret the file-mutation prohibition as a workspace inspection task.
+
+Next repair must keep URL targets out of local-file extraction, preserve legitimate local filenames in mixed requests, and preserve browser observation intent when the user forbids file modifications. Retest this exact prompt through Joe and verify both real navigation and observation of the status. The existing early URL-open route also needs review so it does not stop at navigation without the requested observation.

@@ -33,6 +33,14 @@ export function ownerSessionOf(site: string): string | null {
     return null;
 }
 
+/** Browser QA uses an unmistakable synthetic identity; it must not enter the owner's inbox. */
+export function isQaSubmission(fields: Record<string, unknown>): boolean {
+    const values = Object.values(fields || {}).map(value => String(value || '').trim());
+    const hasQaEmail = values.some(value => /^joe\.qa\+[a-z0-9-]+@example\.com$/i.test(value));
+    const hasQaName = values.some(value => /^(?:Joe QA|اختبار جو)(?:\s|$)/i.test(value));
+    return hasQaEmail && hasQaName;
+}
+
 /** Tell the owner NOW, in the chat they are looking at — and persist it. */
 function notifyOwner(site: string, fields: Record<string, string>): void {
     try {
@@ -63,6 +71,10 @@ router.post('/:site', limiter, (req, res) => {
         const site = String(req.params.site || '').replace(/[^a-zA-Z0-9._-]/g, '').slice(0, 80);
         const fields = (req.body && typeof req.body.fields === 'object' && req.body.fields) || {};
         if (!site || !Object.keys(fields).length) return res.status(400).json({ ok: false });
+        // The browser suite submits the real form to prove its contract, but
+        // synthetic evidence is not a visitor message and must not pollute the
+        // owner's inbox or appear as an assistant reply in the conversation.
+        if (isQaSubmission(fields)) return res.json({ ok: true });
         const entry = appendSubmission(site, fields, typeof req.body.page === 'string' ? req.body.page : undefined);
         notifyOwner(site, entry.fields);
         return res.json({ ok: true });

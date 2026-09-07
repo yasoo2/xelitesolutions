@@ -25,11 +25,12 @@ import { brandFrom, brandFallback } from '../../../core/design/page-head';
 import { detectPageKind, type PageKind } from '../../../core/design/blueprints';
 import { derivedColumns, applyRequestFieldConstraints, detectAppKind, blueprintFor, uncoveredFeatures, derivedTables, type AppBlueprint, columnsAnywhereInHisRequest, hasWorkflowApplicationContract } from '../../../core/design/app-blueprints';
 import { acceptanceFor as acceptanceCriteriaFor } from '../../../core/quality/acceptance';
-import { namedRequirements, verifyNamed, nothingWasJudged, requirementNamesPage, NamedRequirement } from '../../../core/quality/named-requirements';
+import { namedRequirements, requirementsFromRequestClauses, verifyNamed, nothingWasJudged, requirementNamesPage, NamedRequirement } from '../../../core/quality/named-requirements';
 import { buildAppFiles, fileAppCss } from './react-app-templates';
 import { familyFor, familyCss, familyFonts, FAMILY_LABEL_AR, type DesignFamily } from '../../../core/design/families';
 import { pruneMissingFontResources } from '../../../core/design/font-resources';
 import { resolveImages, sanitizeContentImages } from '../../../core/design/images';
+import { buildImageBrief } from '../../../core/design/image-brief';
 import { broadcast, broadcastThinkingDetail, broadcastTerminalLine } from '../../../api/ws';
 import { openTerminal, transcriptLine } from '../../../core/quality/terminal-session';
 import { persistJoeProjects, writeJoeProject } from '../../../api/page-store';
@@ -49,6 +50,34 @@ export function requestDerivedEngineFallbackEligible(reason: string): boolean {
     const text = String(reason || '');
     return isProviderFailure(text)
         || /artifact_type_mismatch:\s+.*incomplete Markdown fence/i.test(text);
+}
+
+/**
+ * Vite normally uses the automatic JSX runtime, but generated components can
+ * pass through a classic JSX transform in a recovery or copied-toolchain path.
+ * A named-hooks import alone then compiles successfully and crashes only after
+ * mount with `React is not defined`. Make every JSX domain component portable
+ * across both runtimes before build and browser QA.
+ */
+export function ensureReactRuntimeImport(source: string): string {
+    if (!/<[A-Za-z][^>]*>|<>/.test(source)) return source;
+    if (/import\s+(?:React\b|\*\s+as\s+React\b)\s*(?:,|from)/.test(source)) return source;
+    if (/import\s*\{[^}]+\}\s*from\s*['"]react['"]\s*;?/m.test(source)) {
+        return source.replace(/import\s*\{([^}]+)\}\s*from\s*(['"]react['"])\s*;?/m, 'import React, {$1} from $2;');
+    }
+    return `import React from 'react';\n${source}`;
+}
+
+/** Retire only a recorded preview that demonstrably belongs to this workspace. */
+export function canRetireSupersededLiveServer(entry: any, workspaceRoot: string, replacementPid?: number): boolean {
+    const pid = Number(entry?.live?.pid || 0);
+    if (!Number.isInteger(pid) || pid <= 0) return false;
+    if (pid === process.pid || pid === process.ppid || pid === Number(replacementPid || 0)) return false;
+    const root = String(workspaceRoot || '').trim();
+    const recorded = String(entry?.live?.cwd || entry?.dir || '').trim();
+    if (!root || !recorded) return false;
+    try { return isWithinRoot(path.resolve(recorded), path.resolve(root)); }
+    catch { return false; }
 }
 import { validateFileWriteBatch } from '../../../shared/file-write-contract';
 import { replyLanguageCode } from '../../../shared/reply-language';
@@ -80,6 +109,7 @@ const ENGINE_SOURCE_MARKERS: Record<string, RegExp> = {
     chat: /(?:function|class|const|let|var)\s+ChatApp\b/i,
     weather: /(?:function|class|const|let|var)\s+WeatherApp\b/i,
     records: /(?:function|class|const|let|var)\s+RecordsApp\b/i,
+    ledger: /(?:function|class|const|let|var)\s+LedgerApp\b/i,
     social: /(?:function|class|const|let|var)\s+SocialApp\b/i,
     shop: /(?:function|class|const|let|var)\s+ShopApp\b/i,
     calculator: /(?:function|class|const|let|var)\s+CalculatorApp\b/i,
@@ -138,6 +168,13 @@ const MEASURED_ABILITIES: Record<string, MeasuredAbility[]> = {
         { ar: 'ترتيب الصفوف', en: 'sorting the rows', evidence: hasAny(/setSort\(/) },
         { ar: 'أرقام محسوبة من بياناتك أنت', en: 'numbers computed from YOUR rows', evidence: hasAny(/groupTotals|computeMetric|reduce\(|total/i) },
         { ar: 'حفظ دائم + تصدير CSV + قراءة من خادم المشروع إن وُجد', en: 'durable storage, CSV export, and reads from the project API when one exists', evidence: hasAll(/localStorage|fetch|api/i, /toCsv|\\.csv|download/i) },
+    ],
+    ledger: [
+        { ar: 'إدخال مبلغ رقمي أصلي يمنع الحروف', en: 'a native numeric amount input that rejects letters', evidence: hasAll(/type\s*=\s*(?:['"]number['"]|\{[^}]*['"]number['"])/i, /inputMode\s*=\s*(?:['"]decimal['"]|\{[^}]*['"]decimal['"])/i) },
+        { ar: 'إضافة وحذف عمليات من دفتر حي', en: 'adding and deleting live ledger entries', evidence: hasAll(/setEntries/i, /filter\(.*id|filter\(.*item/i) },
+        { ar: 'إجمالي حي محسوب من العمليات', en: 'a live total computed from entries', evidence: hasAll(/reduce\(/i, /total/i) },
+        { ar: 'حفظ العمليات بعد التحديث', en: 'entries that persist after refresh', evidence: hasAll(/createStore/i, /store\.write/i) },
+        { ar: 'تحقق قبل الحفظ مع رسالة واضحة', en: 'validation before saving with a visible error', evidence: hasAll(/setError/i, /role=['"]alert['"]/i) },
     ],
 };
 
@@ -386,6 +423,12 @@ const DYNAMIC_ACCEPTANCE_ID = [
     //  a topic, it IS the requirement, so `acceptanceTopics()` returning empty
     //  is the correct answer rather than an oversight.
     /^req-[a-z0-9]+$/,
+    // requirementsFromRequestClauses() — deterministic request clauses use a
+    // readable id (rather than the older compact req hash). They are still
+    // source-judged criteria, so delivery must admit the whole producer
+    // family without pretending an unknown arbitrary id is safe.
+    /^request-clause:[A-Za-z0-9][A-Za-z0-9_-]*$/,
+    /^request-clause-[0-9]+-[\p{L}\p{N}][\p{L}\p{N}-]*$/u,
     //  requestedFilterFields() — each filter the user named against the
     //  record schema. These are structural criteria, not model catalogue ids.
     /^filter:[A-Za-z][A-Za-z0-9_-]*$/,
@@ -402,6 +445,14 @@ function acceptanceTopics(id: string): DeliveryTopic[] {
     if (ACCEPTANCE_TOPIC_IDS[id]) return ACCEPTANCE_TOPIC_IDS[id];
     if (/^filter:[A-Za-z][A-Za-z0-9_-]*$/.test(id)) return ['filter'];
     if (id === 'progress_metric') return ['computed'];
+    // Request-clause ids are generated from the user's own short, judgeable
+    // phrase.  Their suffix is deliberately readable so the delivery layer
+    // can reconcile the same semantic evidence as the acceptance layer,
+    // without a growing catalogue of task-specific ids.
+    if (/^request-clause-[0-9]+-[\p{L}\p{N}][\p{L}\p{N}-]*$/u.test(id)) {
+        const phrase = id.replace(/^request-clause-[0-9]+-/u, '').replace(/-/g, ' ');
+        return deliveryTopics(phrase);
+    }
     return [];
 }
 
@@ -944,6 +995,46 @@ export function hasUsableReactDependencyTree(projectRoot: string): boolean {
     const rollupParseAst = ['rollup/dist/parseAst.js', 'rollup/dist/es/parseAst.js', 'rollup/dist/shared/parseAst.js'];
     return required.every(rel => fs.existsSync(path.join(modules, rel)))
         && rollupParseAst.some(rel => fs.existsSync(path.join(modules, rel)));
+}
+
+/**
+ * Vite 5 asks esbuild to bundle its config before it builds the application.
+ * In restricted Windows sessions that config-loader can walk above the
+ * project root and fail with EACCES even though the application itself is
+ * completely buildable. Joe's generated config only supplies the React
+ * development plugin and a relative base (also passed on the CLI), so the
+ * production proof may hide it for the duration of the build. The runnable
+ * project always gets the original config back, including on failure.
+ */
+export async function withoutViteConfigForBuild<T>(projectRoot: string, build: () => Promise<T>): Promise<T> {
+    const config = path.join(projectRoot, 'vite.config.js');
+    if (!fs.existsSync(config)) return build();
+    const held = path.join(projectRoot, `.vite.config.joe-build-${process.pid}-${Date.now()}`);
+    fs.renameSync(config, held);
+    try {
+        return await build();
+    } finally {
+        if (fs.existsSync(held)) fs.renameSync(held, config);
+    }
+}
+
+export function applyBundledPhotographyFallback(projectRoot: string, content: Pick<ReactContent, 'heroImage' | 'gallery'>): boolean {
+    if (content.heroImage && content.gallery.length) return false;
+    const assetName = 'photography-studio.png';
+    const source = [
+        path.join(process.cwd(), 'assets', 'fallbacks', assetName),
+        path.resolve(__dirname, '..', 'assets', 'fallbacks', assetName),
+        path.resolve(__dirname, '..', '..', '..', '..', 'assets', 'fallbacks', assetName),
+    ].find(candidate => fs.existsSync(candidate));
+    if (!source) return false;
+    const imageDir = path.join(projectRoot, 'public', 'images');
+    const destination = path.join(imageDir, assetName);
+    fs.mkdirSync(imageDir, { recursive: true });
+    fs.copyFileSync(source, destination);
+    const image = { src: `images/${assetName}`, alt: 'استوديو تصوير احترافي أثناء جلسة بورتريه' };
+    if (!content.heroImage) content.heroImage = image;
+    if (!content.gallery.length) content.gallery = [{ ...image, alt: 'جلسة تصوير بورتريه داخل الاستوديو' }];
+    return true;
 }
 
 function reuseLocalReactDependencies(workspaceRoot: string, projectRoot: string): boolean {
@@ -1561,6 +1652,7 @@ export function requestDrivenServiceProducts(request: string, isArabic: boolean)
     const text = String(request || '');
     if (!/\b(?:services?|repairs?|appointments?|booking)\b|service\s+list|خدمات|تصليح|حجز|مواعيد/i.test(text)) return null;
     const bicycle = /\b(?:bicycle|bike|cycling|cycle)\b|دراج(?:ة|ات)|دراجة/i.test(text);
+    const photography = /\b(?:photographer|photography|photo studio|portrait studio)\b|استوديو\s+تصوير|مصور|تصوير\s+(?:فوتوغرافي|احترافي)/i.test(text);
     if (bicycle && isArabic) {
         return {
             title: 'خدمات إصلاح الدراجات وأسعارها', cta: 'احجز إصلاحك',
@@ -1578,6 +1670,26 @@ export function requestDrivenServiceProducts(request: string, isArabic: boolean)
                 { name: 'Safety tune-up', desc: 'A full safety check with chain, brake, and gear adjustment.', price: '$45' },
                 { name: 'Brake & gear setup', desc: 'Precise adjustments for a smoother, safer ride.', price: '$35' },
                 { name: 'Flat fix', desc: 'Tube replacement and a wheel check before collection.', price: '$18' },
+            ],
+        };
+    }
+    if (photography && isArabic) {
+        return {
+            title: 'خدمات التصوير', cta: 'احجز جلسة',
+            items: [
+                { name: 'جلسات شخصية', desc: 'صور شخصية بهوية بصرية هادئة وإضاءة مصممة لك.', price: 'حسب الجلسة' },
+                { name: 'تغطية المناسبات', desc: 'توثيق حيّ للتفاصيل واللحظات التي تستحق البقاء.', price: 'حسب المناسبة' },
+                { name: 'تصوير المنتجات', desc: 'صور نظيفة ومقنعة للمتاجر والحملات الإعلانية.', price: 'حسب المشروع' },
+            ],
+        };
+    }
+    if (photography) {
+        return {
+            title: 'Photography services', cta: 'Book a session',
+            items: [
+                { name: 'Portrait sessions', desc: 'Considered portraits with lighting shaped around you.', price: 'per session' },
+                { name: 'Event coverage', desc: 'Natural coverage of details and moments worth keeping.', price: 'per event' },
+                { name: 'Product photography', desc: 'Clean, persuasive imagery for stores and campaigns.', price: 'per project' },
             ],
         };
     }
@@ -1805,10 +1917,14 @@ function deriveContent(request: string, isAr: boolean, kind: PageKind = 'generic
         ],
     };
     const serviceCatalog = requestDrivenServiceProducts(request, isAr);
+    const bicycleService = /\b(?:bicycle|bike|cycling|cycle)\b|دراج(?:ة|ات)|دراجة/i.test(request);
+    const photography = /\b(?:photographer|photography|photo studio|portrait studio)\b|استوديو\s+تصوير|مصور|تصوير\s+(?:فوتوغرافي|احترافي)/i.test(request);
     if (serviceCatalog) {
         base.productsTitle = serviceCatalog.title;
         base.products = serviceCatalog.items;
         base.cta = serviceCatalog.cta;
+    }
+    if (serviceCatalog && bicycleService) {
         base.heroLede = isAr
             ? 'إصلاح واضح وموثوق، من الفحص الأول حتى استلام دراجتك جاهزة للطريق.'
             : 'Clear, dependable repairs from the first inspection to the moment your bike is ready to ride.';
@@ -1827,6 +1943,35 @@ function deriveContent(request: string, isAr: boolean, kind: PageKind = 'generic
                 { title: 'Ride away', text: 'We review the work with you and return a bike ready for the road.' },
             ];
         base.contactTitle = isAr ? 'احجز موعد إصلاح' : 'Book a repair appointment';
+    }
+    if (photography) {
+        Object.assign(base, isAr ? {
+            tagline: 'استوديو تصوير يصوغ كل لحظة بضوء يليق بها.',
+            heroTitle: `${brand} — قصتك في كل إطار`,
+            heroLede: 'من الجلسات الشخصية إلى المناسبات والمنتجات، نصنع صوراً صادقة بهوية واضحة وتفاصيل مدروسة.',
+            cta: 'احجز جلسة',
+            productsTitle: 'خدمات التصوير',
+            galleryTitle: 'أعمال مختارة',
+            storyTitle: 'نرى ما وراء اللحظة',
+            storyBody: ['نبدأ بفهم القصة التي تريد للصورة أن تقولها، ثم نصمم الضوء والخلفية والإيقاع حولها.', 'النتيجة ليست لقطة جميلة فقط، بل صورة تشبهك وتبقى صادقة مع مرور الوقت.'],
+            ctaBandTitle: 'لنصنع الصورة التي تتخيلها',
+            ctaBandText: 'أخبرنا عن فكرتك وسنقترح الجلسة والإضاءة والمكان الأنسب.',
+            contactTitle: 'تواصل معنا',
+            perks: ['إضاءة مدروسة', 'تسليم عالي الدقة', 'تجربة مريحة من الحجز إلى التسليم'],
+        } : {
+            tagline: 'A photography studio that gives every moment the light it deserves.',
+            heroTitle: `${brand} — your story in every frame`,
+            heroLede: 'From portraits and events to product work, we create honest imagery with a clear point of view.',
+            cta: 'Book a session',
+            productsTitle: 'Photography services',
+            galleryTitle: 'Selected work',
+            storyTitle: 'Seeing beyond the moment',
+            storyBody: ['We begin with the story the image needs to tell, then shape the light, setting, and pace around it.', 'The result is more than a polished frame: it feels like you and stays honest over time.'],
+            ctaBandTitle: 'Let us make the image you have in mind',
+            ctaBandText: 'Tell us about the idea and we will shape the right session, light, and location.',
+            contactTitle: 'Contact us',
+            perks: ['Considered lighting', 'High-resolution delivery', 'A calm process from booking to delivery'],
+        });
     }
     if (kind === 'museum') {
         // A museum is an information experience, not a generic SaaS landing
@@ -2055,7 +2200,7 @@ export function Link({ to, children, className, active = true }) {
 }
 
 /** The multi-page App: pages composed from the SAME section components. */
-function fileMultiPageAppJsx(pages: AppPage[], isAr: boolean): string {
+function fileMultiPageAppJsx(pages: AppPage[], isAr: boolean, commerce = false, admin = false): string {
     const comps = [...new Set(pages.flatMap(p => p.sections))];
     const pageConst = pages.map(p => {
         const title = isAr ? p.title : p.titleEn;
@@ -2064,8 +2209,8 @@ function fileMultiPageAppJsx(pages: AppPage[], isAr: boolean): string {
     return `import React from 'react';
 import Navbar from './components/Navbar.jsx';
 import Footer from './components/Footer.jsx';
-import ProductView from './components/ProductView.jsx';
-import AdminPanel from './components/AdminPanel.jsx';
+${commerce ? "import ProductView from './components/ProductView.jsx';" : ''}
+${admin ? "import AdminPanel from './components/AdminPanel.jsx';" : ''}
 ${comps.map(c => `import ${c} from './components/${c}.jsx';`).join('\n')}
 import { usePath } from './router.jsx';
 import { content } from './content.js';
@@ -2081,8 +2226,8 @@ export default function App() {
   const page = pages.find((p) => p.path === path);
   return (
     <>
-      <AdminPanel content={content} />
-      <ProductView content={content} />
+${admin ? '      <AdminPanel content={content} />' : ''}
+${commerce ? '      <ProductView content={content} />' : ''}
       <Navbar content={content} pages={pages} />
       <main>
         {path.startsWith('/product/') ? null : page ? (<>
@@ -2151,12 +2296,12 @@ export default function Navbar({ content, pages }) {
 }
 
 /** App.jsx assembled from the KIND's section list — only what is used is imported. */
-function fileAppJsx(sections: string[]): string {
+function fileAppJsx(sections: string[], commerce = false, admin = false): string {
     const comps = ['Navbar', ...sections, 'Footer'];
-    const shop = sections.includes('Products');
+    const shop = commerce && sections.includes('Products');
     return `import React from 'react';
 ${comps.map(c => `import ${c} from './components/${c}.jsx';`).join('\n')}
-${shop ? "import ProductView from './components/ProductView.jsx';\n" : ''}import AdminPanel from './components/AdminPanel.jsx';
+${shop ? "import ProductView from './components/ProductView.jsx';\n" : ''}${admin ? "import AdminPanel from './components/AdminPanel.jsx';\n" : ''}
 import { content } from './content.js';
 import { useReveal } from './reveal.js';
 
@@ -2164,7 +2309,7 @@ export default function App() {
   useReveal();
   return (
     <>
-      <AdminPanel content={content} />
+${admin ? '      <AdminPanel content={content} />' : ''}
 ${shop ? '      <ProductView content={content} />\n' : ''}      <Navbar content={content} />
       <main>
 ${sections.map(c => `        <${c} content={content} />`).join('\n')}
@@ -2267,6 +2412,7 @@ ${(c.credits || []).map(cr => `    { creator: '${js(cr.creator)}', license: '${j
   // order buttons WRITE visitor orders into its orders table.
   api: '${js((c as any).api || '')}',
   ordersApi: '${js((c as any).ordersApi || '')}',
+  commerce: ${Boolean((c as any).commerce)},
   orderCta: '${js((c as any).orderCta || 'اطلب الآن')}',
   // The owner's REAL details from Joe's business memory — or null, never a
   // fabricated placeholder.
@@ -2611,7 +2757,9 @@ export default function Products({ content }) {
               {p.img ? (
                 <img className="product-photo" src={p.img.src} alt={p.img.alt} loading="lazy" decoding="async" />
               ) : null}
-              <h3><a className="product-link" href={'#' + (content.routeBase || '') + 'product/' + p.slug}>{p.name}</a></h3>
+              <h3>{content.commerce
+                ? <a className="product-link" href={'#' + (content.routeBase || '') + 'product/' + p.slug}>{p.name}</a>
+                : p.name}</h3>
               <p>{p.desc}</p>
               <div className="product-foot">
                 <strong className="product-price">{p.price}</strong>
@@ -3818,6 +3966,14 @@ export class ReactProjectTool extends BaseTool {
          *  the fall is ANNOUNCED. A silent fallback here would restore the exact
          *  defect with no way for him to see it had returned.
          */
+        // Request interpretation and authored copy improve a build, but the
+        // deterministic renderer is the delivery floor. One slow provider must
+        // not spend minutes blocking that floor before a file exists.
+        const optionalModelTimeoutMs = (() => {
+            const configured = Number(process.env.JOE_OPTIONAL_MODEL_TIMEOUT_MS);
+            const requested = Number.isFinite(configured) && configured > 0 ? configured : 12_000;
+            return Math.min(20_000, Math.max(6_000, requested));
+        })();
         const askTheModel = async (prompt: string): Promise<string> => {
             const { routeToModel } = require('../../../core/llm/intelligent-router');
             let timer: any;
@@ -3833,7 +3989,7 @@ export class ReactProjectTool extends BaseTool {
                                 //  model calls and not one mention of `modelConfig`.
                                 context),
                     new Promise<string>((_, rej) => {
-                        timer = setTimeout(() => rej(new Error('the model did not answer in time')), 25_000);
+                        timer = setTimeout(() => rej(new Error('the model did not answer in time')), optionalModelTimeoutMs);
                     }),
                 ]);
             } finally { clearTimeout(timer); }
@@ -3904,7 +4060,10 @@ export class ReactProjectTool extends BaseTool {
         let whyNotRead = '';
         if (noBrainToAsk) {
             whyNotRead = 'no model in this environment';
-            term('reading your request: skipped — no model in this environment; using the known-features list');
+            namedByHim = requirementsFromRequestClauses(request);
+            term(namedByHim.length
+                ? `read from your request without a provider: ${namedByHim.length} explicit clause(s) — ${namedByHim.map(r => r.text).join(' · ')}`
+                : 'reading your request: no provider and no explicit judgeable clause; using the known-features list');
         } else {
             try {
                 const read = await namedRequirements(request, isAr, askTheModel);
@@ -3919,6 +4078,14 @@ export class ReactProjectTool extends BaseTool {
                     whyNotRead = read.rejected.length
                         ? `the model named ${read.rejected.length}, and none survived the filters`
                         : 'the model named nothing in this request';
+                }
+                if (!namedByHim.length) {
+                    const deterministic = requirementsFromRequestClauses(request);
+                    if (deterministic.length) {
+                        namedByHim = deterministic;
+                        whyNotRead = '';
+                        term(`provider reading unavailable; retained ${deterministic.length} explicit clause(s) from your request for build and QA`);
+                    }
                 }
                 term(namedByHim.length
                     ? `read from your request: ${namedByHim.length} named — ${namedByHim.map(r => r.text).join(' · ')}`
@@ -4021,7 +4188,7 @@ export class ReactProjectTool extends BaseTool {
         // belongs to this request. A new chat can share a session registry key
         // with an older run; only an explicit continuation may inherit its
         // app kind, otherwise a stale Weather/Shop/etc. engine leaks in.
-        const mayInheritAppKind = input?.resumeExisting === true || explicitScaffoldDir;
+        const mayInheritAppKind = input?.resumeExisting === true || explicitScaffoldDir || prevEntry?.type === 'api';
         // Carry the API builder's in-memory account into self-QA. The page-store
         // strips runtimeAuth, so a plaintext password never crosses to disk.
         const runtimeAuth = prevEntry?.type === 'api' && prevEntry?.runtimeAuth?.email && prevEntry?.runtimeAuth?.password
@@ -4144,7 +4311,7 @@ export class ReactProjectTool extends BaseTool {
                                 //  model calls and not one mention of `modelConfig`.
                                 context),
                             new Promise<string>((_, rej) => {
-                                timer = setTimeout(() => rej(new Error('the model did not answer in time')), 90_000);
+                                timer = setTimeout(() => rej(new Error('the model did not answer in time')), optionalModelTimeoutMs);
                             }),
                         ]);
                     } finally { clearTimeout(timer); }
@@ -4231,18 +4398,21 @@ export class ReactProjectTool extends BaseTool {
          */
         const apiLink = prevEntry?.type === 'api' && prevEntry?.resource
             ? `/api/${prevEntry.resource}` : '';
+        const commerce = kind === 'store';
+        const admin = Boolean(apiLink);
+        (content as any).commerce = commerce;
         // The hero ARCHETYPE comes from the kind and the family; the
         // navigation is built LATER, once it is known which sections will
         // actually render (see buildNavLinks below).
         content.heroLayout = heroLayoutFor(kind, family);
         (content as any).routeBase = multiPage ? '/' : '';
         const SECTION_ANCHOR: Record<string, string> = {
-            Features: 'features', Menu: 'menu', Products: 'products', Gallery: 'gallery', Story: 'story',
+            Hero: 'top', Features: 'features', Menu: 'menu', Products: 'products', Gallery: 'gallery', Story: 'story',
             Steps: 'steps', Pricing: 'pricing', Compare: 'compare', Team: 'team', Testimonials: 'testimonials',
             Faq: 'faq', Stats: 'stats', Location: 'location', Contact: 'contact',
         };
         const SECTION_LABEL: Record<string, [string, string]> = {
-            Features: ['المميزات', 'Features'], Menu: ['القائمة', 'Menu'], Products: ['المنتجات', 'Products'],
+            Hero: ['الرئيسية', 'Home'], Features: ['المميزات', 'Features'], Menu: ['القائمة', 'Menu'], Products: ['المنتجات', 'Products'],
             Gallery: ['المعرض', 'Gallery'], Story: [content.storyTitle, content.storyTitle],
             Steps: [content.stepsTitle, content.stepsTitle], Pricing: ['الأسعار', 'Pricing'],
             Compare: ['المقارنة', 'Compare'], Team: [content.teamTitle, content.teamTitle], Testimonials: ['آراء العملاء', 'Reviews'],
@@ -4262,11 +4432,30 @@ export class ReactProjectTool extends BaseTool {
         // On a multi-page app the anchors are ROUTES — «#menu» would drive the
         // hash router straight into its own 404 page.
         const buildNavLinks = () => {
+            let sectionLinks = sections
+                .filter(s => s !== 'Hero' && SECTION_ANCHOR[s] && willRender(s))
+                .map(s => ({ href: `#${SECTION_ANCHOR[s]}`, label: SECTION_LABEL[s]?.[artifactIsAr ? 0 : 1] || s }));
+            const explicitNav = request.match(/(?:رأس\s+تنقل\s+بروابط|قائمة\s+تنقل\s+بروابط|navigation\s+(?:menu\s+)?(?:with|containing)\s+links?)\s*([^؛;.\n]+)/i)?.[1] || '';
+            const requestedHome = /(?:^|[،,;:\s])(?:الرئيسية|الرئيسيه)(?:$|[،,;:\s])|\bhome\b/i.test(explicitNav);
+            if (requestedHome && !sectionLinks.some(link => link.href === '#top')) {
+                sectionLinks.unshift({ href: '#top', label: artifactIsAr ? 'الرئيسية' : 'Home' });
+            }
+            for (const link of sectionLinks) {
+                if (link.href === '#products' && /خدمات|\bservices?\b/i.test(explicitNav || request)) link.label = artifactIsAr ? 'الخدمات' : 'Services';
+                if (link.href === '#gallery' && /(?:الأعمال|الاعمال|أعمالنا|اعمالنا)|\b(?:work|portfolio)\b/i.test(explicitNav || request)) link.label = artifactIsAr ? 'الأعمال' : 'Work';
+                if (link.href === '#contact' && /تواصل|اتصال|\bcontact\b/i.test(explicitNav || request)) link.label = artifactIsAr ? 'تواصل' : 'Contact';
+            }
+            if (explicitNav) {
+                const wanted = new Set<string>();
+                if (requestedHome) wanted.add('#top');
+                if (/خدمات|\bservices?\b/i.test(explicitNav)) wanted.add('#products');
+                if (/(?:الأعمال|الاعمال|أعمالنا|اعمالنا)|\b(?:work|portfolio)\b/i.test(explicitNav)) wanted.add('#gallery');
+                if (/تواصل|اتصال|\bcontact\b/i.test(explicitNav)) wanted.add('#contact');
+                if (wanted.size) sectionLinks = sectionLinks.filter(link => wanted.has(link.href));
+            }
             (content as any).navLinks = multiPage
-                ? pages.map(p => ({ href: `#${p.path}`, label: isAr ? p.title : p.titleEn }))
-                : sections
-                    .filter(s => SECTION_ANCHOR[s] && willRender(s))
-                    .map(s => ({ href: `#${SECTION_ANCHOR[s]}`, label: SECTION_LABEL[s][isAr ? 0 : 1] }));
+                ? pages.map(p => ({ href: `#${p.path}`, label: artifactIsAr ? p.title : p.titleEn }))
+                : sectionLinks;
         };
         buildNavLinks();
         // The hero CTA is selected after optional sections have been resolved.
@@ -4278,7 +4467,7 @@ export class ReactProjectTool extends BaseTool {
             kind,
             pages[0].sections.filter(willRender),
             multiPage,
-            isAr,
+            artifactIsAr,
             pages,
         );
 
@@ -4417,10 +4606,18 @@ export class ReactProjectTool extends BaseTool {
         // step is skipped with it; any live failure ships a clean no-image app.
         // An APPLICATION downloads no hero photograph: a map app needs tiles,
         // not a stock picture of a road.
+        const photographyBrief = /\b(?:photographer|photography|photo studio|portrait studio)\b|استوديو\s+تصوير|مصور|تصوير\s+(?:فوتوغرافي|احترافي)/i.test(request);
         if (!appBp && !input?.skipInstall && !input?.skipImages && directives.photos !== 'off') {
             if (sessionId) broadcastThinkingDetail(sessionId, isAr ? '🖼️ أبحث عن صورة حقيقية مرخّصة للبطل…' : '🖼️ Finding a real licensed hero photo…');
+            const imageBrief = buildImageBrief(request);
+            const imageSubjects = photographyBrief
+                ? ['professional portrait photography', 'event photographer at work', 'product photography studio', 'camera and studio lighting']
+                : imageBrief.suggestions;
+            const imageSubject = imageSubjects.find(subject => /photograph|camera|portrait/i.test(subject))
+                || imageSubjects[0]
+                || `${content.tagline || content.brand}`;
             const hero = await fetchHeroImage({
-                subject: `${content.tagline || content.brand}`,
+                subject: imageSubject,
                 projDir: proj, hue: (palette as any).hue ?? 260, artifactDir: ARTIFACT_DIR,
             });
             content.heroImage = hero.image;
@@ -4463,7 +4660,7 @@ export class ReactProjectTool extends BaseTool {
             if (sections.includes('Gallery')) {
                 if (sessionId) broadcastThinkingDetail(sessionId, isAr ? '🖼️ أجلب صور المعرض…' : '🖼️ Finding gallery photos…');
                 const shots = await fetchCardImages({
-                    subjects: [0, 1, 2, 3].map(() => `${content.tagline || content.brand}`),
+                    subjects: [0, 1, 2, 3].map((index) => imageSubjects[index % Math.max(1, imageSubjects.length)] || imageSubject),
                     projDir: proj, hue: (palette as any).hue ?? 260, artifactDir: ARTIFACT_DIR,
                     slot: 'card', label: 'gallery',
                 });
@@ -4509,6 +4706,10 @@ export class ReactProjectTool extends BaseTool {
             }
         }
 
+        if (photographyBrief && applyBundledPhotographyFallback(proj, content)) {
+            term('photography images: bundled offline fallback used because the licensed image service was unavailable');
+        }
+
         // The photographs have answered — the navigation is recomputed so a
         // gallery that stayed empty never gets advertised in the menu.
         buildNavLinks();
@@ -4547,7 +4748,7 @@ export class ReactProjectTool extends BaseTool {
             const heroHref = typeof heroSecondary?.href === 'string' ? heroSecondary.href : '';
             const heroAnchor = heroHref.startsWith('#') ? heroHref.slice(1) : '';
             if (heroAnchor && !renderedAnchors.has(heroAnchor)) {
-                const repaired = heroSecondaryDestination(kind, sections.filter(willRender), false, isAr, pages);
+                const repaired = heroSecondaryDestination(kind, sections.filter(willRender), false, artifactIsAr, pages);
                 (content as any).heroSecondary = repaired;
                 term(isAr
                     ? `self-repair: أصلحت رابط الدعوة الداخلي ${heroHref} إلى ${repaired.href} لأن القسم الهدف غير مرسوم`
@@ -4567,7 +4768,7 @@ export class ReactProjectTool extends BaseTool {
             'index.html': fileIndexHtml(content, (palette as any).hue ?? 260),
             '.gitignore': 'node_modules\ndist\n',
             'src/main.jsx': fileMainJsx(),
-            'src/App.jsx': multiPage ? fileMultiPageAppJsx(pages, isAr) : fileAppJsx(sections),
+            'src/App.jsx': multiPage ? fileMultiPageAppJsx(pages, isAr, commerce, admin) : fileAppJsx(sections, commerce, admin),
             'src/content.js': fileContentJs(content),
             'src/reveal.js': fileRevealJs(),
             ...(multiPage ? { 'src/router.jsx': fileRouterJsx() } : {}),
@@ -4890,7 +5091,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                                 //  model calls and not one mention of `modelConfig`.
                                 context),
                                 new Promise<string>((_, rej) => {
-                                    timer = setTimeout(() => rej(new Error('the model did not answer in time')), 120_000);
+                                    timer = setTimeout(() => rej(new Error('the model did not answer in time')), optionalModelTimeoutMs);
                                 }),
                             ]);
                         } finally { clearTimeout(timer); }
@@ -5274,13 +5475,13 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
         }
         // A shop ships REAL product pages — one URL per product, mounted
         // above everything so «#product/<slug>» works from a cold reload.
-        if (!appBp && (sections.includes('Products') || multiPage)) {
+        if (!appBp && commerce && (sections.includes('Products') || multiPage)) {
             files['src/components/ProductView.jsx'] = fileProductViewJsx();
         }
         // The owner's dashboard: only an app WIRED to an API can have one, and
         // App.jsx imports it unconditionally, so the file must always exist —
         // it simply renders nothing when `content.api` is empty.
-        if (!appBp) files['src/components/AdminPanel.jsx'] = fileAdminPanelJsx();
+        if (!appBp && admin) files['src/components/AdminPanel.jsx'] = fileAdminPanelJsx();
 
         /**
          * A README WHEN HE ASKED FOR ONE — AND ONLY THEN.
@@ -5374,7 +5575,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
          * silent substitution or a generic WeatherApp.
          */
         const engineComponentByKind: Record<string, string> = {
-            map: 'MapApp', chat: 'ChatApp', weather: 'WeatherApp', records: 'RecordsApp',
+            map: 'MapApp', chat: 'ChatApp', weather: 'WeatherApp', records: 'RecordsApp', ledger: 'LedgerApp',
             social: 'SocialApp', shop: 'ShopApp', calculator: 'CalculatorApp',
             productivity: 'ProductivityApp', finance: 'FinanceApp', custom: 'CustomApp',
         };
@@ -5384,6 +5585,12 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
         let modelAuthoredEngine = false;
         let blueprintFallbackEngine = false;
         let workflowSemanticContractPassed = false;
+        // A records application has a declared field contract: labels, native
+        // input types, required state, persistence, and row mutations. When
+        // that contract is already derived from the request, a weak provider
+        // must not replace it with an unverified free-form draft. The model
+        // remains the author for open-ended/domain-specific interfaces.
+        let requestDerivedEngineReady = false;
         let authoredEngineFallback: { path: string; body: string } | null = null;
         if (generatedEnginePath && appBp) {
             try {
@@ -5453,17 +5660,31 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
         // page. Use it immediately only after its request-specific API contract
         // passes the same semantic gate used for model output. This keeps weak
         // providers from adding minutes of retries while preserving evidence.
-        if (generatedEnginePath && canUseBlueprintFallback && workflowContract && workflowApiContract && authoredEngineFallback?.body) {
-            const fallbackDefects = inspectWorkflowEngineSource(request, authoredEngineFallback.body, workflowApiContract);
-            if (!fallbackDefects.length) {
+        if (generatedEnginePath && authoredEngineFallback?.body) {
+            // `engineeringPipeline` is present on the normal orchestrated
+            // route, but older PhaseExecutor retries can omit it. A records
+            // contract must remain safe across either entry point.
+            // These engines have a complete request-derived behavioural
+            // contract. A model may enrich open-ended domains, but it must not
+            // replace a verified native-input/persistence workflow with an
+            // unmeasured draft simply because it happened to answer.
+            const useStructuredContractEngine = runBp.engine === 'records' || runBp.engine === 'ledger';
+            const mayUseDerivedEngine = canUseBlueprintFallback || useStructuredContractEngine;
+            const fallbackDefects = workflowContract && workflowApiContract
+                ? inspectWorkflowEngineSource(request, authoredEngineFallback.body, workflowApiContract)
+                : [];
+            if (mayUseDerivedEngine && (useStructuredContractEngine || (workflowContract && !fallbackDefects.length))) {
                 const authoredPath = path.join(proj, generatedEnginePath);
                 fs.mkdirSync(path.dirname(authoredPath), { recursive: true });
                 assertRunActive();
                 fs.writeFileSync(authoredPath, authoredEngineFallback.body, 'utf8');
                 files[generatedEnginePath] = authoredEngineFallback.body;
                 blueprintFallbackEngine = true;
-                workflowSemanticContractPassed = true;
-                term(`domain generation: Joe's provider-independent workflow engine passed the request API contract and was selected without an authoring wait`);
+                requestDerivedEngineReady = true;
+                workflowSemanticContractPassed = workflowContract;
+                term(useStructuredContractEngine
+                    ? `domain generation: Joe's request-derived ${runBp.engine} engine preserved the field contract without an authoring wait`
+                    : `domain generation: Joe's provider-independent workflow engine passed the request API contract and was selected without an authoring wait`);
             }
         }
         // Preserve the run-bound artifact root even when domain authoring is
@@ -5495,7 +5716,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
         // surface. RecordsApp remains in the bundle only as a dormant
         // compatibility component, so asking a provider to rewrite it wastes
         // minutes and can never improve the visible application.
-        if (generatedEnginePath && !workflowSemanticContractPassed && !unifiedTables) {
+        if (generatedEnginePath && !requestDerivedEngineReady && !unifiedTables) {
             term(`ai_write_file: authoring ${generatedEnginePath} from the user's requirements`);
             try {
                 const { AIGeneratorTool } = require('./AIGeneratorTool');
@@ -5540,6 +5761,12 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                     }
                 }
                 let authored = fs.readFileSync(path.join(proj, generatedEnginePath), 'utf8');
+                const runtimePortable = ensureReactRuntimeImport(authored);
+                if (runtimePortable !== authored) {
+                    authored = runtimePortable;
+                    fs.writeFileSync(path.join(proj, generatedEnginePath), authored, 'utf8');
+                    term('domain runtime QA: added the React runtime import required by the generated JSX component');
+                }
                 const exportContract = new RegExp(`export\\s+default\\s+function\\s+${authoredEngineName}\\b|export\\s+default\\s+${authoredEngineName}\\b`);
                 if (!authored.trim() || !exportContract.test(authored)) {
                     term(`domain generation: BLOCKED — generated file has no valid ${authoredEngineName} default export`);
@@ -5773,25 +6000,15 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
         let installExit: number | null = null;
         let buildExit: number | null = null;
         let lastLog = '';
-        const viteConfigPath = path.join(proj, 'vite.config.js');
-        const viteConfigBackup = path.join(proj, '.joe-vite-config.js');
         const runBuild = async (timeoutMs: number): Promise<number> => {
-            let configHidden = false;
-            try {
-                if (fs.existsSync(viteConfigPath)) {
-                    fs.renameSync(viteConfigPath, viteConfigBackup);
-                    configHidden = true;
-                }
-                const r = await shell.run('npm', ['run', 'build', '--', '--base', './'], { cwd: proj, timeout: timeoutMs });
-                lastLog = r.out;
-                if (r.missing) return -1;
-                if (r.timedOut) return -2;
-                return r.exitCode as number;
-            } finally {
-                if (configHidden) {
-                    try { fs.renameSync(viteConfigBackup, viteConfigPath); } catch { /* keep the evidence; restore is best effort */ }
-                }
-            }
+            const r = await withoutViteConfigForBuild(proj, () => shell.run(
+                'npm', ['run', 'build', '--', '--base', './'],
+                { cwd: proj, timeout: timeoutMs, cancel: cancellation },
+            ));
+            lastLog = r.out;
+            if (r.missing) return -1;
+            if (r.timedOut) return -2;
+            return r.exitCode as number;
         };
         if (!noInstall) {
             // Through the Single Execution Authority — a direct spawn here
@@ -6204,8 +6421,14 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                     if (where === 'watching') {
                         auditVisible = true;
                         broadcastThinkingDetail(sessionId, isAr
-                            ? '👁️ الفحص يجري الآن أمامك في لوحة المتصفح — كل ملاحظة مُعلَّمة بإطار أحمر على الصفحة'
-                            : '👁️ Watch it happen in the Browser panel — every finding is outlined on the page');
+                            ? '👁️ أستخرج مسارات اختبار من متطلبات الطلب وحالة الواجهة الظاهرة، ثم أوثق الدليل لكل نتيجة'
+                            : '👁️ Browser QA is deriving scenarios from the visible product state and requested requirements');
+                        return;
+                    }
+                    if (where === 'discovering' && auditVisible) {
+                        broadcastThinkingDetail(sessionId, isAr
+                            ? '🔎 أحدد العناصر والمسارات الظاهرة قبل الاختبار؛ لن أتعامل مع الصفحة كقائمة نقرات محفوظة'
+                            : '🔎 Mapping the visible controls and paths before testing; this is not a memorized click list');
                         return;
                     }
                     // …and the later steps only speak when there is really
@@ -6213,8 +6436,24 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                     // browser is the same white rectangle with a caption.
                     if (where === 'pressing' && auditVisible) {
                         broadcastThinkingDetail(sessionId, isAr
-                            ? '🖱️ أضغط الآن كل زرّ وقائمة ورابط أمامك — والمؤشّر يتحرّك والعنصر المفحوص محدَّد بالأحمر'
-                            : '🖱️ Pressing every button, menu and link in front of you — the pointer moves and the element under test is outlined in red');
+                            ? '🖱️ أختبر مسار مستخدم ذي معنى: إدخال صالح وخاطئ، تغيّر حالة، ثم النتيجة المرئية المتوقعة'
+                            : '🖱️ Testing a meaningful user path: valid and invalid input, state change, and the expected visible result');
+                    }
+                    if (where === 'forms' && auditVisible) {
+                        broadcastThinkingDetail(sessionId, isAr
+                            ? '⌨️ أختبر عقود الحقول: النوع الصحيح، قيمة خاطئة يجب رفضها، ثم قيمة صالحة وإرسالها'
+                            : '⌨️ Testing field contracts: native type, rejected invalid value, then a valid submission');
+                    }
+                    if (where === 'exploring' && auditVisible) {
+                        broadcastThinkingDetail(sessionId, isAr
+                            ? '🔎 أستكشف الحالة التي تغيّرت بعد الإرسال لأكتشف أزرارًا ونتائج لم تكن ظاهرة سابقًا'
+                            : '🔎 Exploring the state created after submission to discover newly visible controls and results');
+                    }
+                    if (where.startsWith('state:') && auditVisible) {
+                        const [, kind, label] = where.split(':', 3);
+                        broadcastThinkingDetail(sessionId, isAr
+                            ? `🔎 أتحقق من حالة جديدة عبر ${kind === 'tab' ? 'تبويب' : kind === 'link' ? 'رابط' : 'عنصر تفاعلي'} «${label || 'غير مسمّى'}»`
+                            : `🔎 Verifying a newly reached state through ${kind || 'an interactive control'} “${label || 'unnamed'}”`);
                     }
                     if (where === 'inspecting' && auditVisible) {
                         broadcastThinkingDetail(sessionId, isAr
@@ -6823,7 +7062,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             if (liveServer) {
                 try {
                     const prevPid = Number(prevEntry?.live?.pid || 0);
-                    if (prevPid && prevPid !== liveServer.pid) process.kill(prevPid);
+                    if (canRetireSupersededLiveServer(prevEntry, workspaceRoot, liveServer.pid)) process.kill(prevPid);
                 } catch { /* an old server that is already gone needs no killing */ }
                 term(`self-QA: the system stays UP at ${liveServer.url} — this is your live system, not a test rig`);
                 if (sessionId) {

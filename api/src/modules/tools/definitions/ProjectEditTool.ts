@@ -92,6 +92,17 @@ export function isActionableEditRequest(request: string): boolean {
     return action && target;
 }
 
+/** Read an explicit, quoted wording replacement from a short follow-up. */
+export function parseLiteralTextReplacement(request: string): { from: string; to: string } | null {
+    const text = String(request || '').trim();
+    if (!/(?:غيّ?ر|غير|بدّ?ل|بدل|استبدل|\b(?:change|replace)\b)/iu.test(text)) return null;
+    const pair = text.match(/[«"]([^»"\n]{1,120})[»"][^«"\n]{0,60}(?:إلى|الى|\bto\b|\bwith\b)[^«"\n]{0,24}[«"]([^»"\n]{1,120})[»"]/iu);
+    if (!pair) return null;
+    const from = pair[1].trim();
+    const to = pair[2].trim();
+    return from && to && from !== to ? { from, to } : null;
+}
+
 /**
  * A RANKING'S PRIOR IS NOT ITS EVIDENCE.
  *
@@ -505,7 +516,10 @@ export class ProjectEditTool extends BaseTool {
                 }
                 if (fs.existsSync(path.join(dir, 'node_modules'))) {
                     if (sessionId) broadcastThinkingDetail(sessionId, isAr ? '🏗️ أتحقق بالبناء الحقيقي (vite build)…' : '🏗️ Verifying with the real build…');
-                    buildVerified = (await executionEngine.runArgvStreaming('npm', ['run', 'build'], { cwd: dir, timeout: 240_000, env: { NO_COLOR: '1' } }).done).ok;
+                    const { withoutViteConfigForBuild } = require('./ReactProjectTool');
+                    buildVerified = await withoutViteConfigForBuild(dir, async () =>
+                        (await executionEngine.runArgvStreaming('npm', ['run', 'build'], { cwd: dir, timeout: 240_000, env: { NO_COLOR: '1' } }).done).ok,
+                    );
                     if (!buildVerified) {
                         for (const c of changed) fs.writeFileSync(path.join(dir, c.file), c.before, 'utf-8');
                         logs.push('app upgrade reverted — the rebuilt app did not compile');
@@ -1041,6 +1055,31 @@ export class ProjectEditTool extends BaseTool {
             }
         }
 
+        // A quoted wording replacement is fully specified. Replace only the
+        // exact source text, then use the normal syntax, build and QA gates.
+        if (!touched.length) {
+            const literal = parseLiteralTextReplacement(request);
+            if (literal) {
+                const candidates = listFiles(dir)
+                    .filter(f => !/^(?:package(?:-lock)?\.json|vite\.config\.|index\.html$)/i.test(f))
+                    .filter(f => fs.readFileSync(path.join(dir, f), 'utf-8').includes(literal.from))
+                    .slice(0, 4);
+                for (const rel of candidates) {
+                    const before = fs.readFileSync(path.join(dir, rel), 'utf-8');
+                    const after = before.split(literal.from).join(literal.to);
+                    const gate = syntaxOk(rel, after);
+                    if (gate.ok && after !== before) write(rel, after);
+                    else if (!gate.ok) refused.push(`${rel}: literal text edit breaks the syntax (${gate.error}) — refused`);
+                }
+                if (candidates.length && touched.length) {
+                    notes.push(isAr
+                        ? `غيّرت النص «${literal.from}» إلى «${literal.to}» في ${touched.length} ملف.`
+                        : `Changed "${literal.from}" to "${literal.to}" in ${touched.length} file(s).`);
+                    logs.push(`literal text edit: ${literal.from} -> ${literal.to} (${touched.map(t => t.file).join(', ')})`);
+                }
+            }
+        }
+
         // ── the general path: SEARCH/REPLACE from the model ─────────────────
         if (!touched.length) {
             const files = listFiles(dir);
@@ -1194,9 +1233,12 @@ This is a correct answer, not a failure. Changing something the user did not ask
             // Through the Single Execution Authority — a direct spawn here
             // BLOCKED STARTUP on the user's machine (ExecutionEnforcer).
             const { executionEngine } = require('../../../kernel/ExecutionEngine');
-            buildVerified = (await executionEngine.runArgvStreaming('npm', ['run', 'build'], {
-                cwd: dir, timeout: 180_000, env: { NO_COLOR: '1' },
-            }).done).ok;
+            const { withoutViteConfigForBuild } = require('./ReactProjectTool');
+            buildVerified = await withoutViteConfigForBuild(dir, async () =>
+                (await executionEngine.runArgvStreaming('npm', ['run', 'build'], {
+                    cwd: dir, timeout: 180_000, env: { NO_COLOR: '1' },
+                }).done).ok,
+            );
             if (!buildVerified) {
                 for (const t of touched) fs.writeFileSync(path.join(dir, t.file), t.before, 'utf-8');
                 logs.push('build FAILED after the edit — every file reverted');
@@ -1207,11 +1249,6 @@ This is a correct answer, not a failure. Changing something the user did not ask
                 } as any;
             }
         }
-
-        // Per-file history so «تراجع» works on projects too.
-        const history = (entry?.history || []).concat(touched.map(t => ({ file: t.file, before: t.before, at: Date.now() }))).slice(-20);
-        writeJoeProject(sessionKey, { ...(entry || {}), dir, updatedAt: Date.now(), history, lastRequest: request.slice(0, 80) }, context?.runId ?? null);
-        persistJoeProjects();
 
         // The verified change is VISIBLE the moment it lands — the preview
         // panel refreshes off the freshly rebuilt dist through the live
@@ -1228,15 +1265,111 @@ This is a correct answer, not a failure. Changing something the user did not ask
         // photo that answered 404 — a real browser sees that in one second.
         // Same audit the builder runs, same honest skip when it cannot.
         let audit: any = null;
+        let improvement: any = null;
         if (buildVerified === true && !input?.skipAudit) {
             if (sessionId) broadcastThinkingDetail(sessionId, isAr ? '🔎 أفحص النتيجة في متصفح حقيقي…' : '🔎 Auditing the result in a real browser…');
             try {
                 const { auditBuiltApp, formatAudit } = require('../../../core/quality/app-audit');
-                audit = await auditBuiltApp(path.join(dir, 'dist'));
-                if (audit && !audit.skipped) notes.push(formatAudit(audit, isAr));
+                const { PANEL_BROWSER_SID } = require('./BrowserSmartTools');
+                const auditSid = String(context?.browserSessionId || '').trim() || PANEL_BROWSER_SID;
+                try { broadcast({ type: 'panel_focus', sessionId, data: { panel: 'browser', reason: 'self_qa' } } as any); } catch { /* UI optional */ }
+                try { await require('../../browser/wsHub').waitForPanelWatcher(auditSid, 15_000); } catch { /* audit reports visibility honestly */ }
+                audit = await auditBuiltApp(path.join(dir, 'dist'), {
+                    timeoutMs: 180_000,
+                    watchSessionId: auditSid,
+                    requireVisibleBrowser: true,
+                });
                 logs.push(`self-QA after edit: ${audit?.skipped ? `skipped (${audit.skipped})` : `${audit?.score}/100`}`);
+
+                // A project continuation used to stop at the first browser
+                // verdict, even when the same repair loop used by a new build
+                // knew how to answer the measured finding. Continue the same
+                // evidence-driven loop here: repair source, rebuild, remeasure,
+                // and roll back any round that does not improve the result.
+                const { worthRepairing, collectSources } = require('../../../core/quality/self-repair');
+                if (!audit?.skipped && worthRepairing(audit?.findings || [])) {
+                    if (sessionId) broadcastThinkingDetail(sessionId, isAr
+                        ? 'أصلح عيوب الجودة التي قاسها المتصفح، ثم أعيد الاختبار نفسه.'
+                        : 'Repairing the browser-measured quality findings, then rerunning the same audit.');
+                    const { improveUntilItStops, repairRound, improveSummary } = require('../../../core/quality/improve-loop');
+                    const { snapshotProject, restoreVersion } = require('../../../core/project/versions');
+                    const beforeRepair = collectSources(dir) as Record<string, string>;
+                    const measuredAudits: any[] = [audit];
+                    const rebuild = async (): Promise<boolean> => {
+                        const { executionEngine } = require('../../../kernel/ExecutionEngine');
+                        const { withoutViteConfigForBuild } = require('./ReactProjectTool');
+                        return withoutViteConfigForBuild(dir, async () =>
+                            (await executionEngine.runArgvStreaming('npm', ['run', 'build'], {
+                                cwd: dir, timeout: 180_000, env: { NO_COLOR: '1' },
+                            }).done).ok,
+                        );
+                    };
+                    const firstMeasurement = {
+                        score: Number(audit.score || 0),
+                        findingIds: (audit.findings || []).map((f: any) => String(f.id)),
+                        findings: (audit.findings || []).map((f: any) => ({ id: String(f.id), evidence: f.evidence })),
+                    };
+                    improvement = await improveUntilItStops(firstMeasurement, {
+                        maxRounds: Math.max(1, Number(process.env.JOE_IMPROVE_ROUNDS || 4)),
+                        say: (line: string) => logs.push(line),
+                        snapshot: (label: string) => String(snapshotProject(dir, label)?.id || ''),
+                        rollback: async (id: string) => {
+                            const restored = restoreVersion(dir, id);
+                            return !!restored?.ok && await rebuild();
+                        },
+                        repair: async (round: number, _ids: string[], findings: any[]) =>
+                            (await repairRound(dir, round, { isArabic: isAr, findings })).changed,
+                        rebuild,
+                        measure: async () => {
+                            const measured = await auditBuiltApp(path.join(dir, 'dist'), {
+                                timeoutMs: 180_000,
+                                watchSessionId: auditSid,
+                                requireVisibleBrowser: true,
+                            });
+                            if (measured?.skipped) return { score: 0, findingIds: [], skipped: true };
+                            measuredAudits.push(measured);
+                            return {
+                                score: Number(measured.score || 0),
+                                findingIds: (measured.findings || []).map((f: any) => String(f.id)),
+                                findings: (measured.findings || []).map((f: any) => ({ id: String(f.id), evidence: f.evidence })),
+                            };
+                        },
+                    });
+                    // `final` remains the last KEPT measurement after a
+                    // rollback. Select the full audit with that same score and
+                    // finding set, never the rejected measurement that caused
+                    // the rollback.
+                    const finalIds = [...(improvement.final?.findingIds || [])].map(String).sort().join('|');
+                    const matchingAudit = measuredAudits.slice().reverse().find((candidate: any) =>
+                        Number(candidate?.score || 0) === Number(improvement.final?.score || 0)
+                        && [...(candidate?.findings || [])].map((f: any) => String(f.id)).sort().join('|') === finalIds,
+                    );
+                    if (matchingAudit) audit = matchingAudit;
+                    notes.push(improveSummary(improvement, isAr));
+
+                    const afterRepair = collectSources(dir) as Record<string, string>;
+                    for (const [file, after] of Object.entries(afterRepair)) {
+                        const before = beforeRepair[file];
+                        if (before === undefined || before === after) continue;
+                        const existing = touched.find(t => t.file === file);
+                        if (existing) existing.after = after;
+                        else touched.push({ file, before, after });
+                    }
+                    if (improvement.rounds?.some((r: any) => r.verdict === 'improved')) {
+                        const url = publicUrlFor(`/project-preview/${sessionKey}/index.html?v=${Date.now()}`);
+                        try { broadcast({ type: 'preview_ready', sessionId, data: { url, previewUrl: url, sessionId } } as any); } catch { /* UI optional */ }
+                    }
+                }
+                if (audit && !audit.skipped) notes.push(formatAudit(audit, isAr));
+                logs.push(`self-QA final after edit: ${audit?.skipped ? `skipped (${audit.skipped})` : `${audit?.score}/100`}`);
             } catch (e: any) { logs.push(`self-QA after edit failed: ${String(e?.message || e).slice(0, 80)}`); }
         }
+
+        // Per-file history is written after QA so an automatic quality repair
+        // is part of the same undoable transaction as the user's edit.
+        const history = (entry?.history || []).concat(touched.map(t => ({ file: t.file, before: t.before, at: Date.now() }))).slice(-20);
+        writeJoeProject(sessionKey, { ...(entry || {}), dir, updatedAt: Date.now(), history, lastRequest: request.slice(0, 80) }, context?.runId ?? null);
+        persistJoeProjects();
 
         const stats = touched.map(t => {
             const d = diffSummary(t.before, t.after);
@@ -1248,6 +1381,6 @@ ${notes.length ? notes.join('\n') + '\n' : ''}${buildVerified === true ? '✅ vi
 
 🧭 «شغّل خادم التطوير» للمعاينة الحية · «تراجع» يسترجع الملفات السابقة`
             : `🔬 Surgical edit — ${touched.length} file(s):\n${stats}\n${notes.length ? notes.join('\n') + '\n' : ''}${buildVerified === true ? '✅ vite build passed after the edit.' : ''}`;
-        return { ok: true, output: { message, dir, touched: touched.map(t => t.file), refused, buildVerified, audit, invented }, logs } as any;
+        return { ok: true, output: { message, dir, touched: touched.map(t => t.file), refused, buildVerified, audit, improvement, invented }, logs } as any;
     }
 }

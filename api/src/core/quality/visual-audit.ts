@@ -315,6 +315,19 @@ function collector() {
     const bodyText = (document.body.innerText || '');
     const arabicChars = (bodyText.match(/[؀-ۿ]/g) || []).length;
     const isArabicPage = arabicChars > Math.max(40, bodyText.replace(/\s/g, '').length * 0.25);
+    const foreignInteractiveLabels: string[] = [];
+    if (isArabicPage) {
+        const commonUiWord = /^(?:home|about|services?|work|portfolio|gallery|contact|browse|explore|view|see|learn|book|reserve|submit|send|next|previous|back|menu|search|login|sign\s*up)$/i;
+        for (const el of Array.from(document.querySelectorAll('a,button,[role="button"]')) as HTMLElement[]) {
+            if (!visible(el)) continue;
+            const label = (el.innerText || el.getAttribute('aria-label') || '').trim().replace(/\s+/g, ' ');
+            if (!label || /[؀-ۿ]/.test(label)) continue;
+            const words = label.match(/[A-Za-z]{3,}/g) || [];
+            if ((words.length >= 2 || commonUiWord.test(label)) && foreignInteractiveLabels.length < 8) {
+                foreignInteractiveLabels.push(label.slice(0, 64));
+            }
+        }
+    }
     const rtlOffenders: string[] = [];
     let physicalProps = 0;
     if (isArabicPage) {
@@ -493,7 +506,7 @@ function collector() {
         sections: document.querySelectorAll('section').length,
         quirks: document.compatMode !== 'CSS1Compat',
         // RTL
-        isArabicPage, htmlLang, htmlDir, rtlOffenders, physicalProps,
+        isArabicPage, htmlLang, htmlDir, foreignInteractiveLabels, rtlOffenders, physicalProps,
         // accessibility
         headingJumps, h1Count, unlabelledFields, iconOnlyUnnamed, imgNoAlt,
         missingLandmarks, focusSuppressed, outlineKilled, focusRules,
@@ -786,6 +799,15 @@ export async function auditVisually(fileUrl: string, opts?: {
                 ar: 'الصفحة عربية بلا lang="ar" — قارئ الشاشة سينطقها بلغة أخرى',
                 en: 'Arabic page without lang="ar" — a screen reader will pronounce it in the wrong language',
                 hint: 'set lang="ar" on <html>',
+            });
+        }
+        if (d.foreignInteractiveLabels?.length) {
+            findings.push({
+                code: 'foreign_interactive_labels', severity: 'major',
+                ar: `${d.foreignInteractiveLabels.length} زر أو رابط في الواجهة العربية ما زال بلغة أخرى: ${d.foreignInteractiveLabels.slice(0, 3).map((label: string) => `«${label}»`).join('، ')}`,
+                en: `${d.foreignInteractiveLabels.length} control(s) in the Arabic interface are still in another language: ${d.foreignInteractiveLabels.slice(0, 3).map((label: string) => `"${label}"`).join(', ')}`,
+                hint: 'translate the visible control labels to the document language',
+                data: { labels: d.foreignInteractiveLabels },
             });
         }
         if (d.physicalProps >= 4) {

@@ -9,7 +9,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { parseEditBlocks, applyEditBlock, syntaxOk, diffSummary, ProjectEditTool } from '../modules/tools/definitions/ProjectEditTool';
+import { parseEditBlocks, applyEditBlock, syntaxOk, diffSummary, parseLiteralTextReplacement, ProjectEditTool } from '../modules/tools/definitions/ProjectEditTool';
 import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
 
 describe('parseEditBlocks — the Aider-style format, strictly', () => {
@@ -104,6 +104,44 @@ describe('the tool: colour changes are deterministic; honest without a project',
         const res: any = await tool.execute({ request: 'عدل الهيدر' }, { sessionId: 'pedit-none' });
         expect(res.ok).toBe(true);
         expect(String(res.output.message)).toContain('لا يوجد مشروع');
+    });
+    it('changes an explicitly quoted button label without a model call', async () => {
+        fs.mkdirSync(path.join(tmp, 'src'), { recursive: true });
+        fs.writeFileSync(path.join(tmp, 'src', 'content.js'), "export const content = { cta: 'احجز جلسة' };\n");
+        const res: any = await new ProjectEditTool().execute(
+            { request: 'غيّر نص زر «احجز جلسة» إلى «احجز موعدك»، ثم اختبر التعديل في المتصفح.', dir: tmp },
+            { sessionId: 'pedit-literal' },
+        );
+        expect(res.ok).toBe(true);
+        expect(res.output.touched).toEqual(['src/content.js']);
+        expect(fs.readFileSync(path.join(tmp, 'src', 'content.js'), 'utf-8')).toContain("cta: 'احجز موعدك'");
+        delete (global as any).joeProjects?.['pedit-literal'];
+    });
+});
+
+describe('short quoted wording follow-ups', () => {
+    it('parses an Arabic button-label replacement without swallowing the QA clause', () => {
+        expect(parseLiteralTextReplacement('غيّر نص زر «احجز جلسة» إلى «احجز موعدك»، ثم اختبر التعديل في المتصفح.')).toEqual({
+            from: 'احجز جلسة',
+            to: 'احجز موعدك',
+        });
+    });
+
+    it('requires two explicit quoted values', () => {
+        expect(parseLiteralTextReplacement('غيّر نص الزر إلى شيء أجمل')).toBeNull();
+    });
+
+    it('uses the restricted-Windows-safe Vite wrapper for every edit build path', () => {
+        const source = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ProjectEditTool.ts'), 'utf-8');
+        expect((source.match(/withoutViteConfigForBuild\(dir/g) || []).length).toBe(3);
+    });
+
+    it('runs measured repair rounds after a project-edit browser finding', () => {
+        const source = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ProjectEditTool.ts'), 'utf-8');
+        expect(source).toContain('worthRepairing(audit?.findings || [])');
+        expect(source).toContain('improveUntilItStops(firstMeasurement');
+        expect(source).toContain('repairRound(dir, round, { isArabic: isAr, findings })');
+        expect(source.indexOf('Per-file history is written after QA')).toBeGreaterThan(source.indexOf('SELF-QA AFTER THE EDIT'));
     });
 });
 

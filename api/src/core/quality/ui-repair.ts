@@ -757,7 +757,7 @@ export const REPAIRS_THIS_FILE_CAN_MAKE: ReadonlySet<string> = new Set([
     'mobile_overflow', 'responsive',
     'mobile_header_fragmented',
     'line_too_long', 'type_scale_drift', 'flat_hierarchy',
-    'semantic_input_validation',
+    'semantic_input_validation', 'form_no_validation',
 ]);
 
 
@@ -804,6 +804,20 @@ export function repairProjectFiles(
     const semanticEvidence = evidenceFor('semantic_input_validation');
     const out: Record<string, string> = {};
     const all: Repair[] = [];
+    const normalizedCss = Object.keys(files)
+        .filter(rel => rel.toLowerCase().endsWith('.css'))
+        .map(rel => rel.replace(/\\/g, '/').toLowerCase());
+    const targetedCssRel = targetedRun
+        ? [...normalizedCss].sort((a, b) => {
+            const rank = (rel: string) => {
+                if (/(^|\/)styles\/base\.css$/.test(rel)) return 0;
+                if (/(^|\/)(styles?|index|app|main)\.css$/.test(rel)) return 1;
+                if (/(^|\/)tokens\.css$/.test(rel)) return 2;
+                return 3;
+            };
+            return rank(a) - rank(b) || a.localeCompare(b);
+        })[0]
+        : null;
     const merge = (rs: Repair[]) => {
         for (const r of rs) {
             const found = all.find(x => x.id === r.id);
@@ -829,6 +843,10 @@ export function repairProjectFiles(
                 text = r.text; merge(r.repairs);
             }
         } else if (lower.endsWith('.css')) {
+            // A measured selector is valid anywhere in the loaded cascade. Put
+            // it in one primary stylesheet instead of cloning the same repair
+            // block into every CSS file in the project.
+            if (targetedCssRel && rel.replace(/\\/g, '/').toLowerCase() !== targetedCssRel) continue;
             // Tokens first: contrast is decided in the palette, and the two
             // appended blocks must not sit between a token and its block.
             /**
@@ -868,7 +886,8 @@ export function repairProjectFiles(
                 (t: string) => !targetedRun || hasFinding('small_targets', 'tap_targets', 'mobile_tap_targets')
                     ? repairTapTargets(t, round) : { text: t, repairs: [] },
                 (t: string) => repairMobileTapFallback(t, round, mobileTapNeedsFallback),
-                (t: string) => repairResponsive(t, mobileOverflowMeasured),
+                (t: string) => !targetedRun || hasFinding('mobile_overflow', 'responsive')
+                    ? repairResponsive(t, mobileOverflowMeasured) : { text: t, repairs: [] },
             ]) {
                 const r = fix(text);
                 text = r.text; merge(r.repairs);
