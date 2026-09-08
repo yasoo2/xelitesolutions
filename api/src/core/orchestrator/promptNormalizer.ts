@@ -166,6 +166,13 @@ const PHRASE_KEYS = Object.keys(FOLDED_SYNONYMS)
 // canonical text, and it is what the planner's regexes look for.
 const FOLDED_FUZZY: Array<[string, string]> = FUZZY_KEYWORDS.map(k => [foldChars(k), k]);
 
+/** A typo-repaired keyword may itself be a synonym (for example
+ *  `تصيم` -> `تصميم` -> `صمم`). Finish that chain in the same pass so every
+ *  caller receives the semantic canonical form, not an intermediate spelling. */
+function semanticKeyword(keyword: string): string {
+    return FOLDED_SYNONYMS[foldChars(keyword)] || keyword;
+}
+
 /** Produce the canonicalized companion text for intent detection. */
 export function normalizeIntentText(raw: string): string {
     let text = foldChars(raw);
@@ -188,8 +195,8 @@ export function normalizeIntentText(raw: string): string {
         const minLen = /[؀-ۿ]/.test(token) ? 4 : 5;
         if (token.length < minLen) return null;
         for (const [folded, keyword] of FOLDED_FUZZY) {
-            if (token === folded) return keyword;
-            if (Math.abs(folded.length - token.length) <= 1 && levenshtein1(token, folded)) return keyword;
+            if (token === folded) return semanticKeyword(keyword);
+            if (Math.abs(folded.length - token.length) <= 1 && levenshtein1(token, folded)) return semanticKeyword(keyword);
         }
         return null;
     };

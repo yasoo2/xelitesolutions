@@ -44,11 +44,18 @@ describe('Arabic normalisation folds spellings a reader treats as identical', ()
 
     it('understands design and filtering terms instead of dropping their intent', () => {
         expect(normalizeIntentText('أريد تصميم واجهة')).toContain('صمم');
+        expect(normalizeIntentText('بدي تصيم واجهة مودرن')).toBe('اريد صمم واجهة مودرن');
         expect(normalizeIntentText('فلترة حسب الشهر')).toContain('تصفية');
         expect(normalizeIntentText('التصميم متجاوب')).toContain('صمم');
         expect(normalizeIntentText('بدي تصميم مودرن لواجهة جو')).toContain('صمم');
         expect(PlanningEngine.looksLikeBuild('تصميم موقع شركة استشارات')).toBe(true);
         expect(PlanningEngine.looksLikeBuild('هل يمكنك تصميم موقع شركة استشارات؟')).toBe(true);
+    });
+
+    it('finishes typo repair at the semantic canonical form in one stable pass', () => {
+        const once = normalizeIntentText('بدي تصيم واجهة مودرن');
+        expect(once).toBe('اريد صمم واجهة مودرن');
+        expect(normalizeIntentText(once)).toBe(once);
     });
 
     it('does not peel the first letter from Arabic words that genuinely begin with waw', () => {
