@@ -167,8 +167,9 @@ export class EngineeringDiscoveryTool extends BaseTool {
                 const buildVerb = /\b(?:build|create|develop|implement|generate|scaffold|make)\b/i.test(sentence)
                     || /(?:ابن|أنشئ|انشئ|طوّر|طور|نفّذ|نفذ|اصنع)/i.test(sentence);
                 const continuationOrEdit = /\b(?:continue|resume|finish|complete|extend|modify|update|fix|repair|refactor|improve|edit)\b/i.test(sentence)
-                    || /(?:أكمل|اكمل|استأنف|عدّل|عدل|حدّث|حدث|أصلح|اصلح)/i.test(sentence);
-                const existingDestination = /\b(?:in|into|on|within|inside|for)\s+(?:the\s+)?(?:existing|current|this|active|last)\s+(?:project|codebase|workspace|application|system|app|build|artifact)\b/i.test(sentence);
+                    || /(?:أكمل|اكمل|استأنف|عدّل|عدل|حدّث|حدث|أصلح|اصلح|طوّر|طور|وسّع|وسع|حسّن|حسن)/i.test(sentence);
+                const existingDestination = /\b(?:in|into|on|within|inside|for)\s+(?:the\s+)?(?:existing|current|this|active|last|same)\s+(?:project|codebase|workspace|application|system|app|build|artifact)\b/i.test(sentence)
+                    || /(?:نفس|ذات)\s*(?:هذا\s*)?(?:المشروع|التطبيق|الموقع|النظام)|(?:المشروع|التطبيق|الموقع|النظام)\s*(?:نفسه|الحالي|الموجود)/i.test(sentence);
                 return buildVerb && !continuationOrEdit && !existingDestination;
             });
         const explicitExistingMutation = request
@@ -209,10 +210,12 @@ export class EngineeringDiscoveryTool extends BaseTool {
             || explicitExistingMutation
             || new RegExp(`(^|[^${AR}])(?:جيت\s*هاب|استنسخ|استورد)(?=$|[^${AR}])`).test(request)
             || new RegExp(`(^|[^${AR}])(?:المشروع|الكود)\s*(?:الحالي|الموجود)(?=$|[^${AR}])`).test(request)
+            || /(?:نفس|ذات)\s*(?:هذا\s*)?(?:المشروع|التطبيق|الموقع|النظام)|(?:المشروع|التطبيق|الموقع|النظام)\s*(?:نفسه|الحالي|الموجود)/i.test(request)
             || (gitContext && new RegExp(`(^|[^${AR}])(?:ال)?مستودع(?=$|[^${AR}])`).test(request));
         const forbidDeploy = /(?:لا|ليس|بدون|غير|do\s+not|don't|without|no)\s+(?:(?:أي|any|external)\s+)?(?:نشر|رفع|استضافة|deploy|publish|host|go\s*live)/i.test(request);
         const localOnly = forbidDeploy || /(?:محلي|local(?:ly)?|على\s+(?:جهازي|الجهاز)|on\s+(?:my\s+)?machine)/i.test(request);
         const readOnly = isReadOnlyRequest(request);
+        const forbidsNewProject = /(?:دون|بدون|لا)\s+(?:أن\s+)?(?:تنشئ|إنشاء|انشاء|بناء)\s+(?:أي\s+)?(?:مشروع|تطبيق|موقع)\s+جديد|\b(?:without|do\s+not|don't|no)\b[^.!?\n]{0,45}\b(?:create|build|scaffold)\b[^.!?\n]{0,35}\bnew\s+(?:project|app|site)\b/i.test(request);
 
         /**
          * «WHICH OF YOUR PROJECTS DO YOU MEAN?» IS THE WRONG QUESTION TO ASK
@@ -264,6 +267,7 @@ export class EngineeringDiscoveryTool extends BaseTool {
         const targetsKnownArtifact = !!knownArtifactRoot && (continuesKnownArtifact || explicitExistingMutation);
         const buildsSomethingNew = !readOnly && (explicitNewBuildIntent || PlanningEngine.looksLikeBuild(request))
             && !explicitExistingMutation
+            && !forbidsNewProject
             && !remoteUrl
             && !targetsKnownArtifact
             // «ابنِ على المشروع الحالي» / «أضف صفحة إلى الموقع» point AT

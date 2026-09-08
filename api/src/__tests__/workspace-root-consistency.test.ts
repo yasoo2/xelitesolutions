@@ -16,12 +16,13 @@ describe('local workspace root consistency', () => {
     else process.env.MOCK_DB = originalMockDb;
   });
 
-  it('maps an unbound logical run workspace to the Explorer root in local mode', () => {
+  it('keeps an unbound logical run workspace isolated from the process-wide local root', () => {
     const logicalWorkspaceId = `run-workspace-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
     const explorerRoot = workspaceService.getExplorerRoot();
     const executionRoot = workspaceService.getActiveRoot(logicalWorkspaceId);
 
-    expect(executionRoot).toBe(explorerRoot);
+    expect(executionRoot).not.toBe(explorerRoot);
+    expect(executionRoot).toContain(logicalWorkspaceId);
   });
 });

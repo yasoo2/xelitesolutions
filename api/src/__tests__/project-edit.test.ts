@@ -51,6 +51,30 @@ describe('provider-independent cost calculator follow-up', () => {
         expect(fs.readFileSync(path.join(tmp, 'src', 'App.jsx'), 'utf-8')).toContain('<CostCalculator services={content.services || []} />');
         expect(fs.readFileSync(path.join(tmp, 'src', 'styles', 'base.css'), 'utf-8')).toContain('.calculator-wrap{');
     });
+
+    it('extends an existing calculator with currencies, promo validation, and a complete reset without a provider', async () => {
+        const request = 'وسّع حاسبة تكلفة الاستشارة بإضافة اختيار العملة بين الدينار والدولار، وكود خصم BASIRA10 يخفض المجموع قبل الضريبة بنسبة 10%، ثم طبّق ضريبة 16%، وأظهر رسالة واضحة عند إدخال رمز خاطئ. حافظ على الخدمة وعدد الساعات عند تغيير العملة، واجعل إعادة التعيين تمسح الخصم وتعيد العملة والخدمة والساعات إلى القيم الافتراضية.';
+        const parsed = parsePresentationEdits(request).find(edit => edit.kind === 'calculator_section') as any;
+        expect(parsed).toMatchObject({
+            promoCode: 'BASIRA10', discountRate: 10, taxRate: 16, invalidPromoFeedback: true,
+            preserveStateOnCurrencyChange: true, resetAll: true,
+        });
+        expect(parsed.currencies.map((currency: any) => currency.code)).toEqual(['JOD', 'USD']);
+
+        const res: any = await new ProjectEditTool().execute({ request, dir: tmp, skipAudit: true }, { sessionId: `calculator-extend-${Date.now()}` });
+        expect(res.ok).toBe(false);
+        expect(res.error).toContain('edit_acceptance_unmet');
+        const component = fs.readFileSync(path.join(tmp, 'src', 'components', 'CostCalculator.jsx'), 'utf-8');
+        expect(component).toContain('data-calculator-currency');
+        expect(component).toContain('CURRENCIES.map((item)');
+        expect(component).not.toContain('{currencies.map((item)');
+        expect(component).toContain('data-promo-code="BASIRA10"');
+        expect(component).toContain('data-tax-rate="16"');
+        expect(component).toContain('data-discount-rate="10"');
+        expect(component).toContain('const taxable = subtotal - discount');
+        expect(component).toContain("setCurrency(CURRENCIES[0].code); setPromoInput(''); setPromoApplied(false)");
+        expect(fs.readFileSync(path.join(tmp, 'src', 'styles', 'base.css'), 'utf-8')).toContain('.calculator-promo{');
+    });
 });
 
 describe('parseEditBlocks — the Aider-style format, strictly', () => {
@@ -238,6 +262,8 @@ describe('short quoted wording follow-ups', () => {
         expect(source).toContain('ok: !deliveryBlocked');
         expect(source).toContain("? 'browser_qa_required: requested visible browser verification did not complete'");
         expect(source).toContain("'edit_acceptance_unmet: one or more requested changes were not proven'");
+        expect(source).toContain("criterion.id === 'counter' && calculatorEdit");
+        expect(source).toContain('the browser recomputed and displayed the calculator total for every tested state');
     });
 });
 
@@ -493,6 +519,13 @@ describe('routing: an edit goes to the surgical editor when the project is the a
     afterEach(() => {
         delete (global as any).joeProjects?.[KEY];
         delete (global as any).joePages?.[KEY];
+    });
+
+    it('keeps one canonical project_edit plan constructor', () => {
+        const source = fs.readFileSync(path.join(__dirname, '..', 'core', 'orchestrator', 'PlanningEngine.ts'), 'utf8');
+        expect(source.match(/tool:\s*'project_edit'/g)).toHaveLength(1);
+        expect(source).not.toContain('project_edit_existing_');
+        expect(source).not.toMatch(/tool:\s*'project_edit'[\s\S]{0,180}\bargs:\s*\{/);
     });
 
     it('project newer than page → project_edit', async () => {

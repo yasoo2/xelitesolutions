@@ -95,6 +95,23 @@ describe('evidence-first engineering discovery', () => {
     expect(result.output.evidence.constraints.createsNewProject).toBe(false);
   });
 
+  test('treats an Arabic develop-the-same-project request as an existing workspace edit', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-arabic-current-project-'));
+    roots.push(root);
+    fs.mkdirSync(path.join(root, 'src'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ name: 'current-calculator', scripts: { build: 'vite build' } }));
+    fs.writeFileSync(path.join(root, 'src', 'App.jsx'), 'export default function App() { return null; }\n');
+
+    const result: any = await new EngineeringDiscoveryTool().execute({
+      request: 'طوّر نفس المشروع الحالي دون إنشاء مشروع جديد: وسّع حاسبة التكلفة وأضف عملتين وكود خصم ثم اختبرها.',
+    }, { workspaceRoot: root });
+
+    expect(result.output.evidence.mode).toBe('existing_workspace');
+    expect(result.output.evidence.selectedProject.root).toBe(root);
+    expect(result.output.evidence.constraints.createsNewProject).toBe(false);
+    expect(result.output.evidence.constraints.userRequestedExistingProject).toBe(true);
+  });
+
   test('recognizes an incomplete existing project root so repair can restore its missing manifest', async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-incomplete-repair-'));
     roots.push(root);

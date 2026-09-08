@@ -49,6 +49,17 @@ describe('local build location: effective, persistent, clearly named', () => {
         expect(fs.existsSync(path.join(projectsDir, '.joe-local-root.json'))).toBe(true);
     });
 
+    test('a workspace-scoped choice survives restart without leaking to another workspace', async () => {
+        const chosen = path.join(projectsDir, 'workspace-specific');
+        const workspaceId = '64b2f0000000000000000aaa';
+        await make().setActiveRoot(chosen, workspaceId);
+
+        const restarted = make();
+        expect(path.resolve(restarted.getActiveRoot(workspaceId))).toBe(path.resolve(chosen));
+        expect(path.resolve(restarted.getActiveRoot('64b2f0000000000000000bbb'))).not.toBe(path.resolve(chosen));
+        expect(fs.existsSync(path.join(projectsDir, '.joe-workspace-roots.json'))).toBe(true);
+    });
+
     test('reset restores the clean default and persists that too', () => {
         const svc = make();
         svc.resetToSystem();
@@ -56,15 +67,14 @@ describe('local build location: effective, persistent, clearly named', () => {
         expect(path.basename(make().getActiveRoot())).toBe('my-workspace');
     });
 
-    test('an explicit workspace id keeps using the selected local explorer root', async () => {
+    test('an explicit workspace id uses its own selected explorer root', async () => {
         const svc = make();
         const chosen = path.join(projectsDir, 'visible-to-user');
-        await svc.setActiveRoot(chosen);
+        const workspaceId = '64b2f0000000000000000abc';
+        await svc.setActiveRoot(chosen, workspaceId);
 
-        // JSON/Mock mode is a single local workspace: the logical chat workspace
-        // remains available for ownership, while the File Explorer must show the
-        // selected folder where Joe actually created the files.
-        expect(path.resolve(svc.getActiveRoot('64b2f0000000000000000abc'))).toBe(path.resolve(chosen));
+        expect(path.resolve(svc.getActiveRoot(workspaceId))).toBe(path.resolve(chosen));
+        expect(path.resolve(svc.getActiveRoot())).not.toBe(path.resolve(chosen));
     });
 
     test('a cached chat workspace follows a later location-picker change', async () => {
@@ -75,7 +85,7 @@ describe('local build location: effective, persistent, clearly named', () => {
 
         // This is the browser sequence: an agent run has already resolved its
         // logical workspace, then the user changes the visible Explorer location.
-        await svc.setActiveRoot(chosen);
+        await svc.setActiveRoot(chosen, logicalChatWorkspace);
 
         expect(path.resolve(before)).not.toBe(path.resolve(chosen));
         expect(path.resolve(svc.getActiveRoot(logicalChatWorkspace))).toBe(path.resolve(chosen));

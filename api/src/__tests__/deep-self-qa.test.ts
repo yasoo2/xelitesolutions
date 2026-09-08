@@ -132,6 +132,11 @@ describe('every menu, every route — not fourteen buttons', () => {
         expect(b).toContain("await input.fill('0')");
         expect(b).toContain("await input.fill('9999')");
         expect(b).toContain("await input.fill('-1')");
+        expect(b).toContain("await promoInput.fill('WRONG-CODE')");
+        expect(b).toContain('discountBeforeTaxCorrect');
+        expect(b).toContain('currencyRoundTrip');
+        expect(b).toContain('valuesPreserved');
+        expect(b).toContain('const expectedSubtotal = state.rate * 2 * state.currencyRate');
         expect(b).toContain('Math.abs(state.total - expectedSubtotal * (1 + taxRate)) < 0.01');
         expect(b).toContain('const resetWorked = resetState.selectedIndex === 0 && resetState.hours === 1');
     });

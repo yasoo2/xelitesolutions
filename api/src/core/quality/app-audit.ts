@@ -132,6 +132,14 @@ export interface AppAudit {
         mathCorrect: boolean;
         negativeRejected: boolean;
         resetWorked: boolean;
+        currencyChoices?: number;
+        currencyRoundTrip?: boolean;
+        valuesPreserved?: boolean;
+        promoCorrect?: boolean;
+        promoInvalidFeedback?: boolean;
+        discountBeforeTaxCorrect?: boolean;
+        resetCurrency?: boolean;
+        resetPromo?: boolean;
         viewport: string;
         route?: string;
     }>;

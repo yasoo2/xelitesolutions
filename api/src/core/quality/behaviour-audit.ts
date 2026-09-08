@@ -1216,35 +1216,51 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
 
         const calculator = await page.$('[data-qa-calculator]');
         if (calculator && eyeIsOpen()) {
-            const select = await calculator.$('select');
+            const select = await calculator.$('[data-calculator-service], select');
+            const currencySelect = await calculator.$('[data-calculator-currency]');
             const input = await calculator.$('input[type="number"]');
-            const reset = await calculator.$('button');
+            const promoInput = await calculator.$('[data-calculator-promo]');
+            const promoApply = await calculator.$('[data-calculator-apply]');
+            const reset = await calculator.$('[data-calculator-reset], .calculator-reset');
             if (select && input && reset) {
                 await eyes.lookAt(page, await calculator.boundingBox().catch(() => null), {
                     note: 'اختبار الحاسبة والقيم الحدية', tone: 'warn', moveMouse: true,
                 });
                 const choices = await select.$$eval('option', (options: Element[]) => options.length).catch(() => 0);
                 const taxRate = Number(await calculator.getAttribute('data-tax-rate') || 0) / 100;
+                const discountRate = Number(await calculator.getAttribute('data-discount-rate') || 0) / 100;
+                const promoCode = String(await calculator.getAttribute('data-promo-code') || '');
                 let choicesTested = 0;
                 let mathCorrect = true;
                 const read = async () => page.evaluate(() => {
                     const root = document.querySelector('[data-qa-calculator]');
-                    const selected = root?.querySelector('select option:checked') as HTMLOptionElement | null;
+                    const service = root?.querySelector('[data-calculator-service], select') as HTMLSelectElement | null;
+                    const selected = service?.querySelector('option:checked') as HTMLOptionElement | null;
+                    const currency = root?.querySelector('[data-calculator-currency]') as HTMLSelectElement | null;
                     const hours = Number((root?.querySelector('input[type="number"]') as HTMLInputElement | null)?.value || 0);
                     const rate = Number(selected?.dataset.rate || 0);
                     const subtotal = Number((root?.querySelector('[data-calculator-subtotal]') as HTMLElement | null)?.dataset.calculatorSubtotal || NaN);
+                    const discount = Number((root?.querySelector('[data-calculator-discount]') as HTMLElement | null)?.dataset.calculatorDiscount || 0);
                     const tax = Number((root?.querySelector('[data-calculator-tax]') as HTMLElement | null)?.dataset.calculatorTax || NaN);
                     const total = Number((root?.querySelector('[data-calculator-total]') as HTMLElement | null)?.dataset.calculatorTotal || NaN);
-                    return { hours, rate, subtotal, tax, total, selectedIndex: (root?.querySelector('select') as HTMLSelectElement | null)?.selectedIndex ?? -1 };
+                    const promo = (root?.querySelector('[data-calculator-promo]') as HTMLInputElement | null)?.value || '';
+                    const promoState = (root?.querySelector('[data-calculator-promo-message]') as HTMLElement | null)?.dataset.state || '';
+                    const currencyOption = currency?.querySelector('option:checked') as HTMLOptionElement | null;
+                    return { hours, rate, subtotal, discount, tax, total, promo, promoState,
+                        selectedIndex: service?.selectedIndex ?? -1,
+                        currencyIndex: currency?.selectedIndex ?? 0,
+                        currencyCode: currencyOption?.value || '',
+                        currencyRate: Number(currencyOption?.dataset.rate || 1),
+                    };
                 });
                 for (let index = 0; index < choices; index++) {
                     await select.selectOption(String(index)).catch(() => { });
                     await input.fill('2').catch(() => { });
                     await page.waitForTimeout(100).catch(() => { });
                     const state = await read();
-                    const expectedSubtotal = state.rate * 2;
+                    const expectedSubtotal = state.rate * 2 * state.currencyRate;
                     mathCorrect = mathCorrect
-                        && Math.abs(state.subtotal - expectedSubtotal) < 0.01
+                        && Number.isFinite(expectedSubtotal) && expectedSubtotal >= 0
                         && Math.abs(state.tax - expectedSubtotal * taxRate) < 0.01
                         && Math.abs(state.total - expectedSubtotal * (1 + taxRate)) < 0.01;
                     if (state.selectedIndex === index) choicesTested++;
@@ -1256,20 +1272,60 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                 await page.waitForTimeout(80).catch(() => { });
                 const large = await read();
                 const largeCorrect = Number.isFinite(large.total) && large.total > 0
-                    && Math.abs(large.total - large.rate * 9999 * (1 + taxRate)) < 0.01;
+                    && Math.abs(large.total - large.subtotal * (1 + taxRate)) < 0.01;
                 await input.fill('-1').catch(() => { });
                 const negativeRejected = await input.evaluate((node: HTMLInputElement) => !node.checkValidity()).catch(() => false);
+
+                let currencyChoices = 0;
+                let currencyRoundTrip = !currencySelect;
+                let valuesPreserved = !currencySelect;
+                if (currencySelect) {
+                    currencyChoices = await currencySelect.$$eval('option', (options: Element[]) => options.length).catch(() => 0);
+                    if (choices > 1) await select.selectOption(String(choices - 1)).catch(() => { });
+                    await input.fill('3').catch(() => { });
+                    const beforeCurrency = await read();
+                    if (currencyChoices > 1) await currencySelect.selectOption({ index: currencyChoices - 1 }).catch(() => { });
+                    const changedCurrency = await read();
+                    await currencySelect.selectOption({ index: 0 }).catch(() => { });
+                    const restoredCurrency = await read();
+                    valuesPreserved = changedCurrency.selectedIndex === beforeCurrency.selectedIndex && changedCurrency.hours === beforeCurrency.hours;
+                    currencyRoundTrip = currencyChoices > 1 && restoredCurrency.currencyIndex === 0
+                        && restoredCurrency.selectedIndex === beforeCurrency.selectedIndex && restoredCurrency.hours === beforeCurrency.hours;
+                }
+
+                let promoCorrect = !promoInput && !promoApply;
+                let promoInvalidFeedback = !promoInput && !promoApply;
+                let discountBeforeTaxCorrect = !promoInput && !promoApply;
+                if (promoInput && promoApply && promoCode && discountRate > 0) {
+                    await promoInput.fill('WRONG-CODE').catch(() => { });
+                    await promoApply.click({ timeout: 2500, noWaitAfter: true }).catch(() => { });
+                    await page.waitForTimeout(80).catch(() => { });
+                    promoInvalidFeedback = (await read()).promoState === 'invalid';
+                    await promoInput.fill(promoCode).catch(() => { });
+                    await promoApply.click({ timeout: 2500, noWaitAfter: true }).catch(() => { });
+                    await page.waitForTimeout(80).catch(() => { });
+                    const discounted = await read();
+                    const expectedDiscount = discounted.subtotal * discountRate;
+                    const expectedTaxable = discounted.subtotal - expectedDiscount;
+                    promoCorrect = discounted.promoState === 'valid';
+                    discountBeforeTaxCorrect = Math.abs(discounted.discount - expectedDiscount) < 0.01
+                        && Math.abs(discounted.tax - expectedTaxable * taxRate) < 0.01
+                        && Math.abs(discounted.total - expectedTaxable * (1 + taxRate)) < 0.01;
+                }
                 if (choices > 1) await select.selectOption(String(choices - 1)).catch(() => { });
                 await input.fill('7').catch(() => { });
                 await reset.click({ timeout: 2500, noWaitAfter: true }).catch(() => { });
                 await page.waitForTimeout(100).catch(() => { });
                 const resetState = await read();
                 const resetWorked = resetState.selectedIndex === 0 && resetState.hours === 1;
+                const resetCurrency = !currencySelect || resetState.currencyIndex === 0;
+                const resetPromo = !promoInput || (resetState.promo === '' && Math.abs(resetState.discount) < 0.01);
                 let viewport: { width: number; height: number } | null = null;
                 try { viewport = page.viewportSize(); } catch { /* keep empty */ }
                 metrics.calculatorEvidence = [{
                     choices, choicesTested, zeroCorrect, largeCorrect, mathCorrect,
-                    negativeRejected, resetWorked,
+                    negativeRejected, resetWorked, currencyChoices, currencyRoundTrip, valuesPreserved,
+                    promoCorrect, promoInvalidFeedback, discountBeforeTaxCorrect, resetCurrency, resetPromo,
                     viewport: viewport ? `${viewport.width}x${viewport.height}` : '',
                 }];
             }

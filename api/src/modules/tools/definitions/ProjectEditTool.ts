@@ -139,7 +139,12 @@ export type PresentationEdit =
     | { kind: 'hero_contact_cta'; label: string }
     | { kind: 'phone_field'; required: boolean; rejectLetters: boolean }
     | { kind: 'faq_section'; label: string; count: number; singleOpen: boolean; closable: boolean }
-    | { kind: 'calculator_section'; label: string; taxRate: number; rejectNegative: boolean; resetLabel: string }
+    | {
+        kind: 'calculator_section'; label: string; taxRate: number; rejectNegative: boolean; resetLabel: string;
+        currencies: Array<{ code: string; label: string; rate: number }>;
+        promoCode: string; discountRate: number; invalidPromoFeedback: boolean;
+        preserveStateOnCurrencyChange: boolean; resetAll: boolean;
+    }
     | { kind: 'section_subtitle'; section: string; value: string };
 
 export interface ServicesSectionEdit {
@@ -217,16 +222,32 @@ export function parsePresentationEdits(request: string): PresentationEdit[] {
         });
     }
 
-    const calculatorClause = text.match(/(?:أضف|اضف|أنشئ|انشئ|add|create)\s+[^،.\n]{0,45}(?:حاسب[ةه]|calculator)[^،.\n]*/iu)?.[0] || '';
+    const calculatorClause = text.match(/(?:أضف|اضف|أنشئ|انشئ|وسّ?ع|طوّ?ر|عدّ?ل|add|create|extend|enhance|update)\s+[^،.\n]{0,80}(?:حاسب[ةه]|calculator)[^،.\n]*/iu)?.[0] || '';
     if (calculatorClause) {
-        const tax = text.match(/(?:ضريب[ةه]|tax)[^\d]{0,18}(\d+(?:[.,]\d+)?)\s*%|(?:\bwith\b|مع)\s+(\d+(?:[.,]\d+)?)\s*%\s*(?:ضريب[ةه]|tax)/iu);
+        // A promo sentence can say "10% before tax" before declaring "tax
+        // 16%". The nearest first percentage is then the discount, not the
+        // tax rate. The final explicit tax declaration owns the rate.
+        const taxMatches = [...text.matchAll(/(?:ضريب[ةه]|tax)[^\d]{0,18}(\d+(?:[.,]\d+)?)\s*%|(?:\bwith\b|مع)\s+(\d+(?:[.,]\d+)?)\s*%\s*(?:ضريب[ةه]|tax)/giu)];
+        const tax = taxMatches[taxMatches.length - 1];
         const taxRate = Number(String(tax?.[1] || tax?.[2] || '0').replace(',', '.'));
+        const wantsCurrencies = /(?:اختيار|تبديل|تغيير|بين|select|switch|choose)[^،.\n]{0,35}(?:العمل[ةه]|currenc)|(?:العمل[ةه]|currenc)[^،.\n]{0,45}(?:الدينار|دولار|dinar|dollar|jod|usd)/iu.test(text);
+        const promo = text.match(/(?:كود|رمز|code)[^،.\n]{0,25}(?:خصم|تخفيض|promo|discount)[^A-Z0-9\n]{0,12}([A-Z][A-Z0-9_-]{2,30})|\b([A-Z][A-Z0-9_-]{2,30})\b[^،.\n]{0,25}(?:خصم|تخفيض|promo|discount)/u);
+        const discount = text.match(/(?:خصم|تخفيض|discount)[^،.\n]{0,100}?(\d+(?:[.,]\d+)?)\s*%|(\d+(?:[.,]\d+)?)\s*%[^،.\n]{0,45}(?:خصم|تخفيض|discount)/iu);
+        const discountRate = Number(String(discount?.[1] || discount?.[2] || '0').replace(',', '.'));
         out.push({
             kind: 'calculator_section',
             label: /\p{Script=Arabic}/u.test(text) ? 'حاسبة تكلفة الاستشارة' : 'Cost calculator',
             taxRate: Number.isFinite(taxRate) ? Math.max(0, Math.min(100, taxRate)) : 0,
             rejectNegative: /(?:لا\s+(?:يقبل|تقبل)|عدم\s+قبول|ارفض|reject|prevent)[^،.\n]{0,35}(?:سالب|negative)/iu.test(text),
             resetLabel: /\p{Script=Arabic}/u.test(text) ? 'إعادة تعيين' : 'Reset',
+            currencies: wantsCurrencies
+                ? [{ code: 'JOD', label: 'الدينار', rate: 1 }, { code: 'USD', label: 'الدولار', rate: 1.41 }]
+                : [],
+            promoCode: String(promo?.[1] || promo?.[2] || '').trim(),
+            discountRate: Number.isFinite(discountRate) ? Math.max(0, Math.min(100, discountRate)) : 0,
+            invalidPromoFeedback: /(?:رسالة|تنبيه|خطأ|واضح|message|feedback|error)[^،.\n]{0,40}(?:خاطئ|غير\s+صحيح|invalid|wrong)|(?:خاطئ|غير\s+صحيح|invalid|wrong)[^،.\n]{0,40}(?:رسالة|تنبيه|خطأ|message|feedback|error)/iu.test(text),
+            preserveStateOnCurrencyChange: /(?:حافظ|احتفظ|ابق|بقاء|preserve|keep|retain)[^،.\n]{0,55}(?:الخدم[ةه]|الساعات|القيم|state|service|hours|values)/iu.test(text),
+            resetAll: /(?:إعاد[ةه]\s+التعيين|reset)[^،.\n]{0,90}(?:تمسح|تعيد|العمل[ةه]|الخصم|القيم|clear|restore|currency|discount|defaults)/iu.test(text),
         });
     }
 
@@ -235,6 +256,69 @@ export function parsePresentationEdits(request: string): PresentationEdit[] {
     if (below) out.push({ kind: 'section_subtitle', section: below[1].trim(), value: below[2].trim() });
     else if (lineFirst) out.push({ kind: 'section_subtitle', section: lineFirst[2].trim(), value: lineFirst[1].trim() });
     return out;
+}
+
+function renderCostCalculator(op: Extract<PresentationEdit, { kind: 'calculator_section' }>, ar: boolean): string {
+    const currencies = op.currencies.length
+        ? op.currencies
+        : [{ code: 'JOD', label: ar ? 'الدينار' : 'Dinar', rate: 1 }];
+    const currencyRows = currencies.map(currency =>
+        `{ code: '${currency.code}', label: '${currency.label}', rate: ${currency.rate} }`).join(', ');
+    const hasCurrencyChoice = currencies.length > 1;
+    const hasPromo = !!op.promoCode && op.discountRate > 0;
+    const currencyControl = hasCurrencyChoice
+        ? `\n          <label>${ar ? 'العملة' : 'Currency'}<select data-calculator-currency aria-label="${ar ? 'العملة' : 'Currency'}" value={currency} onChange={(event) => setCurrency(event.target.value)}>{CURRENCIES.map((item) => <option key={item.code} value={item.code} data-rate={item.rate}>{item.label} ({item.code})</option>)}</select></label>`
+        : '';
+    const promoControl = hasPromo
+        ? `\n          <div className="calculator-promo"><label>${ar ? 'رمز الخصم' : 'Discount code'}<input data-calculator-promo aria-label="${ar ? 'رمز الخصم' : 'Discount code'}" value={promoInput} onChange={(event) => { setPromoInput(event.target.value); setPromoMessage(''); }} /></label><button type="button" className="btn btn-secondary" data-calculator-apply onClick={applyPromo}>${ar ? 'تطبيق الخصم' : 'Apply discount'}</button><p className="calculator-feedback" role="status" data-calculator-promo-message data-state={promoMessage ? (promoApplied ? 'valid' : 'invalid') : 'idle'}>{promoMessage}</p></div>`
+        : '';
+    const discountRow = hasPromo
+        ? `<div><dt>${ar ? `الخصم (${op.discountRate}%)` : `Discount (${op.discountRate}%)`}</dt><dd data-calculator-discount={discount}>{money(discount)}</dd></div>`
+        : '';
+
+    return `import React, { useMemo, useState } from 'react';
+
+const CURRENCIES = [${currencyRows}];
+
+export default function CostCalculator({ services = [] }) {
+  const options = (services.length ? services : [{ title: '${ar ? 'استشارة أساسية' : 'Essential consultation'}' }, { title: '${ar ? 'استشارة متقدمة' : 'Advanced consultation'}' }, { title: '${ar ? 'استشارة تنفيذية' : 'Executive consultation'}' }]).slice(0, 3).map((item, index) => ({ label: item.title || item.name || \`${ar ? 'خدمة' : 'Service'} \${index + 1}\`, rate: [120, 180, 250][index] }));
+  const [serviceIndex, setServiceIndex] = useState(0);
+  const [hours, setHours] = useState('1');
+  const [currency, setCurrency] = useState(CURRENCIES[0].code);
+  const [promoInput, setPromoInput] = useState('');
+  const [promoApplied, setPromoApplied] = useState(false);
+  const [promoMessage, setPromoMessage] = useState('');
+  const currencyInfo = CURRENCIES.find((item) => item.code === currency) || CURRENCIES[0];
+  const rate = options[serviceIndex]?.rate || 0;
+  const validHours = Math.max(0, Number(hours) || 0);
+  const baseSubtotal = useMemo(() => rate * validHours, [rate, validHours]);
+  const subtotal = baseSubtotal * currencyInfo.rate;
+  const discount = subtotal * (promoApplied ? ${op.discountRate / 100} : 0);
+  const taxable = subtotal - discount;
+  const tax = taxable * ${op.taxRate / 100};
+  const total = taxable + tax;
+  const money = (value) => new Intl.NumberFormat('${ar ? 'ar-JO' : 'en-US'}', { style: 'currency', currency, maximumFractionDigits: 2 }).format(value);
+  const applyPromo = () => {
+    const valid = promoInput.trim().toUpperCase() === '${op.promoCode.toUpperCase()}';
+    setPromoApplied(valid);
+    setPromoMessage(valid ? '${ar ? 'تم تطبيق الخصم.' : 'Discount applied.'}' : '${ar ? 'رمز الخصم غير صحيح.' : 'Invalid discount code.'}');
+  };
+  const reset = () => { setServiceIndex(0); setHours('1'); setCurrency(CURRENCIES[0].code); setPromoInput(''); setPromoApplied(false); setPromoMessage(''); };
+  return (
+    <section className="section calculator-section" id="calculator" data-qa-calculator data-tax-rate="${op.taxRate}" data-discount-rate="${op.discountRate}" data-promo-code="${op.promoCode.toUpperCase()}">
+      <div className="wrap calculator-wrap">
+        <div className="calculator-copy"><p className="eyebrow">${ar ? 'تقدير فوري' : 'Instant estimate'}</p><h2>${op.label}</h2><p>${ar ? 'اختر الخدمة وعدد الساعات لترى التكلفة بوضوح قبل الحجز.' : 'Choose a service and hours to see a clear estimate before booking.'}</p></div>
+        <div className="calculator-panel">
+          <label>${ar ? 'نوع الخدمة' : 'Service type'}<select data-calculator-service aria-label="${ar ? 'نوع الخدمة' : 'Service type'}" value={serviceIndex} onChange={(event) => setServiceIndex(Number(event.target.value))}>{options.map((option, index) => <option key={option.label} value={index} data-rate={option.rate}>{option.label} — {money(option.rate * currencyInfo.rate)}</option>)}</select></label>
+          <label>${ar ? 'عدد الساعات' : 'Hours'}<input aria-label="${ar ? 'عدد الساعات' : 'Hours'}" type="number" min="0" step="1" value={hours} onChange={(event) => setHours(event.target.value)} /></label>${currencyControl}${promoControl}
+          <dl className="calculator-totals"><div><dt>${ar ? 'المجموع قبل الخصم والضريبة' : 'Subtotal'}</dt><dd data-calculator-subtotal={subtotal}>{money(subtotal)}</dd></div>${discountRow}<div><dt>${ar ? `الضريبة (${op.taxRate}%)` : `Tax (${op.taxRate}%)`}</dt><dd data-calculator-tax={tax}>{money(tax)}</dd></div><div className="calculator-grand"><dt>${ar ? 'الإجمالي' : 'Total'}</dt><dd data-calculator-total={total}>{money(total)}</dd></div></dl>
+          <button type="button" className="btn btn-secondary calculator-reset" data-calculator-reset onClick={reset}>${op.resetLabel}</button>
+        </div>
+      </div>
+    </section>
+  );
+}
+`;
 }
 
 export function isNamedRowTextEditRequest(request: string): boolean {
@@ -929,6 +1013,9 @@ export class ProjectEditTool extends BaseTool {
                         const ar = artifactIsAr;
                         stage(calculatorRel, `import React, { useMemo, useState } from 'react';\n\nexport default function CostCalculator({ services = [] }) {\n  const options = (services.length ? services : [{ title: '${ar ? 'استشارة أساسية' : 'Essential consultation'}' }, { title: '${ar ? 'استشارة متقدمة' : 'Advanced consultation'}' }, { title: '${ar ? 'استشارة تنفيذية' : 'Executive consultation'}' }]).slice(0, 3).map((item, index) => ({ label: item.title || item.name || \`${ar ? 'خدمة' : 'Service'} \${index + 1}\`, rate: [120, 180, 250][index] }));\n  const [serviceIndex, setServiceIndex] = useState(0);\n  const [hours, setHours] = useState('1');\n  const rate = options[serviceIndex]?.rate || 0;\n  const validHours = Math.max(0, Number(hours) || 0);\n  const subtotal = useMemo(() => rate * validHours, [rate, validHours]);\n  const tax = subtotal * ${op.taxRate / 100};\n  const total = subtotal + tax;\n  const money = (value) => new Intl.NumberFormat('${ar ? 'ar' : 'en'}', { maximumFractionDigits: 2 }).format(value);\n  const reset = () => { setServiceIndex(0); setHours('1'); };\n  return (\n    <section className="section calculator-section" id="calculator" data-qa-calculator data-tax-rate="${op.taxRate}">\n      <div className="wrap calculator-wrap">\n        <div className="calculator-copy"><p className="eyebrow">${ar ? 'تقدير فوري' : 'Instant estimate'}</p><h2>${op.label}</h2><p>${ar ? 'اختر الخدمة وعدد الساعات لترى التكلفة بوضوح قبل الحجز.' : 'Choose a service and hours to see a clear estimate before booking.'}</p></div>\n        <div className="calculator-panel">\n          <label>${ar ? 'نوع الخدمة' : 'Service type'}<select aria-label="${ar ? 'نوع الخدمة' : 'Service type'}" value={serviceIndex} onChange={(event) => setServiceIndex(Number(event.target.value))}>{options.map((option, index) => <option key={option.label} value={index} data-rate={option.rate}>{option.label} — {money(option.rate)}</option>)}</select></label>\n          <label>${ar ? 'عدد الساعات' : 'Hours'}<input aria-label="${ar ? 'عدد الساعات' : 'Hours'}" type="number" min="0" step="1" value={hours} onChange={(event) => setHours(event.target.value)} /></label>\n          <dl className="calculator-totals"><div><dt>${ar ? 'المجموع قبل الضريبة' : 'Subtotal'}</dt><dd data-calculator-subtotal={subtotal}>{money(subtotal)}</dd></div><div><dt>${ar ? `الضريبة (${op.taxRate}%)` : `Tax (${op.taxRate}%)`}</dt><dd data-calculator-tax={tax}>{money(tax)}</dd></div><div className="calculator-grand"><dt>${ar ? 'الإجمالي' : 'Total'}</dt><dd data-calculator-total={total}>{money(total)}</dd></div></dl>\n          <button type="button" className="btn btn-secondary calculator-reset" onClick={reset}>${op.resetLabel}</button>\n        </div>\n      </div>\n    </section>\n  );\n}\n`);
                     }
+                    if (op.currencies.length > 1 || op.promoCode) {
+                        stage(calculatorRel, renderCostCalculator(op, artifactIsAr));
+                    }
                     if (!app.includes("from './components/CostCalculator.")) {
                         const contactImport = /(import\s+Contact\s+from\s+['"]\.\/components\/Contact\.[jt]sx?['"];?)/;
                         if (!contactImport.test(app)) { failures.push('calculator import insertion point not found'); continue; }
@@ -940,7 +1027,8 @@ export class ProjectEditTool extends BaseTool {
                         app = app.replace(contactRender, `\n        <CostCalculator services={content.services || []} />$1`);
                     }
                     stage(appRel, app);
-                    ensureCss('.calculator-wrap{display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,440px);gap:clamp(2rem,6vw,5rem);align-items:start}.calculator-copy p{color:var(--text-muted)}.calculator-panel{display:grid;gap:1rem;padding:clamp(1rem,3vw,1.5rem);border:1px solid var(--line);background:var(--surface)}.calculator-panel label{display:grid;gap:.5rem;font-weight:700}.calculator-panel select,.calculator-panel input{width:100%;min-height:48px;padding:.7rem .8rem;border:1px solid var(--line);background:var(--bg);color:var(--text);font:inherit}.calculator-totals{display:grid;gap:.65rem;margin:0}.calculator-totals div{display:flex;justify-content:space-between;gap:1rem}.calculator-totals dd{margin:0;font-variant-numeric:tabular-nums}.calculator-grand{padding-top:.75rem;border-top:1px solid var(--line);font-weight:800}.calculator-reset{justify-self:start}@media(max-width:720px){.calculator-wrap{grid-template-columns:1fr}}', '.calculator-wrap{');
+                    ensureCss('.calculator-wrap{display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,440px);gap:clamp(2rem,6vw,5rem);align-items:start}.calculator-copy p{color:var(--text-muted)}.calculator-panel{display:grid;gap:1rem;padding:clamp(1rem,3vw,1.5rem);border:1px solid var(--line);background:var(--surface)}.calculator-panel label{display:grid;gap:.5rem;font-weight:700}.calculator-panel select,.calculator-panel input{width:100%;min-height:48px;padding:.7rem .8rem;border:1px solid var(--line);background:var(--bg);color:var(--text);font:inherit}.calculator-promo{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.65rem;align-items:end}.calculator-feedback{grid-column:1/-1;min-height:1.4em;margin:0;color:var(--text-muted)}.calculator-feedback[data-state="invalid"]{color:#d84b5b}.calculator-feedback[data-state="valid"]{color:#13865b}.calculator-totals{display:grid;gap:.65rem;margin:0}.calculator-totals div{display:flex;justify-content:space-between;gap:1rem}.calculator-totals dd{margin:0;font-variant-numeric:tabular-nums}.calculator-grand{padding-top:.75rem;border-top:1px solid var(--line);font-weight:800}.calculator-reset{justify-self:start}@media(max-width:720px){.calculator-wrap{grid-template-columns:1fr}.calculator-promo{grid-template-columns:1fr}.calculator-promo .btn{width:100%}}', '.calculator-wrap{');
+                    ensureCss('.calculator-promo{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.65rem;align-items:end}.calculator-feedback{grid-column:1/-1;min-height:1.4em;margin:0;color:var(--text-muted)}.calculator-feedback[data-state="invalid"]{color:#d84b5b}.calculator-feedback[data-state="valid"]{color:#13865b}@media(max-width:720px){.calculator-promo{grid-template-columns:1fr}.calculator-promo .btn{width:100%}}', '.calculator-promo{');
                     notes.push(artifactIsAr ? `أضفت «${op.label}» بحساب مباشر وضريبة ${op.taxRate}% وزر «${op.resetLabel}».` : `Added “${op.label}” with live calculation, ${op.taxRate}% tax, and a ${op.resetLabel} button.`);
                     continue;
                 }
@@ -1887,6 +1975,8 @@ This is a correct answer, not a failure. Changing something the user did not ask
             && /data-qa-calculator/.test(calculatorNow)
             && /type="number"/.test(calculatorNow)
             && /min="0"/.test(calculatorNow)
+            && (!calculatorEdit.currencies.length || /data-calculator-currency/.test(calculatorNow))
+            && (!calculatorEdit.promoCode || (/data-calculator-promo/.test(calculatorNow) && /data-calculator-discount/.test(calculatorNow)))
             && /<CostCalculator\s+services=/.test(appNow);
         const calculatorEvidence = (audit?.calculatorEvidence || []) as Array<any>;
         const calculatorBehaviourReady = !!calculatorEdit && calculatorEvidence.some(evidence =>
@@ -1896,7 +1986,14 @@ This is a correct answer, not a failure. Changing something the user did not ask
             && evidence?.largeCorrect === true
             && evidence?.mathCorrect === true
             && (!calculatorEdit.rejectNegative || evidence?.negativeRejected === true)
-            && evidence?.resetWorked === true);
+            && evidence?.resetWorked === true
+            && (!calculatorEdit.currencies.length || (Number(evidence?.currencyChoices || 0) >= calculatorEdit.currencies.length
+                && evidence?.currencyRoundTrip === true
+                && (!calculatorEdit.preserveStateOnCurrencyChange || evidence?.valuesPreserved === true)))
+            && (!calculatorEdit.promoCode || (evidence?.promoCorrect === true
+                && (!calculatorEdit.invalidPromoFeedback || evidence?.promoInvalidFeedback === true)
+                && evidence?.discountBeforeTaxCorrect === true))
+            && (!calculatorEdit.resetAll || (evidence?.resetCurrency === true && evidence?.resetPromo === true)));
         const calculatorResponsiveReady = calculatorEvidence.some(evidence => String(evidence?.viewport || '').startsWith('1280x'))
             && calculatorEvidence.some(evidence => String(evidence?.viewport || '').startsWith('390x'));
         if (calculatorEdit && audit && !audit.skipped) {
@@ -1908,6 +2005,16 @@ This is a correct answer, not a failure. Changing something the user did not ask
                 ...criterion,
                 preJudged: { verdict: met ? 'met' : 'unmet', why },
             });
+            // The generic catalogue calls both an incrementing counter and a
+            // computed calculator result `counter`. A calculator has stronger,
+            // domain-specific browser evidence, so do not send it through the
+            // legacy click-counter detector after that evidence has passed.
+            if (criterion.id === 'counter' && calculatorEdit) {
+                return decided(calculatorSourceReady && calculatorBehaviourReady,
+                    calculatorSourceReady && calculatorBehaviourReady
+                        ? 'the browser recomputed and displayed the calculator total for every tested state'
+                        : 'the calculator total has not been proven across its tested states');
+            }
             if (criterion.id === 'button' && heroCtaEdit) {
                 const hero = now('src/components/Hero.jsx');
                 const met = contentNow.includes(`cta: '${jsEsc(heroCtaEdit.label)}'`) && contentNow.includes("contactHref: '#contact'") && hero.includes('content.contactHref');
@@ -1941,6 +2048,16 @@ This is a correct answer, not a failure. Changing something the user did not ask
                 return decided(calculatorSourceReady && calculatorBehaviourReady, calculatorSourceReady && calculatorBehaviourReady
                     ? `the browser recomputed subtotal, ${calculatorEdit.taxRate}% tax, and total for every service and boundary value`
                     : 'the browser has not proven the requested total and tax calculation');
+            }
+            if (calculatorEdit && /(?:العمل[ةه]|currenc|الدينار|الدولار|jod|usd)/iu.test(text)) {
+                return decided(calculatorSourceReady && calculatorBehaviourReady, calculatorSourceReady && calculatorBehaviourReady
+                    ? 'the browser changed currency both ways without losing the selected service or hours'
+                    : 'currency switching and state preservation have not both been proven');
+            }
+            if (calculatorEdit && /(?:خصم|تخفيض|promo|discount|رمز\s+خاطئ|كود\s+خاطئ)/iu.test(text)) {
+                return decided(calculatorSourceReady && calculatorBehaviourReady, calculatorSourceReady && calculatorBehaviourReady
+                    ? `the browser rejected a wrong code and applied ${calculatorEdit.discountRate}% before tax for the valid code`
+                    : 'valid and invalid discount behavior or discount-before-tax arithmetic is not proven');
             }
             if (calculatorEdit && /(?:إعاد[ةه]\s+تعيين|reset|سالب|negative|قيم[ةه]\s+صفر|قيمة\s+كبيرة|large\s+value)/iu.test(text)) {
                 return decided(calculatorBehaviourReady, calculatorBehaviourReady

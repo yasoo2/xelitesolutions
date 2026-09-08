@@ -41,11 +41,17 @@ export function isReadOnlyRequest(goalRaw: string): boolean {
     let mutationMatch: RegExpExecArray | null;
     while ((mutationMatch = mutationPattern.exec(text)) !== null) {
         const before = text.slice(Math.max(0, mutationMatch.index - 90), mutationMatch.index);
+        const sentenceBefore = text.slice(Math.max(0, text.lastIndexOf('.', mutationMatch.index - 1) + 1), mutationMatch.index);
         const after = text.slice(mutationMatch.index + mutationMatch[0].length);
         // Negation belongs to the verb it directly governs. A constraint such
         // as "do not create a new project: add a phone field" must not make
         // the later add/change clauses read-only.
-        const negated = /\b(?:do\s+not|don't|never)\s+(?:ever\s+)?$/i.test(before);
+        const negated = /\b(?:do\s+not|don't|never)\s+(?:ever\s+)?$/i.test(before)
+            // A negated list keeps the same scope: "Do not create, edit,
+            // delete, install, build, or run anything." Every listed verb is
+            // prohibited, not only the first word after "do not".
+            || (/\b(?:do\s+not|don't|never)\b/i.test(sentenceBefore)
+                && !/\b(?:but|however|instead|then)\b/i.test(sentenceBefore));
         const readOnlyCheck = mutationMatch[0].toLowerCase() === 'run'
             && /^\s+(?:(?:the|a|an)\s+)?read[-\s]?only(?:\s+\w+){0,3}\s+(?:checks?|diagnostic)\b/i.test(after);
         if (!negated && !readOnlyCheck) {

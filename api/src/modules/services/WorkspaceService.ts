@@ -124,6 +124,32 @@ export class WorkspaceService {
     
     private rootsByWorkspaceId = new Map<string, string>();
 
+    private get workspaceRootsFile(): string {
+        return path.join(this.externalRoot, '.joe-workspace-roots.json');
+    }
+
+    private persistedRootFor(workspaceId: string): string {
+        try {
+            const roots = JSON.parse(fs.readFileSync(this.workspaceRootsFile, 'utf-8')) as Record<string, unknown>;
+            const saved = roots?.[safeObjectIdHex(workspaceId)];
+            return typeof saved === 'string' && fs.existsSync(saved) ? saved : '';
+        } catch { return ''; }
+    }
+
+    private persistRootFor(workspaceId: string, selectedPath?: string): void {
+        try {
+            let roots: Record<string, string> = {};
+            try { roots = JSON.parse(fs.readFileSync(this.workspaceRootsFile, 'utf-8')) || {}; } catch { /* first selection */ }
+            const key = safeObjectIdHex(workspaceId);
+            if (selectedPath) roots[key] = selectedPath;
+            else delete roots[key];
+            fs.mkdirSync(path.dirname(this.workspaceRootsFile), { recursive: true });
+            fs.writeFileSync(this.workspaceRootsFile, JSON.stringify(roots, null, 2));
+        } catch (e) {
+            console.warn('[WorkspaceService] Could not persist workspace root choice:', e);
+        }
+    }
+
     // The local (no-workspace) project root — where builds land in single-user
     // local mode. Two real bugs lived here: getActiveRoot() ignored currentRoot
     // and always returned an internal "system-fallback" folder, so choosing a
@@ -215,6 +241,11 @@ export class WorkspaceService {
             // cannot inspect or overwrite another account's generated project.
             const rememberedRoot = this.rootsByWorkspaceId.get(wsId);
             if (rememberedRoot) return rememberedRoot;
+            const persistedRoot = this.persistedRootFor(wsId);
+            if (persistedRoot) {
+                this.rootsByWorkspaceId.set(wsId, persistedRoot);
+                return persistedRoot;
+            }
             const safeWorkspaceDir = wsId.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 120) || safeObjectIdHex(wsId);
             const root = path.join(this.externalRoot, safeWorkspaceDir);
             try {
@@ -239,6 +270,12 @@ export class WorkspaceService {
         if (wsId) {
             const root = this.rootsByWorkspaceId.get(wsId);
             if (root) return root;
+
+            const persistedRoot = this.persistedRootFor(wsId);
+            if (persistedRoot) {
+                this.rootsByWorkspaceId.set(wsId, persistedRoot);
+                return persistedRoot;
+            }
 
             const autoPath = path.join(this.externalRoot, wsId);
             try {
@@ -294,6 +331,7 @@ export class WorkspaceService {
                 // A selected directory is scoped to this workspace. Never turn
                 // one account's picker action into the process-wide root.
                 this.rootsByWorkspaceId.set(wsId, newPath);
+                this.persistRootFor(wsId, newPath);
             } else if (this.isLocalSingleUserMode) {
                 // The location picker is global in local mode: persist it even if
                 // an API caller happened to supply the current chat workspace id.
@@ -302,6 +340,7 @@ export class WorkspaceService {
                 if (wsId) this.rootsByWorkspaceId.set(wsId, newPath);
             } else if (wsId) {
                 this.rootsByWorkspaceId.set(wsId, newPath);
+                this.persistRootFor(wsId, newPath);
             } else {
                 // No workspace id: persist the choice so it actually takes effect
                 // AND survives the next restart (the old currentRoot was ignored + lost).
@@ -318,12 +357,14 @@ export class WorkspaceService {
         const wsId = this.resolveWorkspaceId(workspaceId);
         if (this.isLocalSingleUserMode && wsId) {
             this.rootsByWorkspaceId.delete(wsId);
+            this.persistRootFor(wsId);
         } else if (this.isLocalSingleUserMode) {
             this.rootsByWorkspaceId.clear();
             this.currentRoot = process.cwd();
             this.localRoot = path.join(this.externalRoot, 'my-workspace');
         } else if (wsId) {
             this.rootsByWorkspaceId.delete(wsId);
+            this.persistRootFor(wsId);
         } else {
             this.currentRoot = process.cwd();
             this.localRoot = path.join(this.externalRoot, 'my-workspace');

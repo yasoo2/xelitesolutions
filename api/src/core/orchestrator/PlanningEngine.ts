@@ -8,6 +8,8 @@ import { findActiveBuiltProject } from './active-built-project';
 import { isReadOnlyRequest, isBoundedTerminalDiagnosticRequest, looksLikeBuild } from './buildIntent';
 import { saysAny } from '../language/arabic';
 import { parseExplicitAppendFileRequest, parseExplicitFileRequest, parseExplicitDirectoryInspectionRequest, parseExplicitReadFilesRequest, parseExpectedReadMarkers } from './file-intent';
+import { workspaceService } from '../../modules/services/WorkspaceService';
+import fs from 'fs';
 import path from 'path';
 
 export interface ExecutionStep {
@@ -163,6 +165,40 @@ function stripPageElements(text: string): string {
 }
 
 export class PlanningEngine {
+    private static selectedProjectDir(context?: any): string {
+        try {
+            const candidate = String(context?.workspaceRoot || workspaceService.getActiveRoot(context?.workspaceId) || '');
+            return candidate && ['package.json', 'pyproject.toml', 'requirements.txt', 'go.mod', 'Cargo.toml']
+                .some(manifest => fs.existsSync(path.join(candidate, manifest))) ? candidate : '';
+        } catch { return ''; }
+    }
+
+    /**
+     * The only constructor for an existing-project edit plan.
+     *
+     * Intent detectors may discover an edit in different ways (an attachment,
+     * the semantic fallback, or a short contextual command), but they must all
+     * converge here so workspace selection and the ToolService contract cannot
+     * drift into competing execution paths again.
+     */
+    private static projectEditPlan(intent: StructuredIntent, context?: any, reasoning?: string): ExecutionPlan {
+        const selectedProjectDir = PlanningEngine.selectedProjectDir(context);
+
+        return {
+            id: `projedit_${Date.now()}`,
+            goal: intent.goal,
+            steps: [{
+                id: 'project_edit',
+                description: `Surgical edit of the active project: ${intent.goal}`,
+                tool: 'project_edit',
+                agent: 'Dev',
+                input: { request: intent.goal, ...(selectedProjectDir ? { dir: selectedProjectDir } : {}) },
+                dependsOn: [],
+            }],
+            metadata: { complexity: 'medium', riskLevel: 'low', ...(reasoning ? { reasoning } : {}) },
+        };
+    }
+
     /** Map a high-level browser action (chosen by the model) to the exact tool. */
     static browserToolForAction(action: string): string | null {
         const map: Record<string, string> = {
@@ -1192,18 +1228,7 @@ Rules:
                 || Object.keys((global as any).joeProjects || {}).length > 0;
             if (putsFileInProject && hasProject) {
                 console.log('[PlanningEngine] attached image + «أضفها إلى …» → project_edit (the file is used, not described)');
-                return {
-                    id: `edit_${Date.now()}`,
-                    goal: intent.goal,
-                    steps: [{
-                        id: 'project_edit',
-                        description: `Surgical edit of the active project: ${intent.goal}`,
-                        tool: 'project_edit',
-                        args: { request: rawGoal },
-                        dependencies: [],
-                    }],
-                    reasoning: 'attached image placed into the active project',
-                } as any;
+                return PlanningEngine.projectEditPlan(intent, context, 'attached image placed into the active project');
             }
             if (!WANTS_BUILD_RE.test(userPart)) {
                 console.log('[PlanningEngine] attachments present + no build verb → direct answer about the attached content');
@@ -1365,25 +1390,6 @@ Rules:
         {
             const testRepairRequest = /(test\s+suite|failing\s+tests?|اختبارات?\s*(المشروع|الكود)?|الاختبارات|فشل(?:ت|ت?\s+في)?\s*الاختبار)/i.test(userGoal)
                 && /(repair|fix|correct|إصلاح|اصلح|أصلح|صحح|صلح|عالج)/i.test(userGoal);
-            const existingFeatureChange = /\b(?:current|existing|same)\s+project\b|(?:المشروع|مشروع|التطبيق|تطبيق)[\s\S]{0,32}(?:الحالي|القائم|نفسه)|(?:الحالي|القائم)[\s\S]{0,32}(?:المشروع|مشروع|التطبيق|تطبيق)/i.test(userGoal)
-                && /\b(?:add|change|modify|update|edit|remove|delete|implement)\b|(?:أضف|اضف|إضافة|اضافة|غيّر|غير|تغيير|عدّل|عدل|تعديل|حذف|إزالة)/.test(userGoal);
-            const activeProjectKey = String(context?.sessionId || (intent as any)?.context?.sessionId || (intent as any)?.sessionId || 'default').replace(/[^a-zA-Z0-9._-]/g, '_');
-            const activeProject = ((global as any).joeProjects || {})[activeProjectKey];
-            if (existingFeatureChange && activeProject?.dir) {
-                return {
-                    id: `project_edit_existing_${Date.now()}`,
-                    goal: intent.goal,
-                    steps: [{
-                        id: 'project_edit',
-                        description: `Surgical edit of the active project: ${intent.goal}`,
-                        tool: 'project_edit',
-                        agent: 'Dev',
-                        input: { request: intent.goal },
-                        dependsOn: [],
-                    }],
-                    metadata: { complexity: 'medium', riskLevel: 'low' },
-                };
-            }
             // A new construction brief may explicitly require a complete QA
             // and repair cycle. Those clauses belong to the builder after it
             // creates the artifact; they are not evidence that an existing
@@ -1962,8 +1968,15 @@ Rules:
         // editor below.
         {
             const pageEntry = (global as any).joePages?.[activeKey];
-            const projEntry = (global as any).joeProjects?.[activeKey];
-            const projectNewer = !!projEntry && (!pageEntry || (Number(projEntry.updatedAt) || 0) > (Number(pageEntry.updatedAt) || 0));
+            const rememberedProject = (global as any).joeProjects?.[activeKey];
+            // The folder picker is workspace-scoped authority. A fresh chat may
+            // not have an in-memory project entry yet, but it must still edit a
+            // selected project instead of scaffolding a sibling directory.
+            const selectedProjectDir = PlanningEngine.selectedProjectDir(context);
+            const projEntry = selectedProjectDir
+                ? { dir: selectedProjectDir, scaffoldDir: selectedProjectDir, updatedAt: Date.now() }
+                : rememberedProject;
+            const projectNewer = !!projEntry && (!pageEntry || !!selectedProjectDir || (Number(projEntry.updatedAt) || 0) > (Number(pageEntry.updatedAt) || 0));
             // A BUG REPORT AND AN ENHANCEMENT ARE EDITS TOO. From the field:
             // «زر get directions لا يعمل بشكل صحيح» and «The current route system
             // is not sufficient. I want to transform it into a real turn-by-turn
@@ -1971,6 +1984,8 @@ Rules:
             // one built a THIRD copy of the app from scratch instead of
             // improving the one the session already had.
             const fixOrGrow = /(لا\s*يعمل|ما\s*(يشتغل|بيشتغل)|فيه\s*(مشكلة|خلل)|معطّ?ل|عطل|خطأ\s*في|غير\s*كاف|لا\s*يكفي|حوّ?له\s*إلى|طوّ?ره|حسّ?نه)|(not\s*working|does\s*not\s*work|doesn'?t\s*work|is\s*broken|not\s*sufficient|insufficient|not\s*enough|transform\s*it|turn\s*it\s*into|convert\s*it\s*into|improve\s*it|upgrade\s*it)/i.test(probe);
+            const explicitlyTargetsCurrentProject = /(?:نفس|ذات)\s*(?:هذا\s*)?(?:المشروع|التطبيق|الموقع|النظام)|(?:المشروع|التطبيق|الموقع|النظام)\s*(?:نفسه|الحالي|الموجود)|\b(?:same|current|existing|this|active)\s+(?:project|application|app|site|system|workspace)\b/i.test(probe);
+            const explicitlyForbidsNewProject = /(?:دون|بدون|لا)\s+(?:أن\s+)?(?:تنشئ|إنشاء|انشاء|بناء)\s+(?:أي\s+)?(?:مشروع|تطبيق|موقع)\s+جديد|\b(?:without|do\s+not|don't|no)\b[^.!?\n]{0,45}\b(?:create|build|scaffold)\b[^.!?\n]{0,35}\bnew\s+(?:project|app|site)\b/i.test(probe);
             /**
              * «أصلح ما تبقّى» — THE COMMAND THE DELIVERY MESSAGE OFFERS.
              *
@@ -2010,20 +2025,9 @@ Rules:
                 };
             }
 
-            if (projectNewer && (editIntent || fixOrGrow) && !(buildVerb && webNoun)) {
-                return {
-                    id: `projedit_${Date.now()}`,
-                    goal: intent.goal,
-                    steps: [{
-                        id: 'project_edit',
-                        description: `Surgical edit of the active project: ${intent.goal}`,
-                        tool: 'project_edit',
-                        agent: 'Dev',
-                        input: { request: intent.goal },
-                        dependsOn: [],
-                    }],
-                    metadata: { complexity: 'medium', riskLevel: 'low' },
-                };
+            if (projectNewer && (editIntent || fixOrGrow || explicitlyTargetsCurrentProject)
+                && (!(buildVerb && webNoun) || explicitlyTargetsCurrentProject || explicitlyForbidsNewProject)) {
+                return PlanningEngine.projectEditPlan(intent, context);
             }
         }
 
@@ -2821,17 +2825,7 @@ Rules:
                     const projectIsActive = !!projEntry
                         && (!pageEntry || (Number(projEntry.updatedAt) || 0) > (Number(pageEntry.updatedAt) || 0));
                     if (projectIsActive && routed.intent === 'edit_page') {
-                        return {
-                            id: `projedit_${Date.now()}`,
-                            goal: intent.goal,
-                            steps: [{
-                                id: 'project_edit',
-                                description: `Surgical edit of the active project: ${intent.goal}`,
-                                tool: 'project_edit', agent: 'Dev',
-                                input: { request: intent.goal }, dependsOn: [],
-                            }],
-                            metadata: { complexity: 'medium', riskLevel: 'low' },
-                        };
+                        return PlanningEngine.projectEditPlan(intent, context, 'semantic edit intent for the active project');
                     }
                     // …and a BUILD that only got this far is still scoped: an
                     // application must not become a document because the
@@ -2976,18 +2970,7 @@ Rules:
             const open = ((global as any).joeProjects || {})[sid];
             if (open?.dir && open?.type !== 'api') {
                 console.log(`[PlanningEngine] a column order with a project open → project_edit (${open.type})`);
-                return {
-                    id: `edit_${Date.now()}`,
-                    goal: intent.goal,
-                    steps: [{
-                        id: 'project_edit',
-                        description: `Surgical edit of the active project: ${intent.goal}`,
-                        tool: 'project_edit',
-                        args: { request: intent.goal },
-                        dependencies: [],
-                    }],
-                    reasoning: 'a column he asks for on the project already in front of him',
-                } as any;
+                return PlanningEngine.projectEditPlan(intent, context, 'a column requested on the active project');
             }
         }
 

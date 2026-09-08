@@ -147,6 +147,54 @@ describe('the planner uses it — after its own routes, before the model', () =>
         expect(isReadOnlyRequest(goal)).toBe(false);
     });
 
+    it('routes a selected workspace project to the editor even in a fresh chat', async () => {
+        const fs = require('fs');
+        const os = require('os');
+        const path = require('path');
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-selected-current-project-'));
+        fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ name: 'selected-project' }));
+        const goal = 'طوّر نفس المشروع الحالي دون إنشاء مشروع جديد: وسّع حاسبة التكلفة وأضف اختيار العملة.';
+        try {
+            const plan: any = await PlanningEngine.generatePlan(
+                { intent: { goal, complexity: 'medium', riskLevel: 'low', rawIntent: {} } as any },
+                undefined,
+                { sessionId: `fresh-selected-${Date.now()}`, workspaceRoot: root },
+            );
+            expect(plan.steps[0].tool).toBe('project_edit');
+            expect(plan.steps[0].input.dir).toBe(root);
+        } finally {
+            fs.rmSync(root, { recursive: true, force: true });
+        }
+    });
+
+    it('lets the selected workspace override a stale project remembered by the chat', async () => {
+        const fs = require('fs');
+        const os = require('os');
+        const path = require('path');
+        const selected = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-selected-over-stale-'));
+        const stale = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-stale-project-'));
+        fs.writeFileSync(path.join(selected, 'package.json'), JSON.stringify({ name: 'selected-project' }));
+        fs.writeFileSync(path.join(stale, 'package.json'), JSON.stringify({ name: 'stale-project' }));
+        const sessionId = `selected-over-stale-${Date.now()}`;
+        const key = sessionId.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const before = { ...(((global as any).joeProjects || {}) as Record<string, any>) };
+        (global as any).joeProjects = { ...before, [key]: { dir: stale, updatedAt: Date.now() + 1000 } };
+        try {
+            const goal = 'طوّر نفس المشروع الحالي دون إنشاء مشروع جديد: أضف اختيار العملة.';
+            const plan: any = await PlanningEngine.generatePlan(
+                { intent: { goal, complexity: 'medium', riskLevel: 'low', rawIntent: {} } as any },
+                undefined,
+                { sessionId, workspaceRoot: selected },
+            );
+            expect(plan.steps[0].tool).toBe('project_edit');
+            expect(plan.steps[0].input.dir).toBe(selected);
+        } finally {
+            (global as any).joeProjects = before;
+            fs.rmSync(selected, { recursive: true, force: true });
+            fs.rmSync(stale, { recursive: true, force: true });
+        }
+    });
+
     it('capabilityPlan returns a real plan, or null', () => {
         const plan: any = PlanningEngine.capabilityPlan({ goal: 'اضغط الملفات في أرشيف zip' });
         expect(plan).toBeTruthy();

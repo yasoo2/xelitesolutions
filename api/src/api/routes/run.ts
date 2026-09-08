@@ -13,6 +13,7 @@ import { broadcast } from '../ws';
 import { getRunEvidence } from '../../shared/run-evidence-store';
 import { getActiveRunSessions, registerRunSession, unregisterRunSession, sessionOwnerOf, runOwnerOf } from '../ws';
 import { registerRun, releaseHandle } from '../../core/session/attended-run';
+import { workspaceService } from '../../modules/services/WorkspaceService';
 
 const router = Router();
 
@@ -303,6 +304,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
         
         // [ELITE FIX] Make execution non-blocking to prevent Nginx timeouts and frontend hang
         // The background process will handle its own errors and broadcast status via WS
+        const resolvedWorkspaceId = String(workspaceId || '').trim() || undefined;
         AgentLoopService.execute(text, {
             sessionId: runSessionId,
             // لا تستبدل جلسة لوحة المتصفح بجلسة الدردشة؛ تستخدمها browser_run
@@ -310,7 +312,11 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
             browserSessionId: effectiveBrowserSessionId || undefined,
             // مساحة العمل يختارها المستخدم في الواجهة ويجب أن تصل إلى كل أداة
             // تعتمد على ملفات المشروع، لا أن تتحول إلى مجلد جلسة الدردشة.
-            workspaceId: String(workspaceId || '').trim() || undefined,
+            workspaceId: resolvedWorkspaceId,
+            // Resolve once at the authenticated request boundary. Every planner
+            // and tool sees the same folder the Explorer selected, even when an
+            // older session-memory artifact points at a different project.
+            workspaceRoot: workspaceService.getActiveRoot(resolvedWorkspaceId),
             userId,
             userName,
             systemInstructions,
