@@ -259,7 +259,7 @@ const ROUTER_EXCLUDED = new Set([
     // app in answer to a request to test a page.
     'mobile_builder', 'go_builder', 'java_builder', 'python_builder', 'auth_builder',
     'scaffold_project', 'scaffold_full_stack', 'progressive_generator', 'bulk_file_generator',
-    'ai_write_file', 'phase_executor', 'task_loop',
+    'ai_write_file', 'phase_executor',
 ]);
 
 const URL_RE = /https?:\/\/[^\s"'<>]+|\b(?:www\.)[^\s"'<>]+/i;

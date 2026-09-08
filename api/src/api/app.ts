@@ -41,9 +41,7 @@ import workspacesRoutes from './routes/workspaces';
 import adminRoutes from './routes/admin';
 import webhooksRoutes from './routes/webhooks';
 import pingDeployRoutes from './routes/ping-deploy';
-import buildRoutes from './routes/build';
 import sentinelRoutes from './routes/sentinel';
-import agentRoutes from './routes/agent';
 import audioRoutes from './routes/audio';
 
 import { authenticate } from './middleware/auth';
@@ -277,7 +275,6 @@ export const createApp = () => {
   apiRouter.use('/auth', authRoutes);
   apiRouter.use('/tools', toolsRoutes);
   apiRouter.use('/runs', runRoutes);
-  apiRouter.use('/run', runRoutes);
   apiRouter.use('/sessions', sessionsRoutes);
   apiRouter.use('/folders', foldersRoutes);
   apiRouter.use('/queue', queueRoutes);
@@ -305,8 +302,6 @@ export const createApp = () => {
   apiRouter.use('/admin', adminRoutes);
   apiRouter.use('/webhooks', webhooksRoutes);
   apiRouter.use('/ping-deploy', pingDeployRoutes);
-  apiRouter.use('/build', buildRoutes);
-  apiRouter.use('/agent', agentRoutes);
   // Voice mode has always asked for real speech here; now something answers.
   apiRouter.use('/audio', audioRoutes);
 

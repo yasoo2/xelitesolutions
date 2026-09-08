@@ -889,7 +889,7 @@ export default function Joe() {
                 if (activeSessionId !== targetSessionId) {
                     await new Promise<void>(resolve => window.setTimeout(resolve, 450));
                 }
-                const started: any = await api.post('/run/start', {
+                const started: any = await api.post('/runs/start', {
                     text: messageText,
                     sessionId: targetSessionId,
                     workspaceId: currentWorkspaceId,

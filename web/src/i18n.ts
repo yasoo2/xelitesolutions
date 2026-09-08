@@ -564,7 +564,6 @@ const resources = {
         architect_plan: 'تخطيط معماري',
         code_reviewer: 'مراجعة الكود AI',
         genesis_builder: 'بناء المشروع (God Mode)',
-        task_loop: 'تنفيذ المهام الدوري',
         unknown: 'أداة غير معروفة'
       },
       artifacts: {
@@ -2228,7 +2227,6 @@ const resources = {
         architect_plan: 'Planificación arquitectónica',
         code_reviewer: 'Revisión de código AI',
         genesis_builder: 'Constructor de proyectos',
-        task_loop: 'Bucle de tareas',
         unknown: 'Herramienta desconocida'
       },
       artifacts: {

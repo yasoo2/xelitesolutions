@@ -24,7 +24,8 @@
  *  So the test is not «did the planner work». It is «did HE say what the
  *  thing holds», and derivedColumns answers that from his sentence alone.
  */
-import { heDeclaredWhatItHolds, deterministicPhasesFor } from '../modules/tools/definitions/ProjectPipelineTool';
+import { deterministicPhasesFor } from '../modules/tools/definitions/ProjectPipelineTool';
+import { hasExplicitRecordSchema } from '../core/design/app-blueprints';
 
 describe('when his sentence names the columns, nothing is asked about them', () => {
     const HIS: string[] = [
@@ -36,13 +37,13 @@ describe('when his sentence names the columns, nothing is asked about them', () 
         'Create an expense tracker. It needs an amount field, category, date, and note.',
     ];
     for (const request of HIS) {
-        it(request.slice(0, 46), () => expect(heDeclaredWhatItHolds(request)).toBe(true));
+        it(request.slice(0, 46), () => expect(hasExplicitRecordSchema(request)).toBe(true));
     }
 
     it('a trade this repository has never heard of', () => {
         //  «زُرقمونيات» is not a word. The decision is made from the SHAPE of
         //  his sentence, so no catalogue can be the thing that answers it.
-        expect(heDeclaredWhatItHolds('بدي جدول للزُرقمونيات فيه الاسم والكمية والسعر')).toBe(true);
+        expect(hasExplicitRecordSchema('بدي جدول للزُرقمونيات فيه الاسم والكمية والسعر')).toBe(true);
     });
 
     it('and the phases it builds are Joe\u2019s own generators', () => {
@@ -69,7 +70,7 @@ describe('what this file does NOT prove, said plainly', () => {
         //      from it directly, with no model asked what to build
         //
         //  Written down so the gap is a known one rather than a silence.
-        expect(typeof heDeclaredWhatItHolds).toBe('function');
+        expect(typeof hasExplicitRecordSchema).toBe('function');
     });
 });
 
@@ -81,9 +82,10 @@ describe('…and when it does not, the planner keeps its job', () => {
         ['a greeting', 'مرحبا'],
         ['English prose with no list', 'Build me something nice for my restaurant'],
         ['a page, not a record store', 'Build a small portfolio site with a home page and a contact form.'],
+        ['runtime states, not a record schema', 'Create a weather app. Include distinct loading, live-success, empty/error, and retry states.'],
     ];
     for (const [name, request] of NOT_HIS) {
-        it(name, () => expect(heDeclaredWhatItHolds(request)).toBe(false));
+        it(name, () => expect(hasExplicitRecordSchema(request)).toBe(false));
     }
 
     it('a noun phrase is a specification, not a request — measured, not assumed', () => {
@@ -91,17 +93,24 @@ describe('…and when it does not, the planner keeps its job', () => {
         //  columns and is still not a build: he named no ask. Put a verb
         //  in front of the same words and it is one. The columns were
         //  never the question here — whether he asked for anything was.
-        expect(heDeclaredWhatItHolds('A clients table with name, phone and address')).toBe(false);
-        expect(heDeclaredWhatItHolds('Create an invoices table with number, amount and date')).toBe(true);
-        expect(heDeclaredWhatItHolds('Make an orders tracker with customer, quantity and total')).toBe(true);
+        expect(hasExplicitRecordSchema('A clients table with name, phone and address')).toBe(false);
+        expect(hasExplicitRecordSchema('Create an invoices table with number, amount and date')).toBe(true);
+        expect(hasExplicitRecordSchema('Make an orders tracker with customer, quantity and total')).toBe(true);
+    });
+
+    it('keeps the weather engine when a product brief enumerates runtime states', () => {
+        const request = 'Create a weather comparison app for Amman and London. Include distinct loading, live-success, empty/error, and retry states.';
+        expect(hasExplicitRecordSchema(request)).toBe(false);
+        const plan = deterministicPhasesFor(request);
+        expect(plan).not.toBeNull();
     });
 
     it('one named column is not a declaration', () => {
         //  The floor is his, not mine: one noun after «جدول» is its subject.
-        expect(heDeclaredWhatItHolds('بدي جدول للمبيعات')).toBe(false);
+        expect(hasExplicitRecordSchema('بدي جدول للمبيعات')).toBe(false);
     });
 
     it('a column list without a request to build anything is not a build', () => {
-        expect(heDeclaredWhatItHolds('الكتاب فيه الورق والحبر')).toBe(false);
+        expect(hasExplicitRecordSchema('الكتاب فيه الورق والحبر')).toBe(false);
     });
 });

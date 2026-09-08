@@ -11,6 +11,7 @@ import { verifyProviderDirect } from '../../../core/llm/intelligent-router';
 import { detectStart, missingRuntimeDependencies, reconcileMissingRuntimeTarget, resolveRunnableProject } from './ProjectRunTool';
 import { auditBuiltApp, AppAudit, findingText } from '../../../core/quality/app-audit';
 import { readJoeProjectForRun } from '../../../api/page-store';
+import { hasExplicitRecordSchema } from '../../../core/design/app-blueprints';
 
 const MAX_PIPELINE_LOGS = 192;
 const MAX_PIPELINE_LOG_CHARS = 2_000;
@@ -701,31 +702,6 @@ export function apiSiblingOf(projectRoot: string): string | null {
  *  planner exactly as before: a request that declares no schema is
  *  one where a model genuinely has something to decide.
  */
-export function heDeclaredWhatItHolds(request: string): boolean {
-    try {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const { columnsAnywhereInHisRequest } = require('../../../core/design/app-blueprints');
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const { PlanningEngine } = require('../../../core/orchestrator/PlanningEngine');
-        if (!PlanningEngine.looksLikeBuild(request)) return false;
-        const columns = columnsAnywhereInHisRequest(request);
-        // A product brief often names an application's fields without calling
-        // them a table: "It must provide amount, category, date, note". That
-        // is still an explicit schema, not a question for a slow provider.
-        // Keep this narrow: it requires a field-introducing phrase and at least
-        // two concrete field names, so prose about visual features cannot turn
-        // into a records application.
-        const directFieldList = /\b(?:must\s+provide|should\s+provide|provide|include|with|needs?|requires?|has)\b[^.!?\n]{0,220}\b(?:amount|category|date|note|name|title|phone|email|quantity|price)\b/iu.test(request);
-        const directFieldCount = (request.match(/\b(?:amount|category|date|note|name|title|phone|email|quantity|price)\b/giu) || []).length;
-        if (directFieldList && directFieldCount >= 2) return true;
-        //  No floor of my own: derivedColumns already refuses one noun
-        //  after «جدول» as a subject rather than a column, and two floors
-        //  for one rule is how they come apart. A mutation proved this
-        //  one could never decide anything.
-        return Array.isArray(columns) && columns.length > 0;
-    } catch { return false; }
-}
-
 export function deterministicRescueForDeadPlanner(request: string): boolean {
     if (deterministicRescueAllowed(request)) return true;
     try {
@@ -1266,7 +1242,7 @@ export class ProjectPipelineTool implements ToolDefinition {
         // convenience `createsNewProject` flag consistently.
         const confirmedGreenfield = isGreenfield;
         const hisOwnSchema = confirmedGreenfield
-            && (heDeclaredWhatItHolds(productRequest) || deterministicWorkflow)
+            && (hasExplicitRecordSchema(productRequest) || deterministicWorkflow)
             ? deterministicPhasesFor(productRequest)
             : null;
         // The provider is a prerequisite for model planning, not for an
@@ -1325,8 +1301,9 @@ export class ProjectPipelineTool implements ToolDefinition {
         /**
          *  HE ALREADY SAID WHAT IT HOLDS — SO NOTHING IS ASKED ABOUT IT.
          *
-         *  See heDeclaredWhatItHolds above for the two runs of the same
-         *  sentence that produced two different products, the worse one
+         *  See hasExplicitRecordSchema for the single canonical decision used
+         *  by both application classification and pipeline routing.
+         *  Two runs of the same sentence once produced different products, the worse one
          *  being the run where the planner succeeded.
          *
          *  This is not «skip the planner». It is: when his sentence
@@ -2192,6 +2169,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                     }
                 };
                 browserQa = await auditBuiltApp(auditDir, {
+                    request: productRequest,
                     watchSessionId: panelSid || undefined,
                     serveUrl: liveUrl,
                     artifactRootDir: artifactRoot || auditDir || runtimeRoot,
@@ -2226,6 +2204,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                             '🔎 Browser coverage was incomplete; I will rerun bounded exploration with a larger budget before editing files.'));
                         appendBoundedPipelineLog(logs, '[pipeline] browser QA coverage retry start timeoutMs=90000');
                         const coverageRetry = await auditBuiltApp(auditDir, {
+                            request: productRequest,
                             watchSessionId: panelSid || undefined,
                             serveUrl: liveUrl,
                             artifactRootDir: artifactRoot || auditDir || runtimeRoot,
@@ -2276,6 +2255,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                                 appendBoundedPipelineLog(logs, `[pipeline] browser QA bounded repair result=${browserQaRepairStatus}`);
                                 if (repairResult?.ok === true) {
                                     const recheck = await auditBuiltApp(auditDir, {
+                                        request: productRequest,
                                         watchSessionId: panelSid || undefined,
                                         serveUrl: liveUrl,
                                         artifactRootDir: repairProjectRoot,

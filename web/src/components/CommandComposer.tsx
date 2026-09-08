@@ -2792,6 +2792,11 @@ export default function CommandComposer({
       console.log('[DEBUG-SEND] attachedFiles:', filesForRun);
       console.log('[DEBUG-SEND] payload.fileIds:', payload.fileIds);
 
+      // The live channel must be ready before the HTTP route can emit the first
+      // progress frame. This is especially important after an API restart:
+      // the request can succeed while a stale socket would otherwise miss the
+      // entire visible run.
+      await SocketService.ensureConnected();
       const res = await fetch(`${API}/runs/start`, {
         method: 'POST',
         headers: {

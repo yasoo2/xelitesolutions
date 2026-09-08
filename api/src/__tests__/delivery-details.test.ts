@@ -23,6 +23,7 @@ import { brandFallback, brandFrom } from '../core/design/page-head';
 import { ProjectPipelineTool } from '../modules/tools/definitions/ProjectPipelineTool';
 import { compactPhaseReceipt } from '../modules/services/AgentLoopService';
 import { deriveRequestFidelity } from '../modules/tools/definitions/ReactProjectTool';
+import { blueprintFor } from '../core/design/app-blueprints';
 
 const SRC = path.join(__dirname, '..');
 const read = (...p: string[]) => fs.readFileSync(path.join(SRC, ...p), 'utf-8');
@@ -197,12 +198,28 @@ describe('a finding speaks the language of the message it lands in', () => {
         expect(pipeline).toMatch(/targetSuffix/);
         expect(pipeline).not.toMatch(/finding\.detailEn \|\| finding\.detail/);
     });
+
+    it('judges a selected records template against the weather request instead of letting it certify itself', () => {
+        const records = blueprintFor('generic', 'Create a records app with name, amount and date', false);
+        const recordsSource = 'export default function RecordsApp(){ return <main>Records records records records records records records</main>; }';
+        const verdict = deriveRequestFidelity(
+            'Create a weather comparison app with live forecasts and retry states',
+            false,
+            records,
+            recordsSource,
+        );
+        expect(verdict.engine).toBe('weather');
+        expect(verdict.label).toBe('request_fidelity_mismatch');
+        expect(verdict.mismatch).toBe(true);
+    });
 });
 
 describe('a new build does not inherit an old database', () => {
     it('the api builder moves aside when it finds a data.db', () => {
         const a = read('modules', 'tools', 'definitions', 'ApiProjectTool.ts');
-        expect(a).toMatch(/if \(fs\.existsSync\(path\.join\(proj, 'data\.db'\)\)\) \{/);
+        expect(a).toMatch(/const hasDatabase = \(dir: string\) => fs\.existsSync\(path\.join\(dir, 'data\.db'\)\)/);
+        expect(a).toMatch(/fs\.existsSync\(path\.join\(dir, 'data\.json'\)\)/);
+        expect(a).toMatch(/if \(hasDatabase\(proj\)\) \{/);
         expect(a).toMatch(/for \(let n = 2; n < 50; n\+\+\)/);
         expect(a).toMatch(/leaving the old one untouched/);
         // The old project is never deleted — his rows are his.
@@ -211,7 +228,7 @@ describe('a new build does not inherit an old database', () => {
 
     it('and it happens before the folder is created, not after seeding', () => {
         const a = read('modules', 'tools', 'definitions', 'ApiProjectTool.ts');
-        const check = a.indexOf("if (fs.existsSync(path.join(proj, 'data.db')))");
+        const check = a.indexOf('if (hasDatabase(proj))');
         const mk = a.indexOf('fs.mkdirSync(proj, { recursive: true });');
         expect(check).toBeGreaterThan(0);
         expect(check).toBeLessThan(mk);
@@ -256,13 +273,16 @@ describe('«MyApp» is not a name', () => {
     });
 
     it('and both builders use it', () => {
-        // The api tool now reads the brand from the request WITHOUT the
-        // category declaration («بفئات: …» shipped «مشروع الات،» as a name,
-        // measured live) — the guarantee is the same chain, fed clean text.
-        for (const [tool, req] of [['ReactProjectTool.ts', 'request'], ['ApiProjectTool.ts', 'requestForReading']] as const) {
-            const t = read('modules', 'tools', 'definitions', tool);
-            expect(t).toMatch(new RegExp(`brandFrom\\(${req}, isAr\\) \\|\\| brandFallback\\(${req}, isAr, kind\\)`));
-            expect(t).not.toMatch(/\|\| \(isAr \? 'مشروعي' : 'MyApp'\)/);
+        const react = read('modules', 'tools', 'definitions', 'ReactProjectTool.ts');
+        expect(react).toMatch(/brandFrom\(request, isAr\) \|\| brandFallback\(request, isAr, kind\)/);
+
+        // The API additionally accepts the canonical name handed over by the
+        // pipeline, then falls through the same request-derived fallback.
+        const api = read('modules', 'tools', 'definitions', 'ApiProjectTool.ts');
+        expect(api).toMatch(/const explicitBrand = brandFrom\(requestForReading, isAr\)/);
+        expect(api).toMatch(/\|\| brandFallback\(requestForReading, isAr, kind\)/);
+        for (const source of [react, api]) {
+            expect(source).not.toMatch(/\|\| \(isAr \? 'مشروعي' : 'MyApp'\)/);
         }
     });
 });

@@ -9,7 +9,7 @@
  *
  *     [IntelligentRouter] ⏭️  Deferring (cooldown): Groq (Free)
  *     [IntelligentRouter] 🔄 Attempting provider: LLM7 (Keyless)...
- *     POST /api/agent  →  {"success":false,"data":"File not found"}
+ *     POST /api/runs/start  →  {"success":false,"data":"File not found"}
  *
  * Twice in a row, reproducibly. The planner, running on a keyless fallback,
  * read «اعمل لي موقع لمحمصة قهوة» as an instruction to READ A FILE. The page

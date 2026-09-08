@@ -9,7 +9,7 @@
 ## 2. Intelligence Layer
 - **Free Intelligence Optimizer**: The 'Fast Lane' (RAG). Intercepts requests in `run.ts` to provide instant answers from the **10 Floors** of engineering knowledge.
 - **Planner (Genesis)**: If the Optimizer passes (Action required), the GPT-4o level Planner creates a detailed DAG (Directed Acyclic Graph) of steps.
-- **Execution Engine**: `TaskExecutor` runs the tools sequentially or in parallel based on the plan.
+- **Execution Engine**: `AgentLoopService` hands one planned phase at a time to `PhaseExecutorTool`, which reaches every capability through `ToolService`.
 
 ## 3. Communication Protocols
 - **SSE (Streaming)**: Responses are streamed back via NDJSON for that 'typing' effect.

@@ -22,8 +22,6 @@ Generated on: 2026-01-18T17:29:49.695Z
       - [ArchitectAgent.ts] (Exports: ArchitectAgent)
       - [GenesisAgent.ts] (Exports: GenesisAgent)
       - [GodModeAgent.ts] (Exports: GodModeAgent)
-      - [ProjectManagerAgent.ts] (Exports: ProjectManagerAgent)
-      - [TaskExecutor.ts] (Exports: TaskStep, TaskExecutor)
     - **/approvals**
       - [context.ts] (Exports: planContext)
     - **/browser**
@@ -159,7 +157,6 @@ Generated on: 2026-01-18T17:29:49.695Z
         - [RetryManagerTool.ts] (Exports: RetryManagerTool)
         - [SecurityScannerTool.ts] (Exports: SecurityScannerTool)
         - [SystemTools.ts] (Exports: EchoTool, FileEditTool, GrepSearchTool...)
-        - [TaskLoopTool.ts] (Exports: TaskLoopTool)
         - [TemplateManagerTool.ts] (Exports: TemplateManagerTool)
         - [VisualQATool.ts] (Exports: VisualQATool)
         - [WebDevelopmentTools.ts] (Exports: WebPipelineTool, DevServerTool, ScaffoldTool)

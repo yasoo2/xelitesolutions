@@ -19,7 +19,7 @@ Joe uses real-time broadcasting to show his cognitive state:
 ## 3. Reasoning Loops
 1. **Perception**: Read request + check 10 Floors (Optimizer).
 2. **Analysis**: If action needed, Architect plans the diff.
-3. **Execution**: TaskExecutor runs tools.
+3. **Execution**: `AgentLoopService` orchestrates and `PhaseExecutorTool` executes through `ToolService`.
 4. **Verification**: VisualQA or Unit Tests confirm success.
 
 ## Safety Guidelines

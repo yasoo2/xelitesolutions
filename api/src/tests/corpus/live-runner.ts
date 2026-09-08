@@ -66,7 +66,7 @@ async function runOne(p: Prompt, i: number): Promise<any> {
     const sessionId = `live-${Date.now()}-${i}-${Math.floor(performance.now() % 100000)}`;
     const started = Date.now();
     try {
-        const r = await fetch(`${BASE}/api/run/start`, {
+        const r = await fetch(`${BASE}/api/runs/start`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json; charset=utf-8' },
             body: JSON.stringify({ text: p.text, sessionId, language: 'ar' }),

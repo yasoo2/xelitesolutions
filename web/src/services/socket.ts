@@ -91,7 +91,7 @@ type SessionListener<T> = { cb: T; sessionId?: string };
 // [Wakil 5.1] Quiet Mode & Source Deduplication
 let lastSentPayload: string | null = null;
 let connectAttempts = 0;
-const MAX_RECONNECT_ATTEMPTS = 20; // Stop reconnecting after 20 attempts
+const MAX_RECONNECT_BACKOFF_STEP = 20;
 let lastUrl = '';
 let triedFallback = false;
 let cachedIsShim: boolean | null = null;
@@ -298,14 +298,6 @@ async function connect() {
   const primaryUrl = WS_URL;
   const fallbackUrl = computeFallbackWsUrl(primaryUrl);
   let urlToUse = (triedFallback || !fallbackUrl) ? primaryUrl : (connectAttempts > 0 ? fallbackUrl : primaryUrl);
-
-  // Check max reconnection attempts
-  if (connectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-    if (__DEV__) console.warn(`[Socket] Max reconnection attempts (${MAX_RECONNECT_ATTEMPTS}) reached.`);
-    setStatus('error', 'max_reconnect_attempts_exceeded');
-    isConnecting = false;
-    return;
-  }
 
   // Append Token via subprotocol header instead of URL query parameter for security
   const u = new URL(urlToUse);
@@ -627,7 +619,7 @@ async function connect() {
           invalidate('probe_401');
           return;
         }
-        connectAttempts += 1;
+        connectAttempts = Math.min(connectAttempts + 1, MAX_RECONNECT_BACKOFF_STEP);
         const delay = result === 'error'
           ? Math.min(8000, 750 * Math.pow(2, Math.max(0, connectAttempts - 1)))
           : 250;
@@ -670,7 +662,7 @@ async function connect() {
             return;
           }
 
-          connectAttempts += 1;
+          connectAttempts = Math.min(connectAttempts + 1, MAX_RECONNECT_BACKOFF_STEP);
           const baseDelay = Math.min(8000, 500 * Math.pow(2, Math.max(0, connectAttempts - 1)));
           const jitter = Math.floor(Math.random() * 250);
           connectTimer = window.setTimeout(() => void connect(), baseDelay + jitter);
@@ -679,7 +671,7 @@ async function connect() {
       }
     }
 
-    connectAttempts += 1;
+    connectAttempts = Math.min(connectAttempts + 1, MAX_RECONNECT_BACKOFF_STEP);
     const baseDelay = Math.min(8000, 500 * Math.pow(2, Math.max(0, connectAttempts - 1)));
     const jitter = Math.floor(Math.random() * 250);
     connectTimer = window.setTimeout(() => void connect(), baseDelay + jitter);
@@ -693,6 +685,21 @@ async function connect() {
 
 export const SocketService = {
   connect,
+  async ensureConnected(timeoutMs = 3000) {
+    // A long API restart used to exhaust a permanent retry ceiling. From that
+    // point onward a live run could start over HTTP while its chat received no
+    // progress events until the whole page was reloaded. A user action is a
+    // fresh connection opportunity, so reset only the backoff and wait for the
+    // shared socket before allowing the run request to race ahead.
+    connectAttempts = 0;
+    await connect();
+    const deadline = Date.now() + Math.max(250, timeoutMs);
+    while (Date.now() < deadline) {
+      if (socket?.readyState === WebSocket.OPEN) return true;
+      await new Promise(resolve => window.setTimeout(resolve, 50));
+    }
+    return socket?.readyState === WebSocket.OPEN;
+  },
   // [Wakil 4.7] Force Reset (for logout)
   disconnect() {
     if (socket) {

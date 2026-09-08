@@ -19,7 +19,7 @@ const router = Router();
 
 function usesJsonRunStore(): boolean {
     // Runtime truth wins over configuration. The session controllers already
-    // fall back to the durable JSON store while Mongo is disconnected; /run/start
+    // fall back to the durable JSON store while Mongo is disconnected; /runs/start
     // must make the same decision or the UI can list a local chat and then crash
     // trying to start work in that very chat.
     return mongoose.connection.readyState !== 1
@@ -313,10 +313,6 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
             // مساحة العمل يختارها المستخدم في الواجهة ويجب أن تصل إلى كل أداة
             // تعتمد على ملفات المشروع، لا أن تتحول إلى مجلد جلسة الدردشة.
             workspaceId: resolvedWorkspaceId,
-            // Resolve once at the authenticated request boundary. Every planner
-            // and tool sees the same folder the Explorer selected, even when an
-            // older session-memory artifact points at a different project.
-            workspaceRoot: workspaceService.getActiveRoot(resolvedWorkspaceId),
             userId,
             userName,
             systemInstructions,

@@ -254,6 +254,8 @@ export async function auditBuiltApp(
          * simply never downloads anything to make itself possible.
          */
         offline?: boolean;
+        /** Original user request, used only for request-specific observable QA scenarios. */
+        request?: string;
     },
 ): Promise<AppAudit> {
     const timeoutMs = opts?.timeoutMs ?? 30_000;
@@ -446,11 +448,13 @@ export async function auditBuiltApp(
         const pageErrors: string[] = [];
         const consoleErrors: string[] = [];
         const failedRequests: string[] = [];
+        let expectedWeatherNetworkFailure = false;
         // A failure in Joe's inspector is evidence that QA is unavailable, not
         // evidence that the application under inspection is broken. Keeping
         // these separate prevents a faulty probe from restoring a generic
         // scaffold over a working, request-specific interface.
         const auditErrors: string[] = [];
+        const domainFindings: AppAuditFinding[] = [];
         const isAuditInfrastructureError = (error: unknown) => {
             const stack = String((error as any)?.stack || (error as any)?.message || error || '');
             return /(?:behaviour-audit|app-audit|ui-inspection|audit-eyes)/iu.test(stack);
@@ -492,6 +496,7 @@ export async function auditBuiltApp(
             const where = (() => {
                 try { const l = m.location(); return l?.url ? ` ← ${String(l.url).slice(-60)}` : ''; } catch { return ''; }
             })();
+            if (expectedWeatherNetworkFailure && /open-meteo|teo\.com/i.test(`${String(m.text())} ${where}`)) return;
             // Chrome asks every site for /favicon.ico and reports the miss as a
             // console error with the URL only in the location. It was costing a
             // clean build 15 points for a file the browser invented a request for.
@@ -1100,6 +1105,133 @@ export async function auditBuiltApp(
         } catch { /* final inspection can use the last responsive state */ }
 
         /**
+         * Request-driven weather QA is a state-machine test, not another
+         * generic click sweep. It deliberately removes the public API, proves
+         * the labelled fallback remains useful, restores the network, and
+         * proves Retry returns to live data. Unit switching is checked as a
+         * round-trip while the requested cities remain visible.
+         */
+        const weatherRequest = String(opts?.request || '');
+        if (/\bweather\b|طقس/iu.test(weatherRequest)) {
+            const requestedCities = (() => {
+                const clause = weatherRequest.match(/\bfor\s+(.{1,160}?)\s+using\b/i)?.[1] || '';
+                return clause.split(/\s*,\s*|\s+and\s+/i).map((city: string) => city.trim().replace(/^and\s+/i, '')).filter(Boolean).slice(0, 8);
+            })();
+            const bodyText = async () => String(await page.locator('body').innerText().catch(() => ''));
+            const citiesRemain = (text: string) => requestedCities.every(city => new RegExp(`\\b${city.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(text));
+            const apiPattern = '**/*open-meteo.com/**';
+            const weatherFixture = async (route: any) => {
+                const requestUrl = new URL(route.request().url());
+                if (/geocoding-api\.open-meteo\.com/i.test(requestUrl.hostname)) {
+                    const name = requestUrl.searchParams.get('name') || 'Test city';
+                    const index = Math.max(0, requestedCities.findIndex(city => city.toLocaleLowerCase() === name.toLocaleLowerCase()));
+                    await route.fulfill({
+                        status: 200,
+                        contentType: 'application/json',
+                        body: JSON.stringify({ results: [{ name, country: 'QA', latitude: 31.95 + index, longitude: 35.91 + index }] }),
+                    });
+                    return;
+                }
+                const latitude = Number(requestUrl.searchParams.get('latitude') || 31.95);
+                const temperature = Math.round(18 + Math.max(0, latitude - 31.95) * 3);
+                await route.fulfill({
+                    status: 200,
+                    contentType: 'application/json',
+                    body: JSON.stringify({ current_weather: { temperature, weathercode: 0 } }),
+                });
+            };
+            try {
+                opts?.onProgress?.('weather: proving live weather and requested cities');
+                for (let index = consoleErrors.length - 1; index >= 0; index--) {
+                    if (/open-meteo|teo\.com/i.test(consoleErrors[index])) consoleErrors.splice(index, 1);
+                }
+                await page.route(apiPattern, weatherFixture);
+                await page.goto(url, { waitUntil: 'load', timeout: navigationTimeoutMs });
+                await page.waitForFunction(() => /(?:Live\s+data|بيانات\s+حية)/i.test(String(document.body?.innerText || '')), undefined, { timeout: 8_000 }).catch(() => { });
+                const live = await bodyText();
+                if ((requestedCities.length && !citiesRemain(live)) || !/(?:Last\s+updated|Updated\s+at|آخر\s+تحديث)/i.test(live) || !/(?:Live\s+data|بيانات\s+حية)/i.test(live)) {
+                    domainFindings.push({
+                        id: 'weather_live_success_unproven', severity: 'high',
+                        detail: 'لم يثبت المتصفح حالة الطقس الحية لكل المدن المطلوبة مع وقت آخر تحديث',
+                        detailEn: 'Browser QA could not prove live weather for every requested city with a last-updated timestamp',
+                    });
+                }
+
+                if (/celsius|fahrenheit|°\s*[CF]|مئوي|فهرنهايت/i.test(weatherRequest)) {
+                    opts?.onProgress?.('weather: switching to Fahrenheit and preserving cities');
+                    const toF = page.getByRole('button', { name: /Fahrenheit|°F|فهرنهايت/i }).first();
+                    if (await toF.count()) await toF.click();
+                    await page.waitForTimeout(250);
+                    const fahrenheit = await bodyText();
+                    const hasF = /°\s*F|Fahrenheit|فهرنهايت/i.test(fahrenheit);
+                    const toC = page.getByRole('button', { name: /Celsius|°C|مئوي/i }).first();
+                    if (await toC.count()) await toC.click();
+                    await page.waitForTimeout(250);
+                    const celsius = await bodyText();
+                    const hasC = /°\s*C|Celsius|مئوي/i.test(celsius);
+                    if (!hasF || !hasC || !citiesRemain(fahrenheit) || !citiesRemain(celsius)) {
+                        domainFindings.push({
+                            id: 'weather_unit_roundtrip_failed', severity: 'high',
+                            detail: 'فشل تبديل مئوي/فهرنهايت ذهاباً وإياباً مع الحفاظ على المدن',
+                            detailEn: 'The Celsius/Fahrenheit browser round-trip failed or lost requested cities',
+                        });
+                    }
+                }
+
+                if (/offline\s+fallback|network\s+failure|retry|بديل|دون\s+اتصال|إعادة\s+المحاولة/i.test(weatherRequest)) {
+                    const abortWeather = (route: any) => route.abort('failed');
+                    opts?.onProgress?.('weather: forcing network failure and inspecting fallback');
+                    expectedWeatherNetworkFailure = true;
+                    await page.unroute(apiPattern, weatherFixture).catch(() => { });
+                    await page.route(apiPattern, abortWeather);
+                    try {
+                        await page.goto(url, { waitUntil: 'load', timeout: navigationTimeoutMs });
+                        await page.waitForTimeout(1_500);
+                        const fallback = await bodyText();
+                        if (!/(?:Fallback|Cached|Offline|Sample|بديل|مخبأة|دون اتصال)/i.test(fallback) || !citiesRemain(fallback)) {
+                            domainFindings.push({
+                                id: 'weather_offline_fallback_failed', severity: 'high',
+                                detail: 'عند قطع الشبكة لم تظهر بيانات بديلة مفيدة وموسومة بوضوح لكل المدن',
+                                detailEn: 'Forced network failure did not show useful, clearly labelled fallback data for every city',
+                            });
+                        }
+                    } finally {
+                        await page.unroute(apiPattern, abortWeather).catch(() => { });
+                        await page.waitForTimeout(100);
+                        expectedWeatherNetworkFailure = false;
+                    }
+                    await page.route(apiPattern, weatherFixture);
+                    opts?.onProgress?.('weather: restoring network and retrying live data');
+                    const retry = page.getByRole('button', { name: /Retry|Try again|إعادة\s+المحاولة/i }).first();
+                    if (await retry.count()) await retry.click();
+                    await page.waitForFunction((cities: string[]) => {
+                        const text = String(document.body?.innerText || '');
+                        return cities.every(city => text.toLocaleLowerCase().includes(city.toLocaleLowerCase()))
+                            && /(?:Live\s+data|بيانات\s+حية)/i.test(text)
+                            && !/(?:Offline\s+fallback|Fallback\s+data|بيانات\s+بديلة|دون اتصال)/i.test(text);
+                    }, requestedCities, { timeout: Math.min(12_000, timeoutMs) }).catch(() => { });
+                    const recovered = await bodyText();
+                    if (!citiesRemain(recovered) || !/(?:Live\s+data|بيانات\s+حية)/i.test(recovered) || /(?:Offline\s+fallback|Fallback\s+data|بيانات\s+بديلة|دون اتصال)/i.test(recovered)) {
+                        domainFindings.push({
+                            id: 'weather_retry_recovery_failed', severity: 'high',
+                            detail: 'بعد عودة الشبكة لم يثبت زر إعادة المحاولة الرجوع إلى البيانات الحية',
+                            detailEn: 'After network restoration, Retry did not prove recovery to live weather',
+                        });
+                    }
+                }
+            } catch (error: any) {
+                domainFindings.push({
+                    id: 'weather_scenario_qa_failed', severity: 'high',
+                    detail: `تعذر إكمال سيناريو الطقس الحقيقي في المتصفح: ${String(error?.message || error).slice(0, 120)}`,
+                    detailEn: `The real weather browser scenario could not complete: ${String(error?.message || error).slice(0, 120)}`,
+                });
+            } finally {
+                await page.unroute(apiPattern, weatherFixture).catch(() => { });
+                try { await applyViewportSize(page, deliveryViewport.width, deliveryViewport.height); } catch { /* preserve QA result */ }
+            }
+        }
+
+        /**
          * AND THE UI ITSELF IS INSPECTED — «وفحص ui».
          *
          * Colours against WCAG, structure against a screen reader, and the same
@@ -1149,6 +1281,7 @@ export async function auditBuiltApp(
         behaviour.findings.push(...ui.findings);
 
         const findings: AppAuditFinding[] = [];
+        findings.push(...domainFindings);
         if (behaviourMetrics.budgetExhausted) findings.push(budgetFinding());
         /**
          * THE SYSTEM'S FRONT DOOR — said once, plainly, and FIRST.
@@ -1290,18 +1423,18 @@ export async function auditBuiltApp(
                     label: 'runtime and network',
                     status: behaviourMetrics.budgetExhausted
                         ? 'skipped'
-                        : (pageErrors.length || consoleErrors.length || failedRequests.length || brokenRoutes.length || dom.deadImgs) ? 'failed' : 'passed',
+                        : (pageErrors.length || consoleErrors.length || failedRequests.length || brokenRoutes.length || dom.deadImgs || domainFindings.some(f => f.id === 'weather_live_success_unproven' || f.id === 'weather_scenario_qa_failed')) ? 'failed' : 'passed',
                     measured: routes.length + 1,
-                    findingIds: findings.filter(f => ['server_root_dead', 'page_errors', 'console_errors', 'failed_requests', 'broken_routes', 'dead_images'].includes(f.id)).map(f => f.id),
+                    findingIds: findings.filter(f => ['server_root_dead', 'page_errors', 'console_errors', 'failed_requests', 'broken_routes', 'dead_images', 'weather_live_success_unproven', 'weather_scenario_qa_failed'].includes(f.id)).map(f => f.id),
                 },
                 {
                     id: 'behaviour',
                     label: 'controls and forms',
                     status: behaviourMetrics.budgetExhausted
                         ? 'skipped'
-                        : behaviour.findings.some(f => ['dead_controls', 'dead_anchors', 'forms_dead_submit', 'keyboard_unreachable', 'semantic_input_validation', 'form_persistence_unproven', 'qa_created_record_not_deletable'].includes(f.code)) ? 'failed' : 'passed',
+                        : behaviour.findings.some(f => ['dead_controls', 'dead_anchors', 'forms_dead_submit', 'keyboard_unreachable', 'semantic_input_validation', 'form_persistence_unproven', 'qa_created_record_not_deletable'].includes(f.code)) || domainFindings.some(f => ['weather_unit_roundtrip_failed', 'weather_offline_fallback_failed', 'weather_retry_recovery_failed'].includes(f.id)) ? 'failed' : 'passed',
                     measured: allControls.length + allForms.length,
-                    findingIds: findings.filter(f => ['dead_controls', 'dead_anchors', 'forms_dead_submit', 'keyboard_unreachable', 'semantic_input_validation', 'form_persistence_unproven', 'qa_created_record_not_deletable'].includes(f.id)).map(f => f.id),
+                    findingIds: findings.filter(f => ['dead_controls', 'dead_anchors', 'forms_dead_submit', 'keyboard_unreachable', 'semantic_input_validation', 'form_persistence_unproven', 'qa_created_record_not_deletable', 'weather_unit_roundtrip_failed', 'weather_offline_fallback_failed', 'weather_retry_recovery_failed'].includes(f.id)).map(f => f.id),
                 },
                 {
                     id: 'design',

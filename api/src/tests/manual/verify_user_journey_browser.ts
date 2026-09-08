@@ -84,7 +84,7 @@ async function main() {
     console.log('الطلب: «افحص الروابط المكسورة في هذا الموقع»\n');
 
     const started = Date.now();
-    const posted = await fetch(`http://127.0.0.1:${port}/api/run/start`, {
+    const posted = await fetch(`http://127.0.0.1:${port}/api/runs/start`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: `افحص الروابط المكسورة في ${siteUrl}`, sessionId: SESSION, language: 'ar' }),

@@ -336,7 +336,7 @@ export async function addMessage(req: Request, res: Response) {
         }
 
         // Trigger AI Logic (Using the run queue or agent directly)
-        // For now, we'll try to use the /run/start or similar logic internally
+        // Use the canonical /runs/start execution flow internally.
         // But since that requires complex setup, let's just ensure persistence first.
         // The frontend expects the message to be saved.
 

@@ -306,7 +306,6 @@ api/src/
 ├── agents/
 │   ├── ArchitectAgent.ts      # وكيل المعماري
 │   ├── JoeAgent.ts            # وكيل جو الرئيسي
-│   ├── AutonomousLoopEngine.ts # محرك التنفيذ الذاتي
 │   └── ...
 ├── tools/
 │   ├── definitions/

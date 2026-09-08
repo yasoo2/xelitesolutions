@@ -3,7 +3,7 @@ import os from 'os';
 import path from 'path';
 import { DISCOVERY_YIELD_EVERY, EngineeringDiscoveryTool } from '../modules/tools/definitions/EngineeringDiscoveryTool';
 
-import { heDeclaredWhatItHolds } from '../modules/tools/definitions/ProjectPipelineTool';
+import { hasExplicitRecordSchema } from '../core/design/app-blueprints';
 
 describe('evidence-first engineering discovery', () => {
   const roots: string[] = [];
@@ -257,7 +257,8 @@ describe('evidence-first engineering discovery', () => {
 
     //  The early path exists, and it is gated on HIS words — not on a
     //  product name, a domain guess or anything a catalogue could hold.
-    expect(source).toContain('heDeclaredWhatItHolds(productRequest)');
+    expect(source).toContain('hasExplicitRecordSchema(productRequest)');
+    expect(source).not.toContain('heDeclaredWhatItHolds');
     expect(source).toContain('evidence?.constraints?.createsNewProject');
     // Discovery's explicit mode is also a valid greenfield fact.  This keeps
     // an optional convenience flag from sending a fully-described local form
@@ -267,8 +268,8 @@ describe('evidence-first engineering discovery', () => {
 
     //  …and it is a decision, not a preference: with no declared schema
     //  the planner is still what runs.
-    expect(heDeclaredWhatItHolds('ابن لي موقعاً لمطعمي')).toBe(false);
-    expect(heDeclaredWhatItHolds('بدي جدول للفواتير فيه رقم الفاتورة والمبلغ والتاريخ')).toBe(true);
+    expect(hasExplicitRecordSchema('ابن لي موقعاً لمطعمي')).toBe(false);
+    expect(hasExplicitRecordSchema('بدي جدول للفواتير فيه رقم الفاتورة والمبلغ والتاريخ')).toBe(true);
   });
 
   test('does not mistake greenfield preflight language for an existing-project target', async () => {

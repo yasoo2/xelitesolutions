@@ -90,7 +90,7 @@ Joe is an autonomous, multi-agent software engineering platform. It acts as a di
 
 ## 4. COMPLETE REQUEST LIFECYCLE
 
-1. **Ingress:** Request hits `/api/run/start` or `/api/tools/run`.
+1. **Ingress:** Request hits the single canonical endpoint, `/api/runs/start`.
 2. **Authentication:** `authenticate` or `authenticateOptional` extracts JWT claims from `Authorization: Bearer <token>`.
 3. **Trace Initialization:** `traceManager.startTrace(sessionId, goal)` creates a unique trace context.
 4. **Planning Phase:** `ProjectPlannerTool` generates a multi-phase JSON execution plan.

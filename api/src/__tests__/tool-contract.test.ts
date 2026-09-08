@@ -104,13 +104,9 @@ describe('the registry repairs an under-declared tool instead of trusting it', (
 });
 
 describe('no plan may name a tool that does not exist', () => {
-    it('the visual verification loop points at a real tool', () => {
-        const fs = require('fs'); const path = require('path');
-        const J = fs.readFileSync(path.join(__dirname, '..', 'core', 'agents', 'JoeAgent.ts'), 'utf-8');
-        // `browser_subagent` was never in the registry: the task named it, the
-        // plan carried it, and being optional it failed silently every run.
-        expect(J).not.toMatch(/tool: 'browser_subagent'/);
-        expect(J).toMatch(/name: 'Visual Verification Loop \(Joe Eye\)'[\s\S]{0,120}tool: 'browser_ui_fix'/);
+    it('keeps the real browser repair tool and removes the retired loop aliases', () => {
         expect(all.some(t => t.name === 'browser_ui_fix')).toBe(true);
+        expect(all.some(t => t.name === 'browser_subagent')).toBe(false);
+        expect(all.some(t => t.name === 'task_loop')).toBe(false);
     });
 });

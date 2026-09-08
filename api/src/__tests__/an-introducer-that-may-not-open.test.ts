@@ -72,6 +72,16 @@ describe('…and a list of things to BUILD is not a list of columns', () => {
         expect(labels('Build an expenses app. Include date, amount and note, with search by date.'))
             .toEqual(['date', 'amount', 'note']);
     });
+
+    it('reads «needs» through the same central schema reader', () => {
+        expect(labels('Build an expenses app. It needs an amount field, category, date, and note.'))
+            .toEqual(['amount', 'category', 'date', 'note']);
+    });
+
+    it('runtime states introduced by Include are capabilities, not record columns', () => {
+        expect(derivedColumns('Create a weather app. Include distinct loading, live-success, empty/error, and retry states.'))
+            .toBeNull();
+    });
 });
 
 describe('and the readers in front of it still answer first', () => {

@@ -309,7 +309,7 @@ describe('every URL the browser calls exists on the server', () => {
         const routes = serverRoutes();
         expect(routes.length).toBeGreaterThan(100);
         expect(uiPaths().length).toBeGreaterThan(40);
-        for (const known of ['/api/health', '/api/agent', '/api/sessions/abc/messages', '/api/audio/speech']) {
+        for (const known of ['/api/health', '/api/runs/start', '/api/sessions/abc/messages', '/api/audio/speech']) {
             expect(routes.some((r: any) => routeRegex(r.path).test(known))).toBe(true);
         }
     });
@@ -802,7 +802,7 @@ describe('the planner is offered the whole toolbox, not a frozen list of seven',
         expect(ws).toMatch(/const candidates = \[/);
         expect(ws).toContain("trimId((ev as any)?.data?.runId)");
         // …and the session is claimed at the door, before the first frame
-        expect(SRC('api', 'routes', 'run.ts')).toContain('registerSessionOwner(sessionId');
+        expect(SRC('api', 'routes', 'run.ts')).toContain('registerSessionOwner(runSessionId');
         const toolSvc = SRC('modules', 'services', 'ToolService.ts');
         expect(toolSvc).toContain("data: { tool: effectiveName, input: effectiveInput, sessionId: contextSessionId }");
         expect(toolSvc).toContain("data: { tool: effectiveName, ok, sessionId: contextSessionId }");

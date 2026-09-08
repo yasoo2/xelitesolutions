@@ -59,7 +59,7 @@ describe('the first thing Joe says goes to the session that asked', () => {
     it('…and a goal with no session still has an address', async () => {
         //  The negative: the fallback is the whole reason the run id was there
         //  in the first place, and removing it would silence callers that pass
-        //  no context at all (the REST /api/agent entry among them).
+        //  no explicit session context at all.
         await firstAnnouncement({
             id: 'run-alone',
             goal: 'build something',

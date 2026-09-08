@@ -1,9 +1,10 @@
 import { formatWeatherSemanticRepair, inspectWeatherEngineSource } from '../core/quality/weather-contract';
+import { fileWeatherAppJsx, fileWorkflowAppJsx } from '../modules/tools/definitions/react-app-templates';
 
 describe('request-driven weather semantic contract', () => {
     const request = `WeatherGo
 Include sunrise and sunset from the daily API response.
-Persist favorites and Celsius/Fahrenheit settings after reload using localStorage.`;
+Persist favorites after reload using localStorage.`;
 
     it('reports missing sun times and unsafe persistence as independent defects', () => {
         const defects = inspectWeatherEngineSource(request, `export default function WeatherApp() {
@@ -69,5 +70,84 @@ Persist favorites and Celsius/Fahrenheit settings after reload using localStorag
         const viewFile = '<div>{sunrise}</div><div>{sunset}</div>';
         const missingRequest = inspectWeatherEngineSource('sunrise sunset', viewFile);
         expect(missingRequest.find(defect => defect.id === 'weather_sun_times_missing')).toBeDefined();
+    });
+
+    it('rejects a fallback that is hidden behind an early error return', () => {
+        const request = 'Use a real public weather API with loading, empty/error, retry, last-updated, Celsius/Fahrenheit, and an offline fallback labelled as fallback.';
+        const source = `
+            const [weatherData, setWeatherData] = useState(null);
+            const [loading, setLoading] = useState(true);
+            const [error, setError] = useState(null);
+            const [unit, setUnit] = useState('celsius');
+            const [lastUpdated, setLastUpdated] = useState(null);
+            async function fetchWeatherData() {
+                try {
+                    const response = await fetch('https://api.open-meteo.com/v1/forecast?current_weather=true');
+                    if (!response.ok) throw new Error('failed');
+                    setWeatherData((await response.json()).current_weather);
+                } catch (error) {
+                    setError(error.message);
+                    setWeatherData(sampleData);
+                    setLastUpdated('Fallback data');
+                }
+            }
+            const convert = value => unit === 'celsius' ? value : value * 9 / 5 + 32;
+            if (loading) return <div>Loading weather data...</div>;
+            if (error) return <div>Error {error}<button onClick={fetchWeatherData}>Retry</button></div>;
+            if (!weatherData) return <div>No weather data available</div>;
+            return <main><button onClick={() => setUnit('fahrenheit')}>Fahrenheit °F</button><button onClick={() => setUnit('celsius')}>Celsius °C</button><p>Last updated: {lastUpdated}</p></main>;
+        `;
+        const ids = inspectWeatherEngineSource(request, source).map(defect => defect.id);
+        expect(ids).toContain('weather_offline_fallback_unobservable');
+        expect(ids).toContain('weather_empty_state_missing');
+        expect(ids).not.toContain('weather_persistence_not_hydrated');
+    });
+
+    it('accepts an explicit live/fallback state machine with every requested state visible', () => {
+        const request = 'Use a real public weather API with loading, empty/error, retry, last-updated, Celsius/Fahrenheit, and an offline fallback labelled as fallback.';
+        const source = `
+            const [weatherData, setWeatherData] = useState([]);
+            const [loading, setLoading] = useState(true);
+            const [error, setError] = useState(null);
+            const [unit, setUnit] = useState('celsius');
+            const [lastUpdated, setLastUpdated] = useState(null);
+            const [dataSource, setDataSource] = useState('live');
+            async function fetchWeatherData() {
+                setLoading(true); setError(null);
+                try {
+                    const response = await fetch('https://api.open-meteo.com/v1/forecast?current_weather=true');
+                    if (!response.ok) throw new Error('failed');
+                    setWeatherData([(await response.json()).current_weather]);
+                    setDataSource('live'); setLastUpdated(new Date());
+                } catch (error) {
+                    setError(error.message); setWeatherData(sampleData); setDataSource('fallback'); setLastUpdated(new Date());
+                } finally { setLoading(false); }
+            }
+            const convert = value => unit === 'celsius' ? value : value * 9 / 5 + 32;
+            return <main>
+                {loading ? <p>Loading weather data...</p> : null}
+                {!loading && weatherData.length === 0 ? <p>No weather data available</p> : null}
+                {error ? <p>Error: {error}<button onClick={fetchWeatherData}>Retry</button></p> : null}
+                {dataSource === 'fallback' ? <strong>Offline fallback sample data</strong> : null}
+                <button onClick={() => setUnit('celsius')}>Celsius °C</button>
+                <button onClick={() => setUnit('fahrenheit')}>Fahrenheit °F</button>
+                <p>Last updated: {lastUpdated}</p>{weatherData.map(item => <p>{convert(item.temperature)}</p>)}
+            </main>;
+        `;
+        expect(inspectWeatherEngineSource(request, source)).toEqual([]);
+    });
+
+    it('builds named comparison cities into the request-derived weather engine and subjects it to the same contract', () => {
+        const request = 'Create a weather comparison app for Amman, Istanbul, and London using a real public weather API with loading, empty/error, retry, Celsius/Fahrenheit, last-updated, and an offline fallback labelled as fallback.';
+        const source = fileWeatherAppJsx(false, request);
+        expect(source).toContain('const REQUESTED_CITY_NAMES = ["Amman","Istanbul","London"]');
+        expect(source).toContain('Offline fallback · cached sample data');
+        expect(source.match(/City comparison/g)).toHaveLength(1);
+        expect(fileWorkflowAppJsx(false)).not.toContain('City comparison');
+        expect(source).toContain('type="search" required');
+        expect(source).toContain('<h2>WeatherGo</h2>');
+        expect(source).not.toContain('<h1>WeatherGo</h1>');
+        expect(source).toContain('Last updated');
+        expect(inspectWeatherEngineSource(request, source)).toEqual([]);
     });
 });

@@ -7,7 +7,7 @@
  * that question directly and was right to doubt the answer.
  *
  * So this takes a sample across every tier and pushes each one through
- * /api/run/start on the live server, waits for the reply Joe would show him,
+ * /api/runs/start on the live server, waits for the reply Joe would show him,
  * and writes down what reached disk. One round is three to four minutes of a
  * real npm build and a real browser audit; the sample size is the honest limit
  * of what fits in an evening, and it is stated rather than hidden.
@@ -64,7 +64,7 @@ async function runOne(p: Prompt, i: number): Promise<Record<string, any>> {
     const started = Date.now();
     let runId = '';
     try {
-        const r = await fetch(`${BASE}/api/run/start`, {
+        const r = await fetch(`${BASE}/api/runs/start`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json; charset=utf-8' },
             body: JSON.stringify({ text: p.text, sessionId, language: 'ar' }),

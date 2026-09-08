@@ -268,7 +268,7 @@ export class AgentOrchestrator {
     announcePhase(liveSession, 'analyzing', (goal.context as any)?.language);
 
     // goal.id IS the session — callers that pass no explicit context (the
-    // REST /api/agent entry among them) must still plan WITH the session,
+    // callers without UI context must still plan WITH the run identity,
     // or the planner looks up joeProjects['default'], misses the active
     // project, and an edit like «غيّر الطراز» falls past the surgical
     // editor (caught by the UI-integration wire proof).

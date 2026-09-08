@@ -36,6 +36,78 @@ export function inspectWeatherEngineSource(
     const source = [String(sourceRaw || ''), ...additionalEvidence.map(value => String(value || ''))].join('\n');
     const defects: WeatherSemanticDefect[] = [];
 
+    if (asks(request, /real\s+public\s+weather\s+api|live[-\s]?success|live\s+weather|weather\s+api|طقس\s+حي|واجهة\s+طقس/i)) {
+        const hasWeatherRequest = /fetch\s*\([^)]*(?:open-meteo|weatherapi|openweathermap)|api\.open-meteo\.com|current_weather|current\s*[:=]\s*[^\n]*(?:temperature|weather)/i.test(source);
+        const checksResponse = /\.ok\b|status\s*[<>=!]=?\s*(?:200|400)|throw\s+new\s+Error/i.test(source);
+        if (!hasWeatherRequest || !checksResponse) defects.push({
+            id: 'weather_live_api_missing',
+            message: 'Live weather from a validated public API is not proven.',
+            repairInstruction: 'Fetch live weather from a named public API, validate response.ok, and map current conditions into visible city data. Never label sample data as live.',
+        });
+    }
+
+    if (asks(request, /loading|جاري\s+التحميل|تحميل/i)) {
+        const state = /\[(?:is)?loading\s*,\s*set(?:Is)?Loading\]|\bsetLoading\s*\(/i.test(source);
+        const visible = /(?:is)?loading\s*\?[^:]{0,500}(?:Loading|جاري|تحميل)|if\s*\(\s*(?:is)?loading\s*\)[\s\S]{0,500}(?:Loading|جاري|تحميل)/i.test(source);
+        if (!state || !visible) defects.push({
+            id: 'weather_loading_state_missing',
+            message: 'The requested loading state is not visibly represented.',
+            repairInstruction: 'Track loading around every weather request and render a labelled loading state in the content region.',
+        });
+    }
+
+    if (asks(request, /empty(?:\s+state)?|no\s+(?:weather|cities|results|data)|حالة\s+فارغة|لا\s+توجد\s+(?:بيانات|نتائج)/i)) {
+        const visible = /(?:No\s+(?:weather|cities|results|data)|Nothing\s+to\s+show|Empty\s+state|لا\s+توجد\s+(?:بيانات|نتائج|مدن))/i.test(source);
+        const guarded = /(?:weatherData|cities|results|data)\s*\.\s*length\s*(?:===?\s*0|<\s*1)|!\s*(?:weatherData|cities|results|data)\s*\.\s*length/i.test(source);
+        if (!visible || !guarded) defects.push({
+            id: 'weather_empty_state_missing',
+            message: 'The requested empty state is not proven.',
+            repairInstruction: 'Render a distinct empty state driven by the empty weather collection, with a useful recovery action.',
+        });
+    }
+
+    if (asks(request, /error|retry|network\s+failure|فشل|خطأ|إعادة\s+المحاولة/i)) {
+        const errorState = /\berror\s*,\s*setError\b|\bsetError\s*\(/i.test(source);
+        const retry = /onClick\s*=\s*\{?[^}\n]*(?:retry|fetchWeather|loadWeather)|>\s*(?:Retry|Try again|إعادة\s+المحاولة)\s*</i.test(source);
+        if (!errorState || !retry) defects.push({
+            id: 'weather_retry_state_missing',
+            message: 'A visible error state with a connected retry action is not proven.',
+            repairInstruction: 'Render a clear error message with Retry connected to the live request, and clear stale error state after recovery.',
+        });
+    }
+
+    if (asks(request, /offline\s+fallback|cached\s+sample|sample\s+data\s+label|label(?:led)?\s+as\s+fallback|بديل|دون\s+اتصال|بيانات\s+مخبأة/i)) {
+        const state = /\b(?:isFallback|usingFallback|fallbackActive|dataSource|sourceMode)\b/i.test(source);
+        const setState = /set(?:IsFallback|UsingFallback|FallbackActive|DataSource|SourceMode)\s*\(/i.test(source);
+        const visible = /(?:isFallback|usingFallback|fallbackActive|dataSource|sourceMode)[\s\S]{0,500}(?:Fallback|Cached|Offline|Sample|بديل|مخبأة|دون اتصال)/i.test(source);
+        if (!state || !setState || !visible) defects.push({
+            id: 'weather_offline_fallback_unobservable',
+            message: 'Fallback data may be assigned, but a distinct visible fallback state is not proven.',
+            repairInstruction: 'Track live versus fallback explicitly. On network failure, show cached/sample city data with a visible Fallback/Offline label and Retry; never hide fallback behind an error-only return.',
+        });
+    }
+
+    if (asks(request, /last[-\s]?updated|updated\s+at|آخر\s+تحديث/i)) {
+        const state = /\b(?:lastUpdated|updatedAt)\b/i.test(source);
+        const visible = /(?:Last\s+updated|Updated\s+at|آخر\s+تحديث)[\s\S]{0,180}(?:lastUpdated|updatedAt)|(?:lastUpdated|updatedAt)[\s\S]{0,180}(?:Last\s+updated|Updated\s+at|آخر\s+تحديث)/i.test(source);
+        if (!state || !visible) defects.push({
+            id: 'weather_last_updated_missing',
+            message: 'The requested last-updated timestamp is not visibly connected to state.',
+            repairInstruction: 'Set lastUpdated after live and fallback loads and render it beside an explicit Last updated label.',
+        });
+    }
+
+    if (asks(request, /celsius\s*\/\s*fahrenheit|celsius|fahrenheit|°\s*[CF]|مئوي|فهرنهايت/i)) {
+        const state = /\b(?:unit|temperatureUnit)\s*,\s*set(?:Unit|TemperatureUnit)\b/i.test(source);
+        const conversion = /\*\s*9\s*\)?\s*\/\s*5\s*\+\s*32|\(\s*[^)]+-\s*32\s*\)\s*\*\s*5\s*\/\s*9/i.test(source);
+        const controls = /(?:°C|Celsius)[\s\S]{0,900}(?:°F|Fahrenheit)|(?:°F|Fahrenheit)[\s\S]{0,900}(?:°C|Celsius)/i.test(source);
+        if (!state || !conversion || !controls) defects.push({
+            id: 'weather_unit_toggle_incomplete',
+            message: 'The Celsius/Fahrenheit round-trip is not fully represented.',
+            repairInstruction: 'Use one unit state for every city, expose both unit controls, convert correctly, and preserve the city collection during the round-trip.',
+        });
+    }
+
     if (asks(request, /sunrise|sunset|الشروق|الغروب/i)) {
         const sunriseCount = count(source, /sunrise/i);
         const sunsetCount = count(source, /sunset/i);
@@ -64,7 +136,7 @@ export function inspectWeatherEngineSource(
         }
     }
 
-    const asksPersistence = asks(request, /localStorage|persist|persistence|after\s+reload|reload|favorites?|saved\s+cities|settings|celsius|fahrenheit|temperature\s+unit|12[-\s]?hour|24[-\s]?hour|المفضلة|المحفوظ|إعادة\s+التحميل|الإعدادات|الوحدة/i);
+    const asksPersistence = asks(request, /localStorage|persist|persistence|after\s+reload|favorites?|saved\s+cities|saved\s+settings|remember\s+(?:the\s+)?(?:unit|settings|cities)|المفضلة|المحفوظ|إعادة\s+التحميل|الإعدادات/i);
     if (asksPersistence) {
         const hasStorageRead = /localStorage\s*\.\s*getItem|sessionStorage\s*\.\s*getItem/i.test(source);
         const hasStorageWrite = /localStorage\s*\.\s*setItem|sessionStorage\s*\.\s*setItem/i.test(source);

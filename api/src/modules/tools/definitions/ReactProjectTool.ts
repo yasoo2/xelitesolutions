@@ -818,7 +818,11 @@ export function deriveRequestFidelity(
     projectEvidence: string,
 ): RequestFidelityVerdictForTest {
     const fidelityKind = detectAppKind(request) || appBp?.kind;
-    const fidelityBp: AppBlueprint | null = appBp || (fidelityKind ? blueprintFor(fidelityKind, request, isAr) : null);
+    // The request is the independent judge. Preferring appBp here compared the
+    // generated project with the very template choice under review, allowing a
+    // wrong records template to certify itself for a weather request.
+    const requestedBp = fidelityKind ? blueprintFor(fidelityKind, request, isAr) : null;
+    const fidelityBp: AppBlueprint | null = requestedBp || appBp;
     const evidenceUnavailable = requestFidelityEvidenceUnavailable(fidelityBp, projectEvidence);
     const mismatch = requestFidelityMismatch(fidelityBp, projectEvidence);
     const label = evidenceUnavailable
@@ -5840,7 +5844,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                         return [];
                     }
                 };
-                let semanticDefects = runBp.engine === 'weather' && !blueprintFallbackEngine
+                let semanticDefects = runBp.engine === 'weather'
                     ? inspectWeatherEngineSource(request, authored, readWeatherArtifactEvidence())
                     : workflowContract && !blueprintFallbackEngine
                         ? inspectWorkflowEngineSource(request, authored, workflowApiContract)
@@ -6401,6 +6405,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                     : '🔌 Measuring the system while it RUNS — the interface inside its server, the data from its real database');
             }
             audit = await auditBuiltApp(path.join(proj, 'dist'), {
+                request,
                 // His «لا تستخدم الشبكة» reaches the audit too: it still runs,
                 // it simply never downloads a browser to make itself possible.
                 offline: noInstall,
@@ -6604,6 +6609,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 term(`vite build (after putting the templates back) → ${built ? 'OK' : `exit ${rb}`}`);
                 if (built) {
                     audit = await auditBuiltApp(path.join(proj, 'dist'), {
+                        request,
                         offline: noInstall,
                         timeoutMs: 180_000,
                         watchSessionId: auditSid,
@@ -6788,6 +6794,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
 
                 const measureNow = async () => {
                     const a = await auditBuiltApp(path.join(proj, 'dist'), {
+                        request,
                 // His «لا تستخدم الشبكة» reaches the audit too: it still runs,
                 // it simply never downloads a browser to make itself possible.
                 offline: noInstall,

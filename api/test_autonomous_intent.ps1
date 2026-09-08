@@ -20,7 +20,7 @@ $runBody = @{
 } | ConvertTo-Json
 
 Write-Host "Triggering autonomous run..."
-$runRes = Invoke-RestMethod -Uri "http://localhost:8080/api/run/start" -Method Post -Headers $headers -Body $runBody
+$runRes = Invoke-RestMethod -Uri "http://localhost:8080/api/runs/start" -Method Post -Headers $headers -Body $runBody
 
 Write-Host "Response received. RunID: $($runRes.runId)"
 Write-Host "Checking logs for AutonomousOrchestrator delegation..."

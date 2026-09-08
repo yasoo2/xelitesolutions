@@ -41,7 +41,7 @@
 - `ping-deploy.ts`: External deploy ping listener.
 - `project.ts`: Workspace resolution, boundary checking (`resolvePathInsideWorkspace`), AST graphs.
 - `providers.ts`: LLM provider connection testing.
-- `run.ts`: Async execution entry point (`/api/run/start`).
+- `run.ts`: Async execution entry point (`/api/runs/start`).
 - `sentinel.ts`: Telemetry ingestion, live incident retrieval, audit verification.
 - `servers.ts`: Remote server configuration management.
 - `sessions.ts`: Workspace chat session creation, history, pinning.

@@ -1,13 +1,7 @@
 import { Router, Request, Response } from 'express';
-import mongoose from 'mongoose';
 import { tools } from '../../modules/tools/registry';
 import { executeTool } from '../../modules/services/ToolService';
-import { AgentOrchestrator } from '../../orchestration/AgentOrchestrator';
-import { broadcast, LiveEvent } from '../ws';
 import { authenticate } from '../middleware/auth';
-
-import { Run } from '../../shared/models/run';
-import { ToolExecution } from '../../shared/models/toolExecution';
 
 const router = Router();
 
@@ -22,56 +16,6 @@ function extractWorkspaceId(req: Request) {
 router.get('/', async (_req: Request, res: Response) => {
   const count = tools.length;
   res.json({ count, realCount: count, noopCount: 0, tools });
-});
-
-router.post('/run', async (req: Request, res: Response) => {
-  const sessionId = typeof req.body?.sessionId === 'string' ? req.body.sessionId.trim() : '';
-  const workspaceId = extractWorkspaceId(req);
-  const text = String(req.body?.text ?? 'hello');
-  const input = { text };
-
-
-
-  const orchestrator = new AgentOrchestrator();
-  const runId = sessionId || `session-${Date.now()}`;
-  const result = await orchestrator.execute({
-    id: runId,
-    goal: text
-  });
-
-  return res.json({ runId, sessionId, result: { ok: result.ok, output: result.result } });
-});
-
-router.post('/selftest', authenticate, async (req: Request, res: Response) => {
-  const workspaceId = extractWorkspaceId(req);
-  if (!workspaceId) return res.status(400).json({ ok: false, error: 'workspace_required' });
-
-  const userId = String((req as any)?.auth?.sub || '').trim();
-  if (!userId) return res.status(401).json({ ok: false, error: 'unauthorized' });
-
-  const sessionId = typeof req.body?.sessionId === 'string' && req.body.sessionId.trim()
-    ? req.body.sessionId.trim()
-    : `session-${Date.now()}`;
-  const detectPath = typeof req.body?.path === 'string' && req.body.path.trim()
-    ? req.body.path.trim()
-    : '.';
-
-  const requiredTools = ['project_detect', 'auth_builder', 'swagger_docs', 'dead_code_detector', 'mobile_builder'];
-  const available = new Set(tools.map(t => String((t as any)?.name || '').trim()).filter(Boolean));
-  const toolPresence = Object.fromEntries(requiredTools.map(n => [n, available.has(n)]));
-
-  const orchestrator = new AgentOrchestrator();
-  const detectResult = await orchestrator.execute({
-    id: sessionId || `session-${Date.now()}`,
-    goal: `Detect project structure at path "${detectPath}" in workspace ${workspaceId}`
-  });
-
-  const ok = requiredTools.every(n => toolPresence[n]) && !!detectResult?.ok;
-  return res.json({
-    ok,
-    toolPresence,
-    projectDetect: detectResult.result
-  });
 });
 
 router.post('/execute', authenticate, async (req: Request, res: Response) => {

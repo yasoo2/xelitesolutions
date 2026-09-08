@@ -95,7 +95,6 @@ import { ScreenshotTool, VisualComparisonTool } from './definitions/ScreenshotTo
 import { SearchApiTool } from './definitions/SearchApiTool';
 import { SwaggerDocsTool } from './definitions/SwaggerDocsTool';
 import { TaskLifecycleTool } from './definitions/TaskLifecycleTool';
-import { TaskLoopTool } from './definitions/TaskLoopTool';
 import { TodoWriteTool } from './definitions/TodoWriteTool';
 import { DirectoryInspectionTool, FileSearchTool, SearchTextTool, SymbolInspectorTool, AdvancedFileEditTool } from './definitions/UtilityTools';
 import { VideoActionTool } from './definitions/VideoActionTool';
@@ -212,7 +211,6 @@ const revivedTools: (ToolDefinition | null)[] = [
   safeNew('knowledge_search', () => new KnowledgeSearchTool()),
   safeNew('knowledge_add', () => new KnowledgeAddTool()),
   safeNew('task_lifecycle', () => new TaskLifecycleTool()),
-  safeNew('task_loop', () => new TaskLoopTool()),
   safeNew('inspect_directory', () => new DirectoryInspectionTool()),
   safeNew('search_files', () => new FileSearchTool()),
   // Content search — «grep» and its five synonyms resolve HERE now.

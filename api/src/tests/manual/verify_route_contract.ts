@@ -38,8 +38,8 @@ async function main() {
     const ui = uiPaths();
     check(`الخادم يعلن ${routes.length} مساراً حقيقياً`, routes.length > 100, String(routes.length));
     check(`الواجهة تنادي ${ui.length} مساراً`, ui.length > 40, String(ui.length));
-    check('الخريطة تعرف مسارات نعرفها يقيناً (health / agent / sessions)',
-        ['/api/health', '/api/agent', '/api/sessions', '/api/sessions/abc/messages', '/api/audio/speech']
+    check('الخريطة تعرف مسارات نعرفها يقيناً (health / runs / sessions)',
+        ['/api/health', '/api/runs/start', '/api/sessions', '/api/sessions/abc/messages', '/api/audio/speech']
             .every(p => routes.some(r => routeRegex(r.path).test(p))),
         routes.filter(r => /health|agent|sessions/.test(r.path)).map(r => r.path).slice(0, 8).join(' | '));
 

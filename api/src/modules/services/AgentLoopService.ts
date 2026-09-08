@@ -631,7 +631,7 @@ export class AgentLoopService {
             ]), RUN_DEADLINE_MS, 'run');
 
             // [FIX] Surface the final answer to the chat UI.
-            // The /run/start route is fire-and-forget, so without this broadcast the
+            // The /runs/start route is fire-and-forget, so without this broadcast the
             // orchestrator's result is discarded and the chat shows no reply even
             // though the answer was computed correctly. We emit a 'text' event (the
             // assistant message the frontend renders) plus 'run_finished' (stops the

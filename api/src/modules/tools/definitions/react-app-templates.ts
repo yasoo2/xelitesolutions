@@ -2558,9 +2558,14 @@ export default function ChatApp({ content }) {
 
 /* ── engine 4: weather — live data, no key, no account ──────────────────── */
 
-export function fileWeatherAppJsx(isAr: boolean): string {
+export function fileWeatherAppJsx(isAr: boolean, request = ''): string {
     const T = (ar: string, en: string) => `'${q(isAr ? ar : en)}'`;
     const lang = isAr ? 'ar' : 'en';
+    const requestedCities = (String(request || '').match(/\bfor\s+(.{1,160}?)\s+using\b/i)?.[1] || '')
+        .split(/\s*,\s*|\s+and\s+/i)
+        .map(city => city.trim().replace(/^and\s+/i, '').replace(/[^\p{L}\p{M} .'-]/gu, ''))
+        .filter(city => city.length >= 2)
+        .slice(0, 8);
     const codes = isAr
         ? `{ 0: 'صحو', 1: 'صحو غالباً', 2: 'غائم جزئياً', 3: 'غائم', 45: 'ضباب', 48: 'ضباب متجمد', 51: 'رذاذ خفيف', 53: 'رذاذ', 55: 'رذاذ كثيف', 61: 'مطر خفيف', 63: 'مطر', 65: 'مطر غزير', 71: 'ثلج خفيف', 73: 'ثلج', 75: 'ثلج كثيف', 80: 'زخات', 81: 'زخات قوية', 82: 'زخات عنيفة', 95: 'عاصفة رعدية', 96: 'رعد وبَرَد', 99: 'رعد وبَرَد شديد' }`
         : `{ 0: 'Clear', 1: 'Mostly clear', 2: 'Partly cloudy', 3: 'Overcast', 45: 'Fog', 48: 'Rime fog', 51: 'Light drizzle', 53: 'Drizzle', 55: 'Dense drizzle', 61: 'Light rain', 63: 'Rain', 65: 'Heavy rain', 71: 'Light snow', 73: 'Snow', 75: 'Heavy snow', 80: 'Showers', 81: 'Heavy showers', 82: 'Violent showers', 95: 'Thunderstorm', 96: 'Thunder & hail', 99: 'Severe thunder & hail' }`;
@@ -2575,6 +2580,7 @@ const ICONS = { 0: '☀️', 1: '🌤️', 2: '⛅', 3: '☁️', 45: '🌫️',
 const FORECAST_API = 'https://api.open-meteo.com/v1/forecast';
 const GEOCODING_API = 'https://geocoding-api.open-meteo.com/v1/search';
 const EMPTY_CITY_MESSAGE = ${T('أدخل اسم المدينة قبل البحث.', 'Enter a city before searching.')};
+const REQUESTED_CITY_NAMES = ${JSON.stringify(requestedCities)};
 
 const readSetting = (key, fallback) => {
   try { return localStorage.getItem(key) || fallback; } catch { return fallback; }
@@ -2603,6 +2609,11 @@ export default function WeatherApp({ content }) {
   const [note, setNote] = useState('');
   const [unit, setUnit] = useState(() => readSetting(content.storeKey + ':unit', 'C'));
   const [timeFormat, setTimeFormat] = useState(() => readSetting(content.storeKey + ':time', '24h'));
+  const [comparisonData, setComparisonData] = useState([]);
+  const [loading, setLoading] = useState(REQUESTED_CITY_NAMES.length > 0);
+  const [error, setError] = useState('');
+  const [dataSource, setDataSource] = useState('live');
+  const [lastUpdated, setLastUpdated] = useState(null);
 
   useEffect(() => { store.write(cities); }, [cities, store]);
   useEffect(() => { try { localStorage.setItem(content.storeKey + ':unit', unit); } catch { /* private mode */ } }, [unit, content.storeKey]);
@@ -2614,6 +2625,38 @@ export default function WeatherApp({ content }) {
     return unit === 'F' ? Math.round((c * 9) / 5 + 32) : Math.round(c);
   };
   const isSaved = place && cities.some(c => c.name === place.name);
+
+  const loadComparison = async () => {
+    if (!REQUESTED_CITY_NAMES.length) return;
+    setLoading(true); setError('');
+    try {
+      const rows = await Promise.all(REQUESTED_CITY_NAMES.map(async name => {
+        const geocode = await fetch(GEOCODING_API + '?' + new URLSearchParams({ count: '1', language: '${lang}', format: 'json', name }));
+        if (!geocode.ok) throw new Error('geocoding HTTP ' + geocode.status);
+        const place = (await geocode.json()).results?.[0];
+        if (!place) throw new Error('city not found: ' + name);
+        const weather = await fetch(FORECAST_API + '?' + new URLSearchParams({ latitude: String(place.latitude), longitude: String(place.longitude), current_weather: 'true', timezone: 'auto' }));
+        if (!weather.ok) throw new Error('weather HTTP ' + weather.status);
+        const payload = await weather.json();
+        if (!payload?.current_weather) throw new Error('invalid weather response');
+        return { name, temperature: payload.current_weather.temperature, code: payload.current_weather.weathercode };
+      }));
+      setComparisonData(rows); setDataSource('live');
+      const updatedAt = new Date().toISOString();
+      setLastUpdated(updatedAt);
+      try { localStorage.setItem(content.storeKey + ':comparison-cache', JSON.stringify({ rows, updatedAt })); } catch { /* private mode */ }
+    } catch (reason) {
+      let cached = null;
+      try { cached = JSON.parse(localStorage.getItem(content.storeKey + ':comparison-cache') || 'null'); } catch { /* corrupt cache */ }
+      const rows = Array.isArray(cached?.rows) && cached.rows.length
+        ? cached.rows
+        : REQUESTED_CITY_NAMES.map((name, index) => ({ name, temperature: 18 + index * 3, code: index % 3 }));
+      setComparisonData(rows); setDataSource('fallback'); setLastUpdated(cached?.updatedAt || new Date().toISOString());
+      setError(${T('تعذرت الشبكة؛ أعرض بيانات بديلة مخبأة ويمكنك إعادة المحاولة.', 'Network failed; showing cached sample fallback data. You can retry.')});
+    } finally { setLoading(false); }
+  };
+
+  useEffect(() => { void loadComparison(); }, []);
 
   const load = async (p) => {
     if (!p || !Number.isFinite(Number(p.lat)) || !Number.isFinite(Number(p.lng))) {
@@ -2699,20 +2742,31 @@ export default function WeatherApp({ content }) {
     <div className="wrap">
       <section data-reveal-section className="panel">
         <div className="toolbar">
-          <div><h1>WeatherGo</h1><p className="muted small">{${T('طقس حقيقي من Open-Meteo', 'Live weather from Open-Meteo')}}</p></div>
+          <div><h2>WeatherGo</h2><p className="muted small">{${T('طقس حقيقي من Open-Meteo', 'Live weather from Open-Meteo')}}</p></div>
           <button className="btn ghost" type="button" onClick={locate} disabled={busy}>{${T('موقعي', 'My location')}}</button>
         </div>
         <nav className="toolbar" aria-label={${T('تنقل الطقس', 'Weather navigation')}}>
           {nav.map(([key, label]) => <button key={key} className={'btn tiny ' + (screen === key ? '' : 'ghost')} type="button" onClick={() => setScreen(key)}>{label}</button>)}
         </nav>
         <form className="toolbar" onSubmit={search}>
-          <input className="search" type="search" value={query} onChange={e => { setQuery(e.target.value); setScreen('search'); }} placeholder={${T('اكتب اسم مدينة لاقتراحات تلقائية…', 'Type a city for autocomplete suggestions…')}} aria-label={${T('بحث عن مدينة', 'Search for a city')}} />
+          <input className="search" type="search" required value={query} onChange={e => { setQuery(e.target.value); setScreen('search'); }} placeholder={${T('اكتب اسم مدينة لاقتراحات تلقائية…', 'Type a city for autocomplete suggestions…')}} aria-label={${T('بحث عن مدينة', 'Search for a city')}} />
           <button className="btn" type="submit" disabled={busy || !query.trim()}>{${T('بحث', 'Search')}}</button>
-          <button className="btn ghost" type="button" onClick={() => setUnit(unit === 'C' ? 'F' : 'C')}>{unit === 'C' ? '°C' : '°F'}</button>
+          <button className={'btn ghost ' + (unit === 'C' ? 'active' : '')} aria-pressed={unit === 'C'} type="button" onClick={() => setUnit('C')}>Celsius °C</button>
+          <button className={'btn ghost ' + (unit === 'F' ? 'active' : '')} aria-pressed={unit === 'F'} type="button" onClick={() => setUnit('F')}>Fahrenheit °F</button>
         </form>
         {busy ? <p className="muted" role="status">{${T('جار التحميل…', 'Loading…')}}</p> : null}
         {note ? <p className="err" role="alert">{note}</p> : null}
       </section>
+
+      {REQUESTED_CITY_NAMES.length ? (
+        <section data-reveal-section className="panel">
+          <div className="toolbar"><div><h2>${isAr ? 'مقارنة المدن' : 'City comparison'}</h2><p className="muted small">${isAr ? 'آخر تحديث' : 'Last updated'}: {lastUpdated ? new Date(lastUpdated).toLocaleString('${lang}') : '—'}</p></div>{dataSource === 'fallback' ? <strong role="status">${isAr ? 'بديل دون اتصال · بيانات نموذجية مخبأة' : 'Offline fallback · cached sample data'}</strong> : <span className="muted">${isAr ? 'بيانات حية' : 'Live data'}</span>}</div>
+          {loading ? <p role="status">${isAr ? 'جاري تحميل الطقس…' : 'Loading weather…'}</p> : null}
+          {error ? <p className="err" role="alert">{error} <button className="btn tiny" type="button" onClick={() => void loadComparison()}>${isAr ? 'إعادة المحاولة' : 'Retry'}</button></p> : null}
+          {!loading && comparisonData.length === 0 ? <p className="empty">${isAr ? 'لا توجد بيانات طقس.' : 'No weather data available.'}</p> : null}
+          {comparisonData.length ? <ul className="rows">{comparisonData.map(city => <li className="row" key={city.name}><div className="row-main"><h3>{city.name}</h3><p className="muted">{describe(city.code)}</p></div><strong className="now-temp">{show(city.temperature)}°{unit}</strong></li>)}</ul> : null}
+        </section>
+      ) : null}
 
       {screen === 'search' ? (
         <section data-reveal-section className="panel">
@@ -3037,10 +3091,10 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--accent,#06c);out
    remains independently scrollable, while the page itself never becomes wider
    than the viewport because of a label, action row, or generated title. */
 @media (max-width: 480px){
-  .app-bar-in{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center}
-  .app-id{grid-column:1/-1;display:flex;align-items:baseline;gap:8px;width:100%}
+  .app-bar-in{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center}
+  .app-id{grid-column:auto;display:flex;align-items:baseline;gap:8px;width:100%}
   .app-name{min-width:0;overflow-wrap:anywhere}
-  .app-sub{display:block;min-width:0;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .app-sub{display:none}
   .auth-chip{min-width:0;max-width:100%}
   .auth-who{display:none}
   .wrap{width:100%;padding:12px;overflow-x:clip}
@@ -4259,6 +4313,7 @@ export default function CustomApp({ content }) {
           </div>
         </>}
       </section>
+
     </div>
   </main>;
 }
@@ -4286,7 +4341,7 @@ export function buildAppFiles(bp: AppBlueprint, o: AppBuildOptions, slugName: st
     const engineFile: Record<AppBlueprint['engine'], [string, string]> = {
         map: ['src/components/MapApp.jsx', fileMapAppJsx(o.isArabic)],
         chat: ['src/components/ChatApp.jsx', fileChatAppJsx(o.isArabic)],
-        weather: ['src/components/WeatherApp.jsx', fileWeatherAppJsx(o.isArabic)],
+        weather: ['src/components/WeatherApp.jsx', fileWeatherAppJsx(o.isArabic, o.sourceRequest || '')],
         records: ['src/components/RecordsApp.jsx', fileRecordsAppJsx(o.isArabic)],
         ledger: ['src/components/LedgerApp.jsx', fileLedgerAppJsx(o.isArabic)],
         social: ['src/components/SocialApp.jsx', fileSocialAppJsx(o.isArabic)],

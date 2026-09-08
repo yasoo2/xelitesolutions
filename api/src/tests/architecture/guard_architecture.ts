@@ -5,6 +5,20 @@ const plannerPath = path.resolve(__dirname, '../../modules/tools/definitions/Pro
 const agentLoopPath = path.resolve(__dirname, '../../modules/services/AgentLoopService.ts');
 const repairTicketServicePath = path.resolve(__dirname, '../../modules/services/RepairTicketService.ts');
 const selfFixServicePath = path.resolve(__dirname, '../../modules/services/SelfFixService.ts');
+const appPath = path.resolve(__dirname, '../../api/app.ts');
+const registryPath = path.resolve(__dirname, '../../modules/tools/registry.ts');
+const toolCatalogPath = path.resolve(__dirname, '../../core/orchestrator/toolCatalog.ts');
+
+const RETIRED_EXECUTION_FILES = [
+  path.resolve(__dirname, '../../api/routes/agent.ts'),
+  path.resolve(__dirname, '../../api/routes/build.ts'),
+  path.resolve(__dirname, '../../core/agents/JoeAgent.ts'),
+  path.resolve(__dirname, '../../core/agents/AutonomousLoopEngine.ts'),
+  path.resolve(__dirname, '../../core/agents/ProjectManagerAgent.ts'),
+  path.resolve(__dirname, '../../core/agents/TaskExecutor.ts'),
+  path.resolve(__dirname, '../../core/agents/scaffold-entry.ts'),
+  path.resolve(__dirname, '../../modules/tools/definitions/TaskLoopTool.ts'),
+];
 
 function fail(msg: string) {
   console.error('❌ Architecture Guard Failed:\n' + msg);
@@ -25,6 +39,9 @@ function run() {
   const agentLoop = readRequired(agentLoopPath, 'AgentLoopService');
   const repairService = readRequired(repairTicketServicePath, 'RepairTicketService');
   const selfFixService = readRequired(selfFixServicePath, 'SelfFixService');
+  const app = readRequired(appPath, 'API app');
+  const registry = readRequired(registryPath, 'Tool Registry');
+  const toolCatalog = readRequired(toolCatalogPath, 'Tool Catalog');
 
   if (planner.includes('executeTool(')) {
     fail('ProjectPlannerTool must NOT call executeTool');
@@ -68,12 +85,31 @@ function run() {
     pass('AgentLoop is connected to self-fix execution');
   }
 
-  const registryPath = path.resolve(__dirname, '../../modules/tools/registry.ts');
-  const registry = readRequired(registryPath, 'Tool Registry');
   if (!registry.includes('TerminalManagerTool')) {
     fail('TerminalManagerTool must be registered in src/modules/tools/registry.ts');
   } else {
     pass('TerminalManagerTool is registered in tools registry');
+  }
+
+  const retiredFilesStillPresent = RETIRED_EXECUTION_FILES.filter(filePath => fs.existsSync(filePath));
+  if (retiredFilesStillPresent.length) {
+    fail(`Retired execution files must not return: ${retiredFilesStillPresent.join(', ')}`);
+  } else {
+    pass('Retired execution files are absent');
+  }
+
+  const forbiddenWiring = [
+    [app, "apiRouter.use('/agent'"],
+    [app, "apiRouter.use('/build'"],
+    [app, "apiRouter.use('/run'"],
+    [registry, 'TaskLoopTool'],
+    [registry, "safeNew('task_loop'"],
+    [toolCatalog, "'task_loop'"],
+  ].filter(([source, needle]) => source.includes(needle));
+  if (forbiddenWiring.length) {
+    fail(`Retired execution wiring must not return: ${forbiddenWiring.map(([, needle]) => needle).join(', ')}`);
+  } else {
+    pass('Only the canonical /api/runs execution ingress remains');
   }
 
   pass('Architecture guard passed');

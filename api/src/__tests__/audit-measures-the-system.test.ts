@@ -41,6 +41,22 @@ function auditCallSites(src: string): string[] {
 }
 
 describe('the audit measures the system, not the folder', () => {
+    it('carries the original request into every React browser audit', () => {
+        const r = read('modules', 'tools', 'definitions', 'ReactProjectTool.ts');
+        const calls = auditCallSites(r);
+        expect(calls.length).toBeGreaterThanOrEqual(2);
+        expect(calls.filter(call => !call.includes('request,')).length).toBe(0);
+        const audit = read('core', 'quality', 'app-audit.ts');
+        expect(audit).toContain('request?: string;');
+        expect(audit).toContain("id: 'weather_offline_fallback_failed'");
+        expect(audit).toContain("id: 'weather_retry_recovery_failed'");
+        expect(audit).toContain("id: 'weather_unit_roundtrip_failed'");
+        expect(audit).toContain('expectedWeatherNetworkFailure');
+        expect(audit).toContain('Live\\s+data|بيانات\\s+حية');
+        expect(audit).toContain("const apiPattern = '**/*open-meteo.com/**'");
+        expect(audit).toContain('await page.route(apiPattern, weatherFixture)');
+    });
+
     it('it can be pointed at a running address instead of serving a dist', () => {
         const a = read('core', 'quality', 'app-audit.ts');
         expect(a).toMatch(/serveUrl\?: string;/);

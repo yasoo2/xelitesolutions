@@ -490,7 +490,7 @@ export function detectAppKind(requestRaw: string): AppKind | null {
      *  where a name becomes an enumeration, and it needs no vocabulary and
      *  no catalogue to know it.
      */
-    if ((columnsAnywhereInHisRequest(intentRequest)?.length || 0) >= 2) return 'generic';
+    if (hasExplicitRecordSchema(intentRequest)) return 'generic';
 
     /**
      * Score every registered archetype instead of returning the first keyword
@@ -2348,7 +2348,7 @@ function firstColumnBeginsAtTheName(firstRaw: string, afterAContainer: boolean):
 const OPENS_A_NEW_REQUEST = /^(?:مع|plus|with|along\s+with|together\s+with|including|and)(?=$|[\s،,])/iu;
 
 /** A behaviour beside fields is an app requirement, not another column. */
-const CAPABILITY_CLAUSE = /^(?:(?:empty[-\s]+)?(?:name|field|input)\s+validation|(?:status|state)\s+(?:filter(?:ing)?|selection)|(?:text\s+)?search(?:ing)?|filter(?:ing)?|sort(?:ing)?|export(?:ing)?(?:\s+(?:csv|data|records))?|validation|(?:بحث|تصفية|فلترة|فرز|تصدير|تحقق|تحقّق|صلاحية|التحقق|التأكد|تأكيد)(?:\s|$))/iu;
+const CAPABILITY_CLAUSE = /^(?:(?:(?:distinct|clear|visible|live|forced|offline)\s+)*(?:loading|success|empty|error|retry|fallback|network(?:[-\s]+failure)?)(?:[-/\s]+(?:loading|success|empty|error|retry|fallback|states?))*|(?:empty[-\s]+)?(?:name|field|input)\s+validation|(?:status|state)\s+(?:filter(?:ing)?|selection)|(?:text\s+)?search(?:ing)?|filter(?:ing)?|sort(?:ing)?|export(?:ing)?(?:\s+(?:csv|data|records))?|validation|(?:بحث|تصفية|فلترة|فرز|تصدير|تحقق|تحقّق|صلاحية|التحقق|التأكد|تأكيد)(?:\s|$))/iu;
 
 /**
   ⛔ AND THIS LIST IS EXPLICIT ON PURPOSE, AFTER A LETTER RULE FAILED.
@@ -2639,7 +2639,7 @@ export function clausesBeyondTheColumns(requestRaw: string): string[] {
  *  difference with a closed class of three words, and that is the
  *  whole test: no catalogue of page names, no list of field names.
  */
-const ENGLISH_INTRODUCES_A_LIST = /(?:^|[.!?]\s+|[\s,;:(])(?:(?:must|should)\s+(?:provide|include|have)|add|include(?:s|d)?|containing|consisting\s+of|made\s+up\s+of|with)(?=\s)/iu;
+const ENGLISH_INTRODUCES_A_LIST = /(?:^|[.!?]\s+|[\s,;:(])(?:(?:must|should)\s+(?:provide|include|have)|needs?|requires?|add|include(?:s|d)?|containing|consisting\s+of|made\s+up\s+of|with)(?=\s)/iu;
 const OPENS_WITH_AN_ARTICLE = /^(?:a|an|the)\s+/iu;
 
 /**
@@ -2690,7 +2690,13 @@ function theListAnIntroducerHandedOver(request: string): DerivedField[] | null {
             // "numeric-only amount" declares the amount's contract; it is
             // not the label a person should see on the form.
             .replace(/^(?:numeric|number)(?:[-\s]only)?\s+/iu, '')
+            .replace(/\s+fields?$/iu, '')
             .trim());
+        // `include` also introduces product capabilities. If any member is a
+        // runtime or interface state, the list describes behaviour rather than
+        // the shape of one stored record. Refuse the whole candidate instead of
+        // manufacturing fields such as "loading" and "retry states".
+        if (rawItems.some(part => CAPABILITY_CLAUSE.test(part))) continue;
         //  No floor here: the run check below is the same floor, and
         //  columnsEndWhereHisNextRequestBegins never grows a list. A
         //  mutation proved this one could never decide anything — with it
@@ -3173,6 +3179,21 @@ function canonicalFieldKey(label: string): string | null {
     return null;
 }
 
+/**
+ * One canonical answer to whether the user explicitly declared stored fields.
+ * Callers must not grow their own field-name catalogues: those duplicate paths
+ * drift and eventually mistake capability lists for record schemas.
+ */
+export function hasExplicitRecordSchema(requestRaw: string): boolean {
+    if (hasWorkflowApplicationContract(requestRaw)) return false;
+    const request = stripArabicDiacritics(String(requestRaw || '')).trim();
+    const isBuildRequest = /^(?:please\s+)?(?:create|build|make|develop|design|scaffold|generate)\b/i.test(request)
+        || /^(?:بدي|أريد|اريد|أنشئ|انشئ|ابن|اصنع|صمم|طوّر|طور|اعمل)(?:\s|$)/iu.test(request);
+    if (!isBuildRequest) return false;
+    const columns = columnsAnywhereInHisRequest(requestRaw);
+    return Array.isArray(columns) && columns.length >= 2;
+}
+
 function fieldsFromLabels(parts: string[]): DerivedField[] | null {
     const seen = new Map<DerivedRole, number>();
     const usedKeys = new Set<string>();
@@ -3594,6 +3615,8 @@ function wantsProgressMetric(requestRaw: string): boolean {
 }
 
 function completionOption(options: string[], isAr: boolean): string | undefined {
+    const affirmative = options.find(option => /^(?:yes|نعم)$/iu.test(String(option || '').trim()));
+    if (affirmative) return affirmative;
     return options.find(option => /done|complete|completed|finished|closed|منجز|مكتمل|تم(?:ت|ّ)?(?:ت|ة)?|مغلق|منته/iu.test(option))
         || options[options.length - 1]
         || (isAr ? 'منجز' : 'Done');
