@@ -44,6 +44,25 @@ export function requestsVisibleBrowserAudit(request: string): boolean {
     return /(?:\b(?:test|verify|check|inspect|audit)\b[\s\S]{0,55}\b(?:browser|preview|ui|visual(?:ly)?)\b|\b(?:browser|preview|ui|visual)\s+(?:test|qa|check|audit)\b|(?:اختبر|تحقق|افحص|دقق|راجع)[\s\S]{0,45}(?:المتصفح|المعاينه|الواجهه|بصريا|مرئيا)|(?:اختبار|فحص|تدقيق|مراجعه)[\s\S]{0,35}(?:المتصفح|الواجهه|بصري|مرئي))/i.test(probe);
 }
 
+/** Ground a compound contact-link and telephone challenge in measured browser evidence. */
+export function provesContactLinkAndPhoneAudit(audit: any, ctaLabel: string): boolean {
+    if (!audit || audit.skipped || !ctaLabel) return false;
+    const linkWorked = (audit.controls || []).some((control: any) => {
+        const label = String(control?.bare || control?.label || '');
+        return label.includes(ctaLabel)
+            && control?.worked === true
+            && (!control?.href || String(control.href).endsWith('#contact'));
+    });
+    const phoneRejectedInvalid = (audit.semanticValidationEvidence || []).some((evidence: any) =>
+        evidence?.expected === 'tel'
+        && evidence?.actual === 'tel'
+        && evidence?.rejected === true);
+    return linkWorked
+        && phoneRejectedInvalid
+        && Number(audit.fieldsFilled || 0) > 0
+        && Number(audit.semanticValidationFailures || 0) === 0;
+}
+
 /**
  * Parse the model's reply into blocks. Format (Aider-style, fenced per file):
  *
@@ -117,6 +136,8 @@ export function parseLiteralTextReplacement(request: string): { from: string; to
 export type PresentationEdit =
     | { kind: 'literal'; from: string; to: string }
     | { kind: 'brand_mark'; value: string; beside: string }
+    | { kind: 'hero_contact_cta'; label: string }
+    | { kind: 'phone_field'; required: boolean; rejectLetters: boolean }
     | { kind: 'section_subtitle'; section: string; value: string };
 
 export interface ServicesSectionEdit {
@@ -161,6 +182,24 @@ export function parsePresentationEdits(request: string): PresentationEdit[] {
 
     const mark = text.match(/(?:أضف|اضف|ضع|حط|add)\s+[^،.\n]{0,55}(?:شعار|علام[ةه]|\b(?:logo|mark)\b)[^«"\n]{0,55}[«"]([^»"\n]{1,24})[»"][^،.\n]{0,90}(?:بجانب|قرب|محاذاة|beside|next\s+to)[^«"\n]{0,45}[«"]([^»"\n]{1,80})[»"]/iu);
     if (mark) out.push({ kind: 'brand_mark', value: mark[1].trim(), beside: mark[2].trim() });
+    else {
+        const derivedMark = text.match(/(?:أضف|اضف|ضع|حط|add)\s+[^،.\n]{0,65}(?:شعار|علام[ةه]|\b(?:logo|mark)\b)[^،.\n]{0,65}(?:بجانب|قرب|محاذاة|beside|next\s+to)\s*[«"]([^»"\n]{1,80})[»"]/iu);
+        const beside = derivedMark?.[1]?.trim() || '';
+        const value = Array.from(beside.replace(/\s+/g, ''))[0] || '';
+        if (beside && value) out.push({ kind: 'brand_mark', value, beside });
+    }
+
+    const heroCta = text.match(/(?:أضف|اضف|ضع|حط|add)\s+(?:لي\s+)?(?:زر|button|cta)\s*[«"]([^»"\n]{1,80})[»"][^،.\n]{0,120}(?:القسم\s+(?:الرئيسي|الافتتاحي)|واجهة\s+(?:الموقع|الصفحة)|\bhero\b)[^،.\n]{0,140}(?:نموذج\s+التواصل|قسم\s+التواصل|\bcontact(?:\s+form|\s+section)?\b)/iu);
+    if (heroCta) out.push({ kind: 'hero_contact_cta', label: heroCta[1].trim() });
+
+    const phoneClause = text.match(/(?:أضف|اضف|ضع|حط|add)\s+[^،.\n]{0,35}(?:حقل|input|field)[^،.\n]{0,30}(?:رقم\s+هاتف|هاتف|telephone|phone)[^،.\n]*/iu)?.[0] || '';
+    if (phoneClause) {
+        out.push({
+            kind: 'phone_field',
+            required: /(?:مطلوب|required)/iu.test(phoneClause),
+            rejectLetters: /(?:لا\s+يقبل[^،.\n]{0,20}(?:حروف|احرف)|reject[^،.\n]{0,20}letters?|numeric[ -]?only)/iu.test(phoneClause),
+        });
+    }
 
     const below = text.match(/(?:أضف|اضف|ضع|حط|add)\s+(?:تحت|أسفل|اسفل|below|under)\s+(?:عنوان|heading|title)?\s*([^«"،,.\n]{2,60})[^«"\n]{0,50}(?:سطر(?:ا|ًا)?|نص(?:ا|ًا)?|وصف(?:ا|ًا)?|subtitle|line|text)\s*[«"]([^»"\n]{1,220})[»"]/iu);
     const lineFirst = text.match(/(?:أضف|اضف|ضع|حط|add)\s+(?:سطر(?:ا|ًا)?|نص(?:ا|ًا)?|وصف(?:ا|ًا)?|subtitle|line|text)\s*[«"]([^»"\n]{1,220})[»"][^،.\n]{0,70}(?:تحت|أسفل|اسفل|below|under)\s+(?:عنوان|heading|title)?\s*([^،.\n]{2,60})/iu);
@@ -724,6 +763,11 @@ export class ProjectEditTool extends BaseTool {
          */
         const presentationEdits = parsePresentationEdits(request);
         if (!touched.length && presentationEdits.length > 1 && fs.existsSync(path.join(dir, contentRel))) {
+            // A recognized deterministic batch is handled even when every
+            // requested value is already present. Falling through merely
+            // because no byte changed makes an idempotent retry wait for an
+            // LLM and fail when providers are unavailable.
+            deterministicIntentHandled = true;
             const pending = new Map<string, string>();
             const read = (rel: string) => pending.get(rel) ?? fs.readFileSync(path.join(dir, rel), 'utf-8');
             const stage = (rel: string, body: string) => pending.set(rel, body);
@@ -766,6 +810,40 @@ export class ProjectEditTool extends BaseTool {
                     }
                     ensureCss('.brand-text-mark{display:inline-grid;place-items:center;width:1.8rem;height:1.8rem;margin-inline-end:.55rem;border-radius:.4rem;background:var(--brand);color:var(--on-brand);font-size:.78rem;font-weight:800;line-height:1}', '.brand-text-mark{');
                     notes.push(isAr ? `أضفت العلامة النصية «${op.value}» بجانب «${brand}».` : `Added the text mark "${op.value}" beside "${brand}".`);
+                    continue;
+                }
+
+                if (op.kind === 'hero_contact_cta') {
+                    let content = read(contentRel);
+                    const hero = editable.find(rel => /(?:Hero|Header)\.(?:jsx|tsx|js|ts)$/i.test(rel) && read(rel).includes('content.cta'));
+                    if (!hero || !read(hero).includes('content.contactHref')) { failures.push('hero contact CTA renderer not found'); continue; }
+                    if (/\n\s*cta:\s*'[^']*'/.test(content)) content = content.replace(/(\n\s*cta:\s*)'[^']*'/, `$1'${jsEsc(op.label)}'`);
+                    else { failures.push('hero CTA content row not found'); continue; }
+                    if (/\n\s*contactHref:\s*'[^']*'/.test(content)) content = content.replace(/(\n\s*contactHref:\s*)'[^']*'/, "$1'#contact'");
+                    else content = content.replace(/(\n\s*cta:\s*'[^']*',)/, `$1\n  contactHref: '#contact',`);
+                    stage(contentRel, content);
+                    notes.push(isAr ? `أضفت زر «${op.label}» في القسم الرئيسي وربطته بنموذج التواصل.` : `Added the “${op.label}” hero button and linked it to the contact form.`);
+                    continue;
+                }
+
+                if (op.kind === 'phone_field') {
+                    const component = editable.find(rel => /Contact\.(?:jsx|tsx|js|ts)$/i.test(rel) && read(rel).includes('<form'));
+                    if (!component) { failures.push('contact form component not found'); continue; }
+                    let view = read(component);
+                    if (!/\bphone\s*:/.test(view)) {
+                        const state = /useState\(\{\s*name:\s*'',\s*email:\s*'',\s*msg:\s*''\s*\}\)/;
+                        if (!state.test(view)) { failures.push('contact form state contract not found'); continue; }
+                        view = view.replace(state, "useState({ name: '', email: '', phone: '', msg: '' })");
+                    }
+                    if (!/type=["']tel["']/.test(view)) {
+                        const textarea = /(\s*)<textarea\s+required/;
+                        if (!textarea.test(view)) { failures.push('contact message field insertion point not found'); continue; }
+                        const required = op.required ? ' required' : '';
+                        const input = `            <input${required} type="tel" inputMode="tel" pattern="[0-9+ ]{7,20}" aria-label={content.isArabic ? 'رقم الهاتف' : 'Phone number'} placeholder={content.isArabic ? 'رقم الهاتف' : 'Phone number'} value={form.phone}\n              onChange={(e) => setForm({ ...form, phone: e.target.value.replace(/[^0-9+ ]/g, '') })} />`;
+                        view = view.replace(textarea, `${input}\n$1<textarea required`);
+                    }
+                    stage(component, view);
+                    notes.push(isAr ? 'أضفت حقل هاتف مطلوباً بقيود رقمية قابلة للاختبار.' : 'Added a required telephone field with testable numeric validation.');
                     continue;
                 }
 
@@ -1668,6 +1746,17 @@ This is a correct answer, not a failure. Changing something the user did not ask
         const htmlNow = now('index.html');
         const tokensNow = now('src/styles/tokens.css');
         const literalRename = parseLiteralTextReplacement(request);
+        const brandMarkEdit = presentationEdits.find((op): op is Extract<PresentationEdit, { kind: 'brand_mark' }> => op.kind === 'brand_mark');
+        const heroCtaEdit = presentationEdits.find((op): op is Extract<PresentationEdit, { kind: 'hero_contact_cta' }> => op.kind === 'hero_contact_cta');
+        const phoneEdit = presentationEdits.find((op): op is Extract<PresentationEdit, { kind: 'phone_field' }> => op.kind === 'phone_field');
+        if (heroCtaEdit && phoneEdit && audit && !audit.skipped) {
+            const namedControls = (audit.controls || [])
+                .filter((control: any) => String(control?.bare || control?.label || '').includes(heroCtaEdit.label))
+                .map((control: any) => ({ label: control.bare || control.label, kind: control.kind, worked: control.worked, effect: control.effect, href: control.href }));
+            const phoneEvidence = (audit.semanticValidationEvidence || [])
+                .filter((evidence: any) => evidence?.expected === 'tel' || evidence?.actual === 'tel');
+            logs.push(`acceptance browser evidence: controls=${JSON.stringify(namedControls)}; phone=${JSON.stringify(phoneEvidence)}; fieldsFilled=${Number(audit.fieldsFilled || 0)}; semanticFailures=${Number(audit.semanticValidationFailures || 0)}`);
+        }
         const serviceBlock = (contentNow.match(/services:\s*\[([\s\S]*?)\n\s*\],/) || [])[1] || '';
         const serviceRows = (serviceBlock.match(/\{\s*title:\s*'/g) || []).length;
         const hasServiceTarget = /href:\s*'#services'/.test(contentNow)
@@ -1676,12 +1765,28 @@ This is a correct answer, not a failure. Changing something the user did not ask
         const wantedPrimary = buildPalette(request).primary;
         const criteria = acceptanceFor(request).map((criterion: any) => {
             const rule = criterion.expectedRule;
-            if (!rule) return criterion;
-            const text = String(rule.text || '');
             const decided = (met: boolean, why: string) => ({
                 ...criterion,
                 preJudged: { verdict: met ? 'met' : 'unmet', why },
             });
+            if (criterion.id === 'button' && heroCtaEdit) {
+                const hero = now('src/components/Hero.jsx');
+                const met = contentNow.includes(`cta: '${jsEsc(heroCtaEdit.label)}'`) && contentNow.includes("contactHref: '#contact'") && hero.includes('content.contactHref');
+                return decided(met, met ? `the “${heroCtaEdit.label}” hero control resolves to #contact` : 'the requested hero contact control is missing or points elsewhere');
+            }
+            if (!rule) return criterion;
+            const text = String(rule.text || '');
+            if (/(?:اختبر|تحقق|افحص|test|verify|check)/iu.test(text)
+                && /(?:الرابط|link)/iu.test(text)
+                && /(?:الحقل|field)/iu.test(text)
+                && /(?:صحيح|valid)/iu.test(text)
+                && /(?:غير\s+صحيح|خاطئ|invalid)/iu.test(text)
+                && /(?:المتصفح|browser)/iu.test(text)) {
+                const met = !!heroCtaEdit && !!phoneEdit && provesContactLinkAndPhoneAudit(audit, heroCtaEdit.label);
+                return decided(met, met
+                    ? `browser pressed the “${heroCtaEdit?.label}” link, filled the form, and proved the tel field rejects an invalid value`
+                    : 'browser evidence does not yet prove both the contact link and valid/invalid telephone values');
+            }
             if (/(?:اسم\s+العلامة|اسم\s+(?:الموقع|المشروع)|\b(?:brand|rename)\b)/iu.test(text) && literalRename) {
                 const escaped = literalRename.to.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
                 const newBrand = new RegExp(`brand:\\s*['"]${escaped}['"]`, 'u').test(contentNow);
@@ -1689,6 +1794,24 @@ This is a correct answer, not a failure. Changing something the user did not ask
                 return decided(newBrand && tabRenamed, newBrand && tabRenamed
                     ? `brand and document metadata now say “${literalRename.to}”`
                     : `brand rename to “${literalRename.to}” is missing from content or document metadata`);
+            }
+            if (/(?:شعار|علام[ةه]\s+نصي|\b(?:logo|brand\s+mark)\b)/iu.test(text) && brandMarkEdit) {
+                const navbar = now('src/components/Navbar.jsx');
+                const met = contentNow.includes(`brandMark: '${jsEsc(brandMarkEdit.value)}'`) && navbar.includes('content.brandMark');
+                return decided(met, met ? `the derived text mark “${brandMarkEdit.value}” renders beside the brand` : 'the requested text mark is missing from content or the navigation renderer');
+            }
+            if (/(?:زر|button|cta)/iu.test(text) && heroCtaEdit) {
+                const hero = now('src/components/Hero.jsx');
+                const met = contentNow.includes(`cta: '${jsEsc(heroCtaEdit.label)}'`) && contentNow.includes("contactHref: '#contact'") && hero.includes('content.contactHref');
+                return decided(met, met ? `the “${heroCtaEdit.label}” hero control resolves to #contact` : 'the requested hero contact control is missing or points elsewhere');
+            }
+            if (/(?:رقم\s+هاتف|هاتف|telephone|phone)/iu.test(text) && phoneEdit) {
+                const contact = now('src/components/Contact.jsx');
+                const met = /type=["']tel["']/.test(contact)
+                    && (!phoneEdit.required || /<input\s+required\s+type=["']tel["']/.test(contact))
+                    && /pattern=["'][^"']*0-9/.test(contact)
+                    && (!phoneEdit.rejectLetters || /replace\(\/\[\^0-9/.test(contact));
+                return decided(met, met ? 'the phone field is native tel, required, constrained, and strips disallowed characters' : 'the phone field contract is incomplete');
             }
             if (/(?:قسم\s+(?:ال)?خدمات|رابط[^\n]{0,30}(?:ال)?خدمات|\bservices?\b)/iu.test(text) && servicesEdit) {
                 const met = hasServiceTarget && serviceRows >= servicesEdit.count;

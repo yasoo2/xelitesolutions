@@ -43,4 +43,12 @@ describe('request integrity and browser QA language', () => {
         expect(semanticTypeForField('input', 'Birth date')).toBe('date');
         expect(semanticTypeForField('input', 'Start time')).toBe('time');
     });
+
+    it('recognises Arabic form semantics instead of skipping their validation', () => {
+        expect(semanticTypeForField('input', 'رقم الهاتف')).toBe('tel');
+        expect(semanticTypeForField('input', 'البريد الإلكتروني')).toBe('email');
+        expect(semanticTypeForField('input', 'تاريخ الميلاد')).toBe('date');
+        expect(semanticTypeForField('input', 'وقت البدء')).toBe('time');
+        expect(semanticTypeForField('input', 'الكمية')).toBe('number');
+    });
 });

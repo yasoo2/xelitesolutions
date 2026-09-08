@@ -46,6 +46,9 @@ describe('Arabic normalisation folds spellings a reader treats as identical', ()
         expect(normalizeIntentText('أريد تصميم واجهة')).toContain('صمم');
         expect(normalizeIntentText('فلترة حسب الشهر')).toContain('تصفية');
         expect(normalizeIntentText('التصميم متجاوب')).toContain('صمم');
+        expect(normalizeIntentText('بدي تصميم مودرن لواجهة جو')).toContain('صمم');
+        expect(PlanningEngine.looksLikeBuild('تصميم موقع شركة استشارات')).toBe(true);
+        expect(PlanningEngine.looksLikeBuild('هل يمكنك تصميم موقع شركة استشارات؟')).toBe(true);
     });
 
     it('does not peel the first letter from Arabic words that genuinely begin with waw', () => {

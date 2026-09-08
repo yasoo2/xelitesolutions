@@ -79,6 +79,8 @@ export interface ControlResult {
     instance?: number;
     /** Route and viewport in which this evidence was measured. */
     context?: string;
+    /** Durable destination evidence for links and in-page anchors. */
+    href?: string;
 }
 
 /** One form, actually filled in and actually sent. */
@@ -733,6 +735,18 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
         metrics.anchors = anchorTargets.length;
         const deadAnchors = anchorTargets.filter(a => !a.exists);
         metrics.deadAnchors = deadAnchors.length;
+        // In-page links are verified by resolving their destination rather than
+        // by clicking and disturbing the rest of the control walk. Preserve
+        // that real measurement in the same evidence stream as pressed controls
+        // so acceptance gates can prove a specifically requested CTA.
+        controls.push(...anchorTargets.map((anchor, instance) => ({
+            label: anchor.label,
+            kind: 'anchor' as const,
+            worked: anchor.exists,
+            effect: anchor.exists ? 'target' : '',
+            instance,
+            href: `#${anchor.target}`,
+        })));
 
         let budgetHit = false;
         let attemptedControls = 0;
@@ -812,7 +826,7 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                         el = matches[c.ordinal ?? 0] || null;
                     }
                 }
-                if (!el) { controls.push({ label: c.label, kind: c.kind as any, worked: false, effect: 'not found', instance: c.ordinal }); continue; }
+                if (!el) { controls.push({ label: c.label, kind: c.kind as any, worked: false, effect: 'not found', instance: c.ordinal, href: c.href }); continue; }
                 // An empty form with required fields is BLOCKED by the browser, so
                 // nothing in the DOM changes and a naive check calls the submit
                 // button dead. Refusing to submit an empty form is the behaviour
@@ -823,7 +837,7 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                         const form = btn?.closest('form') as HTMLFormElement | null;
                         return !!form && typeof form.checkValidity === 'function' && !form.checkValidity();
                     }, c.sel).catch(() => false);
-                    if (blocked) { controls.push({ label: c.label, kind: 'submit', worked: true, effect: 'validation', instance: c.ordinal }); continue; }
+                    if (blocked) { controls.push({ label: c.label, kind: 'submit', worked: true, effect: 'validation', instance: c.ordinal, href: c.href }); continue; }
                 }
                 await el.scrollIntoViewIfNeeded({ timeout: 2000 }).catch(() => { });
                 /**
@@ -908,7 +922,7 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                     }
                 }
                 if (!reachable) {
-                    controls.push({ label: c.label, kind: c.kind as any, worked: false, effect: 'not found', instance: c.ordinal });
+                    controls.push({ label: c.label, kind: c.kind as any, worked: false, effect: 'not found', instance: c.ordinal, href: c.href });
                     continue;
                 }
                 // From this point onward the pointer, hover, or click may alter
@@ -970,7 +984,7 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                 if (!eyeIsOpen()) break;
                 el = await stableHandle(c, el);
                 if (!el) {
-                    controls.push({ label: c.label, kind: c.kind as any, worked: false, effect: 'not found', instance: c.ordinal });
+                    controls.push({ label: c.label, kind: c.kind as any, worked: false, effect: 'not found', instance: c.ordinal, href: c.href });
                     continue;
                 }
                 // Use Playwright's stability check. A forced coordinate click
@@ -997,7 +1011,7 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                     await page.waitForSelector('a[href^="#/"]', { timeout: 2500 }).catch(() => { });
                 }
             } catch { /* the control itself is what is under test */ }
-            controls.push({ label: c.label, kind: c.kind as any, worked: !!effect && effect !== 'reload', effect, instance: c.ordinal });
+            controls.push({ label: c.label, kind: c.kind as any, worked: !!effect && effect !== 'reload', effect, instance: c.ordinal, href: c.href });
         }
         metrics.budgetExhausted = budgetHit;
 
@@ -1203,11 +1217,11 @@ export function valueFor(type: string, tag: string, runNonce = '', language = 'e
 export function semanticTypeForField(tag: string, name: string): 'email' | 'tel' | 'date' | 'time' | 'number' | '' {
     if (String(tag).toLowerCase() !== 'input') return '';
     const label = String(name || '');
-    if (/\bemail\b|e[- ]?mail/i.test(label)) return 'email';
-    if (/\b(?:phone|telephone|mobile|tel)\b/i.test(label)) return 'tel';
-    if (/\b(?:birth\s*date|date\s*of\s*birth|dob|date|expiry|expiration|deadline|due\s+date)\b/i.test(label)) return 'date';
-    if (/\b(?:time|start\s*time|end\s*time)\b/i.test(label)) return 'time';
-    if (/\b(?:age|amount|price|quantity|count|capacity|duration|score|rating)\b/i.test(label)) return 'number';
+    if (/\bemail\b|e[- ]?mail|(?:البريد\s*)?(?:الإلكتروني|الالكتروني)/iu.test(label)) return 'email';
+    if (/\b(?:phone|telephone|mobile|tel)\b|(?:رقم\s*)?(?:الهاتف|هاتف|الجوال|جوال|الموبايل|موبايل)/iu.test(label)) return 'tel';
+    if (/\b(?:birth\s*date|date\s*of\s*birth|dob|date|expiry|expiration|deadline|due\s+date)\b|تاريخ\s*(?:الميلاد|الانتهاء|الاستحقاق)?/iu.test(label)) return 'date';
+    if (/\b(?:time|start\s*time|end\s*time)\b|(?:وقت|موعد|ساعة)\s*(?:البدء|الانتهاء)?/iu.test(label)) return 'time';
+    if (/\b(?:age|amount|price|quantity|count|capacity|duration|score|rating)\b|(?:العمر|عمر|المبلغ|مبلغ|السعر|سعر|الكمية|كمية|العدد|عدد|السعة|سعة|المدة|مدة|النقاط|التقييم)/iu.test(label)) return 'number';
     return '';
 }
 

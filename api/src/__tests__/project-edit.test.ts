@@ -9,7 +9,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { parseEditBlocks, applyEditBlock, syntaxOk, diffSummary, parseLiteralTextReplacement, parsePresentationEdits, parseServicesSectionEdit, boundedChangeValue, pickPhotoRow, requestsVisibleBrowserAudit, ProjectEditTool } from '../modules/tools/definitions/ProjectEditTool';
+import { parseEditBlocks, applyEditBlock, syntaxOk, diffSummary, parseLiteralTextReplacement, parsePresentationEdits, parseServicesSectionEdit, boundedChangeValue, pickPhotoRow, requestsVisibleBrowserAudit, provesContactLinkAndPhoneAudit, ProjectEditTool } from '../modules/tools/definitions/ProjectEditTool';
 import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
 
 describe('parseEditBlocks — the Aider-style format, strictly', () => {
@@ -149,6 +149,15 @@ describe('short quoted wording follow-ups', () => {
         expect(boundedChangeValue(`${request} ثم ابنِ المشروع واختبره.`)).toBe('ابدأ مشروعك');
     });
 
+    it('derives a simple mark and reads a hero CTA plus semantic phone field', () => {
+        const request = 'طوّر نفس المشروع الحالي دون إنشاء مشروع جديد: أضف شعاراً نصياً بسيطاً بجانب «بصيرة»، وأضف زر «احجز استشارة» في القسم الرئيسي ينقلك إلى نموذج التواصل، وأضف حقل رقم هاتف مطلوباً للنموذج لا يقبل الحروف، ثم اختبر الرابط والحقل بقيمة صحيحة وأخرى غير صحيحة في المتصفح.';
+        expect(parsePresentationEdits(request)).toEqual([
+            { kind: 'brand_mark', value: 'ب', beside: 'بصيرة' },
+            { kind: 'hero_contact_cta', label: 'احجز استشارة' },
+            { kind: 'phone_field', required: true, rejectLetters: true },
+        ]);
+    });
+
     it('reads a services-section addition and its Arabic count from a compound follow-up', () => {
         expect(parseServicesSectionEdit('أضف رابط «الخدمات» في القائمة وقسم خدمات بثلاث خدمات قبل التواصل')).toEqual({
             label: 'الخدمات',
@@ -233,6 +242,71 @@ describe('compound generated-project presentation edits', () => {
         expect(fs.readFileSync(path.join(tmp, 'src', 'components', 'Products.jsx'), 'utf-8')).toContain('content.productsSubtitle');
         expect(fs.readFileSync(path.join(tmp, 'src', 'styles', 'base.css'), 'utf-8')).toContain('.brand-text-mark{');
         expect(res.logs).toEqual(expect.arrayContaining([expect.stringContaining('3 operation(s), 4 file(s)')]));
+    });
+});
+
+describe('provider-independent logo, contact CTA, and phone follow-up', () => {
+    let tmp: string;
+    const request = 'طوّر نفس المشروع الحالي دون إنشاء مشروع جديد: أضف شعاراً نصياً بسيطاً بجانب «بصيرة»، وأضف زر «احجز استشارة» في القسم الرئيسي ينقلك إلى نموذج التواصل، وأضف حقل رقم هاتف مطلوباً للنموذج لا يقبل الحروف، ثم اختبر الرابط والحقل بقيمة صحيحة وأخرى غير صحيحة في المتصفح.';
+    beforeEach(() => {
+        tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-logo-phone-edit-'));
+        fs.mkdirSync(path.join(tmp, 'src', 'components'), { recursive: true });
+        fs.mkdirSync(path.join(tmp, 'src', 'styles'), { recursive: true });
+        fs.writeFileSync(path.join(tmp, 'package.json'), '{"name":"consulting"}');
+        fs.writeFileSync(path.join(tmp, 'src', 'content.js'), `export const content = {\n  brand: 'بصيرة',\n  cta: 'ابدأ الآن',\n  contactHref: '#contact',\n};\n`);
+        fs.writeFileSync(path.join(tmp, 'src', 'components', 'Navbar.jsx'), `export default function Navbar({ content }) { return <a className="brand" href="#top">{content.brand}</a>; }\n`);
+        fs.writeFileSync(path.join(tmp, 'src', 'components', 'Hero.jsx'), `export default function Hero({ content }) { return <a className="btn" href={content.contactHref}>{content.cta}</a>; }\n`);
+        fs.writeFileSync(path.join(tmp, 'src', 'components', 'Contact.jsx'), `import { useState } from 'react';\nexport default function Contact({ content }) {\n  const [form, setForm] = useState({ name: '', email: '', msg: '' });\n  return <form>\n            <input required type="email" value={form.email} />\n            <textarea required value={form.msg} />\n          </form>;\n}\n`);
+        fs.writeFileSync(path.join(tmp, 'src', 'styles', 'base.css'), '.brand{display:flex}\n');
+    });
+    afterEach(() => {
+        delete (global as any).joeProjects?.['logo-phone-edit'];
+        fs.rmSync(tmp, { recursive: true, force: true });
+    });
+
+    it('applies all three clauses atomically without a provider', async () => {
+        const editRequest = request.replace(/، ثم اختبر[\s\S]*$/, '.');
+        const res: any = await new ProjectEditTool().execute({ request: editRequest, dir: tmp, skipAudit: true }, { sessionId: 'logo-phone-edit' });
+        expect(res.ok).toBe(true);
+        expect(res.output.touched.sort()).toEqual([
+            'src/components/Contact.jsx',
+            'src/components/Navbar.jsx',
+            'src/content.js',
+            'src/styles/base.css',
+        ]);
+        const content = fs.readFileSync(path.join(tmp, 'src', 'content.js'), 'utf-8');
+        const contact = fs.readFileSync(path.join(tmp, 'src', 'components', 'Contact.jsx'), 'utf-8');
+        expect(content).toContain("brandMark: 'ب'");
+        expect(content).toContain("cta: 'احجز استشارة'");
+        expect(content).toContain("contactHref: '#contact'");
+        expect(contact).toContain('type="tel"');
+        expect(contact).toContain('required type="tel"');
+        expect(contact).toContain('pattern="[0-9+ ]{7,20}"');
+        expect(contact).toContain("replace(/[^0-9+ ]/g, '')");
+        const pattern = contact.match(/pattern="([^"]+)"/)?.[1] || '';
+        expect(() => new RegExp(pattern, 'v')).not.toThrow();
+        expect(res.output.acceptance.unmet).toBe(0);
+        expect(res.logs).toEqual(expect.arrayContaining([expect.stringContaining('3 operation(s)')]));
+
+        const retry: any = await new ProjectEditTool().execute({ request: editRequest, dir: tmp, skipAudit: true }, { sessionId: 'logo-phone-edit' });
+        expect(retry.ok).toBe(true);
+        expect(retry.logs).toEqual(expect.arrayContaining([expect.stringContaining('provider-independent')]));
+        expect(retry.logs).not.toEqual(expect.arrayContaining([expect.stringContaining('model returned')]));
+    });
+
+    it('accepts the browser clause only with measured link and valid/invalid phone evidence', () => {
+        const proof = {
+            controls: [{ bare: 'احجز استشارة', kind: 'anchor', worked: true, effect: 'target', href: '#contact' }],
+            fieldsFilled: 4,
+            semanticValidationFailures: 0,
+            semanticValidationEvidence: [{ field: 'phone', expected: 'tel', actual: 'tel', rejected: true, pattern: '[0-9+ ]{7,20}' }],
+        };
+        expect(provesContactLinkAndPhoneAudit(proof, 'احجز استشارة')).toBe(true);
+        expect(provesContactLinkAndPhoneAudit({ ...proof, controls: [{ ...proof.controls[0], effect: 'state' }] }, 'احجز استشارة')).toBe(true);
+        expect(provesContactLinkAndPhoneAudit({ ...proof, semanticValidationEvidence: [] }, 'احجز استشارة')).toBe(false);
+        expect(provesContactLinkAndPhoneAudit({ ...proof, controls: [] }, 'احجز استشارة')).toBe(false);
+        expect(provesContactLinkAndPhoneAudit({ ...proof, controls: [{ ...proof.controls[0], href: '#other' }] }, 'احجز استشارة')).toBe(false);
+        expect(provesContactLinkAndPhoneAudit({ ...proof, semanticValidationFailures: 1 }, 'احجز استشارة')).toBe(false);
     });
 });
 

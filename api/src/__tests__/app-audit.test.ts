@@ -199,14 +199,14 @@ describe('the early project-kind declaration is a request-level terminal behavio
         expect(announcement).toContain('a status or result message');
     });
 
-    it('the negative account request does not invent a counter understanding', () => {
+    it('the account request names accounts without inventing a counter understanding', () => {
         const announcement = earlyProjectDeclaration({
             request: 'Build an account app for account details and login.',
             isArabic: false,
             appKind: null,
         });
         expect(announcement).not.toContain('counter or total');
-        expect(announcement).toContain('no clear interactive element');
+        expect(announcement).toContain('user accounts');
     });
 
     it('reads a temporary catalogue criterion through acceptanceFor without changing the announcer', () => {

@@ -42,7 +42,10 @@ export function isReadOnlyRequest(goalRaw: string): boolean {
     while ((mutationMatch = mutationPattern.exec(text)) !== null) {
         const before = text.slice(Math.max(0, mutationMatch.index - 90), mutationMatch.index);
         const after = text.slice(mutationMatch.index + mutationMatch[0].length);
-        const negated = /\b(?:do\s+not|don't|never)\b[^.!?\n]{0,90}$/i.test(before);
+        // Negation belongs to the verb it directly governs. A constraint such
+        // as "do not create a new project: add a phone field" must not make
+        // the later add/change clauses read-only.
+        const negated = /\b(?:do\s+not|don't|never)\s+(?:ever\s+)?$/i.test(before);
         const readOnlyCheck = mutationMatch[0].toLowerCase() === 'run'
             && /^\s+(?:(?:the|a|an)\s+)?read[-\s]?only(?:\s+\w+){0,3}\s+(?:checks?|diagnostic)\b/i.test(after);
         if (!negated && !readOnlyCheck) {
@@ -55,7 +58,10 @@ export function isReadOnlyRequest(goalRaw: string): boolean {
         let arabicMatch: RegExpExecArray | null;
         while ((arabicMatch = arabicMutationPattern.exec(text)) !== null) {
             const before = text.slice(Math.max(0, arabicMatch.index - 70), arabicMatch.index);
-            if (!/(?:لا|بدون|عدم)\s+(?:أن\s+)?[^.!؟\n]{0,70}$/i.test(before)) {
+            // Keep this clause-local and verb-local. The previous broad tail
+            // check crossed punctuation and treated every later imperative as
+            // negated when a request began with "دون إنشاء مشروع جديد".
+            if (!/(?:لا|بدون|دون|عدم)\s+(?:أن\s+)?(?:أي\s+)?$/i.test(before)) {
                 positiveMutation = true;
                 break;
             }

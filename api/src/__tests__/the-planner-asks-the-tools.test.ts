@@ -122,6 +122,26 @@ describe('the planner uses it — after its own routes, before the model', () =>
         expect(isReadOnlyRequest('Create a file, but do not modify anything else.')).toBe(false);
     });
 
+    it('does not let an Arabic no-new-project constraint negate later edit clauses', async () => {
+        const goal = 'طوّر نفس المشروع الحالي دون إنشاء مشروع جديد: أضف شعاراً نصياً بسيطاً بجانب «بصيرة»، وأضف زر «احجز استشارة» في القسم الرئيسي ينقلك إلى نموذج التواصل، وأضف حقل رقم هاتف مطلوباً للنموذج لا يقبل الحروف، ثم اختبر الرابط والحقل بقيمة صحيحة وأخرى غير صحيحة في المتصفح.';
+        expect(isReadOnlyRequest(goal)).toBe(false);
+        const sessionId = `arabic-edit-${Date.now()}`;
+        const key = sessionId.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const before = { ...(((global as any).joeProjects || {}) as Record<string, any>) };
+        (global as any).joeProjects = { ...before, [key]: { dir: 'C:/workspace/current-app', type: 'react', updatedAt: Date.now() } };
+        try {
+            const plan: any = await PlanningEngine.generatePlan(
+                { intent: { goal, complexity: 'medium', riskLevel: 'low', rawIntent: {} } as any },
+                sessionId,
+                { sessionId },
+            );
+            expect(plan.metadata.matchedBy).not.toBe('read-only-safety-boundary');
+            expect(plan.steps[0].tool).toBe('project_edit');
+        } finally {
+            (global as any).joeProjects = before;
+        }
+    });
+
     it('capabilityPlan returns a real plan, or null', () => {
         const plan: any = PlanningEngine.capabilityPlan({ goal: 'اضغط الملفات في أرشيف zip' });
         expect(plan).toBeTruthy();

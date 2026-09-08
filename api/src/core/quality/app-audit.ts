@@ -99,6 +99,13 @@ export interface AppAudit {
     /** Semantic fields challenged with invalid and valid values. */
     semanticFieldsTested?: number;
     semanticValidationFailures?: number;
+    semanticValidationEvidence?: Array<{
+        field: string;
+        expected: string;
+        actual: string;
+        rejected: boolean;
+        pattern?: string;
+    }>;
     forms?: FormResult[];
     viewports?: string[];
     /** State-driven browser exploration evidence, separate from the baseline walk. */
@@ -1219,6 +1226,7 @@ export async function auditBuiltApp(
             qaRecordsNotDeleted: behaviourMetrics.qaRecordsNotDeleted,
             semanticFieldsTested: behaviourMetrics.semanticFieldsTested,
             semanticValidationFailures: behaviourMetrics.semanticValidationFailures,
+            semanticValidationEvidence: behaviourMetrics.semanticValidationEvidence,
             forms: allForms,
             viewports: ui.metrics.viewports || [],
             statesVisited: behaviourMetrics.statesVisited,
