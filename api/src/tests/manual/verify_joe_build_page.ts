@@ -491,7 +491,7 @@ const mockRouteToModel = async (messages: any[], ...args: any[]): Promise<string
         return 'Dev';
     }
 
-    // 5. JoeAgent task executor tool selection mock
+    // 5. Legacy tool-selection fixture
     if (promptText.includes('Professional AI Agent') || promptText.includes('Choose the single best tool')) {
         console.log('✨ [MOCK ROUTER] Matched: Tool Selector');
         return JSON.stringify({

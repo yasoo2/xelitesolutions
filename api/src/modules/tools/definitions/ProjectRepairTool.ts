@@ -194,6 +194,7 @@ export class ProjectRepairTool extends BaseTool {
 
         say(isAr ? '🔎 أعيد القياس على البناء الحالي…' : '🔎 Re-measuring the current build…');
         const before = await auditBuiltApp(auditDir, {
+            request: requestText,
             timeoutMs: 30_000, watchSessionId: watchSessionId || undefined,
                 requireVisibleBrowser: true,
                 requireAuthenticatedCoverage: true,
@@ -330,6 +331,7 @@ export class ProjectRepairTool extends BaseTool {
         }
         const measure = async () => {
             const measured = await auditBuiltApp(auditDir, {
+                request: requestText,
                 timeoutMs: 30_000,
                 watchSessionId: watchSessionId || undefined,
                 requireVisibleBrowser: true,

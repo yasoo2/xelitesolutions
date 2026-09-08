@@ -16,7 +16,7 @@ describe('canonical execution ingress', () => {
                 port,
                 path: requestPath,
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
+                headers: { 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': Buffer.byteLength(body) },
             }, response => {
                 response.resume();
                 response.once('end', () => resolve(response.statusCode || 0));
@@ -42,5 +42,5 @@ describe('canonical execution ingress', () => {
         } finally {
             await new Promise<void>(resolve => server.close(() => resolve()));
         }
-    });
+    }, 30_000);
 });

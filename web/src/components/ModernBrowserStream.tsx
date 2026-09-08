@@ -34,10 +34,14 @@ export function fittedFrameRect(viewW: number, viewH: number, frameW: number, fr
   const safeViewH = Math.max(1, viewH);
   const safeFrameW = Math.max(1, frameW);
   const safeFrameH = Math.max(1, frameH);
-  const scale = Math.min(safeViewW / safeFrameW, safeViewH / safeFrameH);
+  // Fit by width and never enlarge a narrow/mobile viewport. Fitting by both
+  // axes made a tall phone frame shrink to a thumbnail inside the Browser
+  // panel. A tall frame is intentionally clipped at the bottom: the remote
+  // browser scrolls naturally and each new frame remains readable.
+  const scale = Math.min(1, safeViewW / safeFrameW);
   const width = safeFrameW * scale;
   const height = safeFrameH * scale;
-  return { left: (safeViewW - width) / 2, top: (safeViewH - height) / 2, width, height };
+  return { left: (safeViewW - width) / 2, top: height <= safeViewH ? (safeViewH - height) / 2 : 0, width, height };
 }
 
 export default function ModernBrowserStream({ sessionId, showBoxes = true }: Props) {
@@ -604,13 +608,11 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
               canvas.focus();
             } catch { }
             const rect = canvas.getBoundingClientRect();
-            const fitted = fittedFrameRect(rect.width, rect.height, w, h);
             const localX = e.clientX - rect.left;
             const localY = e.clientY - rect.top;
-            if (localX < fitted.left || localX > fitted.left + fitted.width
-              || localY < fitted.top || localY > fitted.top + fitted.height) return;
-            const rx = (localX - fitted.left) / Math.max(1, fitted.width);
-            const ry = (localY - fitted.top) / Math.max(1, fitted.height);
+            if (localX < 0 || localX > rect.width || localY < 0 || localY > rect.height) return;
+            const rx = localX / Math.max(1, rect.width);
+            const ry = localY / Math.max(1, rect.height);
             const x = Math.max(0, Math.min(w - 1, Math.round(rx * w)));
             const y = Math.max(0, Math.min(h - 1, Math.round(ry * h)));
             void flushType().finally(() => {

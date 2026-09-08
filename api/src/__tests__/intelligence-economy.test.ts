@@ -177,7 +177,6 @@ describe('a recovered local brain gets one bounded re-entry probe', () => {
 describe('the internal call sites are actually marked', () => {
     const cases: Array<[string, string[]]> = [
         ['core/intelligence/IntentParser.ts', ['purpose: \'internal\'']],
-        ['core/agents/JoeAgent-V2.ts', ['purpose: \'internal\'']],
         ['core/orchestrator/PlanningEngine.ts', ['purpose: \'internal\'']],
         ['orchestration/AgentOrchestrator.ts', ['purpose: \'internal\'']],
     ];

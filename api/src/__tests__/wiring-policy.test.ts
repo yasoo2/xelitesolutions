@@ -930,10 +930,11 @@ describe('the planner is offered the whole toolbox, not a frozen list of seven',
                 .toEqual({ family, serial: true });
         }
         // Every explicitly planned tool — including a written shell command — is
-        // executed as selected; it never falls into JoeAgent-V2's short tool menu.
+        // executed as selected; it never falls into a second short tool menu.
         expect(orch).toContain("const plannedTool = node.tool.trim();");
         expect(orch).toContain('executeTool(plannedTool, nodeInput, executionContext)');
         expect(orch).toContain('else if (agent)');
+        expect(orch).toContain('unplanned_execution_node:');
     });
 
     it('the mind never schedules work the tools cannot be fed', () => {

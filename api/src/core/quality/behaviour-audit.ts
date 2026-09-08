@@ -194,6 +194,18 @@ function findControls(limit: number) {
         const routeHref = el.getAttribute('href') || '';
         const currentHashRoute = window.location.hash || '#/';
         if (kind === 'link' && /^#\//.test(routeHref) && routeHref === currentHashRoute) return;
+        if (kind === 'link' && routeHref) {
+            try {
+                const destination = new URL(routeHref, window.location.href);
+                const current = new URL(window.location.href);
+                const destinationHash = destination.hash || '';
+                const currentHash = current.hash || '';
+                if (destination.origin === current.origin
+                    && destination.pathname.replace(/\/+$/, '') === current.pathname.replace(/\/+$/, '')
+                    && destination.search === current.search
+                    && destinationHash === currentHash) return;
+            } catch { /* malformed links are judged by the normal probe */ }
+        }
         /**
          * `aria-pressed` says the same thing in the other vocabulary, and the
          * feed's own filter uses it: «All» is the tab that is already on, so

@@ -6,6 +6,11 @@ describe('request-driven weather semantic contract', () => {
 Include sunrise and sunset from the daily API response.
 Persist favorites after reload using localStorage.`;
 
+    it('marks the active weather navigation destination for users and QA', () => {
+        const source = fileWeatherAppJsx(false, 'Build a weather application.');
+        expect(source).toContain("aria-current={screen === key ? 'page' : undefined}");
+    });
+
     it('reports missing sun times and unsafe persistence as independent defects', () => {
         const defects = inspectWeatherEngineSource(request, `export default function WeatherApp() {
             const [favorites, setFavorites] = React.useState([]);

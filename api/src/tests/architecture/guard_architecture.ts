@@ -8,6 +8,7 @@ const selfFixServicePath = path.resolve(__dirname, '../../modules/services/SelfF
 const appPath = path.resolve(__dirname, '../../api/app.ts');
 const registryPath = path.resolve(__dirname, '../../modules/tools/registry.ts');
 const toolCatalogPath = path.resolve(__dirname, '../../core/orchestrator/toolCatalog.ts');
+const orchestratorPath = path.resolve(__dirname, '../../orchestration/AgentOrchestrator.ts');
 
 const RETIRED_EXECUTION_FILES = [
   path.resolve(__dirname, '../../api/routes/agent.ts'),
@@ -16,7 +17,9 @@ const RETIRED_EXECUTION_FILES = [
   path.resolve(__dirname, '../../core/agents/AutonomousLoopEngine.ts'),
   path.resolve(__dirname, '../../core/agents/ProjectManagerAgent.ts'),
   path.resolve(__dirname, '../../core/agents/TaskExecutor.ts'),
+  path.resolve(__dirname, '../../core/agents/JoeAgent-V2.ts'),
   path.resolve(__dirname, '../../core/agents/scaffold-entry.ts'),
+  path.resolve(__dirname, '../../orchestration/agents/DevAgent.ts'),
   path.resolve(__dirname, '../../modules/tools/definitions/TaskLoopTool.ts'),
 ];
 
@@ -42,6 +45,7 @@ function run() {
   const app = readRequired(appPath, 'API app');
   const registry = readRequired(registryPath, 'Tool Registry');
   const toolCatalog = readRequired(toolCatalogPath, 'Tool Catalog');
+  const orchestrator = readRequired(orchestratorPath, 'AgentOrchestrator');
 
   if (planner.includes('executeTool(')) {
     fail('ProjectPlannerTool must NOT call executeTool');
@@ -105,6 +109,8 @@ function run() {
     [registry, 'TaskLoopTool'],
     [registry, "safeNew('task_loop'"],
     [toolCatalog, "'task_loop'"],
+    [orchestrator, 'JoeAgent-V2'],
+    [orchestrator, 'DevAgent'],
   ].filter(([source, needle]) => source.includes(needle));
   if (forbiddenWiring.length) {
     fail(`Retired execution wiring must not return: ${forbiddenWiring.map(([, needle]) => needle).join(', ')}`);

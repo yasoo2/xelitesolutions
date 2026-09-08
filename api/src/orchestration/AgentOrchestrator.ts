@@ -10,7 +10,6 @@ import { routeToModel, isProviderFailure, PROVIDER_FAILURE_PREFIX } from '../cor
 import { emitDepartment } from './departments';
 import { randomUUID } from 'crypto';
 import { BaseAgent } from './agents/BaseAgent';
-import { DevAgent } from './agents/DevAgent';
 import { SecurityAgent } from './agents/SecurityAgent';
 import { BrowserAgent } from './agents/BrowserAgent';
 import { ExecutionMemory, compactRuntimeValue } from '../core/orchestrator/ExecutionMemory';
@@ -25,7 +24,7 @@ import { CANCELLED } from '../core/session/attended-run';
 /** Tools the PlanningEngine picks DETERMINISTICALLY. A node carrying one of
  *  these already knows exactly what to run and with which input, so it must be
  *  executed as-is — never re-decided by the weak-model tool-picker inside
- *  JoeAgent, whose menu is a short hardcoded list. That re-decision is what
+ *  a second tool selector with a short hardcoded list. That re-decision is what
  *  silently discarded `github_repo_manager(analyze)`: the picker could not even
  *  see that tool, fell back to another one, and the repo was never analysed. */
 const DETERMINISTIC_TOOLS = [
@@ -211,11 +210,8 @@ export class AgentOrchestrator {
 
   constructor() {
     // Register specialized agents
-    const devAgent = new DevAgent();
-    this.agents.set("Dev", devAgent);
     this.agents.set("Security", new SecurityAgent());
     this.agents.set("Browser", new BrowserAgent());
-    this.agents.set("General", devAgent); 
   }
 
   /**
@@ -607,6 +603,7 @@ export class AgentOrchestrator {
               // chat session. ToolService injects this into browser tools.
               browserSessionId: goalContext?.browserSessionId,
               workspaceId: goalContext?.workspaceId,
+              resumeProjectRoot: goalContext?.resumeProjectRoot,
               userId: goalContext?.userId,
               userName: goalContext?.userName,
               systemInstructions: goalContext?.systemInstructions,
@@ -653,6 +650,7 @@ export class AgentOrchestrator {
           // user's complete goal rather than treating that label as the spec.
           if (node.tool === 'project_pipeline') {
             nodeInput.request = goalText;
+            if (goalContext?.resumeProjectRoot) nodeInput.path = goalContext.resumeProjectRoot;
           }
 
           /**
@@ -703,7 +701,7 @@ export class AgentOrchestrator {
               result = await deadline(executeTool('web_page_builder', nodeInput, executionContext));
             } else if (typeof node.tool === 'string' && node.tool.trim()) {
               // التخطيط اختار الأداة والعقدة تحمل مدخلاتها. إعادة الاختيار في
-              // JoeAgent-V2 كانت تعني أن قائمة من ثماني أدوات قد تستبدل أداة
+              // A retired second selector could replace a planned tool with one
               // مخططة (خصوصاً browser_run وأدوات التحقق) بأداة مختلفة أو برد
               // نصي. ننفذ الاسم كما هو؛ الاسم غير المسجّل يفشل صراحة في بوابة
               // الأدوات بدلاً من اختراع بديل.
@@ -715,7 +713,10 @@ export class AgentOrchestrator {
             } else if (agent) {
               result = await deadline(agent.execute(node.task, nodeInput, executionContext));
             } else {
-              result = await deadline(executeTool(node.tool, { ...nodeInput, context: memory.getHistory() }, executionContext));
+              result = {
+                ok: false,
+                error: `unplanned_execution_node:${node.id}: no tool or specialized agent was selected`,
+              };
             }
           } catch (err: any) {
             result = { ok: false, error: err.message };

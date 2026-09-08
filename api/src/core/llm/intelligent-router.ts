@@ -1437,7 +1437,7 @@ export async function routeToModel(
             return 'Dev';
         }
 
-        // 5. JoeAgent task executor tool selection mock
+        // 5. Legacy tool-selection fixture (kept only for deterministic old tests)
         if (promptText.includes('Professional AI Agent') || promptText.includes('Choose the single best tool')) {
             console.log('✨ [MOCK ROUTER] Matched: Tool Selector');
             if (promptText.includes('dashboard')) {

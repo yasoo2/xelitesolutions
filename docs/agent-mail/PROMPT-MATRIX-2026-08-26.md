@@ -25,9 +25,20 @@
 | P19 | PWA/offline | HELD | "Build an offline-first pantry inventory PWA. It must install, work without a network after first load, queue edits, and reconcile them when the network returns." | FAIL متوقع لاحقاً | **أتوقع سقوطاً** في install/offline/reconcile. النجاح يتطلب إثباتاً حياً لكل مرحلة، لا banner باسم PWA. |
 | P20 | مرجع بصري حي | HELD | "Create a landing page for a boutique hotel inspired by the visual hierarchy of a live reference site I will provide, but do not copy its text or assets; explain which visual rules you inferred." | FAIL متوقع لاحقاً | **أتوقع سقوطاً** في قراءة المرجع أو فصل القواعد عن النسخ. النجاح يتطلب دليل المرجع وتطبيق القواعد دون نسخ. |
 | P21 | متطلبات طويلة متعددة القيود | HELD | "Build a project launch workspace with milestones, owners, dependencies, risk levels, filters, keyboard shortcuts, a compact mobile view, CSV export, and a visible audit trail; derive the data model from these requirements." | FAIL متوقع لاحقاً | **أتوقع سقوطاً** في جمع القيود أو audit trail. النجاح يتطلب كل العناصر ونموذج بيانات مشتقاً من النص. |
-| P22 | تكامل API خارجي | HELD | "Build a weather comparison page for three cities using a real weather API, with loading, error, retry, unit toggle, last-updated time, and a clear offline fallback." | FAIL متوقع لاحقاً | **أتوقع سقوطاً** في API/error/offline. النجاح يتطلب حالات الشبكة الثلاث وبيانات حقيقية أو blocker صريحاً. |
+| P22 | تكامل API خارجي | PASS | "Create a new standalone weather comparison web app for Amman, Istanbul, and London using a real public weather API. Include distinct loading, live-success, empty/error, and retry states; a Celsius/Fahrenheit toggle that preserves the selected cities; a visible last-updated timestamp; and a clear offline fallback using cached sample data labelled as fallback. Do not modify the currently selected project. Build and run the new project, then test the live-success, forced network failure, retry recovery, offline fallback, and unit round-trip in Joe's visible Browser on desktop and phone. Do not claim completion unless the observed interface and calculations prove every requested state." | كان FAIL متوقعاً | نجح بعد إصلاحات عامة وإعادة النص نفسه: 100/100، صفر findings، 12 تفاعلاً، وثلاثة viewports؛ `finalVerified=true`. |
 | P23 | ملفات ووسائط | HELD | "Create a media review board where users upload an image, add title/tags/notes, filter by tag, preview the image, and delete an item with confirmation." | FAIL متوقع لاحقاً | **أتوقع سقوطاً** في upload/preview/delete safety. النجاح يتطلب ملفاً فعلياً وتخزيناً أو عقداً واضحاً دون ادعاء. |
 | P24 | تعديل مركب مع عدم التراجع | HELD | "On the existing product page, add a comparison table, preserve all current copy, replace only the pricing CTA, add a keyboard-accessible modal, and verify that the current form still submits." | FAIL متوقع لاحقاً | **أتوقع سقوطاً** في preservation وmodal/form regression. النجاح يتطلب التغيير المحدود، modal keyboard، وإثبات submit الحالي. |
+
+## سجل P22
+
+- المحاولة الأولى انقطعت لأن API أعيد تشغيلها بينما التنفيذ جارٍ؛ أضيفت استعادة تشغيل مستمرة مرتبطة بالجلسة ومسار المشروع.
+- أول `Continue` لم يعرف المشروع بين 308 مشروعاً؛ مُنع التخمين ثم حُفظ جذر المشروع الدقيق ضمن سلسلة الاستعادة.
+- محاولة fuzzy اختارت مشروعاً خاطئاً؛ أُوقفت ولم تُعتمد، ثم أصبح التطابق يعتمد على lineage والمسار الكامل.
+- الفحص الحي كشف تسرب طلبات Open-Meteo واختباراً خاطئاً للصفحة الحالية؛ توسع اعتراض الشبكة ليشمل forecast وgeocoding قبل أول navigation، وصار رابط/زر الصفحة الحالية ذا دلالة صريحة.
+- فحص الإصلاح كان يفقد نص الطلب؛ أصبح `productRequest` ينتقل إلى `project_repair` وكل قياس داخله.
+- شرط `live-success` كان ينتهي عند العبارة المبكرة قبل وصول الصفوف؛ أصبح ينتظر المدن المطلوبة ووقت تحديث غير فارغ ثم يقرأ الحالة.
+- تم التحقق بصرياً من `Live data` ووقت التحديث والمدن الثلاث، ثم من fallback الموسوم والبيانات المخزنة، ومن العرض المقروء على desktop وphone/tablet.
+- الإعادة النهائية من صندوق Joe بكلمة `Continue`: `100/100`، `0 finding(s)`، `0 blocking`، `12 interaction(s)`، وجميع مجموعات runtime/network وcontrols/forms وvisual/accessibility/responsive ناجحة؛ `finalVerified: true`.
 
 ## بروتوكول النتيجة
 

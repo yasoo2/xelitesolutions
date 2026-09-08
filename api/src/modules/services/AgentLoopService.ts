@@ -317,7 +317,7 @@ export class AgentLoopService {
      * Unified Autonomous Execution Entry Point
      * Everything is now dynamic and agent-driven at runtime.
      */
-    static async execute(goal: string, options: { sessionId?: string; browserSessionId?: string; workspaceId?: string; userId?: string; userName?: string; systemInstructions?: string; attachments?: import('../../shared/attachments').AttachmentInput[]; traceId?: string; modelConfig?: any; language?: string; runId?: string; cancellationHandle?: Cancellable } = {}) {
+    static async execute(goal: string, options: { sessionId?: string; browserSessionId?: string; workspaceId?: string; resumeProjectRoot?: string; resumeOriginRunId?: string; userId?: string; userName?: string; systemInstructions?: string; attachments?: import('../../shared/attachments').AttachmentInput[]; traceId?: string; modelConfig?: any; language?: string; runId?: string; cancellationHandle?: Cancellable } = {}) {
         const sessionId = options.sessionId || `session-${Date.now()}`;
         const userId = options.userId || 'anonymous';
         const userName = String(options.userName || '').trim();
@@ -542,6 +542,18 @@ export class AgentLoopService {
         // Evidence is a secondary sink. It observes the same canonical run and
         // must never become a prerequisite for the live wire.
         await createRunEvidence(runId, { sessionId, status: 'running' });
+        if (options.resumeOriginRunId) {
+            await appendRunEvidenceEvent(runId, {
+                type: 'continuation_started',
+                runId,
+                sessionId,
+                ts: Date.now(),
+                data: {
+                    originRunId: String(options.resumeOriginRunId),
+                    projectRoot: String(options.resumeProjectRoot || ''),
+                },
+            });
+        }
         registerRunSession(runId, sessionId);
         addRunEventListener(runId, (event) => {
             void appendRunEvidenceEvent(runId, event);
@@ -615,6 +627,7 @@ export class AgentLoopService {
                     browserSessionId: String(options.browserSessionId || '').trim() || undefined,
                     // مستقل عن sessionId: هذا هو جذر مساحة العمل المختارة من الواجهة.
                     workspaceId: workspaceId || undefined,
+                    resumeProjectRoot: String(options.resumeProjectRoot || '').trim() || undefined,
                     modelConfig,
                     memoryContext,
                     language,

@@ -1,5 +1,7 @@
 import { Router, Request, Response } from 'express';
 import mongoose from 'mongoose';
+import fs from 'fs';
+import path from 'path';
 import { AgentLoopService } from '../../modules/services/AgentLoopService';
 import { authenticate, authenticateOptional } from '../middleware/auth';
 import { loadUploadedFiles } from './files';
@@ -10,10 +12,13 @@ import { Artifact } from '../../shared/models/artifact';
 import { Session } from '../../shared/models/session';
 import { traceManager } from '../../modules/services/TraceManager';
 import { broadcast } from '../ws';
-import { getRunEvidence } from '../../shared/run-evidence-store';
+import { getRunEvidence, getRunEvidenceForSession } from '../../shared/run-evidence-store';
 import { getActiveRunSessions, registerRunSession, unregisterRunSession, sessionOwnerOf, runOwnerOf } from '../ws';
 import { registerRun, releaseHandle } from '../../core/session/attended-run';
 import { workspaceService } from '../../modules/services/WorkspaceService';
+import { Message } from '../../shared/models/message';
+import { continuationExecutionGoal, findInterruptedContinuation, isContinuationCommand } from '../../core/resume/continuation-command';
+import { isWithinRoot } from '../../modules/tools/path-containment';
 
 const router = Router();
 
@@ -134,6 +139,7 @@ router.post('/verify', authenticateOptional as any, async (req: Request, res: Re
  */
 router.post('/start', authenticate as any, async (req: Request, res: Response) => {
     const { text, sessionId, browserSessionId, workspaceId, provider, model, apiKey, baseUrl, language } = req.body || {};
+    const submittedText = String(text || '').trim();
     // The UI language the user picked. Everything Joe SAYS must follow it —
     // previously nothing carried it here, so every reply came back in Arabic no
     // matter which language the switcher was set to. Fall back to the browser's
@@ -159,7 +165,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
     // sent this field and the server silently dropped it.
     const systemInstructions = String(req.body?.systemInstructions || '').trim().slice(0, 4000);
 
-    if (!text) {
+    if (!submittedText) {
         return res.status(400).json({ error: 'Goal text is required' });
     }
 
@@ -172,6 +178,39 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
         || `browser:${runSessionId}`;
     if (!(await mayUseRunSession(runSessionId, userId))) {
         return res.status(404).json({ error: 'Session not found' });
+    }
+    const resolvedWorkspaceId = String(workspaceId || '').trim() || undefined;
+
+    // A one-word continuation is a control command, not a new conversational
+    // question. Restore the last substantive user request only when durable run
+    // evidence proves that this session really has interrupted/stopped work.
+    // The submitted word remains in chat; only the execution goal is restored.
+    let executionText = submittedText;
+    let resumedRunId = '';
+    let resumeProjectRoot = '';
+    if (isContinuationCommand(submittedText)) {
+        const [runs, messages] = await Promise.all([
+            getRunEvidenceForSession(runSessionId),
+            usesJsonRunStore()
+                ? Promise.resolve(((global as any).mockMessages || []).filter((message: any) => String(message.sessionId) === runSessionId))
+                : Message.find({ sessionId: runSessionId }).sort({ createdAt: 1 }).lean(),
+        ]);
+        const continuation = findInterruptedContinuation(submittedText, runs, messages as any[]);
+        if (continuation) {
+            executionText = continuationExecutionGoal(continuation.goal, continuation.projectName);
+            resumedRunId = continuation.runId;
+            const candidateRoot = path.resolve(String(continuation.projectRoot || '').trim() || '.');
+            const allowedRoots = [
+                workspaceService.getActiveRoot(resolvedWorkspaceId),
+                workspaceService.getActiveRoot(),
+            ].map(root => path.resolve(root));
+            resumeProjectRoot = fs.existsSync(candidateRoot)
+                && fs.statSync(candidateRoot).isDirectory()
+                && allowedRoots.some(root => isWithinRoot(candidateRoot, root))
+                ? candidateRoot
+                : '';
+            console.log(`[RunRoute] Resuming interrupted run ${resumedRunId} in session ${runSessionId}`);
+        }
     }
 
     /**
@@ -209,7 +248,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
          * when a message REFERS to an attachment (هذه الصوره، الملف، حللها…)
          * and carries none, the session's last uploaded files ride again.
          */
-        const recallMode = attachmentRecallMode(String(text || ''));
+        const recallMode = attachmentRecallMode(submittedText);
         if (recallMode !== 'none') {
             // Strong reference (الصوره، الملف، حللها…) recalls within the full
             // TTL; a weak one (هذا، فيها، this…) only while the file is FRESH.
@@ -261,7 +300,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
     try {
         if (usesJsonRunStore()) {
             const store: any[] = (global as any).mockMessages || ((global as any).mockMessages = []);
-            store.push({ _id: `um-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, sessionId: runSessionId, role: 'user', content: text, attachments: attachmentMeta(), createdAt: new Date() });
+            store.push({ _id: `um-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, sessionId: runSessionId, role: 'user', content: submittedText, attachments: attachmentMeta(), createdAt: new Date() });
             persistChatStores();
         }
     } catch { /* non-fatal */ }
@@ -291,21 +330,20 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
     // conversation. The composer that posts here does not add it client-side, so
     // without this only Joe's reply would appear.
     try {
-        broadcast({ type: 'user_input', sessionId: runSessionId, runId: tempRunId, data: { text, sessionId: runSessionId, runId: tempRunId, files: attachmentMeta() }, id: `uin-${Date.now()}` } as any);
+        broadcast({ type: 'user_input', sessionId: runSessionId, runId: tempRunId, data: { text: submittedText, sessionId: runSessionId, runId: tempRunId, files: attachmentMeta() }, id: `uin-${Date.now()}` } as any);
         // The panels listen for the RUN starting — that is when the workspace
         // reveals itself and the live file list clears. They were listening
         // for an event the server never sent; the auto-open only happened
         // later, by luck, on the first tool.
-        broadcast({ type: 'run_started', sessionId: runSessionId, runId: tempRunId, data: { sessionId: runSessionId, runId: tempRunId, text: String(text || '').slice(0, 200) }, id: `run-${Date.now()}` } as any);
+        broadcast({ type: 'run_started', sessionId: runSessionId, runId: tempRunId, data: { sessionId: runSessionId, runId: tempRunId, text: submittedText.slice(0, 200), ...(resumedRunId ? { resumedRunId } : {}) }, id: `run-${Date.now()}` } as any);
     } catch { /* non-fatal */ }
 
     try {
-        const traceId = traceManager.startTrace(runSessionId, text);
+        const traceId = traceManager.startTrace(runSessionId, executionText);
         
         // [ELITE FIX] Make execution non-blocking to prevent Nginx timeouts and frontend hang
         // The background process will handle its own errors and broadcast status via WS
-        const resolvedWorkspaceId = String(workspaceId || '').trim() || undefined;
-        AgentLoopService.execute(text, {
+        AgentLoopService.execute(executionText, {
             sessionId: runSessionId,
             // لا تستبدل جلسة لوحة المتصفح بجلسة الدردشة؛ تستخدمها browser_run
             // للتحكم في الصفحة نفسها التي تعرضها الواجهة.
@@ -313,6 +351,8 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
             // مساحة العمل يختارها المستخدم في الواجهة ويجب أن تصل إلى كل أداة
             // تعتمد على ملفات المشروع، لا أن تتحول إلى مجلد جلسة الدردشة.
             workspaceId: resolvedWorkspaceId,
+            resumeProjectRoot: resumeProjectRoot || undefined,
+            resumeOriginRunId: resumedRunId || undefined,
             userId,
             userName,
             systemInstructions,

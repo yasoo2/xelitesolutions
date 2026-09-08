@@ -1,10 +1,12 @@
 import dotenv from 'dotenv';
+import { applyPersistenceModeDefault } from './persistence-mode';
 
 // quiet: dotenv 17 prints a banner and a rotating «tip:» on every boot. Joe's
 // startup log is read by a human looking for real information.
 dotenv.config({ quiet: true } as any);
 
 const isProd = process.env.NODE_ENV === 'production';
+const persistenceMode = applyPersistenceModeDefault();
 
 // Allowed origins loaded from ALLOWED_ORIGINS env var in production.
 // Hardcoded IPs removed for security. Add server IPs via ALLOWED_ORIGINS env var.
@@ -24,7 +26,7 @@ const mongoUri = (rawMongoUri && rawMongoUri.trim()) ? rawMongoUri.trim() : defa
 // One line, not three: the same three facts, and a startup log a human reads
 // instead of scrolls. The password is still redacted, which was the only part
 // that ever mattered here.
-console.info(`[Config] env=${process.env.NODE_ENV || 'development'} · mongo=${rawMongoUri ? 'ENV' : 'DEFAULT'} → ${mongoUri.replace(/:([^@/]+)@/, ':****@')}`);
+console.info(`[Config] env=${process.env.NODE_ENV || 'development'} · storage=${persistenceMode} · mongo=${rawMongoUri ? 'ENV' : 'DEFAULT'} → ${mongoUri.replace(/:([^@/]+)@/, ':****@')}`);
 
 if (/^mongodb\+srv:\/\//i.test(mongoUri)) {
   throw new Error('Mongo Atlas (mongodb+srv) is disabled for this deployment. Use MongoDB Docker (mongodb://...).');

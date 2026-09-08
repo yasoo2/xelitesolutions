@@ -17,6 +17,7 @@ const sessionsBar = await readFile(resolve(root, 'src/components/SessionsBar.tsx
 
 const checks = [
   ['the live stream exposes a stable root test hook', stream.includes('data-testid="browser-stream-root"')],
+  ['tall mobile frames stay readable and pointer mapping is applied only once', stream.includes('Math.min(1, safeViewW / safeFrameW)') && stream.includes('const rx = localX / Math.max(1, rect.width)') && !stream.includes('Math.min(safeViewW / safeFrameW, safeViewH / safeFrameH)')],
   ['browser surface has no obsolete control rail overlay', !stream.includes('browser-control-rail') && !css.includes('.browser-control-rail {')],
   ['live QA reports connection, frame freshness, queue and action errors', stream.includes('qualityMetrics') && stream.includes('lastFrameAt') && stream.includes('queueLength') && stream.includes('actionErrors')],
   ['QA report exposes final status, evidence and an expandable details view', stream.includes("type: 'final_report'") && stream.includes('evidence') && stream.includes('detailsOpen') && stream.includes('browserShowLog')],
@@ -32,7 +33,7 @@ const checks = [
   ['phones use the established full-screen overlay instead of overflow', css.includes('@media (max-width: 900px)') && css.includes('width: 100% !important;'),
   ],
   ['the removed full-width login banner cannot reappear accidentally', !stream.includes('loginBarHidden') && !stream.includes('joe_login_bar_hidden')],
-  ['existing workspace artifacts suppress onboarding safely', joePage.includes("api.get('/project/tree')") && joePage.includes('hasVisibleArtifacts') && joePage.includes('if (!hasVisibleArtifacts) setIsOnboardingOpen(true)')],
+  ['the retired project-setup onboarding gate cannot reappear', !joePage.includes('setIsOnboardingOpen') && !joePage.includes('onboarding-modal')],
   ['GitHub dialog has close, Done, and real disconnect actions', githubDialog.includes("aria-label={t('close', 'Close')}") && githubDialog.includes("t('done', 'Done')") && githubDialog.includes('<X size={18} />') && githubDialog.includes('onDisconnect') && githubDialog.includes('<LogOut size={15} />')],
   ['neural activity separates the human summary from the expandable trace', neuralIndicator.includes('neuralWorking') && neuralIndicator.includes('nc-stream') && neuralIndicator.includes('neuralShowDetails') && neuralTrace.includes('jt-stage-rail')],
   ['neural stages derive from observed events and never invent completion percentages', neuralModel.includes('workStageFor') && neuralModel.includes('WORK_STAGES') && !neuralIndicator.includes('% complete')],

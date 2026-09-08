@@ -46,14 +46,17 @@ describe('the pointer moves and the element under test is outlined', () => {
         expect(e).toContain('get visible(): boolean { return this.watched || this.paint; }');
     });
 
-    it('keeps phone frames contained and maps pointer and clicks into the fitted image', () => {
+    it('keeps phone frames readable and maps pointer and clicks through the one displayed canvas', () => {
         const stream = fs.readFileSync(path.join(SRC, '..', '..', 'web', 'src', 'components', 'ModernBrowserStream.tsx'), 'utf-8');
         expect(stream).toContain('export function fittedFrameRect');
         expect(stream).toContain('const displayFrame = fittedFrameRect(viewSize.w, viewSize.h, w, h);');
         expect(stream).toContain('left: displayFrame.left');
         expect(stream).toContain('width: displayFrame.width');
         expect(stream).toContain('fitted.left + targetNorm.x * fitted.width');
-        expect(stream).toContain('if (localX < fitted.left || localX > fitted.left + fitted.width');
+        expect(stream).toContain('const rect = canvas.getBoundingClientRect();');
+        expect(stream).toContain('const rx = localX / Math.max(1, rect.width);');
+        expect(stream).toContain('const ry = localY / Math.max(1, rect.height);');
+        expect(stream).not.toContain('if (localX < fitted.left || localX > fitted.left + fitted.width');
     });
 
     it('the overlay lives OUTSIDE <body>, where the fingerprint cannot see it', () => {
@@ -537,8 +540,11 @@ describe('a measurement it cannot make honestly, it does not make', () => {
     });
 
     it('and a tab that is already open is not a dead control', () => {
-        expect(read('core', 'quality', 'behaviour-audit.ts'))
-            .toMatch(/aria-selected'\) === 'true' \|\| el\.getAttribute\('aria-current'\)/);
+        const audit = read('core', 'quality', 'behaviour-audit.ts');
+        expect(audit).toMatch(/aria-selected'\) === 'true' \|\| el\.getAttribute\('aria-current'\)/);
+        expect(audit).toContain("destination.pathname.replace(/\\/+$/, '') === current.pathname.replace(/\\/+$/, '')");
+        expect(audit).toContain('destination.search === current.search');
+        expect(audit).toContain('destinationHash === currentHash');
     });
 
     it('a 401 while the audit is signed out is the app’s own rule, not a defect', () => {

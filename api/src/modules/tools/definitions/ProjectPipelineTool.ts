@@ -2242,6 +2242,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                                 const repairResult = await executeTool(
                                     'project_repair',
                                     {
+                                        request: productRequest,
                                         projectDir: repairProjectRoot,
                                         auditDir,
                                         serveUrl: liveUrl,

@@ -2746,7 +2746,7 @@ export default function WeatherApp({ content }) {
           <button className="btn ghost" type="button" onClick={locate} disabled={busy}>{${T('موقعي', 'My location')}}</button>
         </div>
         <nav className="toolbar" aria-label={${T('تنقل الطقس', 'Weather navigation')}}>
-          {nav.map(([key, label]) => <button key={key} className={'btn tiny ' + (screen === key ? '' : 'ghost')} type="button" onClick={() => setScreen(key)}>{label}</button>)}
+          {nav.map(([key, label]) => <button key={key} className={'btn tiny ' + (screen === key ? '' : 'ghost')} aria-current={screen === key ? 'page' : undefined} type="button" onClick={() => setScreen(key)}>{label}</button>)}
         </nav>
         <form className="toolbar" onSubmit={search}>
           <input className="search" type="search" required value={query} onChange={e => { setQuery(e.target.value); setScreen('search'); }} placeholder={${T('اكتب اسم مدينة لاقتراحات تلقائية…', 'Type a city for autocomplete suggestions…')}} aria-label={${T('بحث عن مدينة', 'Search for a city')}} />

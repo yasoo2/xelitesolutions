@@ -53,8 +53,28 @@ describe('the audit measures the system, not the folder', () => {
         expect(audit).toContain("id: 'weather_unit_roundtrip_failed'");
         expect(audit).toContain('expectedWeatherNetworkFailure');
         expect(audit).toContain('Live\\s+data|بيانات\\s+حية');
-        expect(audit).toContain("const apiPattern = '**/*open-meteo.com/**'");
+        expect(audit).toContain('const apiPattern = WEATHER_API_ROUTE_PATTERN');
+        expect(audit).toContain("from './weather-qa-route'");
         expect(audit).toContain('await page.route(apiPattern, weatherFixture)');
+    });
+
+    it('carries the original request through pipeline repair and every repair measurement', () => {
+        const pipeline = read('modules', 'tools', 'definitions', 'ProjectPipelineTool.ts');
+        const repair = read('modules', 'tools', 'definitions', 'ProjectRepairTool.ts');
+        expect(pipeline).toMatch(/'project_repair',\s*\{\s*request: productRequest,/);
+        const repairCalls = auditCallSites(repair);
+        expect(repairCalls.length).toBeGreaterThanOrEqual(2);
+        expect(repairCalls.filter(call => !call.includes('request: requestText')).length).toBe(0);
+    });
+
+    it('installs the weather fixture before the first navigation and ignores only its owned console echoes', () => {
+        const audit = read('core', 'quality', 'app-audit.ts');
+        expect(audit.indexOf('await page.route(WEATHER_API_ROUTE_PATTERN, initialWeatherFixture)'))
+            .toBeLessThan(audit.indexOf('const landing = await openAuditTarget(url)'));
+        expect(audit).toContain('weatherConsoleError && (expectedWeatherNetworkFailure || initialWeatherScenario)');
+        expect(audit).toContain('const hasLastUpdatedTimestamp =');
+        expect(audit).toContain('cities.every(city => text.toLocaleLowerCase().includes(city.toLocaleLowerCase()))');
+        expect(audit).toContain('!hasLastUpdatedTimestamp(live)');
     });
 
     it('it can be pointed at a running address instead of serving a dist', () => {

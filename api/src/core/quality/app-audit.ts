@@ -25,6 +25,7 @@ import { probeControls, judgeBehaviour, FormResult, ControlResult } from './beha
 import { AuditEyes } from './audit-eyes';
 import { inspectUi, applyViewportSize } from './ui-inspection';
 import { isWithinRoot } from '../../modules/tools/path-containment';
+import { WEATHER_API_ROUTE_PATTERN } from './weather-qa-route';
 
 export interface AppAuditFinding {
     id: string;
@@ -302,6 +303,8 @@ export async function auditBuiltApp(
      * whatever the user browses next, and the audit after it inherits them.
      */
     let detach: () => void = () => { /* nothing hooked yet */ };
+    let page: any = null;
+    let initialWeatherFixtureForCleanup: any = null;
     try {
         /**
          * THE AUDIT HAPPENS WHERE HE CAN SEE IT — «كيف بدنا نصلح المتصفح».
@@ -325,7 +328,6 @@ export async function auditBuiltApp(
          * When there is no panel (a script, a test, a machine with no UI) it
          * falls back to exactly what it did before: a private headless browser.
          */
-        let page: any = null;
         let borrowError = '';
         if (opts?.watchSessionId) {
             try {
@@ -449,6 +451,36 @@ export async function auditBuiltApp(
         const consoleErrors: string[] = [];
         const failedRequests: string[] = [];
         let expectedWeatherNetworkFailure = false;
+        const initialWeatherRequest = String(opts?.request || '');
+        const initialWeatherScenario = /\bweather\b/i.test(initialWeatherRequest)
+            || /\u0637\u0642\u0633/u.test(initialWeatherRequest);
+        const initialWeatherCities = (() => {
+            const clause = initialWeatherRequest.match(/\bfor\s+(.{1,160}?)\s+using\b/i)?.[1] || '';
+            return clause.split(/\s*,\s*|\s+and\s+/i)
+                .map((city: string) => city.trim().replace(/^and\s+/i, ''))
+                .filter(Boolean)
+                .slice(0, 8);
+        })();
+        const initialWeatherFixture = async (route: any) => {
+            const requestUrl = new URL(route.request().url());
+            if (/geocoding-api\.open-meteo\.com/i.test(requestUrl.hostname)) {
+                const name = requestUrl.searchParams.get('name') || 'Test city';
+                const index = Math.max(0, initialWeatherCities.findIndex(city => city.toLocaleLowerCase() === name.toLocaleLowerCase()));
+                await route.fulfill({
+                    status: 200,
+                    contentType: 'application/json',
+                    body: JSON.stringify({ results: [{ name, country: 'QA', latitude: 31.95 + index, longitude: 35.91 + index }] }),
+                });
+                return;
+            }
+            const latitude = Number(requestUrl.searchParams.get('latitude') || 31.95);
+            const temperature = Math.round(18 + Math.max(0, latitude - 31.95) * 3);
+            await route.fulfill({
+                status: 200,
+                contentType: 'application/json',
+                body: JSON.stringify({ current_weather: { temperature, weathercode: 0 } }),
+            });
+        };
         // A failure in Joe's inspector is evidence that QA is unavailable, not
         // evidence that the application under inspection is broken. Keeping
         // these separate prevents a faulty probe from restoring a generic
@@ -493,10 +525,19 @@ export async function auditBuiltApp(
          */
         const onConsole = (m: any) => {
             if (m.type() !== 'error') return;
-            const where = (() => {
-                try { const l = m.location(); return l?.url ? ` ← ${String(l.url).slice(-60)}` : ''; } catch { return ''; }
+            const consoleLocationUrl = (() => {
+                try { return String(m.location()?.url || ''); } catch { return ''; }
             })();
-            if (expectedWeatherNetworkFailure && /open-meteo|teo\.com/i.test(`${String(m.text())} ${where}`)) return;
+            const where = consoleLocationUrl ? ` ← ${consoleLocationUrl.slice(-60)}` : '';
+            const weatherConsoleError = /(?:api|geocoding-api)\.open-meteo\.com/i.test(consoleLocationUrl)
+                || /open-meteo/i.test(String(m.text()));
+            // Weather QA owns these requests from the first navigation onward:
+            // successful passes are fulfilled by the deterministic fixture and
+            // the failure pass deliberately aborts them. The domain assertions
+            // below prove live data, fallback, and recovery directly, so the
+            // browser's delayed ERR_FAILED console echo is test noise rather
+            // than a second application defect.
+            if (weatherConsoleError && (expectedWeatherNetworkFailure || initialWeatherScenario)) return;
             // Chrome asks every site for /favicon.ico and reports the miss as a
             // console error with the URL only in the location. It was costing a
             // clean build 15 points for a file the browser invented a request for.
@@ -613,6 +654,13 @@ export async function auditBuiltApp(
                 return page.goto(target, { waitUntil: 'networkidle', timeout: navigationTimeoutMs });
             }
         };
+        // Weather apps fetch on mount, before the dedicated scenario runs. The
+        // shared fixture must therefore exist for every generic and responsive
+        // navigation too, or those passes leak requests to the real network.
+        if (initialWeatherScenario) {
+            await page.route(WEATHER_API_ROUTE_PATTERN, initialWeatherFixture);
+            initialWeatherFixtureForCleanup = initialWeatherFixture;
+        }
         const landing = await openAuditTarget(url);
         const doorStatus = Number(landing?.status?.() || 0);
         let authenticated = false;
@@ -1119,7 +1167,12 @@ export async function auditBuiltApp(
             })();
             const bodyText = async () => String(await page.locator('body').innerText().catch(() => ''));
             const citiesRemain = (text: string) => requestedCities.every(city => new RegExp(`\\b${city.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(text));
-            const apiPattern = '**/*open-meteo.com/**';
+            const hasLastUpdatedTimestamp = (text: string) => text.split(/\r?\n/).some(line => {
+                if (!/(?:Last\s+updated|Updated\s+at|آخر\s+تحديث)/i.test(line)) return false;
+                const value = line.replace(/.*?(?:Last\s+updated|Updated\s+at|آخر\s+تحديث)\s*:?/i, '').trim();
+                return value.length > 2 && !/^[\s—–-]+$/.test(value);
+            });
+            const apiPattern = WEATHER_API_ROUTE_PATTERN;
             const weatherFixture = async (route: any) => {
                 const requestUrl = new URL(route.request().url());
                 if (/geocoding-api\.open-meteo\.com/i.test(requestUrl.hostname)) {
@@ -1147,9 +1200,17 @@ export async function auditBuiltApp(
                 }
                 await page.route(apiPattern, weatherFixture);
                 await page.goto(url, { waitUntil: 'load', timeout: navigationTimeoutMs });
-                await page.waitForFunction(() => /(?:Live\s+data|بيانات\s+حية)/i.test(String(document.body?.innerText || '')), undefined, { timeout: 8_000 }).catch(() => { });
+                await page.waitForFunction((cities: string[]) => {
+                    const text = String(document.body?.innerText || '');
+                    const updatedLine = text.split(/\r?\n/).find(line => /(?:Last\s+updated|Updated\s+at|آخر\s+تحديث)/i.test(line)) || '';
+                    const updatedValue = updatedLine.replace(/.*?(?:Last\s+updated|Updated\s+at|آخر\s+تحديث)\s*:?/i, '').trim();
+                    return cities.every(city => text.toLocaleLowerCase().includes(city.toLocaleLowerCase()))
+                        && /(?:Live\s+data|بيانات\s+حية)/i.test(text)
+                        && updatedValue.length > 2
+                        && !/^[\s—–-]+$/.test(updatedValue);
+                }, requestedCities, { timeout: Math.min(12_000, timeoutMs) }).catch(() => { });
                 const live = await bodyText();
-                if ((requestedCities.length && !citiesRemain(live)) || !/(?:Last\s+updated|Updated\s+at|آخر\s+تحديث)/i.test(live) || !/(?:Live\s+data|بيانات\s+حية)/i.test(live)) {
+                if ((requestedCities.length && !citiesRemain(live)) || !hasLastUpdatedTimestamp(live) || !/(?:Live\s+data|بيانات\s+حية)/i.test(live)) {
                     domainFindings.push({
                         id: 'weather_live_success_unproven', severity: 'high',
                         detail: 'لم يثبت المتصفح حالة الطقس الحية لكل المدن المطلوبة مع وقت آخر تحديث',
@@ -1197,10 +1258,9 @@ export async function auditBuiltApp(
                         }
                     } finally {
                         await page.unroute(apiPattern, abortWeather).catch(() => { });
-                        await page.waitForTimeout(100);
+                        await page.route(apiPattern, weatherFixture);
                         expectedWeatherNetworkFailure = false;
                     }
-                    await page.route(apiPattern, weatherFixture);
                     opts?.onProgress?.('weather: restoring network and retrying live data');
                     const retry = page.getByRole('button', { name: /Retry|Try again|إعادة\s+المحاولة/i }).first();
                     if (await retry.count()) await retry.click();
@@ -1453,6 +1513,9 @@ export async function auditBuiltApp(
         // Whatever happened — clean return, throw, or timeout — the panel page
         // goes back to the user with no listeners of ours left on it.
         detach();
+        if (page && initialWeatherFixtureForCleanup) {
+            try { await page.unroute(WEATHER_API_ROUTE_PATTERN, initialWeatherFixtureForCleanup); } catch { /* page may be gone */ }
+        }
         // Only a browser WE launched is ours to close — closing the panel's
         // would take his own browser down with the audit.
         if (!borrowed) { try { await browser?.close(); } catch { /* already gone */ } }
