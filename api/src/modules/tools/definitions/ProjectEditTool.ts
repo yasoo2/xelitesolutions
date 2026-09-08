@@ -139,6 +139,7 @@ export type PresentationEdit =
     | { kind: 'hero_contact_cta'; label: string }
     | { kind: 'phone_field'; required: boolean; rejectLetters: boolean }
     | { kind: 'faq_section'; label: string; count: number; singleOpen: boolean; closable: boolean }
+    | { kind: 'calculator_section'; label: string; taxRate: number; rejectNegative: boolean; resetLabel: string }
     | { kind: 'section_subtitle'; section: string; value: string };
 
 export interface ServicesSectionEdit {
@@ -216,11 +217,31 @@ export function parsePresentationEdits(request: string): PresentationEdit[] {
         });
     }
 
+    const calculatorClause = text.match(/(?:أضف|اضف|أنشئ|انشئ|add|create)\s+[^،.\n]{0,45}(?:حاسب[ةه]|calculator)[^،.\n]*/iu)?.[0] || '';
+    if (calculatorClause) {
+        const tax = text.match(/(?:ضريب[ةه]|tax)[^\d]{0,18}(\d+(?:[.,]\d+)?)\s*%|(?:\bwith\b|مع)\s+(\d+(?:[.,]\d+)?)\s*%\s*(?:ضريب[ةه]|tax)/iu);
+        const taxRate = Number(String(tax?.[1] || tax?.[2] || '0').replace(',', '.'));
+        out.push({
+            kind: 'calculator_section',
+            label: /\p{Script=Arabic}/u.test(text) ? 'حاسبة تكلفة الاستشارة' : 'Cost calculator',
+            taxRate: Number.isFinite(taxRate) ? Math.max(0, Math.min(100, taxRate)) : 0,
+            rejectNegative: /(?:لا\s+(?:يقبل|تقبل)|عدم\s+قبول|ارفض|reject|prevent)[^،.\n]{0,35}(?:سالب|negative)/iu.test(text),
+            resetLabel: /\p{Script=Arabic}/u.test(text) ? 'إعادة تعيين' : 'Reset',
+        });
+    }
+
     const below = text.match(/(?:أضف|اضف|ضع|حط|add)\s+(?:تحت|أسفل|اسفل|below|under)\s+(?:عنوان|heading|title)?\s*([^«"،,.\n]{2,60})[^«"\n]{0,50}(?:سطر(?:ا|ًا)?|نص(?:ا|ًا)?|وصف(?:ا|ًا)?|subtitle|line|text)\s*[«"]([^»"\n]{1,220})[»"]/iu);
     const lineFirst = text.match(/(?:أضف|اضف|ضع|حط|add)\s+(?:سطر(?:ا|ًا)?|نص(?:ا|ًا)?|وصف(?:ا|ًا)?|subtitle|line|text)\s*[«"]([^»"\n]{1,220})[»"][^،.\n]{0,70}(?:تحت|أسفل|اسفل|below|under)\s+(?:عنوان|heading|title)?\s*([^،.\n]{2,60})/iu);
     if (below) out.push({ kind: 'section_subtitle', section: below[1].trim(), value: below[2].trim() });
     else if (lineFirst) out.push({ kind: 'section_subtitle', section: lineFirst[2].trim(), value: lineFirst[1].trim() });
     return out;
+}
+
+export function isNamedRowTextEditRequest(request: string): boolean {
+    const text = String(request || '');
+    const mutation = /(?<![ء-ي])(?:غيّ?ر|عدّ?ل|بدّ?ل|استبدل)(?![ء-ي])|\b(?:change|edit|update|rename)\b/iu.test(text);
+    const namedField = /(?<![ء-ي])(?:سعر|السعر|بسعر|أسعار|الأسعار|وصف|الوصف|اسم|الاسم)(?![ء-ي])|\b(?:prices?|description|rename)\b/i.test(text);
+    return mutation && namedField;
 }
 
 /** A free-form value ends at the next edit clause, never at the prompt's end. */
@@ -777,7 +798,7 @@ export class ProjectEditTool extends BaseTool {
          * validate the complete batch, and only then write it once per file.
          */
         const presentationEdits = parsePresentationEdits(request);
-        const hasStandaloneDeterministicEdit = presentationEdits.some(op => op.kind === 'faq_section');
+        const hasStandaloneDeterministicEdit = presentationEdits.some(op => op.kind === 'faq_section' || op.kind === 'calculator_section');
         if (!touched.length && (presentationEdits.length > 1 || hasStandaloneDeterministicEdit) && fs.existsSync(path.join(dir, contentRel))) {
             // A recognized deterministic batch is handled even when every
             // requested value is already present. Falling through merely
@@ -896,6 +917,31 @@ export class ProjectEditTool extends BaseTool {
                     ensureCss('.nav-links{column-gap:18px}', '.nav-links{column-gap:18px}');
                     ensureCss('.faq-wrap{max-width:820px}.faq-list{border-top:1px solid var(--line)}.faq-item{border-bottom:1px solid var(--line)}.faq-item h3{margin:0}.faq-trigger{width:100%;min-height:56px;display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:1rem 0;border:0;background:transparent;color:var(--text);font:inherit;font-weight:700;text-align:start;cursor:pointer}.faq-trigger:focus-visible{outline:2px solid var(--brand);outline-offset:4px}.faq-answer{padding:0 0 1rem}.faq-answer p{margin:0;color:var(--text-muted)}', '.faq-wrap{');
                     notes.push(isAr ? `أضفت قسم «${op.label}» التفاعلي وربطته بالقائمة؛ لا يبقى مفتوحاً إلا سؤال واحد ويمكن إغلاقه.` : `Added the interactive “${op.label}” section and navigation link with one closable item open at a time.`);
+                    continue;
+                }
+
+                if (op.kind === 'calculator_section') {
+                    const appRel = ['src/App.jsx', 'src/App.tsx'].find(rel => fs.existsSync(path.join(dir, rel)));
+                    if (!appRel) { failures.push('application composition file not found'); continue; }
+                    let app = read(appRel);
+                    const calculatorRel = `src/components/CostCalculator.${appRel.endsWith('.tsx') ? 'tsx' : 'jsx'}`;
+                    if (!fs.existsSync(path.join(dir, calculatorRel)) && !pending.has(calculatorRel)) {
+                        const ar = artifactIsAr;
+                        stage(calculatorRel, `import React, { useMemo, useState } from 'react';\n\nexport default function CostCalculator({ services = [] }) {\n  const options = (services.length ? services : [{ title: '${ar ? 'استشارة أساسية' : 'Essential consultation'}' }, { title: '${ar ? 'استشارة متقدمة' : 'Advanced consultation'}' }, { title: '${ar ? 'استشارة تنفيذية' : 'Executive consultation'}' }]).slice(0, 3).map((item, index) => ({ label: item.title || item.name || \`${ar ? 'خدمة' : 'Service'} \${index + 1}\`, rate: [120, 180, 250][index] }));\n  const [serviceIndex, setServiceIndex] = useState(0);\n  const [hours, setHours] = useState('1');\n  const rate = options[serviceIndex]?.rate || 0;\n  const validHours = Math.max(0, Number(hours) || 0);\n  const subtotal = useMemo(() => rate * validHours, [rate, validHours]);\n  const tax = subtotal * ${op.taxRate / 100};\n  const total = subtotal + tax;\n  const money = (value) => new Intl.NumberFormat('${ar ? 'ar' : 'en'}', { maximumFractionDigits: 2 }).format(value);\n  const reset = () => { setServiceIndex(0); setHours('1'); };\n  return (\n    <section className="section calculator-section" id="calculator" data-qa-calculator data-tax-rate="${op.taxRate}">\n      <div className="wrap calculator-wrap">\n        <div className="calculator-copy"><p className="eyebrow">${ar ? 'تقدير فوري' : 'Instant estimate'}</p><h2>${op.label}</h2><p>${ar ? 'اختر الخدمة وعدد الساعات لترى التكلفة بوضوح قبل الحجز.' : 'Choose a service and hours to see a clear estimate before booking.'}</p></div>\n        <div className="calculator-panel">\n          <label>${ar ? 'نوع الخدمة' : 'Service type'}<select aria-label="${ar ? 'نوع الخدمة' : 'Service type'}" value={serviceIndex} onChange={(event) => setServiceIndex(Number(event.target.value))}>{options.map((option, index) => <option key={option.label} value={index} data-rate={option.rate}>{option.label} — {money(option.rate)}</option>)}</select></label>\n          <label>${ar ? 'عدد الساعات' : 'Hours'}<input aria-label="${ar ? 'عدد الساعات' : 'Hours'}" type="number" min="0" step="1" value={hours} onChange={(event) => setHours(event.target.value)} /></label>\n          <dl className="calculator-totals"><div><dt>${ar ? 'المجموع قبل الضريبة' : 'Subtotal'}</dt><dd data-calculator-subtotal={subtotal}>{money(subtotal)}</dd></div><div><dt>${ar ? `الضريبة (${op.taxRate}%)` : `Tax (${op.taxRate}%)`}</dt><dd data-calculator-tax={tax}>{money(tax)}</dd></div><div className="calculator-grand"><dt>${ar ? 'الإجمالي' : 'Total'}</dt><dd data-calculator-total={total}>{money(total)}</dd></div></dl>\n          <button type="button" className="btn btn-secondary calculator-reset" onClick={reset}>${op.resetLabel}</button>\n        </div>\n      </div>\n    </section>\n  );\n}\n`);
+                    }
+                    if (!app.includes("from './components/CostCalculator.")) {
+                        const contactImport = /(import\s+Contact\s+from\s+['"]\.\/components\/Contact\.[jt]sx?['"];?)/;
+                        if (!contactImport.test(app)) { failures.push('calculator import insertion point not found'); continue; }
+                        app = app.replace(contactImport, `import CostCalculator from './components/CostCalculator.${appRel.endsWith('.tsx') ? 'tsx' : 'jsx'}';\n$1`);
+                    }
+                    if (!/<CostCalculator\s+services=/.test(app)) {
+                        const contactRender = /(\s*<Contact\s+content=\{content\}\s*\/>)/;
+                        if (!contactRender.test(app)) { failures.push('calculator render insertion point not found'); continue; }
+                        app = app.replace(contactRender, `\n        <CostCalculator services={content.services || []} />$1`);
+                    }
+                    stage(appRel, app);
+                    ensureCss('.calculator-wrap{display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,440px);gap:clamp(2rem,6vw,5rem);align-items:start}.calculator-copy p{color:var(--text-muted)}.calculator-panel{display:grid;gap:1rem;padding:clamp(1rem,3vw,1.5rem);border:1px solid var(--line);background:var(--surface)}.calculator-panel label{display:grid;gap:.5rem;font-weight:700}.calculator-panel select,.calculator-panel input{width:100%;min-height:48px;padding:.7rem .8rem;border:1px solid var(--line);background:var(--bg);color:var(--text);font:inherit}.calculator-totals{display:grid;gap:.65rem;margin:0}.calculator-totals div{display:flex;justify-content:space-between;gap:1rem}.calculator-totals dd{margin:0;font-variant-numeric:tabular-nums}.calculator-grand{padding-top:.75rem;border-top:1px solid var(--line);font-weight:800}.calculator-reset{justify-self:start}@media(max-width:720px){.calculator-wrap{grid-template-columns:1fr}}', '.calculator-wrap{');
+                    notes.push(artifactIsAr ? `أضفت «${op.label}» بحساب مباشر وضريبة ${op.taxRate}% وزر «${op.resetLabel}».` : `Added “${op.label}” with live calculation, ${op.taxRate}% tax, and a ${op.resetLabel} button.`);
                     continue;
                 }
 
@@ -1276,7 +1322,7 @@ export class ProjectEditTool extends BaseTool {
         const priceIntent = /(?<![ء-ي])(سعر|السعر|بسعر|أسعار|الأسعار)(?![ء-ي])|\bprices?\b/i.test(request);
         const descIntent = /(?<![ء-ي])(وصف|الوصف)(?![ء-ي])|\bdescription\b/i.test(request);
         const renameIntent = /(?<![ء-ي])(اسم|الاسم)(?![ء-ي])|\brename\b/i.test(request);
-        if (!touched.length && (priceIntent || descIntent || renameIntent) && fs.existsSync(path.join(dir, contentRel))) {
+        if (!touched.length && isNamedRowTextEditRequest(request) && (priceIntent || descIntent || renameIntent) && fs.existsSync(path.join(dir, contentRel))) {
             const body = fs.readFileSync(path.join(dir, contentRel), 'utf-8');
             const esc = (s: string) => String(s || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, ' ');
             // Every serialized row, whole line — menu, products, tiers,
@@ -1802,6 +1848,7 @@ This is a correct answer, not a failure. Changing something the user did not ask
         const heroCtaEdit = presentationEdits.find((op): op is Extract<PresentationEdit, { kind: 'hero_contact_cta' }> => op.kind === 'hero_contact_cta');
         const phoneEdit = presentationEdits.find((op): op is Extract<PresentationEdit, { kind: 'phone_field' }> => op.kind === 'phone_field');
         const faqEdit = presentationEdits.find((op): op is Extract<PresentationEdit, { kind: 'faq_section' }> => op.kind === 'faq_section');
+        const calculatorEdit = presentationEdits.find((op): op is Extract<PresentationEdit, { kind: 'calculator_section' }> => op.kind === 'calculator_section');
         if (heroCtaEdit && phoneEdit && audit && !audit.skipped) {
             const namedControls = (audit.controls || [])
                 .filter((control: any) => String(control?.bare || control?.label || '').includes(heroCtaEdit.label))
@@ -1835,6 +1882,26 @@ This is a correct answer, not a failure. Changing something the user did not ask
         if (faqEdit && audit && !audit.skipped) {
             logs.push(`FAQ acceptance evidence: disclosures=${JSON.stringify(faqEvidence)}; anchors=${JSON.stringify(faqAnchorContexts)}`);
         }
+        const calculatorNow = now('src/components/CostCalculator.jsx') || now('src/components/CostCalculator.tsx');
+        const calculatorSourceReady = !!calculatorEdit
+            && /data-qa-calculator/.test(calculatorNow)
+            && /type="number"/.test(calculatorNow)
+            && /min="0"/.test(calculatorNow)
+            && /<CostCalculator\s+services=/.test(appNow);
+        const calculatorEvidence = (audit?.calculatorEvidence || []) as Array<any>;
+        const calculatorBehaviourReady = !!calculatorEdit && calculatorEvidence.some(evidence =>
+            Number(evidence?.choices || 0) > 1
+            && Number(evidence?.choicesTested || 0) >= Number(evidence?.choices || 0)
+            && evidence?.zeroCorrect === true
+            && evidence?.largeCorrect === true
+            && evidence?.mathCorrect === true
+            && (!calculatorEdit.rejectNegative || evidence?.negativeRejected === true)
+            && evidence?.resetWorked === true);
+        const calculatorResponsiveReady = calculatorEvidence.some(evidence => String(evidence?.viewport || '').startsWith('1280x'))
+            && calculatorEvidence.some(evidence => String(evidence?.viewport || '').startsWith('390x'));
+        if (calculatorEdit && audit && !audit.skipped) {
+            logs.push(`Calculator acceptance evidence: ${JSON.stringify(calculatorEvidence)}`);
+        }
         const criteria = acceptanceFor(request).map((criterion: any) => {
             const rule = criterion.expectedRule;
             const decided = (met: boolean, why: string) => ({
@@ -1862,6 +1929,28 @@ This is a correct answer, not a failure. Changing something the user did not ask
                 return decided(faqSourceReady && faqInteractionReady, faqSourceReady && faqInteractionReady
                     ? 'the browser opened every FAQ in sequence, kept one open, and closed the last with Enter'
                     : 'the browser has not proven sequential single-open and keyboard-close behaviour');
+            }
+            if (calculatorEdit
+                && /(?:حاسب[ةه]|calculator|(?:اختيار|select)[^\n]{0,25}(?:الخدم[ةه]|service))/iu.test(text)
+                && !/(?:ضريب[ةه]|tax|صحة\s+الحساب|calculation|إعاد[ةه]\s+تعيين|reset|سالب|negative|الهاتف|phone|mobile)/iu.test(text)) {
+                return decided(calculatorSourceReady, calculatorSourceReady
+                    ? 'the cost calculator renders a service choice and constrained numeric hours input'
+                    : 'the requested cost calculator contract is not present in the built source');
+            }
+            if (calculatorEdit && /(?:ضريب[ةه]|tax|صحة\s+الحساب|calculation)/iu.test(text)) {
+                return decided(calculatorSourceReady && calculatorBehaviourReady, calculatorSourceReady && calculatorBehaviourReady
+                    ? `the browser recomputed subtotal, ${calculatorEdit.taxRate}% tax, and total for every service and boundary value`
+                    : 'the browser has not proven the requested total and tax calculation');
+            }
+            if (calculatorEdit && /(?:إعاد[ةه]\s+تعيين|reset|سالب|negative|قيم[ةه]\s+صفر|قيمة\s+كبيرة|large\s+value)/iu.test(text)) {
+                return decided(calculatorBehaviourReady, calculatorBehaviourReady
+                    ? 'the browser proved zero, large, negative, and reset behaviour'
+                    : 'the browser has not proven every requested calculator boundary and reset');
+            }
+            if (calculatorEdit && /(?:الهاتف[^\n]{0,30}سطح\s+المكتب|phone[^\n]{0,30}desktop|mobile[^\n]{0,30}desktop)/iu.test(text)) {
+                return decided(calculatorResponsiveReady, calculatorResponsiveReady
+                    ? 'the calculator was exercised at desktop and phone widths'
+                    : 'calculator behaviour was not proven at both desktop and phone widths');
             }
             if (/(?:اختبر|تحقق|افحص|test|verify|check)/iu.test(text)
                 && /(?:الرابط|link)/iu.test(text)

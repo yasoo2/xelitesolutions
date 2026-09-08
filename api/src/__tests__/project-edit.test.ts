@@ -9,8 +9,49 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { parseEditBlocks, applyEditBlock, syntaxOk, diffSummary, parseLiteralTextReplacement, parsePresentationEdits, parseServicesSectionEdit, boundedChangeValue, pickPhotoRow, requestsVisibleBrowserAudit, provesContactLinkAndPhoneAudit, ProjectEditTool } from '../modules/tools/definitions/ProjectEditTool';
+import { parseEditBlocks, applyEditBlock, syntaxOk, diffSummary, parseLiteralTextReplacement, parsePresentationEdits, parseServicesSectionEdit, boundedChangeValue, pickPhotoRow, requestsVisibleBrowserAudit, provesContactLinkAndPhoneAudit, isNamedRowTextEditRequest, ProjectEditTool } from '../modules/tools/definitions/ProjectEditTool';
 import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
+
+describe('named row text edit routing', () => {
+    it('does not confuse a new calculator feature with an existing-row price edit', () => {
+        expect(isNamedRowTextEditRequest('غيّر سعر طقم الهدية إلى 200')).toBe(true);
+        expect(isNamedRowTextEditRequest('Change the price of Pro to 200')).toBe(true);
+        expect(isNamedRowTextEditRequest('أضف حاسبة تكلفة واحسب السعر مباشرة مع ضريبة 16%')).toBe(false);
+        expect(isNamedRowTextEditRequest('Add a calculator that shows the total price')).toBe(false);
+    });
+});
+
+describe('provider-independent cost calculator follow-up', () => {
+    let tmp: string;
+    beforeEach(() => {
+        tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-calculator-edit-'));
+        fs.mkdirSync(path.join(tmp, 'src', 'components'), { recursive: true });
+        fs.mkdirSync(path.join(tmp, 'src', 'styles'), { recursive: true });
+        fs.writeFileSync(path.join(tmp, 'package.json'), '{"name":"calculator-site"}');
+        fs.writeFileSync(path.join(tmp, 'src', 'content.js'), `export const content = {\n  services: [\n    { title: 'استراتيجية الأعمال' },\n    { title: 'تحسين العمليات' },\n    { title: 'النمو المؤسسي' },\n  ],\n};\n`);
+        fs.writeFileSync(path.join(tmp, 'src', 'App.jsx'), `import React from 'react';\nimport Contact from './components/Contact.jsx';\nimport { content } from './content.js';\nexport default function App(){ return <main><Contact content={content} /></main>; }\n`);
+        fs.writeFileSync(path.join(tmp, 'src', 'components', 'Contact.jsx'), `export default function Contact(){ return <section id="contact">Contact</section>; }\n`);
+        fs.writeFileSync(path.join(tmp, 'src', 'styles', 'base.css'), ':root{--line:#ddd;--text:#111;--text-muted:#666;--brand:#075;--surface:#fff;--bg:#fff;}\n');
+    });
+    afterEach(() => fs.rmSync(tmp, { recursive: true, force: true }));
+
+    it('builds a semantic calculator and leaves browser behaviour unclaimed until measured', async () => {
+        const request = 'أضف حاسبة تكلفة استشارة فيها اختيار نوع الخدمة وعدد الساعات، واحسب السعر مباشرة مع ضريبة 16%، وأضف زر إعادة تعيين، ولا تقبل ساعات سالبة.';
+        const parsed = parsePresentationEdits(request).find(edit => edit.kind === 'calculator_section') as any;
+        expect(parsed).toMatchObject({ taxRate: 16, rejectNegative: true, resetLabel: 'إعادة تعيين' });
+        const res: any = await new ProjectEditTool().execute({ request, dir: tmp, skipAudit: true }, { sessionId: `calculator-${Date.now()}` });
+        expect(res.ok).toBe(false);
+        expect(res.error).toContain('edit_acceptance_unmet');
+        const component = fs.readFileSync(path.join(tmp, 'src', 'components', 'CostCalculator.jsx'), 'utf-8');
+        expect(component).toContain('data-qa-calculator');
+        expect(component).toContain('data-tax-rate="16"');
+        expect(component).toContain('type="number" min="0" step="1"');
+        expect(component).toContain('data-calculator-total');
+        expect(component).toContain("setServiceIndex(0); setHours('1')");
+        expect(fs.readFileSync(path.join(tmp, 'src', 'App.jsx'), 'utf-8')).toContain('<CostCalculator services={content.services || []} />');
+        expect(fs.readFileSync(path.join(tmp, 'src', 'styles', 'base.css'), 'utf-8')).toContain('.calculator-wrap{');
+    });
+});
 
 describe('parseEditBlocks — the Aider-style format, strictly', () => {
     const reply = `Sure. Here is the change:

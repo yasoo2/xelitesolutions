@@ -96,7 +96,7 @@ describe('every store mutation schedules a persist', () => {
     for (const [file, min] of cases) {
         it(`${file.join('/')} persists after mutating`, () => {
             const src = read(...file);
-            expect((src.match(/persistChatStores\(\)/g) || []).length).toBeGreaterThanOrEqual(min);
+            expect((src.match(/(?:persist|flush)ChatStores\(\)/g) || []).length).toBeGreaterThanOrEqual(min);
         });
     }
 });
@@ -106,10 +106,14 @@ describe('final chat delivery is durable before a run is released', () => {
         const src = read('modules', 'services', 'AgentLoopService.ts');
         const successPush = src.indexOf("role: 'assistant', content: finalText");
         const fatalPush = src.indexOf("role: 'assistant', content: failText");
+        const successFinished = src.indexOf("broadcast({ type: 'run_finished'", successPush);
+        const fatalFinished = src.indexOf("broadcast({ type: 'run_finished'", fatalPush);
         expect(successPush).toBeGreaterThan(-1);
         expect(fatalPush).toBeGreaterThan(-1);
         expect(src.indexOf('flushChatStores();', successPush)).toBeLessThan(src.indexOf('releaseHandle(', successPush));
         expect(src.indexOf('flushChatStores();', fatalPush)).toBeGreaterThan(fatalPush);
+        expect(src.indexOf('flushChatStores();', successPush)).toBeLessThan(successFinished);
+        expect(src.indexOf('flushChatStores();', fatalPush)).toBeLessThan(fatalFinished);
         expect((src.match(/usesLocalChatStore\(\)/g) || []).length).toBeGreaterThanOrEqual(5);
     });
 });

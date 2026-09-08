@@ -887,7 +887,16 @@ export function computedTotalEvidence(src: string): boolean {
         const formatted = new RegExp('[{]' + BS + 's*' + IDENT + BS + 's*' + BS + '([^)]*' + BS + 'b' + n + BS + 'b[^)]*' + BS + ')');
         return bare.test(src) || method.test(src) || formatted.test(src);
     });
-    return foldedAndShown || recordsMetricTotalEvidence(src);
+    // Quote calculators usually derive a subtotal from rate * quantity rather
+    // than folding table rows. Require the full executable chain and proof
+    // that the exact computed total reaches the rendered result.
+    const calculatorTotal = /data-qa-calculator/i.test(src)
+        && /\bconst\s+subtotal\s*=\s*(?:useMemo\s*\(\s*\(\)\s*=>\s*)?[^;\n]{0,180}\*/i.test(src)
+        && /\bconst\s+tax\s*=\s*subtotal\s*\*/i.test(src)
+        && /\bconst\s+total\s*=\s*subtotal\s*\+\s*tax/i.test(src)
+        && /data-calculator-total\s*=\s*\{\s*total\s*\}/i.test(src)
+        && /\{\s*[A-Za-z_$][\w$]*\s*\(\s*total\s*\)\s*\}/i.test(src);
+    return foldedAndShown || recordsMetricTotalEvidence(src) || calculatorTotal;
 }
 
 /**

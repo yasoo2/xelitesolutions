@@ -46,6 +46,18 @@ export default function ShopApp({ content }) {
 `;
 
 describe('a computed total counts however it is printed', () => {
+    it('recognises a rendered quote calculator total without accepting labels alone', () => {
+        const source = `
+          <section data-qa-calculator>
+            const subtotal = useMemo(() => rate * validHours, [rate, validHours]);
+            const tax = subtotal * 0.16;
+            const total = subtotal + tax;
+            <dd data-calculator-total={total}>{money(total)}</dd>
+          </section>`;
+        expect(computedTotalEvidence(source)).toBe(true);
+        expect(computedTotalEvidence('<p data-qa-calculator>Total</p>')).toBe(false);
+    });
+
     it('⛔ POSITIVE — the exact code that was refused: {money(total)}', () => {
         expect(computedTotalEvidence(CART('{money(total)}'))).toBe(true);
     });

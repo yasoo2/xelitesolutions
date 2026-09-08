@@ -123,6 +123,18 @@ export interface AppAudit {
         viewport: string;
         route?: string;
     }>;
+    /** Computed-widget evidence gathered from real select/input/reset actions. */
+    calculatorEvidence?: Array<{
+        choices: number;
+        choicesTested: number;
+        zeroCorrect: boolean;
+        largeCorrect: boolean;
+        mathCorrect: boolean;
+        negativeRejected: boolean;
+        resetWorked: boolean;
+        viewport: string;
+        route?: string;
+    }>;
     /** Named browser passes, so a score cannot hide which kinds of QA ran. */
     passes?: AppAuditPass[];
 }
@@ -834,6 +846,7 @@ export async function auditBuiltApp(
             formsPersisted: 0, formsPersistenceUnproven: 0, qaRecordsDeleted: 0, qaRecordsNotDeleted: 0,
             semanticFieldsTested: 0, semanticValidationFailures: 0, semanticValidationEvidence: [],
             disclosureEvidence: [],
+            calculatorEvidence: [],
             statesVisited: 0, exploratoryActions: 0, controlsDiscovered: 0,
         };
         const mergeProbe = (p: { controls: any[]; metrics: Record<string, any>; forms?: FormResult[] }, route: string) => {
@@ -852,6 +865,7 @@ export async function auditBuiltApp(
             }
             behaviourMetrics.semanticValidationEvidence.push(...(p.metrics.semanticValidationEvidence || []));
             behaviourMetrics.disclosureEvidence.push(...(p.metrics.disclosureEvidence || []).map((evidence: any) => ({ ...evidence, route })));
+            behaviourMetrics.calculatorEvidence.push(...(p.metrics.calculatorEvidence || []).map((evidence: any) => ({ ...evidence, route })));
             for (const f of p.forms || []) allForms.push({ ...f, label: route === '/' ? f.label : `${route} ${f.label}` });
         };
 
@@ -1255,6 +1269,7 @@ export async function auditBuiltApp(
             semanticValidationFailures: behaviourMetrics.semanticValidationFailures,
             semanticValidationEvidence: behaviourMetrics.semanticValidationEvidence,
             disclosureEvidence: behaviourMetrics.disclosureEvidence,
+            calculatorEvidence: behaviourMetrics.calculatorEvidence,
             forms: allForms,
             viewports: ui.metrics.viewports || [],
             statesVisited: behaviourMetrics.statesVisited,

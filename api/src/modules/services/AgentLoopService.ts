@@ -13,7 +13,7 @@ import { isArabicReply, replyLanguageCode, say as pick } from '../../shared/repl
 import { formatAttachmentsBlock } from '../../shared/attachments';
 import { describeImageAttachments } from '../../shared/vision';
 import { withDeadline, RUN_DEADLINE_MS, DeadlineError } from '../../shared/utils/deadline';
-import { flushChatStores, persistChatStores, usesLocalChatStore } from '../../api/chat-store';
+import { flushChatStores, usesLocalChatStore } from '../../api/chat-store';
 import { clarifyGate } from '../../core/orchestrator/clarify';
 import { announceScaffoldSubstitution } from '../../core/design/scaffold-substitution';
 import { phaseDetail } from '../../core/orchestrator/phaseAnnounce';
@@ -350,15 +350,15 @@ export class AgentLoopService {
                     ? '💬 الطلب مختصر جداً — أسأل توضيحات قبل أن أبني'
                     : '💬 The brief is thin — asking a few questions before building');
                 const clarifyRunId = `clarify-${Date.now()}`;
-                broadcast({ type: 'text', sessionId, data: { text: gate.text, sessionId }, runId: clarifyRunId } as any);
-                broadcast({ type: 'run_finished', runId: clarifyRunId, data: { runId: clarifyRunId, ok: true, sessionId } } as any);
                 try {
                     if (usesLocalChatStore()) {
                         const store: any[] = (global as any).mockMessages || ((global as any).mockMessages = []);
                         store.push({ _id: `am-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, sessionId, role: 'assistant', content: gate.text, createdAt: new Date() });
-                        persistChatStores();
+                        flushChatStores();
                     }
                 } catch { /* non-fatal */ }
+                broadcast({ type: 'text', sessionId, data: { text: gate.text, sessionId }, runId: clarifyRunId } as any);
+                broadcast({ type: 'run_finished', runId: clarifyRunId, data: { runId: clarifyRunId, ok: true, sessionId } } as any);
                 return { ok: true, result: { answer: gate.text, clarify: true } };
             }
             if (gate.kind === 'merge') {
@@ -648,10 +648,9 @@ export class AgentLoopService {
             const finalText = result.ok
                 ? (answerText || uiText('done', language))
                 : `⚠️ ${failureText || uiText('failed', language)}`;
-            broadcast({ type: 'text', sessionId, data: { text: finalText, sessionId }, runId } as any);
-            broadcast({ type: 'run_finished', runId, data: { runId, ok: result.ok, sessionId } } as any);
-
-            // Persist Joe's reply too (offline/JSON mode) so reloads show it.
+            // Persist before run_finished. The client reloads history when that
+            // event arrives; broadcasting first let the reload win the race and
+            // replace the new live messages with the previous durable snapshot.
             try {
                 if (usesLocalChatStore()) {
                     const store: any[] = (global as any).mockMessages || ((global as any).mockMessages = []);
@@ -662,6 +661,8 @@ export class AgentLoopService {
                     flushChatStores();
                 }
             } catch { /* non-fatal */ }
+            broadcast({ type: 'text', sessionId, data: { text: finalText, sessionId }, runId } as any);
+            broadcast({ type: 'run_finished', runId, data: { runId, ok: result.ok, sessionId } } as any);
 
             // The user's run is finished once its answer has been delivered and
             // persisted. Session naming, memory learning, and receipt enrichment
@@ -724,9 +725,6 @@ export class AgentLoopService {
                     ? `⚠️ تجاوزت المهمة حدّها الزمني الكلي (${Math.round(RUN_DEADLINE_MS / 60000)} دقيقة) فأوقفتُها بصدق بدل تركها معلّقة. أعد إرسال نفس الطلب وسيستأنف البناء من نقطة الحفظ دون إعادة ما اكتمل.`
                     : `⚠️ The task exceeded its total time limit (${Math.round(RUN_DEADLINE_MS / 60000)} min) and was stopped honestly instead of hanging. Send the same request again — the build resumes from its checkpoint.`)
                 : `⚠️ ${error?.message || uiText('unexpectedError', language)}`;
-            // Still tell the UI so it stops "thinking" and shows what went wrong.
-            broadcast({ type: 'text', sessionId, data: { text: failText, sessionId }, runId } as any);
-            broadcast({ type: 'run_finished', runId, data: { runId, ok: false, sessionId } } as any);
             // A fatal path used to broadcast the answer but omit it from the
             // offline chat archive. After a reconnect or session switch that
             // made Joe's honest failure disappear and left only the old
@@ -739,6 +737,11 @@ export class AgentLoopService {
                     flushChatStores();
                 }
             } catch { /* persistence must not prevent cleanup */ }
+            // Still tell the UI so it stops "thinking" and shows what went wrong.
+            // The durable snapshot is already current when run_finished asks
+            // the frontend to reload it.
+            broadcast({ type: 'text', sessionId, data: { text: failText, sessionId }, runId } as any);
+            broadcast({ type: 'run_finished', runId, data: { runId, ok: false, sessionId } } as any);
             await saveRunReceipt(runId, makeRunReceipt({}, 'failed', { selfFixReason: failText, error: String(error?.message || error || '') }), 'failed');
             releaseHandle(runCancellation, runId, sessionId);
             removeRunEventListener(runId);

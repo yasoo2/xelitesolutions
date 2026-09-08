@@ -125,6 +125,17 @@ describe('every menu, every route — not fourteen buttons', () => {
         expect(b).toContain('replacementFor(fresh, c)');
     });
 
+    it('proves calculator math and boundary states instead of merely pressing its controls', () => {
+        const b = B();
+        expect(b).toContain("if (el.closest('[data-qa-calculator]')) return;");
+        expect(b).toContain("const calculator = await page.$('[data-qa-calculator]')");
+        expect(b).toContain("await input.fill('0')");
+        expect(b).toContain("await input.fill('9999')");
+        expect(b).toContain("await input.fill('-1')");
+        expect(b).toContain('Math.abs(state.total - expectedSubtotal * (1 + taxRate)) < 0.01');
+        expect(b).toContain('const resetWorked = resetState.selectedIndex === 0 && resetState.hours === 1');
+    });
+
     it('the stamps from the last page are wiped — a hash route never reloads', () => {
         // This cost 34 controls: every element still carried `data-joe-ctl`, the
         // dedupe guard skipped them all, and routes 2-4 pressed nothing.

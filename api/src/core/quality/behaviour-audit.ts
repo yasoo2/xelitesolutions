@@ -272,6 +272,10 @@ function findControls(limit: number) {
     // Ordinary buttons — the cart, the counter, the toggle.
     document.querySelectorAll('button, [role="button"]').forEach(el => {
         if (el.closest('form')) return;                 // already covered as submit
+        // The state-aware calculator audit below changes values before it
+        // presses Reset. A baseline click while the calculator is already at
+        // its defaults cannot visibly change anything and is not a fair test.
+        if (el.closest('[data-qa-calculator]')) return;
         if (el.matches('[role="tab"], [data-tab], .tab, .filter, [data-filter]')) return;
         if (el.getAttribute('aria-haspopup') === 'dialog') return; // inspect dialogs after their row actions
         push(el, 'button');
@@ -1205,6 +1209,67 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                     opened,
                     oneAtATime,
                     keyboardClosed,
+                    viewport: viewport ? `${viewport.width}x${viewport.height}` : '',
+                }];
+            }
+        }
+
+        const calculator = await page.$('[data-qa-calculator]');
+        if (calculator && eyeIsOpen()) {
+            const select = await calculator.$('select');
+            const input = await calculator.$('input[type="number"]');
+            const reset = await calculator.$('button');
+            if (select && input && reset) {
+                await eyes.lookAt(page, await calculator.boundingBox().catch(() => null), {
+                    note: 'اختبار الحاسبة والقيم الحدية', tone: 'warn', moveMouse: true,
+                });
+                const choices = await select.$$eval('option', (options: Element[]) => options.length).catch(() => 0);
+                const taxRate = Number(await calculator.getAttribute('data-tax-rate') || 0) / 100;
+                let choicesTested = 0;
+                let mathCorrect = true;
+                const read = async () => page.evaluate(() => {
+                    const root = document.querySelector('[data-qa-calculator]');
+                    const selected = root?.querySelector('select option:checked') as HTMLOptionElement | null;
+                    const hours = Number((root?.querySelector('input[type="number"]') as HTMLInputElement | null)?.value || 0);
+                    const rate = Number(selected?.dataset.rate || 0);
+                    const subtotal = Number((root?.querySelector('[data-calculator-subtotal]') as HTMLElement | null)?.dataset.calculatorSubtotal || NaN);
+                    const tax = Number((root?.querySelector('[data-calculator-tax]') as HTMLElement | null)?.dataset.calculatorTax || NaN);
+                    const total = Number((root?.querySelector('[data-calculator-total]') as HTMLElement | null)?.dataset.calculatorTotal || NaN);
+                    return { hours, rate, subtotal, tax, total, selectedIndex: (root?.querySelector('select') as HTMLSelectElement | null)?.selectedIndex ?? -1 };
+                });
+                for (let index = 0; index < choices; index++) {
+                    await select.selectOption(String(index)).catch(() => { });
+                    await input.fill('2').catch(() => { });
+                    await page.waitForTimeout(100).catch(() => { });
+                    const state = await read();
+                    const expectedSubtotal = state.rate * 2;
+                    mathCorrect = mathCorrect
+                        && Math.abs(state.subtotal - expectedSubtotal) < 0.01
+                        && Math.abs(state.tax - expectedSubtotal * taxRate) < 0.01
+                        && Math.abs(state.total - expectedSubtotal * (1 + taxRate)) < 0.01;
+                    if (state.selectedIndex === index) choicesTested++;
+                }
+                await input.fill('0').catch(() => { });
+                await page.waitForTimeout(80).catch(() => { });
+                const zeroCorrect = Math.abs((await read()).total) < 0.01;
+                await input.fill('9999').catch(() => { });
+                await page.waitForTimeout(80).catch(() => { });
+                const large = await read();
+                const largeCorrect = Number.isFinite(large.total) && large.total > 0
+                    && Math.abs(large.total - large.rate * 9999 * (1 + taxRate)) < 0.01;
+                await input.fill('-1').catch(() => { });
+                const negativeRejected = await input.evaluate((node: HTMLInputElement) => !node.checkValidity()).catch(() => false);
+                if (choices > 1) await select.selectOption(String(choices - 1)).catch(() => { });
+                await input.fill('7').catch(() => { });
+                await reset.click({ timeout: 2500, noWaitAfter: true }).catch(() => { });
+                await page.waitForTimeout(100).catch(() => { });
+                const resetState = await read();
+                const resetWorked = resetState.selectedIndex === 0 && resetState.hours === 1;
+                let viewport: { width: number; height: number } | null = null;
+                try { viewport = page.viewportSize(); } catch { /* keep empty */ }
+                metrics.calculatorEvidence = [{
+                    choices, choicesTested, zeroCorrect, largeCorrect, mathCorrect,
+                    negativeRejected, resetWorked,
                     viewport: viewport ? `${viewport.width}x${viewport.height}` : '',
                 }];
             }
