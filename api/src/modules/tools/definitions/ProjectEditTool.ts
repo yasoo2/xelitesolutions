@@ -29,9 +29,18 @@ import { broadcast, broadcastThinkingDetail } from '../../../api/ws';
 import { persistJoeProjects, writeJoeProject } from '../../../api/page-store';
 import { publicUrlFor } from '../../../shared/utils/publicUrl';
 import { undefinedJsxComponentMismatch } from '../../../core/quality/source-contract';
+import { saysWord, words, normalise } from '../../../core/language/arabic';
+import { normalizeIntentText } from '../../../core/orchestrator/promptNormalizer';
 
 /** One parsed SEARCH/REPLACE block. */
 export interface EditBlock { file: string; search: string; replace: string }
+
+/** A browser/visual check named by the user is an acceptance gate, not a bonus. */
+export function requestsVisibleBrowserAudit(request: string): boolean {
+    const raw = String(request || '');
+    const probe = `${raw}\n${normalizeIntentText(raw)}`;
+    return /(?:\b(?:test|verify|check|inspect|audit)\b[\s\S]{0,55}\b(?:browser|preview|ui|visual(?:ly)?)\b|\b(?:browser|preview|ui|visual)\s+(?:test|qa|check|audit)\b|(?:اختبر|تحقق|افحص|دقق|راجع)[\s\S]{0,45}(?:المتصفح|المعاينه|الواجهه|بصريا|مرئيا)|(?:اختبار|فحص|تدقيق|مراجعه)[\s\S]{0,35}(?:المتصفح|الواجهه|بصري|مرئي))/i.test(probe);
+}
 
 /**
  * Parse the model's reply into blocks. Format (Aider-style, fenced per file):
@@ -101,6 +110,42 @@ export function parseLiteralTextReplacement(request: string): { from: string; to
     const from = pair[1].trim();
     const to = pair[2].trim();
     return from && to && from !== to ? { from, to } : null;
+}
+
+export type PresentationEdit =
+    | { kind: 'literal'; from: string; to: string }
+    | { kind: 'brand_mark'; value: string; beside: string }
+    | { kind: 'section_subtitle'; section: string; value: string };
+
+/**
+ * Read several explicit presentation changes from one follow-up without asking
+ * a provider to rediscover Joe's generated-project contract. Values must be
+ * quoted: the quotes are the user's edit boundaries, so a later clause can
+ * never be swallowed into an earlier value.
+ */
+export function parsePresentationEdits(request: string): PresentationEdit[] {
+    const text = String(request || '').trim();
+    const out: PresentationEdit[] = [];
+    const literal = parseLiteralTextReplacement(text);
+    if (literal) out.push({ kind: 'literal', ...literal });
+
+    const mark = text.match(/(?:أضف|اضف|ضع|حط|add)\s+[^،.\n]{0,55}(?:شعار|علام[ةه]|\b(?:logo|mark)\b)[^«"\n]{0,55}[«"]([^»"\n]{1,24})[»"][^،.\n]{0,90}(?:بجانب|قرب|محاذاة|beside|next\s+to)[^«"\n]{0,45}[«"]([^»"\n]{1,80})[»"]/iu);
+    if (mark) out.push({ kind: 'brand_mark', value: mark[1].trim(), beside: mark[2].trim() });
+
+    const below = text.match(/(?:أضف|اضف|ضع|حط|add)\s+(?:تحت|أسفل|اسفل|below|under)\s+(?:عنوان|heading|title)?\s*([^«"،,.\n]{2,60})[^«"\n]{0,50}(?:سطر(?:ا|ًا)?|نص(?:ا|ًا)?|وصف(?:ا|ًا)?|subtitle|line|text)\s*[«"]([^»"\n]{1,220})[»"]/iu);
+    const lineFirst = text.match(/(?:أضف|اضف|ضع|حط|add)\s+(?:سطر(?:ا|ًا)?|نص(?:ا|ًا)?|وصف(?:ا|ًا)?|subtitle|line|text)\s*[«"]([^»"\n]{1,220})[»"][^،.\n]{0,70}(?:تحت|أسفل|اسفل|below|under)\s+(?:عنوان|heading|title)?\s*([^،.\n]{2,60})/iu);
+    if (below) out.push({ kind: 'section_subtitle', section: below[1].trim(), value: below[2].trim() });
+    else if (lineFirst) out.push({ kind: 'section_subtitle', section: lineFirst[2].trim(), value: lineFirst[1].trim() });
+    return out;
+}
+
+/** A free-form value ends at the next edit clause, never at the prompt's end. */
+export function boundedChangeValue(request: string): string {
+    const tail = ((String(request || '').match(/(?:(?<![ء-ي])(?:إلى|الى|ليصبح|ليصير|يصير|تصير)(?![ء-ي])|=|\bto\b)\s*(.+)$/iu) || [])[1] || '').trim();
+    const quoted = tail.match(/^[«"']([^»"'\n]{1,220})[»"']/u);
+    if (quoted) return quoted[1].trim();
+    return tail.split(/[،.;]\s*(?=(?:ثم\s+)?(?:و?\s*)?(?:أضف|اضف|ضع|حط|غيّ?ر|غير|بدّ?ل|بدل|احذف|اختبر|ابن|add|change|replace|remove|test|build)\b)/iu)[0]
+        .trim().replace(/^[«"']|[»"'.،!؟]+$/g, '').trim();
 }
 
 /**
@@ -205,7 +250,7 @@ export function photoRows(body: string): Array<{ name: string; kind: 'dish' | 'p
  *  word of «طبق اليوم», and first-match handed the photo to the wrong dish. */
 export function pickPhotoRow<T extends { name: string }>(rows: T[], request: string): T | null {
     return rows
-        .map(r => ({ r, hits: r.name.split(/\s+/).filter(w => w.length >= 3 && request.includes(w)).length }))
+        .map(r => ({ r, hits: words(r.name).filter(w => w.length >= 3 && saysWord(request, w)).length }))
         .filter(x => x.hits > 0)
         .sort((a, b) => b.hits - a.hits)[0]?.r || null;
 }
@@ -293,6 +338,7 @@ export class ProjectEditTool extends BaseTool {
         const sessionId = context?.sessionId;
         const sessionKey = String(sessionId || 'default').replace(/[^a-zA-Z0-9._-]/g, '_');
         const isAr = /[؀-ۿ]/.test(request);
+        const visibleAuditRequired = requestsVisibleBrowserAudit(request);
         try { broadcast({ type: 'build_started', sessionId, data: { tool: 'project_edit', sessionId } } as any); } catch { /* UI optional */ }
 
         const projects: Record<string, any> = (global as any).joeProjects || ((global as any).joeProjects = {});
@@ -587,6 +633,12 @@ export class ProjectEditTool extends BaseTool {
         const refused: string[] = [];
         const write = (rel: string, body: string) => {
             const abs = path.join(dir, rel);
+            const existing = touched.find(t => t.file === rel);
+            if (existing) {
+                fs.writeFileSync(abs, body, 'utf-8');
+                existing.after = body;
+                return;
+            }
             const before = fs.existsSync(abs) ? fs.readFileSync(abs, 'utf-8') : '';
             fs.writeFileSync(abs, body, 'utf-8');
             touched.push({ file: rel, before, after: body });
@@ -622,6 +674,114 @@ export class ProjectEditTool extends BaseTool {
         const contentRel = 'src/content.js';
         const notes: string[] = [];
         const reEsc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const jsEsc = (s: string) => String(s || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\r?\n/g, ' ');
+
+        /**
+         * A compound visual follow-up is one transaction. Previously the first
+         * broad fast path won, prevented every later path from running, and a
+         * word fragment in a different clause selected an unrelated content
+         * row. Parse the explicit quoted operations, stage every file in memory,
+         * validate the complete batch, and only then write it once per file.
+         */
+        const presentationEdits = parsePresentationEdits(request);
+        if (!touched.length && presentationEdits.length > 1 && fs.existsSync(path.join(dir, contentRel))) {
+            const pending = new Map<string, string>();
+            const read = (rel: string) => pending.get(rel) ?? fs.readFileSync(path.join(dir, rel), 'utf-8');
+            const stage = (rel: string, body: string) => pending.set(rel, body);
+            const failures: string[] = [];
+            const editable = listFiles(dir);
+            const cssRel = ['src/styles/base.css', 'src/styles/app.css'].find(rel => fs.existsSync(path.join(dir, rel)));
+            const ensureCss = (rule: string, marker: string) => {
+                if (!cssRel) return;
+                const css = read(cssRel);
+                if (!css.includes(marker)) stage(cssRel, `${css.trimEnd()}\n${rule}\n`);
+            };
+
+            for (const op of presentationEdits) {
+                if (op.kind === 'literal') {
+                    const matches = editable.filter(rel => {
+                        try { return !/^(?:package(?:-lock)?\.json|vite\.config\.|index\.html$)/i.test(rel) && read(rel).includes(op.from); }
+                        catch { return false; }
+                    }).slice(0, 4);
+                    if (!matches.length) { failures.push(`literal not found: ${op.from}`); continue; }
+                    for (const rel of matches) stage(rel, read(rel).split(op.from).join(op.to));
+                    notes.push(isAr ? `غيّرت النص «${op.from}» إلى «${op.to}».` : `Changed "${op.from}" to "${op.to}".`);
+                    continue;
+                }
+
+                if (op.kind === 'brand_mark') {
+                    let content = read(contentRel);
+                    const brand = (content.match(/\n\s*brand:\s*'([^']*)'/) || [])[1] || '';
+                    const targetMatches = !!brand && (normalise(brand) === normalise(op.beside) || saysWord(brand, op.beside) || saysWord(op.beside, brand));
+                    const component = editable
+                        .filter(rel => /\.(?:jsx|tsx|js|ts)$/.test(rel) && read(rel).includes('{content.brand}'))
+                        .sort((a, b) => Number(!/(?:Navbar|Header)\./i.test(a)) - Number(!/(?:Navbar|Header)\./i.test(b)))[0];
+                    if (!targetMatches || !component) { failures.push(`brand target not found: ${op.beside}`); continue; }
+                    if (/\n\s*brandMark:\s*'/.test(content)) content = content.replace(/(\n\s*brandMark:\s*)'[^']*'/, `$1'${jsEsc(op.value)}'`);
+                    else content = content.replace(/(\n\s*brand:\s*'[^']*',)/, `$1\n  brandMark: '${jsEsc(op.value)}',`);
+                    stage(contentRel, content);
+                    let view = read(component);
+                    if (!view.includes('content.brandMark')) {
+                        view = view.replace('{content.brand}', `{content.brandMark ? <span className="brand-text-mark" aria-hidden="true">{content.brandMark}</span> : null}<span>{content.brand}</span>`);
+                        stage(component, view);
+                    }
+                    ensureCss('.brand-text-mark{display:inline-grid;place-items:center;width:1.8rem;height:1.8rem;margin-inline-end:.55rem;border-radius:.4rem;background:var(--brand);color:var(--on-brand);font-size:.78rem;font-weight:800;line-height:1}', '.brand-text-mark{');
+                    notes.push(isAr ? `أضفت العلامة النصية «${op.value}» بجانب «${brand}».` : `Added the text mark "${op.value}" beside "${brand}".`);
+                    continue;
+                }
+
+                let content = read(contentRel);
+                const sectionWords = words(op.section).filter(w => w.length > 2);
+                const titles = [...content.matchAll(/\n\s*([A-Za-z][A-Za-z0-9]*Title):\s*'([^']*)'/g)]
+                    .map(m => {
+                        const valueWords = words(m[2]).filter(w => w.length > 2);
+                        const hits = sectionWords.filter(w => saysWord(m[2], w)).length;
+                        return { key: m[1], value: m[2], hits, density: hits / Math.max(1, valueWords.length) };
+                    })
+                    // A long hero may repeat the whole brief and therefore mention
+                    // every section once. The actual section heading concentrates
+                    // the requested words; rank that evidence instead of first hit.
+                    .filter(t => t.hits > 0)
+                    .sort((a, b) => (b.density - a.density) || (b.hits - a.hits) || (a.value.length - b.value.length));
+                const title = titles[0];
+                const component = title && editable.find(rel => /\.(?:jsx|tsx|js|ts)$/.test(rel) && read(rel).includes(`{content.${title.key}}`));
+                if (!title || !component) { failures.push(`section heading not found: ${op.section}`); continue; }
+                const subtitleKey = title.key.replace(/Title$/, 'Subtitle');
+                if (new RegExp(`\\n\\s*${subtitleKey}:\\s*'`).test(content)) {
+                    content = content.replace(new RegExp(`(\\n\\s*${subtitleKey}:\\s*)'[^']*'`), `$1'${jsEsc(op.value)}'`);
+                } else {
+                    content = content.replace(new RegExp(`(\\n\\s*${title.key}:\\s*'[^']*',)`), `$1\n  ${subtitleKey}: '${jsEsc(op.value)}',`);
+                }
+                stage(contentRel, content);
+                let view = read(component);
+                if (!view.includes(`content.${subtitleKey}`)) {
+                    const markerAt = view.indexOf(`{content.${title.key}}`);
+                    const headingEnd = markerAt >= 0 ? view.indexOf('</h2>', markerAt) : -1;
+                    if (headingEnd < 0 || headingEnd - markerAt > 500) { failures.push(`section renderer not found: ${title.key}`); continue; }
+                    const insertAt = headingEnd + '</h2>'.length;
+                    view = `${view.slice(0, insertAt)}\n        {content.${subtitleKey} ? <p className="section-intro">{content.${subtitleKey}}</p> : null}${view.slice(insertAt)}`;
+                    stage(component, view);
+                }
+                ensureCss('.section-intro{max-width:62ch;margin:-1rem 0 1.75rem;color:var(--muted);line-height:1.75}', '.section-intro{');
+                notes.push(isAr ? `أضفت النص الداعم تحت عنوان «${title.value}».` : `Added supporting text below "${title.value}".`);
+            }
+
+            for (const [rel, body] of pending) {
+                const gate = syntaxOk(rel, body);
+                if (!gate.ok) failures.push(`${rel}: ${gate.error}`);
+            }
+            if (failures.length) {
+                logs.push(`compound presentation batch refused atomically: ${failures.join(' | ')}`);
+                return {
+                    ok: false,
+                    error: isAr ? `لم أنفّذ دفعة التعديل لأن جزءاً منها لم يُحدَّد بأمان: ${failures.join('؛ ')}` : `The edit batch was not applied safely: ${failures.join('; ')}`,
+                    output: { message: isAr ? 'لم أغيّر أي ملف؛ لا أطبّق جزءاً من طلب مركّب ثم أدّعي اكتماله.' : 'No file changed; a compound request is never partially claimed as complete.' },
+                    logs,
+                } as any;
+            }
+            for (const [rel, body] of pending) write(rel, body);
+            logs.push(`compound presentation batch: ${presentationEdits.length} operation(s), ${pending.size} file(s), atomic and provider-independent`);
+        }
         /** The photo the row/hero currently carries — its src, or undefined. */
         const currentSrcOf = (body: string, target: { name: string } | null): string | undefined => target
             ? (body.match(new RegExp(`\\{ name: '${reEsc(target.name)}',[^\\n]*?img: \\{ src: '([^']+)'`)) || [])[1]
@@ -945,8 +1105,7 @@ export class ProjectEditTool extends BaseTool {
                 .filter(r => priceIntent ? /price: '/.test(r.line) : descIntent ? /desc: '/.test(r.line) : true);
             const target = pickPhotoRow(rowLines, request);
             // The new value: whatever follows إلى/ليصبح/=/to, quotes stripped.
-            const val = ((request.match(/(?:(?<![ء-ي])(?:إلى|الى|ليصبح|ليصير|يصير|تصير)(?![ء-ي])|=|\bto\b)\s*(.+)$/i) || [])[1] || '')
-                .trim().replace(/^[«"']|[»"'.،!؟]+$/g, '').trim();
+            const val = boundedChangeValue(request);
             const field = priceIntent ? (isAr ? 'سعر' : 'price') : descIntent ? (isAr ? 'وصف' : 'description') : (isAr ? 'اسم' : 'name');
             if (!target || !val) {
                 // Prices live ONLY in rows, so a rowless price request earns a
@@ -1019,8 +1178,7 @@ export class ProjectEditTool extends BaseTool {
         if (!touched.length) {
             const siteWord = /(الموقع|موقعي|التطبيق|تطبيقي|المشروع|مشروعي|النظام|الصفحة|صفحتي|site|website|app|project|page)/i.test(request);
             const nameWord = /(?<![ء-ي])(اسم|الاسم|عنوان|العنوان|سمّه|سمه)(?![ء-ي])|\b(brand|title|rename)\b/i.test(request);
-            const val = ((request.match(/(?:(?<![ء-ي])(?:إلى|الى|ليصبح|ليصير|يصير|تصير)(?![ء-ي])|=|\bto\b)\s*(.+)$/i) || [])[1] || '')
-                .trim().replace(/^[«"']|[»"'.،!؟]+$/g, '').trim();
+            const val = boundedChangeValue(request);
             const contentAbs = path.join(dir, contentRel);
             if (siteWord && nameWord && val && val.length <= 60 && fs.existsSync(contentAbs)) {
                 const body = fs.readFileSync(contentAbs, 'utf-8');
@@ -1365,6 +1523,14 @@ This is a correct answer, not a failure. Changing something the user did not ask
             } catch (e: any) { logs.push(`self-QA after edit failed: ${String(e?.message || e).slice(0, 80)}`); }
         }
 
+        const visualVerificationBlocked = visibleAuditRequired && (!audit || !!audit.skipped);
+        if (visualVerificationBlocked) {
+            const reason = String(audit?.skipped || 'browser audit did not return evidence');
+            notes.push(isAr
+                ? `توقف التسليم: لم يكتمل اختبار المتصفح المرئي المطلوب (${reason}). التعديل محفوظ والبناء ناجح، لكنني لا أعتبره متحققاً بعد.`
+                : `Delivery blocked: the requested visible browser audit did not complete (${reason}). The edit is saved and builds, but is not verified yet.`);
+        }
+
         // Per-file history is written after QA so an automatic quality repair
         // is part of the same undoable transaction as the user's edit.
         const history = (entry?.history || []).concat(touched.map(t => ({ file: t.file, before: t.before, at: Date.now() }))).slice(-20);
@@ -1375,12 +1541,22 @@ This is a correct answer, not a failure. Changing something the user did not ask
             const d = diffSummary(t.before, t.after);
             return `   • ${t.file} (+${d.added} −${d.removed})`;
         }).join('\n');
+        const buildVerdict = visualVerificationBlocked
+            ? (isAr ? '⚠️ البناء نجح، لكن التسليم متوقف حتى يكتمل اختبار المتصفح المطلوب.' : '⚠️ Build passed, but delivery is blocked until the requested browser audit completes.')
+            : (buildVerified === true
+                ? (isAr ? '✅ vite build نجح بعد التعديل — المشروع سليم.' : '✅ vite build passed after the edit.')
+                : buildVerified === false ? '' : (isAr ? 'ℹ️ (الحزم غير مثبتة — تخطيت تحقق البناء؛ بوابة الفحص النحوي طُبّقت على كل ملف)' : ''));
         const message = isAr
             ? `🔬 عُدّل المشروع جراحياً — ${touched.length} ملف:\n${stats}
-${notes.length ? notes.join('\n') + '\n' : ''}${buildVerified === true ? '✅ vite build نجح بعد التعديل — المشروع سليم.' : buildVerified === false ? '' : 'ℹ️ (الحزم غير مثبتة — تخطيت تحقق البناء؛ بوابة الفحص النحوي طُبّقت على كل ملف)'}${refused.length ? `\n⚠️ رُفض ${refused.length} تعديلاً غير آمن:\n${refused.map(r => `   • ${r}`).join('\n')}` : ''}
+${notes.length ? notes.join('\n') + '\n' : ''}${buildVerdict}${refused.length ? `\n⚠️ رُفض ${refused.length} تعديلاً غير آمن:\n${refused.map(r => `   • ${r}`).join('\n')}` : ''}
 
 🧭 «شغّل خادم التطوير» للمعاينة الحية · «تراجع» يسترجع الملفات السابقة`
-            : `🔬 Surgical edit — ${touched.length} file(s):\n${stats}\n${notes.length ? notes.join('\n') + '\n' : ''}${buildVerified === true ? '✅ vite build passed after the edit.' : ''}`;
-        return { ok: true, output: { message, dir, touched: touched.map(t => t.file), refused, buildVerified, audit, improvement, invented }, logs } as any;
+            : `🔬 Surgical edit — ${touched.length} file(s):\n${stats}\n${notes.length ? notes.join('\n') + '\n' : ''}${buildVerdict}`;
+        return {
+            ok: !visualVerificationBlocked,
+            ...(visualVerificationBlocked ? { error: 'browser_qa_required: requested visible browser verification did not complete' } : {}),
+            output: { message, dir, touched: touched.map(t => t.file), refused, buildVerified, audit, improvement, invented, visualVerificationBlocked },
+            logs,
+        } as any;
     }
 }

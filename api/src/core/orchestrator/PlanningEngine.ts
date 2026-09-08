@@ -763,7 +763,11 @@ Rules:
             || userGoal.match(/\b[a-z0-9-]+\.(?:com|org|net|io|dev|ai|co|app|sa|eg|me)(?:\/[^\s<>'\"]*)?/i);
         const earlyOpenIntent = /(افتح|لفتح|فتح|اذهب|انتقل|زر|ادخل|go\s*to|open|visit|navigate)/i.test(probe);
         const earlyTitleOnly = /(عنوان\s*(ال)?صفحة|title\s*(of\s*(the\s*)?)?page|page\s*title)/i.test(probe);
-        const earlyPageWork = /(لخّ?ص|تلخيص|حلّ?ل|تحليل|استخرج|استخراج|انقر|اضغط|املأ|عبّ?ئ|سجّ?ل|تسجيل|دخول|summari[sz]e|analy[sz]e|extract|click|fill|log\s*-?\s*in|sign\s*-?\s*in)/i.test(probe);
+        // Test the CANONICAL multilingual verbs too. The normalizer maps
+        // «опиши», «decris», «descrivi» and similar forms to `describe`; if this
+        // gate ignores that canonical word it stops at browser_launch and never
+        // lets the observing agent describe the page the user asked about.
+        const earlyPageWork = /(لخّ?ص|تلخيص|حلّ?ل|تحليل|استخرج|استخراج|انقر|اضغط|املأ|عبّ?ئ|سجّ?ل|تسجيل|دخول|summari[sz]e|describe|translate|analy[sz]e|extract|click|fill|log\s*-?\s*in|sign\s*-?\s*in)/i.test(probe);
         const earlyVisibleContent = /(اقر[أا]|اعرض|أظهر|اظهر|الحالة|المحتوى|النص\s+الظاهر|report|read|show|displayed|visible\s+(?:text|content)|page\s+content|response\s+body|status\s+(?:shown|displayed|returned)?)/i.test(probe);
         if (earlyUrlMatch && earlyOpenIntent && (earlyTitleOnly || !earlyPageWork)) {
             const url = earlyUrlMatch[0].startsWith('http') ? earlyUrlMatch[0] : `https://${earlyUrlMatch[0]}`;
@@ -2447,7 +2451,7 @@ Rules:
         {
             const explicitOpen = /(افتح|لفتح|فتح|اذهب|انتقل|زر|ادخل|go\s*to|open|visit|navigate)/i.test(probe);
             const titleOnly = /(عنوان\s*(ال)?صفحة|title\s*(of\s*(the\s*)?)?page|page\s*title)/i.test(probe);
-            const pageWork = /(لخّ?ص|تلخيص|حلّ?ل|تحليل|استخرج|استخراج|انقر|اضغط|املأ|عبّ?ئ|سجّ?ل|تسجيل|دخول|summari[sz]e|analy[sz]e|extract|click|fill|log\s*-?\s*in|sign\s*-?\s*in)/i.test(probe);
+            const pageWork = /(لخّ?ص|تلخيص|حلّ?ل|تحليل|استخرج|استخراج|انقر|اضغط|املأ|عبّ?ئ|سجّ?ل|تسجيل|دخول|summari[sz]e|describe|translate|analy[sz]e|extract|click|fill|log\s*-?\s*in|sign\s*-?\s*in)/i.test(probe);
             if (urlMatch && explicitOpen && (titleOnly || !pageWork)) {
                 const url = urlMatch[0].startsWith('http') ? urlMatch[0] : `https://${urlMatch[0]}`;
                 console.log(`[PlanningEngine] explicit URL open -> browser_launch ${url}`);

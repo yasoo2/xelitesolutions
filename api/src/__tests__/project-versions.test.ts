@@ -16,6 +16,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { snapshotProject, listVersions, restoreVersion, sourceFiles, VERSIONS_DIR } from '../core/project/versions';
+import { ProjectUndoTool } from '../modules/tools/definitions/ProjectUndoTool';
 
 function tinyProject(): string {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-ver-'));
@@ -151,5 +152,91 @@ describe('every mutation leaves a way back', () => {
         const P = read('core', 'orchestrator', 'PlanningEngine.ts');
         expect(P).toMatch(/tool: 'project_undo'/);
         expect(P).toMatch(/\(undoVerb \|\| listVerb\) && active\?\.dir/);
+    });
+});
+
+describe('the public undo tool sees surgical edit history too', () => {
+    let dir: string;
+    let store: string;
+    const sessionId = 'undo-surgical-history';
+    const previousStore = process.env.JOE_CHAT_STORE_DIR;
+
+    beforeEach(() => {
+        dir = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-undo-surgical-'));
+        store = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-undo-store-'));
+        process.env.JOE_CHAT_STORE_DIR = store;
+        fs.mkdirSync(path.join(dir, 'src'), { recursive: true });
+        fs.writeFileSync(path.join(dir, 'package.json'), '{"name":"undo-surgical"}');
+        fs.writeFileSync(path.join(dir, 'src', 'App.jsx'), 'new app');
+        fs.writeFileSync(path.join(dir, 'src', 'style.css'), 'new css');
+        (global as any).joeProjects = {
+            ...(global as any).joeProjects,
+            [sessionId]: {
+                dir,
+                history: [
+                    { file: 'src/older.txt', before: 'old batch', at: 1_000 },
+                    { file: 'src/App.jsx', before: 'original app', at: 10_000 },
+                    { file: 'src/style.css', before: 'original css', at: 10_001 },
+                ],
+            },
+        };
+    });
+
+    afterEach(() => {
+        delete (global as any).joeProjects?.[sessionId];
+        if (previousStore === undefined) delete process.env.JOE_CHAT_STORE_DIR;
+        else process.env.JOE_CHAT_STORE_DIR = previousStore;
+        fs.rmSync(dir, { recursive: true, force: true });
+        fs.rmSync(store, { recursive: true, force: true });
+    });
+
+    it('lists and restores the latest edit batch when no full snapshot exists', async () => {
+        const tool = new ProjectUndoTool();
+        const listed: any = await tool.execute({ list: true, request: 'اعرض النسخ' }, { sessionId, language: 'ar' });
+        expect(listed.ok).toBe(true);
+        expect(listed.output.surgicalEdits).toBe(2);
+        expect(listed.output.message).toContain('آخر تعديل جراحي قابل للتراجع');
+
+        const result: any = await tool.execute({ request: 'تراجع عن آخر تعديل' }, { sessionId, language: 'ar' });
+        expect(result.ok).toBe(true);
+        expect(result.output.source).toBe('surgical_history');
+        expect(result.output.restored.sort()).toEqual(['src/App.jsx', 'src/style.css']);
+        expect(fs.readFileSync(path.join(dir, 'src', 'App.jsx'), 'utf-8')).toBe('original app');
+        expect(fs.readFileSync(path.join(dir, 'src', 'style.css'), 'utf-8')).toBe('original css');
+        expect((global as any).joeProjects[sessionId].history).toEqual([
+            { file: 'src/older.txt', before: 'old batch', at: 1_000 },
+        ]);
+        expect(listVersions(dir)[0]?.label).toContain('قبل استرجاع آخر تعديل جراحي');
+    });
+
+    it('rejects a persisted path that escapes the active project', async () => {
+        (global as any).joeProjects[sessionId].history = [
+            { file: '../outside.txt', before: 'do not write', at: 10_000 },
+        ];
+        const result: any = await new ProjectUndoTool().execute(
+            { request: 'تراجع عن آخر تعديل' },
+            { sessionId, language: 'ar' },
+        );
+        expect(result.ok).toBe(false);
+        expect(result.error).toContain('unsafe_history_path');
+        expect(fs.existsSync(path.join(path.dirname(dir), 'outside.txt'))).toBe(false);
+    });
+
+    it('chooses the newest available history type instead of a fixed preference', async () => {
+        const old = snapshotProject(dir, 'older full snapshot');
+        expect(old).toBeTruthy();
+        const now = Date.now() + 10_000;
+        (global as any).joeProjects[sessionId].history = [
+            { file: 'src/App.jsx', before: 'surgical winner', at: now },
+        ];
+        fs.writeFileSync(path.join(dir, 'src', 'App.jsx'), 'latest bytes');
+
+        const result: any = await new ProjectUndoTool().execute(
+            { request: 'تراجع عن آخر تعديل' },
+            { sessionId, language: 'ar' },
+        );
+        expect(result.ok).toBe(true);
+        expect(result.output.source).toBe('surgical_history');
+        expect(fs.readFileSync(path.join(dir, 'src', 'App.jsx'), 'utf-8')).toBe('surgical winner');
     });
 });

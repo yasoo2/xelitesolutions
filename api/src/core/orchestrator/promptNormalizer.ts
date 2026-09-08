@@ -179,31 +179,33 @@ export function normalizeIntentText(raw: string): string {
     // 2) Single-word synonyms + typo repair, token by token (spaces/punctuation
     //    delimited scripts). The Arabic conjunction prefix «و» is peeled so
     //    «وشوف» still canonicalizes to «وانظر».
+    const canonicalToken = (token: string): string | null => {
+        if (FOLDED_SYNONYMS[token]) return FOLDED_SYNONYMS[token];
+        if (/^ال[؀-ۿ]{2,}/.test(token)) {
+            const withoutArticle = token.slice(2);
+            if (FOLDED_SYNONYMS[withoutArticle]) return FOLDED_SYNONYMS[withoutArticle];
+        }
+        const minLen = /[؀-ۿ]/.test(token) ? 4 : 5;
+        if (token.length < minLen) return null;
+        for (const [folded, keyword] of FOLDED_FUZZY) {
+            if (token === folded) return keyword;
+            if (Math.abs(folded.length - token.length) <= 1 && levenshtein1(token, folded)) return keyword;
+        }
+        return null;
+    };
+
     const tokens = text.split(/(\s+|[.,،;:!؟?()«»"'-])/);
     const mapped = tokens.map(tok => {
         if (!tok || /^\s+$/.test(tok) || tok.length < 2) return tok;
-        const bare = tok;
-        let prefix = '';
-        let core = bare;
-        if (/^و[؀-ۿ]/.test(core)) { prefix = 'و'; core = core.slice(1); }
-        if (FOLDED_SYNONYMS[core]) return prefix + FOLDED_SYNONYMS[core];
-        // The definite article hides the word from the table: «الالوان» is «الوان».
-        // Peel it and retry once — matching is against intent keywords only, so a
-        // stray peel cannot invent an intent that isn't in the table.
-        if (/^ال[؀-ۿ]{2,}/.test(core)) {
-            const bare = core.slice(2);
-            if (FOLDED_SYNONYMS[bare]) return prefix + FOLDED_SYNONYMS[bare];
-        }
-        // typo repair: exact-1 edit from a core keyword
-        const minLen = /[؀-ۿ]/.test(core) ? 4 : 5;
-        if (core.length >= minLen) {
-            for (const [folded, kw] of FOLDED_FUZZY) {
-                // Exact match AFTER folding: the user wrote the same word with a
-                // different (equally correct) spelling — «صفحه» for «صفحة». Restore
-                // the spelling the planner's regexes are written against.
-                if (core === folded) return prefix + kw;
-                if (Math.abs(folded.length - core.length) <= 1 && levenshtein1(core, folded)) return prefix + kw;
-            }
+        // Read the complete token before treating its first waw as a conjunction.
+        // Otherwise a real word such as «واجهة» is split into «و» + «اجهة» and
+        // typo repair happens to turn that damaged remainder back into «واجهة»,
+        // yielding the impossible canonical form «وواجهة».
+        const whole = canonicalToken(tok);
+        if (whole) return whole;
+        if (/^و[؀-ۿ]/.test(tok)) {
+            const afterConjunction = canonicalToken(tok.slice(1));
+            if (afterConjunction) return `و${afterConjunction}`;
         }
         return tok;
     });

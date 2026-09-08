@@ -719,7 +719,7 @@ export async function listSessionMessages(req: Request, res: Response) {
                 const alreadyAnswered = messages.some((message: any) =>
                     message.role === 'assistant' && String(message.runId || '') === String(run.runId || ''));
                 if (alreadyAnswered) continue;
-                const interruption = [...(run.events || [])].reverse().find((event: any) => event.type === 'run_interrupted');
+                const interruption: any = [...(run.events || [])].reverse().find((event: any) => event.type === 'run_interrupted');
                 events.push({
                     type: 'run_interrupted',
                     runId: run.runId,

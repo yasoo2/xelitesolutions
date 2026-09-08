@@ -117,3 +117,17 @@ Live proof used Joe's real command box with Auto:
 The running API logged direct routing to the evidence-first `project_pipeline` and deterministic React builder without depending on Ollama. The first run exposed a second general defect: `بعنوان` was not an explicit brand marker. After adding Arabic and English title markers and replaying the exact prompt, Joe generated `react-مدار`; direct artifact inspection found `مدار` in the HTML title, social metadata, package name, and content contract. Focused routing/title verification passed 5 suites and 111 tests, and the ten permanent architecture/self-healing gates passed.
 
 This is not a claim that every Arabic expression is solved. Snowball remains directly wired into only five production areas, and semantic normalization must continue to replace scattered literal readers as failures are observed. The rerun also left a separate open delivery defect: after completion, the embedded Browser canvas appeared blank and the final response called verification incomplete despite a reported `100/100`; that inconsistency is recorded for repair and is not counted as a clean prompt pass.
+
+### Malformed Arabic Brief Retest
+
+The language stack was audited end to end. `snowball-stemmers@0.6.0` remains installed and is used by `core/language/arabic.ts`; `promptNormalizer.ts` is the complementary intent layer for dialect, spelling variants, and multilingual action phrases. They remain separate deliberately because applying a stemmer to an entire instruction can collapse distinct Arabic meanings.
+
+The audit found three general defects. The normalizer removed an initial Arabic waw before attempting the intact token, two explicit-URL browser routes omitted the canonical `describe` and `translate` actions, and `/api/runs/start` selected Mongo from environment flags even when Mongoose was disconnected. These were repaired with regression coverage. The local session store now remains owner-checked while Mongo is unavailable.
+
+The exact malformed prompt was entered through Joe's real command box in a fresh guest session:
+
+> بدي تصيم واجهة مودرن لموقع شركة استشارات، فيها عنوان واضح وزر تواصل. اختبر التصميم في المتصفح.
+
+The first live attempt exposed the disconnected-Mongo crash. After repair and restart, the same prompt routed to the project pipeline, built and compiled a React project, opened the visible Browser panel, challenged the form's native field contracts, explored the submitted state, and remeasured desktop, tablet, and phone layouts. The final rerun reported `100/100`, one page, and three measured interactions. Independent preview and source inspection confirmed the visible headline `شركة استشارات متكاملة` and no occurrence of the raw `بدي تصيم` instruction in generated copy. The generated brand remained the generic `مشروعي` because no explicit product name was supplied; name invention remains a separate quality opportunity, not a language-routing failure.
+
+Focused verification passed 4 suites and 59 tests. API and web type checks passed, and both production builds completed. The delivery-summary regression now keeps a clean Browser mechanics score distinct from incomplete request acceptance, so a `100/100` browser score cannot hide unproven requested criteria.

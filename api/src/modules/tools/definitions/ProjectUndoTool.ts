@@ -17,6 +17,39 @@ import { BaseTool } from '../base';
 import { ToolPermission, ToolExecutionResult } from '../types';
 import { broadcastThinkingDetail, broadcastTerminalLine } from '../../../api/ws';
 import { listVersions, restoreVersion, snapshotProject } from '../../../core/project/versions';
+import { persistJoeProjects, writeJoeProject } from '../../../api/page-store';
+
+interface SurgicalHistoryEntry {
+    file: string;
+    before: string;
+    at: number;
+}
+
+const SURGICAL_BATCH_WINDOW_MS = 5_000;
+
+function surgicalHistory(entry: any): SurgicalHistoryEntry[] {
+    return Array.isArray(entry?.history)
+        ? entry.history.filter((item: any) => item
+            && typeof item.file === 'string'
+            && typeof item.before === 'string'
+            && Number.isFinite(Number(item.at)))
+        : [];
+}
+
+function latestSurgicalBatch(history: SurgicalHistoryEntry[]): { batch: SurgicalHistoryEntry[]; kept: SurgicalHistoryEntry[] } {
+    if (!history.length) return { batch: [], kept: [] };
+    const newest = Number(history[history.length - 1].at);
+    return {
+        batch: history.filter(item => newest - Number(item.at) < SURGICAL_BATCH_WINDOW_MS),
+        kept: history.filter(item => newest - Number(item.at) >= SURGICAL_BATCH_WINDOW_MS),
+    };
+}
+
+function projectPath(dir: string, rel: string): string | null {
+    const root = path.resolve(dir);
+    const target = path.resolve(root, String(rel || ''));
+    return target === root || target.startsWith(root + path.sep) ? target : null;
+}
 
 export class ProjectUndoTool extends BaseTool {
     name = 'project_undo';
@@ -53,19 +86,96 @@ export class ProjectUndoTool extends BaseTool {
         };
 
         const projects: Record<string, any> = (global as any).joeProjects || {};
-        const dir = String(input?.projectDir || projects[sessionKey]?.dir || '').trim();
+        const projectEntry = projects[sessionKey];
+        const dir = String(input?.projectDir || projectEntry?.dir || '').trim();
         if (!dir || !fs.existsSync(dir)) return { ok: false, error: 'no_project', logs } as any;
 
         const versions = listVersions(dir);
+        const history = surgicalHistory(projectEntry);
+        const surgical = latestSurgicalBatch(history);
+        const newestSurgicalAt = surgical.batch.reduce((latest, item) => Math.max(latest, Number(item.at) || 0), 0);
+        const preferSurgical = !input?.versionId
+            && surgical.batch.length > 0
+            && (!versions.length || newestSurgicalAt >= Number(versions[0]?.at || 0));
         const when = (at: number) => new Date(at).toLocaleString('ar');
 
         if (input?.list === true) {
-            const msg = versions.length
-                ? [`📜 النسخ المحفوظة لهذا المشروع (${versions.length}):`, '',
+            const snapshotLines = versions.length
+                ? [`📜 النسخ الكاملة المحفوظة (${versions.length}):`, '',
                     ...versions.map((v, i) => `   ${i + 1}. ${when(v.at)} — ${v.label || 'بلا وصف'} (${v.files} ملف)\n      المعرّف: ${v.id}`),
-                    '', 'قل «تراجع» للعودة إلى الأحدث، أو اذكر المعرّف للعودة إلى غيرها.'].join('\n')
-                : '📜 لا توجد نسخ محفوظة بعد. تُؤخذ نسخة تلقائياً قبل كل تعديل يجريه جو على المشروع.';
-            return { ok: true, output: { message: msg, versions }, logs } as any;
+                ].join('\n')
+                : '📜 لا توجد نسخة كاملة محفوظة بعد.';
+            const editLine = surgical.batch.length
+                ? `✏️ يوجد أيضاً آخر تعديل جراحي قابل للتراجع (${new Set(surgical.batch.map(item => item.file)).size} ملف).`
+                : '✏️ لا يوجد تعديل جراحي أحدث قابل للتراجع.';
+            const guidance = versions.length || surgical.batch.length
+                ? 'قل «تراجع» للعودة إلى أحدث تغيير متاح، أو اذكر معرّف نسخة كاملة.'
+                : 'ستُحفظ نقطة رجوع تلقائياً قبل أي تعديل لاحق يجريه جو.';
+            return {
+                ok: true,
+                output: { message: [snapshotLines, '', editLine, '', guidance].join('\n'), versions, surgicalEdits: surgical.batch.length },
+                logs,
+            } as any;
+        }
+
+        if (preferSurgical) {
+                if (sessionId) broadcastThinkingDetail(sessionId, say(isAr, '↩️ أرجع آخر دفعة تعديل…', '↩️ Rolling back the latest edit batch…'));
+
+                // Keep the earliest pre-edit bytes for each file. Older writers
+                // could record one file more than once inside the same batch.
+                const restore = new Map<string, { abs: string; before: string }>();
+                for (const item of surgical.batch) {
+                    const abs = projectPath(dir, item.file);
+                    if (!abs) {
+                        return { ok: false, error: `unsafe_history_path:${item.file}`, logs } as any;
+                    }
+                    if (!restore.has(item.file)) restore.set(item.file, { abs, before: item.before });
+                }
+
+                // A surgical rollback must itself be undoable, even though its
+                // source record predates the snapshot system.
+                snapshotProject(dir, 'قبل استرجاع آخر تعديل جراحي');
+                const present = new Map<string, { existed: boolean; body: Buffer }>();
+                try {
+                    for (const { abs } of restore.values()) {
+                        present.set(abs, { existed: fs.existsSync(abs), body: fs.existsSync(abs) ? fs.readFileSync(abs) : Buffer.alloc(0) });
+                    }
+                    for (const { abs, before } of restore.values()) {
+                        fs.mkdirSync(path.dirname(abs), { recursive: true });
+                        fs.writeFileSync(abs, before, 'utf-8');
+                    }
+                    const mismatch = [...restore.entries()].find(([, item]) => {
+                        try { return fs.readFileSync(item.abs, 'utf-8') !== item.before; } catch { return true; }
+                    });
+                    if (mismatch) throw new Error(`verification_failed:${mismatch[0]}`);
+                } catch (error: any) {
+                    for (const [abs, state] of present) {
+                        try {
+                            if (state.existed) fs.writeFileSync(abs, state.body);
+                            else fs.rmSync(abs, { force: true });
+                        } catch { /* best effort: preserve the original failure */ }
+                    }
+                    return { ok: false, error: String(error?.message || error).slice(0, 180), logs } as any;
+                }
+
+                writeJoeProject(sessionKey, {
+                    ...(projectEntry || {}),
+                    dir,
+                    updatedAt: Date.now(),
+                    history: surgical.kept,
+                }, context?.runId ?? null);
+                persistJoeProjects();
+                term(`undo: restored surgical batch (${restore.size} file(s)) from persisted edit history`);
+
+                const rebuilt = await this.rebuild(dir, sessionId, isAr, term);
+                const message = isAr
+                    ? `↩️ أعدتُ آخر دفعة تعديل كاملة (${restore.size} ملف).${rebuilt.ok ? '\n✅ وأعدتُ البناء ليطابق المصدر المستعاد.' : `\n⚠️ استُعيد المصدر، لكن البناء لم يكتمل: ${rebuilt.note}`}`
+                    : `↩️ Restored the latest complete edit batch (${restore.size} file(s)).${rebuilt.ok ? '\n✅ Rebuilt the project to match the restored source.' : `\n⚠️ The source was restored, but the build did not complete: ${rebuilt.note}`}`;
+                return {
+                    ok: true,
+                    output: { message, restored: [...restore.keys()], removed: [], rebuilt: rebuilt.ok, source: 'surgical_history' },
+                    logs,
+                } as any;
         }
 
         if (!versions.length) {
@@ -84,19 +194,9 @@ export class ProjectUndoTool extends BaseTool {
         term(`undo: restored ${res.restored.length} file(s)${res.removed.length ? `, removed ${res.removed.length}` : ''} from ${res.version?.id}`);
 
         // A restored source with a stale dist lies in the preview panel.
-        let rebuilt = true;
-        let buildNote = '';
-        if (fs.existsSync(path.join(dir, 'node_modules')) && fs.existsSync(path.join(dir, 'package.json'))) {
-            if (sessionId) broadcastThinkingDetail(sessionId, say(isAr, '🏗️ وأعيد البناء ليطابق ما رجعنا إليه…', '🏗️ …and rebuilding so the output matches what we rolled back to'));
-            const { runDoctored } = require('../../../core/quality/log-doctor');
-            const r = await runDoctored('npm', ['run', 'build'], {
-                cwd: dir, timeoutMs: 240_000,
-                onLine: (l: string) => term(`  ${l.slice(0, 200)}`),
-                onNote: (n: string) => term(n),
-            });
-            rebuilt = r.ok === true;
-            if (!rebuilt) buildNote = String(r.diagnosis?.ar || `رمز الخروج ${r.exitCode}`);
-        }
+        const rebuild = await this.rebuild(dir, sessionId, isAr, term);
+        const rebuilt = rebuild.ok;
+        const buildNote = rebuild.note;
 
         const message = [
             `↩️ رجعتُ بالمشروع إلى نسخة ${when(res.version!.at)}${res.version!.label ? ` — ${res.version!.label}` : ''}.`,
@@ -115,6 +215,29 @@ export class ProjectUndoTool extends BaseTool {
             output: { message, version: res.version, restored: res.restored, removed: res.removed, rebuilt },
             logs,
         } as any;
+    }
+
+    private async rebuild(
+        dir: string,
+        sessionId: string | undefined,
+        isAr: boolean,
+        term: (line: string) => void,
+    ): Promise<{ ok: boolean; note: string }> {
+        if (!fs.existsSync(path.join(dir, 'node_modules')) || !fs.existsSync(path.join(dir, 'package.json'))) {
+            return { ok: true, note: '' };
+        }
+        if (sessionId) broadcastThinkingDetail(sessionId, say(isAr, '🏗️ وأعيد البناء ليطابق ما رجعنا إليه…', '🏗️ …and rebuilding so the output matches what we rolled back to'));
+        const { runDoctored } = require('../../../core/quality/log-doctor');
+        const result = await runDoctored('npm', ['run', 'build'], {
+            cwd: dir,
+            timeoutMs: 240_000,
+            onLine: (line: string) => term(`  ${line.slice(0, 200)}`),
+            onNote: (note: string) => term(note),
+        });
+        return {
+            ok: result.ok === true,
+            note: result.ok === true ? '' : String(result.diagnosis?.ar || `رمز الخروج ${result.exitCode}`),
+        };
     }
 }
 

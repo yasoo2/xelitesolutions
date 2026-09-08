@@ -115,6 +115,27 @@ function englishBriefSubject(request: string): string {
     return subject.length >= 3 && subject.length <= 72 ? subject : '';
 }
 
+/** Read the product noun phrase from an ordinary Arabic build request.
+ *
+ * Arabic commonly puts the useful subject after a container noun:
+ * «واجهة لموقع شركة استشارات، فيها…». The old fallback returned the complete
+ * command as page copy, including typos and QA instructions. Prefer the last
+ * explicit container because it is the most specific one (واجهة -> موقع ->
+ * شركة استشارات), and stop before the requirement list begins.
+ */
+function arabicBriefSubject(requestRaw: string): string {
+    const request = String(requestRaw || '');
+    const re = /(?:^|[^\u0621-\u064A])(?:ل)?(?:موقع|تطبيق|منصة|صفحة)(?:اً|ًا|ا)?\s+([^،؛:.!?؟\n]+)/gu;
+    const candidates = [...request.matchAll(re)]
+        .map(match => String(match[1] || '')
+            .split(/\s+(?:فيه|فيها|مع|يحتوي|تحتوي|يشمل|تشمل|بحيث|ثم)\s/u)[0]
+            .replace(/^ل(?=[\u0621-\u064A]{3,})/u, '')
+            .replace(/\s+/g, ' ')
+            .trim())
+        .filter(value => value.length >= 3 && value.length <= 72);
+    return candidates[candidates.length - 1] || '';
+}
+
 /** Split on sentence ends AND on the semicolons a brief uses for its clauses. */
 function clausesOf(request: string): string[] {
     return String(request || '')
@@ -229,6 +250,8 @@ export function subjectPhrase(request: string, maxChars = 72): string {
     if (!NAMING.test(request)) {
         const englishSubject = englishBriefSubject(request);
         if (englishSubject) return englishSubject.slice(0, maxChars);
+        const arabicSubject = arabicBriefSubject(request);
+        if (arabicSubject) return arabicSubject.slice(0, maxChars);
     }
     //  What he named comes first: reading the sentence for a headline is
     //  the fallback, not the answer.

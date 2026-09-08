@@ -20,7 +20,7 @@ describe('project planner structured recovery', () => {
                 mode: 'greenfield',
                 workspaceRoot: '/tmp/joe-workspace',
                 instructionFiles: [],
-                constraints: { localOnly: true, forbidDeploy: true, createsNewProject: true },
+                constraints: { localOnly: true, forbidDeploy: true, userRequestedExistingProject: false, createsNewProject: true },
                 facts: [], blockers: [], referenceProjects: [],
             },
         }, { engineeringPipeline: true, requireRunnableContract: true });

@@ -9,7 +9,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { parseEditBlocks, applyEditBlock, syntaxOk, diffSummary, parseLiteralTextReplacement, ProjectEditTool } from '../modules/tools/definitions/ProjectEditTool';
+import { parseEditBlocks, applyEditBlock, syntaxOk, diffSummary, parseLiteralTextReplacement, parsePresentationEdits, boundedChangeValue, pickPhotoRow, requestsVisibleBrowserAudit, ProjectEditTool } from '../modules/tools/definitions/ProjectEditTool';
 import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
 
 describe('parseEditBlocks — the Aider-style format, strictly', () => {
@@ -105,14 +105,16 @@ describe('the tool: colour changes are deterministic; honest without a project',
         expect(res.ok).toBe(true);
         expect(String(res.output.message)).toContain('لا يوجد مشروع');
     });
-    it('changes an explicitly quoted button label without a model call', async () => {
+    it('changes an explicitly quoted button label without a model call but blocks delivery when requested browser QA is unavailable', async () => {
         fs.mkdirSync(path.join(tmp, 'src'), { recursive: true });
         fs.writeFileSync(path.join(tmp, 'src', 'content.js'), "export const content = { cta: 'احجز جلسة' };\n");
         const res: any = await new ProjectEditTool().execute(
             { request: 'غيّر نص زر «احجز جلسة» إلى «احجز موعدك»، ثم اختبر التعديل في المتصفح.', dir: tmp },
             { sessionId: 'pedit-literal' },
         );
-        expect(res.ok).toBe(true);
+        expect(res.ok).toBe(false);
+        expect(res.output.visualVerificationBlocked).toBe(true);
+        expect(String(res.output.message)).toContain('التسليم متوقف');
         expect(res.output.touched).toEqual(['src/content.js']);
         expect(fs.readFileSync(path.join(tmp, 'src', 'content.js'), 'utf-8')).toContain("cta: 'احجز موعدك'");
         delete (global as any).joeProjects?.['pedit-literal'];
@@ -120,6 +122,12 @@ describe('the tool: colour changes are deterministic; honest without a project',
 });
 
 describe('short quoted wording follow-ups', () => {
+    it('treats an explicitly requested visual browser check as a delivery gate', () => {
+        expect(requestsVisibleBrowserAudit('عدّل الزر ثم اختبر التغييرات في المتصفح')).toBe(true);
+        expect(requestsVisibleBrowserAudit('Change the button and verify it visually in the browser')).toBe(true);
+        expect(requestsVisibleBrowserAudit('غيّر نص الزر فقط')).toBe(false);
+    });
+
     it('parses an Arabic button-label replacement without swallowing the QA clause', () => {
         expect(parseLiteralTextReplacement('غيّر نص زر «احجز جلسة» إلى «احجز موعدك»، ثم اختبر التعديل في المتصفح.')).toEqual({
             from: 'احجز جلسة',
@@ -129,6 +137,22 @@ describe('short quoted wording follow-ups', () => {
 
     it('requires two explicit quoted values', () => {
         expect(parseLiteralTextReplacement('غيّر نص الزر إلى شيء أجمل')).toBeNull();
+    });
+
+    it('reads a multi-action presentation request as three bounded operations', () => {
+        const request = 'غيّر نص زر البطل «احجز الآن» إلى «ابدأ مشروعك»، وأضف شعارًا نصيًا صغيرًا «M» بجانب اسم «مدار» في الشريط العلوي، وأضف تحت عنوان الخدمات سطرًا «حلول مصممة حول أهداف عملك».';
+        expect(parsePresentationEdits(request)).toEqual([
+            { kind: 'literal', from: 'احجز الآن', to: 'ابدأ مشروعك' },
+            { kind: 'brand_mark', value: 'M', beside: 'مدار' },
+            { kind: 'section_subtitle', section: 'الخدمات', value: 'حلول مصممة حول أهداف عملك' },
+        ]);
+        expect(boundedChangeValue(`${request} ثم ابنِ المشروع واختبره.`)).toBe('ابدأ مشروعك');
+    });
+
+    it('matches row names as Arabic words, never as fragments of another clause', () => {
+        const rows = [{ name: 'حلو البيت' }, { name: 'الخدمة الأساسية' }];
+        expect(pickPhotoRow(rows, 'أضف سطرًا «حلول مصممة حول أهداف عملك»')).toBeNull();
+        expect(pickPhotoRow(rows, 'غيّر اسم حلو البيت إلى حلو الدار')).toEqual(rows[0]);
     });
 
     it('uses the restricted-Windows-safe Vite wrapper for every edit build path', () => {
@@ -142,6 +166,60 @@ describe('short quoted wording follow-ups', () => {
         expect(source).toContain('improveUntilItStops(firstMeasurement');
         expect(source).toContain('repairRound(dir, round, { isArabic: isAr, findings })');
         expect(source.indexOf('Per-file history is written after QA')).toBeGreaterThan(source.indexOf('SELF-QA AFTER THE EDIT'));
+        expect(source).toContain('ok: !visualVerificationBlocked');
+        expect(source).toContain("error: 'browser_qa_required: requested visible browser verification did not complete'");
+    });
+});
+
+describe('compound generated-project presentation edits', () => {
+    let tmp: string;
+    beforeEach(() => {
+        tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-compound-edit-'));
+        fs.mkdirSync(path.join(tmp, 'src', 'components'), { recursive: true });
+        fs.mkdirSync(path.join(tmp, 'src', 'styles'), { recursive: true });
+        fs.writeFileSync(path.join(tmp, 'package.json'), '{"name":"compound"}');
+        fs.writeFileSync(path.join(tmp, 'src', 'content.js'), `export const content = {
+  brand: 'مدار',
+  heroTitle: 'مدار — تصميم حديث بواجهة عربية وقسم خدمات وزر تواصل واضح',
+  cta: 'احجز الآن',
+  menu: [
+    { name: 'حلو البيت', desc: 'حلوى اليوم', price: '18 ر.س', img: null },
+  ],
+  productsTitle: 'خدماتنا وأسعارها',
+};\n`);
+        fs.writeFileSync(path.join(tmp, 'src', 'components', 'Navbar.jsx'), `export default function Navbar({ content }) {
+  return <header><a className="brand" href="#top">{content.brand}</a></header>;
+}\n`);
+        fs.writeFileSync(path.join(tmp, 'src', 'components', 'Products.jsx'), `export default function Products({ content }) {
+  return <section><h2>{content.productsTitle}</h2><div>items</div></section>;
+}\n`);
+        fs.writeFileSync(path.join(tmp, 'src', 'styles', 'base.css'), ':root{--brand:#126;--on-brand:#fff;--muted:#667}\n.brand{display:flex}\n');
+    });
+    afterEach(() => {
+        delete (global as any).joeProjects?.['compound-edit'];
+        fs.rmSync(tmp, { recursive: true, force: true });
+    });
+
+    it('applies every explicit operation atomically and leaves unrelated rows unchanged', async () => {
+        const request = 'عدّل المشروع الحالي فقط: غيّر نص زر البطل «احجز الآن» إلى «ابدأ مشروعك»، وأضف شعارًا نصيًا صغيرًا «M» بجانب اسم «مدار» في الشريط العلوي، وأضف تحت عنوان الخدمات سطرًا «حلول مصممة حول أهداف عملك». حافظ على بقية المحتوى والتصميم.';
+        const res: any = await new ProjectEditTool().execute({ request, dir: tmp, skipAudit: true }, { sessionId: 'compound-edit' });
+        expect(res.ok).toBe(true);
+        expect(res.output.touched.sort()).toEqual([
+            'src/components/Navbar.jsx',
+            'src/components/Products.jsx',
+            'src/content.js',
+            'src/styles/base.css',
+        ]);
+        const content = fs.readFileSync(path.join(tmp, 'src', 'content.js'), 'utf-8');
+        expect(content).toContain("cta: 'ابدأ مشروعك'");
+        expect(content).toContain("brandMark: 'M'");
+        expect(content).toContain("productsSubtitle: 'حلول مصممة حول أهداف عملك'");
+        expect(content).toContain("name: 'حلو البيت'");
+        expect(content).not.toContain("name: 'ابدأ مشروعك»");
+        expect(fs.readFileSync(path.join(tmp, 'src', 'components', 'Navbar.jsx'), 'utf-8')).toContain('content.brandMark');
+        expect(fs.readFileSync(path.join(tmp, 'src', 'components', 'Products.jsx'), 'utf-8')).toContain('content.productsSubtitle');
+        expect(fs.readFileSync(path.join(tmp, 'src', 'styles', 'base.css'), 'utf-8')).toContain('.brand-text-mark{');
+        expect(res.logs).toEqual(expect.arrayContaining([expect.stringContaining('3 operation(s), 4 file(s)')]));
     });
 });
 

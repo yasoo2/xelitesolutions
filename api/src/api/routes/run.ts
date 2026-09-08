@@ -17,14 +17,19 @@ import { registerRun, releaseHandle } from '../../core/session/attended-run';
 const router = Router();
 
 function usesJsonRunStore(): boolean {
-    return process.env.OFFLINE_MODE === 'true'
+    // Runtime truth wins over configuration. The session controllers already
+    // fall back to the durable JSON store while Mongo is disconnected; /run/start
+    // must make the same decision or the UI can list a local chat and then crash
+    // trying to start work in that very chat.
+    return mongoose.connection.readyState !== 1
+        || process.env.OFFLINE_MODE === 'true'
         || process.env.PERSISTENCE_MODE === 'JSON'
         || process.env.MOCK_DB === 'true'
         || String(process.env.MOCK_DB) === '1';
 }
 
 /** A supplied session id is a capability only for its authenticated owner. */
-async function mayUseRunSession(sessionId: string, userId: string): Promise<boolean> {
+export async function mayUseRunSession(sessionId: string, userId: string): Promise<boolean> {
     const id = String(sessionId || '').trim();
     if (!id || !userId) return !id;
     if (usesJsonRunStore()) {
@@ -253,7 +258,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
     // message and rebuilt into the history events.
     const attachmentMeta = () => attachments.map(a => ({ id: a.id, name: a.name, mimeType: a.mimeType, size: a.size }));
     try {
-        if (process.env.OFFLINE_MODE === 'true' || process.env.PERSISTENCE_MODE === 'JSON' || process.env.MOCK_DB === 'true' || String(process.env.MOCK_DB) === '1') {
+        if (usesJsonRunStore()) {
             const store: any[] = (global as any).mockMessages || ((global as any).mockMessages = []);
             store.push({ _id: `um-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, sessionId: runSessionId, role: 'user', content: text, attachments: attachmentMeta(), createdAt: new Date() });
             persistChatStores();

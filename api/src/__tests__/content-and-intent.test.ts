@@ -9,6 +9,7 @@
 
 import { normalizeIntentText } from '../core/orchestrator/promptNormalizer';
 import { IntentParser } from '../core/intelligence/IntentParser';
+import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
 import { extractRequirements, verifyContent, wireNavigation } from '../core/design/content-contract';
 import { pickArchetype, pickTypePair, layoutCss, primitivesCss, iconSprite } from '../core/design/layouts';
 
@@ -46,6 +47,16 @@ describe('Arabic normalisation folds spellings a reader treats as identical', ()
         expect(normalizeIntentText('فلترة حسب الشهر')).toContain('تصفية');
         expect(normalizeIntentText('التصميم متجاوب')).toContain('صمم');
     });
+
+    it('does not peel the first letter from Arabic words that genuinely begin with waw', () => {
+        expect(normalizeIntentText('بدي واجهة مودرن')).toBe('اريد واجهة مودرن');
+        expect(normalizeIntentText('واجهة حديثة')).toBe('واجهة حديثه');
+    });
+
+    it('still understands a real attached waw conjunction', () => {
+        expect(normalizeIntentText('وشوف التصميم')).toBe('وانظر صمم');
+        expect(normalizeIntentText('والتصميم متجاوب')).toBe('وصمم متجاوب');
+    });
 });
 
 describe('engineering briefs are not hijacked by the browser fast path', () => {
@@ -75,6 +86,15 @@ describe('engineering briefs are not hijacked by the browser fast path', () => {
             suggestedAgent: 'Browser',
             requiredTools: ['browser_run'],
         }));
+    });
+});
+
+describe('canonical multilingual browser actions reach the observing agent', () => {
+    it('does not reduce a Russian open-and-describe request to opening the URL only', async () => {
+        const plan = await PlanningEngine.generatePlan({
+            intent: { goal: 'Открой https://example.com и опиши страницу', type: 'task' } as any,
+        });
+        expect(plan.steps[0]?.tool).toBe('browser_run');
     });
 });
 

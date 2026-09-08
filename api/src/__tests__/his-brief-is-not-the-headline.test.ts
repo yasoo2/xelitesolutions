@@ -87,6 +87,11 @@ describe('the brief becomes a headline, not a wall', () => {
         expect(subjectPhrase('اعمل لي متجر إلكتروني لبيع العسل')).toBe('متجر إلكتروني لبيع العسل');
     });
 
+    it('an Arabic interface brief yields its product subject, not the command or typo', () => {
+        expect(subjectPhrase('بدي تصيم واجهة مودرن لموقع شركة استشارات، فيها عنوان واضح وزر تواصل. اختبر التصميم في المتصفح.'))
+            .toBe('شركة استشارات');
+    });
+
     it('instruction clauses are recognised by SHAPE, not by topic', () => {
         for (const c of ['لا تنشر الموقع', 'أكمل المهمة ذاتيًا', 'في النهاية اذكر الملفات',
             'أنت تعمل داخل مساحة اختبار', 'do not deploy', 'make sure to run the tests']) {

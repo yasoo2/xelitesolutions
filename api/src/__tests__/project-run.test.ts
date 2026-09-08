@@ -13,7 +13,6 @@ import { canAdoptRecordedLive, declaredLaunchPrerequisitePackages, detectStart, 
 import { ExecutionGateway } from '../kernel/ExecutionGateway';
 import { executionFirewall } from '../orchestration/AgentExecutionFirewall';
 import { executionEngine } from '../kernel/ExecutionEngine';
-import { executionFirewall } from '../orchestration/AgentExecutionFirewall';
 import { workspaceService } from '../modules/services/WorkspaceService';
 import { NpmManagerTool } from '../modules/tools/definitions/SystemTools';
 

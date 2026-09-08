@@ -26,12 +26,13 @@ export function summarizeEngineeringReport(markdown: string, language = 'en'): s
     const issueLines = lines
         .filter(line => /^[-•*]\s*/.test(line))
         .map(line => line.replace(/^[-•*]\s*/, '').replace(/\*\*/g, '').trim())
-        .filter(line => /unresponsive|does not exist|tap target|horizontal scrolling|controls? (?:were )?(?:gone|unreached)|could not (?:be )?reached|لا يستجيب|غير موجود|صغير|تمرير أفقي|لم أصل|لا يمكن الوصول|خطأ|عطل/i.test(line))
+        .filter(line => /unresponsive|does not exist|tap target|horizontal scrolling|controls? (?:were )?(?:gone|unreached)|could not (?:be )?reached|I did not inspect|لم أفحص|لم أتحقق|لا يستجيب|غير موجود|صغير|تمرير أفقي|لم أصل|لا يمكن الوصول|خطأ|عطل/i.test(line))
         .map(line => {
             if (/unresponsive|navigation link/i.test(line)) return isArabic ? 'بعض روابط التنقل لا تستجيب بعد.' : 'Some navigation links still need attention.';
             if (/does not exist/i.test(line)) return isArabic ? 'بعض الروابط تشير إلى أقسام غير موجودة.' : 'Some links point to sections that are not present.';
             if (/tap target|hard to hit|صغير/i.test(line)) return isArabic ? 'يوجد عنصر صغير على شاشة الهاتف ويحتاج تكبيرًا.' : 'One mobile tap target needs to be larger.';
             if (/horizontal scrolling|تمرير أفقي/i.test(line)) return isArabic ? 'يوجد تمرير أفقي على شاشة الهاتف ويحتاج إصلاحًا.' : 'Horizontal scrolling needs to be fixed on a phone.';
+            if (/I did not inspect|لم أفحص|لم أتحقق/i.test(line)) return isArabic ? 'بعض الأجزاء المطلوبة لم تُثبت بعد؛ لا يكتمل قبول الطلب قبل التحقق منها.' : 'Some requested parts were not proven; request acceptance is still incomplete.';
             if (/controls? (?:were )?(?:gone|unreached)|could not (?:be )?reached|لم أصل|لا يمكن الوصول/i.test(line)) return isArabic ? 'بعض عناصر الواجهة لم تصل إليها جولة الاختبار؛ يلزم إعادة التحقق.' : 'Some controls were not reached by the test and need another verification pass.';
             return isArabic ? 'بقيت ملاحظة في فحص الجودة.' : 'One quality finding remains.';
         })
@@ -43,7 +44,7 @@ export function summarizeEngineeringReport(markdown: string, language = 'en'): s
     // final live-run audit. The final machine verdict always outranks an older
     // 100/100; otherwise the chat says "fully verified" while Logs say
     // finalVerified=false and browserQaFailed=true.
-    const finalVerificationFailed = /finalVerified:\s*`?false`?|browserQaFailed:\s*`?true`?|Build stopped honestly|Visible Browser QA:\s*\*\*not run\*\*|I did not deliver the system|لم أسلّم النظام/iu.test(source);
+    const finalVerificationFailed = /finalVerified:\s*`?false`?|browserQaFailed:\s*`?true`?|Build stopped honestly|Stopped at step|final delivery is blocked|Accepted with gaps|Visible Browser QA:\s*\*\*not run\*\*|I did not deliver the system|لم أسلّم النظام|توقف التسليم|قُبل مع فجوات/iu.test(source);
     const fullyVerified = buildVerified && !finalVerificationFailed && (!score || Number(score) === 100) && issueLines.length === 0;
     const credential = source.match(/Owner account(?:\s*\([^)]*\))?:\s*([^\s/]+)\s*\/\s*([^\s]+)/iu);
     const liveUrl = source.match(/(?:Open at:|live at:?)\s*\*\*?(https?:\/\/[^\s*]+)/iu)?.[1];

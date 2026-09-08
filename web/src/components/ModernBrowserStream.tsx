@@ -302,12 +302,26 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
   useEffect(() => {
     let ws: WebSocket | null = null;
     let alive = true;
+    let reconnectTimer: number | null = null;
+    let reconnectAttempt = 0;
+
+    const scheduleReconnect = () => {
+      if (!alive || reconnectTimer !== null) return;
+      const delay = Math.min(4000, 250 * (2 ** Math.min(reconnectAttempt, 4)));
+      reconnectAttempt += 1;
+      reconnectTimer = window.setTimeout(() => {
+        reconnectTimer = null;
+        if (alive) void start();
+      }, delay);
+    };
+
     const start = async () => {
       try {
         const healthRes = await fetch(`${API_URL}/health`, { cache: 'no-store' });
         const isShim = healthRes.headers.get('x-joe-api-shim') === '1';
         if (isShim) {
           setStatus('error');
+          scheduleReconnect();
           return;
         }
       } catch { }
@@ -318,11 +332,20 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
       setStatus('connecting');
       ws.onopen = () => {
         console.log('[BrowserStream] Connected');
+        reconnectAttempt = 0;
         setStatus('connected');
       };
       ws.onerror = (err) => {
         console.error('[BrowserStream] WebSocket Error:', err);
         setStatus('error');
+        // `close` owns the retry so an error+close pair cannot create two sockets.
+        try { ws?.close(); } catch { }
+      };
+      ws.onclose = () => {
+        ws = null;
+        if (!alive) return;
+        setStatus('connecting');
+        scheduleReconnect();
       };
       ws.onmessage = (ev) => {
         let msg: WsEvent | null = null;
@@ -489,6 +512,7 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
     void start();
     return () => {
       alive = false;
+      if (reconnectTimer !== null) window.clearTimeout(reconnectTimer);
       try { ws?.close(); } catch { }
     };
   }, [wsUrl]);
