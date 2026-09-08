@@ -712,7 +712,20 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                 // targets (for example #contact) strict and measurable.
                 if (!h || h === 'top' || h.includes('/')) return;
                 let exists = false;
-                try { exists = !!document.getElementById(h) || !!document.querySelector(`[name="${CSS.escape(h)}"]`); } catch { exists = false; }
+                try {
+                    const target = document.getElementById(h) || document.querySelector(`[name="${CSS.escape(h)}"]`);
+                    if (target) {
+                        const rect = target.getBoundingClientRect();
+                        let visible = rect.width > 2 && rect.height > 2;
+                        let node: Element | null = target;
+                        while (visible && node) {
+                            const style = getComputedStyle(node);
+                            visible = style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) > 0.05;
+                            node = node.parentElement;
+                        }
+                        exists = visible;
+                    }
+                } catch { exists = false; }
                 out.push({ label: ((a as HTMLElement).innerText || h).trim().slice(0, 40), target: h, exists });
             });
             return out.slice(0, 30);
@@ -1519,9 +1532,9 @@ export function judgeBehaviour(
     if (metrics.deadAnchors > 0) {
         findings.push({
             code: 'dead_anchors', severity: 'major',
-            ar: `${metrics.deadAnchors} رابط تنقّل يشير إلى قسم غير موجود في الصفحة`,
-            en: `${metrics.deadAnchors} navigation link(s) point at a section id that does not exist`,
-            hint: 'give every target section an id matching its nav link, or repoint the link',
+            ar: `${metrics.deadAnchors} رابط تنقّل يشير إلى قسم غير موجود أو غير مرئي في الصفحة`,
+            en: `${metrics.deadAnchors} navigation link(s) point at a section that is missing or not visible`,
+            hint: 'give every target section a matching id and ensure neither it nor an ancestor is visually hidden',
         });
     }
     const deadRatio = pressable.length ? dead.length / pressable.length : 0;

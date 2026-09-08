@@ -507,6 +507,26 @@ async function tryAcquireCaptureLock(s: SessionState, wait: boolean, timeoutMs: 
   return true;
 }
 
+/**
+ * Keep the live JPEG stream from taking a screenshot while responsive QA is
+ * changing the page viewport. Chromium can acknowledge setViewportSize during
+ * an in-flight screenshot without applying the new metrics to the document;
+ * the next measurement then sees the old width. The caller receives a release
+ * function so the lock covers the resize, paint, and proof as one operation.
+ */
+export async function pauseBrowserCaptureForPage(page: Page, timeoutMs = 10_000): Promise<() => void> {
+  const state = Array.from(sessions.values()).find(candidate => candidate.page === page);
+  if (!state) return () => { /* private QA pages have no live stream */ };
+  const locked = await tryAcquireCaptureLock(state, true, timeoutMs);
+  if (!locked) throw new Error('browser_capture_pause_timeout');
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    state.captureLocked = false;
+  };
+}
+
 async function captureJpeg(
   s: SessionState,
   opts: { quality: number; timeoutMs: number; mask?: Locator[]; waitForLock: boolean },

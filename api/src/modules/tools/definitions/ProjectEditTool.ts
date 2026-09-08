@@ -29,8 +29,10 @@ import { broadcast, broadcastThinkingDetail } from '../../../api/ws';
 import { persistJoeProjects, writeJoeProject } from '../../../api/page-store';
 import { publicUrlFor } from '../../../shared/utils/publicUrl';
 import { undefinedJsxComponentMismatch } from '../../../core/quality/source-contract';
+import { acceptanceFor, judgeAcceptance } from '../../../core/quality/acceptance';
 import { saysWord, words, normalise } from '../../../core/language/arabic';
 import { normalizeIntentText } from '../../../core/orchestrator/promptNormalizer';
+import { isArabicReply } from '../../../shared/reply-language';
 
 /** One parsed SEARCH/REPLACE block. */
 export interface EditBlock { file: string; search: string; replace: string }
@@ -116,6 +118,34 @@ export type PresentationEdit =
     | { kind: 'literal'; from: string; to: string }
     | { kind: 'brand_mark'; value: string; beside: string }
     | { kind: 'section_subtitle'; section: string; value: string };
+
+export interface ServicesSectionEdit {
+    label: string;
+    count: number;
+    beforeContact: boolean;
+}
+
+/** Read a concrete request to add a services section to a generated site. */
+export function parseServicesSectionEdit(request: string): ServicesSectionEdit | null {
+    const text = String(request || '').trim();
+    const add = /(?:أضف|اضف|إضاف[ةه]|اضاف[ةه]|أنشئ|انشئ|ضع|حط|\badd\b|\bcreate\b)/iu.test(text);
+    const services = /(?:قسم\s+(?:ال)?خدمات|(?:ال)?خدمات\s+(?:قسم|section)|\bservices?\s+section\b)/iu.test(text);
+    if (!add || !services) return null;
+    const quotedLink = text.match(/(?:رابط|link)[^«"\n]{0,35}[«"]([^»"\n]{1,40})[»"]/iu);
+    const numberWords: Record<string, number> = {
+        واحد: 1, واحدة: 1, اثنين: 2, اثنتين: 2, اثنان: 2, ثلاث: 3, ثلاثة: 3,
+        اربع: 4, اربعة: 4, أربع: 4, أربعة: 4, خمس: 5, خمسة: 5, ست: 6, ستة: 6,
+        one: 1, two: 2, three: 3, four: 4, five: 5, six: 6,
+    };
+    const countHit = text.match(/(?:ب|with\s+)?(\d+|واحد(?:ة)?|اثن(?:ين|تان|تين)|ثلاث(?:ة)?|أ?ربع(?:ة)?|خمس(?:ة)?|ست(?:ة)?|one|two|three|four|five|six)\s+(?:خدمات?|services?)/iu);
+    const rawCount = String(countHit?.[1] || '').toLowerCase();
+    const count = Math.max(1, Math.min(6, /^\d+$/.test(rawCount) ? Number(rawCount) : (numberWords[rawCount] || 3)));
+    return {
+        label: quotedLink?.[1]?.trim() || (/\p{Script=Arabic}/u.test(text) ? 'الخدمات' : 'Services'),
+        count,
+        beforeContact: /(?:قبل\s+(?:قسم\s+)?التواصل|before\s+(?:the\s+)?contact)/iu.test(text),
+    };
+}
 
 /**
  * Read several explicit presentation changes from one follow-up without asking
@@ -337,7 +367,8 @@ export class ProjectEditTool extends BaseTool {
         if (!request) return { ok: false, error: 'no_request', logs };
         const sessionId = context?.sessionId;
         const sessionKey = String(sessionId || 'default').replace(/[^a-zA-Z0-9._-]/g, '_');
-        const isAr = /[؀-ۿ]/.test(request);
+        const artifactIsAr = /[؀-ۿ]/.test(request);
+        const isAr = isArabicReply({ language: context?.language, text: request });
         const visibleAuditRequired = requestsVisibleBrowserAudit(request);
         try { broadcast({ type: 'build_started', sessionId, data: { tool: 'project_edit', sessionId } } as any); } catch { /* UI optional */ }
 
@@ -631,32 +662,40 @@ export class ProjectEditTool extends BaseTool {
 
         const touched: Array<{ file: string; before: string; after: string }> = [];
         const refused: string[] = [];
-        const write = (rel: string, body: string) => {
+        let brandEditApplied = false;
+        let deterministicIntentHandled = false;
+        const write = (rel: string, body: string): boolean => {
             const abs = path.join(dir, rel);
             const existing = touched.find(t => t.file === rel);
             if (existing) {
+                if (existing.after === body) return false;
                 fs.writeFileSync(abs, body, 'utf-8');
                 existing.after = body;
-                return;
+                return true;
             }
             const before = fs.existsSync(abs) ? fs.readFileSync(abs, 'utf-8') : '';
+            if (before === body) return false;
             fs.writeFileSync(abs, body, 'utf-8');
             touched.push({ file: rel, before, after: body });
+            return true;
         };
 
         // ── deterministic fast paths — no model, nothing else can break ─────
         const colourChange = /(غير|غيّر|بدل|بدّل|خلي|خلّي|اجعل)[^.\n]{0,25}(لون|ألوان|الوان)|\b(change|make)\b[^.\n]{0,25}\bcolou?rs?\b/i.test(request);
         if (colourChange && fs.existsSync(path.join(dir, 'src', 'styles', 'tokens.css'))) {
+            deterministicIntentHandled = true;
             const palette = buildPalette(request);
-            write('src/styles/tokens.css', `${paletteCss(palette)}
+            const paletteChanged = write('src/styles/tokens.css', `${paletteCss(palette)}
 :root[data-theme="dark"]{${darkTokenBlock(palette)}}
 :root[data-theme="light"]{${lightTokenBlock(palette)}}
 :root[data-theme="dark"]{color-scheme:dark}
 :root[data-theme="light"]{color-scheme:light}`);
-            logs.push(`deterministic edit: tokens.css rebuilt around ${palette.primary} — no model call`);
+            logs.push(paletteChanged
+                ? `deterministic edit: tokens.css rebuilt around ${palette.primary} — no model call`
+                : `deterministic edit already satisfied: palette is ${palette.primary}`);
             if (sessionId) broadcastThinkingDetail(sessionId, isAr
-                ? `🎨 أعدت بناء لوحة الألوان حول ${palette.primary} — تعديل حتمي بلا نموذج`
-                : `🎨 Rebuilt the palette around ${palette.primary} — deterministic, no model`);
+                ? (paletteChanged ? `🎨 أعدت بناء لوحة الألوان حول ${palette.primary}` : `ألوان المشروع مضبوطة بالفعل على ${palette.primary}`)
+                : (paletteChanged ? `Rebuilt the palette around ${palette.primary}` : `The project palette is already ${palette.primary}`));
         }
 
         // ── deterministic fast path: «ضف صورة …» — a REAL photo where the
@@ -974,11 +1013,23 @@ export class ProjectEditTool extends BaseTool {
         // carried a «بـ» prefix, and a strict word boundary refused it. The
         // pair of conditions below (a NAMED thing + the list it belongs to)
         // is what keeps this from firing on ordinary sentences.
-        const addVerb = /(ضي?ف|أضف|اضف|زد|زياد[ةه]|إضاف[ةه]|اضاف[ةه]|أدرج|ادرج)|\b(add|insert)\b/i.test(request);
-        const namedM = request.match(/(?:اسمه?|باسم|بعنوان|named?|called)\s+([^\n،.]{1,40})/i);
-        const listHintM = request.match(/(?<![ء-ي])(المنتجات|منتجات|products)(?![ء-ي])|(?<![ء-ي])(القائمة|المنيو|الأطباق|menu|dishes)(?![ء-ي])/i);
+        const addVerbPattern = /(ضي?ف|أضف|اضف|زد|زياد[ةه]|إضاف[ةه]|اضاف[ةه]|أدرج|ادرج)|\b(add|insert)\b/i;
+        const namedPattern = /(?:اسمه?|باسم|بعنوان|named?|called)\s+([^\n،.]{1,40})/i;
+        const listHintPattern = /(?<![ء-ي])(المنتجات|منتجات|products)(?![ء-ي])|(?<![ء-ي])(القائمة|المنيو|الأطباق|menu|dishes)(?![ء-ي])/i;
+        // Evidence for a broad row insertion must live in one clause. A compound
+        // request such as "rename the brand ..., add a services link to the menu"
+        // contains an add verb, a name and a menu word globally, but those words
+        // describe two different edits. Combining evidence across punctuation
+        // fabricated a menu row from the brand-renaming clause.
+        const broadAddRowClause = request
+            .split(/[\n،,.؛;!؟?]+/u)
+            .map(clause => clause.trim())
+            .find(clause => addVerbPattern.test(clause) && namedPattern.test(clause) && listHintPattern.test(clause));
+        const addVerb = addVerbPattern.test(request);
+        const namedM = (broadAddRowClause || request).match(namedPattern);
+        const listHintM = (broadAddRowClause || request).match(listHintPattern);
         const addRowIntent = (!!rowNounM && /((?<![ء-ي])(ضي?ف|أضف|اضف|حطّ?)(?![ء-ي])[^.\n]{0,15}(طبق|منتج))|\badd\b[^.\n]{0,25}\b(dish|product)\b/i.test(request))
-            || (addVerb && !!namedM && !!listHintM);
+            || (addVerb && !!broadAddRowClause && !!namedM && !!listHintM);
         const delRowIntent = !!rowNounM && !addRowIntent && !/صور|photo|image|picture/i.test(request)
             && /((احذف|امسح|شيل|أزل|ازل)[^.\n]{0,20}(طبق|منتج))|\b(remove|delete)\b[^.\n]{0,25}\b(dish|product)\b/i.test(request);
         // WHICH list: the row noun decides when it is there; otherwise the
@@ -1175,12 +1226,14 @@ export class ProjectEditTool extends BaseTool {
          * from there: `brand:` in src/content.js, and the `<title>` of
          * index.html. Two known bytes are not a job for a language model.
          */
-        if (!touched.length) {
+        {
             const siteWord = /(الموقع|موقعي|التطبيق|تطبيقي|المشروع|مشروعي|النظام|الصفحة|صفحتي|site|website|app|project|page)/i.test(request);
             const nameWord = /(?<![ء-ي])(اسم|الاسم|عنوان|العنوان|سمّه|سمه)(?![ء-ي])|\b(brand|title|rename)\b/i.test(request);
+            const brandRenameIntent = /(?:غيّ?ر|بدّ?ل|استبدل)\s+(?:اسم\s+)?(?:العلام[ةه](?:\s+التجاري[ةه])?|الموقع|المشروع|التطبيق|النظام|الصفحة)|\b(?:rename|change|replace)\b[^.\n]{0,35}\b(?:brand|site|website|project|app|application)\b/iu.test(request);
             const val = boundedChangeValue(request);
             const contentAbs = path.join(dir, contentRel);
-            if (siteWord && nameWord && val && val.length <= 60 && fs.existsSync(contentAbs)) {
+            if (brandRenameIntent && siteWord && nameWord && val && val.length <= 60 && fs.existsSync(contentAbs)) {
+                deterministicIntentHandled = true;
                 const body = fs.readFileSync(contentAbs, 'utf-8');
                 const oldBrand = (body.match(/\n\s*brand:\s*'([^']*)'/) || [])[1] || '';
                 const safe = String(val).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, ' ');
@@ -1197,25 +1250,105 @@ export class ProjectEditTool extends BaseTool {
                     const htmlAbs = path.join(dir, 'index.html');
                     if (oldBrand && fs.existsSync(htmlAbs)) {
                         const html = fs.readFileSync(htmlAbs, 'utf-8');
-                        const swapped = html.replace(
-                            /<title>([\s\S]*?)<\/title>/i,
-                            (_m, inner) => `<title>${String(inner).split(oldBrand).join(val)}</title>`,
-                        );
+                        const swapped = html.split(oldBrand).join(val);
                         if (swapped !== html) write('index.html', swapped);
                     }
+                    brandEditApplied = true;
                     notes.push(isAr
                         ? `✏️ غيّرت اسم ${/التطبيق|تطبيقي/i.test(request) ? 'التطبيق' : 'الموقع'}${oldBrand ? ` من «${oldBrand}»` : ''} إلى «${val}» — في المحتوى وفي عنوان التبويب.`
                         : `✏️ Renamed the site${oldBrand ? ` from "${oldBrand}"` : ''} to "${val}" — in the content and in the tab title.`);
                     logs.push(`brand edit: ${oldBrand || '(unset)'} → ${val} — no model call`);
                 } else if (next !== body) {
                     refused.push(`${contentRel}: renaming breaks the syntax (${gate.error}) — refused`);
+                } else if (oldBrand === val) {
+                    brandEditApplied = true;
+                    logs.push(`brand edit already satisfied: ${val}`);
                 }
+            }
+        }
+
+        // A generated site has a stable content/App contract, so adding a
+        // services section and its navigation target does not need a provider.
+        // This path composes with colour and brand edits in the same request.
+        const servicesEdit = parseServicesSectionEdit(request);
+        if (servicesEdit && fs.existsSync(path.join(dir, contentRel)) && fs.existsSync(path.join(dir, 'src', 'App.jsx'))) {
+            deterministicIntentHandled = true;
+            let body = fs.readFileSync(path.join(dir, contentRel), 'utf-8');
+            let app = fs.readFileSync(path.join(dir, 'src', 'App.jsx'), 'utf-8');
+            const bodyBeforeServices = body;
+            const appBeforeServices = app;
+            const contextText = `${(body.match(/heroTitle:\s*'([^']*)'/) || [])[1] || ''} ${(body.match(/heroLede:\s*'([^']*)'/) || [])[1] || ''}`;
+            const consulting = /استشار|consult/i.test(contextText);
+            const seeds = artifactIsAr
+                ? consulting
+                    ? [
+                        ['استراتيجية الأعمال', 'نحوّل أهدافك إلى خطة عملية واضحة قابلة للقياس.'],
+                        ['تحسين العمليات', 'نبسّط سير العمل ونرفع الكفاءة من دون تعقيد إضافي.'],
+                        ['النمو المؤسسي', 'نبني معك مسار نمو متوازناً يدعم القرار والتنفيذ.'],
+                    ]
+                    : [
+                        ['التخطيط', 'نحدّد الاحتياج ونبني مساراً واضحاً للوصول إلى النتيجة.'],
+                        ['التنفيذ', 'نحوّل الخطة إلى عمل متقن بمراحل قابلة للقياس.'],
+                        ['الدعم المستمر', 'نراجع النتائج ونطوّرها مع تغيّر احتياجاتك.'],
+                    ]
+                : consulting
+                    ? [
+                        ['Business strategy', 'We turn your goals into a clear, measurable action plan.'],
+                        ['Process improvement', 'We simplify workflows and raise efficiency without added complexity.'],
+                        ['Organizational growth', 'We build a balanced path from decision to execution.'],
+                    ]
+                    : [
+                        ['Plan', 'We define the need and map a clear route to the outcome.'],
+                        ['Deliver', 'We turn the plan into measured, careful execution.'],
+                        ['Support', 'We review results and evolve them with your needs.'],
+                    ];
+            const rows = Array.from({ length: servicesEdit.count }, (_, index) => {
+                const seed = seeds[index % seeds.length];
+                const suffix = index < seeds.length ? '' : ` ${index + 1}`;
+                return `    { title: '${jsEsc(seed[0] + suffix)}', text: '${jsEsc(seed[1])}' },`;
+            }).join('\n');
+            if (!/\n\s*servicesTitle:\s*'/.test(body)) {
+                body = body.replace(/(\n\s*contactTitle:\s*)/, `\n  servicesTitle: '${jsEsc(servicesEdit.label)}',\n  services: [\n${rows}\n  ],$1`);
+            }
+            if (/navLinks:\s*\[/.test(body) && !/href:\s*'#services'/.test(body)) {
+                body = body.replace(/(navLinks:\s*\[\s*\n)/, `$1    { href: '#services', label: '${jsEsc(servicesEdit.label)}' },\n`);
+            }
+            if (!/id=["']services["']/.test(app)) {
+                const section = `        <section className="section" id="services">\n          <div className="wrap">\n            <h2>{content.servicesTitle}</h2>\n            <div className="grid-3">\n              {content.services.map((service) => (\n                <article className="card" key={service.title}>\n                  <h3>{service.title}</h3>\n                  <p>{service.text}</p>\n                </article>\n              ))}\n            </div>\n          </div>\n        </section>\n`;
+                const contact = /(\s*<Contact\s+content=\{content\}\s*\/>)/;
+                app = contact.test(app)
+                    ? app.replace(contact, `\n${section}$1`)
+                    : app.replace(/\s*<\/main>/, `\n${section}      </main>`);
+            }
+            // Generated projects animate cards individually. A reveal marker
+            // on the whole anchor target is never observed by their reveal
+            // hook, leaving the requested section at opacity:0 even though its
+            // id exists and the URL changes correctly.
+            app = app.replace(/(<section\b[^>]*\bid=["']services["'][^>]*)\s+data-reveal(?=[\s>])/iu, '$1');
+            const contentGate = syntaxOk(contentRel, body);
+            const appGate = syntaxOk('src/App.jsx', app);
+            if (contentGate.ok && appGate.ok && /href:\s*'#services'/.test(body) && /id="services"/.test(app)) {
+                write(contentRel, body);
+                write('src/App.jsx', app);
+                const servicesChanged = body !== bodyBeforeServices || app !== appBeforeServices;
+                notes.push(isAr
+                    ? (servicesChanged
+                        ? `أضفت قسم «${servicesEdit.label}» وفيه ${servicesEdit.count} خدمات وربطته بالقائمة قبل التواصل.`
+                        : `قسم «${servicesEdit.label}» وخدماته الثلاث وربطه بالقائمة موجودة بالفعل.`)
+                    : (servicesChanged
+                        ? `Added the “${servicesEdit.label}” section with ${servicesEdit.count} services and linked it from the navigation.`
+                        : `The “${servicesEdit.label}” section, its ${servicesEdit.count} services, and navigation link are already in place.`));
+                logs.push(servicesChanged
+                    ? `services section edit: ${servicesEdit.count} item(s), nav=#services, before-contact=${servicesEdit.beforeContact}`
+                    : `services section already satisfied: ${servicesEdit.count} item(s), nav=#services`);
+            } else {
+                refused.push(`services section: generated-project contract unavailable or unsafe (${contentGate.error || appGate.error || 'missing link target'})`);
             }
         }
 
         // A quoted wording replacement is fully specified. Replace only the
         // exact source text, then use the normal syntax, build and QA gates.
-        if (!touched.length) {
+        if (!touched.length && !brandEditApplied) {
             const literal = parseLiteralTextReplacement(request);
             if (literal) {
                 const candidates = listFiles(dir)
@@ -1239,7 +1372,7 @@ export class ProjectEditTool extends BaseTool {
         }
 
         // ── the general path: SEARCH/REPLACE from the model ─────────────────
-        if (!touched.length) {
+        if (!touched.length && !deterministicIntentHandled) {
             const files = listFiles(dir);
             // Rank files by overlap with the request's words; content.js first
             // for wording changes, components for structure.
@@ -1263,7 +1396,7 @@ FILE: <relative path>
 <the replacement lines>
 >>>>>>> REPLACE
 
-Rules: the SEARCH text must be an exact quote of what is in the file. Keep edits minimal. ${isAr ? 'Any human-visible text you write must be Arabic.' : ''}
+Rules: the SEARCH text must be an exact quote of what is in the file. Keep edits minimal. ${artifactIsAr ? 'Any human-visible text you write must be Arabic.' : ''}
 
 If the request does NOT say what to change in these files — it names no element, no text, no colour, no file, and no behaviour that is in them — then do NOT invent one. Reply with exactly one line and nothing else:
 CANNOT TELL: <what you would need the user to say>
@@ -1337,7 +1470,7 @@ This is a correct answer, not a failure. Changing something the user did not ask
             for (const r of refused) logs.push(`refused: ${r}`);
         }
 
-        if (!touched.length) {
+        if (!touched.length && !deterministicIntentHandled) {
             return {
                 ok: true,
                 output: {
@@ -1424,6 +1557,7 @@ This is a correct answer, not a failure. Changing something the user did not ask
         // Same audit the builder runs, same honest skip when it cannot.
         let audit: any = null;
         let improvement: any = null;
+        let editAcceptance: any = null;
         if (buildVerified === true && !input?.skipAudit) {
             if (sessionId) broadcastThinkingDetail(sessionId, isAr ? '🔎 أفحص النتيجة في متصفح حقيقي…' : '🔎 Auditing the result in a real browser…');
             try {
@@ -1523,6 +1657,70 @@ This is a correct answer, not a failure. Changing something the user did not ask
             } catch (e: any) { logs.push(`self-QA after edit failed: ${String(e?.message || e).slice(0, 80)}`); }
         }
 
+        // Browser QA answers "does the page work?"; acceptance answers "did
+        // this edit do every thing the user named?". A visually clean old page
+        // must never score green when a compound follow-up changed one clause.
+        const now = (rel: string) => {
+            try { return fs.readFileSync(path.join(dir, rel), 'utf-8'); } catch { return ''; }
+        };
+        const contentNow = now(contentRel);
+        const appNow = now('src/App.jsx');
+        const htmlNow = now('index.html');
+        const tokensNow = now('src/styles/tokens.css');
+        const literalRename = parseLiteralTextReplacement(request);
+        const serviceBlock = (contentNow.match(/services:\s*\[([\s\S]*?)\n\s*\],/) || [])[1] || '';
+        const serviceRows = (serviceBlock.match(/\{\s*title:\s*'/g) || []).length;
+        const hasServiceTarget = /href:\s*'#services'/.test(contentNow)
+            && /id=["']services["']/.test(appNow)
+            && !/<section\b[^>]*\bid=["']services["'][^>]*\bdata-reveal\b/iu.test(appNow);
+        const wantedPrimary = buildPalette(request).primary;
+        const criteria = acceptanceFor(request).map((criterion: any) => {
+            const rule = criterion.expectedRule;
+            if (!rule) return criterion;
+            const text = String(rule.text || '');
+            const decided = (met: boolean, why: string) => ({
+                ...criterion,
+                preJudged: { verdict: met ? 'met' : 'unmet', why },
+            });
+            if (/(?:اسم\s+العلامة|اسم\s+(?:الموقع|المشروع)|\b(?:brand|rename)\b)/iu.test(text) && literalRename) {
+                const escaped = literalRename.to.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                const newBrand = new RegExp(`brand:\\s*['"]${escaped}['"]`, 'u').test(contentNow);
+                const tabRenamed = htmlNow.includes(literalRename.to) && !htmlNow.includes(literalRename.from);
+                return decided(newBrand && tabRenamed, newBrand && tabRenamed
+                    ? `brand and document metadata now say “${literalRename.to}”`
+                    : `brand rename to “${literalRename.to}” is missing from content or document metadata`);
+            }
+            if (/(?:قسم\s+(?:ال)?خدمات|رابط[^\n]{0,30}(?:ال)?خدمات|\bservices?\b)/iu.test(text) && servicesEdit) {
+                const met = hasServiceTarget && serviceRows >= servicesEdit.count;
+                return decided(met, met
+                    ? `${serviceRows} service items render behind the #services navigation target`
+                    : `the requested #services target, navigation link, or ${servicesEdit.count} service items are missing`);
+            }
+            if (/(?:لون|ألوان|الوان|\bcolou?r\b)/iu.test(text)) {
+                const met = tokensNow.includes(`--brand:${wantedPrimary}`);
+                return decided(met, met ? `the primary token is ${wantedPrimary}` : `the requested primary colour ${wantedPrimary} is not in the design tokens`);
+            }
+            if (/(?:لا\s+تنشئ[^\n]{0,30}مشروع|do\s+not\s+create[^\n]{0,30}project)/iu.test(text)) {
+                return decided(true, `the existing project directory was edited in place: ${dir}`);
+            }
+            if (/(?:القائمة\s+تصل\s+للقسم|menu[^\n]{0,30}(?:reach|link)[^\n]{0,30}section)/iu.test(text)) {
+                return decided(hasServiceTarget, hasServiceTarget ? 'the navigation href and rendered section id both equal #services' : 'the navigation target does not resolve to the requested section');
+            }
+            return criterion;
+        });
+        editAcceptance = judgeAcceptance(criteria, { dir, built: buildVerified === true, audit }, isAr);
+        const acceptanceBlocked = Number(editAcceptance?.unmet || 0) > 0;
+        if (acceptanceBlocked) {
+            const missing = (editAcceptance.criteria || []).filter((c: any) => c.verdict === 'unmet');
+            notes.push(isAr
+                ? `توقف التسليم: ${missing.length} بند مطلوب لم يُثبت بعد — ${missing.map((c: any) => c.ar || c.en || c.id).join(' · ')}.`
+                : `Delivery blocked: ${missing.length} requested item(s) remain unproven — ${missing.map((c: any) => c.en || c.ar || c.id).join(' · ')}.`);
+        } else if (criteria.length) {
+            notes.push(isAr
+                ? `تحقق القبول: ${editAcceptance.met}/${criteria.length} بنود مثبتة${editAcceptance.unprovable ? `، و${editAcceptance.unprovable} خارج نطاق القياس الآلي` : ''}.`
+                : `Acceptance: ${editAcceptance.met}/${criteria.length} criteria proven${editAcceptance.unprovable ? `; ${editAcceptance.unprovable} not automatically measurable` : ''}.`);
+        }
+
         const visualVerificationBlocked = visibleAuditRequired && (!audit || !!audit.skipped);
         if (visualVerificationBlocked) {
             const reason = String(audit?.skipped || 'browser audit did not return evidence');
@@ -1541,21 +1739,26 @@ This is a correct answer, not a failure. Changing something the user did not ask
             const d = diffSummary(t.before, t.after);
             return `   • ${t.file} (+${d.added} −${d.removed})`;
         }).join('\n');
+        const deliveryBlocked = visualVerificationBlocked || acceptanceBlocked;
         const buildVerdict = visualVerificationBlocked
             ? (isAr ? '⚠️ البناء نجح، لكن التسليم متوقف حتى يكتمل اختبار المتصفح المطلوب.' : '⚠️ Build passed, but delivery is blocked until the requested browser audit completes.')
+            : acceptanceBlocked
+                ? (isAr ? '⚠️ البناء نجح، لكن التسليم متوقف لأن بعض التعديلات المطلوبة لم تُثبت بعد.' : '⚠️ Build passed, but delivery is blocked because some requested edits remain unproven.')
             : (buildVerified === true
                 ? (isAr ? '✅ vite build نجح بعد التعديل — المشروع سليم.' : '✅ vite build passed after the edit.')
                 : buildVerified === false ? '' : (isAr ? 'ℹ️ (الحزم غير مثبتة — تخطيت تحقق البناء؛ بوابة الفحص النحوي طُبّقت على كل ملف)' : ''));
         const message = isAr
-            ? `🔬 عُدّل المشروع جراحياً — ${touched.length} ملف:\n${stats}
+            ? `${touched.length ? `🔬 عُدّل المشروع جراحياً — ${touched.length} ملف:\n${stats}` : 'لم يحتج المشروع إلى تغيير جديد؛ الحالة المطلوبة موجودة بالفعل.'}
 ${notes.length ? notes.join('\n') + '\n' : ''}${buildVerdict}${refused.length ? `\n⚠️ رُفض ${refused.length} تعديلاً غير آمن:\n${refused.map(r => `   • ${r}`).join('\n')}` : ''}
 
 🧭 «شغّل خادم التطوير» للمعاينة الحية · «تراجع» يسترجع الملفات السابقة`
-            : `🔬 Surgical edit — ${touched.length} file(s):\n${stats}\n${notes.length ? notes.join('\n') + '\n' : ''}${buildVerdict}`;
+            : `${touched.length ? `Surgical edit — ${touched.length} file(s):\n${stats}` : 'No new file changes were needed; the requested state is already in place.'}\n${notes.length ? notes.join('\n') + '\n' : ''}${buildVerdict}`;
         return {
-            ok: !visualVerificationBlocked,
-            ...(visualVerificationBlocked ? { error: 'browser_qa_required: requested visible browser verification did not complete' } : {}),
-            output: { message, dir, touched: touched.map(t => t.file), refused, buildVerified, audit, improvement, invented, visualVerificationBlocked },
+            ok: !deliveryBlocked,
+            ...(deliveryBlocked ? { error: visualVerificationBlocked
+                ? 'browser_qa_required: requested visible browser verification did not complete'
+                : 'edit_acceptance_unmet: one or more requested changes were not proven' } : {}),
+            output: { message, dir, touched: touched.map(t => t.file), refused, buildVerified, audit, improvement, invented, visualVerificationBlocked, acceptance: editAcceptance },
             logs,
         } as any;
     }

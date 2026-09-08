@@ -9,7 +9,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { parseEditBlocks, applyEditBlock, syntaxOk, diffSummary, parseLiteralTextReplacement, parsePresentationEdits, boundedChangeValue, pickPhotoRow, requestsVisibleBrowserAudit, ProjectEditTool } from '../modules/tools/definitions/ProjectEditTool';
+import { parseEditBlocks, applyEditBlock, syntaxOk, diffSummary, parseLiteralTextReplacement, parsePresentationEdits, parseServicesSectionEdit, boundedChangeValue, pickPhotoRow, requestsVisibleBrowserAudit, ProjectEditTool } from '../modules/tools/definitions/ProjectEditTool';
 import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
 
 describe('parseEditBlocks — the Aider-style format, strictly', () => {
@@ -149,6 +149,15 @@ describe('short quoted wording follow-ups', () => {
         expect(boundedChangeValue(`${request} ثم ابنِ المشروع واختبره.`)).toBe('ابدأ مشروعك');
     });
 
+    it('reads a services-section addition and its Arabic count from a compound follow-up', () => {
+        expect(parseServicesSectionEdit('أضف رابط «الخدمات» في القائمة وقسم خدمات بثلاث خدمات قبل التواصل')).toEqual({
+            label: 'الخدمات',
+            count: 3,
+            beforeContact: true,
+        });
+        expect(parseServicesSectionEdit('غيّر لون الأزرار إلى أخضر')).toBeNull();
+    });
+
     it('matches row names as Arabic words, never as fragments of another clause', () => {
         const rows = [{ name: 'حلو البيت' }, { name: 'الخدمة الأساسية' }];
         expect(pickPhotoRow(rows, 'أضف سطرًا «حلول مصممة حول أهداف عملك»')).toBeNull();
@@ -166,8 +175,9 @@ describe('short quoted wording follow-ups', () => {
         expect(source).toContain('improveUntilItStops(firstMeasurement');
         expect(source).toContain('repairRound(dir, round, { isArabic: isAr, findings })');
         expect(source.indexOf('Per-file history is written after QA')).toBeGreaterThan(source.indexOf('SELF-QA AFTER THE EDIT'));
-        expect(source).toContain('ok: !visualVerificationBlocked');
-        expect(source).toContain("error: 'browser_qa_required: requested visible browser verification did not complete'");
+        expect(source).toContain('ok: !deliveryBlocked');
+        expect(source).toContain("? 'browser_qa_required: requested visible browser verification did not complete'");
+        expect(source).toContain("'edit_acceptance_unmet: one or more requested changes were not proven'");
     });
 });
 
@@ -192,6 +202,9 @@ describe('compound generated-project presentation edits', () => {
 }\n`);
         fs.writeFileSync(path.join(tmp, 'src', 'components', 'Products.jsx'), `export default function Products({ content }) {
   return <section><h2>{content.productsTitle}</h2><div>items</div></section>;
+}\n`);
+        fs.writeFileSync(path.join(tmp, 'src', 'components', 'Hero.jsx'), `export default function Hero({ content }) {
+  return <section><h1>{content.heroTitle}</h1><button type="button" onClick={() => document.querySelector('#contact')?.scrollIntoView()}>{content.cta}</button></section>;
 }\n`);
         fs.writeFileSync(path.join(tmp, 'src', 'styles', 'base.css'), ':root{--brand:#126;--on-brand:#fff;--muted:#667}\n.brand{display:flex}\n');
     });
@@ -220,6 +233,69 @@ describe('compound generated-project presentation edits', () => {
         expect(fs.readFileSync(path.join(tmp, 'src', 'components', 'Products.jsx'), 'utf-8')).toContain('content.productsSubtitle');
         expect(fs.readFileSync(path.join(tmp, 'src', 'styles', 'base.css'), 'utf-8')).toContain('.brand-text-mark{');
         expect(res.logs).toEqual(expect.arrayContaining([expect.stringContaining('3 operation(s), 4 file(s)')]));
+    });
+});
+
+describe('compound brand, navigation, section, and palette follow-up', () => {
+    let tmp: string;
+    beforeEach(() => {
+        tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-services-edit-'));
+        fs.mkdirSync(path.join(tmp, 'src', 'styles'), { recursive: true });
+        fs.writeFileSync(path.join(tmp, 'package.json'), '{"name":"consulting"}');
+        fs.writeFileSync(path.join(tmp, 'index.html'), '<html><head><title>مشروعي</title><meta property="og:title" content="مشروعي"></head><body></body></html>');
+        fs.writeFileSync(path.join(tmp, 'src', 'content.js'), `export const content = {
+  brand: 'مشروعي',
+  heroTitle: 'شركة استشارات متكاملة',
+  heroLede: 'خبرة استشارية تقود القرار.',
+  contactTitle: 'تواصل معنا',
+  navLinks: [
+    { href: '#contact', label: 'تواصل' },
+  ],
+  menu: [
+    { name: 'طبق اليوم', desc: 'وصف', price: '10', img: null },
+  ],
+};\n`);
+        fs.writeFileSync(path.join(tmp, 'src', 'App.jsx'), `import React from 'react';
+const Contact = () => <section id="contact">Contact</section>;
+export default function App(){ const content = {}; return <main>
+        <a className="btn" href="#contact">ابدأ</a>
+        <Contact content={content} />
+      </main>; }\n`);
+        fs.writeFileSync(path.join(tmp, 'src', 'styles', 'tokens.css'), ':root{--brand:#123456}');
+        fs.writeFileSync(path.join(tmp, 'src', 'styles', 'base.css'), '.btn{background:var(--brand)} .grid-3{display:grid} .card{padding:1rem}');
+    });
+    afterEach(() => fs.rmSync(tmp, { recursive: true, force: true }));
+
+    it('applies every deterministic clause instead of stopping after the colour edit', async () => {
+        const request = 'طوّر نفس المشروع الحالي: غيّر اسم العلامة من «مشروعي» إلى «بصيرة»، أضف رابط «الخدمات» في القائمة وقسم خدمات بثلاث خدمات قبل التواصل، وغيّر لون الأزرار الرئيسي إلى أخضر زمردي. لا تنشئ مشروعاً جديداً.';
+        const res: any = await new ProjectEditTool().execute({ request, dir: tmp, skipAudit: true }, { sessionId: 'services-compound' });
+        expect(res.ok).toBe(true);
+        expect(res.output.touched.sort()).toEqual(['index.html', 'src/App.jsx', 'src/content.js', 'src/styles/tokens.css']);
+        const content = fs.readFileSync(path.join(tmp, 'src', 'content.js'), 'utf-8');
+        const app = fs.readFileSync(path.join(tmp, 'src', 'App.jsx'), 'utf-8');
+        const html = fs.readFileSync(path.join(tmp, 'index.html'), 'utf-8');
+        expect(content).toContain("brand: 'بصيرة'");
+        expect(content).toContain("href: '#services'");
+        expect((content.match(/\{ title: '/g) || []).length).toBe(3);
+        expect(app).toContain('id="services"');
+        expect(app).not.toMatch(/id="services"[^>]*data-reveal/);
+        expect(app.indexOf('id="services"')).toBeLessThan(app.indexOf('<Contact'));
+        expect(html).toContain('بصيرة');
+        expect(html).not.toContain('مشروعي');
+        expect(res.output.acceptance.unmet).toBe(0);
+
+        const rerun: any = await new ProjectEditTool().execute(
+            { request, dir: tmp, skipAudit: true },
+            { sessionId: 'services-compound', language: 'en' },
+        );
+        expect(rerun.ok).toBe(true);
+        expect(rerun.output.touched).toEqual([]);
+        expect(rerun.output.message).toContain('No new file changes were needed');
+        expect(rerun.output.message).not.toContain('أضفت قسم');
+        expect(rerun.output.message).not.toContain('Added "');
+        expect(fs.readFileSync(path.join(tmp, 'src', 'content.js'), 'utf-8')).toBe(content);
+        expect(fs.readFileSync(path.join(tmp, 'src', 'App.jsx'), 'utf-8')).not.toMatch(/id="services"[^>]*data-reveal/);
+        delete (global as any).joeProjects?.['services-compound'];
     });
 });
 

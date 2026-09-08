@@ -12,6 +12,7 @@
  */
 import fs from 'fs';
 import path from 'path';
+import mongoose from 'mongoose';
 
 /** Keep the store bounded — the newest N messages survive, forever-growing files do not. */
 const MAX_PERSISTED_MESSAGES = 4000;
@@ -23,6 +24,15 @@ function storeDir(): string {
 }
 const sessionsFile = () => path.join(storeDir(), 'chat-sessions.json');
 const messagesFile = () => path.join(storeDir(), 'chat-messages.json');
+
+/** One persistence decision for sessions, messages, and completed runs. */
+export function usesLocalChatStore(): boolean {
+    return mongoose.connection.readyState !== 1
+        || process.env.OFFLINE_MODE === 'true'
+        || process.env.PERSISTENCE_MODE === 'JSON'
+        || process.env.MOCK_DB === 'true'
+        || process.env.MOCK_DB === '1';
+}
 
 /**
  * Load persisted stores into the globals — only where the global is still

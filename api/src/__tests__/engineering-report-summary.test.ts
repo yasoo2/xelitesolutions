@@ -36,4 +36,18 @@ Accepted with gaps: 1/3 criteria were proven.
         expect(summary).toContain('Some requested parts were not proven');
         expect(summary).not.toContain('No critical findings were reported');
     });
+
+    it('recognizes the clean project-edit build verdict instead of contradicting it', () => {
+        const report = `
+No new file changes were needed; the requested state is already in place.
+Self-QA in the Browser panel, in front of you (1 page(s), 3 control(s) pressed, 3 viewport(s)): 100/100 — clean.
+Browser QA suite: runtime and network: passed · controls and forms: passed · visual, accessibility and responsive: passed
+Acceptance: 8/8 criteria proven.
+vite build passed after the edit.
+`;
+        const summary = summarizeEngineeringReport(report, 'en');
+        expect(summary).toContain('The project was built and fully verified.');
+        expect(summary).toContain('Browser QA: **100/100**');
+        expect(summary).not.toContain('verification is incomplete');
+    });
 });

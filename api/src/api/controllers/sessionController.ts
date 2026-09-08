@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { persistChatStores } from '../chat-store';
+import { persistChatStores, usesLocalChatStore } from '../chat-store';
 import mongoose from 'mongoose';
 import { Session } from '../../shared/models/session';
 import { Tenant } from '../../shared/models/tenant';
@@ -13,9 +13,7 @@ import { logTextFor, logStampFor } from '../../core/session/log-line';
 import { publicUrlFor } from '../../shared/utils/publicUrl';
 
 function isOfflineSessionStore(): boolean {
-    return mongoose.connection.readyState !== 1
-        || process.env.OFFLINE_MODE === 'true'
-        || process.env.PERSISTENCE_MODE === 'JSON';
+    return usesLocalChatStore();
 }
 
 function requestUserId(req: Request): string {
@@ -620,20 +618,17 @@ export async function listSessionMessages(req: Request, res: Response) {
     const sessionId = req.params.id as string;
     const userId = (req as any).auth?.sub;
 
-    const isPersistenceDisabled = process.env.PERSISTENCE_MODE === 'JSON';
     try {
         const owned = await requireOwnedSession(req, res, sessionId);
         if (!owned) return;
-        // [OFFLINE MODE] Return empty if DB is down
-        if (mongoose.connection.readyState !== 1 && !isPersistenceDisabled && process.env.OFFLINE_MODE !== 'true') {
-            console.warn('[SessionController] DB offline - returning empty message list');
-            return res.json({ events: [] });
-        }
-
 
         console.log(`[SessionController] Listing messages for sessionId: ${sessionId}, userId: ${userId}`);
 
-        const isOffline = mongoose.connection.readyState !== 1 || process.env.OFFLINE_MODE === 'true' || isPersistenceDisabled;
+        // A disconnected Mongo connection is the same local-store mode used by
+        // requireOwnedSession() and listSessions(). Returning [] here used to
+        // produce a selected session with its logs and project intact but an
+        // empty welcome chat after every API restart.
+        const isOffline = isOfflineSessionStore();
         const queryId = sessionId; // Use string IDs directly since schemas were updated to String
 
         // Fetch Messages, Tools, and Session in parallel

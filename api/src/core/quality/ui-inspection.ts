@@ -20,6 +20,7 @@
  */
 import { AuditEyes, EyeBox, evalInPage } from './audit-eyes';
 import type { BehaviourFinding } from './behaviour-audit';
+import { pauseBrowserCaptureForPage } from '../../modules/browser/manager';
 
 export interface UiInspection {
     findings: BehaviourFinding[];
@@ -73,11 +74,11 @@ export const VIEWPORTS = [
     { name: 'mobile', ar: 'جوّال', w: 390, h: 844 },
 ] as const;
 
-export function effectiveViewports(availableWidth: number): Array<{ name: string; ar: string; w: number; h: number }> {
-    const cap = Number.isFinite(availableWidth) && availableWidth > 0 ? availableWidth : 1280;
-    const supported = VIEWPORTS.filter(v => v.w <= cap).map(v => ({ ...v }));
-    if (supported.length) return supported;
-    return [{ name: 'available', ar: 'العرض المتاح', w: Math.max(320, Math.floor(cap)), h: 844 }];
+export function effectiveViewports(_availableWidth: number): Array<{ name: string; ar: string; w: number; h: number }> {
+    // QA emulates devices; it is not limited by the panel's current canvas.
+    // Always attempt the complete matrix and report an instrumentation failure
+    // if a browser truly cannot apply one of these sizes.
+    return VIEWPORTS.map(v => ({ ...v }));
 }
 
 // Device metrics belong to the CDP session that applies them. Detaching that
@@ -86,10 +87,25 @@ export function effectiveViewports(availableWidth: number): Array<{ name: string
 // attached for the lifetime of the Playwright page; the WeakMap releases it
 // with the page and avoids a cross-run global browser state.
 const viewportCdpSessions = new WeakMap<object, any>();
+// Once a page needs CDP emulation, CDP remains its sole viewport owner. Mixing
+// Playwright's setter with a second protocol session makes the two controllers
+// restore each other's previous metrics one task later (390 -> 1280, followed
+// by 1280 -> 390). The page is weakly held, so this ownership cannot leak past
+// the browser page lifetime.
+const viewportCdpOwnedPages = new WeakSet<object>();
 
 async function getViewportCdpSession(page: any): Promise<any> {
     const known = viewportCdpSessions.get(page);
-    if (known) return known;
+    if (known) {
+        try {
+            await known.send('Runtime.evaluate', { expression: '1', returnByValue: true });
+            return known;
+        } catch (error: any) {
+            viewportCdpSessions.delete(page);
+            await known.detach?.().catch(() => { });
+            console.warn(`[BrowserQA][viewport] replaced detached CDP session: ${String(error?.message || error).slice(0, 160)}`);
+        }
+    }
     const created = await page.context().newCDPSession(page);
     // Clear inherited emulation once. Clearing before every transition races
     // the live frame capture and can snap tablet/phone measurements back to
@@ -99,7 +115,7 @@ async function getViewportCdpSession(page: any): Promise<any> {
     return created;
 }
 
-export async function applyViewportSize(page: any, width: number, height: number): Promise<{ width: number; height: number }> {
+async function applyViewportSizeUnlocked(page: any, width: number, height: number): Promise<{ width: number; height: number }> {
     // Persistent browser contexts reject Playwright's viewport setter. That
     // is an instrumentation limitation, not evidence that the app failed its
     // responsive layout. Try the normal API, but keep going to CDP when the
@@ -107,25 +123,33 @@ export async function applyViewportSize(page: any, width: number, height: number
     // A previous override is replaced on the persistent CDP session below.
     // Do not clear it here: the live screenshot loop may capture between clear
     // and set, restoring the context's desktop dimensions during measurement.
-    try { await page.setViewportSize({ width, height }); } catch { /* use CDP below */ }
-    await page.waitForTimeout(180).catch(() => { });
     let actual = await evalInPage(page, function () { return { width: window.innerWidth, height: window.innerHeight }; }).catch(() => ({ width: 0, height: 0 }));
-    if (Math.abs(Number(actual?.width || 0) - width) <= 2) return actual;
+    if (!viewportCdpOwnedPages.has(page)) {
+        try { await page.setViewportSize({ width, height }); } catch (error: any) {
+            console.warn(`[BrowserQA][viewport] page setter ${width}x${height}: ${String(error?.message || error).slice(0, 160)}`);
+        }
+        await page.waitForTimeout(180).catch(() => { });
+        actual = await evalInPage(page, function () { return { width: window.innerWidth, height: window.innerHeight }; }).catch(() => ({ width: 0, height: 0 }));
+        if (Math.abs(Number(actual?.width || 0) - width) <= 2) return actual;
+    }
     // A persistent Playwright profile owns the viewport at context level. In
     // that mode page.setViewportSize can resolve while the visible document
     // remains at its previous width. Prefer the context setter when exposed,
     // then measure the document again before falling back to CDP emulation.
     try {
         const context = page.context?.();
-        if (typeof context?.setViewportSize === 'function') {
+        if (!viewportCdpOwnedPages.has(page) && typeof context?.setViewportSize === 'function') {
             await context.setViewportSize({ width, height });
             await page.waitForTimeout(180).catch(() => { });
             actual = await evalInPage(page, function () { return { width: window.innerWidth, height: window.innerHeight }; });
         }
-    } catch { /* CDP remains the compatibility path below */ }
+    } catch (error: any) {
+        console.warn(`[BrowserQA][viewport] context setter ${width}x${height}: ${String(error?.message || error).slice(0, 160)}`);
+    }
     if (Math.abs(Number(actual?.width || 0) - width) <= 2) return actual;
     try {
         const cdp = await getViewportCdpSession(page);
+        viewportCdpOwnedPages.add(page);
         // Persistent/headed Chromium can keep the old visible surface unless
         // it is resized before the device metrics are overridden. Without this
         // pair, the audit reported 820px -> 1280px even though the CDP command
@@ -137,28 +161,64 @@ export async function applyViewportSize(page: any, width: number, height: number
         });
         await page.waitForTimeout(180).catch(() => { });
         actual = await evalInPage(page, function () { return { width: window.innerWidth, height: window.innerHeight }; });
-    } catch { /* the caller records an instrumentation finding with the measured width */ }
+    } catch (error: any) {
+        console.warn(`[BrowserQA][viewport] CDP setter ${width}x${height}: ${String(error?.message || error).slice(0, 160)}`);
+    }
     if (Math.abs(Number(actual?.width || 0) - width) > 2) {
         // A persistent context may apply the metrics one turn late while the
         // page is still painting the previous frame. Give the browser one
         // explicit retry before declaring the instrumentation broken.
         try {
             const retry = await getViewportCdpSession(page);
-            await retry.send('Emulation.setVisibleSize', { width, height }).catch(() => { });
-            await retry.send('Emulation.setDeviceMetricsOverride', {
-                width, height, deviceScaleFactor: 1, mobile: false,
-                screenWidth: width, screenHeight: height, dontSetVisibleSize: false,
-            });
-            await page.waitForTimeout(300).catch(() => { });
-            actual = await evalInPage(page, function () { return { width: window.innerWidth, height: window.innerHeight }; });
-        } catch { /* keep the measured mismatch as evidence */ }
+            for (let attempt = 0; attempt < 10; attempt++) {
+                await retry.send('Emulation.setVisibleSize', { width, height }).catch(() => { });
+                await retry.send('Emulation.setDeviceMetricsOverride', {
+                    width, height, deviceScaleFactor: 1, mobile: false,
+                    screenWidth: width, screenHeight: height, dontSetVisibleSize: false,
+                });
+                await page.waitForTimeout(200).catch(() => { });
+                actual = await evalInPage(page, function () { return { width: window.innerWidth, height: window.innerHeight }; });
+                if (Math.abs(Number(actual?.width || 0) - width) <= 2) return actual;
+            }
+        } catch (error: any) {
+            console.warn(`[BrowserQA][viewport] CDP retry ${width}x${height}: ${String(error?.message || error).slice(0, 160)}`);
+        }
     }
     if (Math.abs(Number(actual?.width || 0) - width) > 2) {
-        await page.setViewportSize({ width, height }).catch(() => { });
-        await page.waitForTimeout(240).catch(() => { });
-        actual = await evalInPage(page, function () { return { width: window.innerWidth, height: window.innerHeight }; });
+        // Do not detach this session or call Playwright's setter here. Detaching
+        // restores the old metrics asynchronously; invoking both controllers is
+        // exactly what made the requested and measured widths trade places.
+        try {
+            const finalCdp = await getViewportCdpSession(page);
+            // The streamed headed surface can acknowledge the protocol command
+            // one frame before window.innerWidth changes. Poll the document and
+            // reassert the same metrics within a bounded window; measuring the
+            // immediately preceding size is not a responsive test.
+            for (let attempt = 0; attempt < 10; attempt++) {
+                await finalCdp.send('Emulation.setVisibleSize', { width, height }).catch(() => { });
+                await finalCdp.send('Emulation.setDeviceMetricsOverride', {
+                    width, height, deviceScaleFactor: 1, mobile: false,
+                    screenWidth: width, screenHeight: height, dontSetVisibleSize: false,
+                });
+                await page.waitForTimeout(200).catch(() => { });
+                actual = await evalInPage(page, function () { return { width: window.innerWidth, height: window.innerHeight }; });
+                if (Math.abs(Number(actual?.width || 0) - width) <= 2) return actual;
+            }
+        } catch (error: any) {
+            console.warn(`[BrowserQA][viewport] fresh-session recovery ${width}x${height}: ${String(error?.message || error).slice(0, 160)}`);
+        }
+        console.warn(`[BrowserQA][viewport] remained ${Number(actual?.width || 0)}px after requesting ${width}px`);
     }
     return actual;
+}
+
+export async function applyViewportSize(page: any, width: number, height: number): Promise<{ width: number; height: number }> {
+    const release = await pauseBrowserCaptureForPage(page);
+    try {
+        return await applyViewportSizeUnlocked(page, width, height);
+    } finally {
+        release();
+    }
 }
 
 /* ---------------------------------------------------------------- contrast */
@@ -652,7 +712,7 @@ function measureResponsive(vw: number) {
  */
 export async function inspectUi(
     page: any,
-    opts?: { eyes?: AuditEyes; restore?: { width: number; height: number }; onViewport?: (w: number, h: number) => void; beforeViewport?: (w: number, h: number) => void },
+    opts?: { eyes?: AuditEyes; restore?: { width: number; height: number }; onViewport?: (w: number, h: number) => void },
 ): Promise<UiInspection> {
     const findings: BehaviourFinding[] = [];
     const metrics: Record<string, any> = {};
@@ -739,9 +799,8 @@ export async function inspectUi(
     const viewports = effectiveViewports(availableWidth);
     for (const vp of viewports) {
         try {
-            opts?.beforeViewport?.(vp.w, vp.h);
-            await applyViewportSize(page, vp.w, vp.h);
-            opts?.onViewport?.(vp.w, vp.h);
+            const actual = await applyViewportSize(page, vp.w, vp.h);
+            opts?.onViewport?.(Number(actual.width), Number(actual.height));
             await page.waitForTimeout(420);
             await eyes?.say(page, `فحص العرض ${vp.w}px — ${vp.ar}`);
             const r: any = await evalInPage(page, measureResponsive, vp.w);
@@ -782,9 +841,8 @@ export async function inspectUi(
     metrics.perWidth = perWidth;
     if (opts?.restore) {
         try {
-            opts?.beforeViewport?.(openingViewport.width, openingViewport.height);
-            await applyViewportSize(page, openingViewport.width, openingViewport.height);
-            opts?.onViewport?.(openingViewport.width, openingViewport.height);
+            const actual = await applyViewportSize(page, openingViewport.width, openingViewport.height);
+            opts?.onViewport?.(Number(actual.width), Number(actual.height));
             await page.waitForTimeout(250);
         } catch { /* the caller owns the page; a failed restore is reported by it */ }
     }

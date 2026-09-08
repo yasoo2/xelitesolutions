@@ -786,7 +786,9 @@ function hasActionBoundButtonEvidence(src: string): boolean {
         || /\brole=["']button["'][^>]*\bonClick\s*=/i.test(src);
     const submitButton = /<form\b[^>]*\bonSubmit\s*=\s*[\s\S]*?<button\b[\s\S]*?<\/form>/i.test(src)
         || /<button\b[^>]*\btype=["']submit["']/i.test(src);
-    return clickButton || submitButton;
+    const linkedButton = /<a\b[^>]*\bhref\s*=\s*["'][^"']+["'][^>]*\bclassName\s*=\s*["'][^"']*\bbtn\b[^"']*["']/i.test(src)
+        || /<a\b[^>]*\bclassName\s*=\s*["'][^"']*\bbtn\b[^"']*["'][^>]*\bhref\s*=\s*["'][^"']+["']/i.test(src);
+    return clickButton || submitButton || linkedButton;
 }
 
 function hasStatusMessageEvidence(src: string): boolean {

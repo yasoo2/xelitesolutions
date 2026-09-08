@@ -13,7 +13,7 @@ import { isArabicReply, replyLanguageCode, say as pick } from '../../shared/repl
 import { formatAttachmentsBlock } from '../../shared/attachments';
 import { describeImageAttachments } from '../../shared/vision';
 import { withDeadline, RUN_DEADLINE_MS, DeadlineError } from '../../shared/utils/deadline';
-import { flushChatStores, persistChatStores } from '../../api/chat-store';
+import { flushChatStores, persistChatStores, usesLocalChatStore } from '../../api/chat-store';
 import { clarifyGate } from '../../core/orchestrator/clarify';
 import { announceScaffoldSubstitution } from '../../core/design/scaffold-substitution';
 import { phaseDetail } from '../../core/orchestrator/phaseAnnounce';
@@ -353,7 +353,7 @@ export class AgentLoopService {
                 broadcast({ type: 'text', sessionId, data: { text: gate.text, sessionId }, runId: clarifyRunId } as any);
                 broadcast({ type: 'run_finished', runId: clarifyRunId, data: { runId: clarifyRunId, ok: true, sessionId } } as any);
                 try {
-                    if (process.env.OFFLINE_MODE === 'true' || process.env.PERSISTENCE_MODE === 'JSON' || process.env.MOCK_DB === 'true' || String(process.env.MOCK_DB) === '1') {
+                    if (usesLocalChatStore()) {
                         const store: any[] = (global as any).mockMessages || ((global as any).mockMessages = []);
                         store.push({ _id: `am-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, sessionId, role: 'assistant', content: gate.text, createdAt: new Date() });
                         persistChatStores();
@@ -526,7 +526,7 @@ export class AgentLoopService {
         const requestedRunId = String(options.runId || '').trim();
         let runId = requestedRunId || `run-${Date.now()}`;
         try {
-            if (process.env.PERSISTENCE_MODE !== 'JSON' && process.env.OFFLINE_MODE !== 'true') {
+            if (!usesLocalChatStore()) {
                 const run = await Run.create({ sessionId, status: 'running', steps: [], ...(requestedRunId ? { runId: requestedRunId } : {}) } as any);
                 if (!requestedRunId) runId = run._id.toString();
             }
@@ -653,7 +653,7 @@ export class AgentLoopService {
 
             // Persist Joe's reply too (offline/JSON mode) so reloads show it.
             try {
-                if (process.env.OFFLINE_MODE === 'true' || process.env.PERSISTENCE_MODE === 'JSON' || process.env.MOCK_DB === 'true' || String(process.env.MOCK_DB) === '1') {
+                if (usesLocalChatStore()) {
                     const store: any[] = (global as any).mockMessages || ((global as any).mockMessages = []);
                     store.push({ _id: `am-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, sessionId, role: 'assistant', content: finalText, createdAt: new Date(), runId });
                     // The answer is already visible over WebSocket. Make the
@@ -704,7 +704,7 @@ export class AgentLoopService {
 
             // Update run status upon completion. A caller-issued textual runId is
             // stored in the runId field; legacy runs still use Mongo _id.
-            if (process.env.PERSISTENCE_MODE !== 'JSON' && process.env.OFFLINE_MODE !== 'true') {
+            if (!usesLocalChatStore()) {
                 const update = { $set: { status: result.ok ? 'done' : 'failed' } };
                 if (requestedRunId) await Run.findOneAndUpdate({ runId: requestedRunId }, update).catch(() => {});
                 else await Run.findByIdAndUpdate(runId, update).catch(() => {});
@@ -733,7 +733,7 @@ export class AgentLoopService {
             // working line. Persist the same user-facing text as the success
             // path so live delivery and recovery have one source of truth.
             try {
-                if (process.env.OFFLINE_MODE === 'true' || process.env.PERSISTENCE_MODE === 'JSON' || process.env.MOCK_DB === 'true' || String(process.env.MOCK_DB) === '1') {
+                if (usesLocalChatStore()) {
                     const store: any[] = (global as any).mockMessages || ((global as any).mockMessages = []);
                     store.push({ _id: `am-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, sessionId, role: 'assistant', content: failText, createdAt: new Date(), runId });
                     flushChatStores();
@@ -743,7 +743,7 @@ export class AgentLoopService {
             releaseHandle(runCancellation, runId, sessionId);
             removeRunEventListener(runId);
             unregisterRunSession(runId, sessionId);
-            if (process.env.PERSISTENCE_MODE !== 'JSON' && process.env.OFFLINE_MODE !== 'true') {
+            if (!usesLocalChatStore()) {
                 if (requestedRunId) await Run.findOneAndUpdate({ runId: requestedRunId }, { $set: { status: 'failed' } }).catch(() => {});
                 else await Run.findByIdAndUpdate(runId, { $set: { status: 'failed' } }).catch(() => {});
             }

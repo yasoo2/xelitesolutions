@@ -42,6 +42,26 @@ describe('session controller ownership in the JSON store', () => {
         expect(state.body.map((session: any) => session.id)).toEqual(['session-a']);
     });
 
+    it('restores local messages when Mongo is disconnected without an explicit JSON flag', async () => {
+        const configuredPersistence = process.env.PERSISTENCE_MODE;
+        const configuredOfflineMode = process.env.OFFLINE_MODE;
+        delete process.env.PERSISTENCE_MODE;
+        delete process.env.OFFLINE_MODE;
+        try {
+            const { res, state } = response();
+            await SessionController.listSessionMessages(requestFor('user-a'), res);
+            expect(state.statusCode).toBe(200);
+            expect(state.body.events).toEqual(expect.arrayContaining([
+                expect.objectContaining({ type: 'user_input', data: 'A secret' }),
+            ]));
+        } finally {
+            if (configuredPersistence === undefined) delete process.env.PERSISTENCE_MODE;
+            else process.env.PERSISTENCE_MODE = configuredPersistence;
+            if (configuredOfflineMode === undefined) delete process.env.OFFLINE_MODE;
+            else process.env.OFFLINE_MODE = configuredOfflineMode;
+        }
+    });
+
     it('does not disclose another user session history, queue, or workspace', async () => {
         for (const action of [
             SessionController.listSessionMessages,

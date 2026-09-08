@@ -69,6 +69,22 @@ describe('chat-store — conversations survive the restart', () => {
         expect(g.mockSessions[0]._id).toBe('live');
         g.mockSessions = [];
     });
+
+    it('treats a disconnected configured database as the durable local store', () => {
+        const beforePersistence = process.env.PERSISTENCE_MODE;
+        const beforeOffline = process.env.OFFLINE_MODE;
+        delete process.env.PERSISTENCE_MODE;
+        delete process.env.OFFLINE_MODE;
+        try {
+            const { usesLocalChatStore } = require('../api/chat-store');
+            expect(usesLocalChatStore()).toBe(true);
+        } finally {
+            if (beforePersistence === undefined) delete process.env.PERSISTENCE_MODE;
+            else process.env.PERSISTENCE_MODE = beforePersistence;
+            if (beforeOffline === undefined) delete process.env.OFFLINE_MODE;
+            else process.env.OFFLINE_MODE = beforeOffline;
+        }
+    });
 });
 
 describe('every store mutation schedules a persist', () => {
@@ -94,5 +110,6 @@ describe('final chat delivery is durable before a run is released', () => {
         expect(fatalPush).toBeGreaterThan(-1);
         expect(src.indexOf('flushChatStores();', successPush)).toBeLessThan(src.indexOf('releaseHandle(', successPush));
         expect(src.indexOf('flushChatStores();', fatalPush)).toBeGreaterThan(fatalPush);
+        expect((src.match(/usesLocalChatStore\(\)/g) || []).length).toBeGreaterThanOrEqual(5);
     });
 });

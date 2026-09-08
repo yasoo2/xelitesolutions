@@ -101,7 +101,7 @@ describe('every menu, every route — not fourteen buttons', () => {
     });
 
     it('and an in-app route is a control, while someone else’s site is not', () => {
-        const b = B();
+        const b = read('core', 'quality', 'behaviour-audit.ts');
         expect(b).toMatch(/querySelectorAll\('a\[href\^="#\/"\]'\)\.forEach\(el => push\(el, 'link'\)\)/);
     });
 
@@ -225,12 +225,15 @@ describe('the interface itself is inspected — «وفحص ui»', () => {
         const u = U();
         expect(u).toMatch(/await applyViewportSize\(page, vp\.w, vp\.h\)/);
         expect(u).toMatch(/await applyViewportSize\(page, openingViewport\.width, openingViewport\.height\)/);
+        expect(u).toContain('const viewportCdpOwnedPages = new WeakSet<object>()');
+        expect(u).not.toContain('replaceViewportCdpSession(page)');
+        expect(u).toContain('[BrowserQA][viewport] fresh-session recovery');
     });
 
     it('fits the responsive matrix to a visible panel without inventing a desktop width', () => {
         expect(effectiveViewports(1280).map(v => v.w)).toEqual([1280, 820, 390]);
-        expect(effectiveViewports(820).map(v => v.w)).toEqual([820, 390]);
-        expect(effectiveViewports(390).map(v => v.w)).toEqual([390]);
+        expect(effectiveViewports(820).map(v => v.w)).toEqual([1280, 820, 390]);
+        expect(effectiveViewports(390).map(v => v.w)).toEqual([1280, 820, 390]);
     });
 
     it('measures a fragmented mobile header and has an evidence-bound repair', () => {
@@ -264,6 +267,14 @@ describe('the interface itself is inspected — «وفحص ui»', () => {
     it('and the panel is told the page got narrower, or it draws a smear', () => {
         expect(read('modules', 'browser', 'manager.ts')).toMatch(/export function setSessionViewport/);
         expect(read('core', 'quality', 'app-audit.ts')).toMatch(/setSessionViewport\(opts\.watchSessionId, w, h\)/);
+    });
+
+    it('keeps one viewport owner after CDP emulation starts', () => {
+        const source = U();
+        expect(source).toContain('const viewportCdpOwnedPages = new WeakSet<object>()');
+        expect(source).toContain('if (!viewportCdpOwnedPages.has(page))');
+        expect(source).toContain('viewportCdpOwnedPages.add(page)');
+        expect(source).not.toContain('replaceViewportCdpSession');
     });
 
     /**
@@ -333,16 +344,34 @@ describe('the interface itself is inspected — «وفحص ui»', () => {
         expect(u).toContain('dontSetVisibleSize: false');
         expect(u).toContain('screenWidth: width, screenHeight: height');
         expect(u).toContain('export async function applyViewportSize');
+        expect(u).toContain('pauseBrowserCaptureForPage(page)');
+        expect(u).toContain('return await applyViewportSizeUnlocked(page, width, height)');
         expect(u).toContain("typeof context?.setViewportSize === 'function'");
         expect(u).toContain('await context.setViewportSize({ width, height });');
         expect(u).toContain('await page.waitForTimeout(180)');
-        expect(u).toContain('await page.waitForTimeout(240)');
+        expect(u).toContain('const finalCdp = await getViewportCdpSession(page)');
+        expect(u.lastIndexOf("Emulation.setDeviceMetricsOverride")).toBeGreaterThan(u.lastIndexOf('await page.setViewportSize({ width, height })'));
+        expect(u).toContain('for (let attempt = 0; attempt < 10; attempt++)');
+        expect(u).toContain('remained ${Number(actual?.width || 0)}px after requesting ${width}px');
+        const a = read('core', 'quality', 'app-audit.ts');
+        expect(a).not.toContain('beforeViewport: (w, h) =>');
+        expect(a).toContain('setSessionViewport(opts.watchSessionId, actual.width, actual.height)');
+        const manager = read('modules', 'browser', 'manager.ts');
+        expect(manager).toContain('export async function pauseBrowserCaptureForPage');
+        expect(manager).toContain("throw new Error('browser_capture_pause_timeout')");
     });
 
     it('does not hide a route failure in the responsive pass', () => {
         const a = read('core', 'quality', 'app-audit.ts');
         expect(a).toMatch(/brokenRoutes\.push\(`\$\{r\} @ \$\{size\.name\}/);
         expect(a).toMatch(/unreachable route at one viewport is itself/);
+    });
+
+    it('requires in-page navigation targets to be visibly rendered, not merely present', () => {
+        const b = read('core', 'quality', 'behaviour-audit.ts');
+        expect(b).toContain("Number(style.opacity) > 0.05");
+        expect(b).toContain("style.visibility !== 'hidden'");
+        expect(b).toContain('missing or not visible');
     });
 
     it('every failing element is OUTLINED, not just listed', () => {

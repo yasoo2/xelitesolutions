@@ -39,7 +39,7 @@ export function summarizeEngineeringReport(markdown: string, language = 'en'): s
         .filter((line, index, all) => all.indexOf(line) === index)
         .slice(0, 3);
 
-    const buildVerified = /verified to compile|تُحقق من تجميعه|vite build succeeded|نجحا/i.test(source);
+    const buildVerified = /verified to compile|تُحقق من تجميعه|vite build (?:succeeded|passed)|(?:vite build|البناء)\s+نجح/iu.test(source);
     // The report can contain a clean build-stage audit followed by a failed
     // final live-run audit. The final machine verdict always outranks an older
     // 100/100; otherwise the chat says "fully verified" while Logs say
