@@ -242,7 +242,7 @@ describe('the interface itself is inspected — «وفحص ui»', () => {
         // viewport exact while still measuring all three classes.
         expect(VIEWPORTS.map(v => v.w)).toEqual([1280, 820, 390]);
         const u = U();
-        expect(u).toMatch(/await applyViewportSize\(page, vp\.w, vp\.h\)/);
+        expect(u).toMatch(/await measureAtViewport\(page, vp\.w, vp\.h/);
         expect(u).toMatch(/await applyViewportSize\(page, openingViewport\.width, openingViewport\.height\)/);
         expect(u).toContain('const viewportCdpOwnedPages = new WeakSet<object>()');
         expect(u).not.toContain('replaceViewportCdpSession(page)');
@@ -350,6 +350,11 @@ describe('the interface itself is inspected — «وفحص ui»', () => {
         const u = U();
         expect(u).toContain('actualVw: actualVw');
         expect(u).toContain("code: 'viewport_emulation_failed'");
+        expect(u).toContain("code: 'generic_image_composition'");
+        expect(u).toContain('function measureContentComposition()');
+        expect(u).toContain("input[type=\"file\"][accept*=\"image\"]");
+        expect(u).toContain('.media-workspace');
+        expect(u).toContain('.media-gallery');
         expect(u).toContain('metrics.viewports = measuredViewports');
         expect(u).toContain('Math.abs(actualVw - vp.w) > 2');
         expect(u).toContain('const viewports = effectiveViewports(availableWidth)');
@@ -362,6 +367,10 @@ describe('the interface itself is inspected — «وفحص ui»', () => {
         expect(u).toContain("Emulation.clearDeviceMetricsOverride");
         expect(u).toContain("Emulation.setDeviceMetricsOverride");
         expect(u.indexOf("Emulation.clearDeviceMetricsOverride")).toBeLessThan(u.indexOf('export async function applyViewportSize'));
+        expect(u).toContain('async function measureAtViewport');
+        expect(u).toContain('responsive: await evalInPage(page, measureResponsive, vp.w)');
+        expect(u.indexOf('const release = await pauseBrowserCaptureForPage(page);', u.indexOf('async function measureAtViewport')))
+            .toBeLessThan(u.indexOf('responsive: await evalInPage(page, measureResponsive, vp.w)'));
         expect(u).toContain('const viewportCdpSessions = new WeakMap<object, any>();');
         expect(u).toContain('await getViewportCdpSession(page)');
         expect(u).not.toContain('await retry.detach()');

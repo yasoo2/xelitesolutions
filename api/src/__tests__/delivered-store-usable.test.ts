@@ -55,10 +55,10 @@ describe('the interface speaks the user\'s language, not the prompt\'s', () => {
                 delete (global as any).joeProjects?.[sessionId];
             }
         };
-        expect(await run('english-ui', 'en')).toContain('lang=en (ui=en)');
-        expect(await run('no-ui')).toContain('lang=ar (ui=absent)');
+        expect(await run('english-ui', 'en')).toContain('artifact=ar · reply=en (ui=en)');
+        expect(await run('no-ui')).toContain('artifact=ar · reply=ar (ui=absent)');
         expect(await run('unicode-arabic-fallback', undefined, '\u0750\u08A0\uFB50'))
-            .toContain('lang=ar (ui=absent)');
+            .toContain('artifact=ar · reply=ar (ui=absent)');
     }, 120000);
 
     it('the prompt\'s script still decides when the session says nothing', () => {

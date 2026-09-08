@@ -112,6 +112,7 @@ export function fileAppContentJs(bp: AppBlueprint, o: AppBuildOptions): string {
     return `// WHAT THIS APP IS — its schema, its numbers, its storage key.
 // No marketing copy, no fabricated people: this file describes a program.
 export const content = {
+  kind: '${q(bp.kind)}',
   brand: '${q(o.brand)}',
   isArabic: ${o.isArabic},
   kind: '${q(bp.kind)}',
@@ -207,6 +208,7 @@ ${bp.metrics.map(m => `    { label: '${q(m.label)}', kind: '${q(m.kind)}'${m.fie
   statusField: '${q(bp.statusField || '')}',
   doneValue: '${q(bp.doneValue || '')}',
   filterFields: [${(bp.filterFields || []).map(key => `'${q(key)}'`).join(', ')}],
+  preserveOriginalImages: ${bp.preserveOriginalImages ? 'true' : 'false'},
   lowStock: ${bp.lowStock ? `{ field: '${q(bp.lowStock.field)}', below: ${Number(bp.lowStock.below)} }` : 'null'},
   // The parent this app's rows belong to — «طبيب ← مواعيده». Null for a
   // one-table app, and then the picker below simply never renders.
@@ -434,7 +436,7 @@ export default function App() {
   }, [dark]);
 
   return (
-    <div className="app">
+    <div className={'app kind-' + String(content.kind || 'generic')}>
       <header className="app-bar">
         <div className="app-bar-in">
           {/* A real <h1>: the app's own name. The self-QA in a real browser
@@ -721,6 +723,9 @@ export function pickImage(file, maxEdge) {
     var reader = new FileReader();
     reader.onerror = function () { resolve(''); };
     reader.onload = function () {
+      // Some workflows explicitly require the original upload. Preserve its
+      // exact data URL instead of silently recompressing or resizing it.
+      if (maxEdge === 0) { resolve(String(reader.result || '')); return; }
       var img = new Image();
       img.onerror = function () { resolve(''); };
       img.onload = function () {
@@ -1589,7 +1594,7 @@ export default function RecordsApp({ content }) {
   }, [rows, query, filters, sort, fields, primary, filterDefs, rel, parentFilter, parents]);
 
   return (
-    <div className="wrap">
+    <div className={'wrap' + (imageField ? ' media-workspace' : '')}>
       <section data-reveal-section className="stats" aria-label={${T('الأرقام', 'Numbers')}}>
         {content.metrics.map((m, i) => (
           <div className="stat" key={i}>
@@ -1692,7 +1697,7 @@ export default function RecordsApp({ content }) {
         </section>
       ) : null}
 
-      <section data-reveal-section className="panel">
+      <section data-reveal-section className={'panel' + (imageField ? ' media-composer' : '')}>
         <h2>{editing ? ${T('تعديل ', 'Edit ')} + content.entityOne : ${T('إضافة ', 'Add ')} + content.entityOne}</h2>
         {/* A MESSAGE ABOUT A PAST ATTEMPT MUST NOT READ AS A VERDICT ON THIS
             ONE. setError('') lives inside submit, so whenever the browser
@@ -1700,7 +1705,7 @@ export default function RecordsApp({ content }) {
             message stays pinned under it — measured saying «يجب أن تكون قيمة
             السعر أكبر من 0» about a corrected price of 12.50. Change events
             bubble, so one handler here clears it for every field. */}
-        <form className="form" onSubmit={submit} onChange={() => setError('')}>
+        <form className="form" onSubmit={submit} onChange={e => { if (e.target.type !== 'file') setError(''); }}>
           {fields.map(f => (
             <label className={'field' + (f.type === 'textarea' ? ' wide' : '')} key={f.key}>
               <span>{f.label}{f.required ? ' *' : ''}</span>
@@ -1711,13 +1716,19 @@ export default function RecordsApp({ content }) {
                   what the generator kept re-emitting. */}
               {f.type === 'image' ? (
                 <div className="pic-pick">
-                  <img className="pic-preview" src={draft[f.key] || cardFor(draft[primary.key])} alt="" />
+                  {draft[f.key] ? <img className="pic-preview" src={draft[f.key]} alt="" /> : <div className="pic-empty" aria-hidden="true"><span>+</span><small>{${T('اختر صورة للمعاينة', 'Choose an image to preview')}}</small></div>}
                   <div className="pic-acts">
-                    <input type="file" accept="image/*" aria-label={f.label}
+                    <input type="file" name={f.key} accept="image/*" aria-label={f.label}
                       onChange={async e => {
                         const file = e.target.files && e.target.files[0];
-                        const data = await pickImage(file, 480);
-                        if (data) setDraft({ ...draft, [f.key]: data });
+                        if (file && String(file.type || '').indexOf('image/') !== 0) {
+                          setError(${T('اختر ملف صورة صالحاً.', 'Choose a valid image file.')});
+                          e.target.value = '';
+                          return;
+                        }
+                        const data = await pickImage(file, content.preserveOriginalImages ? 0 : 480);
+                        if (data) { setError(''); setDraft({ ...draft, [f.key]: data }); }
+                        else if (file) setError(${T('تعذر قراءة الصورة المختارة.', 'The selected image could not be read.')});
                         e.target.value = '';
                       }} />
                     {draft[f.key] ? (
@@ -1727,13 +1738,13 @@ export default function RecordsApp({ content }) {
                   </div>
                 </div>
               ) : f.type === 'textarea' ? (
-                <textarea rows={3} required={!!f.required} value={draft[f.key] || ''} onChange={e => setDraft({ ...draft, [f.key]: e.target.value })} />
+                <textarea name={f.key} rows={3} required={!!f.required} value={draft[f.key] || ''} onChange={e => setDraft({ ...draft, [f.key]: e.target.value })} />
               ) : f.type === 'select' ? (
-                <select required={!!f.required} value={draft[f.key] || ''} onChange={e => setDraft({ ...draft, [f.key]: e.target.value })}>
+                <select name={f.key} required={!!f.required} value={draft[f.key] || ''} onChange={e => setDraft({ ...draft, [f.key]: e.target.value })}>
                   {(f.options || []).map(o => <option key={o} value={o}>{o}</option>)}
                 </select>
               ) : (
-                <input type={f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : f.type === 'time' ? 'time' : f.type === 'tel' ? 'tel' : f.type === 'email' ? 'email' : 'text'}
+                <input name={f.key} type={f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : f.type === 'time' ? 'time' : f.type === 'tel' ? 'tel' : f.type === 'email' ? 'email' : 'text'}
                   inputMode={f.type === 'tel' ? 'numeric' : undefined}
                   pattern={f.type === 'tel' ? '[0-9]{7,15}' : undefined}
                   required={!!f.required}
@@ -1760,7 +1771,7 @@ export default function RecordsApp({ content }) {
         </form>
       </section>
 
-      <section data-reveal-section className="panel">
+      <section data-reveal-section data-gallery-contract={imageField ? 'media' : undefined} className={'panel' + (imageField ? ' media-library' : '')}>
         <div className="toolbar">
           <input className="search" type="search" value={query} onChange={e => setQuery(e.target.value)}
             placeholder={${T('ابحث…', 'Search…')}} aria-label={${T('بحث', 'Search')}} />
@@ -1845,13 +1856,13 @@ export default function RecordsApp({ content }) {
             </table>
           </div>
         ) : (
-          <ul className="rows">
+          <ul className={'rows' + (imageField ? ' media-gallery' : '')}>
             {visible.map(row => {
               const done = statusField && content.doneValue && row[statusField.key] === content.doneValue;
               //  His own threshold, in his own number — see content.lowStock.
               const low = content.lowStock && Number(row[content.lowStock.field]) < Number(content.lowStock.below);
               return (
-                <li className={'row' + (done ? ' done' : '') + (low ? ' low' : '')} key={row.id}>
+                <li className={'row' + (imageField ? ' media-card' : '') + (done ? ' done' : '') + (low ? ' low' : '')} key={row.id}>
                   {imageField ? (
                     <img className="row-pic" loading="lazy"
                       src={imageOf(row, imageField.key, primary.key)}
@@ -3175,10 +3186,51 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--accent,#06c);out
 .row-pic{width:88px;height:66px;flex:none;object-fit:cover;border-radius:10px;border:1px solid var(--border,#e5e5e5);background:var(--tint,#f4f4f4)}
 .pic-pick{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
 .pic-preview{width:112px;height:84px;object-fit:cover;border-radius:12px;border:1px solid var(--border,#e5e5e5);background:var(--tint,#f4f4f4)}
+.pic-empty{width:112px;height:84px;display:grid;place-content:center;justify-items:center;gap:2px;border:1px dashed var(--border);border-radius:10px;background:var(--tint);color:var(--text-muted)}
+.pic-empty span{font-size:1.4rem;line-height:1;color:var(--brand)}
+.pic-empty small{font-size:.72rem}
 .pic-acts{display:flex;flex-direction:column;gap:6px;min-width:0}
 .pic-acts input[type=file]{font-size:.82rem;padding:8px;min-height:44px;border:1px dashed var(--border,#ddd);border-radius:10px;background:transparent;max-width:100%}
 .tbl-pic{width:52px;height:40px;object-fit:cover;border-radius:8px;border:1px solid var(--line,#e5e5e5);display:block}
 .rows.compact .row{padding:10px 12px}
+
+/* Image-led collections are a studio, not the generic records stack with a
+   thumbnail bolted onto every row. The same data engine remains reliable,
+   while composition follows the material: a restrained editor beside a
+   gallery whose images carry the hierarchy. */
+.media-workspace{display:grid;grid-template-columns:minmax(260px,.72fr) minmax(0,1.55fr);gap:22px;align-items:start;max-width:1380px}
+.kind-media{--brand:#087f73;--accent:#087f73;--tint:#f1f7f5;--panel:#fff;--media-warm:#bd5938;background:#f7f8f6}
+[data-theme="dark"] .kind-media{--brand:#45c4b5;--accent:#5fd2c5;--tint:#182522;--panel:#131817;--media-warm:#f08a66;background:#0e1211}
+.kind-media .app-bar{background:color-mix(in srgb,var(--panel) 94%,var(--brand));border-bottom-color:color-mix(in srgb,var(--brand) 24%,var(--border))}
+.kind-media .app-name{color:var(--text);font-weight:760}
+.kind-media .app-sub{color:var(--brand)}
+.media-workspace>.stats,.media-workspace>.chart-panel,.media-workspace>.rel-panel{grid-column:1/-1}
+.media-workspace>.stats{display:flex;justify-content:flex-start;gap:0;padding:8px 0 22px;border-bottom:1px solid var(--border)}
+.media-workspace>.stats .stat{flex:0 1 220px;border:0;border-radius:0;background:transparent;padding:6px 24px 6px 0;box-shadow:none}
+.media-workspace>.stats .stat+.stat{border-inline-start:1px solid var(--border);padding-inline-start:24px}
+.media-workspace>.stats .stat-ico{display:none}
+.media-workspace>.stats .stat b{font-size:2rem;line-height:1;color:var(--text)}
+.media-workspace>.stats .stat:nth-child(even) b{color:var(--media-warm)}
+.media-composer{position:sticky;top:92px;border:0;border-top:3px solid var(--brand);border-radius:0;background:transparent;padding:20px 0;box-shadow:none}
+.media-composer .form{grid-template-columns:minmax(0,1fr)}
+.media-composer .pic-pick{display:grid;grid-template-columns:minmax(0,1fr)}
+.media-composer .pic-preview{width:100%;height:auto;aspect-ratio:4/3;object-fit:cover;border-radius:4px}
+.media-composer .pic-empty{width:100%;height:150px;border-radius:4px;background:color-mix(in srgb,var(--tint) 72%,var(--panel));color:var(--text-muted)}
+.media-composer .pic-empty span{font-size:2rem}
+.media-composer .pic-empty small{font-size:.82rem}
+.media-library{border:0;border-inline-start:1px solid var(--border);border-radius:0;background:transparent;padding:0 0 32px 22px;min-width:0;box-shadow:none}
+.media-library .toolbar{padding-bottom:14px;border-bottom:1px solid var(--border)}
+.media-gallery{grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:18px}
+.media-card{display:grid;grid-template-columns:minmax(0,1fr);gap:0;padding:0;border:0;border-radius:4px;background:transparent;overflow:hidden;align-content:start}
+.media-card .row-pic{width:100%;height:auto;aspect-ratio:4/3;border:0;border-radius:4px;object-fit:cover;background:var(--tint)}
+.media-card .row-main{width:100%;padding:12px 2px 6px;min-width:0}
+.media-card .row-main h3{font-size:1.08rem}
+.media-card .row-meta{display:grid;gap:3px}
+.media-card .row-meta div{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px}
+.media-card .row-acts{padding:4px 0 0;justify-content:flex-start}
+.media-card .row-detail-hint{display:none}
+@media(max-width:820px){.media-workspace{grid-template-columns:minmax(0,1fr)}.media-workspace>*{grid-column:1}.media-composer{position:static}.media-library{border-inline-start:0;border-top:1px solid var(--border);padding:22px 0 32px}.media-gallery{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:480px){.media-gallery{grid-template-columns:minmax(0,1fr)}.media-card .row-pic{aspect-ratio:16/10}}
 
 /* the parent table — «الأطباء» above «المواعيد» */
 .rel-panel{background:var(--tint,#f8f8f8)}

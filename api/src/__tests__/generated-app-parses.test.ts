@@ -19,7 +19,7 @@ import { undefinedJsxComponentMismatch } from '../core/quality/source-contract';
 import { unparenthesizedLogicalTernaryError } from '../modules/tools/definitions/AIGeneratorTool';
 import { capabilityEvidenceNotice, repairCapabilityGapsOnce } from '../modules/tools/definitions/ReactProjectTool';
 
-const KINDS: AppKind[] = ['store', 'booking', 'tasks', 'social', 'chat', 'maps', 'weather', 'crm', 'inventory', 'calculator', 'productivity', 'expenses'];
+const KINDS: AppKind[] = ['store', 'booking', 'tasks', 'social', 'chat', 'maps', 'weather', 'crm', 'inventory', 'calculator', 'productivity', 'expenses', 'media'];
 
 const filesFor = (kind: AppKind, isArabic: boolean) => buildAppFiles(
     blueprintFor(kind, 'اختبار', isArabic),

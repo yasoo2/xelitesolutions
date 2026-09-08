@@ -221,6 +221,22 @@ export async function applyViewportSize(page: any, width: number, height: number
     }
 }
 
+/** Keep the live-frame capture paused until the resized document is measured. */
+async function measureAtViewport<T>(
+    page: any,
+    width: number,
+    height: number,
+    measure: (actual: { width: number; height: number }) => Promise<T>,
+): Promise<T> {
+    const release = await pauseBrowserCaptureForPage(page);
+    try {
+        const actual = await applyViewportSizeUnlocked(page, width, height);
+        return await measure(actual);
+    } finally {
+        release();
+    }
+}
+
 /* ---------------------------------------------------------------- contrast */
 
 function measureContrast() {
@@ -704,6 +720,24 @@ function measureResponsive(vw: number) {
 }
 
 /**
+ * Content must influence composition, not merely copy and colour. An image
+ * workflow rendered as the same narrow records form plus thumbnail rows is a
+ * measurable mismatch: the image is the primary object, so the interface must
+ * expose an image-led workspace and gallery semantics even while it is empty.
+ */
+function measureContentComposition() {
+  var imagePicker = document.querySelector('input[type="file"][accept*="image"]');
+  var imageLedWorkspace = document.querySelector('.media-workspace,[data-composition="gallery"],[data-layout="media-studio"]');
+  var gallery = document.querySelector('.media-gallery,[data-gallery-contract="media"],[role="grid"][data-content="media"],main [aria-label*="gallery" i]');
+  return {
+    hasImageWorkflow: !!imagePicker,
+    hasImageLedWorkspace: !!imageLedWorkspace,
+    hasGalleryContract: !!gallery,
+    panelCount: document.querySelectorAll('.panel,.card,[class*="card"]').length,
+  };
+}
+
+/**
  * Look at the page the way a reviewer looks at it: at the colours, at the
  * structure, and at two widths that are not the one it was designed on.
  *
@@ -776,6 +810,21 @@ export async function inspectUi(
         }
     } catch { /* structure is one lens too */ }
 
+    /* ---- request-shaped composition ---------------------------------- */
+    try {
+        const composition: any = await evalInPage(page, measureContentComposition);
+        metrics.composition = composition;
+        if (composition.hasImageWorkflow && (!composition.hasImageLedWorkspace || !composition.hasGalleryContract)) {
+            findings.push({
+                code: 'generic_image_composition', severity: 'major',
+                ar: 'واجهة الصور تستخدم تركيب السجلات العام بدل مساحة بصرية يقودها المعرض — تغيير الألوان وحده لا يصنع تصميماً جديداً',
+                en: 'The image workflow uses the generic records composition instead of a gallery-led visual workspace — changing colours alone is not a new design',
+                hint: 'use a media-specific editor/gallery composition and keep images as the primary visual hierarchy',
+                evidence: [{ hasImageLedWorkspace: composition.hasImageLedWorkspace, hasGalleryContract: composition.hasGalleryContract, panelCount: composition.panelCount }],
+            });
+        }
+    } catch { /* composition is a quality lens, not permission to lose the rest */ }
+
     /* ---- widths -------------------------------------------------------- */
     const perWidth: Record<string, any> = {};
     let overflowAt = '';
@@ -799,11 +848,14 @@ export async function inspectUi(
     const viewports = effectiveViewports(availableWidth);
     for (const vp of viewports) {
         try {
-            const actual = await applyViewportSize(page, vp.w, vp.h);
-            opts?.onViewport?.(Number(actual.width), Number(actual.height));
-            await page.waitForTimeout(420);
-            await eyes?.say(page, `فحص العرض ${vp.w}px — ${vp.ar}`);
-            const r: any = await evalInPage(page, measureResponsive, vp.w);
+            const measured = await measureAtViewport(page, vp.w, vp.h, async actual => {
+                opts?.onViewport?.(Number(actual.width), Number(actual.height));
+                await page.waitForTimeout(420);
+                await eyes?.say(page, `فحص العرض ${vp.w}px — ${vp.ar}`);
+                return { actual, responsive: await evalInPage(page, measureResponsive, vp.w) };
+            });
+            const actual = measured.actual;
+            const r: any = measured.responsive;
             const actualVw = Number(r.actualVw || 0);
             if (!actualVw || Math.abs(actualVw - vp.w) > 2) {
                 viewportFailures.push({ requested: vp.w, actual: actualVw });

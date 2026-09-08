@@ -220,7 +220,7 @@ export const CAPABILITIES: Capability[] = [
         id: 'reviews', ar: 'تقييمات العملاء', en: 'customer reviews',
         // A bare `rating` is commonly a record column, not a customer-review
         // system. Require review context before opening this capability gate.
-        ask: /\breviews?\b|\b(?:customer|user|product|item|star)\s+ratings?\b|تقييمات\s*(?:العملاء|المنتجات)|مراجعات/i,
+        ask: /\breviews\b|\b(?:customer|user|product|item)\s+review\b|\b(?:customer|user|product|item|star)\s+ratings?\b|تقييمات\s*(?:العملاء|المنتجات)|مراجعات/i,
         evidence: /'reviews'|"reviews"|\/api\/reviews|\brating:\s|stars?_?count/i,
     },
     {

@@ -50,4 +50,16 @@ vite build passed after the edit.
         expect(summary).toContain('Browser QA: **100/100**');
         expect(summary).not.toContain('verification is incomplete');
     });
+
+    it('reports exploratory coverage instead of understating QA as direct clicks', () => {
+        const report = `
+A full React project, scaffolded AND verified to compile — "Media Review Board".
+Self-QA in the Browser panel, in front of you (1 page(s), 4 control(s) pressed, 2 form(s) filled, 3 viewport(s), 16 control(s) discovered, 21 exploratory action(s) and 16 state(s) discovered): 100/100 — clean.
+Visible Browser QA: **100/100** — 0 finding(s), 0 blocking, 4 interaction(s) measured.
+- finalVerified: \`true\`; browserQaFailed: \`false\`; scopeCoverageFailed: \`false\`
+`;
+        const summary = summarizeEngineeringReport(report, 'en');
+        expect(summary).toContain('21 exploratory actions across 16 discovered states');
+        expect(summary).not.toContain('4 interactions');
+    });
 });

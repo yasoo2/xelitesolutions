@@ -49,7 +49,10 @@ export function summarizeEngineeringReport(markdown: string, language = 'en'): s
     const credential = source.match(/Owner account(?:\s*\([^)]*\))?:\s*([^\s/]+)\s*\/\s*([^\s]+)/iu);
     const liveUrl = source.match(/(?:Open at:|live at:?)\s*\*\*?(https?:\/\/[^\s*]+)/iu)?.[1];
     const checked = source.match(/\((\d+)\s+page\(s\),\s*(\d+)\s+control\(s\)[^)]*\)/i);
-    const measuredInteractions = Array.from(source.matchAll(/(\d+)\s+interaction\(s\) measured/gi)).pop()?.[1]
+    const exploratoryActions = Array.from(source.matchAll(/(\d+)\s+exploratory action\(s\)/gi)).pop()?.[1] || '';
+    const statesDiscovered = Array.from(source.matchAll(/(\d+)\s+state\(s\) discovered/gi)).pop()?.[1] || '';
+    const measuredInteractions = exploratoryActions
+        || Array.from(source.matchAll(/(\d+)\s+interaction\(s\) measured/gi)).pop()?.[1]
         || checked?.[2]
         || '';
 
@@ -59,7 +62,7 @@ export function summarizeEngineeringReport(markdown: string, language = 'en'): s
         if (liveUrl) result.push(`المعاينة الحية: ${liveUrl}`);
         if (credential) result.push(`بيانات الاختبار: ${credential[1]} / ${credential[2]}`);
         if (pages.length) result.push(`الصفحات المنفذة: ${pages.join(' · ')}.`);
-        if (score) result.push(`فحص المتصفح: **${score}/100**${checked ? ` — ${checked[1]} صفحات و${measuredInteractions} تفاعلًا` : ''}.`);
+        if (score) result.push(`فحص المتصفح: **${score}/100**${checked ? ` — ${checked[1]} صفحات و${measuredInteractions} فعلاً استكشافياً${statesDiscovered ? ` عبر ${statesDiscovered} حالة` : ''}` : ''}.`);
         if (issueLines.length) {
             result.push('الملاحظات المتبقية:');
             result.push(...issueLines.map(line => `- ${line}`));
@@ -81,8 +84,8 @@ export function summarizeEngineeringReport(markdown: string, language = 'en'): s
     if (pages.length) result.push(`Implemented pages: ${pages.join(' · ')}.`);
     if (score) {
         const pageLabel = checked?.[1] === '1' ? 'page' : 'pages';
-        const interactionLabel = measuredInteractions === '1' ? 'interaction' : 'interactions';
-        result.push(`Browser QA: **${score}/100**${checked ? ` — ${checked[1]} ${pageLabel} and ${measuredInteractions} ${interactionLabel}` : ''}.`);
+        const interactionLabel = measuredInteractions === '1' ? 'exploratory action' : 'exploratory actions';
+        result.push(`Browser QA: **${score}/100**${checked ? ` — ${checked[1]} ${pageLabel} and ${measuredInteractions} ${interactionLabel}${statesDiscovered ? ` across ${statesDiscovered} discovered states` : ''}` : ''}.`);
     }
     if (issueLines.length) {
         result.push('Remaining findings:');

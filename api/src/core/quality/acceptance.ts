@@ -604,13 +604,19 @@ export function acceptanceFor(request: string): Criterion[] {
     // change as `rule:n` would make one request appear twice and can create a
     // false unmet condition. Real constraints and edits remain untouched.
     const changeAlreadyCovered = (rule: typeof rules[number]): boolean => {
-        if (rule.kind !== 'change') return false;
         const text = String(rule.text || '');
+        // Delivery instructions constrain Joe's report, not the generated
+        // product. Keeping them as product rules created acceptance entries
+        // that no application source could ever prove.
+        if (/^(?:do not|don't|never)\s+(?:claim|report|declare|mark|say)\b|^(?:لا|لات)\s+(?:تدع|تدعي|تعلن|تذكر)\b/iu.test(text)) return true;
+        if (rule.kind !== 'change') return false;
         const asksForFilters = requestedFilters.length > 0
             && /\bfilters?\b|تصف(?:ية|يات)|فلتر/iu.test(text);
         const asksForProgress = wantsProgress
             && /\bprogress\b|تقدم|التقدم|مؤشر/iu.test(text);
-        return asksForFilters || asksForProgress;
+        const asksForTitle = catalogue.some(criterion => criterion.id === 'title')
+            && /\b(?:title|heading|headline)\b|عنوان|عنواناً|عنوانًا/iu.test(text);
+        return asksForFilters || asksForProgress || asksForTitle;
     };
 
     /**

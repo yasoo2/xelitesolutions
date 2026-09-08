@@ -159,6 +159,12 @@ describe('visible browser QA is part of page delivery', () => {
         expect(pipeline).toContain('browserQaRepairStatus');
     });
 
+    it('never edits the generated project for browser instrumentation failures', () => {
+        expect(pipeline).toContain("'viewport_emulation_failed'");
+        expect(pipeline).toContain('const projectRepairFindings = blocking.filter');
+        expect(pipeline).toContain('if (projectRepairFindings.length > 0 && !browserQaRepairAttempted)');
+    });
+
     it('project_repair accepts explicit pipeline evidence and audits its live URL', () => {
         const repair = read('modules/tools/definitions/ProjectRepairTool.ts');
         expect(repair).toContain('serveUrl: { type:');

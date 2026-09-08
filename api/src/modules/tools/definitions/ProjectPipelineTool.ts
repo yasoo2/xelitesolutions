@@ -2226,8 +2226,20 @@ export class ProjectPipelineTool implements ToolDefinition {
                     // "high" severity as blocking let coverage, accessibility,
                     // responsive, and visual defects pass the gate unchanged.
                     let blocking = browserQa.findings.slice();
+                    // Instrumentation failures belong to Joe's browser rig,
+                    // never to the application under test. Sending these to
+                    // project_repair made Joe rewrite valid project files in
+                    // response to a viewport controller race. They still stop
+                    // delivery, but cannot authorize a user-project edit.
+                    const infrastructureFindingCodes = new Set([
+                        'viewport_emulation_failed',
+                        'browser_unavailable',
+                        'qa_target_unavailable',
+                    ]);
+                    const projectRepairFindings = blocking.filter((finding: any) =>
+                        !infrastructureFindingCodes.has(String(finding?.code || finding?.id || '')));
                     appendBoundedPipelineLog(logs, `[pipeline] browser QA score=${browserQa.score} findings=${browserQa.findings.length} blocking=${blocking.length}`);
-                    if (blocking.length > 0 && !browserQaRepairAttempted) {
+                    if (projectRepairFindings.length > 0 && !browserQaRepairAttempted) {
                         browserQaRepairAttempted = true;
                         const repairProjectRoot = artifactRoot || runtimeRoot;
                         browserQaRepairStatus = repairProjectRoot && auditDir
@@ -2235,8 +2247,8 @@ export class ProjectPipelineTool implements ToolDefinition {
                             : 'no_trusted_artifact_or_audit_root';
                         if (repairProjectRoot && auditDir) {
                             say(pick(isAr,
-                                `🔧 كشف Browser QA ${blocking.length} مشكلة حرجة؛ سأصلح الأدلة القابلة للإصلاح داخل المشروع نفسه مرة واحدة ثم أعيد الفحص المرئي.`,
-                                `🔧 Browser QA found ${blocking.length} blocking issue(s); I will repair the evidence-backed issues in the same project once, then re-run visible QA.`));
+                                `🔧 كشف Browser QA ${projectRepairFindings.length} مشكلة قابلة للإصلاح داخل المشروع؛ سأصلحها مرة واحدة ثم أعيد الفحص المرئي.`,
+                                `🔧 Browser QA found ${projectRepairFindings.length} project issue(s); I will repair them once, then re-run visible QA.`));
                             appendBoundedPipelineLog(logs, `[pipeline] browser QA bounded repair start root=${repairProjectRoot}`);
                             try {
                                 const repairResult = await executeTool(
@@ -2691,9 +2703,10 @@ export class ProjectPipelineTool implements ToolDefinition {
                     : `### Visible Browser QA: **not run** — ${browserQa.skipped}`);
             } else {
                 const high = browserQa.findings.filter((finding) => finding.severity === 'high').length;
+                const measuredActions = browserQa.exploratoryActions ?? browserQa.pressed ?? 0;
                 lines.push(ar
-                    ? `### Browser QA المرئي: **${browserQa.score}/100** — ${browserQa.findings.length} ملاحظة، ${high} حرجة، ${browserQa.pressed ?? 0} تفاعلاً مقاساً.`
-                    : `### Visible Browser QA: **${browserQa.score}/100** — ${browserQa.findings.length} finding(s), ${high} blocking, ${browserQa.pressed ?? 0} interaction(s) measured.`);
+                    ? `### Browser QA المرئي: **${browserQa.score}/100** — ${browserQa.findings.length} ملاحظة، ${high} حرجة، ${measuredActions} فعلاً استكشافياً عبر ${browserQa.statesVisited ?? 0} حالة.`
+                    : `### Visible Browser QA: **${browserQa.score}/100** — ${browserQa.findings.length} finding(s), ${high} blocking, ${measuredActions} exploratory action(s) across ${browserQa.statesVisited ?? 0} discovered state(s).`);
                 if (browserQa.findings.length) {
                     for (const finding of browserQa.findings.slice(0, 12)) {
                         const evidence = Array.isArray((finding as any).evidence) ? (finding as any).evidence[0] : null;

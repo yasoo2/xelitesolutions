@@ -84,8 +84,9 @@ describe('the owner’s own picture — rung one', () => {
 
     it('the form has a real file input and a way to take the picture back off', () => {
         const jsx = fileRecordsAppJsx(true);
-        expect(jsx).toMatch(/<input type="file" accept="image\/\*"/);
-        expect(jsx).toMatch(/const data = await pickImage\(file, 480\)/);
+        expect(jsx).toMatch(/<input type="file" name=\{f\.key\} accept="image\/\*"/);
+        expect(jsx).toMatch(/const data = await pickImage\(file, content\.preserveOriginalImages \? 0 : 480\)/);
+        expect(jsx).toContain("String(file.type || '').indexOf('image/') !== 0");
         expect(jsx).toContain('أزل الصورة');
     });
 });

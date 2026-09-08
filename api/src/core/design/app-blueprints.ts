@@ -37,7 +37,7 @@ export type AppEngine = 'map' | 'chat' | 'weather' | 'records' | 'ledger' | 'soc
 export type AppKind =
     | 'maps' | 'chat' | 'weather' | 'social' | 'store' | 'calculator' | 'productivity'
     | 'tasks' | 'notes' | 'expenses' | 'finance' | 'inventory' | 'booking'
-    | 'pos' | 'crm' | 'lms' | 'contacts' | 'habits' | 'generic' | 'custom';
+    | 'pos' | 'crm' | 'lms' | 'contacts' | 'habits' | 'media' | 'generic' | 'custom';
 
 /**
  * `image` is a real picture, not a text box with a URL in it: the app picks a
@@ -208,6 +208,8 @@ export interface AppBlueprint {
      * the sentence already said.
      */
     asTable?: boolean;
+    /** Keep the exact uploaded image bytes instead of producing a card-sized derivative. */
+    preserveOriginalImages?: boolean;
 }
 
 /* ── which domain the request belongs to ─────────────────────────────────── */
@@ -248,6 +250,10 @@ export const APP_KIND_SIGNALS: Array<[AppKind, RegExp]> = [
     // Detect it before generic app/manage fallbacks so a request such as
     // "Build a calculator" never becomes Hero + Features + Contact.
     ['calculator', /آلة\s*حاسبة|حاسبة|حسابات?\s*رياضية|عمليات\s*حسابية|calculator|calc\s*(app|pro)?|arithmetic|scientific\s*calculator/i],
+    // An asset-review workspace is an application even when the user calls it
+    // a board rather than an app. Missing this signal used to ship a marketing
+    // page with testimonials and a contact form instead of an upload workflow.
+    ['media', /(?:media|image|photo|asset)\s+(?:review|library|catalog(?:ue)?|collection)\s*(?:board|app|tool|workspace)?|(?:board|app|tool|workspace)\s+for\s+(?:reviewing|managing)\s+(?:media|images?|photos?|assets?)|لوحة\s+(?:مراجعة|إدارة)\s+(?:الوسائط|الصور)|مكتبة\s+(?:وسائط|صور)/iu],
     // A social network CONTAINS messaging, so it is tested before chat:
     // «منصة تواصل اجتماعي … Messaging» is a feed with messages in it, not a
     // messenger. Measured from the field request that produced a chat app.
@@ -409,7 +415,7 @@ export const RECORDS_TABLE_BY_KIND: Record<string, [string, string]> = {
     social: ['posts', 'المنشورات'], chat: ['messages', 'الرسائل'], maps: ['places', 'الأماكن'], tasks: ['tasks', 'المهام'],
     notes: ['notes', 'الملاحظات'], productivity: ['notes', 'الملاحظات والمهام'], expenses: ['expenses', 'المصاريف'], finance: ['incomes', 'الدخل'], inventory: ['items', 'الأصناف'],
     booking: ['bookings', 'الحجوزات'], pos: ['sales', 'المبيعات'], crm: ['customers', 'العملاء'],
-    lms: ['enrolments', 'التسجيلات'], contacts: ['contacts', 'جهات الاتصال'], habits: ['habits', 'العادات'],
+    lms: ['enrolments', 'التسجيلات'], contacts: ['contacts', 'جهات الاتصال'], habits: ['habits', 'العادات'], media: ['media', 'الوسائط'],
 };
 
 export function detectAppKind(requestRaw: string): AppKind | null {
@@ -1247,6 +1253,29 @@ function stockBlueprintFor(kind: AppKind, request: string, isAr: boolean): AppBl
             emptyHint: L('لا ملاحظات بعد — اكتب أول ملاحظة.', 'No notes yet — write your first one.'),
         };
 
+        case 'media': return {
+            kind, engine: 'records',
+            title: L('لوحة مراجعة الوسائط', 'Media Review Board'),
+            lede: L('ارفع الصور وراجع بياناتها ونظّمها بالوسوم — محفوظة على جهازك.',
+                'Upload images, review their metadata and organize them by tag — saved on your device.'),
+            entityOne: L('وسيط', 'media item'), entityMany: L('الوسائط', 'Media items'),
+            fields: [
+                f(['image', 'الصورة', 'Image', 'image', undefined, ['required']], isAr),
+                f(['title', 'العنوان', 'Title', 'text', undefined, ['required', 'primary']], isAr),
+                f(['tags', 'الوسوم', 'Tags', 'text'], isAr),
+                f(['notes', 'الملاحظات', 'Notes', 'textarea'], isAr),
+            ],
+            filterFields: ['tags'],
+            preserveOriginalImages: true,
+            metrics: [
+                { label: L('كل الوسائط', 'All media'), kind: 'count' },
+                { label: L('أُضيفت اليوم', 'Added today'), kind: 'todayCount', field: 'createdAt' },
+            ],
+            deps: {},
+            emptyHint: L('لا وسائط بعد — ارفع أول صورة مع عنوانها.',
+                'No media yet — upload the first image with its title.'),
+        };
+
         case 'finance': return {
             kind, engine: 'finance',
             title: L('المال', 'MoneyTrack'),
@@ -1671,7 +1700,7 @@ function stockBlueprintFor(kind: AppKind, request: string, isAr: boolean): AppBl
  * The key is mechanical, derived from the role its type implies, so metrics can
  * bind to «the money column» without ever knowing what the money is for.
  */
-type DerivedRole = 'money' | 'count' | 'scalar' | 'date' | 'time' | 'tel' | 'email' | 'flag' | 'note' | 'text';
+type DerivedRole = 'money' | 'count' | 'scalar' | 'date' | 'time' | 'tel' | 'email' | 'flag' | 'note' | 'image' | 'text';
 
 /** Closed vocabulary: what KIND of value this is, never what it is called. */
 /**
@@ -1693,6 +1722,7 @@ const ASKS_YES_OR_NO = /^(?:هل|is|are|was|were|has|have|did|does)(?=$|\s)|[?؟
 
 const TYPE_MARKS: Array<[RegExp, DerivedRole, FieldType]> = [
     [ASKS_YES_OR_NO, 'flag', 'select'],
+    [/صورة|صور|ملف\s*وسائط|\bimage\b|\bphoto\b|\bpicture\b|media\s*file/iu, 'image', 'image'],
     [/status|state|مرحلة|حالة|وضع/iu, 'flag', 'select'],
     [/تلفون|هاتف|جوال|موبايل|واتس|\bphone\b|\bmobile\b|\btel\b|whatsapp/iu, 'tel', 'tel'],
     [/ايميل|إيميل|بريد\s*الكتروني|بريد\s*إلكتروني|\bemail\b|\be-?mail\b/iu, 'email', 'email'],
@@ -3176,6 +3206,10 @@ function canonicalFieldKey(label: string): string | null {
     if (/^(?:date|التاريخ)$/iu.test(normalized)) return 'date';
     if (/^(?:description|الوصف)$/iu.test(normalized)) return 'description';
     if (/^(?:note|ملاحظة)$/iu.test(normalized)) return 'note';
+    if (/^(?:image|photo|picture|الصورة|صورة)$/iu.test(normalized)) return 'image';
+    if (/^(?:title|العنوان|عنوان)$/iu.test(normalized)) return 'title';
+    if (/^(?:tags?|الوسوم|وسوم)$/iu.test(normalized)) return 'tags';
+    if (/^(?:notes|الملاحظات|ملاحظات)$/iu.test(normalized)) return 'notes';
     return null;
 }
 
@@ -3573,6 +3607,19 @@ const WEATHER_FEATURE_RULES: Array<{ asked: RegExp; evidence: RegExp }> = [
     { asked: /smooth\s+transitions?/i, evidence: /transition/i },
 ];
 
+const RECORDS_FEATURE_RULES: Array<{ asked: RegExp; evidence: RegExp }> = [
+    { asked: /upload(?:ed|ing)?\s+(?:an?\s+)?(?:image|photo)|رفع\s+(?:صورة|الصور)/iu, evidence: /type=["']file["'][^>]*accept=["']image\/\*/iu },
+    { asked: /invalid\s+file\s+rejection|reject\s+(?:an?\s+)?invalid\s+file|رفض\s+ملف\s+غير\s+صالح/iu, evidence: /Choose a valid image file|اختر ملف صورة صالح/iu },
+    { asked: /filter(?:ing)?\s+(?:items?\s+)?by\s+tags?|تصفية[^.]{0,40}وسم/iu, evidence: /(?=[\s\S]*filterFields\s*:\s*\[['"]tags['"]\])(?=[\s\S]*filterKeys)(?=[\s\S]*setFilters)/iu },
+    { asked: /preview\s+(?:the\s+)?uploaded\s+(?:image|photo)|معاينة\s+(?:الصورة|الصور)/iu, evidence: /record-modal-pic[\s\S]{0,300}imageOf\(selected/iu },
+    { asked: /delete[^.]{0,80}(?:only\s+)?after\s+confirmation|confirm[- ]delete|حذف[^.]{0,80}تأكيد/iu, evidence: /window\.confirm\(/iu },
+    { asked: /persistent\s+local\s+storage|persist(?:ence)?\s+after\s+reload|حفظ\s+محلي\s+دائم/iu, evidence: /createStore[\s\S]{0,500}localStorage|localStorage[\s\S]{0,500}setItem/iu },
+    { asked: /preserve\s+(?:the\s+)?original\s+uploaded\s+(?:image|photo)|الحفاظ\s+على\s+الصورة\s+الأصلية/iu, evidence: /(?=[\s\S]*preserveOriginalImages\s*:\s*true)(?=[\s\S]*maxEdge\s*===\s*0)/iu },
+    { asked: /metadata\s+edit(?:ing)?|edit(?:ing)?\s+metadata|تعديل\s+البيانات\s+الوصفية/iu, evidence: /const edit\s*=|Save changes|حفظ التعديل/iu },
+    { asked: /keyboard\s+access|keyboard[- ]accessible|لوحة\s+المفاتيح/iu, evidence: /tabIndex=\{0\}[\s\S]{0,300}onKeyDown/iu },
+    { asked: /empty\s+state|حالة\s+فارغة/iu, evidence: /emptyHint|className=["']empty["']/iu },
+];
+
 function weatherFeatureCovered(feature: string, evidence: string): boolean {
     const rule = WEATHER_FEATURE_RULES.find(r => r.asked.test(feature));
     if (rule) return !!evidence && rule.evidence.test(evidence);
@@ -3626,7 +3673,7 @@ function completionOption(options: string[], isAr: boolean): string | undefined 
  * Records requirements need executable evidence too. A generic engine name is
  * not proof that a requested field or action exists in the generated app.
  */
-function recordFeatureCovered(feature: string, request: string, evidence: string): boolean {
+export function recordFeatureCovered(feature: string, request: string, evidence: string): boolean {
     const f = String(feature || '').trim();
     const src = String(evidence || '');
     const escaped = f.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -3634,6 +3681,8 @@ function recordFeatureCovered(feature: string, request: string, evidence: string
         `(?:label|placeholder|aria-label)\\s*[:=]\\s*['\"]${escaped}['\"]`, 'iu',
     ).test(src);
     if (hasDeclaredLabel) return true;
+    const explicitRule = RECORDS_FEATURE_RULES.find(rule => rule.asked.test(f));
+    if (explicitRule) return explicitRule.evidence.test(src);
     if (/appointment\s+scheduling[^.]*linked\s+to\s+both|مواعيد[^.]*مرتبط/iu.test(f)) {
         return /patient_id/iu.test(src) && /doctor_id/iu.test(src)
             && /relations[\s\S]{0,500}select|parents\[/iu.test(src);
@@ -3693,6 +3742,7 @@ function recordFeatureCovered(feature: string, request: string, evidence: string
 /** Rule registries are capability contracts, not saved app bodies. */
 const FEATURE_RULES_BY_ENGINE: Partial<Record<AppEngine, Array<{ asked: RegExp; evidence: RegExp }>>> = {
     weather: WEATHER_FEATURE_RULES,
+    records: RECORDS_FEATURE_RULES,
 };
 
 function ruleDerivedFeatures(request: string, engine: AppEngine | null): string[] {

@@ -26,6 +26,7 @@ import { AuditEyes } from './audit-eyes';
 import { inspectUi, applyViewportSize } from './ui-inspection';
 import { isWithinRoot } from '../../modules/tools/path-containment';
 import { WEATHER_API_ROUTE_PATTERN } from './weather-qa-route';
+import { isMediaReviewRequest, runMediaReviewQa } from './media-review-qa';
 
 export interface AppAuditFinding {
     id: string;
@@ -1291,6 +1292,25 @@ export async function auditBuiltApp(
             }
         }
 
+        if (isMediaReviewRequest(weatherRequest)) {
+            const mediaQa = await runMediaReviewQa({
+                page,
+                url,
+                timeoutMs,
+                onDialog,
+                onProgress: opts?.onProgress,
+            });
+            const mediaFindings = mediaQa.findings;
+            domainFindings.push(...mediaFindings);
+            for (const key of ['pressed', 'formsFilled', 'fieldsFilled', 'formsPersisted', 'qaRecordsDeleted', 'semanticFieldsTested', 'statesVisited', 'exploratoryActions', 'controlsDiscovered']) {
+                behaviourMetrics[key] += (mediaQa.metrics as any)[key] || 0;
+            }
+            if (!mediaFindings.some(f => /persistence|scenario/i.test(f.id))) {
+                behaviourMetrics.formsPersisted += behaviourMetrics.formsPersistenceUnproven || 0;
+                behaviourMetrics.formsPersistenceUnproven = 0;
+            }
+        }
+
         /**
          * AND THE UI ITSELF IS INSPECTED — «وفحص ui».
          *
@@ -1483,7 +1503,7 @@ export async function auditBuiltApp(
                     label: 'runtime and network',
                     status: behaviourMetrics.budgetExhausted
                         ? 'skipped'
-                        : (pageErrors.length || consoleErrors.length || failedRequests.length || brokenRoutes.length || dom.deadImgs || domainFindings.some(f => f.id === 'weather_live_success_unproven' || f.id === 'weather_scenario_qa_failed')) ? 'failed' : 'passed',
+                        : (pageErrors.length || consoleErrors.length || failedRequests.length || brokenRoutes.length || dom.deadImgs || domainFindings.some(f => /(?:weather_live_success|weather_scenario|media_.*(?:upload|image|persistence|scenario))/i.test(f.id))) ? 'failed' : 'passed',
                     measured: routes.length + 1,
                     findingIds: findings.filter(f => ['server_root_dead', 'page_errors', 'console_errors', 'failed_requests', 'broken_routes', 'dead_images', 'weather_live_success_unproven', 'weather_scenario_qa_failed'].includes(f.id)).map(f => f.id),
                 },
@@ -1492,7 +1512,7 @@ export async function auditBuiltApp(
                     label: 'controls and forms',
                     status: behaviourMetrics.budgetExhausted
                         ? 'skipped'
-                        : behaviour.findings.some(f => ['dead_controls', 'dead_anchors', 'forms_dead_submit', 'keyboard_unreachable', 'semantic_input_validation', 'form_persistence_unproven', 'qa_created_record_not_deletable'].includes(f.code)) || domainFindings.some(f => ['weather_unit_roundtrip_failed', 'weather_offline_fallback_failed', 'weather_retry_recovery_failed'].includes(f.id)) ? 'failed' : 'passed',
+                        : behaviour.findings.some(f => ['dead_controls', 'dead_anchors', 'forms_dead_submit', 'keyboard_unreachable', 'semantic_input_validation', 'form_persistence_unproven', 'qa_created_record_not_deletable'].includes(f.code)) || domainFindings.some(f => ['weather_unit_roundtrip_failed', 'weather_offline_fallback_failed', 'weather_retry_recovery_failed', 'media_invalid_file_accepted', 'media_metadata_edit_failed', 'media_tag_filter_failed', 'media_preview_image_mismatch', 'media_cancel_delete_failed', 'media_confirm_delete_failed', 'media_empty_state_missing'].includes(f.id)) ? 'failed' : 'passed',
                     measured: allControls.length + allForms.length,
                     findingIds: findings.filter(f => ['dead_controls', 'dead_anchors', 'forms_dead_submit', 'keyboard_unreachable', 'semantic_input_validation', 'form_persistence_unproven', 'qa_created_record_not_deletable', 'weather_unit_roundtrip_failed', 'weather_offline_fallback_failed', 'weather_retry_recovery_failed'].includes(f.id)).map(f => f.id),
                 },

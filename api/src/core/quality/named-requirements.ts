@@ -196,6 +196,28 @@ export function groundedIn(quote: string, request: string): boolean {
     return words.every(w => r.includes(w));
 }
 
+/**
+ * A checklist introduced with "then test" describes Joe's verification work,
+ * not additional features the generated product must contain. The browser QA
+ * layer owns and reports those checks. If the same phrase also appears before
+ * the checklist, it remains a genuine product requirement.
+ */
+export function belongsOnlyToExecutionChecklist(quote: string, request: string): boolean {
+    const source = String(request || '').toLowerCase();
+    const needle = String(quote || '').trim().toLowerCase();
+    if (!needle) return false;
+    const marker = /\bthen\s+(?:test|retest|verify|check|inspect)\b|(?:ثم|بعد ذلك)\s+(?:اختبر|اعد الاختبار|أعد الاختبار|تحقق|افحص)/giu.exec(source);
+    if (!marker) return false;
+    const cutoff = marker.index;
+    let found = source.indexOf(needle);
+    if (found < 0) return false;
+    while (found >= 0) {
+        if (found < cutoff) return false;
+        found = source.indexOf(needle, found + Math.max(1, needle.length));
+    }
+    return true;
+}
+
 export function extractionPrompt(request: string, isArabic: boolean): string {
     return [
         `Read this request and list every distinct thing the person asked the site or app to HAVE or to DO.`,
@@ -336,6 +358,10 @@ export async function namedRequirements(
         }
         if (!groundedIn(r.quote, req)) {
             out.rejected.push({ text: r.text, reason: `it is not in his sentence: «${r.quote.slice(0, 60)}»` });
+            continue;
+        }
+        if (belongsOnlyToExecutionChecklist(r.quote, req)) {
+            out.rejected.push({ text: r.text, reason: 'it belongs to Joe\'s verification checklist, not the product contract' });
             continue;
         }
         const id = slug(r.quote.trim().toLowerCase());
@@ -758,6 +784,7 @@ export function requirementNamesPage(requirement: Pick<NamedRequirement, 'text' 
 
 import { inspectWorkflowEngineSource } from './workflow-contract';
 import { capabilityEvidence, requestedCapabilities } from './scope-audit';
+import { recordFeatureCovered } from '../design/app-blueprints';
 
 /**
  * Generated records apps expose a small, explicit contract. Verify that
@@ -769,6 +796,14 @@ function deterministicSourceVerdict(r: NamedRequirement, source: string): Judged
     const text = `${r.text} ${r.quote}`.trim();
     const src = String(source || '');
     const esc = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // The records engine already owns the executable capability contract used
+    // by request fidelity. Reuse that same contract here so acceptance cannot
+    // ask an optional provider to reinterpret source-backed upload, preview,
+    // persistence, filtering, and deletion behavior. One capability has one
+    // proof path, regardless of provider availability.
+    if (recordFeatureCovered(text, text, src)) {
+        return { ...r, verdict: 'met', why: 'the generated records source satisfies this requested capability contract' };
+    }
     /**
      * A generated multi-page React site has an inspectable contract even when
      * its language provider is unavailable. These checks require the route,

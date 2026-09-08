@@ -4265,6 +4265,14 @@ export class ReactProjectTool extends BaseTool {
             && !/^(?:myapp|app|application|project|react)$/i.test(canonicalProjectName)) {
             content.brand = canonicalProjectName;
         }
+        // A planner sometimes returns the opening request clause as a project
+        // name ("Media Review Board Where Users Upload An Image"). That is a
+        // sentence, not a usable product label. The media blueprint already
+        // carries the concise request-derived name; use it when the user did
+        // not explicitly name a brand.
+        if (appBp?.kind === 'media' && !explicitBrand) {
+            content.brand = appBp.title;
+        }
         /**
          *  ⛔ AND NOW THE WORDS ARE WRITTEN FOR HIS BUSINESS, NOT PULLED FROM
          *  A CATALOGUE OF BUSINESS KINDS.
@@ -4553,7 +4561,14 @@ export class ReactProjectTool extends BaseTool {
 
         // The project lands where the File Explorer actually looks.
         const { workspaceService } = require('../../services/WorkspaceService');
-        const root = String(input?.root || workspaceService.getExplorerRoot());
+        // The explorer's last-opened folder is shared UI state, not artifact
+        // ownership. Using it here placed a guest build in `my-workspace`
+        // while the pipeline was authorized for a user-scoped workspace; the
+        // phase executor correctly refused to bind that foreign path and the
+        // following npm task ran against the workspace root. Resolve from the
+        // explicit execution workspace just like every file tool does.
+        const contextWorkspaceId = String(context?.workspaceId || input?.workspaceId || '').trim();
+        const root = String(input?.root || workspaceService.getActiveRoot(contextWorkspaceId || undefined));
         const activeProject = scaffoldEntry;
         // ApiProjectTool owns the latest registry slot after a full-stack build,
         // so the React scaffold is carried explicitly as scaffoldDir.  Prefer
@@ -7379,7 +7394,6 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             [/\btraffic\b|road\s*closures?|\btransit\b|public\s*transport|حركة\s*المرور|إغلاق\s*الطرق|النقل\s*العام/i, 'بيانات المرور الحيّة والنقل العام', 'live traffic and public transport'],
             [/offline\s*(maps?|mode)|خرائط\s*بلا\s*إنترنت|بدون\s*إنترنت/i, 'الخرائط بلا إنترنت', 'offline maps'],
             [/ai\s*assistant|مساعد\s*ذكي|recommendations?|توصيات/i, 'مساعد ذكي داخل التطبيق', 'an in-app AI assistant'],
-            [/reviews?|ratings?|تقييمات|مراجعات/i, 'التقييمات والمراجعات', 'reviews and ratings'],
             [/unit\s*tests?|e2e|integration\s*tests?|اختبارات/i, 'حزمة الاختبارات', 'a test suite'],
         ];
         // THE USER'S OWN LIST FIRST. The table above knows only the words I
