@@ -1139,6 +1139,77 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
         if (Date.now() >= explorationDeadline) explorationBudgetHit = true;
         metrics.explorationBudgetExhausted = explorationBudgetHit;
 
+        /**
+         * A disclosure is not proven by clicking one remembered button. Walk
+         * every visible trigger in sequence, measure the shared open state,
+         * then close the final item with the keyboard. This gives acceptance
+         * an inspectable witness for accordions at every audited viewport.
+         */
+        const disclosureTriggers = await page.$$('button[aria-expanded][aria-controls]');
+        if (disclosureTriggers.length > 1) {
+            const visibleIndexes: number[] = [];
+            for (let index = 0; index < disclosureTriggers.length; index++) {
+                const visible = await disclosureTriggers[index].evaluate((node: Element) => {
+                    const rect = (node as HTMLElement).getBoundingClientRect();
+                    const style = getComputedStyle(node);
+                    return rect.width > 2 && rect.height > 2 && style.display !== 'none' && style.visibility !== 'hidden';
+                }).catch(() => false);
+                if (visible) visibleIndexes.push(index);
+            }
+            if (visibleIndexes.length > 1) {
+                for (const index of visibleIndexes) {
+                    const trigger = (await page.$$('button[aria-expanded][aria-controls]'))[index];
+                    if (trigger && await trigger.getAttribute('aria-expanded') === 'true') {
+                        await trigger.click({ timeout: 2500, noWaitAfter: true }).catch(() => { });
+                        await page.waitForTimeout(120).catch(() => { });
+                    }
+                }
+                let opened = 0;
+                let oneAtATime = true;
+                for (const index of visibleIndexes) {
+                    if (!eyeIsOpen()) break;
+                    const current = (await page.$$('button[aria-expanded][aria-controls]'))[index];
+                    if (!current) continue;
+                    const label = await handleLabel(current);
+                    await current.scrollIntoViewIfNeeded({ timeout: 1500 }).catch(() => { });
+                    await eyes.lookAt(page, await current.boundingBox().catch(() => null), {
+                        note: `اختبار السؤال: ${label}`.slice(0, 64), tone: 'warn', moveMouse: true,
+                    });
+                    await current.click({ timeout: 2500, noWaitAfter: true }).catch(() => { });
+                    await page.waitForTimeout(180).catch(() => { });
+                    const state = await page.evaluate(() => {
+                        const triggers = [...document.querySelectorAll('button[aria-expanded][aria-controls]')]
+                            .filter((node: Element) => {
+                                const rect = (node as HTMLElement).getBoundingClientRect();
+                                const style = getComputedStyle(node);
+                                return rect.width > 2 && rect.height > 2 && style.display !== 'none' && style.visibility !== 'hidden';
+                            });
+                        return { expanded: triggers.filter(node => node.getAttribute('aria-expanded') === 'true').length };
+                    }).catch(() => ({ expanded: 0 }));
+                    if (await current.getAttribute('aria-expanded') === 'true') opened++;
+                    oneAtATime = oneAtATime && state.expanded === 1;
+                }
+                let keyboardClosed = false;
+                const lastIndex = visibleIndexes[visibleIndexes.length - 1];
+                const last = (await page.$$('button[aria-expanded][aria-controls]'))[lastIndex];
+                if (last && opened === visibleIndexes.length && oneAtATime) {
+                    await last.focus().catch(() => { });
+                    await page.keyboard.press('Enter').catch(() => { });
+                    await page.waitForTimeout(180).catch(() => { });
+                    keyboardClosed = await last.getAttribute('aria-expanded') === 'false';
+                }
+                let viewport: { width: number; height: number } | null = null;
+                try { viewport = page.viewportSize(); } catch { /* evidence keeps an empty viewport */ }
+                metrics.disclosureEvidence = [{
+                    count: visibleIndexes.length,
+                    opened,
+                    oneAtATime,
+                    keyboardClosed,
+                    viewport: viewport ? `${viewport.width}x${viewport.height}` : '',
+                }];
+            }
+        }
+
         // Does an empty required form actually refuse? Native validation counts.
         const forms = await page.evaluate(() => {
             const out: Array<{ fields: number; required: number; hasSubmit: boolean; guarded: boolean }> = [];

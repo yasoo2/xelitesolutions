@@ -138,6 +138,7 @@ export type PresentationEdit =
     | { kind: 'brand_mark'; value: string; beside: string }
     | { kind: 'hero_contact_cta'; label: string }
     | { kind: 'phone_field'; required: boolean; rejectLetters: boolean }
+    | { kind: 'faq_section'; label: string; count: number; singleOpen: boolean; closable: boolean }
     | { kind: 'section_subtitle'; section: string; value: string };
 
 export interface ServicesSectionEdit {
@@ -198,6 +199,20 @@ export function parsePresentationEdits(request: string): PresentationEdit[] {
             kind: 'phone_field',
             required: /(?:مطلوب|required)/iu.test(phoneClause),
             rejectLetters: /(?:لا\s+يقبل[^،.\n]{0,20}(?:حروف|احرف)|reject[^،.\n]{0,20}letters?|numeric[ -]?only)/iu.test(phoneClause),
+        });
+    }
+
+    const faqClause = text.match(/(?:أضف|اضف|أنشئ|انشئ|add|create)\s+[^،.\n]{0,45}(?:قسم\s+)?(?:الأسئلة\s+الشائعة|الاسئلة\s+الشائعة|faq)[^،.\n]*/iu)?.[0] || '';
+    if (faqClause) {
+        const countHit = faqClause.match(/(?:ب|with\s+)?(\d+|ثلاث(?:ة)?|أ?ربع(?:ة)?|خمس(?:ة)?|three|four|five)\s+(?:أسئلة|اسئلة|questions?)/iu);
+        const wordCounts: Record<string, number> = { ثلاث: 3, ثلاثة: 3, اربع: 4, اربعة: 4, أربع: 4, أربعة: 4, خمس: 5, خمسة: 5, three: 3, four: 4, five: 5 };
+        const rawCount = String(countHit?.[1] || '').toLowerCase();
+        out.push({
+            kind: 'faq_section',
+            label: (text.match(/(?:رابط|link)[^«"\n]{0,35}[«"]([^»"\n]{1,40})[»"]/iu)?.[1] || (/\p{Script=Arabic}/u.test(text) ? 'الأسئلة الشائعة' : 'FAQ')).trim(),
+            count: Math.max(1, Math.min(6, /^\d+$/.test(rawCount) ? Number(rawCount) : (wordCounts[rawCount] || 3))),
+            singleOpen: /(?:واحد[^،.\n]{0,12}فقط[^،.\n]{0,12}مفتوح|one\s+(?:item|question)\s+open)/iu.test(text),
+            closable: /(?:إمكانية\s+إغلاقه|امكانية\s+اغلاقه|قابل[^،.\n]{0,20}للإغلاق|closable|can\s+be\s+closed)/iu.test(text),
         });
     }
 
@@ -632,9 +647,9 @@ export class ProjectEditTool extends BaseTool {
                 }
                 if (fs.existsSync(path.join(dir, 'node_modules'))) {
                     if (sessionId) broadcastThinkingDetail(sessionId, isAr ? '🏗️ أتحقق بالبناء الحقيقي (vite build)…' : '🏗️ Verifying with the real build…');
-                    const { withoutViteConfigForBuild } = require('./ReactProjectTool');
+                    const { withoutViteConfigForBuild, portableViteBuildArgs } = require('./ReactProjectTool');
                     buildVerified = await withoutViteConfigForBuild(dir, async () =>
-                        (await executionEngine.runArgvStreaming('npm', ['run', 'build'], { cwd: dir, timeout: 240_000, env: { NO_COLOR: '1' } }).done).ok,
+                        (await executionEngine.runArgvStreaming('npm', portableViteBuildArgs(), { cwd: dir, timeout: 240_000, env: { NO_COLOR: '1' } }).done).ok,
                     );
                     if (!buildVerified) {
                         for (const c of changed) fs.writeFileSync(path.join(dir, c.file), c.before, 'utf-8');
@@ -762,7 +777,8 @@ export class ProjectEditTool extends BaseTool {
          * validate the complete batch, and only then write it once per file.
          */
         const presentationEdits = parsePresentationEdits(request);
-        if (!touched.length && presentationEdits.length > 1 && fs.existsSync(path.join(dir, contentRel))) {
+        const hasStandaloneDeterministicEdit = presentationEdits.some(op => op.kind === 'faq_section');
+        if (!touched.length && (presentationEdits.length > 1 || hasStandaloneDeterministicEdit) && fs.existsSync(path.join(dir, contentRel))) {
             // A recognized deterministic batch is handled even when every
             // requested value is already present. Falling through merely
             // because no byte changed makes an idempotent retry wait for an
@@ -844,6 +860,42 @@ export class ProjectEditTool extends BaseTool {
                     }
                     stage(component, view);
                     notes.push(isAr ? 'أضفت حقل هاتف مطلوباً بقيود رقمية قابلة للاختبار.' : 'Added a required telephone field with testable numeric validation.');
+                    continue;
+                }
+
+                if (op.kind === 'faq_section') {
+                    const appRel = ['src/App.jsx', 'src/App.tsx'].find(rel => fs.existsSync(path.join(dir, rel)));
+                    if (!appRel) { failures.push('application composition file not found'); continue; }
+                    let content = read(contentRel);
+                    let app = read(appRel);
+                    const faqRel = `src/components/Faq.${appRel.endsWith('.tsx') ? 'tsx' : 'jsx'}`;
+                    const existingItems = (content.match(/faq:\s*\[([\s\S]*?)\n\s*\],/) || [])[1] || '';
+                    const existingCount = (existingItems.match(/\{\s*q:\s*'/g) || []).length;
+                    if (existingCount < op.count) { failures.push(`FAQ content has ${existingCount}/${op.count} requested items`); continue; }
+                    if (!/\n\s*faqTitle:\s*'/.test(content)) { failures.push('FAQ title content row not found'); continue; }
+                    if (!/href:\s*'#faq'/.test(content)) {
+                        const contactLink = /(\n\s*\{\s*href:\s*'#contact'[^\n]*\},)/;
+                        if (!contactLink.test(content)) { failures.push('contact navigation insertion point not found'); continue; }
+                        content = content.replace(contactLink, `\n    { href: '#faq', label: '${jsEsc(op.label)}' },$1`);
+                    }
+                    stage(contentRel, content);
+                    if (!fs.existsSync(path.join(dir, faqRel)) && !pending.has(faqRel)) {
+                        stage(faqRel, `import React, { useState } from 'react';\n\nexport default function Faq({ content }) {\n  const [open, setOpen] = useState(null);\n  const items = (content.faq || []).slice(0, ${op.count});\n  return (\n    <section className="section faq-section" id="faq">\n      <div className="wrap faq-wrap">\n        <h2>{content.faqTitle}</h2>\n        <div className="faq-list">\n          {items.map((item, index) => {\n            const expanded = open === index;\n            const panelId = \`faq-panel-\${index}\`;\n            return <div className="faq-item" key={item.q}>\n              <h3>\n                <button type="button" className="faq-trigger" aria-expanded={expanded} aria-controls={panelId}\n                  onClick={() => setOpen(expanded ? null : index)}>\n                  <span>{item.q}</span><span aria-hidden="true">{expanded ? '−' : '+'}</span>\n                </button>\n              </h3>\n              <div id={panelId} className="faq-answer" hidden={!expanded}><p>{item.a}</p></div>\n            </div>;\n          })}\n        </div>\n      </div>\n    </section>\n  );\n}\n`);
+                    }
+                    if (!app.includes("from './components/Faq.")) {
+                        const contactImport = /(import\s+Contact\s+from\s+['"]\.\/components\/Contact\.[jt]sx?['"];?)/;
+                        if (!contactImport.test(app)) { failures.push('FAQ component import insertion point not found'); continue; }
+                        app = app.replace(contactImport, `import Faq from './components/Faq.${appRel.endsWith('.tsx') ? 'tsx' : 'jsx'}';\n$1`);
+                    }
+                    if (!/<Faq\s+content=/.test(app)) {
+                        const contactRender = /(\s*<Contact\s+content=\{content\}\s*\/>)/;
+                        if (!contactRender.test(app)) { failures.push('FAQ render insertion point not found'); continue; }
+                        app = app.replace(contactRender, `\n        <Faq content={content} />$1`);
+                    }
+                    stage(appRel, app);
+                    ensureCss('.nav-links{column-gap:18px}', '.nav-links{column-gap:18px}');
+                    ensureCss('.faq-wrap{max-width:820px}.faq-list{border-top:1px solid var(--line)}.faq-item{border-bottom:1px solid var(--line)}.faq-item h3{margin:0}.faq-trigger{width:100%;min-height:56px;display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:1rem 0;border:0;background:transparent;color:var(--text);font:inherit;font-weight:700;text-align:start;cursor:pointer}.faq-trigger:focus-visible{outline:2px solid var(--brand);outline-offset:4px}.faq-answer{padding:0 0 1rem}.faq-answer p{margin:0;color:var(--text-muted)}', '.faq-wrap{');
+                    notes.push(isAr ? `أضفت قسم «${op.label}» التفاعلي وربطته بالقائمة؛ لا يبقى مفتوحاً إلا سؤال واحد ويمكن إغلاقه.` : `Added the interactive “${op.label}” section and navigation link with one closable item open at a time.`);
                     continue;
                 }
 
@@ -1602,9 +1654,9 @@ This is a correct answer, not a failure. Changing something the user did not ask
             // Through the Single Execution Authority — a direct spawn here
             // BLOCKED STARTUP on the user's machine (ExecutionEnforcer).
             const { executionEngine } = require('../../../kernel/ExecutionEngine');
-            const { withoutViteConfigForBuild } = require('./ReactProjectTool');
+            const { withoutViteConfigForBuild, portableViteBuildArgs } = require('./ReactProjectTool');
             buildVerified = await withoutViteConfigForBuild(dir, async () =>
-                (await executionEngine.runArgvStreaming('npm', ['run', 'build'], {
+                (await executionEngine.runArgvStreaming('npm', portableViteBuildArgs(), {
                     cwd: dir, timeout: 180_000, env: { NO_COLOR: '1' },
                 }).done).ok,
             );
@@ -1667,9 +1719,9 @@ This is a correct answer, not a failure. Changing something the user did not ask
                     const measuredAudits: any[] = [audit];
                     const rebuild = async (): Promise<boolean> => {
                         const { executionEngine } = require('../../../kernel/ExecutionEngine');
-                        const { withoutViteConfigForBuild } = require('./ReactProjectTool');
+                        const { withoutViteConfigForBuild, portableViteBuildArgs } = require('./ReactProjectTool');
                         return withoutViteConfigForBuild(dir, async () =>
-                            (await executionEngine.runArgvStreaming('npm', ['run', 'build'], {
+                            (await executionEngine.runArgvStreaming('npm', portableViteBuildArgs(), {
                                 cwd: dir, timeout: 180_000, env: { NO_COLOR: '1' },
                             }).done).ok,
                         );
@@ -1749,6 +1801,7 @@ This is a correct answer, not a failure. Changing something the user did not ask
         const brandMarkEdit = presentationEdits.find((op): op is Extract<PresentationEdit, { kind: 'brand_mark' }> => op.kind === 'brand_mark');
         const heroCtaEdit = presentationEdits.find((op): op is Extract<PresentationEdit, { kind: 'hero_contact_cta' }> => op.kind === 'hero_contact_cta');
         const phoneEdit = presentationEdits.find((op): op is Extract<PresentationEdit, { kind: 'phone_field' }> => op.kind === 'phone_field');
+        const faqEdit = presentationEdits.find((op): op is Extract<PresentationEdit, { kind: 'faq_section' }> => op.kind === 'faq_section');
         if (heroCtaEdit && phoneEdit && audit && !audit.skipped) {
             const namedControls = (audit.controls || [])
                 .filter((control: any) => String(control?.bare || control?.label || '').includes(heroCtaEdit.label))
@@ -1763,6 +1816,25 @@ This is a correct answer, not a failure. Changing something the user did not ask
             && /id=["']services["']/.test(appNow)
             && !/<section\b[^>]*\bid=["']services["'][^>]*\bdata-reveal\b/iu.test(appNow);
         const wantedPrimary = buildPalette(request).primary;
+        const faqNow = now('src/components/Faq.jsx') || now('src/components/Faq.tsx');
+        const faqBlock = (contentNow.match(/faq:\s*\[([\s\S]*?)\n\s*\],/) || [])[1] || '';
+        const faqRows = (faqBlock.match(/\{\s*q:\s*'/g) || []).length;
+        const faqSourceReady = !!faqEdit && faqRows >= faqEdit.count && /id=["']faq["']/.test(faqNow)
+            && /<Faq\s+content=/.test(appNow) && /href:\s*'#faq'/.test(contentNow);
+        const faqEvidence = (audit?.disclosureEvidence || []) as Array<any>;
+        const faqInteractionReady = !!faqEdit && faqEvidence.some(evidence =>
+            Number(evidence?.count || 0) >= faqEdit.count
+            && Number(evidence?.opened || 0) >= faqEdit.count
+            && evidence?.oneAtATime === true
+            && evidence?.keyboardClosed === true);
+        const faqAnchorContexts: string[] = (audit?.controls || [])
+            .filter((control: any) => control?.kind === 'anchor' && control?.href === '#faq' && control?.worked)
+            .map((control: any) => String(control?.context || ''));
+        const faqResponsiveLinkReady = faqAnchorContexts.some((context: string) => context.startsWith('desktop:'))
+            && faqAnchorContexts.some((context: string) => context.startsWith('جوّال:') || context.startsWith('phone:'));
+        if (faqEdit && audit && !audit.skipped) {
+            logs.push(`FAQ acceptance evidence: disclosures=${JSON.stringify(faqEvidence)}; anchors=${JSON.stringify(faqAnchorContexts)}`);
+        }
         const criteria = acceptanceFor(request).map((criterion: any) => {
             const rule = criterion.expectedRule;
             const decided = (met: boolean, why: string) => ({
@@ -1776,6 +1848,21 @@ This is a correct answer, not a failure. Changing something the user did not ask
             }
             if (!rule) return criterion;
             const text = String(rule.text || '');
+            if (faqEdit && /(?:قسم[^\n]{0,25}(?:الأسئلة\s+الشائعة|الاسئلة\s+الشائعة|faq)|faq\s+section)/iu.test(text)) {
+                return decided(faqSourceReady, faqSourceReady
+                    ? `${faqRows} FAQ rows render in the #faq section`
+                    : `the requested #faq section does not render ${faqEdit.count} question and answer rows`);
+            }
+            if (faqEdit && /(?:رابط[^\n]{0,35}(?:القائمة|menu)|link[^\n]{0,35}(?:menu|navigation))/iu.test(text)) {
+                return decided(faqResponsiveLinkReady, faqResponsiveLinkReady
+                    ? 'the browser resolved the #faq navigation target on desktop and phone'
+                    : 'the #faq navigation target was not proven on both desktop and phone');
+            }
+            if (faqEdit && /(?:سؤال[^\n]{0,30}(?:واحد|مفتوح|إغلاق)|one[^\n]{0,30}(?:question|open)|closable)/iu.test(text)) {
+                return decided(faqSourceReady && faqInteractionReady, faqSourceReady && faqInteractionReady
+                    ? 'the browser opened every FAQ in sequence, kept one open, and closed the last with Enter'
+                    : 'the browser has not proven sequential single-open and keyboard-close behaviour');
+            }
             if (/(?:اختبر|تحقق|افحص|test|verify|check)/iu.test(text)
                 && /(?:الرابط|link)/iu.test(text)
                 && /(?:الحقل|field)/iu.test(text)

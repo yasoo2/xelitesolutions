@@ -9,6 +9,9 @@ describe('canonical engineering pipeline terminal outcomes', () => {
     expect(isFinalPipelineOutcome('project_pipeline', { verificationFailed: true })).toBe(false);
     expect(isFinalPipelineOutcome('shell_execute', { pipelineFinal: true })).toBe(false);
     expect(isFinalPipelineOutcome('project_pipeline', undefined)).toBe(false);
+    expect(isFinalPipelineOutcome('project_edit', { acceptance: { unmet: 1 } })).toBe(true);
+    expect(isFinalPipelineOutcome('project_edit', { visualVerificationBlocked: true })).toBe(true);
+    expect(isFinalPipelineOutcome('project_edit', { acceptance: { unmet: 0 } })).toBe(false);
   });
 
   it('marks every outward failure state of the canonical pipeline as final evidence', () => {

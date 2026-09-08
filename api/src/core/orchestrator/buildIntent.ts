@@ -54,7 +54,7 @@ export function isReadOnlyRequest(goalRaw: string): boolean {
         }
     }
     if (!positiveMutation) {
-        const arabicMutationPattern = /(?:ينشئ|انشئ|أنشئ|اصنع|عدّل|عدل|احذف|انقل|ثبت|ثبّت|انشر|اكتب|ابن|ابني|شغل|شغّل|غيّر|غير)/gi;
+        const arabicMutationPattern = /(?:ينشئ|انشئ|أنشئ|اصنع|عدّل|عدل|طوّر|طور|أضف|اضف|صمّم|صمم|أصلح|اصلح|اختبر|أربط|اربط|حدّث|حدث|احذف|انقل|ثبت|ثبّت|انشر|اكتب|ابن|ابني|شغل|شغّل|غيّر|غير)/gi;
         let arabicMatch: RegExpExecArray | null;
         while ((arabicMatch = arabicMutationPattern.exec(text)) !== null) {
             const before = text.slice(Math.max(0, arabicMatch.index - 70), arabicMatch.index);

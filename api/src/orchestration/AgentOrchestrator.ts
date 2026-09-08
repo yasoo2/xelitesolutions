@@ -112,7 +112,15 @@ const MAX_REPAIR_NODES = 6;
  * act on and must not guess a new project type from the error text.
  */
 export function isFinalPipelineOutcome(tool: string | undefined, output: any): boolean {
-  return tool === 'project_pipeline' && output?.pipelineFinal === true;
+  if (tool === 'project_pipeline') return output?.pipelineFinal === true;
+  // A surgical edit already built and measured the current project. When its
+  // own acceptance or visible-browser gate fails, the payload is final
+  // evidence for this attempt. Sending it to a generative recovery planner
+  // changed “edit this project” into “build a new page” in a real run.
+  return tool === 'project_edit' && (
+    output?.visualVerificationBlocked === true
+    || Number(output?.acceptance?.unmet || 0) > 0
+  );
 }
 
 /** The shape of a failure, ignoring the parts that change between attempts. */

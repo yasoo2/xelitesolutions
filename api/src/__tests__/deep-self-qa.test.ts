@@ -334,6 +334,12 @@ describe('the interface itself is inspected — «وفحص ui»', () => {
         expect(u).toContain('metrics.viewports = measuredViewports');
         expect(u).toContain('Math.abs(actualVw - vp.w) > 2');
         expect(u).toContain('const viewports = effectiveViewports(availableWidth)');
+        const appAudit = read('core', 'quality', 'app-audit.ts');
+        expect(appAudit).toContain("mergeProbe({ ...phone, controls: [] }, '/')");
+        expect(appAudit).toContain("completedResponsiveEvidence.add('جوّال:/')");
+        expect(appAudit).toContain("if (completedResponsiveEvidence.has(evidenceKey)) continue;");
+        expect(appAudit).toContain("c.kind === 'anchor' || !seenLabels.has");
+        expect(appAudit).toContain("context: 'جوّال:/'");
         expect(u).toContain("Emulation.clearDeviceMetricsOverride");
         expect(u).toContain("Emulation.setDeviceMetricsOverride");
         expect(u.indexOf("Emulation.clearDeviceMetricsOverride")).toBeLessThan(u.indexOf('export async function applyViewportSize'));
@@ -427,7 +433,7 @@ describe('and the first thing it measured was Joe’s own work', () => {
     it('the header no longer drags the whole page sideways on a phone', () => {
         const r = R();
         expect(r).toMatch(/\.header-inner\{flex-wrap:wrap\}/);
-        expect(r).toMatch(/\.nav-links\{display:flex;gap:10px;flex-wrap:wrap;min-width:0\}/);
+        expect(r).toMatch(/\.nav-links\{display:flex;gap:10px 18px;flex-wrap:wrap;min-width:0\}/);
     });
 
     it('the hero eyebrow clears AA instead of missing it by 0.1', () => {

@@ -114,6 +114,15 @@ export interface AppAudit {
     controlsDiscovered?: number;
     /** Every control, with what actually changed — what a proof can read. */
     controls?: ControlResult[];
+    /** Stateful disclosure/accordion evidence gathered in each tested context. */
+    disclosureEvidence?: Array<{
+        count: number;
+        opened: number;
+        oneAtATime: boolean;
+        keyboardClosed: boolean;
+        viewport: string;
+        route?: string;
+    }>;
     /** Named browser passes, so a score cannot hide which kinds of QA ran. */
     passes?: AppAuditPass[];
 }
@@ -824,6 +833,7 @@ export async function auditBuiltApp(
             formsWithoutValidation: 0, formsFilled: 0, fieldsFilled: 0, formsDeadSubmit: 0, formsValidated: 0, formsReloaded: 0,
             formsPersisted: 0, formsPersistenceUnproven: 0, qaRecordsDeleted: 0, qaRecordsNotDeleted: 0,
             semanticFieldsTested: 0, semanticValidationFailures: 0, semanticValidationEvidence: [],
+            disclosureEvidence: [],
             statesVisited: 0, exploratoryActions: 0, controlsDiscovered: 0,
         };
         const mergeProbe = (p: { controls: any[]; metrics: Record<string, any>; forms?: FormResult[] }, route: string) => {
@@ -841,6 +851,7 @@ export async function auditBuiltApp(
                 behaviourMetrics[k] += p.metrics[k] || 0;
             }
             behaviourMetrics.semanticValidationEvidence.push(...(p.metrics.semanticValidationEvidence || []));
+            behaviourMetrics.disclosureEvidence.push(...(p.metrics.disclosureEvidence || []).map((evidence: any) => ({ ...evidence, route })));
             for (const f of p.forms || []) allForms.push({ ...f, label: route === '/' ? f.label : `${route} ${f.label}` });
         };
 
@@ -970,6 +981,11 @@ export async function auditBuiltApp(
          *  the walk above and the whole point is what desktop CANNOT show.
          */
         const seenLabels = new Set(allControls.map((c: any) => String(c.label || '')));
+        // Track completed route/viewport pairs independently from the shared
+        // deadline. The dedicated phone pass below is real responsive evidence;
+        // rerunning the same route at the same width cannot turn that proof into
+        // a coverage failure merely because the optional duplicate ran last.
+        const completedResponsiveEvidence = new Set<string>();
         try {
             if (!eyeIsOpen()) return eyeRequiredResult();
             if (!remainingWalkMs()) { behaviourMetrics.budgetExhausted = true; throw new Error('browser QA budget ended before mobile discovery'); }
@@ -987,9 +1003,14 @@ export async function auditBuiltApp(
             });
             if (phone.metrics.eyeLost || !eyeIsOpen()) return eyeRequiredResult();
             if ((phone.metrics.budgetExhausted || phone.metrics.explorationBudgetExhausted) && !remainingWalkMs()) behaviourMetrics.budgetExhausted = true;
-            const fresh = (phone.controls || []).filter((c: any) => !seenLabels.has(String(c.label || '')));
-            for (const c of fresh) allControls.push({ ...c, bare: c.label, context: 'phone:/', label: `الجوّال ${c.label}` });
-            behaviourMetrics.deadAnchors += phone.metrics?.deadAnchors || 0;
+            const phoneEvidence = (phone.controls || []).filter((c: any) =>
+                c.kind === 'anchor' || !seenLabels.has(String(c.label || '')),
+            );
+            for (const c of phoneEvidence) allControls.push({ ...c, bare: c.label, context: 'جوّال:/', label: `الجوّال ${c.label}` });
+            // The phone-only walk is still a full measured state. Preserve its
+            // specialized evidence even if the later responsive sweep expires.
+            mergeProbe({ ...phone, controls: [] }, '/');
+            completedResponsiveEvidence.add('جوّال:/');
             await applyViewportSize(page, deliveryViewport.width, deliveryViewport.height);
             await page.waitForTimeout(200);
         } catch { /* one width failing must not lose the desktop walk */ }
@@ -1011,6 +1032,11 @@ export async function auditBuiltApp(
         const responsiveDeadline = Math.min(walkUntil, Date.now() + responsiveBudget);
         for (const r of responsiveRoutes) {
             for (const size of [{ name: 'لوحي', w: 820, h: 1180 }, { name: 'جوّال', w: 390, h: 844 }]) {
+                const evidenceKey = `${size.name}:${r}`;
+                // The home-phone pass above already exercised this exact state,
+                // including controls hidden at desktop width. Do not spend the
+                // bounded responsive budget replaying it.
+                if (completedResponsiveEvidence.has(evidenceKey)) continue;
                 if (Date.now() >= responsiveDeadline || !remainingWalkMs() || !eyeIsOpen()) { behaviourMetrics.budgetExhausted = true; break; }
                 try {
                     const target = r.startsWith('#') ? url + r : url + r;
@@ -1035,6 +1061,7 @@ export async function auditBuiltApp(
                         allControls.push({ ...c, bare: c.label, context: `${size.name}:${r}`, label, responsive: size.name });
                     }
                     mergeProbe({ ...responsive, controls: [] }, r);
+                    completedResponsiveEvidence.add(evidenceKey);
                 } catch (e: any) {
                     // Keep the baseline proof, but do not erase a responsive
                     // failure: an unreachable route at one viewport is itself
@@ -1227,6 +1254,7 @@ export async function auditBuiltApp(
             semanticFieldsTested: behaviourMetrics.semanticFieldsTested,
             semanticValidationFailures: behaviourMetrics.semanticValidationFailures,
             semanticValidationEvidence: behaviourMetrics.semanticValidationEvidence,
+            disclosureEvidence: behaviourMetrics.disclosureEvidence,
             forms: allForms,
             viewports: ui.metrics.viewports || [],
             statesVisited: behaviourMetrics.statesVisited,

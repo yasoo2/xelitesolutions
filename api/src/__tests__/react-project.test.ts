@@ -10,7 +10,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
-import { ReactProjectTool, PROJECT_DIR_NAME_MAX_LENGTH, applyBundledPhotographyFallback, hasUsableReactDependencyTree, heroSecondaryDestination, requestDrivenServiceProducts, withoutViteConfigForBuild } from '../modules/tools/definitions/ReactProjectTool';
+import { ReactProjectTool, PROJECT_DIR_NAME_MAX_LENGTH, applyBundledPhotographyFallback, hasUsableReactDependencyTree, heroSecondaryDestination, portableViteBuildArgs, requestDrivenServiceProducts, withoutViteConfigForBuild } from '../modules/tools/definitions/ReactProjectTool';
 import { fileAppStoreJs } from '../modules/tools/definitions/react-app-templates';
 import { ApiProjectTool } from '../modules/tools/definitions/ApiProjectTool';
 import { ScaffoldProjectTool } from '../modules/tools/definitions/SystemTools';
@@ -51,6 +51,10 @@ describe('dependency reuse only trusts a complete Vite tree', () => {
 });
 
 describe('restricted Windows Vite builds', () => {
+    it('forces relative production asset URLs while the generated config is hidden', () => {
+        expect(portableViteBuildArgs()).toEqual(['run', 'build', '--', '--base', './']);
+    });
+
     it('hides the generated config only during the build and restores it afterward', async () => {
         const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-vite-config-'));
         const config = path.join(tmp, 'vite.config.js');

@@ -142,6 +142,11 @@ describe('the planner uses it — after its own routes, before the model', () =>
         }
     });
 
+    it('keeps Arabic develop and add imperatives writable after a scoped no-create constraint', () => {
+        const goal = 'طوّر نفس المشروع الحالي دون إنشاء مشروع جديد: أضف قسم «الأسئلة الشائعة» بثلاثة أسئلة وأجوبة، وأضف رابطاً له في القائمة، ثم اختبره في المتصفح.';
+        expect(isReadOnlyRequest(goal)).toBe(false);
+    });
+
     it('capabilityPlan returns a real plan, or null', () => {
         const plan: any = PlanningEngine.capabilityPlan({ goal: 'اضغط الملفات في أرشيف zip' });
         expect(plan).toBeTruthy();

@@ -158,6 +158,15 @@ describe('short quoted wording follow-ups', () => {
         ]);
     });
 
+    it('reads a stateful FAQ follow-up as a provider-independent edit', () => {
+        const request = 'أضف قسم «الأسئلة الشائعة» بثلاثة أسئلة وأجوبة، وأضف رابطاً له في القائمة، واجعل سؤالاً واحداً فقط مفتوحاً في كل مرة مع إمكانية إغلاقه.';
+        expect(parsePresentationEdits(request)).toEqual([
+            { kind: 'faq_section', label: 'الأسئلة الشائعة', count: 3, singleOpen: true, closable: true },
+        ]);
+        const source = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ProjectEditTool.ts'), 'utf-8');
+        expect(source).toContain("ensureCss('.nav-links{column-gap:18px}'");
+    });
+
     it('reads a services-section addition and its Arabic count from a compound follow-up', () => {
         expect(parseServicesSectionEdit('أضف رابط «الخدمات» في القائمة وقسم خدمات بثلاث خدمات قبل التواصل')).toEqual({
             label: 'الخدمات',
@@ -176,6 +185,7 @@ describe('short quoted wording follow-ups', () => {
     it('uses the restricted-Windows-safe Vite wrapper for every edit build path', () => {
         const source = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ProjectEditTool.ts'), 'utf-8');
         expect((source.match(/withoutViteConfigForBuild\(dir/g) || []).length).toBe(3);
+        expect((source.match(/portableViteBuildArgs\(\)/g) || []).length).toBe(3);
     });
 
     it('runs measured repair rounds after a project-edit browser finding', () => {
@@ -308,6 +318,40 @@ describe('provider-independent logo, contact CTA, and phone follow-up', () => {
         expect(provesContactLinkAndPhoneAudit({ ...proof, controls: [{ ...proof.controls[0], href: '#other' }] }, 'احجز استشارة')).toBe(false);
         expect(provesContactLinkAndPhoneAudit({ ...proof, semanticValidationFailures: 1 }, 'احجز استشارة')).toBe(false);
     });
+});
+
+describe('provider-independent stateful FAQ follow-up', () => {
+    let tmp: string;
+    beforeEach(() => {
+        tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-faq-edit-'));
+        fs.mkdirSync(path.join(tmp, 'src', 'components'), { recursive: true });
+        fs.mkdirSync(path.join(tmp, 'src', 'styles'), { recursive: true });
+        fs.writeFileSync(path.join(tmp, 'package.json'), '{"name":"faq-site"}');
+        fs.writeFileSync(path.join(tmp, 'src', 'content.js'), `export const content = {\n  faqTitle: 'أسئلة شائعة',\n  faq: [\n    { q: 'السؤال الأول؟', a: 'الإجابة الأولى.' },\n    { q: 'السؤال الثاني؟', a: 'الإجابة الثانية.' },\n    { q: 'السؤال الثالث؟', a: 'الإجابة الثالثة.' },\n  ],\n  navLinks: [\n    { href: '#contact', label: 'تواصل' },\n  ],\n};\n`);
+        fs.writeFileSync(path.join(tmp, 'src', 'App.jsx'), `import React from 'react';\nimport Contact from './components/Contact.jsx';\nimport { content } from './content.js';\nexport default function App(){ return <main><Contact content={content} /></main>; }\n`);
+        fs.writeFileSync(path.join(tmp, 'src', 'components', 'Contact.jsx'), `export default function Contact(){ return <section id="contact">Contact</section>; }\n`);
+        fs.writeFileSync(path.join(tmp, 'src', 'styles', 'base.css'), ':root{--line:#ddd;--text:#111;--text-muted:#666;--brand:#075;}\n');
+    });
+    afterEach(() => fs.rmSync(tmp, { recursive: true, force: true }));
+
+    it('creates one keyboard-native accordion in the current project without a model', async () => {
+        const request = 'أضف قسم «الأسئلة الشائعة» بثلاثة أسئلة وأجوبة، وأضف رابطاً له في القائمة، واجعل سؤالاً واحداً فقط مفتوحاً في كل مرة مع إمكانية إغلاقه.';
+        const res: any = await new ProjectEditTool().execute({ request, dir: tmp, skipAudit: true }, { sessionId: `faq-${Date.now()}` });
+        // Source generation succeeds, but delivery remains blocked until a
+        // real browser proves the requested stateful interaction.
+        expect(res.ok).toBe(false);
+        expect(res.error).toContain('edit_acceptance_unmet');
+        const faq = fs.readFileSync(path.join(tmp, 'src', 'components', 'Faq.jsx'), 'utf-8');
+        const app = fs.readFileSync(path.join(tmp, 'src', 'App.jsx'), 'utf-8');
+        const content = fs.readFileSync(path.join(tmp, 'src', 'content.js'), 'utf-8');
+        expect(faq).toContain('const [open, setOpen] = useState(null)');
+        expect(faq).toContain('setOpen(expanded ? null : index)');
+        expect(faq).toContain('aria-expanded={expanded}');
+        expect(app).toContain('<Faq content={content} />');
+        expect(content).toContain("href: '#faq'");
+        expect(res.logs).toEqual(expect.arrayContaining([expect.stringContaining('provider-independent')]));
+    });
+
 });
 
 describe('compound brand, navigation, section, and palette follow-up', () => {

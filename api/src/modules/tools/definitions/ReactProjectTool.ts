@@ -1030,6 +1030,11 @@ export async function withoutViteConfigForBuild<T>(projectRoot: string, build: (
     }
 }
 
+/** Keep production assets loadable when the bundle is served below /project-preview/:session/. */
+export function portableViteBuildArgs(): string[] {
+    return ['run', 'build', '--', '--base', './'];
+}
+
 export function applyBundledPhotographyFallback(projectRoot: string, content: Pick<ReactContent, 'heroImage' | 'gallery'>): boolean {
     if (content.heroImage && content.gallery.length) return false;
     const assetName = 'photography-studio.png';
@@ -3561,7 +3566,7 @@ h1,h2,h3{font-family:var(--f-head);font-weight:var(--f-head-weight)}
    strip pushed the whole page into horizontal scroll (mobile_overflow), which
    is the one layout defect a visitor feels immediately on a phone. */
 .header-inner{flex-wrap:wrap}
-.nav-links{display:flex;gap:10px;flex-wrap:wrap;min-width:0}
+.nav-links{display:flex;gap:10px 18px;flex-wrap:wrap;min-width:0}
 .nav-links a{color:var(--text);text-decoration:none;font-weight:600;display:inline-flex;align-items:center;min-width:44px;min-height:44px;padding:0 8px}
 .nav-links a:hover{color:var(--brand-text,var(--brand))}
 /*  ONE NAVIGATION LANGUAGE, WHEREVER JOE WRITES A NAV.
@@ -6019,7 +6024,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
         let lastLog = '';
         const runBuild = async (timeoutMs: number): Promise<number> => {
             const r = await withoutViteConfigForBuild(proj, () => shell.run(
-                'npm', ['run', 'build', '--', '--base', './'],
+                'npm', portableViteBuildArgs(),
                 { cwd: proj, timeout: timeoutMs, cancel: cancellation },
             ));
             lastLog = r.out;
