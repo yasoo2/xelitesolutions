@@ -1011,15 +1011,63 @@ export function isReactViteProjectDir(dir: string): boolean {
  * registry is offline. Only dependency directories are reused, never source
  * files, and the candidate must describe the same Vite/React shape.
  */
+function dependencyContractMatchesDisk(projectRoot: string, manifest: any): boolean {
+    try {
+        const lock = JSON.parse(fs.readFileSync(path.join(projectRoot, 'package-lock.json'), 'utf8'));
+        const lockedRoot = lock?.packages?.[''];
+        if (!lockedRoot) return false;
+        for (const section of ['dependencies', 'devDependencies'] as const) {
+            const declared = manifest?.[section] && typeof manifest[section] === 'object' ? manifest[section] : {};
+            for (const [name, requested] of Object.entries(declared)) {
+                if (lockedRoot?.[section]?.[name] !== requested) return false;
+                const installed = JSON.parse(fs.readFileSync(path.join(projectRoot, 'node_modules', name, 'package.json'), 'utf8'));
+                const locked = lock?.packages?.[`node_modules/${name}`];
+                if (!installed?.version || installed.version !== locked?.version) return false;
+            }
+        }
+        return true;
+    } catch {
+        return false;
+    }
+}
+
 export function hasUsableReactDependencyTree(projectRoot: string): boolean {
     const modules = path.join(projectRoot, 'node_modules');
     const required = [
         '.bin/vite', 'vite/package.json', 'rollup/package.json',
-        '@vitejs/plugin-react/package.json', 'react/package.json', 'react-dom/package.json',
+        '@vitejs/plugin-react/package.json', 'react/package.json', 'react-dom/package.json', 'esbuild/package.json',
     ];
+    if (process.platform === 'win32') required.push(`@esbuild/win32-${process.arch}/package.json`);
     const rollupParseAst = ['rollup/dist/parseAst.js', 'rollup/dist/es/parseAst.js', 'rollup/dist/shared/parseAst.js'];
-    return required.every(rel => fs.existsSync(path.join(modules, rel)))
-        && rollupParseAst.some(rel => fs.existsSync(path.join(modules, rel)));
+    if (!required.every(rel => fs.existsSync(path.join(modules, rel)))
+        || !rollupParseAst.some(rel => fs.existsSync(path.join(modules, rel)))) return false;
+    let manifest: any;
+    try { manifest = JSON.parse(fs.readFileSync(path.join(projectRoot, 'package.json'), 'utf8')); }
+    catch { return false; }
+    if (!dependencyContractMatchesDisk(projectRoot, manifest)) return false;
+    if (process.platform !== 'win32') return true;
+    const esbuildBinary = path.join(modules, '@esbuild', `win32-${process.arch}`, 'esbuild.exe');
+    try {
+        const wrapperVersion = JSON.parse(fs.readFileSync(path.join(modules, 'esbuild', 'package.json'), 'utf8')).version;
+        const binaryVersion = JSON.parse(fs.readFileSync(path.join(modules, '@esbuild', `win32-${process.arch}`, 'package.json'), 'utf8')).version;
+        if (!wrapperVersion || wrapperVersion !== binaryVersion) return false;
+        const stats = fs.statSync(esbuildBinary);
+        if (stats.size < 5_000_000) return false;
+        const fd = fs.openSync(esbuildBinary, 'r');
+        const header = Buffer.alloc(256);
+        try { fs.readSync(fd, header, 0, header.length, 0); }
+        finally { fs.closeSync(fd); }
+        const peOffset = header.readUInt32LE(0x3c);
+        const machine = peOffset + 6 <= header.length ? header.readUInt16LE(peOffset + 4) : 0;
+        // A cancelled/--ignore-scripts install can leave an ELF helper renamed
+        // to .exe, or a truncated PE that still starts with MZ. Both exist but
+        // fail later with spawn EFTYPE, so reject them before reuse.
+        return header[0] === 0x4d && header[1] === 0x5a
+            && header.subarray(peOffset, peOffset + 4).equals(Buffer.from([0x50, 0x45, 0, 0]))
+            && (machine === 0x8664 || machine === 0xaa64);
+    } catch {
+        return false;
+    }
 }
 
 /**
@@ -1067,17 +1115,18 @@ export function applyBundledPhotographyFallback(projectRoot: string, content: Pi
     return true;
 }
 
-function reuseLocalReactDependencies(workspaceRoot: string, projectRoot: string): boolean {
+export function reuseLocalReactDependencies(workspaceRoot: string, projectRoot: string): boolean {
     const targetModules = path.join(projectRoot, 'node_modules');
     if (hasUsableReactDependencyTree(projectRoot)) return true;
     let targetManifest: any;
     try { targetManifest = JSON.parse(fs.readFileSync(path.join(projectRoot, 'package.json'), 'utf8')); } catch { return false; }
+    const normalized = (value: any): string => JSON.stringify(Object.fromEntries(
+        Object.entries(value && typeof value === 'object' ? value : {}).sort(([a], [b]) => a.localeCompare(b)),
+    ));
     const sameToolchain = (candidateManifest: any): boolean => (
         candidateManifest?.scripts?.build === targetManifest?.scripts?.build
-        && candidateManifest?.dependencies?.react === targetManifest?.dependencies?.react
-        && candidateManifest?.dependencies?.['react-dom'] === targetManifest?.dependencies?.['react-dom']
-        && candidateManifest?.devDependencies?.vite === targetManifest?.devDependencies?.vite
-        && candidateManifest?.devDependencies?.['@vitejs/plugin-react'] === targetManifest?.devDependencies?.['@vitejs/plugin-react']
+        && normalized(candidateManifest?.dependencies) === normalized(targetManifest?.dependencies)
+        && normalized(candidateManifest?.devDependencies) === normalized(targetManifest?.devDependencies)
     );
     let entries: fs.Dirent[];
     try { entries = fs.readdirSync(workspaceRoot, { withFileTypes: true }); } catch { return false; }
@@ -1086,7 +1135,10 @@ function reuseLocalReactDependencies(workspaceRoot: string, projectRoot: string)
         const candidateRoot = path.join(workspaceRoot, entry.name);
         if (path.resolve(candidateRoot) === path.resolve(projectRoot)) continue;
         const candidateModules = path.join(candidateRoot, 'node_modules');
-        if (!fs.existsSync(path.join(candidateModules, '.bin', 'vite'))) continue;
+        // A timed-out npm run can leave the Vite shim behind while pruning
+        // React, Rollup, or Vite itself. Never copy that partial tree and stop
+        // the search before a later complete sibling is inspected.
+        if (!hasUsableReactDependencyTree(candidateRoot)) continue;
         try {
             const candidateManifest = JSON.parse(fs.readFileSync(path.join(candidateRoot, 'package.json'), 'utf8'));
             if (!sameToolchain(candidateManifest)) continue;
@@ -1100,7 +1152,8 @@ function reuseLocalReactDependencies(workspaceRoot: string, projectRoot: string)
             if (fs.existsSync(candidateLock) && !fs.existsSync(path.join(projectRoot, 'package-lock.json'))) {
                 fs.copyFileSync(candidateLock, path.join(projectRoot, 'package-lock.json'));
             }
-            return hasUsableReactDependencyTree(projectRoot);
+            if (hasUsableReactDependencyTree(projectRoot)) return true;
+            fs.rmSync(targetModules, { recursive: true, force: true });
         } catch {
             try { if (fs.existsSync(targetModules)) fs.rmSync(targetModules, { recursive: true, force: true }); } catch { /* try the next candidate */ }
         }
@@ -4249,7 +4302,7 @@ export class ReactProjectTool extends BaseTool {
         // build that narrates in the wrong one is a defect the user sees
         // before any test does. Record which signal decided it, so the next
         // report says whether the switcher arrived or was lost on the way.
-        term(`template classification: page=${kind || 'generic'} · app=${appKind || 'none'} · mode=${appBp ? 'interactive' : 'presentation'} · artifact=${artifactIsAr ? 'ar' : 'en'} · reply=${isAr ? 'ar' : 'en'} (ui=${uiLang || 'absent'})`);
+        term(`template classification: page=${kind || 'generic'} · app=${appKind || externalIntegration?.capability || 'none'} · mode=${appBp ? 'interactive' : externalIntegration ? 'external-api' : 'presentation'} · artifact=${artifactIsAr ? 'ar' : 'en'} · reply=${isAr ? 'ar' : 'en'} (ui=${uiLang || 'absent'})`);
         const family = familyFor(request, kind);
         const multiPage = wantsMultiPage(request, kind);
         const pages = appPagesFor(kind, request, artifactIsAr);
@@ -4657,7 +4710,7 @@ export class ReactProjectTool extends BaseTool {
         // An APPLICATION downloads no hero photograph: a map app needs tiles,
         // not a stock picture of a road.
         const photographyBrief = /\b(?:photographer|photography|photo studio|portrait studio)\b|استوديو\s+تصوير|مصور|تصوير\s+(?:فوتوغرافي|احترافي)/i.test(request);
-        if (!appBp && !input?.skipInstall && !input?.skipImages && directives.photos !== 'off') {
+        if (!appBp && !externalIntegration && !input?.skipInstall && !input?.skipImages && directives.photos !== 'off') {
             if (sessionId) broadcastThinkingDetail(sessionId, isAr ? '🖼️ أبحث عن صورة حقيقية مرخّصة للبطل…' : '🖼️ Finding a real licensed hero photo…');
             const imageBrief = buildImageBrief(request);
             const imageSubjects = photographyBrief
@@ -6111,31 +6164,37 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                     term('self-QA: warming the browser now so the audit has something to show from its first second');
                 } catch { /* the audit launches its own — exactly as before */ }
             }
-            if (sessionId) broadcastThinkingDetail(sessionId, isAr ? '📦 أثبّت الحزم (npm install)…' : '📦 Installing packages (npm install)…');
-            // Local Joe runs often have the exact React toolchain in npm's cache
-            // while outbound registry access is slow or unavailable. Use that
-            // evidence first; a fresh machine still gets one bounded network
-            // retry instead of being forced into offline-only operation.
-            let offlineInstall = await run('npm', ['install', '--offline', '--no-audit', '--no-fund'], 45_000);
-            if (offlineInstall !== 0) {
-                // Windows can report a cache miss or EPERM while another npm
-                // process holds the shared cache. A verified sibling project
-                // is a deterministic local dependency cache, so use it before
-                // spending four minutes on a registry that may be unreachable.
-                const reused = reuseLocalReactDependencies(root, proj);
-                if (reused) {
-                    offlineInstall = 0;
-                    term('npm cache unavailable — reused a verified local React toolchain and continued');
-                } else {
+            // A failed cache-only install may prune a usable node_modules tree
+            // before returning ENOTCACHED. Trust a structurally verified local
+            // toolchain first and touch npm only when no compatible tree exists.
+            const hadDependencies = hasUsableReactDependencyTree(proj);
+            const reusedDependencies = hadDependencies ? false : reuseLocalReactDependencies(root, proj);
+            let inst = 0;
+            if (hadDependencies) {
+                term('dependencies: verified existing React toolchain — npm install is unnecessary');
+            } else if (reusedDependencies) {
+                term('dependencies: reused a verified local React toolchain — npm install is unnecessary');
+            } else {
+                if (sessionId) broadcastThinkingDetail(sessionId, isAr ? '📦 أثبّت الحزم (npm install)…' : '📦 Installing packages (npm install)…');
+                // A fresh workspace still gets one cache-only attempt followed
+                // by one bounded network attempt.
+                let offlineInstall = await run('npm', ['install', '--offline', '--no-audit', '--no-fund'], 45_000);
+                if (offlineInstall === 0 && !hasUsableReactDependencyTree(proj)) {
+                    term('npm cache produced an incomplete native toolchain — discarding it before the network retry');
+                    try { fs.rmSync(path.join(proj, 'node_modules'), { recursive: true, force: true }); } catch { /* npm will repair what remains */ }
+                    offlineInstall = -1;
+                }
+                if (offlineInstall !== 0) {
                     term('npm cache did not contain every package — retrying the bounded network install');
                 }
+                inst = offlineInstall === 0
+                    ? offlineInstall
+                    : await run('npm', ['install', '--no-audit', '--no-fund'], 240_000);
             }
-            const inst = offlineInstall === 0
-                ? offlineInstall
-                : await run('npm', ['install', '--no-audit', '--no-fund'], 240_000);
             installExit = inst;
             npmMissing = inst === -1;
-            installed = inst === 0;
+            installed = inst === 0 && hasUsableReactDependencyTree(proj);
+            if (inst === 0 && !installed) term('npm exited cleanly but its native toolchain is incomplete — refusing a false build-ready claim');
             // The exit code is already on screen, printed by the session. What
             // Joe adds here is the MEANING of it — marked as his own note, so
             // the transcript never mixes his words with a process's.

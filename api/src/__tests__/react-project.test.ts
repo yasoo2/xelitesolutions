@@ -10,7 +10,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
-import { ReactProjectTool, PROJECT_DIR_NAME_MAX_LENGTH, applyBundledPhotographyFallback, hasUsableReactDependencyTree, heroSecondaryDestination, portableViteBuildArgs, requestDrivenServiceProducts, withoutViteConfigForBuild } from '../modules/tools/definitions/ReactProjectTool';
+import { ReactProjectTool, PROJECT_DIR_NAME_MAX_LENGTH, applyBundledPhotographyFallback, hasUsableReactDependencyTree, heroSecondaryDestination, portableViteBuildArgs, requestDrivenServiceProducts, reuseLocalReactDependencies, withoutViteConfigForBuild } from '../modules/tools/definitions/ReactProjectTool';
 import { fileAppStoreJs } from '../modules/tools/definitions/react-app-templates';
 import { ApiProjectTool } from '../modules/tools/definitions/ApiProjectTool';
 import { ScaffoldProjectTool } from '../modules/tools/definitions/SystemTools';
@@ -26,6 +26,50 @@ const route = async (goal: string): Promise<string> => {
 };
 
 describe('dependency reuse only trusts a complete Vite tree', () => {
+    const baseManifest = {
+        scripts: { build: 'vite build' },
+        dependencies: { react: '^18.3.1', 'react-dom': '^18.3.1' },
+        devDependencies: { vite: '^5.4.11', '@vitejs/plugin-react': '^4.3.4' },
+    };
+    const fakeWindowsEsbuild = () => {
+        const executable = Buffer.alloc(5_000_001);
+        executable[0] = 0x4d; executable[1] = 0x5a;
+        executable.writeUInt32LE(128, 0x3c);
+        executable.set([0x50, 0x45, 0, 0], 128);
+        executable.writeUInt16LE(0x8664, 132);
+        return executable;
+    };
+    const writeTree = (root: string, manifest: any, options: { omit?: string; versions?: Record<string, string>; binary?: Buffer } = {}) => {
+        fs.mkdirSync(root, { recursive: true });
+        fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify(manifest));
+        const files = [
+            '.bin/vite', 'vite/package.json', 'rollup/package.json', 'rollup/dist/parseAst.js',
+            '@vitejs/plugin-react/package.json', 'react/package.json', 'react-dom/package.json', 'esbuild/package.json',
+            `@esbuild/win32-${process.arch}/package.json`, `@esbuild/win32-${process.arch}/esbuild.exe`,
+        ];
+        for (const rel of files) {
+            const file = path.join(root, 'node_modules', rel);
+            fs.mkdirSync(path.dirname(file), { recursive: true });
+            fs.writeFileSync(file, rel.endsWith('esbuild.exe')
+                ? options.binary || fakeWindowsEsbuild()
+                : rel.includes('esbuild') ? '{"version":"0.21.5"}' : '{}');
+        }
+        const packages: Record<string, any> = {
+            '': { dependencies: manifest.dependencies || {}, devDependencies: manifest.devDependencies || {} },
+        };
+        for (const [section, dependencies] of Object.entries({ dependencies: manifest.dependencies || {}, devDependencies: manifest.devDependencies || {} })) {
+            for (const [name, requested] of Object.entries(dependencies as Record<string, string>)) {
+                const version = options.versions?.[name] || String(requested).replace(/^[^0-9]*/, '');
+                packages[`node_modules/${name}`] = { version };
+                if (name === options.omit) continue;
+                const pkg = path.join(root, 'node_modules', name, 'package.json');
+                fs.mkdirSync(path.dirname(pkg), { recursive: true });
+                fs.writeFileSync(pkg, JSON.stringify({ name, version, section }));
+            }
+        }
+        fs.writeFileSync(path.join(root, 'package-lock.json'), JSON.stringify({ lockfileVersion: 3, packages }));
+    };
+
     it('rejects a partial tree that only contains the vite shim', () => {
         const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-react-deps-'));
         fs.mkdirSync(path.join(tmp, 'node_modules', '.bin'), { recursive: true });
@@ -36,17 +80,71 @@ describe('dependency reuse only trusts a complete Vite tree', () => {
 
     it('accepts the files Vite needs to resolve and bundle React', () => {
         const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-react-deps-'));
-        const files = [
-            '.bin/vite', 'vite/package.json', 'rollup/package.json', 'rollup/dist/parseAst.js',
-            '@vitejs/plugin-react/package.json', 'react/package.json', 'react-dom/package.json',
-        ];
-        for (const rel of files) {
-            const file = path.join(tmp, 'node_modules', rel);
-            fs.mkdirSync(path.dirname(file), { recursive: true });
-            fs.writeFileSync(file, '');
-        }
+        writeTree(tmp, baseManifest);
         expect(hasUsableReactDependencyTree(tmp)).toBe(true);
         fs.rmSync(tmp, { recursive: true, force: true });
+    });
+
+    it('rejects a timed-out install that left a non-Windows esbuild binary named .exe', () => {
+        if (process.platform !== 'win32') return;
+        const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-react-deps-'));
+        writeTree(tmp, baseManifest, { binary: Buffer.from([0x7f, 0x45, 0x4c, 0x46]) });
+        expect(hasUsableReactDependencyTree(tmp)).toBe(false);
+        fs.rmSync(tmp, { recursive: true, force: true });
+    });
+
+    it('rejects a core toolchain when an additional declared dependency is missing', () => {
+        const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-react-deps-'));
+        const manifest = { ...baseManifest, dependencies: { ...baseManifest.dependencies, 'lucide-react': '^0.468.0' } };
+        writeTree(tmp, manifest, { omit: 'lucide-react' });
+        expect(hasUsableReactDependencyTree(tmp)).toBe(false);
+        fs.rmSync(tmp, { recursive: true, force: true });
+    });
+
+    it('rejects an installed dependency version that differs from the lock evidence', () => {
+        const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-react-deps-'));
+        writeTree(tmp, baseManifest, { versions: { react: '17.0.2' } });
+        const lock = JSON.parse(fs.readFileSync(path.join(tmp, 'package-lock.json'), 'utf8'));
+        lock.packages['node_modules/react'].version = '18.3.1';
+        fs.writeFileSync(path.join(tmp, 'package-lock.json'), JSON.stringify(lock));
+        expect(hasUsableReactDependencyTree(tmp)).toBe(false);
+        fs.rmSync(tmp, { recursive: true, force: true });
+    });
+
+    it('copies a compatible verified tree so npm is unnecessary', () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-react-deps-root-'));
+        const partial = path.join(root, 'react-a-partial');
+        const source = path.join(root, 'react-source');
+        const target = path.join(root, 'react-target');
+        const manifest = baseManifest;
+        fs.mkdirSync(partial, { recursive: true });
+        fs.mkdirSync(source, { recursive: true });
+        fs.mkdirSync(target, { recursive: true });
+        fs.writeFileSync(path.join(partial, 'package.json'), JSON.stringify(manifest));
+        fs.writeFileSync(path.join(target, 'package.json'), JSON.stringify(manifest));
+        fs.mkdirSync(path.join(partial, 'node_modules', '.bin'), { recursive: true });
+        fs.writeFileSync(path.join(partial, 'node_modules', '.bin', 'vite'), 'partial');
+        writeTree(source, manifest);
+        try {
+            expect(reuseLocalReactDependencies(root, target)).toBe(true);
+            expect(hasUsableReactDependencyTree(target)).toBe(true);
+        } finally {
+            fs.rmSync(root, { recursive: true, force: true });
+        }
+    });
+
+    it('does not reuse a sibling with the same core stack but a different dependency set', () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-react-deps-root-'));
+        const source = path.join(root, 'react-source');
+        const target = path.join(root, 'react-target');
+        writeTree(source, baseManifest);
+        fs.mkdirSync(target, { recursive: true });
+        fs.writeFileSync(path.join(target, 'package.json'), JSON.stringify({
+            ...baseManifest,
+            dependencies: { ...baseManifest.dependencies, 'lucide-react': '^0.468.0' },
+        }));
+        try { expect(reuseLocalReactDependencies(root, target)).toBe(false); }
+        finally { fs.rmSync(root, { recursive: true, force: true }); }
     });
 });
 
@@ -145,7 +243,7 @@ describe('routing: explicit framework requests reach the evidence-first project 
         const src = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ReactProjectTool.ts'), 'utf-8');
         expect(src).toContain('let modelUnavailableDuringBuild = false;');
         expect(src).toContain('modelUnavailableDuringBuild = true;');
-        expect(src).toContain('!copyProvidersRationing && !modelUnavailableDuringBuild');
+        expect(src).toMatch(/!copyProvidersRationing\s*&&\s*!modelUnavailableDuringBuild/);
         expect(src).toContain('insideATest || modelUnavailableDuringBuild ||');
         expect(src).toContain('the selected model did not answer earlier in this build');
     });

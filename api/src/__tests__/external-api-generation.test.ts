@@ -26,9 +26,9 @@ describe('external API generation contract', () => {
         const plan = integrationPlanFromSelection(selection())!;
         const files = integrationArtifacts(plan);
         expect(JSON.parse(files['.joe/external-api.json'])).toMatchObject({ selected: 'Frankfurter', apiId: 'remote-frankfurter', integrationProfileId: 'frankfurter-currency-v2' });
-        expect(files['src/integrations/externalApi.js']).toContain('"api/joe-external/currency"');
-        expect(files['src/integrations/externalApi.js']).toContain('new URL(PROXY_PATH, window.location.href)');
-        expect(files['src/integrations/externalApi.js']).not.toContain('window.location.origin');
+        expect(files['src/integrations/externalApi.js']).toContain('const PROXY_PATH = "api/joe-external/currency"');
+        expect(files['src/integrations/externalApi.js']).toContain("window.location.pathname.match(/^\\/project-preview\\/[^/]+\\//)");
+        expect(files['src/integrations/externalApi.js']).toContain('new URL(previewRoot, window.location.origin)');
         expect(files['src/integrations/externalApi.js']).not.toContain('api.frankfurter.app');
         expect(files['server/joeExternalApiProxy.js']).toContain('https://api.frankfurter.dev');
         expect(files['server/joeExternalApiProxy.js']).toContain("'/v2/rate/' + from + '/' + to");
@@ -42,7 +42,16 @@ describe('external API generation contract', () => {
         expect(app).toContain('<select value={from}');
         expect(app).toContain('type="text" lang="en-US" dir="ltr" inputMode="decimal"');
         expect(app).toContain('pattern="[0-9]+([.][0-9]+)?"');
-        expect(app).toContain("replace(/[^0-9.]/g,'')");
+        expect(app).toContain('inputMode="decimal"');
+        expect(app).toContain('const asciiDecimal=value=>');
+        expect(app).toContain('charCodeAt(0)-1632');
+        expect(app).toContain('charCodeAt(0)-1776');
+        expect(app).toContain("const parts=normalized.split('.')");
+        expect(app).not.toContain("replace(/(..*)./g,'$1')");
+        expect(app).toContain("setAmountError('Use digits and one decimal point only')");
+        expect(app).toContain("aria-invalid={amountError?'true':'false'}");
+        expect(app).toContain('onInput={e=>updateAmount(e.currentTarget.value)}');
+        expect(app).toContain('onChange={e=>updateAmount(e.target.value)}');
         expect(app).not.toContain('type="number"');
         expect(app).toContain('useEffect(()=>{run()},[])');
         expect(app).toContain('setConversionCount(count=>count+1)');
@@ -62,6 +71,19 @@ describe('external API generation contract', () => {
         expect(app).toContain('Live data · Last updated: {lastUpdated}');
         expect(app).toContain('setRefreshCount(count=>count+1)');
         expect(app).toContain('Updates checked: {refreshCount}');
+    });
+
+    it('keeps semantic form and keyboard submission for an explicitly optional IP lookup', () => {
+        const plan = integrationPlanFromSelection(selection({
+            apiId: 'remote-ipapi', integrationProfileId: 'ipapi-co-v1', providerName: 'ipapi.co',
+        }))!;
+        const app = externalDataAppSource(plan);
+        expect(app).toContain('<form onSubmit={run} noValidate className="grid-form" data-optional-submit="true">');
+        expect(app).toContain('pattern="(?:[0-9]{1,3}[.]){3}[0-9]{1,3}"');
+        expect(app).toContain("Number(part)<=255");
+        expect(app).toContain("Enter a valid IPv4 address, for example 8.8.8.8");
+        expect(app).toContain('<button className="primary" disabled={loading}>Look up</button>');
+        expect(app).not.toContain('<button onClick={run}>Retry</button>');
     });
 
     it('generates a real keyed path with a fixed server proxy and a clear missing-env response', async () => {
