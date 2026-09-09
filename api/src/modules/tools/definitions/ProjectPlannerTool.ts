@@ -1612,8 +1612,10 @@ ${this.scopePlanningInstructions(projectDescription)}`;
         const request = String(projectDescription || '').trim();
         const lower = request.toLowerCase();
         const createsFrontend = /\b(?:create|build|make|design|implement)\b/i.test(request)
-            && /\b(?:app|application|website|web site|webpage|page|dashboard|tracker|form)\b/i.test(request);
-        const externalOrStateful = /\b(?:api|backend|server|database|postgres|mysql|mongo|redis|oauth|login|sign[ -]?in|payment|stripe|deploy|docker|kubernetes)\b/i.test(request);
+            && /\b(?:app|application|website|web site|webpage|page|dashboard|tracker|form|converter)\b/i.test(request);
+        const publicDataCapability = /\b(?:weather|forecast|currency|exchange\s+rate|forex|ip\s+(?:information|info|location|geolocation))\b|طقس|حرارة|تحويل\s+عمل|سعر\s+الصرف|معلومات\s+.*ip/iu.test(request);
+        const externalOrStateful = /\b(?:backend|server|database|postgres|mysql|mongo|redis|oauth|login|sign[ -]?in|payment|stripe|deploy|docker|kubernetes)\b/i.test(request)
+            || (/\bapi\b/i.test(request) && !publicDataCapability);
         const existingWorkspace = evidence?.mode === 'existing_workspace'
             || Boolean(evidence?.selectedProject?.root)
             || evidence?.constraints?.userRequestedExistingProject === true;
@@ -1640,7 +1642,13 @@ ${this.scopePlanningInstructions(projectDescription)}`;
                 requirementsCovered: scope.targets.map((_, index) => `R${index + 1}`),
                 deliverables: ['A runnable local React application and a production build.'],
                 estimatedTime: 'bounded by local build and browser QA',
-                tasks: [{
+                tasks: [...(publicDataCapability ? [{
+                    task: 'Discover, rank, and safely validate a suitable public API for the requested live data.',
+                    tool: 'search_public_apis',
+                    args: { query: request, requiresNoAuth: true, requiresHttps: true, requiresCors: true, browserSide: true, validateTop: true, limit: 8 },
+                    priority: 'high',
+                    realisticMinutes: 2,
+                }] : []), {
                     task: 'Build the requested React browser application from the user request.',
                     tool: 'react_project',
                     args: { request, projectName },

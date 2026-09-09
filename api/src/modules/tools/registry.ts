@@ -93,6 +93,7 @@ import { PaymentsTool } from './definitions/PaymentsTool';
 import { SonarAnalysisTool, DependencyAuditTool, QualityRunTool, SecretsScanRepoTool, CiGeneratePipelineTool, LoadTesterTool } from './definitions/QualityTools';
 import { ScreenshotTool, VisualComparisonTool } from './definitions/ScreenshotTool';
 import { SearchApiTool } from './definitions/SearchApiTool';
+import { SearchPublicApisTool, InspectApiTool, ValidateApiTool } from './definitions/PublicApiDiscoveryTools';
 import { SwaggerDocsTool } from './definitions/SwaggerDocsTool';
 import { TaskLifecycleTool } from './definitions/TaskLifecycleTool';
 import { TodoWriteTool } from './definitions/TodoWriteTool';
@@ -282,6 +283,9 @@ const baseTools: ToolDefinition[] = [
   new EliteTools.SelfConfidenceTool(),
 
   new EngineeringDiscoveryTool(),
+  new SearchPublicApisTool(),
+  new InspectApiTool(),
+  new ValidateApiTool(),
   createTool(ProjectPlannerTool),
   createTool(PhaseExecutorTool),
   createTool(ProjectPipelineTool),
@@ -314,7 +318,6 @@ const baseTools: ToolDefinition[] = [
   new WriteFileTool(),
   new DeleteFileTool(),
   new ScaffoldProjectTool(),
-  new ImportProjectTool(),
   new GitLocalWorkflowTool(),
   new LsTool(),
   // [AUDIT] npm_manager and shell_check_status were DEFINED for months and
@@ -389,8 +392,8 @@ function enforceContract(t: any): void {
   }
 }
 
-// De-duplicate by tool name (keep first occurrence) so the registry stays
-// consistent even if a name is ever registered twice.
+// Duplicate registrations are architecture errors. Fail during startup and in
+// registry tests instead of silently hiding an ambiguous execution path.
 export const tools: ToolDefinition[] = (() => {
   const seen = new Set<string>();
   const unique: ToolDefinition[] = [];
@@ -398,8 +401,7 @@ export const tools: ToolDefinition[] = (() => {
     const name = (t as any)?.name;
     if (!name) continue;
     if (seen.has(name)) {
-      console.warn(`[ToolRegistry] Duplicate tool name skipped: ${name}`);
-      continue;
+      throw new Error(`[ToolRegistry] Duplicate tool name: ${name}`);
     }
     enforceContract(t as any);
     seen.add(name);

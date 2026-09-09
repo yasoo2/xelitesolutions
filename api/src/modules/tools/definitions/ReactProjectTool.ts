@@ -40,6 +40,13 @@ import { repairAndRebuild, worthRepairing } from '../../../core/quality/self-rep
 import { inspectWeatherEngineSource, formatWeatherSemanticRepair } from '../../../core/quality/weather-contract';
 import { inspectWorkflowEngineSource, formatWorkflowSemanticRepair } from '../../../core/quality/workflow-contract';
 import { isProviderFailure } from '../../../core/llm/intelligent-router';
+import { discoverIntegrationForRequest, externalDataAppSource } from '../../../core/api-discovery/integration';
+
+export function isExternalIntegrationArtifact(file: string): boolean {
+    return file === 'src/integrations/externalApi.js'
+        || file === '.joe/external-api.json'
+        || file === '.env.example';
+}
 
 /**
  * A known app may use its request-derived engine only when the model did not
@@ -4229,6 +4236,13 @@ export class ReactProjectTool extends BaseTool {
             ? detectedAppKind
             : mayInheritAppKind ? inheritedAppKind || detectedAppKind : detectedAppKind;
         const appBp: AppBlueprint | null = appKind ? blueprintFor(appKind, request, artifactIsAr) : null;
+        const externalIntegration = await discoverIntegrationForRequest(request).catch((error: any) => {
+            term(`API_SEARCH failed safely: ${String(error?.message || error).slice(0, 120)}`);
+            return null;
+        });
+        if (externalIntegration) {
+            term(`API_SELECTED ${externalIntegration.candidate.name} · auth=${externalIntegration.candidate.auth} · https=${externalIntegration.candidate.https} · cors=${externalIntegration.candidate.cors} · pricing=${externalIntegration.candidate.pricing}`);
+        }
         // سجّل قرار القالب نفسه، لا وعداً عاماً بالنجاح؛ هذا يكشف فوراً أي
         // تحوير لوسيط الطلب بين الخطة وأداة البناء في الاختبارات الحية.
         // The language Joe SPEAKS is the interface's, not the prompt's — and a
@@ -4807,6 +4821,22 @@ export class ReactProjectTool extends BaseTool {
             'src/App.jsx': multiPage ? fileMultiPageAppJsx(pages, isAr, commerce, admin) : fileAppJsx(sections, commerce, admin),
             'src/content.js': fileContentJs(content),
             'src/reveal.js': fileRevealJs(),
+            ...(externalIntegration ? {
+                'src/integrations/externalApi.js': externalIntegration.clientSource,
+                '.joe/external-api.json': JSON.stringify({
+                    capability: externalIntegration.capability,
+                    selected: externalIntegration.candidate.name,
+                    apiId: externalIntegration.candidate.id,
+                    docs: externalIntegration.candidate.docsUrl,
+                    auth: externalIntegration.candidate.auth,
+                    pricing: externalIntegration.candidate.pricing,
+                    reasons: externalIntegration.candidate.reasons,
+                    warnings: externalIntegration.candidate.warnings,
+                    requiredEnvironmentVariables: externalIntegration.env,
+                    selectedAt: new Date().toISOString(),
+                }, null, 2) + '\n',
+                ...(externalIntegration.env.length ? { '.env.example': externalIntegration.env.map(name => `${name}=`).join('\n') + '\n' } : {}),
+            } : {}),
             ...(multiPage ? { 'src/router.jsx': fileRouterJsx() } : {}),
             // Joe's REAL palette tokens — the same engine every page uses. The
             // data-theme blocks make the Navbar toggle actually change the
@@ -4911,7 +4941,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
         let apiResources: { notes: string; tasks: string } | undefined;
         if (appBp) {
             for (const k of Object.keys(files)) {
-                if (k !== 'vite.config.js' && k !== 'src/styles/tokens.css') delete files[k];
+                if (k !== 'vite.config.js' && k !== 'src/styles/tokens.css' && !isExternalIntegrationArtifact(k)) delete files[k];
             }
             /**
              * AND THE SYSTEM'S OTHER TABLES BECOME SCREENS.
@@ -5587,6 +5617,9 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 logs,
             };
         }
+        const externalApp = externalIntegration ? externalDataAppSource(externalIntegration) : '';
+        if (externalApp) files['src/App.jsx'] = externalApp;
+
         // THE FILES, LIVE. Every file this build writes is streamed to the
         // Logs panel the moment it exists on disk — the same `file_stream`
         // event the page builder emits. Without it the panel opened on a

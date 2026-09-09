@@ -12,6 +12,7 @@ import { detectStart, missingRuntimeDependencies, reconcileMissingRuntimeTarget,
 import { auditBuiltApp, AppAudit, findingText } from '../../../core/quality/app-audit';
 import { readJoeProjectForRun } from '../../../api/page-store';
 import { hasExplicitRecordSchema } from '../../../core/design/app-blueprints';
+import { guardUnverifiedBuilderClaims } from '../../../core/api-discovery/reporting';
 
 const MAX_PIPELINE_LOGS = 192;
 const MAX_PIPELINE_LOG_CHARS = 2_000;
@@ -2677,9 +2678,13 @@ export class ProjectPipelineTool implements ToolDefinition {
             ? (ar
                 ? `**المراحل:** ${done}/${total} نُفِّذت، لكن لم يكتمل فحص القبول؛ النتيجة **غير متحقَّقة** وليست حكماً على المنتج.`
                 : `**Phases:** ${done}/${total} executed, but the acceptance checker could not complete; the result is **not verified**, not a product-failure verdict.`)
-            : ar
-                ? `**المراحل:** ${done}/${total} نُفِّذت وتحقَّقت (تنفيذ فعلي + فحوص، لا مجرد كتابة ملفات).`
-                : `**Phases:** ${done}/${total} executed and verified (real execution + checks, not just written files).`);
+            : verified
+                ? (ar
+                    ? `**المراحل:** ${done}/${total} نُفِّذت وتحقَّقت (تنفيذ فعلي + فحوص، لا مجرد كتابة ملفات).`
+                    : `**Phases:** ${done}/${total} executed and verified (real execution + checks, not just written files).`)
+                : (ar
+                    ? `**المراحل:** ${done}/${total} نُفِّذت، لكن تحقق التسليم الحي لم ينجح.`
+                    : `**Phases:** ${done}/${total} executed, but live delivery verification did not pass.`));
         // Everything the reader needs first is inserted here at the end, once
         // the sections below have been computed.
         const reasonAt = lines.length;
@@ -2755,7 +2760,7 @@ export class ProjectPipelineTool implements ToolDefinition {
         const spoken: string[] = [];
         for (const p of phaseResults) {
             for (const t of (Array.isArray(p?.results) ? p.results : [])) {
-                const msg = String(t?.message || '').trim();
+                const msg = guardUnverifiedBuilderClaims(String(t?.message || '').trim(), verified, ar);
                 if (msg && !spoken.includes(msg)) spoken.push(msg);
             }
         }

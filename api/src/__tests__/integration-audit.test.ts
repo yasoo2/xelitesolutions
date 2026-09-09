@@ -294,8 +294,8 @@ describe('project-run preserves the user-selected workspace and task boundary', 
         const loop = fs.readFileSync(path.join(__dirname, '..', 'modules', 'services', 'AgentLoopService.ts'), 'utf-8');
         expect(web).toContain('workspaceId: workspaceId || undefined');
         expect(route).toContain('browserSessionId: effectiveBrowserSessionId || undefined');
-        expect(route).toContain("workspaceId: String(workspaceId || '').trim() || undefined");
-        expect(route).toContain("workspaceId: String(workspaceId || '').trim() || undefined");
+        expect(route).toContain("const resolvedWorkspaceId = String(workspaceId || '').trim() || undefined;");
+        expect(route).toContain('workspaceId: resolvedWorkspaceId');
         expect(loop).toContain('workspaceId?: string');
         expect(loop).toContain("const workspaceId = String(options.workspaceId || '').trim();");
         expect(loop).toContain('workspaceId: workspaceId || undefined');
