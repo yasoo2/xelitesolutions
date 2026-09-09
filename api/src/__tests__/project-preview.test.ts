@@ -13,7 +13,7 @@ import os from 'os';
 import path from 'path';
 
 describe('resolvePreviewFile — the request-time resolver', () => {
-    const { resolvePreviewFile } = require('../api/routes/projectPreview');
+    const { resolvePreviewFile, resolvePreviewProjectRoot } = require('../api/routes/projectPreview');
     let tmp: string;
     beforeAll(() => {
         tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-preview-'));
@@ -30,6 +30,7 @@ describe('resolvePreviewFile — the request-time resolver', () => {
 
     it('an empty path serves the dist index', () => {
         expect(resolvePreviewFile('pv-t', '')).toBe(path.join(tmp, 'proj', 'dist', 'index.html'));
+        expect(resolvePreviewProjectRoot('pv-t')).toBe(path.join(tmp, 'proj'));
     });
     it('assets resolve inside the dist', () => {
         expect(resolvePreviewFile('pv-t', 'assets/a.js')).toBe(path.join(tmp, 'proj', 'dist', 'assets', 'a.js'));
@@ -63,6 +64,12 @@ describe('the preview loop is WIRED, end to end', () => {
         expect(src.slice(at - 400, at + 900)).toContain("type: 'preview_ready'");
         expect(src.slice(at - 400, at + 900)).toContain('if (built && !liveServer)');   // an unbuilt scaffold and a packaged live server have no static preview to announce
         expect(src.slice(at - 400, at + 900)).toContain('await verifiedPreviewUrl(candidatePreviewUrl)');
+    });
+    it('routes project-scoped external data through the maintained safe preview proxy', () => {
+        const src = fs.readFileSync(path.join(__dirname, '..', 'api', 'routes', 'projectPreview.ts'), 'utf-8');
+        expect(src).toContain("rel.startsWith('api/joe-external/')");
+        expect(src).toContain('handleMaintainedPreviewApiRequest(root');
+        expect(src).toContain('resolvePreviewProjectRoot(key)');
     });
     it('the local Joe UI proxies durable previews to the API instead of serving its own SPA', () => {
         const vite = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'web', 'vite.config.ts'), 'utf-8');

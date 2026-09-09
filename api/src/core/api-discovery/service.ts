@@ -2,6 +2,7 @@ import type { ApiCatalogProvider, ApiSearchQuery, PublicApiRecord, RankedApiCand
 import { PublicApisCatalogProvider } from './public-apis-provider';
 import { ApiCatalogIndex } from './catalog-index';
 import { SafeApiValidator } from './network-policy';
+import { integrationProfile } from './integration-profiles';
 
 const log = (event: string, fields: Record<string, unknown>) => console.info(JSON.stringify({ event, ...fields, at: new Date().toISOString() }));
 
@@ -17,7 +18,10 @@ export class ApiDiscoveryService {
 
     async ensureLoaded(refresh = false): Promise<void> {
         if (this.loaded && !refresh) return;
-        const settled = await Promise.allSettled(this.providers.map(provider => provider.load({ refresh })));
+        // A cold registry gets one bounded remote refresh. Each provider owns
+        // its cache/bootstrap fallback, so failure never removes discovery.
+        const shouldRefresh = refresh || !this.loaded;
+        const settled = await Promise.allSettled(this.providers.map(provider => provider.load({ refresh: shouldRefresh })));
         const entries: PublicApiRecord[] = [];
         settled.forEach((result, index) => {
             if (result.status === 'fulfilled') {
@@ -51,13 +55,28 @@ export class ApiDiscoveryService {
         if (!entry) throw new Error('api_not_found');
         const cached = this.healthCache.get(apiId);
         if (!force && cached && cached.expiresAt > Date.now()) return { ...cached.record };
-        log('API_REQUEST', { provider: entry.source, endpointHost: new URL(entry.docsUrl).hostname, method: 'HEAD', purpose: 'validation' });
-        const result = await this.validator.validate(entry.docsUrl);
+        const profile = entry.integrationProfileId ? integrationProfile(entry.integrationProfileId) : undefined;
+        if (!profile) {
+            const updated = { ...entry, health: 'UNKNOWN' as const, lastCheckedAt: new Date().toISOString(), healthDetail: 'no_trusted_probe' };
+            this.index.upsert(updated);
+            this.healthCache.set(apiId, { expiresAt: Date.now() + 30 * 60_000, record: updated });
+            log('API_VALIDATION', { provider: entry.source, endpointHost: new URL(entry.docsUrl).hostname, duration: 0, status: 'UNKNOWN', errorCategory: 'no_trusted_probe' });
+            return updated;
+        }
+        if (profile.requiredEnvNames.some(name => !process.env[name])) {
+            const updated = { ...entry, health: 'UNKNOWN' as const, lastCheckedAt: new Date().toISOString(), healthDetail: 'credentials_required_for_probe' };
+            this.index.upsert(updated);
+            this.healthCache.set(apiId, { expiresAt: Date.now() + 30 * 60_000, record: updated });
+            log('API_VALIDATION', { provider: entry.source, endpointHost: new URL(profile.probeUrl).hostname, duration: 0, status: 'UNKNOWN', errorCategory: 'credentials_required_for_probe' });
+            return updated;
+        }
+        log('API_REQUEST', { provider: entry.source, endpointHost: new URL(profile.probeUrl).hostname, method: 'HEAD', purpose: 'validation' });
+        const result = await this.validator.validate(profile.probeUrl);
         const updated = { ...entry, health: result.health, lastCheckedAt: result.checkedAt, healthDetail: result.errorCategory || String(result.status || '') };
         this.index.upsert(updated);
         this.healthCache.set(apiId, { expiresAt: Date.now() + 30 * 60_000, record: updated });
-        log('API_VALIDATION', { provider: entry.source, endpointHost: new URL(entry.docsUrl).hostname, duration: result.durationMs, status: result.health, errorCategory: result.errorCategory });
-        if (result.health !== 'HEALTHY') log('API_REQUEST_FAILED', { provider: entry.source, endpointHost: new URL(entry.docsUrl).hostname, duration: result.durationMs, status: result.health, errorCategory: result.errorCategory || String(result.status || 'unknown') });
+        log('API_VALIDATION', { provider: entry.source, endpointHost: new URL(profile.probeUrl).hostname, duration: result.durationMs, status: result.health, errorCategory: result.errorCategory });
+        if (result.health !== 'HEALTHY') log('API_REQUEST_FAILED', { provider: entry.source, endpointHost: new URL(profile.probeUrl).hostname, duration: result.durationMs, status: result.health, errorCategory: result.errorCategory || String(result.status || 'unknown') });
         return updated;
     }
 }

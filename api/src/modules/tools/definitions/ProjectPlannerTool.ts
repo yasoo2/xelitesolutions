@@ -1645,7 +1645,7 @@ ${this.scopePlanningInstructions(projectDescription)}`;
                 tasks: [...(publicDataCapability ? [{
                     task: 'Discover, rank, and safely validate a suitable public API for the requested live data.',
                     tool: 'search_public_apis',
-                    args: { query: request, requiresNoAuth: true, requiresHttps: true, requiresCors: true, browserSide: true, validateTop: true, limit: 8 },
+                    args: { query: request, requiresNoAuth: true, requiresHttps: true, requiresCors: true, browserSide: true, validateTop: true, integrationRequired: true, limit: 8 },
                     priority: 'high',
                     realisticMinutes: 2,
                 }] : []), {

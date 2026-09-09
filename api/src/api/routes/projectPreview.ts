@@ -15,6 +15,15 @@ import { Router } from 'express';
 import fs from 'fs';
 import path from 'path';
 import { isWithinRoot } from '../../modules/tools/path-containment';
+import { handleMaintainedPreviewApiRequest } from '../../core/api-discovery/preview-proxy';
+
+export function resolvePreviewProjectRoot(key: string): string | null {
+    const clean = String(key || '').replace(/[^a-zA-Z0-9._-]/g, '');
+    const entry = ((global as any).joeProjects || {})[clean];
+    if (!clean || !entry?.dir) return null;
+    const root = path.normalize(String(entry.dir));
+    return fs.existsSync(root) ? root : null;
+}
 
 /** The absolute file this preview request maps to, or null when it must 404. */
 export function resolvePreviewFile(key: string, rel: string): string | null {
@@ -37,10 +46,19 @@ const router = Router();
 
 // A regex route, not '/:key/*' — this Express's path parser rejects a bare
 // star, and the preview must serve arbitrarily nested asset paths.
-router.get(/^\/([a-zA-Z0-9._-]+)(?:\/(.*))?$/, (req, res) => {
+router.get(/^\/([a-zA-Z0-9._-]+)(?:\/(.*))?$/, async (req, res) => {
     try {
         const key = String((req.params as any)[0] || '');
         const rel = String((req.params as any)[1] || '');
+        const root = resolvePreviewProjectRoot(key);
+        if (root && rel.startsWith('api/joe-external/')) {
+            const query = String(req.originalUrl || req.url || '').split('?')[1];
+            const handled = await handleMaintainedPreviewApiRequest(root, {
+                method: req.method,
+                url: `/${rel}${query ? `?${query}` : ''}`,
+            } as any, res as any);
+            if (handled) return;
+        }
         const file = resolvePreviewFile(key, rel);
         if (!file) return res.status(404).send('No built project to preview — build one first.');
         res.setHeader('Cache-Control', 'no-store');

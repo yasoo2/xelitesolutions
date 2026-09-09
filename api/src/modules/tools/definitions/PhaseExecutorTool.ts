@@ -8,6 +8,8 @@ import { recoverMissingNpmLauncher } from '../npm-launcher-recovery';
 export { recoverMissingNpmLauncher } from '../npm-launcher-recovery';
 import { executeTool } from '../../services/ToolService';
 import { normalizeConceptualArtifactPath } from '../runtime-artifact-path';
+import { compactApiSelectionArtifact } from '../../../core/api-discovery/integration-profiles';
+import type { ApiSelectionArtifact } from '../../../core/api-discovery/types';
 
 type PhaseDeliveryEvidence = {
     accepted?: boolean;
@@ -1093,6 +1095,7 @@ export class PhaseExecutorTool implements ToolDefinition {
         }> = [];
         let completedCount = 0;
         let phaseDelivery: PhaseDeliveryEvidence | undefined;
+        let apiSelection: ApiSelectionArtifact | null = null;
 
         const executionContext = {
             runId: context?.runId || projectContext?.runId,
@@ -1316,6 +1319,11 @@ export class PhaseExecutorTool implements ToolDefinition {
                     appendLog(`[PhaseExecutor] ${toolName}: inherited canonical project identity (${planned.projectName})`);
                 }
 
+                if (toolName === 'react_project' && apiSelection) {
+                    planned.apiSelection = apiSelection;
+                    appendLog(`[PhaseExecutor] react_project: received trusted API selection (${apiSelection.providerName})`);
+                }
+
                 // Preserve the planner's structured evidence before runtime
                 // rebasing normalizes stale cwd/projectPath values. This snapshot
                 // is metadata only; it is never used as an execution path.
@@ -1425,6 +1433,10 @@ export class PhaseExecutorTool implements ToolDefinition {
                          * Bounded, because a report is read, not scrolled.
                          */
                         const output = (toolResult as any)?.output || {};
+                        if (toolName === 'search_public_apis') {
+                            apiSelection = compactApiSelectionArtifact(output.selection);
+                            if (apiSelection) appendLog(`[PhaseExecutor] API selection captured for builder handoff: ${apiSelection.providerName}`);
+                        }
                         // Most builder tools return a prose message, while shell tools
                         // deliberately return structured stdout/stderr. Preserve both
                         // contracts so a successful terminal task is visible in the

@@ -7,9 +7,10 @@ export const PUBLIC_APIS_README = 'https://raw.githubusercontent.com/public-apis
 const SOURCE = 'public-apis/public-apis';
 
 const BOOTSTRAP: PublicApiRecord[] = [
-    { id: 'public-apis:open-meteo', name: 'Open-Meteo', description: 'Global weather forecast API with non-commercial open access and commercial plans', category: 'Weather', auth: 'none', https: true, cors: 'yes', docsUrl: 'https://open-meteo.com/en/docs', baseUrl: 'https://api.open-meteo.com/v1', source: SOURCE, capabilities: ['weather', 'forecast', 'temperature', 'geocoding'], pricing: 'FREEMIUM', responseFormat: 'json', reputable: true, health: 'UNKNOWN' },
-    { id: 'public-apis:frankfurter', name: 'Frankfurter', description: 'Exchange rates, currency conversion and time series', category: 'Currency Exchange', auth: 'none', https: true, cors: 'yes', docsUrl: 'https://www.frankfurter.app/docs', baseUrl: 'https://api.frankfurter.app', source: SOURCE, capabilities: ['currency', 'exchange rates', 'conversion', 'forex'], pricing: 'UNKNOWN', responseFormat: 'json', reputable: true, health: 'UNKNOWN' },
-    { id: 'public-apis:ipapi-co', name: 'ipapi.co', description: 'IP address location information', category: 'Geocoding', auth: 'none', https: true, cors: 'yes', docsUrl: 'https://ipapi.co/api/#introduction', baseUrl: 'https://ipapi.co', source: SOURCE, capabilities: ['ip', 'ip information', 'geolocation', 'country'], pricing: 'UNKNOWN', responseFormat: 'json', health: 'UNKNOWN' },
+    { id: 'public-apis:open-meteo', name: 'Open-Meteo', description: 'Global weather forecast API with non-commercial open access and commercial plans', category: 'Weather', auth: 'none', https: true, cors: 'yes', docsUrl: 'https://open-meteo.com/en/docs', source: SOURCE, capabilities: ['weather', 'forecast', 'temperature', 'geocoding'], pricing: 'FREEMIUM', responseFormat: 'json', reputable: true, health: 'UNKNOWN' },
+    { id: 'public-apis:frankfurter', name: 'Frankfurter', description: 'Exchange rates, currency conversion and time series', category: 'Currency Exchange', auth: 'none', https: true, cors: 'yes', docsUrl: 'https://www.frankfurter.app/docs', source: SOURCE, capabilities: ['currency', 'exchange rates', 'conversion', 'forex'], pricing: 'UNKNOWN', responseFormat: 'json', reputable: true, health: 'UNKNOWN' },
+    { id: 'public-apis:ipapi-co', name: 'ipapi.co', description: 'IP address location information', category: 'Geocoding', auth: 'none', https: true, cors: 'yes', docsUrl: 'https://ipapi.co/api/#introduction', source: SOURCE, capabilities: ['ip', 'ip information', 'geolocation', 'country'], pricing: 'UNKNOWN', responseFormat: 'json', health: 'UNKNOWN' },
+    { id: 'public-apis:weatherapi', name: 'WeatherAPI', description: 'Weather data with a documented API-key free tier', category: 'Weather', auth: 'apiKey', https: true, cors: 'unknown', docsUrl: 'https://www.weatherapi.com/docs/', source: SOURCE, capabilities: ['weather', 'forecast', 'temperature'], pricing: 'FREEMIUM', responseFormat: 'json', reputable: true, health: 'UNKNOWN' },
     { id: 'public-apis:rest-countries', name: 'REST Countries', description: 'Country names, codes, currencies, languages and flags', category: 'Open Data', auth: 'none', https: true, cors: 'yes', docsUrl: 'https://restcountries.com/', source: SOURCE, capabilities: ['country', 'countries', 'currency', 'language', 'flag'], pricing: 'UNKNOWN', responseFormat: 'json', reputable: true, health: 'UNKNOWN' },
 ];
 
@@ -43,7 +44,13 @@ export function parsePublicApisReadme(markdown: string): PublicApiRecord[] {
 export class PublicApisCatalogProvider implements ApiCatalogProvider {
     readonly id = SOURCE;
     private readonly cacheFile: string;
-    constructor(cacheDir = path.join(process.cwd(), 'data', 'cache', 'api-catalogs')) {
+    constructor(
+        cacheDir = path.join(process.cwd(), 'data', 'cache', 'api-catalogs'),
+        private readonly fetchCatalog: () => Promise<string> = async () => {
+            const response = await axios.get(PUBLIC_APIS_README, { timeout: 8_000, maxRedirects: 0, maxContentLength: 2_500_000, maxBodyLength: 2_500_000, responseType: 'text' });
+            return String(response.data || '');
+        },
+    ) {
         this.cacheFile = path.join(cacheDir, 'public-apis.json');
     }
 
@@ -56,10 +63,7 @@ export class PublicApisCatalogProvider implements ApiCatalogProvider {
         }
         if (options?.refresh) {
             try {
-                // The source is fixed by Joe, and redirects are disabled so an
-                // upstream catalog cannot turn refresh into an SSRF redirect.
-                const response = await axios.get(PUBLIC_APIS_README, { timeout: 8_000, maxRedirects: 0, maxContentLength: 2_500_000, maxBodyLength: 2_500_000, responseType: 'text' });
-                const entries = parsePublicApisReadme(String(response.data || ''));
+                const entries = parsePublicApisReadme(await this.fetchCatalog());
                 if (entries.length < 100) throw new Error(`catalog_too_small:${entries.length}`);
                 const result = { entries, source: this.id, fetchedAt: new Date().toISOString() };
                 fs.mkdirSync(path.dirname(this.cacheFile), { recursive: true });
@@ -68,17 +72,19 @@ export class PublicApisCatalogProvider implements ApiCatalogProvider {
                 fs.renameSync(tmp, this.cacheFile);
                 return result;
             } catch (error: any) {
-                return { entries: this.readCacheOrBootstrap(), source: this.id, fetchedAt: new Date().toISOString(), stale: true, warning: `catalog_refresh_failed:${String(error?.message || error).slice(0, 120)}` };
+                const fallback = this.readCacheOrBootstrap();
+                return { entries: fallback.entries, source: this.id, fetchedAt: new Date().toISOString(), stale: true, warning: `catalog_refresh_failed:${String(error?.message || error).slice(0, 120)};fallback=${fallback.kind}` };
             }
         }
-        return { entries: this.readCacheOrBootstrap(), source: this.id, fetchedAt: new Date().toISOString(), stale: true, warning: 'using_vetted_bootstrap_until_catalog_refresh' };
+        const fallback = this.readCacheOrBootstrap();
+        return { entries: fallback.entries, source: this.id, fetchedAt: new Date().toISOString(), stale: true, warning: `using_${fallback.kind}` };
     }
 
-    private readCacheOrBootstrap(): PublicApiRecord[] {
+    private readCacheOrBootstrap(): { entries: PublicApiRecord[]; kind: 'cache' | 'vetted_bootstrap' } {
         try {
             const cached = JSON.parse(fs.readFileSync(this.cacheFile, 'utf8'));
-            if (Array.isArray(cached.entries) && cached.entries.length) return cached.entries;
+            if (Array.isArray(cached.entries) && cached.entries.length) return { entries: cached.entries, kind: 'cache' };
         } catch { /* use small vetted bootstrap */ }
-        return BOOTSTRAP.map(entry => ({ ...entry, capabilities: [...entry.capabilities] }));
+        return { entries: BOOTSTRAP.map(entry => ({ ...entry, capabilities: [...entry.capabilities] })), kind: 'vetted_bootstrap' };
     }
 }

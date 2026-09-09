@@ -27,6 +27,7 @@ import { inspectUi, applyViewportSize } from './ui-inspection';
 import { isWithinRoot } from '../../modules/tools/path-containment';
 import { WEATHER_API_ROUTE_PATTERN } from './weather-qa-route';
 import { isMediaReviewRequest, runMediaReviewQa } from './media-review-qa';
+import { handleMaintainedPreviewApiRequest } from '../api-discovery/preview-proxy';
 
 export interface AppAuditFinding {
     id: string;
@@ -277,7 +278,15 @@ export async function auditBuiltApp(
      */
     const givenUrl = String(opts?.serveUrl || '').trim();
     const artifactRoot = path.resolve(String(opts?.artifactRootDir || process.env.ARTIFACT_DIR || distDir));
-    const srv = http.createServer((req, res) => {
+    const srv = http.createServer(async (req, res) => {
+        try {
+            if (await handleMaintainedPreviewApiRequest(path.resolve(distDir, '..'), req, res)) return;
+        } catch {
+            if (String(req.url || '').startsWith('/api/joe-external/')) {
+                res.writeHead(502, { 'content-type': 'application/json' });
+                return res.end(JSON.stringify({ error: 'Preview API request failed safely' }));
+            }
+        }
         const rawPath = decodeURIComponent(String(req.url || '/').split('?')[0]);
         const artifactRequest = /^\/artifacts(?:\/|$)/i.test(rawPath);
         const rel = (artifactRequest

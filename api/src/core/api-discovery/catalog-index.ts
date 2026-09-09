@@ -1,4 +1,5 @@
 import type { ApiSearchQuery, PublicApiRecord, RankedApiCandidate } from './types';
+import { profileForCatalogRecord } from './integration-profiles';
 
 const ALIASES: Record<string, string[]> = {
     weather: ['forecast', 'temperature', 'climate', 'meteorology'],
@@ -23,7 +24,24 @@ export class ApiCatalogIndex {
             if (!raw || typeof raw !== 'object') continue;
             const entry = raw as PublicApiRecord;
             if (!entry.id || !entry.name || !entry.docsUrl || !/^https?:\/\//i.test(entry.docsUrl)) continue;
-            this.records.set(entry.id, { ...entry, capabilities: Array.isArray(entry.capabilities) ? entry.capabilities.map(String) : [] });
+            const safe: PublicApiRecord = {
+                id: String(entry.id).slice(0, 180), name: String(entry.name).slice(0, 160),
+                description: String(entry.description || '').slice(0, 800), category: String(entry.category || '').slice(0, 120),
+                auth: ['none', 'apiKey', 'oauth', 'unknown'].includes(entry.auth) ? entry.auth : 'unknown',
+                https: entry.https === true, cors: ['yes', 'no', 'unknown'].includes(entry.cors) ? entry.cors : 'unknown',
+                docsUrl: String(entry.docsUrl).slice(0, 1000), source: String(entry.source || '').slice(0, 160),
+                capabilities: Array.isArray(entry.capabilities) ? entry.capabilities.map(String).slice(0, 32) : [],
+                pricing: ['FREE', 'FREEMIUM', 'PAID', 'UNKNOWN'].includes(entry.pricing) ? entry.pricing : 'UNKNOWN',
+                ...(entry.rateLimit ? { rateLimit: String(entry.rateLimit).slice(0, 160) } : {}),
+                ...(entry.responseFormat ? { responseFormat: String(entry.responseFormat).slice(0, 40) } : {}),
+                ...(entry.reputable === true ? { reputable: true } : {}),
+                ...(entry.lastCheckedAt ? { lastCheckedAt: String(entry.lastCheckedAt).slice(0, 40) } : {}),
+                health: ['HEALTHY', 'UNKNOWN', 'DEGRADED', 'UNAVAILABLE'].includes(String(entry.health)) ? entry.health : 'UNKNOWN',
+                ...(entry.healthDetail ? { healthDetail: String(entry.healthDetail).slice(0, 180) } : {}),
+            };
+            const profile = profileForCatalogRecord(safe);
+            if (profile) safe.integrationProfileId = profile.id;
+            this.records.set(safe.id, safe);
         }
     }
 
@@ -75,6 +93,7 @@ export class ApiCatalogIndex {
         else if (entry.pricing === 'UNKNOWN') warnings.push('Pricing is unknown');
         if (entry.reputable) { score += 5; reasons.push('Known provider or public institution'); }
         if (entry.responseFormat === 'json') score += 3;
+        if (entry.integrationProfileId) { score += 8; reasons.push('Maintained integration profile available'); }
         if (entry.health === 'HEALTHY') { score += 15; reasons.push('Recent validation succeeded'); }
         if (entry.health === 'DEGRADED') { score -= 20; warnings.push('Recent validation was degraded'); }
         if (entry.health === 'UNAVAILABLE') { score -= 70; warnings.push('Recent validation failed'); }

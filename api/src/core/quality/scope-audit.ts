@@ -281,11 +281,17 @@ export const CAPABILITIES: Capability[] = [
     },
 ];
 
+function capabilityIsRequested(capability: Capability, text: string): boolean {
+    if (!capability.ask.test(text)) return false;
+    if (capability.id !== 'accounts') return true;
+    return !/\b(?:does\s+not|doesn't|do\s+not|don't|without|no)\s+(?:require(?:s|d)?\s+)?auth(?:entication|orization)?\b|\bno[- ]auth\b/iu.test(text);
+}
+
 /** Which capabilities the request actually names. */
 export function requestedCapabilities(request: string): Capability[] {
     const text = intentProbe(String(request || ''));
     if (!text.trim()) return [];
-    return CAPABILITIES.filter(c => c.ask.test(text));
+    return CAPABILITIES.filter(c => capabilityIsRequested(c, text));
 }
 
 const CODE_EXT = /\.(jsx?|tsx?|css|html|json|webmanifest)$/i;
@@ -429,7 +435,7 @@ export function scopeReport(request: string, projectDirs: string[]): ScopeReport
             .map(value => foldForCompare(value)),
     );
     const unchecked = clausesBeyondTheColumns(request)
-        .filter(clause => !CAPABILITIES.some(c => c.ask.test(intentProbe(clause))))
+        .filter(clause => !CAPABILITIES.some(c => capabilityIsRequested(c, intentProbe(clause))))
         .filter(clause => {
             const c = foldForCompare(clause);
             if (explicitPageNames.has(c)) return false;

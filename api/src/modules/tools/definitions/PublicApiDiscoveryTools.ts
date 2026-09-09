@@ -1,6 +1,7 @@
 import { BaseTool } from '../base';
 import { ToolPermission } from '../types';
 import { apiDiscoveryService } from '../../../core/api-discovery/service';
+import { selectionArtifact } from '../../../core/api-discovery/integration-profiles';
 
 abstract class ApiDiscoveryTool extends BaseTool {
     version = '1.0.0';
@@ -15,20 +16,26 @@ export class SearchPublicApisTool extends ApiDiscoveryTool {
     name = 'search_public_apis';
     description = 'Find and rank public APIs for a capability using Joe’s vetted catalog. Does not make arbitrary endpoint requests.';
     auditFields = ['query', 'category', 'requiresNoAuth', 'requiresHttps', 'requiresCors'];
-    inputSchema = { type: 'object' as const, properties: { query: { type: 'string' }, category: { type: 'string' }, keywords: { type: 'array', items: { type: 'string' } }, requiresNoAuth: { type: 'boolean' }, requiresHttps: { type: 'boolean' }, requiresCors: { type: 'boolean' }, browserSide: { type: 'boolean' }, provider: { type: 'string' }, validateTop: { type: 'boolean' }, limit: { type: 'number', minimum: 1, maximum: 25 } }, required: ['query'] };
-    outputSchema = { type: 'object' as const, properties: { candidates: { type: 'array' } } };
+    inputSchema = { type: 'object' as const, properties: { query: { type: 'string' }, category: { type: 'string' }, keywords: { type: 'array', items: { type: 'string' } }, requiresNoAuth: { type: 'boolean' }, requiresHttps: { type: 'boolean' }, requiresCors: { type: 'boolean' }, browserSide: { type: 'boolean' }, provider: { type: 'string' }, validateTop: { type: 'boolean' }, integrationRequired: { type: 'boolean' }, limit: { type: 'number', minimum: 1, maximum: 25 } }, required: ['query'] };
+    outputSchema = { type: 'object' as const, properties: { candidates: { type: 'array' }, selection: { type: 'object' } } };
     async execute(input: any) {
         if (!String(input?.query || '').trim()) return { ok: false, error: 'query is required', logs: [] };
         try {
             const service = apiDiscoveryService();
             let candidates = await service.search(input);
-            let selected = candidates[0];
+            let selected = input?.integrationRequired === true
+                ? candidates.find(candidate => Boolean(candidate.integrationProfileId))
+                : candidates[0];
             if (input?.validateTop === true && selected) {
                 const validated = await service.validate(selected.id);
                 candidates = await service.search(input);
-                selected = candidates.find(candidate => candidate.id === validated.id) || candidates[0];
+                selected = validated.health === 'UNAVAILABLE'
+                    ? candidates.find(candidate => candidate.id !== validated.id && candidate.health !== 'UNAVAILABLE' && (!input?.integrationRequired || candidate.integrationProfileId))
+                    : candidates.find(candidate => candidate.id === validated.id) || candidates[0];
             }
-            return { ok: true, output: { candidates, selected }, logs: [`API_SEARCH completed${input?.validateTop === true ? ' with safe validation' : ''}`] };
+            const selection = selected ? selectionArtifact(selected) : null;
+            if (input?.integrationRequired === true && !selection) return { ok: false, error: 'no_maintained_integration_profile', output: { candidates }, logs: ['API_SEARCH found no safely integrable candidate'] };
+            return { ok: true, output: { candidates, selected, ...(selection ? { selection } : {}) }, logs: [`API_SEARCH completed${input?.validateTop === true ? ' with safe validation' : ''}`] };
         }
         catch (error: any) { return { ok: false, error: String(error?.message || error), logs: ['API_SEARCH failed safely'] }; }
     }
@@ -48,7 +55,7 @@ export class InspectApiTool extends ApiDiscoveryTool {
 
 export class ValidateApiTool extends ApiDiscoveryTool {
     name = 'validate_api';
-    description = 'Perform a cached, read-only, SSRF-protected health validation of one catalog API documentation host.';
+    description = 'Perform a cached, read-only, SSRF-protected health validation against a Joe-maintained API probe.';
     auditFields = ['apiId'];
     inputSchema = { type: 'object' as const, properties: { apiId: { type: 'string' }, force: { type: 'boolean' } }, required: ['apiId'] };
     outputSchema = { type: 'object' as const, properties: { api: { type: 'object' } } };

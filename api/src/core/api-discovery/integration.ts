@@ -1,24 +1,13 @@
-import { apiDiscoveryService } from './service';
-import type { RankedApiCandidate } from './types';
-
-export type IntegrationCapability = 'weather' | 'currency' | 'ip';
+import { compactApiSelectionArtifact, integrationProfile, type ApiIntegrationProfile, type IntegrationCapability } from './integration-profiles';
+import type { ApiSelectionArtifact } from './types';
 
 export interface ApiIntegrationPlan {
     capability: IntegrationCapability;
-    candidate: RankedApiCandidate;
+    selection: ApiSelectionArtifact;
     env: string[];
     clientSource: string;
-}
-
-export function credentialScaffold(envName: string, proxyPath: string) {
-    const name = String(envName || '').trim().replace(/[^A-Z0-9_]/g, '');
-    if (!name) throw new Error('invalid_environment_variable');
-    const route = String(proxyPath || '/api/external').replace(/[^a-zA-Z0-9_\-/]/g, '');
-    return {
-        envExample: `${name}=\n`,
-        serverSource: `const apiKey = process.env.${name};\nif (!apiKey) throw new Error('${name} is required');\n`,
-        frontendSource: `export const externalEndpoint = ${JSON.stringify(route)};\n`,
-    };
+    serverProxySource?: string;
+    proxyPath?: string;
 }
 
 export function capabilityFromRequest(request: string): IntegrationCapability | null {
@@ -29,72 +18,216 @@ export function capabilityFromRequest(request: string): IntegrationCapability | 
     return null;
 }
 
-const PROFILE_IDS: Record<IntegrationCapability, string> = {
-    weather: 'public-apis:open-meteo', currency: 'public-apis:frankfurter', ip: 'public-apis:ipapi-co',
-};
-
-export async function discoverIntegrationForRequest(request: string, options?: { validate?: boolean }): Promise<ApiIntegrationPlan | null> {
-    const capability = capabilityFromRequest(request);
-    if (!capability) return null;
-    const service = apiDiscoveryService();
-    let candidates = await service.search({ query: capability, requiresNoAuth: true, requiresHttps: true, requiresCors: true, browserSide: true, limit: 8 });
-    const preferred = candidates.find(item => item.id === PROFILE_IDS[capability]);
-    if (preferred && options?.validate !== false) {
-        await service.validate(preferred.id).catch(() => undefined);
-        candidates = await service.search({ query: capability, requiresNoAuth: true, requiresHttps: true, requiresCors: true, browserSide: true, limit: 8 });
-    }
-    const candidate = candidates.find(item => item.id === PROFILE_IDS[capability] && item.health !== 'UNAVAILABLE');
-    if (!candidate?.baseUrl) return null;
-    return { capability, candidate, env: [], clientSource: adapterSource(capability, candidate.baseUrl) };
+export function integrationPlanFromSelection(value: unknown): ApiIntegrationPlan | null {
+    const selection = compactApiSelectionArtifact(value);
+    if (!selection || selection.health === 'UNAVAILABLE') return null;
+    const profile = integrationProfile(selection.integrationProfileId);
+    if (!profile) return null;
+    return {
+        capability: profile.capability,
+        selection,
+        env: [...profile.requiredEnvNames],
+        clientSource: profile.transport === 'server-proxy'
+            ? proxyClientSource(profile.capability, profile.proxyPath || '/api/joe-external')
+            : browserClientSource(profile.capability, profile.requestBaseUrl),
+        ...(profile.transport === 'server-proxy' ? {
+            proxyPath: profile.proxyPath,
+            serverProxySource: fixedServerProxySource(profile),
+        } : {}),
+    };
 }
 
-function adapterSource(capability: IntegrationCapability, baseUrl: string): string {
-    const normalizer = capability === 'currency'
+export function integrationArtifacts(plan: ApiIntegrationPlan): Record<string, string> {
+    return {
+        'src/integrations/externalApi.js': plan.clientSource,
+        'src/integrations/externalApi.css': `.external-api-app{max-width:760px;margin:0 auto;padding:64px 24px}.external-api-app form{display:grid;gap:16px;margin:32px 0}.external-api-app label{display:grid;gap:8px}.external-api-app input,.external-api-app select{min-height:44px;padding:10px 12px;border:1px solid var(--line, #d7dce2);border-radius:6px;background:var(--surface, #fff);color:inherit}.external-api-app button{min-height:44px;padding:10px 16px;border:0;border-radius:6px;cursor:pointer}.external-api-app .primary{background:var(--accent, #147d64);color:#fff}.external-api-app [role="alert"]{color:#b42318}\n`,
+        '.joe/external-api.json': JSON.stringify({
+            capability: plan.capability,
+            selected: plan.selection.providerName,
+            apiId: plan.selection.apiId,
+            integrationProfileId: plan.selection.integrationProfileId,
+            source: plan.selection.source,
+            auth: plan.selection.auth,
+            pricing: plan.selection.pricing,
+            health: plan.selection.health,
+            reasons: plan.selection.reasons,
+            warnings: plan.selection.warnings,
+            requiredEnvironmentVariables: plan.env,
+            selectedAt: new Date().toISOString(),
+        }, null, 2) + '\n',
+        ...(plan.env.length ? { '.env.example': plan.env.map(name => `${name}=`).join('\n') + '\n' } : {}),
+        ...(plan.serverProxySource ? { 'server/joeExternalApiProxy.js': plan.serverProxySource } : {}),
+    };
+}
+
+export function viteConfigWithExternalProxy(source: string, plan: ApiIntegrationPlan): string {
+    if (!plan.serverProxySource) return source;
+    return String(source)
+        .replace("import react from '@vitejs/plugin-react';", "import react from '@vitejs/plugin-react';\nimport { joeExternalApiProxy } from './server/joeExternalApiProxy.js';")
+        .replace('plugins: [react()]', 'plugins: [react(), joeExternalApiProxy()]');
+}
+
+function browserClientSource(capability: IntegrationCapability, baseUrl: string): string {
+    const request = capability === 'currency'
+        ? `const url = new URL(BASE_URL + '/latest'); ['amount','from','to'].forEach(key => params[key] !== undefined && url.searchParams.set(key, String(params[key])));`
+        : capability === 'ip'
+            ? `const address = String(params.ip || '').trim(); const url = new URL(BASE_URL + '/' + (address ? encodeURIComponent(address) + '/' : '') + 'json/');`
+            : `const url = new URL(BASE_URL + '/forecast'); ['latitude','longitude'].forEach(key => url.searchParams.set(key, String(params[key]))); url.searchParams.set('current_weather', 'true');`;
+    const normalize = capability === 'currency'
         ? `if (!body || typeof body !== 'object' || !body.rates) throw new Error('Unexpected currency response'); return body;`
         : capability === 'ip'
             ? `if (!body || typeof body !== 'object' || body.error) throw new Error(body?.reason || 'Unexpected IP response'); return body;`
-            : `if (!body || typeof body !== 'object' || !body.current_weather) throw new Error('Unexpected weather response'); return body;`;
+            : `if (!body?.current_weather || typeof body.current_weather.temperature !== 'number') throw new Error('Unexpected weather response'); return { temperature: body.current_weather.temperature, windspeed: body.current_weather.windspeed, label: 'Current weather' };`;
     return `const BASE_URL = ${JSON.stringify(baseUrl)};
 
 export const externalApi = {
-  name: ${JSON.stringify(capability)},
-  async request(path, params = {}, timeoutMs = 8000) {
-    const url = new URL(BASE_URL.replace(/\\/$/, '') + '/' + String(path || '').replace(/^\\//, ''));
-    Object.entries(params).forEach(([key, value]) => value !== undefined && url.searchParams.set(key, String(value)));
+  async load(params = {}, timeoutMs = 8000) {
+    ${request}
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const response = await fetch(url, { signal: controller.signal, headers: { Accept: 'application/json' } });
       if (!response.ok) throw new Error('External API returned ' + response.status);
       const body = await response.json();
-      ${normalizer}
+      ${normalize}
     } finally { clearTimeout(timer); }
-  },
-  async healthCheck() { try { return !!(await this.request(${JSON.stringify(capability === 'currency' ? 'latest' : capability === 'ip' ? 'json/' : 'forecast')}, ${capability === 'currency' ? `{ from: 'EUR', to: 'USD' }` : capability === 'ip' ? '{}' : `{ latitude: 41.01, longitude: 28.97, current_weather: true }`})); } catch { return false; } }
+  }
 };
 `;
 }
 
-export function externalDataAppSource(plan: ApiIntegrationPlan): string {
-    if (plan.capability === 'currency') return currencyApp();
-    if (plan.capability === 'ip') return ipApp();
-    return '';
+function proxyClientSource(capability: IntegrationCapability, proxyPath: string): string {
+    const query = capability === 'weather'
+        ? "if (params.q) url.searchParams.set('q', String(params.q));"
+        : capability === 'currency'
+            ? "['amount','from','to'].forEach(key => params[key] !== undefined && url.searchParams.set(key, String(params[key])));"
+            : "if (params.ip) url.searchParams.set('ip', String(params.ip));";
+    const normalize = capability === 'currency'
+        ? "if (!body || typeof body !== 'object' || !body.rates) throw new Error('Unexpected currency response'); return body;"
+        : capability === 'ip'
+            ? "if (!body || typeof body !== 'object' || body.error) throw new Error(body?.reason || 'Unexpected IP response'); return body;"
+            : "if (typeof body.temperature !== 'number') throw new Error('Unexpected weather response'); return body;";
+    return `const PROXY_PATH = ${JSON.stringify(proxyPath.replace(/^\//, ''))};
+
+export const externalApi = {
+  async load(params = {}, timeoutMs = 8000) {
+    const url = new URL(PROXY_PATH, window.location.href);
+    ${query}
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(url, { signal: controller.signal, headers: { Accept: 'application/json' } });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error || 'External API request failed');
+      ${normalize}
+    } finally { clearTimeout(timer); }
+  }
+};
+`;
 }
 
-const shell = (title: string, body: string) => `import React, { useState } from 'react';
+function fixedServerProxySource(profile: ApiIntegrationProfile): string {
+    if (profile.capability === 'currency') return fixedCurrencyProxySource(profile);
+    const envName = profile.requiredEnvNames[0];
+    const proxyPath = profile.proxyPath || '/api/joe-external';
+    return `const PROXY_PATH = ${JSON.stringify(proxyPath)};
+const UPSTREAM = ${JSON.stringify(profile.requestBaseUrl + '/current.json')};
+const MAX_RESPONSE_BYTES = 512 * 1024;
+
+async function handler(req, res, next) {
+  if (new URL(req.url || '/', 'http://joe.local').pathname !== PROXY_PATH) return next();
+  if (req.method !== 'GET') { res.statusCode = 405; return res.end(JSON.stringify({ error: 'Method not allowed' })); }
+  const apiKey = process.env.${envName};
+  if (!apiKey) { res.statusCode = 503; res.setHeader('Content-Type', 'application/json'); return res.end(JSON.stringify({ error: '${envName} is required on the server' })); }
+  const incoming = new URL(req.url, 'http://joe.local');
+  const target = new URL(UPSTREAM);
+  target.searchParams.set('key', apiKey);
+  target.searchParams.set('q', String(incoming.searchParams.get('q') || 'Istanbul').slice(0, 120));
+  const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), 8000);
+  try {
+    const response = await fetch(target, { signal: controller.signal, redirect: 'error', headers: { Accept: 'application/json' } });
+    const text = await response.text();
+    if (Buffer.byteLength(text) > MAX_RESPONSE_BYTES) throw new Error('External API response too large');
+    const body = JSON.parse(text);
+    if (!response.ok) { res.statusCode = response.status; return res.end(JSON.stringify({ error: body?.error?.message || 'External API request failed' })); }
+    const temperature = Number(body?.current?.temp_c);
+    if (!Number.isFinite(temperature)) throw new Error('Unexpected weather response');
+    res.setHeader('Content-Type', 'application/json');
+    return res.end(JSON.stringify({ temperature, windspeed: Number(body?.current?.wind_kph || 0), label: body?.location?.name || 'Current weather' }));
+  } catch (error) { res.statusCode = 502; return res.end(JSON.stringify({ error: error?.name === 'AbortError' ? 'External API timed out' : String(error?.message || 'External API failed') })); }
+  finally { clearTimeout(timer); }
+}
+
+export function joeExternalApiProxy() {
+  return { name: 'joe-fixed-external-api-proxy', configureServer(server) { server.middlewares.use(handler); }, configurePreviewServer(server) { server.middlewares.use(handler); } };
+}
+`;
+}
+
+function fixedCurrencyProxySource(profile: ApiIntegrationProfile): string {
+    const proxyPath = profile.proxyPath || '/api/joe-external/currency';
+    return `const PROXY_PATH = ${JSON.stringify(proxyPath)};
+const UPSTREAM = ${JSON.stringify(profile.requestBaseUrl)};
+const MAX_RESPONSE_BYTES = 512 * 1024;
+
+async function handler(req, res, next) {
+  if (new URL(req.url || '/', 'http://joe.local').pathname !== PROXY_PATH) return next();
+  res.setHeader('Content-Type', 'application/json');
+  if (req.method !== 'GET') { res.statusCode = 405; return res.end(JSON.stringify({ error: 'Method not allowed' })); }
+  const incoming = new URL(req.url, 'http://joe.local');
+  const amount = Number(incoming.searchParams.get('amount') || '1');
+  const from = String(incoming.searchParams.get('from') || 'EUR').toUpperCase();
+  const to = String(incoming.searchParams.get('to') || 'USD').toUpperCase();
+  if (!Number.isFinite(amount) || amount < 0 || amount > 1000000000 || !/^[A-Z]{3}$/.test(from) || !/^[A-Z]{3}$/.test(to)) {
+    res.statusCode = 400; return res.end(JSON.stringify({ error: 'Valid amount, from, and to values are required' }));
+  }
+  const target = new URL('/v2/rate/' + from + '/' + to, UPSTREAM);
+  const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), 8000);
+  try {
+    const response = await fetch(target, { signal: controller.signal, redirect: 'error', headers: { Accept: 'application/json' } });
+    const text = await response.text();
+    if (Buffer.byteLength(text) > MAX_RESPONSE_BYTES) throw new Error('External API response too large');
+    const body = JSON.parse(text);
+    const rate = Number(body?.rate);
+    if (!response.ok || !Number.isFinite(rate)) { res.statusCode = response.ok ? 502 : response.status; return res.end(JSON.stringify({ error: 'External API request failed' })); }
+    return res.end(JSON.stringify({ amount, base: String(body.base || from), date: String(body.date || ''), rates: { [to]: Number((amount * rate).toFixed(6)) } }));
+  } catch (error) { res.statusCode = 502; return res.end(JSON.stringify({ error: error?.name === 'AbortError' ? 'External API timed out' : String(error?.message || 'External API failed') })); }
+  finally { clearTimeout(timer); }
+}
+
+export function joeExternalApiProxy() {
+  return { name: 'joe-fixed-external-api-proxy', configureServer(server) { server.middlewares.use(handler); }, configurePreviewServer(server) { server.middlewares.use(handler); } };
+}
+`;
+}
+
+export function externalDataAppSource(plan: ApiIntegrationPlan): string {
+    if (plan.capability === 'currency') return currencyApp(plan.selection.providerName);
+    if (plan.capability === 'ip') return ipApp(plan.selection.providerName);
+    return weatherApp(plan.selection.providerName, plan.selection.auth === 'apiKey');
+}
+
+const shell = (title: string, provider: string, body: string) => `import React, { useEffect, useState } from 'react';
 import { externalApi } from './integrations/externalApi.js';
-import './styles/tokens.css'; import './styles/base.css'; import './styles/app.css';
+import './styles/tokens.css'; import './integrations/externalApi.css';
 export default function App(){ const [loading,setLoading]=useState(false); const [error,setError]=useState(''); const [data,setData]=useState(null);
 ${body}
-return <main className="wrap" style={{paddingBlock:'64px'}}><p className="eyebrow">Live public data</p><h1>${title}</h1><p className="muted">External API: ${title === 'Currency converter' ? 'Frankfurter' : 'ipapi.co'} · Auth: none</p>{renderForm()}{loading&&<p role="status">Loading…</p>}{error&&<p role="alert">{error} <button onClick={run}>Retry</button></p>}{data&&renderResult()}</main> }
+return <main className="external-api-app"><p className="eyebrow">Live public data</p><h1>${title}</h1><p className="muted">External API: ${provider}</p>{renderForm()}{loading&&<p role="status">Loading…</p>}{error&&<p role="alert">{error} <button onClick={run}>Retry</button></p>}{data&&renderResult()}</main> }
 `;
 
-const currencyApp = () => shell('Currency converter', `const [amount,setAmount]=useState('100'); const [from,setFrom]=useState('EUR'); const [to,setTo]=useState('USD');
-async function run(e){e?.preventDefault();setLoading(true);setError('');try{setData(await externalApi.request('latest',{amount,from,to}))}catch(err){setError(err.message||'Could not load rates')}finally{setLoading(false)}}
-function renderForm(){return <form onSubmit={run} className="grid-form"><label>Amount<input type="number" min="0" step="any" value={amount} onChange={e=>setAmount(e.target.value)} required/></label><label>From<input value={from} pattern="[A-Za-z]{3}" maxLength="3" onChange={e=>setFrom(e.target.value.toUpperCase())} required/></label><label>To<input value={to} pattern="[A-Za-z]{3}" maxLength="3" onChange={e=>setTo(e.target.value.toUpperCase())} required/></label><button className="primary">Convert</button></form>}
-function renderResult(){const value=data.rates?.[to];return <section aria-live="polite"><h2>{amount} {from} = {value} {to}</h2><p>Date: {data.date}</p></section>}`);
+const weatherApp = (provider: string, keyed: boolean) => shell('Weather dashboard', provider, `const [city,setCity]=useState('Istanbul'); const [lastUpdated,setLastUpdated]=useState(''); const [refreshCount,setRefreshCount]=useState(0);
+async function run(e){e?.preventDefault();setRefreshCount(count=>count+1);setLoading(true);setError('');try{setData(await externalApi.load(${keyed ? '{q:city}' : '{latitude:41.01,longitude:28.97}'}));setLastUpdated(new Date().toISOString())}catch(err){setError(err.message||'Could not load weather')}finally{setLoading(false)}}
+useEffect(()=>{run()},[]);
+function renderForm(){return <form onSubmit={run} className="grid-form">${keyed ? '<label>City<input value={city} onChange={e=>setCity(e.target.value)} required/></label>' : ''}<button className="primary">Load weather</button></form>}
+function renderResult(){return <section aria-live="polite"><p>Live data · Last updated: {lastUpdated}</p><p>Updates checked: {refreshCount}</p><h2>{data.temperature}°C</h2><p>{data.label} · Wind {data.windspeed}</p></section>}`);
 
-const ipApp = () => shell('IP information', `const [ip,setIp]=useState('');
-async function run(e){e?.preventDefault();setLoading(true);setError('');try{setData(await externalApi.request((ip.trim()?ip.trim()+'/':'')+'json/'))}catch(err){setError(err.message||'Could not load IP information')}finally{setLoading(false)}}
+const currencyApp = (provider: string) => shell('Currency converter', provider, `const CURRENCIES=['EUR','USD','TRY','GBP','JPY','CAD','AUD','CHF']; const [amount,setAmount]=useState('100'); const [from,setFrom]=useState('EUR'); const [to,setTo]=useState('USD'); const [lastUpdated,setLastUpdated]=useState(''); const [conversionCount,setConversionCount]=useState(0);
+async function run(e){e?.preventDefault();setLoading(true);setError('');try{setData(await externalApi.load({amount,from,to}));setLastUpdated(new Date().toISOString());setConversionCount(count=>count+1)}catch(err){setError(err.message||'Could not load rates')}finally{setLoading(false)}}
+useEffect(()=>{run()},[]);
+function renderForm(){return <form onSubmit={run} className="grid-form"><label>Amount<input type="text" lang="en-US" dir="ltr" inputMode="decimal" pattern="[0-9]+([.][0-9]+)?" title="Enter an amount using digits and an optional decimal point" value={amount} onChange={e=>setAmount(e.target.value.replace(/[^0-9.]/g,''))} required/></label><label>From<select value={from} onChange={e=>setFrom(e.target.value)}>{CURRENCIES.map(code=><option key={code}>{code}</option>)}</select></label><label>To<select value={to} onChange={e=>setTo(e.target.value)}>{CURRENCIES.map(code=><option key={code}>{code}</option>)}</select></label><button className="primary">Convert</button></form>}
+function renderResult(){const value=data.rates?.[to];return <section aria-live="polite"><h2>{amount} {from} = {value} {to}</h2><p>Date: {data.date}</p><p>Last updated: {lastUpdated}</p><p>Conversions checked: {conversionCount}</p></section>}`);
+
+const ipApp = (provider: string) => shell('IP information', provider, `const [ip,setIp]=useState('');
+async function run(e){e?.preventDefault();setLoading(true);setError('');try{setData(await externalApi.load({ip}))}catch(err){setError(err.message||'Could not load IP information')}finally{setLoading(false)}}
 function renderForm(){return <form onSubmit={run} className="grid-form"><label>IP address (optional)<input value={ip} onChange={e=>setIp(e.target.value)} placeholder="8.8.8.8"/></label><button className="primary">Look up</button></form>}
 function renderResult(){return <section aria-live="polite"><h2>{data.ip}</h2><dl><dt>City</dt><dd>{data.city||'Unknown'}</dd><dt>Region</dt><dd>{data.region||'Unknown'}</dd><dt>Country</dt><dd>{data.country_name||'Unknown'}</dd><dt>Network</dt><dd>{data.org||'Unknown'}</dd></dl></section>}`);

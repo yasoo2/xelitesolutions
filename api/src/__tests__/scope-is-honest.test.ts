@@ -35,6 +35,15 @@ const HIS_REQUEST = 'Build a world-class e-commerce platform similar to Shopify.
     + 'Multi-language Multi-currency Generate complete production-ready code.';
 
 describe('what he asked for is read from his own words', () => {
+    it('does not turn a no-auth API preference into a user-accounts requirement', () => {
+        expect(requestedCapabilities('Create a currency converter using a public API that does not require authentication if possible.')
+            .map(capability => capability.id)).not.toContain('accounts');
+        expect(requestedCapabilities('Build it without authentication and with no auth requirement.')
+            .map(capability => capability.id)).not.toContain('accounts');
+        expect(requestedCapabilities('Build user accounts with authentication.')
+            .map(capability => capability.id)).toContain('accounts');
+    });
+
     it('his platform request names a dozen capabilities, not one', () => {
         const ids = requestedCapabilities(HIS_REQUEST).map(c => c.id);
         for (const id of ['multi_vendor', 'ai_generation', 'inventory', 'payments', 'shipping',

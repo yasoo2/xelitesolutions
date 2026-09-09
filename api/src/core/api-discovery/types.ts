@@ -12,8 +12,6 @@ export interface PublicApiRecord {
     https: boolean;
     cors: CorsSupport;
     docsUrl: string;
-    /** Vetted request origin used only by a maintained adapter profile. */
-    baseUrl?: string;
     source: string;
     capabilities: string[];
     pricing: ApiPricing;
@@ -23,6 +21,23 @@ export interface PublicApiRecord {
     lastCheckedAt?: string;
     health?: ApiHealth;
     healthDetail?: string;
+    /** Locally assigned profile. Catalog input can never set this field. */
+    integrationProfileId?: string;
+}
+
+export interface ApiSelectionArtifact {
+    version: 1;
+    apiId: string;
+    integrationProfileId: string;
+    providerName: string;
+    source: string;
+    auth: ApiAuth;
+    cors: CorsSupport;
+    pricing: ApiPricing;
+    health: ApiHealth;
+    reasons: string[];
+    warnings: string[];
+    requiredEnvNames: string[];
 }
 
 export interface ApiSearchQuery {

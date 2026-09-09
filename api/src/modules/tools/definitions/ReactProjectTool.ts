@@ -40,12 +40,14 @@ import { repairAndRebuild, worthRepairing } from '../../../core/quality/self-rep
 import { inspectWeatherEngineSource, formatWeatherSemanticRepair } from '../../../core/quality/weather-contract';
 import { inspectWorkflowEngineSource, formatWorkflowSemanticRepair } from '../../../core/quality/workflow-contract';
 import { isProviderFailure } from '../../../core/llm/intelligent-router';
-import { discoverIntegrationForRequest, externalDataAppSource } from '../../../core/api-discovery/integration';
+import { externalDataAppSource, integrationArtifacts, integrationPlanFromSelection, viteConfigWithExternalProxy } from '../../../core/api-discovery/integration';
 
 export function isExternalIntegrationArtifact(file: string): boolean {
     return file === 'src/integrations/externalApi.js'
+        || file === 'src/integrations/externalApi.css'
         || file === '.joe/external-api.json'
-        || file === '.env.example';
+        || file === '.env.example'
+        || file === 'server/joeExternalApiProxy.js';
 }
 
 /**
@@ -3849,6 +3851,7 @@ export class ReactProjectTool extends BaseTool {
             skipInstall: { type: 'boolean', description: 'Scaffold only — do not run npm install/build' },
             resumeExisting: { type: 'boolean', description: 'Resume an existing project after a bounded repair while preserving its manifest and generated files' },
             scaffoldDir: { type: 'string', description: 'Explicit session-owned React scaffold directory for a same-pipeline handoff' },
+            apiSelection: { type: 'object', description: 'Trusted API selection supplied by PhaseExecutor after search_public_apis' },
         },
         required: ['request'],
     };
@@ -4236,12 +4239,9 @@ export class ReactProjectTool extends BaseTool {
             ? detectedAppKind
             : mayInheritAppKind ? inheritedAppKind || detectedAppKind : detectedAppKind;
         const appBp: AppBlueprint | null = appKind ? blueprintFor(appKind, request, artifactIsAr) : null;
-        const externalIntegration = await discoverIntegrationForRequest(request).catch((error: any) => {
-            term(`API_SEARCH failed safely: ${String(error?.message || error).slice(0, 120)}`);
-            return null;
-        });
+        const externalIntegration = integrationPlanFromSelection(input?.apiSelection);
         if (externalIntegration) {
-            term(`API_SELECTED ${externalIntegration.candidate.name} · auth=${externalIntegration.candidate.auth} · https=${externalIntegration.candidate.https} · cors=${externalIntegration.candidate.cors} · pricing=${externalIntegration.candidate.pricing}`);
+            term(`API_SELECTED ${externalIntegration.selection.providerName} · auth=${externalIntegration.selection.auth} · cors=${externalIntegration.selection.cors} · pricing=${externalIntegration.selection.pricing}`);
         }
         // سجّل قرار القالب نفسه، لا وعداً عاماً بالنجاح؛ هذا يكشف فوراً أي
         // تحوير لوسيط الطلب بين الخطة وأداة البناء في الاختبارات الحية.
@@ -4821,22 +4821,7 @@ export class ReactProjectTool extends BaseTool {
             'src/App.jsx': multiPage ? fileMultiPageAppJsx(pages, isAr, commerce, admin) : fileAppJsx(sections, commerce, admin),
             'src/content.js': fileContentJs(content),
             'src/reveal.js': fileRevealJs(),
-            ...(externalIntegration ? {
-                'src/integrations/externalApi.js': externalIntegration.clientSource,
-                '.joe/external-api.json': JSON.stringify({
-                    capability: externalIntegration.capability,
-                    selected: externalIntegration.candidate.name,
-                    apiId: externalIntegration.candidate.id,
-                    docs: externalIntegration.candidate.docsUrl,
-                    auth: externalIntegration.candidate.auth,
-                    pricing: externalIntegration.candidate.pricing,
-                    reasons: externalIntegration.candidate.reasons,
-                    warnings: externalIntegration.candidate.warnings,
-                    requiredEnvironmentVariables: externalIntegration.env,
-                    selectedAt: new Date().toISOString(),
-                }, null, 2) + '\n',
-                ...(externalIntegration.env.length ? { '.env.example': externalIntegration.env.map(name => `${name}=`).join('\n') + '\n' } : {}),
-            } : {}),
+            ...(externalIntegration ? integrationArtifacts(externalIntegration) : {}),
             ...(multiPage ? { 'src/router.jsx': fileRouterJsx() } : {}),
             // Joe's REAL palette tokens — the same engine every page uses. The
             // data-theme blocks make the Navbar toggle actually change the
@@ -5616,6 +5601,9 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 },
                 logs,
             };
+        }
+        if (externalIntegration?.serverProxySource) {
+            files['vite.config.js'] = viteConfigWithExternalProxy(files['vite.config.js'], externalIntegration);
         }
         const externalApp = externalIntegration ? externalDataAppSource(externalIntegration) : '';
         if (externalApp) files['src/App.jsx'] = externalApp;
