@@ -1,11 +1,16 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { capabilityFromRequest, externalDataAppSource, integrationArtifacts, integrationPlanFromSelection, viteConfigWithExternalProxy } from '../core/api-discovery/integration';
+import { capabilityFromRequest, externalDataAppSource, integrationArtifacts, integrationPlanFromSelection, resolveProxyClientUrl, viteConfigWithExternalProxy } from '../core/api-discovery/integration';
 import type { ApiSelectionArtifact } from '../core/api-discovery/types';
 import { isExternalIntegrationArtifact } from '../modules/tools/definitions/ReactProjectTool';
 import { guardUnverifiedBuilderClaims } from '../core/api-discovery/reporting';
 import { handleMaintainedPreviewApiRequest } from '../core/api-discovery/preview-proxy';
+import { scaffoldSubstitutionFor } from '../core/design/scaffold-substitution';
+import { resolvePreviewApiRequest } from '../api/routes/projectPreview';
+import { verifyNamed } from '../core/quality/named-requirements';
+import { externalApiSourceVerdict } from '../core/api-discovery/acceptance-evidence';
+import { acceptanceFor } from '../core/quality/acceptance';
 
 const selection = (overrides: Partial<ApiSelectionArtifact> = {}): ApiSelectionArtifact => ({
     version: 1, apiId: 'remote-frankfurter', integrationProfileId: 'frankfurter-currency-v2',
@@ -15,11 +20,32 @@ const selection = (overrides: Partial<ApiSelectionArtifact> = {}): ApiSelectionA
 });
 
 describe('external API generation contract', () => {
+    it('does not announce a generic-page substitution for supported live-data apps', () => {
+        expect(scaffoldSubstitutionFor('Create a currency converter using a public API.', true).substituted).toBe(false);
+        expect(scaffoldSubstitutionFor('Build a simple weather dashboard.', true).substituted).toBe(false);
+        expect(scaffoldSubstitutionFor('Build an IP information page.', true).substituted).toBe(false);
+    });
+
     it('detects only supported external-data capabilities', () => {
         expect(capabilityFromRequest('Build a simple weather dashboard using a free public API.')).toBe('weather');
         expect(capabilityFromRequest('Create a currency converter using a public API')).toBe('currency');
         expect(capabilityFromRequest('Build an IP information page')).toBe('ip');
         expect(capabilityFromRequest('Build a todo list')).toBeNull();
+    });
+
+    it('proves the catalogue structural rule for the exact currency request from executable evidence', () => {
+        const request = 'Create a currency converter using a public API that does not require authentication if possible.';
+        const rule = acceptanceFor(request)[0]?.expectedRule?.text || '';
+        const plan = integrationPlanFromSelection(selection())!;
+        const files = integrationArtifacts(plan);
+        const source = [
+            files['.joe/external-api.json'],
+            files['server/joeExternalApiProxy.js'],
+            files['src/integrations/externalApi.js'],
+            externalDataAppSource(plan),
+        ].join('\n');
+        expect(externalApiSourceVerdict({ id: 'rule:1', text: rule, quote: rule }, source))
+            .toMatchObject({ verdict: 'met' });
     });
 
     it('uses candidate B from the handoff in both manifest and adapter', () => {
@@ -59,6 +85,137 @@ describe('external API generation contract', () => {
         expect(app).toContain("import './integrations/externalApi.css'");
         expect(app).not.toContain("import './styles/app.css'");
         expect(app).not.toContain("import './styles/base.css'");
+    });
+
+    it('resolves the API client within durable previews and at the root Vite server', () => {
+        const endpoint = '/api/joe-external/currency';
+        expect(resolveProxyClientUrl(endpoint, 'http://127.0.0.1:60390/').pathname).toBe(endpoint);
+        for (const href of [
+            'http://127.0.0.1:5002/project-preview/project-a/',
+            'http://127.0.0.1:5002/project-preview/project-a/index.html?v=1',
+            'http://127.0.0.1:5002/project-preview/project-a/nested/page.html',
+        ]) {
+            expect(resolveProxyClientUrl(endpoint, href).pathname).toBe('/project-preview/project-a/api/joe-external/currency');
+        }
+    });
+
+    it('proves the requested no-auth currency integration from generated artifacts without an LLM judge', async () => {
+        const plan = integrationPlanFromSelection(selection())!;
+        const files = integrationArtifacts(plan);
+        const source = [
+            ...Object.values(files),
+            externalDataAppSource(plan),
+        ].join('\n');
+        let modelCalls = 0;
+        const [verdict] = await verifyNamed([{
+            id: 'req-currency',
+            text: 'Create a currency converter using a public API that does not require authentication if possible',
+            quote: 'Create a currency converter using a public API that does not require authentication if possible',
+        }], source, false, async () => {
+            modelCalls += 1;
+            throw new Error('the deterministic integration contract should decide this');
+        });
+
+        expect(modelCalls).toBe(0);
+        expect(verdict.verdict).toBe('met');
+        expect(verdict.why).toContain('no-auth provider');
+    });
+
+    it('proves the two atomic clauses produced by the real request reader', async () => {
+        const plan = integrationPlanFromSelection(selection())!;
+        const source = [...Object.values(integrationArtifacts(plan)), externalDataAppSource(plan)].join('\n');
+        let modelCalls = 0;
+        const verdicts = await verifyNamed([
+            { id: 'req-api', text: 'using a public API', quote: 'using a public API' },
+            { id: 'req-auth', text: 'that does not require authentication if possible', quote: 'that does not require authentication if possible' },
+        ], source, false, async () => {
+            modelCalls += 1;
+            throw new Error('both atomic contracts are source-backed');
+        });
+
+        expect(modelCalls).toBe(0);
+        expect(verdicts.map(item => item.verdict)).toEqual(['met', 'met']);
+    });
+
+    it('proves the combined atomic API and no-auth clause emitted by the request reader', async () => {
+        const plan = integrationPlanFromSelection(selection())!;
+        const source = [...Object.values(integrationArtifacts(plan)), externalDataAppSource(plan)].join('\n');
+        const clause = 'Use a public API that does not require authentication if possible';
+        const [verdict] = await verifyNamed([{ id: 'req-combined', text: clause, quote: clause }], source, false, async () => {
+            throw new Error('the combined atomic contract is source-backed');
+        });
+        expect(verdict.verdict).toBe('met');
+        expect(verdict.why).toContain('no-auth provider');
+    });
+
+    it('does not certify extra capabilities that the maintained currency profile does not implement', async () => {
+        const plan = integrationPlanFromSelection(selection())!;
+        const source = [...Object.values(integrationArtifacts(plan)), externalDataAppSource(plan)].join('\n');
+        let modelCalls = 0;
+        const [verdict] = await verifyNamed([{
+            id: 'req-composite',
+            text: 'Create a currency converter using a public API with a 30-day historical chart and offline conversion',
+            quote: 'Create a currency converter using a public API with a 30-day historical chart and offline conversion',
+        }], source, false, async () => {
+            modelCalls += 1;
+            return JSON.stringify({ verdict: 'unmet', why: 'The requested chart and offline behavior are absent.' });
+        });
+
+        expect(modelCalls).toBe(1);
+        expect(verdict.verdict).toBe('unmet');
+    });
+
+    it.each([
+        ['Create a currency converter using a public API', 'Create a currency converter using a public API with a 30-day historical chart and offline conversion'],
+        ['Create a currency converter using a public API with a 30-day historical chart and offline conversion', 'Create a currency converter using a public API'],
+    ])('does not let a simple summary hide obligations in the other requirement representation', async (text, quote) => {
+        const plan = integrationPlanFromSelection(selection())!;
+        const source = [...Object.values(integrationArtifacts(plan)), externalDataAppSource(plan)].join('\n');
+        let modelCalls = 0;
+        const [verdict] = await verifyNamed([{ id: 'req-mixed', text, quote }], source, false, async () => {
+            modelCalls += 1;
+            return JSON.stringify({ verdict: 'unmet', why: 'The extra chart and offline behavior are absent.' });
+        });
+
+        expect(modelCalls).toBe(1);
+        expect(verdict.verdict).toBe('unmet');
+    });
+
+    it('ignores comment-only external integration markers', async () => {
+        const spoofed = `/*
+          "capability": "currency", "apiId": "fake", "integrationProfileId": "frankfurter-currency-v2",
+          "auth": "none", "requiredEnvironmentVariables": [], export const externalApi = { async load() {} },
+          AbortController response.ok function joeExternalApiProxy() redirect: 'error' MAX_RESPONSE_BYTES
+          className="external-api-app" role="status" role="alert"
+        */`;
+        let modelCalls = 0;
+        const [verdict] = await verifyNamed([{
+            id: 'req-spoof', text: 'Create a currency converter using a public API', quote: 'Create a currency converter using a public API',
+        }], spoofed, false, async () => {
+            modelCalls += 1;
+            throw new Error('no source-backed integration exists');
+        });
+
+        expect(modelCalls).toBe(1);
+        expect(verdict.verdict).toBe('unprovable');
+    });
+
+    it('proves the maintained direct Open-Meteo weather transport without requiring a proxy', async () => {
+        const plan = integrationPlanFromSelection(selection({
+            apiId: 'remote-open-meteo', integrationProfileId: 'open-meteo-weather-v1', providerName: 'Open-Meteo',
+        }))!;
+        const source = [...Object.values(integrationArtifacts(plan)), externalDataAppSource(plan)].join('\n');
+        let modelCalls = 0;
+        const [verdict] = await verifyNamed([{
+            id: 'req-weather', text: 'Build a simple weather dashboard using a free public API.', quote: 'Build a simple weather dashboard using a free public API.',
+        }], source, false, async () => {
+            modelCalls += 1;
+            throw new Error('the maintained direct transport should decide this');
+        });
+
+        expect(modelCalls).toBe(0);
+        expect(verdict.verdict).toBe('met');
+        expect(source).not.toContain('joeExternalApiProxy');
     });
 
     it('auto-loads weather and renders observable live-data freshness for browser QA', () => {
@@ -156,8 +313,15 @@ describe('external API generation contract', () => {
             end: (value: string) => { body = value; },
         } as any;
         try {
-            await expect(handleMaintainedPreviewApiRequest(root, {
-                method: 'GET', url: '/api/joe-external/currency?amount=125&from=EUR&to=TRY',
+            (global as any).joeProjects = { ...(global as any).joeProjects, 'currency-preview': { dir: root } };
+            const routed = resolvePreviewApiRequest(
+                'currency-preview',
+                'api/joe-external/currency',
+                '/currency-preview/api/joe-external/currency?amount=125&from=EUR&to=TRY',
+            );
+            expect(routed?.root).toBe(root);
+            await expect(handleMaintainedPreviewApiRequest(routed!.root, {
+                method: 'GET', url: routed!.url,
             } as any, res)).resolves.toBe(true);
             expect(status).toBe(200);
             expect(JSON.parse(body)).toEqual({ amount: 125, base: 'EUR', date: '2026-09-08', rates: { TRY: 7035 } });
@@ -166,6 +330,7 @@ describe('external API generation contract', () => {
                 expect.objectContaining({ redirect: 'error' }),
             );
         } finally {
+            delete (global as any).joeProjects?.['currency-preview'];
             fetchSpy.mockRestore();
             fs.rmSync(root, { recursive: true, force: true });
         }
@@ -180,10 +345,14 @@ describe('external API generation contract', () => {
     it('keeps discovery out of the React builder and preserves integration artifacts', () => {
         const source = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ReactProjectTool.ts'), 'utf8');
         const integration = fs.readFileSync(path.join(__dirname, '..', 'core', 'api-discovery', 'integration.ts'), 'utf8');
+        const browserQa = fs.readFileSync(path.join(__dirname, '..', 'core', 'quality', 'behaviour-audit.ts'), 'utf8');
         const webSearch = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'SearchApiTool.ts'), 'utf8');
         expect(source).toContain('integrationPlanFromSelection(input?.apiSelection)');
+        expect(source).toContain('if (!appBp && !externalIntegration && !input?.skipInstall');
         expect(source).not.toContain('discoverIntegrationForRequest');
         expect(integration).not.toContain('apiDiscoveryService');
+        expect(browserQa).toContain("['numeric', 'decimal'].includes(input.inputMode)");
+        expect(browserQa).toContain('declared === expected || constrainedNumericText');
         expect(webSearch).not.toContain('public-api');
         expect(['src/integrations/externalApi.js', 'src/integrations/externalApi.css', '.joe/external-api.json', '.env.example', 'server/joeExternalApiProxy.js'].every(isExternalIntegrationArtifact)).toBe(true);
     });

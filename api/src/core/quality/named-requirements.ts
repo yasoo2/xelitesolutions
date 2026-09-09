@@ -784,6 +784,7 @@ export function requirementNamesPage(requirement: Pick<NamedRequirement, 'text' 
 
 import { inspectWorkflowEngineSource } from './workflow-contract';
 import { capabilityEvidence, requestedCapabilities } from './scope-audit';
+import { externalApiSourceVerdict } from '../api-discovery/acceptance-evidence';
 import { recordFeatureCovered } from '../design/app-blueprints';
 
 /**
@@ -1083,7 +1084,7 @@ export async function verifyNamed(
 
     const deterministic = new Map<string, JudgedNamed>();
     for (const r of reqs) {
-        const verdict = deterministicSourceVerdict(r, src);
+        const verdict = externalApiSourceVerdict(r, src) || deterministicSourceVerdict(r, src);
         if (verdict) deterministic.set(r.id, verdict);
     }
     if (deterministic.size === reqs.length) return reqs.map(r => deterministic.get(r.id)!);

@@ -18,6 +18,7 @@ import fs from 'fs';
 import http from 'http';
 import https from 'https';
 import path from 'path';
+import { externalApiSourceVerdict } from '../../../core/api-discovery/acceptance-evidence';
 import { BaseTool } from '../base';
 import { ToolPermission, ToolExecutionResult } from '../types';
 import { buildPalette, paletteCss, darkTokenBlock, lightTokenBlock } from '../../../core/design/design-system';
@@ -7313,7 +7314,16 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 const authored = readProjectSource([path.join(proj, 'src')]);
                 const entry = path.join(proj, 'index.html');
                 const documentHead = fs.existsSync(entry) ? fs.readFileSync(entry, 'utf-8').slice(0, 64 * 1024) : '';
-                if (authored.trim().length) return `${documentHead}\n${authored}`;
+                if (authored.trim().length) {
+                    const integrationEvidence = externalIntegration
+                        ? ['.joe/external-api.json', 'server/joeExternalApiProxy.js']
+                            .map(relative => path.join(proj, relative))
+                            .filter(file => fs.existsSync(file))
+                            .map(file => fs.readFileSync(file, 'utf-8').slice(0, 64 * 1024))
+                            .join('\n')
+                        : '';
+                    return `${documentHead}\n${authored}\n${integrationEvidence}`;
+                }
             } catch { /* fall through to the whole tree */ }
             try { return readProjectSource([proj]); } catch { return ''; }
         })();
@@ -7340,6 +7350,18 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
          *  silence is the only outcome that was never acceptable.
          */
         const catalogueCriteria = acceptanceCriteriaFor(request);
+        const judgedCatalogueCriteria = catalogueCriteria.map((criterion: any) => {
+            const ruleText = String(criterion?.expectedRule?.text || '').trim();
+            if (!ruleText) return criterion;
+            const verdict = externalApiSourceVerdict({
+                id: String(criterion.id || 'catalogue-rule'),
+                text: ruleText,
+                quote: ruleText,
+            }, projectEvidence);
+            return verdict
+                ? { ...criterion, preJudged: { verdict: verdict.verdict, why: verdict.why } }
+                : criterion;
+        });
         const namedVerdicts = namedByHim.length && !noBrainToAsk
             ? await verifyNamed(namedByHim, projectEvidence, isAr, askTheModel)
             : [];
@@ -7393,7 +7415,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
         for (const j of namedJudged) {
             term(`  ${j.verdict === 'met' ? 'OK' : j.verdict === 'unmet' ? 'MISSING' : '??'} ${j.text} — ${j.why}`);
         }
-        const structural = catalogueCriteria.filter((c: any) => {
+        const structural = judgedCatalogueCriteria.filter((c: any) => {
             const isStructural = c.expectedRule || c.expectedColumn || c.expectedPage || c.expectedText
                 || c.expectedFilter || c.expectedProgress;
             if (!isStructural) return false;
@@ -7411,7 +7433,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                     preJudged: { verdict: j.verdict, why: j.why },
                 })),
             ]
-            : catalogueCriteria;
+            : judgedCatalogueCriteria;
         term(`acceptance denominator: ${criteriaForJudgement.length}`
             + (namedJudged.length
                 ? ` (${namedJudged.length} read from your request + ${structural.length} structural)`
