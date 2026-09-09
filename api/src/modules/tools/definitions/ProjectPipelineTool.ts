@@ -13,6 +13,8 @@ import { auditBuiltApp, AppAudit, findingText } from '../../../core/quality/app-
 import { readJoeProjectForRun } from '../../../api/page-store';
 import { hasExplicitRecordSchema } from '../../../core/design/app-blueprints';
 import { guardUnverifiedBuilderClaims } from '../../../core/api-discovery/reporting';
+import { publicUrlFor } from '../../../shared/utils/publicUrl';
+import { integrationProfile } from '../../../core/api-discovery/integration-profiles';
 
 const MAX_PIPELINE_LOGS = 192;
 const MAX_PIPELINE_LOG_CHARS = 2_000;
@@ -266,7 +268,20 @@ function deliveryCredentialFromMessage(message: unknown): { email: string; passw
 interface TrustedRuntimeProjectHandoff {
     sourceRoot: string;
     runtimeRoot: string;
+    durablePreviewUrl?: string;
     runtimeAuth?: { email: string; password: string; loginPath?: string; tokenStorageKey?: string; route?: string };
+}
+
+export function durablePreviewEligible(input: {
+    projectType: unknown;
+    hasDist: boolean;
+    hasPackagedRuntime: boolean;
+    integrationProfileId: unknown;
+}): boolean {
+    return String(input.projectType || '') === 'react'
+        && input.hasDist
+        && !input.hasPackagedRuntime
+        && Boolean(integrationProfile(String(input.integrationProfileId || '').trim()));
 }
 
 function trustedRuntimeProjectHandoff(sessionId: unknown, workspaceId: unknown, runId: unknown): TrustedRuntimeProjectHandoff | null {
@@ -296,11 +311,40 @@ function trustedRuntimeProjectHandoff(sessionId: unknown, workspaceId: unknown, 
             ...(auth.route ? { route: String(auth.route) } : {}),
         }
         : undefined;
+    const integrationRecordPath = path.join(candidate, '.joe', 'external-api.json');
+    let integrationProfileId = '';
+    try {
+        integrationProfileId = String(JSON.parse(fs.readFileSync(integrationRecordPath, 'utf8'))?.integrationProfileId || '').trim();
+    } catch { /* not a maintained external-API project */ }
+    const durablePreviewUrl = durablePreviewEligible({
+        projectType: record?.type,
+        hasDist: fs.existsSync(path.join(candidate, 'dist', 'index.html')),
+        hasPackagedRuntime: packagedIsTrusted,
+        integrationProfileId,
+    })
+        ? publicUrlFor(`/project-preview/${encodeURIComponent(key)}/index.html?v=${Date.now()}`)
+        : '';
     return {
         sourceRoot: candidate,
         runtimeRoot: packagedIsTrusted ? packaged : candidate,
+        ...(durablePreviewUrl ? { durablePreviewUrl } : {}),
         ...(runtimeAuth ? { runtimeAuth } : {}),
     };
+}
+
+export function finalBrowserQaUrl(liveUrl: unknown, durablePreviewUrl: unknown): string {
+    return String(durablePreviewUrl || liveUrl || '').trim();
+}
+
+const BROWSER_QA_INFRASTRUCTURE_FINDINGS = new Set([
+    'viewport_emulation_failed',
+    'browser_unavailable',
+    'qa_target_unavailable',
+]);
+
+export function hasOnlyBrowserQaInfrastructureFindings(findings: Array<{ id?: unknown; code?: unknown }> = []): boolean {
+    return findings.length > 0 && findings.every((finding) =>
+        BROWSER_QA_INFRASTRUCTURE_FINDINGS.has(String(finding?.code || finding?.id || '')));
 }
 
 function trustedRuntimeProjectRoot(sessionId: unknown, workspaceId: unknown, runId: unknown): string {
@@ -1688,6 +1732,8 @@ export class ProjectPipelineTool implements ToolDefinition {
         let browserQaRepairStatus = 'not_attempted';
         let browserQaCoverageRetryAttempted = false;
         let browserQaCoverageRetryStatus = 'not_attempted';
+        let browserQaInfrastructureRetryAttempted = false;
+        let browserQaInfrastructureRetryStatus = 'not_attempted';
         let scopeRepairAttempted = false;
         let scopeRepairStatus = 'not_attempted';
         let scopeCoverageFailed = false;
@@ -2126,6 +2172,10 @@ export class ProjectPipelineTool implements ToolDefinition {
          * A skipped audit is an honest verification failure: Joe must not call
          * an unmeasured application delivered.
          */
+        liveUrl = finalBrowserQaUrl(liveUrl, runtimeProjectHandoff?.durablePreviewUrl);
+        if (runtimeProjectHandoff?.durablePreviewUrl) {
+            appendBoundedPipelineLog(logs, `[pipeline] browser QA target=durable_project_preview url=${liveUrl}`);
+        }
         if (liveUrl) {
             try {
                 const runtimeRoot = String(liveRunResult?.output?.cwd || '').trim();
@@ -2209,6 +2259,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                             watchSessionId: panelSid || undefined,
                             serveUrl: liveUrl,
                             artifactRootDir: artifactRoot || auditDir || runtimeRoot,
+                            requireVisibleBrowser: true,
                             ...(runtimeProjectHandoff?.runtimeAuth ? { credentials: runtimeProjectHandoff.runtimeAuth } : {}),
                             timeoutMs: 90_000,
                             onProgress: progress,
@@ -2223,6 +2274,38 @@ export class ProjectPipelineTool implements ToolDefinition {
                             appendBoundedPipelineLog(logs, `[pipeline] browser QA coverage retry skipped=${String(coverageRetry?.skipped || 'unknown')}`);
                         }
                     }
+                    // A viewport/controller failure says nothing about the app.
+                    // Re-run the same visible audit once after the first run has
+                    // released its browser instrumentation. A repeated failure
+                    // remains a hard delivery blocker and never edits the project.
+                    if (hasOnlyBrowserQaInfrastructureFindings(browserQa.findings)
+                        && !browserQaInfrastructureRetryAttempted) {
+                        browserQaInfrastructureRetryAttempted = true;
+                        browserQaInfrastructureRetryStatus = 'attempted';
+                        say(pick(isAr,
+                            '🔎 تعثرت أداة قياس المتصفح؛ سأعيد القياس المرئي مرة واحدة قبل الحكم على التطبيق.',
+                            '🔎 Browser measurement instrumentation failed; I will rerun the visible measurement once before judging the application.'));
+                        appendBoundedPipelineLog(logs, '[pipeline] browser QA infrastructure retry start timeoutMs=45000');
+                        const infrastructureRetry = await auditBuiltApp(auditDir, {
+                            request: productRequest,
+                            watchSessionId: panelSid || undefined,
+                            serveUrl: liveUrl,
+                            artifactRootDir: artifactRoot || auditDir || runtimeRoot,
+                            requireVisibleBrowser: true,
+                            ...(runtimeProjectHandoff?.runtimeAuth ? { credentials: runtimeProjectHandoff.runtimeAuth } : {}),
+                            timeoutMs: 45_000,
+                            onProgress: progress,
+                        });
+                        if (!infrastructureRetry?.skipped) {
+                            browserQa = infrastructureRetry;
+                            browserQaInfrastructureRetryStatus = hasOnlyBrowserQaInfrastructureFindings(browserQa.findings)
+                                ? 'still_failed' : 'completed';
+                            appendBoundedPipelineLog(logs, `[pipeline] browser QA infrastructure retry result=${browserQaInfrastructureRetryStatus} score=${browserQa.score} findings=${browserQa.findings.length}`);
+                        } else {
+                            browserQaInfrastructureRetryStatus = `skipped:${String(infrastructureRetry?.skipped || 'unknown')}`;
+                            appendBoundedPipelineLog(logs, `[pipeline] browser QA infrastructure retry skipped=${String(infrastructureRetry?.skipped || 'unknown')}`);
+                        }
+                    }
                     // Every measured finding is open work. Treating only
                     // "high" severity as blocking let coverage, accessibility,
                     // responsive, and visual defects pass the gate unchanged.
@@ -2232,13 +2315,8 @@ export class ProjectPipelineTool implements ToolDefinition {
                     // project_repair made Joe rewrite valid project files in
                     // response to a viewport controller race. They still stop
                     // delivery, but cannot authorize a user-project edit.
-                    const infrastructureFindingCodes = new Set([
-                        'viewport_emulation_failed',
-                        'browser_unavailable',
-                        'qa_target_unavailable',
-                    ]);
                     const projectRepairFindings = blocking.filter((finding: any) =>
-                        !infrastructureFindingCodes.has(String(finding?.code || finding?.id || '')));
+                        !BROWSER_QA_INFRASTRUCTURE_FINDINGS.has(String(finding?.code || finding?.id || '')));
                     appendBoundedPipelineLog(logs, `[pipeline] browser QA score=${browserQa.score} findings=${browserQa.findings.length} blocking=${blocking.length}`);
                     if (projectRepairFindings.length > 0 && !browserQaRepairAttempted) {
                         browserQaRepairAttempted = true;
@@ -2407,6 +2485,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                 ...(liveRepairAttempted ? { liveRepairAttempted: true, liveRepairStatus } : {}),
                 ...(browserQaRepairAttempted ? { browserQaRepairAttempted: true, browserQaRepairStatus } : {}),
                 ...(browserQaCoverageRetryAttempted ? { browserQaCoverageRetryAttempted: true, browserQaCoverageRetryStatus } : {}),
+                ...(browserQaInfrastructureRetryAttempted ? { browserQaInfrastructureRetryAttempted: true, browserQaInfrastructureRetryStatus } : {}),
                 ...(scopeRepairAttempted ? { scopeRepairAttempted: true, scopeRepairStatus } : {}),
                 ...(scopeCoverageFailed ? { scopeCoverageFailed: true } : {}),
                 ...(partialDelivery ? { partialDelivery: true } : {}),

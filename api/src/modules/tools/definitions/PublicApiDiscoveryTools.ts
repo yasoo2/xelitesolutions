@@ -2,6 +2,34 @@ import { BaseTool } from '../base';
 import { ToolPermission } from '../types';
 import { apiDiscoveryService } from '../../../core/api-discovery/service';
 import { selectionArtifact } from '../../../core/api-discovery/integration-profiles';
+import type { ApiSearchQuery, RankedApiCandidate } from '../../../core/api-discovery/types';
+
+type DiscoveryService = Pick<ReturnType<typeof apiDiscoveryService>, 'search' | 'validate'>;
+
+export async function selectValidatedCandidate(
+    service: DiscoveryService,
+    input: ApiSearchQuery & { integrationRequired?: boolean },
+    candidates: RankedApiCandidate[],
+): Promise<{ selected?: RankedApiCandidate; candidates: RankedApiCandidate[]; attempted: string[]; allUnavailable: boolean }> {
+    const eligible = candidates
+        .filter(candidate => !input.integrationRequired || Boolean(candidate.integrationProfileId))
+        .slice(0, 3);
+    const attempted: string[] = [];
+    for (const candidate of eligible) {
+        const validated = await service.validate(candidate.id);
+        attempted.push(candidate.id);
+        if (validated.health !== 'UNAVAILABLE') {
+            const refreshed = await service.search(input);
+            return {
+                selected: refreshed.find(item => item.id === candidate.id) || { ...candidate, ...validated },
+                candidates: refreshed,
+                attempted,
+                allUnavailable: false,
+            };
+        }
+    }
+    return { candidates: await service.search(input), attempted, allUnavailable: eligible.length > 0 };
+}
 
 abstract class ApiDiscoveryTool extends BaseTool {
     version = '1.0.0';
@@ -27,11 +55,17 @@ export class SearchPublicApisTool extends ApiDiscoveryTool {
                 ? candidates.find(candidate => Boolean(candidate.integrationProfileId))
                 : candidates[0];
             if (input?.validateTop === true && selected) {
-                const validated = await service.validate(selected.id);
-                candidates = await service.search(input);
-                selected = validated.health === 'UNAVAILABLE'
-                    ? candidates.find(candidate => candidate.id !== validated.id && candidate.health !== 'UNAVAILABLE' && (!input?.integrationRequired || candidate.integrationProfileId))
-                    : candidates.find(candidate => candidate.id === validated.id) || candidates[0];
+                const validation = await selectValidatedCandidate(service, input, candidates);
+                candidates = validation.candidates;
+                selected = validation.selected;
+                if (validation.allUnavailable && !selected) {
+                    return {
+                        ok: false,
+                        error: 'all_api_candidates_unavailable',
+                        output: { candidates, validationAttempts: validation.attempted },
+                        logs: ['API_SEARCH stopped: every maintained candidate validated as unavailable'],
+                    };
+                }
             }
             const selection = selected ? selectionArtifact(selected) : null;
             if (input?.integrationRequired === true && !selection) return { ok: false, error: 'no_maintained_integration_profile', output: { candidates }, logs: ['API_SEARCH found no safely integrable candidate'] };

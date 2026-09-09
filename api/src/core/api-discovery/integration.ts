@@ -107,11 +107,16 @@ function proxyClientSource(capability: IntegrationCapability, proxyPath: string)
         : capability === 'ip'
             ? "if (!body || typeof body !== 'object' || body.error) throw new Error(body?.reason || 'Unexpected IP response'); return body;"
             : "if (typeof body.temperature !== 'number') throw new Error('Unexpected weather response'); return body;";
-    return `const PROXY_PATH = ${JSON.stringify(proxyPath.replace(/^\//, ''))};
+    return `const PROXY_PATH = ${JSON.stringify(proxyPath.replace(/^\/+/, ''))};
+
+function externalApiUrl() {
+  const previewRoot = window.location.pathname.match(/^\\/project-preview\\/[^/]+\\//)?.[0] || '/';
+  return new URL(PROXY_PATH, new URL(previewRoot, window.location.origin));
+}
 
 export const externalApi = {
   async load(params = {}, timeoutMs = 8000) {
-    const url = new URL(PROXY_PATH, window.location.href);
+    const url = externalApiUrl();
     ${query}
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -124,6 +129,12 @@ export const externalApi = {
   }
 };
 `;
+}
+
+export function resolveProxyClientUrl(proxyPath: string, locationHref: string): URL {
+    const location = new URL(locationHref);
+    const previewRoot = location.pathname.match(/^\/project-preview\/[^/]+\//)?.[0] || '/';
+    return new URL(String(proxyPath || '').replace(/^\/+/, ''), new URL(previewRoot, location.origin));
 }
 
 function fixedServerProxySource(profile: ApiIntegrationProfile): string {
@@ -207,12 +218,12 @@ export function externalDataAppSource(plan: ApiIntegrationPlan): string {
     return weatherApp(plan.selection.providerName, plan.selection.auth === 'apiKey');
 }
 
-const shell = (title: string, provider: string, body: string) => `import React, { useEffect, useState } from 'react';
+const shell = (title: string, provider: string, body: string, showRetry = true) => `import React, { useEffect, useState } from 'react';
 import { externalApi } from './integrations/externalApi.js';
 import './styles/tokens.css'; import './integrations/externalApi.css';
 export default function App(){ const [loading,setLoading]=useState(false); const [error,setError]=useState(''); const [data,setData]=useState(null);
 ${body}
-return <main className="external-api-app"><p className="eyebrow">Live public data</p><h1>${title}</h1><p className="muted">External API: ${provider}</p>{renderForm()}{loading&&<p role="status">Loading…</p>}{error&&<p role="alert">{error} <button onClick={run}>Retry</button></p>}{data&&renderResult()}</main> }
+return <main className="external-api-app"><p className="eyebrow">Live public data</p><h1>${title}</h1><p className="muted">External API: ${provider}</p>{renderForm()}{loading&&<p role="status">Loading…</p>}{error&&<p role="alert">{error}${showRetry ? ' <button onClick={run}>Retry</button>' : ''}</p>}{data&&renderResult()}</main> }
 `;
 
 const weatherApp = (provider: string, keyed: boolean) => shell('Weather dashboard', provider, `const [city,setCity]=useState('Istanbul'); const [lastUpdated,setLastUpdated]=useState(''); const [refreshCount,setRefreshCount]=useState(0);
@@ -221,13 +232,16 @@ useEffect(()=>{run()},[]);
 function renderForm(){return <form onSubmit={run} className="grid-form">${keyed ? '<label>City<input value={city} onChange={e=>setCity(e.target.value)} required/></label>' : ''}<button className="primary">Load weather</button></form>}
 function renderResult(){return <section aria-live="polite"><p>Live data · Last updated: {lastUpdated}</p><p>Updates checked: {refreshCount}</p><h2>{data.temperature}°C</h2><p>{data.label} · Wind {data.windspeed}</p></section>}`);
 
-const currencyApp = (provider: string) => shell('Currency converter', provider, `const CURRENCIES=['EUR','USD','TRY','GBP','JPY','CAD','AUD','CHF']; const [amount,setAmount]=useState('100'); const [from,setFrom]=useState('EUR'); const [to,setTo]=useState('USD'); const [lastUpdated,setLastUpdated]=useState(''); const [conversionCount,setConversionCount]=useState(0);
+const currencyApp = (provider: string) => shell('Currency converter', provider, `const CURRENCIES=['EUR','USD','TRY','GBP','JPY','CAD','AUD','CHF']; const [amount,setAmount]=useState('100'); const [amountError,setAmountError]=useState(''); const [from,setFrom]=useState('EUR'); const [to,setTo]=useState('USD'); const [lastUpdated,setLastUpdated]=useState(''); const [conversionCount,setConversionCount]=useState(0);
+const asciiDecimal=value=>{const normalized=String(value).replace(/[٠-٩]/g,ch=>String(ch.charCodeAt(0)-1632)).replace(/[۰-۹]/g,ch=>String(ch.charCodeAt(0)-1776)).replace(/[^0-9.]/g,'');const parts=normalized.split('.');return parts[0]+(parts.length>1?'.'+parts.slice(1).join(''):'')};
+function updateAmount(value){const translated=String(value).replace(/[٠-٩]/g,ch=>String(ch.charCodeAt(0)-1632)).replace(/[۰-۹]/g,ch=>String(ch.charCodeAt(0)-1776));if(!/^[0-9]*([.][0-9]*)?$/.test(translated)){setAmountError('Use digits and one decimal point only');return}setAmountError('');setAmount(asciiDecimal(translated))}
 async function run(e){e?.preventDefault();setLoading(true);setError('');try{setData(await externalApi.load({amount,from,to}));setLastUpdated(new Date().toISOString());setConversionCount(count=>count+1)}catch(err){setError(err.message||'Could not load rates')}finally{setLoading(false)}}
 useEffect(()=>{run()},[]);
-function renderForm(){return <form onSubmit={run} className="grid-form"><label>Amount<input type="text" lang="en-US" dir="ltr" inputMode="decimal" pattern="[0-9]+([.][0-9]+)?" title="Enter an amount using digits and an optional decimal point" value={amount} onChange={e=>setAmount(e.target.value.replace(/[^0-9.]/g,''))} required/></label><label>From<select value={from} onChange={e=>setFrom(e.target.value)}>{CURRENCIES.map(code=><option key={code}>{code}</option>)}</select></label><label>To<select value={to} onChange={e=>setTo(e.target.value)}>{CURRENCIES.map(code=><option key={code}>{code}</option>)}</select></label><button className="primary">Convert</button></form>}
+function renderForm(){return <form onSubmit={run} className="grid-form"><label>Amount<input type="text" lang="en-US" dir="ltr" inputMode="decimal" pattern="[0-9]+([.][0-9]+)?" title="Enter an amount using digits and an optional decimal point" aria-invalid={amountError?'true':'false'} aria-describedby="amount-error" value={amount} onInput={e=>updateAmount(e.currentTarget.value)} onChange={e=>updateAmount(e.target.value)} required/>{amountError&&<span id="amount-error" role="alert">{amountError}</span>}</label><label>From<select value={from} onChange={e=>setFrom(e.target.value)}>{CURRENCIES.map(code=><option key={code}>{code}</option>)}</select></label><label>To<select value={to} onChange={e=>setTo(e.target.value)}>{CURRENCIES.map(code=><option key={code}>{code}</option>)}</select></label><button className="primary">Convert</button></form>}
 function renderResult(){const value=data.rates?.[to];return <section aria-live="polite"><h2>{amount} {from} = {value} {to}</h2><p>Date: {data.date}</p><p>Last updated: {lastUpdated}</p><p>Conversions checked: {conversionCount}</p></section>}`);
 
-const ipApp = (provider: string) => shell('IP information', provider, `const [ip,setIp]=useState('');
-async function run(e){e?.preventDefault();setLoading(true);setError('');try{setData(await externalApi.load({ip}))}catch(err){setError(err.message||'Could not load IP information')}finally{setLoading(false)}}
-function renderForm(){return <form onSubmit={run} className="grid-form"><label>IP address (optional)<input value={ip} onChange={e=>setIp(e.target.value)} placeholder="8.8.8.8"/></label><button className="primary">Look up</button></form>}
-function renderResult(){return <section aria-live="polite"><h2>{data.ip}</h2><dl><dt>City</dt><dd>{data.city||'Unknown'}</dd><dt>Region</dt><dd>{data.region||'Unknown'}</dd><dt>Country</dt><dd>{data.country_name||'Unknown'}</dd><dt>Network</dt><dd>{data.org||'Unknown'}</dd></dl></section>}`);
+const ipApp = (provider: string) => shell('IP information', provider, `const [ip,setIp]=useState(''); const [ipError,setIpError]=useState('');
+const validIp=value=>{if(!value)return true;const parts=String(value).split('.');return parts.length===4&&parts.every(part=>/^[0-9]{1,3}$/.test(part)&&Number(part)<=255)};
+async function run(e){e?.preventDefault();if(!validIp(ip)){setIpError('Enter a valid IPv4 address, for example 8.8.8.8');return}setIpError('');setLoading(true);setError('');try{setData(await externalApi.load({ip}))}catch(err){setError(err.message||'Could not load IP information')}finally{setLoading(false)}}
+function renderForm(){return <form onSubmit={run} noValidate className="grid-form" data-optional-submit="true"><label>IP address (optional)<input value={ip} onChange={e=>{setIp(e.target.value);setIpError('')}} inputMode="decimal" pattern="(?:[0-9]{1,3}[.]){3}[0-9]{1,3}" title="Enter an IPv4 address such as 8.8.8.8, or leave it empty to detect yours" aria-invalid={ipError?'true':'false'} aria-describedby="ip-error" placeholder="8.8.8.8"/>{ipError&&<span id="ip-error" role="alert">{ipError}</span>}</label><button className="primary" disabled={loading}>Look up</button></form>}
+function renderResult(){return <section aria-live="polite"><h2>{data.ip}</h2><dl><dt>City</dt><dd>{data.city||'Unknown'}</dd><dt>Region</dt><dd>{data.region||'Unknown'}</dd><dt>Country</dt><dd>{data.country_name||'Unknown'}</dd><dt>Network</dt><dd>{data.org||'Unknown'}</dd></dl></section>}`, false);

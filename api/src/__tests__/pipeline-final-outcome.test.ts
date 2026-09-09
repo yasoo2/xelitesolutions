@@ -1,9 +1,44 @@
 import fs from 'fs';
 import path from 'path';
 import { isFinalPipelineOutcome } from '../orchestration/AgentOrchestrator';
-import { applyLiveRunOutcome } from '../modules/tools/definitions/ProjectPipelineTool';
+import { applyLiveRunOutcome, durablePreviewEligible, finalBrowserQaUrl, hasOnlyBrowserQaInfrastructureFindings } from '../modules/tools/definitions/ProjectPipelineTool';
 
 describe('canonical engineering pipeline terminal outcomes', () => {
+  it('prefers the durable project preview for final browser QA', () => {
+    expect(finalBrowserQaUrl('http://127.0.0.1:4300/', 'http://127.0.0.1:5002/project-preview/session/index.html'))
+      .toBe('http://127.0.0.1:5002/project-preview/session/index.html');
+    expect(finalBrowserQaUrl('http://127.0.0.1:4300/', '')).toBe('http://127.0.0.1:4300/');
+  });
+
+  it('limits durable preview QA to maintained static external-API integrations', () => {
+    expect(durablePreviewEligible({
+      projectType: 'react', hasDist: true, hasPackagedRuntime: false,
+      integrationProfileId: 'frankfurter-currency-v2',
+    })).toBe(true);
+    expect(durablePreviewEligible({
+      projectType: 'react', hasDist: true, hasPackagedRuntime: true,
+      integrationProfileId: 'frankfurter-currency-v2',
+    })).toBe(false);
+    expect(durablePreviewEligible({
+      projectType: 'react', hasDist: true, hasPackagedRuntime: false,
+      integrationProfileId: '',
+    })).toBe(false);
+  });
+
+  it('retries only browser-infrastructure findings without treating app defects as instrumentation', () => {
+    expect(hasOnlyBrowserQaInfrastructureFindings([
+      { code: 'viewport_emulation_failed' },
+    ])).toBe(true);
+    expect(hasOnlyBrowserQaInfrastructureFindings([
+      { id: 'qa_target_unavailable' },
+      { code: 'browser_unavailable' },
+    ])).toBe(true);
+    expect(hasOnlyBrowserQaInfrastructureFindings([])).toBe(false);
+    expect(hasOnlyBrowserQaInfrastructureFindings([
+      { code: 'viewport_emulation_failed' },
+      { code: 'low_contrast' },
+    ])).toBe(false);
+  });
   it('stops outer recovery only for a pipeline result explicitly marked final', () => {
     expect(isFinalPipelineOutcome('project_pipeline', { pipelineFinal: true })).toBe(true);
     expect(isFinalPipelineOutcome('project_pipeline', { verificationFailed: true })).toBe(false);

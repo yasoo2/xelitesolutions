@@ -629,6 +629,36 @@ describe('model-written tool arguments are checked before execution', () => {
         expect(plan.phases[0].blocker).toBeUndefined();
         expect(plan.notes.join('\\n')).toMatch(/auto_tester يحتاج projectPath/);
     });
+
+    it('late-binds API inspection only after a public API search', () => {
+        const blocked = sanitisePlanPhases([{
+            phaseNumber: 1,
+            name: 'Inspect without discovery',
+            tasks: [{ task: 'Inspect an API', tool: 'inspect_api', args: {} }],
+        }], 'currency-app');
+        expect(blocked.phases[0].deliveryStatus).toBe('blocked');
+        expect(blocked.notes.join('\\n')).toMatch(/inspect_api يحتاج الحقل الإلزامي «apiId»/);
+
+        const allowed = sanitisePlanPhases([
+            {
+                phaseNumber: 1,
+                name: 'Discover API',
+                tasks: [{ task: 'Find a currency API', tool: 'search_public_apis', args: { query: 'currency', integrationRequired: true } }],
+            },
+            {
+                phaseNumber: 2,
+                name: 'Inspect API',
+                tasks: [
+                    { task: 'Inspect the selected API', tool: 'inspect_api', args: {} },
+                    { task: 'Validate the selected API', tool: 'validate_api', args: {} },
+                ],
+            },
+        ], 'currency-app');
+        expect(allowed.phases[1].deliveryStatus).not.toBe('blocked');
+        const apiTasks = allowed.phases[1].tasks.filter((task: any) => ['inspect_api', 'validate_api'].includes(task.tool));
+        expect(apiTasks.map((task: any) => task.tool)).toEqual(['inspect_api', 'validate_api']);
+        expect(apiTasks.every((task: any) => task.args.apiId === undefined)).toBe(true);
+    });
 });
 
 describe('the planner is told the vocabulary', () => {

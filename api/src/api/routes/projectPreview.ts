@@ -25,6 +25,14 @@ export function resolvePreviewProjectRoot(key: string): string | null {
     return fs.existsSync(root) ? root : null;
 }
 
+export function resolvePreviewApiRequest(key: string, rel: string, originalUrl: string): { root: string; url: string } | null {
+    const root = resolvePreviewProjectRoot(key);
+    const cleanRel = String(rel || '');
+    if (!root || !cleanRel.startsWith('api/joe-external/')) return null;
+    const query = String(originalUrl || '').split('?')[1];
+    return { root, url: `/${cleanRel}${query ? `?${query}` : ''}` };
+}
+
 /** The absolute file this preview request maps to, or null when it must 404. */
 export function resolvePreviewFile(key: string, rel: string): string | null {
     const clean = String(key || '').replace(/[^a-zA-Z0-9._-]/g, '');
@@ -50,12 +58,11 @@ router.get(/^\/([a-zA-Z0-9._-]+)(?:\/(.*))?$/, async (req, res) => {
     try {
         const key = String((req.params as any)[0] || '');
         const rel = String((req.params as any)[1] || '');
-        const root = resolvePreviewProjectRoot(key);
-        if (root && rel.startsWith('api/joe-external/')) {
-            const query = String(req.originalUrl || req.url || '').split('?')[1];
-            const handled = await handleMaintainedPreviewApiRequest(root, {
+        const apiRequest = resolvePreviewApiRequest(key, rel, String(req.originalUrl || req.url || ''));
+        if (apiRequest) {
+            const handled = await handleMaintainedPreviewApiRequest(apiRequest.root, {
                 method: req.method,
-                url: `/${rel}${query ? `?${query}` : ''}`,
+                url: apiRequest.url,
             } as any, res as any);
             if (handled) return;
         }

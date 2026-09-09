@@ -99,6 +99,17 @@ describe('routing — full-project requests reach the pipeline, offline and dete
         expect(wrapped.mode).toBe('existing');
     });
 
+    test.each([
+        'Build a simple weather dashboard using a free public API.',
+        'Create a currency converter.',
+        'Build an IP information page.',
+    ])('external-data build «%s» reaches discovery through project_pipeline', async (goal) => {
+        const p = await plan(goal);
+        expect(p.steps).toHaveLength(1);
+        expect(p.steps[0].tool).toBe('project_pipeline');
+        expect((p.steps[0].input as any).request).toBe(goal);
+    });
+
     test('greenfield planner handoff does not send an unrelated workspace catalogue', () => {
         const referenceProjects = [{ root: '/workspace/unrelated-app', projectKinds: ['node'] }];
         const plannerEvidence = buildPlannerEvidence({

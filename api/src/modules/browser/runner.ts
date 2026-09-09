@@ -271,14 +271,12 @@ async function collectUiGroundingSnapshot(sessionId: string) {
       };
     });
 
-    const boxes = elements.slice(0, 350).map((e: any) => ({
-      x: e.rect.x,
-      y: e.rect.y,
-      width: e.rect.width,
-      height: e.rect.height,
-      label: `${e.id}:${e.kind}`,
-    }));
-    broadcastBrowserEvent(sid, { type: 'highlight_boxes', ts: now(), boxes } as any);
+    // Grounding is an internal inventory pass, not a visible QA action. Painting
+    // every discovered element used to send hundreds of red rectangles at once;
+    // after scrolling or resizing those stale viewport coordinates also appeared
+    // displaced from their targets. Clear any previous marker here and let the
+    // executor/AuditEyes highlight only the element currently being exercised.
+    broadcastBrowserEvent(sid, { type: 'highlight_boxes', ts: now(), boxes: [] } as any);
 
     return { url, viewport, elements };
   } catch {

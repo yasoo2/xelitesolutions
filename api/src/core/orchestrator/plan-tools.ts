@@ -42,6 +42,8 @@ import { syntaxFileKind } from '../../shared/syntax-contract';
 export const LATE_BOUND_PLAN_FIELDS: Record<string, readonly string[]> = {
     quality_run: ['path'],
     deploy_project: ['projectPath'],
+    inspect_api: ['apiId'],
+    validate_api: ['apiId'],
 };
 
 /**
@@ -473,6 +475,7 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
     };
 
     let priorArtifactReady = false;
+    let priorApiSelectionReady = false;
     const out = (Array.isArray(phases) ? phases : []).map((phase: any, pi: number) => {
         const phaseName = String(phase?.name || `Phase ${pi + 1}`);
         const tasks = Array.isArray(phase?.tasks) ? phase.tasks : [];
@@ -667,7 +670,11 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
                 // field remains a hard planner error.
                 const lateBoundField = (LATE_BOUND_PLAN_FIELDS[r.tool] || [])
                     .find(field => !String(adaptedArgs?.[field] || '').trim());
-                const lateBindingProven = priorArtifactReady || kept.some(taskProducesArtifact);
+                const apiSelectionField = lateBoundField === 'apiId'
+                    && (r.tool === 'inspect_api' || r.tool === 'validate_api');
+                const lateBindingProven = apiSelectionField
+                    ? priorApiSelectionReady || kept.some(previous => String(previous?.tool || '') === 'search_public_apis')
+                    : priorArtifactReady || kept.some(taskProducesArtifact);
                 const lateBoundIssue = lateBoundField
                     && lateBindingProven
                     && argsIssue
@@ -804,6 +811,7 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
         // across phases so a later quality_run may receive its path from the
         // runtime-bound artifact rather than inventing one in the plan.
         if (kept.some(taskProducesArtifact)) priorArtifactReady = true;
+        if (kept.some(task => String(task?.tool || '') === 'search_public_apis')) priorApiSelectionReady = true;
         for (const candidate of phaseProducedPaths) {
             if (/(?:^|\/)package\.json$/i.test(candidate)
                 && generatedPackageLaunchEvidence(candidate, kept)) {

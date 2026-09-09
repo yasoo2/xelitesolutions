@@ -13,7 +13,7 @@ import os from 'os';
 import path from 'path';
 
 describe('resolvePreviewFile — the request-time resolver', () => {
-    const { resolvePreviewFile, resolvePreviewProjectRoot } = require('../api/routes/projectPreview');
+    const { resolvePreviewApiRequest, resolvePreviewFile, resolvePreviewProjectRoot } = require('../api/routes/projectPreview');
     let tmp: string;
     beforeAll(() => {
         tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-preview-'));
@@ -34,6 +34,13 @@ describe('resolvePreviewFile — the request-time resolver', () => {
     });
     it('assets resolve inside the dist', () => {
         expect(resolvePreviewFile('pv-t', 'assets/a.js')).toBe(path.join(tmp, 'proj', 'dist', 'assets', 'a.js'));
+    });
+    it('retains the project key while routing its maintained external API request', () => {
+        expect(resolvePreviewApiRequest('pv-t', 'api/joe-external/currency', '/pv-t/api/joe-external/currency?amount=10')).toEqual({
+            root: path.join(tmp, 'proj'),
+            url: '/api/joe-external/currency?amount=10',
+        });
+        expect(resolvePreviewApiRequest('nobody', 'api/joe-external/currency', '/nobody/api/joe-external/currency')).toBeNull();
     });
     it('a traversal attempt dies at the boundary', () => {
         expect(resolvePreviewFile('pv-t', '../../secret.txt')).toBeNull();
@@ -67,9 +74,9 @@ describe('the preview loop is WIRED, end to end', () => {
     });
     it('routes project-scoped external data through the maintained safe preview proxy', () => {
         const src = fs.readFileSync(path.join(__dirname, '..', 'api', 'routes', 'projectPreview.ts'), 'utf-8');
-        expect(src).toContain("rel.startsWith('api/joe-external/')");
-        expect(src).toContain('handleMaintainedPreviewApiRequest(root');
-        expect(src).toContain('resolvePreviewProjectRoot(key)');
+        expect(src).toContain('resolvePreviewApiRequest(key, rel');
+        expect(src).toContain('handleMaintainedPreviewApiRequest(apiRequest.root');
+        expect(src).toContain('url: apiRequest.url');
     });
     it('the local Joe UI proxies durable previews to the API instead of serving its own SPA', () => {
         const vite = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'web', 'vite.config.ts'), 'utf-8');

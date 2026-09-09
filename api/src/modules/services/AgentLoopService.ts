@@ -6,6 +6,8 @@ import { RepairTicketService, type RepairTicket } from './RepairTicketService';
 import { SelfFixService } from './SelfFixService';
 import { SelfFixExecutionService } from './SelfFixExecutionService';
 import { executeTool } from './ToolService';
+import { compactApiSelectionArtifact } from '../../core/api-discovery/integration-profiles';
+import type { ApiSelectionArtifact } from '../../core/api-discovery/types';
 import { executionFirewall } from '../../orchestration/AgentExecutionFirewall';
 import { longTermMemory } from '../../core/memory/long-term-memory';
 import { uiText, languageName, messageLanguage } from '../../shared/utils/language';
@@ -947,6 +949,9 @@ export class AgentLoopService {
             // repair phases run; otherwise PhaseExecutor deliberately falls
             // back to the workspace root and writers can modify the wrong app.
             projectRootRuntimeBound: !createsNewProject && !!String(plannerResult?.output?.projectRoot || '').trim(),
+            // Run-owned, data-only discovery receipt. PhaseExecutor recompacts
+            // it again before a builder can consume it.
+            apiSelection: undefined as ApiSelectionArtifact | undefined,
         };
         const executionContext = {
             runId,
@@ -992,6 +997,8 @@ export class AgentLoopService {
             // Keep the returned copy for reports and repair diagnosis, but never
             // speak it again here: doing so replays the completed phase verbatim.
             const status = String(phaseResult?.output?.status || 'unknown');
+            const carriedApiSelection = compactApiSelectionArtifact(phaseResult?.output?.apiSelection);
+            if (carriedApiSelection) projectContext.apiSelection = carriedApiSelection;
             // PhaseExecutor can bind the greenfield artifact inside its own
             // ToolService boundary. Rehydrate that evidence here before either
             // advancing or opening self-fix; otherwise the next phase receives

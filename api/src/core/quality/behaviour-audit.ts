@@ -1345,7 +1345,7 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
 
         // Does an empty required form actually refuse? Native validation counts.
         const forms = await page.evaluate(() => {
-            const out: Array<{ fields: number; required: number; hasSubmit: boolean; guarded: boolean }> = [];
+            const out: Array<{ fields: number; required: number; hasSubmit: boolean; guarded: boolean; allowsEmpty: boolean }> = [];
             document.querySelectorAll('form').forEach(f => {
                 const fields = f.querySelectorAll('input,textarea,select').length;
                 const required = f.querySelectorAll('[required]').length;
@@ -1362,12 +1362,13 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                  * eight points off a build for being correct.
                  */
                 const guarded = !!submit && (submit as HTMLButtonElement).disabled === true;
-                out.push({ fields, required, hasSubmit, guarded });
+                const allowsEmpty = f.getAttribute('data-optional-submit') === 'true';
+                out.push({ fields, required, hasSubmit, guarded, allowsEmpty });
             });
             return out;
         }).catch(() => []);
         metrics.forms = forms.length;
-        metrics.formsWithoutValidation = forms.filter((f: any) => f.fields > 0 && f.required === 0 && !f.guarded).length;
+        metrics.formsWithoutValidation = forms.filter((f: any) => f.fields > 0 && f.required === 0 && !f.guarded && !f.allowsEmpty).length;
 
         // Fake buttons: things wired to a click but unreachable by keyboard.
         // A <div onclick> LOOKS identical to a button and works with a mouse —
@@ -1543,7 +1544,9 @@ export async function probeForms(
                             input.dispatchEvent(new Event('input', { bubbles: true }));
                             input.dispatchEvent(new Event('change', { bubbles: true }));
                             const declared = input.type;
-                            const typeMatches = declared === expected;
+                            const constrainedNumericText = expected === 'number' && declared === 'text'
+                                && ['numeric', 'decimal'].includes(input.inputMode) && Boolean(input.pattern);
+                            const typeMatches = declared === expected || constrainedNumericText;
                             const rejected = input.value !== bad || !input.checkValidity();
                             return { rejected: typeMatches && rejected, type: declared, pattern: input.pattern || '' };
                         }, { sel: fld.sel, bad, expected });

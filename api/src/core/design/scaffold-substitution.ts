@@ -62,6 +62,7 @@ import { detectPageKind } from './blueprints';
 import { buildableFromWords, sectionNameFor } from './section-name';
 import { detectAppKind, uncoveredFeatures } from './app-blueprints';
 import { subjectPhrase } from './subject-phrase';
+import { capabilityFromRequest } from '../api-discovery/integration';
 
 export interface ScaffoldSubstitution {
     /**
@@ -95,7 +96,8 @@ export function scaffoldSubstitutionFor(request: string, building: boolean): Sca
     const text = String(request || '');
     const appKind = building ? detectAppKind(text) : null;
     const pageKind = building ? String(detectPageKind(text) || '') : '';
-    const noEngine = building && !appKind && (pageKind === '' || pageKind === 'generic');
+    const externalCapability = building ? capabilityFromRequest(text) : null;
+    const noEngine = building && !appKind && !externalCapability && (pageKind === '' || pageKind === 'generic');
     /**
      *  ⛔ «NO ENGINE» IS NOT «NO PATH» — BUT SILENCING THE NOTICE WAS THE WRONG
      *  CURE, AND AN EXISTING GUARD CAUGHT ME.

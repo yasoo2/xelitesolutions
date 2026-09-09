@@ -9,6 +9,7 @@ import { SafeApiValidator, assertSafePublicUrl, isPrivateAddress } from '../core
 import type { ApiCatalogProvider, PublicApiRecord } from '../core/api-discovery/types';
 import { PLANNER_TOOL_CATALOGUE } from '../core/orchestrator/plan-tools';
 import { ProjectPlannerTool } from '../modules/tools/definitions/ProjectPlannerTool';
+import { selectValidatedCandidate } from '../modules/tools/definitions/PublicApiDiscoveryTools';
 
 const rows: PublicApiRecord[] = [
     { id: 'weather-keyed', name: 'WeatherAPI', description: 'weather forecast', category: 'Weather', auth: 'apiKey', https: true, cors: 'unknown', docsUrl: 'https://weather.example/docs', source: 'test', capabilities: ['weather', 'forecast'], pricing: 'FREEMIUM', health: 'HEALTHY' },
@@ -112,6 +113,45 @@ describe('public API discovery', () => {
         const service = new ApiDiscoveryService([provider], { validate } as any);
         expect(await service.validate(record.id)).toMatchObject({ health: 'UNKNOWN', healthDetail: 'no_trusted_probe' });
         expect(validate).not.toHaveBeenCalled();
+    });
+
+    it('validates the next maintained candidate after the first is unavailable', async () => {
+        const candidates: any[] = [
+            { ...rows[1], id: 'candidate-a', integrationProfileId: 'open-meteo-weather-v1', score: 99, reasons: [], warnings: [] },
+            { ...rows[0], id: 'candidate-b', integrationProfileId: 'weatherapi-key-v1', score: 88, health: 'UNKNOWN', reasons: [], warnings: [] },
+        ];
+        const validate = jest.fn()
+            .mockResolvedValueOnce({ ...candidates[0], health: 'UNAVAILABLE' })
+            .mockResolvedValueOnce({ ...candidates[1], health: 'UNKNOWN' });
+        const search = jest.fn().mockResolvedValue(candidates);
+
+        const result = await selectValidatedCandidate(
+            { search, validate } as any,
+            { query: 'weather', integrationRequired: true },
+            candidates,
+        );
+
+        expect(result.selected?.id).toBe('candidate-b');
+        expect(result.attempted).toEqual(['candidate-a', 'candidate-b']);
+        expect(validate).toHaveBeenCalledTimes(2);
+        expect(result.allUnavailable).toBe(false);
+    });
+
+    it('returns an honest blocker when every bounded maintained candidate is unavailable', async () => {
+        const candidates: any[] = [
+            { ...rows[1], id: 'candidate-a', integrationProfileId: 'open-meteo-weather-v1', score: 99, reasons: [], warnings: [] },
+            { ...rows[0], id: 'candidate-b', integrationProfileId: 'weatherapi-key-v1', score: 88, reasons: [], warnings: [] },
+        ];
+        const validate = jest.fn(async (id: string) => ({ ...candidates.find(item => item.id === id), health: 'UNAVAILABLE' }));
+        const result = await selectValidatedCandidate(
+            { search: jest.fn().mockResolvedValue(candidates), validate } as any,
+            { query: 'weather', integrationRequired: true },
+            candidates,
+        );
+
+        expect(result.selected).toBeUndefined();
+        expect(result.allUnavailable).toBe(true);
+        expect(result.attempted).toEqual(['candidate-a', 'candidate-b']);
     });
 
     it('rejects local/private destinations and classifies timeout safely', async () => {

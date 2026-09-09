@@ -6,6 +6,7 @@ import { compactHistoryForPrompt } from './history-compact';
 import { enrichWorkspaceToolInput } from './workspace-evidence';
 import { findActiveBuiltProject } from './active-built-project';
 import { isReadOnlyRequest, isBoundedTerminalDiagnosticRequest, looksLikeBuild } from './buildIntent';
+import { capabilityFromRequest } from '../api-discovery/integration';
 import { saysAny } from '../language/arabic';
 import { parseExplicitAppendFileRequest, parseExplicitFileRequest, parseExplicitDirectoryInspectionRequest, parseExplicitReadFilesRequest, parseExpectedReadMarkers } from './file-intent';
 import { workspaceService } from '../../modules/services/WorkspaceService';
@@ -1708,7 +1709,7 @@ Rules:
          * «Good evening, Younes. I'll outline the optimal project structure…».
          * Not one file was written.
          */
-        const webNoun = /\b(page|site|website|web ?app|landing|portfolio|dashboard|form|store|shop|html|ui|interface)\b/.test(goalLower)
+        const webNoun = /\b(page|site|website|web ?app|landing|portfolio|dashboard|form|store|shop|html|ui|interface|converter)\b/.test(goalLower)
             || /\b(platform|marketplace|e-?commerce|storefront|system|app|application|software|tool|service|portal|panel|admin|backend|api|saas|crm|erp|pos|blog|editor|tracker|planner|scheduler|booking|marketplace|network|clone|table|spreadsheet|ledger|register|list|board|workspace|library|directory|manager|log|desk)\b/.test(goalLower)
             // «نظام نقاط بيع للمطاعم مع تقارير مبيعات» named no «موقع» and no
             // «صفحة», so the build gate never opened and Joe just TALKED about it.
@@ -2048,8 +2049,9 @@ Rules:
             //   page   → one document: a landing page, a menu, a portfolio
             //   app    → screens, state, interaction: a real React project
             //   system → app + its own data: a backend, and the app wired to it
+            const externalDataCapability = buildVerb ? capabilityFromRequest(intent.goal) : null;
             const scope = PlanningEngine.classifyBuildScope(probe);
-            if (scope !== 'page' && !(hasActivePage && editIntent)) {
+            if ((scope !== 'page' || externalDataCapability) && !(hasActivePage && editIntent)) {
                 console.log(`[PlanningEngine] build scope = ${scope} -> evidence-first project_pipeline`);
                 return {
                     id: `engineering_${scope}_${Date.now()}`,

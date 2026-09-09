@@ -35,6 +35,12 @@ describe('the pointer moves and the element under test is outlined', () => {
         expect(e).toMatch(/broadcastBrowserEvent/);
     });
 
+    it('keeps the internal grounding inventory invisible instead of outlining the whole page', () => {
+        const runner = read('modules', 'browser', 'runner.ts');
+        expect(runner).toContain("type: 'highlight_boxes', ts: now(), boxes: []");
+        expect(runner).not.toMatch(/elements\.slice\(0,\s*350\)\.map/);
+    });
+
     it('and moves the REAL mouse, so a hover menu actually opens', () => {
         expect(E()).toMatch(/await page\.mouse\.move\(px, py\)/);
     });

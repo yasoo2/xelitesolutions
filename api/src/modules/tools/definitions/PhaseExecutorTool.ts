@@ -1095,7 +1095,11 @@ export class PhaseExecutorTool implements ToolDefinition {
         }> = [];
         let completedCount = 0;
         let phaseDelivery: PhaseDeliveryEvidence | undefined;
-        let apiSelection: ApiSelectionArtifact | null = null;
+        // A discovery task may have completed in an earlier phase. Rebuild the
+        // receipt from Joe-maintained profile data at this boundary; executable
+        // fields such as baseUrl, auth, env names, and provider names are never
+        // accepted from planner/run context.
+        let apiSelection: ApiSelectionArtifact | null = compactApiSelectionArtifact(projectContext?.apiSelection);
 
         const executionContext = {
             runId: context?.runId || projectContext?.runId,
@@ -1323,6 +1327,12 @@ export class PhaseExecutorTool implements ToolDefinition {
                     planned.apiSelection = apiSelection;
                     appendLog(`[PhaseExecutor] react_project: received trusted API selection (${apiSelection.providerName})`);
                 }
+                if ((toolName === 'inspect_api' || toolName === 'validate_api')
+                    && apiSelection
+                    && !String(planned.apiId || '').trim()) {
+                    planned.apiId = apiSelection.apiId;
+                    appendLog(`[PhaseExecutor] ${toolName}: received trusted API id (${apiSelection.apiId})`);
+                }
 
                 // Preserve the planner's structured evidence before runtime
                 // rebasing normalizes stale cwd/projectPath values. This snapshot
@@ -1436,6 +1446,33 @@ export class PhaseExecutorTool implements ToolDefinition {
                         if (toolName === 'search_public_apis') {
                             apiSelection = compactApiSelectionArtifact(output.selection);
                             if (apiSelection) appendLog(`[PhaseExecutor] API selection captured for builder handoff: ${apiSelection.providerName}`);
+                        }
+                        if (toolName === 'validate_api'
+                            && apiSelection
+                            && String(toolArgs.apiId || '').trim() === apiSelection.apiId
+                            && output.api
+                            && String(output.api.id || '').trim() === apiSelection.apiId) {
+                            apiSelection = compactApiSelectionArtifact({
+                                ...apiSelection,
+                                health: output.api.health,
+                                warnings: Array.from(new Set([
+                                    ...apiSelection.warnings,
+                                    ...(output.api.healthDetail ? [String(output.api.healthDetail)] : []),
+                                ])),
+                            });
+                            if (apiSelection?.health === 'UNAVAILABLE') {
+                                const validationError = `selected_api_unavailable:${apiSelection.apiId}`;
+                                appendLog(`[PhaseExecutor] API_VALIDATION blocked integration: ${apiSelection.apiId} is unavailable`);
+                                results.push({
+                                    task: taskDesc,
+                                    tool: toolName,
+                                    ok: false,
+                                    execution: 'ran',
+                                    error: validationError,
+                                });
+                                break;
+                            }
+                            if (apiSelection) appendLog(`[PhaseExecutor] API selection health refreshed: ${apiSelection.health}`);
                         }
                         // Most builder tools return a prose message, while shell tools
                         // deliberately return structured stdout/stderr. Preserve both
@@ -1816,7 +1853,8 @@ export class PhaseExecutorTool implements ToolDefinition {
                     estimatedTime: phase.estimatedTime || 'unknown',
                     ...(verificationFailed ? { verificationFailed: true } : {}),
                     ...(verificationUnavailable ? { verificationUnavailable: true } : {}),
-                    ...(phaseDelivery ? { delivery: phaseDelivery } : {})
+                    ...(phaseDelivery ? { delivery: phaseDelivery } : {}),
+                    ...(apiSelection ? { apiSelection } : {})
                 },
                 logs
             };
@@ -1841,7 +1879,8 @@ export class PhaseExecutorTool implements ToolDefinition {
                     totalTasks: Array.isArray(phase?.tasks) ? phase.tasks.length : 0,
                     results,
                     nextPhase: phase?.phaseNumber,
-                    ...(phaseDelivery ? { delivery: phaseDelivery } : {})
+                    ...(phaseDelivery ? { delivery: phaseDelivery } : {}),
+                    ...(apiSelection ? { apiSelection } : {})
                 },
                 logs
             };
