@@ -138,4 +138,45 @@ describe('issue #86 API selection survives the canonical phase boundary', () => 
 
         expect(mockedExecuteTool.mock.calls.map(call => call[0])).toEqual(['phase_executor']);
     });
+
+    it('propagates owner cancellation through PhaseExecutor and never retries the cancelled builder', async () => {
+        let cancelled = false;
+        let delegatedContext: any;
+        mockedExecuteTool.mockImplementation(async (toolName: string, _input: any, context: any) => {
+            if (toolName !== 'react_project') throw new Error(`unexpected tool: ${toolName}`);
+            delegatedContext = context;
+            cancelled = true;
+            return { ok: false, error: 'run_cancelled_by_owner' } as any;
+        });
+
+        const result: any = await new PhaseExecutorTool().execute({
+            phase: {
+                phaseNumber: 1,
+                name: 'Build',
+                tasks: [{ task: 'Build weather UI', tool: 'react_project', priority: 'high' }],
+            },
+            projectContext: {
+                projectName: 'weather',
+                sessionId: 'issue86-phase-cancel-session',
+                workspaceId: 'issue86-phase-cancel-workspace',
+                userId: 'issue86-user',
+            },
+        }, {
+            runId: 'issue86-phase-cancel-run',
+            sessionId: 'issue86-phase-cancel-session',
+            workspaceId: 'issue86-phase-cancel-workspace',
+            userId: 'issue86-user',
+            isCancelled: () => cancelled,
+            cancellation: Promise.resolve(),
+        });
+
+        expect(result).toMatchObject({
+            ok: false,
+            error: 'run_cancelled_by_owner',
+            output: { status: 'fatal_error' },
+        });
+        expect(delegatedContext.isCancelled).toEqual(expect.any(Function));
+        expect(delegatedContext.cancellation).toBeInstanceOf(Promise);
+        expect(mockedExecuteTool.mock.calls.map(call => call[0])).toEqual(['react_project']);
+    });
 });
