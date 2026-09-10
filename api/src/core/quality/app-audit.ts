@@ -429,6 +429,13 @@ export async function auditBuiltApp(
         let borrowError = '';
         if (opts?.watchSessionId) {
             try {
+                if (opts.requireVisibleBrowser) {
+                    const { panelWatcherCount } = require('../../modules/browser/wsHub');
+                    if (panelWatcherCount(opts.watchSessionId) <= 0) {
+                        borrowError = 'no active Browser panel watcher';
+                    }
+                }
+                if (borrowError) throw new Error(borrowError);
                 const { getBrowserSession, resumeStreamingIfWatched } = require('../../modules/browser/manager');
                 const s = await getBrowserSession(opts.watchSessionId);
                 if (s?.page) {
