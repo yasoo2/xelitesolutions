@@ -28,7 +28,14 @@ describe('canonical engineering pipeline terminal outcomes', () => {
   it('hands final Browser QA only a maintained external API identity', () => {
     expect(externalApiExpectationFromRecord({
       capability: 'currency', integrationProfileId: 'frankfurter-currency-v2',
-    })).toEqual({ capability: 'currency', integrationProfileId: 'frankfurter-currency-v2' });
+    })).toEqual({
+      capability: 'currency',
+      integrationProfileId: 'frankfurter-currency-v2',
+      providerName: 'Frankfurter',
+      auth: 'none',
+      pricing: 'UNKNOWN',
+      health: 'UNKNOWN',
+    });
     expect(externalApiExpectationFromRecord({
       capability: 'currency', integrationProfileId: 'unknown-profile',
     })).toBeUndefined();

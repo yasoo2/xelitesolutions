@@ -55,6 +55,12 @@ export function summarizeEngineeringReport(markdown: string, language = 'en'): s
         || Array.from(source.matchAll(/(\d+)\s+interaction\(s\) measured/gi)).pop()?.[1]
         || checked?.[2]
         || '';
+    // External API selection is a user-facing product dependency, not internal
+    // trace noise. Keep the backend's maintained metadata in the compact chat
+    // receipt while leaving request URLs and technical evidence in Logs.
+    const externalApiStatus = lines.find(line => /^[-•*]?\s*(?:External API|API خارجي):/iu.test(line))
+        ?.replace(/^[-•*]\s*/, '')
+        .trim();
 
     if (isArabic) {
         const heading = title ? `${fullyVerified ? '## تم التسليم' : '## نتيجة التنفيذ'}: ${title}` : (fullyVerified ? '## ملخص التسليم' : '## نتيجة التنفيذ');
@@ -63,6 +69,7 @@ export function summarizeEngineeringReport(markdown: string, language = 'en'): s
         if (credential) result.push(`بيانات الاختبار: ${credential[1]} / ${credential[2]}`);
         if (pages.length) result.push(`الصفحات المنفذة: ${pages.join(' · ')}.`);
         if (score) result.push(`فحص المتصفح: **${score}/100**${checked ? ` — ${checked[1]} صفحات و${measuredInteractions} فعلاً استكشافياً${statesDiscovered ? ` عبر ${statesDiscovered} حالة` : ''}` : ''}.`);
+        if (externalApiStatus) result.push(externalApiStatus);
         if (issueLines.length) {
             result.push('الملاحظات المتبقية:');
             result.push(...issueLines.map(line => `- ${line}`));
@@ -87,6 +94,7 @@ export function summarizeEngineeringReport(markdown: string, language = 'en'): s
         const interactionLabel = measuredInteractions === '1' ? 'exploratory action' : 'exploratory actions';
         result.push(`Browser QA: **${score}/100**${checked ? ` — ${checked[1]} ${pageLabel} and ${measuredInteractions} ${interactionLabel}${statesDiscovered ? ` across ${statesDiscovered} discovered states` : ''}` : ''}.`);
     }
+    if (externalApiStatus) result.push(externalApiStatus);
     if (issueLines.length) {
         result.push('Remaining findings:');
         result.push(...issueLines.map(line => `- ${line}`));

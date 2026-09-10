@@ -273,6 +273,10 @@ interface TrustedRuntimeProjectHandoff {
     externalApi?: {
         capability: 'weather' | 'currency' | 'ip';
         integrationProfileId: string;
+        providerName: string;
+        auth: string;
+        pricing: string;
+        health: 'HEALTHY' | 'UNKNOWN' | 'DEGRADED' | 'UNAVAILABLE';
     };
 }
 
@@ -291,10 +295,18 @@ export function durablePreviewEligible(input: {
 export function externalApiExpectationFromRecord(input: any): TrustedRuntimeProjectHandoff['externalApi'] {
     const integrationProfileId = String(input?.integrationProfileId || '').trim();
     const capability = String(input?.capability || '').trim();
-    if (!['weather', 'currency', 'ip'].includes(capability) || !integrationProfile(integrationProfileId)) return undefined;
+    const profile = integrationProfile(integrationProfileId);
+    if (!['weather', 'currency', 'ip'].includes(capability) || !profile || profile.capability !== capability) return undefined;
+    const health = ['HEALTHY', 'UNKNOWN', 'DEGRADED', 'UNAVAILABLE'].includes(String(input?.health || ''))
+        ? String(input.health) as 'HEALTHY' | 'UNKNOWN' | 'DEGRADED' | 'UNAVAILABLE'
+        : 'UNKNOWN';
     return {
         capability: capability as 'weather' | 'currency' | 'ip',
         integrationProfileId,
+        providerName: profile.providerName,
+        auth: profile.auth,
+        pricing: profile.pricing,
+        health,
     };
 }
 
@@ -2486,7 +2498,9 @@ export class ProjectPipelineTool implements ToolDefinition {
         const summary = this.buildDeliveryReport({
             language: isAr ? 'ar' : 'en',
             projectName: String(plannerResult.output.projectName || 'project'),
-            phases, pipeline, done, total, verified: finalVerified, liveUrl, liveRunError, liveRepairStatus, scopeAudit, scopeRepairStatus, browserQa, decisionEvidence, verificationUnavailable,
+            phases, pipeline, done, total, verified: finalVerified, liveUrl, liveRunError, liveRepairStatus, scopeAudit, scopeRepairStatus, browserQa,
+            externalApi: runtimeProjectHandoff?.externalApi,
+            decisionEvidence, verificationUnavailable,
         });
         say(`[pipeline] ${finalVerified ? `✅ ${done}/${total}` : `⚠️ ${done}/${total}`} — delivery report ready`);
 
@@ -2724,10 +2738,11 @@ export class ProjectPipelineTool implements ToolDefinition {
         scopeAudit?: ScopeGateOutcome['scopeAudit'];
         scopeRepairStatus?: string;
         browserQa?: AppAudit | null;
+        externalApi?: TrustedRuntimeProjectHandoff['externalApi'];
         decisionEvidence?: PipelineDecisionEvidence;
         verificationUnavailable?: boolean;
     }): string {
-        const { language: lang, projectName, phases, pipeline, done, total, verified, liveUrl, liveRunError, liveRepairStatus, scopeAudit, scopeRepairStatus, browserQa, decisionEvidence, verificationUnavailable } = args;
+        const { language: lang, projectName, phases, pipeline, done, total, verified, liveUrl, liveRunError, liveRepairStatus, scopeAudit, scopeRepairStatus, browserQa, externalApi, decisionEvidence, verificationUnavailable } = args;
         const ar = lang === 'ar';
         const lines: string[] = [];
         /**
@@ -2821,6 +2836,15 @@ export class ProjectPipelineTool implements ToolDefinition {
                     : `### Visible Browser QA: **${browserQa.score}/100** — ${browserQa.findings.length} finding(s), ${high} blocking, ${measuredActions} exploratory action(s) across ${browserQa.statesVisited ?? 0} discovered state(s).`);
                 const apiProof = browserQa.externalApiRuntime;
                 if (apiProof) {
+                    const apiMeta = externalApi;
+                    if (apiMeta) {
+                        const runtimeStatus = apiProof.successfulRequests > 0 && apiProof.responseMatchedRenderedResult
+                            ? (ar ? 'مثبت أثناء التشغيل' : 'runtime verified')
+                            : (ar ? 'غير مثبت أثناء التشغيل' : 'runtime unverified');
+                        lines.push(ar
+                            ? `- API خارجي: ${apiMeta.providerName} · المصادقة: ${apiMeta.auth} · صحة الفهرس: ${apiMeta.health.toLowerCase()} · التشغيل: ${runtimeStatus}.`
+                            : `- External API: ${apiMeta.providerName} · Auth: ${apiMeta.auth} · Catalog health: ${apiMeta.health.toLowerCase()} · Runtime: ${runtimeStatus}.`);
+                    }
                     lines.push(ar
                         ? `- دليل API: ${apiProof.integrationProfileId}؛ ${apiProof.successfulRequests} طلب ناجح؛ تطابق النتيجة=${apiProof.responseMatchedRenderedResult}؛ التحميل=${apiProof.loadingObserved}؛ الخطأ=${apiProof.errorObserved}؛ التعافي=${apiProof.recoveredAfterError}.`
                         : `- API evidence: ${apiProof.integrationProfileId}; ${apiProof.successfulRequests} successful request(s); resultMatched=${apiProof.responseMatchedRenderedResult}; loading=${apiProof.loadingObserved}; error=${apiProof.errorObserved}; recovery=${apiProof.recoveredAfterError}.`);

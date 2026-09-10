@@ -62,4 +62,17 @@ Visible Browser QA: **100/100** — 0 finding(s), 0 blocking, 4 interaction(s) m
         expect(summary).toContain('21 exploratory actions across 16 discovered states');
         expect(summary).not.toContain('4 interactions');
     });
+
+    it('keeps the selected external API status in the compact user receipt', () => {
+        const report = `
+A full React project, scaffolded AND verified to compile — "Weather".
+Self-QA in the Browser panel, in front of you (1 page(s), 2 control(s) pressed, 3 viewport(s), 3 control(s) discovered, 3 exploratory action(s) and 3 state(s) discovered): 100/100 — clean.
+Visible Browser QA: **100/100** — 0 finding(s), 0 blocking, 3 exploratory action(s) across 3 discovered state(s).
+- External API: Open-Meteo · Auth: none · Catalog health: unknown · Runtime: runtime verified.
+`;
+        const summary = summarizeEngineeringReport(report, 'en');
+        expect(summary).toContain('External API: Open-Meteo');
+        expect(summary).toContain('Auth: none');
+        expect(summary).toContain('Runtime: runtime verified');
+    });
 });
