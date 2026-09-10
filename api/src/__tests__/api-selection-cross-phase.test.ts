@@ -101,4 +101,41 @@ describe('issue #86 API selection survives the canonical phase boundary', () => 
             fs.rmSync(projectRoot, { recursive: true, force: true });
         }
     });
+
+    it('does not open repair or another phase after the owner cancels an in-flight phase', async () => {
+        let cancelled = false;
+        mockedExecuteTool.mockImplementation(async (toolName: string) => {
+            if (toolName === 'phase_executor') {
+                cancelled = true;
+                return {
+                    ok: false,
+                    error: 'build failed after cancellation',
+                    output: {
+                        status: 'failed',
+                        results: [{ ok: false, tool: 'react_project', error: 'build failed' }],
+                    },
+                } as any;
+            }
+            throw new Error(`unexpected post-cancellation tool: ${toolName}`);
+        });
+
+        await expect(AgentLoopService.runPlannedPhasesIfPresent({
+            sessionId: 'issue86-cancel-session',
+            runId: 'issue86-cancel-run',
+            userId: 'issue86-user',
+            workspaceId: 'issue86-cancel-workspace',
+            request: 'Build a weather dashboard.',
+            isCancelled: () => cancelled,
+            cancellation: Promise.resolve(),
+            plannerResult: {
+                ok: true,
+                output: {
+                    projectName: 'weather',
+                    phases: [{ phaseNumber: 1, name: 'Build', tasks: [{ task: 'Build weather UI', tool: 'react_project' }] }],
+                },
+            },
+        })).rejects.toThrow('run_cancelled_by_owner');
+
+        expect(mockedExecuteTool.mock.calls.map(call => call[0])).toEqual(['phase_executor']);
+    });
 });

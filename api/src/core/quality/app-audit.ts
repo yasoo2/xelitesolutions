@@ -161,6 +161,10 @@ export interface AppAudit {
         validSubmissionObserved: boolean;
         invalidInputRejected?: boolean;
         selectionChanged?: boolean;
+        /** Exact visible result used for the causal response-to-UI match. */
+        renderedResult?: string;
+        /** Exact visible failure state produced by the bounded fault injection. */
+        errorText?: string;
     };
 }
 
@@ -234,6 +238,8 @@ export function externalApiRuntimeFromBrowserEvidence(
         errorObserved: interaction.errorObserved === true,
         recoveredAfterError: interaction.recoveredAfterError === true,
         validSubmissionObserved: interaction.validSubmissionObserved === true,
+        ...(renderedText ? { renderedResult: renderedText.slice(0, 240) } : {}),
+        ...(interaction.errorText ? { errorText: String(interaction.errorText).trim().slice(0, 240) } : {}),
         ...(expected.capability === 'currency' ? {
             invalidInputRejected: interaction.invalidInputRejected === true,
             selectionChanged: interaction.selectionChanged === true,
@@ -1163,6 +1169,7 @@ export async function auditBuiltApp(
                             const rejectedValue = String(await amount.inputValue().catch(() => 'abc'));
                             const validationText = String(await page.locator('#amount-error,[role="alert"]').first().innerText().catch(() => ''));
                             invalidInputRejected = !/[a-z]/iu.test(rejectedValue) && /digits|valid amount|أرقام|رقم/iu.test(validationText);
+                            behaviourMetrics.exploratoryActions++;
                             await amount.fill('125.5');
                         }
                         if (await from.count() && await to.count()) {
@@ -1172,6 +1179,7 @@ export async function auditBuiltApp(
                             await to.selectOption('TRY').catch(() => { });
                             selectionChanged = (await from.inputValue().catch(() => '')) !== beforeFrom
                                 || (await to.inputValue().catch(() => '')) !== beforeTo;
+                            if (selectionChanged) behaviourMetrics.exploratoryActions++;
                         }
                     }
 
@@ -1181,6 +1189,7 @@ export async function auditBuiltApp(
                     await eyes.press(page);
                     await submit.click();
                     validSubmissionObserved = await waitForResponseAfter(beforeSuccess);
+                    if (validSubmissionObserved) behaviourMetrics.exploratoryActions++;
                     const firstLiveText = String(await page.locator('[data-api-result="true"]').first().innerText().catch(() => '')).trim();
                     const firstProof = externalApiRuntimeFromBrowserEvidence(
                         opts.externalApi,
@@ -1197,6 +1206,7 @@ export async function auditBuiltApp(
                     const failureText = String(await page.locator('[data-api-error="true"]').first().innerText().catch(() => ''));
                     errorObserved = /failed|error|could not|timed out|network|تعذر|خطأ/iu.test(failureText)
                         && successfulExternalRequests.length === beforeFailure;
+                    if (errorObserved) behaviourMetrics.exploratoryActions++;
                     expectedExternalNetworkFailure = false;
 
                     opts?.onProgress?.(`external-api:${opts.externalApi.capability}: retrying after network restoration`);
@@ -1211,6 +1221,7 @@ export async function auditBuiltApp(
                         recoveredText,
                     );
                     recoveredAfterError = errorObserved && recoveryRequestSucceeded && finalProof.responseMatchedRenderedResult;
+                    if (recoveredAfterError) behaviourMetrics.exploratoryActions++;
                     const uiProbe = await page.evaluate(() => (window as any).__joeExternalQa || {}).catch(() => ({}));
                     externalRuntimeEvidence = externalApiRuntimeFromBrowserEvidence(
                         opts.externalApi,
@@ -1223,6 +1234,7 @@ export async function auditBuiltApp(
                             validSubmissionObserved,
                             invalidInputRejected,
                             selectionChanged,
+                            errorText: failureText,
                         },
                     );
                     if (!firstProof.responseMatchedRenderedResult) externalRuntimeEvidence.responseMatchedRenderedResult = finalProof.responseMatchedRenderedResult;
@@ -1872,17 +1884,37 @@ export function formatAudit(a: AppAudit, isAr: boolean): string {
     const suite = passes
         ? (isAr ? `\n🧪 حزمة اختبارات المتصفح: ${passes}` : `\n🧪 Browser QA suite: ${passes}`)
         : '';
+    const external = a.externalApiRuntime ? (isAr
+        ? `\n🌐 دليل API الحي: ${a.externalApiRuntime.integrationProfileId} · طلبات ناجحة ${a.externalApiRuntime.successfulRequests}`
+        + ` · نتيجة مطابقة ${a.externalApiRuntime.responseMatchedRenderedResult ? 'نعم' : 'لا'}`
+        + ` · تحميل ${a.externalApiRuntime.loadingObserved ? 'مثبت' : 'غير مثبت'}`
+        + ` · خطأ ${a.externalApiRuntime.errorObserved ? 'مثبت' : 'غير مثبت'}`
+        + ` · تعافٍ ${a.externalApiRuntime.recoveredAfterError ? 'مثبت' : 'غير مثبت'}`
+        + `${a.externalApiRuntime.invalidInputRejected === undefined ? '' : ` · رفض مدخل خاطئ ${a.externalApiRuntime.invalidInputRejected ? 'مثبت' : 'غير مثبت'}`}`
+        + `${a.externalApiRuntime.selectionChanged === undefined ? '' : ` · تغيير الاختيار ${a.externalApiRuntime.selectionChanged ? 'مثبت' : 'غير مثبت'}`}`
+        + `${a.externalApiRuntime.renderedResult ? `\nالنتيجة المرئية: ${a.externalApiRuntime.renderedResult}` : ''}`
+        + `${a.externalApiRuntime.errorText ? `\nحالة الخطأ المرئية: ${a.externalApiRuntime.errorText}` : ''}`
+        : `\n🌐 Live API evidence: ${a.externalApiRuntime.integrationProfileId} · ${a.externalApiRuntime.successfulRequests} successful request(s)`
+        + ` · matched result ${a.externalApiRuntime.responseMatchedRenderedResult ? 'yes' : 'no'}`
+        + ` · loading ${a.externalApiRuntime.loadingObserved ? 'proven' : 'unproven'}`
+        + ` · error ${a.externalApiRuntime.errorObserved ? 'proven' : 'unproven'}`
+        + ` · recovery ${a.externalApiRuntime.recoveredAfterError ? 'proven' : 'unproven'}`
+        + `${a.externalApiRuntime.invalidInputRejected === undefined ? '' : ` · invalid input rejection ${a.externalApiRuntime.invalidInputRejected ? 'proven' : 'unproven'}`}`
+        + `${a.externalApiRuntime.selectionChanged === undefined ? '' : ` · selection change ${a.externalApiRuntime.selectionChanged ? 'proven' : 'unproven'}`}`
+        + `${a.externalApiRuntime.renderedResult ? `\nVisible result: ${a.externalApiRuntime.renderedResult}` : ''}`
+        + `${a.externalApiRuntime.errorText ? `\nVisible error state: ${a.externalApiRuntime.errorText}` : ''}`)
+        : '';
     //  Named in the same breath as the score, never in a footnote.
     const where = a.visible
         ? (isAr ? 'في لوحة المتصفّح أمامك' : 'in the Browser panel, in front of you')
         : (isAr ? 'في متصفّح خاصّ لم تره' : 'in a private browser you could not see');
     if (!a.findings.length) {
         return isAr
-            ? `🔎 فحص الجودة الذاتي ${where} ${scope}: 100/100 — صفر أخطاء، كل الصور مرسومة، وكل زر ضُغط استجاب.${suite}`
-            : `🔎 Self-QA ${where} ${scope}: 100/100 — clean.${suite}`;
+            ? `🔎 فحص الجودة الذاتي ${where} ${scope}: 100/100 — صفر أخطاء، كل الصور مرسومة، وكل زر ضُغط استجاب.${suite}${external}`
+            : `🔎 Self-QA ${where} ${scope}: 100/100 — clean.${suite}${external}`;
     }
     const lines = a.findings.map(f => `   • ${findingText(f, isAr)}`).join('\n');
     return isAr
-        ? `🔎 فحص الجودة الذاتي ${where} ${scope}: ${a.score}/100 — وجدت:\n${lines}${suite}`
-        : `🔎 Self-QA ${where} ${scope}: ${a.score}/100:\n${lines}${suite}`;
+        ? `🔎 فحص الجودة الذاتي ${where} ${scope}: ${a.score}/100 — وجدت:\n${lines}${suite}${external}`
+        : `🔎 Self-QA ${where} ${scope}: ${a.score}/100:\n${lines}${suite}${external}`;
 }

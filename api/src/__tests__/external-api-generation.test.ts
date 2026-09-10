@@ -10,7 +10,7 @@ import { scaffoldSubstitutionFor } from '../core/design/scaffold-substitution';
 import { resolvePreviewApiRequest } from '../api/routes/projectPreview';
 import { verifyNamed } from '../core/quality/named-requirements';
 import { buildExternalApiAcceptanceEvidence, externalApiSourceVerdict } from '../core/api-discovery/acceptance-evidence';
-import { externalApiRuntimeFromBrowserEvidence } from '../core/quality/app-audit';
+import { externalApiRuntimeFromBrowserEvidence, formatAudit } from '../core/quality/app-audit';
 import { acceptanceFor } from '../core/quality/acceptance';
 
 const selection = (overrides: Partial<ApiSelectionArtifact> = {}): ApiSelectionArtifact => ({
@@ -345,6 +345,33 @@ describe('external API generation contract', () => {
             '25 EUR = 29.31 USD',
             { loadingObserved: true, errorObserved: true, recoveredAfterError: true, validSubmissionObserved: true, invalidInputRejected: true, selectionChanged: true },
         )).toMatchObject({ successfulRequests: 1, renderedLiveResult: true, responseMatchedRenderedResult: true });
+    });
+
+    it('prints inspectable causal API evidence instead of hiding it behind a score', () => {
+        const runtime = externalApiRuntimeFromBrowserEvidence(
+            { capability: 'currency', integrationProfileId: 'frankfurter-currency-v2' },
+            [{
+                url: 'http://127.0.0.1:5002/api/joe-external/currency?amount=125.5&from=EUR&to=TRY',
+                status: 200,
+                body: { amount: 125.5, base: 'EUR', rates: { TRY: 7079.957 } },
+            }],
+            '125.5 EUR = 7079.957 TRY',
+            {
+                loadingObserved: true,
+                errorObserved: true,
+                recoveredAfterError: true,
+                validSubmissionObserved: true,
+                invalidInputRejected: true,
+                selectionChanged: true,
+                errorText: 'Could not load live rates. Retry.',
+            },
+        );
+        const report = formatAudit({ score: 100, findings: [], externalApiRuntime: runtime }, false);
+        expect(report).toContain('1 successful request(s)');
+        expect(report).toContain('loading proven · error proven · recovery proven');
+        expect(report).toContain('invalid input rejection proven · selection change proven');
+        expect(report).toContain('Visible result: 125.5 EUR = 7079.957 TRY');
+        expect(report).toContain('Visible error state: Could not load live rates. Retry.');
     });
 
     it('does not accept a matching response and number without loading, failure, and recovery proof', () => {

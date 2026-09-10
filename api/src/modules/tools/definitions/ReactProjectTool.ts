@@ -5922,6 +5922,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
         // compatibility component, so asking a provider to rewrite it wastes
         // minutes and can never improve the visible application.
         if (generatedEnginePath && !requestDerivedEngineReady && !unifiedTables) {
+            assertRunActive();
             term(`ai_write_file: authoring ${generatedEnginePath} from the user's requirements`);
             try {
                 const { AIGeneratorTool } = require('./AIGeneratorTool');
@@ -5995,6 +5996,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                         projectRoot: proj,
                         workspaceId: context?.workspaceId,
                     });
+                    assertRunActive();
                     if (!repaired?.ok || !fs.existsSync(path.join(proj, generatedEnginePath))) {
                         const reason = String(repaired?.error || 'runtime contract repair did not produce the requested domain file');
                         term(`domain runtime QA: BLOCKED — ${reason}`);
@@ -6055,6 +6057,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                         projectRoot: proj,
                         workspaceId: context?.workspaceId,
                     });
+                    assertRunActive();
                     if (!repaired?.ok || !fs.existsSync(path.join(proj, generatedEnginePath))) {
                         const reason = String(repaired?.error || 'semantic repair did not produce the requested domain file');
                         term(`domain semantic QA: BLOCKED — ${reason}`);
@@ -6118,6 +6121,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                     executionContext: { ...context, projectRoot: proj, workspaceId: context?.workspaceId },
                     onEvent: term,
                 });
+                assertRunActive();
                 const capabilityUnverifiableNotice = capabilityEvidenceNotice(capabilityRepair.evidenceStatus, isAr);
                 if (capabilityUnverifiableNotice) term(capabilityUnverifiableNotice);
                 if (capabilityRepair.attempted) {
@@ -6145,6 +6149,9 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 }
             } catch (error: any) {
                 const reason = String(error?.message || error);
+                if (context?.isCancelled?.() || reason.includes('run_cancelled_by_owner')) {
+                    throw new Error('run_cancelled_by_owner');
+                }
                 term(`domain generation: BLOCKED — ${reason}`);
                 // Thrown provider failures are treated the same as returned model
                 // notices so the same evidence-bound retry policy applies.
@@ -6155,6 +6162,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
         // notice) — a declared family that ships no file is a costume, not
         // typography (the Amiri/Georgia discovery).
         {
+            assertRunActive();
             const fontCandidates = [
                 path.resolve(__dirname, '..', '..', '..', '..', 'assets', 'fonts'),
                 path.resolve(process.cwd(), 'assets', 'fonts'),
@@ -6195,6 +6203,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
         if (removedFontResources.length) {
             term(`fonts: removed unavailable local declaration(s) before build — ${removedFontResources.join(', ')}`);
         }
+        assertRunActive();
         term(`react_project: scaffolded ${Object.keys(files).length} files in ${proj} — design family: ${family}`);
 
         // ── prove it compiles: npm install + vite build, streamed live ──────
