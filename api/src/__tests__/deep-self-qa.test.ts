@@ -32,6 +32,7 @@ describe('the pointer moves and the element under test is outlined', () => {
         expect(e).toMatch(/type: 'cursor_move', x: px, y: py/);
         expect(e).toMatch(/type: 'highlight_boxes', boxes:/);
         expect(e).toMatch(/type: 'action_feedback', event: 'click'/);
+        expect(e).toContain("if (this.watched) this.send({ type: 'highlight_boxes', boxes: [] })");
         expect(e).toMatch(/broadcastBrowserEvent/);
     });
 
@@ -39,6 +40,19 @@ describe('the pointer moves and the element under test is outlined', () => {
         const runner = read('modules', 'browser', 'runner.ts');
         expect(runner).toContain("type: 'highlight_boxes', ts: now(), boxes: []");
         expect(runner).not.toMatch(/elements\.slice\(0,\s*350\)\.map/);
+    });
+
+    it('repaints the latest clean frame immediately when the active target changes', () => {
+        const stream = fs.readFileSync(path.join(SRC, '..', '..', 'web', 'src', 'components', 'ModernBrowserStream.tsx'), 'utf-8');
+        const manager = read('modules', 'browser', 'manager.ts');
+        expect(stream).toContain('frame.ts < layer.ts');
+        expect(stream).toContain('highlightLayerRef.current = {');
+        expect(stream).toContain('ts: Number(msg.ts) || Date.now()');
+        expect(stream).toContain('latestFrameRef.current = frame');
+        expect(stream).toContain('paintBrowserFrame(canvas, frame, highlightLayerRef.current, showBoxesRef.current)');
+        expect(stream).not.toContain('setBoxes(showBoxes ? (msg.boxes || []) : [])');
+        expect(manager).toContain('const captureStartedAt = Date.now()');
+        expect(manager).toContain('ts: captureStartedAt');
     });
 
     it('and moves the REAL mouse, so a hover menu actually opens', () => {
@@ -88,6 +102,18 @@ describe('the pointer moves and the element under test is outlined', () => {
     it('and the page is handed back with nothing of ours on it', () => {
         expect(E()).toMatch(/function wipeEye\(\)/);
         expect(read('core', 'quality', 'app-audit.ts')).toMatch(/await eyes\.clear\(page\)/);
+    });
+});
+
+describe('live QA keeps one bounded UI heartbeat across hot reloads', () => {
+    it('disposes the cross-session poll and socket listener during Vite replacement', () => {
+        const tracker = fs.readFileSync(path.join(SRC, '..', '..', 'web', 'src', 'services', 'runningSessions.ts'), 'utf-8');
+        expect(tracker).toContain('releaseSocketSubscription = SocketService.subscribe(note)');
+        expect(tracker).toContain('const RECOVERY_POLL_MS = 15_000');
+        expect(tracker).toContain('setInterval(() => { void sync(); }, RECOVERY_POLL_MS)');
+        expect(tracker).toContain('if (pollTimer) clearInterval(pollTimer)');
+        expect(tracker).toContain('releaseSocketSubscription?.()');
+        expect(tracker).toContain('import.meta.hot.dispose(stopTrackingRuns)');
     });
 });
 

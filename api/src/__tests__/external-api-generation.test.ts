@@ -3,7 +3,7 @@ import os from 'os';
 import path from 'path';
 import { capabilityFromRequest, externalDataAppSource, integrationArtifacts, integrationPlanFromSelection, resolveProxyClientUrl, viteConfigWithExternalProxy } from '../core/api-discovery/integration';
 import type { ApiSelectionArtifact } from '../core/api-discovery/types';
-import { isExternalIntegrationArtifact } from '../modules/tools/definitions/ReactProjectTool';
+import { deriveRequestFidelity, isExternalIntegrationArtifact } from '../modules/tools/definitions/ReactProjectTool';
 import { guardUnverifiedBuilderClaims } from '../core/api-discovery/reporting';
 import { handleMaintainedPreviewApiRequest } from '../core/api-discovery/preview-proxy';
 import { scaffoldSubstitutionFor } from '../core/design/scaffold-substitution';
@@ -40,6 +40,13 @@ const acceptanceEvidence = (
                 integrationProfileId: plan.selection.integrationProfileId,
                 successfulRequests: 1,
                 renderedLiveResult: true,
+                responseMatchedRenderedResult: true,
+                loadingObserved: true,
+                errorObserved: true,
+                recoveredAfterError: true,
+                validSubmissionObserved: true,
+                invalidInputRejected: true,
+                selectionChanged: true,
             },
         },
     });
@@ -102,6 +109,12 @@ describe('external API generation contract', () => {
         expect(app).toContain("const parts=normalized.split('.')");
         expect(app).not.toContain("replace(/(..*)./g,'$1')");
         expect(app).toContain("setAmountError('Use digits and one decimal point only')");
+        expect(app).toContain('function updateAmount(value){setData(null)');
+        expect(app).toContain("setTo(e.target.value);setData(null);setError('')");
+        expect(app).toContain('data-external-api-capability="currency"');
+        expect(app).toContain('data-api-result="true"');
+        expect(app).toContain('data-api-loading="true"');
+        expect(app).toContain('data-api-error="true"');
         expect(app).toContain("aria-invalid={amountError?'true':'false'}");
         expect(app).toContain('onInput={e=>updateAmount(e.currentTarget.value)}');
         expect(app).toContain('onChange={e=>updateAmount(e.target.value)}');
@@ -248,6 +261,18 @@ describe('external API generation contract', () => {
         expect(source).not.toContain('joeExternalApiProxy');
     });
 
+    it('treats a maintained currency capability as a known verified engine', () => {
+        const plan = integrationPlanFromSelection(selection())!;
+        const verdict = deriveRequestFidelity(
+            'Create a currency converter using a public API.',
+            false,
+            null,
+            externalDataAppSource(plan),
+            'currency',
+        );
+        expect(verdict).toMatchObject({ engine: 'currency', label: 'verified', mismatch: false, evidenceUnavailable: false });
+    });
+
     it('lets a serious browser or API failure override complete generated artifacts', () => {
         const evidence = acceptanceEvidence(selection(), 'failed');
         const requirement = {
@@ -315,10 +340,40 @@ describe('external API generation contract', () => {
             { capability: 'currency', integrationProfileId: 'frankfurter-currency-v2' },
             [
                 { url: 'https://example.test/unrelated', status: 200 },
-                { url: 'http://127.0.0.1:5002/api/joe-external/currency?amount=25&from=EUR&to=USD', status: 200 },
+                { url: 'http://127.0.0.1:5002/api/joe-external/currency?amount=25&from=EUR&to=USD', status: 200, body: { amount: 25, base: 'EUR', rates: { USD: 29.31 } } },
             ],
             '25 EUR = 29.31 USD',
-        )).toMatchObject({ successfulRequests: 1, renderedLiveResult: true });
+            { loadingObserved: true, errorObserved: true, recoveredAfterError: true, validSubmissionObserved: true, invalidInputRejected: true, selectionChanged: true },
+        )).toMatchObject({ successfulRequests: 1, renderedLiveResult: true, responseMatchedRenderedResult: true });
+    });
+
+    it('does not accept a matching response and number without loading, failure, and recovery proof', () => {
+        const plan = integrationPlanFromSelection(selection())!;
+        const files = integrationArtifacts(plan);
+        const runtime = externalApiRuntimeFromBrowserEvidence(
+            { capability: 'currency', integrationProfileId: 'frankfurter-currency-v2' },
+            [{
+                url: 'http://127.0.0.1:5002/api/joe-external/currency?amount=25&from=EUR&to=USD',
+                status: 200,
+                body: { amount: 25, base: 'EUR', rates: { USD: 29.31 } },
+            }],
+            '25 EUR = 29.31 USD',
+        );
+        const evidence = buildExternalApiAcceptanceEvidence({
+            capability: plan.capability,
+            selection: plan.selection,
+            clientSource: files['src/integrations/externalApi.js'],
+            appSource: externalDataAppSource(plan),
+            proxySource: files['server/joeExternalApiProxy.js'],
+            audit: { findings: [], passes: [{ id: 'runtime', status: 'passed' }], externalApiRuntime: runtime },
+        });
+        expect(runtime).toMatchObject({
+            responseMatchedRenderedResult: true,
+            loadingObserved: false,
+            errorObserved: false,
+            recoveredAfterError: false,
+        });
+        expect(evidence.runtime.status).toBe('unverified');
     });
 
     it('requires positive evidence to match the selected maintained profile', () => {
@@ -337,6 +392,13 @@ describe('external API generation contract', () => {
                     integrationProfileId: 'open-meteo-weather-v1',
                     successfulRequests: 1,
                     renderedLiveResult: true,
+                    responseMatchedRenderedResult: true,
+                    loadingObserved: true,
+                    errorObserved: true,
+                    recoveredAfterError: true,
+                    validSubmissionObserved: true,
+                    invalidInputRejected: true,
+                    selectionChanged: true,
                 },
             },
         });
@@ -474,6 +536,10 @@ describe('external API generation contract', () => {
         const webSearch = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'SearchApiTool.ts'), 'utf8');
         expect(source).toContain('integrationPlanFromSelection(input?.apiSelection)');
         expect(source).toContain('if (!appBp && !externalIntegration && !input?.skipInstall');
+        expect(source).toContain("for (const c of (appBp || externalIntegration) ? [] : ['Navbar', ...sections, 'Footer'])");
+        expect(source).toContain('if (!appBp && !externalIntegration && sections.length && providersAreRationing)');
+        expect(source).toContain("delete files['src/content.js']");
+        expect(source).toContain("delete files['src/reveal.js']");
         expect(source).not.toContain('discoverIntegrationForRequest');
         expect(integration).not.toContain('apiDiscoveryService');
         expect(browserQa).toContain("['numeric', 'decimal'].includes(input.inputMode)");

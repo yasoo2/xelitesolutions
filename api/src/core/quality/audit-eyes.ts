@@ -269,6 +269,10 @@ export class AuditEyes {
     /** The click itself, so the panel shows a pulse where the press landed. */
     async press(page: any) {
         this.send({ type: 'action_feedback', event: 'click', x: this.last.x, y: this.last.y });
+        // The click can synchronously replace or move the outlined element.
+        // Drop the panel outline at press-time so coordinates from the previous
+        // DOM state never linger over the loading/result state that follows.
+        if (this.watched) this.send({ type: 'highlight_boxes', boxes: [] });
         if (!this.paint) return;
         await evalInPage(page, paintEye, { cursor: this.last, press: true }).catch(() => { });
     }

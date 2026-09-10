@@ -833,6 +833,7 @@ export function deriveRequestFidelity(
     isAr: boolean,
     appBp: AppBlueprint | null,
     projectEvidence: string,
+    maintainedCapability?: 'weather' | 'currency' | 'ip',
 ): RequestFidelityVerdictForTest {
     const fidelityKind = detectAppKind(request) || appBp?.kind;
     // The request is the independent judge. Preferring appBp here compared the
@@ -840,21 +841,32 @@ export function deriveRequestFidelity(
     // wrong records template to certify itself for a weather request.
     const requestedBp = fidelityKind ? blueprintFor(fidelityKind, request, isAr) : null;
     const fidelityBp: AppBlueprint | null = requestedBp || appBp;
-    const evidenceUnavailable = requestFidelityEvidenceUnavailable(fidelityBp, projectEvidence);
-    const mismatch = requestFidelityMismatch(fidelityBp, projectEvidence);
+    const maintainedEvidence = maintainedCapability === 'weather'
+        ? /open.?meteo|forecast|temperature|WeatherApp/i.test(projectEvidence)
+        : maintainedCapability === 'currency'
+            ? /currency\s+converter|Frankfurter|exchange\s+rate|data-api-(?:amount|from|to|result)/i.test(projectEvidence)
+            : maintainedCapability === 'ip'
+                ? /IP\s+information|ipapi|data-api-result/i.test(projectEvidence)
+                : true;
+    const evidenceUnavailable = fidelityBp
+        ? requestFidelityEvidenceUnavailable(fidelityBp, projectEvidence)
+        : !!maintainedCapability && String(projectEvidence || '').trim().length < 50;
+    const mismatch = fidelityBp
+        ? requestFidelityMismatch(fidelityBp, projectEvidence)
+        : !!maintainedCapability && !evidenceUnavailable && !maintainedEvidence;
     const label = evidenceUnavailable
         ? 'fidelity_unverifiable'
         : mismatch
             ? 'request_fidelity_mismatch'
-            : fidelityBp
+            : fidelityBp || maintainedCapability
                 ? 'verified'
                 : 'no_known_engine';
     return {
-        engine: fidelityBp?.engine || null,
+        engine: fidelityBp?.engine || maintainedCapability || null,
         label,
         evidenceUnavailable,
         mismatch,
-        diagnostic: `acceptance fidelity verdict: ${label} — engine=${fidelityBp?.engine || 'unknown'} chars=${String(projectEvidence || '').length}`,
+        diagnostic: `acceptance fidelity verdict: ${label} — engine=${fidelityBp?.engine || maintainedCapability || 'unknown'} chars=${String(projectEvidence || '').length}`,
     };
 }
 
@@ -5378,7 +5390,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 + (appFiles['src/styles/app.css'] || fileAppCss());
             fs.mkdirSync(path.join(proj, 'src', 'app'), { recursive: true });
             term(`application build: ${runBp.kind} — engine «${runBp.engine}»${Object.keys(runBp.deps || {}).length ? `, real dependencies: ${Object.keys(runBp.deps).join(', ')}` : ''}`);
-        } else {
+        } else if (!externalIntegration) {
             // Generic projects have no runBp; the declaration still follows
             // the classification decision and stays visible in Joe's terminal.
             //  The SECOND mouth that speaks this sentence. The most repeated
@@ -5402,7 +5414,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
         //  Set when the page was built from templates because no model was
         //  reachable — carried into the delivery, not left in the terminal.
         let authoringStoodDown = false;
-        for (const c of appBp ? [] : ['Navbar', ...sections, 'Footer']) {
+        for (const c of (appBp || externalIntegration) ? [] : ['Navbar', ...sections, 'Footer']) {
             const tpl = componentTemplates[c];
             if (tpl) files[`src/components/${c}.jsx`] = tpl();
         }
@@ -5516,13 +5528,13 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
          *  — retry, add a key, choose another provider. A page that merely
          *  looks unconsidered is a sentence he cannot.
          */
-        if (!appBp && sections.length && providersAreRationing) {
+        if (!appBp && !externalIntegration && sections.length && providersAreRationing) {
             term(modelUnavailableDuringBuild
                 ? 'interface authoring stood down — the selected model did not answer earlier in this build; the specialized deterministic interface continues'
                 : 'interface authoring stood down — the model providers are rationing, and the planner needs that quota more than the page does');
             authoringStoodDown = true;
         }
-        if (!appBp && sections.length && !providersAreRationing) {
+        if (!appBp && !externalIntegration && sections.length && !providersAreRationing) {
             const { authorComponents, describeShapes } = require('../../../core/design/authored-ui');
             const { composeDesign } = require('../../../core/design/composer');
             const { routeToModel } = require('../../../core/llm/intelligent-router');
@@ -5730,7 +5742,14 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             files['vite.config.js'] = viteConfigWithExternalProxy(files['vite.config.js'], externalIntegration);
         }
         const externalApp = externalIntegration ? externalDataAppSource(externalIntegration) : '';
-        if (externalApp) files['src/App.jsx'] = externalApp;
+        if (externalApp) {
+            files['src/App.jsx'] = externalApp;
+            // A maintained external-data capability owns its complete interface.
+            // Do not ship the unused brochure copy/reveal files from the generic
+            // page scaffold and then describe that dead template as the product.
+            delete files['src/content.js'];
+            delete files['src/reveal.js'];
+        }
 
         // THE FILES, LIVE. Every file this build writes is streamed to the
         // Logs panel the moment it exists on disk — the same `file_stream`
@@ -7660,7 +7679,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
         // and reported verbatim; the table stays as a second source for the
         // technology stack, which is rarely written as a bullet list.
         const { uncoveredFeatures } = require('../../../core/design/app-blueprints');
-        const fidelity = deriveRequestFidelity(request, isAr, appBp, projectEvidence);
+        const fidelity = deriveRequestFidelity(request, isAr, appBp, projectEvidence, externalIntegration?.capability);
         const rawAskedButMissing: string[] = workflowSemanticContractPassed
             ? []
             : appBp && !fidelity.evidenceUnavailable

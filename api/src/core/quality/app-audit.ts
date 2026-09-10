@@ -154,6 +154,13 @@ export interface AppAudit {
         integrationProfileId: string;
         successfulRequests: number;
         renderedLiveResult: boolean;
+        responseMatchedRenderedResult: boolean;
+        loadingObserved: boolean;
+        errorObserved: boolean;
+        recoveredAfterError: boolean;
+        validSubmissionObserved: boolean;
+        invalidInputRejected?: boolean;
+        selectionChanged?: boolean;
     };
 }
 
@@ -185,13 +192,36 @@ export function isExpectedExternalApiRequest(rawUrl: string, integrationProfileI
 
 export function externalApiRuntimeFromBrowserEvidence(
     expected: ExternalApiRuntimeExpectation,
-    responses: Array<{ url: string; status: number }>,
+    responses: Array<{ url: string; status: number; body?: any }>,
     liveRegionText: string,
+    interaction: Partial<Omit<NonNullable<AppAudit['externalApiRuntime']>, 'capability' | 'integrationProfileId' | 'successfulRequests' | 'renderedLiveResult' | 'responseMatchedRenderedResult'>> = {},
 ): NonNullable<AppAudit['externalApiRuntime']> {
     const successfulRequests = responses.filter(response => response.status >= 200
         && response.status < 300
         && isExpectedExternalApiRequest(response.url, expected.integrationProfileId));
     const renderedText = String(liveRegionText || '').trim();
+    const responseMatchedRenderedResult = successfulRequests.some(response => {
+        const body = response.body;
+        if (!body || typeof body !== 'object') return false;
+        if (expected.capability === 'currency') {
+            const requestUrl = new URL(response.url);
+            const amount = String(body.amount ?? requestUrl.searchParams.get('amount') ?? '').trim();
+            const from = String(body.base ?? requestUrl.searchParams.get('from') ?? '').trim().toUpperCase();
+            const to = String(requestUrl.searchParams.get('to') ?? Object.keys(body.rates || {})[0] ?? '').trim().toUpperCase();
+            const value = body.rates?.[to];
+            return !!amount && !!from && !!to && Number.isFinite(Number(value))
+                && renderedText.includes(amount)
+                && renderedText.includes(from)
+                && renderedText.includes(String(value))
+                && renderedText.includes(to);
+        }
+        if (expected.capability === 'weather') {
+            const temperature = body?.current_weather?.temperature ?? body?.temperature;
+            return Number.isFinite(Number(temperature)) && renderedText.includes(String(temperature));
+        }
+        const ip = String(body?.ip || '').trim();
+        return !!ip && renderedText.includes(ip);
+    });
     return {
         capability: expected.capability,
         integrationProfileId: expected.integrationProfileId,
@@ -199,6 +229,15 @@ export function externalApiRuntimeFromBrowserEvidence(
         renderedLiveResult: successfulRequests.length > 0
             && renderedText.length > 2
             && !/^loading/i.test(renderedText),
+        responseMatchedRenderedResult,
+        loadingObserved: interaction.loadingObserved === true,
+        errorObserved: interaction.errorObserved === true,
+        recoveredAfterError: interaction.recoveredAfterError === true,
+        validSubmissionObserved: interaction.validSubmissionObserved === true,
+        ...(expected.capability === 'currency' ? {
+            invalidInputRejected: interaction.invalidInputRejected === true,
+            selectionChanged: interaction.selectionChanged === true,
+        } : {}),
     };
 }
 
@@ -507,13 +546,15 @@ export async function auditBuiltApp(
         const pageErrors: string[] = [];
         const consoleErrors: string[] = [];
         const failedRequests: string[] = [];
-        const successfulExternalRequests: Array<{ url: string; status: number }> = [];
-        let renderedExternalResult = false;
+        const successfulExternalRequests: Array<{ url: string; status: number; body?: any }> = [];
+        const externalResponseReads: Array<Promise<void>> = [];
+        let externalRuntimeEvidence: NonNullable<AppAudit['externalApiRuntime']> | null = null;
         const isExpectedExternalRequest = (rawUrl: string) => {
             if (!opts?.externalApi) return false;
             return isExpectedExternalApiRequest(rawUrl, opts.externalApi.integrationProfileId);
         };
         let expectedWeatherNetworkFailure = false;
+        let expectedExternalNetworkFailure = false;
         const initialWeatherRequest = String(opts?.request || '');
         const initialWeatherScenario = /\bweather\b/i.test(initialWeatherRequest)
             || /\u0637\u0642\u0633/u.test(initialWeatherRequest);
@@ -601,6 +642,7 @@ export async function auditBuiltApp(
             // browser's delayed ERR_FAILED console echo is test noise rather
             // than a second application defect.
             if (weatherConsoleError && (expectedWeatherNetworkFailure || initialWeatherScenario)) return;
+            if (expectedExternalNetworkFailure && /(?:ERR_FAILED|Failed to fetch|NetworkError|aborted)/iu.test(String(m.text()) + where)) return;
             // Chrome asks every site for /favicon.ico and reports the miss as a
             // console error with the URL only in the location. It was costing a
             // clean build 15 points for a file the browser invented a request for.
@@ -636,7 +678,9 @@ export async function auditBuiltApp(
         page.on('console', onConsole);
         const onResponse = (r: any) => {
             if (r.status() >= 200 && r.status() < 300 && isExpectedExternalRequest(r.url())) {
-                successfulExternalRequests.push({ url: r.url(), status: r.status() });
+                const record: { url: string; status: number; body?: any } = { url: r.url(), status: r.status() };
+                successfulExternalRequests.push(record);
+                externalResponseReads.push(Promise.resolve(r.json()).then((body: any) => { record.body = body; }).catch(() => { }));
             }
             // 401/403: the audit is signed out on purpose — see onConsole above.
             if (r.status() >= 400 && r.status() !== 401 && r.status() !== 403
@@ -1062,29 +1106,140 @@ export async function auditBuiltApp(
             const homeProbe = await probeControls(page, probeOpts());
             mergeProbe(homeProbe, '/');
             if (opts?.externalApi) {
-                // A response can settle just after the semantic form probe
-                // returns. Wait for the same bounded client contract before
-                // deciding there was no live proof. If the general explorer
-                // never submitted the form, submit its current valid values
-                // once; this is a targeted acceptance scenario, not a replay
-                // loop or a source-level assumption.
-                if (!successfulExternalRequests.length) {
-                    await page.evaluate(() => {
-                        const form = document.querySelector('form') as HTMLFormElement | null;
-                        if (form) form.requestSubmit ? form.requestSubmit() : form.submit();
-                    }).catch(() => { });
-                }
-                const proofDeadline = Date.now() + Math.min(10_000, Math.max(1_000, remainingWalkMs()));
-                while (Date.now() < proofDeadline) {
-                    const liveText = String(await page.locator('[aria-live="polite"]').first().innerText().catch(() => '')).trim();
-                    renderedExternalResult = externalApiRuntimeFromBrowserEvidence(
+                opts?.onProgress?.(`external-api:${opts.externalApi.capability}: validating live request, loading, failure, and recovery`);
+                const scenarioStart = successfulExternalRequests.length;
+                let failNextRequest = false;
+                let invalidInputRejected = opts.externalApi.capability !== 'currency';
+                let selectionChanged = opts.externalApi.capability !== 'currency';
+                let validSubmissionObserved = false;
+                let errorObserved = false;
+                let recoveredAfterError = false;
+                const routeMatcher = (candidate: any) => isExpectedExternalRequest(String(candidate));
+                const routeHandler = async (route: any) => {
+                    if (failNextRequest) {
+                        failNextRequest = false;
+                        await route.abort('failed');
+                        return;
+                    }
+                    // Keep the real upstream request, but hold it briefly so a
+                    // genuine loading state is observable instead of inferred.
+                    await new Promise(resolve => setTimeout(resolve, 350));
+                    await route.continue();
+                };
+                await page.evaluate(() => {
+                    const root = window as any;
+                    root.__joeExternalQaObserver?.disconnect?.();
+                    root.__joeExternalQa = { loadingObserved: false };
+                    const inspect = () => {
+                        const status = String(document.querySelector('[data-api-loading="true"], [role="status"]')?.textContent || '');
+                        if (/loading|جار(?:ٍ|ي)|تحميل/iu.test(status)) root.__joeExternalQa.loadingObserved = true;
+                    };
+                    root.__joeExternalQaObserver = new MutationObserver(inspect);
+                    root.__joeExternalQaObserver.observe(document.documentElement, { childList: true, subtree: true, characterData: true });
+                    inspect();
+                });
+                await page.route(routeMatcher, routeHandler);
+                const waitForResponseAfter = async (count: number) => {
+                    const deadline = Date.now() + Math.min(12_000, Math.max(1_000, remainingWalkMs()));
+                    while (Date.now() < deadline && successfulExternalRequests.length <= count) await page.waitForTimeout(100);
+                    await Promise.all(externalResponseReads);
+                    return successfulExternalRequests.length > count;
+                };
+                const submit = page.locator('[data-api-submit="true"]').first();
+                try {
+                    if (opts.externalApi.capability === 'currency') {
+                        const amount = page.locator('[data-api-amount="true"]').first();
+                        const from = page.locator('[data-api-from="true"]').first();
+                        const to = page.locator('[data-api-to="true"]').first();
+                        if (await amount.count()) {
+                            await amount.fill('abc');
+                            const rejectedValue = String(await amount.inputValue().catch(() => 'abc'));
+                            const validationText = String(await page.locator('#amount-error,[role="alert"]').first().innerText().catch(() => ''));
+                            invalidInputRejected = !/[a-z]/iu.test(rejectedValue) && /digits|valid amount|أرقام|رقم/iu.test(validationText);
+                            await amount.fill('125.5');
+                        }
+                        if (await from.count() && await to.count()) {
+                            const beforeFrom = await from.inputValue().catch(() => '');
+                            const beforeTo = await to.inputValue().catch(() => '');
+                            await from.selectOption('EUR').catch(() => { });
+                            await to.selectOption('TRY').catch(() => { });
+                            selectionChanged = (await from.inputValue().catch(() => '')) !== beforeFrom
+                                || (await to.inputValue().catch(() => '')) !== beforeTo;
+                        }
+                    }
+
+                    const beforeSuccess = successfulExternalRequests.length;
+                    const submitBox = await submit.boundingBox().catch(() => null);
+                    if (submitBox) await eyes.lookAt(page, { ...submitBox, label: 'external API submit' }, { note: 'Testing the real API request', moveMouse: true });
+                    await eyes.press(page);
+                    await submit.click();
+                    validSubmissionObserved = await waitForResponseAfter(beforeSuccess);
+                    const firstLiveText = String(await page.locator('[data-api-result="true"]').first().innerText().catch(() => '')).trim();
+                    const firstProof = externalApiRuntimeFromBrowserEvidence(
                         opts.externalApi,
-                        successfulExternalRequests,
-                        liveText,
-                    ).renderedLiveResult;
-                    if (renderedExternalResult) break;
-                    await page.waitForTimeout(200);
+                        successfulExternalRequests.slice(scenarioStart),
+                        firstLiveText,
+                    );
+
+                    opts?.onProgress?.(`external-api:${opts.externalApi.capability}: forcing one safe network failure`);
+                    const beforeFailure = successfulExternalRequests.length;
+                    expectedExternalNetworkFailure = true;
+                    failNextRequest = true;
+                    await submit.click();
+                    await page.locator('[data-api-error="true"]').first().waitFor({ state: 'visible', timeout: Math.min(8_000, timeoutMs) }).catch(() => { });
+                    const failureText = String(await page.locator('[data-api-error="true"]').first().innerText().catch(() => ''));
+                    errorObserved = /failed|error|could not|timed out|network|تعذر|خطأ/iu.test(failureText)
+                        && successfulExternalRequests.length === beforeFailure;
+                    expectedExternalNetworkFailure = false;
+
+                    opts?.onProgress?.(`external-api:${opts.externalApi.capability}: retrying after network restoration`);
+                    const retry = page.locator('[data-api-retry="true"]').first();
+                    const beforeRecovery = successfulExternalRequests.length;
+                    if (await retry.count()) await retry.click();
+                    const recoveryRequestSucceeded = await waitForResponseAfter(beforeRecovery);
+                    const recoveredText = String(await page.locator('[data-api-result="true"]').first().innerText().catch(() => '')).trim();
+                    const finalProof = externalApiRuntimeFromBrowserEvidence(
+                        opts.externalApi,
+                        successfulExternalRequests.slice(scenarioStart),
+                        recoveredText,
+                    );
+                    recoveredAfterError = errorObserved && recoveryRequestSucceeded && finalProof.responseMatchedRenderedResult;
+                    const uiProbe = await page.evaluate(() => (window as any).__joeExternalQa || {}).catch(() => ({}));
+                    externalRuntimeEvidence = externalApiRuntimeFromBrowserEvidence(
+                        opts.externalApi,
+                        successfulExternalRequests.slice(scenarioStart),
+                        recoveredText || firstLiveText,
+                        {
+                            loadingObserved: uiProbe?.loadingObserved === true,
+                            errorObserved,
+                            recoveredAfterError,
+                            validSubmissionObserved,
+                            invalidInputRejected,
+                            selectionChanged,
+                        },
+                    );
+                    if (!firstProof.responseMatchedRenderedResult) externalRuntimeEvidence.responseMatchedRenderedResult = finalProof.responseMatchedRenderedResult;
+                } finally {
+                    expectedExternalNetworkFailure = false;
+                    await page.unroute(routeMatcher, routeHandler).catch(() => { });
+                    await page.evaluate(() => (window as any).__joeExternalQaObserver?.disconnect?.()).catch(() => { });
                 }
+
+                const proof = externalRuntimeEvidence;
+                const missingProofs: Array<[boolean, string, string]> = proof ? [
+                    [proof.validSubmissionObserved, 'external_api_valid_submission_unproven', 'Browser QA did not prove a valid request through the maintained API path'],
+                    [proof.loadingObserved, 'external_api_loading_unproven', 'Browser QA did not observe the loading state during a real maintained request'],
+                    [proof.renderedLiveResult && proof.responseMatchedRenderedResult, 'external_api_response_render_mismatch', 'The rendered result was not causally matched to the maintained API response'],
+                    [proof.errorObserved, 'external_api_error_state_unproven', 'Forced network failure did not produce the visible error state'],
+                    [proof.recoveredAfterError, 'external_api_recovery_unproven', 'Retry did not recover from the forced failure to a matched live result'],
+                    ...(opts.externalApi.capability === 'currency' ? [
+                        [proof.invalidInputRejected === true, 'external_api_invalid_amount_accepted', 'The currency amount field did not visibly reject letters'],
+                        [proof.selectionChanged === true, 'external_api_currency_selection_unproven', 'Browser QA did not change the requested currency pair'],
+                    ] as Array<[boolean, string, string]> : []),
+                ] : [[false, 'external_api_scenario_unproven', 'The maintained external API browser scenario did not complete']];
+                for (const [ok, id, detailEn] of missingProofs) if (!ok) domainFindings.push({
+                    id, severity: 'high', detail: detailEn, detailEn,
+                });
             }
             // A local control-pass cap preserves time for responsive and visual
             // checks. It is not proof that the shared browser-walk budget ended.
@@ -1251,7 +1406,8 @@ export async function auditBuiltApp(
          * round-trip while the requested cities remain visible.
          */
         const weatherRequest = String(opts?.request || '');
-        if (/\bweather\b|طقس/iu.test(weatherRequest)) {
+        const needsExtendedWeatherScenario = /\bfor\s+.{1,160}\s+using\b|celsius|fahrenheit|°\s*[CF]|offline\s+fallback|network\s+failure|retry|بديل|دون\s+اتصال|إعادة\s+المحاولة/iu.test(weatherRequest);
+        if (/\bweather\b|طقس/iu.test(weatherRequest) && needsExtendedWeatherScenario) {
             const requestedCities = (() => {
                 const clause = weatherRequest.match(/\bfor\s+(.{1,160}?)\s+using\b/i)?.[1] || '';
                 return clause.split(/\s*,\s*|\s+and\s+/i).map((city: string) => city.trim().replace(/^and\s+/i, '')).filter(Boolean).slice(0, 8);
@@ -1588,12 +1744,11 @@ export async function auditBuiltApp(
             controlsDiscovered: behaviourMetrics.controlsDiscovered,
             controls: allControls,
             ...(opts?.externalApi ? {
-                externalApiRuntime: {
-                    capability: opts.externalApi.capability,
-                    integrationProfileId: opts.externalApi.integrationProfileId,
-                    successfulRequests: successfulExternalRequests.length,
-                    renderedLiveResult: renderedExternalResult,
-                },
+                externalApiRuntime: externalRuntimeEvidence || externalApiRuntimeFromBrowserEvidence(
+                    opts.externalApi,
+                    successfulExternalRequests,
+                    '',
+                ),
             } : {}),
             passes: [
                 {
@@ -1601,9 +1756,9 @@ export async function auditBuiltApp(
                     label: 'runtime and network',
                     status: behaviourMetrics.budgetExhausted
                         ? 'skipped'
-                        : (pageErrors.length || consoleErrors.length || failedRequests.length || brokenRoutes.length || dom.deadImgs || domainFindings.some(f => /(?:weather_live_success|weather_scenario|media_.*(?:upload|image|persistence|scenario))/i.test(f.id))) ? 'failed' : 'passed',
+                        : (pageErrors.length || consoleErrors.length || failedRequests.length || brokenRoutes.length || dom.deadImgs || domainFindings.some(f => /(?:external_api|weather_live_success|weather_scenario|media_.*(?:upload|image|persistence|scenario))/i.test(f.id))) ? 'failed' : 'passed',
                     measured: routes.length + 1,
-                    findingIds: findings.filter(f => ['server_root_dead', 'page_errors', 'console_errors', 'failed_requests', 'broken_routes', 'dead_images', 'weather_live_success_unproven', 'weather_scenario_qa_failed'].includes(f.id)).map(f => f.id),
+                    findingIds: findings.filter(f => /^external_api_/u.test(f.id) || ['server_root_dead', 'page_errors', 'console_errors', 'failed_requests', 'broken_routes', 'dead_images', 'weather_live_success_unproven', 'weather_scenario_qa_failed'].includes(f.id)).map(f => f.id),
                 },
                 {
                     id: 'behaviour',

@@ -20,12 +20,14 @@
 import { api } from './apiClient';
 
 type Listener = (running: Set<string>) => void;
+const RECOVERY_POLL_MS = 15_000;
 
 const running = new Set<string>();
 const runIds = new Map<string, string>();
 const listeners = new Set<Listener>();
 let attached = false;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
+let releaseSocketSubscription: (() => void) | null = null;
 
 const norm = (v: any): string => String(v || '').trim();
 
@@ -60,7 +62,9 @@ export function startTrackingRuns() {
     if (attached) return;
     attached = true;
     void import('./socket').then(({ SocketService }) => {
-        SocketService.subscribe(note);
+        if (!attached) return;
+        releaseSocketSubscription?.();
+        releaseSocketSubscription = SocketService.subscribe(note);
     });
     const sync = async () => {
         try {
@@ -88,7 +92,21 @@ export function startTrackingRuns() {
         } catch { /* the WebSocket remains the live fallback */ }
     };
     void sync();
-    pollTimer = setInterval(() => { void sync(); }, 2500);
+    // WebSocket events are the live path. This is only bounded recovery for a
+    // dropped event, so keep it slow enough that several open tabs stay cheap.
+    pollTimer = setInterval(() => { void sync(); }, RECOVERY_POLL_MS);
+}
+
+function stopTrackingRuns() {
+    attached = false;
+    if (pollTimer) clearInterval(pollTimer);
+    pollTimer = null;
+    releaseSocketSubscription?.();
+    releaseSocketSubscription = null;
+}
+
+if (import.meta.hot) {
+    import.meta.hot.dispose(stopTrackingRuns);
 }
 
 export function isSessionRunning(sessionId: string): boolean {

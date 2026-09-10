@@ -44,6 +44,13 @@ interface EvidenceInput {
             integrationProfileId?: string;
             successfulRequests?: number;
             renderedLiveResult?: boolean;
+            responseMatchedRenderedResult?: boolean;
+            loadingObserved?: boolean;
+            errorObserved?: boolean;
+            recoveredAfterError?: boolean;
+            validSubmissionObserved?: boolean;
+            invalidInputRejected?: boolean;
+            selectionChanged?: boolean;
         };
     } | null;
 }
@@ -60,7 +67,14 @@ export function buildExternalApiAcceptanceEvidence(input: EvidenceInput): Extern
     const positiveLiveProof = live?.capability === input.capability
         && live?.integrationProfileId === input.selection.integrationProfileId
         && Number(live?.successfulRequests || 0) > 0
-        && live?.renderedLiveResult === true;
+        && live?.renderedLiveResult === true
+        && live?.responseMatchedRenderedResult === true
+        && live?.loadingObserved === true
+        && live?.errorObserved === true
+        && live?.recoveredAfterError === true
+        && live?.validSubmissionObserved === true
+        && (input.capability !== 'currency'
+            || (live?.invalidInputRejected === true && live?.selectionChanged === true));
     const seriousFailures = findings
         .filter(finding => finding.severity === 'high'
             || /(?:console|runtime|failed_requests?|page_errors?|external_api|api_request)/iu.test(String(finding.id || '')))
