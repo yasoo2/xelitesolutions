@@ -46,6 +46,36 @@ describe('resolvePreviewFile — the request-time resolver', () => {
         expect(resolvePreviewFile('pv-t', '../../secret.txt')).toBeNull();
         expect(resolvePreviewFile('pv-t', '..%2F..%2Fsecret.txt')).toBeNull();
     });
+    it('blocks hidden files inside dist', () => {
+        fs.writeFileSync(path.join(tmp, 'proj', 'dist', '.secret'), 'nope');
+        expect(resolvePreviewFile('pv-t', '.secret')).toBeNull();
+        expect(resolvePreviewFile('pv-t', 'assets/.secret')).toBeNull();
+    });
+    it('serves a build whose absolute parent is a hidden worktree directory', async () => {
+        const router = require('../api/routes/projectPreview').default;
+        const hiddenProject = path.join(tmp, '.issue-worktree', 'project');
+        fs.mkdirSync(path.join(hiddenProject, 'dist'), { recursive: true });
+        fs.writeFileSync(path.join(hiddenProject, 'dist', 'index.html'), '<html>hidden-parent-app</html>');
+        (global as any).joeProjects['pv-hidden'] = { dir: hiddenProject };
+        const handler = router.stack.find((layer: any) => layer.route)?.route.stack[0].handle;
+        const response: any = {
+            setHeader: jest.fn(),
+            sendFile: jest.fn(),
+            status: jest.fn(() => response),
+            send: jest.fn(),
+            end: jest.fn(),
+        };
+        try {
+            await handler({ params: { 0: 'pv-hidden', 1: 'index.html' }, originalUrl: '', url: '', method: 'GET' }, response);
+            expect(response.sendFile).toHaveBeenCalledWith(
+                path.join(hiddenProject, 'dist', 'index.html'),
+                { dotfiles: 'allow' },
+            );
+            expect(response.status).not.toHaveBeenCalled();
+        } finally {
+            delete (global as any).joeProjects['pv-hidden'];
+        }
+    });
     it('an unknown session and a missing dist answer null, never throw', () => {
         expect(resolvePreviewFile('nobody', '')).toBeNull();
         (global as any).joeProjects['pv-t'].dir = path.join(tmp, 'gone');

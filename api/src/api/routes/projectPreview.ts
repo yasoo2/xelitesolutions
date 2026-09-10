@@ -38,9 +38,11 @@ export function resolvePreviewFile(key: string, rel: string): string | null {
     const clean = String(key || '').replace(/[^a-zA-Z0-9._-]/g, '');
     const entry = ((global as any).joeProjects || {})[clean];
     if (!clean || !entry?.dir) return null;
+    const decodedRel = decodeURIComponent(String(rel || ''));
+    if (decodedRel.split(/[\\/]+/).some(segment => segment.startsWith('.'))) return null;
     const dist = path.normalize(path.join(String(entry.dir), 'dist'));
     if (!fs.existsSync(dist)) return null;
-    const file = path.normalize(path.join(dist, decodeURIComponent(String(rel || '')) || 'index.html'));
+    const file = path.normalize(path.join(dist, decodedRel || 'index.html'));
     if (!isWithinRoot(file, dist)) return null;   // no path escapes
     if (!fs.existsSync(file)) return null;
     if (fs.statSync(file).isDirectory()) {
@@ -69,7 +71,10 @@ router.get(/^\/([a-zA-Z0-9._-]+)(?:\/(.*))?$/, async (req, res) => {
         const file = resolvePreviewFile(key, rel);
         if (!file) return res.status(404).send('No built project to preview — build one first.');
         res.setHeader('Cache-Control', 'no-store');
-        return res.sendFile(file);
+        // The workspace itself may be a hidden worktree directory. The URL
+        // resolver above blocks hidden files inside dist and enforces
+        // containment, so allowing a hidden absolute parent is safe.
+        return res.sendFile(file, { dotfiles: 'allow' });
     } catch {
         return res.status(500).end();
     }

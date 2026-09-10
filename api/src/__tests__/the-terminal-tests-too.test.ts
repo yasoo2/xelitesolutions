@@ -199,7 +199,7 @@ describe('a repair that measured WORSE is taken back, not just un-reported', () 
 
     it('the builder restores it, rebuilds, and re-packages', () => {
         expect(REACT).toMatch(/const back = restoreVersion\(proj, id\);/);
-        expect(REACT).toMatch(/if \(rb\.ok === true && packaged\) packageIntoApi\(false\);/);
+        expect(REACT).toMatch(/if \(rb === 0 && packaged\) packageIntoApi\(false\);/);
         expect(REACT).toMatch(/rollback: async \(id: string\) => \{/);
     });
 

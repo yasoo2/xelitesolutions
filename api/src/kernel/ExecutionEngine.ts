@@ -8,27 +8,54 @@ import { executionFirewall } from '../orchestration/AgentExecutionFirewall';
 
 /** Stop a timed-out shell and its descendants before the next repair starts. */
 function terminateProcessTree(child: any): Promise<void> {
-    if (process.platform !== 'win32' || !child?.pid) {
-        try { child?.kill('SIGKILL'); } catch { /* already gone */ }
-        return Promise.resolve();
-    }
+    if (!child?.pid || child.exitCode !== null) return Promise.resolve();
     return new Promise(resolve => {
         let settled = false;
-        const finish = () => { if (!settled) { settled = true; resolve(); } };
+        let killer: any = null;
+        let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
+        const finish = () => {
+            if (settled) return;
+            settled = true;
+            if (fallbackTimer) clearTimeout(fallbackTimer);
+            child.removeListener('close', finish);
+            child.stdout?.destroy();
+            child.stderr?.destroy();
+            resolve();
+        };
+        child.once('close', finish);
+
+        const forceDirectKill = () => {
+            try { child.kill('SIGKILL'); } catch { /* already gone */ }
+        };
+
+        if (process.platform !== 'win32') {
+            forceDirectKill();
+            fallbackTimer = setTimeout(finish, 2_000);
+            return;
+        }
+
         try {
-            const killer = spawn('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], {
+            killer = spawn('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], {
                 stdio: 'ignore', windowsHide: true,
                 // ExecutionGuard validates this exact cleanup argv; it is not
                 // a general direct-spawn escape hatch.
                 __joeExecutionTreeCleanup: true,
             } as any);
-            killer.once('close', finish);
-            killer.once('error', () => { try { child.kill('SIGKILL'); } catch { /* already gone */ } finish(); });
-            setTimeout(() => { try { child.kill('SIGKILL'); } catch { /* already gone */ } finish(); }, 2000);
+            // taskkill exiting means the request was delivered, not that the
+            // original child's stdio handles have closed. Wait for the child's
+            // close event before allowing the owning phase to continue.
+            killer.once('close', () => {
+                if (child.exitCode === null) forceDirectKill();
+            });
+            killer.once('error', forceDirectKill);
         } catch {
-            try { child.kill('SIGKILL'); } catch { /* already gone */ }
-            finish();
+            forceDirectKill();
         }
+        fallbackTimer = setTimeout(() => {
+            forceDirectKill();
+            try { killer?.kill('SIGKILL'); } catch { /* already gone */ }
+            finish();
+        }, 2_000);
     });
 }
 
@@ -59,6 +86,12 @@ export interface ExecutionOptions {
     cols?: number;
     rows?: number;
     timeout?: number;
+    /**
+     * Terminate a streaming command only after this much time without stdout
+     * or stderr. `timeout` remains the absolute ceiling, so a noisy process
+     * can never run forever.
+     */
+    idleTimeout?: number;
     detached?: boolean;
     /**
      *  DO NOT WAIT FOR IT — WHICH IS NOT THE SAME AS DETACH IT.
@@ -641,43 +674,81 @@ export class ExecutionEngine {
                 shell: false,
                 windowsHide: (rest as any).windowsHide !== false,
             } as any);
-        const feed = (stream: 'stdout' | 'stderr') => (b: Buffer) => {
-            if (!onLine) return;
-            String(b).split(/\r?\n/).filter(Boolean).forEach(l => { try { onLine(l, stream); } catch { /* observer errors never kill the child */ } });
-        };
-        child.stdout?.on('data', feed('stdout'));
-        child.stderr?.on('data', feed('stderr'));
         let settled = false;
+        let stopping = false;
         let cancelRequested = false;
         const done = new Promise<{ ok: boolean; exitCode: number | null; error?: string }>((resolve) => {
-            const t = rest.timeout ? setTimeout(() => {
+            let idleTimer: ReturnType<typeof setTimeout> | null = null;
+            let absoluteTimer: ReturnType<typeof setTimeout> | null = null;
+            let stdoutHandler: ((b: Buffer) => void) | null = null;
+            let stderrHandler: ((b: Buffer) => void) | null = null;
+            const cleanup = () => {
+                if (absoluteTimer) clearTimeout(absoluteTimer);
+                if (idleTimer) clearTimeout(idleTimer);
+                if (stdoutHandler) child.stdout?.removeListener('data', stdoutHandler);
+                if (stderrHandler) child.stderr?.removeListener('data', stderrHandler);
+                child.removeListener('close', onClose);
+                child.removeListener('error', onError);
+            };
+            const settle = (result: { ok: boolean; exitCode: number | null; error?: string }) => {
                 if (settled) return;
                 settled = true;
-                void terminateProcessTree(child).finally(() => resolve({ ok: false, exitCode: 124, error: 'timeout' }));
-            }, rest.timeout) : null;
+                cleanup();
+                resolve(result);
+            };
+            const finishTimeout = (reason: 'timeout' | 'idle_timeout') => {
+                if (settled || stopping) return;
+                stopping = true;
+                if (absoluteTimer) clearTimeout(absoluteTimer);
+                if (idleTimer) clearTimeout(idleTimer);
+                void terminateProcessTree(child).finally(() => settle({ ok: false, exitCode: 124, error: reason }));
+            };
+            let sawOutput = false;
+            const armIdleTimer = () => {
+                if (!rest.idleTimeout || settled || stopping) return;
+                if (idleTimer) clearTimeout(idleTimer);
+                // Process creation and runtime bootstrap can be delayed by the
+                // host scheduler before user code has any chance to print.
+                // Give only that first silence a small bounded grace period;
+                // once output starts, the configured idle boundary is exact.
+                const delay = sawOutput
+                    ? rest.idleTimeout
+                    : Math.max(rest.idleTimeout, Math.min(5_000, rest.idleTimeout * 3));
+                idleTimer = setTimeout(() => finishTimeout('idle_timeout'), delay);
+            };
+            const feed = (stream: 'stdout' | 'stderr') => (b: Buffer) => {
+                sawOutput = true;
+                armIdleTimer();
+                if (!onLine) return;
+                String(b).split(/\r?\n/).filter(Boolean).forEach(l => { try { onLine(l, stream); } catch { /* observer errors never kill the child */ } });
+            };
+            stdoutHandler = feed('stdout');
+            stderrHandler = feed('stderr');
+            child.stdout?.on('data', stdoutHandler);
+            child.stderr?.on('data', stderrHandler);
+            absoluteTimer = rest.timeout ? setTimeout(() => finishTimeout('timeout'), rest.timeout) : null;
+            armIdleTimer();
             const cancel = () => {
-                if (settled) return;
+                if (settled || stopping) return;
+                stopping = true;
                 cancelRequested = true;
                 void terminateProcessTree(child).finally(() => {
-                    if (settled) return;
-                    settled = true;
-                    if (t) clearTimeout(t);
-                    resolve({ ok: false, exitCode: 130, error: 'cancelled' });
+                    settle({ ok: false, exitCode: 130, error: 'cancelled' });
                 });
             };
             if (rest.cancel) void rest.cancel.then(cancel).catch(() => { /* cancellation is best effort */ });
-            child.on('close', (code) => {
-                if (settled) return; settled = true;
-                if (t) clearTimeout(t);
-                resolve(cancelRequested
+            const onClose = (code: number | null) => {
+                if (settled || stopping) return;
+                settle(cancelRequested
                     ? { ok: false, exitCode: 130, error: 'cancelled' }
                     : { ok: code === 0, exitCode: code });
-            });
-            child.on('error', (err) => {
-                if (settled) return; settled = true;
-                if (t) clearTimeout(t);
-                resolve({ ok: false, exitCode: null, error: err.message });
-            });
+            };
+            const onError = (err: Error) => {
+                if (settled || stopping) return;
+                settle({ ok: false, exitCode: null, error: err.message });
+            };
+            child.on('close', onClose);
+            child.on('error', onError);
         });
         return { done, kill: () => { void terminateProcessTree(child); }, pid: child.pid };
     }

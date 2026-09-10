@@ -18,7 +18,7 @@ import fs from 'fs';
 import http from 'http';
 import https from 'https';
 import path from 'path';
-import { externalApiSourceVerdict } from '../../../core/api-discovery/acceptance-evidence';
+import { buildExternalApiAcceptanceEvidence, externalApiSourceVerdict } from '../../../core/api-discovery/acceptance-evidence';
 import { BaseTool } from '../base';
 import { ToolPermission, ToolExecutionResult } from '../types';
 import { buildPalette, paletteCss, darkTokenBlock, lightTokenBlock } from '../../../core/design/design-system';
@@ -42,6 +42,13 @@ import { inspectWeatherEngineSource, formatWeatherSemanticRepair } from '../../.
 import { inspectWorkflowEngineSource, formatWorkflowSemanticRepair } from '../../../core/quality/workflow-contract';
 import { isProviderFailure } from '../../../core/llm/intelligent-router';
 import { externalDataAppSource, integrationArtifacts, integrationPlanFromSelection, viteConfigWithExternalProxy } from '../../../core/api-discovery/integration';
+
+export const REACT_NETWORK_INSTALL_TIMEOUTS = Object.freeze({
+    absoluteMs: 15 * 60_000,
+    // A measured fresh Windows install remained healthy but silent for 124s.
+    // Keep this finite while allowing one cold registry/package extraction.
+    idleMs: 5 * 60_000,
+});
 
 export function isExternalIntegrationArtifact(file: string): boolean {
     return file === 'src/integrations/externalApi.js'
@@ -1038,7 +1045,6 @@ export function hasUsableReactDependencyTree(projectRoot: string): boolean {
         '.bin/vite', 'vite/package.json', 'rollup/package.json',
         '@vitejs/plugin-react/package.json', 'react/package.json', 'react-dom/package.json', 'esbuild/package.json',
     ];
-    if (process.platform === 'win32') required.push(`@esbuild/win32-${process.arch}/package.json`);
     const rollupParseAst = ['rollup/dist/parseAst.js', 'rollup/dist/es/parseAst.js', 'rollup/dist/shared/parseAst.js'];
     if (!required.every(rel => fs.existsSync(path.join(modules, rel)))
         || !rollupParseAst.some(rel => fs.existsSync(path.join(modules, rel)))) return false;
@@ -1047,25 +1053,52 @@ export function hasUsableReactDependencyTree(projectRoot: string): boolean {
     catch { return false; }
     if (!dependencyContractMatchesDisk(projectRoot, manifest)) return false;
     if (process.platform !== 'win32') return true;
-    const esbuildBinary = path.join(modules, '@esbuild', `win32-${process.arch}`, 'esbuild.exe');
+    // npm may hoist esbuild's optional platform package or keep it nested
+    // beneath esbuild. Both are standard layouts; validate the actual binary
+    // rather than mistaking the nested form for an incomplete installation.
+    const platformPackage = path.join('@esbuild', `win32-${process.arch}`);
+    const platformRoot = [
+        path.join(modules, platformPackage),
+        path.join(modules, 'esbuild', 'node_modules', platformPackage),
+    ].find(candidate => fs.existsSync(path.join(candidate, 'package.json'))
+        && fs.existsSync(path.join(candidate, 'esbuild.exe')));
+    if (!platformRoot) return false;
+    const esbuildBinary = path.join(platformRoot, 'esbuild.exe');
+    const rollupPlatformPackage = path.join('@rollup', `rollup-win32-${process.arch}-msvc`);
+    const rollupPlatformRoot = [
+        path.join(modules, rollupPlatformPackage),
+        path.join(modules, 'rollup', 'node_modules', rollupPlatformPackage),
+    ].find(candidate => fs.existsSync(path.join(candidate, 'package.json'))
+        && fs.existsSync(path.join(candidate, `rollup.win32-${process.arch}-msvc.node`)));
+    if (!rollupPlatformRoot) return false;
+    const rollupBinary = path.join(rollupPlatformRoot, `rollup.win32-${process.arch}-msvc.node`);
     try {
         const wrapperVersion = JSON.parse(fs.readFileSync(path.join(modules, 'esbuild', 'package.json'), 'utf8')).version;
-        const binaryVersion = JSON.parse(fs.readFileSync(path.join(modules, '@esbuild', `win32-${process.arch}`, 'package.json'), 'utf8')).version;
+        const binaryVersion = JSON.parse(fs.readFileSync(path.join(platformRoot, 'package.json'), 'utf8')).version;
         if (!wrapperVersion || wrapperVersion !== binaryVersion) return false;
-        const stats = fs.statSync(esbuildBinary);
-        if (stats.size < 5_000_000) return false;
-        const fd = fs.openSync(esbuildBinary, 'r');
-        const header = Buffer.alloc(256);
-        try { fs.readSync(fd, header, 0, header.length, 0); }
-        finally { fs.closeSync(fd); }
-        const peOffset = header.readUInt32LE(0x3c);
-        const machine = peOffset + 6 <= header.length ? header.readUInt16LE(peOffset + 4) : 0;
+        const rollupWrapperVersion = JSON.parse(fs.readFileSync(path.join(modules, 'rollup', 'package.json'), 'utf8')).version;
+        const rollupBinaryVersion = JSON.parse(fs.readFileSync(path.join(rollupPlatformRoot, 'package.json'), 'utf8')).version;
+        if (!rollupWrapperVersion || rollupWrapperVersion !== rollupBinaryVersion) return false;
+        const isValidWindowsBinary = (file: string, minimumSize: number) => {
+            const stats = fs.statSync(file);
+            if (stats.size < minimumSize) return false;
+            const fd = fs.openSync(file, 'r');
+            // Native Node bindings commonly place the PE header beyond byte
+            // 256 (Rollup's current Windows binding uses offset 272).
+            const header = Buffer.alloc(4_096);
+            try { fs.readSync(fd, header, 0, header.length, 0); }
+            finally { fs.closeSync(fd); }
+            const peOffset = header.readUInt32LE(0x3c);
+            const machine = peOffset + 6 <= header.length ? header.readUInt16LE(peOffset + 4) : 0;
+            return header[0] === 0x4d && header[1] === 0x5a
+                && header.subarray(peOffset, peOffset + 4).equals(Buffer.from([0x50, 0x45, 0, 0]))
+                && (machine === 0x8664 || machine === 0xaa64);
+        };
         // A cancelled/--ignore-scripts install can leave an ELF helper renamed
         // to .exe, or a truncated PE that still starts with MZ. Both exist but
         // fail later with spawn EFTYPE, so reject them before reuse.
-        return header[0] === 0x4d && header[1] === 0x5a
-            && header.subarray(peOffset, peOffset + 4).equals(Buffer.from([0x50, 0x45, 0, 0]))
-            && (machine === 0x8664 || machine === 0xaa64);
+        return isValidWindowsBinary(esbuildBinary, 5_000_000)
+            && isValidWindowsBinary(rollupBinary, 500_000);
     } catch {
         return false;
     }
@@ -1117,49 +1150,57 @@ export function applyBundledPhotographyFallback(projectRoot: string, content: Pi
 }
 
 export function reuseLocalReactDependencies(workspaceRoot: string, projectRoot: string): boolean {
-    const targetModules = path.join(projectRoot, 'node_modules');
-    if (hasUsableReactDependencyTree(projectRoot)) return true;
-    let targetManifest: any;
-    try { targetManifest = JSON.parse(fs.readFileSync(path.join(projectRoot, 'package.json'), 'utf8')); } catch { return false; }
-    const normalized = (value: any): string => JSON.stringify(Object.fromEntries(
-        Object.entries(value && typeof value === 'object' ? value : {}).sort(([a], [b]) => a.localeCompare(b)),
-    ));
-    const sameToolchain = (candidateManifest: any): boolean => (
-        candidateManifest?.scripts?.build === targetManifest?.scripts?.build
-        && normalized(candidateManifest?.dependencies) === normalized(targetManifest?.dependencies)
-        && normalized(candidateManifest?.devDependencies) === normalized(targetManifest?.devDependencies)
-    );
-    let entries: fs.Dirent[];
-    try { entries = fs.readdirSync(workspaceRoot, { withFileTypes: true }); } catch { return false; }
-    for (const entry of entries) {
-        if (!entry.isDirectory() || !/^react-/i.test(entry.name)) continue;
-        const candidateRoot = path.join(workspaceRoot, entry.name);
-        if (path.resolve(candidateRoot) === path.resolve(projectRoot)) continue;
-        const candidateModules = path.join(candidateRoot, 'node_modules');
-        // A timed-out npm run can leave the Vite shim behind while pruning
-        // React, Rollup, or Vite itself. Never copy that partial tree and stop
-        // the search before a later complete sibling is inspected.
-        if (!hasUsableReactDependencyTree(candidateRoot)) continue;
-        try {
-            const candidateManifest = JSON.parse(fs.readFileSync(path.join(candidateRoot, 'package.json'), 'utf8'));
-            if (!sameToolchain(candidateManifest)) continue;
-            // Keep the dependency tree physically inside the project. A
-            // junction works for npm but makes esbuild resolve through the
-            // source project's parent path on Windows, which is rejected by
-            // the sandbox and can also escape the project's build boundary.
-            fs.rmSync(targetModules, { recursive: true, force: true });
-            fs.cpSync(candidateModules, targetModules, { recursive: true });
-            const candidateLock = path.join(candidateRoot, 'package-lock.json');
-            if (fs.existsSync(candidateLock) && !fs.existsSync(path.join(projectRoot, 'package-lock.json'))) {
-                fs.copyFileSync(candidateLock, path.join(projectRoot, 'package-lock.json'));
-            }
-            if (hasUsableReactDependencyTree(projectRoot)) return true;
-            fs.rmSync(targetModules, { recursive: true, force: true });
-        } catch {
-            try { if (fs.existsSync(targetModules)) fs.rmSync(targetModules, { recursive: true, force: true }); } catch { /* try the next candidate */ }
-        }
-    }
+    void workspaceRoot;
+    void projectRoot;
+    // A sibling project is not a package cache. Even an identical manifest
+    // cannot prove who created its tree or whether lifecycle scripts mutated
+    // it. Fresh projects must install through Joe's execution boundary.
     return false;
+}
+
+export type NativeBuildTool = 'esbuild' | 'rollup';
+
+export function nativeBuildToolRepairSpec(
+    projectRoot: string,
+    tool: NativeBuildTool,
+    platform = process.platform,
+    architecture = process.arch,
+): { packageName: string; version: string; platformRoot: string; verifyArgs: string[] } | null {
+    if (platform !== 'win32' || !['x64', 'arm64'].includes(architecture)) return null;
+    const modules = path.join(projectRoot, 'node_modules');
+    const wrapper = tool === 'esbuild' ? 'esbuild' : 'rollup';
+    let version = '';
+    try { version = String(JSON.parse(fs.readFileSync(path.join(modules, wrapper, 'package.json'), 'utf8')).version || ''); }
+    catch { return null; }
+    if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version)) return null;
+    const packageName = tool === 'esbuild'
+        ? `@esbuild/win32-${architecture}`
+        : `@rollup/rollup-win32-${architecture}-msvc`;
+    return {
+        packageName,
+        version,
+        platformRoot: path.join(modules, packageName),
+        verifyArgs: tool === 'esbuild'
+            ? [path.join('node_modules', 'esbuild', 'bin', 'esbuild'), '--version']
+            : [path.join('node_modules', 'rollup', 'dist', 'bin', 'rollup'), '--version'],
+    };
+}
+
+export async function findBrokenNativeBuildTool(
+    projectRoot: string,
+    execute: (args: string[]) => Promise<number>,
+    platform = process.platform,
+    architecture = process.arch,
+): Promise<NativeBuildTool | null> {
+    if (!hasUsableReactDependencyTree(projectRoot)) return null;
+    // The static tree check is sufficient on non-Windows hosts. This repair
+    // targets Windows PE downloads only and must never reject Hetzner/Linux.
+    if (platform !== 'win32') return null;
+    for (const tool of ['esbuild', 'rollup'] as NativeBuildTool[]) {
+        const spec = nativeBuildToolRepairSpec(projectRoot, tool, platform, architecture);
+        if (!spec || await execute(spec.verifyArgs) !== 0) return tool;
+    }
+    return null;
 }
 
 /** Escape a string for safe embedding inside a JS single-quoted literal. */
@@ -6138,13 +6179,37 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
              * callers below rely on is unchanged — -1 means the binary is not
              * on this machine, -2 means it timed out.
              */
-            const run = async (cmd: string, args: string[], timeoutMs: number): Promise<number> => {
-                const r = await shell.run(cmd, args, { cwd: proj, timeout: timeoutMs, cancel: cancellation });
+            const run = async (cmd: string, args: string[], timeoutMs: number, idleTimeoutMs?: number): Promise<number> => {
+                const r = await shell.run(cmd, args, { cwd: proj, timeout: timeoutMs, idleTimeout: idleTimeoutMs, cancel: cancellation });
                 lastLog = r.out;
                 if (context?.isCancelled?.()) throw new Error('run_cancelled_by_owner');
                 if (r.missing) return -1;
                 if (r.timedOut) return -2;
                 return r.exitCode as number;
+            };
+            const detectBrokenNativeBuildTool = () => findBrokenNativeBuildTool(
+                proj,
+                args => run('node', args, 30_000, 15_000),
+            );
+            const repairNativeBuildTool = async (tool: NativeBuildTool): Promise<boolean> => {
+                const spec = nativeBuildToolRepairSpec(proj, tool);
+                if (!spec) return false;
+                const repairCache = path.join(proj, '.joe', `npm-${tool}-repair-${process.pid}-${Date.now()}`);
+                term(`${tool}'s Windows binary could not start — redownloading only ${spec.packageName}@${spec.version}`);
+                try {
+                    fs.rmSync(spec.platformRoot, { recursive: true, force: true });
+                    const repaired = await run('npm', [
+                        'install', '--no-save', '--force', '--prefer-online', '--package-lock=false',
+                        '--no-audit', '--no-fund', '--cache', repairCache, `${spec.packageName}@${spec.version}`,
+                    ], 5 * 60_000, REACT_NETWORK_INSTALL_TIMEOUTS.idleMs);
+                    if (repaired !== 0) return false;
+                    if (tool === 'esbuild') {
+                        return await run('npm', ['approve-scripts', 'esbuild'], 60_000, 30_000) === 0;
+                    }
+                    return true;
+                } finally {
+                    try { fs.rmSync(repairCache, { recursive: true, force: true }); } catch { /* disposable scoped npm cache */ }
+                }
             };
             await shell.open(isAr ? 'طرفية جو — بناء الواجهة' : 'Joe\'s terminal — building the interface', proj);
             /**
@@ -6179,22 +6244,60 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 if (sessionId) broadcastThinkingDetail(sessionId, isAr ? '📦 أثبّت الحزم (npm install)…' : '📦 Installing packages (npm install)…');
                 // A fresh workspace still gets one cache-only attempt followed
                 // by one bounded network attempt.
-                let offlineInstall = await run('npm', ['install', '--offline', '--no-audit', '--no-fund'], 45_000);
+                let offlineInstall = await run('npm', ['install', '--offline', '--no-audit', '--no-fund'], 120_000, 30_000);
                 if (offlineInstall === 0 && !hasUsableReactDependencyTree(proj)) {
-                    term('npm cache produced an incomplete native toolchain — discarding it before the network retry');
-                    try { fs.rmSync(path.join(proj, 'node_modules'), { recursive: true, force: true }); } catch { /* npm will repair what remains */ }
-                    offlineInstall = -1;
+                    // npm 11 can install dependencies successfully while
+                    // quarantining lifecycle scripts. Vite then exists but
+                    // esbuild's native executable does not. Approve only the
+                    // generated scaffold's known build dependency; never use
+                    // `--all`, which would execute arbitrary catalog scripts.
+                    term('npm installed packages but held esbuild\'s setup script — approving that trusted build dependency only');
+                    const approval = await run('npm', ['approve-scripts', 'esbuild'], 60_000, 30_000);
+                    if (approval === 0 && hasUsableReactDependencyTree(proj)) {
+                        term('dependencies: esbuild setup completed after the scoped npm approval');
+                    } else {
+                        term('npm cache produced an incomplete native toolchain — discarding it before the network retry');
+                        try { fs.rmSync(path.join(proj, 'node_modules'), { recursive: true, force: true }); } catch { /* npm will repair what remains */ }
+                        // npm's optional-dependency bug can record zero-byte or
+                        // absent platform binaries in the lock generated by the
+                        // partial install. A clean network retry must resolve a
+                        // fresh lock as well as a fresh dependency directory.
+                        try { fs.rmSync(path.join(proj, 'package-lock.json'), { force: true }); } catch { /* npm will regenerate it */ }
+                        offlineInstall = -1;
+                    }
                 }
                 if (offlineInstall !== 0) {
                     term('npm cache did not contain every package — retrying the bounded network install');
                 }
                 inst = offlineInstall === 0
                     ? offlineInstall
-                    : await run('npm', ['install', '--no-audit', '--no-fund'], 240_000);
+                    : await run('npm', ['install', '--no-audit', '--no-fund'], REACT_NETWORK_INSTALL_TIMEOUTS.absoluteMs, REACT_NETWORK_INSTALL_TIMEOUTS.idleMs);
+                if (inst === 0 && !hasUsableReactDependencyTree(proj)) {
+                    // The network install can fetch every optional platform
+                    // package and still quarantine esbuild's postinstall. Run
+                    // the same narrow approval after either install source.
+                    term('npm fetched the platform toolchain but held esbuild\'s setup script — approving that trusted build dependency only');
+                    const approval = await run('npm', ['approve-scripts', 'esbuild'], 60_000, 30_000);
+                    if (approval === 0 && hasUsableReactDependencyTree(proj)) {
+                        term('dependencies: complete native toolchain verified after scoped npm approval');
+                    }
+                }
+            }
+            let brokenNativeTool = inst === 0 && hasUsableReactDependencyTree(proj)
+                ? await detectBrokenNativeBuildTool()
+                : null;
+            if (brokenNativeTool) {
+                // A corrupt download can still have a plausible PE header.
+                // Prove both fresh and reused executables start, then repair
+                // only the trusted platform package when one does not.
+                if (await repairNativeBuildTool(brokenNativeTool)) {
+                    brokenNativeTool = await detectBrokenNativeBuildTool();
+                    if (!brokenNativeTool) term('dependencies: corrupt native build binary replaced and execution verified');
+                }
             }
             installExit = inst;
             npmMissing = inst === -1;
-            installed = inst === 0 && hasUsableReactDependencyTree(proj);
+            installed = inst === 0 && hasUsableReactDependencyTree(proj) && brokenNativeTool === null;
             if (inst === 0 && !installed) term('npm exited cleanly but its native toolchain is incomplete — refusing a false build-ready claim');
             // The exit code is already on screen, printed by the session. What
             // Joe adds here is the MEANING of it — marked as his own note, so
@@ -6493,6 +6596,12 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             } catch { /* the hub is optional — never block a build on it */ }
             const someoneIsWatching = auditWatching;
             let auditVisible = false;
+            const externalApiAuditContext = externalIntegration ? {
+                externalApi: {
+                    capability: externalIntegration.capability,
+                    integrationProfileId: externalIntegration.selection.integrationProfileId,
+                },
+            } : {};
             liveServer = await bootPackagedServer();
             if (liveServer) {
                 term(`self-QA: measuring the RUNNING system at ${liveServer.url} — its API answers, so the catalogue is real`);
@@ -6514,6 +6623,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 timeoutMs: 180_000,
                 watchSessionId: auditSid,
                 requireVisibleBrowser: true,
+                ...externalApiAuditContext,
                 ...(liveServer ? { serveUrl: liveServer.url } : {}),
                 ...(runtimeAuth ? { credentials: runtimeAuth } : {}),
                 /**
@@ -6896,6 +7006,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 offline: noInstall,
                         timeoutMs: 180_000, watchSessionId: auditSid,
                         requireVisibleBrowser: true,
+                        ...externalApiAuditContext,
                         ...(liveServer ? { serveUrl: liveServer.url } : {}),
                         ...(runtimeAuth ? { credentials: runtimeAuth } : {}),
                     });
@@ -7327,6 +7438,16 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             } catch { /* fall through to the whole tree */ }
             try { return readProjectSource([proj]); } catch { return ''; }
         })();
+        const externalApiEvidence = externalIntegration
+            ? buildExternalApiAcceptanceEvidence({
+                capability: externalIntegration.capability,
+                selection: externalIntegration.selection,
+                clientSource: files['src/integrations/externalApi.js'] || '',
+                appSource: files['src/App.jsx'] || '',
+                proxySource: files['server/joeExternalApiProxy.js'],
+                audit: audit || null,
+            })
+            : null;
         /**
          *  ⛔ THE DENOMINATOR IS THE LIST HE NAMED.
          *
@@ -7357,13 +7478,13 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 id: String(criterion.id || 'catalogue-rule'),
                 text: ruleText,
                 quote: ruleText,
-            }, projectEvidence);
+            }, externalApiEvidence);
             return verdict
                 ? { ...criterion, preJudged: { verdict: verdict.verdict, why: verdict.why } }
                 : criterion;
         });
         const namedVerdicts = namedByHim.length && !noBrainToAsk
-            ? await verifyNamed(namedByHim, projectEvidence, isAr, askTheModel)
+            ? await verifyNamed(namedByHim, projectEvidence, isAr, askTheModel, externalApiEvidence)
             : [];
         /**
          *  ⛔ ABSENCE OF EVIDENCE IS NOT EVIDENCE OF FAILURE.
@@ -7597,6 +7718,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 projectEvidence,
                 isAr,
                 async () => { throw new Error('delivery reconciliation is deterministic'); },
+                externalApiEvidence,
             )
             : [];
         const sourceProvenGapIds = new Set(gapVerdicts.filter(v => v.verdict === 'met').map(v => v.id));
@@ -7738,8 +7860,9 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             installExit, buildExit, diagnosis: buildDiagnosis,
         };
         const blamesTheBuild = !audit && buildOutcome.attempted && !built;
+        const externalApiRuntimeBlocked = !!externalApiEvidence && externalApiEvidence.runtime.status !== 'passed';
         const qualityDeliveryBlocked = openQualityFindings.length > 0 || terminalQualityFindings.length > 0
-            || visualAuditUnavailable || repairRollbackNeedsVerification;
+            || visualAuditUnavailable || repairRollbackNeedsVerification || externalApiRuntimeBlocked;
         if (openQualityFindings.length) {
             // The artefact exists, but its final acceptance is rejected. Say both
             // facts explicitly so a terminal transcript cannot turn a blocked
@@ -7759,6 +7882,12 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
         }
         if (repairRollbackNeedsVerification) {
             term('delivery BLOCKED — a quality-repair rollback restored the source, but its post-restore build was not verified');
+        }
+        if (externalApiRuntimeBlocked) {
+            term(`delivery BLOCKED — external API runtime evidence is ${externalApiEvidence.runtime.status}`
+                + (externalApiEvidence.runtime.seriousFailures.length
+                    ? `: ${externalApiEvidence.runtime.seriousFailures.join(', ')}`
+                    : ''));
         }
 
         const qaBlock = (() => {

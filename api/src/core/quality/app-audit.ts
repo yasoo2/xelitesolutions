@@ -148,6 +148,13 @@ export interface AppAudit {
     }>;
     /** Named browser passes, so a score cannot hide which kinds of QA ran. */
     passes?: AppAuditPass[];
+    /** Positive evidence for a maintained external integration, never inferred from silence. */
+    externalApiRuntime?: {
+        capability: 'weather' | 'currency' | 'ip';
+        integrationProfileId: string;
+        successfulRequests: number;
+        renderedLiveResult: boolean;
+    };
 }
 
 export interface AppAuditPass {
@@ -259,6 +266,11 @@ export async function auditBuiltApp(
         offline?: boolean;
         /** Original user request, used only for request-specific observable QA scenarios. */
         request?: string;
+        /** Trusted maintained profile expected to produce observable live data. */
+        externalApi?: {
+            capability: 'weather' | 'currency' | 'ip';
+            integrationProfileId: string;
+        };
     },
 ): Promise<AppAudit> {
     const timeoutMs = opts?.timeoutMs ?? 30_000;
@@ -341,7 +353,6 @@ export async function auditBuiltApp(
         let borrowError = '';
         if (opts?.watchSessionId) {
             try {
-                // eslint-disable-next-line @typescript-eslint/no-var-requires
                 const { getBrowserSession, resumeStreamingIfWatched } = require('../../modules/browser/manager');
                 const s = await getBrowserSession(opts.watchSessionId);
                 if (s?.page) {
@@ -383,7 +394,6 @@ export async function auditBuiltApp(
             // check can enter.
             if (borrowError) {
                 try {
-                    // eslint-disable-next-line @typescript-eslint/no-var-requires
                     require('../../modules/browser/manager').noteBrowserFailure(opts.watchSessionId, 'audit-borrow', borrowError);
                 } catch { /* the log is a bonus, never a blocker */ }
             }
@@ -460,6 +470,20 @@ export async function auditBuiltApp(
         const pageErrors: string[] = [];
         const consoleErrors: string[] = [];
         const failedRequests: string[] = [];
+        const successfulExternalRequests: string[] = [];
+        let renderedExternalResult = false;
+        const isExpectedExternalRequest = (rawUrl: string) => {
+            if (!opts?.externalApi) return false;
+            try {
+                const requestUrl = new URL(rawUrl);
+                const profile = opts.externalApi.integrationProfileId;
+                if (profile === 'frankfurter-currency-v2') return /\/api\/joe-external\/currency(?:\?|$)/u.test(requestUrl.pathname + requestUrl.search);
+                if (profile === 'weatherapi-key-v1') return /\/api\/joe-external\/weather(?:\?|$)/u.test(requestUrl.pathname + requestUrl.search);
+                if (profile === 'open-meteo-weather-v1') return /(?:^|\.)open-meteo\.com$/iu.test(requestUrl.hostname);
+                if (profile === 'ipapi-co-v1') return /(?:^|\.)ipapi\.co$/iu.test(requestUrl.hostname);
+                return false;
+            } catch { return false; }
+        };
         let expectedWeatherNetworkFailure = false;
         const initialWeatherRequest = String(opts?.request || '');
         const initialWeatherScenario = /\bweather\b/i.test(initialWeatherRequest)
@@ -582,6 +606,9 @@ export async function auditBuiltApp(
         };
         page.on('console', onConsole);
         const onResponse = (r: any) => {
+            if (r.status() >= 200 && r.status() < 300 && isExpectedExternalRequest(r.url())) {
+                successfulExternalRequests.push(r.url());
+            }
             // 401/403: the audit is signed out on purpose — see onConsole above.
             if (r.status() >= 400 && r.status() !== 401 && r.status() !== 403
                 && !/favicon\.ico/i.test(r.url())) {
@@ -1005,6 +1032,28 @@ export async function auditBuiltApp(
             if (!remainingWalkMs()) return eyeRequiredResult('Browser QA budget ended before the first page');
             const homeProbe = await probeControls(page, probeOpts());
             mergeProbe(homeProbe, '/');
+            if (opts?.externalApi) {
+                // A response can settle just after the semantic form probe
+                // returns. Wait for the same bounded client contract before
+                // deciding there was no live proof. If the general explorer
+                // never submitted the form, submit its current valid values
+                // once; this is a targeted acceptance scenario, not a replay
+                // loop or a source-level assumption.
+                if (!successfulExternalRequests.length) {
+                    await page.evaluate(() => {
+                        const form = document.querySelector('form') as HTMLFormElement | null;
+                        if (form) form.requestSubmit ? form.requestSubmit() : form.submit();
+                    }).catch(() => { });
+                }
+                const proofDeadline = Date.now() + Math.min(10_000, Math.max(1_000, remainingWalkMs()));
+                while (Date.now() < proofDeadline) {
+                    const liveText = String(await page.locator('[aria-live="polite"]').first().innerText().catch(() => '')).trim();
+                    renderedExternalResult = successfulExternalRequests.length > 0
+                        && liveText.length > 2 && !/^loading/i.test(liveText);
+                    if (renderedExternalResult) break;
+                    await page.waitForTimeout(200);
+                }
+            }
             // A local control-pass cap preserves time for responsive and visual
             // checks. It is not proof that the shared browser-walk budget ended.
             if ((homeProbe.metrics.budgetExhausted || homeProbe.metrics.explorationBudgetExhausted) && !remainingWalkMs()) behaviourMetrics.budgetExhausted = true;
@@ -1506,6 +1555,14 @@ export async function auditBuiltApp(
             exploratoryActions: behaviourMetrics.exploratoryActions,
             controlsDiscovered: behaviourMetrics.controlsDiscovered,
             controls: allControls,
+            ...(opts?.externalApi ? {
+                externalApiRuntime: {
+                    capability: opts.externalApi.capability,
+                    integrationProfileId: opts.externalApi.integrationProfileId,
+                    successfulRequests: successfulExternalRequests.length,
+                    renderedLiveResult: renderedExternalResult,
+                },
+            } : {}),
             passes: [
                 {
                     id: 'runtime',

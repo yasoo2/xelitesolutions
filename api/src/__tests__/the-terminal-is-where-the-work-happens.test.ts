@@ -21,6 +21,7 @@
 import fs from 'fs';
 import path from 'path';
 import { openTerminal, transcriptLine } from '../core/quality/terminal-session';
+import { REACT_NETWORK_INSTALL_TIMEOUTS } from '../modules/tools/definitions/ReactProjectTool';
 
 const read = (...p: string[]) => fs.readFileSync(path.join(__dirname, '..', ...p), 'utf-8');
 const REACT = read('modules', 'tools', 'definitions', 'ReactProjectTool.ts');
@@ -126,6 +127,34 @@ describe('a session that looks like a shell, because it is one', () => {
         expect(tr.failed).toHaveLength(1);
         expect(tr.failed[0].command).toContain('process.exitCode = 1');
     }, 40_000);
+
+    it('allows a slow command to finish while it keeps producing progress', async () => {
+        const lines: string[] = [];
+        const t = openTerminal(line => lines.push(line));
+        const script = "let n=0;const t=setInterval(()=>{console.log('progress '+(++n));if(n===5){clearInterval(t);process.exit(0)}},250)";
+        const result = await t.run(process.execPath, ['-e', script], {
+            cwd: process.cwd(), timeout: 3_000, idleTimeout: 600,
+        });
+        expect(result.exitCode).toBe(0);
+        expect(result.timedOut).toBe(false);
+        expect(lines.filter(line => /progress \d/.test(line))).toHaveLength(5);
+    }, 10_000);
+
+    it('stops a genuinely hung command after the no-progress boundary', async () => {
+        const lines: string[] = [];
+        const t = openTerminal(line => lines.push(line));
+        const started = Date.now();
+        const result = await t.run(process.execPath, ['-e', 'setTimeout(() => {}, 10000)'], {
+            cwd: process.cwd(), timeout: 5_000, idleTimeout: 500,
+        });
+        expect(result.exitCode).toBe(124);
+        expect(result.error).toBe('idle_timeout');
+        expect(result.timedOut).toBe(true);
+        expect(Date.now() - started).toBeLessThan(4_000);
+        expect(lines.some(line => /stopped after no progress/.test(line))).toBe(true);
+        expect(result.pid).toBeDefined();
+        expect(() => process.kill(result.pid!, 0)).toThrow();
+    }, 10_000);
 });
 
 describe('the report says how much of the build was real shell work', () => {
@@ -165,7 +194,10 @@ describe('THE WIRING: both builders work in the visible shell', () => {
     });
 
     it('and every process it runs goes through the session', () => {
-        expect(REACT).toMatch(/const r = await shell\.run\(cmd, args, \{ cwd: proj, timeout: timeoutMs, cancel: cancellation \}\);/);
+        expect(REACT).toMatch(/const r = await shell\.run\(cmd, args, \{ cwd: proj, timeout: timeoutMs, idleTimeout: idleTimeoutMs, cancel: cancellation \}\);/);
+        expect(REACT_NETWORK_INSTALL_TIMEOUTS.absoluteMs).toBeGreaterThan(REACT_NETWORK_INSTALL_TIMEOUTS.idleMs);
+        expect(REACT_NETWORK_INSTALL_TIMEOUTS.idleMs).toBeGreaterThanOrEqual(3 * 60_000);
+        expect(REACT_NETWORK_INSTALL_TIMEOUTS.absoluteMs).toBeLessThanOrEqual(15 * 60_000);
         expect(REACT).toMatch(/await shell\.open\(/);
         // The old silent runner is gone — no bare streaming spawn in the build.
         expect(REACT).not.toMatch(/onLine: \(l: string\) => \{ lastLog \+= l \+ '\\n'; term\(/);

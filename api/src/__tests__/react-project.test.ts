@@ -10,7 +10,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
-import { ReactProjectTool, PROJECT_DIR_NAME_MAX_LENGTH, applyBundledPhotographyFallback, hasUsableReactDependencyTree, heroSecondaryDestination, portableViteBuildArgs, requestDrivenServiceProducts, reuseLocalReactDependencies, withoutViteConfigForBuild } from '../modules/tools/definitions/ReactProjectTool';
+import { ReactProjectTool, PROJECT_DIR_NAME_MAX_LENGTH, REACT_NETWORK_INSTALL_TIMEOUTS, applyBundledPhotographyFallback, findBrokenNativeBuildTool, hasUsableReactDependencyTree, heroSecondaryDestination, nativeBuildToolRepairSpec, portableViteBuildArgs, requestDrivenServiceProducts, reuseLocalReactDependencies, withoutViteConfigForBuild } from '../modules/tools/definitions/ReactProjectTool';
 import { fileAppStoreJs } from '../modules/tools/definitions/react-app-templates';
 import { ApiProjectTool } from '../modules/tools/definitions/ApiProjectTool';
 import { ScaffoldProjectTool } from '../modules/tools/definitions/SystemTools';
@@ -46,13 +46,16 @@ describe('dependency reuse only trusts a complete Vite tree', () => {
             '.bin/vite', 'vite/package.json', 'rollup/package.json', 'rollup/dist/parseAst.js',
             '@vitejs/plugin-react/package.json', 'react/package.json', 'react-dom/package.json', 'esbuild/package.json',
             `@esbuild/win32-${process.arch}/package.json`, `@esbuild/win32-${process.arch}/esbuild.exe`,
+            `@rollup/rollup-win32-${process.arch}-msvc/package.json`,
+            `@rollup/rollup-win32-${process.arch}-msvc/rollup.win32-${process.arch}-msvc.node`,
         ];
         for (const rel of files) {
             const file = path.join(root, 'node_modules', rel);
             fs.mkdirSync(path.dirname(file), { recursive: true });
-            fs.writeFileSync(file, rel.endsWith('esbuild.exe')
+            fs.writeFileSync(file, rel.endsWith('.exe') || rel.endsWith('.node')
                 ? options.binary || fakeWindowsEsbuild()
-                : rel.includes('esbuild') ? '{"version":"0.21.5"}' : '{}');
+                : rel.includes('esbuild') ? '{"version":"0.21.5"}'
+                    : rel.includes('rollup') ? '{"version":"4.63.1"}' : '{}');
         }
         const packages: Record<string, any> = {
             '': { dependencies: manifest.dependencies || {}, devDependencies: manifest.devDependencies || {} },
@@ -85,10 +88,88 @@ describe('dependency reuse only trusts a complete Vite tree', () => {
         fs.rmSync(tmp, { recursive: true, force: true });
     });
 
+    it('derives exact trusted repair packages and executable checks from installed wrapper versions', () => {
+        const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-native-repair-'));
+        writeTree(tmp, baseManifest);
+        expect(nativeBuildToolRepairSpec(tmp, 'esbuild', 'win32', 'x64')).toMatchObject({
+            packageName: '@esbuild/win32-x64', version: '0.21.5',
+            verifyArgs: [path.join('node_modules', 'esbuild', 'bin', 'esbuild'), '--version'],
+        });
+        expect(nativeBuildToolRepairSpec(tmp, 'rollup', 'win32', 'x64')).toMatchObject({
+            packageName: '@rollup/rollup-win32-x64-msvc', version: '4.63.1',
+            verifyArgs: [path.join('node_modules', 'rollup', 'dist', 'bin', 'rollup'), '--version'],
+        });
+        expect(nativeBuildToolRepairSpec(tmp, 'rollup', 'linux', 'x64')).toBeNull();
+        fs.writeFileSync(path.join(tmp, 'node_modules', 'rollup', 'package.json'), '{"version":"latest;evil"}');
+        expect(nativeBuildToolRepairSpec(tmp, 'rollup', 'win32', 'x64')).toBeNull();
+        fs.rmSync(tmp, { recursive: true, force: true });
+    });
+
+    it('identifies Rollup when esbuild starts but the Rollup native binding cannot load', async () => {
+        const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-native-probe-'));
+        writeTree(tmp, baseManifest);
+        const executed: string[][] = [];
+        const broken = await findBrokenNativeBuildTool(tmp, async args => {
+            executed.push(args);
+            return args.some(part => part.includes('rollup')) ? 1 : 0;
+        });
+        expect(broken).toBe('rollup');
+        expect(executed).toEqual([
+            [path.join('node_modules', 'esbuild', 'bin', 'esbuild'), '--version'],
+            [path.join('node_modules', 'rollup', 'dist', 'bin', 'rollup'), '--version'],
+        ]);
+        fs.rmSync(tmp, { recursive: true, force: true });
+    });
+
+    it('does not apply the Windows native-binary repair gate on Linux', async () => {
+        const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-native-linux-'));
+        writeTree(tmp, baseManifest);
+        const execute = jest.fn(async () => 1);
+        await expect(findBrokenNativeBuildTool(tmp, execute, 'linux', 'x64')).resolves.toBeNull();
+        expect(execute).not.toHaveBeenCalled();
+        fs.rmSync(tmp, { recursive: true, force: true });
+    });
+
+    it('accepts npm\'s nested optional esbuild platform package layout', () => {
+        if (process.platform !== 'win32') return;
+        const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-react-deps-'));
+        writeTree(tmp, baseManifest);
+        const hoisted = path.join(tmp, 'node_modules', '@esbuild', `win32-${process.arch}`);
+        const nested = path.join(tmp, 'node_modules', 'esbuild', 'node_modules', '@esbuild', `win32-${process.arch}`);
+        fs.mkdirSync(path.dirname(nested), { recursive: true });
+        fs.renameSync(hoisted, nested);
+        expect(hasUsableReactDependencyTree(tmp)).toBe(true);
+        fs.rmSync(tmp, { recursive: true, force: true });
+    });
+
+    it('accepts a valid Rollup binding whose PE header begins beyond byte 256', () => {
+        if (process.platform !== 'win32') return;
+        const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-react-deps-'));
+        writeTree(tmp, baseManifest);
+        const binding = path.join(tmp, 'node_modules', '@rollup', `rollup-win32-${process.arch}-msvc`, `rollup.win32-${process.arch}-msvc.node`);
+        const binary = fakeWindowsEsbuild();
+        binary.fill(0, 128, 134);
+        binary.writeUInt32LE(272, 0x3c);
+        binary.set([0x50, 0x45, 0, 0], 272);
+        binary.writeUInt16LE(0x8664, 276);
+        fs.writeFileSync(binding, binary);
+        expect(hasUsableReactDependencyTree(tmp)).toBe(true);
+        fs.rmSync(tmp, { recursive: true, force: true });
+    });
+
     it('rejects a timed-out install that left a non-Windows esbuild binary named .exe', () => {
         if (process.platform !== 'win32') return;
         const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-react-deps-'));
         writeTree(tmp, baseManifest, { binary: Buffer.from([0x7f, 0x45, 0x4c, 0x46]) });
+        expect(hasUsableReactDependencyTree(tmp)).toBe(false);
+        fs.rmSync(tmp, { recursive: true, force: true });
+    });
+
+    it('rejects a zero-byte Rollup native binding left by an interrupted install', () => {
+        if (process.platform !== 'win32') return;
+        const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-react-deps-'));
+        writeTree(tmp, baseManifest);
+        fs.writeFileSync(path.join(tmp, 'node_modules', '@rollup', `rollup-win32-${process.arch}-msvc`, `rollup.win32-${process.arch}-msvc.node`), '');
         expect(hasUsableReactDependencyTree(tmp)).toBe(false);
         fs.rmSync(tmp, { recursive: true, force: true });
     });
@@ -111,7 +192,7 @@ describe('dependency reuse only trusts a complete Vite tree', () => {
         fs.rmSync(tmp, { recursive: true, force: true });
     });
 
-    it('copies a compatible verified tree so npm is unnecessary', () => {
+    it('never copies dependencies from an arbitrary sibling project', () => {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-react-deps-root-'));
         const partial = path.join(root, 'react-a-partial');
         const source = path.join(root, 'react-source');
@@ -126,8 +207,8 @@ describe('dependency reuse only trusts a complete Vite tree', () => {
         fs.writeFileSync(path.join(partial, 'node_modules', '.bin', 'vite'), 'partial');
         writeTree(source, manifest);
         try {
-            expect(reuseLocalReactDependencies(root, target)).toBe(true);
-            expect(hasUsableReactDependencyTree(target)).toBe(true);
+            expect(reuseLocalReactDependencies(root, target)).toBe(false);
+            expect(fs.existsSync(path.join(target, 'node_modules'))).toBe(false);
         } finally {
             fs.rmSync(root, { recursive: true, force: true });
         }
@@ -747,6 +828,30 @@ describe('product pages, the team, and the build command', () => {
             const src = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', `${t}.ts`), 'utf-8');
             expect(src).not.toContain("shell: process.platform === 'win32'");
         }
+    });
+
+    it('repairs npm 11 script quarantine with a scoped esbuild approval only', () => {
+        const source = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ReactProjectTool.ts'), 'utf-8');
+        expect(source).toContain("await run('npm', ['approve-scripts', 'esbuild'], 60_000, 30_000)");
+        expect(source).not.toContain("['approve-scripts', '--all']");
+        expect(source).toContain("approval === 0 && hasUsableReactDependencyTree(proj)");
+        expect(source).toContain("fs.rmSync(path.join(proj, 'package-lock.json'), { force: true })");
+        expect(source).toContain('complete native toolchain verified after scoped npm approval');
+    });
+
+    it('executes and narrowly repairs a corrupt Windows esbuild binary before accepting dependencies', () => {
+        const source = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ReactProjectTool.ts'), 'utf-8');
+        expect(source).toContain('detectBrokenNativeBuildTool');
+        expect(source).toContain('repairNativeBuildTool');
+        expect(source).toContain('`${spec.packageName}@${spec.version}`');
+        expect(source).toContain("'--package-lock=false'");
+        expect(source).toContain("'--cache', repairCache");
+        expect(REACT_NETWORK_INSTALL_TIMEOUTS.idleMs).toBeGreaterThanOrEqual(3 * 60_000);
+        expect(REACT_NETWORK_INSTALL_TIMEOUTS.idleMs).toBeLessThan(REACT_NETWORK_INSTALL_TIMEOUTS.absoluteMs);
+        expect(REACT_NETWORK_INSTALL_TIMEOUTS.absoluteMs).toBeLessThanOrEqual(15 * 60_000);
+        expect(source).toContain('Prove both fresh and reused executables start');
+        expect(source).toContain('brokenNativeTool === null');
+        expect(source).not.toContain('npm cache clean');
     });
 });
 

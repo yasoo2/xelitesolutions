@@ -9,7 +9,7 @@ import { handleMaintainedPreviewApiRequest } from '../core/api-discovery/preview
 import { scaffoldSubstitutionFor } from '../core/design/scaffold-substitution';
 import { resolvePreviewApiRequest } from '../api/routes/projectPreview';
 import { verifyNamed } from '../core/quality/named-requirements';
-import { externalApiSourceVerdict } from '../core/api-discovery/acceptance-evidence';
+import { buildExternalApiAcceptanceEvidence, externalApiSourceVerdict } from '../core/api-discovery/acceptance-evidence';
 import { acceptanceFor } from '../core/quality/acceptance';
 
 const selection = (overrides: Partial<ApiSelectionArtifact> = {}): ApiSelectionArtifact => ({
@@ -18,6 +18,31 @@ const selection = (overrides: Partial<ApiSelectionArtifact> = {}): ApiSelectionA
     pricing: 'UNKNOWN', health: 'HEALTHY', reasons: ['Exact capability match'], warnings: [], requiredEnvNames: [],
     ...overrides,
 });
+
+const acceptanceEvidence = (
+    selected = selection(),
+    runtime: 'passed' | 'failed' | 'unverified' = 'passed',
+) => {
+    const plan = integrationPlanFromSelection(selected)!;
+    const files = integrationArtifacts(plan);
+    return buildExternalApiAcceptanceEvidence({
+        capability: plan.capability,
+        selection: plan.selection,
+        clientSource: files['src/integrations/externalApi.js'],
+        appSource: externalDataAppSource(plan),
+        proxySource: files['server/joeExternalApiProxy.js'],
+        audit: runtime === 'unverified' ? null : {
+            findings: runtime === 'failed' ? [{ id: 'failed_requests', severity: 'high' }] : [],
+            passes: [{ id: 'runtime', status: runtime }],
+            externalApiRuntime: {
+                capability: plan.capability,
+                integrationProfileId: plan.selection.integrationProfileId,
+                successfulRequests: 1,
+                renderedLiveResult: true,
+            },
+        },
+    });
+};
 
 describe('external API generation contract', () => {
     it('does not announce a generic-page substitution for supported live-data apps', () => {
@@ -44,7 +69,8 @@ describe('external API generation contract', () => {
             files['src/integrations/externalApi.js'],
             externalDataAppSource(plan),
         ].join('\n');
-        expect(externalApiSourceVerdict({ id: 'rule:1', text: rule, quote: rule }, source))
+        expect(source).toContain('Frankfurter');
+        expect(externalApiSourceVerdict({ id: 'rule:1', text: rule, quote: rule }, acceptanceEvidence()))
             .toMatchObject({ verdict: 'met' });
     });
 
@@ -114,7 +140,7 @@ describe('external API generation contract', () => {
         }], source, false, async () => {
             modelCalls += 1;
             throw new Error('the deterministic integration contract should decide this');
-        });
+        }, acceptanceEvidence());
 
         expect(modelCalls).toBe(0);
         expect(verdict.verdict).toBe('met');
@@ -131,7 +157,7 @@ describe('external API generation contract', () => {
         ], source, false, async () => {
             modelCalls += 1;
             throw new Error('both atomic contracts are source-backed');
-        });
+        }, acceptanceEvidence());
 
         expect(modelCalls).toBe(0);
         expect(verdicts.map(item => item.verdict)).toEqual(['met', 'met']);
@@ -143,7 +169,7 @@ describe('external API generation contract', () => {
         const clause = 'Use a public API that does not require authentication if possible';
         const [verdict] = await verifyNamed([{ id: 'req-combined', text: clause, quote: clause }], source, false, async () => {
             throw new Error('the combined atomic contract is source-backed');
-        });
+        }, acceptanceEvidence());
         expect(verdict.verdict).toBe('met');
         expect(verdict.why).toContain('no-auth provider');
     });
@@ -159,7 +185,7 @@ describe('external API generation contract', () => {
         }], source, false, async () => {
             modelCalls += 1;
             return JSON.stringify({ verdict: 'unmet', why: 'The requested chart and offline behavior are absent.' });
-        });
+        }, acceptanceEvidence());
 
         expect(modelCalls).toBe(1);
         expect(verdict.verdict).toBe('unmet');
@@ -175,7 +201,7 @@ describe('external API generation contract', () => {
         const [verdict] = await verifyNamed([{ id: 'req-mixed', text, quote }], source, false, async () => {
             modelCalls += 1;
             return JSON.stringify({ verdict: 'unmet', why: 'The extra chart and offline behavior are absent.' });
-        });
+        }, acceptanceEvidence());
 
         expect(modelCalls).toBe(1);
         expect(verdict.verdict).toBe('unmet');
@@ -211,11 +237,72 @@ describe('external API generation contract', () => {
         }], source, false, async () => {
             modelCalls += 1;
             throw new Error('the maintained direct transport should decide this');
-        });
+        }, acceptanceEvidence(selection({
+            apiId: 'remote-open-meteo', integrationProfileId: 'open-meteo-weather-v1',
+            providerName: 'Open-Meteo', pricing: 'FREEMIUM',
+        })));
 
         expect(modelCalls).toBe(0);
         expect(verdict.verdict).toBe('met');
         expect(source).not.toContain('joeExternalApiProxy');
+    });
+
+    it('lets a serious browser or API failure override complete generated artifacts', () => {
+        const evidence = acceptanceEvidence(selection(), 'failed');
+        const requirement = {
+            id: 'req-runtime', text: 'Create a currency converter using a public API',
+            quote: 'Create a currency converter using a public API',
+        };
+        const verdict = externalApiSourceVerdict(requirement, evidence);
+        expect(verdict).toMatchObject({ verdict: 'unmet' });
+        expect(verdict?.why).toContain('failed_requests');
+    });
+
+    it('does not accept structured generation without browser runtime evidence', () => {
+        const verdict = externalApiSourceVerdict({
+            id: 'req-unverified', text: 'using a public API', quote: 'using a public API',
+        }, acceptanceEvidence(selection(), 'unverified'));
+        expect(verdict).toMatchObject({ verdict: 'unmet' });
+        expect(verdict?.why).toContain('runtime browser evidence');
+    });
+
+    it('does not treat a clean generic runtime pass as proof that live API data rendered', () => {
+        const plan = integrationPlanFromSelection(selection())!;
+        const files = integrationArtifacts(plan);
+        const evidence = buildExternalApiAcceptanceEvidence({
+            capability: plan.capability,
+            selection: plan.selection,
+            clientSource: files['src/integrations/externalApi.js'],
+            appSource: externalDataAppSource(plan),
+            proxySource: files['server/joeExternalApiProxy.js'],
+            audit: { findings: [], passes: [{ id: 'runtime', status: 'passed' }] },
+        });
+        expect(evidence.runtime.status).toBe('unverified');
+        expect(externalApiSourceVerdict({
+            id: 'req-no-live-result', text: 'using a public API', quote: 'using a public API',
+        }, evidence)).toMatchObject({ verdict: 'unmet' });
+    });
+
+    it('requires positive evidence to match the selected maintained profile', () => {
+        const plan = integrationPlanFromSelection(selection())!;
+        const files = integrationArtifacts(plan);
+        const evidence = buildExternalApiAcceptanceEvidence({
+            capability: plan.capability,
+            selection: plan.selection,
+            clientSource: files['src/integrations/externalApi.js'],
+            appSource: externalDataAppSource(plan),
+            proxySource: files['server/joeExternalApiProxy.js'],
+            audit: {
+                findings: [], passes: [{ id: 'runtime', status: 'passed' }],
+                externalApiRuntime: {
+                    capability: plan.capability,
+                    integrationProfileId: 'open-meteo-weather-v1',
+                    successfulRequests: 1,
+                    renderedLiveResult: true,
+                },
+            },
+        });
+        expect(evidence.runtime.status).toBe('unverified');
     });
 
     it('auto-loads weather and renders observable live-data freshness for browser QA', () => {
@@ -355,6 +442,14 @@ describe('external API generation contract', () => {
         expect(browserQa).toContain('declared === expected || constrainedNumericText');
         expect(webSearch).not.toContain('public-api');
         expect(['src/integrations/externalApi.js', 'src/integrations/externalApi.css', '.joe/external-api.json', '.env.example', 'server/joeExternalApiProxy.js'].every(isExternalIntegrationArtifact)).toBe(true);
+    });
+
+    it('keeps maintained API runtime evidence enabled during every improvement-loop measurement', () => {
+        const source = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ReactProjectTool.ts'), 'utf8');
+        expect(source).toContain('const externalApiAuditContext = externalIntegration ?');
+        expect(source.match(/\.\.\.externalApiAuditContext/g)).toHaveLength(2);
+        expect(source.indexOf('const externalApiAuditContext = externalIntegration ?'))
+            .toBeLessThan(source.indexOf('const measureNow = async () =>'));
     });
 
     it('does not preserve a source-level acceptance claim after live verification fails', () => {
