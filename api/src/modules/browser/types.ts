@@ -31,12 +31,14 @@ export type StreamFrameEvent = {
   h: number;
 };
 
-export type CursorMoveEvent = { type: 'cursor_move'; ts: number; x: number; y: number };
+export type CursorMoveEvent = { type: 'cursor_move'; ts: number; x: number; y: number; viewportWidth?: number; viewportHeight?: number };
 
 export type HighlightBoxesEvent = {
   type: 'highlight_boxes';
   ts: number;
   boxes: Array<{ x: number; y: number; width: number; height: number; label?: string }>;
+  viewportWidth?: number;
+  viewportHeight?: number;
 };
 
 export type SessionStatusEvent = {

@@ -33,6 +33,11 @@
 
 export interface EyeBox { x: number; y: number; width: number; height: number; label?: string }
 
+/** The watched panel follows one current target; the report still keeps all findings. */
+export function watchedHighlightBoxes(boxes: EyeBox[]): EyeBox[] {
+    return (boxes || []).filter(box => box && box.width > 0 && box.height > 0).slice(0, 1);
+}
+
 /**
  * THE IN-PAGE PAINTER.
  *
@@ -196,6 +201,15 @@ export class AuditEyes {
         } catch { /* the panel is a bonus, never a blocker */ }
     }
 
+    private viewportStamp(page: any) {
+        try {
+            const viewport = page.viewportSize?.();
+            return viewport?.width > 0 && viewport?.height > 0
+                ? { viewportWidth: viewport.width, viewportHeight: viewport.height }
+                : {};
+        } catch { return {}; }
+    }
+
     /** Name the step in the panel's action list, exactly like the agent does. */
     announce(kind: string, summary: string) {
         const id = `qa-${String(++this.step).padStart(2, '0')}`;
@@ -223,6 +237,7 @@ export class AuditEyes {
      */
     async lookAt(page: any, box: EyeBox | null, opts?: { note?: string; tone?: 'bad' | 'warn' | 'good'; moveMouse?: boolean }) {
         if (!box) return;
+        const viewport = this.viewportStamp(page);
         const x = Math.round(box.x + box.width / 2);
         const y = Math.round(box.y + box.height / 2);
         if (opts?.moveMouse !== false) {
@@ -242,14 +257,14 @@ export class AuditEyes {
                 const px = Math.round(from.x + (x - from.x) * (i / hops));
                 const py = Math.round(from.y + (y - from.y) * (i / hops));
                 await page.mouse.move(px, py).catch(() => { });
-                this.send({ type: 'cursor_move', x: px, y: py });
+                this.send({ type: 'cursor_move', x: px, y: py, ...viewport });
                 if (i < hops) await page.waitForTimeout(28).catch(() => { });
             }
         } else {
-            this.send({ type: 'cursor_move', x, y });
+            this.send({ type: 'cursor_move', x, y, ...viewport });
         }
         this.last = { x, y };
-        this.send({ type: 'highlight_boxes', boxes: [{ x: box.x, y: box.y, width: box.width, height: box.height, label: box.label || opts?.note }] });
+        this.send({ type: 'highlight_boxes', boxes: [{ x: box.x, y: box.y, width: box.width, height: box.height, label: box.label || opts?.note }], ...viewport });
         if (this.paint) {
             await evalInPage(page, paintEye, {
                 cursor: { x, y }, tone: opts?.tone || 'bad',
@@ -280,7 +295,7 @@ export class AuditEyes {
     /** Outline a whole set at once — «these six are the low-contrast ones». */
     async mark(page: any, boxes: EyeBox[], opts?: { note?: string; tone?: 'bad' | 'warn' | 'good'; holdMs?: number }) {
         const list = (boxes || []).filter(b => b && b.width > 0 && b.height > 0).slice(0, 40);
-        this.send({ type: 'highlight_boxes', boxes: list });
+        this.send({ type: 'highlight_boxes', boxes: this.watched ? watchedHighlightBoxes(list) : list, ...this.viewportStamp(page) });
         if (!this.paint) return;
         await evalInPage(page, paintEye, { boxes: list, tone: opts?.tone || 'bad', note: opts?.note, cursor: this.last }).catch(() => { });
         await page.waitForTimeout(Math.max(0, opts?.holdMs ?? 900)).catch(() => { });

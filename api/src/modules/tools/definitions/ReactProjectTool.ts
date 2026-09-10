@@ -1076,6 +1076,12 @@ export function hasUsableReactDependencyTree(projectRoot: string): boolean {
     const required = [
         '.bin/vite', 'vite/package.json', 'rollup/package.json',
         '@vitejs/plugin-react/package.json', 'react/package.json', 'react-dom/package.json', 'esbuild/package.json',
+        // Vite's React plugin resolves Browserslist when the development
+        // server transforms JSX. A partial npm extraction can leave these
+        // transitive package directories present but omit their runtime files;
+        // production still builds while `npm run dev` crashes on first load.
+        'browserslist/index.js', 'caniuse-lite/package.json',
+        'caniuse-lite/dist/unpacker/feature.js',
     ];
     const rollupParseAst = ['rollup/dist/parseAst.js', 'rollup/dist/es/parseAst.js', 'rollup/dist/shared/parseAst.js'];
     if (!required.every(rel => fs.existsSync(path.join(modules, rel)))
@@ -1173,6 +1179,27 @@ export function reuseLocalReactDependencies(workspaceRoot: string, projectRoot: 
     // cannot prove who created its tree or whether lifecycle scripts mutated
     // it. Fresh projects must install through Joe's execution boundary.
     return false;
+}
+
+/**
+ * Replace an npm tree that reported success but cannot start Vite. The cache
+ * is scoped to this generated project and always removed after the attempt.
+ */
+export async function cleanReinstallReactDependencies(
+    projectRoot: string,
+    run: (cmd: string, args: string[], timeoutMs: number, idleTimeoutMs?: number) => Promise<number>,
+): Promise<number> {
+    const root = path.resolve(projectRoot);
+    fs.rmSync(path.join(root, 'node_modules'), { recursive: true, force: true });
+    fs.rmSync(path.join(root, 'package-lock.json'), { force: true });
+    const cleanCache = path.join(root, '.joe', `npm-clean-reinstall-${process.pid}-${Date.now()}`);
+    try {
+        return await run('npm', [
+            'install', '--prefer-online', '--no-audit', '--no-fund', '--cache', cleanCache,
+        ], REACT_NETWORK_INSTALL_TIMEOUTS.absoluteMs, REACT_NETWORK_INSTALL_TIMEOUTS.idleMs);
+    } finally {
+        fs.rmSync(cleanCache, { recursive: true, force: true });
+    }
 }
 
 export interface QuarantinedEsbuildRepairResult {
@@ -6360,6 +6387,15 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 inst = offlineInstall === 0
                     ? offlineInstall
                     : await run('npm', ['install', '--no-audit', '--no-fund'], REACT_NETWORK_INSTALL_TIMEOUTS.absoluteMs, REACT_NETWORK_INSTALL_TIMEOUTS.idleMs);
+                if (inst === 0 && !hasUsableReactDependencyTree(proj)) {
+                    // npm can report success after reusing files from an
+                    // interrupted cache extraction. Do one clean, bounded
+                    // reification from this generated project's own manifest;
+                    // the isolated cache prevents the same damaged tarball
+                    // contents from being trusted again.
+                    term('npm exited cleanly but the JavaScript toolchain is incomplete — performing one clean bounded reinstall');
+                    inst = await cleanReinstallReactDependencies(proj, run);
+                }
                 if (inst !== 0) {
                     const interruptedTools = interruptedWindowsNativeTools(proj);
                     if (interruptedTools.length) {
