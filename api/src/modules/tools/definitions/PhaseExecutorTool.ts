@@ -1056,6 +1056,11 @@ export class PhaseExecutorTool implements ToolDefinition {
 
     async execute(input: { phase: any; projectContext?: any; repairCriteria?: string[] }, context?: any) {
         const { phase, projectContext, repairCriteria } = input;
+        const assertRunActive = () => {
+            if (typeof context?.isCancelled === 'function' && context.isCancelled()) {
+                throw new Error('run_cancelled_by_owner');
+            }
+        };
         const MAX_PHASE_LOGS = 128;
         const MAX_PHASE_LOG_CHARS = 2_000;
         const logs: string[] = [];
@@ -1147,6 +1152,11 @@ export class PhaseExecutorTool implements ToolDefinition {
             terminalLinesEmitted: context?.terminalLinesEmitted,
             onThought: (m: string) => context?.onThought?.(m),
             onProgress: (m: string) => context?.onProgress?.(m),
+            // Cancellation is part of the trusted run context. Every delegated
+            // task must see it so a stopped builder cannot finish in the
+            // background and be mistaken for a failed task worth retrying.
+            isCancelled: context?.isCancelled,
+            cancellation: context?.cancellation,
         };
 
         // `executionContext` is created before the first builder task runs, but
@@ -1165,6 +1175,7 @@ export class PhaseExecutorTool implements ToolDefinition {
         });
 
         try {
+            assertRunActive();
             const tasks = Array.isArray(phase.tasks) ? phase.tasks : [];
             const totalTasks = tasks.length;
             const phaseFilePaths: string[] = tasks
@@ -1198,6 +1209,7 @@ export class PhaseExecutorTool implements ToolDefinition {
             appendLog(`[PhaseExecutor] Starting Phase ${phaseNo ? `${phaseNo}: ${phase.name}` : phaseTag} (${totalTasks} tasks)`);
 
             for (let i = 0; i < tasks.length; i++) {
+                assertRunActive();
                 const task = tasks[i];
                 const askedFor = String(task.tool || '').trim();
                 const taskDesc = String(task.task || task.description || `Task ${i + 1}`);
@@ -1399,6 +1411,7 @@ export class PhaseExecutorTool implements ToolDefinition {
                     liveExecutionContext(),
                     appendLog,
                 );
+                assertRunActive();
                 if (!dependencyPreflight.ok) {
                     const preflightError = dependencyPreflight.error;
                     appendLog(`[PhaseExecutor] ❌ Task ${i + 1} blocked by npm preflight: ${preflightError}`);
@@ -1422,6 +1435,7 @@ export class PhaseExecutorTool implements ToolDefinition {
                         ...liveExecutionContext(),
                         onProgress: (m: string) => context?.onProgress?.(`[${toolName}] ${m}`),
                     });
+                    assertRunActive();
 
                     if (toolResult.ok) {
                         appendLog(`[PhaseExecutor] ✅ Task ${i + 1} completed: ${toolName}`);
@@ -1540,6 +1554,7 @@ export class PhaseExecutorTool implements ToolDefinition {
                                         ...liveExecutionContext(),
                                         onProgress: (m: string) => context?.onProgress?.(`[${toolName} MANIFEST RECOVERY] ${m}`),
                                     });
+                                    assertRunActive();
                                     if (launcherResult.ok) {
                                         appendLog(`[PhaseExecutor] ✅ Manifest-aware launcher recovery succeeded: npm run ${launcher.script}`);
                                         results.push({ task: taskDesc, tool: toolName, ok: true, execution: 'ran', message: `Used package.json script ${launcher.script} after the requested npm script was absent.` });
@@ -1610,10 +1625,12 @@ export class PhaseExecutorTool implements ToolDefinition {
                         } else if (task.priority === 'high' || task.required === true) {
                             appendLog('[PhaseExecutor] ⚠️ High-priority task failed. Retrying once...');
                             try {
+                                assertRunActive();
                                 const retryResult = await executeTool(toolName, toolArgs, {
                                     ...liveExecutionContext(),
                                     onProgress: (m: string) => context?.onProgress?.(`[${toolName} RETRY] ${m}`),
                                 });
+                                assertRunActive();
                                 if (retryResult.ok) {
                                     appendLog(`[PhaseExecutor] ✅ Retry succeeded for task ${i + 1}: ${toolName}`);
                                     results[results.length - 1] = { task: taskDesc, tool: toolName, ok: true, execution: 'ran' };
@@ -1623,6 +1640,9 @@ export class PhaseExecutorTool implements ToolDefinition {
                                     break;
                                 }
                             } catch (retryErr: any) {
+                                if (context?.isCancelled?.() || String(retryErr?.message || retryErr).includes('run_cancelled_by_owner')) {
+                                    throw new Error('run_cancelled_by_owner');
+                                }
                                 appendLog(`[PhaseExecutor] ⛔ Retry threw error: ${retryErr?.message}. Stopping phase.`);
                                 break;
                             }
@@ -1630,6 +1650,9 @@ export class PhaseExecutorTool implements ToolDefinition {
                     }
                 } catch (toolError: any) {
                     const errMsg = String(toolError?.message || toolError || 'Execution error');
+                    if (context?.isCancelled?.() || errMsg.includes('run_cancelled_by_owner')) {
+                        throw new Error('run_cancelled_by_owner');
+                    }
                     const runEvidenceId = String(executionContext.runId || projectContext?.runId || '').trim();
                     const runEvidenceRoot = projectContext?.projectRootRuntimeBound === true && String(projectContext?.projectRoot || '').trim()
                         ? path.resolve(String(projectContext.projectRoot))
@@ -1700,6 +1723,7 @@ export class PhaseExecutorTool implements ToolDefinition {
             appendLog(`[PhaseExecutor] Phase ${phaseTag} ${status}: ${executedCount}/${totalTasks} executed · ${skippedCount} skipped${failedCount ? ` · ${failedCount} failed` : ''}`);
 
             if (phase.verificationTask && allOk && executedCount > 0) {
+                assertRunActive();
                 const vTask = phase.verificationTask;
                 // Same law as the tasks: a verification step that names a tool
                 // nobody has verifies nothing. project_detect always exists and

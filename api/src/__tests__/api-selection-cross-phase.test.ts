@@ -101,4 +101,82 @@ describe('issue #86 API selection survives the canonical phase boundary', () => 
             fs.rmSync(projectRoot, { recursive: true, force: true });
         }
     });
+
+    it('does not open repair or another phase after the owner cancels an in-flight phase', async () => {
+        let cancelled = false;
+        mockedExecuteTool.mockImplementation(async (toolName: string) => {
+            if (toolName === 'phase_executor') {
+                cancelled = true;
+                return {
+                    ok: false,
+                    error: 'build failed after cancellation',
+                    output: {
+                        status: 'failed',
+                        results: [{ ok: false, tool: 'react_project', error: 'build failed' }],
+                    },
+                } as any;
+            }
+            throw new Error(`unexpected post-cancellation tool: ${toolName}`);
+        });
+
+        await expect(AgentLoopService.runPlannedPhasesIfPresent({
+            sessionId: 'issue86-cancel-session',
+            runId: 'issue86-cancel-run',
+            userId: 'issue86-user',
+            workspaceId: 'issue86-cancel-workspace',
+            request: 'Build a weather dashboard.',
+            isCancelled: () => cancelled,
+            cancellation: Promise.resolve(),
+            plannerResult: {
+                ok: true,
+                output: {
+                    projectName: 'weather',
+                    phases: [{ phaseNumber: 1, name: 'Build', tasks: [{ task: 'Build weather UI', tool: 'react_project' }] }],
+                },
+            },
+        })).rejects.toThrow('run_cancelled_by_owner');
+
+        expect(mockedExecuteTool.mock.calls.map(call => call[0])).toEqual(['phase_executor']);
+    });
+
+    it('propagates owner cancellation through PhaseExecutor and never retries the cancelled builder', async () => {
+        let cancelled = false;
+        let delegatedContext: any;
+        mockedExecuteTool.mockImplementation(async (toolName: string, _input: any, context: any) => {
+            if (toolName !== 'react_project') throw new Error(`unexpected tool: ${toolName}`);
+            delegatedContext = context;
+            cancelled = true;
+            return { ok: false, error: 'run_cancelled_by_owner' } as any;
+        });
+
+        const result: any = await new PhaseExecutorTool().execute({
+            phase: {
+                phaseNumber: 1,
+                name: 'Build',
+                tasks: [{ task: 'Build weather UI', tool: 'react_project', priority: 'high' }],
+            },
+            projectContext: {
+                projectName: 'weather',
+                sessionId: 'issue86-phase-cancel-session',
+                workspaceId: 'issue86-phase-cancel-workspace',
+                userId: 'issue86-user',
+            },
+        }, {
+            runId: 'issue86-phase-cancel-run',
+            sessionId: 'issue86-phase-cancel-session',
+            workspaceId: 'issue86-phase-cancel-workspace',
+            userId: 'issue86-user',
+            isCancelled: () => cancelled,
+            cancellation: Promise.resolve(),
+        });
+
+        expect(result).toMatchObject({
+            ok: false,
+            error: 'run_cancelled_by_owner',
+            output: { status: 'fatal_error' },
+        });
+        expect(delegatedContext.isCancelled).toEqual(expect.any(Function));
+        expect(delegatedContext.cancellation).toBeInstanceOf(Promise);
+        expect(mockedExecuteTool.mock.calls.map(call => call[0])).toEqual(['react_project']);
+    });
 });

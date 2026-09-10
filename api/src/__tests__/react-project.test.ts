@@ -10,7 +10,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
-import { ReactProjectTool, PROJECT_DIR_NAME_MAX_LENGTH, REACT_NETWORK_INSTALL_TIMEOUTS, applyBundledPhotographyFallback, findBrokenNativeBuildTool, hasUsableReactDependencyTree, heroSecondaryDestination, nativeBuildToolRepairSpec, portableViteBuildArgs, requestDrivenServiceProducts, reuseLocalReactDependencies, withoutViteConfigForBuild } from '../modules/tools/definitions/ReactProjectTool';
+import { ReactProjectTool, PROJECT_DIR_NAME_MAX_LENGTH, REACT_NETWORK_INSTALL_TIMEOUTS, applyBundledPhotographyFallback, cleanReinstallReactDependencies, findBrokenNativeBuildTool, hasUsableReactDependencyTree, heroSecondaryDestination, interruptedWindowsNativeTools, nativeBuildToolRepairSpec, portableViteBuildArgs, repairQuarantinedEsbuildInstall, requestDrivenServiceProducts, reuseLocalReactDependencies, withoutViteConfigForBuild } from '../modules/tools/definitions/ReactProjectTool';
 import { fileAppStoreJs } from '../modules/tools/definitions/react-app-templates';
 import { ApiProjectTool } from '../modules/tools/definitions/ApiProjectTool';
 import { ScaffoldProjectTool } from '../modules/tools/definitions/SystemTools';
@@ -45,6 +45,7 @@ describe('dependency reuse only trusts a complete Vite tree', () => {
         const files = [
             '.bin/vite', 'vite/package.json', 'rollup/package.json', 'rollup/dist/parseAst.js',
             '@vitejs/plugin-react/package.json', 'react/package.json', 'react-dom/package.json', 'esbuild/package.json',
+            'browserslist/index.js', 'caniuse-lite/package.json', 'caniuse-lite/dist/unpacker/feature.js',
             `@esbuild/win32-${process.arch}/package.json`, `@esbuild/win32-${process.arch}/esbuild.exe`,
             `@rollup/rollup-win32-${process.arch}-msvc/package.json`,
             `@rollup/rollup-win32-${process.arch}-msvc/rollup.win32-${process.arch}-msvc.node`,
@@ -86,6 +87,46 @@ describe('dependency reuse only trusts a complete Vite tree', () => {
         writeTree(tmp, baseManifest);
         expect(hasUsableReactDependencyTree(tmp)).toBe(true);
         fs.rmSync(tmp, { recursive: true, force: true });
+    });
+
+    it('rejects a tree whose Browserslist data was only partially extracted', () => {
+        const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-react-deps-'));
+        writeTree(tmp, baseManifest);
+        fs.rmSync(path.join(tmp, 'node_modules', 'caniuse-lite', 'dist', 'unpacker', 'feature.js'));
+        expect(hasUsableReactDependencyTree(tmp)).toBe(false);
+        fs.rmSync(tmp, { recursive: true, force: true });
+    });
+
+    it('replaces the incomplete tree through one bounded npm execution and removes its cache', async () => {
+        const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-react-clean-install-'));
+        const modules = path.join(tmp, 'node_modules');
+        const lock = path.join(tmp, 'package-lock.json');
+        fs.mkdirSync(modules, { recursive: true });
+        fs.writeFileSync(path.join(modules, 'stale.txt'), 'partial');
+        fs.writeFileSync(lock, '{"partial":true}');
+        let cache = '';
+        const run = jest.fn(async (cmd: string, args: string[], timeoutMs: number, idleTimeoutMs?: number) => {
+            expect(cmd).toBe('npm');
+            expect(fs.existsSync(modules)).toBe(false);
+            expect(fs.existsSync(lock)).toBe(false);
+            cache = String(args[args.indexOf('--cache') + 1] || '');
+            fs.mkdirSync(cache, { recursive: true });
+            fs.writeFileSync(path.join(cache, 'download'), 'isolated');
+            expect(timeoutMs).toBe(REACT_NETWORK_INSTALL_TIMEOUTS.absoluteMs);
+            expect(idleTimeoutMs).toBe(REACT_NETWORK_INSTALL_TIMEOUTS.idleMs);
+            return 0;
+        });
+        try {
+            await expect(cleanReinstallReactDependencies(tmp, run)).resolves.toBe(0);
+            expect(run).toHaveBeenCalledTimes(1);
+            expect(run.mock.calls[0][1].slice(0, 5)).toEqual([
+                'install', '--prefer-online', '--no-audit', '--no-fund', '--cache',
+            ]);
+            expect(path.dirname(path.dirname(cache))).toBe(tmp);
+            expect(fs.existsSync(cache)).toBe(false);
+        } finally {
+            fs.rmSync(tmp, { recursive: true, force: true });
+        }
     });
 
     it('derives exact trusted repair packages and executable checks from installed wrapper versions', () => {
@@ -162,6 +203,17 @@ describe('dependency reuse only trusts a complete Vite tree', () => {
         const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-react-deps-'));
         writeTree(tmp, baseManifest, { binary: Buffer.from([0x7f, 0x45, 0x4c, 0x46]) });
         expect(hasUsableReactDependencyTree(tmp)).toBe(false);
+        fs.rmSync(tmp, { recursive: true, force: true });
+    });
+
+    it('identifies a truncated trusted platform package after npm exits with failure', () => {
+        if (process.platform !== 'win32') return;
+        const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-native-interrupted-'));
+        writeTree(tmp, baseManifest);
+        const binary = path.join(tmp, 'node_modules', '@esbuild', `win32-${process.arch}`, 'esbuild.exe');
+        fs.writeFileSync(binary, fakeWindowsEsbuild().subarray(0, 3_300_000));
+        expect(hasUsableReactDependencyTree(tmp)).toBe(false);
+        expect(interruptedWindowsNativeTools(tmp)).toEqual(['esbuild']);
         fs.rmSync(tmp, { recursive: true, force: true });
     });
 
@@ -830,19 +882,38 @@ describe('product pages, the team, and the build command', () => {
         }
     });
 
-    it('repairs npm 11 script quarantine with a scoped esbuild approval only', () => {
+    it('repairs npm 11 script quarantine with scoped approval, rebuild, and verification', () => {
         const source = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ReactProjectTool.ts'), 'utf-8');
         expect(source).toContain("await run('npm', ['approve-scripts', 'esbuild'], 60_000, 30_000)");
+        expect(source).toContain("await run('npm', ['rebuild', 'esbuild', '--foreground-scripts'], 120_000, 45_000)");
         expect(source).not.toContain("['approve-scripts', '--all']");
-        expect(source).toContain("approval === 0 && hasUsableReactDependencyTree(proj)");
+        expect(source).toContain('repairQuarantinedEsbuildInstall(proj, run)');
         expect(source).toContain("fs.rmSync(path.join(proj, 'package-lock.json'), { force: true })");
-        expect(source).toContain('complete native toolchain verified after scoped npm approval');
+        expect(source).toContain('complete native toolchain verified after scoped npm approval and rebuild');
+    });
+
+    it('stops honestly when a scoped quarantine stage or final verification fails', async () => {
+        const approvalFailure = await repairQuarantinedEsbuildInstall('unused', async () => 37, () => true);
+        expect(approvalFailure).toEqual({ ok: false, approvalExit: 37, rebuildExit: null, failedAt: 'approval' });
+
+        const commands: string[][] = [];
+        const verificationFailure = await repairQuarantinedEsbuildInstall('unused', async (_cmd, args) => {
+            commands.push(args);
+            return 0;
+        }, () => false);
+        expect(commands).toEqual([
+            ['approve-scripts', 'esbuild'],
+            ['rebuild', 'esbuild', '--foreground-scripts'],
+        ]);
+        expect(verificationFailure).toMatchObject({ ok: false, rebuildExit: 0, failedAt: 'verification' });
     });
 
     it('executes and narrowly repairs a corrupt Windows esbuild binary before accepting dependencies', () => {
         const source = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ReactProjectTool.ts'), 'utf-8');
         expect(source).toContain('detectBrokenNativeBuildTool');
         expect(source).toContain('repairNativeBuildTool');
+        expect(source).toContain('interruptedWindowsNativeTools(proj)');
+        expect(source).toContain('interrupted native packages repaired and the complete toolchain verified');
         expect(source).toContain('`${spec.packageName}@${spec.version}`');
         expect(source).toContain("'--package-lock=false'");
         expect(source).toContain("'--cache', repairCache");
@@ -852,6 +923,7 @@ describe('product pages, the team, and the build command', () => {
         expect(source).toContain('Prove both fresh and reused executables start');
         expect(source).toContain('brokenNativeTool === null');
         expect(source).not.toContain('npm cache clean');
+        expect(source).toContain('the JavaScript toolchain is incomplete — performing one clean bounded reinstall');
     });
 });
 

@@ -867,6 +867,8 @@ export class AgentLoopService {
         plannerTimeoutMs?: number;
         plannerMaxCompletionTokens?: number;
         plannerReasoningEffort?: string;
+        isCancelled?: () => boolean;
+        cancellation?: Promise<unknown>;
         /** The language of THIS run — the phase announcements follow it. */
         language?: string;
         onProgress?: (msg: string) => void;
@@ -899,6 +901,8 @@ export class AgentLoopService {
         plannerTimeoutMs?: number;
         plannerMaxCompletionTokens?: number;
         plannerReasoningEffort?: string;
+        isCancelled?: () => boolean;
+        cancellation?: Promise<unknown>;
         onProgress?: (msg: string) => void;
     }) {
         const { sessionId, runId, userId, workspaceId, browserSessionId, plannerResult, modelConfig } = opts;
@@ -918,6 +922,9 @@ export class AgentLoopService {
         // thinking_detail stream when no callback was handed in.
         const voice = (m: string) => {
             try { opts.onProgress ? opts.onProgress(m) : broadcastThinkingDetail(sessionId, m); } catch { /* optional */ }
+        };
+        const assertRunActive = () => {
+            if (opts.isCancelled?.()) throw new Error(CANCELLED);
         };
         const phases = plannerResult.output.phases;
         const createsNewProject = plannerResult.output.createsNewProject === true;
@@ -971,6 +978,8 @@ export class AgentLoopService {
             plannerTimeoutMs: opts.plannerTimeoutMs,
             plannerMaxCompletionTokens: opts.plannerMaxCompletionTokens,
             plannerReasoningEffort: opts.plannerReasoningEffort,
+            isCancelled: opts.isCancelled,
+            cancellation: opts.cancellation,
             // Every LLM call launched by a phase, verifier, repair, or rerun is
             // bounded engineering work. Keep this marker explicit so downstream
             // tools do not accidentally route it as an ordinary chat turn and
@@ -988,11 +997,16 @@ export class AgentLoopService {
         const totalPhases = Number(projectContext.totalPhases || phases.length);
 
         for (const phase of phases) {
+            assertRunActive();
             const n = phase.phaseNumber || completedPhases + 1;
             voice(pick(isAr,
                 `⚙️ المرحلة ${n}/${totalPhases} — ${phase.name || 'تنفيذ'}`,
                 `⚙️ Phase ${n}/${totalPhases} — ${phase.name || 'work'}`));
             const phaseResult = await executeTool('phase_executor', { phase, projectContext }, executionContext);
+            // ToolService can stop the in-flight tool immediately while its
+            // underlying promise unwinds. Never interpret that late return as
+            // a failed phase eligible for repair or a second execution.
+            assertRunActive();
             // ToolService has already streamed the executor's logs to the panel.
             // Keep the returned copy for reports and repair diagnosis, but never
             // speak it again here: doing so replays the completed phase verbatim.
@@ -1148,6 +1162,7 @@ export class AgentLoopService {
                 return { ok: false, completedPhases, results, honestBlocker: true };
             }
 
+            assertRunActive();
             voice(pick(isAr,
                 `⚠️ تعثرت المرحلة ${n} — أفتح تذكرة إصلاح وأحاول العلاج الذاتي…`,
                 `⚠️ Phase ${n} stumbled — opening a repair ticket and attempting self-healing…`));
@@ -1206,6 +1221,7 @@ export class AgentLoopService {
                 projectName: projectContext.projectName,
             },
         });
+            assertRunActive();
 
             if (selfFixExecution.ok) {
                 voice(pick(isAr,
@@ -1254,6 +1270,7 @@ export class AgentLoopService {
             results
         };
 
+        assertRunActive();
         try {
             const reportResult = await executeTool('joe_engineering_report', {
                 pipelineResult,

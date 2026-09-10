@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { isFinalPipelineOutcome } from '../orchestration/AgentOrchestrator';
-import { applyLiveRunOutcome, durablePreviewEligible, finalBrowserQaUrl, hasOnlyBrowserQaInfrastructureFindings } from '../modules/tools/definitions/ProjectPipelineTool';
+import { applyLiveRunOutcome, durablePreviewEligible, externalApiExpectationFromRecord, finalBrowserQaUrl, hasOnlyBrowserQaInfrastructureFindings } from '../modules/tools/definitions/ProjectPipelineTool';
 
 describe('canonical engineering pipeline terminal outcomes', () => {
   it('prefers the durable project preview for final browser QA', () => {
@@ -23,6 +23,25 @@ describe('canonical engineering pipeline terminal outcomes', () => {
       projectType: 'react', hasDist: true, hasPackagedRuntime: false,
       integrationProfileId: '',
     })).toBe(false);
+  });
+
+  it('hands final Browser QA only a maintained external API identity', () => {
+    expect(externalApiExpectationFromRecord({
+      capability: 'currency', integrationProfileId: 'frankfurter-currency-v2',
+    })).toEqual({
+      capability: 'currency',
+      integrationProfileId: 'frankfurter-currency-v2',
+      providerName: 'Frankfurter',
+      auth: 'none',
+      pricing: 'UNKNOWN',
+      health: 'UNKNOWN',
+    });
+    expect(externalApiExpectationFromRecord({
+      capability: 'currency', integrationProfileId: 'unknown-profile',
+    })).toBeUndefined();
+    expect(externalApiExpectationFromRecord({
+      capability: 'shell', integrationProfileId: 'frankfurter-currency-v2',
+    })).toBeUndefined();
   });
 
   it('retries only browser-infrastructure findings without treating app defects as instrumentation', () => {

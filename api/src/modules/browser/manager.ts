@@ -1162,6 +1162,10 @@ export function startStreaming(sessionId: string) {
     s.streamTimer = setInterval(async () => {
       if (!s || !s.streaming) return;
       try {
+        // Timestamp the browser state when capture begins, not after JPEG
+        // encoding. The panel uses this to avoid painting a later highlight on
+        // a frame that was already being captured before that target existed.
+        const captureStartedAt = Date.now();
         const buf = await captureJpeg(s, {
           quality: 55,
           timeoutMs: Math.max(1000, Math.min(8000, cfg.actionTimeoutMs)),
@@ -1190,7 +1194,7 @@ export function startStreaming(sessionId: string) {
         }
         broadcastBrowserEvent(sid, {
           type: 'stream_frame',
-          ts: Date.now(),
+          ts: captureStartedAt,
           jpegBase64: Buffer.from(buf).toString('base64'),
           w: actualViewport?.width || s.viewport.w,
           h: actualViewport?.height || s.viewport.h,

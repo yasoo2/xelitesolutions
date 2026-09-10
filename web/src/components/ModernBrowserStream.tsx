@@ -2,11 +2,12 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { API_URL, WS_URL } from '../config';
 import { isValidToken } from '../utils/auth';
+import { projectionMatchesFrame, viewportStampOrFallback } from '../lib/browserFrameProjection';
 
 type WsEvent =
   | { type: 'stream_frame'; ts: number; jpegBase64: string; w: number; h: number }
-  | { type: 'cursor_move'; ts: number; x: number; y: number }
-  | { type: 'highlight_boxes'; ts: number; boxes: Array<{ x: number; y: number; width: number; height: number; label?: string }> }
+  | { type: 'cursor_move'; ts: number; x: number; y: number; viewportWidth?: number; viewportHeight?: number }
+  | { type: 'highlight_boxes'; ts: number; boxes: Array<{ x: number; y: number; width: number; height: number; label?: string }>; viewportWidth?: number; viewportHeight?: number }
   | { type: 'action_sent' | 'action_ack' | 'action_done' | 'action_error'; ts: number; actionId: string; actionType: string; summary?: string; reason?: string; error?: string }
   | { type: 'page_snapshot'; ts: number; sessionId: string; url: string; title: string; state: string; workerStatus?: string; elementCount?: number; textLength?: number; hasPasswordField?: boolean; blockingReason?: string }
   | { type: 'page_diagnostics'; ts: number; sessionId: string; jsErrors: number; consoleErrors: number; networkErrors: number; recent?: Array<{ kind: string; message: string; ts: number }> }
@@ -26,6 +27,9 @@ type WsEvent =
 type AgentPhase = 'observe' | 'decide' | 'act' | 'result' | 'done' | 'needs_user';
 type AgentStep = { ts: number; phase: AgentPhase; step: number; text: string; ok?: boolean };
 type ActionFilter = 'all' | 'success' | 'failed';
+type HighlightBox = { x: number; y: number; width: number; height: number; label?: string };
+type HighlightLayer = { boxes: HighlightBox[]; ts: number; viewportWidth?: number; viewportHeight?: number };
+type BrowserFrame = { image: HTMLImageElement; w: number; h: number; ts: number };
 
 type Props = { sessionId: string; showBoxes?: boolean };
 
@@ -44,6 +48,24 @@ export function fittedFrameRect(viewW: number, viewH: number, frameW: number, fr
   return { left: (safeViewW - width) / 2, top: height <= safeViewH ? (safeViewH - height) / 2 : 0, width, height };
 }
 
+function paintBrowserFrame(canvas: HTMLCanvasElement, frame: BrowserFrame, layer: HighlightLayer, showBoxes: boolean) {
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  canvas.width = frame.w;
+  canvas.height = frame.h;
+  ctx.drawImage(frame.image, 0, 0, frame.w, frame.h);
+  // Never project coordinates from a newer browser state onto an older JPEG.
+  // This matters most while responsive QA switches between desktop and phone:
+  // the highlight event can beat the next streamed frame by a few milliseconds.
+  if (!showBoxes || frame.ts < layer.ts || !layer.boxes.length
+    || !projectionMatchesFrame(frame.w, frame.h, layer)) return;
+  ctx.save();
+  ctx.strokeStyle = 'rgba(239, 68, 68, 0.9)';
+  ctx.lineWidth = 2;
+  for (const box of layer.boxes) ctx.strokeRect(box.x, box.y, box.width, box.height);
+  ctx.restore();
+}
+
 export default function ModernBrowserStream({ sessionId, showBoxes = true }: Props) {
   const { t } = useTranslation();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -53,7 +75,6 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
   const [w, setW] = useState(1280);
   const [h, setH] = useState(720);
   const [viewSize, setViewSize] = useState({ w: 1, h: 1 });
-  const [boxes, setBoxes] = useState<Array<{ x: number; y: number; width: number; height: number; label?: string }>>([]);
   const [lastStep, setLastStep] = useState<string>('');
   const [final, setFinal] = useState<{ ok: boolean; summary: string } | null>(null);
   const [debug, setDebug] = useState<{ compiledPlanJson: any; actionsJson: any; actionCount: number; stopReason: string } | null>(null);
@@ -77,7 +98,9 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
   // the browser view stays clean. When the agent pauses for the user (missing
   // credential / 2FA code) the prompt now appears in JOE'S CHAT, not here.
 
-  const boxesRef = useRef(boxes);
+  const highlightLayerRef = useRef<HighlightLayer>({ boxes: [], ts: 0 });
+  const latestFrameRef = useRef<BrowserFrame | null>(null);
+  const showBoxesRef = useRef(showBoxes);
   const actionsRef = useRef(actions);
   const pendingTypeRef = useRef('');
   const flushTimerRef = useRef<number | null>(null);
@@ -88,7 +111,7 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
   const cancelSeqRef = useRef(0);
   const viewSizeRef = useRef({ w: 1, h: 1 });
   const frameSizeRef = useRef({ w: 1280, h: 720 });
-  const cursorTargetNormRef = useRef<{ x: number; y: number } | null>(null);
+  const cursorTargetNormRef = useRef<{ x: number; y: number; viewportWidth: number; viewportHeight: number } | null>(null);
   const cursorPosPxRef = useRef<{ x: number; y: number } | null>(null);
   const rafRef = useRef<number | null>(null);
   const lastRafTsRef = useRef<number>(0);
@@ -98,8 +121,13 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
   const scrollTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
-    boxesRef.current = boxes;
-  }, [boxes]);
+    showBoxesRef.current = showBoxes;
+    if (!showBoxes) highlightLayerRef.current = { boxes: [], ts: Date.now() };
+    const canvas = canvasRef.current;
+    const frame = latestFrameRef.current;
+    if (canvas && frame) paintBrowserFrame(canvas, frame, highlightLayerRef.current, showBoxes);
+  }, [showBoxes]);
+
   useEffect(() => {
     actionsRef.current = actions;
   }, [actions]);
@@ -144,6 +172,14 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
       const dt = Math.max(0.001, Math.min(0.06, dtMs / 1000));
       const view = viewSizeRef.current;
       const frame = frameSizeRef.current;
+      if (!projectionMatchesFrame(frame.w, frame.h, targetNorm)) {
+        if (cursorVisibleRef.current) {
+          el.style.opacity = '0';
+          cursorVisibleRef.current = false;
+        }
+        rafRef.current = window.requestAnimationFrame(tick);
+        return;
+      }
       const fitted = fittedFrameRect(view.w, view.h, frame.w, frame.h);
 
       const tx = fitted.left + targetNorm.x * fitted.width;
@@ -383,34 +419,41 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
           img.onload = () => {
             const canvas = canvasRef.current;
             if (!canvas) return;
-            const ctx = canvas.getContext('2d');
-            if (!ctx) return;
-            canvas.width = msg.w;
-            canvas.height = msg.h;
-            ctx.drawImage(img, 0, 0, msg.w, msg.h);
-            const curBoxes = showBoxes ? (boxesRef.current || []) : [];
-            if (showBoxes && curBoxes.length) {
-              ctx.save();
-              ctx.strokeStyle = 'rgba(239, 68, 68, 0.9)';
-              ctx.lineWidth = 2;
-              for (const b of curBoxes) {
-                ctx.strokeRect(b.x, b.y, b.width, b.height);
-              }
-              ctx.restore();
-            }
+            const frame = { image: img, w: msg.w, h: msg.h, ts: msg.ts };
+            latestFrameRef.current = frame;
+            paintBrowserFrame(canvas, frame, highlightLayerRef.current, showBoxesRef.current);
           };
           img.src = `data:image/jpeg;base64,${msg.jpegBase64}`;
           return;
         }
         if (msg.type === 'cursor_move') {
           const fs = frameSizeRef.current;
-          const nx = fs.w ? msg.x / fs.w : 0;
-          const ny = fs.h ? msg.y / fs.h : 0;
-          cursorTargetNormRef.current = { x: Math.max(0, Math.min(1, nx)), y: Math.max(0, Math.min(1, ny)) };
+          const stamp = viewportStampOrFallback(msg, fs.w, fs.h);
+          const sourceWidth = stamp.viewportWidth;
+          const sourceHeight = stamp.viewportHeight;
+          const nx = sourceWidth ? msg.x / sourceWidth : 0;
+          const ny = sourceHeight ? msg.y / sourceHeight : 0;
+          cursorTargetNormRef.current = {
+            x: Math.max(0, Math.min(1, nx)),
+            y: Math.max(0, Math.min(1, ny)),
+            viewportWidth: sourceWidth,
+            viewportHeight: sourceHeight,
+          };
           return;
         }
         if (msg.type === 'highlight_boxes') {
-          setBoxes(showBoxes ? (msg.boxes || []) : []);
+          // Keep the drawing source synchronous with the WebSocket event. If a
+          // frame arrives immediately afterwards it must not paint the previous
+          // target over the page's new state or viewport.
+          const stamp = viewportStampOrFallback(msg, frameSizeRef.current.w, frameSizeRef.current.h);
+          highlightLayerRef.current = {
+            boxes: showBoxesRef.current ? (msg.boxes || []) : [],
+            ts: Number(msg.ts) || Date.now(),
+            ...stamp,
+          };
+          const canvas = canvasRef.current;
+          const frame = latestFrameRef.current;
+          if (canvas && frame) paintBrowserFrame(canvas, frame, highlightLayerRef.current, showBoxesRef.current);
           return;
         }
         if (msg.type === 'action_sent' || msg.type === 'action_ack' || msg.type === 'action_done' || msg.type === 'action_error') {

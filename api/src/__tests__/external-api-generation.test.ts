@@ -3,13 +3,14 @@ import os from 'os';
 import path from 'path';
 import { capabilityFromRequest, externalDataAppSource, integrationArtifacts, integrationPlanFromSelection, resolveProxyClientUrl, viteConfigWithExternalProxy } from '../core/api-discovery/integration';
 import type { ApiSelectionArtifact } from '../core/api-discovery/types';
-import { isExternalIntegrationArtifact } from '../modules/tools/definitions/ReactProjectTool';
+import { deriveRequestFidelity, isExternalIntegrationArtifact } from '../modules/tools/definitions/ReactProjectTool';
 import { guardUnverifiedBuilderClaims } from '../core/api-discovery/reporting';
 import { handleMaintainedPreviewApiRequest } from '../core/api-discovery/preview-proxy';
 import { scaffoldSubstitutionFor } from '../core/design/scaffold-substitution';
 import { resolvePreviewApiRequest } from '../api/routes/projectPreview';
 import { verifyNamed } from '../core/quality/named-requirements';
 import { buildExternalApiAcceptanceEvidence, externalApiSourceVerdict } from '../core/api-discovery/acceptance-evidence';
+import { externalApiRuntimeFromBrowserEvidence, formatAudit } from '../core/quality/app-audit';
 import { acceptanceFor } from '../core/quality/acceptance';
 
 const selection = (overrides: Partial<ApiSelectionArtifact> = {}): ApiSelectionArtifact => ({
@@ -39,6 +40,13 @@ const acceptanceEvidence = (
                 integrationProfileId: plan.selection.integrationProfileId,
                 successfulRequests: 1,
                 renderedLiveResult: true,
+                responseMatchedRenderedResult: true,
+                loadingObserved: true,
+                errorObserved: true,
+                recoveredAfterError: true,
+                validSubmissionObserved: true,
+                invalidInputRejected: true,
+                selectionChanged: true,
             },
         },
     });
@@ -101,6 +109,12 @@ describe('external API generation contract', () => {
         expect(app).toContain("const parts=normalized.split('.')");
         expect(app).not.toContain("replace(/(..*)./g,'$1')");
         expect(app).toContain("setAmountError('Use digits and one decimal point only')");
+        expect(app).toContain('function updateAmount(value){setData(null)');
+        expect(app).toContain("setTo(e.target.value);setData(null);setError('')");
+        expect(app).toContain('data-external-api-capability="currency"');
+        expect(app).toContain('data-api-result="true"');
+        expect(app).toContain('data-api-loading="true"');
+        expect(app).toContain('data-api-error="true"');
         expect(app).toContain("aria-invalid={amountError?'true':'false'}");
         expect(app).toContain('onInput={e=>updateAmount(e.currentTarget.value)}');
         expect(app).toContain('onChange={e=>updateAmount(e.target.value)}');
@@ -247,6 +261,18 @@ describe('external API generation contract', () => {
         expect(source).not.toContain('joeExternalApiProxy');
     });
 
+    it('treats a maintained currency capability as a known verified engine', () => {
+        const plan = integrationPlanFromSelection(selection())!;
+        const verdict = deriveRequestFidelity(
+            'Create a currency converter using a public API.',
+            false,
+            null,
+            externalDataAppSource(plan),
+            'currency',
+        );
+        expect(verdict).toMatchObject({ engine: 'currency', label: 'verified', mismatch: false, evidenceUnavailable: false });
+    });
+
     it('lets a serious browser or API failure override complete generated artifacts', () => {
         const evidence = acceptanceEvidence(selection(), 'failed');
         const requirement = {
@@ -283,6 +309,100 @@ describe('external API generation contract', () => {
         }, evidence)).toMatchObject({ verdict: 'unmet' });
     });
 
+    it('blocks acceptance when the maintained request succeeds but produces no rendered live result', () => {
+        const plan = integrationPlanFromSelection(selection())!;
+        const files = integrationArtifacts(plan);
+        const browserRuntime = externalApiRuntimeFromBrowserEvidence(
+            { capability: plan.capability, integrationProfileId: plan.selection.integrationProfileId! },
+            [{ url: 'http://127.0.0.1:5002/api/joe-external/currency?amount=25&from=EUR&to=USD', status: 200 }],
+            '',
+        );
+        const evidence = buildExternalApiAcceptanceEvidence({
+            capability: plan.capability,
+            selection: plan.selection,
+            clientSource: files['src/integrations/externalApi.js'],
+            appSource: externalDataAppSource(plan),
+            proxySource: files['server/joeExternalApiProxy.js'],
+            audit: {
+                findings: [], passes: [{ id: 'runtime', status: 'passed' }],
+                externalApiRuntime: browserRuntime,
+            },
+        });
+        expect(browserRuntime).toMatchObject({ successfulRequests: 1, renderedLiveResult: false });
+        expect(evidence.runtime.status).toBe('unverified');
+        expect(externalApiSourceVerdict({
+            id: 'req-request-without-render', text: 'using a public API', quote: 'using a public API',
+        }, evidence)).toMatchObject({ verdict: 'unmet' });
+    });
+
+    it('accepts browser evidence only when the maintained response also renders a live result', () => {
+        expect(externalApiRuntimeFromBrowserEvidence(
+            { capability: 'currency', integrationProfileId: 'frankfurter-currency-v2' },
+            [
+                { url: 'https://example.test/unrelated', status: 200 },
+                { url: 'http://127.0.0.1:5002/api/joe-external/currency?amount=25&from=EUR&to=USD', status: 200, body: { amount: 25, base: 'EUR', rates: { USD: 29.31 } } },
+            ],
+            '25 EUR = 29.31 USD',
+            { loadingObserved: true, errorObserved: true, recoveredAfterError: true, validSubmissionObserved: true, invalidInputRejected: true, selectionChanged: true },
+        )).toMatchObject({ successfulRequests: 1, renderedLiveResult: true, responseMatchedRenderedResult: true });
+    });
+
+    it('prints inspectable causal API evidence instead of hiding it behind a score', () => {
+        const runtime = externalApiRuntimeFromBrowserEvidence(
+            { capability: 'currency', integrationProfileId: 'frankfurter-currency-v2' },
+            [{
+                url: 'http://127.0.0.1:5002/api/joe-external/currency?amount=125.5&from=EUR&to=TRY',
+                status: 200,
+                body: { amount: 125.5, base: 'EUR', rates: { TRY: 7079.957 } },
+            }],
+            '125.5 EUR = 7079.957 TRY',
+            {
+                loadingObserved: true,
+                errorObserved: true,
+                recoveredAfterError: true,
+                validSubmissionObserved: true,
+                invalidInputRejected: true,
+                selectionChanged: true,
+                errorText: 'Could not load live rates. Retry.',
+            },
+        );
+        const report = formatAudit({ score: 100, findings: [], externalApiRuntime: runtime }, false);
+        expect(report).toContain('1 successful request(s)');
+        expect(report).toContain('loading proven · error proven · recovery proven');
+        expect(report).toContain('invalid input rejection proven · selection change proven');
+        expect(report).toContain('Visible result: 125.5 EUR = 7079.957 TRY');
+        expect(report).toContain('Visible error state: Could not load live rates. Retry.');
+    });
+
+    it('does not accept a matching response and number without loading, failure, and recovery proof', () => {
+        const plan = integrationPlanFromSelection(selection())!;
+        const files = integrationArtifacts(plan);
+        const runtime = externalApiRuntimeFromBrowserEvidence(
+            { capability: 'currency', integrationProfileId: 'frankfurter-currency-v2' },
+            [{
+                url: 'http://127.0.0.1:5002/api/joe-external/currency?amount=25&from=EUR&to=USD',
+                status: 200,
+                body: { amount: 25, base: 'EUR', rates: { USD: 29.31 } },
+            }],
+            '25 EUR = 29.31 USD',
+        );
+        const evidence = buildExternalApiAcceptanceEvidence({
+            capability: plan.capability,
+            selection: plan.selection,
+            clientSource: files['src/integrations/externalApi.js'],
+            appSource: externalDataAppSource(plan),
+            proxySource: files['server/joeExternalApiProxy.js'],
+            audit: { findings: [], passes: [{ id: 'runtime', status: 'passed' }], externalApiRuntime: runtime },
+        });
+        expect(runtime).toMatchObject({
+            responseMatchedRenderedResult: true,
+            loadingObserved: false,
+            errorObserved: false,
+            recoveredAfterError: false,
+        });
+        expect(evidence.runtime.status).toBe('unverified');
+    });
+
     it('requires positive evidence to match the selected maintained profile', () => {
         const plan = integrationPlanFromSelection(selection())!;
         const files = integrationArtifacts(plan);
@@ -299,6 +419,13 @@ describe('external API generation contract', () => {
                     integrationProfileId: 'open-meteo-weather-v1',
                     successfulRequests: 1,
                     renderedLiveResult: true,
+                    responseMatchedRenderedResult: true,
+                    loadingObserved: true,
+                    errorObserved: true,
+                    recoveredAfterError: true,
+                    validSubmissionObserved: true,
+                    invalidInputRejected: true,
+                    selectionChanged: true,
                 },
             },
         });
@@ -326,8 +453,10 @@ describe('external API generation contract', () => {
         expect(app).toContain('pattern="(?:[0-9]{1,3}[.]){3}[0-9]{1,3}"');
         expect(app).toContain("Number(part)<=255");
         expect(app).toContain("Enter a valid IPv4 address, for example 8.8.8.8");
-        expect(app).toContain('<button className="primary" disabled={loading}>Look up</button>');
-        expect(app).not.toContain('<button onClick={run}>Retry</button>');
+        expect(app).toContain('data-api-ip="true"');
+        expect(app).toContain("if(!validIp(ip)){setData(null);setError('');setIpError(");
+        expect(app).toContain('<button className="primary" disabled={loading} data-api-submit="true">Look up</button>');
+        expect(app).toContain('data-api-retry="true"');
     });
 
     it('generates a real keyed path with a fixed server proxy and a clear missing-env response', async () => {
@@ -436,6 +565,10 @@ describe('external API generation contract', () => {
         const webSearch = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'SearchApiTool.ts'), 'utf8');
         expect(source).toContain('integrationPlanFromSelection(input?.apiSelection)');
         expect(source).toContain('if (!appBp && !externalIntegration && !input?.skipInstall');
+        expect(source).toContain("for (const c of (appBp || externalIntegration) ? [] : ['Navbar', ...sections, 'Footer'])");
+        expect(source).toContain('if (!appBp && !externalIntegration && sections.length && providersAreRationing)');
+        expect(source).toContain("delete files['src/content.js']");
+        expect(source).toContain("delete files['src/reveal.js']");
         expect(source).not.toContain('discoverIntegrationForRequest');
         expect(integration).not.toContain('apiDiscoveryService');
         expect(browserQa).toContain("['numeric', 'decimal'].includes(input.inputMode)");

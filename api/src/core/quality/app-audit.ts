@@ -154,6 +154,17 @@ export interface AppAudit {
         integrationProfileId: string;
         successfulRequests: number;
         renderedLiveResult: boolean;
+        responseMatchedRenderedResult: boolean;
+        loadingObserved: boolean;
+        errorObserved: boolean;
+        recoveredAfterError: boolean;
+        validSubmissionObserved: boolean;
+        invalidInputRejected?: boolean;
+        selectionChanged?: boolean;
+        /** Exact visible result used for the causal response-to-UI match. */
+        renderedResult?: string;
+        /** Exact visible failure state produced by the bounded fault injection. */
+        errorText?: string;
     };
 }
 
@@ -163,6 +174,77 @@ export interface AppAuditPass {
     status: 'passed' | 'failed' | 'skipped';
     measured: number;
     findingIds: string[];
+}
+
+export interface ExternalApiRuntimeExpectation {
+    capability: 'weather' | 'currency' | 'ip';
+    integrationProfileId: string;
+}
+
+export function isExpectedExternalApiRequest(rawUrl: string, integrationProfileId: string): boolean {
+    try {
+        const requestUrl = new URL(rawUrl);
+        if (integrationProfileId === 'frankfurter-currency-v2') return /\/api\/joe-external\/currency(?:\?|$)/u.test(requestUrl.pathname + requestUrl.search);
+        if (integrationProfileId === 'weatherapi-key-v1') return /\/api\/joe-external\/weather(?:\?|$)/u.test(requestUrl.pathname + requestUrl.search);
+        if (integrationProfileId === 'open-meteo-weather-v1') return /(?:^|\.)open-meteo\.com$/iu.test(requestUrl.hostname);
+        if (integrationProfileId === 'ipapi-co-v1') return /(?:^|\.)ipapi\.co$/iu.test(requestUrl.hostname);
+        return false;
+    } catch {
+        return false;
+    }
+}
+
+export function externalApiRuntimeFromBrowserEvidence(
+    expected: ExternalApiRuntimeExpectation,
+    responses: Array<{ url: string; status: number; body?: any }>,
+    liveRegionText: string,
+    interaction: Partial<Omit<NonNullable<AppAudit['externalApiRuntime']>, 'capability' | 'integrationProfileId' | 'successfulRequests' | 'renderedLiveResult' | 'responseMatchedRenderedResult'>> = {},
+): NonNullable<AppAudit['externalApiRuntime']> {
+    const successfulRequests = responses.filter(response => response.status >= 200
+        && response.status < 300
+        && isExpectedExternalApiRequest(response.url, expected.integrationProfileId));
+    const renderedText = String(liveRegionText || '').trim();
+    const responseMatchedRenderedResult = successfulRequests.some(response => {
+        const body = response.body;
+        if (!body || typeof body !== 'object') return false;
+        if (expected.capability === 'currency') {
+            const requestUrl = new URL(response.url);
+            const amount = String(body.amount ?? requestUrl.searchParams.get('amount') ?? '').trim();
+            const from = String(body.base ?? requestUrl.searchParams.get('from') ?? '').trim().toUpperCase();
+            const to = String(requestUrl.searchParams.get('to') ?? Object.keys(body.rates || {})[0] ?? '').trim().toUpperCase();
+            const value = body.rates?.[to];
+            return !!amount && !!from && !!to && Number.isFinite(Number(value))
+                && renderedText.includes(amount)
+                && renderedText.includes(from)
+                && renderedText.includes(String(value))
+                && renderedText.includes(to);
+        }
+        if (expected.capability === 'weather') {
+            const temperature = body?.current_weather?.temperature ?? body?.temperature;
+            return Number.isFinite(Number(temperature)) && renderedText.includes(String(temperature));
+        }
+        const ip = String(body?.ip || '').trim();
+        return !!ip && renderedText.includes(ip);
+    });
+    return {
+        capability: expected.capability,
+        integrationProfileId: expected.integrationProfileId,
+        successfulRequests: successfulRequests.length,
+        renderedLiveResult: successfulRequests.length > 0
+            && renderedText.length > 2
+            && !/^loading/i.test(renderedText),
+        responseMatchedRenderedResult,
+        loadingObserved: interaction.loadingObserved === true,
+        errorObserved: interaction.errorObserved === true,
+        recoveredAfterError: interaction.recoveredAfterError === true,
+        validSubmissionObserved: interaction.validSubmissionObserved === true,
+        ...(renderedText ? { renderedResult: renderedText.slice(0, 240) } : {}),
+        ...(interaction.errorText ? { errorText: String(interaction.errorText).trim().slice(0, 240) } : {}),
+        ...(expected.capability === 'currency' ? {
+            invalidInputRejected: interaction.invalidInputRejected === true,
+            selectionChanged: interaction.selectionChanged === true,
+        } : {}),
+    };
 }
 
 /**
@@ -353,6 +435,13 @@ export async function auditBuiltApp(
         let borrowError = '';
         if (opts?.watchSessionId) {
             try {
+                if (opts.requireVisibleBrowser) {
+                    const { panelWatcherCount } = require('../../modules/browser/wsHub');
+                    if (panelWatcherCount(opts.watchSessionId) <= 0) {
+                        borrowError = 'no active Browser panel watcher';
+                    }
+                }
+                if (borrowError) throw new Error(borrowError);
                 const { getBrowserSession, resumeStreamingIfWatched } = require('../../modules/browser/manager');
                 const s = await getBrowserSession(opts.watchSessionId);
                 if (s?.page) {
@@ -470,21 +559,15 @@ export async function auditBuiltApp(
         const pageErrors: string[] = [];
         const consoleErrors: string[] = [];
         const failedRequests: string[] = [];
-        const successfulExternalRequests: string[] = [];
-        let renderedExternalResult = false;
+        const successfulExternalRequests: Array<{ url: string; status: number; body?: any }> = [];
+        const externalResponseReads: Array<Promise<void>> = [];
+        let externalRuntimeEvidence: NonNullable<AppAudit['externalApiRuntime']> | null = null;
         const isExpectedExternalRequest = (rawUrl: string) => {
             if (!opts?.externalApi) return false;
-            try {
-                const requestUrl = new URL(rawUrl);
-                const profile = opts.externalApi.integrationProfileId;
-                if (profile === 'frankfurter-currency-v2') return /\/api\/joe-external\/currency(?:\?|$)/u.test(requestUrl.pathname + requestUrl.search);
-                if (profile === 'weatherapi-key-v1') return /\/api\/joe-external\/weather(?:\?|$)/u.test(requestUrl.pathname + requestUrl.search);
-                if (profile === 'open-meteo-weather-v1') return /(?:^|\.)open-meteo\.com$/iu.test(requestUrl.hostname);
-                if (profile === 'ipapi-co-v1') return /(?:^|\.)ipapi\.co$/iu.test(requestUrl.hostname);
-                return false;
-            } catch { return false; }
+            return isExpectedExternalApiRequest(rawUrl, opts.externalApi.integrationProfileId);
         };
         let expectedWeatherNetworkFailure = false;
+        let expectedExternalNetworkFailure = false;
         const initialWeatherRequest = String(opts?.request || '');
         const initialWeatherScenario = /\bweather\b/i.test(initialWeatherRequest)
             || /\u0637\u0642\u0633/u.test(initialWeatherRequest);
@@ -572,6 +655,7 @@ export async function auditBuiltApp(
             // browser's delayed ERR_FAILED console echo is test noise rather
             // than a second application defect.
             if (weatherConsoleError && (expectedWeatherNetworkFailure || initialWeatherScenario)) return;
+            if (expectedExternalNetworkFailure && /(?:ERR_FAILED|Failed to fetch|NetworkError|aborted)/iu.test(String(m.text()) + where)) return;
             // Chrome asks every site for /favicon.ico and reports the miss as a
             // console error with the URL only in the location. It was costing a
             // clean build 15 points for a file the browser invented a request for.
@@ -607,7 +691,9 @@ export async function auditBuiltApp(
         page.on('console', onConsole);
         const onResponse = (r: any) => {
             if (r.status() >= 200 && r.status() < 300 && isExpectedExternalRequest(r.url())) {
-                successfulExternalRequests.push(r.url());
+                const record: { url: string; status: number; body?: any } = { url: r.url(), status: r.status() };
+                successfulExternalRequests.push(record);
+                externalResponseReads.push(Promise.resolve(r.json()).then((body: any) => { record.body = body; }).catch(() => { }));
             }
             // 401/403: the audit is signed out on purpose — see onConsole above.
             if (r.status() >= 400 && r.status() !== 401 && r.status() !== 403
@@ -1033,26 +1119,155 @@ export async function auditBuiltApp(
             const homeProbe = await probeControls(page, probeOpts());
             mergeProbe(homeProbe, '/');
             if (opts?.externalApi) {
-                // A response can settle just after the semantic form probe
-                // returns. Wait for the same bounded client contract before
-                // deciding there was no live proof. If the general explorer
-                // never submitted the form, submit its current valid values
-                // once; this is a targeted acceptance scenario, not a replay
-                // loop or a source-level assumption.
-                if (!successfulExternalRequests.length) {
-                    await page.evaluate(() => {
-                        const form = document.querySelector('form') as HTMLFormElement | null;
-                        if (form) form.requestSubmit ? form.requestSubmit() : form.submit();
-                    }).catch(() => { });
+                opts?.onProgress?.(`external-api:${opts.externalApi.capability}: validating live request, loading, failure, and recovery`);
+                const scenarioStart = successfulExternalRequests.length;
+                let failNextRequest = false;
+                let invalidInputRejected = opts.externalApi.capability !== 'currency';
+                let selectionChanged = opts.externalApi.capability !== 'currency';
+                let validSubmissionObserved = false;
+                let errorObserved = false;
+                let recoveredAfterError = false;
+                const routeMatcher = (candidate: any) => isExpectedExternalRequest(String(candidate));
+                const routeHandler = async (route: any) => {
+                    if (failNextRequest) {
+                        failNextRequest = false;
+                        await route.abort('failed');
+                        return;
+                    }
+                    // Keep the real upstream request, but hold it briefly so a
+                    // genuine loading state is observable instead of inferred.
+                    await new Promise(resolve => setTimeout(resolve, 350));
+                    await route.continue();
+                };
+                await page.evaluate(() => {
+                    const root = window as any;
+                    root.__joeExternalQaObserver?.disconnect?.();
+                    root.__joeExternalQa = { loadingObserved: false };
+                    const inspect = () => {
+                        const status = String(document.querySelector('[data-api-loading="true"], [role="status"]')?.textContent || '');
+                        if (/loading|جار(?:ٍ|ي)|تحميل/iu.test(status)) root.__joeExternalQa.loadingObserved = true;
+                    };
+                    root.__joeExternalQaObserver = new MutationObserver(inspect);
+                    root.__joeExternalQaObserver.observe(document.documentElement, { childList: true, subtree: true, characterData: true });
+                    inspect();
+                });
+                await page.route(routeMatcher, routeHandler);
+                const waitForResponseAfter = async (count: number) => {
+                    const deadline = Date.now() + Math.min(12_000, Math.max(1_000, remainingWalkMs()));
+                    while (Date.now() < deadline && successfulExternalRequests.length <= count) await page.waitForTimeout(100);
+                    await Promise.all(externalResponseReads);
+                    return successfulExternalRequests.length > count;
+                };
+                const submit = page.locator('[data-api-submit="true"]').first();
+                try {
+                    if (opts.externalApi.capability === 'currency') {
+                        const amount = page.locator('[data-api-amount="true"]').first();
+                        const from = page.locator('[data-api-from="true"]').first();
+                        const to = page.locator('[data-api-to="true"]').first();
+                        if (await amount.count()) {
+                            await amount.fill('abc');
+                            const rejectedValue = String(await amount.inputValue().catch(() => 'abc'));
+                            const validationText = String(await page.locator('#amount-error,[role="alert"]').first().innerText().catch(() => ''));
+                            invalidInputRejected = !/[a-z]/iu.test(rejectedValue) && /digits|valid amount|أرقام|رقم/iu.test(validationText);
+                            behaviourMetrics.exploratoryActions++;
+                            await amount.fill('125.5');
+                        }
+                        if (await from.count() && await to.count()) {
+                            const beforeFrom = await from.inputValue().catch(() => '');
+                            const beforeTo = await to.inputValue().catch(() => '');
+                            await from.selectOption('EUR').catch(() => { });
+                            await to.selectOption('TRY').catch(() => { });
+                            selectionChanged = (await from.inputValue().catch(() => '')) !== beforeFrom
+                                || (await to.inputValue().catch(() => '')) !== beforeTo;
+                            if (selectionChanged) behaviourMetrics.exploratoryActions++;
+                        }
+                    } else if (opts.externalApi.capability === 'ip') {
+                        const ip = page.locator('[data-api-ip="true"]').first();
+                        if (await ip.count()) {
+                            // The general field-contract pass deliberately leaves
+                            // invalid text behind. Start API causality from a known
+                            // valid value instead of measuring client validation.
+                            await ip.fill('8.8.8.8');
+                            behaviourMetrics.exploratoryActions++;
+                        }
+                    }
+
+                    const beforeSuccess = successfulExternalRequests.length;
+                    const submitBox = await submit.boundingBox().catch(() => null);
+                    if (submitBox) await eyes.lookAt(page, { ...submitBox, label: 'external API submit' }, { note: 'Testing the real API request', moveMouse: true });
+                    await eyes.press(page);
+                    await submit.click();
+                    validSubmissionObserved = await waitForResponseAfter(beforeSuccess);
+                    if (validSubmissionObserved) behaviourMetrics.exploratoryActions++;
+                    const firstLiveText = String(await page.locator('[data-api-result="true"]').first().innerText().catch(() => '')).trim();
+                    const firstProof = externalApiRuntimeFromBrowserEvidence(
+                        opts.externalApi,
+                        successfulExternalRequests.slice(scenarioStart),
+                        firstLiveText,
+                    );
+
+                    opts?.onProgress?.(`external-api:${opts.externalApi.capability}: forcing one safe network failure`);
+                    const beforeFailure = successfulExternalRequests.length;
+                    expectedExternalNetworkFailure = true;
+                    failNextRequest = true;
+                    await submit.click();
+                    await page.locator('[data-api-error="true"]').first().waitFor({ state: 'visible', timeout: Math.min(8_000, timeoutMs) }).catch(() => { });
+                    const failureText = String(await page.locator('[data-api-error="true"]').first().innerText().catch(() => ''));
+                    errorObserved = /failed|error|could not|timed out|network|تعذر|خطأ/iu.test(failureText)
+                        && successfulExternalRequests.length === beforeFailure;
+                    if (errorObserved) behaviourMetrics.exploratoryActions++;
+                    expectedExternalNetworkFailure = false;
+
+                    opts?.onProgress?.(`external-api:${opts.externalApi.capability}: retrying after network restoration`);
+                    const retry = page.locator('[data-api-retry="true"]').first();
+                    const beforeRecovery = successfulExternalRequests.length;
+                    if (await retry.count()) await retry.click();
+                    const recoveryRequestSucceeded = await waitForResponseAfter(beforeRecovery);
+                    const recoveredText = String(await page.locator('[data-api-result="true"]').first().innerText().catch(() => '')).trim();
+                    const finalProof = externalApiRuntimeFromBrowserEvidence(
+                        opts.externalApi,
+                        successfulExternalRequests.slice(scenarioStart),
+                        recoveredText,
+                    );
+                    recoveredAfterError = errorObserved && recoveryRequestSucceeded && finalProof.responseMatchedRenderedResult;
+                    if (recoveredAfterError) behaviourMetrics.exploratoryActions++;
+                    const uiProbe = await page.evaluate(() => (window as any).__joeExternalQa || {}).catch(() => ({}));
+                    externalRuntimeEvidence = externalApiRuntimeFromBrowserEvidence(
+                        opts.externalApi,
+                        successfulExternalRequests.slice(scenarioStart),
+                        recoveredText || firstLiveText,
+                        {
+                            loadingObserved: uiProbe?.loadingObserved === true,
+                            errorObserved,
+                            recoveredAfterError,
+                            validSubmissionObserved,
+                            invalidInputRejected,
+                            selectionChanged,
+                            errorText: failureText,
+                        },
+                    );
+                    if (!firstProof.responseMatchedRenderedResult) externalRuntimeEvidence.responseMatchedRenderedResult = finalProof.responseMatchedRenderedResult;
+                } finally {
+                    expectedExternalNetworkFailure = false;
+                    await page.unroute(routeMatcher, routeHandler).catch(() => { });
+                    await page.evaluate(() => (window as any).__joeExternalQaObserver?.disconnect?.()).catch(() => { });
                 }
-                const proofDeadline = Date.now() + Math.min(10_000, Math.max(1_000, remainingWalkMs()));
-                while (Date.now() < proofDeadline) {
-                    const liveText = String(await page.locator('[aria-live="polite"]').first().innerText().catch(() => '')).trim();
-                    renderedExternalResult = successfulExternalRequests.length > 0
-                        && liveText.length > 2 && !/^loading/i.test(liveText);
-                    if (renderedExternalResult) break;
-                    await page.waitForTimeout(200);
-                }
+
+                const proof = externalRuntimeEvidence;
+                const missingProofs: Array<[boolean, string, string]> = proof ? [
+                    [proof.validSubmissionObserved, 'external_api_valid_submission_unproven', 'Browser QA did not prove a valid request through the maintained API path'],
+                    [proof.loadingObserved, 'external_api_loading_unproven', 'Browser QA did not observe the loading state during a real maintained request'],
+                    [proof.renderedLiveResult && proof.responseMatchedRenderedResult, 'external_api_response_render_mismatch', 'The rendered result was not causally matched to the maintained API response'],
+                    [proof.errorObserved, 'external_api_error_state_unproven', 'Forced network failure did not produce the visible error state'],
+                    [proof.recoveredAfterError, 'external_api_recovery_unproven', 'Retry did not recover from the forced failure to a matched live result'],
+                    ...(opts.externalApi.capability === 'currency' ? [
+                        [proof.invalidInputRejected === true, 'external_api_invalid_amount_accepted', 'The currency amount field did not visibly reject letters'],
+                        [proof.selectionChanged === true, 'external_api_currency_selection_unproven', 'Browser QA did not change the requested currency pair'],
+                    ] as Array<[boolean, string, string]> : []),
+                ] : [[false, 'external_api_scenario_unproven', 'The maintained external API browser scenario did not complete']];
+                for (const [ok, id, detailEn] of missingProofs) if (!ok) domainFindings.push({
+                    id, severity: 'high', detail: detailEn, detailEn,
+                });
             }
             // A local control-pass cap preserves time for responsive and visual
             // checks. It is not proof that the shared browser-walk budget ended.
@@ -1219,7 +1434,8 @@ export async function auditBuiltApp(
          * round-trip while the requested cities remain visible.
          */
         const weatherRequest = String(opts?.request || '');
-        if (/\bweather\b|طقس/iu.test(weatherRequest)) {
+        const needsExtendedWeatherScenario = /\bfor\s+.{1,160}\s+using\b|celsius|fahrenheit|°\s*[CF]|offline\s+fallback|network\s+failure|retry|بديل|دون\s+اتصال|إعادة\s+المحاولة/iu.test(weatherRequest);
+        if (/\bweather\b|طقس/iu.test(weatherRequest) && needsExtendedWeatherScenario) {
             const requestedCities = (() => {
                 const clause = weatherRequest.match(/\bfor\s+(.{1,160}?)\s+using\b/i)?.[1] || '';
                 return clause.split(/\s*,\s*|\s+and\s+/i).map((city: string) => city.trim().replace(/^and\s+/i, '')).filter(Boolean).slice(0, 8);
@@ -1556,12 +1772,11 @@ export async function auditBuiltApp(
             controlsDiscovered: behaviourMetrics.controlsDiscovered,
             controls: allControls,
             ...(opts?.externalApi ? {
-                externalApiRuntime: {
-                    capability: opts.externalApi.capability,
-                    integrationProfileId: opts.externalApi.integrationProfileId,
-                    successfulRequests: successfulExternalRequests.length,
-                    renderedLiveResult: renderedExternalResult,
-                },
+                externalApiRuntime: externalRuntimeEvidence || externalApiRuntimeFromBrowserEvidence(
+                    opts.externalApi,
+                    successfulExternalRequests,
+                    '',
+                ),
             } : {}),
             passes: [
                 {
@@ -1569,9 +1784,9 @@ export async function auditBuiltApp(
                     label: 'runtime and network',
                     status: behaviourMetrics.budgetExhausted
                         ? 'skipped'
-                        : (pageErrors.length || consoleErrors.length || failedRequests.length || brokenRoutes.length || dom.deadImgs || domainFindings.some(f => /(?:weather_live_success|weather_scenario|media_.*(?:upload|image|persistence|scenario))/i.test(f.id))) ? 'failed' : 'passed',
+                        : (pageErrors.length || consoleErrors.length || failedRequests.length || brokenRoutes.length || dom.deadImgs || domainFindings.some(f => /(?:external_api|weather_live_success|weather_scenario|media_.*(?:upload|image|persistence|scenario))/i.test(f.id))) ? 'failed' : 'passed',
                     measured: routes.length + 1,
-                    findingIds: findings.filter(f => ['server_root_dead', 'page_errors', 'console_errors', 'failed_requests', 'broken_routes', 'dead_images', 'weather_live_success_unproven', 'weather_scenario_qa_failed'].includes(f.id)).map(f => f.id),
+                    findingIds: findings.filter(f => /^external_api_/u.test(f.id) || ['server_root_dead', 'page_errors', 'console_errors', 'failed_requests', 'broken_routes', 'dead_images', 'weather_live_success_unproven', 'weather_scenario_qa_failed'].includes(f.id)).map(f => f.id),
                 },
                 {
                     id: 'behaviour',
@@ -1678,17 +1893,37 @@ export function formatAudit(a: AppAudit, isAr: boolean): string {
     const suite = passes
         ? (isAr ? `\n🧪 حزمة اختبارات المتصفح: ${passes}` : `\n🧪 Browser QA suite: ${passes}`)
         : '';
+    const external = a.externalApiRuntime ? (isAr
+        ? `\n🌐 دليل API الحي: ${a.externalApiRuntime.integrationProfileId} · طلبات ناجحة ${a.externalApiRuntime.successfulRequests}`
+        + ` · نتيجة مطابقة ${a.externalApiRuntime.responseMatchedRenderedResult ? 'نعم' : 'لا'}`
+        + ` · تحميل ${a.externalApiRuntime.loadingObserved ? 'مثبت' : 'غير مثبت'}`
+        + ` · خطأ ${a.externalApiRuntime.errorObserved ? 'مثبت' : 'غير مثبت'}`
+        + ` · تعافٍ ${a.externalApiRuntime.recoveredAfterError ? 'مثبت' : 'غير مثبت'}`
+        + `${a.externalApiRuntime.invalidInputRejected === undefined ? '' : ` · رفض مدخل خاطئ ${a.externalApiRuntime.invalidInputRejected ? 'مثبت' : 'غير مثبت'}`}`
+        + `${a.externalApiRuntime.selectionChanged === undefined ? '' : ` · تغيير الاختيار ${a.externalApiRuntime.selectionChanged ? 'مثبت' : 'غير مثبت'}`}`
+        + `${a.externalApiRuntime.renderedResult ? `\nالنتيجة المرئية: ${a.externalApiRuntime.renderedResult}` : ''}`
+        + `${a.externalApiRuntime.errorText ? `\nحالة الخطأ المرئية: ${a.externalApiRuntime.errorText}` : ''}`
+        : `\n🌐 Live API evidence: ${a.externalApiRuntime.integrationProfileId} · ${a.externalApiRuntime.successfulRequests} successful request(s)`
+        + ` · matched result ${a.externalApiRuntime.responseMatchedRenderedResult ? 'yes' : 'no'}`
+        + ` · loading ${a.externalApiRuntime.loadingObserved ? 'proven' : 'unproven'}`
+        + ` · error ${a.externalApiRuntime.errorObserved ? 'proven' : 'unproven'}`
+        + ` · recovery ${a.externalApiRuntime.recoveredAfterError ? 'proven' : 'unproven'}`
+        + `${a.externalApiRuntime.invalidInputRejected === undefined ? '' : ` · invalid input rejection ${a.externalApiRuntime.invalidInputRejected ? 'proven' : 'unproven'}`}`
+        + `${a.externalApiRuntime.selectionChanged === undefined ? '' : ` · selection change ${a.externalApiRuntime.selectionChanged ? 'proven' : 'unproven'}`}`
+        + `${a.externalApiRuntime.renderedResult ? `\nVisible result: ${a.externalApiRuntime.renderedResult}` : ''}`
+        + `${a.externalApiRuntime.errorText ? `\nVisible error state: ${a.externalApiRuntime.errorText}` : ''}`)
+        : '';
     //  Named in the same breath as the score, never in a footnote.
     const where = a.visible
         ? (isAr ? 'في لوحة المتصفّح أمامك' : 'in the Browser panel, in front of you')
         : (isAr ? 'في متصفّح خاصّ لم تره' : 'in a private browser you could not see');
     if (!a.findings.length) {
         return isAr
-            ? `🔎 فحص الجودة الذاتي ${where} ${scope}: 100/100 — صفر أخطاء، كل الصور مرسومة، وكل زر ضُغط استجاب.${suite}`
-            : `🔎 Self-QA ${where} ${scope}: 100/100 — clean.${suite}`;
+            ? `🔎 فحص الجودة الذاتي ${where} ${scope}: 100/100 — صفر أخطاء، كل الصور مرسومة، وكل زر ضُغط استجاب.${suite}${external}`
+            : `🔎 Self-QA ${where} ${scope}: 100/100 — clean.${suite}${external}`;
     }
     const lines = a.findings.map(f => `   • ${findingText(f, isAr)}`).join('\n');
     return isAr
-        ? `🔎 فحص الجودة الذاتي ${where} ${scope}: ${a.score}/100 — وجدت:\n${lines}${suite}`
-        : `🔎 Self-QA ${where} ${scope}: ${a.score}/100:\n${lines}${suite}`;
+        ? `🔎 فحص الجودة الذاتي ${where} ${scope}: ${a.score}/100 — وجدت:\n${lines}${suite}${external}`
+        : `🔎 Self-QA ${where} ${scope}: ${a.score}/100:\n${lines}${suite}${external}`;
 }

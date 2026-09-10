@@ -5,6 +5,10 @@ import path from 'path';
 jest.mock('../modules/tools/definitions/AIGeneratorTool', () => ({
     AIGeneratorTool: class {
         async execute(input: any) {
+            if (String(input?.description || '').includes('CANCEL_AFTER_AUTHOR')) {
+                (global as any).issue86CancelledDuringAuthoring = true;
+                return { ok: false, error: 'run_cancelled_by_owner' };
+            }
             if (String(input?.description || '').includes('PRESERVE_EVIDENCE')) {
                 return {
                     ok: false,
@@ -73,6 +77,33 @@ describe('React domain authoring preserves provider outages for orchestration re
             expect(fs.existsSync(result.output.path)).toBe(true);
             expect(fs.existsSync(path.join(result.output.path, 'package.json'))).toBe(true);
         } finally {
+            fs.rmSync(root, { recursive: true, force: true });
+        }
+    }, 120000);
+
+    it('performs no fallback or scaffold-finalization writes after authoring is cancelled', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-domain-cancel-'));
+        (global as any).issue86CancelledDuringAuthoring = false;
+        try {
+            await expect(new ReactProjectTool().execute({
+                request: 'CANCEL_AFTER_AUTHOR: Build a React weather dashboard using a free public API.',
+                skipInstall: true,
+                root,
+            }, {
+                sessionId: 'domain-cancel-test',
+                runId: 'domain-cancel-run',
+                engineeringPipeline: true,
+                allowModelAuthoringInTest: true,
+                isCancelled: () => (global as any).issue86CancelledDuringAuthoring === true,
+            })).rejects.toThrow('run_cancelled_by_owner');
+
+            const project = fs.readdirSync(root).map(name => path.join(root, name))
+                .find(candidate => fs.existsSync(path.join(candidate, 'package.json')));
+            expect(project).toBeTruthy();
+            expect(fs.existsSync(path.join(project!, 'src', 'styles', 'fonts'))).toBe(false);
+            expect(fs.existsSync(path.join(project!, 'src', 'components', 'WeatherApp.jsx'))).toBe(false);
+        } finally {
+            delete (global as any).issue86CancelledDuringAuthoring;
             fs.rmSync(root, { recursive: true, force: true });
         }
     }, 120000);
