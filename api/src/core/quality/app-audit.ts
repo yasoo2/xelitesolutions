@@ -1181,6 +1181,15 @@ export async function auditBuiltApp(
                                 || (await to.inputValue().catch(() => '')) !== beforeTo;
                             if (selectionChanged) behaviourMetrics.exploratoryActions++;
                         }
+                    } else if (opts.externalApi.capability === 'ip') {
+                        const ip = page.locator('[data-api-ip="true"]').first();
+                        if (await ip.count()) {
+                            // The general field-contract pass deliberately leaves
+                            // invalid text behind. Start API causality from a known
+                            // valid value instead of measuring client validation.
+                            await ip.fill('8.8.8.8');
+                            behaviourMetrics.exploratoryActions++;
+                        }
                     }
 
                     const beforeSuccess = successfulExternalRequests.length;

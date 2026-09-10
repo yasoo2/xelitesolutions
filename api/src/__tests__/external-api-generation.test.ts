@@ -453,8 +453,10 @@ describe('external API generation contract', () => {
         expect(app).toContain('pattern="(?:[0-9]{1,3}[.]){3}[0-9]{1,3}"');
         expect(app).toContain("Number(part)<=255");
         expect(app).toContain("Enter a valid IPv4 address, for example 8.8.8.8");
-        expect(app).toContain('<button className="primary" disabled={loading}>Look up</button>');
-        expect(app).not.toContain('<button onClick={run}>Retry</button>');
+        expect(app).toContain('data-api-ip="true"');
+        expect(app).toContain("if(!validIp(ip)){setData(null);setError('');setIpError(");
+        expect(app).toContain('<button className="primary" disabled={loading} data-api-submit="true">Look up</button>');
+        expect(app).toContain('data-api-retry="true"');
     });
 
     it('generates a real keyed path with a fixed server proxy and a clear missing-env response', async () => {
