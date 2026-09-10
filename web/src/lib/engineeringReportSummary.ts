@@ -4,7 +4,7 @@
  */
 export function isEngineeringReport(markdown: string): boolean {
     const source = String(markdown || '');
-    return /Joe Engineering Execution Report|Self-QA in the Browser panel|Project files|npm install\s*\+\s*vite build succeeded|تقرير تنفيذ جو|فحص المتصفح/i.test(source);
+    return /Joe Engineering Execution Report|(?:^|\n)#{0,3}\s*(?:✅\s*)?(?:Project delivered|Build stopped honestly|Accepted with gaps)\b|Self-QA in the Browser panel|Visible Browser QA|Project files|npm install\s*\+\s*vite build succeeded|تقرير تنفيذ جو|فحص المتصفح/i.test(source);
 }
 
 export function summarizeEngineeringReport(markdown: string, language = 'en'): string {
@@ -14,7 +14,9 @@ export function summarizeEngineeringReport(markdown: string, language = 'en'): s
     const isArabic = String(language).toLowerCase().startsWith('ar');
     const lines = source.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
     const first = lines[0] || '';
-    const title = first.match(/[—-]\s*["«]([^"»]+)["»]/)?.[1]?.trim() || '';
+    const title = first.match(/[—-]\s*["«]([^"»]+)["»]/)?.[1]?.trim()
+        || first.match(/Project delivered:\s*(.+)$/iu)?.[1]?.trim()
+        || '';
     const scoreMatch = source.match(/Visible Browser QA[^\n]*?(\d{1,3})\s*\/\s*100/i)
         || Array.from(source.matchAll(/(?:Self-QA|تدقيق[^\n]*|جودة[^\n]*).*?(\d{1,3})\s*\/\s*100/gi)).pop();
     const score = scoreMatch?.[1] || '';
@@ -39,7 +41,9 @@ export function summarizeEngineeringReport(markdown: string, language = 'en'): s
         .filter((line, index, all) => all.indexOf(line) === index)
         .slice(0, 3);
 
-    const buildVerified = /verified to compile|تُحقق من تجميعه|vite build (?:succeeded|passed)|(?:vite build|البناء)\s+نجح/iu.test(source);
+    const explicitFinalVerified = /finalVerified:\s*`?true`?/iu.test(source);
+    const buildVerified = /verified to compile|تُحقق من تجميعه|vite build (?:succeeded|passed)|(?:vite build|البناء)\s+نجح/iu.test(source)
+        || (explicitFinalVerified && /(?:^|\n)#{0,3}\s*(?:✅\s*)?Project delivered\b/iu.test(source));
     // The report can contain a clean build-stage audit followed by a failed
     // final live-run audit. The final machine verdict always outranks an older
     // 100/100; otherwise the chat says "fully verified" while Logs say
