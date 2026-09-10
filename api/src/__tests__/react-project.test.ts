@@ -10,7 +10,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
-import { ReactProjectTool, PROJECT_DIR_NAME_MAX_LENGTH, REACT_NETWORK_INSTALL_TIMEOUTS, applyBundledPhotographyFallback, findBrokenNativeBuildTool, hasUsableReactDependencyTree, heroSecondaryDestination, nativeBuildToolRepairSpec, portableViteBuildArgs, repairQuarantinedEsbuildInstall, requestDrivenServiceProducts, reuseLocalReactDependencies, withoutViteConfigForBuild } from '../modules/tools/definitions/ReactProjectTool';
+import { ReactProjectTool, PROJECT_DIR_NAME_MAX_LENGTH, REACT_NETWORK_INSTALL_TIMEOUTS, applyBundledPhotographyFallback, findBrokenNativeBuildTool, hasUsableReactDependencyTree, heroSecondaryDestination, interruptedWindowsNativeTools, nativeBuildToolRepairSpec, portableViteBuildArgs, repairQuarantinedEsbuildInstall, requestDrivenServiceProducts, reuseLocalReactDependencies, withoutViteConfigForBuild } from '../modules/tools/definitions/ReactProjectTool';
 import { fileAppStoreJs } from '../modules/tools/definitions/react-app-templates';
 import { ApiProjectTool } from '../modules/tools/definitions/ApiProjectTool';
 import { ScaffoldProjectTool } from '../modules/tools/definitions/SystemTools';
@@ -162,6 +162,17 @@ describe('dependency reuse only trusts a complete Vite tree', () => {
         const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-react-deps-'));
         writeTree(tmp, baseManifest, { binary: Buffer.from([0x7f, 0x45, 0x4c, 0x46]) });
         expect(hasUsableReactDependencyTree(tmp)).toBe(false);
+        fs.rmSync(tmp, { recursive: true, force: true });
+    });
+
+    it('identifies a truncated trusted platform package after npm exits with failure', () => {
+        if (process.platform !== 'win32') return;
+        const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-native-interrupted-'));
+        writeTree(tmp, baseManifest);
+        const binary = path.join(tmp, 'node_modules', '@esbuild', `win32-${process.arch}`, 'esbuild.exe');
+        fs.writeFileSync(binary, fakeWindowsEsbuild().subarray(0, 3_300_000));
+        expect(hasUsableReactDependencyTree(tmp)).toBe(false);
+        expect(interruptedWindowsNativeTools(tmp)).toEqual(['esbuild']);
         fs.rmSync(tmp, { recursive: true, force: true });
     });
 
@@ -860,6 +871,8 @@ describe('product pages, the team, and the build command', () => {
         const source = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ReactProjectTool.ts'), 'utf-8');
         expect(source).toContain('detectBrokenNativeBuildTool');
         expect(source).toContain('repairNativeBuildTool');
+        expect(source).toContain('interruptedWindowsNativeTools(proj)');
+        expect(source).toContain('interrupted native packages repaired and the complete toolchain verified');
         expect(source).toContain('`${spec.packageName}@${spec.version}`');
         expect(source).toContain("'--package-lock=false'");
         expect(source).toContain("'--cache', repairCache");

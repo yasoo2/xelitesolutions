@@ -1051,6 +1051,26 @@ function dependencyContractMatchesDisk(projectRoot: string, manifest: any): bool
     }
 }
 
+function isValidWindowsNativeBinary(file: string, minimumSize: number): boolean {
+    try {
+        const stats = fs.statSync(file);
+        if (stats.size < minimumSize) return false;
+        const fd = fs.openSync(file, 'r');
+        // Native Node bindings commonly place the PE header beyond byte 256
+        // (Rollup's current Windows binding uses offset 272).
+        const header = Buffer.alloc(4_096);
+        try { fs.readSync(fd, header, 0, header.length, 0); }
+        finally { fs.closeSync(fd); }
+        const peOffset = header.readUInt32LE(0x3c);
+        const machine = peOffset + 6 <= header.length ? header.readUInt16LE(peOffset + 4) : 0;
+        return header[0] === 0x4d && header[1] === 0x5a
+            && header.subarray(peOffset, peOffset + 4).equals(Buffer.from([0x50, 0x45, 0, 0]))
+            && (machine === 0x8664 || machine === 0xaa64);
+    } catch {
+        return false;
+    }
+}
+
 export function hasUsableReactDependencyTree(projectRoot: string): boolean {
     const modules = path.join(projectRoot, 'node_modules');
     const required = [
@@ -1091,26 +1111,11 @@ export function hasUsableReactDependencyTree(projectRoot: string): boolean {
         const rollupWrapperVersion = JSON.parse(fs.readFileSync(path.join(modules, 'rollup', 'package.json'), 'utf8')).version;
         const rollupBinaryVersion = JSON.parse(fs.readFileSync(path.join(rollupPlatformRoot, 'package.json'), 'utf8')).version;
         if (!rollupWrapperVersion || rollupWrapperVersion !== rollupBinaryVersion) return false;
-        const isValidWindowsBinary = (file: string, minimumSize: number) => {
-            const stats = fs.statSync(file);
-            if (stats.size < minimumSize) return false;
-            const fd = fs.openSync(file, 'r');
-            // Native Node bindings commonly place the PE header beyond byte
-            // 256 (Rollup's current Windows binding uses offset 272).
-            const header = Buffer.alloc(4_096);
-            try { fs.readSync(fd, header, 0, header.length, 0); }
-            finally { fs.closeSync(fd); }
-            const peOffset = header.readUInt32LE(0x3c);
-            const machine = peOffset + 6 <= header.length ? header.readUInt16LE(peOffset + 4) : 0;
-            return header[0] === 0x4d && header[1] === 0x5a
-                && header.subarray(peOffset, peOffset + 4).equals(Buffer.from([0x50, 0x45, 0, 0]))
-                && (machine === 0x8664 || machine === 0xaa64);
-        };
         // A cancelled/--ignore-scripts install can leave an ELF helper renamed
         // to .exe, or a truncated PE that still starts with MZ. Both exist but
         // fail later with spawn EFTYPE, so reject them before reuse.
-        return isValidWindowsBinary(esbuildBinary, 5_000_000)
-            && isValidWindowsBinary(rollupBinary, 500_000);
+        return isValidWindowsNativeBinary(esbuildBinary, 5_000_000)
+            && isValidWindowsNativeBinary(rollupBinary, 500_000);
     } catch {
         return false;
     }
@@ -1225,6 +1230,30 @@ export function nativeBuildToolRepairSpec(
             ? [path.join('node_modules', 'esbuild', 'bin', 'esbuild'), '--version']
             : [path.join('node_modules', 'rollup', 'dist', 'bin', 'rollup'), '--version'],
     };
+}
+
+/**
+ * A failed npm process can leave only the trusted platform package truncated.
+ * Identify that narrow, repairable state without treating an arbitrary partial
+ * dependency tree as usable or retrying the whole manifest indefinitely.
+ */
+export function interruptedWindowsNativeTools(
+    projectRoot: string,
+    platform = process.platform,
+    architecture = process.arch,
+): NativeBuildTool[] {
+    if (platform !== 'win32' || !['x64', 'arm64'].includes(architecture)) return [];
+    const result: NativeBuildTool[] = [];
+    for (const tool of ['esbuild', 'rollup'] as NativeBuildTool[]) {
+        const spec = nativeBuildToolRepairSpec(projectRoot, tool, platform, architecture);
+        if (!spec) continue;
+        const file = tool === 'esbuild'
+            ? path.join(spec.platformRoot, 'esbuild.exe')
+            : path.join(spec.platformRoot, `rollup.win32-${architecture}-msvc.node`);
+        const minimumSize = tool === 'esbuild' ? 5_000_000 : 500_000;
+        if (!isValidWindowsNativeBinary(file, minimumSize)) result.push(tool);
+    }
+    return result;
 }
 
 export async function findBrokenNativeBuildTool(
@@ -6331,6 +6360,23 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 inst = offlineInstall === 0
                     ? offlineInstall
                     : await run('npm', ['install', '--no-audit', '--no-fund'], REACT_NETWORK_INSTALL_TIMEOUTS.absoluteMs, REACT_NETWORK_INSTALL_TIMEOUTS.idleMs);
+                if (inst !== 0) {
+                    const interruptedTools = interruptedWindowsNativeTools(proj);
+                    if (interruptedTools.length) {
+                        term(`npm stopped with incomplete native package(s): ${interruptedTools.join(', ')} — repairing only those trusted platform packages`);
+                        let repaired = true;
+                        for (const tool of interruptedTools) {
+                            if (!await repairNativeBuildTool(tool)) {
+                                repaired = false;
+                                break;
+                            }
+                        }
+                        if (repaired && hasUsableReactDependencyTree(proj)) {
+                            inst = 0;
+                            term('dependencies: interrupted native packages repaired and the complete toolchain verified');
+                        }
+                    }
+                }
                 if (inst === 0 && !hasUsableReactDependencyTree(proj)) {
                     // The network install can fetch every optional platform
                     // package and still quarantine esbuild's postinstall. Run
