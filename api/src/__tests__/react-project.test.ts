@@ -10,7 +10,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
-import { ReactProjectTool, PROJECT_DIR_NAME_MAX_LENGTH, REACT_NETWORK_INSTALL_TIMEOUTS, applyBundledPhotographyFallback, findBrokenNativeBuildTool, hasUsableReactDependencyTree, heroSecondaryDestination, nativeBuildToolRepairSpec, portableViteBuildArgs, requestDrivenServiceProducts, reuseLocalReactDependencies, withoutViteConfigForBuild } from '../modules/tools/definitions/ReactProjectTool';
+import { ReactProjectTool, PROJECT_DIR_NAME_MAX_LENGTH, REACT_NETWORK_INSTALL_TIMEOUTS, applyBundledPhotographyFallback, findBrokenNativeBuildTool, hasUsableReactDependencyTree, heroSecondaryDestination, nativeBuildToolRepairSpec, portableViteBuildArgs, repairQuarantinedEsbuildInstall, requestDrivenServiceProducts, reuseLocalReactDependencies, withoutViteConfigForBuild } from '../modules/tools/definitions/ReactProjectTool';
 import { fileAppStoreJs } from '../modules/tools/definitions/react-app-templates';
 import { ApiProjectTool } from '../modules/tools/definitions/ApiProjectTool';
 import { ScaffoldProjectTool } from '../modules/tools/definitions/SystemTools';
@@ -830,13 +830,30 @@ describe('product pages, the team, and the build command', () => {
         }
     });
 
-    it('repairs npm 11 script quarantine with a scoped esbuild approval only', () => {
+    it('repairs npm 11 script quarantine with scoped approval, rebuild, and verification', () => {
         const source = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ReactProjectTool.ts'), 'utf-8');
         expect(source).toContain("await run('npm', ['approve-scripts', 'esbuild'], 60_000, 30_000)");
+        expect(source).toContain("await run('npm', ['rebuild', 'esbuild', '--foreground-scripts'], 120_000, 45_000)");
         expect(source).not.toContain("['approve-scripts', '--all']");
-        expect(source).toContain("approval === 0 && hasUsableReactDependencyTree(proj)");
+        expect(source).toContain('repairQuarantinedEsbuildInstall(proj, run)');
         expect(source).toContain("fs.rmSync(path.join(proj, 'package-lock.json'), { force: true })");
-        expect(source).toContain('complete native toolchain verified after scoped npm approval');
+        expect(source).toContain('complete native toolchain verified after scoped npm approval and rebuild');
+    });
+
+    it('stops honestly when a scoped quarantine stage or final verification fails', async () => {
+        const approvalFailure = await repairQuarantinedEsbuildInstall('unused', async () => 37, () => true);
+        expect(approvalFailure).toEqual({ ok: false, approvalExit: 37, rebuildExit: null, failedAt: 'approval' });
+
+        const commands: string[][] = [];
+        const verificationFailure = await repairQuarantinedEsbuildInstall('unused', async (_cmd, args) => {
+            commands.push(args);
+            return 0;
+        }, () => false);
+        expect(commands).toEqual([
+            ['approve-scripts', 'esbuild'],
+            ['rebuild', 'esbuild', '--foreground-scripts'],
+        ]);
+        expect(verificationFailure).toMatchObject({ ok: false, rebuildExit: 0, failedAt: 'verification' });
     });
 
     it('executes and narrowly repairs a corrupt Windows esbuild binary before accepting dependencies', () => {

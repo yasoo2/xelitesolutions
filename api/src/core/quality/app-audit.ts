@@ -165,6 +165,43 @@ export interface AppAuditPass {
     findingIds: string[];
 }
 
+export interface ExternalApiRuntimeExpectation {
+    capability: 'weather' | 'currency' | 'ip';
+    integrationProfileId: string;
+}
+
+export function isExpectedExternalApiRequest(rawUrl: string, integrationProfileId: string): boolean {
+    try {
+        const requestUrl = new URL(rawUrl);
+        if (integrationProfileId === 'frankfurter-currency-v2') return /\/api\/joe-external\/currency(?:\?|$)/u.test(requestUrl.pathname + requestUrl.search);
+        if (integrationProfileId === 'weatherapi-key-v1') return /\/api\/joe-external\/weather(?:\?|$)/u.test(requestUrl.pathname + requestUrl.search);
+        if (integrationProfileId === 'open-meteo-weather-v1') return /(?:^|\.)open-meteo\.com$/iu.test(requestUrl.hostname);
+        if (integrationProfileId === 'ipapi-co-v1') return /(?:^|\.)ipapi\.co$/iu.test(requestUrl.hostname);
+        return false;
+    } catch {
+        return false;
+    }
+}
+
+export function externalApiRuntimeFromBrowserEvidence(
+    expected: ExternalApiRuntimeExpectation,
+    responses: Array<{ url: string; status: number }>,
+    liveRegionText: string,
+): NonNullable<AppAudit['externalApiRuntime']> {
+    const successfulRequests = responses.filter(response => response.status >= 200
+        && response.status < 300
+        && isExpectedExternalApiRequest(response.url, expected.integrationProfileId));
+    const renderedText = String(liveRegionText || '').trim();
+    return {
+        capability: expected.capability,
+        integrationProfileId: expected.integrationProfileId,
+        successfulRequests: successfulRequests.length,
+        renderedLiveResult: successfulRequests.length > 0
+            && renderedText.length > 2
+            && !/^loading/i.test(renderedText),
+    };
+}
+
 /**
  * 100 minus what the findings earn — the same finding always costs the same.
  *
@@ -470,19 +507,11 @@ export async function auditBuiltApp(
         const pageErrors: string[] = [];
         const consoleErrors: string[] = [];
         const failedRequests: string[] = [];
-        const successfulExternalRequests: string[] = [];
+        const successfulExternalRequests: Array<{ url: string; status: number }> = [];
         let renderedExternalResult = false;
         const isExpectedExternalRequest = (rawUrl: string) => {
             if (!opts?.externalApi) return false;
-            try {
-                const requestUrl = new URL(rawUrl);
-                const profile = opts.externalApi.integrationProfileId;
-                if (profile === 'frankfurter-currency-v2') return /\/api\/joe-external\/currency(?:\?|$)/u.test(requestUrl.pathname + requestUrl.search);
-                if (profile === 'weatherapi-key-v1') return /\/api\/joe-external\/weather(?:\?|$)/u.test(requestUrl.pathname + requestUrl.search);
-                if (profile === 'open-meteo-weather-v1') return /(?:^|\.)open-meteo\.com$/iu.test(requestUrl.hostname);
-                if (profile === 'ipapi-co-v1') return /(?:^|\.)ipapi\.co$/iu.test(requestUrl.hostname);
-                return false;
-            } catch { return false; }
+            return isExpectedExternalApiRequest(rawUrl, opts.externalApi.integrationProfileId);
         };
         let expectedWeatherNetworkFailure = false;
         const initialWeatherRequest = String(opts?.request || '');
@@ -607,7 +636,7 @@ export async function auditBuiltApp(
         page.on('console', onConsole);
         const onResponse = (r: any) => {
             if (r.status() >= 200 && r.status() < 300 && isExpectedExternalRequest(r.url())) {
-                successfulExternalRequests.push(r.url());
+                successfulExternalRequests.push({ url: r.url(), status: r.status() });
             }
             // 401/403: the audit is signed out on purpose — see onConsole above.
             if (r.status() >= 400 && r.status() !== 401 && r.status() !== 403
@@ -1048,8 +1077,11 @@ export async function auditBuiltApp(
                 const proofDeadline = Date.now() + Math.min(10_000, Math.max(1_000, remainingWalkMs()));
                 while (Date.now() < proofDeadline) {
                     const liveText = String(await page.locator('[aria-live="polite"]').first().innerText().catch(() => '')).trim();
-                    renderedExternalResult = successfulExternalRequests.length > 0
-                        && liveText.length > 2 && !/^loading/i.test(liveText);
+                    renderedExternalResult = externalApiRuntimeFromBrowserEvidence(
+                        opts.externalApi,
+                        successfulExternalRequests,
+                        liveText,
+                    ).renderedLiveResult;
                     if (renderedExternalResult) break;
                     await page.waitForTimeout(200);
                 }

@@ -10,6 +10,7 @@ import { scaffoldSubstitutionFor } from '../core/design/scaffold-substitution';
 import { resolvePreviewApiRequest } from '../api/routes/projectPreview';
 import { verifyNamed } from '../core/quality/named-requirements';
 import { buildExternalApiAcceptanceEvidence, externalApiSourceVerdict } from '../core/api-discovery/acceptance-evidence';
+import { externalApiRuntimeFromBrowserEvidence } from '../core/quality/app-audit';
 import { acceptanceFor } from '../core/quality/acceptance';
 
 const selection = (overrides: Partial<ApiSelectionArtifact> = {}): ApiSelectionArtifact => ({
@@ -281,6 +282,43 @@ describe('external API generation contract', () => {
         expect(externalApiSourceVerdict({
             id: 'req-no-live-result', text: 'using a public API', quote: 'using a public API',
         }, evidence)).toMatchObject({ verdict: 'unmet' });
+    });
+
+    it('blocks acceptance when the maintained request succeeds but produces no rendered live result', () => {
+        const plan = integrationPlanFromSelection(selection())!;
+        const files = integrationArtifacts(plan);
+        const browserRuntime = externalApiRuntimeFromBrowserEvidence(
+            { capability: plan.capability, integrationProfileId: plan.selection.integrationProfileId! },
+            [{ url: 'http://127.0.0.1:5002/api/joe-external/currency?amount=25&from=EUR&to=USD', status: 200 }],
+            '',
+        );
+        const evidence = buildExternalApiAcceptanceEvidence({
+            capability: plan.capability,
+            selection: plan.selection,
+            clientSource: files['src/integrations/externalApi.js'],
+            appSource: externalDataAppSource(plan),
+            proxySource: files['server/joeExternalApiProxy.js'],
+            audit: {
+                findings: [], passes: [{ id: 'runtime', status: 'passed' }],
+                externalApiRuntime: browserRuntime,
+            },
+        });
+        expect(browserRuntime).toMatchObject({ successfulRequests: 1, renderedLiveResult: false });
+        expect(evidence.runtime.status).toBe('unverified');
+        expect(externalApiSourceVerdict({
+            id: 'req-request-without-render', text: 'using a public API', quote: 'using a public API',
+        }, evidence)).toMatchObject({ verdict: 'unmet' });
+    });
+
+    it('accepts browser evidence only when the maintained response also renders a live result', () => {
+        expect(externalApiRuntimeFromBrowserEvidence(
+            { capability: 'currency', integrationProfileId: 'frankfurter-currency-v2' },
+            [
+                { url: 'https://example.test/unrelated', status: 200 },
+                { url: 'http://127.0.0.1:5002/api/joe-external/currency?amount=25&from=EUR&to=USD', status: 200 },
+            ],
+            '25 EUR = 29.31 USD',
+        )).toMatchObject({ successfulRequests: 1, renderedLiveResult: true });
     });
 
     it('requires positive evidence to match the selected maintained profile', () => {
