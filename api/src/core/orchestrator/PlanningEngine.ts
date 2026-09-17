@@ -165,6 +165,19 @@ function stripPageElements(text: string): string {
         .trim();
 }
 
+/**
+ * Verification directions describe how Joe must prove the work, not what the
+ * product stores. Without this small semantic boundary, "Report which checks
+ * ran" matches the `reports?` data noun below and promotes a local browser app
+ * into an invented backend system.
+ */
+function stripVerificationReporting(text: string): string {
+    return String(text || '')
+        .replace(/\b(?:report|list|state|summarize)\s+(?:exactly\s+)?(?:which|what|the)\s+(?:checks?|tests?|verifications?)\b[^.!?\n]*/gi, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
 export class PlanningEngine {
     private static selectedProjectDir(context?: any): string {
         try {
@@ -311,7 +324,7 @@ export class PlanningEngine {
             const { stripDeclaredOptions } = require('../design/app-blueprints');
             g = stripDeclaredOptions(g);
         } catch { /* the classifier still answers from the raw text */ }
-        g = stripPageElements(g);
+        g = stripVerificationReporting(stripPageElements(g));
         // Its own data, its own users → it needs a server and a database.
         /**
          * ARABIC PLURALS THE LIST DID NOT KNOW.
@@ -980,8 +993,12 @@ Rules:
          * its own safety gate and real project build/edit routes retain their
          * richer pipelines.
          */
+        const explicitTerminalSurface = /(استخدم|استعمل|نفّ?ذ|شغّ?ل|اجري|أجرِ|قم\s+ب(?:إجراء|عمل))[^\n]{0,120}(?:طرفي[ةه]|terminal|shell|command\s*(?:line)?|سطر\s*(?:الأوامر|اوامر))|(?:طرفي[ةه]|terminal|shell)[^\n]{0,120}(?:نفّ?ذ|شغّ?ل|اجري|أجرِ|فحص|تحقّ?ق|check|verify|execute|run)/i.test(probe);
+        const genericSystemDiagnostic = /(?:run|execute|perform)[^\n]{0,100}(?:local\s+)?(?:diagnostic|check)[^\n]{0,140}(?:node(?:\.js)?|workspace|working\s+directory|current\s+directory|\bpwd\b|\becho\b|version|status)/i.test(probe)
+            && !/(?:browser|visual|responsive|viewport|desktop|tablet|mobile|navigation|page|website|\bui\b|متصفح|واجهة|مرئي|تجاوب|شاشة)/i.test(probe);
         const explicitlyRequestsTerminalExecution = /\bshell_execute\b/i.test(probe)
-            || /(استخدم|استعمل|نفّ?ذ|شغّ?ل|اجري|أجرِ|قم\s+ب(?:إجراء|عمل))[^\n]{0,120}(?:طرفي[ةه]|terminal|shell|command\s*(?:line)?|سطر\s*(?:الأوامر|اوامر))|(?:طرفي[ةه]|terminal|shell)[^\n]{0,120}(?:نفّ?ذ|شغّ?ل|اجري|أجرِ|فحص|تحقّ?ق|check|verify|execute|run)|(?:run|execute|perform)[^\n]{0,100}(?:local\s+)?(?:diagnostic|check)/i.test(probe);
+            || explicitTerminalSurface
+            || genericSystemDiagnostic;
         // The user can safely say «لا تبنِ / لا تعدّل ملفات» to constrain a
         // terminal check. Those negated verbs are NOT a request to build or edit.
         const terminalDiagnosticProbe = probe.replace(
@@ -1493,7 +1510,7 @@ Rules:
             // site/project target and must not be about content.
             const strongDeploy = /(\bdeploy\b|استضف|استضافة|go\s*live|رابط\s*دائم|github\s*pages|gh-pages)/i.test(probe);
             const softPublish = /(انشر|أنشر|\bpublish\b|\bhost\b)/i.test(probe);
-            const deployIntent = !isQuestion && !hasBuildVerb && !contentNoun
+            const deployIntent = !deniesExternalPublish && !isQuestion && !hasBuildVerb && !contentNoun
                 && (strongDeploy || (softPublish && deployTarget));
 
             if (stopIntent) {

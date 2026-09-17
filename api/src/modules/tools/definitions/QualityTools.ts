@@ -190,8 +190,14 @@ export class QualityRunTool extends BaseTool {
             results.push({ task, ok: true, skipped: true });
         }
 
-        const allOk = results.every(r => r && r.ok === true);
-        return { ok: allOk, output: { results }, logs: [`quality_run path=${projectDir}`] };
+        const executed = results.filter(r => r && r.skipped === false);
+        const allOk = executed.length > 0 && results.every(r => r && r.ok === true);
+        const status = !executed.length ? 'incomplete' : allOk ? 'completed' : 'failed';
+        return {
+            ok: allOk,
+            output: { results, status, ...(executed.length ? {} : { error: 'No requested quality checks were available to execute' }) },
+            logs: [`quality_run path=${projectDir}`],
+        };
     }
 }
 

@@ -46,6 +46,7 @@ export default function EmbeddedBrowser({
     // the extension is actually connected — otherwise it's confusing dead UI.
     const [extConnected, setExtConnected] = useState(false);
     const inputRef = useRef<HTMLInputElement>(null);
+    const navigationSequence = useRef(0);
     const hasSession = Boolean(sessionId.trim());
 
     useEffect(() => {
@@ -67,6 +68,7 @@ export default function EmbeddedBrowser({
     useEffect(() => {
         const handleStatus = (e: CustomEvent) => {
             const detail = e.detail as { url?: string; sessionId?: string };
+            if (detail?.sessionId !== sessionId) return;
             if (detail?.url) {
                 setCurrentUrl(detail.url);
                 // Only update input if user isn't actively editing
@@ -74,7 +76,7 @@ export default function EmbeddedBrowser({
                     setInputUrl(detail.url);
                 }
             }
-            if (detail?.sessionId && (!detail.sessionId || detail.sessionId === sessionId)) {
+            if (detail.sessionId) {
                 setIsConnected(true);
                 onReady?.();
             }
@@ -114,17 +116,21 @@ export default function EmbeddedBrowser({
 
     // Reset state when sessionId changes
     useEffect(() => {
+        navigationSequence.current++;
+        setIsConnected(false);
         setCurrentUrl('');
         setPageTitle('');
         setInputUrl('');
         setIsLoading(false);
         setLiveQuality('unknown');
         setRuntimeErrorCount(0);
+        return () => { navigationSequence.current++; };
     }, [sessionId]);
 
     // Navigate to URL
     const handleNavigate = useCallback(async (url: string) => {
         if (!url.trim()) return;
+        const navigationId = ++navigationSequence.current;
 
         // Add protocol if missing
         let targetUrl = url.trim();
@@ -155,6 +161,8 @@ export default function EmbeddedBrowser({
                 })
             });
             const result = await response.json().catch(() => null);
+            if (navigationId !== navigationSequence.current) return;
+            if (response.status === 409 && result?.error === 'nav_superseded') return;
             if (!response.ok || !result?.ok) throw new Error(String(result?.error || 'nav_goto_failed'));
             const resolvedUrl = String(result.url || targetUrl);
             setCurrentUrl(resolvedUrl);
@@ -162,9 +170,9 @@ export default function EmbeddedBrowser({
         } catch {
             // The stream will show the actual page; do not present a failed
             // navigation as if the requested URL opened successfully.
-            setLiveQuality('degraded');
+            if (navigationId === navigationSequence.current) setLiveQuality('degraded');
         } finally {
-            setIsLoading(false);
+            if (navigationId === navigationSequence.current) setIsLoading(false);
         }
     }, [sessionId]);
 

@@ -118,6 +118,15 @@ describe('local-only build contracts outrank deployment keywords', () => {
         expect(['web_page_builder', 'react_project', 'project_pipeline', 'scaffold_project']).toContain(p.steps[0].tool);
     });
 
+    test('a continuation request with a deployment ban never plans deploy_pages', async () => {
+        const p = await plan([
+            'Continue the existing library checkout board at C:\\work\\library.',
+            'Keep and verify its responsive layout and open it in the browser.',
+            'Do not deploy anything.',
+        ].join(' '));
+        expect(p.steps.some(step => step.tool === 'deploy_pages')).toBe(false);
+    });
+
     test('a standalone publish request remains deploy_pages', async () => {
         expect((await plan('انشر الموقع على GitHub Pages')).steps[0].tool).toBe('deploy_pages');
     });

@@ -888,7 +888,7 @@ describe('product pages, the team, and the build command', () => {
         expect(source).toContain("await run('npm', ['rebuild', 'esbuild', '--foreground-scripts'], 120_000, 45_000)");
         expect(source).not.toContain("['approve-scripts', '--all']");
         expect(source).toContain('repairQuarantinedEsbuildInstall(proj, run)');
-        expect(source).toContain("fs.rmSync(path.join(proj, 'package-lock.json'), { force: true })");
+        expect(source.includes('cleanReinstallReactDependencies(proj, run)')).toBe(true);
         expect(source).toContain('complete native toolchain verified after scoped npm approval and rebuild');
     });
 
@@ -906,6 +906,16 @@ describe('product pages, the team, and the build command', () => {
             ['rebuild', 'esbuild', '--foreground-scripts'],
         ]);
         expect(verificationFailure).toMatchObject({ ok: false, rebuildExit: 0, failedAt: 'verification' });
+    });
+
+    it('uses a single cache-preferred install instead of a guaranteed cache-only retry on misses', () => {
+        const source = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ReactProjectTool.ts'), 'utf-8');
+        expect(source).toContain("['install', '--prefer-offline', '--no-audit', '--no-fund']");
+        expect(source).not.toContain("['install', '--offline', '--no-audit', '--no-fund']");
+        expect(source).not.toContain('offlineInstall');
+        expect(source).toContain('hasUsableReactDependencyTree(proj)');
+        expect(source).toContain('repairQuarantinedEsbuildInstall(proj, run)');
+        expect(source).toContain('cleanReinstallReactDependencies(proj, run)');
     });
 
     it('executes and narrowly repairs a corrupt Windows esbuild binary before accepting dependencies', () => {

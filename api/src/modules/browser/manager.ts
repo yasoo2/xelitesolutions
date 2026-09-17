@@ -6,6 +6,9 @@ import crypto from 'crypto';
 import { DEFAULT_BROWSER_CONFIG } from './config';
 import { broadcastBrowserEvent } from './wsHub';
 import { ensureBrowserTelemetry, recordStreamFrame, disposeBrowserTelemetry } from './telemetry';
+import { imageSize } from '../../shared/image-size';
+import { captureNativeJpeg } from './native-capture';
+import { captureMaskedJpeg } from './masked-capture';
 
 /* ============================================================
    PER-USER ENCRYPTED SESSION PERSISTENCE
@@ -534,29 +537,13 @@ async function captureJpeg(
   const locked = await tryAcquireCaptureLock(s, opts.waitForLock, opts.timeoutMs);
   if (!locked) return null;
   try {
-    return await s.page.screenshot({
-      type: 'jpeg',
-      quality: opts.quality,
-      animations: 'disabled',
-      /**
-       * THE STREAM MUST NOT EDIT THE PAGE IT IS FILMING.
-       *
-       * Playwright's default `caret: 'hide'` writes
-       * `style="caret-color: transparent !important"` onto every input before
-       * the shot and strips it afterwards. At stream FPS that is a DOM
-       * mutation six times a second — and the self-QA decides «this button is
-       * dead» by comparing the DOM before and after a click. Measured on an
-       * idle page with nothing clicked: the body fingerprint flipped between
-       * two values in 11 of 25 samples, so on any page with a form the verdict
-       * on a dead button was part coin-flip.
-       *
-       * A blinking caret costs one JPEG artefact. A camera that rewrites the
-       * subject costs the measurement.
-       */
-      caret: 'initial',
-      timeout: opts.timeoutMs,
-      mask: opts.mask && opts.mask.length ? opts.mask : undefined,
-    });
+    if (!opts.mask?.length) {
+      // Playwright screenshots restore its cached viewport, undoing metrics
+      // owned by the QA CDP session. Native capture leaves emulation intact.
+      // THE STREAM MUST NOT EDIT THE PAGE IT IS FILMING.
+      return await captureNativeJpeg(s.page, opts.quality, opts.timeoutMs);
+    }
+    return await captureMaskedJpeg(s.page, opts.mask, opts.quality, opts.timeoutMs);
   } finally {
     s.captureLocked = false;
   }
@@ -567,7 +554,7 @@ export async function screenshotSessionJpeg(sessionId: string, opts?: { quality?
   const s = await getBrowserSession(sid);
   const quality = Math.max(1, Math.min(100, Number(opts?.quality ?? 55)));
   const timeoutMs = Math.max(1000, Number(opts?.timeoutMs ?? 60000));
-  const buf = await captureJpeg(s, { quality, timeoutMs, waitForLock: true });
+  const buf = await captureJpeg(s, { quality, timeoutMs, waitForLock: true, mask: s.maskLocators });
   if (!buf) throw new Error('screenshot_failed');
   return buf;
 }
@@ -1188,7 +1175,8 @@ export function startStreaming(sessionId: string) {
         // The page is the authority for frame dimensions. During responsive
         // QA it can change size between two capture ticks; declaring a fresh
         // JPEG with stale session metadata stretches it in the Browser panel.
-        const actualViewport = s.page.viewportSize();
+        const actualViewport = imageSize(buf);
+        if (!actualViewport?.width || !actualViewport?.height) return;
         if (actualViewport?.width && actualViewport?.height) {
           s.viewport = { w: actualViewport.width, h: actualViewport.height };
         }

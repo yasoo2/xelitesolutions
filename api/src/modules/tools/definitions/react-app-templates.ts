@@ -27,6 +27,14 @@ import { ROLES, rolesForRequest, type RoleSpec } from '../../../core/design/role
 /** Escape for a JS single-quoted literal inside generated source. */
 const q = (s: string) => String(s ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, ' ');
 
+export function requestedBoardField(bp: AppBlueprint, request: string): string | null {
+    if (bp.engine !== 'records' || bp.asTable || heAskedForATable(request, bp.fields.length)) return null;
+    if (!/\b(?:kanban|board)\b|لوحة\s+(?:مهام|حالات)/iu.test(request)) return null;
+    const candidates = bp.fields.filter(field => field.type === 'select' && (field.options?.length || 0) > 1);
+    const status = candidates.find(field => field.key === bp.statusField);
+    return status?.key || (candidates.length === 1 ? candidates[0].key : null);
+}
+
 /**
  * Shared request guard emitted into interactive engines. It deliberately uses
  * trim() rather than a regex: the generated source must remain safe from
@@ -150,6 +158,7 @@ export const content = {
   // — measured as «table count: 0». The word alone does not decide it,
   // because «جدول» is also a schedule; listing the columns does.
   asTable: ${bp.asTable === true || heAskedForATable(o.sourceRequest || '', (bp.fields || []).length)},
+  boardField: ${JSON.stringify(requestedBoardField(bp, o.sourceRequest || ''))},
   //  THE PAGES HE NAMED, EACH WITH THE ROUTE THAT PROVES IT.
   //
   //  The route is written literally as «path: '/slug'» because that is
@@ -191,7 +200,7 @@ ${(() => {
         return tables.map((t, i) => {
             const slug = (pages[i] && pages[i].slug) || `table-${i + 1}`;
             const title = t.subject || (pages[i] && pages[i].title) || `${i + 1}`;
-            const cols = t.columns.map(f => `        { key: '${q(f.key)}', label: '${q(f.label)}', type: '${q(f.type)}'${(f as any).options ? `, options: [${(f as any).options.map((x: string) => `'${q(x)}'`).join(', ')}]` : ''}${(f as any).required ? ', required: true' : ''}${(f as any).min !== undefined ? `, min: ${(f as any).min}` : ''}${(f as any).minLength !== undefined ? `, minLength: ${(f as any).minLength}` : ''}${(f as any).minExclusive ? ', minExclusive: true' : ''}${(f as any).primary ? ', primary: true' : ''} },`).join(NL);
+            const cols = t.columns.map(f => `        { key: '${q(f.key)}', label: '${q(f.label)}', type: '${q(f.type)}'${(f as any).options ? `, options: [${(f as any).options.map((x: string) => `'${q(x)}'`).join(', ')}]` : ''}${(f as any).control ? `, control: '${q((f as any).control)}'` : ''}${(f as any).required ? ', required: true' : ''}${(f as any).min !== undefined ? `, min: ${(f as any).min}` : ''}${(f as any).minLength !== undefined ? `, minLength: ${(f as any).minLength}` : ''}${(f as any).minExclusive ? ', minExclusive: true' : ''}${(f as any).primary ? ', primary: true' : ''} },`).join(NL);
             return `    { slug: '${q(slug)}', title: '${q(title)}', storeKey: '${q(o.storeKey)}:${q(slug)}',
       fields: [
 ${cols}
@@ -200,7 +209,7 @@ ${cols}
     })()}
   ],
   fields: [
-${bp.fields.map(f => `    { key: '${q(f.key)}', label: '${q(f.label)}', type: '${q(f.type)}'${f.options ? `, options: [${f.options.map(x => `'${q(x)}'`).join(', ')}]` : ''}${f.required ? ', required: true' : ''}${f.min !== undefined ? `, min: ${f.min}` : ''}${(f as any).minLength !== undefined ? `, minLength: ${(f as any).minLength}` : ''}${f.minExclusive ? ', minExclusive: true' : ''}${f.primary ? ', primary: true' : ''} },`).join('\n')}
+${bp.fields.map(f => `    { key: '${q(f.key)}', label: '${q(f.label)}', type: '${q(f.type)}'${f.options ? `, options: [${f.options.map(x => `'${q(x)}'`).join(', ')}]` : ''}${f.control ? `, control: '${q(f.control)}'` : ''}${f.required ? ', required: true' : ''}${f.min !== undefined ? `, min: ${f.min}` : ''}${(f as any).minLength !== undefined ? `, minLength: ${(f as any).minLength}` : ''}${f.minExclusive ? ', minExclusive: true' : ''}${f.primary ? ', primary: true' : ''} },`).join('\n')}
   ],
   metrics: [
 ${bp.metrics.map(m => `    { label: '${q(m.label)}', kind: '${q(m.kind)}'${m.field ? `, field: '${q(m.field)}'` : ''}${m.field2 ? `, field2: '${q(m.field2)}'` : ''}${m.field3 ? `, field3: '${q(m.field3)}'` : ''}${m.equals ? `, equals: '${q(m.equals)}'` : ''} },`).join('\n')}
@@ -1386,6 +1395,7 @@ export default function RecordsApp({ content }) {
   // The column that holds a picture, if this collection has one.
   const imageField = fields.find(f => f.type === 'image');
   const statusField = fields.find(f => f.key === content.statusField);
+  const boardField = !content.asTable && fields.find(f => f.key === content.boardField && f.type === 'select');
   const filterKeys = Array.isArray(content.filterFields)
     ? content.filterFields
     : (statusField ? [statusField.key] : []);
@@ -1594,7 +1604,7 @@ export default function RecordsApp({ content }) {
   }, [rows, query, filters, sort, fields, primary, filterDefs, rel, parentFilter, parents]);
 
   return (
-    <div className={'wrap' + (imageField ? ' media-workspace' : '')}>
+    <div className={'wrap' + (imageField ? ' media-workspace' : '') + (boardField ? ' board-workspace' : '')}>
       <section data-reveal-section className="stats" aria-label={${T('الأرقام', 'Numbers')}}>
         {content.metrics.map((m, i) => (
           <div className="stat" key={i}>
@@ -1739,6 +1749,17 @@ export default function RecordsApp({ content }) {
                 </div>
               ) : f.type === 'textarea' ? (
                 <textarea name={f.key} rows={3} required={!!f.required} value={draft[f.key] || ''} onChange={e => setDraft({ ...draft, [f.key]: e.target.value })} />
+              ) : f.control === 'toggle' ? (
+                <span className="toggle-control">
+                  <input name={f.key} type="checkbox" role="switch" aria-label={f.label}
+                    checked={draft[f.key] === ((f.options || [])[1] || 'Yes')}
+                    onChange={e => setDraft({ ...draft, [f.key]: e.target.checked
+                      ? ((f.options || [])[1] || 'Yes')
+                      : ((f.options || [])[0] || 'No') })} />
+                  <span>{draft[f.key] === ((f.options || [])[1] || 'Yes')
+                    ? ((f.options || [])[1] || 'Yes')
+                    : ((f.options || [])[0] || 'No')}</span>
+                </span>
               ) : f.type === 'select' ? (
                 <select name={f.key} required={!!f.required} value={draft[f.key] || ''} onChange={e => setDraft({ ...draft, [f.key]: e.target.value })}>
                   {(f.options || []).map(o => <option key={o} value={o}>{o}</option>)}
@@ -1810,7 +1831,7 @@ export default function RecordsApp({ content }) {
         </div>
 
         <h2 className="list-title">{content.entityMany} <em>({visible.length})</em></h2>
-        {visible.length === 0 ? (
+        {visible.length === 0 && !boardField ? (
           <p className="empty">{rows.length ? ${T('لا نتائج مطابقة لبحثك.', 'Nothing matches that search.')} : content.emptyHint}</p>
         ) : content.asTable ? (
           //  THE SHAPE HE NAMED. «اعمل جدول … فيه اسم الصنف والكمية والسعر»
@@ -1856,8 +1877,12 @@ export default function RecordsApp({ content }) {
             </table>
           </div>
         ) : (
+          <div className={boardField ? 'records-board' : undefined}>
+          {(boardField ? Array.from(new Set([...(boardField.options || []), ...visible.map(row => String(row[boardField.key] ?? ''))])) : [null]).map(group => (
+          <section className={boardField ? 'board-lane' : undefined} key={group ?? 'all'}>
+          {boardField ? <h3 className="board-lane-title">{boardField.label}: {group || ${T('غير محدد', 'Unspecified')}} <span>({visible.filter(row => String(row[boardField.key] ?? '') === group).length})</span></h3> : null}
           <ul className={'rows' + (imageField ? ' media-gallery' : '')}>
-            {visible.map(row => {
+            {visible.filter(row => !boardField || String(row[boardField.key] ?? '') === group).map(row => {
               const done = statusField && content.doneValue && row[statusField.key] === content.doneValue;
               //  His own threshold, in his own number — see content.lowStock.
               const low = content.lowStock && Number(row[content.lowStock.field]) < Number(content.lowStock.below);
@@ -1897,6 +1922,9 @@ export default function RecordsApp({ content }) {
               );
             })}
           </ul>
+          </section>
+          ))}
+          </div>
         )}
       </section>
 
@@ -3062,7 +3090,7 @@ p{margin:0 0 8px}
 /* The app's own name measured 3.25:1 against the bar — brand ink on a
    brand-tinted surface. Leaning it toward the page's text clears AA in
    both themes without losing the hue. */
-.app-name{font-size:1.75rem;font-weight:800;line-height:1.15;margin:0;color:color-mix(in srgb,var(--brand,#111) 45%,var(--text,#111))}
+.app-name{min-width:0;max-width:100%;overflow-wrap:anywhere;white-space:normal;font-size:1.75rem;font-weight:800;line-height:1.4;margin:0;color:color-mix(in srgb,var(--brand,#111) 45%,var(--text,#111))}
 .app-sub{color:var(--text-muted,#666);font-size:.9rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* 44px, not 38: the audit measures touch targets and it was right to. */
 .icon-btn{border:1px solid var(--border,#ddd);background:var(--surface,#fff);color:inherit;border-radius:999px;
@@ -3091,6 +3119,9 @@ p{margin:0 0 8px}
 .field{display:grid;gap:6px;font-size:.9rem}
 .field.wide{grid-column:1/-1}
 .field>span{color:var(--text-muted,#666)}
+.toggle-control{min-height:44px;display:flex;align-items:center;gap:10px}
+.toggle-control input{width:42px;height:22px;margin:0;accent-color:var(--brand,#111);cursor:pointer}
+.toggle-control span{font-weight:600;color:var(--text-muted,#666)}
 input,select,textarea{font:inherit;color:inherit;background:var(--bg,#fff);border:1px solid var(--border,#ddd);
   border-radius:10px;padding:10px 12px;min-height:44px;width:100%}
 textarea{min-height:88px;resize:vertical}
@@ -3102,9 +3133,9 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--accent,#06c);out
    remains independently scrollable, while the page itself never becomes wider
    than the viewport because of a label, action row, or generated title. */
 @media (max-width: 480px){
-  .app-bar-in{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center}
-  .app-id{grid-column:auto;display:flex;align-items:baseline;gap:8px;width:100%}
-  .app-name{min-width:0;overflow-wrap:anywhere}
+  .app-bar-in{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center}
+  .app-id{grid-column:1/-1;display:flex;align-items:baseline;gap:8px;width:100%}
+  .app-name{display:block;min-width:0;max-width:100%;font-size:1.25rem;white-space:normal;overflow-wrap:anywhere}
   .app-sub{display:none}
   .auth-chip{min-width:0;max-width:100%}
   .auth-who{display:none}
@@ -3138,6 +3169,26 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--accent,#06c);out
 [data-theme="dark"] .badge.on{color:#6ee7a2}
 
 .rows{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+.records-board{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:20px;align-items:start}
+.board-lane{min-width:0;border-top:3px solid var(--brand);padding-top:12px}
+.board-lane:nth-child(even){border-color:var(--text)}
+.board-lane-title{font-size:1rem;line-height:1.4;margin:0 0 12px;overflow-wrap:anywhere}
+.board-lane-title span{font-variant-numeric:tabular-nums;color:var(--muted)}
+.records-board .row{min-width:0;flex-wrap:wrap;border-radius:6px;box-shadow:none}
+.records-board .row-main{min-width:0;overflow-wrap:anywhere}
+.records-board .row-acts{flex-wrap:wrap}
+.board-workspace{display:grid;grid-template-columns:minmax(240px,300px) minmax(0,1fr);gap:24px;align-items:start}
+.board-workspace>.stats{grid-column:1/-1;display:flex;border-bottom:1px solid var(--border);padding-bottom:12px}
+.board-workspace>.stats .stat{border:0;border-radius:0;box-shadow:none;background:transparent;padding:0 24px 0 0}
+.board-workspace>.stats .stat-ico{display:none}
+.board-workspace>.panel{min-width:0;border:0;border-radius:0;box-shadow:none;background:transparent;padding:0}
+.board-workspace .form{grid-template-columns:1fr}
+.board-workspace .toolbar{display:flex;flex-wrap:wrap;gap:8px}
+.board-workspace .toolbar .search{flex:1 1 200px;width:auto}
+.board-workspace .toolbar select{flex:0 1 180px;width:auto}
+.board-workspace .row.done{opacity:1}
+.board-workspace .row-detail-hint{display:none}
+@media(max-width:760px){.board-workspace{grid-template-columns:minmax(0,1fr)}}
 /*  The table he asked for. It scrolls inside its own box: a wide table must
     never make the whole page slide sideways on a phone. Numbers get tabular
     figures so a price column lines up on the decimal point, which is the

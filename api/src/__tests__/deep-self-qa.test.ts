@@ -418,7 +418,8 @@ describe('the interface itself is inspected — «وفحص ui»', () => {
         expect(u).toContain('const finalCdp = await getViewportCdpSession(page)');
         expect(u.lastIndexOf("Emulation.setDeviceMetricsOverride")).toBeGreaterThan(u.lastIndexOf('await page.setViewportSize({ width, height })'));
         expect(u).toContain('for (let attempt = 0; attempt < 10; attempt++)');
-        expect(u).toContain('remained ${Number(actual?.width || 0)}px after requesting ${width}px');
+        expect(u).toContain('remained ${Number(actual?.width || 0)}x${Number(actual?.height || 0)} after requesting ${width}x${height}');
+        expect(u).toContain('Math.abs(Number(actual?.height || 0) - height) <= 2');
         const a = read('core', 'quality', 'app-audit.ts');
         expect(a).not.toContain('beforeViewport: (w, h) =>');
         expect(a).toContain('setSessionViewport(opts.watchSessionId, actual.width, actual.height)');
@@ -463,13 +464,13 @@ describe('the camera does not edit the page it is filming', () => {
          * any page with a form. 0/25 after the fix.
          */
         const m = read('modules', 'browser', 'manager.ts');
-        expect(m).toMatch(/caret: 'initial'/);
+        expect(m).toContain('captureMaskedJpeg(s.page, opts.mask, opts.quality, opts.timeoutMs)');
         expect(m).toMatch(/THE STREAM MUST NOT EDIT THE PAGE IT IS FILMING/);
     });
 
     it('declares each streamed JPEG with the page viewport that produced it', () => {
         const m = read('modules', 'browser', 'manager.ts');
-        expect(m).toContain('const actualViewport = s.page.viewportSize()');
+        expect(m).toContain('const actualViewport = imageSize(buf)');
         expect(m).toContain('w: actualViewport?.width || s.viewport.w');
         expect(m).toContain('h: actualViewport?.height || s.viewport.h');
     });

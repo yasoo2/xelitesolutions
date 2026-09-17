@@ -124,13 +124,15 @@ async function applyViewportSizeUnlocked(page: any, width: number, height: numbe
     // Do not clear it here: the live screenshot loop may capture between clear
     // and set, restoring the context's desktop dimensions during measurement.
     let actual = await evalInPage(page, function () { return { width: window.innerWidth, height: window.innerHeight }; }).catch(() => ({ width: 0, height: 0 }));
+    const matchesRequestedViewport = () => Math.abs(Number(actual?.width || 0) - width) <= 2
+        && Math.abs(Number(actual?.height || 0) - height) <= 2;
     if (!viewportCdpOwnedPages.has(page)) {
         try { await page.setViewportSize({ width, height }); } catch (error: any) {
             console.warn(`[BrowserQA][viewport] page setter ${width}x${height}: ${String(error?.message || error).slice(0, 160)}`);
         }
         await page.waitForTimeout(180).catch(() => { });
         actual = await evalInPage(page, function () { return { width: window.innerWidth, height: window.innerHeight }; }).catch(() => ({ width: 0, height: 0 }));
-        if (Math.abs(Number(actual?.width || 0) - width) <= 2) return actual;
+        if (matchesRequestedViewport()) return actual;
     }
     // A persistent Playwright profile owns the viewport at context level. In
     // that mode page.setViewportSize can resolve while the visible document
@@ -146,7 +148,7 @@ async function applyViewportSizeUnlocked(page: any, width: number, height: numbe
     } catch (error: any) {
         console.warn(`[BrowserQA][viewport] context setter ${width}x${height}: ${String(error?.message || error).slice(0, 160)}`);
     }
-    if (Math.abs(Number(actual?.width || 0) - width) <= 2) return actual;
+    if (matchesRequestedViewport()) return actual;
     try {
         const cdp = await getViewportCdpSession(page);
         viewportCdpOwnedPages.add(page);
@@ -164,12 +166,17 @@ async function applyViewportSizeUnlocked(page: any, width: number, height: numbe
     } catch (error: any) {
         console.warn(`[BrowserQA][viewport] CDP setter ${width}x${height}: ${String(error?.message || error).slice(0, 160)}`);
     }
-    if (Math.abs(Number(actual?.width || 0) - width) > 2) {
+    if (!matchesRequestedViewport()) {
         // A persistent context may apply the metrics one turn late while the
         // page is still painting the previous frame. Give the browser one
         // explicit retry before declaring the instrumentation broken.
         try {
             const retry = await getViewportCdpSession(page);
+            // A screenshot can restore Playwright's metrics while this CDP
+            // session still caches the requested dimensions. Repeating the
+            // same command then does nothing; clear that stale override once
+            // while frame capture is paused, before reapplying and measuring.
+            await retry.send('Emulation.clearDeviceMetricsOverride');
             for (let attempt = 0; attempt < 10; attempt++) {
                 await retry.send('Emulation.setVisibleSize', { width, height }).catch(() => { });
                 await retry.send('Emulation.setDeviceMetricsOverride', {
@@ -178,13 +185,13 @@ async function applyViewportSizeUnlocked(page: any, width: number, height: numbe
                 });
                 await page.waitForTimeout(200).catch(() => { });
                 actual = await evalInPage(page, function () { return { width: window.innerWidth, height: window.innerHeight }; });
-                if (Math.abs(Number(actual?.width || 0) - width) <= 2) return actual;
+                if (matchesRequestedViewport()) return actual;
             }
         } catch (error: any) {
             console.warn(`[BrowserQA][viewport] CDP retry ${width}x${height}: ${String(error?.message || error).slice(0, 160)}`);
         }
     }
-    if (Math.abs(Number(actual?.width || 0) - width) > 2) {
+    if (!matchesRequestedViewport()) {
         // Do not detach this session or call Playwright's setter here. Detaching
         // restores the old metrics asynchronously; invoking both controllers is
         // exactly what made the requested and measured widths trade places.
@@ -202,12 +209,12 @@ async function applyViewportSizeUnlocked(page: any, width: number, height: numbe
                 });
                 await page.waitForTimeout(200).catch(() => { });
                 actual = await evalInPage(page, function () { return { width: window.innerWidth, height: window.innerHeight }; });
-                if (Math.abs(Number(actual?.width || 0) - width) <= 2) return actual;
+                if (matchesRequestedViewport()) return actual;
             }
         } catch (error: any) {
             console.warn(`[BrowserQA][viewport] fresh-session recovery ${width}x${height}: ${String(error?.message || error).slice(0, 160)}`);
         }
-        console.warn(`[BrowserQA][viewport] remained ${Number(actual?.width || 0)}px after requesting ${width}px`);
+        console.warn(`[BrowserQA][viewport] remained ${Number(actual?.width || 0)}x${Number(actual?.height || 0)} after requesting ${width}x${height}`);
     }
     return actual;
 }

@@ -1,4 +1,5 @@
 import { ToolDefinition, ToolPermission } from '../types';
+import { ensurePlanFinalVerification } from '../../../core/quality/plan-verification';
 import { isWithinRoot } from '../path-containment';
 import fs from 'fs';
 import path from 'path';
@@ -1562,6 +1563,9 @@ export class ProjectPipelineTool implements ToolDefinition {
             }
         }
 
+        // Rescue branches can replace the planner output above. Enforce the
+        // same final evidence contract on the plan actually sent to execution.
+        if (plannerResult?.output) plannerResult.output = ensurePlanFinalVerification(plannerResult.output);
         const phases = plannerResult?.output?.phases;
         if (!Array.isArray(phases) || phases.length === 0) {
             return {

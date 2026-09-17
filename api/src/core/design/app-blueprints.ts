@@ -60,6 +60,8 @@ export interface AppField {
     minLength?: number;
     /** Shown in the compact row summary — keeps the list readable. */
     primary?: boolean;
+    /** Render an explicitly requested binary field as a switch, not a menu. */
+    control?: 'toggle';
 }
 
 /** A number worth showing at the top of the app, computed from the rows. */
@@ -280,7 +282,7 @@ export const APP_KIND_SIGNALS: Array<[AppKind, RegExp]> = [
     // Arabic carries case endings: «متجراً إلكترونياً» is «متجر إلكتروني» to
     // any reader and to no naive regex — the first live run of this engine
     // detected null on the user's own sentence for exactly that reason.
-    ['store', /متجر\S{0,2}\s*(إلكترون|الكترون|أونلاين|اونلاين|رقم)|تجار[ةه]\S{0,2}\s*(إلكترون|الكترون)|منصّ?[ةه]\S{0,2}\s*(تجار|بيع|تسوّ?ق)|نظام\s*متجر|تطبيق\s*متجر|سلّ?[ةه]\s*(ال)?(مشتريات|شراء|تسوّ?ق)|عرب[ةه]\s*(ال)?تسوّ?ق|بواب[ةه]\s*دفع|e-?commerce|ecommerce|marketplace|shopify|woocommerce|magento|storefront|\bcheckout\b|shopping\s*cart|online\s*(store|shop|selling|marketplace)/i],
+    ['store', /متجر\S{0,2}\s*(إلكترون|الكترون|أونلاين|اونلاين|رقم)|تجار[ةه]\S{0,2}\s*(إلكترون|الكترون)|منصّ?[ةه]\S{0,2}\s*(تجار|بيع|تسوّ?ق)|نظام\s*متجر|تطبيق\s*متجر|سلّ?[ةه]\s*(ال)?(مشتريات|شراء|تسوّ?ق)|عرب[ةه]\s*(ال)?تسوّ?ق|بواب[ةه]\s*دفع|e-?commerce|ecommerce|marketplace|shopify|woocommerce|magento|storefront|(?:shopping|cart|payment|purchase|order)\s+checkout|checkout\s+(?:page|flow|cart|payment|purchase|order)|shopping\s*cart|online\s*(store|shop|selling|marketplace)/i],
     ['pos', /نقاط\s*بيع|نقطة\s*بيع|كاشير|كاشيير|\bpos\b|point\s*of\s*sale|cash\s*register/i],
     ['booking', /حجوزات|حجز|مواعيد|موعد|عياد|مرضى|reservation|booking|appointment|clinic/i],
     ['inventory', /مخزون|جرد|مستودع|أصناف|اصناف|inventory|stock|warehouse/i],
@@ -1738,7 +1740,7 @@ const TYPE_MARKS: Array<[RegExp, DerivedRole, FieldType]> = [
     [/ملاحظ|وصف|تفاصيل|شرح|تعليق|\bnote\b|\bdescription\b|\bdetails\b|\bcomment\b/iu, 'note', 'textarea'],
 ];
 
-export interface DerivedField { label: string; key: string; type: FieldType; role: DerivedRole; options?: string[]; min?: number; minExclusive?: boolean }
+export interface DerivedField { label: string; key: string; type: FieldType; role: DerivedRole; options?: string[]; min?: number; minExclusive?: boolean; control?: 'toggle' }
 
 /** A condition he stated, and the field it is about. */
 /**
@@ -2722,11 +2724,11 @@ function theListAnIntroducerHandedOver(request: string): DerivedField[] | null {
             .replace(/^(?:numeric|number)(?:[-\s]only)?\s+/iu, '')
             .replace(/\s+fields?$/iu, '')
             .trim());
-        // `include` also introduces product capabilities. If any member is a
-        // runtime or interface state, the list describes behaviour rather than
-        // the shape of one stored record. Refuse the whole candidate instead of
-        // manufacturing fields such as "loading" and "retry states".
-        if (rawItems.some(part => CAPABILITY_CLAUSE.test(part))) continue;
+        // A field list may be followed by capabilities in the same sentence:
+        // "needs title, owner, due date, filtering and validation". The first
+        // capability is a boundary, not evidence that the preceding field
+        // names were imaginary. `columnsEndWhereHisNextRequestBegins` performs
+        // that bounded cut; a capability in first position still yields no run.
         //  No floor here: the run check below is the same floor, and
         //  columnsEndWhereHisNextRequestBegins never grows a list. A
         //  mutation proved this one could never decide anything — with it
@@ -2735,7 +2737,10 @@ function theListAnIntroducerHandedOver(request: string): DerivedField[] | null {
         //  column of one.
         if (rawItems.length && rawItems.every(part => OPENS_WITH_AN_ARTICLE.test(part))) continue;
         const run = columnsEndWhereHisNextRequestBegins(items);
-        if (run.length < 3) continue;
+        const containerPrefix = sentence.slice(0, at.index);
+        const typedPair = /\b(?:app|application|board|tracker|table|register|directory|form)\b/iu.test(containerPrefix)
+            && run.some(part => /\b(?:toggle|checkbox|switch|input|field)\s*$/iu.test(part));
+        if (run.length < (typedPair ? 2 : 3)) continue;
         const named = run.filter(isAName).filter(notAContainerItself);
         if (named.length !== run.length) continue;
         const built = fieldsFromLabels(named);
@@ -3232,11 +3237,20 @@ function fieldsFromLabels(parts: string[]): DerivedField[] | null {
     const seen = new Map<DerivedRole, number>();
     const usedKeys = new Set<string>();
     const out: DerivedField[] = [];
-    for (const label of parts) {
+    for (const rawLabel of parts) {
+        const toggle = /\b(?:toggle|checkbox|switch)\b|(?:مفتاح|خيار)\s*(?:تبديل|تشغيل)/iu.test(rawLabel);
+        const label = toggle
+            ? rawLabel.replace(/\s+(?:toggle|checkbox|switch)\s*$/iu, '').trim() || rawLabel
+            : rawLabel;
         let role: DerivedRole = 'text';
         let type: FieldType = 'text';
-        for (const [mark, r, t] of TYPE_MARKS) {
-            if (mark.test(label)) { role = r; type = t; break; }
+        if (toggle) {
+            role = 'flag';
+            type = 'select';
+        } else {
+            for (const [mark, r, t] of TYPE_MARKS) {
+                if (mark.test(label)) { role = r; type = t; break; }
+            }
         }
         const n = (seen.get(role) || 0) + 1;
         seen.set(role, n);
@@ -3251,9 +3265,11 @@ function fieldsFromLabels(parts: string[]): DerivedField[] | null {
                 ? (/[؀-ۿ]/.test(label)
                     ? ['قيد الانتظار', 'قيد الإصلاح', 'تم الإصلاح']
                     : ['Pending', 'In progress', 'Completed'])
-                : (/[؀-ۿ]/.test(label) ? ['نعم', 'لا'] : ['Yes', 'No'])
+                : toggle
+                    ? (/[؀-ۿ]/.test(label) ? ['لا', 'نعم'] : ['No', 'Yes'])
+                    : (/[؀-ۿ]/.test(label) ? ['نعم', 'لا'] : ['Yes', 'No'])
             : undefined;
-        out.push({ label, key, type, role, options });
+        out.push({ label, key, type, role, options, ...(toggle ? { control: 'toggle' as const } : {}) });
     }
     //  THE SAME FLOOR, WRITTEN TWICE — AND ONE COPY WAS NOT MOVED.
     //
@@ -3376,6 +3392,18 @@ export function columnEdit(requestRaw: string): ColumnEdit {
  */
 export function heAskedForATable(request: string, fieldCount: number): boolean {
     const said = String(request || '');
+    // A layout grid arranges controls/cards; a data grid presents records.
+    // Classify each mention independently so a card grid cannot hide a later
+    // explicit data-grid request in the same sentence.
+    const namedDataGrid = Array.from(said.matchAll(/\bgrid\b/gi)).some(match => {
+        const before = said.slice(Math.max(0, match.index! - 48), match.index);
+        const after = said.slice(match.index! + match[0].length, match.index! + match[0].length + 64);
+        if (/\bdata\s*$/i.test(before)) return true;
+        if (/\b(?:css|css3|card|photo|image|form)\s*[- ]?\s*$/i.test(before)) return false;
+        if (/^\s*(?:[- ]based\s+)?layout\b/i.test(after)) return false;
+        if (/^\s+of\s+(?:(?:responsive|interactive|product|form)\s+)*(?:cards|photos|images|fields|inputs|controls)\b/i.test(after)) return false;
+        return true;
+    });
     /**
      * The stem is too wide HERE, and that is a measurement, not a preference:
      * `saysWord(said, 'جدول')` answers TRUE for «الجدولة الزمنية» — Snowball
@@ -3387,7 +3415,8 @@ export function heAskedForATable(request: string, fieldCount: number): boolean {
     const namedTheShape = words(said)
         .map(w => normalise(w).replace(/^(?:وال|فال|بال|كال|[وفبكل]ال|ال)/, ''))
         .some(w => w === 'جدول' || w === 'جداول')
-        || /\b(table|grid|spreadsheet)\b/i.test(said);
+        || /\b(table|spreadsheet)\b/i.test(said)
+        || namedDataGrid;
     return namedTheShape && fieldCount >= 2;
 }
 
@@ -3462,6 +3491,7 @@ export function fieldsFromRequest(requestRaw: string, isAr: boolean): AppField[]
         ),
         ...(c.min !== undefined ? { min: c.min } : {}),
         ...(c.minExclusive ? { minExclusive: true } : {}),
+        ...(c.control ? { control: c.control } : {}),
     }));
 }
 
@@ -3644,8 +3674,14 @@ export function requestedFilterFields(requestRaw: string, fields: Array<{ key: s
     // fields. Other forms such as “filters for status and rating” remain
     // available to the normal phrase parser.
     const requestForClause = request.replace(/(?:status\s+filter|فلتر\s*الحالة|فلترة\s*(?:حسب|على)\s*الحالة|تصفية\s*(?:حسب|على)\s*الحالة)/giu, '');
-    const clause = requestForClause.match(/(?:filters?|filtering|فلترة|تصفية|فلاتر|مرشحات?)\s*(?:for|by|حسب|على|ل(?:ـ|ل)?|من)?\s*([^.!?؟\n]+)/iu)?.[1] || '';
-    if (!clause) return keys;
+    const clause = requestForClause.match(/(?:filter(?:ing|s)?|فلترة|تصفية|فلاتر|مرشحات?)\s*(?:for|by|حسب|على|ل(?:ـ|ل)?|من)?\s*([^.!?؟\n]+)/iu)?.[1] || '';
+    if (!clause) {
+        if (!keys.length && /\bfilter(?:ing|s)?\b|فلترة|تصفية/iu.test(request)) {
+            const natural = fields.find(field => field.role === 'flag' || field.type === 'select');
+            if (natural) keys.push(natural.key);
+        }
+        return keys;
+    }
     const stop = clause.split(/\s+(?:plus|with|and\s+(?:a|an|the)?\s*(?:progress|metric)|ومقياس|وإضافة|واضافة)\b/iu)[0];
     const tokens = new Set(stop.split(/[^\p{L}\p{N}_]+/u).filter(t => t.length >= 2));
     for (const field of fields) {
@@ -3653,6 +3689,10 @@ export function requestedFilterFields(requestRaw: string, fields: Array<{ key: s
         const labelTokens = label.split(/[^\p{L}\p{N}_]+/u).filter(t => t.length >= 2);
         const matches = tokens.has(label) || labelTokens.some(token => token.length >= 3 && tokens.has(token));
         if (matches && !keys.includes(field.key)) keys.push(field.key);
+    }
+    if (!keys.length && /^\s*[,،]/u.test(clause)) {
+        const natural = fields.find(field => field.role === 'flag' || field.type === 'select');
+        if (natural) keys.push(natural.key);
     }
     return keys;
 }

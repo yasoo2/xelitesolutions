@@ -10,6 +10,16 @@ import { executeTool } from '../../services/ToolService';
 import { normalizeConceptualArtifactPath } from '../runtime-artifact-path';
 import { compactApiSelectionArtifact } from '../../../core/api-discovery/integration-profiles';
 import type { ApiSelectionArtifact } from '../../../core/api-discovery/types';
+import {
+    compactVerificationLedger,
+    isVerificationTool,
+    recordVerification,
+    selectVerification,
+    verificationResultFrom,
+    verificationResultFromToolResult,
+    summarizeVerificationLedger,
+    type VerificationSelection,
+} from '../../../core/quality/verification-ledger';
 
 type PhaseDeliveryEvidence = {
     accepted?: boolean;
@@ -65,6 +75,22 @@ function mergePhaseDeliveryEvidence(
 
 import { resolveToolPath } from '../utils';
 import { resolvePlannedTool, unrunnableShellStep, adaptPlannedArgs, adaptPlannedArgsFromDescription, plannedArgsIssue, LATE_BOUND_PLAN_FIELDS } from '../../../core/orchestrator/plan-tools';
+
+const FILE_MUTATION_TOOLS = new Set([
+    'write_file', 'ai_write_file', 'file_edit', 'file_edit_advanced', 'bulk_file_generator',
+]);
+
+function mutationPathsFor(toolName: string, args: Record<string, any>): string[] {
+    if (!FILE_MUTATION_TOOLS.has(toolName)) return [];
+    const direct = [args.path, args.filename, args.filePath, args.targetPath]
+        .map(value => String(value || '').trim())
+        .filter(Boolean);
+    const nested = Array.isArray(args.files)
+        ? args.files.flatMap((item: any) => [item?.path, item?.filename, item?.filePath]
+            .map(value => String(value || '').trim()).filter(Boolean))
+        : [];
+    return Array.from(new Set([...direct, ...nested])).slice(0, 64);
+}
 
 /**
  * Add only trusted project evidence to a phase-level project_run call.
@@ -1041,6 +1067,7 @@ export class PhaseExecutorTool implements ToolDefinition {
             completedTasks: { type: 'number' as const },
             executedTasks: { type: 'number' as const },
             skippedTasks: { type: 'number' as const },
+            reusedTasks: { type: 'number' as const },
             totalTasks: { type: 'number' as const },
             results: { type: 'array' as const },
             nextPhase: { type: 'number' as const }
@@ -1081,7 +1108,7 @@ export class PhaseExecutorTool implements ToolDefinition {
             task: string;
             tool: string;
             ok: boolean;
-            execution?: 'ran' | 'skipped';
+            execution?: 'ran' | 'skipped' | 'reused';
             error?: string;
             message?: string;
             command?: string;
@@ -1100,6 +1127,7 @@ export class PhaseExecutorTool implements ToolDefinition {
         }> = [];
         let completedCount = 0;
         let phaseDelivery: PhaseDeliveryEvidence | undefined;
+        let verificationLedger = compactVerificationLedger(projectContext?.verificationLedger);
         // A discovery task may have completed in an earlier phase. Rebuild the
         // receipt from Joe-maintained profile data at this boundary; executable
         // fields such as baseUrl, auth, env names, and provider names are never
@@ -1158,6 +1186,57 @@ export class PhaseExecutorTool implements ToolDefinition {
             isCancelled: context?.isCancelled,
             cancellation: context?.cancellation,
         };
+        const trustedWorkspaceRoot = executionContext.workspaceId
+            ? String(workspaceService.getActiveRoot(executionContext.workspaceId) || '').trim()
+            : '';
+        const runtimeTargetFor = (toolName: string, args: Record<string, any>) => {
+            if (!/^(?:browser_|visual_qa$)/u.test(toolName)) return '';
+            return String(
+                args.url
+                || args.previewUrl
+                || args.baseUrl
+                || executionContext.browserSessionId
+                || '',
+            ).trim();
+        };
+        const runtimeRevisionFor = (toolName: string) => {
+            if (!/^(?:browser_|visual_qa$)/u.test(toolName)) return '';
+            const activeProject = (global as any).joeProjects?.[sessionProjectKey(projectContext?.sessionId)];
+            const acceptedProjectRevision = samePipelineRun(executionContext.runId, activeProject?.pipelineRunId)
+                ? activeProject?.updatedAt
+                : '';
+            const activePage = (global as any).joePages?.[sessionProjectKey(projectContext?.sessionId)];
+            return String(
+                projectContext?.browserRuntimeRevision
+                || acceptedProjectRevision
+                || activePage?.updatedAt
+                || '',
+            ).trim();
+        };
+        const verificationMetricsFrom = (
+            result: any,
+            timing: { selectedAt?: number; startedAt?: number; lastActivityAt?: number; finishedAt?: number; retryCount?: number } = {},
+        ) => {
+            const finishedAt = timing.finishedAt || Date.now();
+            const suppliedQueue = result?.output?.telemetry?.queueMs ?? result?.output?.queueMs ?? result?.queueMs;
+            const suppliedIdle = result?.output?.telemetry?.idleMs ?? result?.output?.idleMs ?? result?.idleMs;
+            const suppliedRetries = result?.output?.telemetry?.retryCount ?? result?.output?.retryCount ?? result?.retryCount;
+            return {
+            evidenceLocation: String(
+                result?.output?.evidenceLocation
+                || result?.output?.reportPath
+                || result?.output?.url
+                || '',
+            ).trim(),
+            queueMs: suppliedQueue == null
+                ? Math.max(0, Number(timing.startedAt || 0) - Number(timing.selectedAt || timing.startedAt || 0))
+                : Number(suppliedQueue),
+            idleMs: suppliedIdle == null
+                ? Math.max(0, finishedAt - Number(timing.lastActivityAt || timing.startedAt || finishedAt))
+                : Number(suppliedIdle),
+            retryCount: suppliedRetries == null ? Number(timing.retryCount || 0) : Number(suppliedRetries),
+        };
+        };
 
         // `executionContext` is created before the first builder task runs, but
         // the builder may establish the real artifact root later in the same
@@ -1165,6 +1244,7 @@ export class PhaseExecutorTool implements ToolDefinition {
         // otherwise ai_write_file validates against the old workspace root while
         // npm_manager/auto_tester operate inside the newly created project.
         const plannedPhaseFiles: string[] = [];
+        const changedPhaseFiles: string[] = [];
         const liveExecutionContext = () => ({
             ...executionContext,
             projectRoot: projectContext?.projectRootRuntimeBound === true && projectContext?.projectRoot
@@ -1430,17 +1510,120 @@ export class PhaseExecutorTool implements ToolDefinition {
                     continue;
                 }
 
+                let verificationSelection: VerificationSelection | undefined;
+                let verificationStartedAt = 0;
+                let verificationSelectedAt = 0;
+                let verificationLastActivityAt = 0;
+                const explicitlyMarkedVerification = Boolean(
+                    task.verificationId
+                    || task.verificationMode
+                    || task.verificationBoundary
+                    || rawTaskArgs.verificationId
+                    || rawTaskArgs.verificationMode
+                    || rawTaskArgs.verificationBoundary,
+                );
+                if (isVerificationTool(toolName, toolArgs, explicitlyMarkedVerification)) {
+                    const scopeRoot = String(
+                        toolArgs.cwd
+                        || toolArgs.projectPath
+                        || toolArgs.path
+                        || (projectContext?.projectRootRuntimeBound === true ? projectContext?.projectRoot : '')
+                        || workspaceService.getActiveRoot(executionContext.workspaceId)
+                        || '',
+                    ).trim();
+                    const verificationId = String(
+                        task.verificationId
+                        || rawTaskArgs.verificationId
+                        || `${toolName}:${taskDesc}`,
+                    ).trim().slice(0, 240);
+                    const relevantPaths = [
+                        ...(Array.isArray(task.relevantPaths) ? task.relevantPaths : []),
+                        ...(Array.isArray(rawTaskArgs.verificationRelevantPaths) ? rawTaskArgs.verificationRelevantPaths : []),
+                    ].map((item: unknown) => String(item || '').trim()).filter(Boolean);
+                    const mode = task.verificationMode
+                        || rawTaskArgs.verificationMode
+                        || (projectContext?.isFinalPhase === true ? 'final' : 'focused');
+                    const boundary = String(task.verificationBoundary || rawTaskArgs.verificationBoundary || '').trim();
+                    if (!relevantPaths.length && !boundary) relevantPaths.push(...changedPhaseFiles);
+                    const runtimeRevision = runtimeRevisionFor(toolName);
+                    delete toolArgs.verificationId;
+                    delete toolArgs.verificationMode;
+                    delete toolArgs.verificationBoundary;
+                    delete toolArgs.verificationRelevantPaths;
+                    delete toolArgs.verificationRuntimeRevision;
+                    if (scopeRoot) {
+                        const selected = selectVerification(verificationLedger, {
+                            checkId: verificationId,
+                            tool: toolName,
+                            args: toolArgs,
+                            workspaceId: String(executionContext.workspaceId || ''),
+                            workspaceRoot: trustedWorkspaceRoot,
+                            scopeRoot,
+                            relevantPaths,
+                            boundary,
+                            boundaries: projectContext?.verificationBoundaries,
+                            runtimeTarget: runtimeTargetFor(toolName, toolArgs),
+                            runtimeRevision,
+                            mode,
+                        });
+                        verificationLedger = selected.ledger;
+                        verificationSelection = selected.selection;
+                        appendLog(`[PhaseExecutor] verification ${selected.selection.action}: ${verificationId} — ${selected.selection.reason}`);
+                        if (selected.selection.action === 'reuse') {
+                            results.push({
+                                task: taskDesc,
+                                tool: toolName,
+                                ok: true,
+                                execution: 'reused',
+                                message: selected.selection.reason,
+                            });
+                            completedCount++;
+                            continue;
+                        }
+                        verificationSelectedAt = Date.now();
+                    }
+                }
+
                 try {
+                    if (verificationSelection) {
+                        verificationStartedAt = Date.now();
+                        verificationLastActivityAt = verificationStartedAt;
+                    }
                     const toolResult = await executeTool(toolName, toolArgs, {
                         ...liveExecutionContext(),
-                        onProgress: (m: string) => context?.onProgress?.(`[${toolName}] ${m}`),
+                        onProgress: (m: string) => {
+                            if (verificationSelection) verificationLastActivityAt = Date.now();
+                            context?.onProgress?.(`[${toolName}] ${m}`);
+                        },
                     });
                     assertRunActive();
+                    const verificationOutcome = verificationSelection
+                        ? verificationResultFromToolResult(toolResult)
+                        : undefined;
 
-                    if (toolResult.ok) {
+                    if (toolResult.ok && (!verificationOutcome || verificationOutcome === 'passed')) {
+                        if (verificationSelection) {
+                            verificationLedger = recordVerification(
+                                verificationLedger,
+                                verificationSelection,
+                                verificationOutcome || 'passed',
+                                Date.now() - verificationStartedAt,
+                                Date.now(),
+                                verificationMetricsFrom(toolResult, {
+                                    selectedAt: verificationSelectedAt,
+                                    startedAt: verificationStartedAt,
+                                    lastActivityAt: verificationLastActivityAt,
+                                }),
+                            );
+                        }
                         appendLog(`[PhaseExecutor] ✅ Task ${i + 1} completed: ${toolName}`);
                         bindRuntimeProjectFromEvidence(toolName, toolArgs, toolResult, projectContext, executionContext.runId, logs);
                         syncRuntimeProjectContext(projectContext, executionContext.runId, logs);
+                        changedPhaseFiles.push(...mutationPathsFor(toolName, toolArgs));
+                        if (changedPhaseFiles.length > 64) changedPhaseFiles.splice(0, changedPhaseFiles.length - 64);
+                        if (!verificationSelection && /^(?:browser_|visual_qa$)/u.test(toolName)) {
+                            projectContext.browserRuntimeRevision = `interaction:${executionContext.runId || 'run'}:${Date.now()}:${i}`;
+                        }
                         /**
                          * THE BUILDER'S OWN WORDS SURVIVE THE PHASE.
                          *
@@ -1504,6 +1687,20 @@ export class PhaseExecutorTool implements ToolDefinition {
                         });
                         completedCount++;
                     } else {
+                        if (verificationSelection) {
+                            verificationLedger = recordVerification(
+                                verificationLedger,
+                                verificationSelection,
+                                verificationResultFromToolResult(toolResult),
+                                Date.now() - verificationStartedAt,
+                                Date.now(),
+                                verificationMetricsFrom(toolResult, {
+                                    selectedAt: verificationSelectedAt,
+                                    startedAt: verificationStartedAt,
+                                    lastActivityAt: verificationLastActivityAt,
+                                }),
+                            );
+                        }
                         // A builder may have written a real artifact and returned ok:false
                         // only because its delivery/QA gate is blocked. Bind that artifact
                         // before recording the failure; otherwise every following task
@@ -1514,7 +1711,11 @@ export class PhaseExecutorTool implements ToolDefinition {
                         // evidence, so ordinary failed tools cannot relabel the workspace.
                         bindRuntimeProjectFromEvidence(toolName, toolArgs, toolResult, projectContext, executionContext.runId, logs);
                         syncRuntimeProjectContext(projectContext, executionContext.runId, logs);
-                        const errMsg = String(toolResult.error || 'Unknown error');
+                        const errMsg = String(
+                            toolResult.error
+                            || (verificationOutcome ? `Verification ${verificationOutcome}` : '')
+                            || 'Unknown error',
+                        );
                         const failedOutput = (toolResult as any)?.output || {};
                         const deliveryEvidence = compactPhaseDeliveryEvidence(failedOutput.delivery);
                         phaseDelivery = mergePhaseDeliveryEvidence(phaseDelivery, deliveryEvidence);
@@ -1622,7 +1823,7 @@ export class PhaseExecutorTool implements ToolDefinition {
                         const recoverableFailure = (toolResult as any)?.recoverable === true;
                         if (recoverableFailure) {
                             appendLog('[PhaseExecutor] ↪️ Recoverable task failure recorded; continuing so downstream verification and self-fix can use the exact evidence.');
-                        } else if (task.priority === 'high' || task.required === true) {
+                        } else if (!verificationSelection && (task.priority === 'high' || task.required === true)) {
                             appendLog('[PhaseExecutor] ⚠️ High-priority task failed. Retrying once...');
                             try {
                                 assertRunActive();
@@ -1649,6 +1850,20 @@ export class PhaseExecutorTool implements ToolDefinition {
                         }
                     }
                 } catch (toolError: any) {
+                    if (verificationSelection) {
+                        verificationLedger = recordVerification(
+                            verificationLedger,
+                            verificationSelection,
+                            verificationResultFrom(toolError, false),
+                            Date.now() - verificationStartedAt,
+                            Date.now(),
+                            verificationMetricsFrom(undefined, {
+                                selectedAt: verificationSelectedAt,
+                                startedAt: verificationStartedAt,
+                                lastActivityAt: verificationLastActivityAt,
+                            }),
+                        );
+                    }
                     const errMsg = String(toolError?.message || toolError || 'Execution error');
                     if (context?.isCancelled?.() || errMsg.includes('run_cancelled_by_owner')) {
                         throw new Error('run_cancelled_by_owner');
@@ -1703,6 +1918,7 @@ export class PhaseExecutorTool implements ToolDefinition {
 
             const taskResults = results.slice();
             const skippedCount = taskResults.filter(r => r.execution === 'skipped').length;
+            const reusedCount = taskResults.filter(r => r.execution === 'reused').length;
             const executedCount = taskResults.filter(r => r.execution === 'ran').length;
             const failedCount = taskResults.filter(r => r.execution === 'ran' && !r.ok).length;
             const allOk = taskResults.length > 0 && taskResults.every(r => r.ok);
@@ -1720,17 +1936,21 @@ export class PhaseExecutorTool implements ToolDefinition {
             let verificationFailed = false;
             let verificationUnavailable = false;
 
-            appendLog(`[PhaseExecutor] Phase ${phaseTag} ${status}: ${executedCount}/${totalTasks} executed · ${skippedCount} skipped${failedCount ? ` · ${failedCount} failed` : ''}`);
+            appendLog(`[PhaseExecutor] Phase ${phaseTag} ${status}: ${executedCount}/${totalTasks} executed · ${skippedCount} skipped · ${reusedCount} reused${failedCount ? ` · ${failedCount} failed` : ''}`);
 
-            if (phase.verificationTask && allOk && executedCount > 0) {
+            if (phase.verificationTask && allOk && (executedCount + reusedCount) > 0) {
                 assertRunActive();
                 const vTask = phase.verificationTask;
-                // Same law as the tasks: a verification step that names a tool
-                // nobody has verifies nothing. project_detect always exists and
-                // answers the only question that matters — is it really there?
-                const vToolName = resolvePlannedTool(String(vTask.tool || '').trim()).tool || 'project_detect';
+                // Detection is not acceptance evidence; never substitute it for
+                // an unavailable or unsupported verification contract.
+                const requestedVerificationTool = String(vTask.tool || '').trim();
+                const vToolName = resolvePlannedTool(requestedVerificationTool).tool || requestedVerificationTool;
                 const vTaskDesc = String(vTask.task || 'Verify phase output');
                 appendLog(`[PhaseExecutor] 🧪 Running verification: "${vTaskDesc}" with ${vToolName}`);
+                let phaseVerificationSelection: VerificationSelection | undefined;
+                let phaseVerificationStartedAt = 0;
+                let phaseVerificationSelectedAt = 0;
+                let phaseVerificationLastActivityAt = 0;
 
                 try {
                     // Verification is a real tool invocation, not privileged prose.
@@ -1759,7 +1979,32 @@ export class PhaseExecutorTool implements ToolDefinition {
                     inheritRuntimeProjectArguments(vToolName, plannedVerification, projectContext, logs);
                     const adaptedVerification = adaptPlannedArgs(vToolName, plannedVerification);
                     const verificationArgs = adaptPlannedArgsFromDescription(vToolName, adaptedVerification, vTaskDesc);
-                    const verificationArgsIssue = plannedArgsIssue(vToolName, verificationArgs);
+                    const verificationRelevantPaths = [
+                        ...(Array.isArray(vTask.relevantPaths) ? vTask.relevantPaths : []),
+                        ...(Array.isArray(verificationArgs.verificationRelevantPaths) ? verificationArgs.verificationRelevantPaths : []),
+                    ].map((item: unknown) => String(item || '').trim()).filter(Boolean);
+                    const verificationMode = vTask.verificationMode
+                        || verificationArgs.verificationMode
+                        || (projectContext?.isFinalPhase === true ? 'final' : 'affected');
+                    const verificationBoundary = String(vTask.verificationBoundary || verificationArgs.verificationBoundary || '').trim();
+                    if (!verificationRelevantPaths.length && !verificationBoundary) {
+                        verificationRelevantPaths.push(...changedPhaseFiles);
+                    }
+                    const runtimeRevision = runtimeRevisionFor(vToolName);
+                    const verificationId = String(
+                        vTask.verificationId
+                        || verificationArgs.verificationId
+                        || `${vToolName}:${vTaskDesc}`,
+                    ).trim().slice(0, 240);
+                    delete verificationArgs.verificationId;
+                    delete verificationArgs.verificationMode;
+                    delete verificationArgs.verificationBoundary;
+                    delete verificationArgs.verificationRelevantPaths;
+                    delete verificationArgs.verificationRuntimeRevision;
+                    const verificationArgsIssue = !isVerificationTool(requestedVerificationTool, verificationArgs)
+                        || !isVerificationTool(vToolName, verificationArgs)
+                        ? 'verification_unavailable: unsupported verification tool contract'
+                        : plannedArgsIssue(vToolName, verificationArgs);
                     if (verificationArgsIssue) {
                         appendLog(`[PhaseExecutor] ⚠️ Verification input invalid: ${verificationArgsIssue}`);
                         const checkerError = vToolName === 'browser_run'
@@ -1770,25 +2015,98 @@ export class PhaseExecutorTool implements ToolDefinition {
                         verificationUnavailable = vToolName === 'browser_run';
                         status = 'partial';
                     } else {
-                        const vResult = await executeTool(vToolName, verificationArgs, executionContext);
-
-                        if (vResult.ok) {
-                        appendLog(`[PhaseExecutor] ✅ Verification passed for Phase ${phaseTag}`);
-                        results.push({ task: vTaskDesc, tool: vToolName, ok: true, execution: 'ran' });
+                        const scopeRoot = String(
+                            verificationArgs.cwd
+                            || verificationArgs.projectPath
+                            || verificationArgs.path
+                            || (projectContext?.projectRootRuntimeBound === true ? projectContext?.projectRoot : '')
+                            || workspaceService.getActiveRoot(executionContext.workspaceId)
+                            || '',
+                        ).trim();
+                        const selected = scopeRoot
+                            ? selectVerification(verificationLedger, {
+                                checkId: verificationId,
+                                tool: vToolName,
+                                args: verificationArgs,
+                                workspaceId: String(executionContext.workspaceId || ''),
+                                workspaceRoot: trustedWorkspaceRoot,
+                                scopeRoot,
+                                relevantPaths: verificationRelevantPaths,
+                                boundary: verificationBoundary,
+                                boundaries: projectContext?.verificationBoundaries,
+                                runtimeTarget: runtimeTargetFor(vToolName, verificationArgs),
+                                runtimeRevision,
+                                mode: verificationMode,
+                            })
+                            : undefined;
+                        if (selected) {
+                            verificationLedger = selected.ledger;
+                            phaseVerificationSelection = selected.selection;
+                            appendLog(`[PhaseExecutor] verification ${selected.selection.action}: ${verificationId} — ${selected.selection.reason}`);
+                        }
+                        if (selected?.selection.action === 'reuse') {
+                            appendLog(`[PhaseExecutor] ✅ Verification reused for Phase ${phaseTag}`);
+                            results.push({ task: vTaskDesc, tool: vToolName, ok: true, execution: 'reused', message: selected.selection.reason });
                         } else {
-                            const vErr = String(vResult.error || 'Verification failed');
-                            const checkerUnavailable = vToolName === 'browser_run'
-                                && /^(?:browser_unavailable|unauthorized|forbidden|missing_secrets|login_2fa_required|login_not_completed)$/i.test(vErr.trim());
-                            appendLog(checkerUnavailable
-                                ? `[PhaseExecutor] ⚠️ Verification unavailable: ${vErr}`
-                                : `[PhaseExecutor] ⚠️ Verification failed: ${vErr}`);
-                            results.push({ task: vTaskDesc, tool: vToolName, ok: false, execution: 'ran', error: checkerUnavailable ? `verification_unavailable: ${vErr}` : vErr });
-                            verificationFailed = true;
-                            verificationUnavailable = checkerUnavailable;
-                            status = 'partial';
+                            phaseVerificationSelectedAt = Date.now();
+                            const startedAt = Date.now();
+                            phaseVerificationStartedAt = startedAt;
+                            phaseVerificationLastActivityAt = startedAt;
+                            const vResult = await executeTool(vToolName, verificationArgs, {
+                                ...executionContext,
+                                onProgress: (message: string) => {
+                                    phaseVerificationLastActivityAt = Date.now();
+                                    executionContext.onProgress?.(message);
+                                },
+                            });
+                            if (selected) {
+                                verificationLedger = recordVerification(
+                                    verificationLedger,
+                                    selected.selection,
+                                    verificationResultFromToolResult(vResult),
+                                    Date.now() - startedAt,
+                                    Date.now(),
+                                    verificationMetricsFrom(vResult, {
+                                        selectedAt: phaseVerificationSelectedAt,
+                                        startedAt: phaseVerificationStartedAt,
+                                        lastActivityAt: phaseVerificationLastActivityAt,
+                                    }),
+                                );
+                            }
+
+                            const verificationOutcome = verificationResultFromToolResult(vResult);
+                            if (vResult.ok && verificationOutcome === 'passed') {
+                                appendLog(`[PhaseExecutor] ✅ Verification passed for Phase ${phaseTag}`);
+                                results.push({ task: vTaskDesc, tool: vToolName, ok: true, execution: 'ran' });
+                            } else {
+                                const vErr = String(vResult.error || 'Verification failed');
+                                const checkerUnavailable = vToolName === 'browser_run'
+                                    && /^(?:browser_unavailable|unauthorized|forbidden|missing_secrets|login_2fa_required|login_not_completed)$/i.test(vErr.trim());
+                                appendLog(checkerUnavailable
+                                    ? `[PhaseExecutor] ⚠️ Verification unavailable: ${vErr}`
+                                    : `[PhaseExecutor] ⚠️ Verification failed: ${vErr}`);
+                                results.push({ task: vTaskDesc, tool: vToolName, ok: false, execution: 'ran', error: checkerUnavailable ? `verification_unavailable: ${vErr}` : vErr });
+                                verificationFailed = true;
+                                verificationUnavailable = checkerUnavailable;
+                                status = 'partial';
+                            }
                         }
                     }
                 } catch (vError: any) {
+                    if (phaseVerificationSelection && phaseVerificationStartedAt) {
+                        verificationLedger = recordVerification(
+                            verificationLedger,
+                            phaseVerificationSelection,
+                            verificationResultFrom(vError, false),
+                            Date.now() - phaseVerificationStartedAt,
+                            Date.now(),
+                            verificationMetricsFrom(undefined, {
+                                selectedAt: phaseVerificationSelectedAt,
+                                startedAt: phaseVerificationStartedAt,
+                                lastActivityAt: phaseVerificationLastActivityAt,
+                            }),
+                        );
+                    }
                     appendLog(`[PhaseExecutor] ⚠️ Verification error: ${vError.message}`);
                     results.push({ task: vTaskDesc, tool: vToolName, ok: false, execution: 'ran', error: vError.message });
                     verificationFailed = true;
@@ -1818,22 +2136,71 @@ export class PhaseExecutorTool implements ToolDefinition {
                     const projectDir = pkgPath.replace(/\\/g, '/').split('/').slice(0, -1).join('/');
                     appendLog(`[PhaseExecutor] 🔍 Auto-running build check in ${projectDir || 'workspace root'}...`);
                     try {
-                        const buildResult = await executeTool('shell_execute', {
+                        const buildArgs = {
                             // --if-present: a project without a build script is
                             // NOT a failure (most simple Node apps have none).
                             command: 'npm run --if-present build 2>&1 || echo BUILD_CHECK_FAILED',
                             ...(projectDir ? { cwd: projectDir } : {}),
                             timeout: 300000,
-                        }, executionContext);
-                        const buildOutput = String((buildResult as any)?.output?.stdout || (buildResult as any)?.output || '');
-                        if (buildOutput.includes('BUILD_CHECK_FAILED') || !buildResult.ok) {
-                            const buildError = String((buildResult as any)?.error || 'Auto-build check failed');
-                            appendLog(`[PhaseExecutor] ⚠️ Auto-build check found issues — orchestrator should route to self-fix: ${buildError}`);
-                            results.push({ task: 'Auto-build check', tool: 'shell_execute', ok: false, execution: 'ran', error: buildError });
-                            verificationFailed = true;
-                            status = 'partial';
+                        };
+                        const buildRoot = projectDir
+                            ? path.resolve(String(projectDir))
+                            : String(projectContext?.projectRoot || workspaceService.getActiveRoot(executionContext.workspaceId) || '').trim();
+                        const selected = buildRoot
+                            ? selectVerification(verificationLedger, {
+                                checkId: `auto-build:${buildRoot}`,
+                                tool: 'shell_execute',
+                                args: buildArgs,
+                                workspaceId: String(executionContext.workspaceId || ''),
+                                workspaceRoot: trustedWorkspaceRoot,
+                                scopeRoot: buildRoot,
+                                mode: 'affected',
+                            })
+                            : undefined;
+                        if (selected) {
+                            verificationLedger = selected.ledger;
+                            appendLog(`[PhaseExecutor] verification ${selected.selection.action}: auto-build — ${selected.selection.reason}`);
+                        }
+                        if (selected?.selection.action === 'reuse') {
+                            appendLog('[PhaseExecutor] ✅ Auto-build check reused from matching content evidence');
                         } else {
-                            appendLog('[PhaseExecutor] ✅ Auto-build check passed');
+                            const buildSelectedAt = Date.now();
+                            const buildStartedAt = Date.now();
+                            const buildResult = await executeTool('shell_execute', buildArgs, executionContext);
+                            const buildOutput = String((buildResult as any)?.output?.stdout || (buildResult as any)?.output || '');
+                            if (buildOutput.includes('BUILD_CHECK_FAILED') || !buildResult.ok) {
+                                const buildError = String((buildResult as any)?.error || 'Auto-build check failed');
+                                if (selected) verificationLedger = recordVerification(
+                                    verificationLedger,
+                                    selected.selection,
+                                verificationResultFrom(buildError, false),
+                                Date.now() - buildStartedAt,
+                                Date.now(),
+                                verificationMetricsFrom(buildResult, {
+                                    selectedAt: buildSelectedAt,
+                                    startedAt: buildStartedAt,
+                                    lastActivityAt: buildStartedAt,
+                                }),
+                                );
+                                appendLog(`[PhaseExecutor] ⚠️ Auto-build check found issues — orchestrator should route to self-fix: ${buildError}`);
+                                results.push({ task: 'Auto-build check', tool: 'shell_execute', ok: false, execution: 'ran', error: buildError });
+                                verificationFailed = true;
+                                status = 'partial';
+                            } else {
+                                if (selected) verificationLedger = recordVerification(
+                                    verificationLedger,
+                                    selected.selection,
+                                'passed',
+                                Date.now() - buildStartedAt,
+                                Date.now(),
+                                verificationMetricsFrom(buildResult, {
+                                    selectedAt: buildSelectedAt,
+                                    startedAt: buildStartedAt,
+                                    lastActivityAt: buildStartedAt,
+                                }),
+                                );
+                                appendLog('[PhaseExecutor] ✅ Auto-build check passed');
+                            }
                         }
                     } catch {
                         appendLog('[PhaseExecutor] ℹ️ Auto-build check errored — treated as skipped, not as failure');
@@ -1870,6 +2237,7 @@ export class PhaseExecutorTool implements ToolDefinition {
                     completedTasks: completedCount,
                     executedTasks: executedCount,
                     skippedTasks: skippedCount,
+                    reusedTasks: reusedCount,
                     totalTasks,
                     results,
                     nextPhase: phase.phaseNumber + 1,
@@ -1878,7 +2246,9 @@ export class PhaseExecutorTool implements ToolDefinition {
                     ...(verificationFailed ? { verificationFailed: true } : {}),
                     ...(verificationUnavailable ? { verificationUnavailable: true } : {}),
                     ...(phaseDelivery ? { delivery: phaseDelivery } : {}),
-                    ...(apiSelection ? { apiSelection } : {})
+                    ...(apiSelection ? { apiSelection } : {}),
+                    verificationLedger,
+                    verificationMetrics: summarizeVerificationLedger(verificationLedger),
                 },
                 logs
             };
@@ -1900,11 +2270,14 @@ export class PhaseExecutorTool implements ToolDefinition {
                     completedTasks: completedCount,
                     executedTasks: results.filter(r => r.execution === 'ran').length,
                     skippedTasks: results.filter(r => r.execution === 'skipped').length,
+                    reusedTasks: results.filter(r => r.execution === 'reused').length,
                     totalTasks: Array.isArray(phase?.tasks) ? phase.tasks.length : 0,
                     results,
                     nextPhase: phase?.phaseNumber,
                     ...(phaseDelivery ? { delivery: phaseDelivery } : {}),
-                    ...(apiSelection ? { apiSelection } : {})
+                    ...(apiSelection ? { apiSelection } : {}),
+                    verificationLedger,
+                    verificationMetrics: summarizeVerificationLedger(verificationLedger),
                 },
                 logs
             };

@@ -5,12 +5,23 @@
  * benchmark, not a second execution path: building and repair still belong to
  * project_pipeline and the normal AgentLoop/ToolService gates.
  */
-import { PlanningEngine } from '../../core/orchestrator/PlanningEngine';
-import * as intelligentRouter from '../../core/llm/intelligent-router';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
+import { spawnSync } from 'child_process';
+import {
+    createVerificationLedger,
+    recordVerification,
+    selectVerification,
+} from '../../core/quality/verification-ledger';
 
 process.env.PERSISTENCE_MODE = 'JSON';
 process.env.ENABLE_AUTH_BYPASS = 'true';
 process.env.OFFLINE_MODE = 'true';
+process.env.JWT_SECRET = process.env.JWT_SECRET || 'benchmark-only';
+
+// Configuration is read while Joe's planning modules load. Require them only
+// after this deterministic benchmark has selected its isolated local mode.
 
 type Case = {
     id: string;
@@ -103,7 +114,91 @@ function toolsOf(plan: any): string[] {
         .filter(Boolean);
 }
 
+function runVerificationEfficiencyBenchmark() {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-verification-benchmark-'));
+    try {
+        fs.mkdirSync(path.join(root, 'src'), { recursive: true });
+        fs.mkdirSync(path.join(root, 'scripts'), { recursive: true });
+        fs.writeFileSync(path.join(root, 'scripts', 'verify.cjs'),
+            "const assert = require('node:assert/strict');\nassert.equal(require('../src/index.cjs').value, 2);\nconsole.log('value contract passed');\n");
+        fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ scripts: { test: 'node scripts/verify.cjs' } }));
+        fs.writeFileSync(path.join(root, 'package-lock.json'), '{"lockfileVersion":3}\n');
+        const descriptor = {
+            checkId: 'benchmark:focused-tests',
+            tool: 'shell_execute',
+            args: { command: 'node scripts/verify.cjs' },
+            workspaceId: 'benchmark-workspace',
+            workspaceRoot: root,
+            scopeRoot: root,
+            relevantPaths: ['src', 'scripts'],
+            mode: 'affected' as const,
+        };
+        const stages = [
+            { name: 'initial', source: 'exports.value = 2;\n', expected: 'passed' },
+            { name: 'unchanged', source: 'exports.value = 2;\n', expected: 'passed' },
+            { name: 'defect', source: 'exports.value = 0;\n', expected: 'failed' },
+            { name: 'repair', source: 'exports.value = 1 + 1;\n', expected: 'passed' },
+            { name: 'final', source: 'exports.value = 1 + 1;\n', expected: 'passed' },
+        ];
+        const runPolicy = (reuse: boolean) => {
+            let ledger = createVerificationLedger();
+            return stages.map(stage => {
+                fs.writeFileSync(path.join(root, 'src', 'index.cjs'), stage.source);
+                const selected = selectVerification(ledger, {
+                    ...descriptor,
+                    mode: stage.name === 'final' ? 'final' : 'affected',
+                });
+                ledger = selected.ledger;
+                const action = reuse ? selected.selection.action : 'run';
+                if (action === 'reuse') {
+                    return { stage: stage.name, action, result: selected.selection.receipt!.result,
+                        durationMs: 0, reason: selected.selection.reason, exitCode: null, output: '' };
+                }
+                const started = performance.now();
+                const child = spawnSync(process.execPath, ['scripts/verify.cjs'], {
+                    cwd: root, encoding: 'utf8', timeout: 10_000, windowsHide: true,
+                });
+                const durationMs = Math.max(0, performance.now() - started);
+                if (child.error || child.signal || child.status === null) {
+                    throw new Error(`verification child did not complete: ${child.error?.message || child.signal}`);
+                }
+                const result = child.status === 0 ? 'passed' : 'failed';
+                ledger = recordVerification(ledger, selected.selection, result, durationMs);
+                return { stage: stage.name, action, result, durationMs,
+                    reason: reuse ? selected.selection.reason : 'naive full-rerun policy',
+                    exitCode: child.status, output: `${child.stdout}${child.stderr}`.slice(0, 2_000) };
+            });
+        };
+        const naive = runPolicy(false);
+        const aware = runPolicy(true);
+        const expected = stages.map(stage => stage.expected);
+        const executed = aware.filter(check => check.action === 'run').length;
+        const reused = aware.length - executed;
+        const correct = [naive, aware].every(checks =>
+            JSON.stringify(checks.map(check => check.result)) === JSON.stringify(expected));
+        if (!correct || executed >= naive.length || aware[1].action !== 'reuse'
+            || aware[2].action !== 'run' || aware[3].action !== 'run' || aware[4].action !== 'run') {
+            throw new Error(`verification efficiency/correctness contract failed: ${JSON.stringify({ naive, aware })}`);
+        }
+        const report = { naiveExecutions: naive.length, executed, reused,
+            savedExecutions: naive.length - executed, sameVerdicts: correct, naive, aware,
+            scope: 'Real child-process checks of the ledger policy, not canonical-pipeline or live-UI acceptance.' };
+        const evidencePath = path.resolve('data/tests/verification-efficiency.json');
+        fs.mkdirSync(path.dirname(evidencePath), { recursive: true });
+        fs.writeFileSync(evidencePath, JSON.stringify(report, null, 2));
+        return { ...report, evidencePath };
+    } finally {
+        fs.rmSync(root, { recursive: true, force: true });
+    }
+}
+
 async function main() {
+    if (process.argv.includes('--verification-only')) {
+        console.log(JSON.stringify(runVerificationEfficiencyBenchmark(), null, 2));
+        return;
+    }
+    const { PlanningEngine } = require('../../core/orchestrator/PlanningEngine') as typeof import('../../core/orchestrator/PlanningEngine');
+    const intelligentRouter = require('../../core/llm/intelligent-router') as typeof import('../../core/llm/intelligent-router');
     const started = Date.now();
     const failures: string[] = [];
     const counts = new Map<string, number>();
@@ -153,6 +248,8 @@ async function main() {
     console.log(`Failed: ${failures.length}`);
     console.log(`Duration: ${Date.now() - started}ms`);
     console.log(`Tools: ${Array.from(counts.entries()).map(([tool, count]) => `${tool}=${count}`).join(', ') || '(none)'}`);
+    const verification = runVerificationEfficiencyBenchmark();
+    console.log(`Verification efficiency: naive=${verification.naiveExecutions}, executed=${verification.executed}, reused=${verification.reused}, saved=${verification.savedExecutions}`);
     if (failures.length) {
         console.error('\nFailures:\n' + failures.join('\n'));
         process.exitCode = 1;

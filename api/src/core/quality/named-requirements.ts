@@ -121,13 +121,21 @@ const OPENS_WITH_THE_ASKING = /^(?:please\s+)?(?:build|make|create|develop|desig
  */
 const IS_AN_INSTRUCTION_TO_JOE = new RegExp(
     '^(?:'
-    //  Bare imperatives that address the builder, not the build.
-    + 'open|navigate|click|tap|press|type|submit|observe|inspect|verify|test|retest|reload|refresh'
-    + '|fix|repair|report|check|confirm|ensure|make\\s+sure|do\\s+not|don\'t|avoid|skip|start\\s+by'
+    // UI action verbs can describe product behavior. A verb alone is a
+    // checklist item; with an object, require explicit execution context.
+    + '(?:open|navigate|click|tap|press|type|submit|reload|refresh|check)(?=\\s*(?:$|[:،,.]))'
+    + '|(?:open|navigate|click|tap|press|type|submit|reload|refresh|check)\\s+(?:and\\s+(?:inspect|test)\\s+)?(?:the\\s+)?(?:browser|preview|result|generated\\s+(?:app|page|site)|tests?|checks?)'
+    + '|observe|inspect|verify|test|retest|fix|repair|report|start\\s+by'
+    // These prefixes also introduce product constraints. Only exclude them
+    // when their object describes the builder's execution or reporting work.
+    + '|(?:do\\s+not|don\'t|avoid|skip)\\s+(?:the\\s+)?(?:deploy(?:ing)?|publish(?:ing)?|push(?:ing)?|claim(?:ing)?|report(?:ing)?|tests?|retest|inspect|run\\s+(?:the\\s+)?(?:tests?|checks?|build))'
+    + '|(?:ensure|confirm|make\\s+sure)\\s+(?:(?:that|the|all)\\s+)*(?:tests?\\s+(?:pass|run)|checks?\\s+(?:pass|run)|(?:final\\s+)?(?:verification|report)|(?:you|joe)\\s+(?:test|inspect|verify|report))'
+    + '|use\\s+(?:(?:focused|targeted|incremental|change-aware|cached|reused?)\\s+)?(?:checks?|tests?|verification)'
+    + '|(?:focused|targeted|incremental|change-aware)\\s+(?:checks?|tests?|verification)\\s+(?:while|during)\\s+(?:editing|development)(?=\\s*[.,;]?\\s*$)'
     + '|actually\\s+\\w+|find\\s+problem|test\\s+again'
     //  A tally of what Joe did, which is a report about the run.
     + '|number\\s+of\\s+\\w+|pages\\s+tested|forms\\s+tested|buttons\\s+tested'
-    + '|errors\\s+(?:discovered|fixed|found)|final\\s+verification'
+    + '|errors\\s+(?:discovered|fixed|found)|(?:then\\s+)?(?:one\\s+)?final(?:\\s+full)?\\s+verification'
     // A model often wraps an instruction in a noun phrase: "to test it in
     // the browser" or "an exploratory test". It is still work for Joe, not a
     // capability the generated artefact can contain. Keep these compound
@@ -147,7 +155,7 @@ const IS_AN_INSTRUCTION_TO_JOE = new RegExp(
 export function isJudgeable(text: string): boolean {
     const t = String(text || '').trim();
     if (t.length < 3) return false;
-    if (OPENS_WITH_THE_ASKING.test(t)) return false;
+    if (OPENS_WITH_THE_ASKING.test(t) && !/^make\s+sure\b/i.test(t)) return false;
     if (IS_AN_INSTRUCTION_TO_JOE.test(t)) return false;
     const words = t.split(/[^\p{L}\p{N}]+/u).filter(w => w.length > 2 && !NOT_A_FEATURE.test(w));
     return words.length > 0;
@@ -237,6 +245,8 @@ export function extractionPrompt(request: string, isArabic: boolean): string {
         `    online jewelry store» and «a luxury jewelry shop» are the thing`,
         `    being asked for, not things it must do. Every entry must be`,
         `    something the finished site could FAIL to have.`,
+        `  · Do NOT list instructions about how to test, inspect, report, or`,
+        `    deploy the result. Those govern your work, not the product.`,
         `  · Write «text» in ${isArabic ? 'Arabic' : 'English'}.`,
         ``,
         `REPLY WITH JSON AND NOTHING ELSE:`,
@@ -345,12 +355,16 @@ export async function namedRequirements(
         //  asked «what did he name» answers with the project itself unless it
         //  is stopped, and «build an online jewelry store» is met by any shop
         //  that exists — a criterion nothing can fail is not a criterion.
-        if (!isJudgeable(r.text)) {
+        // Models sometimes paraphrase an execution instruction into a noun
+        // phrase ("which checks ran") while retaining the original imperative
+        // in its quote. Judge both halves so the paraphrase cannot turn Joe's
+        // working method into a feature the generated application must expose.
+        if (!isJudgeable(r.text) || IS_AN_INSTRUCTION_TO_JOE.test(r.quote.trim())) {
             //  Two different refusals, because they are two different mistakes
             //  and he should be told which one his sentence produced.
             out.rejected.push({
                 text: r.text,
-                reason: IS_AN_INSTRUCTION_TO_JOE.test(r.text.trim())
+                reason: IS_AN_INSTRUCTION_TO_JOE.test(r.text.trim()) || IS_AN_INSTRUCTION_TO_JOE.test(r.quote.trim())
                     ? 'it is an instruction to me, not something the project must do'
                     : 'it is the thing you asked for, not something it must do',
             });
@@ -727,6 +741,18 @@ export function nothingWasJudged(judged: JudgedNamed[]): boolean {
  * extracts only short, action-shaped clauses from the user's own sentence; it
  * is a deterministic floor, not a substitute for deeper model reading.
  */
+function declaredRequirementItems(sentence: string): string[] {
+    const match = sentence.match(/\b(?:(?:it\s+)?(?:must|should)\s+(?:provide|include|have)|(?:it\s+)?(?:needs?|requires?|has))\s+(.+)/iu);
+    if (!match) return [];
+    const items = match[1].replace(/[.!?\u061f]+$/u, '')
+        .split(/\s*[,;]\s*|\s+and\s+/iu)
+        .map(item => item.trim().replace(/^(?:and\s+)?(?:a|an|the)\s+/iu, '').trim())
+        .filter(Boolean);
+    // Keep the entire inventory: dropping an unfamiliar or long item would
+    // allow another item's evidence to certify an incomplete requirement.
+    return items.length >= 2 ? items : [];
+}
+
 export function requirementsFromRequestClauses(requestRaw: string): NamedRequirement[] {
     const request = String(requestRaw || '').replace(/\s+/g, ' ').trim();
     if (!request) return [];
@@ -748,16 +774,7 @@ export function requirementsFromRequestClauses(requestRaw: string): NamedRequire
     // to build.
     const declaredFields: string[] = [];
     for (const sentence of request.split(/[.!?؟]+/u)) {
-        const match = sentence.match(/\b(?:(?:it\s+)?(?:must|should)\s+(?:provide|include|have)|(?:it\s+)?(?:needs?|requires?|has))\s+(.+)/iu);
-        if (!match) continue;
-        const fieldPart = match[1]
-            .split(/\s*(?:;|,\s*(?=(?:required(?:[-\s]field)?\s+validation|validation|allow|add|delete|ensure|persist|show|test|validate|verify)\b))/iu)[0];
-        const items = fieldPart
-            .split(/\s*,\s*|\s+and\s+/iu)
-            .map(item => item.trim().replace(/^(?:a|an|the)\s+/iu, ''))
-            .filter(item => item.length >= 2 && item.length <= 64)
-            .filter(item => !/^(?:a|an|the)\s+/iu.test(item))
-            .filter(isJudgeable);
+        const items = declaredRequirementItems(sentence).filter(isJudgeable);
         if (items.length >= 2) declaredFields.push(...items);
     }
     const clauses = [...declaredFields, ...actionClauses];
@@ -794,6 +811,13 @@ import { recordFeatureCovered } from '../design/app-blueprints';
  * other requirements continue through the model judge and its source guard.
  */
 function deterministicSourceVerdict(r: NamedRequirement, source: string): JudgedNamed | null {
+    const inventory = [...new Set([...declaredRequirementItems(r.text), ...declaredRequirementItems(r.quote)])];
+    if (inventory.length) {
+        const parts = inventory.map((text, index) => deterministicSourceVerdict(
+            { id: `${r.id}-part-${index + 1}`, text, quote: text }, source));
+        if (!parts.every(part => part?.verdict === 'met')) return null;
+        return { ...r, verdict: 'met', why: `All ${parts.length} declared items have source evidence: ${inventory.join('; ')}` };
+    }
     const text = `${r.text} ${r.quote}`.trim();
     const src = String(source || '');
     const esc = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -946,7 +970,7 @@ function deterministicSourceVerdict(r: NamedRequirement, source: string): Judged
     // A field may carry a type hint in the request: "amount (numeric only)"
     // is still the `amount` field. The annotation belongs to the contract we
     // verify below, not to the schema label stored in source.
-    const fieldName = fieldPhrase
+    const rawFieldName = fieldPhrase
         // The numeric constraint is verified below; it is not part of the label.
         .replace(/^(?:(?:numeric|number)(?:[-\s]only)?|رقمي(?:\s+فقط)?|أرقام?\s+فقط)\s+/iu, '')
         .replace(/\s*\([^)]{0,80}\)\s*$/u, '')
@@ -956,8 +980,12 @@ function deterministicSourceVerdict(r: NamedRequirement, source: string): Judged
         `(?:label|placeholder|aria-label)\\s*[:=]\\s*['"]${esc(name)}['"]`, 'iu',
     ).test(src);
     const hasFieldType = (name: string, type: string) => new RegExp(
-        `(?:label|placeholder|aria-label)\\s*[:=]\\s*['"]${esc(name)}['"][\\s\\S]{0,260}?type\\s*:\\s*['"]${esc(type)}['"]|type\\s*:\\s*['"]${esc(type)}['"][\\s\\S]{0,260}?(?:label|placeholder|aria-label)\\s*[:=]\\s*['"]${esc(name)}['"]`, 'iu',
+        `(?:label|placeholder|aria-label)\\s*[:=]\\s*['"]${esc(name)}['"][^{}]{0,260}?type\\s*:\\s*['"]${esc(type)}['"]|type\\s*:\\s*['"]${esc(type)}['"][^{}]{0,260}?(?:label|placeholder|aria-label)\\s*[:=]\\s*['"]${esc(name)}['"]`, 'iu',
     ).test(src);
+    // Prefer literal labels, then normalize a grammatical article introduced
+    // by requirement extraction. Never change the user's displayed label.
+    const fieldName = hasDeclaredField(rawFieldName)
+        ? rawFieldName : rawFieldName.replace(/^(?:a|an|the)\s+/iu, '');
     const fieldLike = fieldName.length >= 3 && fieldName.length <= 40
         && !/(?:search|filter|sort|export|validation|بحث|تصفية|فرز|تصدير|تحقق)/iu.test(fieldPhrase)
         && !workflowCapability
@@ -969,7 +997,8 @@ function deterministicSourceVerdict(r: NamedRequirement, source: string): Judged
         && /invalidNumericField|Number\.isFinite\s*\(/iu.test(src)) {
         return { ...r, verdict: 'met', why: 'the declared numeric field is rendered as a number input and is guarded before a row is written' };
     }
-    if (fieldLike && /(?:^|\s)date(?:$|\s)|تاريخ/iu.test(fieldName) && hasFieldType(fieldName, 'date')) {
+    if (fieldLike && /(?:^|\s)date(?:$|\s)|تاريخ/iu.test(fieldName)) {
+        if (!hasFieldType(fieldName, 'date')) return null;
         return { ...r, verdict: 'met', why: 'the declared date field uses the browser date input contract' };
     }
     if (fieldLike && /(?:^|\s)note(?:$|\s)|ملاحظ/iu.test(fieldName) && hasFieldType(fieldName, 'textarea')) {
@@ -1009,6 +1038,10 @@ function deterministicSourceVerdict(r: NamedRequirement, source: string): Judged
         && /localStorage\.getItem\s*\(/iu.test(src)
         && /localStorage\.setItem\s*\(/iu.test(src)
         && /store\.write\s*\(/iu.test(src);
+    const hasRequestedToggle = (label: string) => new RegExp(
+        `label\\s*:\\s*['"]${esc(label)}['"][^{}]{0,260}?control\\s*:\\s*['"]toggle['"]|control\\s*:\\s*['"]toggle['"][^{}]{0,260}?label\\s*:\\s*['"]${esc(label)}['"]`,
+        'iu',
+    ).test(src);
     if (/(?:add|create)\s+(?:an?\s+)?(?:expense|record|entry)|إضافة\s+(?:مصروف|سجل)/iu.test(text)
         && hasRecordForm && hasSemanticRecordFields) {
         return { ...r, verdict: 'met', why: 'the records form creates rows with a primary field plus number, category, and date inputs' };
@@ -1032,6 +1065,21 @@ function deterministicSourceVerdict(r: NamedRequirement, source: string): Judged
     if (/(?:save|keep|persist|durable)[\s\S]{0,80}(?:reload|refresh|localstorage)|(?:reload|refresh)[\s\S]{0,80}(?:save|keep|persist|durable)|حفظ[\s\S]{0,80}(?:إعادة\s+التحميل|التحديث)/iu.test(text)
         && hasDurableLocalRows) {
         return { ...r, verdict: 'met', why: 'the records store reads and writes rows through localStorage across reloads' };
+    }
+    if (/(?:local\s+persistence|persistent\s+local\s+storage|تخزين\s+محلي|حفظ\s+محلي)/iu.test(text)
+        && hasDurableLocalRows) {
+        return { ...r, verdict: 'met', why: 'the records store reads and writes rows through localStorage' };
+    }
+    const toggleLabel = fieldName
+        .replace(/^(?:a|an|the)\s+/iu, '')
+        .replace(/\s+(?:toggle|switch|مفتاح)$/iu, '')
+        .trim();
+    if (fieldLike && /(?:toggle|switch|مفتاح)/iu.test(fieldPhrase)
+        && toggleLabel && hasRequestedToggle(toggleLabel)
+        && /f\.control\s*===\s*['"]toggle['"]/u.test(src)
+        && /<input\b[^>]*role=['"]switch['"][^>]*checked=\{draft\[f\.key\]/u.test(src)
+        && /onChange=\{e\s*=>\s*setDraft\(\{\s*\.\.\.draft,\s*\[f\.key\]:\s*e\.target\.checked/u.test(src)) {
+        return { ...r, verdict: 'met', why: 'the requested field is rendered through the generated toggle control contract' };
     }
     if (/status\s+filter|filtering|تصفية|فلترة/iu.test(text)
         && /setFilters?|content\.statusField|filter.*statusField/i.test(src)) {

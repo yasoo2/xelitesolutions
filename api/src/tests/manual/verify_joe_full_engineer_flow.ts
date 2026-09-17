@@ -21,14 +21,25 @@ async function verifyJoeFullEngineerFlow() {
 
     process.env.JOE_PRO_ALPHA = '1';
     process.env.OFFLINE_MODE = 'true';
+    process.env.JWT_SECRET = process.env.JWT_SECRET || 'engineer-flow-only';
     
-    const projectsRoot = path.join(process.cwd(), 'data/tests/full_engineer_flow');
+    const evidenceRoot = path.resolve('data/tests/full_engineer_flow');
+    fs.mkdirSync(evidenceRoot, { recursive: true });
+    const projectsRoot = fs.mkdtempSync(path.join(evidenceRoot, 'run-'));
     process.env.EXTERNAL_PROJECTS_DIR = projectsRoot;
 
-    if (fs.existsSync(projectsRoot)) {
-        fs.rmSync(projectsRoot, { recursive: true, force: true });
-    }
-    fs.mkdirSync(projectsRoot, { recursive: true });
+    // Count real child executions independently of the ledger. Runtime traces
+    // live under .joe so observing a check does not invalidate its source.
+    const executionTrace = (check: string) => `
+const traceStarted = performance.now();
+process.on('exit', exitCode => {
+  fs.mkdirSync('.joe', { recursive: true });
+  fs.appendFileSync('.joe/check-executions.jsonl', JSON.stringify({
+    check: ${JSON.stringify(check)}, exitCode,
+    durationMs: Math.max(0, performance.now() - traceStarted)
+  }) + '\\n');
+});
+`;
 
     // Mock plan: Use a setup script that only writes the file if it's missing.
     // This allows the self-fix patch to persist through the phase rerun.
@@ -56,6 +67,7 @@ async function verifyJoeFullEngineerFlow() {
                             filename: 'check.js',
                             content: `
 const fs = require('fs');
+${executionTrace('build')}
 if (!fs.existsSync('tasks.ts')) { console.error('tasks.ts missing'); process.exit(1); }
 const content = fs.readFileSync('tasks.ts', 'utf8');
 if (content.includes('number = "10"')) {
@@ -66,13 +78,38 @@ if (content.includes('number = "10"')) {
                             `
                         },
                         priority: 'low'
+                    },
+                    {
+                        task: 'Create checker-presence smoke test',
+                        tool: 'write_file',
+                        args: {
+                            filename: 'smoke.test.js',
+                            content: "const test = require('node:test'); const assert = require('node:assert'); const fs = require('fs');\n"
+                                + executionTrace('smoke')
+                                + "test('checker exists', () => assert.equal(fs.existsSync('check.js'), true));\n"
+                        },
+                        priority: 'low'
+                    },
+                    {
+                        task: 'Run unchanged checker-presence smoke test',
+                        tool: 'shell_execute',
+                        verificationId: 'engineer-flow:checker-smoke',
+                        verificationMode: 'focused',
+                        relevantPaths: ['check.js', 'smoke.test.js'],
+                        args: {
+                            command: 'node --test smoke.test.js'
+                        },
+                        priority: 'low'
                     }
                 ],
                 verificationTask: {
                     task: 'Build Check',
                     tool: 'shell_execute',
+                    verificationId: 'engineer-flow:failed-build',
+                    verificationMode: 'affected',
+                    relevantPaths: ['tasks.ts', 'check.js'],
                     args: {
-                        command: 'node check.js'
+                        command: 'npm run build'
                     }
                 }
             },
@@ -86,7 +123,14 @@ if (content.includes('number = "10"')) {
                         args: { command: 'node -e "console.log(\'Build verified\')"' },
                         priority: 'medium'
                     }
-                ]
+                ],
+                verificationTask: {
+                    task: 'Final full project gate',
+                    tool: 'shell_execute',
+                    verificationId: 'engineer-flow:final-matrix',
+                    verificationMode: 'final',
+                    args: { command: 'npm run check' }
+                }
             }
         ]
     };
@@ -109,9 +153,21 @@ if (content.includes('number = "10"')) {
 
     try {
         const pipelineResult = await executionFirewall.runAsSystem(async () => {
+            const manifest = await executeTool('write_file', {
+                path: 'package.json', content: JSON.stringify({ private: true, scripts: {
+                    test: 'node --test smoke.test.js', build: 'node check.js',
+                    check: 'npm test && npm run build',
+                } }),
+            }, { sessionId, workspaceId, userId });
+            if (!manifest.ok) throw new Error('Verification fixture manifest could not be created');
+            const discovery = await executeTool('engineering_discovery', {
+                request: 'Implement the task manager in this existing local project.',
+            }, { sessionId, workspaceId, userId });
+            if (!discovery.ok) throw new Error('Verification fixture discovery failed');
             console.log('📋 Running ProjectPlannerTool...');
             const plannerResult = await executeTool('project_planner', {
-                projectDescription: 'Build a small task manager app.'
+                projectDescription: 'Build a small task manager app.',
+                evidence: discovery.output,
             }, { sessionId, workspaceId, userId });
 
             if (!plannerResult.ok) throw new Error(`Planner failed: ${plannerResult.error}`);
@@ -143,6 +199,53 @@ if (content.includes('number = "10"')) {
             console.error('❌ FAIL: Self-fix failed:', phase1Result?.selfFixExecution?.reason);
             passed = false;
         }
+
+        if (phase1Result?.reusedTasks === 1 && phase1Result?.verificationMetrics?.reused >= 1) {
+            console.log('✅ PASS: The unchanged passing smoke check was reused during the repair rerun.');
+        } else {
+            console.error('❌ FAIL: A passing focused check was duplicated during repair:', phase1Result?.verificationMetrics);
+            passed = false;
+        }
+
+        const phase2Result = pipelineResult.results?.[1];
+        const finalLog = Array.isArray(phase2Result?.logs) ? phase2Result.logs.join('\n') : '';
+        if (finalLog.includes('engineer-flow:final-matrix') && finalLog.includes('Verification passed for Phase 2')) {
+            console.log('✅ PASS: A distinct final whole-project gate ran and passed once.');
+        } else {
+            console.error('❌ FAIL: The final whole-project verification gate is missing:', finalLog);
+            passed = false;
+        }
+
+        const tracePath = path.join(projectsRoot, workspaceId, '.joe/check-executions.jsonl');
+        const executions: Array<{ check: string; exitCode: number; durationMs: number }> =
+            fs.existsSync(tracePath)
+                ? fs.readFileSync(tracePath, 'utf8').trim().split(/\r?\n/).filter(Boolean).map(line => JSON.parse(line))
+                : [];
+        const expectedExecutions = [
+            { check: 'smoke', exitCode: 0 },
+            { check: 'build', exitCode: 1 },
+            { check: 'build', exitCode: 0 },
+            { check: 'smoke', exitCode: 0 },
+            { check: 'build', exitCode: 0 },
+        ];
+        const actualExecutions = executions.map(({ check, exitCode }) => ({ check, exitCode }));
+        const countsVerified = JSON.stringify(actualExecutions) === JSON.stringify(expectedExecutions)
+            && executions.every(row => Number.isFinite(row.durationMs) && row.durationMs >= 0);
+        if (countsVerified) {
+            console.log('PASS: Independent trace proves smoke once during editing, failed build plus one successful rerun, and both final checks exactly once.');
+        } else {
+            console.error('FAIL: Actual check executions differ from the required sequence:', actualExecutions);
+            passed = false;
+        }
+        const evidencePath = path.join(projectsRoot, 'verification-evidence.json');
+        fs.writeFileSync(evidencePath, JSON.stringify({
+            sessionId, workspaceId, countsVerified, executions, expectedExecutions,
+            phase1Metrics: phase1Result?.verificationMetrics,
+            phase2Metrics: phase2Result?.verificationMetrics,
+            pipelineOk: pipelineResult.ok,
+            limitation: 'Controlled planner and synthetic TypeScript diagnostic; final gate covers this fixture, not the repository AGENTS matrix or live UI.',
+        }, null, 2));
+        console.log(`Independent verification evidence: ${evidencePath}`);
 
         if (pipelineResult.engineeringReport?.status === 'pipeline_completed') {
             console.log('✅ PASS: engineeringReport is attached and reflects pipeline completion.');

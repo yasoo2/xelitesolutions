@@ -65,7 +65,70 @@ This registry records reusable capabilities proved by the live evaluation. It is
 
 ## Evaluation Rules
 
+### UAT Navigation Diagnostics (Evaluation Infrastructure)
+
+- Components: existing `verify_joe_prompt_ui_acceptance.ts` and `verification-evidence.ts`, not a new Joe execution path.
+- Behavior: failed browser navigation retains a bounded cause category and attempt count; 5xx responses fail UAT. No raw navigation-error detail or arbitrary response content is persisted by the diagnostic helper.
+- Evidence: 17 helper/evidence tests, successful type checking, and a controlled authenticated real-route connection failure (502, connection, two attempts) followed by successful preview restoration.
+- Limit: the original live 502 was recorded without its body and remains unexplained. This is evaluator observability, not a claim of newly implemented autonomous navigation repair.
+
+### Article-Aware Field Evidence (Local, Pending Live Replay)
+
+- Purpose: prove request-derived field contracts despite grammatical articles introduced by requirement extraction, without spending a model call on explicit schema evidence.
+- Components: `named-requirements.ts`, ReactProjectTool acceptance report; uses the existing acceptance path, not another judge.
+- Selection: literal labels first, grammatical article normalization second; date type must be bound to the same schema object. Builder-process instructions remain separate from artifact capabilities.
+- Evidence: failed UI run `run-1789105095443` identified three article-prefixed fields plus one misclassified execution instruction. Existing project source now proves all eight artifact items with zero model calls. Focused article/records/instruction coverage passed 29 cases, related regression coverage and type checking passed as recorded in the evaluation log.
+- Limits: source-contract evidence is not a new UI acceptance result. The live failed receipt remains failed until replay. Generic records design and overall task completion remain open.
+- Live follow-up: `run-1789106796288` passed acceptance and one final quality check, plus independent form/persistence/filter/mobile checks. Its extraction used the compound inventory shape. Browser navigation also returned a 502, so full UAT remains unresolved; the runner now rejects server errors instead of silently treating that trace as healthy.
+
+### Request-Derived Records Presentation (Local, Incomplete)
+
+- Components: `app-blueprints.ts` (`heAskedForATable`), generated `content.js`, and `RecordsApp`.
+- Selection: explicit table/spreadsheet/data-grid requests choose a tabular view; explicit CSS/card/form layout-grid mentions alone do not. Mentions are classified independently.
+- Evidence: five false table selections reproduced before repair; focused layout-grid and existing table-shape suites passed 16 tests. After correcting the new fixture's AppKind, its ten tests passed again and full TypeScript checking passed.
+- Regression: `layout-grid-is-not-a-data-table.test.ts`, `the-shape-he-named-was-the-one-thing-not-read.test.ts`.
+- Limitation: source/content integration evidence only for this change, no new live UAT. Negation and arbitrary natural-language layouts remain unsupported by this narrow selector. The structured engine still selects a fixed presentation family; this is not a visual-originality completion claim.
+
+### Issue 89 Verification Evidence Hardening (2026-09-11, Local Only)
+
+- Components: `verification-ledger.ts`, `PhaseExecutorTool`, `AgentLoopService`, and `AgentOrchestrator`.
+- Executable-check eligibility follow-up (2026-09-17): planner/phase guards now reject arbitrary successful read/write/detection tools as verification; shell reuse requires a single supported verification invocation with known options. Permanent regressions cover echo-only, mixed/stateful commands and non-check CLI modes. Four suites pass 89 cases, type checking passes, and all ten final gates pass (`final-matrix-20260917-155745/report.json`). Current canonical trace is `full_engineer_flow/run-fEKguv/verification-evidence.json`. Reviewer statically closed its reported option-mode finding only. Package script contents remain project contracts, not sandboxed by this classifier. Live acceptance and GitHub evidence for this latest version are pending.
+- Runtime target-state identity (2026-09-17): a red-to-green regression exposed query/fragment changes reusing old browser proof when explicit tool arguments were empty. The complete target now contributes a process-local HMAC to the fingerprint while receipts retain only the display-safe URL. Ledger/phase suites pass 37 tests; live acceptance and final publication are not yet proven for this revision.
+- Fingerprint framing follow-up (2026-09-17): reproduced identical hashes for different multi-file contents caused by unframed path/content concatenation. Added per-file path/byte-length framing and a permanent red-to-green regression. Ledger/phase suites now pass 36 tests; canonical trace `full_engineer_flow/run-4NO5kj/verification-evidence.json` and the five-versus-four execution benchmark pass. Runtime reload, latest-version UAT, final applicable gates, review, and publication remain pending.
+- Selection: verification tasks fingerprint their declared paths, transitive dependency boundaries, toolchain, and runtime revision. Explicit paths do not override dependency paths. Matching passing receipts may be reused; final verification covers the project.
+- Safety: incomplete/truncated boundary metadata, missing dependencies, unsupported filesystem links, and unreadable inputs disable reuse. Scope and ancestor containment are checked before reading source or the package manifest. Tool and firewall contexts share the canonical run id.
+- Evidence: ledger/phase suites passed 30 tests, including deep dependencies, metadata compaction, real directory junctions, and unreadable inputs. The full engineer-flow test proved unchanged-check reuse during a repair rerun and a separate final gate. All ten required architecture/self-healing commands passed.
+- Related failures: missing verification events under the intended run id; stale-proof risks from omitted dependencies and linked paths; imperative product constraints misclassified as builder instructions.
+- Canonical execution evidence: `full_engineer_flow/run-3LP3aM/verification-evidence.json` independently records five check executions (smoke pass, build fail, repaired build pass, final smoke pass, final build pass). Both final fixture checks ran and no successful focused check was duplicated during repair. The test now preserves prior runs in unique directories.
+- Open accounting defect: replacing same-id receipts loses earlier failed-attempt durations from `executedDurationMs`; saved-time estimates also use the latest receipt rather than the reuse-time receipt. Those aggregates are not complete run-cost evidence until corrected. This does not invalidate the independent child-execution trace or prove unrestricted live planning.
+- Accounting follow-up: fixed locally with cumulative counters independent of receipt retention and reuse-time savings capture. The focused ledger/phase suites passed 33 tests; canonical evidence `full_engineer_flow/run-TJB88a/verification-evidence.json` reports four verification invocations, including the failed attempt, with complete accounting. Persisted legacy histories that cannot be reconstructed are explicitly incomplete. This supersedes the implementation defect above, not the pending publication/UAT requirement.
+- Independent review follow-up: made selected/invalidated/reused counts cumulative too, fixing a 192-decision retention mismatch with lifetime savings. Added a 200-reuse regression; 34 focused cases, type checking, and canonical flow `full_engineer_flow/run-0ZaGvO/verification-evidence.json` passed. Reviewer confirmed that specific finding closed by static inspection only.
+- Efficiency evidence: the existing 50-prompt benchmark now runs real child-process assertions for naive and change-aware policies, including an injected defect, a repair, and an independent final gate. Both produce the same five expected verdicts; actual executions fall from 5 to 4 with one valid reuse. Counts, durations, reasons, exits, and output are retained in `api/data/tests/verification-efficiency.json`. This replaces the former synthetic selection-count comparison; it does not replace canonical-pipeline/UAT evidence.
+- Limitations: static path checks are not an atomic filesystem sandbox against concurrent hostile path replacement. The engineer-flow planner is controlled, not unrestricted model planning. Fresh live UI UAT and GitHub verification remain pending; no completion claim is made.
+- Live follow-up: `run-1789100649901` passed the independent Joe UI runner in 162593 ms with one real final `quality_run` receipt, all form/persistence/filtering checks, and readable phone headings. Shared `plan-verification.ts` now enforces final-check planning after deterministic rescue as well as normal planning. Evidence: `api/data/tests/joe-ui-acceptance/2026-09-11T04-23-55-467Z/report.json`. This supersedes the pending functional UAT note above only; generic visual design, masked-capture motion safety, and GitHub publication still prevent batch completion. Generated smoke tests currently prove scaffold structure, not domain semantics.
+
 - A prompt is passed only when its requested artifact or behavior exists and is independently verified.
 - A chat sentence, HTTP success, or Joe's own completion claim is not evidence by itself.
 - A failed prompt is recorded before repair; the same prompt is rerun after a general fix.
 - Generated runtime artifacts and logs are not source evidence and are not committed unless the test explicitly requires them.
+
+### Concurrent Preview Navigation
+
+### Requested Record Boards (In Progress)
+
+- Purpose: derive a grouped working view from explicit board intent and schema, preserving existing record mutations and persistence.
+- Implementation: `requestedBoardField`, serialized `content.boardField`, shared RecordsApp lane rendering and responsive board workspace styles.
+- Evidence: 21 focused selection/syntax/regression cases; explicit-schema Chromium fixture proves creation, state change through editing, persistence, and phone width. No extra model call.
+- Limits: not yet exercised through Joe after this change. Short natural-language schema extraction and generic entity/title labels remain deficient. Grouping ambiguity returns no board rather than guessing. This does not prove full visual originality or Issue #89 completion.
+
+### Navigation Evidence Continuation
+
+- Full replay evidence after local network correction: `run-1789110814545` passed the permanent Joe UI runner in 332987 ms with one final passing verification, all independent form/persistence/filter/mobile checks, zero page exceptions, and zero server failures. Gravatar 404 remained non-blocking. This supersedes the pending functional replay note below only. Desktop/mobile screenshots still show generic records presentation; visual originality and GitHub publication remain unproven.
+
+- Component evidence: permanent `verify_browser_navigation_ui.ts` passes six real React/Chromium interactions with deterministic external boundaries. It caught and now prevents foreign-session status from overwriting the current URL; session switching also resets connection state. Genuine current errors still degrade quality. API and web type checks pass. This is isolated component evidence, not full Joe UAT or visual originality proof.
+
+- Purpose: prevent superseded browser requests from retrying over newer destinations or degrading their UI state.
+- Components: existing authenticated `/nav/goto`, page-scoped `navigation-order.ts`, and `EmbeddedBrowser.tsx`; no additional execution path or model call.
+- Evidence: controlled real API race reproduced the old 502; nine focused ownership/route/recovery tests pass after the local patch, with API and web type checks passing.
+- Limits: post-fix Chromium/UI replay and publication are pending. The original 41-second UAT error remains unexplained; this fix must not be presented as proof that it is resolved.
+- Live follow-up: updated API/Chromium returned 409 for the superseded request and 200 for its successor. Initial preview restoration failed because port 4300 was down; restarting the same generated preview and separately restoring it returned 200. The combined probe therefore exited 1, not green end-to-end. Visible in-app QA, frontend stale-response interaction coverage, full prompt replay, and publication remain pending.

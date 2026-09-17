@@ -39,6 +39,7 @@ const DETERMINISTIC_TOOLS = [
 
 export type AgentGoal = {
   id: string;
+  runId?: string;
   traceId?: string;
   goal: string;
   context?: Record<string, any>;
@@ -268,11 +269,12 @@ export class AgentOrchestrator {
     // or the planner looks up joeProjects['default'], misses the active
     // project, and an edit like «غيّر الطراز» falls past the surgical
     // editor (caught by the UI-integration wire proof).
+    const canonicalRunId = goal.runId || goal.traceId || goal.id;
     this.context = {
       ...(goal.context || { sessionId: goal.id }),
       // A trace is one execution, not merely a chat session. The LLM router
       // uses it to keep a failed provider mesh from poisoning a fresh run.
-      runId: goal.traceId || goal.id,
+      runId: canonicalRunId,
     };
 
     // Initialize Runtime Memory
@@ -303,7 +305,7 @@ export class AgentOrchestrator {
         emitDepartment(goal.id, 'developer');
         const result = await executionFirewall.runInContext(goal.traceId, () => {
             return this.coordinate(dag, runtimeMemory, this.context, goal.traceId, goal.goal);
-        }, { userId: goal.context?.userId, sessionId: goal.context?.sessionId || goal.id, runId: goal.id });
+        }, { userId: goal.context?.userId, sessionId: goal.context?.sessionId || goal.id, runId: canonicalRunId });
         this.throwIfCancelled();
 
         // [Departments] QA reviews the outcome, then it's delivered.
