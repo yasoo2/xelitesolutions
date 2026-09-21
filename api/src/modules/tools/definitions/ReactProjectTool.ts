@@ -37,6 +37,7 @@ import { broadcast, broadcastThinkingDetail, broadcastTerminalLine } from '../..
 import { openTerminal, transcriptLine } from '../../../core/quality/terminal-session';
 import { persistJoeProjects, writeJoeProject } from '../../../api/page-store';
 import { publicUrlFor } from '../../../shared/utils/publicUrl';
+import { artifactRootDir } from '../../../shared/artifact-root';
 import { repairAndRebuild, worthRepairing } from '../../../core/quality/self-repair';
 import { inspectWeatherEngineSource, formatWeatherSemanticRepair } from '../../../core/quality/weather-contract';
 import { inspectWorkflowEngineSource, formatWorkflowSemanticRepair } from '../../../core/quality/workflow-contract';
@@ -4482,7 +4483,7 @@ export class ReactProjectTool extends BaseTool {
         // A phase request can be intentionally short. When this frontend is
         // built after api_project, the API's persisted appKind is the
         // authoritative contract and must outrank a weaker second guess.
-        const ARTIFACT_DIR = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
+        const ARTIFACT_DIR = artifactRootDir();
         const sessionKey = String(sessionId || 'default').replace(/[^a-zA-Z0-9._-]/g, '_');
         const prevEntry = ((global as any).joeProjects || {})[sessionKey];
         const currentPipelineRunId = String(context?.runId || '').trim();

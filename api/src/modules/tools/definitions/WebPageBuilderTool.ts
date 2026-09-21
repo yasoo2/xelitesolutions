@@ -38,8 +38,9 @@ import { persistJoePages } from '../../../api/page-store';
 import { wantsMobileApp, ensurePwaMarkup, manifestJson, serviceWorkerJs, iconPng, installNote } from '../../../core/design/pwa';
 import { pickFlourish, flourishCss, flourishBrief } from '../../../core/design/flourish';
 import { publicUrlFor } from '../../../shared/utils/publicUrl';
+import { artifactRootDir } from '../../../shared/artifact-root';
 
-const ARTIFACT_DIR = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
+const ARTIFACT_DIR = artifactRootDir();
 
 /**
  * EVERY ARTIFACT WRITE MAKES ITS OWN DIRECTORY.

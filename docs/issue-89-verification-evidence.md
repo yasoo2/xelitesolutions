@@ -57,6 +57,19 @@ matrix was rerun after this correction and passed:
 `test:joe:engineer-flow`, all five `test:self-fix:*` variants, and
 both `test:self-healing:*` variants.
 
+The first deterministic Jest shard exposed an actual Windows failure in page
+version restore: the implicit Unix path `/tmp/joe-artifacts` resolved to an
+unwritable `C:\\tmp` path. A shared `artifactRootDir()` now honors an
+explicit `ARTIFACT_DIR` and otherwise uses `os.tmpdir()`, and page building,
+the local artifact route, browser state, project preview/repair, and related
+tools use that same root. The focused `artifact-root` and
+`version-history` suites passed 13 tests; the checkout toggle boundary suite
+passed 7 tests after its assertion was moved from the thin RecordsApp wrapper
+to the rendered RecordsView component.
+After restarting only the local development API from this branch, its
+`/artifacts/joe-ver-restore.html` route returned HTTP 200 and the restored
+artifact opened in the Codex in-app browser. No production service was changed.
+
 ## Review And Limits
 
 The existing development task independently identified and statically confirmed repairs for cumulative accounting, non-verification tool acceptance, non-check CLI modes, and history-navigation ownership. It did not run duplicate tests or grant full acceptance. Generated templates/blueprints were not exhaustively reviewed.
@@ -77,6 +90,11 @@ The existing development task independently identified and statically confirmed 
   The subsequent silent full-suite retry exceeded the local time budget without
   a final result and was stopped; it must be completed in CI or by the
   supervisor before merge.
+- The first of eight deterministic Jest shards was rerun after the checkout
+  correction. It still reports unrelated pre-existing failures in substitution
+  messaging, internal source-string assertions, project-edit route ordering,
+  and local-brain expectations. These are not treated as a passing full suite;
+  each requires an independent diagnosis before final acceptance.
 - GitHub Actions run 35659075334 for this PR did not start any of its three
   required jobs because the GitHub account is locked by a billing issue. The
   annotations identify that external account condition, not a code failure.

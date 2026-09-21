@@ -15,9 +15,10 @@
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import { artifactRootDir } from '../../shared/artifact-root';
 
 const TOKEN_DIR = process.env.INTEGRATIONS_DIR
-  || path.join(process.env.ARTIFACT_DIR || '/tmp/joe-artifacts', 'integrations', 'google');
+  || path.join(artifactRootDir(), 'integrations', 'google');
 
 /** Default OAuth scopes — read/send mail, read calendar & drive metadata, identity.
  *  Override with GOOGLE_OAUTH_SCOPES (space-separated). */

@@ -39,7 +39,7 @@ describe('checkout meaning and field boundaries', () => {
             'library-board',
         );
         expect(files['src/content.js']).toMatch(/control: 'toggle'/);
-        expect(files['src/components/RecordsApp.jsx']).toMatch(/type="checkbox" role="switch"/);
+        expect(files['src/components/RecordsView.jsx']).toMatch(/type="checkbox" role="switch"/);
     });
 
     it.each([

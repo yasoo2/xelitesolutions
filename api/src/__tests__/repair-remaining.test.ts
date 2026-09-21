@@ -135,7 +135,8 @@ describe('and the repair itself is honest', () => {
         const src = TOOL();
         expect((src.match(/artifactRootDir:\s*\{/g) || []).length).toBe(1);
         expect((src.match(/artifactRootDir,/g) || []).length).toBe(2);
-        expect(src).toContain("process.env.ARTIFACT_DIR || '/tmp/joe-artifacts'");
+        expect(src).toContain('artifactRootDir as defaultArtifactRootDir');
+        expect(src).toContain('defaultArtifactRootDir()');
     });
 
     it('waits for the panel, exactly as the builder does', () => {

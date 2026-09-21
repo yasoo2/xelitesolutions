@@ -9,6 +9,7 @@ import { ensureBrowserTelemetry, recordStreamFrame, disposeBrowserTelemetry } fr
 import { imageSize } from '../../shared/image-size';
 import { captureNativeJpeg } from './native-capture';
 import { captureMaskedJpeg } from './masked-capture';
+import { artifactRootDir } from '../../shared/artifact-root';
 
 /* ============================================================
    PER-USER ENCRYPTED SESSION PERSISTENCE
@@ -22,7 +23,7 @@ import { captureMaskedJpeg } from './masked-capture';
    (hundreds of isolated users) operation.
    ============================================================ */
 const SESSION_STATE_DIR = process.env.BROWSER_SESSION_DIR
-  || path.join(process.env.ARTIFACT_DIR || '/tmp/joe-artifacts', 'browser-sessions');
+  || path.join(artifactRootDir(), 'browser-sessions');
 
 /** A stable, filesystem-safe id for a session's stored state. */
 function sessionStateFile(sessionId: string): string {
@@ -304,7 +305,7 @@ function isProfileLockError(msg: string): boolean {
 
 // ---- Consent: Joe must ask before driving the user's local browser profile ----
 const CONSENT_DIR = process.env.BROWSER_CONSENT_DIR
-  || path.join(process.env.ARTIFACT_DIR || '/tmp/joe-artifacts', 'browser-consent');
+  || path.join(artifactRootDir(), 'browser-consent');
 function consentFile(sessionId: string): string {
   const hash = crypto.createHash('sha256').update(String(sessionId || 'default')).digest('hex').slice(0, 40);
   return path.join(CONSENT_DIR, `${hash}.ok`);
@@ -1320,7 +1321,7 @@ export async function healthcheckBrowser() {
       const buf = await page.screenshot({ type: 'jpeg', quality: 65, animations: 'disabled' });
 
       // Save artifact if possible
-      const artifactDir = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
+      const artifactDir = artifactRootDir();
       try {
         if (!fs.existsSync(artifactDir)) fs.mkdirSync(artifactDir, { recursive: true });
         const fname = `health-browser-${Date.now()}.jpg`;
