@@ -106,6 +106,13 @@ The existing development task independently identified and statically confirmed 
   messaging, internal source-string assertions, project-edit route ordering,
   and local-brain expectations. These are not treated as a passing full suite;
   each requires an independent diagnosis before final acceptance.
+- The four source-sensitive failures in that shard were independently
+  diagnosed after the runtime behavior was confirmed. Their checks now follow
+  function/branch boundaries rather than arbitrary character windows, and the
+  admin-screen test generates both a model-backed app and a no-model app.
+  The four focused suites passed 57 tests, TypeScript passed, and the rerun of
+  deterministic Jest shard 1/8 completed without a reported failure. This is
+  shard evidence only, not a claim that all eight shards or the full suite pass.
 - GitHub Actions run 35659075334 for this PR did not start any of its three
   required jobs because the GitHub account is locked by a billing issue. The
   annotations identify that external account condition, not a code failure.
