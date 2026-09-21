@@ -55,6 +55,11 @@ describe('semantic tool argument contracts', () => {
         expect(result[0].tool).toBe('central_answer');
         expect(result[0].input.question).toContain('query أو pattern');
     });
+
+    it('does not invent a security scan target from a vague request', () => {
+        const securityScanner = (tools as any[]).find(tool => tool.name === 'security_scanner');
+        expect(inputForTool(securityScanner, 'فحص أمني للموقع')).toBeNull();
+    });
 });
 
 afterAll(() => {

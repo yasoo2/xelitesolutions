@@ -15,6 +15,25 @@ import { normalizeIntentText, stripArabicDiacritics, foldChars } from './promptN
 import { derivedColumns, columnsAnywhereInHisRequest } from '../design/app-blueprints';
 
 /**
+ * A knowledge question must not be turned into a tool execution merely because
+ * it mentions a technology or capability. Kept beside build intent so the
+ * parser and planner apply the same safety boundary before either calls a model.
+ */
+export function isKnowledgeQuestion(goalRaw: string): boolean {
+    const g = String(goalRaw || '').trim();
+    if (!g) return false;
+    const bare = foldChars(g);
+    const ordersADeed =
+        /(?:^|[\s،:؛])(?:ابن|ابني|بن|انشي|انشا|اصنع|صمم|اصمم|طور|اعمل|برمج|بنا|تصميم|شغل|اوقف|انشر|عدل|احذف|اضف|اصلح|افتح|ابحث|نفذ|حلل|ارسل|حمل|ثبت)(?=$|[\s،:؛؟.])/.test(bare)
+        || /\b(build|create|make|develop|generate|scaffold|implement|deploy|publish|run|start|stop|edit|delete|remove|add|fix|open|search|execute|install|analy[sz]|analys)\w*\b/i.test(g);
+    if (ordersADeed) return false;
+    return /(?:^|[\s،:؛])(?:ما|ماذا|هل|لماذا|كيف|متي|اين|كم|اي|ايهما)(?=$|[\s،:؛؟.])/.test(bare)
+        || /(?:^|[\s،:؛])(?:اشرح|وضح|فسر|قارن|عرف|علمني|اخبرني)(?=$|[\s،:؛])/.test(bare)
+        || /\b(what|why|how|when|which|who|explain|compare|difference|versus|vs)\b/i.test(g)
+        || /[؟?]\s*$/.test(g);
+}
+
+/**
  * Read-only is a safety boundary, not a weaker form of build intent.
  * Long audit prompts often mention "build" while explicitly forbidding it.
  */

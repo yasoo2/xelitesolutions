@@ -118,3 +118,50 @@ The existing development task independently identified and statically confirmed 
   annotations identify that external account condition, not a code failure.
   No billing setting was changed and no blind CI rerun was requested.
 - No production deployment, main-branch merge, or universal autonomy claim is part of this checkpoint. The 500-prompt objective remains incomplete.
+
+## 2026-09-22 Capability Routing Follow-up
+
+An in-app-browser UAT exposed two connected live failures for the Arabic
+request `فحص أمني للموقع`:
+
+1. The first run spent about 55 seconds in deep intent analysis before any
+   plan, although the registry could deterministically identify
+   `security_scanner`.
+2. After the analysis skip was added, the short-message chat fallback and then
+   an unscoped scanner invocation each caused a slow or malformed execution.
+
+The repair is registry- and schema-driven rather than prompt-specific:
+
+- Fuzzy action repair now requires grammatical action context, preventing an
+  ordinary adjective such as `أمني` from becoming the imperative `ابني`.
+- `IntentParser` carries a revalidated deterministic capability candidate past
+  the deep model analysis. `PlanningEngine` resolves that candidate before
+  broad browser/chat classifiers, still through the normal plan and
+  `ToolService` path.
+- A deterministic candidate performs only its validated capability, not a
+  second loosely related registry match.
+- `security_scanner` now declares its genuine one-of input contract. A
+  capability with declared but unavailable inputs becomes `ask_user` with the
+  missing contract instead of a malformed tool call. Explicit local filesystem
+  paths are passed to filesystem-shaped tool fields.
+
+Focused tests passed: `a-question-is-not-an-order`,
+`tool-argument-contract`, `content-and-intent`, and
+`the-planner-asks-the-tools` — 86 tests total. The first local browser UAT
+showed `IntentParser` skipping deep analysis and the planner selecting only
+`security_scanner`. The next UAT intentionally supplied no target and visibly
+showed `ask_user` with the required target fields; the run ended after that
+request without a scanner input error or unrelated repair loop. The UAT used
+the Codex in-app browser at `http://127.0.0.1:5002/joe`; only the local
+development API was restarted.
+
+The complete AGENTS.md gate matrix passed again after this batch:
+`guard:architecture`, `guard:package-scripts`,
+`test:joe:engineer-flow`, all five `test:self-fix:*` variants, and both
+`test:self-healing:*` variants. The latest full-engineer evidence is
+`api/data/tests/full_engineer_flow/run-GctBWx/verification-evidence.json`.
+
+Known limitation: this evidence proves deterministic selection and missing-
+target handling, plus planner-level propagation of an explicit local path. It
+does not claim a completed security scan of an arbitrary external site; a real
+scan requires a selected trusted workspace or supplied local target.

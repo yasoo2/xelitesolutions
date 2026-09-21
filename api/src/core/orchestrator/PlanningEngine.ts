@@ -5,11 +5,12 @@ import { normalizeIntentText, stripArabicDiacritics, foldChars } from './promptN
 import { compactHistoryForPrompt } from './history-compact';
 import { enrichWorkspaceToolInput } from './workspace-evidence';
 import { findActiveBuiltProject } from './active-built-project';
-import { isReadOnlyRequest, isBoundedTerminalDiagnosticRequest, looksLikeBuild } from './buildIntent';
+import { isReadOnlyRequest, isBoundedTerminalDiagnosticRequest, isKnowledgeQuestion, looksLikeBuild } from './buildIntent';
 import { capabilityFromRequest } from '../api-discovery/integration';
 import { saysAny } from '../language/arabic';
 import { parseExplicitAppendFileRequest, parseExplicitFileRequest, parseExplicitDirectoryInspectionRequest, parseExplicitReadFilesRequest, parseExpectedReadMarkers } from './file-intent';
 import { workspaceService } from '../../modules/services/WorkspaceService';
+import { tools as registeredTools } from '../../modules/tools/registry';
 import fs from 'fs';
 import path from 'path';
 
@@ -280,20 +281,7 @@ export class PlanningEngine {
      * missed it until the folding was applied instead of a longer list.
      */
     static isKnowledgeQuestion(goalRaw: string): boolean {
-        const g = String(goalRaw || '').trim();
-        if (!g) return false;
-        const bare = foldChars(g);
-
-        // A deed outranks a question mark.
-        const ordersADeed =
-            /(?:^|[\s،:؛])(?:ابن|ابني|بن|انشي|انشا|اصنع|صمم|اصمم|طور|اعمل|برمج|بنا|تصميم|شغل|اوقف|انشر|عدل|احذف|اضف|اصلح|افتح|ابحث|نفذ|حلل|ارسل|حمل|ثبت)(?=$|[\s،:؛؟.])/.test(bare)
-            || /\b(build|create|make|develop|generate|scaffold|implement|deploy|publish|run|start|stop|edit|delete|remove|add|fix|open|search|execute|install|analyz|analys)\w*\b/i.test(g);
-        if (ordersADeed) return false;
-
-        return /(?:^|[\s،:؛])(?:ما|ماذا|هل|لماذا|كيف|متي|اين|كم|اي|ايهما)(?=$|[\s،:؛؟.])/.test(bare)
-            || /(?:^|[\s،:؛])(?:اشرح|وضح|فسر|قارن|عرف|علمني|اخبرني)(?=$|[\s،:؛])/.test(bare)
-            || /\b(what|why|how|when|which|who|explain|compare|difference|versus|vs)\b/i.test(g)
-            || /[؟?]\s*$/.test(g);
+        return isKnowledgeQuestion(goalRaw);
     }
 
     /**
@@ -552,7 +540,7 @@ Rules:
      * Generate a dynamic multi-step execution DAG based on intent and optional memory
      */
     /** A plan built from what the TOOLS say they do — or null, honestly. */
-    static capabilityPlan(intent: any): any | null {
+    static capabilityPlan(intent: any, context?: any): any | null {
         try {
             const { capableTools, capabilityChain } = require('./capability-match');
             const goal = String(intent?.goal || '');
@@ -644,16 +632,68 @@ Rules:
 
             const capable = capableTools(goal, 3);
             if (!capable.length) return null;
-            console.log(`[PlanningEngine] capability match -> ${capable.map((c: any) => c.name).join(', ')}`);
+            // IntentParser may supply one registry-backed deterministic
+            // candidate. Revalidate it against the current matcher, then keep
+            // the requested capability singular: a simple order must not grow
+            // a second unrelated tool invocation merely because it shares a
+            // word with another description.
+            const hint = String(intent?.rawIntent?.capabilityCandidate || '');
+            const hinted = hint && capable.find((candidate: any) => candidate.name === hint);
+            const selected = hinted ? [hinted] : capable.slice(0, 2);
+            const toolByName = new Map((registeredTools as any[]).map(tool => [tool.name, tool]));
+            const actionable = hint
+                ? selected.map((candidate: any) => ({
+                    candidate,
+                    input: inputForTool(toolByName.get(candidate.name), goal, context),
+                })).filter(({ input }: any) => input)
+                : selected.map((candidate: any) => ({ candidate, input: null }));
+
+            // A tool name is not enough to perform a task. When the registry
+            // declares that its inputs cannot be derived, stop before calling
+            // it and surface the missing contract as a user question. This is
+            // generic across capabilities and keeps ToolService from receiving
+            // a knowingly malformed invocation.
+            if (!actionable.length) {
+                const tool = toolByName.get(selected[0]?.name);
+                const requiredAny = Array.isArray(tool?.inputSchema?.requiredAny)
+                    ? tool.inputSchema.requiredAny.flat().map(String).filter(Boolean)
+                    : [];
+                const required = Array.isArray(tool?.inputSchema?.required)
+                    ? tool.inputSchema.required.map(String).filter(Boolean)
+                    : [];
+                const fields = [...new Set([...requiredAny, ...required])];
+                if (!fields.length) return null;
+                const arabic = /[\u0600-\u06FF]/.test(goal);
+                const question = arabic
+                    ? `حدّد هدف ${selected[0].name} قبل التنفيذ: ${fields.join(' أو ')}.`
+                    : `Specify a target for ${selected[0].name} before execution: ${fields.join(' or ')}.`;
+                console.log(`[PlanningEngine] capability ${selected[0].name} needs explicit input -> ask_user`);
+                return {
+                    id: `capability_input_${Date.now()}`,
+                    goal: intent.goal,
+                    steps: [{
+                        id: 'capability_input_needed',
+                        description: question,
+                        tool: 'ask_user',
+                        agent: 'General',
+                        input: { question },
+                        dependsOn: [],
+                    }],
+                    metadata: { complexity: 'low', riskLevel: 'low', matchedBy: 'capability-input-needed' },
+                };
+            }
+            const selectedActionable = actionable.map(({ candidate }: any) => candidate);
+            const derivedInput = new Map(actionable.map(({ candidate, input }: any) => [candidate.name, input]));
+            console.log(`[PlanningEngine] capability match -> ${selected.map((c: any) => c.name).join(', ')}`);
             return {
                 id: `capable_${Date.now()}`,
                 goal: intent.goal,
-                steps: capable.slice(0, 2).map((c: any, i: number) => ({
+                steps: selectedActionable.map((c: any, i: number) => ({
                     id: `capable_${i}`,
                     description: `${c.name} — matched on: ${c.why.join(', ')}`,
                     tool: c.name,
                     agent: 'General',
-                    input: { request: intent.goal, question: intent.goal, query: intent.goal },
+                    input: { request: intent.goal, question: intent.goal, query: intent.goal, ...(derivedInput.get(c.name) || {}) },
                     dependsOn: i === 0 ? [] : ['capable_0'],
                 })),
                 metadata: { complexity: 'medium', riskLevel: 'low', matchedBy: 'capability' },
@@ -707,6 +747,20 @@ Rules:
                 }],
                 metadata: { complexity: 'low', riskLevel: 'low', matchedBy: 'exact-response' },
             };
+        }
+
+        // IntentParser attaches this marker only after a registry match for a
+        // non-build, non-question imperative. Revalidate it through
+        // capabilityPlan before any broad browser or chat classifier can spend
+        // a model round. The returned plan still uses the normal ToolService
+        // path; this merely gives a proven tool order its proper precedence.
+        const capabilityCandidate = String((intent as any)?.rawIntent?.capabilityCandidate || '');
+        if (capabilityCandidate) {
+            const capabilityPlan = PlanningEngine.capabilityPlan({ ...intent, goal: userGoal }, context);
+            if (capabilityPlan?.metadata?.matchedBy === 'capability-input-needed'
+                || capabilityPlan?.steps?.some((step: ExecutionStep) => step.tool === capabilityCandidate)) {
+                return capabilityPlan;
+            }
         }
 
         // Appending literal content to an existing file is a deterministic
@@ -2993,6 +3047,19 @@ Rules:
             }
         }
 
+        /**
+         * BEFORE THE SHORT-CHAT FALLBACK — ASK THE TOOLS WHAT THEY ARE FOR.
+         *
+         * A request can be short and still be an imperative. Letting the
+         * length-based chat fallback run first turned "فحص أمني للموقع" into
+         * a slow local-model answer even after the parser had identified the
+         * security capability. capabilityPlan revalidates the registry match
+         * and rejects knowledge questions, so it is the general boundary
+         * between a real tool order and chat, not a prompt-specific shortcut.
+         */
+        const byCapability = PlanningEngine.capabilityPlan(intent, context);
+        if (byCapability) return byCapability;
+
         // [ELITE FAST-PATH] Direct answer for general questions or chat
         if (!readsAsAnOrder && ((intent as any).type === 'general' || (intent as any).type === 'chat' || intent.goal.length < 30)) {
             return {
@@ -3009,23 +3076,6 @@ Rules:
                 metadata: { complexity: 'low', riskLevel: 'low' }
             };
         }
-
-        /**
-         * BEFORE THE MODEL — ASK THE TOOLS WHAT THEY ARE FOR.
-         *
-         * «جو غبي ومحدود جدا في التفكير والتنفيذ». Measured: 72 tools
-         * registered, 24 names anywhere in this file — 48 capabilities no plan
-         * could reach. Everything the hand-written routes do not cover fell to
-         * generateDynamicDag, which asks a model; and his logs read «CRITICAL:
-         * All LLM providers failed» over and over, so the plan collapsed to
-         * central_answer and Joe looked stupid because it WAS.
-         *
-         * The routes above stay — hand-checked and better. This catches only
-         * what they drop, from what every tool already says about itself, and
-         * declines when nothing scores. It widens the reach; it never hijacks.
-         */
-        const byCapability = PlanningEngine.capabilityPlan(intent);
-        if (byCapability) return byCapability;
 
         return PlanningEngine.generateDynamicDag(intent, memory, context);
     }
