@@ -110,7 +110,7 @@ const EXECUTION_LOCATION = /\s+(?:in|inside|under)\s+(?:(?:a|an|the|my|our)\s+)?
 /** Read the subject of an English build brief before its first constraint. */
 function englishBriefSubject(request: string): string {
     const m = String(request || '').match(
-        /\b(?:build|create|design|develop|make)\s+(?:me\s+)?(?:a|an|the)?\s*(?:(?:one|two|three|four|five|six|seven|eight|nine|ten|[0-9]+)\s*[- ]?pages?\s+)?(.+?)(?=\s+(?:website|web\s+site|site|application|app)\b|\s+(?:with|including|that|which)\b|[:.,]|$)/i,
+        /\b(?:build|create|design|develop|make)\s+(?:me\s+)?(?:a|an|the)?\s*(?:(?:one|two|three|four|five|six|seven|eight|nine|ten|[0-9]+)\s*[- ]?pages?\s+)?(.+?)(?=\s+(?:website|web\s+site|site|application|app)\b|\s+(?:with|including)\b|[:.,]|$)/i,
     );
     if (!m) return '';
     const subject = m[1]

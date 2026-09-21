@@ -66,6 +66,17 @@ tools use that same root. The focused `artifact-root` and
 `version-history` suites passed 13 tests; the checkout toggle boundary suite
 passed 7 tests after its assertion was moved from the thin RecordsApp wrapper
 to the rendered RecordsView component.
+
+The same shard exposed an honesty failure in the capability disclosure:
+a request that reached model-authored `custom` behavior was treated as if a
+ready engine existed, even though its registry has no proven contract. Joe
+now classifies that state as a substitution, and preserves English relative
+clauses when quoting the user's subject. Focused substitution and headline
+suites passed 30 tests, followed by `npx tsc --noEmit`. In a fresh local
+Guest session in the Codex in-app browser, the Arabic poetry-metre request
+visibly showed the pre-build disclosure in both live activity and Logs before
+planning continued. The local run was then stopped to avoid spending effort
+on an intentionally unsupported build.
 After restarting only the local development API from this branch, its
 `/artifacts/joe-ver-restore.html` route returned HTTP 200 and the restored
 artifact opened in the Codex in-app browser. No production service was changed.
