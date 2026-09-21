@@ -2156,6 +2156,9 @@ export class PhaseExecutorTool implements ToolDefinition {
                 } else {
                     const projectDir = pkgPath.replace(/\\/g, '/').split('/').slice(0, -1).join('/');
                     appendLog(`[PhaseExecutor] 🔍 Auto-running build check in ${projectDir || 'workspace root'}...`);
+                    let buildSelection: VerificationSelection | undefined;
+                    let buildSelectedAt = 0;
+                    let buildStartedAt = 0;
                     try {
                         const buildArgs = {
                             // --if-present: a project without a build script is
@@ -2178,6 +2181,7 @@ export class PhaseExecutorTool implements ToolDefinition {
                                 mode: 'affected',
                             })
                             : undefined;
+                        buildSelection = selected?.selection;
                         if (selected) {
                             verificationLedger = selected.ledger;
                             appendLog(`[PhaseExecutor] verification ${selected.selection.action}: auto-build — ${selected.selection.reason}`);
@@ -2185,8 +2189,8 @@ export class PhaseExecutorTool implements ToolDefinition {
                         if (selected?.selection.action === 'reuse') {
                             appendLog('[PhaseExecutor] ✅ Auto-build check reused from matching content evidence');
                         } else {
-                            const buildSelectedAt = Date.now();
-                            const buildStartedAt = Date.now();
+                            buildSelectedAt = Date.now();
+                            buildStartedAt = Date.now();
                             const buildResult = await executeTool('shell_execute', buildArgs, executionContext);
                             const buildOutput = String((buildResult as any)?.output?.stdout || (buildResult as any)?.output || '');
                             if (buildOutput.includes('BUILD_CHECK_FAILED') || !buildResult.ok) {
@@ -2223,8 +2227,26 @@ export class PhaseExecutorTool implements ToolDefinition {
                                 appendLog('[PhaseExecutor] ✅ Auto-build check passed');
                             }
                         }
-                    } catch {
-                        appendLog('[PhaseExecutor] ℹ️ Auto-build check errored — treated as skipped, not as failure');
+                    } catch (buildFailure: any) {
+                        const buildError = String(buildFailure?.message || 'Auto-build check failed unexpectedly');
+                        if (buildSelection && buildStartedAt) {
+                            verificationLedger = recordVerification(
+                                verificationLedger,
+                                buildSelection,
+                                verificationResultFrom(buildFailure, false),
+                                Date.now() - buildStartedAt,
+                                Date.now(),
+                                verificationMetricsFrom(undefined, {
+                                    selectedAt: buildSelectedAt,
+                                    startedAt: buildStartedAt,
+                                    lastActivityAt: buildStartedAt,
+                                }),
+                            );
+                        }
+                        appendLog(`[PhaseExecutor] ⚠️ Auto-build check errored — treated as a failed verification: ${buildError}`);
+                        results.push({ task: 'Auto-build check', tool: 'shell_execute', ok: false, execution: 'ran', error: buildError });
+                        verificationFailed = true;
+                        status = 'partial';
                     }
                 }
             }

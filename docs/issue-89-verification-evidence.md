@@ -47,13 +47,27 @@ passed 84 tests. Its deterministic efficiency comparison measured five naive
 executions versus four change-aware executions, with the same verdict and one
 safe reuse.
 
+Review then found one fail-open edge: an exception thrown by the automatic
+build check was logged as a skip. It now becomes a recorded failed verification,
+marks the phase partial, and is covered by
+`npx jest --runInBand src/__tests__/windows-reality.test.ts src/__tests__/verified-execution-outcomes.test.ts`
+(12 tests passed) and `npx tsc --noEmit` (passed). The complete AGENTS.md
+matrix was rerun after this correction and passed:
+`guard:architecture`, `guard:package-scripts`,
+`test:joe:engineer-flow`, all five `test:self-fix:*` variants, and
+both `test:self-healing:*` variants.
+
 ## Review And Limits
 
 The existing development task independently identified and statically confirmed repairs for cumulative accounting, non-verification tool acceptance, non-check CLI modes, and history-navigation ownership. It did not run duplicate tests or grant full acceptance. Generated templates/blueprints were not exhaustively reviewed.
 
 - Generic presentation and awkward domain labels remain. Functional acceptance does not prove visual originality.
 - Earlier intermittent preview timeout did not recur in the last two UAT runs, but its original root cause is not proven repaired.
-- In-app browser control fails to initialize with OS error 3. Saved headless UI evidence is not proof of a user-visible Codex browser session.
+- Direct Codex in-app-browser inspection on 2026-09-22 opened the generated
+  reading queue at `http://127.0.0.1:4874/`. It exposed a real
+  `switch` for the finished state and no unstyled native checkbox. This is
+  current user-visible evidence; it does not replace broader visual-originality
+  evaluation.
 - Script eligibility is not a sandbox for arbitrary package-script contents. ToolService remains the execution/policy gateway.
 - Environment/runtime identities conservatively invalidate across process restart.
 - Local raw reports are not automatically tracked; reproducible permanent tests and this summary do not replace GitHub CI or reviewer acceptance.
@@ -63,4 +77,8 @@ The existing development task independently identified and statically confirmed 
   The subsequent silent full-suite retry exceeded the local time budget without
   a final result and was stopped; it must be completed in CI or by the
   supervisor before merge.
+- GitHub Actions run 35659075334 for this PR did not start any of its three
+  required jobs because the GitHub account is locked by a billing issue. The
+  annotations identify that external account condition, not a code failure.
+  No billing setting was changed and no blind CI rerun was requested.
 - No production deployment, main-branch merge, or universal autonomy claim is part of this checkpoint. The 500-prompt objective remains incomplete.
