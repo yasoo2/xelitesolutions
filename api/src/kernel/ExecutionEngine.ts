@@ -685,8 +685,8 @@ export class ExecutionEngine {
             const cleanup = () => {
                 if (absoluteTimer) clearTimeout(absoluteTimer);
                 if (idleTimer) clearTimeout(idleTimer);
-                if (stdoutHandler) child.stdout?.removeListener('data', stdoutHandler);
-                if (stderrHandler) child.stderr?.removeListener('data', stderrHandler);
+                if (stdoutHandler) child.stdout?.removeListener?.('data', stdoutHandler);
+                if (stderrHandler) child.stderr?.removeListener?.('data', stderrHandler);
                 child.removeListener('close', onClose);
                 child.removeListener('error', onError);
             };

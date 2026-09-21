@@ -4,12 +4,51 @@ import {
     requestedFilterFields,
 } from '../core/design/app-blueprints';
 import { acceptanceFor, judgeAcceptance } from '../core/quality/acceptance';
-import { fileAppShellJsx, fileAppStoreJs, fileRecordsAppJsx } from '../modules/tools/definitions/react-app-templates';
+import { fileAppContentJs, fileAppShellJsx, fileAppStoreJs, fileRecordsAppJsx } from '../modules/tools/definitions/react-app-templates';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 import { requestSpokenCapabilities } from '../modules/tools/definitions/ReactProjectTool';
 
 const REQUEST = 'Build a personal reading log with book title, author, pages, start date, finish date, rating, and reading status. Add filters for status and rating plus a progress metric.';
 
 describe('request-derived filters and progress are real capabilities', () => {
+    it.each([
+        REQUEST,
+        'Build a maintenance register with equipment name, condition, cost, and location. Add filters for condition and location.',
+    ])('rejects each missing filter even without schema keywords: %s', request => {
+        const bp = blueprintFor('generic', request, false);
+        const keys = bp.filterFields || [];
+        expect(keys).toHaveLength(2);
+        const criteria = acceptanceFor(request).filter(criterion => criterion.expectedFilter);
+        expect(criteria).toHaveLength(2);
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-filter-acceptance-'));
+        const emit = (filterFields: string[]) => {
+            fs.writeFileSync(path.join(dir, 'content.js'), fileAppContentJs({ ...bp, filterFields }, {
+                isArabic: false, brand: 'Contract check', storeKey: 'contract-check', sourceRequest: request,
+            }));
+            fs.writeFileSync(path.join(dir, 'RecordsApp.jsx'), fileRecordsAppJsx(false));
+        };
+        try {
+            emit(keys);
+            expect(judgeAcceptance(criteria, { dir }, false).met).toBe(2);
+            for (const missing of keys) {
+                // The generated view derives its actual controls from this list.
+                emit(keys.filter(key => key !== missing));
+                const judged = judgeAcceptance(criteria, { dir }, false);
+                expect(judged.met).toBe(1);
+                expect(judged.unmet).toBe(1);
+            }
+        } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+    });
+
+    it.each([
+        'Build a simple counter app with a title, a button, and a status message.',
+        'Build a dashboard with a heading, counter and button. Add a status message.',
+    ])('does not invent record-filter criteria from widgets: %s', request => {
+        expect(acceptanceFor(request).filter(criterion => criterion.expectedFilter || criterion.expectedColumn)).toEqual([]);
+    });
+
     it('keeps rating numeric and derives both requested filters', () => {
         const fields = fieldsFromRequest(REQUEST, false) || [];
         const bp = blueprintFor('generic', REQUEST, false);

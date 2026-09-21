@@ -52,7 +52,7 @@ describe('an edit whose row is gone is not silently discarded', () => {
         expect(save).toContain('لم أحفظ شيئاً');
         //  And the guard must sit BEFORE the write, or it guards nothing.
         expect(save.indexOf('rows.some(r => r.id === editing)'))
-            .toBeLessThan(save.indexOf('setRows(rows.map('));
+            .toBeLessThan(save.indexOf('setRows(prev => prev.map('));
     });
 });
 

@@ -201,7 +201,7 @@ describe('the records output enforces only declared numeric bounds', () => {
     it('rejects a declared bound before the row and API mutations', () => {
         const t = T();
         const guard = t.indexOf('const invalid = invalidNumericField(fields, draft);');
-        const rowMutation = t.indexOf('setRows(rows.map', guard);
+        const rowMutation = t.indexOf('setRows(prev => prev.map', guard);
         const apiMutation = t.indexOf('apiCreate(content.api, local)', guard);
         expect(guard).toBeGreaterThan(-1);
         expect(rowMutation).toBeGreaterThan(guard);

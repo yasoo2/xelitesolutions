@@ -122,12 +122,15 @@ export class QualityRunTool extends BaseTool {
         const projectDir = resolveToolPath(String(input?.path || '').trim());
         const tasks: string[] = Array.isArray(input?.tasks) && input.tasks.length ? input.tasks : ['lint', 'typecheck', 'test', 'build'];
         const scripts = this.readPackageScripts(projectDir);
+        const sessionId = typeof input?.sessionId === 'string' && input.sessionId.trim()
+            ? input.sessionId.trim()
+            : undefined;
 
         const results: any[] = [];
 
         const runNpmScript = async (script: string, extraArgs: string[] = [], timeoutMs = 10 * 60_000) => {
             const args = ['run', script, ...extraArgs];
-            return handleShellCommand('npm', args, projectDir, timeoutMs, false);
+            return handleShellCommand('npm', args, projectDir, timeoutMs, false, sessionId);
         };
 
         for (const t of tasks) {
@@ -155,7 +158,7 @@ export class QualityRunTool extends BaseTool {
 
                 const tsconfigPath = path.join(projectDir, 'tsconfig.json');
                 if (fs.existsSync(tsconfigPath)) {
-                    const r = await handleShellCommand('npx', ['tsc', '-p', 'tsconfig.json', '--noEmit'], projectDir, 10 * 60_000, false);
+                    const r = await handleShellCommand('npx', ['tsc', '-p', 'tsconfig.json', '--noEmit'], projectDir, 10 * 60_000, false, sessionId);
                     if (r.ok) results.push({ task, ok: true, skipped: false, output: String(r.output || '').slice(0, 4000) });
                     else results.push({ task, ok: false, skipped: false, error: String(r.error || '').slice(0, 4000) });
                     continue;
@@ -193,10 +196,21 @@ export class QualityRunTool extends BaseTool {
         const executed = results.filter(r => r && r.skipped === false);
         const allOk = executed.length > 0 && results.every(r => r && r.ok === true);
         const status = !executed.length ? 'incomplete' : allOk ? 'completed' : 'failed';
+        const failed = executed.filter(r => r.ok !== true);
+        const error = !executed.length
+            ? `No requested quality checks were available to execute (${tasks.join(', ')})`
+            : failed.length
+                ? `Quality checks failed: ${failed.map(r => `${r.task}: ${String(r.error || 'command failed').slice(0, 500)}`).join('; ')}`
+                : undefined;
         return {
             ok: allOk,
-            output: { results, status, ...(executed.length ? {} : { error: 'No requested quality checks were available to execute' }) },
-            logs: [`quality_run path=${projectDir}`],
+            error,
+            output: { results, status, ...(error ? { error } : {}) },
+            logs: [
+                `quality_run path=${projectDir}`,
+                `quality_run requested=${tasks.join(',') || 'none'} scripts=${Object.keys(scripts).sort().join(',') || 'none'}`,
+                ...results.map(result => `quality_run ${result.task}=${result.skipped ? 'skipped' : result.ok ? 'passed' : 'failed'}`),
+            ],
         };
     }
 }

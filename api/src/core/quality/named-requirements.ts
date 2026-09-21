@@ -35,6 +35,9 @@
  *  rather than against a memory of past prompts.
  */
 
+import { createHash } from 'node:crypto';
+import { redactSecretsFromString } from '../../shared/utils/redaction';
+
 export interface NamedRequirement {
     /** Stable id derived from the quote, so the same request yields the same ids. */
     id: string;
@@ -125,6 +128,7 @@ const IS_AN_INSTRUCTION_TO_JOE = new RegExp(
     // checklist item; with an object, require explicit execution context.
     + '(?:open|navigate|click|tap|press|type|submit|reload|refresh|check)(?=\\s*(?:$|[:،,.]))'
     + '|(?:open|navigate|click|tap|press|type|submit|reload|refresh|check)\\s+(?:and\\s+(?:inspect|test)\\s+)?(?:the\\s+)?(?:browser|preview|result|generated\\s+(?:app|page|site)|tests?|checks?)'
+    + '|(?:run|use)\\s+(?:(?:focused|targeted|incremental|change-aware|cached|reused?)\\s+)?(?:checks?|tests?|verification)(?:\\s*,?\\s*then\\s+(?:one\\s+)?final(?:\\s+full)?\\s+verification)?'
     + '|observe|inspect|verify|test|retest|fix|repair|report|start\\s+by'
     // These prefixes also introduce product constraints. Only exclude them
     // when their object describes the builder's execution or reporting work.
@@ -359,7 +363,9 @@ export async function namedRequirements(
         // phrase ("which checks ran") while retaining the original imperative
         // in its quote. Judge both halves so the paraphrase cannot turn Joe's
         // working method into a feature the generated application must expose.
-        if (!isJudgeable(r.text) || IS_AN_INSTRUCTION_TO_JOE.test(r.quote.trim())) {
+        const textIsJudgeable = isJudgeable(r.text);
+        const quoteIsJudgeable = isJudgeable(r.quote);
+        if (!textIsJudgeable || !quoteIsJudgeable) {
             //  Two different refusals, because they are two different mistakes
             //  and he should be told which one his sentence produced.
             out.rejected.push({
@@ -413,6 +419,29 @@ export interface JudgedNamed extends NamedRequirement {
     verdict: NamedVerdict;
     /** In his language — and for a `met`, the source line that carries the proof. */
     why: string;
+    decision?: { route: 'local_backend'; evidenceKind: 'express_source' | 'sqlite' | 'persistence' | 'compound'; reasonCode: string };
+}
+
+/** No request text, model explanation, source or payload is copied into telemetry. */
+export function namedDecisionTrace(verdicts: JudgedNamed[]) {
+    const limit = 64;
+    const ref = (value: unknown) => createHash('sha256')
+        .update(redactSecretsFromString(typeof value === 'string' ? value : ''))
+        .digest('hex').slice(0, 24);
+    return {
+        omitted: Math.max(0, verdicts.length - limit),
+        criteria: verdicts.slice(0, limit).map((item, index) => ({
+            index, criterionRef: ref(item.id), textRef: ref(item.text), quoteRef: ref(item.quote),
+            textLength: typeof item.text === 'string' ? item.text.length : 0,
+            quoteLength: typeof item.quote === 'string' ? item.quote.length : 0,
+            verdict: ['met', 'unmet', 'unprovable'].includes(item.verdict) ? item.verdict : 'unprovable',
+            route: item.decision?.route === 'local_backend' ? 'local_backend' : 'unclassified',
+            evidenceKind: ['express_source', 'sqlite', 'persistence', 'compound'].includes(item.decision?.evidenceKind || '')
+                ? item.decision!.evidenceKind : 'unspecified',
+            reasonCode: ['ungrounded_criterion', 'verified', 'compound_not_fully_proven', 'backend_evidence_rejected'].includes(item.decision?.reasonCode || '')
+                ? item.decision!.reasonCode : 'unclassified',
+        })),
+    };
 }
 
 /** Whitespace is not evidence; a quote is the same quote however it was wrapped. */
@@ -742,6 +771,7 @@ export function nothingWasJudged(judged: JudgedNamed[]): boolean {
  * is a deterministic floor, not a substitute for deeper model reading.
  */
 function declaredRequirementItems(sentence: string): string[] {
+    if (typeof sentence !== 'string') return [];
     const match = sentence.match(/\b(?:(?:it\s+)?(?:must|should)\s+(?:provide|include|have)|(?:it\s+)?(?:needs?|requires?|has))\s+(.+)/iu);
     if (!match) return [];
     const items = match[1].replace(/[.!?\u061f]+$/u, '')
@@ -803,6 +833,7 @@ import { inspectWorkflowEngineSource } from './workflow-contract';
 import { capabilityEvidence, requestedCapabilities } from './scope-audit';
 import { externalApiSourceVerdict, type ExternalApiAcceptanceEvidence } from '../api-discovery/acceptance-evidence';
 import { recordFeatureCovered } from '../design/app-blueprints';
+import { ownedExpressSource, validateBackendEvidence, type LocalBackendAcceptance } from './local-backend-evidence';
 
 /**
  * Generated records apps expose a small, explicit contract. Verify that
@@ -818,7 +849,7 @@ function deterministicSourceVerdict(r: NamedRequirement, source: string): Judged
         if (!parts.every(part => part?.verdict === 'met')) return null;
         return { ...r, verdict: 'met', why: `All ${parts.length} declared items have source evidence: ${inventory.join('; ')}` };
     }
-    const text = `${r.text} ${r.quote}`.trim();
+    const text = [r.text, r.quote].filter(value => typeof value === 'string').join(' ').trim();
     const src = String(source || '');
     const esc = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     // The records engine already owns the executable capability contract used
@@ -1031,8 +1062,13 @@ function deterministicSourceVerdict(r: NamedRequirement, source: string): Judged
     const hasComputedTotal = /metrics\s*:\s*\[[\s\S]{0,1600}?kind\s*:\s*['"]sum['"]/iu.test(src)
         && /computeMetric\s*\([^)]*rows/iu.test(src)
         && /case\s*['"]sum['"][\s\S]{0,500}?reduce\s*\(/iu.test(src);
-    const hasConfirmedDelete = /window\.confirm\s*\(/iu.test(src)
-        && /setRows\s*\(\s*rows\.filter/iu.test(src);
+    // Recognize the selected-ID removal contract, not any call to filter.
+    const directRemoval = [...src.matchAll(/setRows\s*\(\s*rows\.filter\s*\(\s*(\w+)\s*=>\s*\1\.id\s*!==\s*(\w+)\.id\s*\)\s*\)/gu)]
+        .some(match => match[1] !== match[2]);
+    const functionalRemoval = [...src.matchAll(/setRows\s*\(\s*(\w+)\s*=>\s*\1\.filter\s*\(\s*(\w+)\s*=>\s*\2\.id\s*!==\s*(\w+)\.id\s*\)\s*\)/gu)]
+        .some(match => match[2] !== match[3]);
+    const hasConfirmedDelete = /if\s*\(\s*!\s*window\.confirm\s*\([^;\n]*\)\s*\)\s*(?:\{\s*)?return\b/u.test(src)
+        && (directRemoval || functionalRemoval);
     const hasEditAndConfirmedDelete = /setEditing\s*\(/iu.test(src) && hasConfirmedDelete;
     const hasDurableLocalRows = /createStore\s*\(/iu.test(src)
         && /localStorage\.getItem\s*\(/iu.test(src)
@@ -1076,9 +1112,9 @@ function deterministicSourceVerdict(r: NamedRequirement, source: string): Judged
         .trim();
     if (fieldLike && /(?:toggle|switch|مفتاح)/iu.test(fieldPhrase)
         && toggleLabel && hasRequestedToggle(toggleLabel)
-        && /f\.control\s*===\s*['"]toggle['"]/u.test(src)
-        && /<input\b[^>]*role=['"]switch['"][^>]*checked=\{draft\[f\.key\]/u.test(src)
-        && /onChange=\{e\s*=>\s*setDraft\(\{\s*\.\.\.draft,\s*\[f\.key\]:\s*e\.target\.checked/u.test(src)) {
+        && /(?:f|field)\.control\s*===\s*['"]toggle['"]/u.test(src)
+        && /<input\b[^>]*(?:role=['"]switch['"]|type=['"]checkbox['"])[^>]*checked=\{(?:controller\.)?draft\[(?:f|field)\.key\]/u.test(src)
+        && /onChange=\{(?:\(?\s*)?e\s*\)?\s*=>\s*(?:controller\.)?setDraft\(\{\s*\.\.\.(?:controller\.)?draft,\s*\[(?:f|field)\.key\]:\s*e\.target\.checked/u.test(src)) {
         return { ...r, verdict: 'met', why: 'the requested field is rendered through the generated toggle control contract' };
     }
     if (/status\s+filter|filtering|تصفية|فلترة/iu.test(text)
@@ -1124,6 +1160,7 @@ export async function verifyNamed(
     isArabic: boolean,
     call: (prompt: string) => Promise<string>,
     externalApiEvidence?: ExternalApiAcceptanceEvidence | null,
+    localBackend?: LocalBackendAcceptance | null,
 ): Promise<JudgedNamed[]> {
     const src = String(source || '');
     const blank = (why: string): JudgedNamed[] =>
@@ -1132,7 +1169,46 @@ export async function verifyNamed(
     if (!src.trim()) return blank(NO_SOURCE(isArabic));
 
     const deterministic = new Map<string, JudgedNamed>();
+    const backendProof = localBackend ? validateBackendEvidence(localBackend.evidence, localBackend.context) : null;
+    const expressSource = localBackend ? ownedExpressSource(localBackend.context) : false;
+    const backendKind = (text: string): NonNullable<JudgedNamed['decision']>['evidenceKind'] | null => {
+        // The reader preserves list grammar, so "and a real database" still
+        // belongs to the measured backend contract rather than frontend text.
+        const item = String(text || '').trim().replace(/^(?:and|with|plus)\s+/iu, '');
+        if (/^(?:(?:a|an|the)\s+)?express\s+(?:api|backend|server)[.!]?$/iu.test(item)) return 'express_source';
+        if (/^(?:(?:a|an|the)\s+)?(?:(?:real|sqlite|sql)\s+)*database[.!]?$/iu.test(item)) return 'sqlite';
+        if (/^(?:(?:data|server[- ]side|durable)\s+)?persistence[.!]?$/iu.test(item)) return 'persistence';
+        return null;
+    };
+    const backendReason = (kind: string): string => {
+        if (kind === 'express_source' && expressSource) return 'the owned backend source imports and initializes Express with a declared dependency';
+        if (kind === 'sqlite' && backendProof?.backend === 'sqlite') return 'a matching HTTP write/read and independent SQLite storage read were measured for this run and backend revision';
+        if (kind === 'persistence' && backendProof) return `a matching HTTP write/read and independent ${backendProof.backend} storage read prove server persistence for this run and backend revision`;
+        return '';
+    };
     for (const r of reqs) {
+        const text = typeof r.text === 'string' ? r.text.trim() : '';
+        const kind = backendKind(text);
+        const declaredParts = declaredRequirementItems(text);
+        const parts = declaredParts.length ? declaredParts : declaredRequirementItems(`It needs ${text}`);
+        const compound = parts.length > 1 && parts.some(part => backendKind(part));
+        if (localBackend && (kind || compound)) {
+            // The quote grounds the criterion; it need not repeat its short label.
+            // Compound inventories retain every item, including unknown items.
+            const grounded = typeof r.quote === 'string' && groundedIn(text, r.quote);
+            const reasons = kind ? [backendReason(kind)] : parts.map(part => {
+                const partKind = backendKind(part);
+                if (partKind) return backendReason(partKind);
+                const verdict = deterministicSourceVerdict({ id: r.id, text: part, quote: part }, src);
+                return verdict?.verdict === 'met' ? verdict.why : '';
+            });
+            const proven = grounded && reasons.every(Boolean);
+            deterministic.set(r.id, { ...r, verdict: proven ? 'met' : 'unprovable',
+                why: proven ? reasons.join('; ') : 'current owned backend evidence is missing, stale, incompatible, incomplete, or does not prove every grounded requirement',
+                decision: { route: 'local_backend', evidenceKind: kind || 'compound',
+                    reasonCode: !grounded ? 'ungrounded_criterion' : proven ? 'verified' : compound ? 'compound_not_fully_proven' : 'backend_evidence_rejected' } });
+            continue;
+        }
         const verdict = externalApiSourceVerdict(r, externalApiEvidence) || deterministicSourceVerdict(r, src);
         if (verdict) deterministic.set(r.id, verdict);
     }

@@ -181,7 +181,7 @@ export function extractMissingLocalRuntimeImportLedger(failureText: unknown): st
 }
 
 function appendBoundedPipelineLog(logs: string[], line: unknown): void {
-    const text = String(line ?? '').slice(0, MAX_PIPELINE_LOG_CHARS);
+    const text = redactDeliveryCredentials(String(line ?? '')).slice(0, MAX_PIPELINE_LOG_CHARS);
     if (logs.length < MAX_PIPELINE_LOGS) {
         logs.push(text);
         return;
@@ -189,6 +189,17 @@ function appendBoundedPipelineLog(logs: string[], line: unknown): void {
     logs[0] = '[ProjectPipeline] ... older pipeline logs truncated; recent evidence retained ...';
     logs.splice(1, 1);
     logs.push(text);
+}
+
+/**
+ * Runtime credentials are handed to the browser-QA context directly. They
+ * must never be copied into the user-visible activity stream or delivery
+ * report, where a transcript may be retained long after the local run ends.
+ */
+function redactDeliveryCredentials(value: unknown): string {
+    return String(value ?? '')
+        .replace(/(Owner account(?:\s*\([^)]*\))?:\s*[^\s/]+\s*\/\s*)[^\s]+/giu, '$1[redacted]')
+        .replace(/(كلمة المرور:\s*)[^\s]+/gu, '$1[محجوبة]');
 }
 
 function appendBoundedPipelineLogs(logs: string[], values: unknown): void {
@@ -2767,31 +2778,11 @@ export class ProjectPipelineTool implements ToolDefinition {
         const whatHappened: string[] = [];
         const techDetails: string[] = [];
         const phaseResults: any[] = Array.isArray(pipeline?.results) ? pipeline.results : [];
-        const credentials: Array<{ email: string; password: string }> = [];
-        for (const phase of phaseResults) {
-            for (const result of (Array.isArray(phase?.results) ? phase.results : [])) {
-                const credential = deliveryCredentialFromMessage(result?.message);
-                if (credential && !credentials.some(item => item.email === credential.email && item.password === credential.password)) {
-                    credentials.push(credential);
-                }
-            }
-        }
-
         lines.push(verified
             ? (ar ? `## ✅ اكتمل المشروع: ${projectName}` : `## ✅ Project delivered: ${projectName}`)
             : verificationUnavailable
                 ? (ar ? `## ⚠️ لم أستطع التحقق من المشروع: ${projectName}` : `## ⚠️ Project could not be verified: ${projectName}`)
                 : (ar ? `## ⚠️ توقف البناء بصدق: ${projectName}` : `## ⚠️ Build stopped honestly: ${projectName}`));
-
-        if (credentials.length) {
-            lines.push('');
-            lines.push(ar ? '### 🔑 بيانات الدخول الاختبارية (تظهر مرة واحدة)' : '### 🔑 Test account credentials (shown once)');
-            for (const credential of credentials) {
-                lines.push(ar
-                    ? `- البريد: ${credential.email}\n  كلمة المرور: ${credential.password}`
-                    : `- ${credential.email} / ${credential.password}`);
-            }
-        }
 
         // The live system, front and center — it is RUNNING, not just built.
         if (verified && liveUrl) {
@@ -2912,7 +2903,7 @@ export class ProjectPipelineTool implements ToolDefinition {
         const spoken: string[] = [];
         for (const p of phaseResults) {
             for (const t of (Array.isArray(p?.results) ? p.results : [])) {
-                const msg = guardUnverifiedBuilderClaims(String(t?.message || '').trim(), verified, ar);
+                const msg = redactDeliveryCredentials(guardUnverifiedBuilderClaims(String(t?.message || '').trim(), verified, ar));
                 if (msg && !spoken.includes(msg)) spoken.push(msg);
             }
         }

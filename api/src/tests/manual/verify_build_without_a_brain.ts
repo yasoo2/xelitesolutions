@@ -100,12 +100,20 @@ async function main() {
     const { executeTool } = await import('../../modules/services/ToolService');
     const { executionFirewall } = await import('../../orchestration/AgentExecutionFirewall');
     const sessionId = `no-brain-${Date.now()}`;
+    const workspaceId = `session-${sessionId}`;
+    const { workspaceService } = await import('../../modules/services/WorkspaceService');
+    const root = workspaceService.getActiveRoot(workspaceId);
     const res: any = await executionFirewall.runInContext(undefined, () =>
         executeTool('api_project', { request: HIS_WORDS },
-            { sessionId, userId: 'u1', workspaceId: `session-${sessionId}`, language: 'ar' }));
+            { sessionId, userId: 'u1', workspaceId, language: 'ar' }));
     check('البناء نجح', res?.ok === true, String(res?.error || '').slice(0, 140));
     const dir = String((global as any).joeProjects?.[sessionId]?.dir || '');
     console.log(`   ℹ️ ${dir}`);
+    const relative = dir ? path.relative(root, dir) : '..';
+    const isolated = !!dir && relative !== '..'
+        && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
+    check('generated project stays inside this test run', isolated);
+    if (!isolated) throw new Error('Refusing to boot a project outside the isolated test directory');
     check('على القرص', !!dir && fs.existsSync(path.join(dir, 'server.js')), dir);
     // The wording of the announcement changed when the model came from the
     // request's own words rather than a canned domain — which is the better

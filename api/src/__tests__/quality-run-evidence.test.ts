@@ -17,7 +17,11 @@ describe('quality runs require executed checks', () => {
     it('reports incomplete when all requested scripts are absent', async () => {
         fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ scripts: {} }));
         const result = await new QualityRunTool().execute({ path: root });
-        expect(result).toMatchObject({ ok: false, output: { status: 'incomplete' } });
+        expect(result).toMatchObject({
+            ok: false,
+            error: 'No requested quality checks were available to execute (lint, typecheck, test, build)',
+            output: { status: 'incomplete' },
+        });
         expect(result.output.results.every(item => item.skipped)).toBe(true);
         expect(handleShellCommand).not.toHaveBeenCalled();
     });
@@ -33,6 +37,19 @@ describe('quality runs require executed checks', () => {
     it('preserves a failed check instead of accepting the skipped ones', async () => {
         fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ scripts: { build: 'vite build' } }));
         (handleShellCommand as jest.Mock).mockResolvedValue({ ok: false, error: 'build error' });
-        expect(await new QualityRunTool().execute({ path: root })).toMatchObject({ ok: false, output: { status: 'failed' } });
+        expect(await new QualityRunTool().execute({ path: root })).toMatchObject({
+            ok: false,
+            error: 'Quality checks failed: build: build error',
+            output: { status: 'failed' },
+        });
+    });
+    it('preserves the trusted session for nested quality commands', async () => {
+        fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ scripts: { test: 'node --test' } }));
+        (handleShellCommand as jest.Mock).mockResolvedValue({ ok: true, output: 'passed' });
+        const result = await new QualityRunTool().execute({ path: root, tasks: ['test'], sessionId: 'quality-session' });
+        expect(result).toMatchObject({ ok: true, output: { status: 'completed' } });
+        expect(handleShellCommand).toHaveBeenCalledWith(
+            'npm', ['run', 'test'], root, 15 * 60_000, false, 'quality-session',
+        );
     });
 });

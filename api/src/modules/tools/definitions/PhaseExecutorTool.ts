@@ -891,6 +891,26 @@ function fileFailureEvidence(toolName: string, args: Record<string, any>, projec
     };
 }
 
+/**
+ * Builder tools can reject a model-authored asset before a file tool is visible
+ * to the phase executor. Preserve the one explicit generated destination from
+ * their structured output so SelfFix can make its single evidenced attempt.
+ */
+function generatedArtifactFailureEvidence(
+    toolName: string,
+    output: Record<string, any>,
+    projectContext?: Record<string, any>,
+): Record<string, string> {
+    if (toolName !== 'react_project') return {};
+    const authoredFiles = Array.isArray(output?.authoredFiles) ? output.authoredFiles : [];
+    if (authoredFiles.length !== 1 || typeof authoredFiles[0] !== 'string') return {};
+    const root = rebaseStaleRuntimeEvidencePath(output?.path ?? output?.projectDir, projectContext);
+    if (!root) return {};
+    const file = path.resolve(root, authoredFiles[0]);
+    if (!file.startsWith(`${path.resolve(root)}${path.sep}`)) return {};
+    return { repairFile: file.slice(0, 1000) };
+}
+
 const NON_LOCAL_SCRIPT_COMMANDS = new Set([
     'node', 'npm', 'npx', 'sh', 'bash', 'cmd', 'powershell', 'pwsh',
     'echo', 'true', 'false', 'cd', 'set', 'export', 'env', 'cross-env-shell',
@@ -1811,6 +1831,7 @@ export class PhaseExecutorTool implements ToolDefinition {
                                 ? { background: toolArgs.background }
                                 : {}),
                             ...(!staleRunEvidenceDropped ? fileFailureEvidence(toolName, toolArgs, projectContext) : {}),
+                            ...(!staleRunEvidenceDropped ? generatedArtifactFailureEvidence(toolName, failedOutput, projectContext) : {}),
                             ...(deliveryEvidence ? {
                                 delivery: deliveryEvidence,
                                 ...(deliveryEvidence.acceptanceUnmet ? { acceptanceUnmet: deliveryEvidence.acceptanceUnmet } : {}),

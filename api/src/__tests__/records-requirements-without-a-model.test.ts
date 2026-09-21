@@ -1,5 +1,7 @@
 import { requirementsFromRequestClauses, verifyNamed, type NamedRequirement } from '../core/quality/named-requirements';
 import { detectAppKind } from '../core/design/app-blueprints';
+import { inferModel } from '../core/design/entity-inference';
+import { fileRecordsAppJsx } from '../modules/tools/definitions/react-app-templates';
 
 const source = `
 const content = { fields: [
@@ -44,7 +46,36 @@ const pocketLedgerSource = source
   .replace('return <form onSubmit={submit}></form>;', 'const required = true; const setError = () => {}; return <form onSubmit={submit}></form>;');
 
 describe('records acceptance does not depend on a model to read explicit code', () => {
-    it('keeps a named expense tracker on its own domain engine when fields are explicit', () => {
+  it.each([undefined, null, 7, { toString: () => 'It must include validation.' }])('does not invent evidence from an invalid quote: %p', async quote => {
+    const judged = await verifyNamed([
+      { id: 'unknown', text: 'Unimplemented requirement', quote } as any,
+      requirements[1],
+    ], source, false, async () => { throw new Error('provider unavailable'); });
+    expect(judged[0].verdict).toBe('unprovable');
+    expect(judged[1].verdict).toBe('met');
+  });
+  it('recognizes confirmed deletion in the emitted functional-state handler', async () => {
+    const provider = jest.fn(async () => { throw new Error('provider unavailable'); });
+    const judged = await verifyNamed([requirements[3]], fileRecordsAppJsx(false), false, provider);
+    expect(judged[0].verdict).toBe('met');
+    expect(provider).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['missing confirmation', "if (!window.confirm('Delete?')) return;", ''],
+    ['ignored confirmation', "if (!window.confirm('Delete?')) return;", "window.confirm('Delete?');"],
+    ['discarded filter', 'setRows(rows.filter(item => item.id !== row.id))', 'rows.filter(item => item.id !== row.id)'],
+    ['unchanged state', 'setRows(rows.filter(item => item.id !== row.id))', 'setRows(rows)'],
+    ['non-removing filter', 'item.id !== row.id', 'true'],
+    ['self comparison', 'item.id !== row.id', 'item.id !== item.id'],
+    ['functional unchanged state', 'setRows(rows.filter(item => item.id !== row.id))', 'setRows(prev => prev)'],
+    ['functional unrelated input', 'setRows(rows.filter(item => item.id !== row.id))', 'setRows(prev => other.filter(item => item.id !== row.id))'],
+  ])('does not certify deletion: %s', async (_name, before, after) => {
+    const judged = await verifyNamed([requirements[3]], source.replace(before, after), false,
+      async () => { throw new Error('provider unavailable'); });
+    expect(judged[0].verdict).toBe('unprovable');
+  });
+  it('keeps a named expense tracker on its own domain engine when fields are explicit', () => {
         const request = 'Create a small personal expense tracker named Pocket Ledger. Add amount (numeric only), category, date, and note; validate required fields; add and delete transactions; show the total; persist after refresh.';
         expect(detectAppKind(request)).toBe('expenses');
     });
@@ -98,6 +129,14 @@ describe('records acceptance does not depend on a model to read explicit code', 
     expect(judged.map(item => item.verdict)).toEqual(['met', 'met', 'met', 'met', 'met', 'met', 'met', 'met']);
   });
 
+  it('treats a reading queue as one record collection instead of promoting its fields into tables', () => {
+    const reading = inferModel('Create a compact reading queue. It needs title, reader, due date, and a finished toggle.');
+    expect(reading.declared).toBe(true);
+    expect(reading.entities).toHaveLength(1);
+    expect(reading.entities[0].key).toBe('readings');
+    expect(reading.entities[0].fields.map(field => field.en)).toEqual(['title', 'reader', 'due date', 'finished']);
+  });
+
   it('retains every declared behavior after validation in a mixed field inventory', () => {
     const items = requirementsFromRequestClauses('It needs title, borrower, due date, a returned toggle, filtering, validation, local persistence, and a responsive layout.');
     expect(items.map(item => item.text)).toEqual([
@@ -140,6 +179,20 @@ describe('records acceptance does not depend on a model to read explicit code', 
       { id: 'persistence', text: 'local persistence', quote: 'local persistence' },
     ], toggleSource, false, provider);
     expect(judged.map(item => item.verdict)).toEqual(['met', 'met']);
+    expect(provider).not.toHaveBeenCalled();
+  });
+
+  it('proves an authored native checkbox when it honors the declared toggle control', async () => {
+    const toggleSource = source + `
+      (field.control === 'toggle' || field.type === 'toggle') ? <input name={field.key} type="checkbox"
+        checked={controller.draft[field.key] === 'Yes'}
+        onChange={(e) => controller.setDraft({ ...controller.draft, [field.key]: e.target.checked ? 'Yes' : 'No' })} /> : null;
+    `;
+    const provider = jest.fn(async () => { throw new Error('provider must not be called'); });
+    const [judged] = await verifyNamed([
+      { id: 'toggle', text: 'a returned toggle', quote: 'a returned toggle' },
+    ], toggleSource, false, provider);
+    expect(judged.verdict).toBe('met');
     expect(provider).not.toHaveBeenCalled();
   });
 

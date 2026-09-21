@@ -1,6 +1,6 @@
 # Issue 89 Verification Checkpoint
 
-Date: 2026-09-17. Status: local review checkpoint, not issue acceptance.
+Date: 2026-09-21. Status: local review checkpoint, not issue acceptance.
 
 ## Implementation
 
@@ -28,6 +28,25 @@ Date: 2026-09-17. Status: local review checkpoint, not issue acceptance.
 
 The same library checkout request passed invalid-input rejection, creation, reload persistence, filtering, returned control, native date input, mobile width, and heading fit. Zero page exceptions/server failures; only Gravatar 404. Desktop/mobile screenshots were inspected. The later history-navigation patch was validated separately without regenerating the application.
 
+On 2026-09-21, the normal Joe UI ran a compact reading-queue request through
+`ProjectPlannerTool -> AgentLoopService -> PhaseExecutorTool -> ToolService`.
+It completed two phases, proved 14/14 requested criteria, performed a real
+SQLite write/read, and passed exploratory Browser QA at 100/100 across six
+discovered states. The final `quality_run` recorded the selected scripts and
+their outcomes: `test=passed`, `build=passed`, and unavailable `lint` and
+`typecheck` were explicitly skipped. This run initially exposed an opaque
+final-quality failure; the tool now retains the trusted session for nested
+commands and reports unavailable or failed checks explicitly. Direct Codex
+in-app-browser inspection also confirmed that the requested finished control
+is rendered as a real switch rather than an unstyled native checkbox.
+
+The current AGENTS.md matrix passed after that repair: architecture and package
+guards, full engineer flow, build-context, execution-safety, three TypeScript
+repair shapes, and both self-healing outcomes. The Issue 89 permanent suites
+passed 84 tests. Its deterministic efficiency comparison measured five naive
+executions versus four change-aware executions, with the same verdict and one
+safe reuse.
+
 ## Review And Limits
 
 The existing development task independently identified and statically confirmed repairs for cumulative accounting, non-verification tool acceptance, non-check CLI modes, and history-navigation ownership. It did not run duplicate tests or grant full acceptance. Generated templates/blueprints were not exhaustively reviewed.
@@ -38,4 +57,10 @@ The existing development task independently identified and statically confirmed 
 - Script eligibility is not a sandbox for arbitrary package-script contents. ToolService remains the execution/policy gateway.
 - Environment/runtime identities conservatively invalidate across process restart.
 - Local raw reports are not automatically tracked; reproducible permanent tests and this summary do not replace GitHub CI or reviewer acceptance.
+- A complete Jest run first exposed two baseline defects: a CSS test that
+  depended on declaration order, and a partial child-process mock that lacked
+  EventEmitter cleanup. Both focused regressions now pass after narrow fixes.
+  The subsequent silent full-suite retry exceeded the local time budget without
+  a final result and was stopped; it must be completed in CI or by the
+  supervisor before merge.
 - No production deployment, main-branch merge, or universal autonomy claim is part of this checkpoint. The 500-prompt objective remains incomplete.

@@ -105,6 +105,8 @@ function phraseBeforeName(clause: string): string {
     return words.slice(-4).join(' ');
 }
 
+const EXECUTION_LOCATION = /\s+(?:in|inside|under)\s+(?:(?:a|an|the|my|our)\s+)?(?:(?:new|existing|current|local|selected|active)\s+)+(?:project|workspace|directory|folder)\b/iu;
+
 /** Read the subject of an English build brief before its first constraint. */
 function englishBriefSubject(request: string): string {
     const m = String(request || '').match(
@@ -112,7 +114,7 @@ function englishBriefSubject(request: string): string {
     );
     if (!m) return '';
     const subject = m[1]
-        .split(/\s+(?:in|inside|under)\s+(?:(?:a|an|the|my|our)\s+)?(?:(?:new|existing|current|local|selected|active)\s+)+(?:project|workspace|directory|folder)\b/iu)[0]
+        .split(EXECUTION_LOCATION)[0]
         .trim().replace(/\s+/g, ' ');
     return subject.length >= 3 && subject.length <= 72 ? subject : '';
 }
@@ -187,9 +189,9 @@ export function subjectAfterContainer(requestRaw: string): string {
     const { RECORD_CONTAINER } = require('./app-blueprints');
     const hit = RECORD_CONTAINER.exec(request);
     if (!hit) return '';
-    const after = request.slice((hit.index || 0) + hit[0].length);
+    const after = request.slice((hit.index || 0) + hit[0].length).split(EXECUTION_LOCATION)[0];
     //  The subject ends where the list begins.
-    const scope = after.split(/[:：،,؛;.\n]|\s(?:فيه|فيها|به|بها|يحوي|تحوي|يحتوي|تحتوي|with|containing)\s/u)[0] || '';
+    const scope = after.split(/[:：،,؛;.\n]|\s(?:فيه|فيها|به|بها|يحوي|تحوي|يحتوي|تحتوي|with|containing|in|using|on)\s/iu)[0] || '';
     const words: string[] = [];
     for (const raw of scope.trim().split(/\s+/)) {
         //  «للكتب» is «ل» + «الكتب»: the preposition belonged to his

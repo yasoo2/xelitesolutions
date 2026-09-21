@@ -29,7 +29,7 @@
  * cannot test says «unprovable» rather than passing quietly — because a check
  * that cannot fail is the thing this project keeps deleting.
  */
-import { derivedColumns, statedRules, type DerivedField, columnsAnywhereInHisRequest, detectAppKind, requestedFilterFields } from '../design/app-blueprints';
+import { derivedColumns, statedRules, type DerivedField, columnsAnywhereInHisRequest, detectAppKind, requestedFilterFields, hasExplicitRecordSchema } from '../design/app-blueprints';
 import { hisWordsOnly } from '../design/page-head';
 import fs from 'fs';
 import path from 'path';
@@ -553,7 +553,9 @@ export function acceptanceFor(request: string): Criterion[] {
     // A list of visible widgets is not a record schema. Without an explicit
     // table/form/field declaration, suppress a derived run made entirely of
     // UI shapes that the acceptance catalogue already checks directly.
-    const columns = !explicitSchema && detectedKind === 'generic'
+    // A natural-language field list need not literally say "fields" or "table".
+    // Keep the separate widget-only guard below even when that list was parsed.
+    const columns = !explicitSchema && !hasExplicitRecordSchema(t) && detectedKind === 'generic'
         ? []
         : !explicitSchema && derived.length > 0 && derived.every(column => uiOnlyLabel(column.label))
         ? []

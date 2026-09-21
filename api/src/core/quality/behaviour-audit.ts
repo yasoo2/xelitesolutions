@@ -46,7 +46,7 @@ export interface BehaviourFinding {
  *  `code:` literals in this file, so a new finding cannot be added silently.
  */
 export const BEHAVIOUR_CODES: ReadonlySet<string> = new Set([
-    'controls_not_reached', 'dead_anchors', 'dead_controls', 'form_dead_submit',
+    'controls_not_reached', 'forms_not_reached', 'dead_anchors', 'dead_controls', 'form_dead_submit',
     'form_no_validation', 'form_reloads', 'js_errors', 'keyboard_unreachable',
     'some_dead_controls', 'semantic_input_validation', 'form_persistence_unproven',
     'qa_created_record_not_deletable',
@@ -702,23 +702,6 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
             return replacement ? page.$(replacement.sel) : null;
         };
 
-        // A CSV download has no DOM footprint. Count the app's real download
-        // anchor click as an additional browser-side witness, while retaining
-        // Playwright's download event when the browser emits one.
-        await page.evaluate(`(() => {
-            const w = globalThis;
-            w.__joeQaDownloadClicks = 0;
-            const proto = HTMLAnchorElement.prototype;
-            if (proto.__joeQaWrappedClick) return;
-            const original = proto.click;
-            const wrapped = function () {
-                if (this && this.hasAttribute('download')) w.__joeQaDownloadClicks++;
-                return original.call(this);
-            };
-            proto.click = wrapped;
-            proto.__joeQaWrappedClick = true;
-        })()`).catch(() => { });
-
         // Anchors are checked without clicking: the question is whether the
         // destination exists, and a page that scrolls is not proof that it does.
         const anchorTargets: Array<{ label: string; target: string; exists: boolean }> = await page.evaluate(() => {
@@ -994,31 +977,40 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                  * from a button wired to nothing.
                  */
                 let downloaded = false;
-                const onDownload = () => { downloaded = true; };
+                let downloadStarted = false;
+                let downloadFailed = false;
+                const onDownload = (download: any) => {
+                    // A clicked anchor or a failed transfer is not a delivered file.
+                    downloadStarted = true;
+                    Promise.resolve(download.failure()).then(error => {
+                        if (!error) downloaded = true;
+                        else downloadFailed = true;
+                    }).catch(() => { downloadFailed = true; });
+                };
                 page.on('download', onDownload);
-                const downloadClicksBefore = await page.evaluate('Number(globalThis.__joeQaDownloadClicks || 0)').catch(() => 0);
-                if (!eyeIsOpen()) break;
-                el = await stableHandle(c, el);
-                if (!el) {
-                    controls.push({ label: c.label, kind: c.kind as any, worked: false, effect: 'not found', instance: c.ordinal, href: c.href });
-                    continue;
+                try {
+                    if (!eyeIsOpen()) break;
+                    el = await stableHandle(c, el).catch(() => null);
+                    if (!el) {
+                        controls.push({ label: c.label, kind: c.kind as any, worked: false, effect: 'not found', instance: c.ordinal, href: c.href });
+                        continue;
+                    }
+                    // Use Playwright's stability check. A forced coordinate click
+                    // can land on a different node while React is laying out.
+                    await el.click({ timeout: 2500, noWaitAfter: true }).catch((error: any) => {
+                        metrics.controlClickErrors = metrics.controlClickErrors || [];
+                        metrics.controlClickErrors.push({ label: c.label, message: String(error?.message || error).slice(0, 180) });
+                    });
+                    const settleDeadline = Math.min(deadline, Date.now() + 2500);
+                    do {
+                        await page.waitForTimeout(100);
+                        const after = await page.evaluate(snapshot).catch(() => null);
+                        effect = downloaded ? 'download' : downloadStarted ? '' : page.url() !== beforeUrl ? 'navigation'
+                            : (changed(before, after) || (hoverEffect ? `hover:${hoverEffect}` : ''));
+                    } while (!effect && !downloadFailed && Date.now() < settleDeadline && eyeIsOpen());
+                } finally {
+                    try { page.off('download', onDownload); } catch { /* page may be gone */ }
                 }
-                // Use Playwright's stability check. A forced coordinate click
-                // can land on a different node while React is laying out.
-                await el.click({ timeout: 2500, noWaitAfter: true }).catch((error: any) => {
-                    metrics.controlClickErrors = metrics.controlClickErrors || [];
-                    metrics.controlClickErrors.push({ label: c.label, message: String(error?.message || error).slice(0, 180) });
-                });
-                await page.waitForTimeout(SETTLE_MS);
-                const afterUrl = page.url();
-                try { page.off('download', onDownload); } catch { /* page may be gone */ }
-                const downloadClicks = await page.evaluate('Number(globalThis.__joeQaDownloadClicks || 0)').catch(() => 0);
-                const after = await page.evaluate(snapshot).catch(() => null);
-                effect = afterUrl !== beforeUrl
-                    ? 'navigation'
-                    : downloaded || downloadClicks > downloadClicksBefore
-                    ? 'download'
-                    : (changed(before, after) || (hoverEffect ? `hover:${hoverEffect}` : ''));
                 // A submit that reloads the page proves the form is NOT handled —
                 // an unhandled submit is the browser's default, not a feature.
                 if (c.kind === 'submit' && effect === 'navigation') effect = 'reload';
@@ -1452,7 +1444,7 @@ export async function probeForms(
     const deadline = Date.now() + Math.max(4000, opts?.budgetMs ?? 30_000);
     const out: FormResult[] = [];
     const metrics: Record<string, any> = {
-        formsFilled: 0, fieldsFilled: 0, formsDeadSubmit: 0, formsValidated: 0, formsReloaded: 0,
+        formsFilled: 0, fieldsFilled: 0, formsDeadSubmit: 0, formsDeadSubmitEvidence: [], formsNotReached: 0, formsNotReachedEvidence: [], formsValidated: 0, formsReloaded: 0,
         formsEmptyRejected: 0,
         formsPersisted: 0, formsPersistenceUnproven: 0, qaRecordsDeleted: 0, qaRecordsNotDeleted: 0,
         semanticFieldsTested: 0, semanticValidationFailures: 0, semanticValidationEvidence: [],
@@ -1481,8 +1473,24 @@ export async function probeForms(
     }
     metrics.formsSeen = forms.length;
 
-    for (const f of forms) {
+    const identity = (form: any) => JSON.stringify([form.label,
+        form.fields.map((field: any) => [field.tag, field.type, field.name])]);
+    for (const planned of forms) {
         if (Date.now() > deadline) break;
+        if (!eyeIsOpen()) break;
+        // Persistence checks reload the page. Instrument handles from the previous
+        // document are no longer evidence of where the next form lives.
+        const current = await evalInPage(page, findForms, {
+            maxForms: opts?.maxForms ?? MAX_FORMS, maxFields: MAX_FIELDS_PER_FORM,
+        }).catch(() => []) || [];
+        const matches = current.filter((form: any) => identity(form) === identity(planned));
+        if (matches.length !== 1) {
+            metrics.formsNotReached++;
+            metrics.formsNotReachedEvidence.push({ label: planned.label,
+                reason: matches.length ? 'ambiguous form identity' : 'form missing after state change' });
+            continue;
+        }
+        const f = matches[0];
         // Its identity, not its position: the same form on a second route is
         // the same form, and it has already been filled in and sent.
         const key = `${f.label}|${f.fields.map((x: any) => x.type).join(',')}`;
@@ -1597,13 +1605,18 @@ export async function probeForms(
             // local API. Poll for a bounded window instead: the result still
             // requires a measured DOM/state/navigation change, never merely
             // the passage of time.
+            const pending = () => page.evaluate((sel: string) => {
+                const form = document.querySelector(sel);
+                return !!form && (form.getAttribute('aria-busy') === 'true'
+                    || !!form.querySelector('fieldset[disabled],button[type="submit"]:disabled,input[type="submit"]:disabled'));
+            }, f.sel).catch(() => true);
             let after = await page.evaluate(snapshot).catch(() => null);
-            effect = changed(before, after);
-            const effectDeadline = Date.now() + 2500;
-            while (!effect && Date.now() < effectDeadline) {
+            effect = await pending() ? '' : changed(before, after);
+            const effectDeadline = Math.min(deadline, Date.now() + 2500);
+            while (!effect && Date.now() < effectDeadline && eyeIsOpen()) {
                 await page.waitForTimeout(250);
                 after = await page.evaluate(snapshot).catch(() => null);
-                effect = changed(before, after);
+                effect = await pending() ? '' : changed(before, after);
             }
             if (effect === 'navigation') {
                 effect = 'reload';
@@ -1621,7 +1634,13 @@ export async function probeForms(
         if (effect === 'submitted') { /* counted by presence in the list */ }
         else if (effect === 'validation') metrics.formsValidated++;
         else if (effect === 'reload') metrics.formsReloaded++;
-        else if (f.fields.length) metrics.formsDeadSubmit++;
+        else if (f.fields.length) {
+            metrics.formsDeadSubmit++;
+            metrics.formsDeadSubmitEvidence.push({
+                label: f.label, kind: 'submit', sel: f.submitSel || f.sel,
+                form: f.sel, fields: f.fields.length, filled: filledCount,
+            });
+        }
 
         // A successful-looking submit is not enough for an application that
         // promises a saved record. First find the exact QA record, then reload
@@ -1629,14 +1648,24 @@ export async function probeForms(
         // delete action, keeping the test reversible and data-safe.
         const anchor = persistenceAnchors.find(value => value.length > 4);
         if (effect === 'submitted' && f.expectsPersistence && anchor && Date.now() < deadline && eyeIsOpen()) {
-            const appeared = await page.evaluate((needle: string) => document.body.innerText.includes(needle), anchor).catch(() => false);
+            const recordVisible = () => page.evaluate((needle: string) =>
+                Array.from(document.querySelectorAll('li,tr,[role="listitem"],[role="row"],[data-item],[data-row],.row,.item,.transaction,.entry,article'))
+                    .some(el => !el.closest('form,[role="status"],[role="alert"]')
+                        && (el as HTMLElement).innerText.includes(needle)), anchor).catch(() => false);
+            const appeared = await recordVisible();
             if (!appeared) {
                 metrics.formsPersistenceUnproven++;
             } else {
                 await eyes.say(page, 'أتحقق من حفظ النتيجة بعد تحديث الصفحة');
-                await page.reload({ waitUntil: 'domcontentloaded', timeout: 6000 }).catch(() => null);
-                await page.waitForTimeout(300);
-                const persisted = await page.evaluate((needle: string) => document.body.innerText.includes(needle), anchor).catch(() => false);
+                const reloaded = await page.reload({ waitUntil: 'domcontentloaded', timeout: Math.min(6000, Math.max(1, deadline - Date.now())) })
+                    .then((response: any) => !!response && response.ok()).catch(() => false);
+                const persistenceDeadline = Math.min(deadline, Date.now() + 2500);
+                let persisted = false;
+                do {
+                    if (!reloaded || Date.now() >= persistenceDeadline || !eyeIsOpen()) break;
+                    persisted = await recordVisible();
+                    if (!persisted) await page.waitForTimeout(100);
+                } while (!persisted && Date.now() < persistenceDeadline && eyeIsOpen());
                 if (!persisted) {
                     metrics.formsPersistenceUnproven++;
                 } else {
@@ -1810,6 +1839,16 @@ export function judgeBehaviour(
             ar: `${metrics.formsDeadSubmit} نموذج عُبِّئ بالكامل وأُرسل ولم يحدث شيء إطلاقاً — لا رسالة نجاح ولا خطأ`,
             en: `${metrics.formsDeadSubmit} form(s) were filled in completely and submitted, and nothing happened at all — no success state, no error`,
             hint: 'handle the submit event: send the data, then show a success or an error the visitor can see',
+            evidence: (metrics.formsDeadSubmitEvidence || []).slice(0, 8),
+        });
+    }
+    if ((metrics.formsNotReached || 0) > 0) {
+        findings.push({
+            code: 'forms_not_reached', severity: 'major',
+            ar: 'لم يمكن تحديد بعض النماذج بعد تغيّر الصفحة؛ لم تُختبر ولا أعدّها معطوبة.',
+            en: 'Some forms could not be uniquely rediscovered after the page changed; they were not tested and are not judged dead.',
+            hint: 'rediscover the current form identity before submitting; do not rewrite application handlers based on missing QA targets',
+            evidence: (metrics.formsNotReachedEvidence || []).slice(0, 8),
         });
     }
     if (metrics.formsWithoutValidation > 0) {

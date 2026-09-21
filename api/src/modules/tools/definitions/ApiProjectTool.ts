@@ -31,10 +31,57 @@ import { broadcast, broadcastThinkingDetail, broadcastTerminalLine } from '../..
 import { openTerminal } from '../../../core/quality/terminal-session';
 import { persistJoeProjects, writeJoeProject } from '../../../api/page-store';
 import { replyLanguageCode } from '../../../shared/reply-language';
+import { backendFingerprint, durableReadCommand, issueBackendEvidence, payloadMatches, type LocalBackendEvidence } from '../../../core/quality/local-backend-evidence';
 
 const slug = (s: string) => (String(s || '').toLowerCase()
     .replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '').slice(0, 32)) || 'api';
 const js = (s: string) => String(s || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, ' ');
+
+function exactDependencyMap(packageJson: string): string | null {
+    try {
+        const parsed = JSON.parse(packageJson);
+        const normalized = (section: string) => {
+            const dependencies = parsed?.[section] || {};
+            if (typeof dependencies !== 'object' || Array.isArray(dependencies)) return null;
+            return Object.fromEntries(Object.entries(dependencies)
+                .map(([name, version]) => [String(name), String(version)])
+                .sort(([a], [b]) => a.localeCompare(b)));
+        };
+        const dependencies = normalized('dependencies');
+        const devDependencies = normalized('devDependencies');
+        if (!dependencies || !devDependencies) return null;
+        return JSON.stringify({ dependencies, devDependencies });
+    } catch { return null; }
+}
+
+/** Select an exact cache from this workspace, never another project's tree. */
+export function matchingLocalNpmCache(
+    workspaceRoot: string,
+    packageJson: string,
+    excludedProjectRoot = '',
+): string | null {
+    const wanted = exactDependencyMap(packageJson);
+    if (!wanted || !fs.existsSync(workspaceRoot)) return null;
+    const excluded = path.resolve(excludedProjectRoot || path.join(workspaceRoot, '__none__'));
+    let entries: fs.Dirent[] = [];
+    try { entries = fs.readdirSync(workspaceRoot, { withFileTypes: true }); } catch { return null; }
+    for (const entry of entries.filter(item => item.isDirectory()).sort((a, b) => a.name.localeCompare(b.name))) {
+        const candidate = path.join(workspaceRoot, entry.name);
+        if (path.resolve(candidate) === excluded) continue;
+        const manifest = path.join(candidate, 'package.json');
+        const lock = path.join(candidate, 'package-lock.json');
+        const cache = path.join(candidate, '.npm-cache');
+        const content = path.join(cache, '_cacache', 'content-v2');
+        try {
+            const candidateManifest = fs.readFileSync(manifest, 'utf8');
+            const candidateLock = JSON.parse(fs.readFileSync(lock, 'utf8'));
+            const locked = exactDependencyMap(JSON.stringify(candidateLock?.packages?.[''] || {}));
+            if (exactDependencyMap(candidateManifest) !== wanted || locked !== wanted || !fs.existsSync(content)) continue;
+            if (fs.readdirSync(content, { withFileTypes: true }).some(item => item.isDirectory() || item.isFile())) return cache;
+        } catch { /* incomplete or unrelated generated project */ }
+    }
+    return null;
+}
 
 /**
  * What this kind of business stores — the resource and its seed rows.
@@ -2662,7 +2709,9 @@ export class ApiProjectTool extends BaseTool {
         const seeds = isCatalogue ? catalogueSeeds : [];
         const dirName = `api-${slug(brand)}`;
         const { workspaceService } = require('../../services/WorkspaceService');
-        const root = String(input?.root || workspaceService.getExplorerRoot());
+        // Artifact ownership follows execution context, not shared explorer UI state.
+        const contextWorkspaceId = String(context?.workspaceId || input?.workspaceId || '').trim();
+        const root = String(input?.root || workspaceService.getActiveRoot(contextWorkspaceId || undefined));
         const sessionKey = String(sessionId || 'default').replace(/[^a-zA-Z0-9._-]/g, '_');
         let proj = path.join(root, dirName);
         // Same cross-session collision guard as the react scaffolder.
@@ -2750,7 +2799,7 @@ export class ApiProjectTool extends BaseTool {
             'auth.js': fileAuthJs(roleSpecs),
             'seed.js': fileSeedJs([], { email: ownerEmail, salt: ownerSalt, hash: ownerHash }),
             'README.md': filePostsReadme(brand),
-            '.gitignore': 'node_modules\ndata.db\ndata.json\n.auth-secret\n',
+            '.gitignore': 'node_modules\n.npm-cache\ndata.db\ndata.json\n.auth-secret\n',
         } : {
             'package.json': filePackageJson(brand),
             'server.js': fileServerJs(resource, brand, path.basename(proj), relation, model, privateWorkflow, workflowApplication),
@@ -2760,7 +2809,7 @@ export class ApiProjectTool extends BaseTool {
             'seed.js': fileSeedJs(seeds, { email: ownerEmail, salt: ownerSalt, hash: ownerHash }),
             'README.md': fileReadme(brand, resource, labelAr, ownerEmail, relation, privateWorkflow, workflowApplication),
             // .auth-secret holds the token-signing key: it must never be committed.
-            '.gitignore': 'node_modules\ndata.db\ndata.json\n.auth-secret\n',
+            '.gitignore': 'node_modules\n.npm-cache\ndata.db\ndata.json\n.auth-secret\n',
         };
         // Streamed to the Logs panel as each file lands — a backend build is
         // watched the same way a frontend build is.
@@ -2777,7 +2826,8 @@ export class ApiProjectTool extends BaseTool {
 
         // ── the live proof: install, boot the REAL server, write and read a
         //    REAL row over REAL HTTP. Reported only as measured.
-        let installed = false, proven = false, backend = '', createdId = 0, npmMissing = false;
+        let installed = false, proven = false, backend = '', createdId = 0, npmMissing = false, registryDenied = false;
+        let backendEvidence: LocalBackendEvidence | null = null;
         let authProven = false, lockedOut = false, ordersLocked = false, relationProven = false;
         /** Did THIS boot create the owner, or was one already in the database? */
         let ownerCreated = false;
@@ -2799,16 +2849,38 @@ export class ApiProjectTool extends BaseTool {
              */
             const shell = openTerminal(term);
             await shell.open(isAr ? 'طرفية جو — بناء الخادم' : 'Joe\'s terminal — building the server', proj);
-            const instRun = await shell.run('npm', ['install', '--no-audit', '--no-fund'], { cwd: proj, timeout: 240_000 });
+            // A matching workspace cache contains package tarballs, not another
+            // project's node_modules; npm still validates this project's lockfile.
+            const reusableCache = matchingLocalNpmCache(root, files['package.json'], proj);
+            const npmCache = reusableCache || path.join(proj, '.npm-cache');
+            if (reusableCache) term(`dependencies: exact local npm cache selected from ${path.basename(path.dirname(reusableCache))}`);
+            const instRun = await shell.run('npm', [
+                'install', ...(reusableCache ? ['--offline'] : []), '--no-audit', '--no-fund', '--cache', npmCache,
+                // A registry access denial is environmental, not a transient
+                // package failure. One bounded attempt is useful evidence;
+                // npm's default retry backoff only keeps Joe waiting.
+                '--fetch-retries=0', '--fetch-timeout=10000',
+            ], { cwd: proj, timeout: 30_000 });
             const inst = instRun.missing ? -1 : instRun.timedOut ? -2 : (instRun.exitCode as number);
             npmMissing = inst === -1;
             installed = inst === 0;
+            registryDenied = !installed
+                && /registry\.npmjs\.org[\s\S]{0,500}\bEACCES\b|\bEACCES\b[\s\S]{0,500}registry\.npmjs\.org/iu.test(instRun.out);
             shell.note(installed
                 ? 'packages installed — the server can boot now'
                 : npmMissing ? 'npm is not on this machine — the project is written, but nothing can run here'
+                    : registryDenied ? 'npm registry access is denied by this environment — stopping after one bounded attempt'
                     : `install did not finish (exit ${inst})`);
 
             if (installed) {
+                const proofContext = {
+                    workspaceId: String(context?.workspaceId || ''),
+                    workspaceRoot: workspaceService.getActiveRoot(context?.workspaceId),
+                    sessionId: String(context?.sessionId || ''), runId: String(context?.runId || ''),
+                    backendRoot: proj, resource,
+                };
+                const beforeProof = backendFingerprint(proofContext);
+                const proofStarted = Date.now();
                 if (sessionId) broadcastThinkingDetail(sessionId, isAr ? '🚀 أشغّل الخادم وأثبت كتابة/قراءة حقيقية…' : '🚀 Booting the server for a real write/read proof…');
                 const port = 4100 + Math.floor(Math.random() * 400);
                 let child: { done: Promise<any>; kill: () => void } | null = null;
@@ -3025,7 +3097,7 @@ export class ApiProjectTool extends BaseTool {
                          * that asks the wrong question lies in both directions.
                          */
                         const proofBody: Record<string, any> = isCatalogue
-                            ? { name: isAr ? 'صف الإثبات الحي' : 'Live-proof row', details: 'written over real HTTP by Joe', price: '1' }
+                            ? { name: isAr ? 'صف الإثبات الحي' : 'Live-proof row', details: 'written over real HTTP by Joe', price: 1 }
                             : (() => {
                                 const b: Record<string, any> = {};
                                 for (const c of columns) {
@@ -3038,11 +3110,25 @@ export class ApiProjectTool extends BaseTool {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
                             body: JSON.stringify(proofBody),
-                        }).then(r => r.json()).catch(() => null);
+                        }).then(r => r.ok ? r.json() : null).catch(() => null);
                         createdId = Number(made?.item?.id || 0);
-                        const listed = await fetch(`${base}/api/${resource}`).then(r => r.json()).catch(() => null);
+                        const listed = await fetch(`${base}/api/${resource}`).then(r => r.ok ? r.json() : null).catch(() => null);
                         proven = createdId > 0 && Array.isArray(listed?.[resource])
                             && listed[resource].some((r: any) => r.id === createdId);
+                        const readBack = Array.isArray(listed?.[resource])
+                            ? listed[resource].find((row: any) => row.id === createdId) : null;
+                        const readMatches = proven && payloadMatches(proofBody, readBack);
+                        const command = readMatches ? durableReadCommand(proofContext, backend, createdId, proofBody) : null;
+                        if (command) {
+                            const { executeTool } = require('../../services/ToolService');
+                            const checked = await executeTool('shell_execute', { command, cwd: proj, timeout: 15000 }, context);
+                            const durable = checked?.ok === true && checked?.output?.exitCode === 0
+                                && String(checked?.output?.stdout || '').trim() === 'JOE_BACKEND_DURABLE_MATCH';
+                            backendEvidence = issueBackendEvidence(proofContext, backend, {
+                                writeOk: proven, payloadReadMatches: readMatches, durableReadMatches: durable,
+                            }, Date.now() - proofStarted, beforeProof);
+                            term(`backend durability proof → ${backendEvidence ? `verified (${backend})` : 'not proven'}`);
+                        }
                         term(`live proof → ${proven ? `OK (backend ${backend}, row #${createdId} written and read back)` : 'FAILED'}`);
                         // A REAL APP STARTS EMPTY. The catalogue keeps its proof
                         // row (its seeds are the design, and the durability check
@@ -3260,6 +3346,7 @@ export class ApiProjectTool extends BaseTool {
             lastRequest: request.slice(0, 80),
             ...(inheritedScaffoldDir ? { scaffoldDir: inheritedScaffoldDir } : {}),
             ...(appKind ? { appKind } : {}),
+            ...(backendEvidence ? { backendEvidence } : {}),
             ...(handedModel.length ? { model: handedModel } : {}),
             // Runtime-only handoff for the immediately following React build.
             // page-store strips this field before persistence; the plaintext
@@ -3411,9 +3498,12 @@ ${describeRoles(false, roleSpecs)}
                 ? 'The API booted, but its live HTTP contract proof failed.'
                 : installed
                     ? 'The API did not become ready within the live-proof window.'
-                    : 'The API dependencies were not installed, so no live proof was possible.' } : {}),
+                    : registryDenied
+                        ? 'npm registry access was denied by this environment (EACCES), so the API dependencies could not be provisioned for live proof.'
+                        : 'The API dependencies were not installed, so no live proof was possible.' } : {}),
             output: {
                 message, status: deliveryProven ? 'completed' : 'partial', path: proj, dir: path.basename(proj), resource, installed, proven, authProven, backend, ownerEmail,
+                ...(backendEvidence ? { backendEvidence } : {}),
                 relation: relation ? { resource: relation.resource, key: relation.key, labelKey: relation.labelKey } : null,
                 relationProven,
                 files: Object.keys(files),

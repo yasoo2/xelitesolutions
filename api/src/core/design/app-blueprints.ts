@@ -2255,7 +2255,7 @@ function everyItemIsADefiniteName(items: string[]): boolean {
  *  instead of asking about a website — and a second copy would drift the
  *  first time one of them learned a word the other did not.
  */
-export const RECORD_CONTAINER = /(جدول|جداول|قائمة|كشف|سجل|سجلّ|\btable\b|\blist\b|\bsheet\b|\bledger\b|\bregister\b|\btracker\b|\bdirectory\b|\bregistry\b|\bcatalog(?:ue)?\b)/iu;
+export const RECORD_CONTAINER = /(جدول|جداول|قائمة|كشف|سجل|سجلّ|\btable\b|\blist\b|\bsheet\b|\bboard\b|\bqueue\b|\bledger\b|\bregister\b|\btracker\b|\bdirectory\b|\bregistry\b|\bcatalog(?:ue)?\b)/iu;
 
 /**
  *  WHERE THE SENTENCE ENDS AND THE FIRST COLUMN BEGINS.
@@ -3483,7 +3483,7 @@ export function fieldsFromRequest(requestRaw: string, isAr: boolean): AppField[]
      *  next property added to a column will be lost the same way, which is
      *  why this comment names the shape rather than the symptom.
      */
-    return cols.map((c, i) => ({
+    const fields = cols.map((c, i) => ({
         ...f(
             [c.key, c.label, c.label, c.type, c.options,
                 i === 0 ? ['required', 'primary'] : (c.role === 'money' || c.role === 'count' ? ['required'] : undefined)],
@@ -3493,6 +3493,23 @@ export function fieldsFromRequest(requestRaw: string, isAr: boolean): AppField[]
         ...(c.minExclusive ? { minExclusive: true } : {}),
         ...(c.control ? { control: c.control } : {}),
     }));
+    if (!fields.some(field => field.type === 'image')) {
+        const intent = maskNegatedSpans(requestRaw);
+        const action = /\bupload(?:s|ing)?\s+(?:(?:an?|the)\s+)?(image|photo|picture)s?\b|(?:رفع|ارفع|أرفع)\s+(?:ال)?(صورة|صور)/giu;
+        for (const match of intent.matchAll(action)) {
+            const prefix = intent.slice(0, match.index).split(/[.!?؛;\n]/u).pop() || '';
+            if (/\b(?:explain|describe|instructions?|guide|how\s+to)\b|اشرح|شرح|دليل/iu.test(prefix)) continue;
+            const label = match[1] || match[2];
+            const mapping = TYPE_MARKS.find(([pattern]) => pattern.test(label));
+            if (!mapping || mapping[2] !== 'image') continue;
+            const baseKey = canonicalFieldKey(label) || mapping[1];
+            let key = baseKey;
+            for (let index = 1; fields.some(field => field.key === key); index++) key = `${baseKey}${index}`;
+            fields.push(f([key, label, label, mapping[2]], isAr));
+            break;
+        }
+    }
+    return fields;
 }
 
 /* ── what was asked for, in the user's own words ─────────────────────────── */
@@ -3637,14 +3654,14 @@ const WEATHER_FEATURE_RULES: Array<{ asked: RegExp; evidence: RegExp }> = [
     { asked: /smooth\s+transitions?/i, evidence: /transition/i },
 ];
 
-const RECORDS_FEATURE_RULES: Array<{ asked: RegExp; evidence: RegExp }> = [
-    { asked: /upload(?:ed|ing)?\s+(?:an?\s+)?(?:image|photo)|رفع\s+(?:صورة|الصور)/iu, evidence: /type=["']file["'][^>]*accept=["']image\/\*/iu },
+const RECORDS_FEATURE_RULES: Array<{ asked: RegExp; evidence: RegExp; fieldType?: FieldType }> = [
+    { asked: /upload(?:ed|ing)?\s+(?:an?\s+)?(?:image|photo)|رفع\s+(?:صورة|الصور)/iu, evidence: /type=["']file["'][^>]*accept=["']image\/\*/iu, fieldType: 'image' },
     { asked: /invalid\s+file\s+rejection|reject\s+(?:an?\s+)?invalid\s+file|رفض\s+ملف\s+غير\s+صالح/iu, evidence: /Choose a valid image file|اختر ملف صورة صالح/iu },
-    { asked: /filter(?:ing)?\s+(?:items?\s+)?by\s+tags?|تصفية[^.]{0,40}وسم/iu, evidence: /(?=[\s\S]*filterFields\s*:\s*\[['"]tags['"]\])(?=[\s\S]*filterKeys)(?=[\s\S]*setFilters)/iu },
+    { asked: /filter(?:ing)?\s+(?:items?\s+)?by\s+tags?|تصفية[^.]{0,40}وسم/iu, evidence: /^(?=[\s\S]*filterFields\s*:\s*\[['"]tags['"]\])(?=[\s\S]*filterKeys)(?=[\s\S]*setFilters)/iu },
     { asked: /preview\s+(?:the\s+)?uploaded\s+(?:image|photo)|معاينة\s+(?:الصورة|الصور)/iu, evidence: /record-modal-pic[\s\S]{0,300}imageOf\(selected/iu },
     { asked: /delete[^.]{0,80}(?:only\s+)?after\s+confirmation|confirm[- ]delete|حذف[^.]{0,80}تأكيد/iu, evidence: /window\.confirm\(/iu },
     { asked: /persistent\s+local\s+storage|persist(?:ence)?\s+after\s+reload|حفظ\s+محلي\s+دائم/iu, evidence: /createStore[\s\S]{0,500}localStorage|localStorage[\s\S]{0,500}setItem/iu },
-    { asked: /preserve\s+(?:the\s+)?original\s+uploaded\s+(?:image|photo)|الحفاظ\s+على\s+الصورة\s+الأصلية/iu, evidence: /(?=[\s\S]*preserveOriginalImages\s*:\s*true)(?=[\s\S]*maxEdge\s*===\s*0)/iu },
+    { asked: /preserve\s+(?:the\s+)?original\s+uploaded\s+(?:image|photo)|الحفاظ\s+على\s+الصورة\s+الأصلية/iu, evidence: /^(?=[\s\S]*preserveOriginalImages\s*:\s*true)(?=[\s\S]*maxEdge\s*===\s*0)/iu },
     { asked: /metadata\s+edit(?:ing)?|edit(?:ing)?\s+metadata|تعديل\s+البيانات\s+الوصفية/iu, evidence: /const edit\s*=|Save changes|حفظ التعديل/iu },
     { asked: /keyboard\s+access|keyboard[- ]accessible|لوحة\s+المفاتيح/iu, evidence: /tabIndex=\{0\}[\s\S]{0,300}onKeyDown/iu },
     { asked: /empty\s+state|حالة\s+فارغة/iu, evidence: /emptyHint|className=["']empty["']/iu },
@@ -3713,6 +3730,48 @@ function completionOption(options: string[], isAr: boolean): string | undefined 
  * Records requirements need executable evidence too. A generic engine name is
  * not proof that a requested field or action exists in the generated app.
  */
+function hasConfiguredUpload(source: string, fieldType: FieldType): boolean {
+    const ts = require('typescript') as typeof import('typescript');
+    const file = ts.createSourceFile('record-evidence.tsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    let configured = false;
+    const inputs: import('typescript').Node[] = [];
+    const named = (name: import('typescript').PropertyName, value: string) =>
+        (ts.isIdentifier(name) || ts.isStringLiteral(name)) && name.text === value;
+    const visit = (node: import('typescript').Node): void => {
+        if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.name.text === 'content'
+            && node.initializer && ts.isObjectLiteralExpression(node.initializer)) {
+            const fields = node.initializer.properties.find(property => ts.isPropertyAssignment(property) && named(property.name, 'fields'));
+            configured = !!fields && ts.isPropertyAssignment(fields) && ts.isArrayLiteralExpression(fields.initializer)
+                && fields.initializer.elements.some(element => ts.isObjectLiteralExpression(element)
+                && element.properties.some(property => ts.isPropertyAssignment(property) && named(property.name, 'type')
+                    && ts.isStringLiteral(property.initializer) && property.initializer.text === fieldType));
+        }
+        if ((ts.isJsxSelfClosingElement(node) || ts.isJsxOpeningElement(node)) && node.tagName.getText(file) === 'input') {
+            const attribute = (name: string) => node.attributes.properties.find(property => ts.isJsxAttribute(property)
+                && property.name.getText(file) === name);
+            const value = (name: string) => {
+                const prop = attribute(name);
+                return prop && ts.isJsxAttribute(prop) && prop.initializer && ts.isStringLiteral(prop.initializer)
+                    ? prop.initializer.text : '';
+            };
+            if (value('type') === 'file' && value('accept').startsWith('image/*')) inputs.push(node);
+        }
+        ts.forEachChild(node, visit);
+    };
+    visit(file);
+    return inputs.some(input => {
+        for (let parent = input.parent; parent; parent = parent.parent) {
+            if (ts.isCallExpression(parent) && ts.isPropertyAccessExpression(parent.expression)
+                && parent.expression.name.text === 'map') {
+                // Only the known records renderer can be tied to content.fields.
+                const target = parent.expression.expression.getText(file);
+                return /^(?:fields|content\.fields|controller\.fields)$/.test(target) && configured;
+            }
+        }
+        return true;
+    });
+}
+
 export function recordFeatureCovered(feature: string, request: string, evidence: string): boolean {
     const f = String(feature || '').trim();
     const src = String(evidence || '');
@@ -3720,9 +3779,17 @@ export function recordFeatureCovered(feature: string, request: string, evidence:
     const hasDeclaredLabel = f.length >= 3 && new RegExp(
         `(?:label|placeholder|aria-label)\\s*[:=]\\s*['\"]${escaped}['\"]`, 'iu',
     ).test(src);
-    if (hasDeclaredLabel) return true;
     const explicitRule = RECORDS_FEATURE_RULES.find(rule => rule.asked.test(f));
-    if (explicitRule) return explicitRule.evidence.test(src);
+    if (explicitRule) {
+        if (!explicitRule.evidence.test(src)) return false;
+        // A generic field renderer can contain an inactive upload branch.
+        // Independent upload components do not require a records schema.
+        if (explicitRule.fieldType) {
+            return hasConfiguredUpload(src, explicitRule.fieldType);
+        }
+        return true;
+    }
+    if (hasDeclaredLabel) return true;
     if (/appointment\s+scheduling[^.]*linked\s+to\s+both|مواعيد[^.]*مرتبط/iu.test(f)) {
         return /patient_id/iu.test(src) && /doctor_id/iu.test(src)
             && /relations[\s\S]{0,500}select|parents\[/iu.test(src);

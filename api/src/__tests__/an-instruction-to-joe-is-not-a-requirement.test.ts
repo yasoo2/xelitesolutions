@@ -57,6 +57,7 @@ describe('an instruction to Joe is not a requirement of the project', () => {
             'Buttons tested', 'Errors discovered', 'Errors fixed', 'Final verification result',
             'Do not claim success based only on code inspection',
             'then one final full verification. Report which checks ran',
+            'Run focused checks, then one final verification',
             'inspect the result in the browser. Do not deploy anything.',
         ]) {
             expect({ t, judgeable: isJudgeable(t) }).toEqual({ t, judgeable: false });
@@ -148,6 +149,25 @@ describe('an instruction to Joe is not a requirement of the project', () => {
         expect(r.requirements.map(x => x.text)).toEqual(['borrower']);
         expect(r.rejected).toHaveLength(3);
         expect(r.rejected.every(x => x.reason.includes('an instruction to me'))).toBe(true);
+    });
+
+    it('does not promote the project subject or a run instruction into named acceptance', async () => {
+        const request = [
+            'Create a compact browser-based reading queue with title and reader.',
+            'Run focused checks, then one final verification.',
+        ].join(' ');
+        const r = await namedRequirements(request, false, async () => JSON.stringify({
+            requirements: [
+                { text: 'a compact browser-based reading queue', quote: 'Create a compact browser-based reading queue' },
+                { text: 'title', quote: 'title' },
+                { text: 'Run focused checks, then one final verification', quote: 'Run focused checks, then one final verification' },
+            ],
+        }));
+        expect(r.requirements.map(item => item.text)).toEqual(['title']);
+        expect(r.rejected.map(item => item.reason)).toEqual([
+            expect.stringContaining('thing you asked for'),
+            expect.stringContaining('instruction to me'),
+        ]);
     });
 
     it('keeps test and deployment instructions out of the product acceptance contract', async () => {
