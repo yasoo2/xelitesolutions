@@ -6105,7 +6105,8 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
         // remains the author for open-ended/domain-specific interfaces.
         let requestDerivedEngineReady = false;
         let authoredEngineFallback: { path: string; body: string } | null = null;
-        if (recordsPresentation && generatedEnginePath && context?.engineeringPipeline === true) {
+        if (recordsPresentation && generatedEnginePath && context?.engineeringPipeline === true
+            && context?.allowModelAuthoringInTest !== true) {
             const derivedSource = requestDerivedRecordsPresentation(recordsDefaultSource);
             if (derivedSource.trim() && derivedSource.trim() !== recordsDefaultSource.trim()) {
                 const derivedPath = path.join(proj, generatedEnginePath);
