@@ -79,7 +79,9 @@ describe('and the thing in front of him decides what his word means', () => {
         const at = SOURCE.indexOf('THE THING IN FRONT OF HIM DECIDES');
         expect(at).toBeGreaterThan(0);
         const block = SOURCE.slice(at, at + 2200);
-        expect(block).toContain("tool: 'project_edit'");
+        expect(block).toContain('return PlanningEngine.projectEditPlan');
+        const helper = SOURCE.slice(SOURCE.indexOf('private static projectEditPlan'), SOURCE.indexOf('/** Map a high-level browser action'));
+        expect(helper).toContain("tool: 'project_edit'");
         expect(block).toContain('joeProjects');
     });
 

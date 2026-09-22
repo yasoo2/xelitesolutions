@@ -98,8 +98,8 @@ describe('the generated server decides nothing twice', () => {
 
     it('the roles are COMPILED from one definition, not retyped', () => {
         const a = API();
-        expect(a).toMatch(/export const ROLES = \$\{JSON\.stringify\(ROLES\.map/);
-        expect(a).toMatch(/import \{ ROLES, describeRoles \} from '\.\.\/\.\.\/\.\.\/core\/design\/roles';/);
+        expect(a).toMatch(/export const ROLES = \$\{JSON\.stringify\(roles\.map/);
+        expect(a).toMatch(/import \{ ROLES, describeRoles, rolesForRequest, type RoleSpec \} from '\.\.\/\.\.\/\.\.\/core\/design\/roles';/);
     });
 
     it('a viewer is refused once, for every table there is', () => {
@@ -179,8 +179,8 @@ describe('the accounts routes, and the ways they can be abused', () => {
     it('and the build message tells the owner the roles exist at all', () => {
         const src = a();
         expect(src).toContain('👥 فريقك — النظام لم يعد لشخص واحد:');
-        expect(src).toMatch(/\$\{describeRoles\(true\)\}/);
-        expect(src).toMatch(/\$\{describeRoles\(false\)\}/);
+        expect(src).toMatch(/\$\{describeRoles\(true, roleSpecs\)\}/);
+        expect(src).toMatch(/\$\{describeRoles\(false, roleSpecs\)\}/);
         expect(src).toContain('not_your_row');
     });
 });
