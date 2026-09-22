@@ -41,7 +41,7 @@ describe('phase status reports executed work separately from skipped work', () =
       argsSkippedTask('First invalid generated-file task'),
       argsSkippedTask('Second invalid generated-file task'),
       argsSkippedTask('Third invalid generated-file task'),
-    ], { tool: 'project_detect', task: 'Verify phase output', args: {} });
+    ], { tool: 'code_reviewer', task: 'Verify phase output', args: { files: ['README.md'], reviewType: 'quick' } });
     expect(result.ok).toBe(false);
     expect(result.output.status).toBe('skipped');
     expect(result.output.completedTasks).toBe(0);
@@ -55,7 +55,7 @@ describe('phase status reports executed work separately from skipped work', () =
   it('keeps a phase with executed work completed and verified on the existing surface', async () => {
     const result: any = await runPhase([
       { task: 'Run the real phase task', tool: 'echo', args: { message: 'ran' } },
-    ], { tool: 'project_detect', task: 'Verify phase output', args: {} });
+    ], { tool: 'code_reviewer', task: 'Verify phase output', args: { files: ['README.md'], reviewType: 'quick' } });
 
     expect(result.ok).toBe(true);
     expect(result.output.status).toBe('completed');
