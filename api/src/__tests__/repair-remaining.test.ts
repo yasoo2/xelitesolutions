@@ -82,7 +82,7 @@ describe('the phrase routes to it, and nothing else does', () => {
     it('the route is deterministic and comes before the surgical editor', () => {
         const src = ENGINE();
         const repair = src.indexOf('const repairRemaining =');
-        const edit = src.indexOf("id: 'project_edit',", repair);
+        const edit = src.indexOf('return PlanningEngine.projectEditPlan(intent, context);', repair);
         expect(repair).toBeGreaterThan(0);
         expect(edit).toBeGreaterThan(repair);
         expect(src).toMatch(/tool: 'project_repair'/);
