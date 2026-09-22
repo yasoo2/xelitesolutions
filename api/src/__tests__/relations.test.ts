@@ -125,24 +125,26 @@ describe('the interface reaches the second table', () => {
     });
 
     it('the records engine renders the picker, the filter and the parent panel', () => {
-        const app = files('نظام حجز مواعيد لعيادة أسنان')['src/components/RecordsApp.jsx'];
-        expect(app).toContain('const rel = content.relation');
-        expect(app).toContain('addParent');            // create a doctor without leaving
-        expect(app).toContain('parentFilter');         // «كل مواعيد هذا الطبيب»
-        expect(app).toContain('parent_label');         // …and read the name the server sent
-        expect(app).toContain('apiListOn');
+        const generated = files('نظام حجز مواعيد لعيادة أسنان');
+        const engine = `${generated['src/app/records-controller.js']}\n${generated['src/components/RecordsView.jsx']}`;
+        expect(engine).toContain('const rel = content.relation');
+        expect(engine).toContain('addParent');            // create a doctor without leaving
+        expect(engine).toContain('parentFilter');         // «كل مواعيد هذا الطبيب»
+        expect(engine).toContain('parent_label');         // …and read the name the server sent
+        expect(engine).toContain('apiListOn');
     });
 
     it('an app with no parent still renders — the picker is simply absent', () => {
-        const app = files('تطبيق ملاحظات')['src/components/RecordsApp.jsx'];
-        const content = files('تطبيق ملاحظات')['src/content.js'];
+        const generated = files('تطبيق ملاحظات');
+        const controller = generated['src/app/records-controller.js'];
+        const content = generated['src/content.js'];
         expect(content).toContain('relation: null');
         // The same component serves both: the guard is `rel ? … : null`.
-        expect(app).toContain('const rel = content.relation');
+        expect(controller).toContain('const rel = content.relation');
     });
 
     it('and an edit now reaches the server instead of only this browser', () => {
-        const app = files('تطبيق ملاحظات')['src/components/RecordsApp.jsx'];
-        expect(app).toContain('apiUpdate(content.api, editing, patch)');
+        const controller = files('تطبيق ملاحظات')['src/app/records-controller.js'];
+        expect(controller).toContain('apiUpdate(content.api, editing, patch)');
     });
 });
