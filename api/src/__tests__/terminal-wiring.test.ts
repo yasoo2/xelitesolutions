@@ -64,7 +64,9 @@ describe('the stream is live, not a post-hoc flood', () => {
 
     it('a tool that streamed live is not flushed a second time', () => {
         expect(BUILDER).toContain('logsStreamedLive: true');
-        expect(TOOLSVC).toMatch(/if \(!\(res as any\)\?\.logsStreamedLive\)/);
+        expect(TOOLSVC).toMatch(/if \(\(res as any\)\?\.logsStreamedLive\)/);
+        expect(TOOLSVC).toMatch(/toolLogs\.forEach\(\(line: string\) => spokenLive\.add/);
+        expect(TOOLSVC).toMatch(/\.filter\(\(line: string\) => !spokenLive\.has/);
     });
 
     it('nobody claims "real-time" over a post-run flush any more', () => {

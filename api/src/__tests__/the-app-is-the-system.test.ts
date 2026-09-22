@@ -136,8 +136,8 @@ describe('the app can actually read and write that table', () => {
         // Knowing only one meant the server's real id was never adopted, and
         // the next edit went to /api/plants/<local-uid> and 404'd.
         const t = T();
-        expect(t).toMatch(/return \{ ok: true, item: d\.item \|\| d\.row \|\| row \};/);
         expect(t).toMatch(/return \{ ok: true, item: d\.item \|\| d\.row \|\| null \};/);
+        expect(t).toMatch(/return \{ ok: true, item: d\.item \|\| row \};/);
     });
 
     it('and it recognises its own server on a domain, not just localhost', () => {
