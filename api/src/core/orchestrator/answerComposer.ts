@@ -159,6 +159,59 @@ function composeWriteAndReadReport(done: RunStep[], language?: string): string {
         : `## Updated ${evidence.file}\n\n${state}\n\n**Final line count:** ${evidence.totalLines}\n\n\`\`\`text\n${evidence.content}\n\`\`\``;
 }
 
+/** Present the bounded decision receipt rather than echoing its task label. */
+function composeCapabilityDecisionReport(done: RunStep[], language?: string): string {
+    const source = done.find(step => {
+        const result = step?.result;
+        return result?.receipt?.version === 1 && result?.receipt?.selected;
+    });
+    const receipt = source?.result?.receipt;
+    const selected = receipt?.selected;
+    if (!receipt || !selected) return '';
+
+    const ar = String(language || '').startsWith('ar');
+    const alternatives = Array.isArray(receipt.viableAlternatives)
+        ? receipt.viableAlternatives.map(String).filter(Boolean).slice(0, 3)
+        : Array.isArray(receipt.rankedAlternatives)
+            ? receipt.rankedAlternatives
+                .map((item: any) => item?.candidate)
+                .filter((candidate: any) => candidate && candidate.id !== selected.id)
+                .slice(0, 3)
+                .map((candidate: any) => `${candidate.route} (${candidate.setup})`)
+            : [];
+    const rejected = Array.isArray(receipt.rejectedAlternatives)
+        ? receipt.rejectedAlternatives.map(String).filter(Boolean).slice(0, 3)
+        : Array.isArray(receipt.rejected)
+            ? receipt.rejected.slice(0, 3).map((item: any) => {
+            const reasons = Array.isArray(item?.reasons)
+                ? item.reasons
+                : item?.reasons == null ? [] : [String(item.reasons)];
+            return `${item?.id || 'candidate'}: ${reasons.slice(0, 2).join('; ')}`;
+            }).filter(Boolean)
+            : [];
+    const action = receipt.requiredUserAction || source?.result?.userAction || null;
+
+    if (ar) {
+        return [
+            '## قرار مسار القدرة',
+            `**المسار المختار:** ${selected.route} (${selected.setup})`,
+            `**الموثوقية والدليل:** ${selected.reliability}؛ ${receipt.evidenceFreshness === 'fresh' ? 'الدليل مسجل كحديث' : 'الدليل قديم أو غير مكتمل'}.`,
+            alternatives.length ? `**بدائل مناسبة:** ${alternatives.join('، ')}` : '',
+            rejected.length ? `**بدائل مرفوضة:**\n${rejected.map((line: string) => `- ${line}`).join('\n')}` : '',
+            action ? `**إجراء مطلوب منك:** ${action}. لم أجرِ اتصال حساب أو استخدام مفتاح أو دفع.` : '**لا يوجد إجراء مطلوب منك. لم أجرِ اتصال حساب أو استخدام مفتاح أو دفع.**',
+        ].filter(Boolean).join('\n\n');
+    }
+
+    return [
+        '## Capability route decision',
+        `**Selected route:** ${selected.route} (${selected.setup})`,
+        `**Reliability and evidence:** ${selected.reliability}; ${receipt.evidenceFreshness === 'fresh' ? 'evidence is recorded as fresh' : 'evidence is stale or incomplete'}.`,
+        alternatives.length ? `**Viable alternatives:** ${alternatives.join(', ')}` : '',
+        rejected.length ? `**Rejected alternatives:**\n${rejected.map((line: string) => `- ${line}`).join('\n')}` : '',
+        action ? `**Action required from you:** ${action}. No account was connected, key used, or payment made.` : '**No action is required from you. No account was connected, key used, or payment made.**',
+    ].filter(Boolean).join('\n\n');
+}
+
 /**
  * The whole run, in one message. `steps` is in plan order; anything that never
  * completed is ignored.
@@ -169,6 +222,9 @@ export function composeAnswer(steps: RunStep[], language?: string): string {
 
     const writeAndReadReport = composeWriteAndReadReport(done, language);
     if (writeAndReadReport) return writeAndReadReport;
+
+    const capabilityDecisionReport = composeCapabilityDecisionReport(done, language);
+    if (capabilityDecisionReport) return capabilityDecisionReport;
 
     const readFileReport = composeReadFileReport(done, language);
     if (readFileReport) return readFileReport;

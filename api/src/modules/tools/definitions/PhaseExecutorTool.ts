@@ -20,6 +20,7 @@ import {
     summarizeVerificationLedger,
     type VerificationSelection,
 } from '../../../core/quality/verification-ledger';
+import { capabilityProfilesFor } from '../../../core/capabilities/decision-profiles';
 
 type PhaseDeliveryEvidence = {
     accepted?: boolean;
@@ -31,6 +32,33 @@ type PhaseDeliveryEvidence = {
     requestedVisualAudit?: boolean;
     visualAuditUnavailable?: boolean;
 };
+
+type CapabilityDecisionEvidence = {
+    version: 1;
+    family: string;
+    selected: { id: string; route: string; setup: string; reliability: string } | null;
+    requiredUserAction: string | null;
+};
+
+/** Rebuild decision evidence from Joe-maintained profiles before it leaves a phase. */
+function compactCapabilityDecisionEvidence(value: any): CapabilityDecisionEvidence | null {
+    const receipt = value?.receipt;
+    const family = String(receipt?.family || '').trim().toLowerCase();
+    if (receipt?.version !== 1 || !family) return null;
+    const selectedId = String(receipt?.selected?.id || '').trim();
+    const selected = capabilityProfilesFor(family).find(candidate => candidate.id === selectedId);
+    if (!selected) return {
+        version: 1, family, selected: null, requiredUserAction: null,
+    };
+    const requiredUserAction = receipt?.requiredUserAction === selected.setup && selected.setup !== 'ZERO_SETUP'
+        ? selected.setup : null;
+    return {
+        version: 1,
+        family,
+        selected: { id: selected.id, route: selected.route, setup: selected.setup, reliability: selected.reliability },
+        requiredUserAction,
+    };
+}
 
 /**
  * Carry only the bounded acceptance/fidelity contract across the executor
@@ -1153,6 +1181,7 @@ export class PhaseExecutorTool implements ToolDefinition {
         // fields such as baseUrl, auth, env names, and provider names are never
         // accepted from planner/run context.
         let apiSelection: ApiSelectionArtifact | null = compactApiSelectionArtifact(projectContext?.apiSelection);
+        let capabilityDecision: CapabilityDecisionEvidence | null = compactCapabilityDecisionEvidence(projectContext?.capabilityDecision);
 
         const executionContext = {
             runId: context?.runId || projectContext?.runId,
@@ -1663,6 +1692,10 @@ export class PhaseExecutorTool implements ToolDefinition {
                         if (toolName === 'search_public_apis') {
                             apiSelection = compactApiSelectionArtifact(output.selection);
                             if (apiSelection) appendLog(`[PhaseExecutor] API selection captured for builder handoff: ${apiSelection.providerName}`);
+                        }
+                        if (toolName === 'decide_capability_route') {
+                            capabilityDecision = compactCapabilityDecisionEvidence(output);
+                            if (capabilityDecision?.selected) appendLog(`[PhaseExecutor] Capability decision captured: ${capabilityDecision.selected.route}`);
                         }
                         if (toolName === 'validate_api'
                             && apiSelection
@@ -2292,6 +2325,7 @@ export class PhaseExecutorTool implements ToolDefinition {
                     ...(apiSelection ? { apiSelection } : {}),
                     verificationLedger,
                     verificationMetrics: summarizeVerificationLedger(verificationLedger),
+                    ...(capabilityDecision ? { capabilityDecision } : {}),
                 },
                 logs
             };
@@ -2321,6 +2355,7 @@ export class PhaseExecutorTool implements ToolDefinition {
                     ...(apiSelection ? { apiSelection } : {}),
                     verificationLedger,
                     verificationMetrics: summarizeVerificationLedger(verificationLedger),
+                    ...(capabilityDecision ? { capabilityDecision } : {}),
                 },
                 logs
             };
