@@ -3243,7 +3243,7 @@ export function hasExplicitRecordSchema(requestRaw: string): boolean {
     // camel farm. I want a register...". The build verb begins the second
     // sentence, not the whole message. Read a clause boundary, while still
     // refusing a mere description that never asks Joe to create anything.
-    const clauseStart = '(?:^|[.؟!\\n]\\s*)';
+    const clauseStart = '(?:^|[.؟!،؛,;\\n]\\s*)';
     const isBuildRequest = new RegExp(`${clauseStart}(?:please\\s+)?(?:create|build|make|develop|design|scaffold|generate)\\b`, 'i').test(request)
         || new RegExp(`${clauseStart}(?:بدي|أريد|اريد|أنشئ|انشئ|ابن|اصنع|صمم|طوّر|طور|اعمل)(?:\\s|$)`, 'iu').test(request);
     if (!isBuildRequest) return false;

@@ -125,7 +125,8 @@ describe('and the builder prefers what is already known', () => {
 
     it('the api builder awaits the design and says who answered', () => {
         const a = read('modules', 'tools', 'definitions', 'ApiProjectTool.ts');
-        expect(a).toMatch(/const designed = await designDataModel\(request, \{ onNote: \(n: string\) => term\(n\) \}\);/);
+        expect(a).toMatch(/const designed = workflowApplication/);
+        expect(a).toMatch(/await designDataModel\(request, \{ onNote: \(n: string\) => term\(n\) \}\)/);
     });
 
     it('and the interface builds its screens from the SAME design, not a second guess', () => {
@@ -133,10 +134,11 @@ describe('and the builder prefers what is already known', () => {
         // The handed model is now the WHOLE system: the promoted primary rides
         // at the head, because a primary absent from this entry was a table
         // the server served that no screen anywhere let anyone touch.
-        expect(a).toMatch(/const handedModel = promoted \? \[promoted, \.\.\.model\] : model;/);
+        expect(a).toMatch(/const primaryModel = !promoted && columns !== CATALOGUE_COLUMNS/);
+        expect(a).toMatch(/const handedModel = promoted \? \[promoted, \.\.\.model\] : \[\.\.\.primaryModel, \.\.\.model\];/);
         expect(a).toMatch(/\.\.\.\(handedModel\.length \? \{ model: handedModel \} : \{\}\),/);
         const r = read('modules', 'tools', 'definitions', 'ReactProjectTool.ts');
-        expect(r).toMatch(/Array\.isArray\(prevEntry\?\.model\) && prevEntry\.model\.length/);
+        expect(r).toMatch(/Array\.isArray\(apiEntry\?\.model\) && apiEntry\.model\.length/);
     });
 
     it('a build is never blocked on a model', () => {
