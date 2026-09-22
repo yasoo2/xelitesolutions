@@ -239,27 +239,6 @@ Return ONLY a JSON object:
         // Keep this helper safe when callers use it directly instead of parse().
         // Engineering briefs must never be returned as Browser intents.
         if (IntentParser.looksLikeEngineeringBrief(raw)) return null;
-        // The registry can already name a single, safe capability for an
-        // imperative request. Do not spend a slow model round merely to reach
-        // the same canonical capability plan later in PlanningEngine. This is
-        // deliberately only a classification hint: PlanningEngine still builds
-        // the plan and ToolService remains the sole policy/execution gateway.
-        // Questions and construction briefs stay out of this path so a noun
-        // such as "security" cannot turn an explanation into an action.
-        if (!looksLikeBuild(raw) && !isKnowledgeQuestion(raw)) {
-            const [candidate] = capableTools(raw, 1);
-            if (candidate) {
-                return {
-                    goal: raw,
-                    complexity: 'low',
-                    riskLevel: 'low',
-                    suggestedAgent: 'General',
-                    requiredTools: [candidate.name],
-                    constraints: ['Deterministic capability candidate; retain normal planning and tool-policy checks.'],
-                    rawIntent: { primary: raw, capabilityCandidate: candidate.name, deterministic: true },
-                };
-            }
-        }
         const probe = `${raw}\n${normalizeIntentText(raw)}`;
         const hasUrl = /https?:\/\/|\b[a-z0-9-]+\.(?:com|org|net|io|dev|ai|co|app|sa|eg|me)\b/i.test(probe);
         // A well-known site named in words (dialect/transliteration) counts as a web
@@ -304,16 +283,37 @@ Return ONLY a JSON object:
          *  the browser keeps it — he may well want both.
          */
         if (looksLikeBuild(raw) && !hasUrl && !knownSite) return null;
-        // Unmistakable web request: URL, strong web verb, weak verb + noun, or UI interaction.
-        if (!(hasUrl || strongWebVerb || interactUi || (weakWebVerb && webNoun))) return null;
-        return {
-            goal: raw,
-            complexity: 'medium',
-            riskLevel: 'low',
-            suggestedAgent: 'Browser',
-            requiredTools: ['browser_run'],
-            rawIntent: { primary: raw, fast: true },
-        };
+        // Unmistakable web requests outrank broad capability matches. Otherwise
+        // terms such as "search" resolve to a generic tool before the explicit
+        // browser verb and target can be honored.
+        if (hasUrl || strongWebVerb || interactUi || (weakWebVerb && webNoun)) {
+            return {
+                goal: raw,
+                complexity: 'medium',
+                riskLevel: 'low',
+                suggestedAgent: 'Browser',
+                requiredTools: ['browser_run'],
+                rawIntent: { primary: raw, fast: true },
+            };
+        }
+        // The registry can already name a single, safe capability for an
+        // imperative request. Do not spend a slow model round merely to reach
+        // the same canonical capability plan later in PlanningEngine.
+        if (!looksLikeBuild(raw) && !isKnowledgeQuestion(raw)) {
+            const [candidate] = capableTools(raw, 1);
+            if (candidate) {
+                return {
+                    goal: raw,
+                    complexity: 'low',
+                    riskLevel: 'low',
+                    suggestedAgent: 'General',
+                    requiredTools: [candidate.name],
+                    constraints: ['Deterministic capability candidate; retain normal planning and tool-policy checks.'],
+                    rawIntent: { primary: raw, capabilityCandidate: candidate.name, deterministic: true },
+                };
+            }
+        }
+        return null;
     }
 
     /**

@@ -544,10 +544,10 @@ export function acceptanceFor(request: string): Criterion[] {
      *  them: a coffee list with its prices becomes a listing, not four
      *  columns nobody can point at.
      */
-    const detectedKind = detectAppKind(t);
-    const willBuildATable = detectedKind !== null;
-    const derived = willBuildATable ? (columnsAnywhereInHisRequest(t) || []) : [];
     const explicitSchema = /\b(?:fields?|columns?|records?|table|form)\b|(?:حقول?|أعمدة|اعمدة|سجلات?|جدول|نموذج)/iu.test(t);
+    const detectedKind = detectAppKind(t);
+    const willBuildATable = detectedKind !== null || explicitSchema;
+    const derived = willBuildATable ? (columnsAnywhereInHisRequest(t) || []) : [];
     const uiOnlyLabel = (label: string) => /^(?:a\s+|an\s+|the\s+)?(?:counter|button|title|heading|status\s+message|عداد|زر|عنوان|رسالة\s+حالة)$/iu
         .test(String(label || '').trim());
     // A list of visible widgets is not a record schema. Without an explicit

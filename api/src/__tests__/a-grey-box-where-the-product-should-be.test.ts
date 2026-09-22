@@ -88,8 +88,8 @@ describe('a product with no photo is drawn, not left blank', () => {
         expect(fn).toContain('empty');
     });
 
-    it('NEGATIVE — the records grid keeps the caller it already had', () => {
-        //  Wiring a second caller must not disturb the first.
-        expect(SRC).toContain('cardFor(draft[primary.key])');
+    it('NEGATIVE — the records grid keeps its shared image fallback', () => {
+        //  Wiring a second caller must not disturb the existing row fallback.
+        expect(SRC).toContain('imageOf(row, imageField.key, primary.key)');
     });
 });
