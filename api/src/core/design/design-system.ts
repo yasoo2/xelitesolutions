@@ -419,6 +419,7 @@ export function paletteCss(p: Palette, type: TypeTokens = NEUTRAL_TYPE): string 
   --card:${paperAt(p.hue, 0.962, 0.019, hslCss(p.hue, 44, 97))}; --panel:${paperAt(p.hue, 0.935, 0.028, hslCss(p.hue, 40, 94))}; --chip:${p.tint}; --line:${p.border};
   --muted:${p.textMuted};
   --ring:${p.primary};
+  --danger:#b42318; --media-warm:${p.secondary};
   --shadow-xs:0 1px 1px rgba(15,23,42,.05);
   --shadow-brand:0 10px 30px -12px ${hexAlpha(p.primary, 0.45)};
   --radius:14px; --radius-lg:22px; --radius-pill:999px;

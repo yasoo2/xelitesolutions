@@ -545,6 +545,13 @@ Rules:
             const { capableTools, capabilityChain } = require('./capability-match');
             const goal = String(intent?.goal || '');
 
+            // Publishing content is not deploying a software artifact. The
+            // project-operation router already makes this distinction, and the
+            // generic capability fallback must preserve it or it reclaims the
+            // request as deploy_pages after that router correctly stands down.
+            const publishesContent = /(?:انشر|أنشر|\bpublish\b)[\s\S]{0,80}(?:مقال|منشور|تدوينة|تغريدة|خبر|إعلان|محتوى|قصة|\barticle\b|\bpost\b|\bblog\b|\btweet\b|\bstory\b|\bcontent\b)/iu.test(goal);
+            if (publishesContent) return null;
+
             // A construction request is one engineering objective, not a bag of
             // browser/deployment verbs. It must reach the evidence-first project
             // pipeline as a whole, even when a model or intent parser has failed.

@@ -49,7 +49,7 @@ describe('a silent fallback is announced where he reads', () => {
         //  The acceptance block is what he actually reads. A notice anywhere
         //  else is a notice for someone reading logs, which is not him.
         expect(REACT).toContain('const standDownNotice = authoringStoodDown');
-        expect(REACT).toMatch(/const acceptBlock = `\$\{standDownNotice\}\$\{acceptanceBlock\(acceptance, isAr\)\}/);
+        expect(REACT).toMatch(/const acceptBlock = `\$\{standDownNotice\}\$\{acceptanceBlock\([\s\S]{0,180}isAr\)\}/);
     });
 
     it('⛔ POSITIVE — in both languages, and it names what to DO', () => {
@@ -78,6 +78,6 @@ describe('a silent fallback is announced where he reads', () => {
         //  This repair is about telling him, not about spending the quota
         //  anyway. The branch still stands down, and still says why.
         expect(REACT).toContain('interface authoring stood down — the model providers are rationing');
-        expect(REACT).toMatch(/if \(!appBp && sections\.length && providersAreRationing\) \{/);
+        expect(REACT).toMatch(/if \(!appBp && !externalIntegration && sections\.length && providersAreRationing\) \{/);
     });
 });
