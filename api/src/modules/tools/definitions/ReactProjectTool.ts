@@ -366,6 +366,15 @@ export function deliveryErrorForBuild(state: BuildOutcome): string {
     return `${id}: the build wrote no dist/index.html${ranOut(state.buildExit)}`;
 }
 
+/** A React source tree is not a delivered application until its bundle exists. */
+export function buildDeliveryBlocked(state: BuildOutcome): boolean {
+    // `skipInstall` is an explicit scaffold-only contract. It never promised a
+    // live application, so it must not be reclassified as a failed build. Once
+    // Joe actually attempts the install/build path, however, dist is required
+    // before it may report delivery.
+    return state.attempted === true && state.built !== true;
+}
+
 export function deliveryErrorForVisualAudit(
     audit: { skipped?: string } | null | undefined,
     build?: BuildOutcome | null,
@@ -1264,6 +1273,11 @@ export function reuseLocalReactDependencies(workspaceRoot: string, projectRoot: 
     // cannot prove who created its tree or whether lifecycle scripts mutated
     // it. Fresh projects must install through Joe's execution boundary.
     return false;
+}
+
+/** Keep npm's mutable cache within the generated project, not the user's profile. */
+export function scopedNpmCache(projectRoot: string): string {
+    return path.join(path.resolve(projectRoot), '.joe', 'npm-cache');
 }
 
 /**
@@ -6623,8 +6637,11 @@ Use the actual definitions above. Do not rewrite these files or implement persis
                 // reject registry access outright; one short fetch is useful
                 // evidence, while npm's default retry loop only makes the
                 // visible engineering run appear frozen.
+                const installCache = scopedNpmCache(proj);
+                fs.mkdirSync(installCache, { recursive: true });
                 inst = await run('npm', [
                     'install', '--prefer-offline', '--no-audit', '--no-fund',
+                    '--cache', installCache,
                     '--fetch-retries=0', '--fetch-timeout=10000',
                 ],
                     REACT_NETWORK_INSTALL_TIMEOUTS.absoluteMs, REACT_NETWORK_INSTALL_TIMEOUTS.idleMs);
@@ -8296,10 +8313,14 @@ Use the actual definitions above. Do not rewrite these files or implement persis
             attempted: !noInstall, built, installed, npmMissing,
             installExit, buildExit, diagnosis: buildDiagnosis,
         };
+        const buildVerificationBlocked = buildDeliveryBlocked(buildOutcome);
         const blamesTheBuild = !audit && buildOutcome.attempted && !built;
         const externalApiRuntimeBlocked = !!externalApiEvidence && externalApiEvidence.runtime.status !== 'passed';
-        const qualityDeliveryBlocked = openQualityFindings.length > 0 || terminalQualityFindings.length > 0
+        const qualityDeliveryBlocked = buildVerificationBlocked || openQualityFindings.length > 0 || terminalQualityFindings.length > 0
             || recordsPresentationFindings.length > 0 || visualAuditUnavailable || repairRollbackNeedsVerification || externalApiRuntimeBlocked;
+        if (buildVerificationBlocked) {
+            term(`delivery: BLOCKED — ${deliveryErrorForBuild(buildOutcome)}`);
+        }
         if (openQualityFindings.length) {
             // The artefact exists, but its final acceptance is rejected. Say both
             // facts explicitly so a terminal transcript cannot turn a blocked
@@ -8601,7 +8622,7 @@ Use the actual definitions above. Do not rewrite these files or implement persis
         })();
 
         const message = isAr
-            ? `⚛️ ${deliveryBlocked ? (openQualityFindings.length ? 'بُني مشروع React وتجمّع — لكن التسليم مرفوض مع ملاحظات جودة باقية' : 'بُني مشروع React، لكن رُفض تسليمه نهائياً حتى ينجح تدقيق الجودة المطلوب') : built ? 'بُني مشروع React كاملاً وتُحقق من تجميعه' : installed ? 'أُنشئ مشروع React وثُبتت حزمه' : 'أُنشئ مشروع React كاملاً'} — «${content.brand}».
+            ? `⚛️ ${deliveryBlocked ? (buildVerificationBlocked ? 'أُنشئ هيكل مشروع React، لكن لم تُنتج نسخة dist ولم يُسلّم كتطبيق' : openQualityFindings.length ? 'بُني مشروع React وتجمّع — لكن التسليم مرفوض مع ملاحظات جودة باقية' : 'بُني مشروع React، لكن رُفض تسليمه نهائياً حتى ينجح تدقيق الجودة المطلوب') : built ? 'بُني مشروع React كاملاً وتُحقق من تجميعه' : installed ? 'أُنشئ مشروع React وثُبتت حزمه' : 'أُنشئ مشروع React كاملاً'} — «${content.brand}».
 ${scopeBlock}${fidelityBlock}${appBlock}
 ${qaBlock}${shellBlock}${qualityMatrixBlock}${acceptBlock}🎨 الطراز: ${FAMILY_LABEL_AR[family]} — قل «غيّر الطراز إلى فاخر/جريء/دافئ/بسيط» لتبديله.
 📂 المسار: ${proj}
@@ -8617,7 +8638,7 @@ ${buildDiagnosis ? (buildDiagnosis.healed
    • «تراجع» → استرجاع آخر تعديل بايتاً ببايت
    • «شغّل خادم التطوير» → معاينة تطوير بتحديث حي
    • «انشر المشروع» → نسخة الإنتاج بصورها على رابط دائم`
-            : `⚛️ ${deliveryBlocked ? (openQualityFindings.length ? 'A React project that compiles — delivery blocked by open quality findings' : 'A React project was built, but final delivery is blocked until the required quality audit passes') : built ? 'A full React project, scaffolded AND verified to compile' : 'A full React project scaffolded'} — "${content.brand}".
+            : `⚛️ ${deliveryBlocked ? (buildVerificationBlocked ? 'A React project was scaffolded, but no dist bundle was produced, so it was not delivered as an application' : openQualityFindings.length ? 'A React project that compiles — delivery blocked by open quality findings' : 'A React project was built, but final delivery is blocked until the required quality audit passes') : built ? 'A full React project, scaffolded AND verified to compile' : 'A full React project scaffolded'} — "${content.brand}".
 ${scopeBlock}${fidelityBlock}${appBlock}
 ${qaBlock}${shellBlock}${qualityMatrixBlock}${acceptBlock}📂 Path: ${proj}
 ${fileList}
@@ -8629,11 +8650,13 @@ ${built ? '✅ npm install + vite build succeeded — the production build is in
             error: deliveryBlocked
                 ? (visualAuditUnavailable
                     ? deliveryErrorForVisualAudit(audit, buildOutcome)
-                    : fidelityEvidenceUnavailable
-                        ? 'fidelity_unverifiable'
-                        : fidelityMismatch
-                            ? 'request_fidelity_mismatch'
-                            : askedButMissing.length
+                : fidelityEvidenceUnavailable
+                    ? 'fidelity_unverifiable'
+                    : fidelityMismatch
+                        ? 'request_fidelity_mismatch'
+                        : buildVerificationBlocked
+                            ? deliveryErrorForBuild(buildOutcome)
+                        : askedButMissing.length
                             ? 'requested_features_not_proven'
                                 : acceptanceBlocked
                                     ? deliveryErrorForAcceptance(acceptance.criteria as any)

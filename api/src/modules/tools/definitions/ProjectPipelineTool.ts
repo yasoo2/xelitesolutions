@@ -636,7 +636,15 @@ export function deterministicPhasesFor(request: string): {
 } | null {
     const { PlanningEngine } = require('../../../core/orchestrator/PlanningEngine');
     if (!PlanningEngine.looksLikeBuild(request)) return null;
-    const scope: 'page' | 'app' | 'system' = PlanningEngine.classifyBuildScope(request);
+    const classifiedScope: 'page' | 'app' | 'system' = PlanningEngine.classifyBuildScope(request);
+    // A declared record schema is an interaction contract, even when its
+    // wording does not happen to include one of the broad "application"
+    // keywords.  Treating it as a page discarded the form, storage, and record
+    // actions that the same schema reader later builds in React.  Do not
+    // downgrade a real system: its explicit service boundary remains stronger.
+    const scope: 'page' | 'app' | 'system' = classifiedScope === 'page' && hasExplicitRecordSchema(request)
+        ? 'app'
+        : classifiedScope;
 
     let projectName = 'project';
     try { projectName = resolveProjectIdentity(request, require('../../../core/design/subject-phrase').subjectPhrase(request, 48)); } catch { /* naming is cosmetic */ }

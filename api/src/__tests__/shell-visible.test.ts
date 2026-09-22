@@ -62,6 +62,17 @@ describe('explicit terminal diagnostics execute instead of merely opening a term
         expect(intent.suggestedAgent).toBe('Dev');
     });
 
+    test('a deterministic build contract reaches project_pipeline without a dynamic DAG', async () => {
+        const intent = await IntentParser.parse(
+            'عندي مزرعة إبل. بدي سجل أسجل فيه بيانات الناقة: اسم الناقة والعمر والوزن',
+            {} as any,
+        );
+        const plan: any = await PlanningEngine.generatePlan({ intent: intent as any });
+
+        expect(plan.steps.map((step: any) => step.tool)).toEqual(['project_pipeline']);
+        expect(plan.metadata).toMatchObject({ matchedBy: 'deterministic-build-contract' });
+    });
+
     test('a fielded directory with search and validation is an app, not a static page', () => {
         expect(PlanningEngine.classifyBuildScope(
             'Create a repair-shop customer directory with name, phone, email, device, warranty expiry, repair status, empty-name validation, search, and status filtering.',

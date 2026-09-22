@@ -1267,6 +1267,38 @@ Rules:
             };
         }
 
+        // IntentParser has already made a provider-independent, explicit
+        // construction decision for these requests.  It is a contract, not a
+        // weak routing hint: dropping it here used to send an ordinary records
+        // application brief back through generateDynamicDag, paying for a model
+        // call before the evidence-first pipeline could even inspect the
+        // workspace.  Keep the existing file, read-only, GitHub, terminal, and
+        // local-specification contracts above this point; this branch covers the
+        // remaining clear build/engineering brief and still delegates all work to
+        // project_pipeline through the normal ToolService path.
+        const deterministicPipelineIntent = Boolean((intent as any)?.rawIntent?.deterministic)
+            && (Boolean((intent as any)?.rawIntent?.buildRequest)
+                || Boolean((intent as any)?.rawIntent?.engineeringBrief))
+            && Array.isArray(intent.requiredTools)
+            && intent.requiredTools.length === 1
+            && intent.requiredTools[0] === 'project_pipeline';
+        if (deterministicPipelineIntent) {
+            console.log('[PlanningEngine] deterministic build contract → evidence-first project_pipeline');
+            return {
+                id: `deterministic_pipeline_${Date.now()}`,
+                goal: intent.goal,
+                steps: [{
+                    id: 'project_pipeline',
+                    description: 'استكشف الأدلة، ثم خطط ونفّذ وتحقق من طلب البناء محلياً',
+                    tool: 'project_pipeline',
+                    agent: 'Dev',
+                    input: { request: intent.goal },
+                    dependsOn: [],
+                }],
+                metadata: { complexity: intent.complexity || 'medium', riskLevel: intent.riskLevel || 'medium', matchedBy: 'deterministic-build-contract' },
+            };
+        }
+
         /**
          * [ATTACHMENTS ARE THE SUBJECT — DECIDED BEFORE EVERY FAST-PATH]
          * «حلل هذه الصورة» plus an [ATTACHED FILES …] block is a question

@@ -165,3 +165,34 @@ Known limitation: this evidence proves deterministic selection and missing-
 target handling, plus planner-level propagation of an explicit local path. It
 does not claim a completed security scan of an arbitrary external site; a real
 scan requires a selected trusted workspace or supplied local target.
+
+## 2026-09-22 Records-Application Follow-up
+
+The Codex in-app-browser UAT used the unseen request `عندي مزرعة إبل. بدي سجل
+أسجل فيه بيانات الناقة: اسم الناقة والعمر والوزن`. It exposed a general
+handoff defect: `hasExplicitRecordSchema()` correctly derived the three fields,
+but deterministic pipeline planning reclassified the request as a static Page
+and sent it to `web_page_builder`. That tool made no visible progress for one
+minute, so the local run was stopped rather than spend another provider round.
+
+`deterministicPhasesFor()` now preserves a declared record schema as an
+interactive application unless the stronger system scope already applies. A
+fresh local UI run visibly reached `Phase 1/1 — Application` and
+`react_project`, not the Page/web-page-builder route. Its install then failed
+with `npm install ... exit 1`; the canonical pipeline stopped with the explicit
+`build_produced_no_bundle: npm install did not finish — exit 1` result. It did
+not open a blank preview, claim a completed build, or enter an invented repair
+loop. This is a verified honesty and propagation result, not a delivered app.
+
+React delivery now requires a real `dist/index.html` only after Joe actually
+attempts installation/build; the explicit scaffold-only (`skipInstall`)
+contract remains a non-delivery mode rather than a false build failure. Normal
+npm installation now receives a project-scoped `.joe/npm-cache` path instead
+of assuming the user's profile cache is writable. The focused React, routing,
+records-shape, and build-honesty suites passed after the contract correction.
+
+The final rendered records UI could not be re-inspected in this checkpoint:
+the attempted build produced no bundle, and then the Codex browser connector
+reported the user unavailable. That is recorded as an environment limitation,
+not browser QA success. The next live retry must verify the new scoped-cache
+path, a successful bundle, and the actual preview before any delivery claim.
