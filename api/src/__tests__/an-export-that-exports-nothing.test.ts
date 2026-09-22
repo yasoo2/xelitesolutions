@@ -75,9 +75,9 @@ describe('the export button is guarded on what the export reads', () => {
      *  in. The anchor is the semantic expression itself — it survives any
      *  reformatting of the JSX around it — and it is checked in both
      *  directions so a rename cannot leave the file passing by accident.
-     */
+    */
     const records = () => {
-        const src = files['src/components/RecordsApp.jsx'];
+        const src = files['src/components/RecordsView.jsx'];
         expect(typeof src).toBe('string');
         return src;
     };
