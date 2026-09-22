@@ -3042,13 +3042,15 @@ export function derivedColumns(requestRaw: string): DerivedField[] | null {
      *  field offering «متوفر» and «نافد», not a free-text box he retypes into
      *  every row. The cap still guards the name itself, which is its job.
      */
-    const declaredOptions = new Map();
+    const declaredOptions = new Map<string, string[]>();
+    const explicitOptionAnnotations = new Set<string>();
     parts = parts.map(p => {
         const m = /^([\s\S]*?)\s*[(（]([^)）]{1,60})[)）]\s*$/.exec(p);
         if (!m) return p;
         const label = m[1].trim();
         const opts = m[2].split(/\s*[،,\/|]\s*|\s+أو\s+|\s+او\s+|\s+or\s+/iu)
             .map(x => x.trim()).filter(x => x.length >= 1 && x.length <= 24);
+        if (label.length >= 2 && opts.length) explicitOptionAnnotations.add(label);
         if (label.length >= 2 && opts.length >= 2) declaredOptions.set(label, opts);
         return label.length >= 2 ? label : p;
     });
@@ -3095,8 +3097,14 @@ export function derivedColumns(requestRaw: string): DerivedField[] | null {
     const built = fieldsFromLabels(named);
     //  …and the answers reach the field, so the app renders a select.
     if (built) for (const f of built) {
-        const opts = declaredOptions.get(String(f.label));
+        const label = String(f.label);
+        const opts = declaredOptions.get(label);
         if (opts) { (f as any).options = opts; (f as any).type = 'select'; }
+        else if (explicitOptionAnnotations.has(label)) {
+            // One stated value is context, not a finite enum Joe should invent.
+            delete (f as any).options;
+            if ((f as any).type === 'select') (f as any).type = 'text';
+        }
     }
     return built ? applyStatedRules(built, statedRules(request)).fields : built;
 }
