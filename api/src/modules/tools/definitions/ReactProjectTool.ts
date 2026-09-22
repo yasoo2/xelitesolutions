@@ -375,6 +375,84 @@ export function buildDeliveryBlocked(state: BuildOutcome): boolean {
     return state.attempted === true && state.built !== true;
 }
 
+/**
+ * A local records application does not inherently need a package manager. When
+ * npm is unavailable after one bounded, visible attempt, this narrow fallback
+ * keeps the user's local CRUD request moving without pretending React built.
+ * It deliberately excludes relations, APIs, workflows and image uploads: those
+ * need the generated project's normal runtime contract.
+ */
+export function canBuildDependencyFreeRecordsApp(
+    blueprint: Pick<AppBlueprint, 'engine' | 'fields' | 'relation'> | null | undefined,
+    options: { hasBackend?: boolean; hasExternalIntegration?: boolean; hasWorkflow?: boolean } = {},
+): boolean {
+    if (!blueprint || blueprint.engine !== 'records' || blueprint.relation || options.hasBackend
+        || options.hasExternalIntegration || options.hasWorkflow || !Array.isArray(blueprint.fields)
+        || !blueprint.fields.length) return false;
+    return blueprint.fields.every(field => field && field.type !== 'image'
+        && ['text', 'textarea', 'number', 'date', 'time', 'select', 'tel', 'email'].includes(field.type));
+}
+
+function scriptSafeJson(value: unknown): string {
+    return JSON.stringify(value).replace(/[<>&\u2028\u2029]/g, char => ({
+        '<': '\\u003c', '>': '\\u003e', '&': '\\u0026', '\u2028': '\\u2028', '\u2029': '\\u2029',
+    }[char] || char));
+}
+
+/** Write a browser-ready, dependency-free records artifact for a local-only contract. */
+export function writeDependencyFreeRecordsBundle(
+    projectRoot: string,
+    blueprint: Pick<AppBlueprint, 'title' | 'lede' | 'entityOne' | 'entityMany' | 'fields'>,
+    isArabic: boolean,
+): string {
+    const outputDir = path.join(projectRoot, 'dist');
+    fs.mkdirSync(outputDir, { recursive: true });
+    const config = {
+        title: String(blueprint.title || (isArabic ? 'سجل' : 'Records')),
+        lede: String(blueprint.lede || ''),
+        entityOne: String(blueprint.entityOne || (isArabic ? 'سجل' : 'record')),
+        entityMany: String(blueprint.entityMany || (isArabic ? 'السجلات' : 'records')),
+        fields: blueprint.fields.map(field => ({
+            key: String(field.key), label: String(field.label), type: field.type,
+            options: Array.isArray(field.options) ? field.options.map(String) : [],
+            required: Boolean(field.required), min: typeof field.min === 'number' ? field.min : undefined,
+            minExclusive: Boolean(field.minExclusive), minLength: typeof field.minLength === 'number' ? field.minLength : undefined,
+            primary: Boolean(field.primary),
+        })),
+        labels: isArabic ? {
+            add: 'إضافة سجل', save: 'حفظ السجل', update: 'حفظ التعديل', cancel: 'إلغاء', search: 'ابحث في السجلات',
+            export: 'تصدير CSV', empty: 'لا سجلات بعد. أضف أول سجل من النموذج.', edit: 'تعديل', remove: 'حذف',
+            actions: 'إجراءات', required: 'هذا الحقل مطلوب.', invalid: 'تحقق من الحقول قبل الحفظ.', count: 'سجل',
+        } : {
+            add: 'Add record', save: 'Save record', update: 'Save changes', cancel: 'Cancel', search: 'Search records',
+            export: 'Export CSV', empty: 'No records yet. Add the first one with the form.', edit: 'Edit', remove: 'Remove',
+            actions: 'Actions', required: 'This field is required.', invalid: 'Check the fields before saving.', count: 'records',
+        },
+    };
+    const data = scriptSafeJson(config);
+    const direction = isArabic ? 'rtl' : 'ltr';
+    const document = `<!doctype html>
+<html lang="${isArabic ? 'ar' : 'en'}" dir="${direction}">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="joe-artifact-mode" content="static-records">
+  <title>${isArabic ? 'سجل محلي' : 'Local records'}</title>
+  <style>
+    :root{color-scheme:light;font-family:Inter,system-ui,sans-serif;background:#f6f7f2;color:#20231f;--ink:#20231f;--accent:#315d45;--line:#d9ded4;--surface:#fff;--soft:#eef3ea}
+    *{box-sizing:border-box}body{margin:0;background:#f6f7f2}button,input,select,textarea{font:inherit}button{cursor:pointer}.shell{width:min(1120px,calc(100% - 32px));margin:0 auto;padding:32px 0 56px}.top{display:flex;gap:20px;align-items:end;justify-content:space-between;border-bottom:1px solid var(--line);padding-bottom:22px}.top h1{margin:0;font-size:clamp(1.6rem,3vw,2.45rem);letter-spacing:0}.top p{margin:7px 0 0;color:#536052}.count{color:#536052;margin:0;white-space:nowrap}.toolbar{display:flex;gap:12px;align-items:center;justify-content:space-between;padding:20px 0;flex-wrap:wrap}.toolbar input{flex:1 1 280px}.button{min-height:42px;border:1px solid var(--accent);border-radius:6px;background:var(--accent);color:#fff;padding:8px 13px;font-weight:700}.button.secondary{background:#fff;color:var(--ink);border-color:var(--line)}.form-panel{background:var(--surface);border:1px solid var(--line);padding:20px;margin-bottom:20px}.form-panel[hidden]{display:none}.fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px}.field{display:grid;gap:6px;font-weight:650}.field input,.field select,.field textarea,.toolbar input{min-height:42px;border:1px solid #b8c2b7;border-radius:5px;background:#fff;padding:8px;color:var(--ink)}.field textarea{min-height:96px;resize:vertical}.field input:focus,.field select:focus,.field textarea:focus,.toolbar input:focus,button:focus-visible{outline:3px solid #a9c7a9;outline-offset:2px}.form-actions{display:flex;gap:10px;margin-top:18px;flex-wrap:wrap}.alert{margin:14px 0 0;color:#9c2525;font-weight:650}.table-wrap{overflow:auto;border:1px solid var(--line);background:var(--surface)}table{width:100%;border-collapse:collapse;min-width:640px}th,td{text-align:start;padding:13px;border-bottom:1px solid var(--line);vertical-align:top}th{background:var(--soft);font-size:.9rem}td.actions{white-space:nowrap;display:flex;gap:8px}.link-button{border:0;background:transparent;color:#164c34;padding:4px;text-decoration:underline;font-weight:700}.empty{padding:34px;text-align:center;background:var(--surface);border:1px solid var(--line);color:#536052}@media(max-width:620px){.shell{width:min(100% - 24px,1120px);padding-top:22px}.top{align-items:start;flex-direction:column}.toolbar{align-items:stretch}.toolbar input{flex-basis:100%}.toolbar .button{width:100%}.form-actions .button{flex:1 1 130px}}
+  </style>
+</head>
+<body><main class="shell"><header class="top"><div><h1 id="title"></h1><p id="lede"></p></div><p class="count" id="count" aria-live="polite"></p></header><section class="toolbar"><input id="search" type="search"><button class="button secondary" type="button" id="export"></button><button class="button" type="button" id="add"></button></section><section class="form-panel" id="panel"><form id="form" novalidate><div class="fields" id="fields"></div><p class="alert" id="alert" role="alert" hidden></p><div class="form-actions"><button class="button" id="submit" type="submit"></button><button class="button secondary" id="cancel" type="button"></button></div></form></section><section id="records"></section></main><script id="joe-config" type="application/json">${data}</script><script>
+(()=>{const c=JSON.parse(document.getElementById('joe-config').textContent),q=s=>document.querySelector(s),store='joe-static-records:'+c.title,el=(tag,props={})=>{const n=document.createElement(tag);Object.assign(n,props);return n};let rows=[],editing=null;try{rows=JSON.parse(localStorage.getItem(store)||'[]')}catch{};const title=q('#title'),lede=q('#lede'),count=q('#count'),fields=q('#fields'),form=q('#form'),panel=q('#panel'),alert=q('#alert'),records=q('#records'),search=q('#search');title.textContent=c.title;lede.textContent=c.lede;search.placeholder=c.labels.search;q('#add').textContent=c.labels.add;q('#export').textContent=c.labels.export;q('#cancel').textContent=c.labels.cancel;
+function inputFor(f){const wrap=el('label',{className:'field'}),caption=el('span',{textContent:f.label});let input;if(f.type==='textarea'){input=el('textarea',{name:f.key})}else if(f.type==='select'){input=el('select',{name:f.key});input.append(el('option',{value:'',textContent:''}));f.options.forEach(o=>input.append(el('option',{value:o,textContent:o})))}else{input=el('input',{name:f.key,type:f.type==='tel'?'tel':f.type==='email'?'email':f.type==='number'?'number':f.type==='date'?'date':f.type==='time'?'time':'text'})}input.required=!!f.required;if(f.type==='tel')input.pattern='[0-9+() -]{6,}';if(f.min!==undefined){input.min=String(f.min+(f.minExclusive?Number.EPSILON:0))}if(f.minLength!==undefined)input.minLength=f.minLength;wrap.append(caption,input);return wrap}
+c.fields.forEach(f=>fields.append(inputFor(f)));function save(){localStorage.setItem(store,JSON.stringify(rows))}function value(row,f){return String(row[f.key]??'')}function clear(){editing=null;form.reset();alert.hidden=true;panel.hidden=false;q('#submit').textContent=c.labels.save}function edit(row){editing=row.id;c.fields.forEach(f=>{const input=form.elements.namedItem(f.key);if(input)input.value=value(row,f)});alert.hidden=true;panel.hidden=false;q('#submit').textContent=c.labels.update;panel.scrollIntoView({behavior:'smooth',block:'start'})}function remove(id){rows=rows.filter(r=>r.id!==id);if(editing===id)clear();save();render()}function render(){const needle=search.value.trim().toLocaleLowerCase();const visible=rows.filter(r=>c.fields.some(f=>value(r,f).toLocaleLowerCase().includes(needle)));count.textContent=rows.length+' '+c.labels.count;records.replaceChildren();if(!visible.length){records.append(el('p',{className:'empty',textContent:c.labels.empty}));return}const wrap=el('div',{className:'table-wrap'}),table=el('table'),thead=el('thead'),hr=el('tr');c.fields.forEach(f=>hr.append(el('th',{scope:'col',textContent:f.label})));hr.append(el('th',{scope:'col',textContent:c.labels.actions}));thead.append(hr);const body=el('tbody');visible.forEach(row=>{const tr=el('tr');c.fields.forEach(f=>tr.append(el('td',{textContent:value(row,f)})));const actions=el('td',{className:'actions'}),editButton=el('button',{className:'link-button',type:'button',textContent:c.labels.edit}),removeButton=el('button',{className:'link-button',type:'button',textContent:c.labels.remove});editButton.onclick=()=>edit(row);removeButton.onclick=()=>remove(row.id);actions.append(editButton,removeButton);tr.append(actions);body.append(tr)});table.append(thead,body);wrap.append(table);records.append(wrap)}
+form.addEventListener('submit',event=>{event.preventDefault();if(!form.checkValidity()){alert.textContent=c.labels.invalid;alert.hidden=false;form.reportValidity();return}const row={id:editing||String(Date.now())};c.fields.forEach(f=>row[f.key]=String(form.elements.namedItem(f.key).value).trim());if(editing){rows=rows.map(r=>r.id===editing?row:r)}else rows.unshift(row);save();clear();render()});q('#add').onclick=clear;q('#cancel').onclick=()=>{panel.hidden=true;alert.hidden=true};search.addEventListener('input',render);q('#export').onclick=()=>{const esc=v=>'"'+String(v).replace(/"/g,'""')+'"',lines=[[...c.fields.map(f=>f.label)].map(esc).join(','),...rows.map(r=>c.fields.map(f=>esc(value(r,f))).join(','))];const url=URL.createObjectURL(new Blob([lines.join('\\n')],{type:'text/csv;charset=utf-8'})),a=el('a',{href:url,download:'records.csv'});a.click();URL.revokeObjectURL(url)};clear();render()})()
+</script></body></html>`;
+    const output = path.join(outputDir, 'index.html');
+    fs.writeFileSync(output, document, 'utf8');
+    return output;
+}
+
 export function deliveryErrorForVisualAudit(
     audit: { skipped?: string } | null | undefined,
     build?: BuildOutcome | null,
@@ -6506,6 +6584,7 @@ Use the actual definitions above. Do not rewrite these files or implement persis
 
         // ── prove it compiles: npm install + vite build, streamed live ──────
         let installed = false, built = false, npmMissing = false;
+        let artifactMode: 'react' | 'static_records' | null = null;
         let buildDiagnosis: any = null;
         // The exit codes leave this block now. They are the only witnesses to
         // WHY there is no bundle, and the delivery below is where that is read.
@@ -6828,6 +6907,28 @@ Use the actual definitions above. Do not rewrite these files or implement persis
             }
         }
 
+        if (built) {
+            artifactMode = 'react';
+        } else if (!noInstall && installExit !== null && canBuildDependencyFreeRecordsApp(runBp, {
+            hasBackend: Boolean(apiEntry),
+            hasExternalIntegration: Boolean(externalIntegration),
+            hasWorkflow: Boolean(workflowContract),
+        })) {
+            try {
+                const artifact = writeDependencyFreeRecordsBundle(proj, runBp, artifactIsAr);
+                built = fs.existsSync(artifact);
+                artifactMode = built ? 'static_records' : null;
+                if (built) {
+                    term('dependencies: npm could not prepare React; wrote a dependency-free local records application and will run the same browser QA');
+                    if (sessionId) broadcastThinkingDetail(sessionId, isAr
+                        ? 'تعذّر تجهيز React، فأنشأت تطبيق سجلات محلياً مستقلاً من نفس الحقول. سأفحصه في المتصفح قبل التسليم.'
+                        : 'React could not be prepared, so I created a dependency-free local records app from the same fields. Browser QA will verify it before delivery.');
+                }
+            } catch (error: any) {
+                term(`dependencies: static records fallback could not be written (${String(error?.message || error).slice(0, 180)})`);
+            }
+        }
+
         /**
          * ONE FOLDER, ONE PROCESS, ONE ORIGIN — ready for a domain.
          *
@@ -6856,7 +6957,7 @@ Use the actual definitions above. Do not rewrite these files or implement persis
                 return false;
             }
         };
-        const packaged = built ? packageIntoApi(true) : false;
+        const packaged = built && artifactMode !== 'static_records' ? packageIntoApi(true) : false;
 
         /**
          * AND THE AUDIT GOES WHERE THE SYSTEM LIVES.
@@ -8621,8 +8722,11 @@ Use the actual definitions above. Do not rewrite these files or implement persis
             } catch { return ''; }
         })();
 
+        const artifactSummary = artifactMode === 'static_records'
+            ? (isAr ? 'تطبيق سجلات محلي مستقل، دون اعتماديات npm' : 'a dependency-free local records application')
+            : (isAr ? 'npm install + vite build نجحا — نسخة الإنتاج جاهزة في dist/.' : 'npm install + vite build succeeded — the production build is in dist/.');
         const message = isAr
-            ? `⚛️ ${deliveryBlocked ? (buildVerificationBlocked ? 'أُنشئ هيكل مشروع React، لكن لم تُنتج نسخة dist ولم يُسلّم كتطبيق' : openQualityFindings.length ? 'بُني مشروع React وتجمّع — لكن التسليم مرفوض مع ملاحظات جودة باقية' : 'بُني مشروع React، لكن رُفض تسليمه نهائياً حتى ينجح تدقيق الجودة المطلوب') : built ? 'بُني مشروع React كاملاً وتُحقق من تجميعه' : installed ? 'أُنشئ مشروع React وثُبتت حزمه' : 'أُنشئ مشروع React كاملاً'} — «${content.brand}».
+            ? `⚛️ ${deliveryBlocked ? (buildVerificationBlocked ? 'أُنشئ هيكل مشروع React، لكن لم تُنتج نسخة dist ولم يُسلّم كتطبيق' : openQualityFindings.length ? 'بُني مشروع React وتجمّع — لكن التسليم مرفوض مع ملاحظات جودة باقية' : 'بُني مشروع React، لكن رُفض تسليمه نهائياً حتى ينجح تدقيق الجودة المطلوب') : artifactMode === 'static_records' ? 'بُني تطبيق سجلات محلي مستقل وفُحص كبناء قابل للمعاينة' : built ? 'بُني مشروع React كاملاً وتُحقق من تجميعه' : installed ? 'أُنشئ مشروع React وثُبتت حزمه' : 'أُنشئ مشروع React كاملاً'} — «${content.brand}».
 ${scopeBlock}${fidelityBlock}${appBlock}
 ${qaBlock}${shellBlock}${qualityMatrixBlock}${acceptBlock}🎨 الطراز: ${FAMILY_LABEL_AR[family]} — قل «غيّر الطراز إلى فاخر/جريء/دافئ/بسيط» لتبديله.
 📂 المسار: ${proj}
@@ -8630,7 +8734,7 @@ ${fileList}
 
 ${buildDiagnosis ? (buildDiagnosis.healed
                 ? `🩺 تعثّر البناء أول مرة، فشخّصتُه وعالجتُه: ${buildDiagnosis.note} — ثم اكتمل.\n`
-                : `🩺 البناء تعثّر، والسبب بالضبط: ${buildDiagnosis.ar}\n`) : ''}${built ? `✅ npm install + vite build نجحا — نسخة الإنتاج جاهزة في dist/.${liveServer ? ` والمعاينة الحية تعمل الآن على ${liveServer.url}` : ' ولم أُبقِ خادم معاينة يعمل — قل «شغّل المشروع» وأفتحه لك.'}` : npmMissing ? '⚠️ npm غير متاح هنا — المشروع جاهز، ثبّته بنفسك: npm install ثم npm run dev.' : installed ? '✅ الحزم مثبتة.' : noInstall ? 'ℹ️ لم أثبّت أي حزمة لأن طلبك منع ذلك — شغّل npm install ثم npm run build حين تسمح لك بيئتك.' : '⚠️ التثبيت لم يكتمل — جرّب: npm install داخل المجلد.'}
+                : `🩺 البناء تعثّر، والسبب بالضبط: ${buildDiagnosis.ar}\n`) : ''}${built ? `✅ ${artifactSummary}${artifactMode === 'static_records' ? ' — الحفظ محلي في هذا المتصفح.' : liveServer ? ` والمعاينة الحية تعمل الآن على ${liveServer.url}` : ' ولم أُبقِ خادم معاينة يعمل — قل «شغّل المشروع» وأفتحه لك.'}` : npmMissing ? '⚠️ npm غير متاح هنا — المشروع جاهز، ثبّته بنفسك: npm install ثم npm run dev.' : installed ? '✅ الحزم مثبتة.' : noInstall ? 'ℹ️ لم أثبّت أي حزمة لأن طلبك منع ذلك — شغّل npm install ثم npm run build حين تسمح لك بيئتك.' : '⚠️ التثبيت لم يكتمل — جرّب: npm install داخل المجلد.'}
 
 🧭 خطوات تالية — أرسل أيّ سطر كما هو:
    • «عدّل المحتوى: …» → تعديل جراحي متحقق بالبناء (والمعاينة تتحدث فوراً)
@@ -8638,12 +8742,12 @@ ${buildDiagnosis ? (buildDiagnosis.healed
    • «تراجع» → استرجاع آخر تعديل بايتاً ببايت
    • «شغّل خادم التطوير» → معاينة تطوير بتحديث حي
    • «انشر المشروع» → نسخة الإنتاج بصورها على رابط دائم`
-            : `⚛️ ${deliveryBlocked ? (buildVerificationBlocked ? 'A React project was scaffolded, but no dist bundle was produced, so it was not delivered as an application' : openQualityFindings.length ? 'A React project that compiles — delivery blocked by open quality findings' : 'A React project was built, but final delivery is blocked until the required quality audit passes') : built ? 'A full React project, scaffolded AND verified to compile' : 'A full React project scaffolded'} — "${content.brand}".
+            : `⚛️ ${deliveryBlocked ? (buildVerificationBlocked ? 'A React project was scaffolded, but no dist bundle was produced, so it was not delivered as an application' : openQualityFindings.length ? 'A React project that compiles — delivery blocked by open quality findings' : 'A React project was built, but final delivery is blocked until the required quality audit passes') : artifactMode === 'static_records' ? 'A dependency-free local records application was built and is awaiting its normal preview QA' : built ? 'A full React project, scaffolded AND verified to compile' : 'A full React project scaffolded'} — "${content.brand}".
 ${scopeBlock}${fidelityBlock}${appBlock}
 ${qaBlock}${shellBlock}${qualityMatrixBlock}${acceptBlock}📂 Path: ${proj}
 ${fileList}
 
-${built ? '✅ npm install + vite build succeeded — the production build is in dist/.' : npmMissing ? '⚠️ npm is not available here — run npm install && npm run dev yourself.' : ''}`;
+${built ? `✅ ${artifactSummary}` : npmMissing ? '⚠️ npm is not available here — run npm install && npm run dev yourself.' : ''}`;
 
         return {
             ok: !deliveryBlocked,
@@ -8699,6 +8803,7 @@ ${built ? '✅ npm install + vite build succeeded — the production build is in
                 dir: dirName,
                 authorMode: modelAuthoredEngine ? 'model' : (blueprintFallbackEngine ? 'request_derived_engine' : 'none'),
                 installed,
+                artifactMode,
                 presentation: presentationEvidence(),
                 built,
                 audit,
@@ -8731,6 +8836,7 @@ ${built ? '✅ npm install + vite build succeeded — the production build is in
                     acceptanceUnmet: acceptance.criteria.filter((c: any) => c.verdict !== 'met').map((c: any) => c.id),
                     requestedVisualAudit,
                     visualAuditUnavailable,
+                    artifactMode,
                 },
                 files: Object.keys(files),
             },

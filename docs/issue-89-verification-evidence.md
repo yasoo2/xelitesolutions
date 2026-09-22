@@ -196,3 +196,36 @@ the attempted build produced no bundle, and then the Codex browser connector
 reported the user unavailable. That is recorded as an environment limitation,
 not browser QA success. The next live retry must verify the new scoped-cache
 path, a successful bundle, and the actual preview before any delivery claim.
+
+## 2026-09-22 Dependency-Free Records Recovery
+
+The same unseen camel-record request exposed an environment recovery gap after
+the planner and phase routing were corrected: a local-only records application
+still stopped before a preview when one bounded `npm install` could not prepare
+the React toolchain. Repeating that install in `project_run` would add cost
+without new evidence.
+
+`ReactProjectTool` now has a deliberately narrow, dependency-free fallback for
+standalone records contracts. It writes `dist/index.html` only after an actual
+install/build attempt fails, and only when the request has no backend, external
+integration, workflow, relation, or image-upload contract. The artifact uses
+the request-derived fields and native input types, required validation,
+create/edit/remove, search, local persistence, and CSV export. It carries a
+machine-readable `joe-artifact-mode=static-records` marker.
+
+`project_run` recognizes only that marker and serves it through its existing
+gateway-owned static preview server, avoiding a second `npm install` or Vite
+launch. Other projects retain their regular runtime dependency checks; this is
+not a general bypass for React, API, authentication, or production delivery.
+
+Focused tests proved the fallback eligibility guards, generated field contract,
+browser-script syntax, persistence/export/edit/delete code, marker detection,
+and run-path selection. The React project and project-run suites were also run,
+as were `tsc --noEmit`, both architecture/package guards, full engineer flow,
+and the required self-fix/self-healing scripts.
+
+No visual acceptance claim is made for this new path yet. The Codex in-app
+browser connector remained unavailable, so the next live camel-record retry
+must inspect the served fallback in the visible Joe browser and exercise valid
+and invalid form input, persistence, edit, deletion, CSV export, and a mobile
+viewport before it can count as completed UAT.

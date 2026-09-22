@@ -10,7 +10,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
-import { ReactProjectTool, PROJECT_DIR_NAME_MAX_LENGTH, REACT_NETWORK_INSTALL_TIMEOUTS, applyBundledPhotographyFallback, cleanReinstallReactDependencies, findBrokenNativeBuildTool, hasUsableReactDependencyTree, heroSecondaryDestination, interruptedWindowsNativeTools, nativeBuildToolRepairSpec, portableViteBuildArgs, repairQuarantinedEsbuildInstall, repairRecordsViewBlankImport, repairRecordsViewToggleControl, repairRecordsViewVisualBaseline, requestDerivedRecordsPresentation, requestDrivenServiceProducts, reuseLocalReactDependencies, scopedNpmCache, withoutViteConfigForBuild } from '../modules/tools/definitions/ReactProjectTool';
+import { ReactProjectTool, PROJECT_DIR_NAME_MAX_LENGTH, REACT_NETWORK_INSTALL_TIMEOUTS, applyBundledPhotographyFallback, canBuildDependencyFreeRecordsApp, cleanReinstallReactDependencies, findBrokenNativeBuildTool, hasUsableReactDependencyTree, heroSecondaryDestination, interruptedWindowsNativeTools, nativeBuildToolRepairSpec, portableViteBuildArgs, repairQuarantinedEsbuildInstall, repairRecordsViewBlankImport, repairRecordsViewToggleControl, repairRecordsViewVisualBaseline, requestDerivedRecordsPresentation, requestDrivenServiceProducts, reuseLocalReactDependencies, scopedNpmCache, withoutViteConfigForBuild, writeDependencyFreeRecordsBundle } from '../modules/tools/definitions/ReactProjectTool';
 import { fileAppStoreJs } from '../modules/tools/definitions/react-app-templates';
 import { ApiProjectTool } from '../modules/tools/definitions/ApiProjectTool';
 import { ScaffoldProjectTool } from '../modules/tools/definitions/SystemTools';
@@ -59,6 +59,41 @@ describe('records presentation import contract', () => {
         expect(derived).toContain('input[role=\\"switch\\"]');
         expect(derived).toContain('border-radius:999px');
         expect(requestDerivedRecordsPresentation(derived)).toBe(derived);
+    });
+});
+
+describe('dependency-free local records recovery', () => {
+    const blueprint: any = {
+        engine: 'records', title: 'سجل الإبل', lede: 'سجل الناقة والعمر والوزن',
+        entityOne: 'ناقة', entityMany: 'الإبل', fields: [
+            { key: 'camel_name', label: 'اسم الناقة', type: 'text', required: true, primary: true },
+            { key: 'age', label: 'العمر', type: 'number', required: true, min: 0 },
+            { key: 'weight', label: 'الوزن', type: 'number', required: true, min: 0 },
+        ],
+    };
+
+    it('writes a real local CRUD artifact only for a standalone records contract', () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-static-records-'));
+        try {
+            expect(canBuildDependencyFreeRecordsApp(blueprint)).toBe(true);
+            expect(canBuildDependencyFreeRecordsApp(blueprint, { hasBackend: true })).toBe(false);
+            expect(canBuildDependencyFreeRecordsApp({ ...blueprint, relation: { resource: 'owners' } })).toBe(false);
+            const output = writeDependencyFreeRecordsBundle(root, blueprint, true);
+            const html = fs.readFileSync(output, 'utf8');
+            expect(html).toContain('name="joe-artifact-mode" content="static-records"');
+            expect(html).toContain('اسم الناقة');
+            expect(html).toContain("localStorage.setItem(store");
+            expect(html).toContain("form.checkValidity()");
+            expect(html).toContain("input.pattern='[0-9+() -]{6,}'");
+            expect(html).toContain("download:'records.csv'");
+            expect(html).toContain("edit(row)");
+            expect(html).toContain("remove(row.id)");
+            const scripts = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gu)];
+            expect(scripts).toHaveLength(2);
+            expect(() => new Function(scripts[1][1])).not.toThrow();
+        } finally {
+            fs.rmSync(root, { recursive: true, force: true });
+        }
     });
 });
 
