@@ -324,7 +324,7 @@ export default function CostCalculator({ services = [] }) {
 
 export function isNamedRowTextEditRequest(request: string): boolean {
     const text = String(request || '');
-    const mutation = /(?<![ء-ي])(?:غيّ?ر|عدّ?ل|بدّ?ل|استبدل)(?![ء-ي])|\b(?:change|edit|update|rename)\b/iu.test(text);
+    const mutation = /(?<![ء-ي])(?:غيّ?ر|عدّ?ل|بدّ?ل|استبدل|خلّ?ي)(?![ء-ي])|\b(?:change|edit|update|rename)\b/iu.test(text);
     const namedField = /(?<![ء-ي])(?:سعر|السعر|بسعر|أسعار|الأسعار|وصف|الوصف|اسم|الاسم)(?![ء-ي])|\b(?:prices?|description|rename)\b/i.test(text);
     return mutation && namedField;
 }

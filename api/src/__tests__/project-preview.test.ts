@@ -110,7 +110,7 @@ describe('the preview loop is WIRED, end to end', () => {
     });
     it('the local Joe UI proxies durable previews to the API instead of serving its own SPA', () => {
         const vite = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'web', 'vite.config.ts'), 'utf-8');
-        expect(vite).toContain("const apiTarget = 'http://127.0.0.1:5000'");
+        expect(vite).toContain("const apiTarget = process.env.JOE_API_TARGET || 'http://127.0.0.1:5000'");
         for (const route of ['/project-preview', '/artifacts']) {
             const at = vite.indexOf(`'${route}': {`);
             expect(at).toBeGreaterThan(0);
