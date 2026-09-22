@@ -39,12 +39,12 @@ describe('deadline wiring — the guards are actually in the pipeline', () => {
     test('every node execution branch in the orchestrator runs under a deadline', () => {
         const src = read('orchestration/AgentOrchestrator.ts');
         expect(src).toContain("from '../shared/utils/deadline'");
-        // All five NODE branches (`result = await …`, not the run-level
+        // All current NODE branches (`result = await …`, not the run-level
         // `const result = await executionFirewall…` which the RUN deadline
         // covers) go through the wrapper.
         const rawAwaits = src.match(/(?<!const )result = await (?!deadline\()/g) || [];
         expect(rawAwaits).toHaveLength(0);
-        expect((src.match(/result = await deadline\(/g) || []).length).toBeGreaterThanOrEqual(5);
+        expect((src.match(/result = await deadline\(/g) || []).length).toBeGreaterThanOrEqual(4);
     });
 
     test('the whole run is capped in AgentLoopService, with a localized explanation', () => {

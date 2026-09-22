@@ -622,7 +622,7 @@ describe('a measurement it cannot make honestly, it does not make', () => {
         const b = read('core', 'quality', 'behaviour-audit.ts');
         expect(b).toMatch(/page\.on\('download', onDownload\)/);
         expect(b).toContain('download.failure()');
-        expect(b).toContain("effect = downloaded ? 'download'");
+        expect((b.match(/effect = download\.succeeded\(\) \? 'download'/g) || []).length).toBeGreaterThanOrEqual(2);
         expect(b).toContain('Date.now() < settleDeadline && eyeIsOpen()');
         expect(b).toContain("page.off('download', onDownload)");
         expect(b).not.toContain('downloadClicks > downloadClicksBefore');
