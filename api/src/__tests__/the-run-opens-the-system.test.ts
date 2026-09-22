@@ -117,7 +117,7 @@ describe('readiness does not adopt a stranger\'s server', () => {
 
     it('an unconfirmed server yields an explicit verification failure, never a dead URL', () => {
         const at = RUNTOOL.indexOf('if (!livePort) {');
-        const block = RUNTOOL.slice(at, at + 2600);
+        const block = RUNTOOL.slice(at, at + 7000);
         expect(at).toBeGreaterThan(-1);
         expect(block).not.toMatch(/url: `http:\/\/localhost:\$\{port\}\//);
         expect(block).toContain('ok: false');
@@ -175,7 +175,7 @@ describe('the system that passed the test is the system he gets', () => {
 describe('an already-running system is adopted, not raced', () => {
     it('project_run probes the remembered address before starting anything', () => {
         expect(RUNTOOL).toContain('const live = activeProj?.live;');
-        expect(RUNTOOL).toMatch(/if \(!input\?\.cwd && !input\?\.command && liveUrl && canAdoptRecordedLive\(live, cwd\) && await answersHttp\(liveUrl\)\)/);
+        expect(RUNTOOL).toMatch(/if \(!input\?\.command && liveUrl && canAdoptRecordedLive\(live, cwd\) && await answersHttp\(liveUrl\)\)/);
         expect(RUNTOOL).toMatch(/adopted: true, kind: 'already-running'/);
     });
 
@@ -185,11 +185,12 @@ describe('an already-running system is adopted, not raced', () => {
      */
     it('adoption needs a real HTTP answer, not just an open port', () => {
         expect(RUNTOOL).toMatch(/async function answersHttp\(url: string, timeoutMs = 2500\): Promise<boolean>/);
-        expect(RUNTOOL).toContain('return res.status < 500;');
+        expect(RUNTOOL).toContain('finish(Number(res.statusCode || 0) < 500);');
     });
 
-    it('an explicit cwd or command still starts fresh — adoption is the default only', () => {
-        expect(RUNTOOL).toContain('!input?.cwd && !input?.command && liveUrl');
+    it('an explicit command starts fresh, while an exact cwd may adopt its own verified process', () => {
+        expect(RUNTOOL).toContain('!input?.command && liveUrl');
+        expect(RUNTOOL).toContain('canAdoptRecordedLive(live, cwd)');
     });
 });
 

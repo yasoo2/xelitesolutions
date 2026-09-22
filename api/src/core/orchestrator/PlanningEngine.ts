@@ -1732,6 +1732,9 @@ Rules:
         // path below has years of dialect handling in it. The router yields.
         const editKey = String((context && context.sessionId) || 'default').replace(/[^a-zA-Z0-9._-]/g, '_');
         const pageIsOpen = !!((global as any).joePages && (global as any).joePages[editKey]);
+        const projectIsOpen = !!PlanningEngine.selectedProjectDir(context)
+            || !!((global as any).joeProjects && (global as any).joeProjects[editKey]?.dir);
+        const explicitlyTargetsCurrentProject = /(?:نفس|ذات)\s*(?:هذا\s*)?(?:المشروع|التطبيق|الموقع|النظام)|(?:المشروع|التطبيق|الموقع|النظام)\s*(?:نفسه|الحالي|الموجود)|\b(?:same|current|existing|this|active)\s+(?:project|application|app|site|system|workspace)\b/i.test(probe);
         const looksLikeEdit = /(اضف|أضف|ضيف|ضف|حط|خلي|خلّي|شيل|سوي|سوّي|غير|غيّر|عدل|عدّل|بدل|بدّل|احذف|امسح|كبر|كبّر|صغر|صغّر|رتب|رتّب|ركب|ركّب|جمل|جمّل|حسن|حسّن)/.test(String(intent.goal || ''))
             || /\b(add|change|replace|remove|make it|set the)\b/i.test(String(intent.goal || ''));
         const explicitBrowserWorkflowRequest = /(متصفح|براوزر|browser|browser\s+qa|real\s+browser|live\s+page)/i.test(String(intent.goal || ''))
@@ -1743,6 +1746,7 @@ Rules:
         // explicit «never deploy» clause. The later build routes select the
         // correct general engineering workflow from the actual workspace.
         const capable = (pageIsOpen && looksLikeEdit)
+            || (projectIsOpen && explicitlyTargetsCurrentProject)
             || localBuildContract
             || explicitBrowserWorkflowRequest
             || PlanningEngine.looksLikeBuild(String(intent.goal || ''))
