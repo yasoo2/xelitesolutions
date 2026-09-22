@@ -58,7 +58,7 @@ describe('run/start preserves browser ownership on the first message', () => {
         const resolved = RUN_ROUTE.indexOf('const runSessionId = String(sessionId || \'\').trim()');
         const attachmentMemory = RUN_ROUTE.indexOf('rememberSessionFiles(runSessionId, fileIds)');
         const persistedMessage = RUN_ROUTE.indexOf('sessionId: runSessionId, role: \'user\'');
-        const trace = RUN_ROUTE.indexOf('traceManager.startTrace(runSessionId, text)');
+        const trace = RUN_ROUTE.indexOf('traceManager.startTrace(runSessionId, executionText)');
 
         expect(resolved).toBeGreaterThan(-1);
         expect(attachmentMemory).toBeGreaterThan(resolved);

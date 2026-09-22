@@ -125,7 +125,8 @@ describe('multi-entity scheduling systems', () => {
     it('does not spend a provider call authoring the dormant single-table component', () => {
         const source = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ReactProjectTool.ts'), 'utf8');
         const apiSource = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ApiProjectTool.ts'), 'utf8');
-        expect(source).toContain('!workflowSemanticContractPassed && !unifiedTables');
+        expect(source).toContain("const recordsPresentation = Boolean(appBp && runBp.engine === 'records' && !unifiedTables)");
+        expect(source).toContain('generatedEnginePath && !requestDerivedEngineReady && !unifiedTables');
         expect(source).toContain('!modelUnavailableDuringBuild && !unifiedTables');
         expect(source).toContain('!modelUnavailableDuringBuild && !inheritedUnifiedTables');
         expect(apiSource).toContain("tokenStorageKey: workflowApplication ? 'joe:auth'");
