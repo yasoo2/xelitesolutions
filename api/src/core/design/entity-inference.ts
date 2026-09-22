@@ -389,6 +389,19 @@ export const NEVER = new Set([
 ]);
 
 /**
+ * A subject beside an explicit record container has stronger evidence than a
+ * phrase discovered in free prose. `orders` and `products` are useful record
+ * names in that grammar, while implementation and system words are not.
+ */
+const EXPLICIT_SUBJECT_NEVER = new Set([
+    'health', 'auth', 'api', 'sqlite_master',
+    'apps', 'systems', 'platforms', 'websites', 'sites', 'pages_of', 'databases', 'features',
+    'applications', 'authentications', 'logins', 'logouts', 'registrations',
+    'appropriates', 'implementations', 'validations', 'verifications',
+    'requirements', 'functionalities', 'mockups', 'interactions', 'operations',
+]);
+
+/**
  * THE GENERAL PATH.
  *
  * No domain is named. A phrase becomes a table when its shape is a noun this
@@ -475,7 +488,7 @@ function theOneTableHeDescribed(request: string): ModelEntity | null {
     const subject = String(recordedSubject(request) || '').trim();
     if (!subject) return null;
     const key = /[A-Za-z]/.test(subject) ? keyOf(subject) : keyFromArabic(subject);
-    if (!key || key.length < 3 || key.length > 40 || NEVER.has(key)) return null;
+    if (!key || key.length < 3 || key.length > 40 || EXPLICIT_SUBJECT_NEVER.has(key)) return null;
     const english = englishFor(subject);
     return {
         key,
