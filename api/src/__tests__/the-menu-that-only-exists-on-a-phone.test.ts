@@ -52,11 +52,13 @@ describe('a control that only exists on a phone is pressed too', () => {
         expect(phoneAt).toBeGreaterThan(walkAt);
     });
 
-    it('⛔ POSITIVE — only controls the desktop walk never saw', () => {
+    it('⛔ POSITIVE — new controls plus responsive navigation links', () => {
         //  Re-pressing forty controls at a second width would spend the whole
         //  budget to learn what was already known, and the budget is shared.
+        //  Links are the exception: responsive navigation can point somewhere
+        //  different even when its visible label matches the desktop control.
         expect(APP).toContain('const seenLabels = new Set(allControls.map((c: any) => String(c.label || \'\')));');
-        expect(APP).toContain('const fresh = (phone.controls || []).filter((c: any) => !seenLabels.has(String(c.label || \'\')));');
+        expect(APP).toContain("c.kind === 'anchor' || !seenLabels.has(String(c.label || ''))");
     });
 
     it('isolates responsive controls without replacing real phone presses with desktop proof', () => {
@@ -93,7 +95,7 @@ describe('the decorated name and the real name are both kept', () => {
         //  same thing, one taught the rule and the other not. Both are asserted
         //  here because fixing either alone looks exactly like fixing both.
         expect(APP).toContain('allControls.push({ ...c, bare: c.label, context: `desktop:${route}`, label: route === \'/\' ? c.label : `${route} ${c.label}` })');
-        expect(APP).toContain("allControls.push({ ...c, bare: c.label, context: 'phone:/', label: `الجوّال ${c.label}` })");
+        expect(APP).toContain("allControls.push({ ...c, bare: c.label, context: 'جوّال:/', label: `الجوّال ${c.label}` })");
         expect(APP).toContain('allControls.push({ ...c, bare: c.label, context: `${size.name}:${r}`, label, responsive: size.name })');
         //  …and nothing pushes a control without it.
         const pushes = APP.match(/allControls\.push\(\{[^}]*\}/g) || [];
