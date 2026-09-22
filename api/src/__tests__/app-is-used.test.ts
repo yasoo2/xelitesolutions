@@ -46,6 +46,8 @@ describe('one definition of a dead control', () => {
         expect(B).toContain('const replacement = fresh.find');
         expect(B).toContain('controlKey(candidate) === controlKey(c)');
         expect(B).toContain('download.failure()');
+        expect((B.match(/const download = observeDownload\(page\);/g) || []).length).toBe(2);
+        expect(B).toContain("effect = download.succeeded() ? 'download'");
         expect(B).not.toContain('globalThis.__joeQaDownloadClicks');
     });
 

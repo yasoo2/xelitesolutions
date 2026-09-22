@@ -668,6 +668,9 @@ function measureResponsive(vw: number) {
       return n.nodeType === 3 && (n.textContent || '').trim().length > 4;
     });
     if (!ownsText) return;
+    // Accessible labels deliberately use a one-pixel clipped box. Their text
+    // is available to assistive technology, not visually cut off from a visitor.
+    if (el.classList.contains('sr-only') || el.classList.contains('visually-hidden') || el.getAttribute('aria-hidden') === 'true') return;
     var cs = getComputedStyle(el);
     if (cs.visibility === 'hidden' || cs.display === 'none') return;
     var ox = cs.overflowX, oy = cs.overflowY;

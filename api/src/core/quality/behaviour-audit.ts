@@ -122,6 +122,27 @@ const MAX_FIELDS_PER_FORM = 14;
 /** Keep semantic input validation from being starved by a large control surface. */
 const FORM_QA_RESERVE_MS = 20_000;
 
+/**
+ * A download can be the whole result of a control.  Both the baseline walk and
+ * the state-exploration walk use this observer: a button revealed after a form
+ * submission must be measured by the same contract as one visible at first.
+ */
+function observeDownload(page: any) {
+    let state: 'none' | 'pending' | 'succeeded' | 'failed' = 'none';
+    const onDownload = (download: any) => {
+        state = 'pending';
+        Promise.resolve(download.failure()).then(error => {
+            state = error ? 'failed' : 'succeeded';
+        }).catch(() => { state = 'failed'; });
+    };
+    page.on('download', onDownload);
+    return {
+        succeeded: () => state === 'succeeded',
+        failed: () => state === 'failed',
+        stop: () => { try { page.off('download', onDownload); } catch { /* page may be gone */ } },
+    };
+}
+
 /** Runs in the page: catalogue everything a visitor could press. */
 function findControls(limit: number) {
     const vis = (el: Element) => {
@@ -976,18 +997,7 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                  * of the page. Judged by the DOM alone it is indistinguishable
                  * from a button wired to nothing.
                  */
-                let downloaded = false;
-                let downloadStarted = false;
-                let downloadFailed = false;
-                const onDownload = (download: any) => {
-                    // A clicked anchor or a failed transfer is not a delivered file.
-                    downloadStarted = true;
-                    Promise.resolve(download.failure()).then(error => {
-                        if (!error) downloaded = true;
-                        else downloadFailed = true;
-                    }).catch(() => { downloadFailed = true; });
-                };
-                page.on('download', onDownload);
+                const download = observeDownload(page);
                 try {
                     if (!eyeIsOpen()) break;
                     el = await stableHandle(c, el).catch(() => null);
@@ -1005,11 +1015,11 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                     do {
                         await page.waitForTimeout(100);
                         const after = await page.evaluate(snapshot).catch(() => null);
-                        effect = downloaded ? 'download' : downloadStarted ? '' : page.url() !== beforeUrl ? 'navigation'
+                        effect = download.succeeded() ? 'download' : page.url() !== beforeUrl ? 'navigation'
                             : (changed(before, after) || (hoverEffect ? `hover:${hoverEffect}` : ''));
-                    } while (!effect && !downloadFailed && Date.now() < settleDeadline && eyeIsOpen());
+                    } while (!effect && !download.failed() && Date.now() < settleDeadline && eyeIsOpen());
                 } finally {
-                    try { page.off('download', onDownload); } catch { /* page may be gone */ }
+                    download.stop();
                 }
                 // A submit that reloads the page proves the form is NOT handled —
                 // an unhandled submit is the browser's default, not a feature.
@@ -1114,13 +1124,23 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                 if (!el) continue;
                 const before = await page.evaluate(snapshot).catch(() => null);
                 if (!eyeIsOpen()) break;
-                await el.click({ timeout: 2500, noWaitAfter: true }).catch((error: any) => {
-                    metrics.controlClickErrors = metrics.controlClickErrors || [];
-                    metrics.controlClickErrors.push({ label: candidate.label, message: String(error?.message || error).slice(0, 180) });
-                });
-                await page.waitForTimeout(SETTLE_MS);
-                const after = await page.evaluate(snapshot).catch(() => null);
-                effect = changed(before, after);
+                const download = observeDownload(page);
+                try {
+                    await el.click({ timeout: 2500, noWaitAfter: true }).catch((error: any) => {
+                        metrics.controlClickErrors = metrics.controlClickErrors || [];
+                        metrics.controlClickErrors.push({ label: candidate.label, message: String(error?.message || error).slice(0, 180) });
+                    });
+                    // A Blob download usually settles immediately, but leave a
+                    // small bounded window for the browser to confirm it.
+                    const settleDeadline = Math.min(explorationDeadline, Date.now() + 1200);
+                    do {
+                        await page.waitForTimeout(100);
+                        const after = await page.evaluate(snapshot).catch(() => null);
+                        effect = download.succeeded() ? 'download' : changed(before, after);
+                    } while (!effect && !download.failed() && Date.now() < settleDeadline && eyeIsOpen());
+                } finally {
+                    download.stop();
+                }
                 if (effect === 'navigation') {
                     // Hash routers and replaceState do not reliably create a
                     // history entry. Restore the exact discovery URL so the

@@ -10,7 +10,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
-import { ReactProjectTool, PROJECT_DIR_NAME_MAX_LENGTH, REACT_NETWORK_INSTALL_TIMEOUTS, LOCAL_RECORDS_FALLBACK_INSTALL_TIMEOUTS, applyBundledPhotographyFallback, canBuildDependencyFreeRecordsApp, cleanReinstallReactDependencies, findBrokenNativeBuildTool, hasUsableReactDependencyTree, heroSecondaryDestination, installTimeoutsForRecordsRecovery, interruptedWindowsNativeTools, nativeBuildToolRepairSpec, portableViteBuildArgs, repairQuarantinedEsbuildInstall, repairRecordsViewBlankImport, repairRecordsViewToggleControl, repairRecordsViewVisualBaseline, requestDerivedRecordsPresentation, requestDrivenServiceProducts, reuseLocalReactDependencies, scopedNpmCache, shouldRepairInterruptedNativeBuildTools, withoutViteConfigForBuild, writeDependencyFreeRecordsBundle } from '../modules/tools/definitions/ReactProjectTool';
+import { ReactProjectTool, PROJECT_DIR_NAME_MAX_LENGTH, REACT_NETWORK_INSTALL_TIMEOUTS, LOCAL_RECORDS_FALLBACK_INSTALL_TIMEOUTS, applyBundledPhotographyFallback, canBuildDependencyFreeRecordsApp, cleanReinstallReactDependencies, findBrokenNativeBuildTool, hasUsableReactDependencyTree, heroSecondaryDestination, installTimeoutsForRecordsRecovery, interruptedWindowsNativeTools, nativeBuildToolRepairSpec, portableViteBuildArgs, repairQuarantinedEsbuildInstall, repairRecordsViewBlankImport, repairRecordsViewToggleControl, repairRecordsViewVisualBaseline, requestDerivedRecordsPresentation, requestDrivenServiceProducts, reuseLocalReactDependencies, scopedNpmCache, shouldRepairInterruptedNativeBuildTools, sourceRepairAllowedForArtifact, withoutViteConfigForBuild, writeDependencyFreeRecordsBundle } from '../modules/tools/definitions/ReactProjectTool';
 import { fileAppStoreJs } from '../modules/tools/definitions/react-app-templates';
 import { ApiProjectTool } from '../modules/tools/definitions/ApiProjectTool';
 import { ScaffoldProjectTool } from '../modules/tools/definitions/SystemTools';
@@ -88,8 +88,13 @@ describe('dependency-free local records recovery', () => {
             expect(html).toContain("download:'records.csv'");
             expect(html).toContain("edit(row)");
             expect(html).toContain("remove(row.id)");
+            expect(html).toContain('aria-labelledby="search-label"');
+            expect(html).toContain('id="status" role="status"');
+            expect(html).toContain('status.textContent=c.labels.exported');
+            expect(html).toContain('status.textContent=c.labels.saved},0)}},true)');
+            expect(html).toContain('.button,.link-button{min-height:44px}');
             const scripts = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gu)];
-            expect(scripts).toHaveLength(2);
+            expect(scripts).toHaveLength(3);
             expect(() => new Function(scripts[1][1])).not.toThrow();
         } finally {
             fs.rmSync(root, { recursive: true, force: true });
@@ -109,6 +114,12 @@ describe('dependency-free local records recovery', () => {
         expect(shouldRepairInterruptedNativeBuildTools(true, 1)).toBe(false);
         expect(shouldRepairInterruptedNativeBuildTools(false, 1)).toBe(true);
         expect(shouldRepairInterruptedNativeBuildTools(false, 0)).toBe(false);
+    });
+
+    it('never sends a dependency-free artifact into the React source repair loop', () => {
+        expect(sourceRepairAllowedForArtifact('static_records')).toBe(false);
+        expect(sourceRepairAllowedForArtifact('react')).toBe(true);
+        expect(sourceRepairAllowedForArtifact(null)).toBe(true);
     });
 });
 
