@@ -50,6 +50,12 @@ describe('the schema follows the app, not a fixed guess', () => {
         expect(selected.resource).toBe('items');
     });
 
+    it('a generic record tracker gives its built-in primary API the requested fields', () => {
+        const columns = apiColumnsForRequest('Build an orders tracker with customer, date, and status (draft).');
+        expect(columns.map(column => column.key)).toEqual(['text1', 'date', 'flag1']);
+        expect(columns).not.toBe(CATALOGUE_COLUMNS);
+    });
+
     it('generic inference without a declaration cannot promote an absent key', () => {
         const designed = [
             { key: 'calleds', ar: 'calleds', fields: [] },

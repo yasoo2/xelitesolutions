@@ -338,6 +338,19 @@ export async function designDataModel(
     const listed = namedEntities(request);
     const reading = inferModel(request);
     const shaped = reading.entities;
+    // A single record subject can be an API resource the generated server
+    // already owns (for example `orders`). It is still stronger evidence than
+    // free phrase inference, but it must not be regenerated as a secondary
+    // entity or replaced by columns such as `date` and `draft`.
+    if (reading.declared && shaped.length === 1) {
+        const valid = validateDesign(shaped, 1);
+        if (valid?.length) {
+            opts?.onNote?.(`data model: read one record from the request — ${valid[0].key}`);
+            return valid;
+        }
+        opts?.onNote?.('data model: primary record is already served by the built-in API; no secondary tables generated');
+        return [];
+    }
     /**
      *  A COUNT CANNOT TELL A BETTER READING FROM A WORSE ONE.
      *
@@ -351,7 +364,7 @@ export async function designDataModel(
      *  What followed cost 120 seconds per build, asking providers with no
      *  keys a question his sentence had already answered.
      */
-    const floor = reading.declared ? 1 : 2;
+    const floor = 2;
     if (listed.length || shaped.length >= floor) {
         const richer = shaped.length > listed.length ? shaped : listed;
         const valid = validateDesign(richer, richer === shaped ? floor : 2);

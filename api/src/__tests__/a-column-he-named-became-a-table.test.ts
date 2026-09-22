@@ -32,6 +32,7 @@
  *  one table; once in front of EVERY item means one table each.
  */
 import { inferModel } from '../core/design/entity-inference';
+import { designDataModel } from '../core/design/schema-designer';
 
 const keys = (request: string) => inferModel(request).entities.map(e => e.key);
 const first = (request: string) => inferModel(request).entities[0];
@@ -72,6 +73,16 @@ describe('one table, when that is what he described', () => {
         const model = inferModel('بدي جدول للفواتير فيه رقم الفاتورة والمبلغ والتاريخ').entities;
         const amount = model[0].fields.find(f => f.ar === 'المبلغ');
         expect(amount?.type).toBe('REAL');
+    });
+
+    it('keeps an explicitly named orders tracker as one API table', async () => {
+        const request = 'Build an orders tracker with customer, date, and status (draft).';
+        const inferred = inferModel(request);
+        expect(inferred.declared).toBe(true);
+        expect(inferred.entities.map(entity => entity.key)).toEqual(['orders']);
+        expect(inferred.entities[0].fields.map(field => field.ar)).toEqual(['customer', 'date', 'status']);
+        const model = await designDataModel(request, { timeoutMs: 1 });
+        expect(model).toEqual([]);
     });
 });
 
