@@ -70,7 +70,7 @@ const STATIC_PREVIEW_SERVER_SOURCE = [
     "http.createServer((req,res)=>{",
     "  const pathname=safe(String(req.url||'/').split('?')[0]);",
     "  if(!pathname){res.statusCode=400;return res.end('bad request')}",
-    "  const segments=pathname.replace(/\\\\/g,'/').split('/').filter(Boolean);",
+    "  const segments=pathname.split(String.fromCharCode(92)).join('/').split('/').filter(Boolean);",
     "  if(segments.some(segment=>segment==='..')){res.statusCode=403;return res.end('forbidden')}",
     "  const candidate=path.join(root,...segments);",
     "  let file=candidate;",
