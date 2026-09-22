@@ -21,10 +21,10 @@ import { transform } from 'esbuild';
 describe('the schema follows the app, not a fixed guess', () => {
     const PROMPT_01 = 'Build a polished React project called SpendWise, a personal expense tracker for one user. Create a responsive dashboard with a clear title, a form to add an expense with description, category, amount, and date, validation that rejects empty descriptions and non-positive amounts, a list of saved expenses with edit and delete actions, category filtering, text search, a running total that updates from the actual rows, and a CSV export button. Keep the data durable across reloads with localStorage. Use a clean light theme with accessible contrast and helpful empty, loading, and error states. Run the real production build and open the live preview. Do not modify existing projects.';
 
-    it('Prompt 01 keeps the recognized expenses resource and its five blueprint columns', () => {
+    it('Prompt 01 keeps the recognized expenses resource and its explicit request columns', () => {
         expect(detectAppKind(PROMPT_01)).toBe('expenses');
         expect(apiColumnsForRequest(PROMPT_01).map(column => column.key))
-            .toEqual(['title', 'amount', 'category', 'date', 'note']);
+            .toEqual(['description', 'category', 'amount', 'date']);
     });
 
     it('generic multi-table promotion follows an explicit user list, not inferred count', () => {
