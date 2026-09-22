@@ -71,6 +71,7 @@ const AR_LEXICON: Array<[RegExp, string[]]> = [
     lex(`${AL}خط\\s*${AL}انابيب|${AL}تكامل\\s*${AL}مستمر|pipeline|ci|cd|${AL}اتمته|${AL}اوتوميشن`, ['ci', 'pipeline', 'workflow', 'actions', 'automation', 'deploy']),
     lex(`${AL}جوال|${AL}موبايل|تطبيق\\s*${AL}هاتف|${AL}اندرويد|${AL}ايفون`, ['mobile', 'android', 'ios', 'app', 'react native']),
     lex(`${AL}دفع|${AL}فاتوره|${AL}اشتراك|checkout`, ['payment', 'checkout', 'invoice', 'subscription', 'stripe']),
+    lex(`اختر|${AL}اختيار|${AL}مسار\s*${AL}انسب|اقل\s*${AL}اعداد|${AL}مزود\s*${AL}انسب|local\s*(?:or|vs)\s*external`, ['capability', 'decision', 'route', 'setup', 'provider', 'local', 'external']),
     lex(`${AL}بريد|${AL}ايميل|${AL}رساله|${AL}تنبيه|${AL}اشعار`, ['email', 'mail', 'notify', 'alert', 'message']),
     lex(`${AL}ملف|${AL}ملفات|${AL}مجلد|احذف|انسخ|انقل`, ['file', 'directory', 'folder', 'delete', 'copy', 'move']),
     lex(`ابحث|${AL}بحث|جد|${AL}عن`, ['search', 'find', 'grep', 'lookup']),
@@ -237,12 +238,12 @@ export const registeredToolNames = (): string[] => (tools as any[]).map(t => t.n
  *     stays a conversation.
  */
 const ACT_VERB = new RegExp([
-    'افحص', 'فحص', 'دقق', 'تدقيق', 'حلل', 'تحليل', 'اختبر', 'اختبار', 'قس', 'قياس',
+    'افحص', 'فحص', 'دقق', 'تدقيق', 'حلل', 'تحليل', 'اختبر', 'اختبار', 'قس', 'قياس', 'اختر', 'اختيار',
     'ترجم', 'ترجمه', 'حول', 'تحويل', 'ولد', 'توليد', 'راجع', 'مراجعه', 'استخرج', 'استخراج',
     // NOT bare «صور»: it lives inside the NOUN «صورة», so «حط صورة في الأعلى»
     // — a page edit — read as an act verb and routed to a vision tool.
     'التقط', 'لقطه', 'امسح', 'اقرا', 'قارن', 'مقارنه', 'نظف', 'رتب', 'لخص', 'تلخيص',
-    'audit', 'check', 'inspect', 'analy[sz]e', 'test', 'translate', 'convert', 'extract',
+    'audit', 'check', 'inspect', 'analy[sz]e', 'test', 'translate', 'convert', 'extract', 'choose', 'select', 'decide',
     'scan', 'lint', 'profile', 'benchmark', 'measure', 'review', 'compare', 'summari[sz]e',
     'generate\\s+(docs|documentation|tests)', 'screenshot',
 ].join('|'));

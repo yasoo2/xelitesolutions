@@ -3,6 +3,7 @@ import { looksLikeBuild, isReadOnlyRequest, isBoundedTerminalDiagnosticRequest }
 import intelligentRouter from '../llm/intelligent-router';
 import { normalizeIntentText } from '../orchestrator/promptNormalizer';
 import { parseExplicitFileRequest } from '../orchestrator/file-intent';
+import { capabilityFamilyFromRequest } from '../capabilities/decision-profiles';
 
 export interface StructuredIntent {
     goal: string;
@@ -45,6 +46,11 @@ export class IntentParser {
                 constraints: ['Inspect the workspace and use evidence before implementation or verification.'],
                 rawIntent: { primary: userText, engineeringBrief: true, deterministic: true },
             };
+        }
+        const capabilityDecision = IntentParser.capabilityDecisionIntent(userText);
+        if (capabilityDecision) {
+            console.log('[IntentParser] ⚡ Explicit capability decision — skipping deep analysis.');
+            return capabilityDecision;
         }
         if (isBoundedTerminalDiagnosticRequest(userText)) {
             console.log('[IntentParser] ⚡ Bounded terminal diagnostic — skipping deep analysis.');
@@ -203,6 +209,23 @@ Return ONLY a JSON object:
         // The length guard prevents ordinary short browser interactions that happen
         // to contain an engineering noun (for example, "open the app dashboard").
         return engineeringVerb && engineeringNoun && (raw.length >= 240 || /(?:production[- ]grade|from\s+scratch|from\s+beginning|من\s+الألف|من\s+الصفر|حقيقي|كامل|معقّد|complex|autonomous|real\s+working)/i.test(probe));
+    }
+
+    /** A route-choice request is a bounded read-only decision, not a model task. */
+    static capabilityDecisionIntent(userText: string): StructuredIntent | null {
+        const raw = String(userText || '').trim();
+        if (!raw || looksLikeBuild(raw) || !capabilityFamilyFromRequest(raw)) return null;
+        const decision = /\b(?:choose|select|decide)\b|least[-\s]?setup|local\s+(?:or|vs)\s+external|اختر|اختيار|أقل\s*إعداد|مسار\s*(?:محلي|خارجي|أنسب)|مزود\s*(?:محلي|خارجي|أنسب)/iu.test(raw);
+        if (!decision) return null;
+        return {
+            goal: raw,
+            complexity: 'low',
+            riskLevel: 'low',
+            suggestedAgent: 'Dev',
+            requiredTools: ['decide_capability_route'],
+            constraints: ['Return an inspectable route decision only; never connect an account, use a key, pay, deploy, or mutate a workspace.'],
+            rawIntent: { primary: raw, capabilityDecision: true, deterministic: true },
+        };
     }
 
     /** Deterministic intent for unmistakable requests (skips the slow LLM pass).
