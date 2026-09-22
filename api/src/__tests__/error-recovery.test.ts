@@ -114,6 +114,6 @@ describe('4. sanitizeOutput truncates instead of deleting', () => {
 describe('the retry ceiling still ends a hopeless loop', () => {
     test('two retries, then the REAL error surfaces', () => {
         expect(orchSrc).toMatch(/currentRetryCount >= 2/);
-        expect(orchSrc).toMatch(/result\.error \|\| "Fatal execution error: Max retries reached"/);
+        expect(orchSrc).toMatch(/lastNodeError \?\? result\.error \?\? "Fatal execution error"/);
     });
 });
