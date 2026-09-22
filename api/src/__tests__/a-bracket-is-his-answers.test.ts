@@ -83,6 +83,19 @@ describe('a bracket after a column names its answers', () => {
         //  single option would be inventing a constraint he did not state.
         const f = field('جدول المنتجات فيه اسم الصنف والسعر والحالة (متوفر)', 'الحالة');
         expect(f?.options).toBeUndefined();
+        expect(f?.type).toBe('text');
+    });
+
+    it('keeps one explicit English annotation above inferred status options', () => {
+        const f = field('record orders: customer, date and status (draft)', 'status');
+        expect(f?.options).toBeUndefined();
+        expect(f?.type).toBe('text');
+    });
+
+    it('still infers a status enum when the user supplied no annotation', () => {
+        const f = field('record orders: customer, date and status', 'status');
+        expect(f?.options).toEqual(['Pending', 'In progress', 'Completed']);
+        expect(f?.type).toBe('select');
     });
 });
 
