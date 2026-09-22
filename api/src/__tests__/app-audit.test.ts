@@ -151,7 +151,8 @@ describe('the wiring — every green build gets measured', () => {
             expect(react).toContain(label);
         }
         expect(react).toContain('Proven quality matrix');
-        expect(react).toContain("checks.get('writes_protected') === true && !!audit?.authenticated");
+        expect(react).toContain("checks.get('writes_protected') === true");
+        expect(react).toContain('Authenticated browser');
     });
 
     it('names each browser QA pass in the delivery verdict', () => {

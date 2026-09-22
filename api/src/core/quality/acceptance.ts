@@ -29,7 +29,7 @@
  * cannot test says «unprovable» rather than passing quietly — because a check
  * that cannot fail is the thing this project keeps deleting.
  */
-import { derivedColumns, statedRules, type DerivedField, columnsAnywhereInHisRequest, detectAppKind, requestedFilterFields } from '../design/app-blueprints';
+import { derivedColumns, statedRules, type DerivedField, columnsAnywhereInHisRequest, detectAppKind, requestedFilterFields, hasExplicitRecordSchema } from '../design/app-blueprints';
 import { hisWordsOnly } from '../design/page-head';
 import fs from 'fs';
 import path from 'path';
@@ -553,7 +553,9 @@ export function acceptanceFor(request: string): Criterion[] {
     // A list of visible widgets is not a record schema. Without an explicit
     // table/form/field declaration, suppress a derived run made entirely of
     // UI shapes that the acceptance catalogue already checks directly.
-    const columns = !explicitSchema && detectedKind === 'generic'
+    // A natural-language field list need not literally say "fields" or "table".
+    // Keep the separate widget-only guard below even when that list was parsed.
+    const columns = !explicitSchema && !hasExplicitRecordSchema(t) && detectedKind === 'generic'
         ? []
         : !explicitSchema && derived.length > 0 && derived.every(column => uiOnlyLabel(column.label))
         ? []
@@ -609,6 +611,7 @@ export function acceptanceFor(request: string): Criterion[] {
         // product. Keeping them as product rules created acceptance entries
         // that no application source could ever prove.
         if (/^(?:do not|don't|never)\s+(?:claim|report|declare|mark|say)\b|^(?:لا|لات)\s+(?:تدع|تدعي|تعلن|تذكر)\b/iu.test(text)) return true;
+        if (/^(?:do not|don't|never)\s+(?:deploy|publish|release|push\s+(?:to\s+)?production)\b|^(?:لا|لات)\s+(?:تنشر|ترفع\s+(?:إلى|الى)?\s*الإنتاج)\b/iu.test(text)) return true;
         if (rule.kind !== 'change') return false;
         const asksForFilters = requestedFilters.length > 0
             && /\bfilters?\b|تصف(?:ية|يات)|فلتر/iu.test(text);

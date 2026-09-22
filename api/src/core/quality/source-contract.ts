@@ -7,6 +7,52 @@
  * references without knowing a product, domain, or saved template.
  */
 
+import path from 'node:path';
+import ts from 'typescript';
+
+/** Check lexical references without resolving or executing project imports. */
+export function undefinedSourceReferenceMismatch(filePath: string, source: string): string | null {
+    if (!/\.(jsx|tsx)$/i.test(filePath)) return null;
+    const scanner = ts.createScanner(ts.ScriptTarget.Latest, false, ts.LanguageVariant.JSX, source);
+    for (let token = scanner.scan(); token !== ts.SyntaxKind.EndOfFileToken; token = scanner.scan()) {
+        if ((token === ts.SyntaxKind.SingleLineCommentTrivia || token === ts.SyntaxKind.MultiLineCommentTrivia)
+            && /@ts-(?:ignore|expect-error|nocheck)\b/.test(scanner.getTokenText())) {
+            return `source_reference_mismatch: ${filePath}: generated source must not suppress reference diagnostics`;
+        }
+    }
+    const target = path.resolve(filePath);
+    const options: ts.CompilerOptions = {
+        allowJs: true, checkJs: true, noEmit: true,
+        target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX,
+        types: [], skipLibCheck: true,
+    };
+    const host = ts.createCompilerHost(options);
+    const read = host.getSourceFile.bind(host);
+    const libRoot = path.dirname(path.resolve(ts.getDefaultLibFilePath(options)));
+    const isLibrary = (name: string) => path.dirname(path.resolve(name)) === libRoot
+        && /^lib\..*\.d\.ts$/i.test(path.basename(name));
+    host.fileExists = name => path.resolve(name) === target || (isLibrary(name) && ts.sys.fileExists(name));
+    host.readFile = name => path.resolve(name) === target ? source : isLibrary(name) ? ts.sys.readFile(name) : undefined;
+    host.getSourceFile = (name, version, onError) => {
+        if (path.resolve(name) === target) return ts.createSourceFile(target, source, version, true);
+        // Only TypeScript's own standard libraries may be read, not project files.
+        if (isLibrary(name)) {
+            return read(name, version, onError);
+        }
+        return undefined;
+    };
+    const program = ts.createProgram([target], options, host);
+    const unit = program.getSourceFile(target);
+    if (!unit) return `source_reference_mismatch: ${filePath}: source unavailable for reference checking`;
+    const missing = program.getSemanticDiagnostics(unit).filter(d => [2304, 2552, 18004].includes(d.code));
+    if (!missing.length) return null;
+    const details = missing.slice(0, 8).map(d => {
+        const at = unit.getLineAndCharacterOfPosition(d.start || 0);
+        return `${at.line + 1}:${at.character + 1} TS${d.code} ${ts.flattenDiagnosticMessageText(d.messageText, ' ')}`;
+    });
+    return `source_reference_mismatch: ${filePath}: ${details.join('; ')}`;
+}
+
 // A real JSX opening tag is not part of an identifier, call, or indexed access.
 // The negative lookbehind excludes TypeScript generic arguments such as
 // `createContext<Foo>()`, `useState<Bar>()`, and `React.FC<Props>` while keeping

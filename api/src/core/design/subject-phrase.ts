@@ -105,13 +105,17 @@ function phraseBeforeName(clause: string): string {
     return words.slice(-4).join(' ');
 }
 
+const EXECUTION_LOCATION = /\s+(?:in|inside|under)\s+(?:(?:a|an|the|my|our)\s+)?(?:(?:new|existing|current|local|selected|active)\s+)+(?:project|workspace|directory|folder)\b/iu;
+
 /** Read the subject of an English build brief before its first constraint. */
 function englishBriefSubject(request: string): string {
     const m = String(request || '').match(
-        /\b(?:build|create|design|develop|make)\s+(?:me\s+)?(?:a|an|the)?\s*(?:(?:one|two|three|four|five|six|seven|eight|nine|ten|[0-9]+)\s*[- ]?pages?\s+)?(.+?)(?=\s+(?:website|web\s+site|site|application|app)\b|\s+(?:with|including|that|which)\b|[:.,]|$)/i,
+        /\b(?:build|create|design|develop|make)\s+(?:me\s+)?(?:a|an|the)?\s*(?:(?:one|two|three|four|five|six|seven|eight|nine|ten|[0-9]+)\s*[- ]?pages?\s+)?(.+?)(?=\s+(?:website|web\s+site|site|application|app)\b|\s+(?:with|including)\b|[:.,]|$)/i,
     );
     if (!m) return '';
-    const subject = m[1].trim().replace(/\s+/g, ' ');
+    const subject = m[1]
+        .split(EXECUTION_LOCATION)[0]
+        .trim().replace(/\s+/g, ' ');
     return subject.length >= 3 && subject.length <= 72 ? subject : '';
 }
 
@@ -185,9 +189,9 @@ export function subjectAfterContainer(requestRaw: string): string {
     const { RECORD_CONTAINER } = require('./app-blueprints');
     const hit = RECORD_CONTAINER.exec(request);
     if (!hit) return '';
-    const after = request.slice((hit.index || 0) + hit[0].length);
+    const after = request.slice((hit.index || 0) + hit[0].length).split(EXECUTION_LOCATION)[0];
     //  The subject ends where the list begins.
-    const scope = after.split(/[:：،,؛;.\n]|\s(?:فيه|فيها|به|بها|يحوي|تحوي|يحتوي|تحتوي|with|containing)\s/u)[0] || '';
+    const scope = after.split(/[:：،,؛;.\n]|\s(?:فيه|فيها|به|بها|يحوي|تحوي|يحتوي|تحتوي|with|containing|in|using|on)\s/iu)[0] || '';
     const words: string[] = [];
     for (const raw of scope.trim().split(/\s+/)) {
         //  «للكتب» is «ل» + «الكتب»: the preposition belonged to his
@@ -243,15 +247,21 @@ export function subjectAfterContainer(requestRaw: string): string {
 }
 
 export function subjectPhrase(request: string, maxChars = 72): string {
+    const bounded = (phrase: string) => {
+        if (phrase.length <= maxChars) return phrase;
+        const cut = phrase.slice(0, maxChars);
+        const boundary = cut.lastIndexOf(' ');
+        return (boundary > maxChars * 0.5 ? cut.slice(0, boundary) : cut).trim();
+    };
     // In a direct English build brief, the phrase before the first constraint
     // is already the complete product noun phrase. Read it before the generic
     // container-neighbour rule, which would reduce "team issue tracker" to
     // the single word immediately before "tracker".
     if (!NAMING.test(request)) {
         const englishSubject = englishBriefSubject(request);
-        if (englishSubject) return englishSubject.slice(0, maxChars);
+        if (englishSubject) return bounded(englishSubject);
         const arabicSubject = arabicBriefSubject(request);
-        if (arabicSubject) return arabicSubject.slice(0, maxChars);
+        if (arabicSubject) return bounded(arabicSubject);
     }
     //  What he named comes first: reading the sentence for a headline is
     //  the fallback, not the answer.
@@ -280,7 +290,7 @@ export function subjectPhrase(request: string, maxChars = 72): string {
     // phrase above remains the stronger signal.
     if (!best) {
         const englishSubject = englishBriefSubject(request);
-        if (englishSubject) return englishSubject.slice(0, maxChars);
+        if (englishSubject) return bounded(englishSubject);
     }
     // Only the FALLBACK needs the instruction filter: with no naming phrase,
     // the shortest descriptive clause is the best guess available, and an

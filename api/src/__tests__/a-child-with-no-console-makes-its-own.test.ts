@@ -54,6 +54,7 @@ function fakeChild() {
             return child;
         },
         once(event: string, fn: (...a: any[]) => void) { return child.on(event, fn); },
+        removeListener: () => child,
         removeAllListeners: () => child,
     };
     return child;

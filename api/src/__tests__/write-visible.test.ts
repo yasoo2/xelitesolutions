@@ -19,8 +19,8 @@ describe('write_file — visible in the live Logs panel', () => {
         expect(src).toMatch(/done: true/);
     });
 
-    test('the streamed chunk is capped like the page builder caps its own', () => {
-        expect(src).toMatch(/safeContent\.slice\(0, 60_000\)/);
+    test('the streamed final file is capped like the page builder caps its own', () => {
+        expect(src).toMatch(/finalContent\.slice\(0, 60_000\)/);
     });
 
     test('the live view never breaks the write (best-effort broadcast)', () => {

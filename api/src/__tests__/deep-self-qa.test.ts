@@ -15,6 +15,7 @@
 import fs from 'fs';
 import path from 'path';
 import { judgeBehaviour } from '../core/quality/behaviour-audit';
+import { fileForBehaviour, handlerRepairable } from '../core/quality/model-round';
 import { browserWalkBudgetMs, formatAudit } from '../core/quality/app-audit';
 import { VIEWPORTS, effectiveViewports } from '../core/quality/ui-inspection';
 import { repairMeasuredMobileHeader } from '../core/quality/ui-repair';
@@ -218,32 +219,50 @@ describe('the forms are filled in and sent, not counted', () => {
     it('proves a QA-created record survives refresh and tests only its own removal', () => {
         const b = B();
         expect(b).toContain('أتحقق من حفظ النتيجة بعد تحديث الصفحة');
-        expect(b).toContain("page.reload({ waitUntil: 'domcontentloaded', timeout: 6000 })");
+        expect(b).toContain("page.reload({ waitUntil: 'domcontentloaded', timeout: Math.min(6000, Math.max(1, deadline - Date.now())) })");
+        expect(b).toContain('Date.now() < persistenceDeadline && eyeIsOpen()');
         expect(b).toContain('data-joe-qa-delete-own-record');
         expect(b).toContain('qaRecordsDeleted');
     });
 
     it('waits for an observable async submit effect within a bounded window', () => {
         const b = B();
-        expect(b).toContain('const effectDeadline = Date.now() + 2500;');
-        expect(b).toContain('while (!effect && Date.now() < effectDeadline)');
-        expect(b).toContain('effect = changed(before, after);');
+        expect(b).toContain('const effectDeadline = Math.min(deadline, Date.now() + 2500);');
+        expect(b).toContain('while (!effect && Date.now() < effectDeadline && eyeIsOpen())');
+        expect(b).toContain("effect = await pending() ? '' : changed(before, after);");
     });
 
     it('a full form that does nothing on submit is a critical finding', () => {
         // The finding that could not exist before: nothing was ever typed, so
         // «submit is dead» and «submit works» measured identically.
-        const j = judgeBehaviour([], { formsDeadSubmit: 2 }, []);
+        const evidence = [{ label: 'Save checkout', kind: 'submit', sel: '[data-joe-sub="f0"]',
+            form: '[data-joe-form="f0"]', fields: 3, filled: 3, route: '/checkouts' }];
+        const j = judgeBehaviour([], { formsDeadSubmit: 2, formsDeadSubmitEvidence: evidence }, []);
         const f = j.findings.find(x => x.code === 'form_dead_submit')!;
         expect(f).toBeTruthy();
         expect(f.severity).toBe('critical');
         expect(f.ar).toContain('عُبِّئ');
         expect(f.en).toContain('filled in completely and submitted');
+        expect(f.evidence).toEqual(evidence);
+        expect(fileForBehaviour([{ evidence: f.evidence }], {
+            'src/Checkout.jsx': '<button>Save checkout</button>',
+            'src/Accounts.jsx': '<button>Create account</button>',
+        }).file).toBe('src/Checkout.jsx');
     });
 
     it('while a form the browser correctly refuses is not accused of anything', () => {
         expect(judgeBehaviour([], { formsValidated: 3, formsDeadSubmit: 0 }, []).findings
             .some(f => f.code === 'form_dead_submit')).toBe(false);
+    });
+
+    it('keeps a missing form visible as a coverage gap without authorizing a handler rewrite', () => {
+        const findings = judgeBehaviour([], { formsNotReached: 1,
+            formsNotReachedEvidence: [{ label: 'Create account', reason: 'form missing after state change' }] }).findings;
+        expect(findings.some(f => f.code === 'form_dead_submit')).toBe(false);
+        const gap = findings.find(f => f.code === 'forms_not_reached')!;
+        expect(gap.severity).toBe('major');
+        expect(gap.evidence?.[0].label).toBe('Create account');
+        expect(handlerRepairable([{ id: gap.code, evidence: gap.evidence }])).toEqual([]);
     });
 
     it('and Playwright takes ONE argument — two threw, and the forms vanished', () => {
@@ -418,7 +437,8 @@ describe('the interface itself is inspected — «وفحص ui»', () => {
         expect(u).toContain('const finalCdp = await getViewportCdpSession(page)');
         expect(u.lastIndexOf("Emulation.setDeviceMetricsOverride")).toBeGreaterThan(u.lastIndexOf('await page.setViewportSize({ width, height })'));
         expect(u).toContain('for (let attempt = 0; attempt < 10; attempt++)');
-        expect(u).toContain('remained ${Number(actual?.width || 0)}px after requesting ${width}px');
+        expect(u).toContain('remained ${Number(actual?.width || 0)}x${Number(actual?.height || 0)} after requesting ${width}x${height}');
+        expect(u).toContain('Math.abs(Number(actual?.height || 0) - height) <= 2');
         const a = read('core', 'quality', 'app-audit.ts');
         expect(a).not.toContain('beforeViewport: (w, h) =>');
         expect(a).toContain('setSessionViewport(opts.watchSessionId, actual.width, actual.height)');
@@ -463,13 +483,13 @@ describe('the camera does not edit the page it is filming', () => {
          * any page with a form. 0/25 after the fix.
          */
         const m = read('modules', 'browser', 'manager.ts');
-        expect(m).toMatch(/caret: 'initial'/);
+        expect(m).toContain('captureMaskedJpeg(s.page, opts.mask, opts.quality, opts.timeoutMs)');
         expect(m).toMatch(/THE STREAM MUST NOT EDIT THE PAGE IT IS FILMING/);
     });
 
     it('declares each streamed JPEG with the page viewport that produced it', () => {
         const m = read('modules', 'browser', 'manager.ts');
-        expect(m).toContain('const actualViewport = s.page.viewportSize()');
+        expect(m).toContain('const actualViewport = imageSize(buf)');
         expect(m).toContain('w: actualViewport?.width || s.viewport.w');
         expect(m).toContain('h: actualViewport?.height || s.viewport.h');
     });
@@ -601,8 +621,11 @@ describe('a measurement it cannot make honestly, it does not make', () => {
     it('and a click that hands over a FILE counts as an effect', () => {
         const b = read('core', 'quality', 'behaviour-audit.ts');
         expect(b).toMatch(/page\.on\('download', onDownload\)/);
-        expect(b).toMatch(/effect = afterUrl !== beforeUrl\s*\n?\s*\? 'navigation'/);
-        expect(b).toMatch(/: downloaded \|\| downloadClicks > downloadClicksBefore\s*\n?\s*\? 'download'\s*\n?\s*: \(changed\(before, after\)/);
+        expect(b).toContain('download.failure()');
+        expect(b).toContain("effect = downloaded ? 'download'");
+        expect(b).toContain('Date.now() < settleDeadline && eyeIsOpen()');
+        expect(b).toContain("page.off('download', onDownload)");
+        expect(b).not.toContain('downloadClicks > downloadClicksBefore');
     });
 
     it('and a form is exercised once per audit, not once per route', () => {

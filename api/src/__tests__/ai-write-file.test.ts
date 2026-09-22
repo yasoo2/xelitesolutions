@@ -55,6 +55,26 @@ afterAll(() => {
 beforeEach(() => callLLM.mockReset());
 
 describe('the happy path is a real write', () => {
+    it('records actual request sizes without repeating contracts or exposing context in metrics', async () => {
+        callLLM.mockResolvedValue('<!DOCTYPE html><title>Ready</title>');
+        const context = 'private-project-evidence-marker';
+        const result: any = await tool.execute({ path: scratch('budget.html'), description: 'Create a page.', context }, { engineeringPipeline: true });
+        expect(result.ok).toBe(true);
+        const [prompt, history, llmContext] = callLLM.mock.calls[0];
+        const system = history[0].content;
+        expect(system).toContain('verified runtime evidence');
+        expect(prompt).toContain('Artifact contract:');
+        expect(prompt).toContain(context);
+        expect(system).not.toContain(context);
+        const metric = result.logs.find((line: string) => line.startsWith('artifact_request_budget='));
+        expect(metric).not.toContain(context);
+        expect(JSON.parse(metric.split('=', 2)[1])).toEqual({
+            artifactKind: 'frontend_asset', retryKind: null,
+            systemChars: system.length, userChars: prompt.length,
+            contextChars: context.length, maxCompletionTokens: llmContext.maxCompletionTokens,
+        });
+    });
+
     it('writes what the model returned, and reports the bytes it actually wrote', async () => {
         callLLM.mockResolvedValue('<!DOCTYPE html><title>hi</title>');
         const rel = scratch('page.html');
@@ -244,6 +264,30 @@ describe('generated source and structured artifacts are rejected before disk wri
         expect(callLLM).toHaveBeenCalledTimes(2);
         expect(fs.existsSync(landsAt(rel))).toBe(false);
     });
+
+    it('repairs a missing event-handler helper once before writing', async () => {
+        const bad = 'export default function View({setDraft,fields}) { return <button onClick={() => setDraft(blank(fields))}>Cancel</button> }';
+        callLLM.mockResolvedValueOnce(bad).mockResolvedValueOnce(
+            'const blank = fields => Object.fromEntries(fields.map(f => [f.key, ""])); ' + bad);
+        const rel = scratch('src/screens/reference-contract.jsx');
+        const res: any = await tool.execute({ path: rel, description: 'Write the JSX screen.' });
+        expect(res.ok).toBe(true);
+        expect(callLLM).toHaveBeenCalledTimes(2);
+        expect(callLLM.mock.calls[1][0]).toContain('SOURCE REFERENCE RETRY REQUIRED');
+        expect(callLLM.mock.calls[1][0]).toContain(bad);
+        expect(fs.readFileSync(landsAt(rel), 'utf8')).toContain('const blank');
+    });
+
+    it('keeps a repeated undeclared reference off disk after one retry', async () => {
+        callLLM.mockResolvedValue('export default function View(){ return <button onClick={() => missingHelper()}>Cancel</button> }');
+        const rel = scratch('src/screens/failed-reference.jsx');
+        const res: any = await tool.execute({ path: rel, description: 'Write the JSX screen.' });
+        expect(res.ok).toBe(false);
+        expect(res.recoverable).toBe(true);
+        expect(res.error).toMatch(/source_reference_mismatch.*missingHelper/);
+        expect(callLLM).toHaveBeenCalledTimes(2);
+        expect(fs.existsSync(landsAt(rel))).toBe(false);
+    });
 });
 
  describe('a path outside the workspace is refused, not written', () => {
@@ -417,6 +461,8 @@ describe('verified runtime contracts keep generated source on the project stack'
         expect(res.error).toMatch(/react-native/);
         expect(callLLM.mock.calls[0][0]).toMatch(/VERIFIED PROJECT RUNTIME CONTRACT/);
         expect(callLLM.mock.calls[0][0]).toMatch(/web React\/Vite\/Next/);
+        const combined = callLLM.mock.calls[0][1][0].content + callLLM.mock.calls[0][0];
+        expect(combined.match(/VERIFIED PROJECT RUNTIME CONTRACT/g)).toHaveLength(1);
         expect(fs.existsSync(landsAt(rel))).toBe(false);
     });
 
@@ -735,6 +781,23 @@ describe('verified runtime contracts keep generated source on the project stack'
 });
 
 describe('a failure is never written into the file as its contents', () => {
+    it.each([true, false])('gives one incomplete frontend retry bounded extra room (recovers=%s)', async recovers => {
+        const budgets: number[] = [];
+        callLLM.mockImplementation((_prompt: string, _messages: any[], routingContext: any) => {
+            budgets.push(routingContext.maxCompletionTokens);
+            return recovers && budgets.length === 2
+                ? 'export default function View(){ return <main>Complete</main> }'
+                : '```jsx\nexport default function View(){ return <main>unfinished';
+        });
+        const rel = scratch(`format-budget-${recovers}.jsx`);
+        const res: any = await tool.execute({ path: rel, description: 'Write the requested frontend.' }, { engineeringPipeline: true });
+        expect(budgets).toEqual([1200, 2400]);
+        expect(callLLM).toHaveBeenCalledTimes(2);
+        expect(res.ok).toBe(recovers);
+        expect(fs.existsSync(landsAt(rel))).toBe(recovers);
+        expect(res.logs.join(' ')).toContain('truncation cause unconfirmed');
+    });
+
     it('refuses the router\'s no-provider notice', async () => {
         // The router answers with an apology STRING rather than throwing. Writing
         // it puts "تعذّر الوصول إلى محرّك الذكاء" into the user's source file and

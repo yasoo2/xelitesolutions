@@ -398,6 +398,8 @@ export async function repairRound(
         isArabic?: boolean;
         /** The last measurement's offenders — what makes this pass surgery. */
         findings?: Array<{ id: string; evidence?: any[] }>;
+        /** Files owned by trusted runtime components, not by the presentation repairer. */
+        protectedFiles?: readonly string[];
     } = {},
 ): Promise<{ changed: string[]; repairs: any[] }> {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -407,12 +409,15 @@ export async function repairRound(
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { syntaxOk } = require('../../modules/tools/definitions/ProjectEditTool');
 
-    const sources = collectSources(dir);
+    const protectedFiles = new Set((opts.protectedFiles || []).map(file => path.posix.normalize(file.replace(/\\/g, '/'))));
+    const sources = Object.fromEntries(Object.entries(collectSources(dir))
+        .filter(([file]) => !protectedFiles.has(file)));
     if (!Object.keys(sources).length) return { changed: [], repairs: [] };
 
     const plan = repairProjectFiles(sources, { isArabic: opts.isArabic, round, findings: opts.findings });
     const changed: string[] = [];
     for (const [rel, text] of Object.entries(plan.files as Record<string, string>)) {
+        if (protectedFiles.has(path.posix.normalize(rel.replace(/\\/g, '/')))) continue;
         // Identical bytes are not a change, and a round of them is not work.
         if (sources[rel] === text) continue;
         const gate = syntaxOk(rel, text);

@@ -9,7 +9,7 @@ import http from 'http';
 import os from 'os';
 import path from 'path';
 import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
-import { canAdoptRecordedLive, declaredLaunchPrerequisitePackages, detectStart, launchPrerequisiteError, launchabilityError, liveProjectRecord, missingLocalRuntimeImports, missingRuntimeDependencies, placeholderLifecycleScriptError, reconcileMissingRuntimeImports, reconcileMissingRuntimeTarget, resolveRunnableProject, shouldUseActiveProjectDirectly, ProjectRunTool } from '../modules/tools/definitions/ProjectRunTool';
+import { canAdoptRecordedLive, declaredLaunchPrerequisitePackages, dependencyFreeRecordsBundleRoot, detectStart, launchPrerequisiteError, launchabilityError, liveProjectRecord, missingLocalRuntimeImports, missingRuntimeDependencies, placeholderLifecycleScriptError, reconcileMissingRuntimeImports, reconcileMissingRuntimeTarget, resolveRunnableProject, shouldUseActiveProjectDirectly, ProjectRunTool } from '../modules/tools/definitions/ProjectRunTool';
 import { ExecutionGateway } from '../kernel/ExecutionGateway';
 import { executionFirewall } from '../orchestration/AgentExecutionFirewall';
 import { executionEngine } from '../kernel/ExecutionEngine';
@@ -86,6 +86,20 @@ describe('project_run really RUNS (not renders) and is Windows-safe', () => {
         expect(runSrc).toMatch(/STATIC_PREVIEW_SERVER_SOURCE/);
         expect(runSrc).toMatch(/kind: 'static-build-fallback'/);
         expect(runSrc).toMatch(/productionBundleConfirmed: true/);
+    });
+    test('an explicitly marked local records bundle bypasses a second npm install', () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-static-records-run-'));
+        try {
+            fs.mkdirSync(path.join(root, 'dist'));
+            fs.writeFileSync(path.join(root, 'dist', 'index.html'), '<meta name="joe-artifact-mode" content="static-records">');
+            expect(dependencyFreeRecordsBundleRoot(root)).toBe(path.join(root, 'dist'));
+            fs.writeFileSync(path.join(root, 'dist', 'index.html'), '<main>ordinary bundle</main>');
+            expect(dependencyFreeRecordsBundleRoot(root)).toBeNull();
+            expect(runSrc).toMatch(/dependencyFreeRecordsBundleRoot\(cwd\)/);
+            expect(runSrc).toMatch(/kind: 'static-records'/);
+        } finally {
+            fs.rmSync(root, { recursive: true, force: true });
+        }
     });
     test('the gateway preserves executable paths and argv with spaces', async () => {
         const execute = jest.spyOn(executionEngine, 'execute').mockResolvedValue({ success: true, data: { ok: true }, duration: 0 });

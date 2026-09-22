@@ -618,6 +618,33 @@ describe('PhaseExecutorTool observable trusted context', () => {
         });
     });
 
+    it('preserves the one declared React presentation destination for a bounded self-fix', async () => {
+        const workspaceId = `workspace-react-failure-${process.pid}`;
+        const projectRoot = path.join(workspaceService.getActiveRoot(workspaceId), `react-reading-${process.pid}`);
+        fs.mkdirSync(path.join(projectRoot, 'src', 'components'), { recursive: true });
+        try {
+            mockedExecuteTool.mockResolvedValue({
+                ok: false,
+                error: `artifact_type_mismatch: ${path.join(projectRoot, 'src', 'components', 'RecordsView.jsx')} still contains an incomplete Markdown fence`,
+                output: {
+                    path: projectRoot,
+                    authoredFiles: ['src/components/RecordsView.jsx'],
+                },
+            } as any);
+            const result: any = await new PhaseExecutorTool().execute({
+                phase: {
+                    phaseNumber: 2,
+                    name: 'Interface',
+                    tasks: [{ task: 'Build the records interface', tool: 'react_project', args: {} }],
+                },
+            }, { sessionId: 'chat-react-failure', workspaceId, userId: 'user-react-failure' });
+
+            expect(result.output.results[0].repairFile).toBe(path.join(projectRoot, 'src', 'components', 'RecordsView.jsx'));
+        } finally {
+            fs.rmSync(projectRoot, { recursive: true, force: true });
+        }
+    });
+
     it('does not fabricate a terminal report when a non-terminal tool has no message', async () => {
         mockedExecuteTool.mockResolvedValue({ ok: true, output: { stdout: 'internal value' } } as any);
 
@@ -664,7 +691,7 @@ describe('PhaseExecutorTool observable trusted context', () => {
         expect(mockedExecuteTool.mock.calls[0][1].context).toMatch(/AUTHORITATIVE REQUIREMENTS EVIDENCE/);
     });
 
-    it('passes accepted project identity to live verification instead of using the workspace root', async () => {
+    it('passes accepted project identity to local project_run instead of using the workspace root', async () => {
         mockedExecuteTool.mockResolvedValue({ ok: true, output: {} } as any);
         // Use a per-process path so an old live-run artifact cannot be mistaken
         // for runtime evidence and turn this query assertion into a cwd assertion.
@@ -674,8 +701,10 @@ describe('PhaseExecutorTool observable trusted context', () => {
             phase: {
                 phaseNumber: 2,
                 name: 'Run the produced system',
-                tasks: [{ task: 'Create the runnable manifest', tool: 'write_file', args: { path: `${projectName}/package.json`, content: '{"scripts":{"start":"node index.js"}}' } }],
-                verificationTask: { task: `Start the ${projectName} system`, tool: 'project_run', args: {} },
+                tasks: [
+                    { task: 'Create the runnable manifest', tool: 'write_file', args: { path: `${projectName}/package.json`, content: '{"scripts":{"start":"node index.js"}}' } },
+                    { task: `Start the ${projectName} system`, tool: 'project_run', args: {} },
+                ],
             },
             projectContext: {
                 projectName,

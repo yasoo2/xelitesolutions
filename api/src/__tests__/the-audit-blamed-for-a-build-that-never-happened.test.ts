@@ -36,9 +36,15 @@
  * defect by opening its mirror image.
  */
 
-import { deliveryErrorForVisualAudit } from '../modules/tools/definitions/ReactProjectTool';
+import { buildDeliveryBlocked, deliveryErrorForVisualAudit } from '../modules/tools/definitions/ReactProjectTool';
 
 describe('a blocked delivery blames the layer that failed', () => {
+    it('never accepts a React scaffold as delivered before dist/index.html exists', () => {
+        expect(buildDeliveryBlocked({ attempted: true, built: false, installed: false, installExit: 1 })).toBe(true);
+        expect(buildDeliveryBlocked({ attempted: false, built: false })).toBe(false);
+        expect(buildDeliveryBlocked({ attempted: true, built: true, installed: true })).toBe(false);
+    });
+
     it('POSITIVE — a build that produced no bundle is not an audit failure', () => {
         const said = deliveryErrorForVisualAudit(null, {
             attempted: true,

@@ -90,6 +90,17 @@ export interface TerminalOptions {
     cancel?: Promise<void>;
 }
 
+/**
+ * PowerShell may resolve `npm` to its blocked script shim on Windows. The
+ * command transcript still says `npm`, while the process runner uses the
+ * portable command shim that Node installs for Windows.
+ */
+export function executableForPlatform(file: string): string {
+    return process.platform === 'win32' && String(file).toLowerCase() === 'npm'
+        ? 'npm.cmd'
+        : file;
+}
+
 /** `~/…/dar-al-rifq $` — short enough to read, long enough to locate. */
 function prompt(cwd: string): string {
     const base = path.basename(cwd || '') || '/';
@@ -180,7 +191,7 @@ export function openTerminal(say: (line: string) => void, options: TerminalOptio
             emit(`${prompt(cwd)} ${shown}`);
             let out = '';
             const { executionEngine } = require('../../kernel/ExecutionEngine');
-            const h = executionEngine.runArgvStreaming(file, args, {
+            const h = executionEngine.runArgvStreaming(executableForPlatform(file), args, {
                 cwd, timeout: opts.timeout || 120_000, idleTimeout: opts.idleTimeout,
                 env: { NO_COLOR: '1', ...(opts.env || {}) },
                 cancel: opts.cancel,

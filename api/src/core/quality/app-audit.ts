@@ -1026,9 +1026,10 @@ export async function auditBuiltApp(
         const allForms: FormResult[] = [];
         const behaviourMetrics: Record<string, any> = {
             pressed: 0, dead: 0, deadAnchors: 0, keyboardUnreachable: 0, keyboardUnreachableSamples: [],
-            formsWithoutValidation: 0, formsFilled: 0, fieldsFilled: 0, formsDeadSubmit: 0, formsValidated: 0, formsReloaded: 0,
+            formsWithoutValidation: 0, formsFilled: 0, fieldsFilled: 0, formsDeadSubmit: 0, formsDeadSubmitEvidence: [], formsValidated: 0, formsReloaded: 0,
             formsPersisted: 0, formsPersistenceUnproven: 0, qaRecordsDeleted: 0, qaRecordsNotDeleted: 0,
             semanticFieldsTested: 0, semanticValidationFailures: 0, semanticValidationEvidence: [],
+            formsNotReached: 0, formsNotReachedEvidence: [],
             disclosureEvidence: [],
             calculatorEvidence: [],
             statesVisited: 0, exploratoryActions: 0, controlsDiscovered: 0,
@@ -1048,6 +1049,9 @@ export async function auditBuiltApp(
                 behaviourMetrics[k] += p.metrics[k] || 0;
             }
             behaviourMetrics.semanticValidationEvidence.push(...(p.metrics.semanticValidationEvidence || []));
+            behaviourMetrics.formsDeadSubmitEvidence.push(...(p.metrics.formsDeadSubmitEvidence || []).map((evidence: any) => ({ ...evidence, route })));
+            behaviourMetrics.formsNotReached += p.metrics.formsNotReached || 0;
+            behaviourMetrics.formsNotReachedEvidence.push(...(p.metrics.formsNotReachedEvidence || []).map((evidence: any) => ({ ...evidence, route })));
             behaviourMetrics.disclosureEvidence.push(...(p.metrics.disclosureEvidence || []).map((evidence: any) => ({ ...evidence, route })));
             behaviourMetrics.calculatorEvidence.push(...(p.metrics.calculatorEvidence || []).map((evidence: any) => ({ ...evidence, route })));
             for (const f of p.forms || []) allForms.push({ ...f, label: route === '/' ? f.label : `${route} ${f.label}` });

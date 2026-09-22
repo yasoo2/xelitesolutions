@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { artifactRootDir } from '../../shared/artifact-root';
 
 export interface ActiveBuiltProject {
     /** The directory whose source files may be repaired. */
@@ -60,7 +61,7 @@ export function findActiveBuiltProject(sessionId: any, explicitProjectDir?: stri
 
     if (projectBuilt && (!page || projectTime >= pageTime)) return projectBuilt;
 
-    const artifactDir = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
+    const artifactDir = artifactRootDir();
     if (page?.site?.dir) {
         const siteDir = path.join(artifactDir, String(page.site.dir));
         if (hasIndex(siteDir)) return { projectDir: siteDir, auditDir: siteDir, source: 'page-site' };

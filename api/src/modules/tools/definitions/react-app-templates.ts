@@ -27,6 +27,14 @@ import { ROLES, rolesForRequest, type RoleSpec } from '../../../core/design/role
 /** Escape for a JS single-quoted literal inside generated source. */
 const q = (s: string) => String(s ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, ' ');
 
+export function requestedBoardField(bp: AppBlueprint, request: string): string | null {
+    if (bp.engine !== 'records' || bp.asTable || heAskedForATable(request, bp.fields.length)) return null;
+    if (!/\b(?:kanban|board)\b|لوحة\s+(?:مهام|حالات)/iu.test(request)) return null;
+    const candidates = bp.fields.filter(field => field.type === 'select' && (field.options?.length || 0) > 1);
+    const status = candidates.find(field => field.key === bp.statusField);
+    return status?.key || (candidates.length === 1 ? candidates[0].key : null);
+}
+
 /**
  * Shared request guard emitted into interactive engines. It deliberately uses
  * trim() rather than a regex: the generated source must remain safe from
@@ -150,6 +158,7 @@ export const content = {
   // — measured as «table count: 0». The word alone does not decide it,
   // because «جدول» is also a schedule; listing the columns does.
   asTable: ${bp.asTable === true || heAskedForATable(o.sourceRequest || '', (bp.fields || []).length)},
+  boardField: ${JSON.stringify(requestedBoardField(bp, o.sourceRequest || ''))},
   //  THE PAGES HE NAMED, EACH WITH THE ROUTE THAT PROVES IT.
   //
   //  The route is written literally as «path: '/slug'» because that is
@@ -191,7 +200,7 @@ ${(() => {
         return tables.map((t, i) => {
             const slug = (pages[i] && pages[i].slug) || `table-${i + 1}`;
             const title = t.subject || (pages[i] && pages[i].title) || `${i + 1}`;
-            const cols = t.columns.map(f => `        { key: '${q(f.key)}', label: '${q(f.label)}', type: '${q(f.type)}'${(f as any).options ? `, options: [${(f as any).options.map((x: string) => `'${q(x)}'`).join(', ')}]` : ''}${(f as any).required ? ', required: true' : ''}${(f as any).min !== undefined ? `, min: ${(f as any).min}` : ''}${(f as any).minLength !== undefined ? `, minLength: ${(f as any).minLength}` : ''}${(f as any).minExclusive ? ', minExclusive: true' : ''}${(f as any).primary ? ', primary: true' : ''} },`).join(NL);
+            const cols = t.columns.map(f => `        { key: '${q(f.key)}', label: '${q(f.label)}', type: '${q(f.type)}'${(f as any).options ? `, options: [${(f as any).options.map((x: string) => `'${q(x)}'`).join(', ')}]` : ''}${(f as any).control ? `, control: '${q((f as any).control)}'` : ''}${(f as any).required ? ', required: true' : ''}${(f as any).min !== undefined ? `, min: ${(f as any).min}` : ''}${(f as any).minLength !== undefined ? `, minLength: ${(f as any).minLength}` : ''}${(f as any).minExclusive ? ', minExclusive: true' : ''}${(f as any).primary ? ', primary: true' : ''} },`).join(NL);
             return `    { slug: '${q(slug)}', title: '${q(title)}', storeKey: '${q(o.storeKey)}:${q(slug)}',
       fields: [
 ${cols}
@@ -200,7 +209,7 @@ ${cols}
     })()}
   ],
   fields: [
-${bp.fields.map(f => `    { key: '${q(f.key)}', label: '${q(f.label)}', type: '${q(f.type)}'${f.options ? `, options: [${f.options.map(x => `'${q(x)}'`).join(', ')}]` : ''}${f.required ? ', required: true' : ''}${f.min !== undefined ? `, min: ${f.min}` : ''}${(f as any).minLength !== undefined ? `, minLength: ${(f as any).minLength}` : ''}${f.minExclusive ? ', minExclusive: true' : ''}${f.primary ? ', primary: true' : ''} },`).join('\n')}
+${bp.fields.map(f => `    { key: '${q(f.key)}', label: '${q(f.label)}', type: '${q(f.type)}'${f.options ? `, options: [${f.options.map(x => `'${q(x)}'`).join(', ')}]` : ''}${f.control ? `, control: '${q(f.control)}'` : ''}${f.required ? ', required: true' : ''}${f.min !== undefined ? `, min: ${f.min}` : ''}${(f as any).minLength !== undefined ? `, minLength: ${(f as any).minLength}` : ''}${f.minExclusive ? ', minExclusive: true' : ''}${f.primary ? ', primary: true' : ''} },`).join('\n')}
   ],
   metrics: [
 ${bp.metrics.map(m => `    { label: '${q(m.label)}', kind: '${q(m.kind)}'${m.field ? `, field: '${q(m.field)}'` : ''}${m.field2 ? `, field2: '${q(m.field2)}'` : ''}${m.field3 ? `, field3: '${q(m.field3)}'` : ''}${m.equals ? `, equals: '${q(m.equals)}'` : ''} },`).join('\n')}
@@ -1069,7 +1078,7 @@ export async function apiCreate(api, row) {
     // The catalogue route answers an "item", a generated table a "row".
     // Knowing only one of them meant the server's real id was never adopted,
     // so the next edit or delete went to /api/plants/<local-uid> and 404'd.
-    return { ok: true, item: d.item || d.row || row };
+    return { ok: true, item: d.item || d.row || null };
   } catch { return null; }
 }
 
@@ -1337,12 +1346,12 @@ export function fileLedgerCss(): string {
 
 /* ── engine 1: records — create, edit, delete, search, filter, totals ────── */
 
-export function fileRecordsAppJsx(isAr: boolean): string {
+export function fileRecordsControllerJs(isAr: boolean): string {
     const T = (ar: string, en: string) => `'${q(isAr ? ar : en)}'`;
-    return `import React, { useEffect, useMemo, useState } from 'react';
+    return `import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createStore, uid, todayISO, computeMetric, groupTotals, toCsv, download, apiList, apiCreate, apiUpdate, apiDelete, apiListOn, apiCreateOn, apiDeleteOn, refusalOf, pickImage, cardFor, imageOf } from '../app/store.js';
 
-const blank = (fields) => {
+export const blank = (fields) => {
   const d = {};
   for (const f of fields) d[f.key] = f.type === 'date' ? todayISO() : f.type === 'select' ? (f.options && f.options[0]) || '' : '';
   return d;
@@ -1364,6 +1373,15 @@ function whyLocal(sent) {
   return '';
 }
 
+function mutationRefusal(sent) {
+  const code = refusalOf(sent);
+  if (code === 'auth') return ${T('لم يُحفظ التغيير — سجّل الدخول ثم حاول مجدداً.', 'Change not saved — sign in and try again.')};
+  if (code === 'read_only') return ${T('لم يُحفظ التغيير — حسابك للاطّلاع فقط.', 'Change not saved — your account is read-only.')};
+  if (code === 'not_your_row') return ${T('لم يُحفظ التغيير — هذا السجل ليس لك.', 'Change not saved — this record is not yours.')};
+  if (code === 'forbidden') return ${T('لم يُحفظ التغيير — ليس لديك إذن لهذا الإجراء.', 'Change not saved — you do not have permission for this action.')};
+  return '';
+}
+
 function invalidNumericField(fields, values) {
   return fields.find((field) => {
     if (field.type !== 'number' || field.min === undefined) return false;
@@ -1379,13 +1397,15 @@ function invalidFieldMessage(field) {
     + ${T(' أكبر من ', ' must be greater than ')} + field.min;
 }
 
-export default function RecordsApp({ content }) {
+// Mount consumers with a key derived from storeKey and api to isolate pending responses.
+export function useRecordsController(content) {
   const store = useMemo(() => createStore(content.storeKey + ':rows'), [content.storeKey]);
   const fields = content.fields;
   const primary = fields.find(f => f.primary) || fields[0];
   // The column that holds a picture, if this collection has one.
   const imageField = fields.find(f => f.type === 'image');
   const statusField = fields.find(f => f.key === content.statusField);
+  const boardField = !content.asTable && fields.find(f => f.key === content.boardField && f.type === 'select');
   const filterKeys = Array.isArray(content.filterFields)
     ? content.filterFields
     : (statusField ? [statusField.key] : []);
@@ -1405,6 +1425,8 @@ export default function RecordsApp({ content }) {
   const parentStore = useMemo(() => createStore(content.storeKey + ':parents'), [content.storeKey]);
 
   const [rows, setRows] = useState(() => store.read());
+  const mutationLock = useRef(false);
+  const [mutationBusy, setMutationBusy] = useState(false);
   const [draft, setDraft] = useState(() => blank(fields));
   const [editing, setEditing] = useState('');
   const [selected, setSelected] = useState(null);
@@ -1505,11 +1527,15 @@ export default function RecordsApp({ content }) {
 
   const submit = async (e) => {
     e.preventDefault();
+    if (mutationLock.current) return;
     const missing = fields.filter(f => f.required && !String(draft[f.key] || '').trim());
     if (missing.length) { setError(${T('املأ الحقول المطلوبة: ', 'Required: ')} + missing.map(f => f.label).join('، ')); return; }
     const invalid = invalidNumericField(fields, draft);
     if (invalid) { setError(invalidFieldMessage(invalid)); return; }
     setError('');
+    mutationLock.current = true;
+    setMutationBusy(true);
+    try {
     if (editing) {
       //  A SAVE THAT CHANGES NOTHING MUST NOT LOOK LIKE A SAVE. If the row
       //  being edited is gone — deleted here or in another tab — the map
@@ -1519,44 +1545,82 @@ export default function RecordsApp({ content }) {
         return;
       }
       const patch = { ...draft };
-      setRows(rows.map(r => (r.id === editing ? { ...r, ...patch } : r)));
+      if (content.api) {
+        const sent = await apiUpdate(content.api, editing, patch);
+        if (!sent || sent.ok !== true) throw new Error(mutationRefusal(sent) || ${T('تعذر حفظ التعديل على الخادم. لم يتغير السجل.', 'Could not save changes on the server. The record was not changed.')});
+      }
+      setRows(prev => prev.map(r => (r.id === editing ? { ...r, ...patch } : r)));
       setEditing('');
       setDraft(blank(fields));
-      // …and on the server, or the edit was only ever true in this browser.
-      const sent = await apiUpdate(content.api, editing, patch);
-      if (whyLocal(sent)) setError(whyLocal(sent));
       return;
     }
     const local = { ...draft, id: uid(), createdAt: new Date().toISOString() };
-    setRows([local, ...rows]);
+    let saved = local;
+    if (content.api) {
+      const sent = await apiCreate(content.api, local);
+      if (!sent || sent.ok !== true || sent.item?.id === undefined || sent.item?.id === null
+          || String(sent.item.id) === '') {
+        throw new Error(mutationRefusal(sent) || ${T('لم يؤكد الخادم حفظ السجل. احتفظنا بالمدخلات.', 'The server did not confirm saving the record. Your input was kept.')});
+      }
+      saved = { ...local, ...sent.item, id: String(sent.item.id) };
+    }
+    // Do not expose a temporary ID to edit/delete/toggle while POST is pending.
+    setRows(prev => [saved, ...prev]);
     setDraft(blank(fields));
-    const sent = await apiCreate(content.api, local);
-    if (whyLocal(sent)) { setError(whyLocal(sent)); return; }
-    // Adopt the server's id so a later edit or delete reaches the right row.
-    if (sent && sent.ok && sent.item && sent.item.id) {
-      const real = String(sent.item.id);
-      setRows(prev => prev.map(r => (r.id === local.id ? { ...r, ...sent.item, id: real } : r)));
+    } catch (failure) {
+      setError(failure.message || ${T('تعذر حفظ السجل.', 'Could not save the record.')});
+    } finally {
+      mutationLock.current = false;
+      setMutationBusy(false);
     }
   };
 
-  const edit = (row) => { setSelected(null); setEditing(row.id); setDraft({ ...blank(fields), ...row }); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+  const edit = (row) => { if (mutationLock.current) return; setSelected(null); setEditing(row.id); setDraft({ ...blank(fields), ...row }); window.scrollTo({ top: 0, behavior: 'smooth' }); };
   const remove = async (row) => {
+    if (mutationLock.current) return;
     if (!window.confirm(${T('حذف هذا السجلّ؟', 'Delete this record?')})) return;
+    mutationLock.current = true;
+    setMutationBusy(true);
+    setError('');
+    try {
+    if (content.api) {
+      const sent = await apiDelete(content.api, row.id);
+      if (!sent || sent.ok !== true) throw new Error(mutationRefusal(sent) || ${T('تعذر حذف السجل من الخادم. ما زال السجل موجوداً.', 'Could not delete the record on the server. The record was kept.')});
+    }
     if (selected && selected.id === row.id) setSelected(null);
     //  DELETING THE ROW ENDS THE EDIT OF IT. Without this, «حفظ التعديل»
     //  stayed on screen pointing at a row that no longer existed: the save
     //  matched nothing, cleared the form, and looked exactly like a
     //  successful save. What he typed went nowhere and he was not told.
     if (editing === row.id) { setEditing(''); setDraft(blank(fields)); }
-    setRows(rows.filter(r => r.id !== row.id));
-    if (server) await apiDelete(content.api, row.id);
+    setRows(prev => prev.filter(r => r.id !== row.id));
+    } catch (failure) {
+      setError(failure.message || ${T('تعذر حذف السجل.', 'Could not delete the record.')});
+    } finally {
+      mutationLock.current = false;
+      setMutationBusy(false);
+    }
   };
-  const toggleDone = (row) => {
-    if (!statusField || !content.doneValue) return;
+  const toggleDone = async (row) => {
+    if (mutationLock.current || !statusField || !content.doneValue) return;
+    mutationLock.current = true;
+    setMutationBusy(true);
+    setError('');
+    try {
     const next = row[statusField.key] === content.doneValue
       ? (statusField.options || []).find(o => o !== content.doneValue) || ''
       : content.doneValue;
-    setRows(rows.map(r => (r.id === row.id ? { ...r, [statusField.key]: next } : r)));
+    if (content.api) {
+      const sent = await apiUpdate(content.api, row.id, { [statusField.key]: next });
+      if (!sent || sent.ok !== true) throw new Error(mutationRefusal(sent) || ${T('تعذر تحديث الحالة على الخادم. لم تتغير الحالة.', 'Could not update the status on the server. The status was not changed.')});
+    }
+    setRows(prev => prev.map(r => (r.id === row.id ? { ...r, [statusField.key]: next } : r)));
+    } catch (failure) {
+      setError(failure.message || ${T('تعذر تحديث الحالة.', 'Could not update the status.')});
+    } finally {
+      mutationLock.current = false;
+      setMutationBusy(false);
+    }
   };
 
   /** The parent's own name — from the list, or from what the server sent. */
@@ -1593,8 +1657,53 @@ export default function RecordsApp({ content }) {
     return list;
   }, [rows, query, filters, sort, fields, primary, filterDefs, rel, parentFilter, parents]);
 
+  return {
+    fields, primary, imageField, statusField, boardField, filterDefs, rel,
+    rows, mutationBusy, draft, setDraft, editing, setEditing, selected, setSelected,
+    error, setError, query, setQuery, filters, setFilters, sort, setSort, server,
+    parents, parentDraft, setParentDraft, parentError, parentFilter, setParentFilter,
+    addParent, removeParent, submit, edit, remove, toggleDone, parentName, visible,
+  };
+}
+`;
+}
+
+export function fileRecordsWrapperJsx(imports = true): string {
+    return `${imports ? `import React from 'react';
+import { useRecordsController } from '../app/records-controller.js';
+import RecordsView from './RecordsView.jsx';
+` : ''}
+export default function RecordsApp({ content }) {
+  return <RecordsCollection key={JSON.stringify([content.storeKey, content.api || ''])} content={content} />;
+}
+function RecordsCollection({ content }) {
+  const controller = useRecordsController(content);
+  return <RecordsView content={content} controller={controller} />;
+}
+`;
+}
+
+// Bundled source remains useful for source-contract checks; emitted projects use separate modules.
+export function fileRecordsAppJsx(isAr: boolean): string {
+    return fileRecordsControllerJs(isAr) + fileRecordsViewJsx(isAr, false) + fileRecordsWrapperJsx(false);
+}
+
+export function fileRecordsViewJsx(isAr: boolean, imports = true): string {
+    const T = (ar: string, en: string) => `'${q(isAr ? ar : en)}'`;
+    return `${imports ? `import React from 'react';
+import { computeMetric, groupTotals, toCsv, download, pickImage, cardFor, imageOf } from '../app/store.js';
+import { blank } from '../app/records-controller.js';
+export default ` : ''}function RecordsView({ content, controller }) {
+  const {
+    fields, primary, imageField, statusField, boardField, filterDefs, rel,
+    rows, mutationBusy, draft, setDraft, editing, setEditing, selected, setSelected,
+    error, setError, query, setQuery, filters, setFilters, sort, setSort, server,
+    parents, parentDraft, setParentDraft, parentError, parentFilter, setParentFilter,
+    addParent, removeParent, submit, edit, remove, toggleDone, parentName, visible,
+  } = controller;
+
   return (
-    <div className={'wrap' + (imageField ? ' media-workspace' : '')}>
+    <div className={'wrap' + (imageField ? ' media-workspace' : '') + (boardField ? ' board-workspace' : '')}>
       <section data-reveal-section className="stats" aria-label={${T('الأرقام', 'Numbers')}}>
         {content.metrics.map((m, i) => (
           <div className="stat" key={i}>
@@ -1706,6 +1815,7 @@ export default function RecordsApp({ content }) {
             السعر أكبر من 0» about a corrected price of 12.50. Change events
             bubble, so one handler here clears it for every field. */}
         <form className="form" onSubmit={submit} onChange={e => { if (e.target.type !== 'file') setError(''); }}>
+          <fieldset disabled={mutationBusy} aria-busy={mutationBusy} style={{ display: 'contents' }}>
           {fields.map(f => (
             <label className={'field' + (f.type === 'textarea' ? ' wide' : '')} key={f.key}>
               <span>{f.label}{f.required ? ' *' : ''}</span>
@@ -1739,6 +1849,17 @@ export default function RecordsApp({ content }) {
                 </div>
               ) : f.type === 'textarea' ? (
                 <textarea name={f.key} rows={3} required={!!f.required} value={draft[f.key] || ''} onChange={e => setDraft({ ...draft, [f.key]: e.target.value })} />
+              ) : f.control === 'toggle' ? (
+                <span className="toggle-control">
+                  <input name={f.key} type="checkbox" role="switch" aria-label={f.label}
+                    checked={draft[f.key] === ((f.options || [])[1] || 'Yes')}
+                    onChange={e => setDraft({ ...draft, [f.key]: e.target.checked
+                      ? ((f.options || [])[1] || 'Yes')
+                      : ((f.options || [])[0] || 'No') })} />
+                  <span>{draft[f.key] === ((f.options || [])[1] || 'Yes')
+                    ? ((f.options || [])[1] || 'Yes')
+                    : ((f.options || [])[0] || 'No')}</span>
+                </span>
               ) : f.type === 'select' ? (
                 <select name={f.key} required={!!f.required} value={draft[f.key] || ''} onChange={e => setDraft({ ...draft, [f.key]: e.target.value })}>
                   {(f.options || []).map(o => <option key={o} value={o}>{o}</option>)}
@@ -1765,9 +1886,10 @@ export default function RecordsApp({ content }) {
           ) : null}
           {error ? <p className="err" role="alert">{error}</p> : null}
           <div className="actions">
-            <button className="btn" type="submit">{editing ? ${T('حفظ التعديل', 'Save changes')} : ${T('أضف', 'Add')}}</button>
+            <button className="btn" type="submit" disabled={mutationBusy}>{editing ? ${T('حفظ التعديل', 'Save changes')} : ${T('أضف', 'Add')}}</button>
             {editing ? <button className="btn ghost" type="button" onClick={() => { setEditing(''); setDraft(blank(fields)); }}>{${T('إلغاء', 'Cancel')}}</button> : null}
           </div>
+          </fieldset>
         </form>
       </section>
 
@@ -1784,6 +1906,7 @@ export default function RecordsApp({ content }) {
             </select>
           ) : (
             <input key={field.key} className="filter-input" type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'search'}
+              step={field.type === 'number' ? 'any' : undefined}
               value={filters[field.key] || ''}
               onChange={e => setFilters(prev => ({ ...prev, [field.key]: e.target.value }))}
               placeholder={field.label} aria-label={field.label} />
@@ -1810,7 +1933,7 @@ export default function RecordsApp({ content }) {
         </div>
 
         <h2 className="list-title">{content.entityMany} <em>({visible.length})</em></h2>
-        {visible.length === 0 ? (
+        {visible.length === 0 && !boardField ? (
           <p className="empty">{rows.length ? ${T('لا نتائج مطابقة لبحثك.', 'Nothing matches that search.')} : content.emptyHint}</p>
         ) : content.asTable ? (
           //  THE SHAPE HE NAMED. «اعمل جدول … فيه اسم الصنف والكمية والسعر»
@@ -1846,8 +1969,8 @@ export default function RecordsApp({ content }) {
                       ))}
                       {rel ? <td>{parentName(row)}</td> : null}
                       <td className="row-actions">
-                        <button className="btn tiny" type="button" onClick={() => edit(row)}>{${T('تعديل', 'Edit')}}</button>
-                        <button className="btn tiny danger" type="button" onClick={() => remove(row)}>{${T('حذف', 'Delete')}}</button>
+                        <button className="btn tiny" type="button" disabled={mutationBusy} onClick={() => edit(row)}>{${T('تعديل', 'Edit')}}</button>
+                        <button className="btn tiny danger" type="button" disabled={mutationBusy} onClick={() => remove(row)}>{${T('حذف', 'Delete')}}</button>
                       </td>
                     </tr>
                   );
@@ -1856,8 +1979,12 @@ export default function RecordsApp({ content }) {
             </table>
           </div>
         ) : (
+          <div className={boardField ? 'records-board' : undefined}>
+          {(boardField ? Array.from(new Set([...(boardField.options || []), ...visible.map(row => String(row[boardField.key] ?? ''))])) : [null]).map(group => (
+          <section className={boardField ? 'board-lane' : undefined} key={group ?? 'all'}>
+          {boardField ? <h3 className="board-lane-title">{boardField.label}: {group || ${T('غير محدد', 'Unspecified')}} <span>({visible.filter(row => String(row[boardField.key] ?? '') === group).length})</span></h3> : null}
           <ul className={'rows' + (imageField ? ' media-gallery' : '')}>
-            {visible.map(row => {
+            {visible.filter(row => !boardField || String(row[boardField.key] ?? '') === group).map(row => {
               const done = statusField && content.doneValue && row[statusField.key] === content.doneValue;
               //  His own threshold, in his own number — see content.lowStock.
               const low = content.lowStock && Number(row[content.lowStock.field]) < Number(content.lowStock.below);
@@ -1886,17 +2013,20 @@ export default function RecordsApp({ content }) {
                   </div>
                   <div className="row-acts">
                     {statusField && content.doneValue ? (
-                      <button className="btn tiny" type="button" onClick={() => toggleDone(row)}>
+                      <button className="btn tiny" type="button" disabled={mutationBusy} onClick={() => toggleDone(row)}>
                         {done ? ${T('تراجع', 'Undo')} : content.doneValue}
                       </button>
                     ) : null}
-                    <button className="btn tiny ghost" type="button" onClick={() => edit(row)}>{${T('تعديل', 'Edit')}}</button>
-                    <button className="btn tiny danger" type="button" onClick={() => remove(row)}>{${T('حذف', 'Delete')}}</button>
+                    <button className="btn tiny ghost" type="button" disabled={mutationBusy} onClick={() => edit(row)}>{${T('تعديل', 'Edit')}}</button>
+                    <button className="btn tiny danger" type="button" disabled={mutationBusy} onClick={() => remove(row)}>{${T('حذف', 'Delete')}}</button>
                   </div>
                 </li>
               );
             })}
           </ul>
+          </section>
+          ))}
+          </div>
         )}
       </section>
 
@@ -1924,7 +2054,7 @@ export default function RecordsApp({ content }) {
                   المهمة» — «edit the task» — inside a sales register, because
                   one archetype's word had been frozen into the shell. Every
                   other label here is derived; this one was not.  */}
-              <button className="btn" type="button" onClick={() => edit(selected)}>
+              <button className="btn" type="button" disabled={mutationBusy} onClick={() => edit(selected)}>
                 {${T('تعديل', 'Edit')} + ' ' + (content.entityOne || '')}
               </button>
             </footer>
@@ -3062,7 +3192,7 @@ p{margin:0 0 8px}
 /* The app's own name measured 3.25:1 against the bar — brand ink on a
    brand-tinted surface. Leaning it toward the page's text clears AA in
    both themes without losing the hue. */
-.app-name{font-size:1.75rem;font-weight:800;line-height:1.15;margin:0;color:color-mix(in srgb,var(--brand,#111) 45%,var(--text,#111))}
+.app-name{min-width:0;max-width:100%;overflow-wrap:anywhere;white-space:normal;font-size:1.75rem;font-weight:800;line-height:1.4;margin:0;color:color-mix(in srgb,var(--brand,#111) 45%,var(--text,#111))}
 .app-sub{color:var(--text-muted,#666);font-size:.9rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* 44px, not 38: the audit measures touch targets and it was right to. */
 .icon-btn{border:1px solid var(--border,#ddd);background:var(--surface,#fff);color:inherit;border-radius:999px;
@@ -3091,6 +3221,9 @@ p{margin:0 0 8px}
 .field{display:grid;gap:6px;font-size:.9rem}
 .field.wide{grid-column:1/-1}
 .field>span{color:var(--text-muted,#666)}
+.toggle-control{min-height:44px;display:flex;align-items:center;gap:10px}
+.toggle-control input{width:42px;height:22px;margin:0;accent-color:var(--brand,#111);cursor:pointer}
+.toggle-control span{font-weight:600;color:var(--text-muted,#666)}
 input,select,textarea{font:inherit;color:inherit;background:var(--bg,#fff);border:1px solid var(--border,#ddd);
   border-radius:10px;padding:10px 12px;min-height:44px;width:100%}
 textarea{min-height:88px;resize:vertical}
@@ -3102,9 +3235,9 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--accent,#06c);out
    remains independently scrollable, while the page itself never becomes wider
    than the viewport because of a label, action row, or generated title. */
 @media (max-width: 480px){
-  .app-bar-in{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center}
-  .app-id{grid-column:auto;display:flex;align-items:baseline;gap:8px;width:100%}
-  .app-name{min-width:0;overflow-wrap:anywhere}
+  .app-bar-in{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center}
+  .app-id{grid-column:1/-1;display:flex;align-items:baseline;gap:8px;width:100%}
+  .app-name{display:block;min-width:0;max-width:100%;font-size:1.25rem;white-space:normal;overflow-wrap:anywhere}
   .app-sub{display:none}
   .auth-chip{min-width:0;max-width:100%}
   .auth-who{display:none}
@@ -3138,6 +3271,26 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--accent,#06c);out
 [data-theme="dark"] .badge.on{color:#6ee7a2}
 
 .rows{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+.records-board{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:20px;align-items:start}
+.board-lane{min-width:0;border-top:3px solid var(--brand);padding-top:12px}
+.board-lane:nth-child(even){border-color:var(--text)}
+.board-lane-title{font-size:1rem;line-height:1.4;margin:0 0 12px;overflow-wrap:anywhere}
+.board-lane-title span{font-variant-numeric:tabular-nums;color:var(--muted)}
+.records-board .row{min-width:0;flex-wrap:wrap;border-radius:6px;box-shadow:none}
+.records-board .row-main{min-width:0;overflow-wrap:anywhere}
+.records-board .row-acts{flex-wrap:wrap}
+.board-workspace{display:grid;grid-template-columns:minmax(240px,300px) minmax(0,1fr);gap:24px;align-items:start}
+.board-workspace>.stats{grid-column:1/-1;display:flex;border-bottom:1px solid var(--border);padding-bottom:12px}
+.board-workspace>.stats .stat{border:0;border-radius:0;box-shadow:none;background:transparent;padding:0 24px 0 0}
+.board-workspace>.stats .stat-ico{display:none}
+.board-workspace>.panel{min-width:0;border:0;border-radius:0;box-shadow:none;background:transparent;padding:0}
+.board-workspace .form{grid-template-columns:1fr}
+.board-workspace .toolbar{display:flex;flex-wrap:wrap;gap:8px}
+.board-workspace .toolbar .search{flex:1 1 200px;width:auto}
+.board-workspace .toolbar select{flex:0 1 180px;width:auto}
+.board-workspace .row.done{opacity:1}
+.board-workspace .row-detail-hint{display:none}
+@media(max-width:760px){.board-workspace{grid-template-columns:minmax(0,1fr)}}
 /*  The table he asked for. It scrolls inside its own box: a wide table must
     never make the whole page slide sideways on a phone. Numbers get tabular
     figures so a price column lines up on the decimal point, which is the
@@ -4394,7 +4547,7 @@ export function buildAppFiles(bp: AppBlueprint, o: AppBuildOptions, slugName: st
         map: ['src/components/MapApp.jsx', fileMapAppJsx(o.isArabic)],
         chat: ['src/components/ChatApp.jsx', fileChatAppJsx(o.isArabic)],
         weather: ['src/components/WeatherApp.jsx', fileWeatherAppJsx(o.isArabic, o.sourceRequest || '')],
-        records: ['src/components/RecordsApp.jsx', fileRecordsAppJsx(o.isArabic)],
+        records: ['src/components/RecordsApp.jsx', fileRecordsWrapperJsx()],
         ledger: ['src/components/LedgerApp.jsx', fileLedgerAppJsx(o.isArabic)],
         social: ['src/components/SocialApp.jsx', fileSocialAppJsx(o.isArabic)],
         //  The brand colour the palette derived, handed over as a hue.
@@ -4424,6 +4577,11 @@ export function buildAppFiles(bp: AppBlueprint, o: AppBuildOptions, slugName: st
         'src/app/store.js': fileAppStoreJs(),
         'scripts/smoke-test.test.mjs': fileAppSmokeTest(),
         ...engineEntry,
+        ...(builtBp.engine === 'records' ? {
+            'src/app/records-controller.js': fileRecordsControllerJs(o.isArabic),
+            'src/components/RecordsView.jsx': fileRecordsViewJsx(o.isArabic),
+            'src/components/RecordsApp.jsx': fileRecordsWrapperJsx(),
+        } : {}),
         ...(o.model && o.model.length ? { 'src/components/TablesAdmin.jsx': fileTablesAdminJsx(o.model, o.isArabic) } : {}),
         // The accounts screen ships whenever there IS a server to have accounts
         // on; it renders for the owner only, and returns null for everybody else.

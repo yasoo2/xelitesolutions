@@ -26,6 +26,32 @@ describe('explicit terminal diagnostics execute instead of merely opening a term
         expect(plan.metadata).toMatchObject({ terminalExecution: true });
     });
 
+    test('responsive browser QA is not mistaken for a terminal check', async () => {
+        const plan = await PlanningEngine.generatePlan({
+            intent: {
+                goal: 'Run responsive browser QA at desktop, tablet, and mobile sizes; check overflow, clipped text, unreachable controls, and broken navigation.',
+                complexity: 'medium',
+                riskLevel: 'low',
+                rawIntent: {},
+            } as any,
+        });
+        expect(plan.steps[0].tool).toBe('browser_run');
+        expect(plan.steps.map(step => step.tool)).not.toContain('shell_execute');
+    });
+
+    test('browser status checks remain browser work even with diagnostic wording', async () => {
+        const plan = await PlanningEngine.generatePlan({
+            intent: {
+                goal: 'Run a browser check on the live responsive page, inspect mobile navigation and report failed request status codes.',
+                complexity: 'medium',
+                riskLevel: 'low',
+                rawIntent: {},
+            } as any,
+        });
+        expect(plan.steps[0].tool).toBe('browser_run');
+        expect(plan.steps.map(step => step.tool)).not.toContain('shell_execute');
+    });
+
     test('a clear local build request does not wait for deep intent analysis', async () => {
         const intent = await IntentParser.parse(
             'Create a repair-shop customer directory with name, phone, email, device, warranty expiry, repair status, empty-name validation, search, and status filtering.',
@@ -34,6 +60,17 @@ describe('explicit terminal diagnostics execute instead of merely opening a term
         expect(intent.requiredTools).toEqual(['project_pipeline']);
         expect(intent.rawIntent).toEqual(expect.objectContaining({ buildRequest: true, deterministic: true }));
         expect(intent.suggestedAgent).toBe('Dev');
+    });
+
+    test('a deterministic build contract reaches project_pipeline without a dynamic DAG', async () => {
+        const intent = await IntentParser.parse(
+            'عندي مزرعة إبل. بدي سجل أسجل فيه بيانات الناقة: اسم الناقة والعمر والوزن',
+            {} as any,
+        );
+        const plan: any = await PlanningEngine.generatePlan({ intent: intent as any });
+
+        expect(plan.steps.map((step: any) => step.tool)).toEqual(['project_pipeline']);
+        expect(plan.metadata).toMatchObject({ matchedBy: 'deterministic-build-contract' });
     });
 
     test('a fielded directory with search and validation is an app, not a static page', () => {

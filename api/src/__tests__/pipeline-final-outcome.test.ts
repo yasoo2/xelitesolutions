@@ -112,7 +112,9 @@ describe('canonical engineering pipeline terminal outcomes', () => {
     );
     const guard = src.indexOf('const isFinalPipelineFailure = isFinalPipelineOutcome(node.tool, out);');
     const recovery = src.indexOf('await this.attemptRecovery(');
+    const providerRetry = src.indexOf('if (saysNoBrain(result.error)');
     expect(guard).toBeGreaterThan(-1);
     expect(recovery).toBeGreaterThan(guard);
+    expect(providerRetry).toBeGreaterThan(guard);
   });
 });

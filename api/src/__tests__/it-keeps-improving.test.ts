@@ -406,6 +406,20 @@ describe('the repairer writes to disk only what really differs', () => {
 
 
 describe('legacy improvement results are safe to report', () => {
+    it('does not offer protected source files to the deterministic repairer', async () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-protected-repair-'));
+        const original = '.btn{padding:2px}';
+        try {
+            fs.mkdirSync(path.join(dir, 'src'), { recursive: true });
+            fs.writeFileSync(path.join(dir, 'src', 'protected.css'), original);
+            fs.writeFileSync(path.join(dir, 'src', 'editable.css'), original);
+            const result = await repairRound(dir, 1, { protectedFiles: ['src/./protected.css'] });
+            expect(result.changed).toContain('src/editable.css');
+            expect(result.changed).not.toContain('src/protected.css');
+            expect(fs.readFileSync(path.join(dir, 'src', 'protected.css'), 'utf8')).toBe(original);
+        } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+    });
+
     it('normalises missing arrays and measurements instead of throwing on length', () => {
         const fallback = { score: 72, findingIds: ['x'], findings: [] };
         const result = normaliseImproveResult({

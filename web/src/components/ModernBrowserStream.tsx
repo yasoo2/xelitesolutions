@@ -780,7 +780,7 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
       <div style={{ padding: 10, borderTop: '1px solid rgba(255,255,255,0.08)', background: 'rgba(0,0,0,0.35)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
           <div style={{ color: '#fff', fontSize: 12, opacity: 0.95, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {status} · quality={qualityMetrics?.status || 'unknown'} · {w}×{h} {pageSnapshot?.title ? `· ${pageSnapshot.title.slice(0, 48)}` : ''} {lastStep ? `· ${lastStep}` : ''} {busy ? `· busy` : ''} {queueLen ? `· queue=${queueLen}` : ''}
+            {status} · stream={qualityMetrics?.status || 'unknown'} · {w}×{h} {pageSnapshot?.title ? `· ${pageSnapshot.title.slice(0, 48)}` : ''} {lastStep ? `· ${lastStep}` : ''} {busy ? `· busy` : ''} {queueLen ? `· queue=${queueLen}` : ''}
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flex: '0 0 auto' }}>
             {busy || queueLen ? (

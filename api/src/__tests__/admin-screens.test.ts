@@ -14,7 +14,8 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { fileTablesAdminCss, fileTablesAdminJsx } from '../modules/tools/definitions/react-app-templates';
+import { buildAppFiles, fileTablesAdminCss, fileTablesAdminJsx } from '../modules/tools/definitions/react-app-templates';
+import { blueprintFor } from '../core/design/app-blueprints';
 import { deriveDataModel } from '../core/design/data-model';
 
 const SRC = path.join(__dirname, '..');
@@ -88,7 +89,7 @@ describe('and the builder wires them without breaking what was there', () => {
         // …and from the model the SERVER was built from, so the screens and the
         // tables cannot disagree when an LLM designed them.
         expect(r).toMatch(/const tableModel = apiLink/);
-        expect(r).toMatch(/Array\.isArray\(prevEntry\?\.model\) && prevEntry\.model\.length/);
+        expect(r).toMatch(/Array\.isArray\(apiEntry\?\.model\) && apiEntry\.model\.length/);
         // …and when the session has none, the SAME ORDER the server uses:
         // what he named, then what his words imply, and a stocked domain only
         // when the sentence named nothing at all.
@@ -111,10 +112,20 @@ describe('and the builder wires them without breaking what was there', () => {
     });
 
     it('the shell renders them, and a build without a model imports nothing', () => {
-        const t = read('modules', 'tools', 'definitions', 'react-app-templates.ts');
-        expect(t).toMatch(/\$\{hasTables \? "import TablesAdmin from '\.\/components\/TablesAdmin\.jsx';/);
-        expect(t).toMatch(/'src\/App\.jsx': fileAppShellJsx\(bp, o\.isArabic, !!\(o\.model && o\.model\.length\), !!o\.api, roleSpecs, !!o\.unifiedTables\)/);
-        expect(t).toMatch(/\.\.\.\(o\.model && o\.model\.length \? \{ 'src\/components\/TablesAdmin\.jsx'/);
+        const bp = blueprintFor('generic', 'Build an owner-managed marketplace.', false);
+        const withTables = buildAppFiles(bp, {
+            isArabic: false, api: true, model: MODEL, sourceRequest: 'Build an owner-managed marketplace.',
+            brand: 'Marketplace', storeKey: 'marketplace',
+        } as any, 'marketplace');
+        expect(withTables['src/App.jsx']).toContain("import TablesAdmin from './components/TablesAdmin.jsx';");
+        expect(withTables['src/components/TablesAdmin.jsx']).toBeTruthy();
+
+        const withoutTables = buildAppFiles(bp, {
+            isArabic: false, api: true, model: [], sourceRequest: 'Build an owner-managed marketplace.',
+            brand: 'Marketplace', storeKey: 'marketplace',
+        } as any, 'marketplace');
+        expect(withoutTables['src/App.jsx']).not.toContain('TablesAdmin');
+        expect(withoutTables['src/components/TablesAdmin.jsx']).toBeUndefined();
     });
 
     it('and the stylesheet is EXTENDED, never rebuilt from scratch', () => {

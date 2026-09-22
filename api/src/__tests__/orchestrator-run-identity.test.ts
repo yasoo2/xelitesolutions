@@ -5,6 +5,7 @@ jest.mock('../modules/services/ToolService', () => ({
 
 import * as ToolService from '../modules/services/ToolService';
 import { AgentOrchestrator } from '../orchestration/AgentOrchestrator';
+import { executionFirewall } from '../orchestration/AgentExecutionFirewall';
 
 type SeenContext = { runId?: string; sessionId?: string };
 
@@ -25,10 +26,12 @@ const dagFor = () => ({
 describe('orchestrator canonical run identity reaches the tool boundary', () => {
     it('uses a distinct execution runId for two runs in one chat session', async () => {
         const seen: SeenContext[] = [];
+        const firewallRuns: Array<string | undefined> = [];
         const executeToolMock = ToolService.executeTool as jest.MockedFunction<typeof ToolService.executeTool>;
         executeToolMock.mockImplementation(
             async (_name: string, _input: any, context?: any) => {
                 seen.push({ runId: context?.runId, sessionId: context?.sessionId });
+                firewallRuns.push(executionFirewall.context.getStore()?.runId);
                 return { ok: true, output: 'ok', logs: [] } as any;
             },
         );
@@ -65,6 +68,16 @@ describe('orchestrator canonical run identity reaches the tool boundary', () => 
             ]);
             expect(seen[0].runId).not.toBe(seen[1].runId);
             expect(seen.every(x => x.sessionId === sessionId)).toBe(true);
+            const canonical = await orchestrator.execute({
+                id: sessionId,
+                runId: 'canonical-run',
+                traceId: 'separate-diagnostic-trace',
+                goal: 'third run',
+                context: stalePlannerContext,
+            });
+            expect(canonical.ok).toBe(true);
+            expect(seen[2]).toEqual({ runId: 'canonical-run', sessionId });
+            expect(firewallRuns).toEqual(seen.map(context => context.runId));
         } finally {
             executeToolMock.mockReset();
             if (previousDisableNarration === undefined) delete process.env.DISABLE_NARRATION;

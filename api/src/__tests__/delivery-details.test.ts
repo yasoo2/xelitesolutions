@@ -115,8 +115,8 @@ describe('048a provenance survives compaction and delivery reporting', () => {
     });
 });
 
-describe('pipeline delivery preserves the one-time test credential handoff', () => {
-    it('surfaces credentials before a long QA report can truncate them', () => {
+describe('pipeline delivery keeps test credentials out of the transcript', () => {
+    it('redacts credentials even when a long QA report follows', () => {
         const password = 'QuickNotes-Test-9x7m';
         const report = (new ProjectPipelineTool() as any).buildDeliveryReport({
             language: 'ar',
@@ -150,10 +150,10 @@ describe('pipeline delivery preserves the one-time test credential handoff', () 
         });
 
         expect(report.length).toBeLessThanOrEqual(3500);
-        expect(report.indexOf('### 🔑 بيانات الدخول الاختبارية')).toBeGreaterThanOrEqual(0);
+        expect(report).not.toContain('### 🔑 بيانات الدخول الاختبارية');
         expect(report.indexOf('owner@quicknotes.local')).toBeGreaterThanOrEqual(0);
-        expect(report.indexOf(password)).toBeGreaterThanOrEqual(0);
-        expect(report.indexOf('owner@quicknotes.local')).toBeLessThan(report.indexOf('### Browser QA المرئي'));
+        expect(report).toContain('كلمة المرور: [محجوبة]');
+        expect(report).not.toContain(password);
     });
 });
 
