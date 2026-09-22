@@ -870,6 +870,8 @@ Rules:
         // modify files". Resolve bounded navigation and observation before the
         // workspace read-only boundary so an IP address or domain is never
         // reinterpreted as a local file or project audit.
+        const earlyGithubRepository = /(?:https?:\/\/)?(?:www\.)?github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:\.git)?(?:[\/?#\s]|$)/i.test(userGoal);
+        const earlyGithubLocalWork = /(استنسخ|نسخ|انسخ|استورد|استيراد|حلّ?ل|تحليل|افهم|فهم|دقّ?ق|مراجعة|طوّ?ر|تطوير|عدّ?ل|تعديل|أصلح|اصلح|إصلاح|اختبر|اختبار|شغّ?ل|تشغيل|نفّ?ذ|بناء|فرع|التزام|كوميت|git\s*(?:status|diff|checkout|commit|branch)|build|develop|implement|modify|edit|fix|test|run|clone|import|branch|commit|analy[sz]e|review|inspect)/i.test(probe);
         const earlyUrlMatch = userGoal.match(/https?:\/\/[^\s<>'\"]+/i)
             || userGoal.match(/\b[a-z0-9-]+\.(?:com|org|net|io|dev|ai|co|app|sa|eg|me)(?:\/[^\s<>'\"]*)?/i);
         const earlyOpenIntent = /(افتح|لفتح|فتح|اذهب|انتقل|زر|ادخل|go\s*to|open|visit|navigate)/i.test(probe);
@@ -880,7 +882,8 @@ Rules:
         // lets the observing agent describe the page the user asked about.
         const earlyPageWork = /(لخّ?ص|تلخيص|حلّ?ل|تحليل|استخرج|استخراج|انقر|اضغط|املأ|عبّ?ئ|سجّ?ل|تسجيل|دخول|summari[sz]e|describe|translate|analy[sz]e|extract|click|fill|log\s*-?\s*in|sign\s*-?\s*in)/i.test(probe);
         const earlyVisibleContent = /(اقر[أا]|اعرض|أظهر|اظهر|الحالة|المحتوى|النص\s+الظاهر|report|read|show|displayed|visible\s+(?:text|content)|page\s+content|response\s+body|status\s+(?:shown|displayed|returned)?)/i.test(probe);
-        if (earlyUrlMatch && earlyOpenIntent && (earlyTitleOnly || !earlyPageWork)) {
+        if (earlyUrlMatch && earlyOpenIntent && (earlyTitleOnly || !earlyPageWork)
+            && !(earlyGithubRepository && earlyGithubLocalWork)) {
             const url = earlyUrlMatch[0].startsWith('http') ? earlyUrlMatch[0] : `https://${earlyUrlMatch[0]}`;
             const readContent = !earlyTitleOnly && earlyVisibleContent;
             console.log(`[PlanningEngine] early explicit URL open -> browser_launch ${url}${readContent ? ' + visible content' : ''}`);
@@ -1153,8 +1156,6 @@ Rules:
          * the subsequent local operations can be proved. A plain view/open request
          * still reaches browser_launch because it has none of these work signals.
          */
-        const earlyGithubRepository = /(?:https?:\/\/)?(?:www\.)?github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:\.git)?(?:[\/?#\s]|$)/i.test(userGoal);
-        const earlyGithubLocalWork = /(استنسخ|نسخ|انسخ|استورد|استيراد|حلّ?ل|تحليل|افهم|فهم|دقّ?ق|مراجعة|طوّ?ر|تطوير|عدّ?ل|تعديل|أصلح|اصلح|إصلاح|اختبر|اختبار|شغّ?ل|تشغيل|نفّ?ذ|بناء|فرع|التزام|كوميت|git\s*(?:status|diff|checkout|commit|branch)|build|develop|implement|modify|edit|fix|test|run|clone|import|branch|commit|analy[sz]e|review|inspect)/i.test(probe);
         // Import is deliberately sufficient for an analysis-only request. Add the
         // constrained follow-through only when the user names actual local Git
         // deliverables. This distinction prevents a harmless “analyse this repo”

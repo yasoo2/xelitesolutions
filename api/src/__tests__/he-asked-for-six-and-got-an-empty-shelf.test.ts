@@ -259,7 +259,7 @@ describe('the seed reaches the shelf, not just a variable', () => {
     it('NEGATIVE — and the catalogue stands down with the other authors', () => {
         //  It spends the same rationed fuel as the section and copy authors;
         //  guarding two of three is the «one layer, two generators» class.
-        expect(TOOL).toMatch(/if \(!copyProvidersRationing && seedFields\.length/);
+        expect(TOOL).toMatch(/if \(!copyProvidersRationing && !modelUnavailableDuringBuild && !unifiedTables\s*&& seedFields\.length/);
     });
 });
 
