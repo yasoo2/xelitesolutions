@@ -105,12 +105,12 @@ describe('operational release boards are working task applications', () => {
         );
         expect(files['src/App.jsx']).toMatch(/RecordsApp/);
         const program = Object.values(files).join('\n');
-        const recordsApp = files['src/components/RecordsApp.jsx'];
+        const recordsView = files['src/components/RecordsView.jsx'];
         expect(program).toMatch(/search/i);
         expect(program).toMatch(/filter/i);
-        expect(recordsApp).toMatch(/aria-haspopup="dialog"/);
-        expect(recordsApp).toMatch(/role="dialog"/);
-        expect(recordsApp).toMatch(/record-modal/);
+        expect(recordsView).toMatch(/aria-haspopup="dialog"/);
+        expect(recordsView).toMatch(/role="dialog"/);
+        expect(recordsView).toMatch(/record-modal/);
     });
 
     it('does not mistake a procedural page-audit instruction for landing-page intent', () => {
@@ -131,8 +131,8 @@ describe('full-stack builders preserve the backend application contract', () => 
         const react = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ReactProjectTool.ts'), 'utf-8');
         expect(api).toMatch(/const appKind = detectAppKind\(requestForReading\)/);
         expect(api).toMatch(/\.\.\.\(appKind \? \{ appKind \} : \{\}\)/);
-        expect(react).toMatch(/const inheritedAppKind = prevEntry\?\.type === 'api'/);
-        expect(react).toMatch(/const mayInheritAppKind = input\?\.resumeExisting === true \|\| explicitScaffoldDir/);
+        expect(react).toMatch(/let apiEntry = prevEntry\?\.type === 'api' \? prevEntry : null/);
+        expect(react).toMatch(/const mayInheritAppKind = input\?\.resumeExisting === true \|\| explicitScaffoldDir \|\| !!apiEntry/);
         expect(react).toMatch(/mayInheritAppKind \? inheritedAppKind \|\| detectedAppKind : detectedAppKind/);
     });
 });
