@@ -354,7 +354,7 @@ export function apiRelationForRequest(probe: string): ApiRelation | null {
 
 export function apiColumnsForRequest(probe: string): ApiColumn[] {
     try {
-        const { detectAppKind, blueprintFor, hasWorkflowApplicationContract } = require('../../../core/design/app-blueprints');
+        const { detectAppKind, blueprintFor, fieldsFromRequest, hasWorkflowApplicationContract } = require('../../../core/design/app-blueprints');
         if (hasWorkflowApplicationContract(String(probe || ''))) {
             const text = String(probe || '');
             const columns: ApiColumn[] = [
@@ -369,7 +369,13 @@ export function apiColumnsForRequest(probe: string): ApiColumn[] {
             return columns;
         }
         const kind = detectAppKind(String(probe || ''));
-        if (!kind) return CATALOGUE_COLUMNS;
+        if (!kind) {
+            // A generic tracker still has an explicit row contract. Keep its
+            // API columns aligned with the record fields instead of storing a
+            // catalogue-shaped name/details/price row.
+            const explicit = columnsFromFields(fieldsFromRequest(String(probe || ''), /[\u0621-\u064A]/.test(String(probe || ''))) || []);
+            return explicit.length ? explicit : CATALOGUE_COLUMNS;
+        }
         const bp = blueprintFor(kind, String(probe || ''), false);
         // Only the engines that own ROWS have a table to shape. A map, a chat
         // and a feed have their own servers already.
