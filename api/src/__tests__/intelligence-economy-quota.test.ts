@@ -87,7 +87,8 @@ describe('the patience is measured from this machine, and it learns', () => {
 
     it('the router asks for the measured leash, not warm-up × 6', () => {
         const src = ROUTER();
-        expect(src).toMatch(/timeoutValue = Math\.min\(timeoutValue, internalLeashMs\(/);
+        expect(src).toMatch(/const measuredLeash = internalLeashMs\(/);
+        expect(src).toContain(': Math.min(timeoutValue, measuredLeash)');
         expect(src).not.toMatch(/Math\.max\(25_000, Math\.round\(measured \* 6\)\)/);
     });
 

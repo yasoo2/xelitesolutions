@@ -62,7 +62,7 @@ describe('the router understands internal vs answer', () => {
         const src = router();
         expect(src).toContain("const localFirst = LOCAL_BRAIN_FIRST || !!String(process.env.LOCAL_LLM_BASE_URL || '').trim()");
         expect(src).toContain('if (!hasGroq && !localFirst)');
-        expect(src).toContain('internalCall: true');
+        expect(src).toContain("purpose: 'internal'");
         expect(src).toMatch(/\? await routeToModel\([\s\S]*?\)\s*:\s*await callGroq\(analyst/);
     });
 
