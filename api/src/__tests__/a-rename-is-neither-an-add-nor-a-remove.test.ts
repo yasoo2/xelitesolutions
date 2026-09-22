@@ -50,9 +50,9 @@ describe('a rename is read, in either language', () => {
         const bp = blueprintFor(detectAppKind('بدي جدول للفواتير فيه رقم الفاتورة والمبلغ والتاريخ') as never,
             'بدي جدول للفواتير فيه رقم الفاتورة والمبلغ والتاريخ', true);
         const before = bp.fields.map(f => `${f.label}:${f.key}`);
-        expect(before).toEqual(['رقم الفاتورة:text1', 'المبلغ:money1', 'التاريخ:date1']);
+        expect(before).toEqual(['رقم الفاتورة:text1', 'المبلغ:amount', 'التاريخ:date']);
         const after = applyColumnEdit(bp.fields, columnEdit('غيّر اسم عمود المبلغ إلى القيمة'), true);
-        expect(after.map(f => `${f.label}:${f.key}`)).toEqual(['رقم الفاتورة:text1', 'القيمة:money1', 'التاريخ:date1']);
+        expect(after.map(f => `${f.label}:${f.key}`)).toEqual(['رقم الفاتورة:text1', 'القيمة:amount', 'التاريخ:date']);
     });
 });
 
