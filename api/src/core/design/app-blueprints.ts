@@ -216,6 +216,8 @@ export interface AppBlueprint {
 
 /* ── which domain the request belongs to ─────────────────────────────────── */
 
+const MEDIA_REVIEW_CONTRACT = /(?:media|image|photo|asset)\s+(?:review|library|catalog(?:ue)?|collection)\s*(?:board|app|tool|workspace)?|(?:board|app|tool|workspace)\s+for\s+(?:reviewing|managing)\s+(?:media|images?|photos?|assets?)|لوحة\s+(?:مراجعة|إدارة)\s+(?:الوسائط|الصور)|مكتبة\s+(?:وسائط|صور)/iu;
+
 /** Ordered: the specific archetypes are tested before the broad ones. */
 export const APP_KIND_SIGNALS: Array<[AppKind, RegExp]> = [
     /**
@@ -255,7 +257,7 @@ export const APP_KIND_SIGNALS: Array<[AppKind, RegExp]> = [
     // An asset-review workspace is an application even when the user calls it
     // a board rather than an app. Missing this signal used to ship a marketing
     // page with testimonials and a contact form instead of an upload workflow.
-    ['media', /(?:media|image|photo|asset)\s+(?:review|library|catalog(?:ue)?|collection)\s*(?:board|app|tool|workspace)?|(?:board|app|tool|workspace)\s+for\s+(?:reviewing|managing)\s+(?:media|images?|photos?|assets?)|لوحة\s+(?:مراجعة|إدارة)\s+(?:الوسائط|الصور)|مكتبة\s+(?:وسائط|صور)/iu],
+    ['media', MEDIA_REVIEW_CONTRACT],
     // A social network CONTAINS messaging, so it is tested before chat:
     // «منصة تواصل اجتماعي … Messaging» is a feed with messages in it, not a
     // messenger. Measured from the field request that produced a chat app.
@@ -450,6 +452,10 @@ export function detectAppKind(requestRaw: string): AppKind | null {
      */
     if (/(?:expense|expenses|spending|costs?|مصروفات?|نفقات|إنفاق)[\s\S]{0,80}(?:tracker|ledger|register|app|application|dashboard|تطبيق|متابع|سجل|دفتر)|(?:tracker|ledger|register|app|application|dashboard|تطبيق|متابع|سجل|دفتر)[\s\S]{0,80}(?:expense|expenses|spending|costs?|مصروفات?|نفقات|إنفاق)/iu.test(intentRequest)) return 'expenses';
     if (hasWorkflowApplicationContract(intentRequest)) return 'custom';
+    // Some domains own behavior that a field list cannot express. Preserve the
+    // explicit media-review workflow (upload, preview, original-file handling)
+    // while still letting the user's columns replace its stock schema below.
+    if (MEDIA_REVIEW_CONTRACT.test(intentRequest)) return 'media';
     //  A LIST HE WROTE OUTRANKS A NOUN HE HAPPENED TO USE.
     //
     //  «عندي عيادة أسنان … اسم المريض ورقم تلفونه …» carries the word
@@ -924,6 +930,7 @@ const RECORDING_WORD = /(أسجل|اسجل|سجّل|أضيف|اضيف|أدخل|�
  */
 function theNounBesideTheContainer(request: string): string | null {
     const beside = String(subjectAfterContainer(request) || '').trim();
+    if (/^(?:where|which|that|who|whose|حيث|الذي|التي|الذين)(?:\s|$)/iu.test(beside)) return null;
     //  A NAME IS WHAT IS LEFT AFTER THE PARTICLES, NOT THE PARTICLES.
     //
     //  «ما الفرق بين قاعدة البيانات والجدول؟» handed back «وال» — a
@@ -1036,7 +1043,11 @@ export function blueprintFor(kind: AppKind, request: string, isAr: boolean): App
             return {
                 ...native,
                 ...field,
-                type: field.type === 'text' && native.type === 'select' ? native.type : field.type,
+                // A bare noun only proves that the field exists; it does not
+                // override a stronger native control contract. Keep semantic
+                // controls such as textarea/select/email/tel/image unless the
+                // request explicitly inferred a non-text type of its own.
+                type: field.type === 'text' && native.type !== 'text' ? native.type : field.type,
                 ...(field.options ? { options: field.options } : native.options ? { options: native.options } : {}),
                 ...(field.required || native.required ? { required: true } : {}),
                 ...(field.primary || native.primary ? { primary: true } : {}),
@@ -3523,7 +3534,15 @@ export function fieldsFromRequest(requestRaw: string, isAr: boolean): AppField[]
             const baseKey = canonicalFieldKey(label) || mapping[1];
             let key = baseKey;
             for (let index = 1; fields.some(field => field.key === key); index++) key = `${baseKey}${index}`;
-            fields.push(f([key, label, label, mapping[2]], isAr));
+            const imageField = f([key, label, label, mapping[2]], isAr);
+            const normalizedRequest = requestRaw.toLowerCase().replace(/[ً-ْـ]/g, '');
+            const insertAt = fields.findIndex(field => {
+                const normalizedLabel = String(field.label || '').toLowerCase().replace(/[ً-ْـ]/g, '');
+                const labelAt = normalizedLabel ? normalizedRequest.indexOf(normalizedLabel) : -1;
+                return labelAt >= 0 && labelAt > (match.index ?? Number.MAX_SAFE_INTEGER);
+            });
+            if (insertAt >= 0) fields.splice(insertAt, 0, imageField);
+            else fields.push(imageField);
             break;
         }
     }
@@ -3717,12 +3736,20 @@ export function requestedFilterFields(requestRaw: string, fields: Array<{ key: s
         }
         return keys;
     }
-    const stop = clause.split(/\s+(?:plus|with|and\s+(?:a|an|the)?\s*(?:progress|metric)|ومقياس|وإضافة|واضافة)\b/iu)[0];
-    const tokens = new Set(stop.split(/[^\p{L}\p{N}_]+/u).filter(t => t.length >= 2));
+    const fieldClause = clause.split(/\s*[,،]\s*(?=(?:preview|delete|add|create|show|display|use|preserve|edit|upload|معاينة|حذف|أضف|اضف|إنشاء|انشاء|اعرض|استخدم|احفظ|عدّل|عدل)\b)/iu)[0];
+    const stop = fieldClause.split(/\s+(?:plus|with|and\s+(?:a|an|the)?\s*(?:progress|metric)|ومقياس|وإضافة|واضافة)\b/iu)[0];
+    const foldEnglishNumber = (token: string) => /^[a-z]+ies$/i.test(token)
+        ? `${token.slice(0, -3)}y`
+        : /^[a-z]{3,}s$/i.test(token) && !/(?:ss|us|is)$/i.test(token) ? token.slice(0, -1) : token;
+    const tokens = new Set(stop.split(/[^\p{L}\p{N}_]+/u).filter(t => t.length >= 2)
+        .flatMap(token => [token, foldEnglishNumber(token)]));
     for (const field of fields) {
         const label = String(field.label || '').toLowerCase().replace(/[ً-ْـ]/g, '');
         const labelTokens = label.split(/[^\p{L}\p{N}_]+/u).filter(t => t.length >= 2);
-        const matches = tokens.has(label) || labelTokens.some(token => token.length >= 3 && tokens.has(token));
+        const key = String(field.key || '').toLowerCase();
+        const matches = tokens.has(label) || tokens.has(key) || tokens.has(foldEnglishNumber(key))
+            || labelTokens.some(token => token.length >= 3
+                && (tokens.has(token) || tokens.has(foldEnglishNumber(token))));
         if (matches && !keys.includes(field.key)) keys.push(field.key);
     }
     if (!keys.length && /^\s*[,،]/u.test(clause)) {
