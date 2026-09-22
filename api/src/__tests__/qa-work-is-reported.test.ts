@@ -52,7 +52,8 @@ describe('the self-QA reaches the user in whatever language he asked in', () => 
     it('does not let an optional theme probe cancel the behavioural audit', () => {
         const audit = fs.readFileSync(path.join(__dirname, '..', 'core', 'quality', 'app-audit.ts'), 'utf-8');
         expect(audit).toContain('theme toggle probe:');
-        expect(audit).toContain("await page.click('.theme-toggle,[aria-label=\"Toggle dark mode\"],[aria-label=\"تبديل الوضع الليلي\"]', { timeout: 2_500 });");
+        expect(audit).toContain('toggle?.click();');
+        expect(audit).toContain("if (!clicked) throw new Error('visible theme toggle disappeared before the probe')");
     });
 
     it('the section is built once, not per branch', () => {

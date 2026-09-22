@@ -12,7 +12,9 @@ describe('browser QA instrumentation regressions', () => {
 
     test('responsive checks change layout width without switching the borrowed page into mobile emulation', () => {
         const source = read('ui-inspection.ts');
-        expect(source.match(/mobile: false/g)).toHaveLength(2);
+        const emulationModes = source.match(/mobile:\s*[^,\n]+/g) || [];
+        expect(emulationModes.length).toBeGreaterThanOrEqual(2);
+        expect(emulationModes.every(mode => mode.trim() === 'mobile: false')).toBe(true);
         expect(source).not.toContain('mobile: width <= 600');
     });
 
