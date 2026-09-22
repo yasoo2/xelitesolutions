@@ -110,7 +110,7 @@ describe('the build audits the system it just packaged', () => {
     it('packaging is reusable, because the repair rebuilds the interface', () => {
         const r = R();
         expect(r).toMatch(/const packageIntoApi = \(announce: boolean\) => \{/);
-        expect(r).toMatch(/const packaged = built \? packageIntoApi\(true\) : false;/);
+        expect(r).toMatch(/const packaged = built && artifactMode !== 'static_records' \? packageIntoApi\(true\) : false;/);
         // After a repair the packaged copy is the OLD build until this runs.
         expect(r).toMatch(/if \(packaged\) packageIntoApi\(false\);/);
         // Inside the loop's rebuild(), so EVERY round measures the page it
