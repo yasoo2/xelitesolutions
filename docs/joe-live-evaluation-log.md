@@ -147,3 +147,9 @@ The same prompt also expanded the provider-independent calculator editor and Bro
 The exact prompt was replayed after every repair. The final UI run used `project_edit`, created no project, reported `Delivery summary`, Browser QA `100/100`, one page, 13 interactions, and no critical findings. Evidence recorded all three viewports (`1280x900`, `390x844`, `820x1180`) and every requested state. Independent browser interaction reproduced the invalid and valid promotion messages, a USD subtotal of `1057.50`, discount `105.75`, tax `152.28`, total `1104.03`, and reset to service 0, one hour, JOD, empty code, and zero discount.
 
 Focused verification passed 6 suites and 159 tests before the acceptance consolidation, then 4 suites and 71 tests afterward. The API production build passed. All ten permanent architecture and self-healing commands passed, including the full engineer flow and both success/failure stop conditions.
+
+## Field Annotation Boundary (Issue #93)
+
+The real Joe prompt `Build an orders tracker with customer, date, and status (draft).` reached the canonical project pipeline and produced a visible preview. The focused parser repair keeps a parenthesized single value as contextual text rather than allowing the generic `status` heuristic to invent a finite select list. Arabic and English regressions cover that boundary, while an unannotated status field retains the existing select behavior.
+
+This was not recorded as a clean end-to-end acceptance. The same visual replay exposed an earlier API schema-design failure: the generated preview showed `Status (Draft)` as a system table rather than attaching `status` to an orders record. The run was stopped after that evidence and provider/installation fallbacks were reported. Issue #94 owns that separate boundary; this log does not treat the focused parser fix as resolving it.
