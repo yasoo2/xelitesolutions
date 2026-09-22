@@ -935,7 +935,7 @@ function generatedArtifactFailureEvidence(
     const root = rebaseStaleRuntimeEvidencePath(output?.path ?? output?.projectDir, projectContext);
     if (!root) return {};
     const file = path.resolve(root, authoredFiles[0]);
-    if (!file.startsWith(`${path.resolve(root)}${path.sep}`)) return {};
+    if (!isWithinRoot(file, root) || file === path.resolve(root)) return {};
     return { repairFile: file.slice(0, 1000) };
 }
 

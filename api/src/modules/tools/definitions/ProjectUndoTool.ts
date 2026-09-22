@@ -18,6 +18,7 @@ import { ToolPermission, ToolExecutionResult } from '../types';
 import { broadcastThinkingDetail, broadcastTerminalLine } from '../../../api/ws';
 import { listVersions, restoreVersion, snapshotProject } from '../../../core/project/versions';
 import { persistJoeProjects, writeJoeProject } from '../../../api/page-store';
+import { isWithinRoot } from '../path-containment';
 
 interface SurgicalHistoryEntry {
     file: string;
@@ -48,7 +49,7 @@ function latestSurgicalBatch(history: SurgicalHistoryEntry[]): { batch: Surgical
 function projectPath(dir: string, rel: string): string | null {
     const root = path.resolve(dir);
     const target = path.resolve(root, String(rel || ''));
-    return target === root || target.startsWith(root + path.sep) ? target : null;
+    return isWithinRoot(target, root) ? target : null;
 }
 
 export class ProjectUndoTool extends BaseTool {

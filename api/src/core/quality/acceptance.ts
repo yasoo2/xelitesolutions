@@ -551,7 +551,7 @@ export function acceptanceFor(request: string): Criterion[] {
         && requestedColumns.length >= 2;
     const willBuildATable = detectedKind !== null || hasExplicitRecordSchema(t) || startsWithRecordSchema;
     const derived = willBuildATable ? requestedColumns : [];
-    const uiOnlyLabel = (label: string) => /^(?:a\s+|an\s+|the\s+)?(?:counter|button|title|heading|status\s+message|عداد|زر|عنوان|رسالة\s+حالة)$/iu
+    const uiOnlyLabel = (label: string) => /^(?:a\s+|an\s+|the\s+)?(?:counter|button|title|heading|status\s+message|production\s+build|preview|browser\s+check|readme|عداد|زر|عنوان|رسالة\s+حالة|نسخة\s+الإنتاج|معاينة|فحص\s+المتصفح)$/iu
         .test(String(label || '').trim());
     // A list of visible widgets is not a record schema. Without an explicit
     // table/form/field declaration, suppress a derived run made entirely of
