@@ -113,14 +113,12 @@ describe('renaming the site never needed a model', () => {
     it('it needs BOTH a site word and a name word — «غيّر اسم المنتج» is not this', () => {
         expect(EDIT).toMatch(/const siteWord = \/\(الموقع\|موقعي\|التطبيق/);
         expect(EDIT).toMatch(/const nameWord = /);
-        expect(EDIT).toMatch(/if \(siteWord && nameWord && val && val\.length <= 60/);
+        expect(EDIT).toMatch(/if \(brandRenameIntent && siteWord && nameWord && val && val\.length <= 60/);
     });
 
-    it('and it only runs when nothing else already handled the request', () => {
-        // The row-level editor above owns «غيّر سعر/اسم <صف>»; this path is
-        // the rowless case its own comment hands over.
+    it('marks the deterministic intent handled so a provider cannot repeat it', () => {
         const at = EDIT.indexOf('THE COMMONEST EDIT OF ALL');
-        expect(EDIT.slice(at, at + 1400)).toContain('if (!touched.length) {');
+        expect(EDIT.slice(at, at + 2200)).toContain('deterministicIntentHandled = true;');
     });
 
     it('the brand is rewritten in content.js, through the same syntax gate as every other edit', () => {
@@ -136,7 +134,7 @@ describe('renaming the site never needed a model', () => {
      */
     it('and in the tab title too, so the rename is not half done', () => {
         expect(EDIT).toMatch(/const htmlAbs = path\.join\(dir, 'index\.html'\);/);
-        expect(EDIT).toMatch(/<title>\$\{String\(inner\)\.split\(oldBrand\)\.join\(val\)\}<\/title>/);
+        expect(EDIT).toMatch(/const swapped = html\.split\(oldBrand\)\.join\(val\);/);
         // Only when the old name is actually known — never a blind overwrite.
         expect(EDIT).toMatch(/if \(oldBrand && fs\.existsSync\(htmlAbs\)\)/);
     });
