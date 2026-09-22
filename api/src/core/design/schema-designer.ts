@@ -345,7 +345,7 @@ export async function designDataModel(
     if (reading.declared && shaped.length === 1) {
         const valid = validateDesign(shaped, 1);
         if (valid?.length) {
-            opts?.onNote?.(`data model: read one record from the request — ${valid[0].key}`);
+            opts?.onNote?.(`data model: read from the request itself — one record: ${valid[0].key}`);
             return valid;
         }
         opts?.onNote?.('data model: primary record is already served by the built-in API; no secondary tables generated');

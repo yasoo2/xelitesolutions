@@ -72,7 +72,7 @@ describe('the authored interface is rolled back by the browser, not only by the 
         //  assertion here. A rollback written after `blockers` is computed
         //  would be perfectly correct code that nothing ever reaches in time.
         const rollbackAt = SRC.indexOf('const runtimeBlockers');
-        const verdictAt = SRC.indexOf("const blockers = ((audit?.findings");
+        const verdictAt = SRC.indexOf('const qualityDeliveryBlocked =');
         expect({
             rollbackFound: rollbackAt > 0,
             verdictFound: verdictAt > 0,

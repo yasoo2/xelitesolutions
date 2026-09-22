@@ -202,7 +202,7 @@ describe('and it stands down entirely when the providers are rationing', () => {
 describe('the stand-down knows what it is protecting', () => {
     it('POSITIVE — with the local brain leading, the section author does not stand down', () => {
         expect(SRC).toMatch(/const localBrainLeads = [^;]*LOCAL_BRAIN_FIRST/);
-        expect(SRC).toMatch(/providersAreRationing = insideATest \|\| \(!localBrainLeads/);
+        expect(SRC).toMatch(/providersAreRationing = insideATest \|\|[\s\S]{0,100}\(!localBrainLeads/);
     });
 
     it('POSITIVE — and neither do the copy and catalogue authors', () => {

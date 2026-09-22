@@ -281,7 +281,7 @@ Return exactly this JSON structure:
                 undefined,
                 {
                     modelConfig: { provider: 'auto', apiKey: 'auto-mode' },
-                    internalCall: true,
+                    purpose: 'internal',
                     engineeringPipeline: true
                 }
             )

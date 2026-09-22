@@ -2864,13 +2864,18 @@ export function derivedColumns(requestRaw: string): DerivedField[] | null {
      *  or no word at all, just a colon.
      */
     if (!opener) {
+        const holder = RECORD_CONTAINER.exec(request);
+        // A list names the values it contains, not fields on each value. This
+        // check must run before the direct-list reader, which deliberately
+        // accepts bare English nouns and otherwise turns milk/bread/eggs into
+        // a record schema.
+        if (holder && /^(?:list|قائمة)$/iu.test(holder[1] || '')) return null;
         // A direct English field list is more specific than a broad container
         // noun such as "tracker". The list reader rejects UI nouns beginning
         // with an article, so this precedence keeps "Add a button" out while
         // preserving "Add amount, category, date, and note" as a schema.
         const handed = theListAnIntroducerHandedOver(request);
         if (handed) return handed;
-        const holder = RECORD_CONTAINER.exec(request);
         if (!holder) {
             //  ORDER IS THE WHOLE ARGUMENT HERE.
             //
