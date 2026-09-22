@@ -1,7 +1,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { QualityRunTool } from '../modules/tools/definitions/QualityTools';
+import { dependencyFreeRecordsBuildEvidence, QualityRunTool } from '../modules/tools/definitions/QualityTools';
 import { handleShellCommand } from '../modules/tools/handlers';
 
 jest.mock('../modules/tools/handlers', () => ({ handleShellCommand: jest.fn() }));
@@ -33,6 +33,36 @@ describe('quality runs require executed checks', () => {
         expect(result.output.results.filter(item => !item.skipped)).toEqual([{ task: 'build', ok: true, skipped: false, output: 'built' }]);
         expect(handleShellCommand).toHaveBeenCalledTimes(1);
         expect((handleShellCommand as jest.Mock).mock.calls[0][2]).toBe(root);
+    });
+    it('verifies a marked dependency-free records artifact without invoking Vite', async () => {
+        fs.mkdirSync(path.join(root, 'dist'));
+        fs.writeFileSync(path.join(root, 'dist', 'index.html'), '<!doctype html><meta name="joe-artifact-mode" content="static-records">');
+        fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ scripts: { build: 'vite build' } }));
+
+        const result = await new QualityRunTool().execute({ path: root, tasks: ['build'] });
+
+        expect(result).toMatchObject({
+            ok: true,
+            output: {
+                status: 'completed',
+                results: [{ task: 'build', ok: true, skipped: false, artifactMode: 'static-records' }],
+            },
+        });
+        expect(dependencyFreeRecordsBuildEvidence(root)).toBe(path.join(root, 'dist', 'index.html'));
+        expect(handleShellCommand).not.toHaveBeenCalled();
+    });
+    it('does not accept an unmarked dist file as a dependency-free build', async () => {
+        fs.mkdirSync(path.join(root, 'dist'));
+        fs.writeFileSync(path.join(root, 'dist', 'index.html'), '<!doctype html><title>Unmarked</title>');
+        fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ scripts: { build: 'vite build' } }));
+        (handleShellCommand as jest.Mock).mockResolvedValue({ ok: false, error: 'vite missing' });
+
+        expect(await new QualityRunTool().execute({ path: root, tasks: ['build'] })).toMatchObject({
+            ok: false,
+            output: { status: 'failed' },
+        });
+        expect(handleShellCommand).toHaveBeenCalledTimes(1);
+        expect(dependencyFreeRecordsBuildEvidence(root)).toBeNull();
     });
     it('preserves a failed check instead of accepting the skipped ones', async () => {
         fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ scripts: { build: 'vite build' } }));

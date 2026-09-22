@@ -1074,6 +1074,24 @@ function deterministicSourceVerdict(r: NamedRequirement, source: string): Judged
         && /localStorage\.getItem\s*\(/iu.test(src)
         && /localStorage\.setItem\s*\(/iu.test(src)
         && /store\.write\s*\(/iu.test(src);
+    const normalizedCollectionPhrase = phrase
+        .replace(/[ً-ْـ]/gu, '')
+        .replace(/[أإآ]/gu, 'ا')
+        .replace(/\s+/gu, ' ')
+        .trim();
+    const requestsRecordCollection = /^(?:(?:a|an|the)\s+)?(?:record|records|register|log|entry|entries|database)$/iu.test(normalizedCollectionPhrase)
+        || /^(?:سجل(?:ات)?(?:\s+ل?تسجيل)?(?:\s+بيانات(?:\s+[\p{L}]+){0,3})?|بيانات(?:\s+[\p{L}]+){0,3})$/u.test(normalizedCollectionPhrase);
+    const genericRegister = /^(?:(?:a|an|the)\s+)?(?:record|records|register|log|entry|entries|database)$/iu.test(normalizedCollectionPhrase)
+        || /^سجل(?:ات)?(?:\s+ل?تسجيل)?(?:\s+بيانات(?:\s+[\p{L}]+){0,3})?$/u.test(normalizedCollectionPhrase);
+    const namedCollectionInSource = new RegExp(
+        `(?:title|entityOne|entityMany|brand|lede)\\s*:\\s*['"]${esc(phrase)}['"]`, 'iu',
+    ).test(src);
+    if (requestsRecordCollection && hasRecordForm && hasDurableLocalRows
+        && (genericRegister || namedCollectionInSource)) {
+        return { ...r, verdict: 'met', why: genericRegister
+            ? 'the generated records application provides an interactive, locally persistent record collection'
+            : 'the named record collection is declared by the generated content and backed by an interactive, locally persistent records application' };
+    }
     const hasRequestedToggle = (label: string) => new RegExp(
         `label\\s*:\\s*['"]${esc(label)}['"][^{}]{0,260}?control\\s*:\\s*['"]toggle['"]|control\\s*:\\s*['"]toggle['"][^{}]{0,260}?label\\s*:\\s*['"]${esc(label)}['"]`,
         'iu',

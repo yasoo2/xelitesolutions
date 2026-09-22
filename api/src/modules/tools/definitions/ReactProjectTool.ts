@@ -51,6 +51,21 @@ export const REACT_NETWORK_INSTALL_TIMEOUTS = Object.freeze({
     idleMs: 5 * 60_000,
 });
 
+/** A local records fallback is ready after a short, evidence-producing install attempt. */
+export const LOCAL_RECORDS_FALLBACK_INSTALL_TIMEOUTS = Object.freeze({
+    absoluteMs: 75_000,
+    idleMs: 30_000,
+});
+
+export function installTimeoutsForRecordsRecovery(fallbackEligible: boolean) {
+    return fallbackEligible ? LOCAL_RECORDS_FALLBACK_INSTALL_TIMEOUTS : REACT_NETWORK_INSTALL_TIMEOUTS;
+}
+
+/** A failed bounded records install is already sufficient evidence for its static fallback. */
+export function shouldRepairInterruptedNativeBuildTools(fallbackEligible: boolean, installExit: number) {
+    return installExit !== 0 && !fallbackEligible;
+}
+
 export function isExternalIntegrationArtifact(file: string): boolean {
     return file === 'src/integrations/externalApi.js'
         || file === 'src/integrations/externalApi.css'
@@ -6601,6 +6616,12 @@ Use the actual definitions above. Do not rewrite these files or implement persis
             if (r.timedOut) return -2;
             return r.exitCode as number;
         };
+        const dependencyFreeRecordsFallback = canBuildDependencyFreeRecordsApp(runBp, {
+            hasBackend: Boolean(apiEntry),
+            hasExternalIntegration: Boolean(externalIntegration),
+            hasWorkflow: Boolean(workflowContract),
+        });
+        const installTimeouts = installTimeoutsForRecordsRecovery(dependencyFreeRecordsFallback);
         if (!noInstall) {
             // Through the Single Execution Authority — a direct spawn here
             // BLOCKED STARTUP on the user's machine (ExecutionEnforcer).
@@ -6723,7 +6744,7 @@ Use the actual definitions above. Do not rewrite these files or implement persis
                     '--cache', installCache,
                     '--fetch-retries=0', '--fetch-timeout=10000',
                 ],
-                    REACT_NETWORK_INSTALL_TIMEOUTS.absoluteMs, REACT_NETWORK_INSTALL_TIMEOUTS.idleMs);
+                    installTimeouts.absoluteMs, installTimeouts.idleMs);
                 if (inst === 0 && !hasUsableReactDependencyTree(proj)) {
                     // npm 11 can install dependencies successfully while
                     // quarantining lifecycle scripts. Vite then exists but
@@ -6747,7 +6768,7 @@ Use the actual definitions above. Do not rewrite these files or implement persis
                     term('npm exited cleanly but the JavaScript toolchain is incomplete — performing one clean bounded reinstall');
                     inst = await cleanReinstallReactDependencies(proj, run);
                 }
-                if (inst !== 0) {
+                if (shouldRepairInterruptedNativeBuildTools(dependencyFreeRecordsFallback, inst)) {
                     const interruptedTools = interruptedWindowsNativeTools(proj);
                     if (interruptedTools.length) {
                         term(`npm stopped with incomplete native package(s): ${interruptedTools.join(', ')} — repairing only those trusted platform packages`);
@@ -6763,6 +6784,8 @@ Use the actual definitions above. Do not rewrite these files or implement persis
                             term('dependencies: interrupted native packages repaired and the complete toolchain verified');
                         }
                     }
+                } else if (inst !== 0 && dependencyFreeRecordsFallback) {
+                    term('npm did not prepare React inside the local recovery budget — skipping native package repair before the dependency-free records fallback');
                 }
                 if (inst === 0 && !hasUsableReactDependencyTree(proj)) {
                     // The network install can fetch every optional platform
@@ -6909,11 +6932,7 @@ Use the actual definitions above. Do not rewrite these files or implement persis
 
         if (built) {
             artifactMode = 'react';
-        } else if (!noInstall && installExit !== null && canBuildDependencyFreeRecordsApp(runBp, {
-            hasBackend: Boolean(apiEntry),
-            hasExternalIntegration: Boolean(externalIntegration),
-            hasWorkflow: Boolean(workflowContract),
-        })) {
+        } else if (!noInstall && installExit !== null && dependencyFreeRecordsFallback) {
             try {
                 const artifact = writeDependencyFreeRecordsBundle(proj, runBp, artifactIsAr);
                 built = fs.existsSync(artifact);

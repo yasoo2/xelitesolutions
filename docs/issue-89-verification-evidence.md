@@ -229,3 +229,45 @@ browser connector remained unavailable, so the next live camel-record retry
 must inspect the served fallback in the visible Joe browser and exercise valid
 and invalid form input, persistence, edit, deletion, CSV export, and a mobile
 viewport before it can count as completed UAT.
+
+## 2026-09-22 Economical Offline Records UAT
+
+The camel-record scenario was rerun only after each newly observed root cause
+was corrected. It showed that a fallback-eligible records application still
+inherited the normal five-minute idle allowance and, after that timeout, could
+attempt an unnecessary native `esbuild` repair. The local recovery path now has
+one 75-second absolute / 30-second idle install budget and skips native package
+repair when that bounded attempt fails. Ordinary React projects retain their
+existing install and repair behavior.
+
+The same live run exposed a second boundary error: `quality_run` tried
+`npm run build` after a deliberately dependency-free records artifact had been
+written, then failed because Vite was not installed. The quality tool now marks
+`build` passed only after it verifies the exact `dist/index.html` marker
+`joe-artifact-mode=static-records`; an unmarked `dist` continues to run its
+normal build script and fail honestly. The final local canonical run reached
+the completed `react_project` task, passed `quality_run` (`test=passed`,
+`build=passed`), and started `project_run` at `http://127.0.0.1:4300/`.
+
+Provider availability also exposed an acceptance-cost issue. A records
+collection phrase such as `سجل لتسجيل بيانات الناقة` is now proven directly
+only when a real records form plus local persistence exists; a data-collection
+phrase without the register verb also requires its name in generated content.
+The focused test proves this path without a provider call. This is not a
+blanket acceptance bypass.
+
+Direct UAT was completed in the Codex in-app browser at
+`http://127.0.0.1:4300/`: the Arabic interface showed no blank preview square;
+a camel record was created, found by search, edited from weight 420 to 430,
+and still existed after reload. Submitting blank required fields exposed both
+the native Arabic invalid-input message and the in-app validation message. At
+390px the form stacked cleanly with no overlap; the data table retained a
+bounded horizontal scroll. The preview remains open in the in-app browser.
+
+Joe's own browser watcher was not attached to that session, so its pipeline
+correctly reported visual QA as not performed and did not claim delivery. This
+manual in-app-browser evidence closes the observed visual defect but does not
+turn the watcher integration into a passing automated Joe Browser QA result.
+Focused evidence after this batch: records acceptance (29 tests with the
+new case), quality-run evidence (6 tests), dependency-free records recovery
+(3 focused tests), TypeScript no-emit, and `git diff --check` all passed.

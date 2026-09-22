@@ -10,7 +10,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
-import { ReactProjectTool, PROJECT_DIR_NAME_MAX_LENGTH, REACT_NETWORK_INSTALL_TIMEOUTS, applyBundledPhotographyFallback, canBuildDependencyFreeRecordsApp, cleanReinstallReactDependencies, findBrokenNativeBuildTool, hasUsableReactDependencyTree, heroSecondaryDestination, interruptedWindowsNativeTools, nativeBuildToolRepairSpec, portableViteBuildArgs, repairQuarantinedEsbuildInstall, repairRecordsViewBlankImport, repairRecordsViewToggleControl, repairRecordsViewVisualBaseline, requestDerivedRecordsPresentation, requestDrivenServiceProducts, reuseLocalReactDependencies, scopedNpmCache, withoutViteConfigForBuild, writeDependencyFreeRecordsBundle } from '../modules/tools/definitions/ReactProjectTool';
+import { ReactProjectTool, PROJECT_DIR_NAME_MAX_LENGTH, REACT_NETWORK_INSTALL_TIMEOUTS, LOCAL_RECORDS_FALLBACK_INSTALL_TIMEOUTS, applyBundledPhotographyFallback, canBuildDependencyFreeRecordsApp, cleanReinstallReactDependencies, findBrokenNativeBuildTool, hasUsableReactDependencyTree, heroSecondaryDestination, installTimeoutsForRecordsRecovery, interruptedWindowsNativeTools, nativeBuildToolRepairSpec, portableViteBuildArgs, repairQuarantinedEsbuildInstall, repairRecordsViewBlankImport, repairRecordsViewToggleControl, repairRecordsViewVisualBaseline, requestDerivedRecordsPresentation, requestDrivenServiceProducts, reuseLocalReactDependencies, scopedNpmCache, shouldRepairInterruptedNativeBuildTools, withoutViteConfigForBuild, writeDependencyFreeRecordsBundle } from '../modules/tools/definitions/ReactProjectTool';
 import { fileAppStoreJs } from '../modules/tools/definitions/react-app-templates';
 import { ApiProjectTool } from '../modules/tools/definitions/ApiProjectTool';
 import { ScaffoldProjectTool } from '../modules/tools/definitions/SystemTools';
@@ -94,6 +94,21 @@ describe('dependency-free local records recovery', () => {
         } finally {
             fs.rmSync(root, { recursive: true, force: true });
         }
+    });
+
+    it('uses a short single install budget only when the local records fallback is eligible', () => {
+        expect(installTimeoutsForRecordsRecovery(true)).toBe(LOCAL_RECORDS_FALLBACK_INSTALL_TIMEOUTS);
+        expect(LOCAL_RECORDS_FALLBACK_INSTALL_TIMEOUTS.idleMs).toBe(30_000);
+        expect(LOCAL_RECORDS_FALLBACK_INSTALL_TIMEOUTS.absoluteMs).toBe(75_000);
+        expect(LOCAL_RECORDS_FALLBACK_INSTALL_TIMEOUTS.absoluteMs).toBeLessThan(REACT_NETWORK_INSTALL_TIMEOUTS.idleMs);
+        expect(installTimeoutsForRecordsRecovery(false)).toBe(REACT_NETWORK_INSTALL_TIMEOUTS);
+    });
+
+    it('does not spend another network repair attempt after a failed local records install', () => {
+        expect(shouldRepairInterruptedNativeBuildTools(true, -2)).toBe(false);
+        expect(shouldRepairInterruptedNativeBuildTools(true, 1)).toBe(false);
+        expect(shouldRepairInterruptedNativeBuildTools(false, 1)).toBe(true);
+        expect(shouldRepairInterruptedNativeBuildTools(false, 0)).toBe(false);
     });
 });
 

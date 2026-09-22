@@ -115,6 +115,20 @@ describe('records acceptance does not depend on a model to read explicit code', 
     expect(judged.map(item => item.verdict)).toEqual(['met', 'met', 'met', 'met', 'met']);
   });
 
+  it('proves a requested Arabic records collection from its executable contract without a provider', async () => {
+    const arabicRecords = source + `
+      const content = { title: 'بيانات الناقة', entityOne: 'بيانات الناقة' };
+    `;
+    const provider = jest.fn(async () => { throw new Error('provider must not be called'); });
+    const judged = await verifyNamed([
+      { id: 'register', text: 'سجل لتسجيل بيانات الناقة', quote: 'سجل لتسجيل بيانات الناقة' },
+      { id: 'camel-data', text: 'بيانات الناقة', quote: 'بيانات الناقة' },
+    ], arabicRecords, true, provider);
+
+    expect(judged.map(item => item.verdict)).toEqual(['met', 'met']);
+    expect(provider).not.toHaveBeenCalled();
+  });
+
   it('does not certify a requested capability without its implementation contract', async () => {
     const judged = await verifyNamed([requirements[1]], source.replace('minExclusive ? value <= field.min : value < field.min', 'value < field.min'), false, async () => {
       throw new Error('provider unavailable');
