@@ -26,8 +26,10 @@
 import { heAskedForATable } from '../core/design/app-blueprints';
 import { fileRecordsAppJsx, fileAppContentJs } from '../modules/tools/definitions/react-app-templates';
 import { blueprintFor } from '../core/design/app-blueprints';
+import { apiColumnsForRequest } from '../modules/tools/definitions/ApiProjectTool';
 
 const REQUEST = 'اعمل جدول مبيعات فيه اسم الصنف والكمية والسعر ولا تقبل سعرًا صفرًا';
+const ACCUSATIVE_INVENTORY_REQUEST = 'ابنِ تطبيق مخزون عربي باسم مركز المخزون. أريد جدولاً للمواد مع بحث وتصفية حسب الحالة، ونموذج إضافة فيه اسم المادة والكمية والسعر والفئة، ونافذة تفاصيل وتعديل.';
 
 describe('the shape is read from the sentence', () => {
     it('«جدول» plus named columns is a table', () => {
@@ -83,5 +85,33 @@ describe('and it reaches the app that is written to his disk', () => {
         const table = src.slice(src.indexOf('<table'), src.indexOf('</table>'));
         expect(table.length).toBeGreaterThan(200);
         expect(table).not.toContain('primary.key');
+    });
+
+    it('keeps an accusative Arabic table request as a usable table with its requested status filter and detail action', () => {
+        const inventory: any = blueprintFor('inventory' as any, ACCUSATIVE_INVENTORY_REQUEST, true);
+        const content = fileAppContentJs(inventory, {
+            brand: 'مركز المخزون', isArabic: true, storeKey: 'inventory', sourceRequest: ACCUSATIVE_INVENTORY_REQUEST,
+        } as any);
+        const source = fileRecordsAppJsx(true);
+        const table = source.slice(source.indexOf('<table'), source.indexOf('</table>'));
+
+        expect(heAskedForATable(ACCUSATIVE_INVENTORY_REQUEST, 4)).toBe(true);
+        expect(inventory.entityMany).toBe('المواد');
+        expect(inventory.asTable).toBe(true);
+        expect(inventory.fields).toEqual(expect.arrayContaining([
+            expect.objectContaining({ label: 'اسم المادة' }),
+            expect.objectContaining({ label: 'الكمية' }),
+            expect.objectContaining({ label: 'السعر' }),
+            expect.objectContaining({ label: 'الفئة' }),
+            expect.objectContaining({ label: 'الحالة' }),
+        ]));
+        expect(inventory.statusField).toBe('status');
+        expect(inventory.fields.find(field => field.key === 'status')).toMatchObject({
+            type: 'select', options: ['جديد', 'قيد التنفيذ', 'مكتمل'],
+        });
+        expect(apiColumnsForRequest(ACCUSATIVE_INVENTORY_REQUEST).map(column => column.key)).toContain('status');
+        expect(inventory.filterFields).toContain('status');
+        expect(content).toContain('asTable: true');
+        expect(table).toContain('setSelected(row)');
     });
 });

@@ -89,8 +89,10 @@ export interface FormResult {
     label: string;
     fields: number;
     filled: number;
-    /** 'submitted' | 'validation' | 'reload' | '' (nothing happened at all). */
+    /** 'submitted' | 'validation' | 'refused' | 'reload' | '' (nothing happened at all). */
     effect: string;
+    /** Route and viewport where this form was actually exercised. */
+    scope?: string;
     /** Semantic fields whose declared type and invalid-value rejection were exercised. */
     semanticFieldsTested?: number;
 }
@@ -401,7 +403,7 @@ function findForms(o: { maxForms: number; maxFields: number }) {
         const persistenceContext = [
             label, f.getAttribute('aria-label'), f.getAttribute('name'), f.id, f.className, f.getAttribute('action'),
         ].filter(Boolean).join(' ');
-        const expectsPersistence = /\b(?:add|create|save|order|register|book|reserve|new record)\b|أضف|اضف|إنشاء|انشاء|حفظ|طلب|تسجيل|حجز|احجز/i.test(persistenceContext);
+        const expectsPersistence = expectsPersistentRecord(persistenceContext);
         forms.push({ sel: `[data-joe-form="${fid}"]`, label, fields, hasSubmit: !!submit, submitSel, expectsPersistence });
     }
     return forms;
@@ -479,6 +481,42 @@ function changed(a: any, b: any): string {
     return '';
 }
 
+/** A visible, form-local refusal proves the submit path responded safely. */
+export function isVisibleFormRefusal(text: string): boolean {
+    return /\b(?:unauthori[sz]ed|forbidden|access denied|permission denied|invalid (?:email|password|credentials)|please sign[ -]?in|sign[ -]?in (?:to continue|required)|could not save|unable to save)\b|لم\s+يُ?حفظ|سج[ّ]?ل\s+الدخول|غير\s+صحيح(?:ة)?|لا\s+تملك\s+صلاحية|تعذ[ّ]?ر|مرفوض|خطأ/i.test(String(text || ''));
+}
+
+/** A newly visible local success or error is proof that submit reached the product. */
+export function hasNewVisibleFormFeedback(before: string, after: string): boolean {
+    return String(after || '').trim().length > 0 && String(after || '').trim() !== String(before || '').trim();
+}
+/** Only a data-creation form, not sign-in, should be required to create a durable row. */
+export function expectsPersistentRecord(context: string): boolean {
+    const text = String(context || '');
+    const authentication = /\b(?:sign[ -]?in|log[ -]?in|login|authenticate)\b|سج[ّ]?ل\s+الدخول|تسجيل\s+الدخول|دخول\s+(?:الحساب|إلى\s+الحساب)/i;
+    if (authentication.test(text)) return false;
+    return /\b(?:add|create|save|order|register|book|reserve|new record)\b|أضف|اضف|إنشاء|انشاء|حفظ|طلب|تسجيل|حجز|احجز/i.test(text);
+}
+
+async function formFeedback(page: any, selector: string): Promise<string> {
+    return page.evaluate((sel: string) => {
+        const form = document.querySelector(sel) as HTMLElement | null;
+        if (!form) return '';
+        const scope = form.closest('[role="dialog"],section,article') || form.parentElement || form;
+        const visible = (el: Element) => {
+            const rect = (el as HTMLElement).getBoundingClientRect();
+            const style = window.getComputedStyle(el);
+            return rect.width > 1 && rect.height > 1 && style.visibility !== 'hidden' && style.display !== 'none';
+        };
+        return Array.from(scope.querySelectorAll('[role="alert"],[role="status"],[aria-live],.error,.err,.auth-error,.notice,.feedback,[data-error],[data-status]'))
+            .filter(visible)
+            .map(el => (el as HTMLElement).innerText.trim())
+            .filter(Boolean)
+            .join('\n')
+            .slice(0, 1200);
+    }, selector).catch(() => '');
+}
+
 /**
  * Open the page, press everything, report what actually responded.
  *
@@ -535,6 +573,7 @@ export async function auditBehaviour(fileUrl: string, opts?: {
     const controls: ControlResult[] = [];
     const findings: BehaviourFinding[] = [];
     const metrics: Record<string, any> = {};
+    let formEvidence: FormResult[] = [];
     const jsErrors: string[] = [];
 
     let detach = () => { };
@@ -587,6 +626,7 @@ export async function auditBehaviour(fileUrl: string, opts?: {
         const probe = await probeControls(page);
         controls.push(...probe.controls);
         Object.assign(metrics, probe.metrics);
+        formEvidence = probe.forms || [];
 
         metrics.jsErrors = jsErrors.length;
         opts?.onProgress?.('inspected');
@@ -604,7 +644,7 @@ export async function auditBehaviour(fileUrl: string, opts?: {
     }
     if (!borrowed && browser) { try { await browser.close(); } catch { } }
 
-    const judged = judgeBehaviour(controls, metrics, jsErrors);
+    const judged = judgeBehaviour(controls, metrics, jsErrors, formEvidence);
     findings.push(...judged.findings);
     return { ran: true, score: judged.score, findings, controls, metrics };
 }
@@ -656,6 +696,10 @@ export interface ProbeOptions {
      * accused twice.
      */
     seenForms?: Set<string>;
+    /** Stable route/viewport identity for form evidence. */
+    formScope?: string;
+    /** Route identity used when correlating this evidence with a tested control. */
+    formContext?: string;
     /** Called before every visible pointer or input action in strict QA. */
     isEyeOpen?: () => boolean;
     onProgress?: (m: string) => void;
@@ -1058,7 +1102,8 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                 // follow-up action (delete, cancel, checkout, edit).
                 opts?.onProgress?.('forms');
                 const r = await probeForms(page, {
-                    eyes, budgetMs: Math.max(6000, deadline - Date.now()), seenForms: opts?.seenForms, isEyeOpen: eyeIsOpen,
+                    eyes, budgetMs: Math.max(6000, deadline - Date.now()), seenForms: opts?.seenForms,
+                    formScope: opts?.formScope, formContext: opts?.formContext, isEyeOpen: eyeIsOpen,
                 });
                 filled = r.forms;
                 Object.assign(metrics, r.metrics);
@@ -1070,6 +1115,12 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                     Number(metrics.formsWithoutValidation || 0) - Number(r.metrics.formsEmptyRejected || 0));
             } catch { /* a form that fights back is a finding, not a crash */ }
         }
+
+        // A form probe owns submission in this visible state. Repeating the
+        // same submit can be idempotent feedback or duplicate a real write.
+        const measuredSubmits = new Set(filled
+            .filter(form => form.effect === 'submitted' || form.effect === 'validation' || form.effect === 'refused')
+            .map(form => form.label));
 
         const initialKeys = new Set(list.map(controlKey));
         const discoveredKeys = new Set(initialKeys);
@@ -1100,6 +1151,7 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                 // The fresh catalogue and stable key prevent blind repetition.
                 .find(c => !exploredKeys.has(`${visibleStateKey}|${controlKey(c)}`)
                     && (c.stateful || !successfulSemanticKeys.has(`${c.kind}|${c.label}|${c.ordinal ?? 0}`))
+                    && !(c.kind === 'submit' && measuredSubmits.has(c.label))
                     && (!initialKeys.has(controlKey(c)) || c.stateful));
             if (!candidate) break;
             opts?.onProgress?.(`state:${candidate.kind}:${candidate.label}`);
@@ -1458,7 +1510,7 @@ export function semanticTypeForField(tag: string, name: string): 'email' | 'tel'
  */
 export async function probeForms(
     page: any,
-    opts?: { eyes?: AuditEyes; budgetMs?: number; maxForms?: number; seenForms?: Set<string>; isEyeOpen?: () => boolean },
+    opts?: { eyes?: AuditEyes; budgetMs?: number; maxForms?: number; seenForms?: Set<string>; formScope?: string; formContext?: string; isEyeOpen?: () => boolean },
 ): Promise<{ forms: FormResult[]; metrics: Record<string, any> }> {
     const eyes = opts?.eyes || new AuditEyes({});
     const deadline = Date.now() + Math.max(4000, opts?.budgetMs ?? 30_000);
@@ -1466,7 +1518,7 @@ export async function probeForms(
     const metrics: Record<string, any> = {
         formsFilled: 0, fieldsFilled: 0, formsDeadSubmit: 0, formsDeadSubmitEvidence: [], formsNotReached: 0, formsNotReachedEvidence: [], formsValidated: 0, formsReloaded: 0,
         formsEmptyRejected: 0,
-        formsPersisted: 0, formsPersistenceUnproven: 0, qaRecordsDeleted: 0, qaRecordsNotDeleted: 0,
+        formsPersisted: 0, formsPersistenceUnproven: 0, formsRefused: 0, qaRecordsDeleted: 0, qaRecordsNotDeleted: 0,
         semanticFieldsTested: 0, semanticValidationFailures: 0, semanticValidationEvidence: [],
     };
     const runNonce = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
@@ -1513,7 +1565,7 @@ export async function probeForms(
         const f = matches[0];
         // Its identity, not its position: the same form on a second route is
         // the same form, and it has already been filled in and sent.
-        const key = `${f.label}|${f.fields.map((x: any) => x.type).join(',')}`;
+        const key = `${opts?.formScope || 'default'}|${f.label}|${f.fields.map((x: any) => x.type).join(',')}`;
         if (opts?.seenForms) {
             if (opts.seenForms.has(key)) { metrics.formsRepeated = (metrics.formsRepeated || 0) + 1; continue; }
             opts.seenForms.add(key);
@@ -1601,6 +1653,7 @@ export async function probeForms(
         let effect = '';
         try {
             const before = await page.evaluate(snapshot).catch(() => null);
+            const feedbackBefore = await formFeedback(page, f.sel);
             const stillInvalid = await page.evaluate((sel: string) => {
                 const form = document.querySelector(sel) as HTMLFormElement | null;
                 return !!form && typeof form.checkValidity === 'function' && !form.checkValidity();
@@ -1642,17 +1695,25 @@ export async function probeForms(
                 effect = 'reload';
                 await page.goBack({ timeout: 5000 }).catch(() => { });
                 await page.waitForTimeout(250);
-            } else if (!effect && stillInvalid) {
-                // The browser refused it — which is the behaviour that was asked
-                // for, not a dead form.
-                effect = 'validation';
-            } else if (effect) {
-                effect = 'submitted';
+            } else {
+                const feedbackAfter = await formFeedback(page, f.sel);
+                if (hasNewVisibleFormFeedback(feedbackBefore, feedbackAfter)) {
+                    // A server may reject an unauthenticated mutation. That is a
+                    // real, visible outcome, not evidence that the submit is dead.
+                    effect = isVisibleFormRefusal(feedbackAfter) ? 'refused' : 'submitted';
+                } else if (!effect && stillInvalid) {
+                    // The browser refused it — which is the behaviour that was asked
+                    // for, not a dead form.
+                    effect = 'validation';
+                } else if (effect) {
+                    effect = 'submitted';
+                }
             }
         } catch { /* the form is what is under test */ }
 
         if (effect === 'submitted') { /* counted by presence in the list */ }
         else if (effect === 'validation') metrics.formsValidated++;
+        else if (effect === 'refused') metrics.formsRefused++;
         else if (effect === 'reload') metrics.formsReloaded++;
         else if (f.fields.length) {
             metrics.formsDeadSubmit++;
@@ -1719,7 +1780,7 @@ export async function probeForms(
                 }
             }
         }
-        out.push({ label: f.label, fields: f.fields.length, filled: filledCount, effect, semanticFieldsTested });
+        out.push({ label: f.label, fields: f.fields.length, filled: filledCount, effect, semanticFieldsTested, scope: opts?.formContext || (opts?.formScope ? opts.formScope : '') });
     }
     return { forms: out, metrics };
 }
@@ -1731,6 +1792,7 @@ export function judgeBehaviour(
     controls: ControlResult[],
     metrics: Record<string, any>,
     jsErrors: string[] = [],
+    forms: FormResult[] = [],
 ): { score: number; findings: BehaviourFinding[] } {
     const findings: BehaviourFinding[] = [];
     /**
@@ -1777,7 +1839,8 @@ export function judgeBehaviour(
     const judgedControls = [...evidence.values()];
     const pressable = judgedControls.filter(c => c.kind !== 'anchor' && c.effect !== 'not found');
     const unreachable = judgedControls.filter(c => c.kind !== 'anchor' && c.effect === 'not found');
-    const dead = pressable.filter(c => !c.worked);
+    const measuredFormSubmits = new Set(forms.filter(form => form.effect === 'submitted' || form.effect === 'validation' || form.effect === 'refused').map(form => `${form.scope || ''}|${form.label}`));
+    const dead = pressable.filter(c => !c.worked && !(c.kind === 'submit' && measuredFormSubmits.has(`${c.context || ''}|${c.bare || c.label}`)));
     metrics.pressed = pressable.length;
     metrics.dead = dead.length;
     metrics.unreachable = unreachable.length;

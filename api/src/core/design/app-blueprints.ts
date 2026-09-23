@@ -1030,7 +1030,7 @@ export function blueprintFor(kind: AppKind, request: string, isAr: boolean): App
         // of the archetype's canonical fields exactly, retain that field's
         // native contract too (for example the expense category select and
         // the required amount).
-        const explicitColumns = requestedColumns.map(field => {
+        const explicitColumns = ensureRequestedStatusFilterField(request, requestedColumns.map(field => {
             const native = base.fields.find(candidate => candidate.key === field.key);
             if (!native) return field;
             return {
@@ -1041,7 +1041,7 @@ export function blueprintFor(kind: AppKind, request: string, isAr: boolean): App
                 ...(field.required || native.required ? { required: true } : {}),
                 ...(field.primary || native.primary ? { primary: true } : {}),
             };
-        });
+        }), isAr);
         const cols = columnsAnywhereInHisRequest(request) || [];
         const subject = recordedSubject(request);
         const productTitle = namedProductTitle(request);
@@ -1068,13 +1068,18 @@ export function blueprintFor(kind: AppKind, request: string, isAr: boolean): App
             ...(wantsProgress && flag && doneValue
                 ? [{ label: L('نسبة التقدم', 'Progress'), kind: 'progress', field: flag.key, equals: doneValue } as AppMetric] : []),
         ];
+        const filterFields = requestedFilterFields(request, explicitColumns);
+        const requestedStatus = requestsStatusFilter(request)
+            ? explicitColumns.find(field => /status|state|مرحلة|حالة|وضع/iu.test(String(field.label || '')))
+            : undefined;
         return {
             ...base,
             fields: explicitColumns,
+            asTable: heAskedForATable(request, explicitColumns.length),
             metrics,
-            statusField: undefined,
+            statusField: requestedStatus?.key,
             doneValue: undefined,
-            filterFields: requestedFilterFields(request, explicitColumns),
+            filterFields,
             /**
              *  AND NO PARENT HE NEVER NAMED.
              *
@@ -2255,7 +2260,7 @@ function everyItemIsADefiniteName(items: string[]): boolean {
  *  instead of asking about a website — and a second copy would drift the
  *  first time one of them learned a word the other did not.
  */
-export const RECORD_CONTAINER = /(جدول|جداول|قائمة|كشف|سجل|سجلّ|\btable\b|\blist\b|\bsheet\b|\bboard\b|\bqueue\b|\bledger\b|\bregister\b|\btracker\b|\bdirectory\b|\bregistry\b|\bcatalog(?:ue)?\b)/iu;
+export const RECORD_CONTAINER = /(?:جدول|قائمة|كشف|سجل|سجلّ)(?:اً|ًا|ا)?|جداول|\btable\b|\blist\b|\bsheet\b|\bboard\b|\bqueue\b|\bledger\b|\bregister\b|\btracker\b|\bdirectory\b|\bregistry\b|\bcatalog(?:ue)?\b/iu;
 
 /**
  *  WHERE THE SENTENCE ENDS AND THE FIRST COLUMN BEGINS.
@@ -3419,7 +3424,7 @@ export function heAskedForATable(request: string, fieldCount: number): boolean {
      */
     const namedTheShape = words(said)
         .map(w => normalise(w).replace(/^(?:وال|فال|بال|كال|[وفبكل]ال|ال)/, ''))
-        .some(w => w === 'جدول' || w === 'جداول')
+        .some(w => w === 'جدول' || w === 'جدولا' || w === 'جداول')
         || /\b(table|spreadsheet)\b/i.test(said)
         || namedDataGrid;
     return namedTheShape && fieldCount >= 2;
@@ -3678,6 +3683,28 @@ function weatherFeatureCovered(feature: string, evidence: string): boolean {
     return ENGINE_COVERS.weather.test(feature);
 }
 
+function requestsStatusFilter(requestRaw: string): boolean {
+    const request = String(requestRaw || '').replace(/[ً-ْـ]/g, '').toLowerCase();
+    return /(?:status\s+filter|filter\s+(?:for|by)\s+status|فلتر\s*الحالة|فلترة\s*(?:حسب|على)\s*الحالة|تصفية\s*(?:حسب|على)\s*الحالة)/iu.test(request);
+}
+
+function ensureRequestedStatusFilterField(requestRaw: string, fields: AppField[], isAr: boolean): AppField[] {
+    if (!requestsStatusFilter(requestRaw)) return fields;
+    if (fields.some(field => /status|state|مرحلة|حالة|وضع/iu.test(String(field.label || '')))) return fields;
+    let key = 'status';
+    for (let index = 2; fields.some(field => field.key === key); index += 1) key = `status${index}`;
+    // A status filter with no choices is an empty control. The request named
+    // the behavior but not a domain taxonomy, so provide only the minimal,
+    // editable lifecycle used by the records engine. A stated field/options
+    // always wins above and is never replaced here.
+    return [...fields, {
+        key,
+        label: isAr ? 'الحالة' : 'Status',
+        type: 'select',
+        options: isAr ? ['جديد', 'قيد التنفيذ', 'مكتمل'] : ['New', 'In progress', 'Completed'],
+    }];
+}
+
 /** A request-derived filter contract, shared by every records-shaped app. */
 export function requestedFilterFields(requestRaw: string, fields: Array<{ key: string; label: string; role?: string; type?: string }>): string[] {
     const request = String(requestRaw || '').replace(/[ً-ْـ]/g, '').toLowerCase();
@@ -3685,10 +3712,9 @@ export function requestedFilterFields(requestRaw: string, fields: Array<{ key: s
     // “status filter” is a complete request even when no value follows
     // “filter”. Bind it to the request's status/select field instead of
     // silently returning an empty contract.
-    if (/(?:status\s+filter|filter\s+(?:for|by)\s+status|فلتر\s*الحالة|فلترة\s*(?:حسب|على)\s*الحالة|تصفية\s*(?:حسب|على)\s*الحالة)/iu.test(request)) {
-        const status = fields.find(field => field.role === 'flag'
-            || field.type === 'select'
-            || /status|state|مرحلة|حالة|وضع/iu.test(String(field.label || '')));
+    if (requestsStatusFilter(request)) {
+        const status = fields.find(field => /status|state|مرحلة|حالة|وضع/iu.test(String(field.label || '')))
+            || fields.find(field => field.role === 'flag' || field.type === 'select');
         if (status) keys.push(status.key);
     }
     // Once “status filter” has been handled above, do not let the trailing

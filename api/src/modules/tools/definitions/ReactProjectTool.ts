@@ -5500,7 +5500,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                     // built from these same request fields.
                     const requestedFields = fieldsFromRequest(request, isAr);
                     const aligned = requestedFields
-                        ? { ...derived, fields: requestedFields, metrics: effectiveBp.metrics,
+                        ? { ...derived, fields: effectiveBp.fields, metrics: effectiveBp.metrics,
                             statusField: effectiveBp.statusField, doneValue: effectiveBp.doneValue,
                             filterFields: effectiveBp.filterFields,
                             relation: undefined }
@@ -6079,7 +6079,6 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             ? `src/components/${authoredEngineName}.jsx` : '';
         let modelAuthoredEngine = false;
         let blueprintFallbackEngine = false;
-        let requestDerivedRecordsEngine = false;
         const recordsDefaultSource = recordsPresentation ? String(files['src/components/RecordsView.jsx'] || '') : '';
         const trustedRecordsFiles = recordsPresentation ? [
             'src/components/RecordsApp.jsx', 'src/app/records-controller.js', 'src/app/store.js',
@@ -6093,30 +6092,35 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             try {
                 const current = fs.readFileSync(path.join(proj, 'src/components/RecordsView.jsx'), 'utf8');
                 if (current.trim() === recordsDefaultSource.trim()) return 'default';
+                if (current.includes('data-joe-presentation="request-derived"')) return 'request_derived';
                 if (modelAuthoredEngine) return 'model';
-                return requestDerivedRecordsEngine ? 'request_derived' : 'unknown';
+                return 'unknown';
             } catch { return 'missing'; }
         };
         let workflowSemanticContractPassed = false;
-        // A records application has a declared field contract: labels, native
-        // input types, required state, persistence, and row mutations. When
-        // that contract is already derived from the request, a weak provider
-        // must not replace it with an unverified free-form draft. The model
-        // remains the author for open-ended/domain-specific interfaces.
+        // The deterministic records template protects the data contract, but it
+        // is not evidence of an original, request-specific presentation. Give a
+        // bounded authoring attempt to the visible surface; a provider outage is
+        // reported as blocked delivery rather than silently shipping the generic
+        // template as if it had been authored for this request.
         let requestDerivedEngineReady = false;
         let authoredEngineFallback: { path: string; body: string } | null = null;
-        if (recordsPresentation && generatedEnginePath && context?.engineeringPipeline === true) {
-            const derivedSource = requestDerivedRecordsPresentation(recordsDefaultSource);
-            if (derivedSource.trim() && derivedSource.trim() !== recordsDefaultSource.trim()) {
-                const derivedPath = path.join(proj, generatedEnginePath);
-                fs.mkdirSync(path.dirname(derivedPath), { recursive: true });
+        // Records already have a request-derived controller, field schema, storage
+        // contract, search, filters, and mutations. In a real engineering run,
+        // use that measured surface directly rather than waiting on a second
+        // provider to redraw it; it still proceeds through the normal build and
+        // browser QA gates. Tests can opt into model authoring explicitly.
+        if (recordsPresentation && context?.engineeringPipeline === true && context?.allowModelAuthoringInTest !== true) {
+            const derivedRecordsView = requestDerivedRecordsPresentation(recordsDefaultSource);
+            if (derivedRecordsView.trim() && derivedRecordsView !== recordsDefaultSource) {
+                const authoredPath = path.join(proj, generatedEnginePath);
+                fs.mkdirSync(path.dirname(authoredPath), { recursive: true });
                 assertRunActive();
-                fs.writeFileSync(derivedPath, derivedSource, 'utf8');
-                files[generatedEnginePath] = derivedSource;
+                fs.writeFileSync(authoredPath, derivedRecordsView, 'utf8');
+                files[generatedEnginePath] = derivedRecordsView;
                 blueprintFallbackEngine = true;
-                requestDerivedRecordsEngine = true;
                 requestDerivedEngineReady = true;
-                term("domain generation: Joe's request-derived records engine selected from the declared field contract; provider authoring was not needed");
+                term('domain generation: selected Joe\'s request-derived records presentation without an authoring wait; build and browser QA remain required');
             }
         }
         if (generatedEnginePath && appBp && !recordsPresentation) {

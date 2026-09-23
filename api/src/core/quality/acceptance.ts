@@ -610,8 +610,8 @@ export function acceptanceFor(request: string): Criterion[] {
         // Delivery instructions constrain Joe's report, not the generated
         // product. Keeping them as product rules created acceptance entries
         // that no application source could ever prove.
-        if (/^(?:do not|don't|never)\s+(?:claim|report|declare|mark|say)\b|^(?:لا|لات)\s+(?:تدع|تدعي|تعلن|تذكر)\b/iu.test(text)) return true;
-        if (/^(?:do not|don't|never)\s+(?:deploy|publish|release|push\s+(?:to\s+)?production)\b|^(?:لا|لات)\s+(?:تنشر|ترفع\s+(?:إلى|الى)?\s*الإنتاج)\b/iu.test(text)) return true;
+        if (/^(?:do not|don't|never)\s+(?:claim|report|declare|mark|say)\b|^(?:لا|لات)\s+(?:تدع|تدعي|تعلن|تذكر)(?=$|[^\p{L}\p{N}_])/iu.test(text)) return true;
+        if (/^(?:do not|don't|never)\s+(?:deploy|publish|release|push\s+(?:to\s+)?production)\b|^(?:لا|لات)\s+(?:تنشر|ترفع\s+(?:إلى|الى)?\s*الإنتاج)(?=$|[^\p{L}\p{N}_])/iu.test(text)) return true;
         if (rule.kind !== 'change') return false;
         const asksForFilters = requestedFilters.length > 0
             && /\bfilters?\b|تصف(?:ية|يات)|فلتر/iu.test(text);

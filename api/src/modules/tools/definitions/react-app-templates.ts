@@ -1970,6 +1970,7 @@ export default ` : ''}function RecordsView({ content, controller }) {
                       {rel ? <td>{parentName(row)}</td> : null}
                       <td className="row-actions">
                         <button className="btn tiny" type="button" disabled={mutationBusy} onClick={() => edit(row)}>{${T('تعديل', 'Edit')}}</button>
+                        <button className="btn tiny ghost" type="button" disabled={mutationBusy} onClick={() => setSelected(row)}>{${T('تفاصيل', 'Details')}}</button>
                         <button className="btn tiny danger" type="button" disabled={mutationBusy} onClick={() => remove(row)}>{${T('حذف', 'Delete')}}</button>
                       </td>
                     </tr>

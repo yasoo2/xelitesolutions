@@ -1048,7 +1048,9 @@ function deterministicSourceVerdict(r: NamedRequirement, source: string): Judged
      * judge is slow or unavailable. Each proof below requires the behaviour's
      * implementation shape, rather than matching its words in generated copy.
      */
-    const hasRecordForm = /function\s+RecordsApp|function\s+.*Records?/iu.test(src)
+    const hasRecordsComponent = /function\s+\w*Record\w*\s*\(/iu.test(src)
+        || /(?:export\s+)?const\s+\w*Record\w*\s*=\s*(?:\([^)]*\)\s*)?=>/iu.test(src);
+    const hasRecordForm = hasRecordsComponent
         && /<form\b[^>]*onSubmit\s*=|onSubmit\s*=\s*\{submit/iu.test(src)
         && /setRows\s*\(/iu.test(src)
         && /fields\s*\.map\s*\(/iu.test(src);
@@ -1099,6 +1101,20 @@ function deterministicSourceVerdict(r: NamedRequirement, source: string): Judged
     if (/(?:add|create)\s+(?:an?\s+)?(?:expense|record|entry)|إضافة\s+(?:مصروف|سجل)/iu.test(text)
         && hasRecordForm && hasSemanticRecordFields) {
         return { ...r, verdict: 'met', why: 'the records form creates rows with a primary field plus number, category, and date inputs' };
+    }
+    const hasRecordCoreFields = /primary\s*:\s*true/iu.test(src)
+        && /type\s*:\s*['"]number['"]/iu.test(src)
+        && /type\s*:\s*['"](?:select|text)['"]/iu.test(src);
+    const requestsAddRecordForm = /(?:add|create)\s+(?:an?\s+)?(?:form|modal|dialog|model)\b|(?:form|modal|dialog|model)\s+(?:for\s+)?(?:add|create)|(?:نموذج|نافذة)\s+(?:إضافة|اضافة)/iu.test(text);
+    if (requestsAddRecordForm && hasRecordForm && hasRecordCoreFields) {
+        return { ...r, verdict: 'met', why: 'the generated records form provides the requested semantic fields and submits through the owned record controller' };
+    }
+    const requestsDetailsAndEdit = /(?:details?|edit)\s+(?:window|modal|dialog)|(?:window|modal|dialog)\s+(?:for\s+)?(?:details?|edit)|(?:نافذة|نموذج)\s+(?:التفاصيل|تفاصيل|تعديل)/iu.test(text);
+    const hasRecordDetailsAndEdit = /setSelected\s*\(/iu.test(src)
+        && /setEditing\s*\(/iu.test(src)
+        && /(?:role\s*=\s*['"]dialog['"]|record-modal)/iu.test(src);
+    if (requestsDetailsAndEdit && hasRecordDetailsAndEdit) {
+        return { ...r, verdict: 'met', why: 'the generated records view opens an accessible details dialog and enters edit state for the selected row' };
     }
     if (/(?:non[- ]?numeric|non[- ]?positive|positive\s+(?:amount|number)|رقمي|موجب|غير\s+صالح)/iu.test(text)
         && hasPositiveNumberGuard) {

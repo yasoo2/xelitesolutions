@@ -1102,10 +1102,12 @@ export async function auditBuiltApp(
         // per-page minimum after the deadline: on a route-heavy app that made
         // the browser appear frozen for minutes after "pressing" had started.
         const remainingWalkMs = () => Math.max(0, walkUntil - Date.now());
-        const probeOpts = () => ({
+        const probeOpts = (formScope = 'desktop:/', formContext = '/') => ({
             eyes,
             budgetMs: Math.min(CONTROL_PASS_BUDGET_MS, remainingWalkMs()),
             seenForms,
+            formScope,
+            formContext,
             isEyeOpen: eyeIsOpen,
             // The behavioural probe already knows when it is challenging a
             // field, submitting a form, or entering a newly revealed state.
@@ -1120,7 +1122,7 @@ export async function auditBuiltApp(
         });
         try {
             if (!remainingWalkMs()) return eyeRequiredResult('Browser QA budget ended before the first page');
-            const homeProbe = await probeControls(page, probeOpts());
+            const homeProbe = await probeControls(page, probeOpts('desktop:/', '/'));
             mergeProbe(homeProbe, '/');
             if (opts?.externalApi) {
                 opts?.onProgress?.(`external-api:${opts.externalApi.capability}: validating live request, loading, failure, and recovery`);
@@ -1300,7 +1302,7 @@ export async function auditBuiltApp(
                     dom.smallSel = [...(dom.smallSel || []), ...d2.smallSel];
                 }
                 if (d2.h1s !== 1) brokenRoutes.push(`${r} (h1=${d2.h1s})`);
-                const routeProbe = await probeControls(page, probeOpts());
+                const routeProbe = await probeControls(page, probeOpts(`desktop:${r}`, r));
                 mergeProbe(routeProbe, r);
                 if ((routeProbe.metrics.budgetExhausted || routeProbe.metrics.explorationBudgetExhausted) && !remainingWalkMs()) behaviourMetrics.budgetExhausted = true;
                 if (routeProbe.metrics.eyeLost || !eyeIsOpen()) return eyeRequiredResult();
@@ -1349,6 +1351,8 @@ export async function auditBuiltApp(
                 eyes,
                 budgetMs: Math.min(20_000, remainingWalkMs()),
                 seenForms,
+                formScope: 'جوّال:/',
+                formContext: '/',
                 isEyeOpen: eyeIsOpen,
                 maxControls: 12,
                 isolateBaselineControls: true,
@@ -1401,6 +1405,8 @@ export async function auditBuiltApp(
                         eyes,
                         budgetMs: Math.min(responsiveDeadline - Date.now(), remainingWalkMs()),
                         seenForms,
+                        formScope: `${size.name}:${r}`,
+                        formContext: r,
                         isEyeOpen: eyeIsOpen,
                         maxControls: 12,
                         isolateBaselineControls: true,
@@ -1635,7 +1641,7 @@ export async function auditBuiltApp(
 
         behaviourMetrics.pressed = allControls.filter(c => c.kind !== 'anchor').length;
         behaviourMetrics.dead = allControls.filter(c => c.kind !== 'anchor' && !c.worked).length;
-        const behaviour = judgeBehaviour(allControls, behaviourMetrics, []);
+        const behaviour = judgeBehaviour(allControls, behaviourMetrics, [], allForms);
         behaviour.findings.push(...ui.findings);
 
         const findings: AppAuditFinding[] = [];

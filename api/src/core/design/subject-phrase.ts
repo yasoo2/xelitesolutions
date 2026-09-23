@@ -191,7 +191,7 @@ export function subjectAfterContainer(requestRaw: string): string {
     if (!hit) return '';
     const after = request.slice((hit.index || 0) + hit[0].length).split(EXECUTION_LOCATION)[0];
     //  The subject ends where the list begins.
-    const scope = after.split(/[:：،,؛;.\n]|\s(?:فيه|فيها|به|بها|يحوي|تحوي|يحتوي|تحتوي|with|containing|in|using|on)\s/iu)[0] || '';
+    const scope = after.split(/[:：،,؛;.\n]|\s(?:فيه|فيها|به|بها|يحوي|تحوي|يحتوي|تحتوي|مع|with|containing|in|using|on)\s/iu)[0] || '';
     const words: string[] = [];
     for (const raw of scope.trim().split(/\s+/)) {
         //  «للكتب» is «ل» + «الكتب»: the preposition belonged to his

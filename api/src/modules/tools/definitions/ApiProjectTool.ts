@@ -2600,11 +2600,20 @@ export class ApiProjectTool extends BaseTool {
          */
         const promotedColumns = promoted ? columnsFromFields((promoted as any).fields || []) : [];
         const primaryDesignedColumns = apiPrimaryColumnsForApp(appKind, resource, designed);
-        const columns = isProductivity
+        const selectedColumns = isProductivity
             ? productivityNotesColumns
             : (primaryDesignedColumns.length
                 ? primaryDesignedColumns
                 : (promoted && promotedColumns.length ? promotedColumns : requestColumns));
+        // An inferred primary entity can describe the four data-entry columns
+        // yet omit a requested status filter. Keep the entity-specific schema
+        // for multi-table systems, but carry this explicit behavioral field
+        // into the same API so the frontend never filters a column it cannot
+        // store or return.
+        const requestedStatusColumn = requestColumns.find(column => /^status\d*$/i.test(String(column.key || '')));
+        const columns = requestedStatusColumn && !selectedColumns.some(column => String(column.key || '') === requestedStatusColumn.key)
+            ? [...selectedColumns, requestedStatusColumn]
+            : selectedColumns;
         if (primaryDesignedColumns.length) {
             term(`data model: /api/${resource} uses its finance contract columns — ${primaryDesignedColumns.map(c => c.key).join(', ')}`);
         }

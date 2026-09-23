@@ -187,6 +187,13 @@ describe('an instruction to Joe is not a requirement of the project', () => {
         expect(acceptanceFor(request).filter(c => c.expectedRule).map(c => c.expectedRule?.text)).not.toContain('Do not deploy anything');
     });
 
+    it('keeps an Arabic no-publish instruction out while retaining the requested product work', () => {
+        const request = 'ابنِ تطبيق مخزون عربي مع بحث وتصفية. لا تنشر شيئاً.';
+        const criteria = acceptanceFor(request);
+        expect(criteria.map(c => c.id)).toEqual(expect.arrayContaining(['search', 'filter', 'rtl']));
+        expect(criteria.some(c => c.expectedRule?.text === 'لا تنشر شيئاً')).toBe(false);
+    });
+
     it('preserves product constraints expressed as imperatives, verbatim or paraphrased', async () => {
         const requirements = [
             { text: 'record deletion restricted to its owner', quote: "Ensure users cannot delete another user's records" },
