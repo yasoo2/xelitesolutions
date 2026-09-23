@@ -11,6 +11,11 @@ describe('capability decision tool', () => {
         expect(result.output.receipt.rejected).toEqual(expect.arrayContaining([expect.objectContaining({ id: 'ocr-key-service' })]));
     });
 
+    it('routes public data through a provider-neutral decision before provider discovery', async () => {
+        const result: any = await new CapabilityDecisionTool().execute({ request: 'Choose the least-setup safe route for a weather dashboard.' });
+        expect(result).toMatchObject({ ok: true, output: { receipt: { family: 'public_data', selected: { route: 'public_api', setup: 'ZERO_SETUP' } } } });
+    });
+
     it('asks for exactly one connection action only when external deployment rules it in', async () => {
         const result: any = await new CapabilityDecisionTool().execute({ request: 'Choose a storage route for deployed uploads.', deployment: true });
         expect(result.ok).toBe(true);

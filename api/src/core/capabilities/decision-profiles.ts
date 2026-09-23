@@ -72,6 +72,22 @@ const RELIABILITY_SCORE: Record<Reliability, number> = {
 };
 const MAINTENANCE_SCORE: Record<CapabilityCandidate['maintenance'], number> = { LOW: 0, MEDIUM: 1, HIGH: 3 };
 const MAINTENANCE_ORDER: Record<CapabilityCandidate['maintenance'], number> = { LOW: 0, MEDIUM: 1, HIGH: 2 };
+const FRESH_EVIDENCE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+function hasFreshEvidence(candidate: CapabilityCandidate, now = Date.now()): boolean {
+    const checkedAt = Date.parse(String(candidate.evidenceCheckedAt || ''));
+    return candidate.reliability === 'PROVEN'
+        && Number.isFinite(checkedAt)
+        && checkedAt <= now
+        && now - checkedAt <= FRESH_EVIDENCE_MAX_AGE_MS;
+}
+
+/** A dated claim is not still proven once its evidence has expired. */
+function candidateWithCurrentEvidence(candidate: CapabilityCandidate): CapabilityCandidate {
+    return candidate.reliability === 'PROVEN' && !hasFreshEvidence(candidate)
+        ? { ...candidate, reliability: 'STALE' }
+        : candidate;
+}
 
 function rejectionReasons(candidate: CapabilityCandidate, constraints: CapabilityConstraints): string[] {
     const reasons: string[] = [];
@@ -110,6 +126,10 @@ const CATALOGUE: Record<string, CapabilityCandidate[]> = {
         { id: 'speech-local', family: 'speech', route: 'local', setup: 'ZERO_SETUP', reliability: 'PROVEN', privacy: 'LOCAL', supportsOffline: true, supportsDeployment: false, recurringCost: 'NONE', maintenance: 'MEDIUM', license: 'LOCAL', evidenceCheckedAt: '2026-09-22T00:00:00.000Z' },
         { id: 'speech-key-service', family: 'speech', route: 'api_key', setup: 'KEY_REQUIRED', reliability: 'UNKNOWN', privacy: 'EXTERNAL', supportsOffline: false, supportsDeployment: true, recurringCost: 'UNKNOWN', maintenance: 'MEDIUM', license: 'PROVIDER_TERMS' },
     ],
+    public_data: [
+        { id: 'public-data-catalog', family: 'public_data', route: 'public_api', setup: 'ZERO_SETUP', reliability: 'UNKNOWN', privacy: 'EXTERNAL', supportsOffline: false, supportsDeployment: true, recurringCost: 'NONE', rateLimit: 'provider-dependent', maintenance: 'LOW', license: 'OPEN_DATA' },
+        { id: 'public-data-key-service', family: 'public_data', route: 'api_key', setup: 'KEY_REQUIRED', reliability: 'UNKNOWN', privacy: 'EXTERNAL', supportsOffline: false, supportsDeployment: true, recurringCost: 'UNKNOWN', maintenance: 'MEDIUM', license: 'PROVIDER_TERMS' },
+    ],
     routing: [
         { id: 'routing-public', family: 'routing', route: 'public_api', setup: 'ZERO_SETUP', reliability: 'STALE', privacy: 'EXTERNAL', supportsOffline: false, supportsDeployment: true, recurringCost: 'NONE', rateLimit: 'provider-dependent', maintenance: 'LOW', license: 'OPEN_DATA' },
         { id: 'routing-paid', family: 'routing', route: 'paid_service', setup: 'PAID_REQUIRED', reliability: 'PROVEN', privacy: 'EXTERNAL', supportsOffline: false, supportsDeployment: true, recurringCost: 'PAID', maintenance: 'LOW', license: 'PROVIDER_TERMS', evidenceCheckedAt: '2026-09-22T00:00:00.000Z' },
@@ -123,6 +143,7 @@ export function capabilityProfilesFor(family: string): CapabilityCandidate[] {
 export function capabilityFamilyFromRequest(request: string): string | null {
     const text = String(request || '').toLowerCase();
     if (/\bocr\b|scan(?:ning)?\s+(?:a\s+)?document|استخراج.*نص|مسح.*مستند/iu.test(text)) return 'ocr';
+    if (/\bweather\b|forecast|temperature|currency\s+(?:converter|conversion)|exchange\s+rate|forex|\bip\s+(?:information|info|location|geolocation)|طقس|حرارة|تحويل\s+عمل|سعر\s+الصرف|معلومات\s+.*ip/iu.test(text)) return 'public_data';
     if (/geocod|address.*(?:location|coordinates)|تحويل.*عنوان|ترميز.*جغرافي/iu.test(text)) return 'geocoding';
     if (/\b(?:storage|upload|drive|files?)\b|رفع.*ملف|تخزين.*ملف/iu.test(text)) return 'storage';
     if (/\b(?:speech|transcri(?:be|ption)|voice)\b|تفريغ.*صوت|تحويل.*صوت/iu.test(text)) return 'speech';
@@ -144,7 +165,8 @@ export function decideCapabilityRoute(
 ): CapabilityDecisionReceipt {
     const rejected: CapabilityDecisionReceipt['rejected'] = [];
     const viable: CapabilityCandidate[] = [];
-    for (const candidate of candidates) {
+    for (const rawCandidate of candidates) {
+        const candidate = candidateWithCurrentEvidence(rawCandidate);
         const reasons = rejectionReasons(candidate, constraints);
         if (reasons.length) rejected.push({ id: candidate.id, reasons });
         else viable.push(candidate);
@@ -159,7 +181,7 @@ export function decideCapabilityRoute(
         selected,
         rankedAlternatives,
         rejected,
-        evidenceFreshness: selected?.reliability === 'PROVEN' && !!selected.evidenceCheckedAt ? 'fresh' : 'stale_or_missing',
+        evidenceFreshness: selected && hasFreshEvidence(selected) ? 'fresh' : 'stale_or_missing',
         requiredUserAction: selected && selected.setup !== 'ZERO_SETUP' ? selected.setup : null,
     };
 }

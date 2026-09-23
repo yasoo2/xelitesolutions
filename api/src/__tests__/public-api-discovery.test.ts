@@ -173,12 +173,13 @@ describe('public API discovery', () => {
         expect(parsed[0]).toMatchObject({ name: 'Open-Meteo', category: 'Weather', auth: 'none', https: true, cors: 'yes' });
         expect(PLANNER_TOOL_CATALOGUE.filter(item => item.tool === 'search_public_apis')).toHaveLength(1);
         const plan = (new ProjectPlannerTool() as any).constrainedFrontendPlan('Build a simple weather dashboard using a free public API.');
-        expect(plan.phases[0].tasks.map((task: any) => task.tool)).toEqual(['search_public_apis', 'react_project']);
-        expect(plan.phases[0].tasks[0].args).toMatchObject({ validateTop: true, integrationRequired: true, requiresHttps: true, requiresNoAuth: true });
+        expect(plan.phases[0].tasks.map((task: any) => task.tool)).toEqual(['decide_capability_route', 'search_public_apis', 'react_project']);
+        expect(plan.phases[0].tasks[0].args).toEqual({ request: 'Build a simple weather dashboard using a free public API.' });
+        expect(plan.phases[0].tasks[1].args).toMatchObject({ validateTop: true, integrationRequired: true, requiresHttps: true, requiresNoAuth: true });
         const naturalWeather = (new ProjectPlannerTool() as any).constrainedFrontendPlan('Build me an Istanbul weather dashboard.');
         const naturalCurrency = (new ProjectPlannerTool() as any).constrainedFrontendPlan('Build me a currency converter.');
-        expect(naturalWeather.phases[0].tasks.map((task: any) => task.tool)).toEqual(['search_public_apis', 'react_project']);
-        expect(naturalCurrency.phases[0].tasks.map((task: any) => task.tool)).toEqual(['search_public_apis', 'react_project']);
+        expect(naturalWeather.phases[0].tasks.map((task: any) => task.tool)).toEqual(['decide_capability_route', 'search_public_apis', 'react_project']);
+        expect(naturalCurrency.phases[0].tasks.map((task: any) => task.tool)).toEqual(['decide_capability_route', 'search_public_apis', 'react_project']);
         expect((new ProjectPlannerTool() as any).constrainedFrontendPlan('Build me a local todo app.').phases[0].tasks.map((task: any) => task.tool))
             .toEqual(['react_project']);
     });

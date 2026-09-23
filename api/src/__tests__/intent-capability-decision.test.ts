@@ -11,7 +11,13 @@ describe('capability decision intent', () => {
         routeToModel.mockRestore();
     });
 
+    it('prioritizes an explicit route-choice request even when it names the app it would serve', async () => {
+        const intent = await IntentParser.parse('Choose the least-setup safe route for a weather dashboard. Do not change files.', {} as any);
+        expect(intent.requiredTools).toEqual(['decide_capability_route']);
+    });
+
     it('does not mistake a build request mentioning speech for a decision request', () => {
         expect(IntentParser.capabilityDecisionIntent('Build an offline speech transcription application.')).toBeNull();
+        expect(IntentParser.capabilityDecisionIntent('Build a weather dashboard and choose a provider later.')).toBeNull();
     });
 });

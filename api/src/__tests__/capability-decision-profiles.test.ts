@@ -40,6 +40,14 @@ describe('capability decision profiles', () => {
         expect(result.rankedAlternatives.map(item => item.candidate.id)).toEqual(['proven-connect', 'stale-zero-setup']);
     });
 
+    it('does not keep an expired proven claim fresh merely because it has a timestamp', () => {
+        const result = decideCapabilityRoute({ family: 'search' }, [
+            candidate('expired-local', 'search', { evidenceCheckedAt: '2020-01-01T00:00:00.000Z' }),
+        ]);
+        expect(result.selected).toMatchObject({ id: 'expired-local', reliability: 'STALE' });
+        expect(result.evidenceFreshness).toBe('stale_or_missing');
+    });
+
     it('returns one required user action and never invents an account action for local work', () => {
         expect(decideCapabilityRoute({ family: 'ocr', offline: true }, [candidate('local', 'ocr')]).requiredUserAction).toBeNull();
         expect(decideCapabilityRoute({ family: 'storage' }, [candidate('connect', 'storage', { route: 'account_connection', setup: 'CONNECT_ACCOUNT', privacy: 'EXTERNAL', supportsOffline: false })]).requiredUserAction)
@@ -55,6 +63,7 @@ describe('capability decision profiles', () => {
     it('classifies broad request language without binding it to a provider', () => {
         expect(capabilityFamilyFromRequest('Build an offline OCR document scanner.')).toBe('ocr');
         expect(capabilityFamilyFromRequest('ابني خدمة لتخطيط مسار الرحلة')).toBe('routing');
+        expect(capabilityFamilyFromRequest('Choose a safe provider route for a weather dashboard.')).toBe('public_data');
         expect(capabilityFamilyFromRequest('Build an invoice editor.')).toBeNull();
     });
 

@@ -1643,6 +1643,12 @@ ${this.scopePlanningInstructions(projectDescription)}`;
                 deliverables: ['A runnable local React application and a production build.'],
                 estimatedTime: 'bounded by local build and browser QA',
                 tasks: [...(publicDataCapability ? [{
+                    task: 'Choose the least-burden safe route for the requested live-data capability before provider discovery.',
+                    tool: 'decide_capability_route',
+                    args: { request },
+                    priority: 'high',
+                    realisticMinutes: 1,
+                }, {
                     task: 'Discover, rank, and safely validate a suitable public API for the requested live data.',
                     tool: 'search_public_apis',
                     args: { query: request, requiresNoAuth: true, requiresHttps: true, requiresCors: true, browserSide: true, validateTop: true, integrationRequired: true, limit: 8 },

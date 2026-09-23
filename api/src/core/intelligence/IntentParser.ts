@@ -34,8 +34,9 @@ export class IntentParser {
         // been inspected.  Keep the fast path for genuinely browser-only requests,
         // but let substantial build/develop/debug work reach the evidence-first
         // planner (and its project_pipeline route).
+        const capabilityDecision = IntentParser.capabilityDecisionIntent(userText);
         const engineeringBrief = IntentParser.looksLikeEngineeringBrief(userText);
-        if (engineeringBrief) {
+        if (engineeringBrief && !capabilityDecision) {
             console.log('[IntentParser] ⚙️ Engineering brief detected — routing to evidence-first project_pipeline.');
             return {
                 goal: userText,
@@ -47,7 +48,6 @@ export class IntentParser {
                 rawIntent: { primary: userText, engineeringBrief: true, deterministic: true },
             };
         }
-        const capabilityDecision = IntentParser.capabilityDecisionIntent(userText);
         if (capabilityDecision) {
             console.log('[IntentParser] ⚡ Explicit capability decision — skipping deep analysis.');
             return capabilityDecision;
@@ -214,9 +214,10 @@ Return ONLY a JSON object:
     /** A route-choice request is a bounded read-only decision, not a model task. */
     static capabilityDecisionIntent(userText: string): StructuredIntent | null {
         const raw = String(userText || '').trim();
-        if (!raw || looksLikeBuild(raw) || !capabilityFamilyFromRequest(raw)) return null;
+        if (!raw || !capabilityFamilyFromRequest(raw)) return null;
         const decision = /\b(?:choose|select|decide)\b|least[-\s]?setup|local\s+(?:or|vs)\s+external|اختر|اختيار|أقل\s*إعداد|مسار\s*(?:محلي|خارجي|أنسب)|مزود\s*(?:محلي|خارجي|أنسب)/iu.test(raw);
-        if (!decision) return null;
+        const explicitDecisionLead = /^\s*(?:choose|select|decide)\b|^\s*(?:اختر|اختيار)/iu.test(raw);
+        if (!decision || (looksLikeBuild(raw) && !explicitDecisionLead)) return null;
         return {
             goal: raw,
             complexity: 'low',

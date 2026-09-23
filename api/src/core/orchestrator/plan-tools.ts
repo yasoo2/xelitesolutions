@@ -77,6 +77,7 @@ export const PLANNER_TOOL_CATALOGUE: Array<{ tool: string; purpose: string }> = 
     { tool: 'scaffold_full_stack', purpose: 'create a full-stack project (frontend + backend together)' },
     { tool: 'react_project', purpose: 'build a real React + Vite application' },
     { tool: 'api_project', purpose: 'build a real Express + SQLite backend with working endpoints' },
+    { tool: 'decide_capability_route', purpose: 'make a read-only, inspectable least-setup local-versus-external capability decision before a provider is selected; never connects accounts, uses keys, pays, deploys, or mutates a workspace' },
     { tool: 'search_public_apis', purpose: 'search and deterministically rank cataloged public APIs for an external-data capability; use before choosing an API' },
     { tool: 'inspect_api', purpose: 'inspect auth, HTTPS, CORS, pricing, source, and cached health metadata for one discovered API' },
     { tool: 'validate_api', purpose: 'perform a bounded read-only SSRF-protected health check for one catalog API before integration' },
