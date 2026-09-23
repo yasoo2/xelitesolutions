@@ -17,7 +17,10 @@ const createApiShim = () => {
   return (_req: any, _res: any, next: any) => next();
 };
 
-const apiTarget = 'http://127.0.0.1:5000';
+// An isolated worktree can run its own API without disturbing the user's
+// existing local Joe instance. The default remains the normal development API.
+const apiTarget = process.env.JOE_API_TARGET || 'http://127.0.0.1:5000';
+const wsTarget = apiTarget.replace(/^http/i, 'ws');
 
 export default defineConfig({
   plugins: [
@@ -54,7 +57,7 @@ export default defineConfig({
         },
       },
       '/ws': {
-        target: 'ws://127.0.0.1:5000',
+        target: wsTarget,
         ws: true,
       },
       '/artifacts': {

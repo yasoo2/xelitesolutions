@@ -729,6 +729,25 @@ Rules:
             ? `${userGoal}\n${goalNorm}` : userGoal;
         const goalLower = probe.toLowerCase();
 
+        // IntentParser has already proven that this is a bounded route decision.
+        // Honor its one-tool contract before broad build/read-only/capability routes
+        // can reinterpret words from the example application as a new project.
+        if (Array.isArray(intent.requiredTools) && intent.requiredTools.length === 1 && intent.requiredTools[0] === 'decide_capability_route') {
+            return {
+                id: `capability_decision_${Date.now()}`,
+                goal: intent.goal,
+                steps: [{
+                    id: 'decide_capability_route',
+                    description: intent.goal,
+                    tool: 'decide_capability_route',
+                    agent: 'Dev',
+                    input: { request: intent.goal },
+                    dependsOn: [],
+                }],
+                metadata: { complexity: 'low', riskLevel: 'low', matchedBy: 'explicit-capability-decision', deterministic: true },
+            };
+        }
+
         // Exact-response requests are complete without a planner or a second
         // model call. Keeping this before every semantic route prevents a weak
         // provider from turning a one-line contract into an invented build task.

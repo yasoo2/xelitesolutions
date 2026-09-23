@@ -20,6 +20,7 @@ import { withDeadline, NODE_DEADLINE_MS, RUN_DEADLINE_MS } from '../shared/utils
 import { repairMemory } from '../core/memory/repair-memory';
 import { RunStep } from '../core/orchestrator/answerComposer';
 import { CANCELLED } from '../core/session/attended-run';
+import { compactCapabilityDecisionReceiptForRuntime } from '../core/capabilities/decision-profiles';
 
 /** Tools the PlanningEngine picks DETERMINISTICALLY. A node carrying one of
  *  these already knows exactly what to run and with which input, so it must be
@@ -1219,6 +1220,8 @@ export class AgentOrchestrator {
     }
     if (typeof output === 'object') {
       const sanitized = { ...output };
+      const capabilityReceipt = compactCapabilityDecisionReceiptForRuntime(sanitized.receipt);
+      if (capabilityReceipt) sanitized.receipt = capabilityReceipt;
       // TRUNCATE stdout/stderr — never delete them. Deleting blinded every later
       // step in the DAG: "run the tests, then fix what failed" recorded a
       // successful test run as {status:'success'} with the entire report erased,

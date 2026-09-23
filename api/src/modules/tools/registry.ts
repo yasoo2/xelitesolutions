@@ -94,6 +94,7 @@ import { SonarAnalysisTool, DependencyAuditTool, QualityRunTool, SecretsScanRepo
 import { ScreenshotTool, VisualComparisonTool } from './definitions/ScreenshotTool';
 import { SearchApiTool } from './definitions/SearchApiTool';
 import { SearchPublicApisTool, InspectApiTool, ValidateApiTool } from './definitions/PublicApiDiscoveryTools';
+import { CapabilityDecisionTool } from './definitions/CapabilityDecisionTool';
 import { SwaggerDocsTool } from './definitions/SwaggerDocsTool';
 import { TaskLifecycleTool } from './definitions/TaskLifecycleTool';
 import { TodoWriteTool } from './definitions/TodoWriteTool';
@@ -283,6 +284,7 @@ const baseTools: ToolDefinition[] = [
   new EliteTools.SelfConfidenceTool(),
 
   new EngineeringDiscoveryTool(),
+  new CapabilityDecisionTool(),
   new SearchPublicApisTool(),
   new InspectApiTool(),
   new ValidateApiTool(),
