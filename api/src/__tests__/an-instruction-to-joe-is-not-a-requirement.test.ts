@@ -31,6 +31,7 @@
  */
 
 import { isJudgeable, namedRequirements } from '../core/quality/named-requirements';
+import { acceptanceFor } from '../core/quality/acceptance';
 
 /** His actual prompt, in the shape he writes them. */
 const HIS = [
@@ -55,6 +56,9 @@ describe('an instruction to Joe is not a requirement of the project', () => {
             'Number of browser actions performed', 'Pages tested', 'Forms tested',
             'Buttons tested', 'Errors discovered', 'Errors fixed', 'Final verification result',
             'Do not claim success based only on code inspection',
+            'then one final full verification. Report which checks ran',
+            'Run focused checks, then one final verification',
+            'inspect the result in the browser. Do not deploy anything.',
         ]) {
             expect({ t, judgeable: isJudgeable(t) }).toEqual({ t, judgeable: false });
         }
@@ -125,5 +129,99 @@ describe('an instruction to Joe is not a requirement of the project', () => {
         expect(r.requirements).toEqual([]);
         expect(r.rejected.length).toBe(2);
         expect(r.rejected.every(x => x.reason.includes('an instruction to me'))).toBe(true);
+    });
+
+    it('rejects execution instructions even when the model paraphrases their text', async () => {
+        const request = [
+            'Build a library checkout board with borrower and due date.',
+            'Report which checks ran and which were reused.',
+            'Open and inspect the result in the browser.',
+            'Do not deploy anything.',
+        ].join(' ');
+        const r = await namedRequirements(request, false, async () => JSON.stringify({
+            requirements: [
+                { text: 'borrower', quote: 'borrower' },
+                { text: 'which checks ran and which were reused', quote: 'Report which checks ran and which were reused' },
+                { text: 'browser inspection of the result', quote: 'Open and inspect the result in the browser' },
+                { text: 'no deployment', quote: 'Do not deploy anything' },
+            ],
+        }));
+        expect(r.requirements.map(x => x.text)).toEqual(['borrower']);
+        expect(r.rejected).toHaveLength(3);
+        expect(r.rejected.every(x => x.reason.includes('an instruction to me'))).toBe(true);
+    });
+
+    it('does not promote the project subject or a run instruction into named acceptance', async () => {
+        const request = [
+            'Create a compact browser-based reading queue with title and reader.',
+            'Run focused checks, then one final verification.',
+        ].join(' ');
+        const r = await namedRequirements(request, false, async () => JSON.stringify({
+            requirements: [
+                { text: 'a compact browser-based reading queue', quote: 'Create a compact browser-based reading queue' },
+                { text: 'title', quote: 'title' },
+                { text: 'Run focused checks, then one final verification', quote: 'Run focused checks, then one final verification' },
+            ],
+        }));
+        expect(r.requirements.map(item => item.text)).toEqual(['title']);
+        expect(r.rejected.map(item => item.reason)).toEqual([
+            expect.stringContaining('thing you asked for'),
+            expect.stringContaining('instruction to me'),
+        ]);
+    });
+
+    it('keeps test and deployment instructions out of the product acceptance contract', async () => {
+        const request = [
+            'Build a library board with borrower and due date.',
+            'Use focused checks while editing, then one final full verification.',
+            'Do not deploy anything.',
+        ].join(' ');
+        const r = await namedRequirements(request, false, async () => JSON.stringify({
+            requirements: [
+                { text: 'borrower and due date', quote: 'borrower and due date' },
+                { text: 'Use focused checks while editing, then one final full verification', quote: 'Use focused checks while editing, then one final full verification' },
+                { text: 'then one final full verification', quote: 'then one final full verification' },
+            ],
+        }));
+        expect(r.requirements.map(x => x.text)).toEqual(['borrower and due date']);
+        expect(acceptanceFor(request).filter(c => c.expectedRule).map(c => c.expectedRule?.text)).not.toContain('Do not deploy anything');
+    });
+
+    it('keeps an Arabic no-publish instruction out while retaining the requested product work', () => {
+        const request = 'ابنِ تطبيق مخزون عربي مع بحث وتصفية. لا تنشر شيئاً.';
+        const criteria = acceptanceFor(request);
+        expect(criteria.map(c => c.id)).toEqual(expect.arrayContaining(['search', 'filter', 'rtl']));
+        expect(criteria.some(c => c.expectedRule?.text === 'لا تنشر شيئاً')).toBe(false);
+    });
+
+    it('preserves product constraints expressed as imperatives, verbatim or paraphrased', async () => {
+        const requirements = [
+            { text: 'record deletion restricted to its owner', quote: "Ensure users cannot delete another user's records" },
+            { text: 'nonnegative amounts', quote: 'Do not allow negative amounts' },
+            { text: 'deletion confirmation', quote: 'Confirm deletion before removing a record' },
+            { text: 'duplicate prevention', quote: 'Avoid duplicate reservations' },
+            { text: 'required email validation', quote: 'Make sure email is valid before saving' },
+            { text: 'external links open in a new tab', quote: 'Open external links in a new tab' },
+            { text: 'booking availability validation', quote: 'Check availability before confirming a booking' },
+            { text: 'keyboard form submission', quote: 'Submit the form when Enter is pressed' },
+            { text: 'record reload after saving', quote: 'Refresh the records after saving' },
+        ];
+        const request = requirements.map(r => r.quote).join('. ');
+        for (const paraphrased of [true, false]) {
+            const entries = requirements.map(r => ({ ...r, text: paraphrased ? r.text : r.quote }));
+            const result = await namedRequirements(request, false, async () => JSON.stringify({ requirements: entries }));
+            expect(result.requirements.map(r => r.text)).toEqual(entries.map(r => r.text));
+            expect(result.rejected).toEqual([]);
+        }
+    });
+
+    it('still excludes explicit builder workflow behind ambiguous prefixes', () => {
+        for (const text of [
+            'Ensure all tests pass', 'Confirm the final verification result',
+            'Make sure you inspect the result', 'Do not deploy anything',
+            'Avoid claiming success', 'Skip the tests',
+        ]) {
+            expect({ text, judgeable: isJudgeable(text) }).toEqual({ text, judgeable: false });
+        }
     });
 });

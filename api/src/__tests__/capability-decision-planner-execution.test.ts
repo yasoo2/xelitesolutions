@@ -21,6 +21,7 @@ describe('capability decision planned execution', () => {
                 } },
                 logs: [],
             } as any;
+            if (toolName === 'quality_run') return { ok: true, output: { status: 'passed', results: [] }, logs: [] } as any;
             if (toolName === 'search_public_apis') return {
                 ok: true,
                 output: { selection: {
@@ -33,12 +34,12 @@ describe('capability decision planned execution', () => {
             return { ok: true, output: {}, logs: [] } as any;
         });
 
-        const context = { workspaceId: 'ws', sessionId: 'session', userId: 'user' };
+        const context = { workspaceId: 'ws', sessionId: 'session', userId: 'user', projectRoot: process.cwd(), projectRootRuntimeBound: true };
         const result: any = await new PhaseExecutorTool().execute({ phase: plan.phases[0], projectContext: context }, context);
 
         expect(result).toMatchObject({ ok: true, output: { status: 'completed' } });
-        expect(mockedExecuteTool.mock.calls.map(call => call[0]).slice(0, 3))
-            .toEqual(['decide_capability_route', 'search_public_apis', 'react_project']);
+        expect(mockedExecuteTool.mock.calls.map(call => call[0]).slice(0, 4))
+            .toEqual(['decide_capability_route', 'search_public_apis', 'react_project', 'quality_run']);
         expect(mockedExecuteTool.mock.calls[0][1]).toMatchObject({ request: 'Build a simple weather dashboard using a free public API.' });
     });
 });

@@ -15,7 +15,8 @@ describe('browser control QA isolates transient interaction state', () => {
     it('restores the exact starting URL before declaring a covered control unreachable', () => {
         const marker = 'A transient surface may not identify itself as a modal';
         const recovery = source.slice(source.indexOf(marker), source.indexOf(marker) + 1800);
-        expect(recovery).toContain("page.goto(probeStartUrl");
-        expect(recovery).toContain('controlKey(candidate) === controlKey(c)');
+        expect(source).toContain("await page.goto(probeStartUrl");
+        expect(source).toContain('controlKey(candidate) === controlKey(c)');
+        expect(recovery).toContain('await restoreProbeStart()');
     });
 });

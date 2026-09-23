@@ -1,4 +1,5 @@
 import { ToolDefinition, ToolPermission } from '../types';
+import { ensurePlanFinalVerification } from '../../../core/quality/plan-verification';
 import { isWithinRoot } from '../path-containment';
 import fs from 'fs';
 import path from 'path';
@@ -180,7 +181,7 @@ export function extractMissingLocalRuntimeImportLedger(failureText: unknown): st
 }
 
 function appendBoundedPipelineLog(logs: string[], line: unknown): void {
-    const text = String(line ?? '').slice(0, MAX_PIPELINE_LOG_CHARS);
+    const text = redactDeliveryCredentials(String(line ?? '')).slice(0, MAX_PIPELINE_LOG_CHARS);
     if (logs.length < MAX_PIPELINE_LOGS) {
         logs.push(text);
         return;
@@ -188,6 +189,17 @@ function appendBoundedPipelineLog(logs: string[], line: unknown): void {
     logs[0] = '[ProjectPipeline] ... older pipeline logs truncated; recent evidence retained ...';
     logs.splice(1, 1);
     logs.push(text);
+}
+
+/**
+ * Runtime credentials are handed to the browser-QA context directly. They
+ * must never be copied into the user-visible activity stream or delivery
+ * report, where a transcript may be retained long after the local run ends.
+ */
+function redactDeliveryCredentials(value: unknown): string {
+    return String(value ?? '')
+        .replace(/(Owner account(?:\s*\([^)]*\))?:\s*[^\s/]+\s*\/\s*)[^\s]+/giu, '$1[redacted]')
+        .replace(/(كلمة المرور:\s*)[^\s]+/gu, '$1[محجوبة]');
 }
 
 function appendBoundedPipelineLogs(logs: string[], values: unknown): void {
@@ -270,6 +282,14 @@ interface TrustedRuntimeProjectHandoff {
     runtimeRoot: string;
     durablePreviewUrl?: string;
     runtimeAuth?: { email: string; password: string; loginPath?: string; tokenStorageKey?: string; route?: string };
+    externalApi?: {
+        capability: 'weather' | 'currency' | 'ip';
+        integrationProfileId: string;
+        providerName: string;
+        auth: string;
+        pricing: string;
+        health: 'HEALTHY' | 'UNKNOWN' | 'DEGRADED' | 'UNAVAILABLE';
+    };
 }
 
 export function durablePreviewEligible(input: {
@@ -282,6 +302,24 @@ export function durablePreviewEligible(input: {
         && input.hasDist
         && !input.hasPackagedRuntime
         && Boolean(integrationProfile(String(input.integrationProfileId || '').trim()));
+}
+
+export function externalApiExpectationFromRecord(input: any): TrustedRuntimeProjectHandoff['externalApi'] {
+    const integrationProfileId = String(input?.integrationProfileId || '').trim();
+    const capability = String(input?.capability || '').trim();
+    const profile = integrationProfile(integrationProfileId);
+    if (!['weather', 'currency', 'ip'].includes(capability) || !profile || profile.capability !== capability) return undefined;
+    const health = ['HEALTHY', 'UNKNOWN', 'DEGRADED', 'UNAVAILABLE'].includes(String(input?.health || ''))
+        ? String(input.health) as 'HEALTHY' | 'UNKNOWN' | 'DEGRADED' | 'UNAVAILABLE'
+        : 'UNKNOWN';
+    return {
+        capability: capability as 'weather' | 'currency' | 'ip',
+        integrationProfileId,
+        providerName: profile.providerName,
+        auth: profile.auth,
+        pricing: profile.pricing,
+        health,
+    };
 }
 
 function trustedRuntimeProjectHandoff(sessionId: unknown, workspaceId: unknown, runId: unknown): TrustedRuntimeProjectHandoff | null {
@@ -313,8 +351,11 @@ function trustedRuntimeProjectHandoff(sessionId: unknown, workspaceId: unknown, 
         : undefined;
     const integrationRecordPath = path.join(candidate, '.joe', 'external-api.json');
     let integrationProfileId = '';
+    let externalApi: TrustedRuntimeProjectHandoff['externalApi'];
     try {
-        integrationProfileId = String(JSON.parse(fs.readFileSync(integrationRecordPath, 'utf8'))?.integrationProfileId || '').trim();
+        const integrationRecord = JSON.parse(fs.readFileSync(integrationRecordPath, 'utf8'));
+        integrationProfileId = String(integrationRecord?.integrationProfileId || '').trim();
+        externalApi = externalApiExpectationFromRecord(integrationRecord);
     } catch { /* not a maintained external-API project */ }
     const durablePreviewUrl = durablePreviewEligible({
         projectType: record?.type,
@@ -329,6 +370,7 @@ function trustedRuntimeProjectHandoff(sessionId: unknown, workspaceId: unknown, 
         runtimeRoot: packagedIsTrusted ? packaged : candidate,
         ...(durablePreviewUrl ? { durablePreviewUrl } : {}),
         ...(runtimeAuth ? { runtimeAuth } : {}),
+        ...(externalApi ? { externalApi } : {}),
     };
 }
 
@@ -594,7 +636,15 @@ export function deterministicPhasesFor(request: string): {
 } | null {
     const { PlanningEngine } = require('../../../core/orchestrator/PlanningEngine');
     if (!PlanningEngine.looksLikeBuild(request)) return null;
-    const scope: 'page' | 'app' | 'system' = PlanningEngine.classifyBuildScope(request);
+    const classifiedScope: 'page' | 'app' | 'system' = PlanningEngine.classifyBuildScope(request);
+    // A declared record schema is an interaction contract, even when its
+    // wording does not happen to include one of the broad "application"
+    // keywords.  Treating it as a page discarded the form, storage, and record
+    // actions that the same schema reader later builds in React.  Do not
+    // downgrade a real system: its explicit service boundary remains stronger.
+    const scope: 'page' | 'app' | 'system' = classifiedScope === 'page' && hasExplicitRecordSchema(request)
+        ? 'app'
+        : classifiedScope;
 
     let projectName = 'project';
     try { projectName = resolveProjectIdentity(request, require('../../../core/design/subject-phrase').subjectPhrase(request, 48)); } catch { /* naming is cosmetic */ }
@@ -1532,6 +1582,9 @@ export class ProjectPipelineTool implements ToolDefinition {
             }
         }
 
+        // Rescue branches can replace the planner output above. Enforce the
+        // same final evidence contract on the plan actually sent to execution.
+        if (plannerResult?.output) plannerResult.output = ensurePlanFinalVerification(plannerResult.output);
         const phases = plannerResult?.output?.phases;
         if (!Array.isArray(phases) || phases.length === 0) {
             return {
@@ -1594,6 +1647,8 @@ export class ProjectPipelineTool implements ToolDefinition {
             plannerTimeoutMs,
             plannerMaxCompletionTokens: context?.plannerMaxCompletionTokens,
             plannerReasoningEffort: context?.plannerReasoningEffort,
+            isCancelled: context?.isCancelled,
+            cancellation: context?.cancellation,
             // The phase announcements are the loudest lines in the trace, and
             // they were the ones speaking the wrong language.
             language: isAr ? 'ar' : 'en',
@@ -1882,6 +1937,8 @@ export class ProjectPipelineTool implements ToolDefinition {
                     plannerTimeoutMs,
                     plannerMaxCompletionTokens: context?.plannerMaxCompletionTokens,
                     plannerReasoningEffort: context?.plannerReasoningEffort,
+                    isCancelled: context?.isCancelled,
+                    cancellation: context?.cancellation,
                     language: isAr ? 'ar' : 'en',
                     onProgress: (m: string) => say(m),
                 });
@@ -2047,6 +2104,8 @@ export class ProjectPipelineTool implements ToolDefinition {
                             plannerTimeoutMs,
                             plannerMaxCompletionTokens: context?.plannerMaxCompletionTokens,
                             plannerReasoningEffort: context?.plannerReasoningEffort,
+                            isCancelled: context?.isCancelled,
+                            cancellation: context?.cancellation,
                             language: isAr ? 'ar' : 'en',
                             onProgress: (m: string) => say(m),
                         });
@@ -2228,6 +2287,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                     // silently replace it with a private headless run when
                     // the panel is disconnected or still loading.
                     requireVisibleBrowser: true,
+                    ...(runtimeProjectHandoff?.externalApi ? { externalApi: runtimeProjectHandoff.externalApi } : {}),
                     ...(runtimeProjectHandoff?.runtimeAuth ? { credentials: runtimeProjectHandoff.runtimeAuth } : {}),
                     timeoutMs: 45_000,
                     onProgress: progress,
@@ -2260,6 +2320,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                             serveUrl: liveUrl,
                             artifactRootDir: artifactRoot || auditDir || runtimeRoot,
                             requireVisibleBrowser: true,
+                            ...(runtimeProjectHandoff?.externalApi ? { externalApi: runtimeProjectHandoff.externalApi } : {}),
                             ...(runtimeProjectHandoff?.runtimeAuth ? { credentials: runtimeProjectHandoff.runtimeAuth } : {}),
                             timeoutMs: 90_000,
                             onProgress: progress,
@@ -2292,6 +2353,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                             serveUrl: liveUrl,
                             artifactRootDir: artifactRoot || auditDir || runtimeRoot,
                             requireVisibleBrowser: true,
+                            ...(runtimeProjectHandoff?.externalApi ? { externalApi: runtimeProjectHandoff.externalApi } : {}),
                             ...(runtimeProjectHandoff?.runtimeAuth ? { credentials: runtimeProjectHandoff.runtimeAuth } : {}),
                             timeoutMs: 45_000,
                             onProgress: progress,
@@ -2351,6 +2413,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                                         watchSessionId: panelSid || undefined,
                                         serveUrl: liveUrl,
                                         artifactRootDir: repairProjectRoot,
+                                        ...(runtimeProjectHandoff?.externalApi ? { externalApi: runtimeProjectHandoff.externalApi } : {}),
                                         ...(runtimeProjectHandoff?.runtimeAuth ? { credentials: runtimeProjectHandoff.runtimeAuth } : {}),
                                         timeoutMs: 45_000,
                                         onProgress: progress,
@@ -2458,7 +2521,9 @@ export class ProjectPipelineTool implements ToolDefinition {
         const summary = this.buildDeliveryReport({
             language: isAr ? 'ar' : 'en',
             projectName: String(plannerResult.output.projectName || 'project'),
-            phases, pipeline, done, total, verified: finalVerified, liveUrl, liveRunError, liveRepairStatus, scopeAudit, scopeRepairStatus, browserQa, decisionEvidence, verificationUnavailable,
+            phases, pipeline, done, total, verified: finalVerified, liveUrl, liveRunError, liveRepairStatus, scopeAudit, scopeRepairStatus, browserQa,
+            externalApi: runtimeProjectHandoff?.externalApi,
+            decisionEvidence, verificationUnavailable,
         });
         say(`[pipeline] ${finalVerified ? `✅ ${done}/${total}` : `⚠️ ${done}/${total}`} — delivery report ready`);
 
@@ -2696,10 +2761,11 @@ export class ProjectPipelineTool implements ToolDefinition {
         scopeAudit?: ScopeGateOutcome['scopeAudit'];
         scopeRepairStatus?: string;
         browserQa?: AppAudit | null;
+        externalApi?: TrustedRuntimeProjectHandoff['externalApi'];
         decisionEvidence?: PipelineDecisionEvidence;
         verificationUnavailable?: boolean;
     }): string {
-        const { language: lang, projectName, phases, pipeline, done, total, verified, liveUrl, liveRunError, liveRepairStatus, scopeAudit, scopeRepairStatus, browserQa, decisionEvidence, verificationUnavailable } = args;
+        const { language: lang, projectName, phases, pipeline, done, total, verified, liveUrl, liveRunError, liveRepairStatus, scopeAudit, scopeRepairStatus, browserQa, externalApi, decisionEvidence, verificationUnavailable } = args;
         const ar = lang === 'ar';
         const lines: string[] = [];
         /**
@@ -2720,31 +2786,11 @@ export class ProjectPipelineTool implements ToolDefinition {
         const whatHappened: string[] = [];
         const techDetails: string[] = [];
         const phaseResults: any[] = Array.isArray(pipeline?.results) ? pipeline.results : [];
-        const credentials: Array<{ email: string; password: string }> = [];
-        for (const phase of phaseResults) {
-            for (const result of (Array.isArray(phase?.results) ? phase.results : [])) {
-                const credential = deliveryCredentialFromMessage(result?.message);
-                if (credential && !credentials.some(item => item.email === credential.email && item.password === credential.password)) {
-                    credentials.push(credential);
-                }
-            }
-        }
-
         lines.push(verified
             ? (ar ? `## ✅ اكتمل المشروع: ${projectName}` : `## ✅ Project delivered: ${projectName}`)
             : verificationUnavailable
                 ? (ar ? `## ⚠️ لم أستطع التحقق من المشروع: ${projectName}` : `## ⚠️ Project could not be verified: ${projectName}`)
                 : (ar ? `## ⚠️ توقف البناء بصدق: ${projectName}` : `## ⚠️ Build stopped honestly: ${projectName}`));
-
-        if (credentials.length) {
-            lines.push('');
-            lines.push(ar ? '### 🔑 بيانات الدخول الاختبارية (تظهر مرة واحدة)' : '### 🔑 Test account credentials (shown once)');
-            for (const credential of credentials) {
-                lines.push(ar
-                    ? `- البريد: ${credential.email}\n  كلمة المرور: ${credential.password}`
-                    : `- ${credential.email} / ${credential.password}`);
-            }
-        }
 
         // The live system, front and center — it is RUNNING, not just built.
         if (verified && liveUrl) {
@@ -2791,6 +2837,32 @@ export class ProjectPipelineTool implements ToolDefinition {
                 lines.push(ar
                     ? `### Browser QA المرئي: **${browserQa.score}/100** — ${browserQa.findings.length} ملاحظة، ${high} حرجة، ${measuredActions} فعلاً استكشافياً عبر ${browserQa.statesVisited ?? 0} حالة.`
                     : `### Visible Browser QA: **${browserQa.score}/100** — ${browserQa.findings.length} finding(s), ${high} blocking, ${measuredActions} exploratory action(s) across ${browserQa.statesVisited ?? 0} discovered state(s).`);
+                const apiProof = browserQa.externalApiRuntime;
+                if (apiProof) {
+                    const apiMeta = externalApi;
+                    if (apiMeta) {
+                        const runtimeStatus = apiProof.successfulRequests > 0 && apiProof.responseMatchedRenderedResult
+                            ? (ar ? 'مثبت أثناء التشغيل' : 'runtime verified')
+                            : (ar ? 'غير مثبت أثناء التشغيل' : 'runtime unverified');
+                        lines.push(ar
+                            ? `- API خارجي: ${apiMeta.providerName} · المصادقة: ${apiMeta.auth} · صحة الفهرس: ${apiMeta.health.toLowerCase()} · التشغيل: ${runtimeStatus}.`
+                            : `- External API: ${apiMeta.providerName} · Auth: ${apiMeta.auth} · Catalog health: ${apiMeta.health.toLowerCase()} · Runtime: ${runtimeStatus}.`);
+                    }
+                    lines.push(ar
+                        ? `- دليل API: ${apiProof.integrationProfileId}؛ ${apiProof.successfulRequests} طلب ناجح؛ تطابق النتيجة=${apiProof.responseMatchedRenderedResult}؛ التحميل=${apiProof.loadingObserved}؛ الخطأ=${apiProof.errorObserved}؛ التعافي=${apiProof.recoveredAfterError}.`
+                        : `- API evidence: ${apiProof.integrationProfileId}; ${apiProof.successfulRequests} successful request(s); resultMatched=${apiProof.responseMatchedRenderedResult}; loading=${apiProof.loadingObserved}; error=${apiProof.errorObserved}; recovery=${apiProof.recoveredAfterError}.`);
+                    if (apiProof.invalidInputRejected !== undefined || apiProof.selectionChanged !== undefined) {
+                        lines.push(ar
+                            ? `- مدخل العملة الخاطئ مرفوض=${apiProof.invalidInputRejected}؛ تغيير زوج العملات=${apiProof.selectionChanged}.`
+                            : `- Invalid currency input rejected=${apiProof.invalidInputRejected}; currency pair changed=${apiProof.selectionChanged}.`);
+                    }
+                    if (apiProof.renderedResult) lines.push(ar
+                        ? `- النتيجة الحية المرئية: ${apiProof.renderedResult}`
+                        : `- Visible live result: ${apiProof.renderedResult}`);
+                    if (apiProof.errorText) lines.push(ar
+                        ? `- حالة الخطأ المرئية: ${apiProof.errorText}`
+                        : `- Visible error state: ${apiProof.errorText}`);
+                }
                 if (browserQa.findings.length) {
                     for (const finding of browserQa.findings.slice(0, 12)) {
                         const evidence = Array.isArray((finding as any).evidence) ? (finding as any).evidence[0] : null;
@@ -2839,7 +2911,7 @@ export class ProjectPipelineTool implements ToolDefinition {
         const spoken: string[] = [];
         for (const p of phaseResults) {
             for (const t of (Array.isArray(p?.results) ? p.results : [])) {
-                const msg = guardUnverifiedBuilderClaims(String(t?.message || '').trim(), verified, ar);
+                const msg = redactDeliveryCredentials(guardUnverifiedBuilderClaims(String(t?.message || '').trim(), verified, ar));
                 if (msg && !spoken.includes(msg)) spoken.push(msg);
             }
         }

@@ -40,7 +40,12 @@ export class SecurityScannerTool implements ToolDefinition {
                 description: 'Project or directory path used to discover source files'
             }
         },
-        required: []
+        // A scan without files or a project root is not a harmless default:
+        // it can accidentally inspect Joe itself or fail later with no useful
+        // recovery path. Advertise the real one-of contract so the planner can
+        // request a target before execution.
+        required: [],
+        requiredAny: [['files', 'projectPath', 'target', 'path']]
     };
 
     outputSchema = {

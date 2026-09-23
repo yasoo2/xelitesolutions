@@ -62,7 +62,9 @@ describe('one overflow, seen from six heights', () => {
         expect(css).toContain('.app-bar-in>*{min-width:0}');
         expect(css).toContain('.wrap>*{min-width:0}');
         expect(css).toContain('.social-wrap>*{min-width:0}');
-        expect(css).toMatch(/\.app-bar-in\{[^}]*flex-wrap:wrap\}/);
+        // Overflow clipping is also required after the wrap declaration, so
+        // assert the layout contract rather than its incidental CSS order.
+        expect(css).toMatch(/\.app-bar-in\{[^}]*flex-wrap:wrap/);
     });
 });
 

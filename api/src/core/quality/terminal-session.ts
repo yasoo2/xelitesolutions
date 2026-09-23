@@ -67,6 +67,8 @@ export interface TerminalSession {
     run(file: string, args: string[], opts?: {
         cwd?: string;
         timeout?: number;
+        /** Kill a command that has produced no output for this interval. */
+        idleTimeout?: number;
         env?: Record<string, string>;
         /** Prefix each output line; default two spaces, like a real shell wrap. */
         quiet?: boolean;
@@ -74,7 +76,7 @@ export interface TerminalSession {
         probe?: boolean;
         /** Cancellation owned by the surrounding Joe run. */
         cancel?: Promise<void>;
-    }): Promise<{ exitCode: number | null; out: string; ms: number; timedOut?: boolean; missing?: boolean; error?: string }>;
+    }): Promise<{ exitCode: number | null; out: string; ms: number; timedOut?: boolean; missing?: boolean; error?: string; pid?: number }>;
     /** A line of Joe's own, marked as his — never dressed up as process output. */
     note(line: string): void;
     /** A section heading, so a long transcript stays readable. */
@@ -86,6 +88,17 @@ export interface TerminalSession {
 export interface TerminalOptions {
     /** Cancellation owned by the surrounding Joe run. */
     cancel?: Promise<void>;
+}
+
+/**
+ * PowerShell may resolve `npm` to its blocked script shim on Windows. The
+ * command transcript still says `npm`, while the process runner uses the
+ * portable command shim that Node installs for Windows.
+ */
+export function executableForPlatform(file: string): string {
+    return process.platform === 'win32' && String(file).toLowerCase() === 'npm'
+        ? 'npm.cmd'
+        : file;
 }
 
 /** `~/…/dar-al-rifq $` — short enough to read, long enough to locate. */
@@ -178,8 +191,8 @@ export function openTerminal(say: (line: string) => void, options: TerminalOptio
             emit(`${prompt(cwd)} ${shown}`);
             let out = '';
             const { executionEngine } = require('../../kernel/ExecutionEngine');
-            const h = executionEngine.runArgvStreaming(file, args, {
-                cwd, timeout: opts.timeout || 120_000,
+            const h = executionEngine.runArgvStreaming(executableForPlatform(file), args, {
+                cwd, timeout: opts.timeout || 120_000, idleTimeout: opts.idleTimeout,
                 env: { NO_COLOR: '1', ...(opts.env || {}) },
                 cancel: opts.cancel,
                 onLine: (l: string) => {
@@ -189,7 +202,7 @@ export function openTerminal(say: (line: string) => void, options: TerminalOptio
             });
             const r = await h.done;
             const ms = Date.now() - started;
-            const timedOut = r.exitCode === 124 && r.error === 'timeout';
+            const timedOut = r.exitCode === 124 && (r.error === 'timeout' || r.error === 'idle_timeout');
             const missing = r.exitCode === null && !timedOut;
             /**
              * The exit line is printed for EVERY outcome, including the ones
@@ -199,10 +212,10 @@ export function openTerminal(say: (line: string) => void, options: TerminalOptio
             emit(missing
                 ? `→ not found: ${file} is not installed on this machine`
                 : timedOut
-                    ? `→ timed out after ${(ms / 1000).toFixed(1)}s`
+                    ? `→ ${r.error === 'idle_timeout' ? 'stopped after no progress for' : 'timed out after'} ${(ms / 1000).toFixed(1)}s`
                     : `→ exit ${r.exitCode} · ${(ms / 1000).toFixed(1)}s`);
             ran.push({ command: shown, exitCode: r.exitCode, ms, timedOut, missing, probe: (opts as any).probe === true });
-            return { exitCode: r.exitCode, out, ms, timedOut, missing, error: r.error };
+            return { exitCode: r.exitCode, out, ms, timedOut, missing, error: r.error, pid: h.pid };
         },
 
         transcript() {

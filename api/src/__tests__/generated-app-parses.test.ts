@@ -132,14 +132,16 @@ const WeatherProvider: React.FC<WeatherProviderProps> = ({ children }) => {
             { isArabic: false, brand: 'Ledger', storeKey: 'ledger', api: 'http://localhost:4100/api/expenses' } as any,
             'ledger',
         );
-        const remoteRecords = remote['src/components/RecordsApp.jsx'];
+        const remoteRecords = remote['src/app/records-controller.js'];
+        const remoteView = remote['src/components/RecordsView.jsx'];
         const remoteContent = remote['src/content.js'];
         expect(remoteContent).toContain("api: 'http://localhost:4100/api/expenses'");
         expect(remoteRecords).toContain('const remote = await apiList(content.api);');
         expect(remoteRecords).toContain('if (!alive || !remote) return;');
         expect(remoteRecords).toContain('setServer(true);');
-        expect(remoteRecords).toMatch(/server \? .*Server connected/s);
-        expect(remoteRecords).toContain('Local to this device');
+        expect(remoteView).toMatch(/server \? .*Server connected/s);
+        expect(remoteView).toContain('Local to this device');
+        expect(remote['src/components/RecordsApp.jsx']).toContain('useRecordsController(content)');
 
         const local = buildAppFiles(
             blueprintFor('expenses', 'Build a quiet local ledger', false),
@@ -156,7 +158,7 @@ const WeatherProvider: React.FC<WeatherProviderProps> = ({ children }) => {
 
     it('persists only declared record filters across a reload', () => {
         const files = filesFor('inventory', true);
-        const records = files['src/components/RecordsApp.jsx'];
+        const records = files['src/app/records-controller.js'];
         expect(records).toContain("const filterStoreKey = content.storeKey + ':filters';");
         expect(records).toContain('JSON.parse(localStorage.getItem(filterStoreKey) || \'{}\')');
         expect(records).toContain('return filterKeys.reduce((next, key) => {');

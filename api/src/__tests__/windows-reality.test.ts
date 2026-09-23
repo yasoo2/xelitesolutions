@@ -43,6 +43,12 @@ describe('the auto build check is honest about WHERE and WHETHER', () => {
         expect(phaseExec).toMatch(/\|\| echo BUILD_CHECK_FAILED/);
         expect(phaseExec).not.toMatch(/echo "BUILD_CHECK_FAILED"/);
     });
+
+    test('an auto-build exception remains a failed verification instead of becoming a skip', () => {
+        expect(phaseExec).toMatch(/Auto-build check errored — treated as a failed verification/);
+        expect(phaseExec).not.toMatch(/Auto-build check errored — treated as skipped/);
+        expect(phaseExec).toMatch(/verificationFailed = true/);
+    });
 });
 
 describe('dependency self-fix survives a weak machine', () => {

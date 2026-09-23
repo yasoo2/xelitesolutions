@@ -18,6 +18,7 @@
  * not measure, and if the repair made things worse the project is put back.
  */
 import fs from 'fs';
+import { artifactRootDir as defaultArtifactRootDir } from '../../../shared/artifact-root';
 import path from 'path';
 import { findActiveBuiltProject } from '../../../core/orchestrator/active-built-project';
 import { BaseTool } from '../base';
@@ -136,7 +137,7 @@ export class ProjectRepairTool extends BaseTool {
             term(`repair: ignored stale live URL ${recordedServeUrl}`);
         }
         let runtimeAuth = input?.credentials || projectEntry?.runtimeAuth;
-        const artifactRootDir = String(input?.artifactRootDir || process.env.ARTIFACT_DIR || '/tmp/joe-artifacts').trim();
+        const artifactRootDir = String(input?.artifactRootDir || defaultArtifactRootDir()).trim();
 
         // A same-session repair often arrives after the original API process
         // stopped. Auditing dist/ alone makes every real /api request look

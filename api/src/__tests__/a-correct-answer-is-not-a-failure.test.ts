@@ -111,7 +111,9 @@ describe('the log does not say everything twice', () => {
 
     it('the wrapper still forwards the line — dedupe must not mute the panel', () => {
         const at = TOOLSVC.indexOf('context?.terminalLinesEmitted instanceof Set');
-        expect(TOOLSVC.slice(at, at + 500)).toContain('return outerProgress(m);');
+        const wrapperEnd = TOOLSVC.indexOf('\n        };', at);
+        expect(wrapperEnd).toBeGreaterThan(at);
+        expect(TOOLSVC.slice(at, wrapperEnd)).toContain('return outerProgress(m);');
     });
 
     it('shares streamed child evidence with the parent pipeline', () => {

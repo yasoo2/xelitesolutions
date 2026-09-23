@@ -55,7 +55,9 @@ describe('a server that carries an interface serves it — whatever kind of syst
 describe('the browser asks where it landed before it grades anything', () => {
     it('it reads the landing response instead of assuming it arrived', () => {
         const a = AUDIT();
-        expect(a).toMatch(/const landing = await page\.goto\(url, \{ waitUntil: 'networkidle', timeout: timeoutMs \}\);/);
+        expect(a).toMatch(/const openAuditTarget = async \(target: string\) => \{/);
+        expect(a).toMatch(/page\.goto\(target, \{ waitUntil: 'networkidle', timeout: navigationTimeoutMs \}\)/);
+        expect(a).toMatch(/const landing = await openAuditTarget\(url\);/);
         expect(a).toMatch(/const doorStatus = Number\(landing\?\.status\?\.\(\) \|\| 0\);/);
         expect(a).toMatch(/if \(doorStatus >= 400\) \{/);
     });
@@ -85,7 +87,7 @@ describe('the browser asks where it landed before it grades anything', () => {
 
     it('a page with no control and no form is that finding, not a typography review', () => {
         const a = AUDIT();
-        expect(a).toMatch(/if \(!allControls\.length && !allForms\.length\) \{/);
+        expect(a).toMatch(/if \(!allControls\.length && !allForms\.length && !auditErrors\.length\) \{/);
         expect(a).toMatch(/id: 'empty_page', severity: 'high'/);
         expect(a).toContain('هذه ليست واجهة تطبيق');
     });

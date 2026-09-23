@@ -10,7 +10,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
-import { ReactProjectTool, PROJECT_DIR_NAME_MAX_LENGTH, applyBundledPhotographyFallback, hasUsableReactDependencyTree, heroSecondaryDestination, portableViteBuildArgs, requestDrivenServiceProducts, reuseLocalReactDependencies, withoutViteConfigForBuild } from '../modules/tools/definitions/ReactProjectTool';
+import { ReactProjectTool, PROJECT_DIR_NAME_MAX_LENGTH, REACT_NETWORK_INSTALL_TIMEOUTS, LOCAL_RECORDS_FALLBACK_INSTALL_TIMEOUTS, applyBundledPhotographyFallback, canBuildDependencyFreeRecordsApp, cleanReinstallReactDependencies, findBrokenNativeBuildTool, hasUsableReactDependencyTree, heroSecondaryDestination, installTimeoutsForRecordsRecovery, interruptedWindowsNativeTools, nativeBuildToolRepairSpec, portableViteBuildArgs, repairQuarantinedEsbuildInstall, repairRecordsViewBlankImport, repairRecordsViewToggleControl, repairRecordsViewVisualBaseline, requestDerivedRecordsPresentation, requestDrivenServiceProducts, reuseLocalReactDependencies, scopedNpmCache, shouldRepairInterruptedNativeBuildTools, sourceRepairAllowedForArtifact, withoutViteConfigForBuild, writeDependencyFreeRecordsBundle } from '../modules/tools/definitions/ReactProjectTool';
 import { fileAppStoreJs } from '../modules/tools/definitions/react-app-templates';
 import { ApiProjectTool } from '../modules/tools/definitions/ApiProjectTool';
 import { ScaffoldProjectTool } from '../modules/tools/definitions/SystemTools';
@@ -24,6 +24,104 @@ const route = async (goal: string): Promise<string> => {
     ).then(x => x.steps[0].tool).catch(() => FALLTHROUGH);
     return Promise.race([p, new Promise<string>(r => { const t = setTimeout(() => r(FALLTHROUGH), 1500); (t as any).unref?.(); })]);
 };
+
+describe('records presentation import contract', () => {
+    it('repairs only the known blank helper import after model authoring', () => {
+        const authored = "import { blank } from '../app/store.js';\nimport { imageOf } from '../app/store.js';\nexport default function RecordsView() { return null; }";
+        expect(repairRecordsViewBlankImport(authored)).toBe(
+            "import { blank } from '../app/records-controller.js';\nimport { imageOf } from '../app/store.js';\nexport default function RecordsView() { return null; }",
+        );
+    });
+
+    it('does not change an already-correct or unrelated import', () => {
+        const source = "import { blank } from '../app/records-controller.js';\nimport { useStore } from '../app/store.js';";
+        expect(repairRecordsViewBlankImport(source)).toBe(source);
+    });
+
+    it('honors a toggle control even when its storage type is select', () => {
+        const authored = "{field.type === 'toggle' ? <input type=\"checkbox\" /> : null}";
+        expect(repairRecordsViewToggleControl(authored)).toContain("field.control === 'toggle' || field.type === 'toggle'");
+    });
+
+    it('adds a compact scoped visual baseline when a records view leaves its classes unstyled', () => {
+        const authored = "export default function RecordsView() { return <div className=\"records-view\"><div className=\"toggle-container\"><input type=\"checkbox\" /></div></div>; }";
+        const repaired = repairRecordsViewVisualBaseline(authored);
+        expect(repaired).toContain('<style>{".records-view');
+        expect(repaired).toContain('.toggle-container');
+        expect(repairRecordsViewVisualBaseline(repaired)).toBe(repaired);
+    });
+
+    it('keeps a complete records engine available as a request-derived presentation', () => {
+        const source = "function RecordsView({ content }) { return <div className={'wrap' + (content.media ? ' media-workspace' : '')}>Ready</div>; }";
+        const derived = requestDerivedRecordsPresentation(source);
+        expect(derived).toContain('data-joe-presentation="request-derived"');
+        expect(derived).toContain("className={'wrap' + (content.media ? ' media-workspace' : '')}");
+        expect(derived).toContain('input[role=\\"switch\\"]');
+        expect(derived).toContain('border-radius:999px');
+        expect(requestDerivedRecordsPresentation(derived)).toBe(derived);
+    });
+});
+
+describe('dependency-free local records recovery', () => {
+    const blueprint: any = {
+        engine: 'records', title: 'سجل الإبل', lede: 'سجل الناقة والعمر والوزن',
+        entityOne: 'ناقة', entityMany: 'الإبل', fields: [
+            { key: 'camel_name', label: 'اسم الناقة', type: 'text', required: true, primary: true },
+            { key: 'age', label: 'العمر', type: 'number', required: true, min: 0 },
+            { key: 'weight', label: 'الوزن', type: 'number', required: true, min: 0 },
+        ],
+    };
+
+    it('writes a real local CRUD artifact only for a standalone records contract', () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-static-records-'));
+        try {
+            expect(canBuildDependencyFreeRecordsApp(blueprint)).toBe(true);
+            expect(canBuildDependencyFreeRecordsApp(blueprint, { hasBackend: true })).toBe(false);
+            expect(canBuildDependencyFreeRecordsApp({ ...blueprint, relation: { resource: 'owners' } })).toBe(false);
+            const output = writeDependencyFreeRecordsBundle(root, blueprint, true);
+            const html = fs.readFileSync(output, 'utf8');
+            expect(html).toContain('name="joe-artifact-mode" content="static-records"');
+            expect(html).toContain('اسم الناقة');
+            expect(html).toContain("localStorage.setItem(store");
+            expect(html).toContain("form.checkValidity()");
+            expect(html).toContain("input.pattern='[0-9+() -]{6,}'");
+            expect(html).toContain("download:'records.csv'");
+            expect(html).toContain("edit(row)");
+            expect(html).toContain("remove(row.id)");
+            expect(html).toContain('aria-labelledby="search-label"');
+            expect(html).toContain('id="status" role="status"');
+            expect(html).toContain('status.textContent=c.labels.exported');
+            expect(html).toContain('status.textContent=c.labels.saved},0)}},true)');
+            expect(html).toContain('.button,.link-button{min-height:44px}');
+            const scripts = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gu)];
+            expect(scripts).toHaveLength(3);
+            expect(() => new Function(scripts[1][1])).not.toThrow();
+        } finally {
+            fs.rmSync(root, { recursive: true, force: true });
+        }
+    });
+
+    it('uses a short single install budget only when the local records fallback is eligible', () => {
+        expect(installTimeoutsForRecordsRecovery(true)).toBe(LOCAL_RECORDS_FALLBACK_INSTALL_TIMEOUTS);
+        expect(LOCAL_RECORDS_FALLBACK_INSTALL_TIMEOUTS.idleMs).toBe(30_000);
+        expect(LOCAL_RECORDS_FALLBACK_INSTALL_TIMEOUTS.absoluteMs).toBe(75_000);
+        expect(LOCAL_RECORDS_FALLBACK_INSTALL_TIMEOUTS.absoluteMs).toBeLessThan(REACT_NETWORK_INSTALL_TIMEOUTS.idleMs);
+        expect(installTimeoutsForRecordsRecovery(false)).toBe(REACT_NETWORK_INSTALL_TIMEOUTS);
+    });
+
+    it('does not spend another network repair attempt after a failed local records install', () => {
+        expect(shouldRepairInterruptedNativeBuildTools(true, -2)).toBe(false);
+        expect(shouldRepairInterruptedNativeBuildTools(true, 1)).toBe(false);
+        expect(shouldRepairInterruptedNativeBuildTools(false, 1)).toBe(true);
+        expect(shouldRepairInterruptedNativeBuildTools(false, 0)).toBe(false);
+    });
+
+    it('never sends a dependency-free artifact into the React source repair loop', () => {
+        expect(sourceRepairAllowedForArtifact('static_records')).toBe(false);
+        expect(sourceRepairAllowedForArtifact('react')).toBe(true);
+        expect(sourceRepairAllowedForArtifact(null)).toBe(true);
+    });
+});
 
 describe('dependency reuse only trusts a complete Vite tree', () => {
     const baseManifest = {
@@ -45,14 +143,18 @@ describe('dependency reuse only trusts a complete Vite tree', () => {
         const files = [
             '.bin/vite', 'vite/package.json', 'rollup/package.json', 'rollup/dist/parseAst.js',
             '@vitejs/plugin-react/package.json', 'react/package.json', 'react-dom/package.json', 'esbuild/package.json',
+            'browserslist/index.js', 'caniuse-lite/package.json', 'caniuse-lite/dist/unpacker/feature.js',
             `@esbuild/win32-${process.arch}/package.json`, `@esbuild/win32-${process.arch}/esbuild.exe`,
+            `@rollup/rollup-win32-${process.arch}-msvc/package.json`,
+            `@rollup/rollup-win32-${process.arch}-msvc/rollup.win32-${process.arch}-msvc.node`,
         ];
         for (const rel of files) {
             const file = path.join(root, 'node_modules', rel);
             fs.mkdirSync(path.dirname(file), { recursive: true });
-            fs.writeFileSync(file, rel.endsWith('esbuild.exe')
+            fs.writeFileSync(file, rel.endsWith('.exe') || rel.endsWith('.node')
                 ? options.binary || fakeWindowsEsbuild()
-                : rel.includes('esbuild') ? '{"version":"0.21.5"}' : '{}');
+                : rel.includes('esbuild') ? '{"version":"0.21.5"}'
+                    : rel.includes('rollup') ? '{"version":"4.63.1"}' : '{}');
         }
         const packages: Record<string, any> = {
             '': { dependencies: manifest.dependencies || {}, devDependencies: manifest.devDependencies || {} },
@@ -85,10 +187,146 @@ describe('dependency reuse only trusts a complete Vite tree', () => {
         fs.rmSync(tmp, { recursive: true, force: true });
     });
 
+    it('rejects a tree whose Browserslist data was only partially extracted', () => {
+        const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-react-deps-'));
+        writeTree(tmp, baseManifest);
+        fs.rmSync(path.join(tmp, 'node_modules', 'caniuse-lite', 'dist', 'unpacker', 'feature.js'));
+        expect(hasUsableReactDependencyTree(tmp)).toBe(false);
+        fs.rmSync(tmp, { recursive: true, force: true });
+    });
+
+    it('replaces the incomplete tree through one bounded npm execution and removes its cache', async () => {
+        const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-react-clean-install-'));
+        const modules = path.join(tmp, 'node_modules');
+        const lock = path.join(tmp, 'package-lock.json');
+        fs.mkdirSync(modules, { recursive: true });
+        fs.writeFileSync(path.join(modules, 'stale.txt'), 'partial');
+        fs.writeFileSync(lock, '{"partial":true}');
+        let cache = '';
+        const run = jest.fn(async (cmd: string, args: string[], timeoutMs: number, idleTimeoutMs?: number) => {
+            expect(cmd).toBe('npm');
+            expect(fs.existsSync(modules)).toBe(false);
+            expect(fs.existsSync(lock)).toBe(false);
+            cache = String(args[args.indexOf('--cache') + 1] || '');
+            fs.mkdirSync(cache, { recursive: true });
+            fs.writeFileSync(path.join(cache, 'download'), 'isolated');
+            expect(timeoutMs).toBe(REACT_NETWORK_INSTALL_TIMEOUTS.absoluteMs);
+            expect(idleTimeoutMs).toBe(REACT_NETWORK_INSTALL_TIMEOUTS.idleMs);
+            return 0;
+        });
+        try {
+            await expect(cleanReinstallReactDependencies(tmp, run)).resolves.toBe(0);
+            expect(run).toHaveBeenCalledTimes(1);
+            expect(run.mock.calls[0][1].slice(0, 5)).toEqual([
+                'install', '--prefer-online', '--no-audit', '--no-fund', '--cache',
+            ]);
+            expect(path.dirname(path.dirname(cache))).toBe(tmp);
+            expect(fs.existsSync(cache)).toBe(false);
+        } finally {
+            fs.rmSync(tmp, { recursive: true, force: true });
+        }
+    });
+
+    it('derives exact trusted repair packages and executable checks from installed wrapper versions', () => {
+        const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-native-repair-'));
+        writeTree(tmp, baseManifest);
+        expect(nativeBuildToolRepairSpec(tmp, 'esbuild', 'win32', 'x64')).toMatchObject({
+            packageName: '@esbuild/win32-x64', version: '0.21.5',
+            verifyArgs: [path.join('node_modules', 'esbuild', 'bin', 'esbuild'), '--version'],
+        });
+        expect(nativeBuildToolRepairSpec(tmp, 'rollup', 'win32', 'x64')).toMatchObject({
+            packageName: '@rollup/rollup-win32-x64-msvc', version: '4.63.1',
+            verifyArgs: [path.join('node_modules', 'rollup', 'dist', 'bin', 'rollup'), '--version'],
+        });
+        expect(nativeBuildToolRepairSpec(tmp, 'rollup', 'linux', 'x64')).toBeNull();
+        fs.writeFileSync(path.join(tmp, 'node_modules', 'rollup', 'package.json'), '{"version":"latest;evil"}');
+        expect(nativeBuildToolRepairSpec(tmp, 'rollup', 'win32', 'x64')).toBeNull();
+        fs.rmSync(tmp, { recursive: true, force: true });
+    });
+
+    it('identifies Rollup when esbuild starts but the Rollup native binding cannot load', async () => {
+        const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-native-probe-'));
+        writeTree(tmp, baseManifest);
+        const executed: string[][] = [];
+        const broken = await findBrokenNativeBuildTool(tmp, async args => {
+            executed.push(args);
+            return args.some(part => part.includes('rollup')) ? 1 : 0;
+        });
+        expect(broken).toBe('rollup');
+        expect(executed).toEqual([
+            [path.join('node_modules', 'esbuild', 'bin', 'esbuild'), '--version'],
+            [path.join('node_modules', 'rollup', 'dist', 'bin', 'rollup'), '--version'],
+        ]);
+        fs.rmSync(tmp, { recursive: true, force: true });
+    });
+
+    it('keeps dependencies untouched when the native executable probe times out', async () => {
+        const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-native-probe-timeout-'));
+        writeTree(tmp, baseManifest);
+        await expect(findBrokenNativeBuildTool(tmp, async () => -2)).resolves.toBe('indeterminate');
+        fs.rmSync(tmp, { recursive: true, force: true });
+    });
+
+    it('does not apply the Windows native-binary repair gate on Linux', async () => {
+        const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-native-linux-'));
+        writeTree(tmp, baseManifest);
+        const execute = jest.fn(async () => 1);
+        await expect(findBrokenNativeBuildTool(tmp, execute, 'linux', 'x64')).resolves.toBeNull();
+        expect(execute).not.toHaveBeenCalled();
+        fs.rmSync(tmp, { recursive: true, force: true });
+    });
+
+    it('accepts npm\'s nested optional esbuild platform package layout', () => {
+        if (process.platform !== 'win32') return;
+        const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-react-deps-'));
+        writeTree(tmp, baseManifest);
+        const hoisted = path.join(tmp, 'node_modules', '@esbuild', `win32-${process.arch}`);
+        const nested = path.join(tmp, 'node_modules', 'esbuild', 'node_modules', '@esbuild', `win32-${process.arch}`);
+        fs.mkdirSync(path.dirname(nested), { recursive: true });
+        fs.renameSync(hoisted, nested);
+        expect(hasUsableReactDependencyTree(tmp)).toBe(true);
+        fs.rmSync(tmp, { recursive: true, force: true });
+    });
+
+    it('accepts a valid Rollup binding whose PE header begins beyond byte 256', () => {
+        if (process.platform !== 'win32') return;
+        const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-react-deps-'));
+        writeTree(tmp, baseManifest);
+        const binding = path.join(tmp, 'node_modules', '@rollup', `rollup-win32-${process.arch}-msvc`, `rollup.win32-${process.arch}-msvc.node`);
+        const binary = fakeWindowsEsbuild();
+        binary.fill(0, 128, 134);
+        binary.writeUInt32LE(272, 0x3c);
+        binary.set([0x50, 0x45, 0, 0], 272);
+        binary.writeUInt16LE(0x8664, 276);
+        fs.writeFileSync(binding, binary);
+        expect(hasUsableReactDependencyTree(tmp)).toBe(true);
+        fs.rmSync(tmp, { recursive: true, force: true });
+    });
+
     it('rejects a timed-out install that left a non-Windows esbuild binary named .exe', () => {
         if (process.platform !== 'win32') return;
         const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-react-deps-'));
         writeTree(tmp, baseManifest, { binary: Buffer.from([0x7f, 0x45, 0x4c, 0x46]) });
+        expect(hasUsableReactDependencyTree(tmp)).toBe(false);
+        fs.rmSync(tmp, { recursive: true, force: true });
+    });
+
+    it('identifies a truncated trusted platform package after npm exits with failure', () => {
+        if (process.platform !== 'win32') return;
+        const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-native-interrupted-'));
+        writeTree(tmp, baseManifest);
+        const binary = path.join(tmp, 'node_modules', '@esbuild', `win32-${process.arch}`, 'esbuild.exe');
+        fs.writeFileSync(binary, fakeWindowsEsbuild().subarray(0, 3_300_000));
+        expect(hasUsableReactDependencyTree(tmp)).toBe(false);
+        expect(interruptedWindowsNativeTools(tmp)).toEqual(['esbuild']);
+        fs.rmSync(tmp, { recursive: true, force: true });
+    });
+
+    it('rejects a zero-byte Rollup native binding left by an interrupted install', () => {
+        if (process.platform !== 'win32') return;
+        const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-react-deps-'));
+        writeTree(tmp, baseManifest);
+        fs.writeFileSync(path.join(tmp, 'node_modules', '@rollup', `rollup-win32-${process.arch}-msvc`, `rollup.win32-${process.arch}-msvc.node`), '');
         expect(hasUsableReactDependencyTree(tmp)).toBe(false);
         fs.rmSync(tmp, { recursive: true, force: true });
     });
@@ -111,7 +349,7 @@ describe('dependency reuse only trusts a complete Vite tree', () => {
         fs.rmSync(tmp, { recursive: true, force: true });
     });
 
-    it('copies a compatible verified tree so npm is unnecessary', () => {
+    it('never copies dependencies from an arbitrary sibling project', () => {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-react-deps-root-'));
         const partial = path.join(root, 'react-a-partial');
         const source = path.join(root, 'react-source');
@@ -126,8 +364,8 @@ describe('dependency reuse only trusts a complete Vite tree', () => {
         fs.writeFileSync(path.join(partial, 'node_modules', '.bin', 'vite'), 'partial');
         writeTree(source, manifest);
         try {
-            expect(reuseLocalReactDependencies(root, target)).toBe(true);
-            expect(hasUsableReactDependencyTree(target)).toBe(true);
+            expect(reuseLocalReactDependencies(root, target)).toBe(false);
+            expect(fs.existsSync(path.join(target, 'node_modules'))).toBe(false);
         } finally {
             fs.rmSync(root, { recursive: true, force: true });
         }
@@ -262,6 +500,7 @@ describe('the scaffold: complete, RTL, tokenized, honest', () => {
     it('reports ok with the full file list', () => {
         expect(out.ok).toBe(true);
         expect(out.output.files.length).toBeGreaterThanOrEqual(14);
+        expect(out.output.acceptanceTrace).toEqual({ omitted: 0, criteria: [] });
     });
     it('package.json is valid and pins the build scripts', () => {
         const pkg = JSON.parse(fs.readFileSync(path.join(out.output.path, 'package.json'), 'utf-8'));
@@ -748,6 +987,72 @@ describe('product pages, the team, and the build command', () => {
             expect(src).not.toContain("shell: process.platform === 'win32'");
         }
     });
+
+    it('repairs npm 11 script quarantine with scoped approval, rebuild, and verification', () => {
+        const source = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ReactProjectTool.ts'), 'utf-8');
+        expect(source).toContain("await run('npm', ['approve-scripts', 'esbuild'], 60_000, 30_000)");
+        expect(source).toContain("await run('npm', ['rebuild', 'esbuild', '--foreground-scripts'], 120_000, 45_000)");
+        expect(source).not.toContain("['approve-scripts', '--all']");
+        expect(source).toContain('repairQuarantinedEsbuildInstall(proj, run)');
+        expect(source.includes('cleanReinstallReactDependencies(proj, run)')).toBe(true);
+        expect(source).toContain('complete native toolchain verified after scoped npm approval and rebuild');
+    });
+
+    it('stops honestly when a scoped quarantine stage or final verification fails', async () => {
+        const approvalFailure = await repairQuarantinedEsbuildInstall('unused', async () => 37, () => true);
+        expect(approvalFailure).toEqual({ ok: false, approvalExit: 37, rebuildExit: null, failedAt: 'approval' });
+
+        const commands: string[][] = [];
+        const verificationFailure = await repairQuarantinedEsbuildInstall('unused', async (_cmd, args) => {
+            commands.push(args);
+            return 0;
+        }, () => false);
+        expect(commands).toEqual([
+            ['approve-scripts', 'esbuild'],
+            ['rebuild', 'esbuild', '--foreground-scripts'],
+        ]);
+        expect(verificationFailure).toMatchObject({ ok: false, rebuildExit: 0, failedAt: 'verification' });
+    });
+
+    it('uses a single cache-preferred install instead of a guaranteed cache-only retry on misses', () => {
+        const source = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ReactProjectTool.ts'), 'utf-8');
+        expect(source).toContain("'install', '--prefer-offline', '--no-audit', '--no-fund',");
+        expect(source).toContain("'--fetch-retries=0', '--fetch-timeout=10000'");
+        expect(source).toContain("'ci', '--offline', '--no-audit', '--no-fund'");
+        expect(source).toContain('exact local React npm cache selected');
+        expect(source).not.toContain("['install', '--offline', '--no-audit', '--no-fund']");
+        expect(source).not.toContain('offlineInstall');
+        expect(source).toContain('hasUsableReactDependencyTree(proj)');
+        expect(source).toContain('repairQuarantinedEsbuildInstall(proj, run)');
+        expect(source).toContain('cleanReinstallReactDependencies(proj, run)');
+    });
+
+    it('keeps the normal npm cache inside the generated project', () => {
+        const project = path.join(os.tmpdir(), 'joe-scoped-npm-cache');
+        expect(scopedNpmCache(project)).toBe(path.join(project, '.joe', 'npm-cache'));
+        const source = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ReactProjectTool.ts'), 'utf-8');
+        expect(source).toContain("'--cache', installCache");
+    });
+
+    it('executes and narrowly repairs a corrupt Windows esbuild binary before accepting dependencies', () => {
+        const source = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ReactProjectTool.ts'), 'utf-8');
+        expect(source).toContain('detectBrokenNativeBuildTool');
+        expect(source).toContain('repairNativeBuildTool');
+        expect(source).toContain('interruptedWindowsNativeTools(proj)');
+        expect(source).toContain('interrupted native packages repaired and the complete toolchain verified');
+        expect(source).toContain('`${spec.packageName}@${spec.version}`');
+        expect(source).toContain("'--package-lock=false'");
+        expect(source).toContain("'--cache', repairCache");
+        expect(REACT_NETWORK_INSTALL_TIMEOUTS.idleMs).toBeGreaterThanOrEqual(3 * 60_000);
+        expect(REACT_NETWORK_INSTALL_TIMEOUTS.idleMs).toBeLessThan(REACT_NETWORK_INSTALL_TIMEOUTS.absoluteMs);
+        expect(REACT_NETWORK_INSTALL_TIMEOUTS.absoluteMs).toBeLessThanOrEqual(15 * 60_000);
+        expect(source).toContain('Prove both fresh and reused executables start');
+        expect(source).toContain('nativeToolProbe === null');
+        expect(source).toContain("native toolchain verification timed out — leaving dependencies unchanged");
+        expect(source).not.toContain('fs.rmSync(spec.platformRoot');
+        expect(source).not.toContain('npm cache clean');
+        expect(source).toContain('the JavaScript toolchain is incomplete — performing one clean bounded reinstall');
+    });
 });
 
 
@@ -844,6 +1149,7 @@ describe('project identity: React builds reuse only their session-owned scaffold
         const sessionId = 'api-identity-fresh-react-t';
         const staleDir = path.join(root, 'OldApiReact');
         const apiDir = path.join(root, 'ApiProject');
+        fs.mkdirSync(apiDir, { recursive: true });
         fs.mkdirSync(path.join(staleDir, 'src'), { recursive: true });
         fs.writeFileSync(path.join(staleDir, 'index.html'), '<!doctype html><div id="root"></div>');
         fs.writeFileSync(path.join(staleDir, 'package.json'), JSON.stringify({
@@ -868,6 +1174,14 @@ describe('project identity: React builds reuse only their session-owned scaffold
             expect(path.resolve(result.output.path).startsWith(path.resolve(root) + path.sep)).toBe(true);
             expect(result.logs.join('\n')).toContain('app=finance');
             expect(projects[sessionId].linkedApi).toBe('/api/orders');
+            expect(projects[sessionId].linkedApiDir).toBe(apiDir);
+            expect(projects[sessionId].runtimeAuth).toEqual(runtimeAuth);
+            const retry: any = await new ReactProjectTool().execute(
+                { request: 'Build a React app for a customer ledger', root, skipInstall: true, projectName: 'FreshLedger' },
+                { sessionId, runId: 'new-react-run' },
+            );
+            expect(retry.ok).toBe(true);
+            expect(retry.logs.join('\n')).toContain('app=finance');
             expect(projects[sessionId].linkedApiDir).toBe(apiDir);
             expect(projects[sessionId].runtimeAuth).toEqual(runtimeAuth);
         } finally {

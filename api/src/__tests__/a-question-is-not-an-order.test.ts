@@ -17,6 +17,7 @@
  * guard that returned true for everything would satisfy the first half alone.
  */
 import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
+import { IntentParser } from '../core/intelligence/IntentParser';
 
 const toolsOf = (goal: string): string[] => {
     const plan: any = PlanningEngine.capabilityPlan({ goal });
@@ -73,5 +74,36 @@ describe('INVARIANT: the guard refuses questions WITHOUT swallowing orders', () 
     test('a build request is still a build request', () => {
         expect(PlanningEngine.isKnowledgeQuestion('ابن لي تطبيق React')).toBe(false);
         expect(PlanningEngine.looksLikeBuild('ابن لي تطبيق React')).toBe(true);
+    });
+
+    it('routes a deterministic capability before the expensive semantic analysis', () => {
+        expect(IntentParser.quickIntent('فحص أمني للموقع')).toEqual(expect.objectContaining({
+            suggestedAgent: 'General',
+            requiredTools: ['security_scanner'],
+            rawIntent: expect.objectContaining({
+                capabilityCandidate: 'security_scanner',
+                deterministic: true,
+            }),
+        }));
+    });
+
+    it('asks for a missing capability target instead of executing a malformed tool call', async () => {
+        const intent = IntentParser.quickIntent('فحص أمني للموقع');
+        expect(intent).not.toBeNull();
+        const plan = await PlanningEngine.generatePlan({ intent: intent! });
+        expect(plan.steps.map(step => step.tool)).toEqual(['ask_user']);
+        expect(plan.steps[0]?.input.question).toContain('security_scanner');
+    });
+
+    it('uses an explicit filesystem target when the capability contract has one', async () => {
+        const intent = IntentParser.quickIntent('فحص أمني للموقع في C:\\work\\demo');
+        expect(intent).not.toBeNull();
+        const plan = await PlanningEngine.generatePlan({ intent: intent! });
+        expect(plan.steps.map(step => step.tool)).toEqual(['security_scanner']);
+        expect(plan.steps[0]?.input.projectPath).toBe('C:\\work\\demo');
+    });
+
+    it('does not turn a capability named in a question into an action', () => {
+        expect(IntentParser.quickIntent('ما هو الفحص الأمني للموقع؟')?.rawIntent?.capabilityCandidate).toBeUndefined();
     });
 });

@@ -858,7 +858,7 @@ describe('THE WIRING: the build is judged before it is delivered', () => {
         //  ...and the catalogue survives as the floor for when the reading
         //  could not happen. Deleting it would trade one silent failure for
         //  another the first time a provider is down.
-        expect(REACT).toMatch(/: catalogueCriteria;/);
+        expect(REACT).toMatch(/: judgedCatalogueCriteria;/);
         expect(REACT).toMatch(/liveUrl: previewUrl,/);
         expect(REACT).toMatch(/audit: audit \|\| null,/);
         expect(REACT).toMatch(/const reconciledVoices = reconcileDeliveryVoices\(/);
@@ -880,7 +880,8 @@ describe('THE WIRING: the build is judged before it is delivered', () => {
         //  moment `acceptBlock` began carrying a stand-down notice ahead of the
         //  ledger — an addition, not a regression. A guard that cannot tell
         //  those apart is a spelling test.
-        expect(REACT).toMatch(/const acceptBlock = `[^`]*\$\{acceptanceBlock\(acceptance, isAr\)\}\\n`;/);
+        expect(/const acceptBlock = `[^`]*\$\{acceptanceBlock\(\s*acceptanceBlocked \? \{ \.\.\.acceptance, accepted: false \} : acceptance, isAr\)/.test(REACT)).toBe(true);
+        expect(REACT.includes('acceptance.unmet + acceptance.unprovable')).toBe(true);
         expect(REACT).toMatch(/const acceptanceBlocked = acceptance\.criteria\.length > 0[\s\S]{0,220}!acceptance\.accepted/);
         expect(REACT).toMatch(/output: \{ message, acceptance,/);
     });

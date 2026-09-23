@@ -75,6 +75,14 @@ import {
 
 const DEBUG_TOOL_UI = false;
 
+function authenticatedHeaders(json = false): Record<string, string> {
+  const token = (() => { try { return localStorage.getItem('token'); } catch { return null; } })();
+  return {
+    ...(json ? { 'Content-Type': 'application/json' } : {}),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+}
+
 const EliteLogo = ({ size = 120, className = "" }: { size?: number; className?: string }) => {
   return (
     <motion.div
@@ -908,7 +916,9 @@ export default function CommandComposer({
       setQueuePaused(false);
       return () => { current = false; };
     }
-    void fetch(`${API}/sessions/${encodeURIComponent(sid)}/queue`)
+    void fetch(`${API}/sessions/${encodeURIComponent(sid)}/queue`, {
+      headers: authenticatedHeaders(),
+    })
       .then(async (response) => response.ok ? response.json() : { items: [], paused: false })
       .then((saved) => {
         if (!current) return;
@@ -937,7 +947,7 @@ export default function CommandComposer({
     }));
     void fetch(`${API}/sessions/${encodeURIComponent(sid)}/queue`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authenticatedHeaders(true),
       body: JSON.stringify({ items, paused: queuePaused }),
     }).catch(() => { /* the next queue mutation retries; do not discard work locally */ });
   }, [sessionId, pendingQueue, queuePaused]);
@@ -2062,8 +2072,8 @@ export default function CommandComposer({
   async function loadHistory(id: string) {
     if (!id) return;
     try {
-      setStatus('thinking');
-      setIsThinking(true);
+      // Reading history is not an executing run. It must neither turn Enter
+      // into Stop nor clear a real run's status when the request completes.
       const token = localStorage.getItem('token');
       const res = await fetch(`${API}/sessions/${id}/history`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -2080,9 +2090,6 @@ export default function CommandComposer({
       }
     } catch (e) {
       console.error('Failed to load history', e);
-    } finally {
-      setStatus('idle');
-      setIsThinking(false);
     }
   }
 

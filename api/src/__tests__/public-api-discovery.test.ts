@@ -176,6 +176,12 @@ describe('public API discovery', () => {
         expect(plan.phases[0].tasks.map((task: any) => task.tool)).toEqual(['decide_capability_route', 'search_public_apis', 'react_project']);
         expect(plan.phases[0].tasks[0].args).toEqual({ request: 'Build a simple weather dashboard using a free public API.' });
         expect(plan.phases[0].tasks[1].args).toMatchObject({ validateTop: true, integrationRequired: true, requiresHttps: true, requiresNoAuth: true });
+        expect(plan.requireFinalVerification).toBe(true);
+        expect(plan.phases[0].verificationTask).toMatchObject({
+            tool: 'quality_run', verificationId: 'frontend:final-quality', verificationMode: 'final',
+            args: { tasks: ['lint', 'typecheck', 'test', 'build'] },
+        });
+        expect(plan.phases[0].verificationTask.args.path).toBeUndefined();
         const naturalWeather = (new ProjectPlannerTool() as any).constrainedFrontendPlan('Build me an Istanbul weather dashboard.');
         const naturalCurrency = (new ProjectPlannerTool() as any).constrainedFrontendPlan('Build me a currency converter.');
         expect(naturalWeather.phases[0].tasks.map((task: any) => task.tool)).toEqual(['decide_capability_route', 'search_public_apis', 'react_project']);

@@ -1,9 +1,10 @@
 import { analyzeContextualIntent, ConversationContext, buildConversationContext } from '../llm/context-engine';
-import { looksLikeBuild, isReadOnlyRequest, isBoundedTerminalDiagnosticRequest } from '../orchestrator/buildIntent';
+import { looksLikeBuild, isReadOnlyRequest, isBoundedTerminalDiagnosticRequest, isKnowledgeQuestion } from '../orchestrator/buildIntent';
 import intelligentRouter from '../llm/intelligent-router';
 import { normalizeIntentText } from '../orchestrator/promptNormalizer';
 import { parseExplicitFileRequest } from '../orchestrator/file-intent';
 import { capabilityFamilyFromRequest } from '../capabilities/decision-profiles';
+import { capableTools } from '../orchestrator/capability-match';
 
 export interface StructuredIntent {
     goal: string;
@@ -239,6 +240,27 @@ Return ONLY a JSON object:
         // Keep this helper safe when callers use it directly instead of parse().
         // Engineering briefs must never be returned as Browser intents.
         if (IntentParser.looksLikeEngineeringBrief(raw)) return null;
+        // The registry can already name a single, safe capability for an
+        // imperative request. Do not spend a slow model round merely to reach
+        // the same canonical capability plan later in PlanningEngine. This is
+        // deliberately only a classification hint: PlanningEngine still builds
+        // the plan and ToolService remains the sole policy/execution gateway.
+        // Questions and construction briefs stay out of this path so a noun
+        // such as "security" cannot turn an explanation into an action.
+        if (!looksLikeBuild(raw) && !isKnowledgeQuestion(raw)) {
+            const [candidate] = capableTools(raw, 1);
+            if (candidate) {
+                return {
+                    goal: raw,
+                    complexity: 'low',
+                    riskLevel: 'low',
+                    suggestedAgent: 'General',
+                    requiredTools: [candidate.name],
+                    constraints: ['Deterministic capability candidate; retain normal planning and tool-policy checks.'],
+                    rawIntent: { primary: raw, capabilityCandidate: candidate.name, deterministic: true },
+                };
+            }
+        }
         const probe = `${raw}\n${normalizeIntentText(raw)}`;
         const hasUrl = /https?:\/\/|\b[a-z0-9-]+\.(?:com|org|net|io|dev|ai|co|app|sa|eg|me)\b/i.test(probe);
         // A well-known site named in words (dialect/transliteration) counts as a web

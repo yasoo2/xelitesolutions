@@ -173,6 +173,21 @@ function semanticKeyword(keyword: string): string {
     return FOLDED_SYNONYMS[foldChars(keyword)] || keyword;
 }
 
+// A one-letter typo can turn an ordinary Arabic adjective into an imperative
+// (for example, "امني" is one edit from "ابني"). Only accept fuzzy action
+// words where a request can grammatically place an action; exact synonyms
+// remain valid everywhere.
+const FUZZY_ACTION_TARGETS = new Set([
+    'افتح', 'ابحث', 'احفظ', 'ارسل', 'اكتب', 'ترجم', 'انظر', 'انشئ',
+    'اصنع', 'ابني', 'صمم', 'اعمل', 'طور', 'حلل', 'تصفية',
+].map(foldChars));
+
+function fuzzyActionContext(tokens: string[], index: number): boolean {
+    const before = tokens.slice(0, index).join('').trim();
+    if (!before || /[.,،;:!؟?]$/.test(before)) return true;
+    return /(?:^|[\s،:؛])(?:اريد|بدي|ابي|ابغي|ابغى|عايز|عاوز|ممكن|ثم|وبعدها|بعد ذلك)$/u.test(before);
+}
+
 /** Produce the canonicalized companion text for intent detection. */
 export function normalizeIntentText(raw: string): string {
     let text = foldChars(raw);
@@ -186,7 +201,7 @@ export function normalizeIntentText(raw: string): string {
     // 2) Single-word synonyms + typo repair, token by token (spaces/punctuation
     //    delimited scripts). The Arabic conjunction prefix «و» is peeled so
     //    «وشوف» still canonicalizes to «وانظر».
-    const canonicalToken = (token: string): string | null => {
+    const canonicalToken = (token: string, index: number): string | null => {
         if (FOLDED_SYNONYMS[token]) return FOLDED_SYNONYMS[token];
         if (/^ال[؀-ۿ]{2,}/.test(token)) {
             const withoutArticle = token.slice(2);
@@ -196,22 +211,25 @@ export function normalizeIntentText(raw: string): string {
         if (token.length < minLen) return null;
         for (const [folded, keyword] of FOLDED_FUZZY) {
             if (token === folded) return semanticKeyword(keyword);
-            if (Math.abs(folded.length - token.length) <= 1 && levenshtein1(token, folded)) return semanticKeyword(keyword);
+            if (Math.abs(folded.length - token.length) <= 1 && levenshtein1(token, folded)) {
+                const canonical = semanticKeyword(keyword);
+                if (!FUZZY_ACTION_TARGETS.has(foldChars(canonical)) || fuzzyActionContext(tokens, index)) return canonical;
+            }
         }
         return null;
     };
 
     const tokens = text.split(/(\s+|[.,،;:!؟?()«»"'-])/);
-    const mapped = tokens.map(tok => {
+    const mapped = tokens.map((tok, index) => {
         if (!tok || /^\s+$/.test(tok) || tok.length < 2) return tok;
         // Read the complete token before treating its first waw as a conjunction.
         // Otherwise a real word such as «واجهة» is split into «و» + «اجهة» and
         // typo repair happens to turn that damaged remainder back into «واجهة»,
         // yielding the impossible canonical form «وواجهة».
-        const whole = canonicalToken(tok);
+        const whole = canonicalToken(tok, index);
         if (whole) return whole;
         if (/^و[؀-ۿ]/.test(tok)) {
-            const afterConjunction = canonicalToken(tok.slice(1));
+            const afterConjunction = canonicalToken(tok.slice(1), index);
             if (afterConjunction) return `و${afterConjunction}`;
         }
         return tok;

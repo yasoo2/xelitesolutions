@@ -13,6 +13,7 @@ import fs from 'fs';
 import path from 'path';
 import { readDeclaredOptions, blueprintFor, detectAppKind, violatesFieldConstraint, derivedColumns, recordedSubject } from '../core/design/app-blueprints';
 import { buildAppFiles } from '../modules/tools/definitions/react-app-templates';
+import { deterministicPhasesFor } from '../modules/tools/definitions/ProjectPipelineTool';
 
 const SRC = path.join(__dirname, '..');
 const read = (...p: string[]) => fs.readFileSync(path.join(SRC, ...p), 'utf-8');
@@ -40,6 +41,17 @@ describe('the request describes a records shape without a domain catalogue', () 
         expect(bp.fields.map(field => field.label)).toEqual(['اسم الناقة', 'العمر', 'الوزن']);
         expect(bp.fields.find(field => field.label === 'العمر')).toMatchObject({ type: 'number' });
         expect(bp.fields.find(field => field.label === 'الوزن')).toMatchObject({ type: 'number' });
+    });
+
+    it('does not promote the same field-shaped description without a build clause', () => {
+        expect(detectAppKind('عندي مزرعة إبل فيها بيانات الناقة: اسم الناقة والعمر والوزن')).toBeNull();
+    });
+
+    it('keeps an explicit records schema on the interactive application path', () => {
+        const plan = deterministicPhasesFor('عندي مزرعة إبل. بدي سجل أسجل فيه بيانات الناقة: اسم الناقة والعمر والوزن');
+        expect(plan?.phases).toHaveLength(1);
+        expect(plan?.phases[0].name).toBe('Application');
+        expect(plan?.phases[0].tasks.map((task: any) => task.tool)).toEqual(['react_project']);
     });
 
     it('does not treat a colon after a field as a column list', () => {
@@ -201,7 +213,7 @@ describe('the records output enforces only declared numeric bounds', () => {
     it('rejects a declared bound before the row and API mutations', () => {
         const t = T();
         const guard = t.indexOf('const invalid = invalidNumericField(fields, draft);');
-        const rowMutation = t.indexOf('setRows(rows.map', guard);
+        const rowMutation = t.indexOf('setRows(prev => prev.map', guard);
         const apiMutation = t.indexOf('apiCreate(content.api, local)', guard);
         expect(guard).toBeGreaterThan(-1);
         expect(rowMutation).toBeGreaterThan(guard);

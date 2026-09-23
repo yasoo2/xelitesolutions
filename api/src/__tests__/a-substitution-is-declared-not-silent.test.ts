@@ -72,10 +72,10 @@ function codeWithoutComments(file: string): string {
 }
 
 describe('a substitution is declared, not performed in silence', () => {
-    it('the measured request is judged a substitution — page=generic and app=none, exactly as the terminal printed it', () => {
+    it('the measured request is judged a substitution when it reaches only unproven custom authoring', () => {
         const verdict = scaffoldSubstitutionFor(MEASURED_REQUEST, true);
         expect(verdict.pageKind).toBe('generic');
-        expect(verdict.appKind).toBeNull();
+        expect(verdict.appKind).toBe('custom');
         expect(verdict.substituted).toBe(true);
     });
 

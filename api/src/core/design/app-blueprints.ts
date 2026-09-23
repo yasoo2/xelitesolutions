@@ -60,6 +60,8 @@ export interface AppField {
     minLength?: number;
     /** Shown in the compact row summary — keeps the list readable. */
     primary?: boolean;
+    /** Render an explicitly requested binary field as a switch, not a menu. */
+    control?: 'toggle';
 }
 
 /** A number worth showing at the top of the app, computed from the rows. */
@@ -280,7 +282,7 @@ export const APP_KIND_SIGNALS: Array<[AppKind, RegExp]> = [
     // Arabic carries case endings: «متجراً إلكترونياً» is «متجر إلكتروني» to
     // any reader and to no naive regex — the first live run of this engine
     // detected null on the user's own sentence for exactly that reason.
-    ['store', /متجر\S{0,2}\s*(إلكترون|الكترون|أونلاين|اونلاين|رقم)|تجار[ةه]\S{0,2}\s*(إلكترون|الكترون)|منصّ?[ةه]\S{0,2}\s*(تجار|بيع|تسوّ?ق)|نظام\s*متجر|تطبيق\s*متجر|سلّ?[ةه]\s*(ال)?(مشتريات|شراء|تسوّ?ق)|عرب[ةه]\s*(ال)?تسوّ?ق|بواب[ةه]\s*دفع|e-?commerce|ecommerce|marketplace|shopify|woocommerce|magento|storefront|\bcheckout\b|shopping\s*cart|online\s*(store|shop|selling|marketplace)/i],
+    ['store', /متجر\S{0,2}\s*(إلكترون|الكترون|أونلاين|اونلاين|رقم)|تجار[ةه]\S{0,2}\s*(إلكترون|الكترون)|منصّ?[ةه]\S{0,2}\s*(تجار|بيع|تسوّ?ق)|نظام\s*متجر|تطبيق\s*متجر|سلّ?[ةه]\s*(ال)?(مشتريات|شراء|تسوّ?ق)|عرب[ةه]\s*(ال)?تسوّ?ق|بواب[ةه]\s*دفع|e-?commerce|ecommerce|marketplace|shopify|woocommerce|magento|storefront|(?:shopping|cart|payment|purchase|order)\s+checkout|checkout\s+(?:page|flow|cart|payment|purchase|order)|shopping\s*cart|online\s*(store|shop|selling|marketplace)/i],
     ['pos', /نقاط\s*بيع|نقطة\s*بيع|كاشير|كاشيير|\bpos\b|point\s*of\s*sale|cash\s*register/i],
     ['booking', /حجوزات|حجز|مواعيد|موعد|عياد|مرضى|reservation|booking|appointment|clinic/i],
     ['inventory', /مخزون|جرد|مستودع|أصناف|اصناف|inventory|stock|warehouse/i],
@@ -1028,7 +1030,7 @@ export function blueprintFor(kind: AppKind, request: string, isAr: boolean): App
         // of the archetype's canonical fields exactly, retain that field's
         // native contract too (for example the expense category select and
         // the required amount).
-        const explicitColumns = requestedColumns.map(field => {
+        const explicitColumns = ensureRequestedStatusFilterField(request, requestedColumns.map(field => {
             const native = base.fields.find(candidate => candidate.key === field.key);
             if (!native) return field;
             return {
@@ -1039,7 +1041,7 @@ export function blueprintFor(kind: AppKind, request: string, isAr: boolean): App
                 ...(field.required || native.required ? { required: true } : {}),
                 ...(field.primary || native.primary ? { primary: true } : {}),
             };
-        });
+        }), isAr);
         const cols = columnsAnywhereInHisRequest(request) || [];
         const subject = recordedSubject(request);
         const productTitle = namedProductTitle(request);
@@ -1066,13 +1068,18 @@ export function blueprintFor(kind: AppKind, request: string, isAr: boolean): App
             ...(wantsProgress && flag && doneValue
                 ? [{ label: L('نسبة التقدم', 'Progress'), kind: 'progress', field: flag.key, equals: doneValue } as AppMetric] : []),
         ];
+        const filterFields = requestedFilterFields(request, explicitColumns);
+        const requestedStatus = requestsStatusFilter(request)
+            ? explicitColumns.find(field => /status|state|مرحلة|حالة|وضع/iu.test(String(field.label || '')))
+            : undefined;
         return {
             ...base,
             fields: explicitColumns,
+            asTable: heAskedForATable(request, explicitColumns.length),
             metrics,
-            statusField: undefined,
+            statusField: requestedStatus?.key,
             doneValue: undefined,
-            filterFields: requestedFilterFields(request, explicitColumns),
+            filterFields,
             /**
              *  AND NO PARENT HE NEVER NAMED.
              *
@@ -1738,7 +1745,7 @@ const TYPE_MARKS: Array<[RegExp, DerivedRole, FieldType]> = [
     [/ملاحظ|وصف|تفاصيل|شرح|تعليق|\bnote\b|\bdescription\b|\bdetails\b|\bcomment\b/iu, 'note', 'textarea'],
 ];
 
-export interface DerivedField { label: string; key: string; type: FieldType; role: DerivedRole; options?: string[]; min?: number; minExclusive?: boolean }
+export interface DerivedField { label: string; key: string; type: FieldType; role: DerivedRole; options?: string[]; min?: number; minExclusive?: boolean; control?: 'toggle' }
 
 /** A condition he stated, and the field it is about. */
 /**
@@ -2253,7 +2260,7 @@ function everyItemIsADefiniteName(items: string[]): boolean {
  *  instead of asking about a website — and a second copy would drift the
  *  first time one of them learned a word the other did not.
  */
-export const RECORD_CONTAINER = /(جدول|جداول|قائمة|كشف|سجل|سجلّ|\btable\b|\blist\b|\bsheet\b|\bledger\b|\bregister\b|\btracker\b|\bdirectory\b|\bregistry\b|\bcatalog(?:ue)?\b)/iu;
+export const RECORD_CONTAINER = /(?:جدول|قائمة|كشف|سجل|سجلّ)(?:اً|ًا|ا)?|جداول|\btable\b|\blist\b|\bsheet\b|\bboard\b|\bqueue\b|\bledger\b|\bregister\b|\btracker\b|\bdirectory\b|\bregistry\b|\bcatalog(?:ue)?\b/iu;
 
 /**
  *  WHERE THE SENTENCE ENDS AND THE FIRST COLUMN BEGINS.
@@ -2722,11 +2729,11 @@ function theListAnIntroducerHandedOver(request: string): DerivedField[] | null {
             .replace(/^(?:numeric|number)(?:[-\s]only)?\s+/iu, '')
             .replace(/\s+fields?$/iu, '')
             .trim());
-        // `include` also introduces product capabilities. If any member is a
-        // runtime or interface state, the list describes behaviour rather than
-        // the shape of one stored record. Refuse the whole candidate instead of
-        // manufacturing fields such as "loading" and "retry states".
-        if (rawItems.some(part => CAPABILITY_CLAUSE.test(part))) continue;
+        // A field list may be followed by capabilities in the same sentence:
+        // "needs title, owner, due date, filtering and validation". The first
+        // capability is a boundary, not evidence that the preceding field
+        // names were imaginary. `columnsEndWhereHisNextRequestBegins` performs
+        // that bounded cut; a capability in first position still yields no run.
         //  No floor here: the run check below is the same floor, and
         //  columnsEndWhereHisNextRequestBegins never grows a list. A
         //  mutation proved this one could never decide anything — with it
@@ -2735,7 +2742,10 @@ function theListAnIntroducerHandedOver(request: string): DerivedField[] | null {
         //  column of one.
         if (rawItems.length && rawItems.every(part => OPENS_WITH_AN_ARTICLE.test(part))) continue;
         const run = columnsEndWhereHisNextRequestBegins(items);
-        if (run.length < 3) continue;
+        const containerPrefix = sentence.slice(0, at.index);
+        const typedPair = /\b(?:app|application|board|tracker|table|register|directory|form)\b/iu.test(containerPrefix)
+            && run.some(part => /\b(?:toggle|checkbox|switch|input|field)\s*$/iu.test(part));
+        if (run.length < (typedPair ? 2 : 3)) continue;
         const named = run.filter(isAName).filter(notAContainerItself);
         if (named.length !== run.length) continue;
         const built = fieldsFromLabels(named);
@@ -3221,8 +3231,13 @@ function canonicalFieldKey(label: string): string | null {
 export function hasExplicitRecordSchema(requestRaw: string): boolean {
     if (hasWorkflowApplicationContract(requestRaw)) return false;
     const request = stripArabicDiacritics(String(requestRaw || '')).trim();
-    const isBuildRequest = /^(?:please\s+)?(?:create|build|make|develop|design|scaffold|generate)\b/i.test(request)
-        || /^(?:بدي|أريد|اريد|أنشئ|انشئ|ابن|اصنع|صمم|طوّر|طور|اعمل)(?:\s|$)/iu.test(request);
+    // A user often states context before making the request: "I run a
+    // camel farm. I want a register...". The build verb begins the second
+    // sentence, not the whole message. Read a clause boundary, while still
+    // refusing a mere description that never asks Joe to create anything.
+    const clauseStart = '(?:^|[.؟!\\n]\\s*)';
+    const isBuildRequest = new RegExp(`${clauseStart}(?:please\\s+)?(?:create|build|make|develop|design|scaffold|generate)\\b`, 'i').test(request)
+        || new RegExp(`${clauseStart}(?:بدي|أريد|اريد|أنشئ|انشئ|ابن|اصنع|صمم|طوّر|طور|اعمل)(?:\\s|$)`, 'iu').test(request);
     if (!isBuildRequest) return false;
     const columns = columnsAnywhereInHisRequest(requestRaw);
     return Array.isArray(columns) && columns.length >= 2;
@@ -3232,11 +3247,20 @@ function fieldsFromLabels(parts: string[]): DerivedField[] | null {
     const seen = new Map<DerivedRole, number>();
     const usedKeys = new Set<string>();
     const out: DerivedField[] = [];
-    for (const label of parts) {
+    for (const rawLabel of parts) {
+        const toggle = /\b(?:toggle|checkbox|switch)\b|(?:مفتاح|خيار)\s*(?:تبديل|تشغيل)/iu.test(rawLabel);
+        const label = toggle
+            ? rawLabel.replace(/\s+(?:toggle|checkbox|switch)\s*$/iu, '').trim() || rawLabel
+            : rawLabel;
         let role: DerivedRole = 'text';
         let type: FieldType = 'text';
-        for (const [mark, r, t] of TYPE_MARKS) {
-            if (mark.test(label)) { role = r; type = t; break; }
+        if (toggle) {
+            role = 'flag';
+            type = 'select';
+        } else {
+            for (const [mark, r, t] of TYPE_MARKS) {
+                if (mark.test(label)) { role = r; type = t; break; }
+            }
         }
         const n = (seen.get(role) || 0) + 1;
         seen.set(role, n);
@@ -3251,9 +3275,11 @@ function fieldsFromLabels(parts: string[]): DerivedField[] | null {
                 ? (/[؀-ۿ]/.test(label)
                     ? ['قيد الانتظار', 'قيد الإصلاح', 'تم الإصلاح']
                     : ['Pending', 'In progress', 'Completed'])
-                : (/[؀-ۿ]/.test(label) ? ['نعم', 'لا'] : ['Yes', 'No'])
+                : toggle
+                    ? (/[؀-ۿ]/.test(label) ? ['لا', 'نعم'] : ['No', 'Yes'])
+                    : (/[؀-ۿ]/.test(label) ? ['نعم', 'لا'] : ['Yes', 'No'])
             : undefined;
-        out.push({ label, key, type, role, options });
+        out.push({ label, key, type, role, options, ...(toggle ? { control: 'toggle' as const } : {}) });
     }
     //  THE SAME FLOOR, WRITTEN TWICE — AND ONE COPY WAS NOT MOVED.
     //
@@ -3376,6 +3402,18 @@ export function columnEdit(requestRaw: string): ColumnEdit {
  */
 export function heAskedForATable(request: string, fieldCount: number): boolean {
     const said = String(request || '');
+    // A layout grid arranges controls/cards; a data grid presents records.
+    // Classify each mention independently so a card grid cannot hide a later
+    // explicit data-grid request in the same sentence.
+    const namedDataGrid = Array.from(said.matchAll(/\bgrid\b/gi)).some(match => {
+        const before = said.slice(Math.max(0, match.index! - 48), match.index);
+        const after = said.slice(match.index! + match[0].length, match.index! + match[0].length + 64);
+        if (/\bdata\s*$/i.test(before)) return true;
+        if (/\b(?:css|css3|card|photo|image|form)\s*[- ]?\s*$/i.test(before)) return false;
+        if (/^\s*(?:[- ]based\s+)?layout\b/i.test(after)) return false;
+        if (/^\s+of\s+(?:(?:responsive|interactive|product|form)\s+)*(?:cards|photos|images|fields|inputs|controls)\b/i.test(after)) return false;
+        return true;
+    });
     /**
      * The stem is too wide HERE, and that is a measurement, not a preference:
      * `saysWord(said, 'جدول')` answers TRUE for «الجدولة الزمنية» — Snowball
@@ -3386,8 +3424,9 @@ export function heAskedForATable(request: string, fieldCount: number): boolean {
      */
     const namedTheShape = words(said)
         .map(w => normalise(w).replace(/^(?:وال|فال|بال|كال|[وفبكل]ال|ال)/, ''))
-        .some(w => w === 'جدول' || w === 'جداول')
-        || /\b(table|grid|spreadsheet)\b/i.test(said);
+        .some(w => w === 'جدول' || w === 'جدولا' || w === 'جداول')
+        || /\b(table|spreadsheet)\b/i.test(said)
+        || namedDataGrid;
     return namedTheShape && fieldCount >= 2;
 }
 
@@ -3454,7 +3493,7 @@ export function fieldsFromRequest(requestRaw: string, isAr: boolean): AppField[]
      *  next property added to a column will be lost the same way, which is
      *  why this comment names the shape rather than the symptom.
      */
-    return cols.map((c, i) => ({
+    const fields = cols.map((c, i) => ({
         ...f(
             [c.key, c.label, c.label, c.type, c.options,
                 i === 0 ? ['required', 'primary'] : (c.role === 'money' || c.role === 'count' ? ['required'] : undefined)],
@@ -3462,7 +3501,25 @@ export function fieldsFromRequest(requestRaw: string, isAr: boolean): AppField[]
         ),
         ...(c.min !== undefined ? { min: c.min } : {}),
         ...(c.minExclusive ? { minExclusive: true } : {}),
+        ...(c.control ? { control: c.control } : {}),
     }));
+    if (!fields.some(field => field.type === 'image')) {
+        const intent = maskNegatedSpans(requestRaw);
+        const action = /\bupload(?:s|ing)?\s+(?:(?:an?|the)\s+)?(image|photo|picture)s?\b|(?:رفع|ارفع|أرفع)\s+(?:ال)?(صورة|صور)/giu;
+        for (const match of intent.matchAll(action)) {
+            const prefix = intent.slice(0, match.index).split(/[.!?؛;\n]/u).pop() || '';
+            if (/\b(?:explain|describe|instructions?|guide|how\s+to)\b|اشرح|شرح|دليل/iu.test(prefix)) continue;
+            const label = match[1] || match[2];
+            const mapping = TYPE_MARKS.find(([pattern]) => pattern.test(label));
+            if (!mapping || mapping[2] !== 'image') continue;
+            const baseKey = canonicalFieldKey(label) || mapping[1];
+            let key = baseKey;
+            for (let index = 1; fields.some(field => field.key === key); index++) key = `${baseKey}${index}`;
+            fields.push(f([key, label, label, mapping[2]], isAr));
+            break;
+        }
+    }
+    return fields;
 }
 
 /* ── what was asked for, in the user's own words ─────────────────────────── */
@@ -3607,14 +3664,14 @@ const WEATHER_FEATURE_RULES: Array<{ asked: RegExp; evidence: RegExp }> = [
     { asked: /smooth\s+transitions?/i, evidence: /transition/i },
 ];
 
-const RECORDS_FEATURE_RULES: Array<{ asked: RegExp; evidence: RegExp }> = [
-    { asked: /upload(?:ed|ing)?\s+(?:an?\s+)?(?:image|photo)|رفع\s+(?:صورة|الصور)/iu, evidence: /type=["']file["'][^>]*accept=["']image\/\*/iu },
+const RECORDS_FEATURE_RULES: Array<{ asked: RegExp; evidence: RegExp; fieldType?: FieldType }> = [
+    { asked: /upload(?:ed|ing)?\s+(?:an?\s+)?(?:image|photo)|رفع\s+(?:صورة|الصور)/iu, evidence: /type=["']file["'][^>]*accept=["']image\/\*/iu, fieldType: 'image' },
     { asked: /invalid\s+file\s+rejection|reject\s+(?:an?\s+)?invalid\s+file|رفض\s+ملف\s+غير\s+صالح/iu, evidence: /Choose a valid image file|اختر ملف صورة صالح/iu },
-    { asked: /filter(?:ing)?\s+(?:items?\s+)?by\s+tags?|تصفية[^.]{0,40}وسم/iu, evidence: /(?=[\s\S]*filterFields\s*:\s*\[['"]tags['"]\])(?=[\s\S]*filterKeys)(?=[\s\S]*setFilters)/iu },
+    { asked: /filter(?:ing)?\s+(?:items?\s+)?by\s+tags?|تصفية[^.]{0,40}وسم/iu, evidence: /^(?=[\s\S]*filterFields\s*:\s*\[['"]tags['"]\])(?=[\s\S]*filterKeys)(?=[\s\S]*setFilters)/iu },
     { asked: /preview\s+(?:the\s+)?uploaded\s+(?:image|photo)|معاينة\s+(?:الصورة|الصور)/iu, evidence: /record-modal-pic[\s\S]{0,300}imageOf\(selected/iu },
     { asked: /delete[^.]{0,80}(?:only\s+)?after\s+confirmation|confirm[- ]delete|حذف[^.]{0,80}تأكيد/iu, evidence: /window\.confirm\(/iu },
     { asked: /persistent\s+local\s+storage|persist(?:ence)?\s+after\s+reload|حفظ\s+محلي\s+دائم/iu, evidence: /createStore[\s\S]{0,500}localStorage|localStorage[\s\S]{0,500}setItem/iu },
-    { asked: /preserve\s+(?:the\s+)?original\s+uploaded\s+(?:image|photo)|الحفاظ\s+على\s+الصورة\s+الأصلية/iu, evidence: /(?=[\s\S]*preserveOriginalImages\s*:\s*true)(?=[\s\S]*maxEdge\s*===\s*0)/iu },
+    { asked: /preserve\s+(?:the\s+)?original\s+uploaded\s+(?:image|photo)|الحفاظ\s+على\s+الصورة\s+الأصلية/iu, evidence: /^(?=[\s\S]*preserveOriginalImages\s*:\s*true)(?=[\s\S]*maxEdge\s*===\s*0)/iu },
     { asked: /metadata\s+edit(?:ing)?|edit(?:ing)?\s+metadata|تعديل\s+البيانات\s+الوصفية/iu, evidence: /const edit\s*=|Save changes|حفظ التعديل/iu },
     { asked: /keyboard\s+access|keyboard[- ]accessible|لوحة\s+المفاتيح/iu, evidence: /tabIndex=\{0\}[\s\S]{0,300}onKeyDown/iu },
     { asked: /empty\s+state|حالة\s+فارغة/iu, evidence: /emptyHint|className=["']empty["']/iu },
@@ -3626,6 +3683,28 @@ function weatherFeatureCovered(feature: string, evidence: string): boolean {
     return ENGINE_COVERS.weather.test(feature);
 }
 
+function requestsStatusFilter(requestRaw: string): boolean {
+    const request = String(requestRaw || '').replace(/[ً-ْـ]/g, '').toLowerCase();
+    return /(?:status\s+filter|filter\s+(?:for|by)\s+status|فلتر\s*الحالة|فلترة\s*(?:حسب|على)\s*الحالة|تصفية\s*(?:حسب|على)\s*الحالة)/iu.test(request);
+}
+
+function ensureRequestedStatusFilterField(requestRaw: string, fields: AppField[], isAr: boolean): AppField[] {
+    if (!requestsStatusFilter(requestRaw)) return fields;
+    if (fields.some(field => /status|state|مرحلة|حالة|وضع/iu.test(String(field.label || '')))) return fields;
+    let key = 'status';
+    for (let index = 2; fields.some(field => field.key === key); index += 1) key = `status${index}`;
+    // A status filter with no choices is an empty control. The request named
+    // the behavior but not a domain taxonomy, so provide only the minimal,
+    // editable lifecycle used by the records engine. A stated field/options
+    // always wins above and is never replaced here.
+    return [...fields, {
+        key,
+        label: isAr ? 'الحالة' : 'Status',
+        type: 'select',
+        options: isAr ? ['جديد', 'قيد التنفيذ', 'مكتمل'] : ['New', 'In progress', 'Completed'],
+    }];
+}
+
 /** A request-derived filter contract, shared by every records-shaped app. */
 export function requestedFilterFields(requestRaw: string, fields: Array<{ key: string; label: string; role?: string; type?: string }>): string[] {
     const request = String(requestRaw || '').replace(/[ً-ْـ]/g, '').toLowerCase();
@@ -3633,10 +3712,9 @@ export function requestedFilterFields(requestRaw: string, fields: Array<{ key: s
     // “status filter” is a complete request even when no value follows
     // “filter”. Bind it to the request's status/select field instead of
     // silently returning an empty contract.
-    if (/(?:status\s+filter|filter\s+(?:for|by)\s+status|فلتر\s*الحالة|فلترة\s*(?:حسب|على)\s*الحالة|تصفية\s*(?:حسب|على)\s*الحالة)/iu.test(request)) {
-        const status = fields.find(field => field.role === 'flag'
-            || field.type === 'select'
-            || /status|state|مرحلة|حالة|وضع/iu.test(String(field.label || '')));
+    if (requestsStatusFilter(request)) {
+        const status = fields.find(field => /status|state|مرحلة|حالة|وضع/iu.test(String(field.label || '')))
+            || fields.find(field => field.role === 'flag' || field.type === 'select');
         if (status) keys.push(status.key);
     }
     // Once “status filter” has been handled above, do not let the trailing
@@ -3644,8 +3722,14 @@ export function requestedFilterFields(requestRaw: string, fields: Array<{ key: s
     // fields. Other forms such as “filters for status and rating” remain
     // available to the normal phrase parser.
     const requestForClause = request.replace(/(?:status\s+filter|فلتر\s*الحالة|فلترة\s*(?:حسب|على)\s*الحالة|تصفية\s*(?:حسب|على)\s*الحالة)/giu, '');
-    const clause = requestForClause.match(/(?:filters?|filtering|فلترة|تصفية|فلاتر|مرشحات?)\s*(?:for|by|حسب|على|ل(?:ـ|ل)?|من)?\s*([^.!?؟\n]+)/iu)?.[1] || '';
-    if (!clause) return keys;
+    const clause = requestForClause.match(/(?:filter(?:ing|s)?|فلترة|تصفية|فلاتر|مرشحات?)\s*(?:for|by|حسب|على|ل(?:ـ|ل)?|من)?\s*([^.!?؟\n]+)/iu)?.[1] || '';
+    if (!clause) {
+        if (!keys.length && /\bfilter(?:ing|s)?\b|فلترة|تصفية/iu.test(request)) {
+            const natural = fields.find(field => field.role === 'flag' || field.type === 'select');
+            if (natural) keys.push(natural.key);
+        }
+        return keys;
+    }
     const stop = clause.split(/\s+(?:plus|with|and\s+(?:a|an|the)?\s*(?:progress|metric)|ومقياس|وإضافة|واضافة)\b/iu)[0];
     const tokens = new Set(stop.split(/[^\p{L}\p{N}_]+/u).filter(t => t.length >= 2));
     for (const field of fields) {
@@ -3653,6 +3737,10 @@ export function requestedFilterFields(requestRaw: string, fields: Array<{ key: s
         const labelTokens = label.split(/[^\p{L}\p{N}_]+/u).filter(t => t.length >= 2);
         const matches = tokens.has(label) || labelTokens.some(token => token.length >= 3 && tokens.has(token));
         if (matches && !keys.includes(field.key)) keys.push(field.key);
+    }
+    if (!keys.length && /^\s*[,،]/u.test(clause)) {
+        const natural = fields.find(field => field.role === 'flag' || field.type === 'select');
+        if (natural) keys.push(natural.key);
     }
     return keys;
 }
@@ -3673,6 +3761,48 @@ function completionOption(options: string[], isAr: boolean): string | undefined 
  * Records requirements need executable evidence too. A generic engine name is
  * not proof that a requested field or action exists in the generated app.
  */
+function hasConfiguredUpload(source: string, fieldType: FieldType): boolean {
+    const ts = require('typescript') as typeof import('typescript');
+    const file = ts.createSourceFile('record-evidence.tsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    let configured = false;
+    const inputs: import('typescript').Node[] = [];
+    const named = (name: import('typescript').PropertyName, value: string) =>
+        (ts.isIdentifier(name) || ts.isStringLiteral(name)) && name.text === value;
+    const visit = (node: import('typescript').Node): void => {
+        if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.name.text === 'content'
+            && node.initializer && ts.isObjectLiteralExpression(node.initializer)) {
+            const fields = node.initializer.properties.find(property => ts.isPropertyAssignment(property) && named(property.name, 'fields'));
+            configured = !!fields && ts.isPropertyAssignment(fields) && ts.isArrayLiteralExpression(fields.initializer)
+                && fields.initializer.elements.some(element => ts.isObjectLiteralExpression(element)
+                && element.properties.some(property => ts.isPropertyAssignment(property) && named(property.name, 'type')
+                    && ts.isStringLiteral(property.initializer) && property.initializer.text === fieldType));
+        }
+        if ((ts.isJsxSelfClosingElement(node) || ts.isJsxOpeningElement(node)) && node.tagName.getText(file) === 'input') {
+            const attribute = (name: string) => node.attributes.properties.find(property => ts.isJsxAttribute(property)
+                && property.name.getText(file) === name);
+            const value = (name: string) => {
+                const prop = attribute(name);
+                return prop && ts.isJsxAttribute(prop) && prop.initializer && ts.isStringLiteral(prop.initializer)
+                    ? prop.initializer.text : '';
+            };
+            if (value('type') === 'file' && value('accept').startsWith('image/*')) inputs.push(node);
+        }
+        ts.forEachChild(node, visit);
+    };
+    visit(file);
+    return inputs.some(input => {
+        for (let parent = input.parent; parent; parent = parent.parent) {
+            if (ts.isCallExpression(parent) && ts.isPropertyAccessExpression(parent.expression)
+                && parent.expression.name.text === 'map') {
+                // Only the known records renderer can be tied to content.fields.
+                const target = parent.expression.expression.getText(file);
+                return /^(?:fields|content\.fields|controller\.fields)$/.test(target) && configured;
+            }
+        }
+        return true;
+    });
+}
+
 export function recordFeatureCovered(feature: string, request: string, evidence: string): boolean {
     const f = String(feature || '').trim();
     const src = String(evidence || '');
@@ -3680,9 +3810,17 @@ export function recordFeatureCovered(feature: string, request: string, evidence:
     const hasDeclaredLabel = f.length >= 3 && new RegExp(
         `(?:label|placeholder|aria-label)\\s*[:=]\\s*['\"]${escaped}['\"]`, 'iu',
     ).test(src);
-    if (hasDeclaredLabel) return true;
     const explicitRule = RECORDS_FEATURE_RULES.find(rule => rule.asked.test(f));
-    if (explicitRule) return explicitRule.evidence.test(src);
+    if (explicitRule) {
+        if (!explicitRule.evidence.test(src)) return false;
+        // A generic field renderer can contain an inactive upload branch.
+        // Independent upload components do not require a records schema.
+        if (explicitRule.fieldType) {
+            return hasConfiguredUpload(src, explicitRule.fieldType);
+        }
+        return true;
+    }
+    if (hasDeclaredLabel) return true;
     if (/appointment\s+scheduling[^.]*linked\s+to\s+both|مواعيد[^.]*مرتبط/iu.test(f)) {
         return /patient_id/iu.test(src) && /doctor_id/iu.test(src)
             && /relations[\s\S]{0,500}select|parents\[/iu.test(src);

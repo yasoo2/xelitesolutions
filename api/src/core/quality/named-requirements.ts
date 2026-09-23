@@ -35,6 +35,9 @@
  *  rather than against a memory of past prompts.
  */
 
+import { createHash } from 'node:crypto';
+import { redactSecretsFromString } from '../../shared/utils/redaction';
+
 export interface NamedRequirement {
     /** Stable id derived from the quote, so the same request yields the same ids. */
     id: string;
@@ -121,13 +124,22 @@ const OPENS_WITH_THE_ASKING = /^(?:please\s+)?(?:build|make|create|develop|desig
  */
 const IS_AN_INSTRUCTION_TO_JOE = new RegExp(
     '^(?:'
-    //  Bare imperatives that address the builder, not the build.
-    + 'open|navigate|click|tap|press|type|submit|observe|inspect|verify|test|retest|reload|refresh'
-    + '|fix|repair|report|check|confirm|ensure|make\\s+sure|do\\s+not|don\'t|avoid|skip|start\\s+by'
+    // UI action verbs can describe product behavior. A verb alone is a
+    // checklist item; with an object, require explicit execution context.
+    + '(?:open|navigate|click|tap|press|type|submit|reload|refresh|check)(?=\\s*(?:$|[:،,.]))'
+    + '|(?:open|navigate|click|tap|press|type|submit|reload|refresh|check)\\s+(?:and\\s+(?:inspect|test)\\s+)?(?:the\\s+)?(?:browser|preview|result|generated\\s+(?:app|page|site)|tests?|checks?)'
+    + '|(?:run|use)\\s+(?:(?:focused|targeted|incremental|change-aware|cached|reused?)\\s+)?(?:checks?|tests?|verification)(?:\\s*,?\\s*then\\s+(?:one\\s+)?final(?:\\s+full)?\\s+verification)?'
+    + '|observe|inspect|verify|test|retest|fix|repair|report|start\\s+by'
+    // These prefixes also introduce product constraints. Only exclude them
+    // when their object describes the builder's execution or reporting work.
+    + '|(?:do\\s+not|don\'t|avoid|skip)\\s+(?:the\\s+)?(?:deploy(?:ing)?|publish(?:ing)?|push(?:ing)?|claim(?:ing)?|report(?:ing)?|tests?|retest|inspect|run\\s+(?:the\\s+)?(?:tests?|checks?|build))'
+    + '|(?:ensure|confirm|make\\s+sure)\\s+(?:(?:that|the|all)\\s+)*(?:tests?\\s+(?:pass|run)|checks?\\s+(?:pass|run)|(?:final\\s+)?(?:verification|report)|(?:you|joe)\\s+(?:test|inspect|verify|report))'
+    + '|use\\s+(?:(?:focused|targeted|incremental|change-aware|cached|reused?)\\s+)?(?:checks?|tests?|verification)'
+    + '|(?:focused|targeted|incremental|change-aware)\\s+(?:checks?|tests?|verification)\\s+(?:while|during)\\s+(?:editing|development)(?=\\s*[.,;]?\\s*$)'
     + '|actually\\s+\\w+|find\\s+problem|test\\s+again'
     //  A tally of what Joe did, which is a report about the run.
     + '|number\\s+of\\s+\\w+|pages\\s+tested|forms\\s+tested|buttons\\s+tested'
-    + '|errors\\s+(?:discovered|fixed|found)|final\\s+verification'
+    + '|errors\\s+(?:discovered|fixed|found)|(?:then\\s+)?(?:one\\s+)?final(?:\\s+full)?\\s+verification'
     // A model often wraps an instruction in a noun phrase: "to test it in
     // the browser" or "an exploratory test". It is still work for Joe, not a
     // capability the generated artefact can contain. Keep these compound
@@ -147,7 +159,7 @@ const IS_AN_INSTRUCTION_TO_JOE = new RegExp(
 export function isJudgeable(text: string): boolean {
     const t = String(text || '').trim();
     if (t.length < 3) return false;
-    if (OPENS_WITH_THE_ASKING.test(t)) return false;
+    if (OPENS_WITH_THE_ASKING.test(t) && !/^make\s+sure\b/i.test(t)) return false;
     if (IS_AN_INSTRUCTION_TO_JOE.test(t)) return false;
     const words = t.split(/[^\p{L}\p{N}]+/u).filter(w => w.length > 2 && !NOT_A_FEATURE.test(w));
     return words.length > 0;
@@ -237,6 +249,8 @@ export function extractionPrompt(request: string, isArabic: boolean): string {
         `    online jewelry store» and «a luxury jewelry shop» are the thing`,
         `    being asked for, not things it must do. Every entry must be`,
         `    something the finished site could FAIL to have.`,
+        `  · Do NOT list instructions about how to test, inspect, report, or`,
+        `    deploy the result. Those govern your work, not the product.`,
         `  · Write «text» in ${isArabic ? 'Arabic' : 'English'}.`,
         ``,
         `REPLY WITH JSON AND NOTHING ELSE:`,
@@ -345,12 +359,18 @@ export async function namedRequirements(
         //  asked «what did he name» answers with the project itself unless it
         //  is stopped, and «build an online jewelry store» is met by any shop
         //  that exists — a criterion nothing can fail is not a criterion.
-        if (!isJudgeable(r.text)) {
+        // Models sometimes paraphrase an execution instruction into a noun
+        // phrase ("which checks ran") while retaining the original imperative
+        // in its quote. Judge both halves so the paraphrase cannot turn Joe's
+        // working method into a feature the generated application must expose.
+        const textIsJudgeable = isJudgeable(r.text);
+        const quoteIsJudgeable = isJudgeable(r.quote);
+        if (!textIsJudgeable || !quoteIsJudgeable) {
             //  Two different refusals, because they are two different mistakes
             //  and he should be told which one his sentence produced.
             out.rejected.push({
                 text: r.text,
-                reason: IS_AN_INSTRUCTION_TO_JOE.test(r.text.trim())
+                reason: IS_AN_INSTRUCTION_TO_JOE.test(r.text.trim()) || IS_AN_INSTRUCTION_TO_JOE.test(r.quote.trim())
                     ? 'it is an instruction to me, not something the project must do'
                     : 'it is the thing you asked for, not something it must do',
             });
@@ -399,6 +419,29 @@ export interface JudgedNamed extends NamedRequirement {
     verdict: NamedVerdict;
     /** In his language — and for a `met`, the source line that carries the proof. */
     why: string;
+    decision?: { route: 'local_backend'; evidenceKind: 'express_source' | 'sqlite' | 'persistence' | 'compound'; reasonCode: string };
+}
+
+/** No request text, model explanation, source or payload is copied into telemetry. */
+export function namedDecisionTrace(verdicts: JudgedNamed[]) {
+    const limit = 64;
+    const ref = (value: unknown) => createHash('sha256')
+        .update(redactSecretsFromString(typeof value === 'string' ? value : ''))
+        .digest('hex').slice(0, 24);
+    return {
+        omitted: Math.max(0, verdicts.length - limit),
+        criteria: verdicts.slice(0, limit).map((item, index) => ({
+            index, criterionRef: ref(item.id), textRef: ref(item.text), quoteRef: ref(item.quote),
+            textLength: typeof item.text === 'string' ? item.text.length : 0,
+            quoteLength: typeof item.quote === 'string' ? item.quote.length : 0,
+            verdict: ['met', 'unmet', 'unprovable'].includes(item.verdict) ? item.verdict : 'unprovable',
+            route: item.decision?.route === 'local_backend' ? 'local_backend' : 'unclassified',
+            evidenceKind: ['express_source', 'sqlite', 'persistence', 'compound'].includes(item.decision?.evidenceKind || '')
+                ? item.decision!.evidenceKind : 'unspecified',
+            reasonCode: ['ungrounded_criterion', 'verified', 'compound_not_fully_proven', 'backend_evidence_rejected'].includes(item.decision?.reasonCode || '')
+                ? item.decision!.reasonCode : 'unclassified',
+        })),
+    };
 }
 
 /** Whitespace is not evidence; a quote is the same quote however it was wrapped. */
@@ -727,6 +770,19 @@ export function nothingWasJudged(judged: JudgedNamed[]): boolean {
  * extracts only short, action-shaped clauses from the user's own sentence; it
  * is a deterministic floor, not a substitute for deeper model reading.
  */
+function declaredRequirementItems(sentence: string): string[] {
+    if (typeof sentence !== 'string') return [];
+    const match = sentence.match(/\b(?:(?:it\s+)?(?:must|should)\s+(?:provide|include|have)|(?:it\s+)?(?:needs?|requires?|has))\s+(.+)/iu);
+    if (!match) return [];
+    const items = match[1].replace(/[.!?\u061f]+$/u, '')
+        .split(/\s*[,;]\s*|\s+and\s+/iu)
+        .map(item => item.trim().replace(/^(?:and\s+)?(?:a|an|the)\s+/iu, '').trim())
+        .filter(Boolean);
+    // Keep the entire inventory: dropping an unfamiliar or long item would
+    // allow another item's evidence to certify an incomplete requirement.
+    return items.length >= 2 ? items : [];
+}
+
 export function requirementsFromRequestClauses(requestRaw: string): NamedRequirement[] {
     const request = String(requestRaw || '').replace(/\s+/g, ' ').trim();
     if (!request) return [];
@@ -748,16 +804,7 @@ export function requirementsFromRequestClauses(requestRaw: string): NamedRequire
     // to build.
     const declaredFields: string[] = [];
     for (const sentence of request.split(/[.!?؟]+/u)) {
-        const match = sentence.match(/\b(?:(?:it\s+)?(?:must|should)\s+(?:provide|include|have)|(?:it\s+)?(?:needs?|requires?|has))\s+(.+)/iu);
-        if (!match) continue;
-        const fieldPart = match[1]
-            .split(/\s*(?:;|,\s*(?=(?:required(?:[-\s]field)?\s+validation|validation|allow|add|delete|ensure|persist|show|test|validate|verify)\b))/iu)[0];
-        const items = fieldPart
-            .split(/\s*,\s*|\s+and\s+/iu)
-            .map(item => item.trim().replace(/^(?:a|an|the)\s+/iu, ''))
-            .filter(item => item.length >= 2 && item.length <= 64)
-            .filter(item => !/^(?:a|an|the)\s+/iu.test(item))
-            .filter(isJudgeable);
+        const items = declaredRequirementItems(sentence).filter(isJudgeable);
         if (items.length >= 2) declaredFields.push(...items);
     }
     const clauses = [...declaredFields, ...actionClauses];
@@ -784,8 +831,9 @@ export function requirementNamesPage(requirement: Pick<NamedRequirement, 'text' 
 
 import { inspectWorkflowEngineSource } from './workflow-contract';
 import { capabilityEvidence, requestedCapabilities } from './scope-audit';
-import { externalApiSourceVerdict } from '../api-discovery/acceptance-evidence';
+import { externalApiSourceVerdict, type ExternalApiAcceptanceEvidence } from '../api-discovery/acceptance-evidence';
 import { recordFeatureCovered } from '../design/app-blueprints';
+import { ownedExpressSource, validateBackendEvidence, type LocalBackendAcceptance } from './local-backend-evidence';
 
 /**
  * Generated records apps expose a small, explicit contract. Verify that
@@ -794,7 +842,14 @@ import { recordFeatureCovered } from '../design/app-blueprints';
  * other requirements continue through the model judge and its source guard.
  */
 function deterministicSourceVerdict(r: NamedRequirement, source: string): JudgedNamed | null {
-    const text = `${r.text} ${r.quote}`.trim();
+    const inventory = [...new Set([...declaredRequirementItems(r.text), ...declaredRequirementItems(r.quote)])];
+    if (inventory.length) {
+        const parts = inventory.map((text, index) => deterministicSourceVerdict(
+            { id: `${r.id}-part-${index + 1}`, text, quote: text }, source));
+        if (!parts.every(part => part?.verdict === 'met')) return null;
+        return { ...r, verdict: 'met', why: `All ${parts.length} declared items have source evidence: ${inventory.join('; ')}` };
+    }
+    const text = [r.text, r.quote].filter(value => typeof value === 'string').join(' ').trim();
     const src = String(source || '');
     const esc = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     // The records engine already owns the executable capability contract used
@@ -946,7 +1001,7 @@ function deterministicSourceVerdict(r: NamedRequirement, source: string): Judged
     // A field may carry a type hint in the request: "amount (numeric only)"
     // is still the `amount` field. The annotation belongs to the contract we
     // verify below, not to the schema label stored in source.
-    const fieldName = fieldPhrase
+    const rawFieldName = fieldPhrase
         // The numeric constraint is verified below; it is not part of the label.
         .replace(/^(?:(?:numeric|number)(?:[-\s]only)?|رقمي(?:\s+فقط)?|أرقام?\s+فقط)\s+/iu, '')
         .replace(/\s*\([^)]{0,80}\)\s*$/u, '')
@@ -956,8 +1011,12 @@ function deterministicSourceVerdict(r: NamedRequirement, source: string): Judged
         `(?:label|placeholder|aria-label)\\s*[:=]\\s*['"]${esc(name)}['"]`, 'iu',
     ).test(src);
     const hasFieldType = (name: string, type: string) => new RegExp(
-        `(?:label|placeholder|aria-label)\\s*[:=]\\s*['"]${esc(name)}['"][\\s\\S]{0,260}?type\\s*:\\s*['"]${esc(type)}['"]|type\\s*:\\s*['"]${esc(type)}['"][\\s\\S]{0,260}?(?:label|placeholder|aria-label)\\s*[:=]\\s*['"]${esc(name)}['"]`, 'iu',
+        `(?:label|placeholder|aria-label)\\s*[:=]\\s*['"]${esc(name)}['"][^{}]{0,260}?type\\s*:\\s*['"]${esc(type)}['"]|type\\s*:\\s*['"]${esc(type)}['"][^{}]{0,260}?(?:label|placeholder|aria-label)\\s*[:=]\\s*['"]${esc(name)}['"]`, 'iu',
     ).test(src);
+    // Prefer literal labels, then normalize a grammatical article introduced
+    // by requirement extraction. Never change the user's displayed label.
+    const fieldName = hasDeclaredField(rawFieldName)
+        ? rawFieldName : rawFieldName.replace(/^(?:a|an|the)\s+/iu, '');
     const fieldLike = fieldName.length >= 3 && fieldName.length <= 40
         && !/(?:search|filter|sort|export|validation|بحث|تصفية|فرز|تصدير|تحقق)/iu.test(fieldPhrase)
         && !workflowCapability
@@ -969,7 +1028,8 @@ function deterministicSourceVerdict(r: NamedRequirement, source: string): Judged
         && /invalidNumericField|Number\.isFinite\s*\(/iu.test(src)) {
         return { ...r, verdict: 'met', why: 'the declared numeric field is rendered as a number input and is guarded before a row is written' };
     }
-    if (fieldLike && /(?:^|\s)date(?:$|\s)|تاريخ/iu.test(fieldName) && hasFieldType(fieldName, 'date')) {
+    if (fieldLike && /(?:^|\s)date(?:$|\s)|تاريخ/iu.test(fieldName)) {
+        if (!hasFieldType(fieldName, 'date')) return null;
         return { ...r, verdict: 'met', why: 'the declared date field uses the browser date input contract' };
     }
     if (fieldLike && /(?:^|\s)note(?:$|\s)|ملاحظ/iu.test(fieldName) && hasFieldType(fieldName, 'textarea')) {
@@ -988,7 +1048,9 @@ function deterministicSourceVerdict(r: NamedRequirement, source: string): Judged
      * judge is slow or unavailable. Each proof below requires the behaviour's
      * implementation shape, rather than matching its words in generated copy.
      */
-    const hasRecordForm = /function\s+RecordsApp|function\s+.*Records?/iu.test(src)
+    const hasRecordsComponent = /function\s+\w*Record\w*\s*\(/iu.test(src)
+        || /(?:export\s+)?const\s+\w*Record\w*\s*=\s*(?:\([^)]*\)\s*)?=>/iu.test(src);
+    const hasRecordForm = hasRecordsComponent
         && /<form\b[^>]*onSubmit\s*=|onSubmit\s*=\s*\{submit/iu.test(src)
         && /setRows\s*\(/iu.test(src)
         && /fields\s*\.map\s*\(/iu.test(src);
@@ -1002,16 +1064,57 @@ function deterministicSourceVerdict(r: NamedRequirement, source: string): Judged
     const hasComputedTotal = /metrics\s*:\s*\[[\s\S]{0,1600}?kind\s*:\s*['"]sum['"]/iu.test(src)
         && /computeMetric\s*\([^)]*rows/iu.test(src)
         && /case\s*['"]sum['"][\s\S]{0,500}?reduce\s*\(/iu.test(src);
-    const hasConfirmedDelete = /window\.confirm\s*\(/iu.test(src)
-        && /setRows\s*\(\s*rows\.filter/iu.test(src);
+    // Recognize the selected-ID removal contract, not any call to filter.
+    const directRemoval = [...src.matchAll(/setRows\s*\(\s*rows\.filter\s*\(\s*(\w+)\s*=>\s*\1\.id\s*!==\s*(\w+)\.id\s*\)\s*\)/gu)]
+        .some(match => match[1] !== match[2]);
+    const functionalRemoval = [...src.matchAll(/setRows\s*\(\s*(\w+)\s*=>\s*\1\.filter\s*\(\s*(\w+)\s*=>\s*\2\.id\s*!==\s*(\w+)\.id\s*\)\s*\)/gu)]
+        .some(match => match[2] !== match[3]);
+    const hasConfirmedDelete = /if\s*\(\s*!\s*window\.confirm\s*\([^;\n]*\)\s*\)\s*(?:\{\s*)?return\b/u.test(src)
+        && (directRemoval || functionalRemoval);
     const hasEditAndConfirmedDelete = /setEditing\s*\(/iu.test(src) && hasConfirmedDelete;
     const hasDurableLocalRows = /createStore\s*\(/iu.test(src)
         && /localStorage\.getItem\s*\(/iu.test(src)
         && /localStorage\.setItem\s*\(/iu.test(src)
         && /store\.write\s*\(/iu.test(src);
+    const normalizedCollectionPhrase = phrase
+        .replace(/[ً-ْـ]/gu, '')
+        .replace(/[أإآ]/gu, 'ا')
+        .replace(/\s+/gu, ' ')
+        .trim();
+    const requestsRecordCollection = /^(?:(?:a|an|the)\s+)?(?:record|records|register|log|entry|entries|database)$/iu.test(normalizedCollectionPhrase)
+        || /^(?:سجل(?:ات)?(?:\s+ل?تسجيل)?(?:\s+بيانات(?:\s+[\p{L}]+){0,3})?|بيانات(?:\s+[\p{L}]+){0,3})$/u.test(normalizedCollectionPhrase);
+    const genericRegister = /^(?:(?:a|an|the)\s+)?(?:record|records|register|log|entry|entries|database)$/iu.test(normalizedCollectionPhrase)
+        || /^سجل(?:ات)?(?:\s+ل?تسجيل)?(?:\s+بيانات(?:\s+[\p{L}]+){0,3})?$/u.test(normalizedCollectionPhrase);
+    const namedCollectionInSource = new RegExp(
+        `(?:title|entityOne|entityMany|brand|lede)\\s*:\\s*['"]${esc(phrase)}['"]`, 'iu',
+    ).test(src);
+    if (requestsRecordCollection && hasRecordForm && hasDurableLocalRows
+        && (genericRegister || namedCollectionInSource)) {
+        return { ...r, verdict: 'met', why: genericRegister
+            ? 'the generated records application provides an interactive, locally persistent record collection'
+            : 'the named record collection is declared by the generated content and backed by an interactive, locally persistent records application' };
+    }
+    const hasRequestedToggle = (label: string) => new RegExp(
+        `label\\s*:\\s*['"]${esc(label)}['"][^{}]{0,260}?control\\s*:\\s*['"]toggle['"]|control\\s*:\\s*['"]toggle['"][^{}]{0,260}?label\\s*:\\s*['"]${esc(label)}['"]`,
+        'iu',
+    ).test(src);
     if (/(?:add|create)\s+(?:an?\s+)?(?:expense|record|entry)|إضافة\s+(?:مصروف|سجل)/iu.test(text)
         && hasRecordForm && hasSemanticRecordFields) {
         return { ...r, verdict: 'met', why: 'the records form creates rows with a primary field plus number, category, and date inputs' };
+    }
+    const hasRecordCoreFields = /primary\s*:\s*true/iu.test(src)
+        && /type\s*:\s*['"]number['"]/iu.test(src)
+        && /type\s*:\s*['"](?:select|text)['"]/iu.test(src);
+    const requestsAddRecordForm = /(?:add|create)\s+(?:an?\s+)?(?:form|modal|dialog|model)\b|(?:form|modal|dialog|model)\s+(?:for\s+)?(?:add|create)|(?:نموذج|نافذة)\s+(?:إضافة|اضافة)/iu.test(text);
+    if (requestsAddRecordForm && hasRecordForm && hasRecordCoreFields) {
+        return { ...r, verdict: 'met', why: 'the generated records form provides the requested semantic fields and submits through the owned record controller' };
+    }
+    const requestsDetailsAndEdit = /(?:details?|edit)\s+(?:window|modal|dialog)|(?:window|modal|dialog)\s+(?:for\s+)?(?:details?|edit)|(?:نافذة|نموذج)\s+(?:التفاصيل|تفاصيل|تعديل)/iu.test(text);
+    const hasRecordDetailsAndEdit = /setSelected\s*\(/iu.test(src)
+        && /setEditing\s*\(/iu.test(src)
+        && /(?:role\s*=\s*['"]dialog['"]|record-modal)/iu.test(src);
+    if (requestsDetailsAndEdit && hasRecordDetailsAndEdit) {
+        return { ...r, verdict: 'met', why: 'the generated records view opens an accessible details dialog and enters edit state for the selected row' };
     }
     if (/(?:non[- ]?numeric|non[- ]?positive|positive\s+(?:amount|number)|رقمي|موجب|غير\s+صالح)/iu.test(text)
         && hasPositiveNumberGuard) {
@@ -1032,6 +1135,21 @@ function deterministicSourceVerdict(r: NamedRequirement, source: string): Judged
     if (/(?:save|keep|persist|durable)[\s\S]{0,80}(?:reload|refresh|localstorage)|(?:reload|refresh)[\s\S]{0,80}(?:save|keep|persist|durable)|حفظ[\s\S]{0,80}(?:إعادة\s+التحميل|التحديث)/iu.test(text)
         && hasDurableLocalRows) {
         return { ...r, verdict: 'met', why: 'the records store reads and writes rows through localStorage across reloads' };
+    }
+    if (/(?:local\s+persistence|persistent\s+local\s+storage|تخزين\s+محلي|حفظ\s+محلي)/iu.test(text)
+        && hasDurableLocalRows) {
+        return { ...r, verdict: 'met', why: 'the records store reads and writes rows through localStorage' };
+    }
+    const toggleLabel = fieldName
+        .replace(/^(?:a|an|the)\s+/iu, '')
+        .replace(/\s+(?:toggle|switch|مفتاح)$/iu, '')
+        .trim();
+    if (fieldLike && /(?:toggle|switch|مفتاح)/iu.test(fieldPhrase)
+        && toggleLabel && hasRequestedToggle(toggleLabel)
+        && /(?:f|field)\.control\s*===\s*['"]toggle['"]/u.test(src)
+        && /<input\b[^>]*(?:role=['"]switch['"]|type=['"]checkbox['"])[^>]*checked=\{(?:controller\.)?draft\[(?:f|field)\.key\]/u.test(src)
+        && /onChange=\{(?:\(?\s*)?e\s*\)?\s*=>\s*(?:controller\.)?setDraft\(\{\s*\.\.\.(?:controller\.)?draft,\s*\[(?:f|field)\.key\]:\s*e\.target\.checked/u.test(src)) {
+        return { ...r, verdict: 'met', why: 'the requested field is rendered through the generated toggle control contract' };
     }
     if (/status\s+filter|filtering|تصفية|فلترة/iu.test(text)
         && /setFilters?|content\.statusField|filter.*statusField/i.test(src)) {
@@ -1075,6 +1193,8 @@ export async function verifyNamed(
     source: string,
     isArabic: boolean,
     call: (prompt: string) => Promise<string>,
+    externalApiEvidence?: ExternalApiAcceptanceEvidence | null,
+    localBackend?: LocalBackendAcceptance | null,
 ): Promise<JudgedNamed[]> {
     const src = String(source || '');
     const blank = (why: string): JudgedNamed[] =>
@@ -1083,8 +1203,47 @@ export async function verifyNamed(
     if (!src.trim()) return blank(NO_SOURCE(isArabic));
 
     const deterministic = new Map<string, JudgedNamed>();
+    const backendProof = localBackend ? validateBackendEvidence(localBackend.evidence, localBackend.context) : null;
+    const expressSource = localBackend ? ownedExpressSource(localBackend.context) : false;
+    const backendKind = (text: string): NonNullable<JudgedNamed['decision']>['evidenceKind'] | null => {
+        // The reader preserves list grammar, so "and a real database" still
+        // belongs to the measured backend contract rather than frontend text.
+        const item = String(text || '').trim().replace(/^(?:and|with|plus)\s+/iu, '');
+        if (/^(?:(?:a|an|the)\s+)?express\s+(?:api|backend|server)[.!]?$/iu.test(item)) return 'express_source';
+        if (/^(?:(?:a|an|the)\s+)?(?:(?:real|sqlite|sql)\s+)*database[.!]?$/iu.test(item)) return 'sqlite';
+        if (/^(?:(?:data|server[- ]side|durable)\s+)?persistence[.!]?$/iu.test(item)) return 'persistence';
+        return null;
+    };
+    const backendReason = (kind: string): string => {
+        if (kind === 'express_source' && expressSource) return 'the owned backend source imports and initializes Express with a declared dependency';
+        if (kind === 'sqlite' && backendProof?.backend === 'sqlite') return 'a matching HTTP write/read and independent SQLite storage read were measured for this run and backend revision';
+        if (kind === 'persistence' && backendProof) return `a matching HTTP write/read and independent ${backendProof.backend} storage read prove server persistence for this run and backend revision`;
+        return '';
+    };
     for (const r of reqs) {
-        const verdict = externalApiSourceVerdict(r, src) || deterministicSourceVerdict(r, src);
+        const text = typeof r.text === 'string' ? r.text.trim() : '';
+        const kind = backendKind(text);
+        const declaredParts = declaredRequirementItems(text);
+        const parts = declaredParts.length ? declaredParts : declaredRequirementItems(`It needs ${text}`);
+        const compound = parts.length > 1 && parts.some(part => backendKind(part));
+        if (localBackend && (kind || compound)) {
+            // The quote grounds the criterion; it need not repeat its short label.
+            // Compound inventories retain every item, including unknown items.
+            const grounded = typeof r.quote === 'string' && groundedIn(text, r.quote);
+            const reasons = kind ? [backendReason(kind)] : parts.map(part => {
+                const partKind = backendKind(part);
+                if (partKind) return backendReason(partKind);
+                const verdict = deterministicSourceVerdict({ id: r.id, text: part, quote: part }, src);
+                return verdict?.verdict === 'met' ? verdict.why : '';
+            });
+            const proven = grounded && reasons.every(Boolean);
+            deterministic.set(r.id, { ...r, verdict: proven ? 'met' : 'unprovable',
+                why: proven ? reasons.join('; ') : 'current owned backend evidence is missing, stale, incompatible, incomplete, or does not prove every grounded requirement',
+                decision: { route: 'local_backend', evidenceKind: kind || 'compound',
+                    reasonCode: !grounded ? 'ungrounded_criterion' : proven ? 'verified' : compound ? 'compound_not_fully_proven' : 'backend_evidence_rejected' } });
+            continue;
+        }
+        const verdict = externalApiSourceVerdict(r, externalApiEvidence) || deterministicSourceVerdict(r, src);
         if (verdict) deterministic.set(r.id, verdict);
     }
     if (deterministic.size === reqs.length) return reqs.map(r => deterministic.get(r.id)!);

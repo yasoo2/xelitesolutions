@@ -81,10 +81,12 @@ describe('the local brain is paused, not hammered', () => {
         // The skip happens BEFORE the attempt log — no timeout is paid at all.
         const at = src.indexOf("p.name === 'Local (Auto)' && isLocalBrainOpen()");
         expect(at).toBeGreaterThan(0);
-        const pausedBranch = src.slice(at, at + 700);
+        const nextBranch = src.indexOf("if (p.name === 'Local (Auto)' && allowLocalEngineeringRecovery", at);
+        expect(nextBranch).toBeGreaterThan(at);
+        const pausedBranch = src.slice(at, nextBranch);
         expect(pausedBranch).toContain("recordProviderAttempt(p.name, false, `skipped: local circuit paused");
         expect(pausedBranch).toContain('continue;');
-        expect(src).toContain('if (isLocalBrainProbing()) timeoutValue = Math.min(timeoutValue, LOCAL_PROBE_TIMEOUT_MS);');
+        expect(src).toMatch(/if \(isLocalBrainProbing\(\).*?timeoutValue = Math\.min\(timeoutValue, LOCAL_PROBE_TIMEOUT_MS\);/);
     });
 
     it('decorative narration stops buying lines from the metered provider while it is paused', () => {

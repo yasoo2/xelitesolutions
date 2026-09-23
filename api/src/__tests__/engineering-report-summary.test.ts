@@ -1,4 +1,4 @@
-import { summarizeEngineeringReport } from '../../../web/src/lib/engineeringReportSummary';
+import { isEngineeringReport, summarizeEngineeringReport } from '../../../web/src/lib/engineeringReportSummary';
 
 describe('the chat respects the final delivery verdict', () => {
     const contradictoryReport = `
@@ -61,5 +61,47 @@ Visible Browser QA: **100/100** — 0 finding(s), 0 blocking, 4 interaction(s) m
         const summary = summarizeEngineeringReport(report, 'en');
         expect(summary).toContain('21 exploratory actions across 16 discovered states');
         expect(summary).not.toContain('4 interactions');
+    });
+
+    it('keeps the selected external API status in the compact user receipt', () => {
+        const report = `
+A full React project, scaffolded AND verified to compile — "Weather".
+Self-QA in the Browser panel, in front of you (1 page(s), 2 control(s) pressed, 3 viewport(s), 3 control(s) discovered, 3 exploratory action(s) and 3 state(s) discovered): 100/100 — clean.
+Visible Browser QA: **100/100** — 0 finding(s), 0 blocking, 3 exploratory action(s) across 3 discovered state(s).
+- External API: Open-Meteo · Auth: none · Catalog health: unknown · Runtime: runtime verified.
+`;
+        const summary = summarizeEngineeringReport(report, 'en');
+        expect(summary).toContain('External API: Open-Meteo');
+        expect(summary).toContain('Auth: none');
+        expect(summary).toContain('Runtime: runtime verified');
+    });
+
+    it('recognizes and compacts the canonical successful pipeline report', () => {
+        const report = `
+## ✅ Project delivered: Requested web application
+
+### 🟢 Your system is live
+Open at: **http://localhost:5000/project-preview/session/index.html**
+**Phases:** 1/1 executed and verified (real execution + checks, not just written files).
+
+### Visible Browser QA: **100/100** — 0 finding(s), 0 blocking, 5 exploratory action(s) across 3 discovered state(s).
+- External API: Frankfurter · Auth: none · Catalog health: unknown · Runtime: runtime verified.
+- API evidence: frankfurter-currency-v2; 2 successful request(s); resultMatched=true; loading=true; error=true; recovery=true.
+
+### Files
+- Actual artifact root: C:\\private\\workspace
+- src/App.jsx
+
+### Technical details (for review)
+- finalVerified: \`true\`; browserQaFailed: \`false\`; scopeCoverageFailed: \`false\`
+`;
+
+        expect(isEngineeringReport(report)).toBe(true);
+        const summary = summarizeEngineeringReport(report, 'en');
+        expect(summary).toContain('## Delivered');
+        expect(summary).toContain('External API: Frankfurter');
+        expect(summary).not.toContain('Actual artifact root');
+        expect(summary).not.toContain('Technical details');
+        expect(summary).not.toContain('API evidence:');
     });
 });

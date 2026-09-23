@@ -14,10 +14,66 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
-import { ApiProjectTool, apiResourceForKind } from '../modules/tools/definitions/ApiProjectTool';
+import { ApiProjectTool, apiResourceForKind, matchingLocalNpmCache } from '../modules/tools/definitions/ApiProjectTool';
 import { syntaxOk } from '../modules/tools/definitions/ProjectEditTool';
 
 const FALLTHROUGH = 'llm-fallthrough';
+
+describe('local npm cache selection', () => {
+    const manifest = JSON.stringify({ dependencies: { express: '^4.21.2' } });
+
+    it('uses only a same-workspace cache whose manifest and lock exactly match', () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-api-cache-'));
+        const trusted = path.join(root, 'trusted-api');
+        const cache = path.join(trusted, '.npm-cache');
+        try {
+            fs.mkdirSync(path.join(cache, '_cacache', 'content-v2', 'sha512'), { recursive: true });
+            fs.writeFileSync(path.join(cache, '_cacache', 'content-v2', 'sha512', 'package'), 'cached');
+            fs.writeFileSync(path.join(trusted, 'package.json'), manifest);
+            fs.writeFileSync(path.join(trusted, 'package-lock.json'), JSON.stringify({ packages: { '': { dependencies: { express: '^4.21.2' } } } }));
+            expect(matchingLocalNpmCache(root, manifest, path.join(root, 'new-api'))).toBe(cache);
+            expect(matchingLocalNpmCache(root, JSON.stringify({ dependencies: { express: '^5.0.0' } }))).toBeNull();
+            expect(matchingLocalNpmCache(root, JSON.stringify({ dependencies: { express: '^4.21.2' }, devDependencies: { vite: '^5.4.11' } }))).toBeNull();
+            expect(matchingLocalNpmCache(path.join(root, 'other-workspace'), manifest)).toBeNull();
+        } finally { fs.rmSync(root, { recursive: true, force: true }); }
+    });
+});
+describe('API artifact workspace ownership', () => {
+    it('uses each execution workspace instead of the shared explorer folder', async () => {
+        const { workspaceService } = require('../modules/services/WorkspaceService');
+        const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-api-workspaces-'));
+        const roots = new Map([
+            ['workspace-a', path.join(tmp, 'a')],
+            ['workspace-b', path.join(tmp, 'b')],
+        ]);
+        const shared = path.join(tmp, 'shared');
+        const active = jest.spyOn(workspaceService, 'getActiveRoot')
+            .mockImplementation((id: any) => roots.get(id));
+        const explorer = jest.spyOn(workspaceService, 'getExplorerRoot').mockReturnValue(shared);
+        try {
+            for (const [workspaceId, root] of roots) {
+                const result: any = await new ApiProjectTool().execute(
+                    { request: 'Build an API for store products', skipInstall: true,
+                        workspaceId: 'untrusted-input-workspace' },
+                    { workspaceId, sessionId: `ownership-${workspaceId}`, language: 'en' },
+                );
+                expect(active).toHaveBeenCalledWith(workspaceId);
+                expect(path.dirname(result.output.path)).toBe(root);
+                expect(fs.existsSync(path.join(result.output.path, 'server.js'))).toBe(true);
+            }
+            expect(explorer).not.toHaveBeenCalled();
+            expect(fs.existsSync(shared)).toBe(false);
+        } finally {
+            active.mockRestore();
+            explorer.mockRestore();
+            for (const workspaceId of roots.keys()) {
+                delete (global as any).joeProjects?.[`ownership-${workspaceId}`];
+            }
+            fs.rmSync(tmp, { recursive: true, force: true });
+        }
+    });
+});
+
 const withDeadline = (p: Promise<string>, ms = 1500): Promise<string> => {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const fallback = new Promise<string>(resolve => {
@@ -260,25 +316,28 @@ describe('the offline scaffold — complete, parseable, kind-aware', () => {
         // `skipInstall` intentionally omits build/preview proof; source handoff is the contract here.
         const content = fs.readFileSync(path.join(linked.output.path, 'src', 'content.js'), 'utf-8');
         const records = fs.readFileSync(path.join(linked.output.path, 'src', 'components', 'RecordsApp.jsx'), 'utf-8');
+        const controller = fs.readFileSync(path.join(linked.output.path, 'src', 'app', 'records-controller.js'), 'utf-8');
         const keys = [...content.matchAll(/key: '([^']+)'/g)].map((m: RegExpMatchArray) => m[1]);
         expect(keys).toEqual(expect.arrayContaining(['description', 'amount', 'category', 'date']));
         expect(keys).not.toContain('price');
         expect(keys).not.toContain('quantity');
         expect(content).toContain("api: '/api/expenses'");
-        expect(records).toContain('invalidNumericField');
+        expect(records).toContain('RecordsView');
+        expect(controller).toContain('invalidNumericField');
         delete (global as any).joeProjects?.['api-expense-promotion'];
     });
 
     it('a request-derived uncatalogued clinic model survives the same linked handoff', async () => {
         const request = 'Build a dental office management system. Tables: patients, treatments. Record patient name, phone, treatment, and amount paid.';
         const sessionId = 'api-uncatalogued-clinic';
+        const runId = 'clinic-pipeline-retry';
         const api: any = await new ApiProjectTool().execute(
-            { request, skipInstall: true, root: tmp }, { sessionId });
+            { request, skipInstall: true, root: tmp }, { sessionId, runId });
         expect(api.ok).toBe(true);
         expect(api.output.resource).toBe('patients');
         const { ReactProjectTool } = require('../modules/tools/definitions/ReactProjectTool');
         const linked: any = await new ReactProjectTool().execute(
-            { request, skipInstall: true, root: tmp }, { sessionId });
+            { request, skipInstall: true, root: tmp }, { sessionId, runId });
         expect(linked.ok).toBe(true);
         const content = fs.readFileSync(path.join(linked.output.path, 'src', 'content.js'), 'utf-8');
         const keys = [...content.matchAll(/key: '([^']+)'/g)].map((m: RegExpMatchArray) => m[1]);
@@ -288,6 +347,49 @@ describe('the offline scaffold — complete, parseable, kind-aware', () => {
         expect(keys).not.toContain('price');
         expect(keys).not.toContain('quantity');
         expect(content).toContain("api: '/api/patients'");
+        const apiDir = api.output.path;
+        const model = (global as any).joeProjects[sessionId].linkedApiModel;
+        const retried: any = await new ReactProjectTool().execute(
+            { request, skipInstall: true, root: tmp }, { sessionId, runId });
+        expect(retried.ok).toBe(true);
+        expect(fs.readFileSync(path.join(retried.output.path, 'src', 'content.js'), 'utf-8'))
+            .toContain("api: '/api/patients'");
+        expect((global as any).joeProjects[sessionId].linkedApiDir).toBe(apiDir);
+        expect((global as any).joeProjects[sessionId].linkedApiModel).toEqual(model);
+        expect(model.length).toBeGreaterThan(0);
+        const foreignRoot = path.join(tmp, 'another-workspace');
+        fs.mkdirSync(foreignRoot, { recursive: true });
+        const foreign: any = await new ReactProjectTool().execute(
+            { request, skipInstall: true, root: foreignRoot, resumeExisting: true }, { sessionId });
+        expect(foreign.ok).toBe(false);
+        expect(foreign.error).toBe('linked_api_outside_workspace');
+        const fresh: any = await new ReactProjectTool().execute(
+            { request: 'Build a local expense tracker', skipInstall: true, root: tmp }, { sessionId });
+        expect(fs.readFileSync(path.join(fresh.output.path, 'src', 'content.js'), 'utf-8'))
+            .toContain("api: ''");
+        delete (global as any).joeProjects?.[sessionId];
+    });
+
+    it('a board schema stays one resource through the API and React handoff', async () => {
+        const sessionId = 'api-board-contract';
+        const request = 'Create a defect board in a new local project with an API and database. It needs title, severity, and a resolved toggle.';
+        const api: any = await new ApiProjectTool().execute(
+            { request, root: tmp, skipInstall: true }, { sessionId });
+        expect(api.ok).toBe(true);
+        expect(api.output.resource).toBe('defects');
+        expect((global as any).joeProjects[sessionId].model).toHaveLength(1);
+        const { ReactProjectTool } = require('../modules/tools/definitions/ReactProjectTool');
+        const react: any = await new ReactProjectTool().execute(
+            { request, root: tmp, skipInstall: true }, { sessionId });
+        // Scaffold-only evidence proves the handoff, not a running database.
+        expect(react.ok).toBe(false);
+        expect(react.error).toBe('requested_features_not_proven');
+        expect(react.logs).toContain('delivery: BLOCKED — requested capabilities not proven: an API, database');
+        const content = fs.readFileSync(path.join(react.output.path, 'src', 'content.js'), 'utf8');
+        expect(content).toContain("api: '/api/defects'");
+        expect(content).toContain("label: 'severity'");
+        expect(content).toContain("label: 'resolved'");
+        expect(content).not.toContain("label: 'with an API'");
         delete (global as any).joeProjects?.[sessionId];
     });
 

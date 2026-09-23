@@ -40,6 +40,7 @@ const DETERMINISTIC_TOOLS = [
 
 export type AgentGoal = {
   id: string;
+  runId?: string;
   traceId?: string;
   goal: string;
   context?: Record<string, any>;
@@ -269,11 +270,12 @@ export class AgentOrchestrator {
     // or the planner looks up joeProjects['default'], misses the active
     // project, and an edit like «غيّر الطراز» falls past the surgical
     // editor (caught by the UI-integration wire proof).
+    const canonicalRunId = goal.runId || goal.traceId || goal.id;
     this.context = {
       ...(goal.context || { sessionId: goal.id }),
       // A trace is one execution, not merely a chat session. The LLM router
       // uses it to keep a failed provider mesh from poisoning a fresh run.
-      runId: goal.traceId || goal.id,
+      runId: canonicalRunId,
     };
 
     // Initialize Runtime Memory
@@ -304,7 +306,7 @@ export class AgentOrchestrator {
         emitDepartment(goal.id, 'developer');
         const result = await executionFirewall.runInContext(goal.traceId, () => {
             return this.coordinate(dag, runtimeMemory, this.context, goal.traceId, goal.goal);
-        }, { userId: goal.context?.userId, sessionId: goal.context?.sessionId || goal.id, runId: goal.id });
+        }, { userId: goal.context?.userId, sessionId: goal.context?.sessionId || goal.id, runId: canonicalRunId });
         this.throwIfCancelled();
 
         // [Departments] QA reviews the outcome, then it's delivered.
@@ -893,6 +895,23 @@ export class AgentOrchestrator {
             });
           }
 
+          // Final measured outcomes take precedence over every outer retry,
+          // including provider outages: the pipeline owns phase-level recovery.
+          const isDeterministicRunFailure = node.tool === 'project_run';
+          const isFinalPipelineFailure = isFinalPipelineOutcome(node.tool, out);
+          if (out.nonRecoverable === true || out.verificationFailed === true || isDeterministicRunFailure || isFinalPipelineFailure) {
+            const reason = out.verificationFailed === true
+              ? 'verification_failed'
+              : out.nonRecoverable === true
+                ? 'non_recoverable_precondition'
+              : isFinalPipelineFailure
+                ? 'pipeline_final'
+                : 'project_run_failed';
+            console.error(`[AgentOrchestrator] Final ${reason} for ${node.id} — stopping without an invented recovery.`);
+            if (traceId) traceManager.logEvent(traceId, 'orchestrator', { event: 'recovery_skipped', nodeId: node.id, reason });
+            return { ok: false, result: lastNodeError ?? result.error ?? out.message ?? 'Project run failed', steps: runSteps(dag) };
+          }
+
           /**
            * A DEAD BRAIN IS NOT A FAILURE TO RECOVER FROM. IT IS THE END.
            *
@@ -945,29 +964,6 @@ export class AgentOrchestrator {
             console.error('[AgentOrchestrator] No LLM provider reachable — ending the run honestly after bounded engineering retry.');
             if (traceId) traceManager.logEvent(traceId, 'orchestrator', { event: 'recovery_skipped', nodeId: node.id, reason: 'provider_unreachable' });
             return { ok: false, result: lastNodeError ?? result.error, steps: runSteps(dag) };
-          }
-
-          // A tool can prove that its requested outcome did not occur even when
-          // it successfully performed a preliminary action (for example, spawning
-          // a process that never opened a port). This is final evidence, not a
-          // transient exception for an LLM to retry blindly.
-          // `project_run` is an explicit, deterministic user request. Whether it
-          // failed because no project exists, the command could not start, or the
-          // readiness probe failed, inventing a build/repair plan changes the job.
-          // Surface its evidence and let the user choose the next action instead.
-          const isDeterministicRunFailure = node.tool === 'project_run';
-          const isFinalPipelineFailure = isFinalPipelineOutcome(node.tool, out);
-          if (out.nonRecoverable === true || out.verificationFailed === true || isDeterministicRunFailure || isFinalPipelineFailure) {
-            const reason = out.verificationFailed === true
-              ? 'verification_failed'
-              : out.nonRecoverable === true
-                ? 'non_recoverable_precondition'
-              : isFinalPipelineFailure
-                ? 'pipeline_final'
-                : 'project_run_failed';
-            console.error(`[AgentOrchestrator] Final ${reason} for ${node.id} — stopping without an invented recovery.`);
-            if (traceId) traceManager.logEvent(traceId, 'orchestrator', { event: 'recovery_skipped', nodeId: node.id, reason });
-            return { ok: false, result: lastNodeError ?? result.error ?? out.message ?? 'Project run failed', steps: runSteps(dag) };
           }
 
           // [DECISION] Intelligent recovery attempt (Reviewer/QA department steps in)

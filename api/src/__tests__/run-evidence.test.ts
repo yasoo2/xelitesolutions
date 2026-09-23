@@ -15,8 +15,9 @@ process.env.MOCK_DB = 'true';
 
 function routeHandler(routePath: string): (req: any, res: any, next: any) => Promise<void> {
   const layer = (router as any).stack.find((entry: any) => entry.route?.path === routePath);
-  if (!layer?.route?.stack?.[0]?.handle) throw new Error(`route not found: ${routePath}`);
-  return layer.route.stack[0].handle;
+  const handler = layer?.route?.stack?.at(-1)?.handle;
+  if (!handler) throw new Error(`route not found: ${routePath}`);
+  return handler;
 }
 
 function responseDouble() {
@@ -196,7 +197,7 @@ describe('048b durable run evidence contract', () => {
   test('GET /:id/receipt returns the structural receipt for a textual runId', async () => {
     const handler = routeHandler('/:id/receipt');
     const res = responseDouble();
-    await handler({ params: { id: runId } }, res, jest.fn());
+    await handler({ params: { id: runId }, auth: { sub: 'run-evidence-owner' } }, res, jest.fn());
     expect(res.statusCode).toBe(200);
     expect(res.jsonBody.runId).toBe(runId);
     expect(res.jsonBody.projectRoot).toBe('/tmp/weathergo-regression');
@@ -207,7 +208,7 @@ describe('048b durable run evidence contract', () => {
   test('GET /:id resolves the same textual runId instead of requiring an ObjectId', async () => {
     const handler = routeHandler('/:id');
     const res = responseDouble();
-    await handler({ params: { id: runId } }, res, jest.fn());
+    await handler({ params: { id: runId }, auth: { sub: 'run-evidence-owner' } }, res, jest.fn());
     expect(res.statusCode).toBe(200);
     expect(res.jsonBody.run.runId).toBe(runId);
     expect(res.jsonBody.execs.length).toBeGreaterThan(0);

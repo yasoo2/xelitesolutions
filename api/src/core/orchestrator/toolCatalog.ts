@@ -296,6 +296,11 @@ export function inputForTool(tool: any, goal: string, context?: any): Record<str
         ? tool.inputSchema.requiredAny.filter((group: any) => Array.isArray(group) && group.length).map((group: any[]) => group.map(String))
         : [];
     const url = (String(goal).match(URL_RE) || [])[0] || sessionUrl(context);
+    // Only filesystem-shaped fields consume a local path. `target` is too
+    // ambiguous globally (for example browser_translate uses it for a
+    // language), so callers with target-only schemas must obtain it explicitly.
+    const localPath = String(goal).match(/(?:[A-Za-z]:[\\/][^\s،,;]+|(?:\.{1,2}[\\/][^\s،,;]+))/)?.[0]
+        || String(context?.workspaceRoot || '').trim();
     const input: Record<string, any> = {};
 
     for (const key of Object.keys(props)) {
@@ -306,6 +311,10 @@ export function inputForTool(tool: any, goal: string, context?: any): Record<str
         if (/^(url|link|page|address|site|website)$/.test(k)) { if (url) input[key] = url; continue; }
         if (/^(query|question|text|request|instruction|goal|task|prompt|description|topic|content|input)$/.test(k)) {
             input[key] = goal;
+            continue;
+        }
+        if (/^(projectpath|directory|folder|root|workspacepath)$/.test(k)) {
+            if (localPath) input[key] = localPath;
             continue;
         }
     }

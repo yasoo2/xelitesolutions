@@ -28,6 +28,12 @@ describe('Arabic normalisation folds spellings a reader treats as identical', ()
         expect(normalizeIntentText('احذف')).not.toBe(normalizeIntentText('اضف'));
     });
 
+    it('does not turn an adjective near an action word into an imperative', () => {
+        const normalized = normalizeIntentText('فحص أمني للموقع');
+        expect(normalized).not.toContain('ابني');
+        expect(normalized).toContain('امني');
+    });
+
     it('leaves Latin text alone', () => {
         expect(normalizeIntentText('build an online store')).toContain('store');
     });

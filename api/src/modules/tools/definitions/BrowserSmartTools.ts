@@ -5,8 +5,9 @@ import { getBrowserSession, withBrowserConcurrency, startStreaming, isPersistent
 import { broadcastBrowserEvent } from '../../browser/wsHub';
 import { routeToModel } from '../../../core/llm/intelligent-router';
 import { broadcast } from '../../../api/ws';
+import { artifactRootDir } from '../../../shared/artifact-root';
 
-const ARTIFACT_DIR = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
+const ARTIFACT_DIR = artifactRootDir();
 
 /** The browser session the live-view panel streams. All chat-driven browser
  *  tools MUST operate on this same session, otherwise their navigation happens

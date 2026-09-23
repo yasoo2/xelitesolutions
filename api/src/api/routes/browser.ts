@@ -4,6 +4,8 @@ import { runBrowserInstruction } from '../../modules/browser/runner';
 import { executePlannedActions } from '../../modules/browser/executor';
 import { stopSession, getBrowserSession, saveBrowserSession, clearBrowserSession, hasSavedBrowserSession } from '../../modules/browser/manager';
 import { canAccessBrowserSession } from '../../modules/browser/wsHub';
+import { claimNavigation } from '../../modules/browser/navigation-order';
+import { readDocumentState } from '../../modules/browser/navigation-diagnostics';
 
 const router = Router();
 
@@ -145,11 +147,15 @@ router.post('/nav/back', authenticate as any, async (req: Request, res: Response
     if (!access.ok) return res.status(access.status).json(access.body);
     const s = await getBrowserSession(sid);
     let ok = false;
+    const navigation = claimNavigation(s.page);
+    try {
     try {
       const r = await s.page.goBack({ waitUntil: 'domcontentloaded' });
       ok = !!r;
     } catch { }
+    if (!navigation.isCurrent()) return res.status(409).json({ ok: false, error: 'nav_superseded' });
     return res.json({ ok });
+    } finally { navigation.release(); }
   } catch (err: any) {
     return res.status(500).json({ error: err?.message || 'nav_back_failed' });
   }
@@ -163,11 +169,15 @@ router.post('/nav/forward', authenticate as any, async (req: Request, res: Respo
     if (!access.ok) return res.status(access.status).json(access.body);
     const s = await getBrowserSession(sid);
     let ok = false;
+    const navigation = claimNavigation(s.page);
+    try {
     try {
       const r = await s.page.goForward({ waitUntil: 'domcontentloaded' });
       ok = !!r;
     } catch { }
+    if (!navigation.isCurrent()) return res.status(409).json({ ok: false, error: 'nav_superseded' });
     return res.json({ ok });
+    } finally { navigation.release(); }
   } catch (err: any) {
     return res.status(500).json({ error: err?.message || 'nav_forward_failed' });
   }
@@ -182,12 +192,17 @@ router.post('/nav/refresh', authenticate as any, async (req: Request, res: Respo
     const s = await getBrowserSession(sid);
     // A reload that threw used to return ok:true, so the panel showed a refresh
     // that never happened and the page it displayed was the stale one.
+    const navigation = claimNavigation(s.page);
+    try {
     try {
       await s.page.reload({ waitUntil: 'domcontentloaded' });
     } catch (e: any) {
+      if (!navigation.isCurrent()) return res.status(409).json({ ok: false, error: 'nav_superseded' });
       return res.status(502).json({ ok: false, error: 'nav_refresh_failed', detail: String(e?.message || e), url: s.page.url() });
     }
+    if (!navigation.isCurrent()) return res.status(409).json({ ok: false, error: 'nav_superseded' });
     return res.json({ ok: true, url: s.page.url() });
+    } finally { navigation.release(); }
   } catch (err: any) {
     return res.status(500).json({ error: err?.message || 'nav_refresh_failed' });
   }
@@ -222,17 +237,24 @@ router.post('/nav/goto', authenticate as any, async (req: Request, res: Response
     // successful navigation to a page it had never left.
     let lastError: any = null;
     let attempts = 0;
+    const navigation = claimNavigation(s.page);
+    const superseded = () => res.status(409).json({ ok: false, error: 'nav_superseded', attempts });
+    try {
     for (let attempt = 0; attempt < 2; attempt++) {
+      if (!navigation.isCurrent()) return superseded();
       attempts++;
       try {
         if (navigationNeedsCleanSlate(null, s.page.url())) {
           try { await s.page.goto('about:blank', { waitUntil: 'domcontentloaded', timeout: 8_000 }); } catch { /* best effort */ }
           await s.page.waitForTimeout(250);
         }
+        if (!navigation.isCurrent()) return superseded();
         await s.page.goto(u, { waitUntil: 'domcontentloaded' });
+        if (!navigation.isCurrent()) return superseded();
         lastError = null;
         break;
       } catch (e: any) {
+        if (!navigation.isCurrent()) return superseded();
         lastError = e;
         // A preview server can become ready just after project_run reports its
         // URL. Retry one transient connection failure; never retry auth, bad
@@ -248,12 +270,17 @@ router.post('/nav/goto', authenticate as any, async (req: Request, res: Response
       }
     }
     if (lastError) {
+      const documentState = await readDocumentState(() => s.page.evaluate(() => document.readyState));
+      if (!navigation.isCurrent()) return superseded();
       return res.status(502).json({
         ok: false, error: 'nav_goto_failed', requested: u,
-        attempts, detail: String(lastError?.message || lastError), url: s.page.url(),
+        attempts, documentState, detail: String(lastError?.message || lastError), url: s.page.url(),
       });
     }
     return res.json({ ok: true, url: s.page.url() });
+    } finally {
+      navigation.release();
+    }
   } catch (err: any) {
     return res.status(500).json({ error: err?.message || 'nav_goto_failed' });
   }

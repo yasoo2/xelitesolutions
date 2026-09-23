@@ -30,10 +30,21 @@
  * So the model is allowed to be wrong. It is not allowed to be believed.
  */
 
+// Stylesheet-only repair cannot fix handlers, semantics, authorization or runtime errors.
+const CSS_REPAIRABLE_FINDINGS = new Set([
+    'contrast', 'low_contrast', 'small_targets', 'tap_targets', 'mobile_tap_targets',
+    'mobile_overflow', 'responsive', 'mobile_header_fragmented',
+    'line_too_long', 'type_scale_drift', 'flat_hierarchy',
+]);
+
+export function cssRepairable<T extends { id: string }>(findings: T[]): T[] {
+    return findings.filter(f => f && CSS_REPAIRABLE_FINDINGS.has(f.id));
+}
+
 /** What the model is told, and what it must answer with. */
 export function cssRepairPrompt(findings: Array<{ id: string; detailEn?: string; detail?: string; evidence?: any[] }>): string {
     const lines: string[] = [];
-    for (const f of findings.slice(0, 8)) {
+    for (const f of cssRepairable(findings).slice(0, 8)) {
         const what = String(f.detailEn || f.detail || f.id).slice(0, 200);
         lines.push(`- ${f.id}: ${what}`);
         for (const e of (Array.isArray(f.evidence) ? f.evidence : []).slice(0, 6)) {
@@ -54,6 +65,7 @@ export function cssRepairPrompt(findings: Array<{ id: string; detailEn?: string;
         '- Use the selectors named above where they are given; they are exact.',
         '- No @import, no url(), no @font-face, no expression(), no !important.',
         '- Do not change layout structure — only the properties that fix what is listed.',
+        '- Never hide, remove or disable controls to silence a finding. Do not set display, visibility, opacity, pointer-events or content-visibility.',
         '- At most 40 lines.',
     ].join('\n');
 }
@@ -79,6 +91,13 @@ export function safeCss(raw: any): { ok: boolean; css: string; why?: string } {
     // `url(` can fetch. A repair has no reason to.
     if (/url\s*\(/i.test(css)) return { ok: false, css: '', why: 'fetches something' };
     if (/!important/i.test(css)) return { ok: false, css: '', why: 'uses !important' };
+    // Appended repair CSS must not improve a score by removing measured controls.
+    // Escaped tokens are refused rather than trying to interpret obfuscated declarations.
+    const declarations = css.replace(/\/\*[\s\S]*?\*\//g, '');
+    if (/\\/.test(declarations)
+        || /(?:^|[;{])\s*(?:display|visibility|opacity|pointer-events|content-visibility)\s*:/i.test(declarations)) {
+        return { ok: false, css: '', why: 'can conceal or disable measured controls' };
+    }
 
     // Balanced, and actually a rule rather than a sentence about one.
     let depth = 0;
@@ -109,12 +128,14 @@ export async function askForCss(
     opts: { timeoutMs?: number } = {},
 ): Promise<ModelRoundResult> {
     if (!findings.length) return { css: '', why: 'nothing left to describe' };
+    const eligible = cssRepairable(findings);
+    if (!eligible.length) return { css: '', why: 'no stylesheet-repairable findings' };
     try {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const { routeToModel } = require('../llm/intelligent-router');
         const answer = await Promise.race([
             routeToModel(
-                [{ role: 'user', content: cssRepairPrompt(findings) }],
+                [{ role: 'user', content: cssRepairPrompt(eligible) }],
                 undefined, undefined, undefined, undefined, undefined, undefined,
                 { purpose: 'internal' },
             ),
@@ -184,7 +205,7 @@ export function handlerRepairable(
     // application source. Asking a model to rewrite a component because the
     // runner lost an element after a state change is both unsafe and unlikely
     // to improve the next measurement.
-    const NON_SOURCE_FINDINGS = new Set(['controls_not_reached', 'live_data_not_verified']);
+    const NON_SOURCE_FINDINGS = new Set(['controls_not_reached', 'forms_not_reached', 'live_data_not_verified']);
     let behaviour: ReadonlySet<string> = new Set();
     let deterministic: ReadonlySet<string> = new Set();
     try { behaviour = require('./behaviour-audit').BEHAVIOUR_CODES || new Set(); } catch { /* older build */ }

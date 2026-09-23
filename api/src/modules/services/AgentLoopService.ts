@@ -8,6 +8,13 @@ import { SelfFixExecutionService } from './SelfFixExecutionService';
 import { executeTool } from './ToolService';
 import { compactApiSelectionArtifact } from '../../core/api-discovery/integration-profiles';
 import type { ApiSelectionArtifact } from '../../core/api-discovery/types';
+import {
+    compactVerificationBoundaries,
+    compactVerificationLedger,
+    createVerificationLedger,
+    summarizeVerificationLedger,
+    verificationEvidenceDetails,
+} from '../../core/quality/verification-ledger';
 import { executionFirewall } from '../../orchestration/AgentExecutionFirewall';
 import { longTermMemory } from '../../core/memory/long-term-memory';
 import { uiText, languageName, messageLanguage } from '../../shared/utils/language';
@@ -143,13 +150,40 @@ function selfFixFailureReason(selfFixExecution: any): string {
     return String(selfFixExecution?.reason || selfFixExecution?.error || selfFixExecution?.message || '').trim();
 }
 
+async function recordPhaseVerificationEvidence(
+    runId: string,
+    sessionId: string,
+    phase: any,
+    output: any,
+    stage: 'phase' | 'repair_rerun' = 'phase',
+): Promise<void> {
+    const metrics = output?.verificationMetrics || summarizeVerificationLedger(output?.verificationLedger);
+    await appendRunEvidenceEvent(runId, {
+        type: 'verification_summary',
+        runId,
+        sessionId,
+        ts: Date.now(),
+        data: {
+            stage,
+            phaseNumber: Number(phase?.phaseNumber) || undefined,
+            phaseName: String(phase?.name || '').slice(0, 160),
+            status: String(output?.status || 'unknown').slice(0, 80),
+            executedTasks: Math.max(0, Number(output?.executedTasks) || 0),
+            reusedTasks: Math.max(0, Number(output?.reusedTasks) || 0),
+            skippedTasks: Math.max(0, Number(output?.skippedTasks) || 0),
+            metrics,
+            evidence: verificationEvidenceDetails(output?.verificationLedger),
+        },
+    });
+}
+
 export function compactPhaseReceipt(output: any, logs: any, status?: string, extras: Record<string, any> = {}): any {
     const source = output && typeof output === 'object' ? output : {};
     const receipt: Record<string, any> = {};
     const retainedKeys = [
-        'phaseNumber', 'phaseName', 'status', 'completedTasks', 'totalTasks', 'nextPhase',
+        'phaseNumber', 'phaseName', 'status', 'completedTasks', 'executedTasks', 'reusedTasks', 'skippedTasks', 'totalTasks', 'nextPhase',
         'deliverables', 'estimatedTime', 'verificationFailed', 'verificationUnavailable', 'requiresUserDecision',
-        'primaryError', 'error', 'results', 'honestBlocker',
+        'primaryError', 'error', 'results', 'honestBlocker', 'verificationMetrics',
     ];
     for (const key of retainedKeys) {
         if (!Object.prototype.hasOwnProperty.call(source, key)) continue;
@@ -617,6 +651,7 @@ export class AgentLoopService {
             // gets an honest failure — never a spinner that lives forever.
             const orchestration = orchestrator.execute({
                 id: runId,
+                runId,
                 traceId,
                 goal: effectiveGoal,
                 context: {
@@ -867,6 +902,8 @@ export class AgentLoopService {
         plannerTimeoutMs?: number;
         plannerMaxCompletionTokens?: number;
         plannerReasoningEffort?: string;
+        isCancelled?: () => boolean;
+        cancellation?: Promise<unknown>;
         /** The language of THIS run — the phase announcements follow it. */
         language?: string;
         onProgress?: (msg: string) => void;
@@ -899,6 +936,8 @@ export class AgentLoopService {
         plannerTimeoutMs?: number;
         plannerMaxCompletionTokens?: number;
         plannerReasoningEffort?: string;
+        isCancelled?: () => boolean;
+        cancellation?: Promise<unknown>;
         onProgress?: (msg: string) => void;
     }) {
         const { sessionId, runId, userId, workspaceId, browserSessionId, plannerResult, modelConfig } = opts;
@@ -918,6 +957,9 @@ export class AgentLoopService {
         // thinking_detail stream when no callback was handed in.
         const voice = (m: string) => {
             try { opts.onProgress ? opts.onProgress(m) : broadcastThinkingDetail(sessionId, m); } catch { /* optional */ }
+        };
+        const assertRunActive = () => {
+            if (opts.isCancelled?.()) throw new Error(CANCELLED);
         };
         const phases = plannerResult.output.phases;
         const createsNewProject = plannerResult.output.createsNewProject === true;
@@ -952,6 +994,13 @@ export class AgentLoopService {
             // Run-owned, data-only discovery receipt. PhaseExecutor recompacts
             // it again before a builder can consume it.
             apiSelection: undefined as ApiSelectionArtifact | undefined,
+            // Run-owned verification evidence. It is compacted at every phase
+            // boundary, and only matching passing receipts can avoid duplicate
+            // work. PhaseExecutor remains the sole verification scheduler.
+            verificationLedger: createVerificationLedger(),
+            verificationBoundaries: compactVerificationBoundaries(plannerResult?.output?.verificationBoundaries),
+            phaseExecutionIndex: -1,
+            isFinalPhase: false,
         };
         const executionContext = {
             runId,
@@ -971,6 +1020,8 @@ export class AgentLoopService {
             plannerTimeoutMs: opts.plannerTimeoutMs,
             plannerMaxCompletionTokens: opts.plannerMaxCompletionTokens,
             plannerReasoningEffort: opts.plannerReasoningEffort,
+            isCancelled: opts.isCancelled,
+            cancellation: opts.cancellation,
             // Every LLM call launched by a phase, verifier, repair, or rerun is
             // bounded engineering work. Keep this marker explicit so downstream
             // tools do not accidentally route it as an ordinary chat turn and
@@ -987,18 +1038,28 @@ export class AgentLoopService {
         let completedPhases = 0;
         const totalPhases = Number(projectContext.totalPhases || phases.length);
 
-        for (const phase of phases) {
+        for (let phaseIndex = 0; phaseIndex < phases.length; phaseIndex++) {
+            const phase = phases[phaseIndex];
+            assertRunActive();
+            projectContext.phaseExecutionIndex = phaseIndex;
+            projectContext.isFinalPhase = phaseIndex === phases.length - 1;
             const n = phase.phaseNumber || completedPhases + 1;
             voice(pick(isAr,
                 `⚙️ المرحلة ${n}/${totalPhases} — ${phase.name || 'تنفيذ'}`,
                 `⚙️ Phase ${n}/${totalPhases} — ${phase.name || 'work'}`));
             const phaseResult = await executeTool('phase_executor', { phase, projectContext }, executionContext);
+            // ToolService can stop the in-flight tool immediately while its
+            // underlying promise unwinds. Never interpret that late return as
+            // a failed phase eligible for repair or a second execution.
+            assertRunActive();
             // ToolService has already streamed the executor's logs to the panel.
             // Keep the returned copy for reports and repair diagnosis, but never
             // speak it again here: doing so replays the completed phase verbatim.
             const status = String(phaseResult?.output?.status || 'unknown');
             const carriedApiSelection = compactApiSelectionArtifact(phaseResult?.output?.apiSelection);
             if (carriedApiSelection) projectContext.apiSelection = carriedApiSelection;
+            projectContext.verificationLedger = compactVerificationLedger(phaseResult?.output?.verificationLedger);
+            await recordPhaseVerificationEvidence(runId, sessionId, phase, phaseResult?.output, 'phase');
             // PhaseExecutor can bind the greenfield artifact inside its own
             // ToolService boundary. Rehydrate that evidence here before either
             // advancing or opening self-fix; otherwise the next phase receives
@@ -1148,6 +1209,7 @@ export class AgentLoopService {
                 return { ok: false, completedPhases, results, honestBlocker: true };
             }
 
+            assertRunActive();
             voice(pick(isAr,
                 `⚠️ تعثرت المرحلة ${n} — أفتح تذكرة إصلاح وأحاول العلاج الذاتي…`,
                 `⚠️ Phase ${n} stumbled — opening a repair ticket and attempting self-healing…`));
@@ -1206,6 +1268,13 @@ export class AgentLoopService {
                 projectName: projectContext.projectName,
             },
         });
+            assertRunActive();
+            projectContext.verificationLedger = compactVerificationLedger(
+                selfFixExecution.rerunResult?.output?.verificationLedger || projectContext.verificationLedger,
+            );
+            if (selfFixExecution.rerunResult?.output) {
+                await recordPhaseVerificationEvidence(runId, sessionId, phase, selfFixExecution.rerunResult.output, 'repair_rerun');
+            }
 
             if (selfFixExecution.ok) {
                 voice(pick(isAr,
@@ -1248,12 +1317,38 @@ export class AgentLoopService {
             };
         }
 
+        const finalPhase = phases[phases.length - 1];
+        const finalVerification = finalPhase?.verificationTask;
+        const explicitFinalId = String(
+            finalVerification?.verificationId
+            || finalVerification?.args?.verificationId
+            || finalVerification?.input?.verificationId
+            || '',
+        ).trim();
+        const finalReceipt = [...compactVerificationLedger(projectContext.verificationLedger).receipts]
+            .reverse()
+            .find(receipt => receipt.mode === 'final'
+                && receipt.result === 'passed'
+                && (!explicitFinalId || receipt.checkId === explicitFinalId));
+        if ((finalVerification || plannerResult?.output?.requireFinalVerification === true) && !finalReceipt) {
+            const error = explicitFinalId
+                ? `Final verification did not produce a passing final receipt for ${explicitFinalId}`
+                : 'Final verification did not produce a passing final receipt';
+            await appendRunEvidenceEvent(runId, {
+                type: 'verification_final_gate', runId, sessionId, ts: Date.now(),
+                data: { ok: false, error, metrics: summarizeVerificationLedger(projectContext.verificationLedger) },
+            });
+            return { ok: false, completedPhases, results, finalVerificationMissing: true, error };
+        }
+
         const pipelineResult: any = {
             ok: true,
             completedPhases,
-            results
+            results,
+            ...(finalReceipt ? { finalVerification: finalReceipt } : {}),
         };
 
+        assertRunActive();
         try {
             const reportResult = await executeTool('joe_engineering_report', {
                 pipelineResult,
