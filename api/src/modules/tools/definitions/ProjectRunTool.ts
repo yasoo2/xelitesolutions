@@ -166,6 +166,23 @@ function builtPreviewRoot(cwd: string): string | null {
     return null;
 }
 
+/**
+ * A dependency-free records artifact is already a browser application. Do not
+ * run npm a second time merely to start Vite when its explicitly-marked static
+ * bundle is the verified delivery target.
+ */
+export function dependencyFreeRecordsBundleRoot(cwd: string): string | null {
+    const candidate = path.join(cwd, 'dist');
+    const entry = path.join(candidate, 'index.html');
+    try {
+        const document = fs.readFileSync(entry, 'utf8');
+        return /<meta\s+name=["']joe-artifact-mode["']\s+content=["']static-records["']\s*\/?>/iu.test(document)
+            ? candidate : null;
+    } catch {
+        return null;
+    }
+}
+
 async function startStaticBuildPreview(root: string, port: number): Promise<{ ready: boolean; pid?: number; url?: string; error?: string }> {
     const result = await ExecutionGateway.execute(process.execPath, ['-e', STATIC_PREVIEW_SERVER_SOURCE], {
         cwd: root,
@@ -1394,6 +1411,33 @@ export class ProjectRunTool implements ToolDefinition {
         await stopServer(key, logs).catch(() => {});
 
         const port = Number(input?.port) || await findFreePort();
+        const dependencyFreeBundle = !input?.command ? dependencyFreeRecordsBundleRoot(cwd) : null;
+        if (dependencyFreeBundle) {
+            logs.push(`project_run: serving dependency-free records bundle (${dependencyFreeBundle})`);
+            const fallback = await startStaticBuildPreview(dependencyFreeBundle, port);
+            if (fallback.ready && fallback.url && fallback.pid) {
+                RUNNING.set(key, { pid: fallback.pid, port, cwd: dependencyFreeBundle, command: 'node static-preview', startedAt: Date.now() });
+                rememberLiveProject(context, dependencyFreeBundle, { url: fallback.url, port, pid: fallback.pid }, cwd);
+                say(pick(isAr,
+                    `✅ تطبيق السجلات المحلي يعمل الآن — المعاينة: ${fallback.url}`,
+                    `✅ The dependency-free local records app is live — preview: ${fallback.url}`));
+                try {
+                    const { broadcast } = require('../../../api/ws');
+                    broadcast({ type: 'preview_ready', sessionId: context?.sessionId, data: { url: fallback.url, previewUrl: fallback.url, port, live: true, mode: 'static-records' } });
+                } catch { /* panel optional */ }
+                return {
+                    ok: true,
+                    output: {
+                        url: fallback.url, previewUrl: fallback.url, port, ready: true, pid: fallback.pid,
+                        cwd: dependencyFreeBundle, command: 'node static-preview', kind: 'static-records',
+                        devServerConfirmed: false, productionBundleConfirmed: true,
+                    },
+                    logs,
+                };
+            }
+            if (fallback.pid) await killTree(Number(fallback.pid)).catch(() => {});
+            return { ok: false, error: `تعذّر تشغيل المعاينة الثابتة: ${fallback.error || 'لم تستجب'}`, logs };
+        }
         let detected = input?.command
             ? { command: String(input.command), kind: 'override', expectPort: port, forced: false }
             : detectStart(cwd, port);

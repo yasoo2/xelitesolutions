@@ -11,6 +11,7 @@ import os from 'os';
 import path from 'path';
 import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
 import { WebPageBuilderTool } from '../modules/tools/definitions/WebPageBuilderTool';
+import { artifactRootDir } from '../shared/artifact-root';
 
 const FALLTHROUGH = 'llm-fallthrough';
 const route = async (goal: string, sessionId: string): Promise<string> => {
@@ -86,7 +87,7 @@ describe('the restore path: instant, honest, and itself undoable', () => {
         expect(entry.html).toBe(V1);
         // …and v2 became the restorable version (undo of the undo).
         expect(entry.versions.some((v: any) => v.html === V2)).toBe(true);
-        const onDisk = fs.readFileSync(path.join(process.env.ARTIFACT_DIR || '/tmp/joe-artifacts', `joe-${KEY}.html`), 'utf-8');
+        const onDisk = fs.readFileSync(path.join(artifactRootDir(), `joe-${KEY}.html`), 'utf-8');
         expect(onDisk).toContain('النسخة الأولى');
     });
 

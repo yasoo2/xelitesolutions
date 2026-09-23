@@ -1,4 +1,5 @@
 import { ToolDefinition, ToolPermission } from '../types';
+import { ensurePlanFinalVerification, frontendFinalCheck } from '../../../core/quality/plan-verification';
 
 import path from 'path';
 import { callLLM } from '../../../core/llm';
@@ -51,7 +52,8 @@ export class ProjectPlannerTool implements ToolDefinition {
             totalPhases: { type: 'number' as const },
             estimatedDuration: { type: 'string' as const },
             autoExecuted: { type: 'boolean' as const },
-            phases: { type: 'array' as const, items: { type: 'object' as const } }
+            phases: { type: 'array' as const, items: { type: 'object' as const } },
+            verificationBoundaries: { type: 'object' as const, description: 'Optional path/dependency boundaries for proportional verification' }
         }
     };
 
@@ -845,7 +847,8 @@ ${analysis ? `ANALYSIS:\n${JSON.stringify(analysis, null, 2)}\n` : ''}${evidence
 	Rules: Inspect and modify an existing selected project before proposing a new scaffold. Every write task must refer to an evidence fact or an explicit user requirement. Use candidateChecks from the evidence for verification where available. Paths in every file-oriented tool argument must be safe workspace-relative paths; never use an absolute host path, a drive path, a network path, or the parent-directory marker '..'. A read_file task may read only an evidence path or a file created earlier in the same phase. Do not select product-named foundations or deployment tools solely because words in the request resemble them. If evidence is ambiguous or blocked, plan clarification or read-only analysis rather than writing files. If evidence.mode is greenfield and PROJECT does not explicitly name a programming stack or framework, do not silently assume one: first include a clearly labeled architecture/stack decision grounded in the requirements and registered tools, naming a concrete runtime, framework, or language. That decision may authorize scaffold_project only when the plan also contains a real implementation artifact reflecting it; never copy a fixed template. Do not use scaffold_full_stack, react_project, api_project, web_page_builder, mobile_builder, npm_manager, dependency installers, or invented package scripts solely to hide an unstated decision. If the requirements are insufficient even for a bounded decision, plan read-only analysis or stop with a clear implementation-constraint question. When using referenceProjects, preserve the new project write scope, cite the reference manifest in the plan, and never modify or run checks against the reference project as the deliverable target. Plan only the smallest independently testable portable slice as exact file-level tasks, or stop with a clear implementation-constraint question if that is not possible.
         ${this.scopePlanningInstructions(projectDescription, repairMode, scopeRepairMode, scopeRepairTargets)}
 	        OUTPUT BUDGET CONTRACT: Return a compact JSON plan that fits one response. Use no more than 8 phases and no more than 4 tasks per phase. Keep phase descriptions, task names, deliverables, verificationTask, and args.description to one short sentence (preferably under 180 characters each). Use requirement IDs such as R1, R2 in requirementsCovered instead of copying long requirement text. Never include source code, generated HTML, long Markdown, logs, or repeated catalogue text inside the plan. For implementation files, use ai_write_file with a precise short description and safe path; use scaffold_project only for a minimal runnable skeleton with package/config plus one small entrypoint, then write the real files in later tasks. Keep each args object to the fields required by the selected tool.
-        Return ONLY JSON with: projectName, projectVibe, totalPhases, estimatedDuration, phases, dependencies.
+        Return ONLY JSON with: projectName, projectVibe, totalPhases, estimatedDuration, phases, dependencies, and optional verificationBoundaries.
+        CHANGE-AWARE VERIFICATION CONTRACT: When discovery proves separable source areas, emit verificationBoundaries as a compact object whose keys are generic capability names and whose values are {"paths":[safe workspace-relative paths],"dependsOn":[other boundary names]}. Derive these boundaries only from discovered or earlier-planned files; never use product-name special cases. A verification task should include verificationId and either verificationBoundary or relevantPaths. Use verificationMode "focused" while editing, "affected" after repair, and "final" for the last phase's complete gate. The last phase verificationTask must have a distinct stable verificationId and verificationMode "final" whenever runnable checks exist.
         Each phase must include: phaseNumber, name, description, tasks, verificationTask, deliverables, estimatedTime, requirementsCovered. The requirementsCovered field must be a non-empty array of requirement IDs or concise requirement statements that this phase actually advances.
 Tasks must include: task, tool, args, priority, realisticMinutes. Keep the complete response compact; do not inline file contents unless the exact tool contract requires a tiny bootstrap file. A task using ai_write_file MUST include args.path (one safe relative destination inside the selected workspace) and args.description (specific technical contents for that one file); never use ai_write_file for a phase-level instruction without both fields. A task using write_file MUST include args.path and args.content. A task using doc_generator MUST include args.filePath for an existing evidenced source file. A task using test_generator MUST include args.filePath for one concrete source file, evidenced already or written by an earlier task in the same phase; never use it as a phase-level request to “test the application”. A task using auto_tester MUST include args.testType as exactly one of syntax, build, unit, integration and args.projectPath as a safe workspace-relative directory. A syntax test MUST also include args.files as a non-empty array of concrete source paths evidenced already or written earlier in the same phase. A task using deploy_project MUST include args.action as one of build_static, start_server, or package; args.projectPath must be a safe workspace-relative project directory, except it may be omitted only when an earlier builder task in the same plan establishes the artifact root, because PhaseExecutor will late-bind the trusted runtime root. Build, unit, and integration tests may be planned only when discovery proved the corresponding package script exists; do not guess npm test or npm run build. A task using code_reviewer MUST include args.files as a non-empty array of concrete source paths, each evidenced already or written by an earlier task in the same phase; never use it as a vague phase-level request to “review quality”. For a React/Vite/Next/Expo browser project, a task that starts, launches, serves, previews, or opens the project MUST use project_run with the evidenced project cwd and its manifest-aware start command; NEVER use shell_execute or terminal_manager with node on a .ts/.tsx/.jsx entrypoint. Use shell_execute only for a declared npm script or a deterministic check evidenced by the manifest. Do not plan or generate Selenium/browser tests unless the project evidence declares their runner and dependencies; prefer the project’s declared local test script and browser_run/project_run for live and UI verification.
 Every phase must produce something that EXISTS on disk when it finishes — code, a config, a test, a document.
@@ -1626,6 +1629,7 @@ ${this.scopePlanningInstructions(projectDescription)}`;
         return {
             projectName,
             projectVibe: 'Constrained self-contained frontend delivery',
+            requireFinalVerification: true,
             totalPhases: 1,
             estimatedDuration: 'bounded local build and browser verification',
             dependencies: {},
@@ -1642,6 +1646,7 @@ ${this.scopePlanningInstructions(projectDescription)}`;
                 requirementsCovered: scope.targets.map((_, index) => `R${index + 1}`),
                 deliverables: ['A runnable local React application and a production build.'],
                 estimatedTime: 'bounded by local build and browser QA',
+                verificationTask: frontendFinalCheck(),
                 tasks: [...(publicDataCapability ? [{
                     task: 'Discover, rank, and safely validate a suitable public API for the requested live data.',
                     tool: 'search_public_apis',
@@ -1700,6 +1705,7 @@ ${this.scopePlanningInstructions(projectDescription)}`;
     }
 
     private validatePlan(plan: any, projectDescription: string): any {
+        plan = ensurePlanFinalVerification(plan);
         // Keep the planner's execution-state contract intact.  In particular,
         // fallback/blocker are evidence that planning is intentionally blocked;
         // reconstructing only display fields erased that evidence and made the
@@ -1710,7 +1716,7 @@ ${this.scopePlanningInstructions(projectDescription)}`;
             projectVibe: plan.projectVibe || 'Professional Engineering',
             totalPhases: typeof plan.totalPhases === 'number' ? plan.totalPhases : 3,
             estimatedDuration: plan.estimatedDuration || '1-2 hours',
-            phases: Array.isArray(plan.phases) ? plan.phases : [],
+            phases: plan.phases,
             dependencies: plan.dependencies || {},
             originalDescription: projectDescription.slice(0, 200)
         };

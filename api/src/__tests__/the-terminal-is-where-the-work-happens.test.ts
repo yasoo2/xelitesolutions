@@ -20,7 +20,7 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { openTerminal, transcriptLine } from '../core/quality/terminal-session';
+import { executableForPlatform, openTerminal, transcriptLine } from '../core/quality/terminal-session';
 import { REACT_NETWORK_INSTALL_TIMEOUTS } from '../modules/tools/definitions/ReactProjectTool';
 
 const read = (...p: string[]) => fs.readFileSync(path.join(__dirname, '..', ...p), 'utf-8');
@@ -30,6 +30,17 @@ const AI_GENERATOR = read('modules', 'tools', 'definitions', 'AIGeneratorTool.ts
 const AUDIT = read('core', 'quality', 'terminal-audit.ts');
 
 describe('a session that looks like a shell, because it is one', () => {
+    it('uses the Windows command shim for npm without changing the visible command', () => {
+        const descriptor = Object.getOwnPropertyDescriptor(process, 'platform');
+        Object.defineProperty(process, 'platform', { value: 'win32' });
+        try {
+            expect(executableForPlatform('npm')).toBe('npm.cmd');
+            expect(executableForPlatform('node')).toBe('node');
+        } finally {
+            if (descriptor) Object.defineProperty(process, 'platform', descriptor);
+        }
+    });
+
     it('opening it states the machine it is working on', async () => {
         const lines: string[] = [];
         const t = openTerminal(l => lines.push(l));
@@ -205,7 +216,11 @@ describe('THE WIRING: both builders work in the visible shell', () => {
 
     it('the server build does the same, and announces its long-running process', () => {
         expect(API).toMatch(/const shell = openTerminal\(term\);/);
-        expect(API).toMatch(/const instRun = await shell\.run\('npm', \['install'/);
+        expect(API).toMatch(/const instRun = await shell\.run\('npm', \[\s*'install'/);
+        expect(API).toMatch(/'--cache', npmCache/);
+        expect(API).toMatch(/const npmCache = path\.join\(proj, '\.npm-cache'\);/);
+        expect(API).toContain("'--fetch-retries=0', '--fetch-timeout=10000'");
+        expect(API).toContain('npm registry access is denied by this environment');
         // `node server.js` cannot be awaited like a command, but it is still
         // announced — otherwise the server's log appears under no command.
         expect(API).toMatch(/term\(`\$\{path\.basename\(proj\)\} \$ node server\.js   # PORT=\$\{port\}`\);/);

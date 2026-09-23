@@ -6,6 +6,10 @@ import crypto from 'crypto';
 import { DEFAULT_BROWSER_CONFIG } from './config';
 import { broadcastBrowserEvent } from './wsHub';
 import { ensureBrowserTelemetry, recordStreamFrame, disposeBrowserTelemetry } from './telemetry';
+import { imageSize } from '../../shared/image-size';
+import { captureNativeJpeg } from './native-capture';
+import { captureMaskedJpeg } from './masked-capture';
+import { artifactRootDir } from '../../shared/artifact-root';
 
 /* ============================================================
    PER-USER ENCRYPTED SESSION PERSISTENCE
@@ -19,7 +23,7 @@ import { ensureBrowserTelemetry, recordStreamFrame, disposeBrowserTelemetry } fr
    (hundreds of isolated users) operation.
    ============================================================ */
 const SESSION_STATE_DIR = process.env.BROWSER_SESSION_DIR
-  || path.join(process.env.ARTIFACT_DIR || '/tmp/joe-artifacts', 'browser-sessions');
+  || path.join(artifactRootDir(), 'browser-sessions');
 
 /** A stable, filesystem-safe id for a session's stored state. */
 function sessionStateFile(sessionId: string): string {
@@ -301,7 +305,7 @@ function isProfileLockError(msg: string): boolean {
 
 // ---- Consent: Joe must ask before driving the user's local browser profile ----
 const CONSENT_DIR = process.env.BROWSER_CONSENT_DIR
-  || path.join(process.env.ARTIFACT_DIR || '/tmp/joe-artifacts', 'browser-consent');
+  || path.join(artifactRootDir(), 'browser-consent');
 function consentFile(sessionId: string): string {
   const hash = crypto.createHash('sha256').update(String(sessionId || 'default')).digest('hex').slice(0, 40);
   return path.join(CONSENT_DIR, `${hash}.ok`);
@@ -534,29 +538,13 @@ async function captureJpeg(
   const locked = await tryAcquireCaptureLock(s, opts.waitForLock, opts.timeoutMs);
   if (!locked) return null;
   try {
-    return await s.page.screenshot({
-      type: 'jpeg',
-      quality: opts.quality,
-      animations: 'disabled',
-      /**
-       * THE STREAM MUST NOT EDIT THE PAGE IT IS FILMING.
-       *
-       * Playwright's default `caret: 'hide'` writes
-       * `style="caret-color: transparent !important"` onto every input before
-       * the shot and strips it afterwards. At stream FPS that is a DOM
-       * mutation six times a second — and the self-QA decides «this button is
-       * dead» by comparing the DOM before and after a click. Measured on an
-       * idle page with nothing clicked: the body fingerprint flipped between
-       * two values in 11 of 25 samples, so on any page with a form the verdict
-       * on a dead button was part coin-flip.
-       *
-       * A blinking caret costs one JPEG artefact. A camera that rewrites the
-       * subject costs the measurement.
-       */
-      caret: 'initial',
-      timeout: opts.timeoutMs,
-      mask: opts.mask && opts.mask.length ? opts.mask : undefined,
-    });
+    if (!opts.mask?.length) {
+      // Playwright screenshots restore its cached viewport, undoing metrics
+      // owned by the QA CDP session. Native capture leaves emulation intact.
+      // THE STREAM MUST NOT EDIT THE PAGE IT IS FILMING.
+      return await captureNativeJpeg(s.page, opts.quality, opts.timeoutMs);
+    }
+    return await captureMaskedJpeg(s.page, opts.mask, opts.quality, opts.timeoutMs);
   } finally {
     s.captureLocked = false;
   }
@@ -567,7 +555,7 @@ export async function screenshotSessionJpeg(sessionId: string, opts?: { quality?
   const s = await getBrowserSession(sid);
   const quality = Math.max(1, Math.min(100, Number(opts?.quality ?? 55)));
   const timeoutMs = Math.max(1000, Number(opts?.timeoutMs ?? 60000));
-  const buf = await captureJpeg(s, { quality, timeoutMs, waitForLock: true });
+  const buf = await captureJpeg(s, { quality, timeoutMs, waitForLock: true, mask: s.maskLocators });
   if (!buf) throw new Error('screenshot_failed');
   return buf;
 }
@@ -1188,7 +1176,8 @@ export function startStreaming(sessionId: string) {
         // The page is the authority for frame dimensions. During responsive
         // QA it can change size between two capture ticks; declaring a fresh
         // JPEG with stale session metadata stretches it in the Browser panel.
-        const actualViewport = s.page.viewportSize();
+        const actualViewport = imageSize(buf);
+        if (!actualViewport?.width || !actualViewport?.height) return;
         if (actualViewport?.width && actualViewport?.height) {
           s.viewport = { w: actualViewport.width, h: actualViewport.height };
         }
@@ -1332,7 +1321,7 @@ export async function healthcheckBrowser() {
       const buf = await page.screenshot({ type: 'jpeg', quality: 65, animations: 'disabled' });
 
       // Save artifact if possible
-      const artifactDir = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
+      const artifactDir = artifactRootDir();
       try {
         if (!fs.existsSync(artifactDir)) fs.mkdirSync(artifactDir, { recursive: true });
         const fname = `health-browser-${Date.now()}.jpg`;

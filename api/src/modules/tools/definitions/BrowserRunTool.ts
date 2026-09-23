@@ -7,8 +7,9 @@ import { getSessionSecret, getUserSecret } from '../../services/secrets';
 import path from 'path';
 import fs from 'fs';
 import { agentSearchUrl } from '../../browser/challenge';
+import { artifactRootDir } from '../../../shared/artifact-root';
 
-const ARTIFACT_DIR = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
+const ARTIFACT_DIR = artifactRootDir();
 
 export function localLivePreviewFor(sessionId: string): string {
     const key = String(sessionId || '').replace(/[^a-zA-Z0-9._-]/g, '_');

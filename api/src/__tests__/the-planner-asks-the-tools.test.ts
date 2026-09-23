@@ -208,7 +208,7 @@ describe('the planner uses it — after its own routes, before the model', () =>
     it('and it sits BELOW the hand-written routes and ABOVE generateDynamicDag', () => {
         const src = require('fs').readFileSync(
             require('path').join(__dirname, '..', 'core', 'orchestrator', 'PlanningEngine.ts'), 'utf-8');
-        const use = src.indexOf('const byCapability = PlanningEngine.capabilityPlan(intent);');
+        const use = src.search(/const byCapability = PlanningEngine\.capabilityPlan\(intent(?:, context)?\);/);
         const dag = src.lastIndexOf('return PlanningEngine.generateDynamicDag(intent, memory, context);');
         expect(use).toBeGreaterThan(-1);
         expect(use).toBeLessThan(dag);

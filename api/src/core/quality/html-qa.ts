@@ -1,3 +1,5 @@
+import { artifactRootDir } from '../../shared/artifact-root';
+
 /**
  * HTML QA — the "Reviewer / QA department" for generated web pages.
  *
@@ -693,7 +695,7 @@ export async function browserSmokeTest(url: string, filename: string): Promise<B
                 await page.goto(url, { waitUntil: 'load', timeout: 20000 });
                 await page.waitForTimeout(500);
                 const fs = require('fs'); const path = require('path');
-                const artifactDir = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
+                const artifactDir = artifactRootDir();
                 let screenshotHref: string | undefined;
                 try {
                     const shot = `qa-${filename.replace(/\.html?$/i, '')}-${Date.now()}.jpg`;

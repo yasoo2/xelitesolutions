@@ -10,7 +10,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
-import { ReactProjectTool, PROJECT_DIR_NAME_MAX_LENGTH, REACT_NETWORK_INSTALL_TIMEOUTS, applyBundledPhotographyFallback, cleanReinstallReactDependencies, findBrokenNativeBuildTool, hasUsableReactDependencyTree, heroSecondaryDestination, interruptedWindowsNativeTools, nativeBuildToolRepairSpec, portableViteBuildArgs, repairQuarantinedEsbuildInstall, requestDrivenServiceProducts, reuseLocalReactDependencies, withoutViteConfigForBuild } from '../modules/tools/definitions/ReactProjectTool';
+import { ReactProjectTool, PROJECT_DIR_NAME_MAX_LENGTH, REACT_NETWORK_INSTALL_TIMEOUTS, LOCAL_RECORDS_FALLBACK_INSTALL_TIMEOUTS, applyBundledPhotographyFallback, canBuildDependencyFreeRecordsApp, cleanReinstallReactDependencies, findBrokenNativeBuildTool, hasUsableReactDependencyTree, heroSecondaryDestination, installTimeoutsForRecordsRecovery, interruptedWindowsNativeTools, nativeBuildToolRepairSpec, portableViteBuildArgs, repairQuarantinedEsbuildInstall, repairRecordsViewBlankImport, repairRecordsViewToggleControl, repairRecordsViewVisualBaseline, requestDerivedRecordsPresentation, requestDrivenServiceProducts, reuseLocalReactDependencies, scopedNpmCache, shouldRepairInterruptedNativeBuildTools, sourceRepairAllowedForArtifact, withoutViteConfigForBuild, writeDependencyFreeRecordsBundle } from '../modules/tools/definitions/ReactProjectTool';
 import { fileAppStoreJs } from '../modules/tools/definitions/react-app-templates';
 import { ApiProjectTool } from '../modules/tools/definitions/ApiProjectTool';
 import { ScaffoldProjectTool } from '../modules/tools/definitions/SystemTools';
@@ -24,6 +24,104 @@ const route = async (goal: string): Promise<string> => {
     ).then(x => x.steps[0].tool).catch(() => FALLTHROUGH);
     return Promise.race([p, new Promise<string>(r => { const t = setTimeout(() => r(FALLTHROUGH), 1500); (t as any).unref?.(); })]);
 };
+
+describe('records presentation import contract', () => {
+    it('repairs only the known blank helper import after model authoring', () => {
+        const authored = "import { blank } from '../app/store.js';\nimport { imageOf } from '../app/store.js';\nexport default function RecordsView() { return null; }";
+        expect(repairRecordsViewBlankImport(authored)).toBe(
+            "import { blank } from '../app/records-controller.js';\nimport { imageOf } from '../app/store.js';\nexport default function RecordsView() { return null; }",
+        );
+    });
+
+    it('does not change an already-correct or unrelated import', () => {
+        const source = "import { blank } from '../app/records-controller.js';\nimport { useStore } from '../app/store.js';";
+        expect(repairRecordsViewBlankImport(source)).toBe(source);
+    });
+
+    it('honors a toggle control even when its storage type is select', () => {
+        const authored = "{field.type === 'toggle' ? <input type=\"checkbox\" /> : null}";
+        expect(repairRecordsViewToggleControl(authored)).toContain("field.control === 'toggle' || field.type === 'toggle'");
+    });
+
+    it('adds a compact scoped visual baseline when a records view leaves its classes unstyled', () => {
+        const authored = "export default function RecordsView() { return <div className=\"records-view\"><div className=\"toggle-container\"><input type=\"checkbox\" /></div></div>; }";
+        const repaired = repairRecordsViewVisualBaseline(authored);
+        expect(repaired).toContain('<style>{".records-view');
+        expect(repaired).toContain('.toggle-container');
+        expect(repairRecordsViewVisualBaseline(repaired)).toBe(repaired);
+    });
+
+    it('keeps a complete records engine available as a request-derived presentation', () => {
+        const source = "function RecordsView({ content }) { return <div className={'wrap' + (content.media ? ' media-workspace' : '')}>Ready</div>; }";
+        const derived = requestDerivedRecordsPresentation(source);
+        expect(derived).toContain('data-joe-presentation="request-derived"');
+        expect(derived).toContain("className={'wrap' + (content.media ? ' media-workspace' : '')}");
+        expect(derived).toContain('input[role=\\"switch\\"]');
+        expect(derived).toContain('border-radius:999px');
+        expect(requestDerivedRecordsPresentation(derived)).toBe(derived);
+    });
+});
+
+describe('dependency-free local records recovery', () => {
+    const blueprint: any = {
+        engine: 'records', title: 'سجل الإبل', lede: 'سجل الناقة والعمر والوزن',
+        entityOne: 'ناقة', entityMany: 'الإبل', fields: [
+            { key: 'camel_name', label: 'اسم الناقة', type: 'text', required: true, primary: true },
+            { key: 'age', label: 'العمر', type: 'number', required: true, min: 0 },
+            { key: 'weight', label: 'الوزن', type: 'number', required: true, min: 0 },
+        ],
+    };
+
+    it('writes a real local CRUD artifact only for a standalone records contract', () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-static-records-'));
+        try {
+            expect(canBuildDependencyFreeRecordsApp(blueprint)).toBe(true);
+            expect(canBuildDependencyFreeRecordsApp(blueprint, { hasBackend: true })).toBe(false);
+            expect(canBuildDependencyFreeRecordsApp({ ...blueprint, relation: { resource: 'owners' } })).toBe(false);
+            const output = writeDependencyFreeRecordsBundle(root, blueprint, true);
+            const html = fs.readFileSync(output, 'utf8');
+            expect(html).toContain('name="joe-artifact-mode" content="static-records"');
+            expect(html).toContain('اسم الناقة');
+            expect(html).toContain("localStorage.setItem(store");
+            expect(html).toContain("form.checkValidity()");
+            expect(html).toContain("input.pattern='[0-9+() -]{6,}'");
+            expect(html).toContain("download:'records.csv'");
+            expect(html).toContain("edit(row)");
+            expect(html).toContain("remove(row.id)");
+            expect(html).toContain('aria-labelledby="search-label"');
+            expect(html).toContain('id="status" role="status"');
+            expect(html).toContain('status.textContent=c.labels.exported');
+            expect(html).toContain('status.textContent=c.labels.saved},0)}},true)');
+            expect(html).toContain('.button,.link-button{min-height:44px}');
+            const scripts = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gu)];
+            expect(scripts).toHaveLength(3);
+            expect(() => new Function(scripts[1][1])).not.toThrow();
+        } finally {
+            fs.rmSync(root, { recursive: true, force: true });
+        }
+    });
+
+    it('uses a short single install budget only when the local records fallback is eligible', () => {
+        expect(installTimeoutsForRecordsRecovery(true)).toBe(LOCAL_RECORDS_FALLBACK_INSTALL_TIMEOUTS);
+        expect(LOCAL_RECORDS_FALLBACK_INSTALL_TIMEOUTS.idleMs).toBe(30_000);
+        expect(LOCAL_RECORDS_FALLBACK_INSTALL_TIMEOUTS.absoluteMs).toBe(75_000);
+        expect(LOCAL_RECORDS_FALLBACK_INSTALL_TIMEOUTS.absoluteMs).toBeLessThan(REACT_NETWORK_INSTALL_TIMEOUTS.idleMs);
+        expect(installTimeoutsForRecordsRecovery(false)).toBe(REACT_NETWORK_INSTALL_TIMEOUTS);
+    });
+
+    it('does not spend another network repair attempt after a failed local records install', () => {
+        expect(shouldRepairInterruptedNativeBuildTools(true, -2)).toBe(false);
+        expect(shouldRepairInterruptedNativeBuildTools(true, 1)).toBe(false);
+        expect(shouldRepairInterruptedNativeBuildTools(false, 1)).toBe(true);
+        expect(shouldRepairInterruptedNativeBuildTools(false, 0)).toBe(false);
+    });
+
+    it('never sends a dependency-free artifact into the React source repair loop', () => {
+        expect(sourceRepairAllowedForArtifact('static_records')).toBe(false);
+        expect(sourceRepairAllowedForArtifact('react')).toBe(true);
+        expect(sourceRepairAllowedForArtifact(null)).toBe(true);
+    });
+});
 
 describe('dependency reuse only trusts a complete Vite tree', () => {
     const baseManifest = {
@@ -159,6 +257,13 @@ describe('dependency reuse only trusts a complete Vite tree', () => {
             [path.join('node_modules', 'esbuild', 'bin', 'esbuild'), '--version'],
             [path.join('node_modules', 'rollup', 'dist', 'bin', 'rollup'), '--version'],
         ]);
+        fs.rmSync(tmp, { recursive: true, force: true });
+    });
+
+    it('keeps dependencies untouched when the native executable probe times out', async () => {
+        const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-native-probe-timeout-'));
+        writeTree(tmp, baseManifest);
+        await expect(findBrokenNativeBuildTool(tmp, async () => -2)).resolves.toBe('indeterminate');
         fs.rmSync(tmp, { recursive: true, force: true });
     });
 
@@ -395,6 +500,7 @@ describe('the scaffold: complete, RTL, tokenized, honest', () => {
     it('reports ok with the full file list', () => {
         expect(out.ok).toBe(true);
         expect(out.output.files.length).toBeGreaterThanOrEqual(14);
+        expect(out.output.acceptanceTrace).toEqual({ omitted: 0, criteria: [] });
     });
     it('package.json is valid and pins the build scripts', () => {
         const pkg = JSON.parse(fs.readFileSync(path.join(out.output.path, 'package.json'), 'utf-8'));
@@ -888,7 +994,7 @@ describe('product pages, the team, and the build command', () => {
         expect(source).toContain("await run('npm', ['rebuild', 'esbuild', '--foreground-scripts'], 120_000, 45_000)");
         expect(source).not.toContain("['approve-scripts', '--all']");
         expect(source).toContain('repairQuarantinedEsbuildInstall(proj, run)');
-        expect(source).toContain("fs.rmSync(path.join(proj, 'package-lock.json'), { force: true })");
+        expect(source.includes('cleanReinstallReactDependencies(proj, run)')).toBe(true);
         expect(source).toContain('complete native toolchain verified after scoped npm approval and rebuild');
     });
 
@@ -908,6 +1014,26 @@ describe('product pages, the team, and the build command', () => {
         expect(verificationFailure).toMatchObject({ ok: false, rebuildExit: 0, failedAt: 'verification' });
     });
 
+    it('uses a single cache-preferred install instead of a guaranteed cache-only retry on misses', () => {
+        const source = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ReactProjectTool.ts'), 'utf-8');
+        expect(source).toContain("'install', '--prefer-offline', '--no-audit', '--no-fund',");
+        expect(source).toContain("'--fetch-retries=0', '--fetch-timeout=10000'");
+        expect(source).toContain("'ci', '--offline', '--no-audit', '--no-fund'");
+        expect(source).toContain('exact local React npm cache selected');
+        expect(source).not.toContain("['install', '--offline', '--no-audit', '--no-fund']");
+        expect(source).not.toContain('offlineInstall');
+        expect(source).toContain('hasUsableReactDependencyTree(proj)');
+        expect(source).toContain('repairQuarantinedEsbuildInstall(proj, run)');
+        expect(source).toContain('cleanReinstallReactDependencies(proj, run)');
+    });
+
+    it('keeps the normal npm cache inside the generated project', () => {
+        const project = path.join(os.tmpdir(), 'joe-scoped-npm-cache');
+        expect(scopedNpmCache(project)).toBe(path.join(project, '.joe', 'npm-cache'));
+        const source = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ReactProjectTool.ts'), 'utf-8');
+        expect(source).toContain("'--cache', installCache");
+    });
+
     it('executes and narrowly repairs a corrupt Windows esbuild binary before accepting dependencies', () => {
         const source = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ReactProjectTool.ts'), 'utf-8');
         expect(source).toContain('detectBrokenNativeBuildTool');
@@ -921,7 +1047,9 @@ describe('product pages, the team, and the build command', () => {
         expect(REACT_NETWORK_INSTALL_TIMEOUTS.idleMs).toBeLessThan(REACT_NETWORK_INSTALL_TIMEOUTS.absoluteMs);
         expect(REACT_NETWORK_INSTALL_TIMEOUTS.absoluteMs).toBeLessThanOrEqual(15 * 60_000);
         expect(source).toContain('Prove both fresh and reused executables start');
-        expect(source).toContain('brokenNativeTool === null');
+        expect(source).toContain('nativeToolProbe === null');
+        expect(source).toContain("native toolchain verification timed out — leaving dependencies unchanged");
+        expect(source).not.toContain('fs.rmSync(spec.platformRoot');
         expect(source).not.toContain('npm cache clean');
         expect(source).toContain('the JavaScript toolchain is incomplete — performing one clean bounded reinstall');
     });
@@ -1021,6 +1149,7 @@ describe('project identity: React builds reuse only their session-owned scaffold
         const sessionId = 'api-identity-fresh-react-t';
         const staleDir = path.join(root, 'OldApiReact');
         const apiDir = path.join(root, 'ApiProject');
+        fs.mkdirSync(apiDir, { recursive: true });
         fs.mkdirSync(path.join(staleDir, 'src'), { recursive: true });
         fs.writeFileSync(path.join(staleDir, 'index.html'), '<!doctype html><div id="root"></div>');
         fs.writeFileSync(path.join(staleDir, 'package.json'), JSON.stringify({
@@ -1045,6 +1174,14 @@ describe('project identity: React builds reuse only their session-owned scaffold
             expect(path.resolve(result.output.path).startsWith(path.resolve(root) + path.sep)).toBe(true);
             expect(result.logs.join('\n')).toContain('app=finance');
             expect(projects[sessionId].linkedApi).toBe('/api/orders');
+            expect(projects[sessionId].linkedApiDir).toBe(apiDir);
+            expect(projects[sessionId].runtimeAuth).toEqual(runtimeAuth);
+            const retry: any = await new ReactProjectTool().execute(
+                { request: 'Build a React app for a customer ledger', root, skipInstall: true, projectName: 'FreshLedger' },
+                { sessionId, runId: 'new-react-run' },
+            );
+            expect(retry.ok).toBe(true);
+            expect(retry.logs.join('\n')).toContain('app=finance');
             expect(projects[sessionId].linkedApiDir).toBe(apiDir);
             expect(projects[sessionId].runtimeAuth).toEqual(runtimeAuth);
         } finally {

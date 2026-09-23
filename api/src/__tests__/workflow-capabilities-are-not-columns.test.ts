@@ -160,6 +160,11 @@ describe('workflow capability lists', () => {
         const css = fileAppCss();
         expect(css).toContain('.app-bar-in{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center}');
         expect(css).toContain('.app-id{grid-column:1/-1;display:flex;align-items:baseline');
+        const mobileName = [...css.matchAll(/\.app-name\{([^}]+)\}/g)]
+            .map(match => match[1]).find(rule => rule.includes('font-size:1.25rem'));
+        expect(mobileName).toContain('white-space:normal');
+        expect(mobileName).toContain('overflow-wrap:anywhere');
+        expect(mobileName).not.toContain('text-overflow:ellipsis');
         expect(css).not.toContain('grid-template-columns:minmax(0,1fr) auto auto');
     });
 
@@ -175,6 +180,6 @@ describe('workflow capability lists', () => {
         expect(reactTool).toContain('/\\btraffic\\b|road\\s*closures?|\\btransit\\b|public\\s*transport');
         expect(reactTool).toContain("took over immediately");
         expect(reactTool).toContain('provider-independent workflow engine passed the request API contract');
-        expect(reactTool).toContain('if (generatedEnginePath && !workflowSemanticContractPassed)');
+        expect(reactTool).toContain('if (generatedEnginePath && !requestDerivedEngineReady && !unifiedTables)');
     });
 });

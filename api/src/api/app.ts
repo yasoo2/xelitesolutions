@@ -7,6 +7,7 @@ import path from 'path';
 import fs from 'fs';
 import rateLimit from 'express-rate-limit';
 import { config } from '../shared/config';
+import { artifactRootDir } from '../shared/artifact-root';
 
 // Routes
 import authRoutes from './routes/auth';
@@ -318,7 +319,7 @@ export const createApp = () => {
   });
 
   // Artifacts exposure
-  const ARTIFACT_DIR = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
+  const ARTIFACT_DIR = artifactRootDir();
   app.use('/artifacts', express.static(ARTIFACT_DIR));
 
   // The active project's production build, served live for the preview panel.

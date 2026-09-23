@@ -55,7 +55,7 @@ describe('phase status reports executed work separately from skipped work', () =
   it('keeps a phase with executed work completed and verified on the existing surface', async () => {
     const result: any = await runPhase([
       { task: 'Run the real phase task', tool: 'echo', args: { message: 'ran' } },
-    ], { tool: 'project_detect', task: 'Verify phase output', args: {} });
+    ], { tool: 'quality_run', task: 'Verify phase output', args: { path: 'phase-status-probe' } });
 
     expect(result.ok).toBe(true);
     expect(result.output.status).toBe('completed');

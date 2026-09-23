@@ -68,6 +68,12 @@ describe('text cut off by its own box', () => {
         expect(R).toContain("n.nodeType === 3 && (n.textContent || '').trim().length > 4");
     });
 
+    it('⛔ NEGATIVE — screen-reader-only labels are not visual clipping defects', () => {
+        expect(R).toContain("el.classList.contains('sr-only')");
+        expect(R).toContain("el.classList.contains('visually-hidden')");
+        expect(R).toContain("el.getAttribute('aria-hidden') === 'true'");
+    });
+
     it('⛔ NEGATIVE — a scrollable box is not a cut, and ellipsis is not silence', () => {
         //  Scrollable: the rest is one gesture away. Ellipsis: the designer
         //  asked for truncation and SAID SO on screen. This finding is for

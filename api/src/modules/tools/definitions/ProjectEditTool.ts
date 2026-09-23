@@ -21,6 +21,7 @@
  */
 import fs from 'fs';
 import path from 'path';
+import { artifactRootDir } from '../../../shared/artifact-root';
 import { BaseTool } from '../base';
 import { ToolPermission, ToolExecutionResult } from '../types';
 import { buildPalette, paletteCss, darkTokenBlock, lightTokenBlock } from '../../../core/design/design-system';
@@ -1172,7 +1173,7 @@ export class ProjectEditTool extends BaseTool {
                 if (!img) {
                     const got = await fetchCardImages({
                         subjects: [subject], projDir: dir, hue: (buildPalette(request) as any).hue ?? 260,
-                        artifactDir: process.env.ARTIFACT_DIR || '/tmp/joe-artifacts', slot, label: 'edit',
+                        artifactDir: artifactRootDir(), slot, label: 'edit',
                     });
                     img = got.images[0];
                     credits = got.credits;
@@ -1341,7 +1342,7 @@ export class ProjectEditTool extends BaseTool {
                 const { fetchCardImages } = require('./ReactProjectTool');
                 const got = await fetchCardImages({
                     subjects: [`${name} ${desc}`], projDir: dir, hue: (buildPalette(request) as any).hue ?? 260,
-                    artifactDir: process.env.ARTIFACT_DIR || '/tmp/joe-artifacts', slot: 'card', label: 'edit',
+                    artifactDir: artifactRootDir(), slot: 'card', label: 'edit',
                 });
                 img = got.images[0];
                 addCredits = got.credits;

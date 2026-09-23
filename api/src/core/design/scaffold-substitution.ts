@@ -97,7 +97,9 @@ export function scaffoldSubstitutionFor(request: string, building: boolean): Sca
     const appKind = building ? detectAppKind(text) : null;
     const pageKind = building ? String(detectPageKind(text) || '') : '';
     const externalCapability = building ? capabilityFromRequest(text) : null;
-    const noEngine = building && !appKind && !externalCapability && (pageKind === '' || pageKind === 'generic');
+    // Model-authored custom behavior is not a ready engine with a proven capability contract.
+    const noEngine = building && (!appKind || appKind === 'custom')
+        && !externalCapability && (pageKind === '' || pageKind === 'generic');
     /**
      *  ⛔ «NO ENGINE» IS NOT «NO PATH» — BUT SILENCING THE NOTICE WAS THE WRONG
      *  CURE, AND AN EXISTING GUARD CAUGHT ME.

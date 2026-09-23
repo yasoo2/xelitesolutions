@@ -535,7 +535,7 @@ function extractImportExportMismatch(ticket: RepairTicket): ImportExportMismatch
 
 function extractBuildContext(ticket: RepairTicket) {
   const raw = rawTextOf(ticket);
-  const tsStyle = raw.match(/([A-Za-z0-9_./\\-]+\.(?:ts|tsx|js|jsx))\((\d+),(\d+)\):\s*error\s*(TS\d+)?[:\s]+([^\n]+)/i);
+  const tsStyle = raw.match(/([A-Za-z0-9_./\\:-]+\.(?:tsx|ts|jsx|js))\((\d+),(\d+)\):\s*error\s*(TS\d+)?[:\s]+([^\n]+)/i);
   if (tsStyle) {
     const sourceLine = extractSourceLineAfter(raw, tsStyle.index || 0);
     return {
@@ -548,7 +548,7 @@ function extractBuildContext(ticket: RepairTicket) {
     };
   }
 
-  const viteParenthesizedStyle = raw.match(/([A-Za-z0-9_./\\-]+\.(?:ts|tsx|js|jsx))\s*\((\d+):(\d+)\)[:\s]+([^\n]+)/i);
+  const viteParenthesizedStyle = raw.match(/([A-Za-z0-9_./\\:-]+\.(?:tsx|ts|jsx|js))\s*\((\d+):(\d+)\)[:\s]+([^\n]+)/i);
   if (viteParenthesizedStyle) {
     const sourceLine = extractSourceLineAfter(raw, viteParenthesizedStyle.index || 0);
     return {
@@ -560,7 +560,7 @@ function extractBuildContext(ticket: RepairTicket) {
     };
   }
 
-  const viteStyle = raw.match(/([A-Za-z0-9_./\\-]+\.(?:ts|tsx|js|jsx)):(\d+):(\d+)[:\s]+([^\n]+)/i);
+  const viteStyle = raw.match(/([A-Za-z0-9_./\\:-]+\.(?:tsx|ts|jsx|js)):(\d+):(\d+)[:\s]+([^\n]+)/i);
   if (viteStyle) {
     const sourceLine = extractSourceLineAfter(raw, viteStyle.index || 0);
     return {
@@ -572,7 +572,7 @@ function extractBuildContext(ticket: RepairTicket) {
     };
   }
 
-  const genericFile = raw.match(/([A-Za-z0-9_./\\-]+\.(?:ts|tsx|js|jsx|json|css|html))/i);
+  const genericFile = raw.match(/([A-Za-z0-9_./\\:-]+\.(?:tsx|ts|jsx|js|json|css|html))/i);
   if (genericFile) {
     return {
       file: genericFile[1].replace(/\\/g, '/'),

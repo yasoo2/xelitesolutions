@@ -7,6 +7,7 @@ import * as os from 'os';
 import * as path from 'path';
 import * as https from 'https';
 import { privateEndpointWarning } from '../../../shared/utils/privateEndpoints';
+import { artifactRootDir } from '../../../shared/artifact-root';
 
 /**
  * deploy_pages — permanent, FREE, keyless deployment to GitHub Pages.
@@ -142,7 +143,7 @@ export class DeployPagesTool implements ToolDefinition {
              * referenced asset in beside the page and rewrites the reference
              * relative — the folder then works from any static host.
              */
-            const artifactDir = process.env.ARTIFACT_DIR || '/tmp/joe-artifacts';
+            const artifactDir = artifactRootDir();
             const built = findBuiltArtifact({
                 sessionId: context?.sessionId, artifactDir,
                 explorerRoot: workspaceService.getExplorerRoot(),

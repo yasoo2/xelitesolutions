@@ -109,4 +109,17 @@ describe('an element on a page is not a data service', () => {
         expect(scope(plain)).toBe('app');
         expect(scope('Build a dashboard for tracking tasks.')).toBe('app');
     });
+
+    it('verification reporting is execution evidence, not a reports database', () => {
+        const request = [
+            'Create a browser-based library checkout board with title, borrower, due date, a returned toggle, filtering, validation, and local persistence.',
+            'Use focused checks while editing, then one final verification.',
+            'Report which checks ran and which were reused.',
+        ].join(' ');
+        expect(scope(request)).toBe('app');
+
+        // Real report functionality still owns data and must keep its backend.
+        expect(scope('Build an inventory system with suppliers, orders and reports.')).toBe('system');
+        expect(scope('Build a dashboard with user accounts and monthly reports.')).toBe('system');
+    });
 });

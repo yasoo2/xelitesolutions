@@ -46,7 +46,7 @@ export interface BehaviourFinding {
  *  `code:` literals in this file, so a new finding cannot be added silently.
  */
 export const BEHAVIOUR_CODES: ReadonlySet<string> = new Set([
-    'controls_not_reached', 'dead_anchors', 'dead_controls', 'form_dead_submit',
+    'controls_not_reached', 'forms_not_reached', 'dead_anchors', 'dead_controls', 'form_dead_submit',
     'form_no_validation', 'form_reloads', 'js_errors', 'keyboard_unreachable',
     'some_dead_controls', 'semantic_input_validation', 'form_persistence_unproven',
     'qa_created_record_not_deletable',
@@ -89,8 +89,10 @@ export interface FormResult {
     label: string;
     fields: number;
     filled: number;
-    /** 'submitted' | 'validation' | 'reload' | '' (nothing happened at all). */
+    /** 'submitted' | 'validation' | 'refused' | 'reload' | '' (nothing happened at all). */
     effect: string;
+    /** Route and viewport where this form was actually exercised. */
+    scope?: string;
     /** Semantic fields whose declared type and invalid-value rejection were exercised. */
     semanticFieldsTested?: number;
 }
@@ -121,6 +123,27 @@ const MAX_FORMS = 6;
 const MAX_FIELDS_PER_FORM = 14;
 /** Keep semantic input validation from being starved by a large control surface. */
 const FORM_QA_RESERVE_MS = 20_000;
+
+/**
+ * A download can be the whole result of a control.  Both the baseline walk and
+ * the state-exploration walk use this observer: a button revealed after a form
+ * submission must be measured by the same contract as one visible at first.
+ */
+function observeDownload(page: any) {
+    let state: 'none' | 'pending' | 'succeeded' | 'failed' = 'none';
+    const onDownload = (download: any) => {
+        state = 'pending';
+        Promise.resolve(download.failure()).then(error => {
+            state = error ? 'failed' : 'succeeded';
+        }).catch(() => { state = 'failed'; });
+    };
+    page.on('download', onDownload);
+    return {
+        succeeded: () => state === 'succeeded',
+        failed: () => state === 'failed',
+        stop: () => { try { page.off('download', onDownload); } catch { /* page may be gone */ } },
+    };
+}
 
 /** Runs in the page: catalogue everything a visitor could press. */
 function findControls(limit: number) {
@@ -380,7 +403,7 @@ function findForms(o: { maxForms: number; maxFields: number }) {
         const persistenceContext = [
             label, f.getAttribute('aria-label'), f.getAttribute('name'), f.id, f.className, f.getAttribute('action'),
         ].filter(Boolean).join(' ');
-        const expectsPersistence = /\b(?:add|create|save|order|register|book|reserve|new record)\b|أضف|اضف|إنشاء|انشاء|حفظ|طلب|تسجيل|حجز|احجز/i.test(persistenceContext);
+        const expectsPersistence = expectsPersistentRecord(persistenceContext);
         forms.push({ sel: `[data-joe-form="${fid}"]`, label, fields, hasSubmit: !!submit, submitSel, expectsPersistence });
     }
     return forms;
@@ -458,6 +481,42 @@ function changed(a: any, b: any): string {
     return '';
 }
 
+/** A visible, form-local refusal proves the submit path responded safely. */
+export function isVisibleFormRefusal(text: string): boolean {
+    return /\b(?:unauthori[sz]ed|forbidden|access denied|permission denied|invalid (?:email|password|credentials)|please sign[ -]?in|sign[ -]?in (?:to continue|required)|could not save|unable to save)\b|لم\s+يُ?حفظ|سج[ّ]?ل\s+الدخول|غير\s+صحيح(?:ة)?|لا\s+تملك\s+صلاحية|تعذ[ّ]?ر|مرفوض|خطأ/i.test(String(text || ''));
+}
+
+/** A newly visible local success or error is proof that submit reached the product. */
+export function hasNewVisibleFormFeedback(before: string, after: string): boolean {
+    return String(after || '').trim().length > 0 && String(after || '').trim() !== String(before || '').trim();
+}
+/** Only a data-creation form, not sign-in, should be required to create a durable row. */
+export function expectsPersistentRecord(context: string): boolean {
+    const text = String(context || '');
+    const authentication = /\b(?:sign[ -]?in|log[ -]?in|login|authenticate)\b|سج[ّ]?ل\s+الدخول|تسجيل\s+الدخول|دخول\s+(?:الحساب|إلى\s+الحساب)/i;
+    if (authentication.test(text)) return false;
+    return /\b(?:add|create|save|order|register|book|reserve|new record)\b|أضف|اضف|إنشاء|انشاء|حفظ|طلب|تسجيل|حجز|احجز/i.test(text);
+}
+
+async function formFeedback(page: any, selector: string): Promise<string> {
+    return page.evaluate((sel: string) => {
+        const form = document.querySelector(sel) as HTMLElement | null;
+        if (!form) return '';
+        const scope = form.closest('[role="dialog"],section,article') || form.parentElement || form;
+        const visible = (el: Element) => {
+            const rect = (el as HTMLElement).getBoundingClientRect();
+            const style = window.getComputedStyle(el);
+            return rect.width > 1 && rect.height > 1 && style.visibility !== 'hidden' && style.display !== 'none';
+        };
+        return Array.from(scope.querySelectorAll('[role="alert"],[role="status"],[aria-live],.error,.err,.auth-error,.notice,.feedback,[data-error],[data-status]'))
+            .filter(visible)
+            .map(el => (el as HTMLElement).innerText.trim())
+            .filter(Boolean)
+            .join('\n')
+            .slice(0, 1200);
+    }, selector).catch(() => '');
+}
+
 /**
  * Open the page, press everything, report what actually responded.
  *
@@ -514,6 +573,7 @@ export async function auditBehaviour(fileUrl: string, opts?: {
     const controls: ControlResult[] = [];
     const findings: BehaviourFinding[] = [];
     const metrics: Record<string, any> = {};
+    let formEvidence: FormResult[] = [];
     const jsErrors: string[] = [];
 
     let detach = () => { };
@@ -566,6 +626,7 @@ export async function auditBehaviour(fileUrl: string, opts?: {
         const probe = await probeControls(page);
         controls.push(...probe.controls);
         Object.assign(metrics, probe.metrics);
+        formEvidence = probe.forms || [];
 
         metrics.jsErrors = jsErrors.length;
         opts?.onProgress?.('inspected');
@@ -583,7 +644,7 @@ export async function auditBehaviour(fileUrl: string, opts?: {
     }
     if (!borrowed && browser) { try { await browser.close(); } catch { } }
 
-    const judged = judgeBehaviour(controls, metrics, jsErrors);
+    const judged = judgeBehaviour(controls, metrics, jsErrors, formEvidence);
     findings.push(...judged.findings);
     return { ran: true, score: judged.score, findings, controls, metrics };
 }
@@ -635,6 +696,10 @@ export interface ProbeOptions {
      * accused twice.
      */
     seenForms?: Set<string>;
+    /** Stable route/viewport identity for form evidence. */
+    formScope?: string;
+    /** Route identity used when correlating this evidence with a tested control. */
+    formContext?: string;
     /** Called before every visible pointer or input action in strict QA. */
     isEyeOpen?: () => boolean;
     onProgress?: (m: string) => void;
@@ -701,23 +766,6 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
             const replacement = replacementFor(fresh, original);
             return replacement ? page.$(replacement.sel) : null;
         };
-
-        // A CSV download has no DOM footprint. Count the app's real download
-        // anchor click as an additional browser-side witness, while retaining
-        // Playwright's download event when the browser emits one.
-        await page.evaluate(`(() => {
-            const w = globalThis;
-            w.__joeQaDownloadClicks = 0;
-            const proto = HTMLAnchorElement.prototype;
-            if (proto.__joeQaWrappedClick) return;
-            const original = proto.click;
-            const wrapped = function () {
-                if (this && this.hasAttribute('download')) w.__joeQaDownloadClicks++;
-                return original.call(this);
-            };
-            proto.click = wrapped;
-            proto.__joeQaWrappedClick = true;
-        })()`).catch(() => { });
 
         // Anchors are checked without clicking: the question is whether the
         // destination exists, and a page that scrolls is not proof that it does.
@@ -993,32 +1041,30 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                  * of the page. Judged by the DOM alone it is indistinguishable
                  * from a button wired to nothing.
                  */
-                let downloaded = false;
-                const onDownload = () => { downloaded = true; };
-                page.on('download', onDownload);
-                const downloadClicksBefore = await page.evaluate('Number(globalThis.__joeQaDownloadClicks || 0)').catch(() => 0);
-                if (!eyeIsOpen()) break;
-                el = await stableHandle(c, el);
-                if (!el) {
-                    controls.push({ label: c.label, kind: c.kind as any, worked: false, effect: 'not found', instance: c.ordinal, href: c.href });
-                    continue;
+                const download = observeDownload(page);
+                try {
+                    if (!eyeIsOpen()) break;
+                    el = await stableHandle(c, el).catch(() => null);
+                    if (!el) {
+                        controls.push({ label: c.label, kind: c.kind as any, worked: false, effect: 'not found', instance: c.ordinal, href: c.href });
+                        continue;
+                    }
+                    // Use Playwright's stability check. A forced coordinate click
+                    // can land on a different node while React is laying out.
+                    await el.click({ timeout: 2500, noWaitAfter: true }).catch((error: any) => {
+                        metrics.controlClickErrors = metrics.controlClickErrors || [];
+                        metrics.controlClickErrors.push({ label: c.label, message: String(error?.message || error).slice(0, 180) });
+                    });
+                    const settleDeadline = Math.min(deadline, Date.now() + 2500);
+                    do {
+                        await page.waitForTimeout(100);
+                        const after = await page.evaluate(snapshot).catch(() => null);
+                        effect = download.succeeded() ? 'download' : page.url() !== beforeUrl ? 'navigation'
+                            : (changed(before, after) || (hoverEffect ? `hover:${hoverEffect}` : ''));
+                    } while (!effect && !download.failed() && Date.now() < settleDeadline && eyeIsOpen());
+                } finally {
+                    download.stop();
                 }
-                // Use Playwright's stability check. A forced coordinate click
-                // can land on a different node while React is laying out.
-                await el.click({ timeout: 2500, noWaitAfter: true }).catch((error: any) => {
-                    metrics.controlClickErrors = metrics.controlClickErrors || [];
-                    metrics.controlClickErrors.push({ label: c.label, message: String(error?.message || error).slice(0, 180) });
-                });
-                await page.waitForTimeout(SETTLE_MS);
-                const afterUrl = page.url();
-                try { page.off('download', onDownload); } catch { /* page may be gone */ }
-                const downloadClicks = await page.evaluate('Number(globalThis.__joeQaDownloadClicks || 0)').catch(() => 0);
-                const after = await page.evaluate(snapshot).catch(() => null);
-                effect = afterUrl !== beforeUrl
-                    ? 'navigation'
-                    : downloaded || downloadClicks > downloadClicksBefore
-                    ? 'download'
-                    : (changed(before, after) || (hoverEffect ? `hover:${hoverEffect}` : ''));
                 // A submit that reloads the page proves the form is NOT handled —
                 // an unhandled submit is the browser's default, not a feature.
                 if (c.kind === 'submit' && effect === 'navigation') effect = 'reload';
@@ -1056,7 +1102,8 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                 // follow-up action (delete, cancel, checkout, edit).
                 opts?.onProgress?.('forms');
                 const r = await probeForms(page, {
-                    eyes, budgetMs: Math.max(6000, deadline - Date.now()), seenForms: opts?.seenForms, isEyeOpen: eyeIsOpen,
+                    eyes, budgetMs: Math.max(6000, deadline - Date.now()), seenForms: opts?.seenForms,
+                    formScope: opts?.formScope, formContext: opts?.formContext, isEyeOpen: eyeIsOpen,
                 });
                 filled = r.forms;
                 Object.assign(metrics, r.metrics);
@@ -1068,6 +1115,12 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                     Number(metrics.formsWithoutValidation || 0) - Number(r.metrics.formsEmptyRejected || 0));
             } catch { /* a form that fights back is a finding, not a crash */ }
         }
+
+        // A form probe owns submission in this visible state. Repeating the
+        // same submit can be idempotent feedback or duplicate a real write.
+        const measuredSubmits = new Set(filled
+            .filter(form => form.effect === 'submitted' || form.effect === 'validation' || form.effect === 'refused')
+            .map(form => form.label));
 
         const initialKeys = new Set(list.map(controlKey));
         const discoveredKeys = new Set(initialKeys);
@@ -1098,6 +1151,7 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                 // The fresh catalogue and stable key prevent blind repetition.
                 .find(c => !exploredKeys.has(`${visibleStateKey}|${controlKey(c)}`)
                     && (c.stateful || !successfulSemanticKeys.has(`${c.kind}|${c.label}|${c.ordinal ?? 0}`))
+                    && !(c.kind === 'submit' && measuredSubmits.has(c.label))
                     && (!initialKeys.has(controlKey(c)) || c.stateful));
             if (!candidate) break;
             opts?.onProgress?.(`state:${candidate.kind}:${candidate.label}`);
@@ -1122,13 +1176,23 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                 if (!el) continue;
                 const before = await page.evaluate(snapshot).catch(() => null);
                 if (!eyeIsOpen()) break;
-                await el.click({ timeout: 2500, noWaitAfter: true }).catch((error: any) => {
-                    metrics.controlClickErrors = metrics.controlClickErrors || [];
-                    metrics.controlClickErrors.push({ label: candidate.label, message: String(error?.message || error).slice(0, 180) });
-                });
-                await page.waitForTimeout(SETTLE_MS);
-                const after = await page.evaluate(snapshot).catch(() => null);
-                effect = changed(before, after);
+                const download = observeDownload(page);
+                try {
+                    await el.click({ timeout: 2500, noWaitAfter: true }).catch((error: any) => {
+                        metrics.controlClickErrors = metrics.controlClickErrors || [];
+                        metrics.controlClickErrors.push({ label: candidate.label, message: String(error?.message || error).slice(0, 180) });
+                    });
+                    // A Blob download usually settles immediately, but leave a
+                    // small bounded window for the browser to confirm it.
+                    const settleDeadline = Math.min(explorationDeadline, Date.now() + 1200);
+                    do {
+                        await page.waitForTimeout(100);
+                        const after = await page.evaluate(snapshot).catch(() => null);
+                        effect = download.succeeded() ? 'download' : changed(before, after);
+                    } while (!effect && !download.failed() && Date.now() < settleDeadline && eyeIsOpen());
+                } finally {
+                    download.stop();
+                }
                 if (effect === 'navigation') {
                     // Hash routers and replaceState do not reliably create a
                     // history entry. Restore the exact discovery URL so the
@@ -1446,15 +1510,15 @@ export function semanticTypeForField(tag: string, name: string): 'email' | 'tel'
  */
 export async function probeForms(
     page: any,
-    opts?: { eyes?: AuditEyes; budgetMs?: number; maxForms?: number; seenForms?: Set<string>; isEyeOpen?: () => boolean },
+    opts?: { eyes?: AuditEyes; budgetMs?: number; maxForms?: number; seenForms?: Set<string>; formScope?: string; formContext?: string; isEyeOpen?: () => boolean },
 ): Promise<{ forms: FormResult[]; metrics: Record<string, any> }> {
     const eyes = opts?.eyes || new AuditEyes({});
     const deadline = Date.now() + Math.max(4000, opts?.budgetMs ?? 30_000);
     const out: FormResult[] = [];
     const metrics: Record<string, any> = {
-        formsFilled: 0, fieldsFilled: 0, formsDeadSubmit: 0, formsValidated: 0, formsReloaded: 0,
+        formsFilled: 0, fieldsFilled: 0, formsDeadSubmit: 0, formsDeadSubmitEvidence: [], formsNotReached: 0, formsNotReachedEvidence: [], formsValidated: 0, formsReloaded: 0,
         formsEmptyRejected: 0,
-        formsPersisted: 0, formsPersistenceUnproven: 0, qaRecordsDeleted: 0, qaRecordsNotDeleted: 0,
+        formsPersisted: 0, formsPersistenceUnproven: 0, formsRefused: 0, qaRecordsDeleted: 0, qaRecordsNotDeleted: 0,
         semanticFieldsTested: 0, semanticValidationFailures: 0, semanticValidationEvidence: [],
     };
     const runNonce = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
@@ -1481,11 +1545,27 @@ export async function probeForms(
     }
     metrics.formsSeen = forms.length;
 
-    for (const f of forms) {
+    const identity = (form: any) => JSON.stringify([form.label,
+        form.fields.map((field: any) => [field.tag, field.type, field.name])]);
+    for (const planned of forms) {
         if (Date.now() > deadline) break;
+        if (!eyeIsOpen()) break;
+        // Persistence checks reload the page. Instrument handles from the previous
+        // document are no longer evidence of where the next form lives.
+        const current = await evalInPage(page, findForms, {
+            maxForms: opts?.maxForms ?? MAX_FORMS, maxFields: MAX_FIELDS_PER_FORM,
+        }).catch(() => []) || [];
+        const matches = current.filter((form: any) => identity(form) === identity(planned));
+        if (matches.length !== 1) {
+            metrics.formsNotReached++;
+            metrics.formsNotReachedEvidence.push({ label: planned.label,
+                reason: matches.length ? 'ambiguous form identity' : 'form missing after state change' });
+            continue;
+        }
+        const f = matches[0];
         // Its identity, not its position: the same form on a second route is
         // the same form, and it has already been filled in and sent.
-        const key = `${f.label}|${f.fields.map((x: any) => x.type).join(',')}`;
+        const key = `${opts?.formScope || 'default'}|${f.label}|${f.fields.map((x: any) => x.type).join(',')}`;
         if (opts?.seenForms) {
             if (opts.seenForms.has(key)) { metrics.formsRepeated = (metrics.formsRepeated || 0) + 1; continue; }
             opts.seenForms.add(key);
@@ -1573,6 +1653,7 @@ export async function probeForms(
         let effect = '';
         try {
             const before = await page.evaluate(snapshot).catch(() => null);
+            const feedbackBefore = await formFeedback(page, f.sel);
             const stillInvalid = await page.evaluate((sel: string) => {
                 const form = document.querySelector(sel) as HTMLFormElement | null;
                 return !!form && typeof form.checkValidity === 'function' && !form.checkValidity();
@@ -1597,31 +1678,50 @@ export async function probeForms(
             // local API. Poll for a bounded window instead: the result still
             // requires a measured DOM/state/navigation change, never merely
             // the passage of time.
+            const pending = () => page.evaluate((sel: string) => {
+                const form = document.querySelector(sel);
+                return !!form && (form.getAttribute('aria-busy') === 'true'
+                    || !!form.querySelector('fieldset[disabled],button[type="submit"]:disabled,input[type="submit"]:disabled'));
+            }, f.sel).catch(() => true);
             let after = await page.evaluate(snapshot).catch(() => null);
-            effect = changed(before, after);
-            const effectDeadline = Date.now() + 2500;
-            while (!effect && Date.now() < effectDeadline) {
+            effect = await pending() ? '' : changed(before, after);
+            const effectDeadline = Math.min(deadline, Date.now() + 2500);
+            while (!effect && Date.now() < effectDeadline && eyeIsOpen()) {
                 await page.waitForTimeout(250);
                 after = await page.evaluate(snapshot).catch(() => null);
-                effect = changed(before, after);
+                effect = await pending() ? '' : changed(before, after);
             }
             if (effect === 'navigation') {
                 effect = 'reload';
                 await page.goBack({ timeout: 5000 }).catch(() => { });
                 await page.waitForTimeout(250);
-            } else if (!effect && stillInvalid) {
-                // The browser refused it — which is the behaviour that was asked
-                // for, not a dead form.
-                effect = 'validation';
-            } else if (effect) {
-                effect = 'submitted';
+            } else {
+                const feedbackAfter = await formFeedback(page, f.sel);
+                if (hasNewVisibleFormFeedback(feedbackBefore, feedbackAfter)) {
+                    // A server may reject an unauthenticated mutation. That is a
+                    // real, visible outcome, not evidence that the submit is dead.
+                    effect = isVisibleFormRefusal(feedbackAfter) ? 'refused' : 'submitted';
+                } else if (!effect && stillInvalid) {
+                    // The browser refused it — which is the behaviour that was asked
+                    // for, not a dead form.
+                    effect = 'validation';
+                } else if (effect) {
+                    effect = 'submitted';
+                }
             }
         } catch { /* the form is what is under test */ }
 
         if (effect === 'submitted') { /* counted by presence in the list */ }
         else if (effect === 'validation') metrics.formsValidated++;
+        else if (effect === 'refused') metrics.formsRefused++;
         else if (effect === 'reload') metrics.formsReloaded++;
-        else if (f.fields.length) metrics.formsDeadSubmit++;
+        else if (f.fields.length) {
+            metrics.formsDeadSubmit++;
+            metrics.formsDeadSubmitEvidence.push({
+                label: f.label, kind: 'submit', sel: f.submitSel || f.sel,
+                form: f.sel, fields: f.fields.length, filled: filledCount,
+            });
+        }
 
         // A successful-looking submit is not enough for an application that
         // promises a saved record. First find the exact QA record, then reload
@@ -1629,14 +1729,24 @@ export async function probeForms(
         // delete action, keeping the test reversible and data-safe.
         const anchor = persistenceAnchors.find(value => value.length > 4);
         if (effect === 'submitted' && f.expectsPersistence && anchor && Date.now() < deadline && eyeIsOpen()) {
-            const appeared = await page.evaluate((needle: string) => document.body.innerText.includes(needle), anchor).catch(() => false);
+            const recordVisible = () => page.evaluate((needle: string) =>
+                Array.from(document.querySelectorAll('li,tr,[role="listitem"],[role="row"],[data-item],[data-row],.row,.item,.transaction,.entry,article'))
+                    .some(el => !el.closest('form,[role="status"],[role="alert"]')
+                        && (el as HTMLElement).innerText.includes(needle)), anchor).catch(() => false);
+            const appeared = await recordVisible();
             if (!appeared) {
                 metrics.formsPersistenceUnproven++;
             } else {
                 await eyes.say(page, 'أتحقق من حفظ النتيجة بعد تحديث الصفحة');
-                await page.reload({ waitUntil: 'domcontentloaded', timeout: 6000 }).catch(() => null);
-                await page.waitForTimeout(300);
-                const persisted = await page.evaluate((needle: string) => document.body.innerText.includes(needle), anchor).catch(() => false);
+                const reloaded = await page.reload({ waitUntil: 'domcontentloaded', timeout: Math.min(6000, Math.max(1, deadline - Date.now())) })
+                    .then((response: any) => !!response && response.ok()).catch(() => false);
+                const persistenceDeadline = Math.min(deadline, Date.now() + 2500);
+                let persisted = false;
+                do {
+                    if (!reloaded || Date.now() >= persistenceDeadline || !eyeIsOpen()) break;
+                    persisted = await recordVisible();
+                    if (!persisted) await page.waitForTimeout(100);
+                } while (!persisted && Date.now() < persistenceDeadline && eyeIsOpen());
                 if (!persisted) {
                     metrics.formsPersistenceUnproven++;
                 } else {
@@ -1670,7 +1780,7 @@ export async function probeForms(
                 }
             }
         }
-        out.push({ label: f.label, fields: f.fields.length, filled: filledCount, effect, semanticFieldsTested });
+        out.push({ label: f.label, fields: f.fields.length, filled: filledCount, effect, semanticFieldsTested, scope: opts?.formContext || (opts?.formScope ? opts.formScope : '') });
     }
     return { forms: out, metrics };
 }
@@ -1682,6 +1792,7 @@ export function judgeBehaviour(
     controls: ControlResult[],
     metrics: Record<string, any>,
     jsErrors: string[] = [],
+    forms: FormResult[] = [],
 ): { score: number; findings: BehaviourFinding[] } {
     const findings: BehaviourFinding[] = [];
     /**
@@ -1728,7 +1839,8 @@ export function judgeBehaviour(
     const judgedControls = [...evidence.values()];
     const pressable = judgedControls.filter(c => c.kind !== 'anchor' && c.effect !== 'not found');
     const unreachable = judgedControls.filter(c => c.kind !== 'anchor' && c.effect === 'not found');
-    const dead = pressable.filter(c => !c.worked);
+    const measuredFormSubmits = new Set(forms.filter(form => form.effect === 'submitted' || form.effect === 'validation' || form.effect === 'refused').map(form => `${form.scope || ''}|${form.label}`));
+    const dead = pressable.filter(c => !c.worked && !(c.kind === 'submit' && measuredFormSubmits.has(`${c.context || ''}|${c.bare || c.label}`)));
     metrics.pressed = pressable.length;
     metrics.dead = dead.length;
     metrics.unreachable = unreachable.length;
@@ -1810,6 +1922,16 @@ export function judgeBehaviour(
             ar: `${metrics.formsDeadSubmit} نموذج عُبِّئ بالكامل وأُرسل ولم يحدث شيء إطلاقاً — لا رسالة نجاح ولا خطأ`,
             en: `${metrics.formsDeadSubmit} form(s) were filled in completely and submitted, and nothing happened at all — no success state, no error`,
             hint: 'handle the submit event: send the data, then show a success or an error the visitor can see',
+            evidence: (metrics.formsDeadSubmitEvidence || []).slice(0, 8),
+        });
+    }
+    if ((metrics.formsNotReached || 0) > 0) {
+        findings.push({
+            code: 'forms_not_reached', severity: 'major',
+            ar: 'لم يمكن تحديد بعض النماذج بعد تغيّر الصفحة؛ لم تُختبر ولا أعدّها معطوبة.',
+            en: 'Some forms could not be uniquely rediscovered after the page changed; they were not tested and are not judged dead.',
+            hint: 'rediscover the current form identity before submitting; do not rewrite application handlers based on missing QA targets',
+            evidence: (metrics.formsNotReachedEvidence || []).slice(0, 8),
         });
     }
     if (metrics.formsWithoutValidation > 0) {
