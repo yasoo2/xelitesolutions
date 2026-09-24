@@ -6,12 +6,18 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { scoreOf, formatAudit } from '../core/quality/app-audit';
+import { scoreOf, formatAudit, tokenStorageKeyForAuditTarget } from '../core/quality/app-audit';
 import { earlyProjectDeclaration } from '../modules/tools/definitions/ReactProjectTool';
 import * as acceptance from '../core/quality/acceptance';
 import { GATE062_ACCEPTANCE_PROMPT } from '../core/quality/acceptance';
 
 describe('the audit arithmetic', () => {
+    it('scopes the default auth key to a hosted project preview, but preserves explicit and deployed keys', () => {
+        expect(tokenStorageKeyForAuditTarget('http://127.0.0.1:5000/project-preview/first/index.html')).toBe('joe:auth:first');
+        expect(tokenStorageKeyForAuditTarget('http://127.0.0.1:5000/project-preview/first/admin')).toBe('joe:auth:first');
+        expect(tokenStorageKeyForAuditTarget('http://127.0.0.1:5000/admin')).toBe('joe:auth');
+        expect(tokenStorageKeyForAuditTarget('http://127.0.0.1:5000/project-preview/first', 'custom-auth')).toBe('custom-auth');
+    });
     it('the same finding always costs the same; the floor is 0', () => {
         expect(scoreOf([])).toBe(100);
         expect(scoreOf([{ id: 'a', severity: 'high', detail: '' }])).toBe(85);
@@ -90,7 +96,7 @@ describe('the wiring — every green build gets measured', () => {
         expect(auditSrc).toContain("fetch(loginUrl, {");
         expect(auditSrc).toContain("localStorage.setItem(tokenStorageKey, token)");
         expect(auditSrc).toContain("localStorage.setItem(tokenStorageKey + ':role'");
-        expect(auditSrc).toContain("tokenStorageKey: c.tokenStorageKey || 'joe:auth'");
+        expect(auditSrc).toContain('tokenStorageKeyForAuditTarget(target, c.tokenStorageKey)');
         expect(auditSrc).toContain("input[type=\"email\"]");
         expect(auditSrc).toContain("form button[type=\"submit\"]");
         expect(auditSrc).toContain('Math.min(timeoutMs, 12_000)');

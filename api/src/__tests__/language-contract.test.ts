@@ -87,6 +87,18 @@ describe('central_answer — an Arabic question gets an Arabic answer, measured'
         expect(r.output).toBe(ENGLISH_REPLY);
         expect((routeToModel as jest.Mock).mock.calls.length).toBe(1);
     });
+
+    test('a stalled router returns the honest fallback within the answer budget', async () => {
+        (routeToModel as jest.Mock).mockImplementation(() => new Promise(() => {}));
+        const tool = new CentralAnswerTool();
+        const r: any = await tool.execute(
+            { question: 'كيف أشغّل المشروع؟' },
+            { language: 'ar', answerTimeoutMs: 1 },
+        );
+        expect(r.ok).toBe(true);
+        expect(r.output).toContain('جو');
+        expect(String(r.logs.join(' '))).toContain('answer_timeout');
+    });
 });
 
 describe('tool language fallbacks never assume Arabic', () => {

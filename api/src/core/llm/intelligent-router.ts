@@ -1516,6 +1516,12 @@ export async function routeToModel(
         return "System is running and ready to handle tasks in Mock Mode!";
     }
 
+    if (process.env.JOE_UNIT_TEST_NO_NETWORK === 'true') {
+        const reason = 'unit-test network policy: external LLM providers are disabled';
+        recordProviderAttempt('unit-test network policy', false, reason);
+        throw new Error(reason);
+    }
+
     // Flatten multimodal messages for text-only providers (and for analysis),
     // then SANITIZE: a caller that built a message with a missing/undefined
     // content (e.g. a tool invoked without its question) used to be sent to the

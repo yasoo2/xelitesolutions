@@ -23,10 +23,24 @@ export function isKnowledgeQuestion(goalRaw: string): boolean {
     const g = String(goalRaw || '').trim();
     if (!g) return false;
     const bare = foldChars(g);
+    // In English the verb belongs to the leading interrogative construction
+    // itself ("how do I run..."). It is never an order unless a separate
+    // imperative follows the question boundary. Arabic still checks an
+    // explicit following clause first because attached pronouns make that
+    // distinction depend on the full sentence ("كيف أنشره؟ انشره الآن").
+    const englishHowTo = /^(?:how\s+(?:do|can)\s+i|what\s+(?:is|are)|why|when|where|which)\b/i.test(g);
+    const englishCommandAfterQuestion = /[?]\s*(?:run|start|stop|deploy|publish|build|create|make|edit|delete|remove|add|fix|open|search|execute|install)\b/i.test(g);
+    if (englishHowTo && !englishCommandAfterQuestion) return true;
     const ordersADeed =
         /(?:^|[\s،:؛])(?:ابن|ابني|بن|انشي|انشا|اصنع|صمم|اصمم|طور|اعمل|برمج|بنا|تصميم|شغل|اوقف|انشر|عدل|احذف|اضف|اصلح|افتح|ابحث|نفذ|حلل|ارسل|حمل|ثبت)(?=$|[\s،:؛؟.])/.test(bare)
+        // Attached Arabic object pronouns are part of the imperative, not a
+        // question marker: "كيف أنشر المشروع؟ انشره الآن" asks two things,
+        // and its final clause is an instruction that must retain precedence.
+        || /(?:^|[\s،:؛])(?:انشر|شغل|اوقف|عدل|احذف|اضف|اصلح|افتح|نفذ|ارسل|حمل|ثبت)(?:ه|ها|هم|ني)?(?=$|[\s،:؛؟.])/.test(bare)
         || /\b(build|create|make|develop|generate|scaffold|implement|deploy|publish|run|start|stop|edit|delete|remove|add|fix|open|search|execute|install|analy[sz]|analys)\w*\b/i.test(g);
     if (ordersADeed) return false;
+    const asksHowTo = englishHowTo || /^(?:كيف|ماذا|لماذا|متي|اين)(?=\s|$)/.test(bare);
+    if (asksHowTo) return true;
     return /(?:^|[\s،:؛])(?:ما|ماذا|هل|لماذا|كيف|متي|اين|كم|اي|ايهما)(?=$|[\s،:؛؟.])/.test(bare)
         || /(?:^|[\s،:؛])(?:اشرح|وضح|فسر|قارن|عرف|علمني|اخبرني)(?=$|[\s،:؛])/.test(bare)
         || /\b(what|why|how|when|which|who|explain|compare|difference|versus|vs)\b/i.test(g)

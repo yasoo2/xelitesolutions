@@ -37,7 +37,10 @@ export interface RunEvidenceRecord {
     receipt?: RunReceiptPayload;
 }
 
-export const runEvidenceStore = new JsonStore<RunEvidenceRecord>('run-evidence');
+// Tests already allocate JOE_DATA_DIR per test file. Keeping durable run
+// evidence in that same isolated root prevents a live local store or another
+// Jest file from making an evidence assertion depend on outside state.
+export const runEvidenceStore = new JsonStore<RunEvidenceRecord>('run-evidence', process.env.JOE_DATA_DIR);
 
 const runQueues = new Map<string, Promise<void>>();
 

@@ -87,7 +87,7 @@ describe('a missing interpreter is a skipped check, never a manufactured failure
         // supply, so the literal call text changed. The guarantee is unchanged —
         // discovery is still the first thing that runs.
         expect(pipeline).toContain("executeTool('engineering_discovery',");
-        expect(pipeline).toContain('projectPath ? { request: productRequest, path: projectPath } : { request: productRequest }');
+        expect(pipeline).toContain('discoveryPath ? { request: productRequest, path: discoveryPath } : { request: productRequest }');
         // 044: requestFidelityBlocked يشمل hasRequestFidelityEvidenceUnavailable ويُغذّي verificationFailed
         expect(pipeline).toContain('const requestFidelityMismatch = hasRequestFidelityMismatch(pipeline?.results)');
         expect(pipeline).toContain('const requestFidelityEvidenceUnavailable = hasRequestFidelityEvidenceUnavailable(pipeline?.results)');

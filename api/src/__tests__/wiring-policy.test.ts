@@ -822,7 +822,7 @@ describe('the planner is offered the whole toolbox, not a frozen list of seven',
         expect(ws).toContain('executionFirewall.currentOwner?.()');
         // and the entry points declare whose run it is
         expect(SRC('orchestration', 'AgentOrchestrator.ts'))
-            .toMatch(/\}, \{ userId: goal\.context\?\.userId, sessionId: goal\.context\?\.sessionId \|\| goal\.id, runId: goal\.id \}\)/);
+            .toMatch(/\}, \{ userId: goal\.context\?\.userId, sessionId: goal\.context\?\.sessionId \|\| goal\.id, runId: canonicalRunId \}\)/);
         expect(SRC('api', 'routes', 'tools.ts')).toMatch(/\}, \{ userId, sessionId \}\)/);
     });
 
@@ -1116,8 +1116,8 @@ describe('an application build ships a program, not a brochure', () => {
         expect(R).toMatch(/detectAppKind\(request\)/);
         expect(R).toMatch(/buildAppFiles\(runBp/);
         // an app build must not emit one brochure component
-        expect(R).toMatch(/for \(const c of appBp \? \[\] : \['Navbar', \.\.\.sections, 'Footer'\]\)/);
-        expect(R).toMatch(/if \(!appBp\) files\['src\/components\/AdminPanel\.jsx'\]/);
+        expect(R).toContain("for (const c of (appBp || externalIntegration) ? [] : ['Navbar', ...sections, 'Footer'])");
+        expect(R).toMatch(/if \(!appBp && admin\) files\['src\/components\/AdminPanel\.jsx'\]/);
     });
 
     it('no fabricated person, dish or pricing tier can reach an application', () => {
@@ -1403,8 +1403,8 @@ describe('a feed ships with a feed server', () => {
         // …and a feed is no longer a feed ALONE: groups, pages, messages and
         // ads are real tables, and the system has real accounts instead of
         // «identity here is a name with no password».
-        expect(t).toMatch(/'auth\.js': fileAuthJs\(\),\n\s*'seed\.js': fileSeedJs\(\[\]/);
-        expect(t).toMatch(/\.\.\.\(model\.length \? \{ 'entities\.js': fileEntitiesJs\(model\) \} : \{\}\),\n\s*'auth\.js'/);
+        expect(t).toMatch(/'auth\.js': fileAuthJs\(roleSpecs\),\n\s*'seed\.js': fileSeedJs\(\[\]/);
+        expect(t).toMatch(/\.\.\.\(model\.length \? \{ 'entities\.js': fileEntitiesJs\(model, requestForReading\) \} : \{\}\),\n\s*'auth\.js'/);
         expect(t).toMatch(/'db\.js': filePostsDbJs\(\)/);
     });
 });
@@ -1514,7 +1514,7 @@ describe('the full-stack claim matches the server that was built', () => {
     it('a feed is not told it has an orders table', () => {
         const R = SRC('modules', 'tools', 'definitions', 'ReactProjectTool.ts');
         expect(R).toMatch(/const feedApi = \/\\\/api\\\/posts\$\/\.test\(apiLink\)/);
-        expect(R).toMatch(/apiLink && !feedApi \? apiLink\.replace/);
+        expect(R).toMatch(/apiLink && !feedApi && !workflowApi\s*\? apiLink\.replace/);
         expect(R).toMatch(/reads and writes the LIVE feed at/);
     });
 });
@@ -1545,7 +1545,7 @@ describe('the React head is publish-ready', () => {
     it('a console error names the resource it came from', () => {
         const A = SRC('core', 'quality', 'app-audit.ts');
         expect(A).toMatch(/m\.location\(\)/);
-        expect(A).toMatch(/l\?\.url \? ` ← \$\{String\(l\.url\)\.slice\(-60\)\}` : ''/);
+        expect(A).toContain("const where = consoleLocationUrl ? ` ← ${consoleLocationUrl.slice(-60)}` : '';");
     });
 });
 
@@ -1857,8 +1857,8 @@ describe('a run keeps going while you read another conversation', () => {
         const fatal = S.slice(S.indexOf('Fatal runtime error'));
         expect(fatal).toContain("role: 'assistant'");
         expect(fatal).toContain('content: failText');
-        expect(fatal).toContain('persistChatStores()');
-        expect(fatal.indexOf('persistChatStores()')).toBeLessThan(fatal.indexOf('releaseHandle('));
+        expect(fatal).toContain('flushChatStores()');
+        expect(fatal.indexOf('flushChatStores()')).toBeLessThan(fatal.indexOf('releaseHandle('));
     });
 
     it('restores the last visible conversation after a reload', () => {
@@ -1880,9 +1880,11 @@ describe('a run keeps going while you read another conversation', () => {
 
     it('serves persisted chat history in explicit offline mode', () => {
         const S = SRC('api', 'controllers', 'sessionController.ts');
-        expect(S).toMatch(/readyState !== 1 && !isPersistenceDisabled && process\.env\.OFFLINE_MODE !== 'true'/);
+        expect(S).toContain('return usesLocalChatStore();');
+        expect(S).toContain('const isOffline = isOfflineSessionStore();');
         expect(S).toContain("messages = mockMessages.filter((m: any) => m.sessionId === sessionId)");
-        for (const file of [SRC('api', 'routes', 'run.ts'), SRC('modules', 'services', 'AgentLoopService.ts')]) {
+        expect(SRC('modules', 'services', 'AgentLoopService.ts')).toContain('if (usesLocalChatStore())');
+        for (const file of [SRC('api', 'routes', 'run.ts'), SRC('api', 'chat-store.ts')]) {
             expect(file).toMatch(/process\.env\.OFFLINE_MODE === 'true'[\s\S]{0,180}PERSISTENCE_MODE === 'JSON'/);
         }
     });
@@ -1899,7 +1901,8 @@ describe('a run keeps going while you read another conversation', () => {
         expect(C).toContain("import { markRunning } from '../services/runningSessions';");
         expect(C).toMatch(/payload\?\.stopped === true/);
         expect(C).toMatch(/serverConfirmedStop[\s\S]{0,260}markRunning\(sid, false\)/);
-        expect(C).toMatch(/if \(rid \|\| sid\)[\s\S]{0,260}runs\/stop/);
+        expect(C).toMatch(/if \(rid \|\| sid\)[\s\S]{0,100}requestStop\(rid\)/);
+        expect(C).toMatch(/const requestStop = async[\s\S]{0,150}runs\/stop/);
         expect(C).toContain("fetch(`${API}/runs/active`, { headers })");
         const unconfirmed = C.indexOf('if (!serverConfirmedStop && (rid || sid))');
         const reset = C.indexOf("setStatus('idle');", unconfirmed);
@@ -2127,7 +2130,8 @@ describe('a plan may only name tools that exist', () => {
         expect(E).toMatch(/if \(!resolved\.tool\)[\s\S]{0,400}execution:\s*['"]skipped['"][\s\S]{0,40}continue;/);
         expect(E).not.toMatch(/if \(!resolved\.tool\)[\s\S]{0,400}completedCount\+\+/);
         // and the verification step cannot name a ghost either
-        expect(E).toMatch(/resolvePlannedTool\(String\(vTask\.tool[\s\S]{0,60}\|\| 'project_detect'/);
+        expect(E).toContain("const requestedVerificationTool = String(vTask.tool || '').trim();");
+        expect(E).toContain('resolvePlannedTool(requestedVerificationTool).tool || requestedVerificationTool');
     });
 
     it('the arguments are translated too, not just the name', () => {
@@ -2191,7 +2195,7 @@ describe('the biggest request gets the strongest route', () => {
         // supply, so the literal call text changed. The guarantee is unchanged —
         // discovery is still the first thing that runs.
         expect(P).toContain("executeTool('engineering_discovery',");
-        expect(P).toContain('projectPath ? { request: productRequest, path: projectPath } : { request: productRequest }');
+        expect(P).toContain('discoveryPath ? { request: productRequest, path: discoveryPath } : { request: productRequest }');
         // Repointed: the call now passes a prepared request and prepared
         // evidence rather than the raw two. What is guaranteed — and what this
         // measures — is that the pipeline plans through project_planner and
@@ -2269,7 +2273,7 @@ describe('the server stores what the app sends', () => {
          */
         expect(A).toMatch(/const requestColumns = apiColumnsForRequest\(request\)/);
         expect(A).toMatch(/const columns = isProductivity[\s\S]{0,240}primaryDesignedColumns[\s\S]{0,240}promotedColumns[\s\S]{0,120}requestColumns/);
-        expect(A).toMatch(/'db\.js': fileDbJs\(resource, columns, relation\)/);
+        expect(A).toContain("'db.js': fileDbJs(resource, columns, relation, !workflowApplication)");
     });
 
     /**
@@ -2293,7 +2297,7 @@ describe('the server stores what the app sends', () => {
         // The guarantee is the same and now covers both ways of naming them.
         expect(A).toMatch(/const relation = \(declaredForRelation \|\| designed\.length >= 3\)/);
         expect(A).toMatch(/: apiRelationForRequest\(request\);/);
-        expect(A).toMatch(/'server\.js': fileServerJs\(resource, brand, path\.basename\(proj\), relation, model\)/);
+        expect(A).toContain("'server.js': fileServerJs(resource, brand, path.basename(proj), relation, model, privateWorkflow, workflowApplication)");
         // the link is checked, never trusted
         expect(A).toMatch(/return \{ error: 'unknown_' \+ c\.key \}/);
         expect(A).toMatch(/error: 'has_children'/);
@@ -2372,7 +2376,7 @@ describe('the generated app can sign in to its own server', () => {
     });
 
     it('and one Joe-built system never borrows another\'s session', () => {
-        expect(T()).toMatch(/const TOKEN_KEY = 'joe:auth:' \+/);
+        expect(T()).toContain("const TOKEN_KEY = 'joe:auth' + (previewAuthScope ? ':' + previewAuthScope : '');");
     });
 });
 
@@ -2387,7 +2391,7 @@ describe('the team reaches the roles', () => {
     const T = () => SRC('modules', 'tools', 'definitions', 'react-app-templates.ts');
 
     it('the accounts screen is written into the project whenever a server exists', () => {
-        expect(T()).toMatch(/\.\.\.\(o\.api \? \{ 'src\/components\/Accounts\.jsx': fileAccountsJsx\(o\.isArabic\) \} : \{\}\)/);
+        expect(T()).toContain("...(o.api ? { 'src/components/Accounts.jsx': fileAccountsJsx(o.isArabic, roleSpecs) } : {})");
         expect(T()).toMatch(/\+ \(o\.api \? fileAccountsCss\(\) : ''\)/);
     });
 
@@ -2402,7 +2406,7 @@ describe('the team reaches the roles', () => {
         //  render -- was never touched. A guard that fails on a difference
         //  nobody can see is a guard somebody deletes.
         expect(t).toMatch(/\$\{hasApi \? '\s*<Accounts api=\{content\.api\} \/>/);
-        expect(t).toMatch(/'src\/App\.jsx': fileAppShellJsx\(bp, o\.isArabic, !!\(o\.model && o\.model\.length\), !!o\.api\)/);
+        expect(t).toContain("'src/App.jsx': fileAppShellJsx(builtBp, o.isArabic, !!(o.model && o.model.length), !!o.api, roleSpecs, !!o.unifiedTables)");
     });
 
     it('the screen refuses to render for anybody but the owner', () => {
@@ -2441,7 +2445,9 @@ describe('the built system is ready for a domain', () => {
         const R = SRC('modules', 'tools', 'definitions', 'ReactProjectTool.ts');
         expect(R).toMatch(/fs\.cpSync\(path\.join\(proj, 'dist'\), target, \{ recursive: true \}\)/);
         // only when this session really built an API — never inventing a target
-        expect(R).toMatch(/prevEntry\?\.type === 'api' && prevEntry\?\.dir && fs\.existsSync\(prevEntry\.dir\)/);
+        expect(R).toContain("let apiEntry = prevEntry?.type === 'api' ? prevEntry : null;");
+        expect(R).toContain("const apiDir = (apiEntry?.dir && fs.existsSync(apiEntry.dir)) ? String(apiEntry.dir) : '';");
+        expect(R).toContain("error: 'linked_api_outside_workspace'");
     });
 });
 

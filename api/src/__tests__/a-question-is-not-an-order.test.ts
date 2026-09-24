@@ -43,6 +43,30 @@ describe('INVARIANT: a question is answered, not executed', () => {
         expect(tools).not.toContain('execute_python');
         expect(tools).not.toContain('java_builder');
     });
+
+    it('classifies a how-to question without waiting for deep provider analysis', async () => {
+        const intelligentRouter = require('../core/llm/intelligent-router').default;
+        const routeToModel = jest.spyOn(intelligentRouter, 'routeToModel').mockRejectedValue(new Error('must not be called'));
+        const intent = await IntentParser.parse('كيف أشغّل المشروع؟', {} as any);
+        expect(intent).toMatchObject({
+            suggestedAgent: 'General',
+            requiredTools: ['central_answer'],
+            rawIntent: { knowledgeQuestion: true, deterministic: true },
+        });
+        expect(routeToModel).not.toHaveBeenCalled();
+        routeToModel.mockRestore();
+    });
+
+    it('plans a knowledge question directly instead of spending a semantic-router call', async () => {
+        const semanticRoute = jest.spyOn(PlanningEngine, 'classifyRequestIntent').mockRejectedValue(new Error('must not be called'));
+        const plan = await PlanningEngine.generatePlan({ intent: {
+            goal: 'كيف أشغّل المشروع؟',
+            complexity: 'low', riskLevel: 'low', suggestedAgent: 'General', rawIntent: {},
+        } as any });
+        expect(plan.steps.map(step => step.tool)).toEqual(['project_runtime_guide']);
+        expect(semanticRoute).not.toHaveBeenCalled();
+        semanticRoute.mockRestore();
+    });
 });
 
 describe('INVARIANT: the guard refuses questions WITHOUT swallowing orders', () => {

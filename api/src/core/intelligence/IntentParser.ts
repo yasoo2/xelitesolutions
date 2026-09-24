@@ -5,6 +5,8 @@ import { normalizeIntentText } from '../orchestrator/promptNormalizer';
 import { parseExplicitFileRequest } from '../orchestrator/file-intent';
 import { capableTools } from '../orchestrator/capability-match';
 import { capabilityFamilyFromRequest } from '../capabilities/decision-profiles';
+import { ProductAnalyst } from './ProductAnalyst';
+import { ProductSpecification, ProductAnalysisResult, ClarificationGate } from '../../shared/product-specification';
 
 export interface StructuredIntent {
     goal: string;
@@ -15,6 +17,10 @@ export interface StructuredIntent {
     entities?: Record<string, any>;
     suggestedAgent: string;
     rawIntent: any;
+    // Product intelligence layer
+    productSpecification?: ProductSpecification;
+    productAnalysisResult?: ProductAnalysisResult;
+    clarificationGate?: ClarificationGate;
 }
 
 export class IntentParser {
@@ -37,7 +43,30 @@ export class IntentParser {
         // planner (and its project_pipeline route).
         const engineeringBrief = IntentParser.looksLikeEngineeringBrief(userText);
         if (engineeringBrief) {
-            console.log('[IntentParser] ⚙️ Engineering brief detected — routing to evidence-first project_pipeline.');
+            console.log('[IntentParser] ⚙️ Engineering brief detected — routing to ProductAnalyst for product specification.');
+            // For engineering briefs, use ProductAnalyst to derive ProductSpecification
+            const productAnalyst = new ProductAnalyst(
+                context.sessionId,
+                (context as any).workspaceId || 'default',
+                (context as any).runId || context.sessionId
+            );
+            const productResult = await productAnalyst.analyze(userText);
+            
+            if (productResult.clarificationGate?.required) {
+                return {
+                    goal: userText,
+                    complexity: 'high',
+                    riskLevel: 'medium',
+                    suggestedAgent: 'Dev',
+                    requiredTools: ['project_pipeline'],
+                    constraints: ['Inspect the workspace and use evidence before implementation or verification.'],
+                    rawIntent: { primary: userText, engineeringBrief: true, deterministic: false, productAnalysis: productResult },
+                    productSpecification: productResult.productSpecification,
+                    productAnalysisResult: productResult,
+                    clarificationGate: productResult.clarificationGate,
+                };
+            }
+
             return {
                 goal: userText,
                 complexity: 'high',
@@ -45,7 +74,27 @@ export class IntentParser {
                 suggestedAgent: 'Dev',
                 requiredTools: ['project_pipeline'],
                 constraints: ['Inspect the workspace and use evidence before implementation or verification.'],
-                rawIntent: { primary: userText, engineeringBrief: true, deterministic: true },
+                rawIntent: { primary: userText, engineeringBrief: true, deterministic: false, productAnalysis: productResult },
+                productSpecification: productResult.productSpecification,
+                productAnalysisResult: productResult,
+            };
+        }
+        // A question asks Joe to explain, not to decide whether it is a build.
+        // Sending it through deep analysis first makes a missing or slow provider
+        // leave the chat in its initial "understanding" state even though the
+        // planner already has a safe, answer-only route for it. This preserves
+        // the canonical pipeline; it only makes the front-door classification
+        // deterministic for a question that cannot authorize an action.
+        if (isKnowledgeQuestion(userText)) {
+            console.log('[IntentParser] ⚡ Knowledge question — skipping deep analysis.');
+            return {
+                goal: userText,
+                complexity: 'low',
+                riskLevel: 'low',
+                suggestedAgent: 'General',
+                requiredTools: ['central_answer'],
+                constraints: ['Answer only; do not execute, mutate, browse, or invoke a workspace tool.'],
+                rawIntent: { primary: userText, knowledgeQuestion: true, deterministic: true },
             };
         }
         const capabilityDecision = IntentParser.capabilityDecisionIntent(userText);
@@ -69,7 +118,14 @@ export class IntentParser {
         // contract. A slow local model must not spend a minute deciding
         // whether "list files and summarize README" is a build request.
         if (isReadOnlyRequest(userText)) {
-            console.log('[IntentParser] ⚡ Explicit read-only request — skipping deep analysis.');
+            console.log('[IntentParser] ⚡ Explicit read-only request — using ProductAnalyst for specification.');
+            const productAnalyst = new ProductAnalyst(
+                context.sessionId,
+                (context as any).workspaceId || 'default',
+                (context as any).runId || context.sessionId
+            );
+            const productResult = await productAnalyst.analyze(userText);
+            
             return {
                 goal: userText,
                 complexity: 'low',
@@ -77,7 +133,10 @@ export class IntentParser {
                 suggestedAgent: 'Dev',
                 requiredTools: ['project_pipeline'],
                 constraints: ['Read-only: do not mutate, install, publish, or execute project changes.'],
-                rawIntent: { primary: userText, readOnly: true, deterministic: true },
+                rawIntent: { primary: userText, readOnly: true, deterministic: false, productAnalysis: productResult },
+                productSpecification: productResult.productSpecification,
+                productAnalysisResult: productResult,
+                clarificationGate: productResult.clarificationGate,
             };
         }
         const explicitFile = parseExplicitFileRequest(userText);
@@ -101,7 +160,14 @@ export class IntentParser {
         // this is only a provider-independent front-door classification.
         const hasExternalWebTarget = /https?:\/\/|\b(?:www\.)[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/i.test(userText);
         if (looksLikeBuild(userText) && !hasExternalWebTarget) {
-            console.log('[IntentParser] ⚡ Clear build request — routing directly to evidence-first project_pipeline.');
+            console.log('[IntentParser] ⚡ Clear build request — using ProductAnalyst for product specification.');
+            const productAnalyst = new ProductAnalyst(
+                context.sessionId,
+                (context as any).workspaceId || 'default',
+                (context as any).runId || context.sessionId
+            );
+            const productResult = await productAnalyst.analyze(userText);
+            
             return {
                 goal: userText,
                 complexity: 'medium',
@@ -109,7 +175,10 @@ export class IntentParser {
                 suggestedAgent: 'Dev',
                 requiredTools: ['project_pipeline'],
                 constraints: ['Inspect the workspace and use evidence before implementation or verification.'],
-                rawIntent: { primary: userText, buildRequest: true, deterministic: true },
+                rawIntent: { primary: userText, buildRequest: true, deterministic: false, productAnalysis: productResult },
+                productSpecification: productResult.productSpecification,
+                productAnalysisResult: productResult,
+                clarificationGate: productResult.clarificationGate,
             };
         }
         const quick = IntentParser.quickIntent(userText);

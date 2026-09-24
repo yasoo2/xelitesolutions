@@ -29,6 +29,18 @@ import { WEATHER_API_ROUTE_PATTERN } from './weather-qa-route';
 import { isMediaReviewRequest, runMediaReviewQa } from './media-review-qa';
 import { handleMaintainedPreviewApiRequest } from '../api-discovery/preview-proxy';
 
+/** Hosted project previews share an origin, so their credentials must not. */
+export function tokenStorageKeyForAuditTarget(targetUrl: string, suppliedKey?: string): string {
+    const baseKey = String(suppliedKey || 'joe:auth');
+    if (baseKey !== 'joe:auth') return baseKey;
+    try {
+        const projectId = new URL(targetUrl).pathname.match(/^\/project-preview\/([^/]+)/)?.[1] || '';
+        return projectId ? `${baseKey}:${projectId}` : baseKey;
+    } catch {
+        return baseKey;
+    }
+}
+
 export interface AppAuditFinding {
     id: string;
     severity: 'high' | 'medium' | 'low';
@@ -830,12 +842,13 @@ export async function auditBuiltApp(
         if (opts?.credentials && !frontDoor?.recovered) {
             const c = opts.credentials;
             try {
+                const target = new URL(c.route || '/', url).toString();
+                const tokenStorageKey = tokenStorageKeyForAuditTarget(target, c.tokenStorageKey);
                 if (c.token) {
                     await page.evaluate(({ token, role, tokenStorageKey }: any) => {
                         localStorage.setItem(tokenStorageKey, token);
                         if (role) localStorage.setItem(tokenStorageKey + ':role', role);
-                    }, { token: c.token, role: c.role || 'owner', tokenStorageKey: c.tokenStorageKey || 'joe:auth' });
-                    const target = new URL(c.route || '/', url).toString();
+                    }, { token: c.token, role: c.role || 'owner', tokenStorageKey });
                     await page.goto(target, { waitUntil: 'networkidle', timeout: navigationTimeoutMs });
                     await page.waitForFunction(() => [...document.querySelectorAll('button, a')].some((el) =>
                         /^(sign out|log out|logout|تسجيل الخروج|خروج)$/iu.test(String(el.textContent || '').trim())),
@@ -868,10 +881,7 @@ export async function auditBuiltApp(
                     loginUrl,
                     email: c.email,
                     password: c.password,
-                    // localStorage is already isolated by origin. Keeping the
-                    // token independent of pathname lets an authenticated SPA
-                    // move from `/` to `/admin` without silently signing out.
-                    tokenStorageKey: c.tokenStorageKey || 'joe:auth',
+                    tokenStorageKey,
                     });
                     if (!result?.ok) {
                     authError = `login ${result?.status || 0}: ${String(result?.error || 'rejected').slice(0, 120)}`;
@@ -879,7 +889,6 @@ export async function auditBuiltApp(
                     // A 200 from /auth/login proves the credential, not the
                     // browser state. Reload the product and require a visible
                     // signed-in affordance before protected QA may be claimed.
-                    const target = new URL(c.route || '/', url).toString();
                     await page.goto(target, { waitUntil: 'networkidle', timeout: navigationTimeoutMs });
                     const waitForSignedInSurface = () => page.waitForFunction(() => {
                         const visible = (el: Element) => {

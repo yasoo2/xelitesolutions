@@ -37,7 +37,7 @@ import { ProjectPipelineTool } from './definitions/ProjectPipelineTool';
 import { EnterprisePlatformFoundationTool } from './definitions/EnterprisePlatformFoundationTool';
 import { OrionBusinessFoundationTool } from './definitions/OrionBusinessFoundationTool';
 import { EngineeringDiscoveryTool } from './definitions/EngineeringDiscoveryTool';
-import { ProjectRunTool, ProjectStopTool } from './definitions/ProjectRunTool';
+import { ProjectRunTool, ProjectRuntimeGuideTool, ProjectStopTool } from './definitions/ProjectRunTool';
 import { DeployPagesTool } from './definitions/DeployPagesTool';
 import { ProjectStateManagerTool } from './definitions/ProjectStateManagerTool';
 import { AutoTesterTool } from './definitions/AutoTesterTool';
@@ -294,6 +294,7 @@ const baseTools: ToolDefinition[] = [
   createTool(EnterprisePlatformFoundationTool),
   createTool(OrionBusinessFoundationTool),
   createTool(ProjectRunTool),
+  createTool(ProjectRuntimeGuideTool),
   createTool(ProjectStopTool),
   createTool(DeployPagesTool),
   createTool(CentralAnswerTool),

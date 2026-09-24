@@ -241,11 +241,29 @@ Your goal is to build the extraordinary.`;
             return { ok: true, output: instant, logs: ['central_answer: instant fast-path (no model call)'] };
         }
 
+        // A conversational answer is useful only while the user is still in
+        // the conversation. The router can outlive a dead provider connection,
+        // so bound this final model call and use the existing honest fallback
+        // instead of leaving the run spinner alive until the global deadline.
+        const answerTimeoutMs = Math.min(20_000, Math.max(1_000, Number(context?.answerTimeoutMs) || 8_000));
+        const routeAnswer = (messages: Array<{ role: string; content: string }>) => {
+            let timeout: ReturnType<typeof setTimeout> | undefined;
+            const timeoutPromise = new Promise<never>((_, reject) => {
+                timeout = setTimeout(() => reject(new Error(`answer_timeout_${answerTimeoutMs}ms`)), answerTimeoutMs);
+            });
+            return Promise.race([
+                routeToModel(messages, undefined, undefined, undefined, undefined, undefined, undefined, context),
+                timeoutPromise,
+            ]).finally(() => {
+                if (timeout) clearTimeout(timeout);
+            });
+        };
+
         try {
-            const answer = await routeToModel([
+            const answer = await routeAnswer([
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: question }
-            ], undefined, undefined, undefined, undefined, undefined, undefined, context);
+            ]);
 
             let text = (typeof answer === 'string' ? answer : '').trim();
             /**
@@ -260,13 +278,13 @@ Your goal is to build the extraordinary.`;
             const logs = ['central_answer: Answered via router'];
             if (text && isAr && arabicShare(text) < 0.35) {
                 try {
-                    const rewritten = await routeToModel([
+                    const rewritten = await routeAnswer([
                         {
                             role: 'system',
                             content: 'أعد كتابة النص التالي بالعربية الفصحى بالكامل، بنفس المعنى والتفاصيل والبنية (العناوين والقوائم والترقيم كما هي). لا تضف معلومات ولا تحذف شيئاً. أبقِ أسماء الأوامر والأكواد كما هي داخل علامات الكود. أخرج النص المُعاد كتابته فقط دون أي مقدمة.',
                         },
                         { role: 'user', content: text },
-                    ], undefined, undefined, undefined, undefined, undefined, undefined, context);
+                    ]);
                     const rt = String(rewritten || '').trim();
                     if (rt.length >= 2 && arabicShare(rt) > Math.max(0.5, arabicShare(text))) {
                         logs.push(`central_answer: language enforced — reply was ${Math.round(arabicShare(text) * 100)}% Arabic, rewritten to ${Math.round(arabicShare(rt) * 100)}%`);

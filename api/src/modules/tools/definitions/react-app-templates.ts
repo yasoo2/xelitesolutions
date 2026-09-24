@@ -815,9 +815,10 @@ export function download(name, text, type) {
  * The token is kept per app, so two Joe-built systems on the same machine do
  * not borrow each other's session.
  */
-// localStorage already belongs to one origin. A pathname-scoped token signs
-// the same SPA out when it moves between its root and admin route.
-const TOKEN_KEY = 'joe:auth';
+// Hosted previews share an origin. Scope them by project, not by SPA route.
+const previewAuthScope = typeof location === 'undefined' ? ''
+  : (location.pathname.match(/^\\/project-preview\\/([^/]+)/) || [])[1] || '';
+const TOKEN_KEY = 'joe:auth' + (previewAuthScope ? ':' + previewAuthScope : '');
 
 /**
  * AND WHICH ROLE THAT TOKEN CARRIES.

@@ -1872,6 +1872,120 @@ async function stopServer(key: string, logs: string[]): Promise<boolean> {
     return true;
 }
 
+/**
+ * Inspect a project's declared runtime contract without starting anything.
+ *
+ * A question such as "how do I run the project?" needs evidence from the
+ * selected workspace, not a generic chat reply and not a side-effecting
+ * `project_run`. Keeping this alongside the launcher lets the guide reuse the
+ * same project discovery and start-command detection that actual execution
+ * uses, while its read-only policy makes the distinction enforceable.
+ */
+export class ProjectRuntimeGuideTool implements ToolDefinition {
+    name = 'project_runtime_guide';
+    version = '1.0.0';
+    description = 'Read a project runtime contract and explain the verified local start command without starting a server, installing dependencies, or changing files.';
+    tags = ['project', 'runtime', 'guide', 'read-only'];
+    inputSchema = {
+        type: 'object' as const,
+        properties: {
+            cwd: { type: 'string' as const, description: 'Optional project directory. Defaults to the active project or workspace.' },
+            projectQuery: { type: 'string' as const, description: 'Original question, used only to select a named project safely.' },
+        },
+    };
+    outputSchema = { type: 'object' as const, properties: { summary: { type: 'string' as const }, command: { type: 'string' as const } } };
+    permissions: ToolPermission[] = ['read'];
+    sideEffects: ToolPermission[] = [];
+    rateLimitPerMinute = 30;
+    auditFields = ['cwd'];
+    mockSupported = false;
+
+    async execute(input: any, context?: any) {
+        const logs: string[] = [];
+        const isAr = isArabicReply({ language: context?.language, text: String(input?.projectQuery || '') });
+        const explicitCwd = String(input?.cwd || '').trim();
+        const active = readJoeProjectForRun(
+            String(context?.sessionId || 'default').replace(/[^a-zA-Z0-9._-]/g, '_'),
+            context?.runId,
+        );
+        const activeCwd = String(active?.dir || '').trim();
+        const workspaceRoot = workspaceService.getActiveRoot(context?.workspaceId);
+        const baseCwd = explicitCwd || (activeCwd && fs.existsSync(activeCwd) ? activeCwd : workspaceRoot);
+        let cwd = baseCwd;
+
+        if (!hasProjectMarker(cwd)) {
+            const discovered = resolveRunnableProject(workspaceRoot, input?.projectQuery);
+            if (!discovered.cwd) {
+                const choices = discovered.candidates.map(candidate => path.basename(candidate)).join(isAr ? '، ' : ', ');
+                const summary = discovered.candidates.length > 1
+                    ? pick(isAr,
+                        `وجدت عدة مشاريع قابلة للتشغيل (${choices}). حدّد اسم المشروع كي أقرأ عقد تشغيله دون تخمين.`,
+                        `Several runnable projects were found (${choices}). Name the project so I can read its runtime contract without guessing.`)
+                    : pick(isAr,
+                        `لم أجد مشروعاً قابلاً للتشغيل داخل مساحة العمل؛ لا يمكنني اختراع أمر تشغيل.`,
+                        `No runnable project was found in the workspace, so I cannot invent a start command.`);
+                return {
+                    ok: false,
+                    error: summary,
+                    // This is a bounded read-only selection question, not a
+                    // technical failure. AgentOrchestrator surfaces this marker
+                    // directly instead of spending a recovery planner call on a
+                    // fact only the user can resolve.
+                    output: { requiresUserDecision: true, summary, candidates: discovered.candidates },
+                    logs,
+                };
+            }
+            cwd = discovered.cwd;
+        }
+        if (!fs.existsSync(cwd) || !hasProjectMarker(cwd)) {
+            const summary = pick(isAr,
+                `المجلد المحدد ليس مشروعاً قابلاً للتشغيل: ${cwd}`,
+                `The selected directory is not a runnable project: ${cwd}`);
+            return {
+                ok: false,
+                error: summary,
+                output: { requiresUserDecision: true, summary },
+                logs,
+            };
+        }
+
+        let scripts: Record<string, string> = {};
+        const manifestPath = path.join(cwd, 'package.json');
+        if (fs.existsSync(manifestPath)) {
+            try {
+                const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) || {};
+                scripts = Object.fromEntries(Object.entries(manifest.scripts || {})
+                    .filter(([name, value]) => typeof name === 'string' && typeof value === 'string')) as Record<string, string>;
+            } catch {
+                logs.push('project_runtime_guide: package.json is malformed; used on-disk entrypoint evidence only');
+            }
+        }
+
+        // The port is illustrative only. Nothing is spawned or reserved by this
+        // tool; detectStart is reused strictly to keep the guide aligned with the
+        // command the real launcher would select from the same files.
+        const detected = detectStart(cwd, 4300);
+        const launchability = launchabilityError(cwd, detected);
+        const command = scripts.start ? 'npm start'
+            : scripts.dev ? 'npm run dev'
+                : detected.command;
+        const scriptList = Object.keys(scripts).sort();
+        const summary = launchability
+            ? pick(isAr,
+                `راجعت عقد التشغيل في ${cwd}. لا أستطيع التوصية بالإطلاق بعد: ${launchability}`,
+                `I inspected the runtime contract in ${cwd}. I cannot recommend starting it yet: ${launchability}`)
+            : pick(isAr,
+                `راجعت عقد التشغيل في ${cwd}. ابدأ من هذا المجلد بالأمر: ${command}${scriptList.length ? ` (البرامج المعلنة: ${scriptList.join('، ')})` : ''}. لم أبدأ خادماً ولم أغيّر أي ملف.`,
+                `I inspected the runtime contract in ${cwd}. Start it from that directory with: ${command}${scriptList.length ? ` (declared scripts: ${scriptList.join(', ')})` : ''}. No server was started and no files were changed.`);
+        logs.push(`project_runtime_guide: read-only contract cwd=${cwd}`);
+        return {
+            ok: true,
+            output: { cwd, command, launcherKind: detected.kind, scripts, launchability: launchability || null, summary },
+            logs,
+        };
+    }
+}
+
 export class ProjectStopTool implements ToolDefinition {
     name = 'project_stop';
     version = '1.0.0';

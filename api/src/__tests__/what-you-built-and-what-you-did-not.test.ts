@@ -63,7 +63,7 @@ describe('the builder\'s own words survive the phase', () => {
 describe('the delivery report relays what was measured', () => {
     it('it collects every message the phases carried', () => {
         expect(PIPE).toMatch(/const spoken: string\[\] = \[\];/);
-        expect(PIPE).toMatch(/const msg = String\(t\?\.message \|\| ''\)\.trim\(\);/);
+        expect(PIPE).toContain("const msg = redactDeliveryCredentials(guardUnverifiedBuilderClaims(String(t?.message || '').trim(), verified, ar));");
         expect(PIPE).toMatch(/if \(msg && !spoken\.includes\(msg\)\) spoken\.push\(msg\);/);
     });
 

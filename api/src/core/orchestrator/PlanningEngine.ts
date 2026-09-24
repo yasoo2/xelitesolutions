@@ -756,6 +756,52 @@ Rules:
             };
         }
 
+        // "How do I run it?" is neither an order to start a process nor a
+        // generic chat question. It needs the existing launcher to inspect the
+        // chosen workspace's actual manifest and entrypoint, but must remain
+        // read-only. The dedicated guide shares the launcher's evidence rules
+        // while exposing no execute/install/file-change capability.
+        const runtimeGuideQuestion = isKnowledgeQuestion(userGoal)
+            && /(?:\b(?:how\s+(?:do|can)\s+i|what(?:'s|\s+is)\s+the\s+(?:start|run)|which\s+command)\b|(?:كيف|ما\s+هو\s+أمر)\s*(?:أ?شغّ?ل|تشغيل|ابدأ|تشغّل))/iu.test(userGoal)
+            && /(?:\b(?:project|app|application|server|system)\b|(?:ال)?(?:مشروع|تطبيق|نظام|خادم|سيرفر))/iu.test(userGoal);
+        if (runtimeGuideQuestion) {
+            return {
+                id: `runtime_guide_${Date.now()}`,
+                goal: intent.goal,
+                steps: [{
+                    id: 'project_runtime_guide',
+                    description: `Read the verified runtime contract for: ${intent.goal}`,
+                    tool: 'project_runtime_guide',
+                    agent: 'Dev',
+                    input: { projectQuery: userGoal },
+                    dependsOn: [],
+                }],
+                metadata: { complexity: 'low', riskLevel: 'low', matchedBy: 'runtime-guide-question' },
+            };
+        }
+
+        // Knowledge questions have already been classified as answer-only by
+        // the shared intent guard. Do not spend a second provider request on
+        // semantic routing before scheduling central_answer: on an unavailable
+        // provider that turns a harmless question into a long-lived spinner.
+        // The guard rejects polite action requests such as "هل يمكنك بناء...؟",
+        // so real work keeps its normal planning and tool-policy path.
+        if (isKnowledgeQuestion(userGoal)) {
+            return {
+                id: `chat_${Date.now()}`,
+                goal: intent.goal,
+                steps: [{
+                    id: 'direct_response',
+                    description: `Answering: ${intent.goal}`,
+                    tool: 'central_answer',
+                    agent: 'General',
+                    input: { question: intent.goal },
+                    dependsOn: [],
+                }],
+                metadata: { complexity: 'low', riskLevel: 'low', matchedBy: 'knowledge-question' },
+            };
+        }
+
         // IntentParser attaches this marker only after a registry match for a
         // non-build, non-question imperative. Revalidate it through
         // capabilityPlan before any broad browser or chat classifier can spend
@@ -1532,6 +1578,7 @@ Rules:
             // A question/search ("how do I run…", "ابحث عن كيفية…", "…؟") describes
             // a topic; it does NOT command run/stop/deploy — those must yield to it.
             const isQuestion = /^\s*(how|what|why|when|where|which|can|do|does|is|are|should|explain)\b/i.test(userGoal.trim())
+                || /^\s*how\s+do\s+i\b/i.test(userGoal)
                 || /^\s*(كيف|ماذا|لماذا|متى|أين|هل|اشرح|وضّ?ح|ما\s+هو|ما\s+هي)(?=\s|$)/.test(userGoal)
                 || /(ابحث|بحث|دوّ?ر\s*عن|ابغى\s*اعرف|search\s+for|google|look\s*up)/i.test(probe)
                 || /\?\s*$/.test(userGoal.trim());

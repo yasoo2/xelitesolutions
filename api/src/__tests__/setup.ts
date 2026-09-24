@@ -10,6 +10,7 @@ process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-only-secret-not-used-an
 process.env.PERSISTENCE_MODE = 'JSON';
 process.env.MOCK_DB = 'true';
 process.env.NODE_ENV = 'test';
+process.env.JOE_UNIT_TEST_NO_NETWORK = 'true';
 
 /**
  * THE SUITE WAS READING THE DEVELOPER'S REAL BUSINESS PROFILE.
@@ -62,6 +63,12 @@ if (!process.env.JOE_DATA_DIR) {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const os = require('os'), fsx = require('fs'), p = require('path');
     process.env.JOE_DATA_DIR = fsx.mkdtempSync(p.join(process.env.JOE_TEST_TMP_ROOT || os.tmpdir(), 'joe-test-data-'));
+}
+
+if (!process.env.JOE_LOG_DIR) {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const os = require('os'), fsx = require('fs'), p = require('path');
+    process.env.JOE_LOG_DIR = fsx.mkdtempSync(p.join(process.env.JOE_TEST_TMP_ROOT || os.tmpdir(), 'joe-test-log-'));
 }
 
 /**

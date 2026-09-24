@@ -87,7 +87,7 @@ describe('multi-entity scheduling systems', () => {
         expect(tables).toContain('type={inputContract(f).type}');
         expect(tables).toContain('pattern={inputContract(f).pattern}');
         expect(tables).toContain('"label":"Appointments"');
-        expect(files['src/app/store.js']).toContain("const TOKEN_KEY = 'joe:auth';");
+        expect(files['src/app/store.js']).toContain("const TOKEN_KEY = 'joe:auth' + (previewAuthScope ? ':' + previewAuthScope : '');");
         expect(files['src/App.jsx']).toContain('displayName(content.brand)');
         expect(files['src/App.jsx']).toContain("replace(/\\b[a-z]/g");
         expect(files['src/App.jsx']).not.toContain('<RecordsApp content={content} />');
