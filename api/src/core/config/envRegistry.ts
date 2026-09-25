@@ -74,6 +74,8 @@ export const ENV_SETTINGS: EnvSetting[] = [
 
     // ── مفاتيح الذكاء ──────────────────────────────────────────────────────
     { key: 'GROQ_API_KEY', group: 'ai', kind: 'secret', live: true, label: 'مفتاح Groq', hint: 'الردود النهائية السريعة.' },
+    { key: 'NVIDIA_API_KEY', group: 'ai', kind: 'secret', live: false, label: 'مفتاح NVIDIA NIM', hint: 'مفتاح مشروع NVIDIA واحد؛ لا يدور جو الحسابات أو يتجاوز الحصص.' },
+    { key: 'NVIDIA_NIM_MODEL', group: 'ai', kind: 'text', live: true, label: 'نموذج NVIDIA', hint: 'اتركه فارغاً لاستخدام Nemotron الافتراضي.' },
     { key: 'OPENAI_API_KEY', group: 'ai', kind: 'secret', live: true, label: 'مفتاح OpenAI', hint: 'يُستعمل أيضاً للنطق الصوتي في وضع الصوت.' },
     { key: 'OPENROUTER_API_KEY', group: 'ai', kind: 'secret', live: true, label: 'مفتاح OpenRouter', hint: 'بوابة إلى عدة نماذج بمفتاح واحد.' },
     { key: 'GOOGLE_API_KEY', group: 'ai', kind: 'secret', live: true, label: 'مفتاح Google/Gemini', hint: 'اختياري.' },

@@ -797,6 +797,8 @@ const DEFAULT_PROVIDERS: { [key: string]: ProviderConfig } = {
   // available free provider automatically (see the router's free-first mesh).
   auto: { name: 'Auto', nameKey: 'provAuto', apiKey: 'auto-mode', isConnected: true, model: 'auto', isCustom: true, isFree: true },
   gemini: { name: 'Google Gemini', tagKey: 'provFree', apiKey: 'free-mode', isConnected: true, model: 'gemini-2.0-flash', isFree: true },
+  // NVIDIA Nemotron — شركة NVIDIA توفر نموذج Nemotron 3 Ultra عبر NIM.
+  nvidia: { name: 'NVIDIA Nemotron', tagKey: 'provFree', apiKey: 'free-mode', isConnected: true, baseUrl: 'https://integrate.api.nvidia.com/v1', model: 'nvidia/nemotron-3-ultra-550b-a55b', isFree: true },
   // Groq (شركة Groq — مفتاحها يبدأ بـ gsk_). ضع مفتاح Groq هنا. النموذج مطابق للمفتاح.
   groq: { name: 'Groq ⚡', tagKey: 'provGroqHint', apiKey: 'free-mode', isConnected: true, baseUrl: 'https://api.groq.com/openai/v1', model: 'llama-3.3-70b-versatile', isFree: true },
   cerebras: { name: 'Cerebras', tagKey: 'provUltraFast', apiKey: 'free-mode', isConnected: true, baseUrl: 'https://api.cerebras.ai/v1', model: 'llama-3.3-70b', isFree: true },
@@ -821,6 +823,7 @@ const PROVIDER_KEY_INFO: Record<string, { need: KeyNeed; getUrl?: string; getLab
   deepseek: { need: 'keyless', getUrl: 'https://platform.deepseek.com/api_keys', getLabel: 'platform.deepseek.com', placeholderKey: 'keyPlaceholderOptional' },
   gemini: { need: 'required', getUrl: 'https://aistudio.google.com/app/apikey', getLabel: 'aistudio.google.com/app/apikey', placeholder: 'AIza...' },
   cerebras: { need: 'required', getUrl: 'https://cloud.cerebras.ai/', getLabel: 'cloud.cerebras.ai', placeholder: 'csk-...' },
+  nvidia: { need: 'required', getUrl: 'https://build.nvidia.com/', getLabel: 'build.nvidia.com', placeholder: 'nvapi-...' },
   mistral: { need: 'required', getUrl: 'https://console.mistral.ai/api-keys', getLabel: 'console.mistral.ai/api-keys', placeholderKey: 'keyPlaceholderMistral' },
   openrouter: { need: 'required', getUrl: 'https://openrouter.ai/keys', getLabel: 'openrouter.ai/keys', placeholder: 'sk-or-...' },
   openai: { need: 'paid', getUrl: 'https://platform.openai.com/api-keys', getLabel: 'platform.openai.com', placeholder: 'sk-...' },

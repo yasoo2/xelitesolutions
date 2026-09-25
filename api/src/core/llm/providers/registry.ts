@@ -3,6 +3,7 @@ import { OpenRouterProvider } from './openrouter';
 import { HuggingFaceProvider } from './huggingface';
 import { GroqProvider } from './groq';
 import { LocalProvider } from './local';
+import { NvidiaProvider, nvidiaProvider } from './nvidia';
 import { GeminiProvider, geminiProvider } from './gemini';
 import { DeepSeekProvider, deepSeekProvider } from './deepseek';
 import { OpenAIProvider, openAIProvider } from './openai';
@@ -17,6 +18,7 @@ export const openRouterProvider = new OpenRouterProvider();
 export const huggingfaceProvider = new HuggingFaceProvider();
 export const groqProvider = new GroqProvider();
 export const localProvider = new LocalProvider();
+export { nvidiaProvider, NvidiaProvider };
 export { geminiProvider, GeminiProvider, deepSeekProvider, openAIProvider, OpenAIProvider };
 export { cerebrasProvider, CerebrasProvider, mistralProvider, MistralProvider };
 export { llm7Provider, LLM7Provider };
@@ -28,6 +30,7 @@ export default {
     huggingface: huggingfaceProvider,
     groq: groqProvider,
     local: localProvider,
+    nvidia: nvidiaProvider,
     gemini: geminiProvider,
     deepseek: deepSeekProvider,
     openai: openAIProvider,

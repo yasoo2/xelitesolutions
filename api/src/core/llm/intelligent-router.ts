@@ -4,7 +4,7 @@
  * Supports: Llama 3.3 70B, Llama 3.1 8B (all via Groq - FREE!)
  */
 
-import { pollinationsProvider, openRouterProvider, groqProvider, localProvider, geminiProvider, deepSeekProvider, openAIProvider, cerebrasProvider, mistralProvider, huggingfaceProvider, llm7Provider, duckAIProvider } from './providers/registry';
+import { pollinationsProvider, openRouterProvider, groqProvider, localProvider, geminiProvider, deepSeekProvider, openAIProvider, cerebrasProvider, mistralProvider, huggingfaceProvider, llm7Provider, duckAIProvider, nvidiaProvider } from './providers/registry';
 import { LLMCacheTool } from '../../modules/tools/definitions/LLMCacheTool';
 import { OpenAIProvider } from './providers/openai';
 import { GeminiProvider } from './providers/gemini';
@@ -18,7 +18,7 @@ let openrouter: any = openRouterProvider;
 
 export interface ModelConfig {
     name: string;
-    provider: 'groq' | 'openrouter' | 'anthropic' | 'openai' | 'hack';
+    provider: 'groq' | 'openrouter' | 'anthropic' | 'openai' | 'hack' | 'nvidia';
     model: string;
     maxTokens: number;
     temperature: number;
@@ -1856,6 +1856,7 @@ export async function routeToModel(
 
     // Check if Groq API key available
     const hasGroqKey = !!(process.env.GROQ_API_KEY?.trim());
+    const hasNvidiaKey = nvidiaProvider.isAvailable();
     const hasOpenRouterKey = !!(process.env.OPENROUTER_API_KEY?.trim());
     const hasLocal =
         localProvider.isConfigured() &&
@@ -1953,6 +1954,16 @@ export async function routeToModel(
             run: async () => {
                 const model = (selectedModel.provider === 'groq' && selectedModel.model) ? selectedModel.model : 'llama-3.3-70b-versatile';
                 return await callGroq(model, flatMessages, onPartial, tools);
+            }
+        });
+    }
+
+    // 3b. NVIDIA Nemotron — free tier via NVIDIA NIM (requires NVIDIA_API_KEY)
+    if (nvidiaProvider.isAvailable()) {
+        meshProviders.push({
+            name: 'NVIDIA Nemotron (Free)',
+            run: async (signal?: AbortSignal) => {
+                return await nvidiaProvider.chatComplete(effectiveMessages, process.env.NVIDIA_NIM_MODEL || 'nvidia/nemotron-3-ultra-550b-a55b', tools, signal);
             }
         });
     }
@@ -2226,7 +2237,7 @@ export async function routeToModel(
     // fallback, not an optional afterthought: when a cloud call fails it must be
     // attempted before keyless gateways and before the honest Offline result.
     // Internal calls retain Local-first because their quota belongs to the user.
-    const hasFastCloud = hasGroqKey || geminiProvider.isAvailable() || cerebrasProvider.isAvailable() || mistralProvider.isAvailable();
+    const hasFastCloud = hasGroqKey || geminiProvider.isAvailable() || cerebrasProvider.isAvailable() || mistralProvider.isAvailable() || nvidiaProvider.isAvailable();
     // [INTELLIGENCE ECONOMY] …but INTERNAL reasoning keeps Local FIRST even
     // when a cloud brain exists: qwen answers intent/planning JSON fine, and
     // every internal call sent to Groq is a token the user's final answer
@@ -2837,6 +2848,11 @@ export async function verifyProviderDirect(
             case 'cerebras': {
                 if (!envKey('CEREBRAS_API_KEY')) return { ok: false, provider, detail: 'no_key: يحتاج CEREBRAS_API_KEY (مجاني من cloud.cerebras.ai).' };
                 const ans = await withTimeout(cerebrasProvider.chatComplete(probe as any, cfg.model || 'llama-3.3-70b'));
+                return { ok: usable(ans), provider, detail: 'env_key' };
+            }
+            case 'nvidia': {
+                if (!envKey('NVIDIA_API_KEY')) return { ok: false, provider, detail: 'no_key: NVIDIA Nemotron requires NVIDIA_API_KEY (free from build.nvidia.com).' };
+                const ans = await withTimeout(nvidiaProvider.chatComplete(probe as any, cfg.model || process.env.NVIDIA_NIM_MODEL || 'nvidia/nemotron-3-ultra-550b-a55b'));
                 return { ok: usable(ans), provider, detail: 'env_key' };
             }
             case 'mistral': {
