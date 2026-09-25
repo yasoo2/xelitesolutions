@@ -5478,7 +5478,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             // otherwise the same expense/task/etc. form appears twice.
             adminModel = effectiveBp.kind === 'generic'
                 ? tableModel
-                : tableModel.filter((entity: any) => String(entity?.key || '') !== String(apiEntry?.resource || ''));
+: tableModel.filter((entity: any) => String(entity?.key || '') !== String(apiEntry?.resource || ''));
             if (tableModel.length && effectiveBp.kind === 'generic' && effectiveBp.engine === 'records') {
                 const { blueprintFromEntity, apiFor } = require('../../../core/design/entity-app');
                 const { fieldsFromRequest } = require('../../../core/design/app-blueprints');
@@ -5492,21 +5492,42 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 unifiedTables = tableModel.length >= 3;
                 adminModel = unifiedTables ? tableModel : tableModel.slice(1);
                 appApi = apiFor(apiLink, lead.key) || apiLink;
+                
+                // Always compute statusField, doneValue, filterFields from requested fields
+                // when there's a lead entity, to ensure flag fields (like "task completion")
+                // are properly recognized as status fields with doneValue and filterFields.
+                const requestedFields = fieldsFromRequest(request, isAr);
+                const flagField = requestedFields?.find((f: { role?: string }) => f.role === 'flag');
+                const statusField = flagField?.key;
+                const { completionOption } = require('../../../core/design/app-blueprints');
+                const doneValue = flagField ? completionOption(flagField.options || [], isAr) : undefined;
+                const { requestedFilterFields } = require('../../../core/design/app-blueprints');
+                const filterFields = requestedFilterFields(request, requestedFields || []);
+                
                 if (derived !== effectiveBp) {
                     // The request's declared fields are authoritative when they
                     // exist. Entity metadata supplies the primary table's
                     // identity/title, but must not replace the user's labels
                     // with the stock person/thing shape — the API was already
                     // built from these same request fields.
-                    const requestedFields = fieldsFromRequest(request, isAr);
-                    const aligned = requestedFields
-                        ? { ...derived, fields: requestedFields, metrics: effectiveBp.metrics,
-                            statusField: effectiveBp.statusField, doneValue: effectiveBp.doneValue,
-                            filterFields: effectiveBp.filterFields,
-                            relation: undefined }
+                    const requestedFields2 = fieldsFromRequest(request, isAr);
+                    const aligned = requestedFields2
+                        ? { ...derived, fields: requestedFields2, metrics: effectiveBp.metrics,
+                            statusField, doneValue, filterFields, relation: undefined }
                         : derived;
                     runBp = applyRequestFieldConstraints(aligned, request);
                     term(`application: managing «${lead.key}» itself — ${runBp.fields.map((f: any) => f.key).join(', ')}`);
+                } else {
+                    // Even when derived === effectiveBp, apply the computed statusField, doneValue, filterFields
+                    // AND include the requested fields in the blueprint.
+                    runBp = applyRequestFieldConstraints({
+                        ...effectiveBp,
+                        fields: requestedFields,
+                        statusField,
+                        doneValue,
+                        filterFields,
+                    }, request);
+                    term(`application: managing «${lead.key}» itself — ${requestedFields.map((f: any) => f.key).join(', ')}`);
                 }
             }
             if (adminModel.length) term(`admin screens: ${adminModel.map((e: any) => e.key).join(', ')}`);

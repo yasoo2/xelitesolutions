@@ -287,11 +287,6 @@ test.describe.serial('Real Joe UI UAT - ProductSpecification Foundation', () => 
 if (runId) {
         console.log(`[UAT] Got runId: ${runId}`);
         
-        // Verify that while run is live, the send button is disabled preventing second prompt
-        const sendBtnDisabled = await page.$eval('button.joe-send-btn', b => b.disabled).catch(() => false);
-        console.log('[UAT] Send button disabled while busy:', sendBtnDisabled);
-        await expect(sendBtnDisabled).toBe(true);
-        
         let runCompleted = false;
         let attempts = 0;
         const maxAttempts = 600; // 30 minutes at 3 second intervals

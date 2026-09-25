@@ -1731,7 +1731,7 @@ type DerivedRole = 'money' | 'count' | 'scalar' | 'date' | 'time' | 'tel' | 'ema
  *  of the question («مدفوع», «تم الدفع», `paid`, `done`) are the same
  *  column with the question left implicit.
  */
-const ASKS_YES_OR_NO = /^(?:هل|is|are|was|were|has|have|did|does)(?=$|\s)|[?؟]\s*$|^(?:تم|مدفوع|مدفوعة|مسدد|مسدّد|منجز|مكتمل|مغلق|paid|done|completed|settled|closed|shipped|delivered)(?=$|\s)/iu;
+const ASKS_YES_OR_NO = /^(?:هل|is|are|was|were|has|have|did|does)(?=$|\s)|[?؟]\s*$|\b(?:تم|مدفوع|مدفوعة|مسدد|مسدّد|منجز|مكتمل|مغلق|paid|done|completed|settled|closed|shipped|delivered|completion|complete)\b/iu;
 
 const TYPE_MARKS: Array<[RegExp, DerivedRole, FieldType]> = [
     [ASKS_YES_OR_NO, 'flag', 'select'],
