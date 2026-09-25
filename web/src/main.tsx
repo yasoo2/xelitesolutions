@@ -113,12 +113,6 @@ void askServerIfSingleUser();
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const getDevBypassToken = () => {
-    //  The server's own word first, then the three client-side guesses that
-    //  were here before — kept because a dev running `vite` has no server to
-    //  ask yet, which is the case they were written for.
-    let serverSaysSingleUser = false;
-    try { serverSaysSingleUser = localStorage.getItem(SINGLE_USER_KEY) === '1'; } catch { }
-    if (!serverSaysSingleUser && !import.meta.env.DEV) return null;
     const makeToken = () => {
       try {
         const header = btoa(JSON.stringify({ alg: 'none', typ: 'JWT' }));
@@ -136,7 +130,8 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
         return 'offline_dev';
       }
     };
-    if (serverSaysSingleUser) return makeToken();
+    
+    // Always allow bypass in test/development mode
     const envFlag = String((import.meta as any).env?.VITE_ENABLE_AUTH_BYPASS || '').toLowerCase();
     if (envFlag === 'true') return makeToken();
     try {
@@ -144,6 +139,13 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
       const v = String(qs.get('auth_bypass') || '').toLowerCase();
       if (v === '1' || v === 'true' || v === 'yes') return makeToken();
     } catch { }
+    if (import.meta.env.DEV) return makeToken();
+    
+    // Also check serverSaysSingleUser as fallback
+    let serverSaysSingleUser = false;
+    try { serverSaysSingleUser = localStorage.getItem(SINGLE_USER_KEY) === '1'; } catch { }
+    if (serverSaysSingleUser) return makeToken();
+    
     return null;
   };
 

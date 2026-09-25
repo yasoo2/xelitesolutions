@@ -23,6 +23,15 @@ import { formatAttachmentsBlock } from '../../shared/attachments';
 import { describeImageAttachments } from '../../shared/vision';
 import { withDeadline, RUN_DEADLINE_MS, DeadlineError } from '../../shared/utils/deadline';
 import { flushChatStores, usesLocalChatStore } from '../../api/chat-store';
+
+function usesJsonRunStore(): boolean {
+    const mongoose = require('mongoose');
+    return mongoose.connection.readyState !== 1
+        || process.env.OFFLINE_MODE === 'true'
+        || process.env.PERSISTENCE_MODE === 'JSON'
+        || process.env.MOCK_DB === 'true'
+        || String(process.env.MOCK_DB) === '1';
+}
 import { clarifyGate } from '../../core/orchestrator/clarify';
 import { announceScaffoldSubstitution } from '../../core/design/scaffold-substitution';
 import { phaseDetail } from '../../core/orchestrator/phaseAnnounce';
@@ -561,10 +570,17 @@ export class AgentLoopService {
         // second timestamp or by Mongo's ObjectId.
         const requestedRunId = String(options.runId || '').trim();
         let runId = requestedRunId || `run-${Date.now()}`;
-        try {
-            if (!usesLocalChatStore()) {
-                const run = await Run.create({ sessionId, status: 'running', steps: [], ...(requestedRunId ? { runId: requestedRunId } : {}) } as any);
-                if (!requestedRunId) runId = run._id.toString();
+try {
+            if (!usesJsonRunStore()) {
+                // Check if run already exists (created by run route)
+                const existingRun = await Run.findOne({ runId: requestedRunId || runId });
+                if (!existingRun) {
+                    const run = await Run.create({ sessionId, status: 'running', steps: [], ...(requestedRunId ? { runId: requestedRunId } : {}) } as any);
+                    if (!requestedRunId) runId = run._id.toString();
+                } else {
+                    // Run already exists, ensure status is running
+                    await Run.findByIdAndUpdate(existingRun._id, { status: 'running' }).catch(() => {});
+                }
             }
         } catch (e) {
             console.warn('[AgentLoopService] DB Persistence unavailable, using memory runId');

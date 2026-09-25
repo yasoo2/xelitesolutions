@@ -307,14 +307,15 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
 
     // Canonical run id is created before the first frame so every visible and
     // persisted event addresses the same execution.
-    const tempRunId = `run-${Date.now()}`;
+    // Use a more robust ID: run-{timestamp}-{random} to avoid collisions
+    const runId = `run-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
     // A Stop request may arrive as soon as the client receives the start
     // response. Register its real cancellation handle before scheduling the
     // background executor, otherwise the first asynchronous setup gap turns
     // Stop into a visual-only control.
-    const runCancellation = registerRun(tempRunId, runSessionId);
-    registerRunSession(tempRunId, runSessionId);
+    const runCancellation = registerRun(runId, runSessionId);
+    registerRunSession(runId, runSessionId);
 
     // OWNERSHIP AT THE DOOR. The very first frames of a run — the echo of what
     // the user typed, and the run_started the panels wait for — used to be
@@ -330,26 +331,31 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
     // conversation. The composer that posts here does not add it client-side, so
     // without this only Joe's reply would appear.
     try {
-        broadcast({ type: 'user_input', sessionId: runSessionId, runId: tempRunId, data: { text: submittedText, sessionId: runSessionId, runId: tempRunId, files: attachmentMeta() }, id: `uin-${Date.now()}` } as any);
+        broadcast({ type: 'user_input', sessionId: runSessionId, runId: runId, data: { text: submittedText, sessionId: runSessionId, runId: runId, files: attachmentMeta() }, id: `uin-${Date.now()}` } as any);
         // The panels listen for the RUN starting — that is when the workspace
         // reveals itself and the live file list clears. They were listening
         // for an event the server never sent; the auto-open only happened
         // later, by luck, on the first tool.
-        broadcast({ type: 'run_started', sessionId: runSessionId, runId: tempRunId, data: { sessionId: runSessionId, runId: tempRunId, text: submittedText.slice(0, 200), ...(resumedRunId ? { resumedRunId } : {}) }, id: `run-${Date.now()}` } as any);
+        broadcast({ type: 'run_started', sessionId: runSessionId, runId: runId, data: { sessionId: runSessionId, runId: runId, text: submittedText.slice(0, 200), ...(resumedRunId ? { resumedRunId } : {}) }, id: `run-${Date.now()}` } as any);
     } catch { /* non-fatal */ }
 
     try {
         const traceId = traceManager.startTrace(runSessionId, executionText);
         
+        // Create run document in database BEFORE starting execution
+        // so that runId is immediately queryable via /api/runs/:runId/status
+        if (!usesJsonRunStore()) {
+            await Run.create({ sessionId: runSessionId, status: 'running', steps: [], runId } as any);
+        }
+        
+        // Register the run in active runs BEFORE starting execution
+        registerRunSession(runId, runSessionId);
+        
         // [ELITE FIX] Make execution non-blocking to prevent Nginx timeouts and frontend hang
         // The background process will handle its own errors and broadcast status via WS
         AgentLoopService.execute(executionText, {
             sessionId: runSessionId,
-            // لا تستبدل جلسة لوحة المتصفح بجلسة الدردشة؛ تستخدمها browser_run
-            // للتحكم في الصفحة نفسها التي تعرضها الواجهة.
             browserSessionId: effectiveBrowserSessionId || undefined,
-            // مساحة العمل يختارها المستخدم في الواجهة ويجب أن تصل إلى كل أداة
-            // تعتمد على ملفات المشروع، لا أن تتحول إلى مجلد جلسة الدردشة.
             workspaceId: resolvedWorkspaceId,
             resumeProjectRoot: resumeProjectRoot || undefined,
             resumeOriginRunId: resumedRunId || undefined,
@@ -358,7 +364,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
             systemInstructions,
             attachments,
             traceId,
-            runId: tempRunId,
+            runId: runId,
             cancellationHandle: runCancellation,
             language: uiLanguage,
             modelConfig: {
@@ -370,16 +376,14 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
         }).catch(err => {
             console.error(`[RunRoute] Background execution fatal error:`, err);
         }).finally(() => {
-            // AgentLoopService releases this handle during normal completion;
-            // this second, idempotent cleanup covers exits before it begins.
-            releaseHandle(runCancellation, tempRunId, runSessionId);
-            unregisterRunSession(tempRunId, runSessionId);
+            releaseHandle(runCancellation, runId, runSessionId);
+            unregisterRunSession(runId, runSessionId);
         });
 
         // Return immediately so the frontend can start listening for WS updates
         return res.json({
             ok: true,
-            runId: tempRunId,
+            runId: runId,
             traceId,
             sessionId: runSessionId,
         });
@@ -387,6 +391,76 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
         console.error('[RunRoute] Execution failed:', error);
         return res.status(500).json({ error: error.message || 'Internal execution error' });
     }
+});
+
+/**
+ * Get authoritative run status by runId.
+ * This is the authoritative source for run lifecycle state.
+ */
+router.get('/:runId/status', authenticate as any, async (req, res) => {
+  const runId = String(req.params.runId || '').trim();
+  if (!runId) return res.status(400).json({ error: 'runId required' });
+
+  const jsonMode = process.env.OFFLINE_MODE === 'true' || process.env.PERSISTENCE_MODE === 'JSON' || process.env.MOCK_DB === 'true' || String(process.env.MOCK_DB) === '1';
+
+  if (jsonMode) {
+    const evidence = await getRunEvidence(runId);
+    if (!evidence) return res.status(404).json({ error: 'Run not found' });
+
+    // Check live runs for real-time status
+    const activeRuns = getActiveRunSessions();
+    const liveRun = activeRuns.find(r => r.runId === runId);
+    const isLive = !!liveRun;
+    const terminalStatuses = ['done', 'failed', 'blocked', 'cancelled', 'completed'];
+    const isTerminal = !isLive && terminalStatuses.includes(String(evidence.status || '').toLowerCase());
+
+    return res.json({
+      runId: evidence.runId || runId,
+      sessionId: evidence.sessionId,
+      status: evidence.status || (isLive ? 'running' : 'unknown'),
+      startedAt: evidence.startedAt,
+      updatedAt: evidence.updatedAt,
+      currentPhase: evidence.currentPhase,
+      currentActivity: evidence.currentActivity,
+      projectRoot: evidence.projectRoot,
+      previewUrl: evidence.previewUrl,
+      error: evidence.error,
+      verificationStatus: evidence.verificationStatus,
+      isLive,
+      isTerminal,
+      lastProgressAt: evidence.updatedAt,
+    });
+  }
+
+  const query = mongoose.Types.ObjectId.isValid(runId)
+    ? { $or: [{ _id: runId }, { runId }] }
+    : { runId };
+  const run = await Run.findOne(query).lean();
+  if (!run) return res.status(404).json({ error: 'Run not found' });
+
+  const userId = String((req as any).auth?.sub || '').trim();
+  if (!(await mayUseRunSession(String((run as any).sessionId || ''), userId))) {
+    return res.status(404).json({ error: 'Run not found' });
+  }
+
+  // Also check live runs for real-time status
+  const activeRuns = getActiveRunSessions();
+  const liveRun = activeRuns.find(r => r.runId === runId);
+  const isLive = !!liveRun;
+
+  res.json({
+    runId: run.runId || (run as any)._id?.toString() || runId,
+    sessionId: (run as any).sessionId,
+    status: (run as any).status || (isLive ? 'running' : 'unknown'),
+    startedAt: (run as any).startedAt || (run as any).createdAt,
+    updatedAt: (run as any).updatedAt,
+    currentPhase: (run as any).currentPhase,
+    currentActivity: (run as any).currentActivity,
+    projectRoot: (run as any).projectRoot,
+    previewUrl: (run as any).previewUrl,
+    isLive,
+    isTerminal: !isLive && ['done', 'failed', 'blocked', 'cancelled'].includes((run as any).status || ''),
+  });
 });
 
 /**
