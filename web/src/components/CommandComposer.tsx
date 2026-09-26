@@ -1052,6 +1052,7 @@ export default function CommandComposer({
     // so a provider omitted here (Groq/Cerebras/Mistral used to be) never appears.
     const baseProviders: { [key: string]: ProviderConfig } = {
       auto: { ...DEFAULT_PROVIDERS.auto },
+      nvidia: { ...DEFAULT_PROVIDERS.nvidia },
       groq: { ...DEFAULT_PROVIDERS.groq },
       gemini: { ...DEFAULT_PROVIDERS.gemini },
       cerebras: { ...DEFAULT_PROVIDERS.cerebras },
