@@ -623,9 +623,32 @@ function buildTargetedTypeScriptEdit(buildContext: any) {
     }
   }
 
-  // TS2322: boolean assigned to string variable (quote it)
   if (code === 'TS2322' && /type 'boolean' is not assignable to type 'string'/i.test(message)) {
     const replace = sourceLine.replace(/=\s*(true|false)(?![\w$])(\s*[;,]?)/, '= "$1"$2');
+    if (replace !== sourceLine) {
+      return {
+        filename: buildContext.file,
+        find: sourceLine,
+        replace,
+      };
+    }
+  }
+
+  // TS2322: boolean assigned to number variable (convert true->1, false->0)
+  if (code === 'TS2322' && /type 'boolean' is not assignable to type 'number'/i.test(message)) {
+    const replace = sourceLine.replace(/=\s*(true|false)(?![\w$])(\s*[;,]?)/, (_m: string, lit: string, tail: string) => `= ${lit === 'true' ? '1' : '0'}${tail}`);
+    if (replace !== sourceLine) {
+      return {
+        filename: buildContext.file,
+        find: sourceLine,
+        replace,
+      };
+    }
+  }
+
+  // TS2322: number assigned to boolean variable (only exact 0/1 literals)
+  if (code === 'TS2322' && /type 'number' is not assignable to type 'boolean'/i.test(message)) {
+    const replace = sourceLine.replace(/=\s*([01])(?![\w$.])(\s*[;,]?)/, (_m: string, lit: string, tail: string) => `= ${lit === '1' ? 'true' : 'false'}${tail}`);
     if (replace !== sourceLine) {
       return {
         filename: buildContext.file,
@@ -702,6 +725,54 @@ function buildTargetedTypeScriptEdit(buildContext: any) {
   // TS2345: quoted-boolean argument to boolean parameter (unquote it)
   if (code === 'TS2345' && /argument of type 'string' is not assignable to parameter of type 'boolean'/i.test(message)) {
     const replace = sourceLine.replace(/(\b[A-Za-z_$][\w$]*\()\s*['"](true|false)['"]\s*(\))/, '$1$2$3');
+    if (replace !== sourceLine) {
+      return {
+        filename: buildContext.file,
+        find: sourceLine,
+        replace,
+      };
+    }
+  }
+
+  // TS2345: boolean-literal argument to number parameter (convert true->1, false->0)
+  if (code === 'TS2345' && /argument of type 'boolean' is not assignable to parameter of type 'number'/i.test(message)) {
+    const replace = sourceLine.replace(/(\b[A-Za-z_$][\w$]*\()\s*(true|false)\s*(\))/, (_m: string, pre: string, lit: string, post: string) => `${pre}${lit === 'true' ? '1' : '0'}${post}`);
+    if (replace !== sourceLine) {
+      return {
+        filename: buildContext.file,
+        find: sourceLine,
+        replace,
+      };
+    }
+  }
+
+  // TS2345: number-literal argument to boolean parameter (only exact 0/1)
+  if (code === 'TS2345' && /argument of type 'number' is not assignable to parameter of type 'boolean'/i.test(message)) {
+    const replace = sourceLine.replace(/(\b[A-Za-z_$][\w$]*\()\s*([01])(?![\w$.])\s*(\))/, (_m: string, pre: string, lit: string, post: string) => `${pre}${lit === '1' ? 'true' : 'false'}${post}`);
+    if (replace !== sourceLine) {
+      return {
+        filename: buildContext.file,
+        find: sourceLine,
+        replace,
+      };
+    }
+  }
+
+  // TS2345: boolean argument to number parameter (convert true->1, false->0)
+  if (code === 'TS2345' && /argument of type 'boolean' is not assignable to parameter of type 'number'/i.test(message)) {
+    const replace = sourceLine.replace(/(\b[A-Za-z_$][\w$]*\()\s*(true|false)\s*(\))/, (_m: string, pre: string, lit: string, post: string) => `${pre}${lit === 'true' ? '1' : '0'}${post}`);
+    if (replace !== sourceLine) {
+      return {
+        filename: buildContext.file,
+        find: sourceLine,
+        replace,
+      };
+    }
+  }
+
+  // Only exact 0/1 literal arguments qualify; see the TS2322 note above.
+  if (code === 'TS2345' && /argument of type 'number' is not assignable to parameter of type 'boolean'/i.test(message)) {
+    const replace = sourceLine.replace(/(\b[A-Za-z_$][\w$]*\()\s*([01])(?![\w$.])\s*(\))/, (_m: string, pre: string, lit: string, post: string) => `${pre}${lit === '1' ? 'true' : 'false'}${post}`);
     if (replace !== sourceLine) {
       return {
         filename: buildContext.file,
