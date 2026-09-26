@@ -8,6 +8,7 @@ import { prepareArtifactContent } from '../artifact-validation';
 import { undefinedJsxComponentMismatch, undefinedSourceReferenceMismatch } from '../../../core/quality/source-contract';
 import { localFileExistsWithExactCase } from './ProjectRunTool';
 import { normalizeConceptualArtifactPath } from '../runtime-artifact-path';
+import { buildContextPack } from '../../../core/implementation/context-pack';
 
 type ArtifactProfile = {
     kind: 'markdown_document' | 'structured_data' | 'source_code' | 'frontend_asset' | 'text_document';
@@ -640,7 +641,8 @@ export class AIGeneratorTool implements ToolDefinition {
             description: { type: 'string', description: 'Detailed description of what the file should contain' },
             aestheticMode: { type: 'string', enum: ['glass', 'neon', 'minimal', 'corporate'], description: 'Visual style direction' },
             language: { type: 'string', enum: ['ar', 'en', 'dual'], description: 'Primary language for content' },
-            context: { type: 'string', description: 'Additional technical context (e.g., framework versions, project goal)' }
+            context: { type: 'string', description: 'Additional technical context (e.g., framework versions, project goal)' },
+            contextPack: { type: 'boolean', description: 'Attach a bounded read-only repo snapshot (layout, siblings, manifest) to the prompt. Default true.' }
         },
         required: ['path', 'description']
     };
@@ -670,7 +672,8 @@ export class AIGeneratorTool implements ToolDefinition {
         description: string;
         aestheticMode?: string;
         language?: string;
-        context?: string
+        context?: string;
+        contextPack?: boolean;
     }, context?: any) {
         const logs: string[] = [];
         const assertRunActive = () => {
@@ -699,6 +702,27 @@ export class AIGeneratorTool implements ToolDefinition {
         }
         assertRunActive();
         const contextWorkspaceId = context?.workspaceId;
+        // Repo context pack: the filesystem evidence the runtime path rules assume.
+        // Bounded, read-only, secret-shy; any failure proceeds packless.
+        let repoPackSection = '';
+        let repoPackFiles = 0;
+        let repoPackChars = 0;
+        let repoPackTruncated = false;
+        if (input.contextPack !== false) {
+            try {
+                const packRoot = context?.projectRoot || workspaceService.getActiveRoot(contextWorkspaceId);
+                const pack = buildContextPack(String(packRoot || ''), filePath);
+                if (pack.text) {
+                    repoPackSection = `
+Repository layout evidence (read-only snapshot, use exact paths):
+${pack.text}`;
+                    repoPackFiles = pack.files.length;
+                    repoPackChars = pack.text.length;
+                    repoPackTruncated = pack.truncated;
+                }
+            } catch { /* packless generation */ }
+        }
+        logs.push(`repo_context_pack=${JSON.stringify({ files: repoPackFiles, chars: repoPackChars, truncated: repoPackTruncated })}`);
         let callLLM: any;
         try { callLLM = getLLM(); }
         catch (e: any) { return { ok: false, error: String(e?.message || e), logs }; }
@@ -746,7 +770,7 @@ Task requirements:
 ${input.description}
 
 Verified project and requirements context:
-${input.context || 'No additional project context was provided. Do not assume a web development environment.'}
+${input.context || 'No additional project context was provided. Do not assume a web development environment.'}${repoPackSection}
 ${artifact.kind === 'frontend_asset' ? `\nVisual direction (use only if relevant):\n${input.aestheticMode || 'Use a clear, maintainable visual style consistent with the requirements.'}` : ''}
 ${runtimePathGuidance}${runtimeGuidance}${runtimeLayoutGuidance}${localImportRepairGuidance}
 
