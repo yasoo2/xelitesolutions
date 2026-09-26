@@ -651,6 +651,42 @@ function buildTargetedTypeScriptEdit(buildContext: any) {
     }
   }
 
+  // TS2345: number-literal argument to string parameter (quote it)
+  if (code === 'TS2345' && /argument of type 'number' is not assignable to parameter of type 'string'/i.test(message)) {
+    const replace = sourceLine.replace(/(\b[A-Za-z_$][\w$]*\()\s*(-?\d+(?:\.\d+)?)\s*(\))/, '$1"$2"$3');
+    if (replace !== sourceLine) {
+      return {
+        filename: buildContext.file,
+        find: sourceLine,
+        replace,
+      };
+    }
+  }
+
+  // TS2345: quoted-numeric argument to number parameter (unquote it)
+  if (code === 'TS2345' && /argument of type 'string' is not assignable to parameter of type 'number'/i.test(message)) {
+    const replace = sourceLine.replace(/(\b[A-Za-z_$][\w$]*\()\s*['"](-?\d+(?:\.\d+)?)['"]\s*(\))/, '$1$2$3');
+    if (replace !== sourceLine) {
+      return {
+        filename: buildContext.file,
+        find: sourceLine,
+        replace,
+      };
+    }
+  }
+
+  // TS2322: true/false assignment to boolean (unquote)
+  if (code === 'TS2322' && /type 'string' is not assignable to type 'boolean'/i.test(message)) {
+    const replace = sourceLine.replace(/=\s*['"](true|false)['"](\s*[;,]?)/, '= $1$2');
+    if (replace !== sourceLine) {
+      return {
+        filename: buildContext.file,
+        find: sourceLine,
+        replace,
+      };
+    }
+  }
+
   // TS2339: Property 'X' does not exist on type 'Y'
   // Common case: accessing property that doesn't exist - add optional chaining or fix property name
   if (code === 'TS2339' && /property\s+['"]([A-Za-z_$][\w$]*)['"]\s+does not exist on type/i.test(message)) {
