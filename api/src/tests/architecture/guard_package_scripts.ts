@@ -78,6 +78,8 @@ function main() {
     'test:self-fix:typescript-repair': 'ts-node src/tests/manual/verify_self_fix_typescript_repair.ts',
     'test:self-fix:typescript-missing-name': 'ts-node src/tests/manual/verify_self_fix_typescript_missing_name.ts',
     'test:self-fix:typescript-number-to-string': 'ts-node src/tests/manual/verify_self_fix_typescript_number_to_string.ts',
+    'test:self-fix:typescript-argument-coercion': 'ts-node src/tests/manual/verify_self_fix_typescript_argument_coercion.ts',
+    'test:self-fix:typescript-string-to-boolean': 'ts-node src/tests/manual/verify_self_fix_typescript_string_to_boolean.ts',
     'test:self-healing:failure': 'ts-node src/tests/manual/verify_self_healing_loop.ts',
     'test:self-healing:success': 'ts-node src/tests/manual/verify_self_healing_success_loop.ts',
   };
