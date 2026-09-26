@@ -1129,6 +1129,36 @@ export class PhaseExecutorTool implements ToolDefinition {
     auditFields = ['phase', 'projectContext'];
     mockSupported = false;
 
+    /**
+     * Group tasks into parallel execution groups.
+     * Tasks with parallel=true and no shared dependencies can run concurrently.
+     */
+    private static groupTasksForParallelExecution(tasks: any[]): any[][] {
+        const groups: any[][] = [];
+        let currentGroup: any[] = [];
+
+        for (const task of tasks) {
+            const isParallel = task.parallel === true;
+            const hasDeps = Array.isArray(task.dependsOn) && task.dependsOn.length > 0;
+
+            if (isParallel && !hasDeps) {
+                currentGroup.push(task);
+            } else {
+                if (currentGroup.length > 0) {
+                    groups.push([...currentGroup]);
+                    currentGroup = [];
+                }
+                groups.push([task]);
+            }
+        }
+
+        if (currentGroup.length > 0) {
+            groups.push([...currentGroup]);
+        }
+
+        return groups;
+    }
+
     async execute(input: { phase: any; projectContext?: any; repairCriteria?: string[] }, context?: any) {
         const { phase, projectContext, repairCriteria } = input;
         const assertRunActive = () => {
