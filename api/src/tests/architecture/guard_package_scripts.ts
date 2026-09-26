@@ -80,6 +80,8 @@ function main() {
     'test:self-fix:typescript-number-to-string': 'ts-node src/tests/manual/verify_self_fix_typescript_number_to_string.ts',
     'test:self-fix:typescript-argument-coercion': 'ts-node src/tests/manual/verify_self_fix_typescript_argument_coercion.ts',
     'test:self-fix:typescript-string-to-boolean': 'ts-node src/tests/manual/verify_self_fix_typescript_string_to_boolean.ts',
+    'test:self-fix:typescript-boolean-to-string': 'ts-node src/tests/manual/verify_self_fix_typescript_boolean_to_string.ts',
+    'test:self-fix:typescript-boolean-argument-coercion': 'ts-node src/tests/manual/verify_self_fix_typescript_boolean_argument_coercion.ts',
     'test:self-healing:failure': 'ts-node src/tests/manual/verify_self_healing_loop.ts',
     'test:self-healing:success': 'ts-node src/tests/manual/verify_self_healing_success_loop.ts',
   };

@@ -623,6 +623,18 @@ function buildTargetedTypeScriptEdit(buildContext: any) {
     }
   }
 
+  // TS2322: boolean assigned to string variable (quote it)
+  if (code === 'TS2322' && /type 'boolean' is not assignable to type 'string'/i.test(message)) {
+    const replace = sourceLine.replace(/=\s*(true|false)(?![\w$])(\s*[;,]?)/, '= "$1"$2');
+    if (replace !== sourceLine) {
+      return {
+        filename: buildContext.file,
+        find: sourceLine,
+        replace,
+      };
+    }
+  }
+
   if (code === 'TS2304' && /cannot find name/i.test(message)) {
     const missingName = message.match(/cannot find name ['"]?([A-Za-z_$][\w$]*)['"]?/i)?.[1];
     if (missingName) {
@@ -663,9 +675,33 @@ function buildTargetedTypeScriptEdit(buildContext: any) {
     }
   }
 
+  // TS2345: boolean-literal argument to string parameter (quote it)
+  if (code === 'TS2345' && /argument of type 'boolean' is not assignable to parameter of type 'string'/i.test(message)) {
+    const replace = sourceLine.replace(/(\b[A-Za-z_$][\w$]*\()\s*(true|false)\s*(\))/, '$1"$2"$3');
+    if (replace !== sourceLine) {
+      return {
+        filename: buildContext.file,
+        find: sourceLine,
+        replace,
+      };
+    }
+  }
+
   // TS2345: quoted-numeric argument to number parameter (unquote it)
   if (code === 'TS2345' && /argument of type 'string' is not assignable to parameter of type 'number'/i.test(message)) {
     const replace = sourceLine.replace(/(\b[A-Za-z_$][\w$]*\()\s*['"](-?\d+(?:\.\d+)?)['"]\s*(\))/, '$1$2$3');
+    if (replace !== sourceLine) {
+      return {
+        filename: buildContext.file,
+        find: sourceLine,
+        replace,
+      };
+    }
+  }
+
+  // TS2345: quoted-boolean argument to boolean parameter (unquote it)
+  if (code === 'TS2345' && /argument of type 'string' is not assignable to parameter of type 'boolean'/i.test(message)) {
+    const replace = sourceLine.replace(/(\b[A-Za-z_$][\w$]*\()\s*['"](true|false)['"]\s*(\))/, '$1$2$3');
     if (replace !== sourceLine) {
       return {
         filename: buildContext.file,
