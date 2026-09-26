@@ -12,6 +12,7 @@ import { parseExplicitAppendFileRequest, parseExplicitFileRequest, parseExplicit
 import { workspaceService } from '../../modules/services/WorkspaceService';
 import { tools as registeredTools } from '../../modules/tools/registry';
 import { isBuildRequest, isKnowledgeQuestionStructural, isReadOnlyStructural } from '../intelligence/intent-classifier';
+import { diagnoseFailure, detectParallelGroups, generatePlanAttempts, selectBestPlan, validatePlan } from './adaptive-dag-planner';
 import fs from 'fs';
 import path from 'path';
 
@@ -23,6 +24,10 @@ export interface ExecutionStep {
     input: Record<string, any>;
     dependsOn: string[];
     fallbackStrategy?: 'retry' | 'skip' | 'abort' | 'alternative';
+    /** Adaptive planner: this step can run in parallel with other independent steps */
+    parallel?: boolean;
+    /** Adaptive planner: why this step was chosen and positioned here */
+    reasoning?: string;
 }
 
 /** Does this string actually look like a web address? Free classifier models
@@ -122,6 +127,13 @@ export interface ExecutionPlan {
          */
         deterministic?: boolean;
         localOnly?: boolean;
+        /**
+         * Adaptive DAG planner metadata: parallel execution groups detected,
+         * number of planning attempts made, and confidence in the selected plan.
+         */
+        parallelGroups?: number;
+        adaptiveAttempts?: number;
+        confidence?: number;
     };
 }
 
@@ -3141,26 +3153,55 @@ Rules:
      * from the error, never keyword-matched back into the step that failed).
      */
     private static async generateDynamicDag(intent: StructuredIntent, memory: any, context?: any): Promise<ExecutionPlan> {
-        console.log(`[PlanningEngine] Generating REAL-TIME DAG for: ${intent.goal}`);
+        console.log(`[PlanningEngine] Generating ADAPTIVE DAG for: ${intent.goal}`);
         const ANSWER_ONLY_TOOLS = PlanningEngine.ANSWER_ONLY;
         const looksLikeBuildRequest = PlanningEngine.looksLikeBuild;
 
         const isRecovery = /^fix and continue:/i.test(String(intent.goal || '').trim());
-        // Compacted, never raw: one completed page-builder node used to drag an
-        // entire HTML page into this prompt and the planning call itself died on
-        // free-tier token limits — turning every recovery into the failover node.
-        const historyContext = memory ? `\nPrevious Execution History:\n${JSON.stringify(compactHistoryForPrompt(memory))}` : "";
-        const recoveryRules = isRecovery ? `
-This is a FAILURE-RECOVERY plan. Non-negotiable rules:
-- READ the error text inside the goal. Every step you propose must address its CAUSE (missing dependency -> install it; wrong path -> locate the right one; syntax error -> read the file and fix that line).
-- NEVER just re-run the failed step unchanged as the whole plan; earn the retry with a diagnosis or repair step before it.
-- Keep it minimal: diagnose -> repair -> re-run. Do not re-author work that already succeeded.` : '';
 
-        const entropySeed = Math.random().toString(36).substring(7);
-        const systemPrompt = `You are a Professional Software Architecture Planner.
+        // Use adaptive planner for multi-attempt, parallel-aware planning
+        const attempts = await generatePlanAttempts(intent, memory, context || {}, {
+            maxAttempts: isRecovery ? 3 : 2,
+            enableParallelDetection: true,
+            enableFailureDiagnosis: isRecovery,
+            entropySeed: Math.random().toString(36).substring(7)
+        });
+
+        const bestAttempt = selectBestPlan(attempts);
+        if (bestAttempt && bestAttempt.steps.length > 0) {
+            const validation = validatePlan(bestAttempt.steps, intent);
+            if (validation.valid) {
+                const parallelGroups = detectParallelGroups(bestAttempt.steps);
+                const stepsWithParallel = bestAttempt.steps.map(step => ({
+                    ...step,
+                    parallel: parallelGroups.some(g => g.stepIds.includes(step.id))
+                }));
+
+                console.log(`[PlanningEngine] Adaptive DAG generated: ${stepsWithParallel.length} steps, ${parallelGroups.length} parallel groups, confidence: ${bestAttempt.confidence}`);
+                return {
+                    id: `dag_${Date.now()}`,
+                    goal: intent.goal,
+                    steps: stepsWithParallel,
+                    metadata: {
+                        complexity: intent.complexity,
+                        riskLevel: intent.riskLevel,
+                        parallelGroups: parallelGroups.length,
+                        adaptiveAttempts: attempts.length,
+                        confidence: bestAttempt.confidence
+                    }
+                };
+            } else {
+                console.warn(`[PlanningEngine] Best plan validation failed: ${validation.issues.join(', ')}`);
+            }
+        }
+
+        // Fallback to single-attempt if adaptive planner fails
+        console.warn('[PlanningEngine] Adaptive planner failed, falling back to single attempt');
+        const fallbackEntropySeed = Math.random().toString(36).substring(7);
+        const fallbackSystemPrompt = `You are a Professional Software Architecture Planner.
 Generate a dynamic Execution DAG (Directed Acyclic Graph) for the given goal.
 
-Entropy Seed: ${entropySeed} (Use this to explore different optimal paths if possible)
+Entropy Seed: ${fallbackEntropySeed} (Use this to explore different optimal paths if possible)
 
 Constraints:
 - Use ONLY tools from THIS catalogue (name(args) — purpose). An argument ending with ? is optional:
@@ -3171,11 +3212,11 @@ ${catalogueFor(intent.goal)}
 - Any id you write inside {{FROM:...}} MUST also appear in that step's dependsOn.
 - Assign an agent to each node: Dev, Security, Browser, General.
 - DO NOT use static templates. Analyze the specific goal from a fresh perspective.
-- Provide a brief "reasoning" field for EACH step explaining why this path was chosen.${recoveryRules}
+- Provide a brief "reasoning" field for EACH step explaining why this path was chosen.
 
 Goal: ${intent.goal}
 Complexity: ${intent.complexity}
-Risk: ${intent.riskLevel}${historyContext}
+Risk: ${intent.riskLevel}${memory ? `\nPrevious Execution History:\n${JSON.stringify(compactHistoryForPrompt(memory))}` : ""}
 
 Return ONLY a JSON array of steps:
 [
@@ -3185,17 +3226,17 @@ Return ONLY a JSON array of steps:
     "tool": "tool_name",
     "agent": "agent_type",
     "input": { "instruction": "..." },
-    "dependsOn": ["prev_node_id"]
+    "dependsOn": ["prev_node_id"],
+    "parallel": true|false,
+    "reasoning": "why this step and why this position"
   }
 ]`;
 
         try {
             // Using routeToModel for planning
             const response = await routeToModel([
-                { role: 'system', content: systemPrompt },
+                { role: 'system', content: fallbackSystemPrompt },
                 { role: 'user', content: `Analyze goal and generate DAG for: ${intent.goal}` }
-                // Planning is internal reasoning — the local brain writes the
-                // DAG JSON; the daily quota stays for the user-facing answer.
             ], undefined, undefined, undefined, undefined, undefined, undefined, { ...(context || {}), purpose: 'internal' });
 
             const rawSteps = PlanningEngine.parseJsonArrayLoose(response);
@@ -3206,29 +3247,11 @@ Return ONLY a JSON array of steps:
                     tool: String(step.tool || 'shell_execute'),
                     agent: String(step.agent || 'General'),
                     input: step.input || {},
-                    dependsOn: Array.isArray(step.dependsOn) ? step.dependsOn.map(String) : []
+                    dependsOn: Array.isArray(step.dependsOn) ? step.dependsOn.map(String) : [],
+                    parallel: step.parallel === true,
+                    reasoning: step.reasoning || ''
                 })), String(intent.goal || ''), context);
 
-                /**
-                 * A REQUEST TO BUILD IS NOT ANSWERED BY TALKING ABOUT BUILDING.
-                 *
-                 * His run, verbatim, against «Build a world-class e-commerce
-                 * platform … Generate complete production-ready code»:
-                 *
-                 *     Executing node: define_project_structure   → central_answer
-                 *     Executing node: generate_auth_system       → central_answer
-                 *     Executing node: create_multi_vendor_marketplace → central_answer
-                 *     «Good evening, Younes. As we embark on building …»
-                 *
-                 * Fifteen nodes, six essays, and not one file on disk. Worse,
-                 * an essay always "succeeds", so the failed step's repair got
-                 * stamped as a PROVEN cure and replayed on the next unrelated
-                 * error («proven 2x» in his log).
-                 *
-                 * A plan that answers a BUILD with nothing but answering tools
-                 * is not a plan. It is refused here, and the deterministic
-                 * builders take the request instead.
-                 */
                 const talkOnly = steps.length > 0 && steps.every((st: any) =>
                     ANSWER_ONLY_TOOLS.has(String(st.tool || '')));
                 if (talkOnly && looksLikeBuildRequest(String(intent.goal || ''))) {
@@ -3268,21 +3291,6 @@ Return ONLY a JSON array of steps:
             console.error('[PlanningEngine] Dynamic DAG generation failed:', err);
         }
 
-        /**
-         * A BUILD MUST NOT DIE BECAUSE A PLANNER RAN OUT OF QUOTA.
-         *
-         * From his log, in full: the DAG planner reached Groq, Groq answered
-         * «429 … tokens per day (TPD): Limit 100000, Used 100000», every
-         * keyless provider was dead (401/418/402), the local brain had timed
-         * out — and a request to BUILD A SYSTEM ended with «تعذّر الوصول إلى
-         * محرّك الذكاء». Nothing in that build needed a model: the scaffolder,
-         * the database, the CRUD, the screens and the self-QA are all
-         * deterministic. Only the ROUTE to them went through an LLM.
-         *
-         * So when planning fails and the goal is a build, the builders take it.
-         * This is the same rescue the talk-only plan already gets — it just has
-         * to survive the planner being unreachable, not merely wrong.
-         */
         if (looksLikeBuildRequest(String(intent.goal || ''))) {
             console.warn('[PlanningEngine] the planner was unreachable for a BUILD — routing systems to evidence-first planning, never an invented stack.');
             const scope = PlanningEngine.classifyBuildScope(String(intent.goal || ''));
@@ -3306,22 +3314,14 @@ Return ONLY a JSON array of steps:
             };
         }
 
-        // Emergency Fallback (Dynamic but minimal)
         console.warn(`[PlanningEngine] Using failover node for: ${intent.goal}`);
         const fallbackUrl = String(intent.goal || '').match(/https?:\/\/[^\s]+|\b[a-z0-9-]+\.(?:com|org|net|io|dev|ai|co|app|sa|eg|me)(?:\/[^\s]*)?/i);
-        // A planner failure must not reinterpret an engineering build as a browser
-        // visit just because upstream intent analysis was unavailable or imprecise.
-        // URLs remain explicit browser evidence; otherwise a browser fallback is
-        // permitted only for a non-build request.
         const isBrowserFallback = !!fallbackUrl || (
             !looksLikeBuildRequest(String(intent.goal || '')) && (
                 intent.suggestedAgent === 'Browser'
                 || Boolean(intent.requiredTools && intent.requiredTools.includes('browser_run'))
             )
         );
-        // For browser intents, open the live browser deterministically instead of
-        // the generic browser_run (which needs explicit actions and otherwise dies
-        // with "actions_or_instruction_required" -> "Recovery failed").
         return {
             id: `failover_${Date.now()}`,
             goal: intent.goal,
