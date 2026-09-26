@@ -63,6 +63,7 @@ const COMMON_DEV_PORTS = [5173, 5174, 3000, 3001, 4173, 8080, 8000];
  */
 const STATIC_PREVIEW_SERVER_SOURCE = [
     "const fs=require('fs'),http=require('http'),path=require('path');",
+    `const isWithinRoot=${isWithinRoot.toString()};`,
     "const root=process.cwd(),port=Number(process.env.PORT);",
     "const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.woff2':'font/woff2'};",
     "const index=path.join(root,'index.html');",
@@ -71,7 +72,7 @@ const STATIC_PREVIEW_SERVER_SOURCE = [
     "  const pathname=safe(String(req.url||'/').split('?')[0]);",
     "  if(!pathname){res.statusCode=400;return res.end('bad request')}",
     "  const candidate=path.resolve(root,'.'+pathname);",
-    "  if(candidate!==root&&!candidate.startsWith(root+path.sep)){res.statusCode=403;return res.end('forbidden')}",
+    "  if(!isWithinRoot(candidate,root)){res.statusCode=403;return res.end('forbidden')}",
     "  let file=candidate;",
     "  try{if(fs.statSync(file).isDirectory())file=path.join(file,'index.html')}catch{}",
     "  if(!fs.existsSync(file)||!fs.statSync(file).isFile())file=index;",

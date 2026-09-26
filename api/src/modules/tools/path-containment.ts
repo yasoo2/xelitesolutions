@@ -1,5 +1,3 @@
-import path from 'path';
-
 //  A SECURITY PRIMITIVE IMPORTS NOTHING. It lives alone in this file, and
 //  not beside the workspace service, for two reasons: a boundary check that
 //  depends on a service can be broken by that service, and a check that is
@@ -23,6 +21,9 @@ import path from 'path';
  *     there, two paths differing in case really are two different files.
  */
 export function isWithinRoot(child: string, parent: string): boolean {
+    // The static preview embeds this exact function in a standalone Node process.
+    // Keep its dependencies local so production bundling cannot leave a closure.
+    const path: typeof import('path') = require('path');
     /**
      *  …AND IT MUST RESOLVE, OR «..» WALKS STRAIGHT OUT.
      *

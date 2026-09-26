@@ -121,7 +121,7 @@ export class LLM7Provider {
 
     constructor() {
         this.apiKey = (process.env.LLM7_API_KEY || 'unused').trim() || 'unused';
-        this.client = new OpenAI({ apiKey: this.apiKey, baseURL: LLM7_BASE_URL });
+        this.client = new OpenAI({ apiKey: this.apiKey, baseURL: LLM7_BASE_URL, maxRetries: 0 });
     }
 
     isAvailable(): boolean {

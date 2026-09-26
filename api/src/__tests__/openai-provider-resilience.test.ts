@@ -42,6 +42,7 @@ describe('OpenAIProvider resilience', () => {
         expect(mockOpenAI).toHaveBeenCalledWith({
             apiKey: 'sk-local-test',
             baseURL: 'http://127.0.0.1:11434/v1',
+            maxRetries: 0,
         });
     });
 
@@ -53,6 +54,7 @@ describe('OpenAIProvider resilience', () => {
         expect(mockOpenAI).toHaveBeenCalledWith({
             apiKey: 'managed-gateway-token',
             baseURL: 'https://managed.example.test/v1',
+            maxRetries: 0,
         });
     });
 

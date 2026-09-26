@@ -1,4 +1,5 @@
 export {};
+import path from 'node:path';
 /**
  * WIRE PROOF — orchestrator rigor on the REAL dynamic-DAG path.
  *
@@ -61,7 +62,7 @@ async function main() {
     console.log('\n[2] الخطأ الخام يصل المستخدم جملة إنسانية، والتفصيل التقني محفوظ');
     const { AgentLoopService } = await import('../../modules/services/AgentLoopService');
     const wrapped = (AgentLoopService as any).humanizeFailure(
-        "ENOENT: no such file or directory, scandir 'C:\\Users\\home\\Documents\\xelitesolutions\\data\\projects\\session-x\\path_to_directory'", 'ar');
+        `ENOENT: no such file or directory, scandir '${path.resolve(__dirname, '../../../..', 'data', 'projects', 'session-x', 'path_to_directory')}'`, 'ar');
     check('the reply opens with an Arabic human sentence', wrapped.startsWith('تعذّر إكمال الطلب'));
     check('the technical detail is kept for repair, clearly labelled', wrapped.includes('التفاصيل التقنية') && wrapped.includes('ENOENT'));
 

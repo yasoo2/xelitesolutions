@@ -645,6 +645,31 @@ describe('PhaseExecutorTool observable trusted context', () => {
         }
     });
 
+    it.each(['.', '../outside.jsx'])('does not offer %s as a generated file repair destination', async (authoredFile) => {
+        const workspaceId = `workspace-react-boundary-${process.pid}`;
+        const projectRoot = path.join(workspaceService.getActiveRoot(workspaceId), `react-boundary-${process.pid}`);
+        fs.mkdirSync(projectRoot, { recursive: true });
+        try {
+            mockedExecuteTool.mockResolvedValue({
+                ok: false,
+                error: 'artifact_type_mismatch: rejected generated artifact',
+                output: { path: projectRoot, authoredFiles: [authoredFile] },
+            } as any);
+            const result: any = await new PhaseExecutorTool().execute({
+                phase: {
+                    phaseNumber: 2,
+                    name: 'Interface',
+                    tasks: [{ task: 'Build the records interface', tool: 'react_project', args: {} }],
+                },
+            }, { sessionId: 'chat-react-boundary', workspaceId, userId: 'user-react-boundary' });
+
+            expect(result.ok).toBe(false);
+            expect(result.output.results[0].repairFile).toBeUndefined();
+        } finally {
+            fs.rmSync(projectRoot, { recursive: true, force: true });
+        }
+    });
+
     it('does not fabricate a terminal report when a non-terminal tool has no message', async () => {
         mockedExecuteTool.mockResolvedValue({ ok: true, output: { stdout: 'internal value' } } as any);
 

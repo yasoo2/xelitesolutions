@@ -30,6 +30,7 @@ export class CerebrasProvider {
             this.client = new OpenAI({
                 apiKey: this.apiKey,
                 baseURL: CEREBRAS_BASE_URL,
+                maxRetries: 0,
             });
             console.info('[Cerebras] Provider initialized with API key (FREE, ultra-fast)');
         } else {

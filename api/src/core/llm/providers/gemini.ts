@@ -18,6 +18,27 @@ const FALLBACK_MODELS = [
     'models/gemini-pro-latest'
 ];
 
+interface GeminiRequestOptions {
+    signal?: AbortSignal;
+    timeoutMs?: number;
+}
+
+function stopsModelFallback(error: any, signal?: AbortSignal): boolean {
+    if (signal?.aborted || ['AbortError', 'APIUserAbortError'].includes(error?.name) || error?.code === 'ABORT_ERR') return true;
+    const status = Number(error?.status ?? error?.response?.status ?? error?.error?.code);
+    const detail = [error?.message, error?.code, error?.error?.message, error?.error?.status, error?.error?.code].join(' ');
+    return [401, 403, 429].includes(status)
+        || /\b(?:401|403|429)\b|quota|resource[_\s-]*exhausted|rate[_\s-]*limit|too many requests|unauthori[sz]ed|unauthenticated|forbidden|permission[_\s-]*denied|invalid[_\s-]*api[_\s-]*key|api[_\s-]*key[_\s-]*invalid/i.test(detail);
+}
+
+function requestOptions(options?: GeminiRequestOptions): { signal?: AbortSignal; timeout?: number } | undefined {
+    if (!options) return undefined;
+    const result: { signal?: AbortSignal; timeout?: number } = {};
+    if (options.signal) result.signal = options.signal;
+    if (Number.isFinite(options.timeoutMs) && Number(options.timeoutMs) > 0) result.timeout = options.timeoutMs;
+    return Object.keys(result).length > 0 ? result : undefined;
+}
+
 export class GeminiProvider {
     private client: OpenAI | null = null;
     private apiKey: string;
@@ -28,6 +49,7 @@ export class GeminiProvider {
             this.client = new OpenAI({
                 apiKey: this.apiKey,
                 baseURL: GEMINI_BASE_URL,
+                maxRetries: 0,
             });
             console.info('[Gemini] Provider initialized with API key');
         } else {
@@ -126,7 +148,8 @@ export class GeminiProvider {
     async chatComplete(
         messages: Array<{ role: string; content: string | any[] }>,
         model?: string,
-        tools?: any[]
+        tools?: any[],
+        options?: GeminiRequestOptions
     ): Promise<string> {
         if (!this.client) {
             throw new Error('Gemini API key not configured');
@@ -163,6 +186,7 @@ export class GeminiProvider {
         }) : undefined;
 
         for (const currentModel of modelsToTry) {
+            options?.signal?.throwIfAborted();
             try {
                 console.info(`[Gemini] Attempting with model: ${currentModel}`);
                 const params: any = {
@@ -174,7 +198,7 @@ export class GeminiProvider {
                     params.tools = sanitizedTools;
                 }
 
-                const completion = await this.client.chat.completions.create(params);
+                const completion = await this.client.chat.completions.create(params, requestOptions(options));
 
                 if (!completion || !completion.choices || completion.choices.length === 0) {
                     console.warn(`[Gemini] Model ${currentModel} returned empty response, trying next model...`);
@@ -199,14 +223,7 @@ export class GeminiProvider {
                 return message.content || '';
             } catch (error: any) {
                 const status = Number(error?.status ?? error?.response?.status ?? NaN);
-                const isQuota = error.status === 429 || error.message?.includes('429');
-                const isBadRequest = error.status === 400 || error.message?.includes('400');
-
-                if (isQuota) {
-                    console.warn(`[Gemini] Model ${currentModel} QUOTA EXCEEDED, trying next model...`);
-                    lastError = error;
-                    continue;
-                }
+                if (stopsModelFallback(error, options?.signal)) throw error;
 
                 const errorDetail = await (async () => {
                     try {
@@ -227,7 +244,8 @@ export class GeminiProvider {
     async chatWithTools(
         messages: Array<{ role: string; content: string | any[] }>,
         tools: any[],
-        model?: string
+        model?: string,
+        options?: GeminiRequestOptions
     ): Promise<OpenAI.Chat.Completions.ChatCompletion> {
         if (!this.client) {
             throw new Error('Gemini API key not configured');
@@ -251,13 +269,14 @@ export class GeminiProvider {
         const sanitizedTools = tools.map((t: any) => this.sanitizeTool(t));
 
         for (const currentModel of modelsToTry) {
+            options?.signal?.throwIfAborted();
             try {
                 console.info(`[Gemini] Tool Chat attempting with model: ${currentModel}`);
                 const completion = await this.client.chat.completions.create({
                     model: currentModel,
                     messages: messages as any,
                     tools: sanitizedTools,
-                });
+                }, requestOptions(options));
 
                 if (!completion || !completion.choices || completion.choices.length === 0) {
                     console.warn(`[Gemini] Tool Chat model ${currentModel} returned empty response, trying next model...`);
@@ -275,11 +294,7 @@ export class GeminiProvider {
                 return completion;
             } catch (error: any) {
                 const status = Number(error?.status ?? error?.response?.status ?? NaN);
-                if (status === 429) {
-                    console.warn(`[Gemini] Tool Chat model ${currentModel} QUOTA EXHAUSTED, trying next model...`);
-                    lastError = error;
-                    continue;
-                }
+                if (stopsModelFallback(error, options?.signal)) throw error;
 
                 // Extract comprehensive error details for debugging
                 let errorDetail = '';
@@ -314,7 +329,8 @@ export class GeminiProvider {
         messages: Array<{ role: string; content: string | any[] }>,
         tools: any[],
         onChunk: (text: string) => void,
-        model?: string
+        model?: string,
+        options?: GeminiRequestOptions
     ): Promise<OpenAI.Chat.Completions.ChatCompletion> {
         if (!this.client) {
             throw new Error('Gemini API key not configured');
@@ -338,6 +354,7 @@ export class GeminiProvider {
         const sanitizedTools = tools.map((t: any) => this.sanitizeTool(t));
 
         for (const currentModel of modelsToTry) {
+            options?.signal?.throwIfAborted();
             try {
                 console.info(`[Gemini] Streaming Tool Chat attempting with model: ${currentModel}`);
 
@@ -347,7 +364,7 @@ export class GeminiProvider {
                     messages: messages as any,
                     tools: sanitizedTools,
                     stream: true,
-                });
+                }, requestOptions(options));
 
                 // Accumulate the full response while streaming chunks
                 let fullContent = '';
@@ -357,6 +374,7 @@ export class GeminiProvider {
 
                 // @ts-ignore
                 for await (const chunk of stream) {
+                    options?.signal?.throwIfAborted();
                     // @ts-ignore
                     const delta = chunk.choices?.[0]?.delta;
                     if (!delta) continue;
@@ -419,11 +437,7 @@ export class GeminiProvider {
                 return assembled;
             } catch (error: any) {
                 const status = Number(error?.status ?? error?.response?.status ?? NaN);
-                if (status === 429) {
-                    console.warn(`[Gemini] Streaming Tool Chat model ${currentModel} QUOTA EXHAUSTED, trying next model...`);
-                    lastError = error;
-                    continue;
-                }
+                if (stopsModelFallback(error, options?.signal)) throw error;
 
                 // Extract comprehensive error details
                 let errorDetail = '';

@@ -31,6 +31,7 @@ export class OpenAIProvider {
             this.client = new OpenAI({
                 apiKey: this.apiKey,
                 ...(this.baseURL ? { baseURL: this.baseURL } : {}),
+                maxRetries: 0,
             });
             console.info('[OpenAI] Provider initialized with configured credentials');
         } else {

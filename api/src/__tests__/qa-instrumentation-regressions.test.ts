@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import ts from 'typescript';
 
 const read = (name: string) => fs.readFileSync(path.join(__dirname, '..', 'core', 'quality', name), 'utf8');
 
@@ -12,8 +13,31 @@ describe('browser QA instrumentation regressions', () => {
 
     test('responsive checks change layout width without switching the borrowed page into mobile emulation', () => {
         const source = read('ui-inspection.ts');
-        expect(source.match(/mobile: false/g)).toHaveLength(2);
-        expect(source).not.toContain('mobile: width <= 600');
+        const parsed = ts.createSourceFile('ui-inspection.ts', source, ts.ScriptTarget.Latest, true);
+        const overrides: ts.CallExpression[] = [];
+        const visit = (node: ts.Node) => {
+            if (ts.isCallExpression(node) && node.arguments[0] && ts.isStringLiteral(node.arguments[0])
+                && node.arguments[0].text === 'Emulation.setDeviceMetricsOverride') {
+                overrides.push(node);
+            }
+            ts.forEachChild(node, visit);
+        };
+        visit(parsed);
+
+        expect(overrides.length).toBeGreaterThan(0);
+        for (const override of overrides) {
+            const parameters = override.arguments[1];
+            expect(parameters && ts.isObjectLiteralExpression(parameters)).toBe(true);
+            if (!parameters || !ts.isObjectLiteralExpression(parameters)) continue;
+            // Inspect every initial/retry path without prescribing their count.
+            // A spread could overwrite the explicit flag with mobile emulation.
+            expect(parameters.properties.some(ts.isSpreadAssignment)).toBe(false);
+            const mobile = parameters.properties.filter(property => property.name
+                && (ts.isIdentifier(property.name) || ts.isStringLiteral(property.name))
+                && property.name.text === 'mobile');
+            expect(mobile.map(property => ts.isPropertyAssignment(property)
+                ? property.initializer.kind : undefined)).toEqual([ts.SyntaxKind.FalseKeyword]);
+        }
     });
 
     test('contact forms are not judged as persistent record editors', () => {

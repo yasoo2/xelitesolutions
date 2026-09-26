@@ -1,0 +1,1439 @@
+[Config] env=development · storage=JSON · mongo=DEFAULT → mongodb://localhost:27017/joe
+[ToolRegistry] Registered 163 tools (71 revived).
+[32minfo[39m: [DeployManager] Auto-deploy poller disabled (local/offline mode). {"timestamp":"2026-09-24T18:48:20.758Z"}
+[ExecutionEnforcer] Running Boot-Time Integrity Check...
+[ExecutionEnforcer] Integrity Check PASSED.
+[ExecutionGuard] Global Execution Guard INSTALLED (Full Coverage).
+[ChatStore] 💾 restored 230 session(s) and 674 message(s) from disk — conversations survive restarts.
+[PageStore] 💾 restored 20 project(s) — surgical edits survive restarts.
+[providers] بلا مفتاح: Gemini، OpenAI، Cerebras، Mistral — جو يعمل على الذكاء المجاني والمحلي. أضف المفاتيح في api/.env متى شئت.
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=deploy_1790275700683 duration=728ms cmd=git config --global --replace-all safe.directory ' {"timestamp":"2026-09-24T18:48:21.423Z"}
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=deploy_1790275701427 duration=804ms cmd=git config --global --add safe.directory D:\Joe\xe {"timestamp":"2026-09-24T18:48:22.233Z"}
+[LocalBrain] 👁️ vision model already installed: moondream:latest — attached images are analyzed locally.
+[0mGET /api/runs/active [32m200[0m 10.987 ms - 11[0m
+[WS] Upgrading browser connection
+[WS] Browser connection upgraded
+[BrowserWS] Client connect. sid=browser:6ab55a5e7ac7a260cb6a3358 userId=6ab55a557ac7a260cb6a3356
+[BrowserWS] First client for sid=browser:6ab55a5e7ac7a260cb6a3358. Calling onFirstClient.
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=deploy_1790275702235 duration=4084ms cmd=git config --global --add safe.directory /root/xel {"timestamp":"2026-09-24T18:48:26.321Z"}
+[32minfo[39m: [DeployManager] Added safe.directory exceptions for git successfully. {"timestamp":"2026-09-24T18:48:26.326Z"}
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790275705192 duration=4899ms cmd=git {"timestamp":"2026-09-24T18:48:30.091Z"}
+[2026-09-24 21:48:21.302 +0300] [32mINFO[39m (27080): [36mJOE_BUILD_SHA[39m
+    [35mbuildSha[39m: "a9b88495022ff842c910265d75c24aa31e1bcbb0"
+    [35mbundleFingerprint[39m: "154850cc9976"
+    [35mentry[39m: "D:\Joe\xelitesolutions\api\dist\index.js"
+[WS] Upgrading ws connection at: /api/ws
+[WS] Connection established
+[WS] Client connected to liveWss
+[2026-09-24 21:48:21.304 +0300] [32mINFO[39m (27080): [36m🚀 JOE API STARTUP INITIATED...[39m
+[2026-09-24 21:48:22.142 +0300] [32mINFO[39m (27080): [36m⚠️  JSON Persistence mode enabled: Data will be saved to api/data/db[39m
+[2026-09-24 21:48:22.167 +0300] [32mINFO[39m (27080): [36mAPI server listening and WebSocket attached[39m
+    [35mport[39m: 5000
+    [35mbindHost[39m: "0.0.0.0"
+    [35mcrashLog[39m: "D:\Joe\xelitesolutions\api\data\crash.log"
+[2026-09-24 21:48:22.953 +0300] [32mINFO[39m (27080): [36m🧠 Local brain ready: 3 model(s) — chat=qwen2.5-coder:7b, code=qwen2.5-coder:7b. Warming up in background.[39m
+[LocalBrain] ⏱️ qwen2.5-coder:7b answered a one-token prompt in 10440ms — the router sizes its patience from this.
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=runargv_1790275703805 duration=10595ms cmd=git {"timestamp":"2026-09-24T18:48:34.450Z"}
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=runargv_1790275714452 duration=1072ms cmd=git {"timestamp":"2026-09-24T18:48:35.525Z"}
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=runargv_1790275715527 duration=522ms cmd=git {"timestamp":"2026-09-24T18:48:36.050Z"}
+[0mGET /api/runs/active [36m304[0m 3.546 ms - -[0m
+[BrowserWS] Client disconnect. sid=browser:6ab55a5e7ac7a260cb6a3358
+[BrowserWS] Last client for sid=browser:6ab55a5e7ac7a260cb6a3358. Calling onLastClient.
+[0mPOST /api/runs/verify [32m200[0m 8.524 ms - 65[0m
+[0mGET /api/system/update/status [36m304[0m 11.660 ms - -[0m
+[0mGET /api/system/update/check [32m200[0m 8.748 ms - 120[0m
+[0mGET /api/project/root [36m304[0m 33.852 ms - -[0m
+[0mGET /api/workspaces [32m200[0m 4.177 ms - 452[0m
+[0mGET /api/oauth/google/profile [36m304[0m 6.409 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.730 ms - -[0m
+[0mPOST /api/runs/verify [32m200[0m 2.962 ms - 65[0m
+[WS] Upgrading ws connection at: /api/ws
+[WS] Connection established
+[WS] Client connected to liveWss
+[0mGET /api/sessions?kind=chat%2Cagent [32m200[0m 8.680 ms - 402[0m
+[0mGET /api/system/update/status [36m304[0m 3.118 ms - -[0m
+[0mGET /api/project/root [36m304[0m 2.809 ms - -[0m
+[0mGET /api/workspaces [36m304[0m 2.559 ms - -[0m
+[0mGET /api/oauth/google/profile [36m304[0m 3.975 ms - -[0m
+[0mGET /api/sessions?kind=chat%2Cagent [36m304[0m 3.161 ms - -[0m
+[0mGET /api/project/tree [36m304[0m 84.856 ms - -[0m
+[0mGET /api/github/status?workspaceId=08cd121d14718a385ee60dd4 [36m304[0m 3.625 ms - -[0m
+[0mGET /api/project/tree [36m304[0m 16.216 ms - -[0m
+[0mGET /api/sessions?kind=chat%2Cagent [36m304[0m 2.825 ms - -[0m
+[0mGET /api/project/tree [36m304[0m 5.278 ms - -[0m
+[0mGET /api/project/tree [36m304[0m 5.600 ms - -[0m
+[0mGET /api/sessions/6ab55a5e7ac7a260cb6a3358/queue [32m200[0m 4.854 ms - 27[0m
+[SessionController] Listing messages for sessionId: 6ab55a5e7ac7a260cb6a3358, userId: 6ab55a557ac7a260cb6a3356
+[SessionController] Found 2 messages and 0 tools for session 6ab55a5e7ac7a260cb6a3358
+[0mPOST /api/runs/verify [32m200[0m 1.789 ms - 65[0m
+[SessionController] Listing messages for sessionId: 6ab55a5e7ac7a260cb6a3358, userId: 6ab55a557ac7a260cb6a3356
+[SessionController] Found 2 messages and 0 tools for session 6ab55a5e7ac7a260cb6a3358
+[0mPOST /api/runs/verify [32m200[0m 1.851 ms - 65[0m
+[0mGET /api/sessions/6ab55a5e7ac7a260cb6a3358/queue [36m304[0m 1.621 ms - -[0m
+[0mGET /api/project/root [36m304[0m 10.526 ms - -[0m
+[0mGET /api/project/root [36m304[0m 2.316 ms - -[0m
+[0mPUT /api/sessions/6ab55a5e7ac7a260cb6a3358/queue [32m200[0m 2.512 ms - 27[0m
+[0mGET /api/extension/status [36m304[0m 5.788 ms - -[0m
+[0mGET /api/project/root [36m304[0m 3.275 ms - -[0m
+[WS] Upgrading browser connection
+[WS] Browser connection upgraded
+[BrowserWS] Client connect. sid=browser:6ab55a5e7ac7a260cb6a3358 userId=6ab55a557ac7a260cb6a3356
+[BrowserWS] First client for sid=browser:6ab55a5e7ac7a260cb6a3358. Calling onFirstClient.
+[0mGET /api/extension/status [36m304[0m 2.426 ms - -[0m
+[0mGET /api/project/root [36m304[0m 4.575 ms - -[0m
+[0mGET /api/sessions/6ab55a5e7ac7a260cb6a3358/workspace [32m200[0m 1129.645 ms - 22196[0m
+[0mGET /api/sessions/6ab55a5e7ac7a260cb6a3358/history [36m304[0m 1543.143 ms - -[0m
+[0mGET /api/sessions/6ab55a5e7ac7a260cb6a3358/messages [36m304[0m 1916.135 ms - -[0m
+[0mGET /api/sessions/6ab55a5e7ac7a260cb6a3358/workspace [36m304[0m 1044.686 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.017 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.712 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.473 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.845 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.304 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.403 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.289 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 1.184 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.469 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.205 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790275877215 duration=1180ms cmd=git {"timestamp":"2026-09-24T18:51:18.395Z"}
+[0mGET /api/runs/active [36m304[0m 1.594 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790275897339 duration=615ms cmd=git {"timestamp":"2026-09-24T18:51:37.954Z"}
+[0mGET /api/runs/active [36m304[0m 2.348 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790275907245 duration=735ms cmd=git {"timestamp":"2026-09-24T18:51:47.980Z"}
+[0mGET /api/runs/active [36m304[0m 1.385 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790275917277 duration=1378ms cmd=git {"timestamp":"2026-09-24T18:51:58.655Z"}
+[0mGET /api/runs/active [36m304[0m 1.910 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790275937577 duration=561ms cmd=git {"timestamp":"2026-09-24T18:52:18.138Z"}
+[0mGET /api/runs/active [36m304[0m 1.207 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.198 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.629 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.146 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.854 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.824 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.092 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.278 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790276037307 duration=873ms cmd=git {"timestamp":"2026-09-24T18:53:58.180Z"}
+[0mGET /api/runs/active [36m304[0m 1.229 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.975 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.031 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.739 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.254 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.031 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.753 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.061 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.302 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790276157223 duration=643ms cmd=git {"timestamp":"2026-09-24T18:55:57.866Z"}
+[0mGET /api/runs/active [36m304[0m 1.392 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.919 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.422 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.576 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.809 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.757 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.043 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790276257261 duration=718ms cmd=git {"timestamp":"2026-09-24T18:57:37.979Z"}
+[0mGET /api/runs/active [36m304[0m 1.035 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.145 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.747 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.530 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.088 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 27.451 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.001 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=runargv_1790276337105 duration=1957ms cmd=git {"timestamp":"2026-09-24T18:58:59.062Z"}
+[0mGET /api/runs/active [36m304[0m 1.136 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.148 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.982 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.287 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.509 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790276417225 duration=616ms cmd=git {"timestamp":"2026-09-24T19:00:17.841Z"}
+[0mGET /api/runs/active [36m304[0m 1.886 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.956 ms - -[0m
+[0mGET /api/system/update/check [32m200[0m 0.850 ms - 120[0m
+[0mGET /api/runs/active [36m304[0m 1.253 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.482 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790276477217 duration=3031ms cmd=git {"timestamp":"2026-09-24T19:01:20.248Z"}
+[0mGET /api/runs/active [36m304[0m 1.410 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.246 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 2.816 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790276517226 duration=613ms cmd=git {"timestamp":"2026-09-24T19:01:57.839Z"}
+[0mGET /api/runs/active [36m304[0m 0.905 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790276537227 duration=693ms cmd=git {"timestamp":"2026-09-24T19:02:17.920Z"}
+[0mGET /api/runs/active [36m304[0m 1.690 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790276547224 duration=538ms cmd=git {"timestamp":"2026-09-24T19:02:27.762Z"}
+[0mGET /api/runs/active [36m304[0m 0.777 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 1.167 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.536 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790276577239 duration=1277ms cmd=git {"timestamp":"2026-09-24T19:02:58.517Z"}
+[0mGET /api/runs/active [36m304[0m 1.259 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.188 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 2.083 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.137 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.826 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.255 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 2.385 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.823 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.400 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790276778176 duration=2553ms cmd=git {"timestamp":"2026-09-24T19:06:20.729Z"}
+[0mGET /api/runs/active [36m304[0m 1.511 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.077 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.573 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.065 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.981 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.964 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 2.000 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.016 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.197 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.437 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790276926097 duration=1680ms cmd=git {"timestamp":"2026-09-24T19:08:47.777Z"}
+[0mGET /api/system/update/check [36m304[0m 0.658 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.465 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.858 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.839 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790276977223 duration=666ms cmd=git {"timestamp":"2026-09-24T19:09:37.889Z"}
+[0mGET /api/runs/active [36m304[0m 2.319 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790276987233 duration=1147ms cmd=git {"timestamp":"2026-09-24T19:09:48.381Z"}
+[0mGET /api/runs/active [36m304[0m 1.475 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790277007377 duration=1668ms cmd=git {"timestamp":"2026-09-24T19:10:09.045Z"}
+[0mGET /api/runs/active [36m304[0m 4.572 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.376 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790277027245 duration=1436ms cmd=git {"timestamp":"2026-09-24T19:10:28.681Z"}
+[0mGET /api/runs/active [36m304[0m 1.553 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790277047223 duration=5274ms cmd=git {"timestamp":"2026-09-24T19:10:52.497Z"}
+[0mGET /api/system/update/check [36m304[0m 72.351 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 4.991 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.260 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790277115265 duration=5004ms cmd=git {"timestamp":"2026-09-24T19:12:00.269Z"}
+[0mGET /api/runs/active [36m304[0m 2.856 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=runargv_1790277115156 duration=18343ms cmd=git {"timestamp":"2026-09-24T19:12:13.499Z"}
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=runargv_1790277133500 duration=3275ms cmd=git {"timestamp":"2026-09-24T19:12:16.775Z"}
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=runargv_1790277136777 duration=2143ms cmd=git {"timestamp":"2026-09-24T19:12:18.920Z"}
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=runargv_1790277138922 duration=1878ms cmd=git {"timestamp":"2026-09-24T19:12:20.801Z"}
+[0mGET /api/runs/active [36m304[0m 1.453 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.476 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790277167599 duration=3418ms cmd=git {"timestamp":"2026-09-24T19:12:51.017Z"}
+[0mGET /api/system/update/check [32m200[0m 1.102 ms - 120[0m
+[0mGET /api/runs/active [36m304[0m 1.678 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 8.620 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.636 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.425 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.909 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 7.035 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.815 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.983 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790277381214 duration=3018ms cmd=git {"timestamp":"2026-09-24T19:16:24.232Z"}
+[0mGET /api/runs/active [36m304[0m 1.889 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.564 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 2.891 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 2.135 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790277417217 duration=1787ms cmd=git {"timestamp":"2026-09-24T19:16:59.004Z"}
+[0mGET /api/runs/active [36m304[0m 1.543 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790277437245 duration=592ms cmd=git {"timestamp":"2026-09-24T19:17:17.837Z"}
+[0mGET /api/runs/active [36m304[0m 1.334 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790277447224 duration=1149ms cmd=git {"timestamp":"2026-09-24T19:17:28.373Z"}
+[0mGET /api/runs/active [36m304[0m 1.249 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.462 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.837 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.673 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 4.200 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.827 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.756 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.308 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.744 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.636 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790277654136 duration=5534ms cmd=git {"timestamp":"2026-09-24T19:20:59.670Z"}
+[0mGET /api/runs/active [36m304[0m 1.225 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 2.537 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 419.423 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.142 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790277780202 duration=5613ms cmd=git {"timestamp":"2026-09-24T19:23:05.815Z"}
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=runargv_1790277780290 duration=8716ms cmd=git {"timestamp":"2026-09-24T19:23:09.007Z"}
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=runargv_1790277789013 duration=3653ms cmd=git {"timestamp":"2026-09-24T19:23:12.666Z"}
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=runargv_1790277792671 duration=2238ms cmd=git {"timestamp":"2026-09-24T19:23:14.909Z"}
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=runargv_1790277794924 duration=1667ms cmd=git {"timestamp":"2026-09-24T19:23:16.591Z"}
+[0mGET /api/runs/active [36m304[0m 1.560 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.346 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 3.681 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790277865706 duration=2523ms cmd=git {"timestamp":"2026-09-24T19:24:28.229Z"}
+[0mGET /api/runs/active [36m304[0m 1.422 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.555 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.536 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790277912445 duration=2204ms cmd=git {"timestamp":"2026-09-24T19:25:14.649Z"}
+[0mGET /api/system/update/check [32m200[0m 0.682 ms - 120[0m
+[0mGET /api/runs/active [36m304[0m 6.365 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 2.342 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790277953355 duration=5619ms cmd=git {"timestamp":"2026-09-24T19:25:58.974Z"}
+[0mGET /api/runs/active [36m304[0m 1.383 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.259 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.571 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790278004563 duration=974ms cmd=git {"timestamp":"2026-09-24T19:26:45.537Z"}
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790278015191 duration=2622ms cmd=git {"timestamp":"2026-09-24T19:26:57.813Z"}
+[0mGET /api/system/update/check [36m304[0m 0.707 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.273 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790278074879 duration=2810ms cmd=git {"timestamp":"2026-09-24T19:27:57.690Z"}
+[0mGET /api/runs/active [36m304[0m 1.381 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.790 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.249 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.666 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.994 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.579 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790278197905 duration=5441ms cmd=git {"timestamp":"2026-09-24T19:30:03.346Z"}
+[0mGET /api/runs/active [36m304[0m 1.730 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.333 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.466 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790278247231 duration=2946ms cmd=git {"timestamp":"2026-09-24T19:30:50.178Z"}
+[0mGET /api/system/update/check [36m304[0m 0.785 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.446 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.245 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790278277229 duration=5091ms cmd=git {"timestamp":"2026-09-24T19:31:22.320Z"}
+[0mGET /api/runs/active [36m304[0m 1.469 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.420 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.427 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.441 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790278333859 duration=7192ms cmd=git {"timestamp":"2026-09-24T19:32:21.051Z"}
+[0mGET /api/runs/active [36m304[0m 3.220 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.300 ms - -[0m
+[0mPOST /api/runs/verify [32m200[0m 4.114 ms - 65[0m
+[0mPOST /api/runs/verify [32m200[0m 1.943 ms - 65[0m
+[WS] Upgrading ws connection at: /api/ws
+[WS] Connection established
+[WS] Client connected to liveWss
+[0mGET /api/system/update/status [36m304[0m 10.861 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 52.517 ms - -[0m
+[0mGET /api/project/root [36m304[0m 14.469 ms - -[0m
+[0mGET /api/workspaces [36m304[0m 9.057 ms - -[0m
+[0mGET /api/oauth/google/profile [36m304[0m 12.936 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.542 ms - -[0m
+[0mGET /api/sessions?kind=chat%2Cagent [32m200[0m 3.762 ms - 402[0m
+[0mGET /api/system/update/status [36m304[0m 4.248 ms - -[0m
+[0mGET /api/project/root [36m304[0m 3.448 ms - -[0m
+[0mGET /api/workspaces [36m304[0m 2.228 ms - -[0m
+[0mGET /api/oauth/google/profile [36m304[0m 5.833 ms - -[0m
+[0mGET /api/sessions?kind=chat%2Cagent [36m304[0m 2.576 ms - -[0m
+[0mGET /api/project/tree [36m304[0m 183.190 ms - -[0m
+[0mGET /api/project/tree [36m304[0m 8.107 ms - -[0m
+[0mGET /api/project/tree [36m304[0m 8.552 ms - -[0m
+[0mGET /api/github/status?workspaceId=08cd121d14718a385ee60dd4 [36m304[0m 2.706 ms - -[0m
+[0mGET /api/sessions?kind=chat%2Cagent [36m304[0m 3.909 ms - -[0m
+[0mGET /api/project/tree [36m304[0m 36.800 ms - -[0m
+[0mGET /api/sessions/6ab55a5e7ac7a260cb6a3358/queue [32m200[0m 2.048 ms - 27[0m
+[0mPOST /api/runs/verify [32m200[0m 1.874 ms - 65[0m
+[SessionController] Listing messages for sessionId: 6ab55a5e7ac7a260cb6a3358, userId: 6ab55a557ac7a260cb6a3356
+[SessionController] Found 2 messages and 0 tools for session 6ab55a5e7ac7a260cb6a3358
+[0mGET /api/extension/status [36m304[0m 1.669 ms - -[0m
+[0mPOST /api/runs/verify [32m200[0m 2.903 ms - 65[0m
+[SessionController] Listing messages for sessionId: 6ab55a5e7ac7a260cb6a3358, userId: 6ab55a557ac7a260cb6a3356
+[SessionController] Found 2 messages and 0 tools for session 6ab55a5e7ac7a260cb6a3358
+[0mGET /api/sessions/6ab55a5e7ac7a260cb6a3358/queue [36m304[0m 1.525 ms - -[0m
+[0mGET /api/extension/status [36m304[0m 1.960 ms - -[0m
+[0mGET /api/project/root [36m304[0m 3.010 ms - -[0m
+[WS] Upgrading browser connection
+[WS] Browser connection upgraded
+[BrowserWS] Client connect. sid=browser:6ab55a5e7ac7a260cb6a3358 userId=6ab55a557ac7a260cb6a3356
+[0mPUT /api/sessions/6ab55a5e7ac7a260cb6a3358/queue [32m200[0m 2.454 ms - 27[0m
+[0mGET /api/project/root [36m304[0m 2.315 ms - -[0m
+[0mGET /api/project/root [36m304[0m 2.090 ms - -[0m
+[0mGET /api/project/root [36m304[0m 2.853 ms - -[0m
+[0mGET /api/sessions/6ab55a5e7ac7a260cb6a3358/history [36m304[0m 2695.976 ms - -[0m
+[0mGET /api/sessions/6ab55a5e7ac7a260cb6a3358/workspace [36m304[0m 3186.747 ms - -[0m
+[0mGET /api/sessions/6ab55a5e7ac7a260cb6a3358/messages [36m304[0m 3608.719 ms - -[0m
+[0mGET /api/sessions/6ab55a5e7ac7a260cb6a3358/workspace [36m304[0m 5017.448 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.734 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.836 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790278424695 duration=7431ms cmd=git {"timestamp":"2026-09-24T19:33:52.126Z"}
+[0mGET /project-preview/6ab55a5e7ac7a260cb6a3358/index.html?v=1790270754096 [32m200[0m 17.981 ms - 1079[0m
+[0mGET /project-preview/6ab55a5e7ac7a260cb6a3358/assets/index-CuPfnYtl.css [32m200[0m 9.318 ms - 36282[0m
+[0mGET /project-preview/6ab55a5e7ac7a260cb6a3358/assets/index-Do7FM_HA.js [32m200[0m 470.558 ms - 166176[0m
+[0mGET /api/runs/active [36m304[0m 1.896 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=runargv_1790278422833 duration=17207ms cmd=git {"timestamp":"2026-09-24T19:34:00.040Z"}
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=runargv_1790278440060 duration=2067ms cmd=git {"timestamp":"2026-09-24T19:34:02.127Z"}
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=runargv_1790278442134 duration=5857ms cmd=git {"timestamp":"2026-09-24T19:34:07.991Z"}
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=runargv_1790278448004 duration=1357ms cmd=git {"timestamp":"2026-09-24T19:34:09.361Z"}
+[0mGET /api/runs/active [36m304[0m 1.772 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.464 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.873 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.802 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.423 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790278492578 duration=3137ms cmd=git {"timestamp":"2026-09-24T19:34:55.715Z"}
+[0mGET /api/runs/active [36m304[0m 1.686 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.462 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790278522582 duration=4317ms cmd=git {"timestamp":"2026-09-24T19:35:26.899Z"}
+[0mGET /api/runs/active [36m304[0m 1.839 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 4.509 ms - -[0m
+[0mGET /api/system/update/check [32m200[0m 1.081 ms - 120[0m
+[0mGET /api/system/update/check [36m304[0m 0.674 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.418 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.907 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.653 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790278562587 duration=6759ms cmd=git {"timestamp":"2026-09-24T19:36:09.346Z"}
+[0mGET /api/runs/active [36m304[0m 1.621 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.477 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.541 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.548 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.506 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.227 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.720 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.341 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.453 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790278626474 duration=6469ms cmd=git {"timestamp":"2026-09-24T19:37:12.943Z"}
+[0mGET /api/runs/active [36m304[0m 3.672 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.268 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.879 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.454 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.538 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.382 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.551 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.615 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.687 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790278692564 duration=6155ms cmd=git {"timestamp":"2026-09-24T19:38:18.719Z"}
+[0mGET /api/runs/active [36m304[0m 1.653 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.291 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.531 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.512 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.794 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 2.885 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.709 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 2.087 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.448 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790278752564 duration=4925ms cmd=git {"timestamp":"2026-09-24T19:39:17.491Z"}
+[0mGET /api/runs/active [36m304[0m 1.258 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.204 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.826 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.644 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 3.101 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.276 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790278802585 duration=3427ms cmd=git {"timestamp":"2026-09-24T19:40:06.012Z"}
+[0mGET /api/runs/active [36m304[0m 3.237 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.341 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 129.142 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 2.057 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.565 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790278840238 duration=3045ms cmd=git {"timestamp":"2026-09-24T19:40:43.283Z"}
+[0mGET /api/runs/active [36m304[0m 1.454 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.658 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.747 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.581 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790278871600 duration=2364ms cmd=git {"timestamp":"2026-09-24T19:41:13.964Z"}
+[0mGET /api/runs/active [36m304[0m 1.845 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.672 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790278899974 duration=1637ms cmd=git {"timestamp":"2026-09-24T19:41:41.612Z"}
+[0mGET /api/system/update/check [36m304[0m 0.811 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 2.016 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.414 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790278914928 duration=3463ms cmd=git {"timestamp":"2026-09-24T19:41:58.391Z"}
+[0mGET /api/runs/active [36m304[0m 1.364 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.366 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.538 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.790 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.385 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790278952569 duration=1329ms cmd=git {"timestamp":"2026-09-24T19:42:33.898Z"}
+[0mGET /api/runs/active [36m304[0m 2.524 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790278964857 duration=3111ms cmd=git {"timestamp":"2026-09-24T19:42:47.968Z"}
+[0mGET /api/runs/active [36m304[0m 1.176 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.512 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790279002582 duration=675ms cmd=git {"timestamp":"2026-09-24T19:43:23.257Z"}
+[0mGET /api/runs/active [36m304[0m 1.761 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790279012580 duration=1825ms cmd=git {"timestamp":"2026-09-24T19:43:34.405Z"}
+[0mGET /api/system/update/check [36m304[0m 0.947 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.450 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.410 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 1.242 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790279032543 duration=2530ms cmd=git {"timestamp":"2026-09-24T19:43:55.073Z"}
+[0mGET /api/runs/active [36m304[0m 1.541 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.667 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.398 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 68.308 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790279055617 duration=796ms cmd=git {"timestamp":"2026-09-24T19:44:16.413Z"}
+[0mGET /api/runs/active [36m304[0m 1.714 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.534 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790279069642 duration=1176ms cmd=git {"timestamp":"2026-09-24T19:44:30.818Z"}
+[0mGET /api/runs/active [36m304[0m 1.385 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790279082708 duration=1744ms cmd=git {"timestamp":"2026-09-24T19:44:44.452Z"}
+[0mGET /api/runs/active [36m304[0m 1.393 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 8.378 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 40.422 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.364 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790279102609 duration=1191ms cmd=git {"timestamp":"2026-09-24T19:45:03.800Z"}
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=runargv_1790279099728 duration=4882ms cmd=git {"timestamp":"2026-09-24T19:45:04.610Z"}
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=runargv_1790279104618 duration=1208ms cmd=git {"timestamp":"2026-09-24T19:45:05.826Z"}
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=runargv_1790279105832 duration=1402ms cmd=git {"timestamp":"2026-09-24T19:45:07.234Z"}
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=runargv_1790279107239 duration=2925ms cmd=git {"timestamp":"2026-09-24T19:45:10.164Z"}
+[0mGET /api/runs/active [36m304[0m 1.690 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790279114529 duration=1687ms cmd=git {"timestamp":"2026-09-24T19:45:16.216Z"}
+[0mGET /api/runs/active [36m304[0m 1.549 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 3.450 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790279132792 duration=4641ms cmd=git {"timestamp":"2026-09-24T19:45:37.433Z"}
+[0mGET /api/system/update/check [32m200[0m 0.764 ms - 120[0m
+[0mGET /api/runs/active [36m304[0m 1.553 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 2.254 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.605 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.289 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.588 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790279176795 duration=2204ms cmd=git {"timestamp":"2026-09-24T19:46:19.000Z"}
+[0mGET /api/runs/active [36m304[0m 3.450 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.504 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.651 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790279202567 duration=4468ms cmd=git {"timestamp":"2026-09-24T19:46:47.035Z"}
+[0mGET /api/runs/active [36m304[0m 1.495 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.588 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 2.877 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.516 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.777 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 2.339 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790279252584 duration=6025ms cmd=git {"timestamp":"2026-09-24T19:47:38.609Z"}
+[0mGET /api/system/update/check [36m304[0m 1.314 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.599 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.454 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.178 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.428 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.965 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.473 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.291 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790279312266 duration=5530ms cmd=git {"timestamp":"2026-09-24T19:48:37.796Z"}
+[0mGET /api/runs/active [36m304[0m 1.555 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 2.037 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.497 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.884 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.246 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.369 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.411 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790279362580 duration=1449ms cmd=git {"timestamp":"2026-09-24T19:49:24.029Z"}
+[0mGET /api/runs/active [36m304[0m 1.915 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.578 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790279377663 duration=778ms cmd=git {"timestamp":"2026-09-24T19:49:38.441Z"}
+[0mGET /api/system/update/check [36m304[0m 1.902 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.640 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.601 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790279388640 duration=957ms cmd=git {"timestamp":"2026-09-24T19:49:49.597Z"}
+[0mGET /api/runs/active [36m304[0m 1.424 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.300 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790279399891 duration=1805ms cmd=git {"timestamp":"2026-09-24T19:50:01.696Z"}
+[0mGET /api/runs/active [36m304[0m 1.387 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.462 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790279418400 duration=1321ms cmd=git {"timestamp":"2026-09-24T19:50:19.721Z"}
+[0mGET /api/runs/active [36m304[0m 1.154 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790279432591 duration=1150ms cmd=git {"timestamp":"2026-09-24T19:50:33.741Z"}
+[0mGET /api/runs/active [36m304[0m 1.604 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.793 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.521 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790279448752 duration=808ms cmd=git {"timestamp":"2026-09-24T19:50:49.560Z"}
+[0mGET /api/runs/active [36m304[0m 1.993 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.722 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.326 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790279458632 duration=3282ms cmd=git {"timestamp":"2026-09-24T19:51:01.914Z"}
+[0mGET /api/runs/active [36m304[0m 1.468 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.603 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.454 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.351 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790279490766 duration=1067ms cmd=git {"timestamp":"2026-09-24T19:51:31.833Z"}
+[0mGET /api/runs/active [36m304[0m 1.548 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.629 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.410 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790279502570 duration=939ms cmd=git {"timestamp":"2026-09-24T19:51:43.509Z"}
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790279512569 duration=915ms cmd=git {"timestamp":"2026-09-24T19:51:53.484Z"}
+[0mGET /api/runs/active [36m304[0m 1.439 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.463 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790279522576 duration=793ms cmd=git {"timestamp":"2026-09-24T19:52:03.369Z"}
+[0mGET /api/runs/active [36m304[0m 1.558 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790279532563 duration=671ms cmd=git {"timestamp":"2026-09-24T19:52:13.234Z"}
+[0mGET /api/runs/active [36m304[0m 1.492 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790279542613 duration=1269ms cmd=git {"timestamp":"2026-09-24T19:52:23.882Z"}
+[0mGET /api/runs/active [36m304[0m 1.651 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.217 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790279557893 duration=1134ms cmd=git {"timestamp":"2026-09-24T19:52:39.027Z"}
+[0mGET /api/runs/active [36m304[0m 1.359 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.430 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790279572613 duration=1115ms cmd=git {"timestamp":"2026-09-24T19:52:53.728Z"}
+[0mGET /api/runs/active [36m304[0m 1.469 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.789 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.380 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.137 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.222 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.750 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.750 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.318 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.715 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.343 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790279622563 duration=526ms cmd=git {"timestamp":"2026-09-24T19:53:43.089Z"}
+[0mGET /api/runs/active [36m304[0m 0.702 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.952 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.450 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.314 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.762 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.011 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.134 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.041 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.659 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.117 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.153 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.941 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.790 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790279712590 duration=887ms cmd=git {"timestamp":"2026-09-24T19:55:13.477Z"}
+[0mGET /api/runs/active [36m304[0m 1.112 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.108 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.244 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 23.998 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.073 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=runargv_1790279742453 duration=1621ms cmd=git {"timestamp":"2026-09-24T19:55:44.074Z"}
+[0mGET /api/runs/active [36m304[0m 0.957 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.034 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790279762597 duration=1333ms cmd=git {"timestamp":"2026-09-24T19:56:03.930Z"}
+[0mGET /api/runs/active [36m304[0m 1.183 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.185 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790279779455 duration=759ms cmd=git {"timestamp":"2026-09-24T19:56:20.214Z"}
+[0mGET /api/runs/active [36m304[0m 1.375 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.701 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790279797217 duration=525ms cmd=git {"timestamp":"2026-09-24T19:56:37.742Z"}
+[0mGET /api/runs/active [36m304[0m 1.406 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.854 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790279807225 duration=792ms cmd=git {"timestamp":"2026-09-24T19:56:48.017Z"}
+[0mGET /api/system/update/check [32m200[0m 0.694 ms - 120[0m
+[0mGET /api/runs/active [36m304[0m 1.318 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.959 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790279817431 duration=628ms cmd=git {"timestamp":"2026-09-24T19:56:58.060Z"}
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790279827214 duration=620ms cmd=git {"timestamp":"2026-09-24T19:57:07.835Z"}
+[0mGET /api/runs/active [36m304[0m 1.319 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.302 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790279837216 duration=640ms cmd=git {"timestamp":"2026-09-24T19:57:17.856Z"}
+[0mGET /api/runs/active [36m304[0m 1.003 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.877 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.375 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.697 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.065 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.195 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.172 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790279882566 duration=551ms cmd=git {"timestamp":"2026-09-24T19:58:03.117Z"}
+[0mGET /api/runs/active [36m304[0m 0.961 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.940 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.300 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.288 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.805 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.339 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790279932571 duration=791ms cmd=git {"timestamp":"2026-09-24T19:58:53.362Z"}
+[0mGET /api/system/update/check [36m304[0m 0.415 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.794 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.148 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.691 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.913 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.044 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.057 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.659 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.707 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.851 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.023 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.158 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790280002579 duration=579ms cmd=git {"timestamp":"2026-09-24T20:00:03.158Z"}
+[0mGET /api/runs/active [36m304[0m 0.819 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.149 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.215 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.346 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790280032651 duration=931ms cmd=git {"timestamp":"2026-09-24T20:00:33.582Z"}
+[0mGET /api/runs/active [36m304[0m 1.489 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790280042597 duration=843ms cmd=git {"timestamp":"2026-09-24T20:00:43.440Z"}
+[0mGET /api/runs/active [36m304[0m 1.535 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790280052648 duration=1118ms cmd=git {"timestamp":"2026-09-24T20:00:53.766Z"}
+[0mGET /api/runs/active [36m304[0m 1.239 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.747 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.169 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790280066144 duration=911ms cmd=git {"timestamp":"2026-09-24T20:01:07.055Z"}
+[0mGET /api/runs/active [36m304[0m 1.609 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.342 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790280078660 duration=975ms cmd=git {"timestamp":"2026-09-24T20:01:19.635Z"}
+[0mGET /api/runs/active [36m304[0m 1.228 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.306 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790280100169 duration=1061ms cmd=git {"timestamp":"2026-09-24T20:01:41.230Z"}
+[0mGET /api/runs/active [36m304[0m 1.425 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.616 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.135 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790280112569 duration=513ms cmd=git {"timestamp":"2026-09-24T20:01:53.082Z"}
+[0mGET /api/runs/active [36m304[0m 1.278 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.109 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.138 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.818 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.810 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.899 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.115 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.045 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.443 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.832 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.200 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.108 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.019 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.220 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.147 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790280208716 duration=1271ms cmd=git {"timestamp":"2026-09-24T20:03:29.987Z"}
+[0mGET /api/runs/active [36m304[0m 1.175 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.437 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.988 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790280232594 duration=896ms cmd=git {"timestamp":"2026-09-24T20:03:53.490Z"}
+[0mGET /api/runs/active [36m304[0m 0.790 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.046 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.131 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.163 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.325 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.012 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.054 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.480 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790280282576 duration=503ms cmd=git {"timestamp":"2026-09-24T20:04:43.079Z"}
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790280292575 duration=614ms cmd=git {"timestamp":"2026-09-24T20:04:53.189Z"}
+[0mGET /api/system/update/check [36m304[0m 0.692 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.378 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.296 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.908 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.755 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.971 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.729 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.286 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.572 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.159 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790280342564 duration=521ms cmd=git {"timestamp":"2026-09-24T20:05:43.085Z"}
+[0mGET /api/runs/active [36m304[0m 1.150 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.064 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.377 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.391 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790280373187 duration=716ms cmd=git {"timestamp":"2026-09-24T20:06:13.903Z"}
+[0mGET /api/runs/active [36m304[0m 0.858 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.142 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.695 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.030 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 27.254 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.776 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.780 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=runargv_1790280417108 duration=1691ms cmd=git {"timestamp":"2026-09-24T20:06:58.799Z"}
+[0mGET /api/runs/active [36m304[0m 1.435 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.165 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790280432815 duration=506ms cmd=git {"timestamp":"2026-09-24T20:07:13.321Z"}
+[0mGET /api/runs/active [36m304[0m 1.185 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.185 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.111 ms - -[0m
+[0mGET /api/system/update/check [32m200[0m 0.578 ms - 120[0m
+[0mGET /api/runs/active [36m304[0m 1.199 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790280472568 duration=560ms cmd=git {"timestamp":"2026-09-24T20:07:53.128Z"}
+[0mGET /api/runs/active [36m304[0m 1.172 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.296 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790280482824 duration=584ms cmd=git {"timestamp":"2026-09-24T20:08:03.408Z"}
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790280488714 duration=563ms cmd=git {"timestamp":"2026-09-24T20:08:09.277Z"}
+[0mGET /api/runs/active [36m304[0m 1.355 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.349 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790280497873 duration=759ms cmd=git {"timestamp":"2026-09-24T20:08:18.632Z"}
+[0mGET /api/runs/active [36m304[0m 1.184 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.255 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790280510393 duration=557ms cmd=git {"timestamp":"2026-09-24T20:08:30.950Z"}
+[0mGET /api/runs/active [36m304[0m 1.272 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.161 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790280527368 duration=568ms cmd=git {"timestamp":"2026-09-24T20:08:47.936Z"}
+[0mGET /api/system/update/check [36m304[0m 0.538 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.040 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.043 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.099 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.070 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.146 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.979 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.051 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.505 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.754 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790280588116 duration=600ms cmd=git {"timestamp":"2026-09-24T20:09:48.716Z"}
+[0mGET /api/runs/active [36m304[0m 1.192 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.097 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.040 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.247 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790280617246 duration=554ms cmd=git {"timestamp":"2026-09-24T20:10:17.800Z"}
+[0mGET /api/runs/active [36m304[0m 1.104 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.181 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790280639025 duration=733ms cmd=git {"timestamp":"2026-09-24T20:10:39.758Z"}
+[0mGET /api/runs/active [36m304[0m 1.177 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.239 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.578 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.331 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.389 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.238 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.280 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.316 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.132 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.771 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.374 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.185 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.340 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.152 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.110 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.239 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.117 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.073 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.226 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.110 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.557 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.701 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.943 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.582 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.654 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.228 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.433 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.586 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.280 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.563 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.606 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.795 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.587 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.739 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.579 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.545 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.781 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.806 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.463 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.893 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.017 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.171 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.047 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.822 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.919 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.611 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.381 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.649 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.748 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.540 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.561 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.542 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.539 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.560 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.803 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.714 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.336 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.730 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.722 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.797 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.929 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.091 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.647 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.520 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 26.993 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.720 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=runargv_1790281062449 duration=1386ms cmd=git {"timestamp":"2026-09-24T20:17:43.835Z"}
+[0mGET /api/runs/active [36m304[0m 0.805 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.565 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.962 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.875 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.365 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.638 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.650 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.569 ms - -[0m
+[0mGET /api/system/update/check [32m200[0m 0.327 ms - 120[0m
+[0mGET /api/runs/active [36m304[0m 0.649 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.615 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.619 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.568 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.568 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.760 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.000 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.467 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.940 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.956 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.763 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.067 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.862 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.794 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.754 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.705 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.760 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.418 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.864 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.603 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.573 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.628 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.063 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.827 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.989 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.528 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.037 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.027 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.146 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.684 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.623 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.731 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.601 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.463 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.954 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.296 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.786 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.794 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.817 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.580 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.252 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.318 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.894 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.539 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.267 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.729 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.051 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.055 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.751 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.246 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.128 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.878 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.868 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.279 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.697 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.816 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.756 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.828 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.644 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.711 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.798 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.378 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.760 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.567 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.597 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.637 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.610 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.627 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.608 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.610 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.829 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.347 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.596 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.700 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.645 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.921 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.902 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.832 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.796 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.354 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.833 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.084 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.975 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.622 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.779 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.227 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.068 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.826 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.837 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 26.332 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.974 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.678 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=runargv_1790281737111 duration=1326ms cmd=git {"timestamp":"2026-09-24T20:28:58.437Z"}
+[0mGET /api/runs/active [36m304[0m 1.162 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.791 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.664 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.646 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.799 ms - -[0m
+[0mGET /api/system/update/check [32m200[0m 0.447 ms - 120[0m
+[0mGET /api/runs/active [36m304[0m 1.068 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.108 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.147 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.136 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.843 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.072 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.008 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.079 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.287 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.575 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.198 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.218 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790281862692 duration=612ms cmd=git {"timestamp":"2026-09-24T20:31:03.304Z"}
+[0mGET /api/runs/active [36m304[0m 1.366 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.219 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790281872958 duration=608ms cmd=git {"timestamp":"2026-09-24T20:31:13.566Z"}
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790281882636 duration=617ms cmd=git {"timestamp":"2026-09-24T20:31:23.253Z"}
+[0mGET /api/runs/active [36m304[0m 1.342 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.084 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.741 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.511 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.209 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.337 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.240 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.459 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.003 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.799 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.158 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.082 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.134 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.407 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.670 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.748 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.922 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.904 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.937 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.260 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.716 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.431 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.974 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.770 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.103 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.827 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.309 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.059 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.009 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.236 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.304 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.462 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.902 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.884 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.736 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.626 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.908 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.885 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.876 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.360 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.898 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.010 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.850 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.033 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.092 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.101 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.965 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.783 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.981 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.459 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.906 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.714 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.004 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.132 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.974 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.058 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.195 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.498 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.152 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.100 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.955 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.261 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.212 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.213 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.170 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790282312785 duration=522ms cmd=git {"timestamp":"2026-09-24T20:38:33.307Z"}
+[0mGET /api/runs/active [36m304[0m 1.045 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.098 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.386 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.753 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.776 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.633 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.908 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.116 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.002 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790282372584 duration=567ms cmd=git {"timestamp":"2026-09-24T20:39:33.151Z"}
+[0mGET /api/runs/active [36m304[0m 1.044 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 39.813 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.262 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=runargv_1790282382440 duration=1864ms cmd=git {"timestamp":"2026-09-24T20:39:44.304Z"}
+[0mGET /api/runs/active [36m304[0m 0.708 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.081 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.125 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.235 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.660 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.620 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.831 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.638 ms - -[0m
+[0mGET /api/system/update/check [32m200[0m 0.446 ms - 120[0m
+[0mGET /api/runs/active [36m304[0m 1.039 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.785 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.344 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.223 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.663 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.895 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.817 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.511 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.000 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.883 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.937 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.101 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.004 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.152 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.211 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790282552565 duration=558ms cmd=git {"timestamp":"2026-09-24T20:42:33.123Z"}
+[0mGET /api/runs/active [36m304[0m 1.054 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.179 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790282562570 duration=599ms cmd=git {"timestamp":"2026-09-24T20:42:43.169Z"}
+[0mGET /api/system/update/check [36m304[0m 0.384 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.797 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.603 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.634 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.931 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.219 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 2.107 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.254 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.618 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.277 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.065 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.503 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.828 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.802 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.669 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.921 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.751 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.010 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.445 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.042 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.172 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.104 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.099 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.096 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.099 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.832 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.415 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.125 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.171 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.088 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.904 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.668 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.195 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.944 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.163 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.198 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.467 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.010 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.831 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.040 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.005 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.769 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.191 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.778 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.382 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.299 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.092 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.867 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.095 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.165 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.423 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.106 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.113 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.787 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.510 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.076 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.010 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.066 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.064 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.255 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.219 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.077 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.582 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.132 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.802 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.173 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.075 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.049 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.075 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.091 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.212 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.234 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 49.644 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.657 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.279 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=runargv_1790283057110 duration=1598ms cmd=git {"timestamp":"2026-09-24T20:50:58.708Z"}
+[0mGET /api/runs/active [36m304[0m 1.018 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.135 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.790 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.776 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.131 ms - -[0m
+[0mGET /api/system/update/check [32m200[0m 0.506 ms - 120[0m
+[0mGET /api/runs/active [36m304[0m 1.057 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.741 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.692 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.855 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.632 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.782 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.038 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.850 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.654 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.306 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.731 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.941 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.765 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.766 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.385 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.222 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.210 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.502 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.115 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.117 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.042 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.319 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.826 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.695 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.887 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.645 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.721 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.567 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.098 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.886 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.798 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.768 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.572 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.558 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.764 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.281 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.580 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.657 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.848 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.584 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.526 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.794 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.574 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.794 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.810 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.274 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.568 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.787 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.636 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.770 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.873 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.819 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.561 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.423 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.631 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.580 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.576 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.789 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.672 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.244 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.281 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.916 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.024 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.374 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.102 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.806 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.073 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.319 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.924 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.640 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.205 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.617 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.390 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.970 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.765 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790283602599 duration=913ms cmd=git {"timestamp":"2026-09-24T21:00:03.512Z"}
+[0mGET /api/runs/active [36m304[0m 0.996 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.756 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790283622568 duration=550ms cmd=git {"timestamp":"2026-09-24T21:00:23.118Z"}
+[0mGET /api/runs/active [36m304[0m 1.464 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.146 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.053 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.048 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.452 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.896 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.672 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.799 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.759 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.630 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.588 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.616 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 21.461 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.608 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=runargv_1790283702448 duration=1470ms cmd=git {"timestamp":"2026-09-24T21:01:43.918Z"}
+[0mGET /api/runs/active [36m304[0m 0.669 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.893 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.619 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.894 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.761 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.788 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.896 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.675 ms - -[0m
+[0mGET /api/system/update/check [32m200[0m 0.477 ms - 120[0m
+[0mGET /api/runs/active [36m304[0m 0.873 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.870 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.850 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.133 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.585 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 2.125 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.189 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.521 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.186 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.783 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.786 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.895 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.665 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.013 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.760 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.933 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.028 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.475 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.055 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.680 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.691 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.946 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.836 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.002 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.856 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.398 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.804 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.637 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.827 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.811 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.045 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.840 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.048 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.933 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.857 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.404 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.825 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.640 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.216 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.208 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.150 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.095 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790284053501 duration=841ms cmd=git {"timestamp":"2026-09-24T21:07:34.342Z"}
+[0mGET /api/runs/active [36m304[0m 0.739 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.516 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.974 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.188 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.028 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.697 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.972 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.208 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.311 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790284113617 duration=509ms cmd=git {"timestamp":"2026-09-24T21:08:34.126Z"}
+[0mGET /api/runs/active [36m304[0m 1.235 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.253 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.416 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.866 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.981 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.660 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.118 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.796 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.711 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.656 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.520 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.598 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.186 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.217 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.028 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.709 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.190 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.062 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.864 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.868 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.335 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.911 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.675 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.875 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.915 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.877 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.852 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.165 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.508 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.290 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790284315054 duration=1522ms cmd=git {"timestamp":"2026-09-24T21:11:56.576Z"}
+[0mGET /api/runs/active [36m304[0m 1.276 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.242 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790284330351 duration=2323ms cmd=git {"timestamp":"2026-09-24T21:12:12.674Z"}
+[0mGET /api/runs/active [36m304[0m 1.086 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.125 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.224 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790284357753 duration=2394ms cmd=git {"timestamp":"2026-09-24T21:12:40.147Z"}
+[0mGET /api/runs/active [36m304[0m 7.301 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.103 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.155 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790284379944 duration=1511ms cmd=git {"timestamp":"2026-09-24T21:13:01.455Z"}
+[0mGET /api/system/update/check [36m304[0m 597.123 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.057 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=runargv_1790284386598 duration=5559ms cmd=git {"timestamp":"2026-09-24T21:13:12.157Z"}
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=runargv_1790284392158 duration=1846ms cmd=git {"timestamp":"2026-09-24T21:13:14.004Z"}
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=runargv_1790284394006 duration=940ms cmd=git {"timestamp":"2026-09-24T21:13:14.947Z"}
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=runargv_1790284394948 duration=1316ms cmd=git {"timestamp":"2026-09-24T21:13:16.264Z"}
+[0mGET /api/runs/active [36m304[0m 1.058 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790284399863 duration=1332ms cmd=git {"timestamp":"2026-09-24T21:13:21.195Z"}
+[0mGET /api/runs/active [36m304[0m 1.125 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.248 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.215 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.959 ms - -[0m
+[0mGET /api/system/update/check [32m200[0m 0.342 ms - 120[0m
+[0mGET /api/runs/active [36m304[0m 0.952 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.180 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.386 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.114 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.110 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.138 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.081 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.857 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.100 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.537 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.166 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.116 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.079 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.974 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.852 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.958 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.567 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.278 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.667 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.604 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.704 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.105 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.012 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.902 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.154 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.917 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.907 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.469 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.977 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.982 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.965 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.047 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.165 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.059 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.809 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.371 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.792 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.773 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.568 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.642 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.697 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.498 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.238 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.816 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.829 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.317 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.110 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.803 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.687 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.837 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.111 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.996 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.820 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.302 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.785 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.038 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.044 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.970 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.738 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.126 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.877 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.035 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.917 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.312 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.736 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.938 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.597 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.101 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.041 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.041 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.995 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.509 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.036 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.901 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.738 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.984 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.904 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.071 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.128 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.929 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.878 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 0.447 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.919 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.952 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.996 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.094 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790284992589 duration=838ms cmd=git {"timestamp":"2026-09-24T21:23:13.427Z"}
+[0mGET /api/runs/active [36m304[0m 1.248 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.180 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790285012764 duration=521ms cmd=git {"timestamp":"2026-09-24T21:23:33.285Z"}
+[0mGET /api/runs/active [36m304[0m 1.217 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 40.387 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.065 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=runargv_1790285022457 duration=1733ms cmd=git {"timestamp":"2026-09-24T21:23:44.190Z"}
+[0mGET /api/runs/active [36m304[0m 0.688 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.833 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.266 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.101 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.013 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.713 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.694 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.617 ms - -[0m
+[0mGET /api/system/update/check [32m200[0m 0.318 ms - 120[0m
+[0mGET /api/runs/active [36m304[0m 0.921 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 0.869 ms - -[0m

@@ -30,6 +30,7 @@ export class MistralProvider {
             this.client = new OpenAI({
                 apiKey: this.apiKey,
                 baseURL: MISTRAL_BASE_URL,
+                maxRetries: 0,
             });
             console.info('[Mistral] Provider initialized with API key (FREE tier)');
         } else {

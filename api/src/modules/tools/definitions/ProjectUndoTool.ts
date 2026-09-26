@@ -13,6 +13,7 @@
 import fs from 'fs';
 import { isArabicReply, say } from '../../../shared/reply-language';
 import path from 'path';
+import { isWithinRoot } from '../path-containment';
 import { BaseTool } from '../base';
 import { ToolPermission, ToolExecutionResult } from '../types';
 import { broadcastThinkingDetail, broadcastTerminalLine } from '../../../api/ws';
@@ -48,7 +49,7 @@ function latestSurgicalBatch(history: SurgicalHistoryEntry[]): { batch: Surgical
 function projectPath(dir: string, rel: string): string | null {
     const root = path.resolve(dir);
     const target = path.resolve(root, String(rel || ''));
-    return target === root || target.startsWith(root + path.sep) ? target : null;
+    return isWithinRoot(target, root) ? target : null;
 }
 
 export class ProjectUndoTool extends BaseTool {

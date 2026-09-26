@@ -1,6 +1,7 @@
 import { ToolDefinition, ToolPermission } from '../types';
 import fs from 'fs';
 import path from 'path';
+import { isWithinRoot } from '../path-containment';
 import { persistJoeProjects, samePipelineRun, writeJoeProject } from '../../../api/page-store';
 import { workspaceService } from '../../services/WorkspaceService';
 
@@ -609,7 +610,6 @@ function sessionProjectKey(sessionId: unknown): string {
 
 //  ONE READER FOR ONE SECURITY QUESTION — see utils.isWithinRoot. Three
 //  copies disagreed on three of seven measured cases on win32.
-import { isWithinRoot } from '../utils';
 
 /**
  * A runtime project may be incomplete while its first server-shaped write is
@@ -935,7 +935,7 @@ function generatedArtifactFailureEvidence(
     const root = rebaseStaleRuntimeEvidencePath(output?.path ?? output?.projectDir, projectContext);
     if (!root) return {};
     const file = path.resolve(root, authoredFiles[0]);
-    if (!file.startsWith(`${path.resolve(root)}${path.sep}`)) return {};
+    if (!path.relative(root, file) || !isWithinRoot(file, root)) return {};
     return { repairFile: file.slice(0, 1000) };
 }
 

@@ -88,7 +88,7 @@ describe('and it reaches the app that is written to his disk', () => {
     });
 
     it('keeps an accusative Arabic table request as a usable table with its requested status filter and detail action', () => {
-        const inventory: any = blueprintFor('inventory' as any, ACCUSATIVE_INVENTORY_REQUEST, true);
+        const inventory = blueprintFor('inventory', ACCUSATIVE_INVENTORY_REQUEST, true);
         const content = fileAppContentJs(inventory, {
             brand: 'مركز المخزون', isArabic: true, storeKey: 'inventory', sourceRequest: ACCUSATIVE_INVENTORY_REQUEST,
         } as any);

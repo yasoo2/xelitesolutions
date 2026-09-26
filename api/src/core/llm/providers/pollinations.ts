@@ -74,6 +74,7 @@ export class PollinationsProvider {
         this.client = new OpenAI({
             apiKey: 'dummy', // No key required
             baseURL: BASE_URL,
+            maxRetries: 0,
         });
     }
 
