@@ -5,12 +5,13 @@ import { normalizeIntentText, stripArabicDiacritics, foldChars } from './promptN
 import { compactHistoryForPrompt } from './history-compact';
 import { enrichWorkspaceToolInput } from './workspace-evidence';
 import { findActiveBuiltProject } from './active-built-project';
-import { isReadOnlyRequest, isBoundedTerminalDiagnosticRequest, isKnowledgeQuestion, looksLikeBuild } from './buildIntent';
+import { isBoundedTerminalDiagnosticRequest } from './buildIntent';
 import { capabilityFromRequest } from '../api-discovery/integration';
 import { saysAny } from '../language/arabic';
 import { parseExplicitAppendFileRequest, parseExplicitFileRequest, parseExplicitDirectoryInspectionRequest, parseExplicitReadFilesRequest, parseExpectedReadMarkers } from './file-intent';
 import { workspaceService } from '../../modules/services/WorkspaceService';
 import { tools as registeredTools } from '../../modules/tools/registry';
+import { isBuildRequest, isKnowledgeQuestionStructural, isReadOnlyStructural } from '../intelligence/intent-classifier';
 import fs from 'fs';
 import path from 'path';
 
@@ -259,10 +260,12 @@ export class PlanningEngine {
     ]);
 
     /** Does this request ask for something to EXIST afterwards? */
-    /** Moved to ./buildIntent so the router can ask the same question the
-     *  planner asks. Kept as a static so every existing call site and test
-     *  keeps working unchanged. */
-    static looksLikeBuild = looksLikeBuild;
+    /** Uses structural classification (recording verbs, containers, feature lists)
+     *  instead of closed verb/noun vocabularies. Kept as a static so every
+     *  existing call site and test keeps working unchanged. */
+    static looksLikeBuild(goalRaw: string): boolean {
+        return isBuildRequest(goalRaw).isBuild;
+    }
 
     /**
      * ASKING IS NOT ORDERING.
@@ -281,7 +284,7 @@ export class PlanningEngine {
      * missed it until the folding was applied instead of a longer list.
      */
     static isKnowledgeQuestion(goalRaw: string): boolean {
-        return isKnowledgeQuestion(goalRaw);
+        return isKnowledgeQuestionStructural(goalRaw);
     }
 
     /**
@@ -862,7 +865,7 @@ Rules:
         // request such as "inspect directory X and confirm README.txt exists"
         // is about opening X; README.txt is an entry to verify inside it.
         const explicitDirectory = parseExplicitDirectoryInspectionRequest(userGoal);
-        if (isReadOnlyRequest(userGoal) && explicitDirectory) {
+        if (isReadOnlyStructural(userGoal) && explicitDirectory) {
             return {
                 id: `inspect_directory_${Date.now()}`,
                 goal: intent.goal,
@@ -920,7 +923,7 @@ Rules:
         // through ToolService and let the normal result composer explain the
         // collected evidence in the chat.
         const explicitReadFiles = parseExplicitReadFilesRequest(userGoal);
-        if (isReadOnlyRequest(userGoal) && explicitReadFiles) {
+        if (isReadOnlyStructural(userGoal) && explicitReadFiles) {
             const expectedMarkers = parseExpectedReadMarkers(userGoal);
             return {
                 id: `read_files_${Date.now()}`,
@@ -942,7 +945,7 @@ Rules:
         // conditions" cannot be mistaken for an instruction to stop a server.
         // The pipeline performs discovery through ToolService, then halts before
         // planning or mutation when the evidence carries the same constraint.
-        if (isReadOnlyRequest(userGoal) && !isBoundedTerminalDiagnosticRequest(userGoal)) {
+        if (isReadOnlyStructural(userGoal) && !isBoundedTerminalDiagnosticRequest(userGoal)) {
             return {
                 id: `read_only_audit_${Date.now()}`,
                 goal: intent.goal,
@@ -1814,7 +1817,7 @@ Rules:
              *  last word. Ask the shared question too, so a request that is a
              *  build anywhere is a build here.
              */
-            || looksLikeBuild(String(intent.goal || '')));
+            || PlanningEngine.looksLikeBuild(String(intent.goal || '')));
         /**
          * THE ENGLISH LIST WAS NEVER BROUGHT UP TO THE ARABIC ONE.
          *
