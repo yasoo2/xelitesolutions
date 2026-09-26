@@ -92,7 +92,7 @@ const STOP = new Set([
     'اريد', 'أريد', 'ممكن', 'يرجى', 'رجاء', 'الرجاء', 'قم', 'قوم',
 ]);
 
-const norm = (s: string) => String(s || '')
+export const norm = (s: string) => String(s || '')
     .toLowerCase()
     .replace(/[ً-ْـ]/g, '')            // Arabic diacritics + tatweel
     .replace(/[أإآ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه')
@@ -237,7 +237,7 @@ export const registeredToolNames = (): string[] => (tools as any[]).map(t => t.n
  *   - a plain question with no act verb is left alone, so «ما هو أفضل تصميم؟»
  *     stays a conversation.
  */
-const ACT_VERB = new RegExp([
+export const ACT_VERB = new RegExp([
     'افحص', 'فحص', 'دقق', 'تدقيق', 'حلل', 'تحليل', 'اختبر', 'اختبار', 'قس', 'قياس', 'اختر', 'اختيار',
     'ترجم', 'ترجمه', 'حول', 'تحويل', 'ولد', 'توليد', 'راجع', 'مراجعه', 'استخرج', 'استخراج',
     // NOT bare «صور»: it lives inside the NOUN «صورة», so «حط صورة في الأعلى»
@@ -249,7 +249,7 @@ const ACT_VERB = new RegExp([
 ].join('|'));
 
 /** Tools with their own deterministic path — the router must never race them. */
-const ROUTER_EXCLUDED = new Set([
+export const ROUTER_EXCLUDED = new Set([
     'react_project', 'web_page_builder', 'api_project', 'project_pipeline', 'project_edit',
     'project_run', 'project_stop', 'deploy_pages', 'deploy_project', 'import_project',
     'central_answer', 'business_profile', 'orders_read', 'form_inbox', 'website_full_pipeline',

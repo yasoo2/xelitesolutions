@@ -1,5 +1,6 @@
 import { StructuredIntent } from '../intelligence/IntentParser';
-import { catalogueFor, registeredToolNames, capabilityRoute, inputForTool } from './toolCatalog';
+import { catalogueFor, registeredToolNames, inputForTool } from './toolCatalog';
+import { catalogueForAsync, capabilityRouteAsync } from './tool-rerank';
 import { routeToModel, TaskAnalysis } from '../llm/intelligent-router';
 import { normalizeIntentText, stripArabicDiacritics, foldChars } from './promptNormalizer';
 import { compactHistoryForPrompt } from './history-compact';
@@ -1758,7 +1759,7 @@ Rules:
             || explicitBrowserWorkflowRequest
             || PlanningEngine.looksLikeBuild(String(intent.goal || ''))
             ? null
-            : capabilityRoute(String(intent.goal || ''), context);
+            : await capabilityRouteAsync(String(intent.goal || ''), context).catch(() => null);
         if (capable) {
             console.log(`[PlanningEngine] capability router -> ${capable.tool} (score ${capable.score}, runner-up ${capable.runnerUp || 'none'})`);
             return {
@@ -3154,6 +3155,8 @@ This is a FAILURE-RECOVERY plan. Non-negotiable rules:
 - Keep it minimal: diagnose -> repair -> re-run. Do not re-author work that already succeeded.` : '';
 
         const entropySeed = Math.random().toString(36).substring(7);
+        // LLM-reranked catalogue on ambiguity; any failure keeps the deterministic one.
+        const dynamicCatalogue = await catalogueForAsync(intent.goal).catch(() => catalogueFor(intent.goal));
         const systemPrompt = `You are a Professional Software Architecture Planner.
 Generate a dynamic Execution DAG (Directed Acyclic Graph) for the given goal.
 
@@ -3161,7 +3164,7 @@ Entropy Seed: ${entropySeed} (Use this to explore different optimal paths if pos
 
 Constraints:
 - Use ONLY tools from THIS catalogue (name(args) — purpose). An argument ending with ? is optional:
-${catalogueFor(intent.goal)}
+${dynamicCatalogue}
 - If nothing in the catalogue fits, use central_answer(question) — never invent a tool name.
 - Define explicit dependencies (dependsOn).
 - DATA FLOW: when a step needs what an earlier step PRODUCED, put {{FROM:<that step's id>}} inside its input where the data belongs — it is replaced with that step's real output at run time. Describing the data instead ("the results from step 1") passes nothing. Example: [{"id":"scan","tool":"link_checker",...},{"id":"report","tool":"write_file","input":{"path":"report.md","content":"# تقرير — {{FROM:scan}}"},"dependsOn":["scan"]}]
