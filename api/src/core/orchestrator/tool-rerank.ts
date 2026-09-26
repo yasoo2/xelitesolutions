@@ -87,7 +87,7 @@ function testGuardCall(prompt: string): Promise<string> {
     return Promise.reject(new Error('tool-rerank mesh call skipped under unit test'));
 }
 
-function resolveCall(opts: RerankOptions): LlmCall {
+export function resolveCall(opts: RerankOptions): LlmCall {
     if (opts.llmCall) return opts.llmCall;
     if (unitTestGuard()) return testGuardCall;
     return defaultLlmCall;
@@ -170,8 +170,9 @@ interface ParsedRanking {
 /**
  * Parse a model ranking. Accepts the contract shapes {"ranking":[...]} and
  * {"pick":"name"}, plus the variants small models actually emit: a bare array
- * (of names or {name, ...} objects) and {"tools"|"picks"|"ranked"|"selected"}.
- * Only candidate names survive, in model order; everything else is dropped.
+ * (of names or {name, ...} objects) and {"tools"|"picks"|"ranked"|"selected"|
+ * "most_relevant"|"relevant"}. Only candidate names survive, in model order;
+ * everything else is dropped.
  */
 export function parseRanking(text: string, candidates: string[]): ParsedRanking | null {
     const parsed = extractJsonPayload(text);
@@ -186,7 +187,7 @@ export function parseRanking(text: string, candidates: string[]): ParsedRanking 
     const listOf = (value: any): unknown[] | null => {
         if (Array.isArray(value)) return value;
         if (!value || typeof value !== 'object') return null;
-        const key = ['ranking', 'tools', 'picks', 'ranked', 'selected'].find(k => Array.isArray(value[k]));
+        const key = ['ranking', 'tools', 'picks', 'ranked', 'selected', 'most_relevant', 'relevant'].find(k => Array.isArray(value[k]));
         if (key) return value[key];
         const single = ['pick', 'tool', 'name'].map(k => value[k]).find(v => typeof v === 'string');
         return single ? [single] : null;

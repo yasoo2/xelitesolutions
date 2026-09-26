@@ -6,6 +6,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { extractProfileLearnings, isCorruptedName, normalizeForMatch } from './learn';
+import { recallRankedAsync, type RecallOptions } from './recall-rank';
 
 export interface MemoryEntry {
     id: string;
@@ -116,20 +117,29 @@ export class LongTermMemory {
     /**
      * Recall memories relevant to a query
      */
-    async recall(userId: string, query: string, limit: number = 10, scope: MemoryScope = {}): Promise<MemoryEntry[]> {
-        await this.ensureInitialized();
+    /**
+     * Workspace-scoped memories. The isolation boundary: project conversation,
+     * file, and code memories never cross workspaces; preferences and explicit
+     * facts describe the user and deliberately stay global.
+     */
+    private scopedMemories(userId: string, scope: MemoryScope = {}): MemoryEntry[] {
         const activeWorkspaceId = normalizedWorkspaceId(scope.workspaceId);
         const allMemories = this.memoryStore.get(userId) || [];
         // A workspace is an isolation boundary. Project conversation, file, and
         // code memories from another workspace must never influence a fresh run.
         // Preferences and explicit facts describe the user rather than a project,
         // so they deliberately remain available across workspaces.
-        const userMemories = activeWorkspaceId
+        return activeWorkspaceId
             ? allMemories.filter(memory => {
                 if (memory.type === 'preference' || memory.type === 'fact') return true;
                 return normalizedWorkspaceId(memory.metadata?.workspaceId) === activeWorkspaceId;
             })
             : allMemories;
+    }
+
+    async recall(userId: string, query: string, limit: number = 10, scope: MemoryScope = {}): Promise<MemoryEntry[]> {
+        await this.ensureInitialized();
+        const userMemories = this.scopedMemories(userId, scope);
 
         if (userMemories.length === 0) return [];
 
@@ -180,6 +190,25 @@ export class LongTermMemory {
         }
 
         return ranked;
+    }
+
+    /**
+     * Hybrid recall: coverage-weighted relevance with a floor, plus an optional
+     * model rerank that can rescue paraphrased memories. Legacy recall() is
+     * preserved untouched; this is the path getContextDetails uses. Never
+     * rejects: any failure falls back to recall().
+     */
+    async recallRanked(userId: string, query: string, limit: number = 10, scope: MemoryScope = {}, opts: RecallOptions = {}): Promise<MemoryEntry[]> {
+        try {
+            await this.ensureInitialized();
+            const scoped = this.scopedMemories(userId, scope);
+            if (!scoped.length) return [];
+            const ranked = await recallRankedAsync(scoped, query, limit, opts);
+            for (const memory of ranked) memory.lastAccessed = Date.now();
+            return ranked;
+        } catch {
+            return this.recall(userId, query, limit, scope);
+        }
     }
 
     /**
@@ -269,12 +298,15 @@ export class LongTermMemory {
      * may be useful to the agent, but they are not evidence of a prior project in
      * the active workspace and must not be presented to the user as project recall.
      */
-    async getContextDetails(userId: string, query: string = '', scope: MemoryScope = {}): Promise<MemoryContextDetails> {
+    async getContextDetails(userId: string, query: string = '', scope: MemoryScope = {}, recallOpts: RecallOptions = {}): Promise<MemoryContextDetails> {
         await this.ensureInitialized();
         const profile = await this.getProfile(userId);
         // Recall is driven by the CURRENT request, so the past that surfaces is
-        // the past that is relevant — not merely the most recent.
-        const recentMemories = await this.recall(userId, query, 5, scope);
+        // the past that is relevant — not merely the most recent. The hybrid
+        // path adds a relevance floor (and a model rerank outside unit tests);
+        // any failure keeps the legacy keyword result.
+        const recentMemories = await this.recallRanked(userId, query, 5, scope, recallOpts)
+            .catch(() => this.recall(userId, query, 5, scope));
         const activeWorkspaceId = normalizedWorkspaceId(scope.workspaceId);
         const hasWorkspaceContext = Boolean(activeWorkspaceId && recentMemories.some(memory => {
             if (memory.type === 'preference' || memory.type === 'fact') return false;

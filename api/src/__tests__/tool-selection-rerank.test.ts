@@ -219,6 +219,8 @@ describe('tool-selection-rerank', () => {
             expect(parseRanking('["b","a"]', ['a', 'b'])).toEqual({ ranking: ['b', 'a'], confidence: 0 });
             expect(parseRanking('{"tools":["b","a"],"confidence":0.75}', ['a', 'b']))
                 .toEqual({ ranking: ['b', 'a'], confidence: 0.75 });
+            expect(parseRanking('{"most_relevant":["b"],"confidence":0.9}', ['a', 'b']))
+                .toEqual({ ranking: ['b'], confidence: 0.9 });
             expect(parseRanking('[{"name":"zz"}]', ['a'])).toBeNull();
         });
     });
