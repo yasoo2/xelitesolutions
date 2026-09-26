@@ -52,7 +52,7 @@ async function verifyCheckpointResumption() {
       "count++;",
       "fs.writeFileSync(counterPath, String(count), 'utf8');",
       "if (count === 1) {",
-      "  console.error('Simulated failure on first run');",
+      "  console.error('EVIDENCE_BLOCKER: Simulated failure on first run');",
       "  process.exit(1);",
       "}",
       "console.log('Success on run', count);",
@@ -80,7 +80,6 @@ async function verifyCheckpointResumption() {
               task: 'Task 2 - Second task (will fail first run)',
               tool: 'shell_execute',
               args: { command: 'node verify-build.js' },
-              priority: 'high',
             },
             {
               task: 'Task 3 - Third task',
@@ -110,13 +109,15 @@ async function verifyCheckpointResumption() {
   console.log('OK:', result1.ok);
   console.log('Completed Phases:', result1.completedPhases);
   console.log('Phase Status:', firstPhaseResult?.status);
-  console.log('Tasks:', firstPhaseResult?.output?.results?.map((r: any) => ({ task: r.task, ok: r.ok, execution: r.execution })));
+  console.log('Tasks:', firstPhaseResult?.results?.map((r: any) => ({ task: r.task, ok: r.ok, execution: r.execution })));
 
   // Verify first run failed at Task 2
   if (result1.ok === false && firstPhaseResult?.status === 'partial') {
     console.log('PASS: First run failed at Task 2 as expected');
   } else {
     console.error('FAIL: First run should have failed at Task 2');
+    console.error('  result1.ok:', result1.ok);
+    console.error('  firstPhaseResult.status:', firstPhaseResult?.status);
     passed = false;
   }
 
@@ -151,7 +152,7 @@ async function verifyCheckpointResumption() {
   console.log('OK:', result2.ok);
   console.log('Completed Phases:', result2.completedPhases);
   console.log('Phase Status:', secondPhaseResult?.status);
-  console.log('Tasks:', secondPhaseResult?.output?.results?.map((r: any) => ({ task: r.task, ok: r.ok, execution: r.execution })));
+  console.log('Tasks:', secondPhaseResult?.results?.map((r: any) => ({ task: r.task, ok: r.ok, execution: r.execution })));
 
   // Verify second run succeeded
   if (result2.ok === true && result2.completedPhases === 1 && secondPhaseResult?.status === 'completed') {
@@ -162,7 +163,7 @@ async function verifyCheckpointResumption() {
   }
 
   // Verify Task 1 was skipped (reused from checkpoint)
-  const task1Result = secondPhaseResult?.output?.results?.find((r: any) => r.task?.includes('Task 1'));
+  const task1Result = secondPhaseResult?.results?.find((r: any) => r.task?.includes('Task 1'));
   if (task1Result && task1Result.execution === 'reused') {
     console.log('PASS: Task 1 skipped (resumed from checkpoint)');
   } else {
@@ -172,7 +173,7 @@ async function verifyCheckpointResumption() {
   }
 
   // Verify Task 2 ran and succeeded
-  const task2Result = secondPhaseResult?.output?.results?.find((r: any) => r.task?.includes('Task 2'));
+  const task2Result = secondPhaseResult?.results?.find((r: any) => r.task?.includes('Task 2'));
   if (task2Result && task2Result.execution === 'ran' && task2Result.ok === true) {
     console.log('PASS: Task 2 ran and succeeded on resumption');
   } else {
@@ -182,7 +183,7 @@ async function verifyCheckpointResumption() {
   }
 
   // Verify Task 3 ran and succeeded
-  const task3Result = secondPhaseResult?.output?.results?.find((r: any) => r.task?.includes('Task 3'));
+  const task3Result = secondPhaseResult?.results?.find((r: any) => r.task?.includes('Task 3'));
   if (task3Result && task3Result.execution === 'ran' && task3Result.ok === true) {
     console.log('PASS: Task 3 ran and succeeded');
   } else {
