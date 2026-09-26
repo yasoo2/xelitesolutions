@@ -2105,11 +2105,39 @@ export class PhaseExecutorTool implements ToolDefinition {
             // Build execution groups
             const executionGroups = PhaseExecutorTool.buildExecutionGroups(tasks, executionSteps, parallelGroups);
 
+            // Checkpoint resumption: load completed tasks from checkpoints and skip them
+            const completedTaskKeys = new Set<string>();
+            if (executionContext.runId && phase.phaseNumber !== undefined) {
+                const artifactDir = String(projectContext?.projectRoot || executionContext.projectRoot || '');
+                if (artifactDir) {
+                    const runCheckpoints = loadAllRunCheckpoints(artifactDir, executionContext.runId);
+                    for (const cp of runCheckpoints) {
+                        if (cp.phaseIndex === phase.phaseNumber && cp.toolName && cp.toolName !== 'phase') {
+                            // Mark this tool as completed (use toolName + taskDescription as key)
+                            const taskKey = `${cp.toolName}:${cp.taskDescription}`;
+                            completedTaskKeys.add(taskKey);
+                        }
+                    }
+                    if (completedTaskKeys.size > 0) {
+                        appendLog(`[PhaseExecutor] Resuming from checkpoints: ${completedTaskKeys.size} task(s) already completed, will skip`);
+                    }
+                }
+            }
+
             let shouldBreak = false;
             for (const group of executionGroups) {
                 assertRunActive();
                 if (group.length === 1) {
                     const task = group[0];
+                    // Checkpoint resumption: skip already-completed tasks
+                    const taskKey = `${String(task.tool || '').trim()}:${String(task.task || task.description || '').trim()}`;
+                    if (completedTaskKeys.has(taskKey)) {
+                        const taskDesc = String(task.task || task.description || `Task ${totalTasks}`);
+                        appendLog(`[PhaseExecutor] ⏭️ Task "${taskDesc}" — skipped (resumed from checkpoint)`);
+                        results.push({ task: taskDesc, tool: String(task.tool || '').trim(), ok: true, execution: 'reused', message: 'Resumed from checkpoint' });
+                        completedCount.value++;
+                        continue;
+                    }
                     const taskResult = await PhaseExecutorTool.executeSingleTask(
                         task,
                         group.indexOf(task),
@@ -2123,9 +2151,24 @@ export class PhaseExecutorTool implements ToolDefinition {
                     phaseDelivery = taskResult.phaseDelivery;
                     if (taskResult.shouldBreak) { shouldBreak = true; break; }
                 } else {
-                    appendLog(`[PhaseExecutor] Executing ${group.length} tasks in parallel`);
+                    // Filter out already-completed tasks for parallel execution
+                    const filteredGroup = group.filter(task => {
+                        const taskKey = `${String(task.tool || '').trim()}:${String(task.task || task.description || '').trim()}`;
+                        if (completedTaskKeys.has(taskKey)) {
+                            const taskDesc = String(task.task || task.description || `Task ${totalTasks}`);
+                            appendLog(`[PhaseExecutor] ⏭️ Task "${taskDesc}" — skipped (resumed from checkpoint)`);
+                            results.push({ task: taskDesc, tool: String(task.tool || '').trim(), ok: true, execution: 'reused', message: 'Resumed from checkpoint' });
+                            completedCount.value++;
+                            return false;
+                        }
+                        return true;
+                    });
+                    if (filteredGroup.length === 0) {
+                        continue;
+                    }
+                    appendLog(`[PhaseExecutor] Executing ${filteredGroup.length} tasks in parallel`);
                     const parallelResults = await Promise.all(
-                        group.map((task, idx) => PhaseExecutorTool.executeSingleTask(
+                        filteredGroup.map((task, idx) => PhaseExecutorTool.executeSingleTask(
                             task,
                             idx,
                             totalTasks,
