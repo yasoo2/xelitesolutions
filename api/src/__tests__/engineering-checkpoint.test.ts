@@ -52,14 +52,14 @@ describe('engineering checkpoint system', () => {
                 taskDescription: 'run tests',
                 input: { command: 'npm test', cwd: '/project' },
                 output: { ok: true, stdout: 'tests passed' },
-                verification: { status: 'passed', checkId: 'test-check' },
+                verification: { status: 'passed' as const, checkId: 'test-check' },
                 runtimeContext: {
                     projectRoot: '/project',
                     workspaceId: 'ws-1',
                     sessionId: 'session-1',
                     runId,
                 },
-                artifacts: [{ type: 'file', path: '/project/test.txt', hash: 'abc123', size: 100 }],
+                artifacts: [{ type: 'file' as const, path: '/project/test.txt', hash: 'abc123', size: 100 }],
             };
 
             saveEngineeringCheckpoint(testDir, engineeringCheckpointKey(runId, 0, 'shell_execute', 'run tests'), checkpoint);

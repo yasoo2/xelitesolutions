@@ -19,7 +19,7 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 
-export export interface EngineeringCheckpoint {
+export interface EngineeringCheckpoint {
     v: 1;
     key: string;
     runId: string;
@@ -55,7 +55,7 @@ export export interface EngineeringCheckpoint {
     }>;
 }
 
-export export interface CheckpointReadResult {
+export interface CheckpointReadResult {
     status: 'ok' | 'failed' | 'empty' | 'expired';
     checkpoint?: EngineeringCheckpoint;
     reason?: string;

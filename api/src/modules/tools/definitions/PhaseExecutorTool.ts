@@ -22,6 +22,7 @@ import {
     summarizeVerificationLedger,
     type VerificationSelection,
 } from '../../../core/quality/verification-ledger';
+import { loadEngineeringCheckpoint, saveEngineeringCheckpoint, checkpointPhase, checkpointTool, engineeringCheckpointKey, loadAllRunCheckpoints, clearAllRunCheckpoints } from '../../../core/resume/engineering-checkpoint';
 
 type PhaseDeliveryEvidence = {
     accepted?: boolean;
@@ -1130,6 +1131,98 @@ export class PhaseExecutorTool implements ToolDefinition {
     mockSupported = false;
 
     /**
+     * Parallel group definition for adaptive DAG planner integration.
+     */
+    private static ParallelGroup = {
+        stepIds: [] as string[],
+        canRunInParallel: false,
+        reason: ''
+    } as const;
+
+    /**
+     * Detect independent steps that can run in parallel (adapted from adaptive-dag-planner).
+     * Only groups tasks explicitly marked as parallel: true.
+     */
+    private static detectParallelGroups(steps: { id: string; dependsOn: string[]; tool: string; parallel?: boolean }[]): Array<{ stepIds: string[]; canRunInParallel: boolean; reason: string }> {
+        const groups: Array<{ stepIds: string[]; canRunInParallel: boolean; reason: string }> = [];
+        const visited = new Set<string>();
+        const adjacency = new Map<string, Set<string>>();
+        const reverseAdjacency = new Map<string, Set<string>>();
+
+        // Build dependency graph
+        for (const step of steps) {
+            if (!adjacency.has(step.id)) adjacency.set(step.id, new Set());
+            if (!reverseAdjacency.has(step.id)) reverseAdjacency.set(step.id, new Set());
+            for (const dep of step.dependsOn) {
+                adjacency.get(dep)?.add(step.id);
+                reverseAdjacency.get(step.id)?.add(dep);
+            }
+        }
+
+        // Find all steps with no dependencies AND explicitly marked as parallel (can start immediately)
+        const noDeps = steps.filter(s => s.dependsOn.length === 0 && s.parallel === true).map(s => s.id);
+        if (noDeps.length > 1) {
+            groups.push({
+                stepIds: noDeps,
+                canRunInParallel: true,
+                reason: 'No dependencies and marked parallel - can start concurrently'
+            });
+        }
+
+        // Find independent branches at each level (only parallel-marked steps)
+        const processed = new Set(noDeps);
+        let currentLevel = noDeps;
+
+        while (currentLevel.length > 0) {
+            const nextLevel: string[] = [];
+            for (const stepId of currentLevel) {
+                for (const next of adjacency.get(stepId) || []) {
+                    const nextStep = steps.find(s => s.id === next);
+                    if (!nextStep || nextStep.parallel !== true) continue;
+                    const allDepsProcessed = Array.from(reverseAdjacency.get(next) || []).every(d => processed.has(d));
+                    if (allDepsProcessed && !processed.has(next)) {
+                        nextLevel.push(next);
+                    }
+                }
+            }
+            if (nextLevel.length > 1) {
+                groups.push({
+                    stepIds: nextLevel,
+                    canRunInParallel: true,
+                    reason: 'All dependencies satisfied and marked parallel - branch can run in parallel'
+                });
+            }
+            for (const id of nextLevel) processed.add(id);
+            currentLevel = nextLevel;
+        }
+
+        // Check for tool-type parallelism (same tool type, different inputs) - only for parallel-marked steps
+        const toolGroups = new Map<string, string[]>();
+        for (const step of steps) {
+            if (step.parallel !== true) continue;
+            if (!toolGroups.has(step.tool)) toolGroups.set(step.tool, []);
+            toolGroups.get(step.tool)!.push(step.id);
+        }
+        for (const [tool, stepIds] of toolGroups) {
+            if (stepIds.length > 1) {
+                // Check if they're truly independent (no shared dependencies)
+                const independent = stepIds.every(id =>
+                    steps.find(s => s.id === id)?.dependsOn.every(d => !stepIds.includes(d)) !== false
+                );
+                if (independent) {
+                    groups.push({
+                        stepIds,
+                        canRunInParallel: true,
+                        reason: `Same tool (${tool}) with independent inputs`
+                    });
+                }
+            }
+        }
+
+        return groups;
+    }
+
+    /**
      * Group tasks into parallel execution groups.
      * Tasks with parallel=true and no shared dependencies can run concurrently.
      */
@@ -1159,6 +1252,698 @@ export class PhaseExecutorTool implements ToolDefinition {
         return groups;
     }
 
+    /**
+     * Build execution groups from tasks and parallel group detection.
+     * Returns an array of groups, where each group is an array of tasks that can run in parallel.
+     */
+    private static buildExecutionGroups(
+        tasks: any[],
+        executionSteps: any[],
+        parallelGroups: Array<{ stepIds: string[]; canRunInParallel: boolean; reason: string }>
+    ): any[][] {
+        const groups: any[][] = [];
+        const taskById = new Map(tasks.map((t, i) => [executionSteps[i].id, t]));
+        const processed = new Set<string>();
+
+        // First, add parallel groups
+        for (const pg of parallelGroups) {
+            if (!pg.canRunInParallel) continue;
+            const groupTasks = pg.stepIds
+                .map(id => taskById.get(id))
+                .filter(Boolean);
+            if (groupTasks.length > 1) {
+                groups.push(groupTasks);
+                for (const id of pg.stepIds) processed.add(id);
+            }
+        }
+
+        // Then add remaining tasks sequentially
+        for (const step of executionSteps) {
+            if (!processed.has(step.id)) {
+                const task = taskById.get(step.id);
+                if (task) groups.push([task]);
+            }
+        }
+
+        return groups;
+    }
+
+    /**
+     * Execute a single task with full error handling, verification, and checkpointing.
+     */
+    private static async executeSingleTask(
+        task: any,
+        taskIndex: number,
+        totalTasks: number,
+        formatTaskDesc: (desc: string) => string,
+        deps: {
+            phase: any;
+            projectContext: any;
+            executionContext: any;
+            logs: string[];
+            appendLog: (line: unknown) => void;
+            results: any[];
+            completedCount: { value: number };
+            changedPhaseFiles: string[];
+            verificationLedger: any;
+            apiSelection: any;
+            capabilityDecision: any;
+            phaseDelivery: any;
+            liveExecutionContext: () => any;
+            trustedWorkspaceRoot: string;
+            runtimeTargetFor: (toolName: string, args: Record<string, any>) => string;
+            runtimeRevisionFor: (toolName: string) => string;
+            bindRuntimeProjectFromEvidence: (toolName: string, toolArgs: Record<string, any>, toolResult: any, projectContext: any, runId: unknown, logs: string[]) => void;
+            syncRuntimeProjectContext: (projectContext: any, runId: unknown, logs: string[]) => void;
+            mutationPathsFor: (toolName: string, args: Record<string, any>) => string[];
+            compactPhaseDeliveryEvidence: (value: unknown) => PhaseDeliveryEvidence | undefined;
+            mergePhaseDeliveryEvidence: (current: PhaseDeliveryEvidence | undefined, next: PhaseDeliveryEvidence | undefined) => PhaseDeliveryEvidence | undefined;
+            classifyStructuredRuntimeEvidence: (toolResult: any, toolArgs: Record<string, any>, projectContext: any, currentRunId?: unknown) => { evidenceStatus: 'current_run' | 'stale_run_dropped'; staleEvidence?: string };
+            boundedRepairEvidence: (value: unknown, max?: number) => string;
+            recoverMissingNpmLauncher: (command: string, taskDesc: string, cwd: string, workspaceId: string, background?: boolean) => any;
+            fileFailureEvidence: (toolName: string, args: Record<string, any>, projectContext: any) => Record<string, string>;
+            generatedArtifactFailureEvidence: (toolName: string, output: Record<string, any>, projectContext: any) => Record<string, string>;
+            executeTool: (toolName: string, toolArgs: Record<string, any>, executionContext: any) => Promise<any>;
+            context: any;
+            verificationMetricsFrom: (result: any, timing: { selectedAt?: number; startedAt?: number; lastActivityAt?: number; finishedAt?: number; retryCount?: number }) => { evidenceLocation: string; queueMs: number; idleMs: number; retryCount: number };
+        }
+    ): Promise<{
+        results: any[];
+        completedCount: { value: number };
+        verificationLedger: any;
+        apiSelection: any;
+        capabilityDecision: any;
+        phaseDelivery: any;
+        shouldBreak: boolean;
+    }> {
+        const {
+            phase,
+            projectContext,
+            executionContext,
+            logs,
+            appendLog,
+            results,
+            completedCount,
+            changedPhaseFiles,
+            verificationLedger: initVerificationLedger,
+            apiSelection: initApiSelection,
+            capabilityDecision: initCapabilityDecision,
+            phaseDelivery: initPhaseDelivery,
+            liveExecutionContext,
+            trustedWorkspaceRoot,
+            runtimeTargetFor,
+            runtimeRevisionFor,
+            bindRuntimeProjectFromEvidence,
+            syncRuntimeProjectContext,
+            mutationPathsFor,
+            compactPhaseDeliveryEvidence,
+            mergePhaseDeliveryEvidence,
+            classifyStructuredRuntimeEvidence,
+            boundedRepairEvidence,
+            recoverMissingNpmLauncher,
+            fileFailureEvidence,
+            generatedArtifactFailureEvidence,
+            executeTool,
+            context,
+        } = deps;
+
+        // Local mutable copies of values that may be updated during execution
+        let verificationLedger = initVerificationLedger;
+        let apiSelection = initApiSelection;
+        let capabilityDecision = initCapabilityDecision;
+        let phaseDelivery = initPhaseDelivery;
+        const verificationMetricsFrom = deps.verificationMetricsFrom;
+
+        const assertRunActive = () => {
+            if (typeof context?.isCancelled === 'function' && context.isCancelled()) {
+                throw new Error('run_cancelled_by_owner');
+            }
+        };
+
+        const askedFor = String(task.tool || '').trim();
+        const taskDesc = String(task.task || task.description || `Task ${taskIndex + 1}`);
+
+        if (!askedFor || askedFor === 'manual') {
+            appendLog(`[PhaseExecutor] Task ${taskIndex + 1}: "${taskDesc}" — skipped (manual/no tool)`);
+            results.push({ task: taskDesc, tool: 'manual', ok: true, execution: 'skipped' });
+            return { results, completedCount, verificationLedger, apiSelection, capabilityDecision, phaseDelivery, shouldBreak: false };
+        }
+
+        const resolved = resolvePlannedTool(askedFor);
+        if (!resolved.tool) {
+            appendLog(`[PhaseExecutor] ⏭️ Task ${taskIndex + 1}: "${taskDesc}" — «${askedFor}» ليست أداة في هذا النظام` +
+                `${(resolved as any).why === 'not_software' ? ' (عمل تنظيمي بشري)' : ''}. تخطّيتُها ولم أوقف البناء.`);
+            results.push({ task: taskDesc, tool: 'manual', ok: true, execution: 'skipped' });
+            return { results, completedCount, verificationLedger, apiSelection, capabilityDecision, phaseDelivery, shouldBreak: false };
+        }
+
+        let toolName = resolved.tool;
+        let rawTaskArgs: any = { ...(task.args || {}), ...(task.input || {}) };
+        const browserStart = (toolName === 'shell_execute' || toolName === 'terminal_manager')
+            ? reactProjectStartFallback(rawTaskArgs.command, taskDesc, rawTaskArgs, projectContext, executionContext.workspaceId)
+            : null;
+        const serverStart = !browserStart && (toolName === 'shell_execute' || toolName === 'terminal_manager')
+            ? reactProjectServerFallback(rawTaskArgs.command, taskDesc, rawTaskArgs, projectContext, executionContext.workspaceId)
+            : null;
+        if (browserStart) {
+            toolName = 'project_run';
+            rawTaskArgs = { ...rawTaskArgs, cwd: browserStart.cwd };
+            delete rawTaskArgs.command;
+            delete rawTaskArgs.background;
+            appendLog(`[PhaseExecutor] ↪️ Task ${taskIndex + 1}: replaced direct Node TypeScript launch with project_run (${browserStart.cwd.slice(0, 240)})`);
+        } else if (serverStart) {
+            toolName = 'project_run';
+            rawTaskArgs = { ...rawTaskArgs, cwd: serverStart.cwd, command: `npm run ${serverStart.script}` };
+            delete rawTaskArgs.background;
+            appendLog(`[PhaseExecutor] ↪️ Task ${taskIndex + 1}: declared preview server uses project_run (${serverStart.cwd.slice(0, 240)})`);
+        }
+        if (toolName !== askedFor) {
+            appendLog(`[PhaseExecutor] ↪️ «${askedFor}» تعني ${toolName} — نفّذتُ الأداة الحقيقية.`);
+        }
+
+        if (toolName === 'shell_execute' || toolName === 'terminal_manager') {
+            const why = unrunnableShellStep(rawTaskArgs.command);
+            if (why) {
+                appendLog(`[PhaseExecutor] ⏭️ Task ${taskIndex + 1}: "${taskDesc}" — ${why}`);
+                results.push({ task: taskDesc, tool: 'manual', ok: true, execution: 'skipped' });
+                return { results, completedCount, verificationLedger, apiSelection, capabilityDecision, phaseDelivery, shouldBreak: false };
+            }
+        }
+
+        appendLog(`[PhaseExecutor] Task ${taskIndex + 1}/${totalTasks}: "${taskDesc}" — executing tool: ${toolName}`);
+
+        const planned: any = { ...rawTaskArgs };
+        if (executionContext.sessionId && typeof planned.sessionId !== 'string') planned.sessionId = executionContext.sessionId;
+        if (executionContext.workspaceId && typeof planned.workspaceId !== 'string') planned.workspaceId = executionContext.workspaceId;
+        const requirementsContext = String(projectContext?.requirementsContext || '').trim();
+        if (['api_project', 'react_project'].includes(toolName)) {
+            const taskRequest = String(planned.request || '').trim();
+            const evidenceMarker = 'COMPACT REQUIREMENTS EVIDENCE';
+            const canonicalRequest = projectContext?.createsNewProject === true
+                ? String(projectContext?.request || '').trim()
+                : '';
+            if (canonicalRequest) {
+                planned.request = canonicalRequest;
+            }
+            if (requirementsContext
+                && !taskRequest.includes(evidenceMarker)
+                && !taskRequest.includes(requirementsContext.slice(0, 160))) {
+                const baseRequest = canonicalRequest || taskRequest;
+                planned.request = baseRequest
+                    ? `${baseRequest}\n\n${requirementsContext}`
+                    : requirementsContext;
+            }
+        }
+        if (toolName === 'ai_write_file') {
+            if (requirementsContext) {
+                const taskContext = String(planned.context || '').trim();
+                planned.context = taskContext
+                    ? `${taskContext}\n\n${requirementsContext}`
+                    : requirementsContext;
+            }
+            if (!String(planned.description || '').trim()) planned.description = taskDesc;
+        }
+
+        if (['api_project', 'react_project'].includes(toolName)
+            && projectContext?.createsNewProject === true
+            && String(projectContext?.projectName || '').trim()
+            && !String(planned.projectName || '').trim()) {
+            planned.projectName = String(projectContext.projectName).trim();
+            appendLog(`[PhaseExecutor] ${toolName}: inherited canonical project identity (${planned.projectName})`);
+        }
+
+        if (toolName === 'react_project' && apiSelection) {
+            planned.apiSelection = apiSelection;
+            appendLog(`[PhaseExecutor] react_project: received trusted API selection (${apiSelection.providerName})`);
+        }
+        if ((toolName === 'inspect_api' || toolName === 'validate_api')
+            && apiSelection
+            && !String(planned.apiId || '').trim()) {
+            planned.apiId = apiSelection.apiId;
+            appendLog(`[PhaseExecutor] ${toolName}: received trusted API id (${apiSelection.apiId})`);
+        }
+
+        const originalPlannedEvidence = { ...planned };
+        applyPhaseExecutionEvidence(toolName, planned, projectContext, logs);
+        inheritRuntimeProjectArguments(toolName, planned, projectContext, logs);
+
+        const repairDescription = ['react_project', 'api_project'].includes(toolName)
+            ? boundedRepairEvidence(planned.request || planned.description || taskDesc)
+            : '';
+        const repairContext = ['react_project', 'api_project'].includes(toolName)
+            ? boundedRepairEvidence(planned.context || projectContext?.requirementsContext || '')
+            : '';
+
+        const adaptedPlanned = adaptPlannedArgs(toolName, planned);
+        const toolArgs = adaptPlannedArgsFromDescription(toolName, adaptedPlanned, taskDesc);
+
+        const requestedPublicExposure = toolName === 'deploy_project'
+            && String(toolArgs?.action || '').trim().toLowerCase() === 'expose_port';
+        const explicitlyApprovedPublicExposure = toolArgs?.allowPublicExposure === true
+            || toolArgs?.approvedPublicExposure === true
+            || projectContext?.allowPublicExposure === true
+            || executionContext?.allowPublicExposure === true;
+        if (requestedPublicExposure
+            && executionContext.engineeringPipeline === true
+            && !explicitlyApprovedPublicExposure) {
+            appendLog(`[PhaseExecutor] ⏭️ Task ${taskIndex + 1}: "${taskDesc}" — skipped public expose_port during local engineering QA; project_run/localhost remains the verification path.`);
+            results.push({
+                task: taskDesc,
+                tool: toolName,
+                ok: true,
+                execution: 'skipped',
+                message: 'Skipped unapproved public exposure in the local engineering pipeline; use the verified loopback project_run URL.',
+            });
+            return { results, completedCount, verificationLedger, apiSelection, capabilityDecision, phaseDelivery, shouldBreak: false };
+        }
+
+        const argsIssue = plannedArgsIssue(toolName, toolArgs);
+        if (argsIssue) {
+            appendLog(`[PhaseExecutor] ⏭️ Task ${taskIndex + 1}: "${taskDesc}" — ${argsIssue}`);
+            results.push({ task: taskDesc, tool: 'manual', ok: true, execution: 'skipped', message: argsIssue });
+            return { results, completedCount, verificationLedger, apiSelection, capabilityDecision, phaseDelivery, shouldBreak: false };
+        }
+
+        const dependencyPreflight = await ensureNpmScriptDependencies(
+            toolName,
+            toolArgs,
+            projectContext,
+            liveExecutionContext(),
+            appendLog,
+        );
+        assertRunActive();
+        if (!dependencyPreflight.ok) {
+            const preflightError = dependencyPreflight.error;
+            appendLog(`[PhaseExecutor] ❌ Task ${taskIndex + 1} blocked by npm preflight: ${preflightError}`);
+            results.push({
+                task: taskDesc,
+                tool: toolName,
+                ok: false,
+                execution: 'ran',
+                error: preflightError,
+                ...(toolName === 'shell_execute' && typeof toolArgs.command === 'string'
+                    ? { command: toolArgs.command.slice(0, 1000) }
+                    : {}),
+                ...(typeof (toolArgs.cwd || toolArgs.projectPath) === 'string' ? { cwd: String(toolArgs.cwd || toolArgs.projectPath).slice(0, 1000) } : {}),
+            });
+            if (task.priority === 'high' || task.required === true) {
+                return { results, completedCount, verificationLedger, apiSelection, capabilityDecision, phaseDelivery, shouldBreak: true };
+            }
+            return { results, completedCount, verificationLedger, apiSelection, capabilityDecision, phaseDelivery, shouldBreak: false };
+        }
+
+        let verificationSelection: VerificationSelection | undefined;
+        let verificationStartedAt = 0;
+        let verificationSelectedAt = 0;
+        let verificationLastActivityAt = 0;
+        const explicitlyMarkedVerification = Boolean(
+            task.verificationId
+            || task.verificationMode
+            || task.verificationBoundary
+            || rawTaskArgs.verificationId
+            || rawTaskArgs.verificationMode
+            || rawTaskArgs.verificationBoundary,
+        );
+        if (isVerificationTool(toolName, toolArgs, explicitlyMarkedVerification)) {
+            const scopeRoot = String(
+                toolArgs.cwd
+                || toolArgs.projectPath
+                || toolArgs.path
+                || (projectContext?.projectRootRuntimeBound === true ? projectContext?.projectRoot : '')
+                || workspaceService.getActiveRoot(executionContext.workspaceId)
+                || '',
+            ).trim();
+            const verificationId = String(
+                task.verificationId
+                || rawTaskArgs.verificationId
+                || `${toolName}:${taskDesc}`,
+            ).trim().slice(0, 240);
+            const relevantPaths = [
+                ...(Array.isArray(task.relevantPaths) ? task.relevantPaths : []),
+                ...(Array.isArray(rawTaskArgs.verificationRelevantPaths) ? rawTaskArgs.verificationRelevantPaths : []),
+            ].map((item: unknown) => String(item || '').trim()).filter(Boolean);
+            const mode = task.verificationMode
+                || rawTaskArgs.verificationMode
+                || (projectContext?.isFinalPhase === true ? 'final' : 'focused');
+            const boundary = String(task.verificationBoundary || rawTaskArgs.verificationBoundary || '').trim();
+            if (!relevantPaths.length && !boundary) relevantPaths.push(...changedPhaseFiles);
+            const runtimeRevision = runtimeRevisionFor(toolName);
+            delete toolArgs.verificationId;
+            delete toolArgs.verificationMode;
+            delete toolArgs.verificationBoundary;
+            delete toolArgs.verificationRelevantPaths;
+            delete toolArgs.verificationRuntimeRevision;
+            if (scopeRoot) {
+                const selected = selectVerification(verificationLedger, {
+                    checkId: verificationId,
+                    tool: toolName,
+                    args: toolArgs,
+                    workspaceId: String(executionContext.workspaceId || ''),
+                    workspaceRoot: trustedWorkspaceRoot,
+                    scopeRoot,
+                    relevantPaths,
+                    boundary,
+                    boundaries: projectContext?.verificationBoundaries,
+                    runtimeTarget: runtimeTargetFor(toolName, toolArgs),
+                    runtimeRevision,
+                    mode,
+                });
+                verificationLedger = selected.ledger;
+                verificationSelection = selected.selection;
+                appendLog(`[PhaseExecutor] verification ${selected.selection.action}: ${verificationId} — ${selected.selection.reason}`);
+                if (selected.selection.action === 'reuse') {
+                    results.push({
+                        task: taskDesc,
+                        tool: toolName,
+                        ok: true,
+                        execution: 'reused',
+                        message: selected.selection.reason,
+                    });
+                    completedCount.value++;
+                    return { results, completedCount, verificationLedger, apiSelection, capabilityDecision, phaseDelivery, shouldBreak: false };
+                }
+                verificationSelectedAt = Date.now();
+            }
+        }
+
+        try {
+            if (verificationSelection) {
+                verificationStartedAt = Date.now();
+                verificationLastActivityAt = verificationStartedAt;
+            }
+            const toolResult = await executeTool(toolName, toolArgs, {
+                ...liveExecutionContext(),
+                onProgress: (m: string) => {
+                    if (verificationSelection) verificationLastActivityAt = Date.now();
+                    context?.onProgress?.(`[${toolName}] ${m}`);
+                },
+            });
+            assertRunActive();
+            const verificationOutcome = verificationSelection
+                ? verificationResultFromToolResult(toolResult)
+                : undefined;
+
+            // Checkpoint the tool execution
+            const artifactDir = String(projectContext?.projectRoot || executionContext.projectRoot || '');
+            if (artifactDir && executionContext.runId) {
+                checkpointTool(
+                    artifactDir,
+                    executionContext.runId,
+                    phase.phaseNumber,
+                    toolName,
+                    taskDesc,
+                    toolArgs,
+                    toolResult,
+                    projectContext,
+                    executionContext
+                );
+            }
+
+            if (toolResult.ok && (!verificationOutcome || verificationOutcome === 'passed')) {
+                if (verificationSelection) {
+                    verificationLedger = recordVerification(
+                        verificationLedger,
+                        verificationSelection,
+                        verificationOutcome || 'passed',
+                        Date.now() - verificationStartedAt,
+                        Date.now(),
+                        verificationMetricsFrom(toolResult, {
+                            selectedAt: verificationSelectedAt,
+                            startedAt: verificationStartedAt,
+                            lastActivityAt: verificationLastActivityAt,
+                        }),
+                    );
+                }
+                appendLog(`[PhaseExecutor] ✅ Task ${taskIndex + 1} completed: ${toolName}`);
+                bindRuntimeProjectFromEvidence(toolName, toolArgs, toolResult, projectContext, executionContext.runId, logs);
+                syncRuntimeProjectContext(projectContext, executionContext.runId, logs);
+                changedPhaseFiles.push(...mutationPathsFor(toolName, toolArgs));
+                if (changedPhaseFiles.length > 64) changedPhaseFiles.splice(0, changedPhaseFiles.length - 64);
+                if (!verificationSelection && /^(?:browser_|visual_qa$)/u.test(toolName)) {
+                    projectContext.browserRuntimeRevision = `interaction:${executionContext.runId || 'run'}:${Date.now()}:${taskIndex}`;
+                }
+                const output = (toolResult as any)?.output || {};
+                if (toolName === 'search_public_apis') {
+                    apiSelection = compactApiSelectionArtifact(output.selection);
+                    if (apiSelection) appendLog(`[PhaseExecutor] API selection captured for builder handoff: ${apiSelection.providerName}`);
+                }
+                if (toolName === 'decide_capability_route') {
+                    capabilityDecision = compactCapabilityDecisionEvidence(output);
+                    if (capabilityDecision?.selected) appendLog(`[PhaseExecutor] Capability decision captured: ${capabilityDecision.selected.route}`);
+                }
+                if (toolName === 'validate_api'
+                    && apiSelection
+                    && String(toolArgs.apiId || '').trim() === apiSelection.apiId
+                    && output.api
+                    && String(output.api.id || '').trim() === apiSelection.apiId) {
+                    apiSelection = compactApiSelectionArtifact({
+                        ...apiSelection,
+                        health: output.api.health,
+                        warnings: Array.from(new Set([
+                            ...apiSelection.warnings,
+                            ...(output.api.healthDetail ? [String(output.api.healthDetail)] : []),
+                        ])),
+                    });
+                    if (apiSelection?.health === 'UNAVAILABLE') {
+                        const validationError = `selected_api_unavailable:${apiSelection.apiId}`;
+                        appendLog(`[PhaseExecutor] API_VALIDATION blocked integration: ${apiSelection.apiId} is unavailable`);
+                        results.push({
+                            task: taskDesc,
+                            tool: toolName,
+                            ok: false,
+                            execution: 'ran',
+                            error: validationError,
+                        });
+                        return { results, completedCount, verificationLedger, apiSelection, capabilityDecision, phaseDelivery, shouldBreak: true };
+                    }
+                    if (apiSelection) appendLog(`[PhaseExecutor] API selection health refreshed: ${apiSelection.health}`);
+                }
+                const stdout = String(output.stdout || '').trim();
+                const stderr = String(output.stderr || '').trim();
+                const terminalReport = toolName === 'shell_execute' && (stdout || stderr)
+                    ? `${stdout}${stdout && stderr ? '\n' : ''}${stderr ? `stderr: ${stderr}` : ''}`
+                    : '';
+                const said = String(output.message || terminalReport).trim();
+                results.push({
+                    task: formatTaskDesc(taskDesc), tool: toolName, ok: true, execution: 'ran',
+                    ...(said ? { message: said.slice(0, 8000) } : {}),
+                });
+                completedCount.value++;
+                return { results, completedCount, verificationLedger, apiSelection, capabilityDecision, phaseDelivery, shouldBreak: false };
+            } else {
+                if (verificationSelection) {
+                    verificationLedger = recordVerification(
+                        verificationLedger,
+                        verificationSelection,
+                        verificationResultFromToolResult(toolResult),
+                        Date.now() - verificationStartedAt,
+                        Date.now(),
+                        verificationMetricsFrom(toolResult, {
+                            selectedAt: verificationSelectedAt,
+                            startedAt: verificationStartedAt,
+                            lastActivityAt: verificationLastActivityAt,
+                        }),
+                    );
+                }
+                bindRuntimeProjectFromEvidence(toolName, toolArgs, toolResult, projectContext, executionContext.runId, logs);
+                syncRuntimeProjectContext(projectContext, executionContext.runId, logs);
+                const errMsg = String(
+                    toolResult.error
+                    || (verificationOutcome ? `Verification ${verificationOutcome}` : '')
+                    || 'Unknown error',
+                );
+                const failedOutput = (toolResult as any)?.output || {};
+                const deliveryEvidence = compactPhaseDeliveryEvidence(failedOutput.delivery);
+                const newPhaseDelivery = mergePhaseDeliveryEvidence(phaseDelivery, deliveryEvidence);
+                const failureText = `${errMsg}\n${String(failedOutput.stderr || '')}\n${String(failedOutput.stdout || '')}`;
+                const runEvidenceId = String(executionContext.runId || projectContext?.runId || '').trim();
+                const runEvidenceRoot = projectContext?.projectRootRuntimeBound === true && String(projectContext?.projectRoot || '').trim()
+                    ? path.resolve(String(projectContext.projectRoot))
+                    : '';
+                const evidenceClassification = classifyStructuredRuntimeEvidence(
+                    toolResult,
+                    originalPlannedEvidence,
+                    projectContext,
+                    runEvidenceId,
+                );
+                const currentRunError = errMsg;
+                const staleRunEvidenceDropped = evidenceClassification.evidenceStatus === 'stale_run_dropped';
+                if (toolName === 'shell_execute' && /missing script/i.test(failureText)) {
+                    const launcher = recoverMissingNpmLauncher(
+                        toolArgs.command,
+                        taskDesc,
+                        toolArgs.cwd,
+                        executionContext.workspaceId,
+                        toolArgs.background,
+                    );
+                    if (launcher) {
+                        const launcherArgs = { ...toolArgs, ...launcher };
+                        appendLog(`[PhaseExecutor] 🔎 Missing npm script detected; package evidence at ${launcher.manifest} selects npm run ${launcher.script}.`);
+                        try {
+                            const launcherResult = await executeTool(toolName, launcherArgs, {
+                                ...liveExecutionContext(),
+                                onProgress: (m: string) => context?.onProgress?.(`[${toolName} MANIFEST RECOVERY] ${m}`),
+                            });
+                            assertRunActive();
+                            if (launcherResult.ok) {
+                                appendLog(`[PhaseExecutor] ✅ Manifest-aware launcher recovery succeeded: npm run ${launcher.script}`);
+                                results.push({ task: formatTaskDesc(taskDesc), tool: toolName, ok: true, execution: 'ran', message: `Used package.json script ${launcher.script} after the requested npm script was absent.` });
+                                completedCount.value++;
+                                return { results, completedCount, verificationLedger, apiSelection, capabilityDecision, phaseDelivery: newPhaseDelivery, shouldBreak: false };
+                            }
+                            appendLog(`[PhaseExecutor] ⚠️ Manifest-aware launcher recovery failed: ${String(launcherResult.error || 'unknown error')}`);
+                        } catch (launcherError: any) {
+                            appendLog(`[PhaseExecutor] ⚠️ Manifest-aware launcher recovery threw: ${String(launcherError?.message || launcherError)}`);
+                        }
+                    }
+                }
+                const failedMessage = String(failedOutput.message || '').trim();
+                const repairKind = failedOutput.repairKind === 'regenerate_engine'
+                    || failedOutput.repairKind === 'code_fix'
+                    ? failedOutput.repairKind
+                    : undefined;
+                const repairFile = repairKind === 'code_fix' && typeof failedOutput.repairFile === 'string'
+                    ? failedOutput.repairFile.slice(0, 1000)
+                    : undefined;
+                appendLog(`[PhaseExecutor] ❌ Task ${taskIndex + 1} failed: ${toolName} — ${errMsg}`);
+                results.push({
+                    task: formatTaskDesc(taskDesc),
+                    tool: toolName,
+                    ok: false,
+                    execution: 'ran',
+                    error: currentRunError,
+                    ...((toolResult as any)?.recoverable === true ? { recoverable: true } : {}),
+                    ...(failedMessage ? { message: failedMessage.slice(0, 8000) } : {}),
+                    ...(repairKind ? { repairKind } : {}),
+                    ...(repairFile ? { repairFile } : {}),
+                    ...(runEvidenceId ? { runId: runEvidenceId } : {}),
+                    ...(runEvidenceRoot ? { projectRoot: runEvidenceRoot } : {}),
+                    ...(staleRunEvidenceDropped
+                        ? { evidenceStatus: 'stale_run_dropped' as const }
+                        : { evidenceStatus: 'current_run' as const }),
+                    ...(evidenceClassification.staleEvidence
+                        ? { staleEvidence: evidenceClassification.staleEvidence }
+                        : {}),
+                    ...(toolName === 'shell_execute' && typeof toolArgs.command === 'string'
+                        ? { command: toolArgs.command.slice(0, 1000) }
+                        : {}),
+                    ...(!staleRunEvidenceDropped && typeof (toolArgs.cwd || toolArgs.projectPath || failedOutput.cwd || failedOutput.projectPath) === 'string'
+                        ? { cwd: String(toolArgs.cwd || toolArgs.projectPath || failedOutput.cwd || failedOutput.projectPath).slice(0, 1000) }
+                        : {}),
+                    ...(toolName === 'shell_execute' && typeof toolArgs.background === 'boolean'
+                        ? { background: toolArgs.background }
+                        : {}),
+                    ...(!staleRunEvidenceDropped ? fileFailureEvidence(toolName, toolArgs, projectContext) : {}),
+                    ...(!staleRunEvidenceDropped ? generatedArtifactFailureEvidence(toolName, failedOutput, projectContext) : {}),
+                    ...(deliveryEvidence ? {
+                        delivery: deliveryEvidence,
+                        ...(deliveryEvidence.acceptanceUnmet ? { acceptanceUnmet: deliveryEvidence.acceptanceUnmet } : {}),
+                        ...(typeof deliveryEvidence.fidelityMismatch === 'boolean' ? { fidelityMismatch: deliveryEvidence.fidelityMismatch } : {}),
+                    } : {}),
+                    ...(repairDescription ? { description: repairDescription } : {}),
+                    ...(repairContext ? { artifactContext: repairContext } : {}),
+                });
+
+                const recoverableFailure = (toolResult as any)?.recoverable === true;
+                if (recoverableFailure) {
+                    appendLog('[PhaseExecutor] ↪️ Recoverable task failure recorded; continuing so downstream verification and self-fix can use the exact evidence.');
+                    return { results, completedCount, verificationLedger, apiSelection, capabilityDecision, phaseDelivery: newPhaseDelivery, shouldBreak: false };
+                } else if (!verificationSelection && (task.priority === 'high' || task.required === true)) {
+                    appendLog('[PhaseExecutor] ⚠️ High-priority task failed. Retrying once...');
+                    try {
+                        assertRunActive();
+                        const retryResult = await executeTool(toolName, toolArgs, {
+                            ...liveExecutionContext(),
+                            onProgress: (m: string) => context?.onProgress?.(`[${toolName} RETRY] ${m}`),
+                        });
+                        assertRunActive();
+                        if (retryResult.ok) {
+                            appendLog(`[PhaseExecutor] ✅ Retry succeeded for task ${taskIndex + 1}: ${toolName}`);
+                            results[results.length - 1] = { task: formatTaskDesc(taskDesc), tool: toolName, ok: true, execution: 'ran' };
+                            completedCount.value++;
+                            return { results, completedCount, verificationLedger, apiSelection, capabilityDecision, phaseDelivery: newPhaseDelivery, shouldBreak: false };
+                        } else {
+                            appendLog('[PhaseExecutor] ⛔ Retry also failed. Stopping phase.');
+                            return { results, completedCount, verificationLedger, apiSelection, capabilityDecision, phaseDelivery: newPhaseDelivery, shouldBreak: true };
+                        }
+                    } catch (retryErr: any) {
+                        if (context?.isCancelled?.() || String(retryErr?.message || retryErr).includes('run_cancelled_by_owner')) {
+                            throw new Error('run_cancelled_by_owner');
+                        }
+                        appendLog(`[PhaseExecutor] ⛔ Retry threw error: ${retryErr?.message}. Stopping phase.`);
+                        return { results, completedCount, verificationLedger, apiSelection, capabilityDecision, phaseDelivery: newPhaseDelivery, shouldBreak: true };
+                    }
+                }
+                return { results, completedCount, verificationLedger, apiSelection, capabilityDecision, phaseDelivery: newPhaseDelivery, shouldBreak: false };
+            }
+        } catch (toolError: any) {
+            if (verificationSelection) {
+                verificationLedger = recordVerification(
+                    verificationLedger,
+                    verificationSelection,
+                    verificationResultFrom(toolError, false),
+                    Date.now() - verificationStartedAt,
+                    Date.now(),
+                    verificationMetricsFrom(undefined, {
+                        selectedAt: verificationSelectedAt,
+                        startedAt: verificationStartedAt,
+                        lastActivityAt: verificationLastActivityAt,
+                    }),
+                );
+            }
+            const errMsg = String(toolError?.message || toolError || 'Execution error');
+            if (context?.isCancelled?.() || errMsg.includes('run_cancelled_by_owner')) {
+                throw new Error('run_cancelled_by_owner');
+            }
+            const runEvidenceId = String(executionContext.runId || projectContext?.runId || '').trim();
+            const runEvidenceRoot = projectContext?.projectRootRuntimeBound === true && String(projectContext?.projectRoot || '').trim()
+                ? path.resolve(String(projectContext.projectRoot))
+                : '';
+            const evidenceClassification = classifyStructuredRuntimeEvidence(
+                { error: errMsg },
+                originalPlannedEvidence,
+                projectContext,
+                runEvidenceId,
+            );
+            const currentRunError = errMsg;
+            const staleRunEvidenceDropped = evidenceClassification.evidenceStatus === 'stale_run_dropped';
+            appendLog(`[PhaseExecutor] ❌ Task ${taskIndex + 1} threw: ${currentRunError}`);
+            results.push({
+                task: formatTaskDesc(taskDesc),
+                tool: toolName,
+                ok: false,
+                execution: 'ran',
+                error: currentRunError,
+                ...(runEvidenceId ? { runId: runEvidenceId } : {}),
+                ...(runEvidenceRoot ? { projectRoot: runEvidenceRoot } : {}),
+                ...(staleRunEvidenceDropped
+                    ? { evidenceStatus: 'stale_run_dropped' as const }
+                    : { evidenceStatus: 'current_run' as const }),
+                ...(evidenceClassification.staleEvidence
+                    ? { staleEvidence: evidenceClassification.staleEvidence }
+                    : {}),
+                ...(toolName === 'shell_execute' && typeof toolArgs.command === 'string'
+                    ? { command: toolArgs.command.slice(0, 1000) }
+                    : {}),
+                ...(!staleRunEvidenceDropped && typeof (toolArgs.cwd || toolArgs.projectPath) === 'string'
+                    ? { cwd: String(toolArgs.cwd || toolArgs.projectPath).slice(0, 1000) }
+                    : {}),
+                ...(toolName === 'shell_execute' && typeof toolArgs.background === 'boolean'
+                    ? { background: toolArgs.background }
+                    : {}),
+                ...(!staleRunEvidenceDropped ? fileFailureEvidence(toolName, toolArgs, projectContext) : {}),
+                ...(repairDescription ? { description: repairDescription } : {}),
+                ...(repairContext ? { artifactContext: repairContext } : {}),
+            });
+
+            if (task.priority === 'high' || task.required === true) {
+                appendLog('[PhaseExecutor] ⛔ Critical task threw. Stopping phase.');
+                return { results, completedCount, verificationLedger, apiSelection, capabilityDecision, phaseDelivery, shouldBreak: true };
+            }
+            return { results, completedCount, verificationLedger, apiSelection, capabilityDecision, phaseDelivery, shouldBreak: false };
+        }
+    }
+
     async execute(input: { phase: any; projectContext?: any; repairCriteria?: string[] }, context?: any) {
         const { phase, projectContext, repairCriteria } = input;
         const assertRunActive = () => {
@@ -1169,9 +1954,6 @@ export class PhaseExecutorTool implements ToolDefinition {
         const MAX_PHASE_LOGS = 128;
         const MAX_PHASE_LOG_CHARS = 2_000;
         const logs: string[] = [];
-        // A phase log is live evidence for the panel, not an unbounded transcript.
-        // Keep the most recent lines (where verification/build failures appear)
-        // and one explicit marker when older progress has been evicted.
         const appendLog = (line: unknown) => {
             const text = String(line ?? '').slice(0, MAX_PHASE_LOG_CHARS);
             if (logs.length < MAX_PHASE_LOGS) {
@@ -1196,72 +1978,44 @@ export class PhaseExecutorTool implements ToolDefinition {
             runId?: string;
             projectRoot?: string;
             evidenceStatus?: 'current_run' | 'stale_run_dropped';
-            /** Bounded audit-only copy of stale diagnostic text; never a repair path. */
             staleEvidence?: string;
-            /** Bounded acceptance/fidelity verdict copied from a trusted builder. */
             delivery?: PhaseDeliveryEvidence;
             acceptanceUnmet?: string[];
             fidelityMismatch?: boolean;
         }> = [];
-        let completedCount = 0;
+        let completedCount = { value: 0 };
         let phaseDelivery: PhaseDeliveryEvidence | undefined;
         let verificationLedger = compactVerificationLedger(projectContext?.verificationLedger);
-        // A discovery task may have completed in an earlier phase. Rebuild the
-        // receipt from Joe-maintained profile data at this boundary; executable
-        // fields such as baseUrl, auth, env names, and provider names are never
-        // accepted from planner/run context.
         let apiSelection: ApiSelectionArtifact | null = compactApiSelectionArtifact(projectContext?.apiSelection);
         let capabilityDecision: CapabilityDecisionEvidence | null = compactCapabilityDecisionEvidence(projectContext?.capabilityDecision);
 
         const executionContext = {
             runId: context?.runId || projectContext?.runId,
             sessionId: context?.sessionId || projectContext?.sessionId,
-            // Phase tasks may invoke browser tools; retain the panel identifier
-            // from the parent run instead of falling back to the chat session.
             browserSessionId: context?.browserSessionId || projectContext?.browserSessionId,
             workspaceId: context?.workspaceId || projectContext?.workspaceId,
             userId: context?.userId || projectContext?.userId,
-            // Delegated artifact writers need the same trusted project identity
-            // as project_run. Without it, a model can see only a broad workspace
-            // and silently switch a Vite/React product to React Native or another
-            // undeclared stack between phases.
             projectRoot: projectContext?.projectRootRuntimeBound === true && projectContext?.projectRoot
                 ? projectContext.projectRoot
                 : (context?.projectRoot || projectContext?.projectRoot),
             projectName: context?.projectName || projectContext?.projectName,
             createsNewProject: context?.createsNewProject ?? projectContext?.createsNewProject,
             projectRootRuntimeBound: projectContext?.projectRootRuntimeBound ?? context?.projectRootRuntimeBound,
-            // Preserve the canonical engineering-routing contract across the
-            // executor boundary. AgentLoopService marks the pipeline as an
-            // internal engineering run, but the old narrowed context dropped
-            // these fields before delegated tools reached callLLM; generation
-            // then fell back to ordinary chat deadlines and dead-brain policy.
-            //  ⛔ Carried across this boundary for the same reason `modelConfig`
-            //  is: a narrowed context that drops a field silently turns a
-            //  repair into a re-roll, and the drop is invisible from either side.
             repairCriteria: repairCriteria && repairCriteria.length
                 ? repairCriteria
                 : (context?.repairCriteria || projectContext?.repairCriteria),
             modelConfig: context?.modelConfig || projectContext?.modelConfig,
             purpose: context?.purpose || projectContext?.purpose,
             engineeringPipeline: context?.engineeringPipeline ?? projectContext?.engineeringPipeline,
-            // Public exposure is an explicit deployment capability, never an
-            // implicit side effect of local engineering QA.
             allowPublicExposure: context?.allowPublicExposure === true || projectContext?.allowPublicExposure === true,
             providerTimeoutMs: context?.providerTimeoutMs ?? projectContext?.providerTimeoutMs,
             plannerTimeoutMs: context?.plannerTimeoutMs ?? projectContext?.plannerTimeoutMs,
             plannerMaxCompletionTokens: context?.plannerMaxCompletionTokens ?? projectContext?.plannerMaxCompletionTokens,
             plannerReasoningEffort: context?.plannerReasoningEffort ?? projectContext?.plannerReasoningEffort,
-            // The phase executor is the boundary every delegated tool crosses.
-            // Dropping the user's UI language here made generic tool statuses
-            // fall back to Arabic inside an otherwise English run.
             language: context?.language || projectContext?.language,
             terminalLinesEmitted: context?.terminalLinesEmitted,
             onThought: (m: string) => context?.onThought?.(m),
             onProgress: (m: string) => context?.onProgress?.(m),
-            // Cancellation is part of the trusted run context. Every delegated
-            // task must see it so a stopped builder cannot finish in the
-            // background and be mistaken for a failed task worth retrying.
             isCancelled: context?.isCancelled,
             cancellation: context?.cancellation,
         };
@@ -1270,13 +2024,7 @@ export class PhaseExecutorTool implements ToolDefinition {
             : '';
         const runtimeTargetFor = (toolName: string, args: Record<string, any>) => {
             if (!/^(?:browser_|visual_qa$)/u.test(toolName)) return '';
-            return String(
-                args.url
-                || args.previewUrl
-                || args.baseUrl
-                || executionContext.browserSessionId
-                || '',
-            ).trim();
+            return String(args.url || args.previewUrl || args.baseUrl || executionContext.browserSessionId || '').trim();
         };
         const runtimeRevisionFor = (toolName: string) => {
             if (!/^(?:browser_|visual_qa$)/u.test(toolName)) return '';
@@ -1285,12 +2033,7 @@ export class PhaseExecutorTool implements ToolDefinition {
                 ? activeProject?.updatedAt
                 : '';
             const activePage = (global as any).joePages?.[sessionProjectKey(projectContext?.sessionId)];
-            return String(
-                projectContext?.browserRuntimeRevision
-                || acceptedProjectRevision
-                || activePage?.updatedAt
-                || '',
-            ).trim();
+            return String(projectContext?.browserRuntimeRevision || acceptedProjectRevision || activePage?.updatedAt || '').trim();
         };
         const verificationMetricsFrom = (
             result: any,
@@ -1301,27 +2044,13 @@ export class PhaseExecutorTool implements ToolDefinition {
             const suppliedIdle = result?.output?.telemetry?.idleMs ?? result?.output?.idleMs ?? result?.idleMs;
             const suppliedRetries = result?.output?.telemetry?.retryCount ?? result?.output?.retryCount ?? result?.retryCount;
             return {
-            evidenceLocation: String(
-                result?.output?.evidenceLocation
-                || result?.output?.reportPath
-                || result?.output?.url
-                || '',
-            ).trim(),
-            queueMs: suppliedQueue == null
-                ? Math.max(0, Number(timing.startedAt || 0) - Number(timing.selectedAt || timing.startedAt || 0))
-                : Number(suppliedQueue),
-            idleMs: suppliedIdle == null
-                ? Math.max(0, finishedAt - Number(timing.lastActivityAt || timing.startedAt || finishedAt))
-                : Number(suppliedIdle),
-            retryCount: suppliedRetries == null ? Number(timing.retryCount || 0) : Number(suppliedRetries),
-        };
+                evidenceLocation: String(result?.output?.evidenceLocation || result?.output?.reportPath || result?.output?.url || '').trim(),
+                queueMs: suppliedQueue == null ? Math.max(0, Number(timing.startedAt || 0) - Number(timing.selectedAt || timing.startedAt || 0)) : Number(suppliedQueue),
+                idleMs: suppliedIdle == null ? Math.max(0, finishedAt - Number(timing.lastActivityAt || timing.startedAt || finishedAt)) : Number(suppliedIdle),
+                retryCount: suppliedRetries == null ? Number(timing.retryCount || 0) : Number(suppliedRetries),
+            };
         };
 
-        // `executionContext` is created before the first builder task runs, but
-        // the builder may establish the real artifact root later in the same
-        // phase. Always expose the current trusted root to delegated tools;
-        // otherwise ai_write_file validates against the old workspace root while
-        // npm_manager/auto_tester operate inside the newly created project.
         const plannedPhaseFiles: string[] = [];
         const changedPhaseFiles: string[] = [];
         const liveExecutionContext = () => ({
@@ -1350,16 +2079,6 @@ export class PhaseExecutorTool implements ToolDefinition {
             if (!executionContext.workspaceId) appendLog('[PhaseExecutor] Warning: missing workspaceId in execution context');
             if (!executionContext.userId) appendLog('[PhaseExecutor] Warning: missing userId in execution context');
 
-            /**
-             * A PHASE IS IDENTIFIED BY WHAT THE PLAN ACTUALLY GAVE IT.
-             *
-             * The pipeline's own two-phase plan («Data service and schema» /
-             * «Interface on the service») carries names but no numbers, so
-             * every line read «Phase undefined completed: 1/1» — unreadable
-             * in exactly the runs whose evidence we most need to read. The
-             * number is used when it exists; the name stands in when it does
-             * not, and neither is ever the word "undefined".
-             */
             const phaseNo = Number.isFinite(Number(phase?.phaseNumber)) && String(phase?.phaseNumber ?? '').trim() !== ''
                 ? String(phase.phaseNumber)
                 : '';
@@ -1367,637 +2086,86 @@ export class PhaseExecutorTool implements ToolDefinition {
 
             appendLog(`[PhaseExecutor] Starting Phase ${phaseNo ? `${phaseNo}: ${phase.name}` : phaseTag} (${totalTasks} tasks)`);
 
-            for (let i = 0; i < tasks.length; i++) {
+            // Convert tasks to ExecutionStep format for parallel group detection
+            const executionSteps = tasks.map((task: any, index: number) => ({
+                id: String(task.id || `task_${index}`),
+                description: String(task.task || task.description || `Task ${index + 1}`),
+                tool: String(task.tool || '').trim(),
+                agent: 'General',
+                input: { ...(task.args || {}), ...(task.input || {}) },
+                dependsOn: Array.isArray(task.dependsOn) ? task.dependsOn.map(String) : [],
+                parallel: task.parallel === true,
+                reasoning: task.reasoning || ''
+            }));
+
+            // Detect parallel groups using adaptive DAG planner
+            const parallelGroups = PhaseExecutorTool.detectParallelGroups(executionSteps);
+            appendLog(`[PhaseExecutor] Detected ${parallelGroups.length} parallel execution groups`);
+
+            // Build execution groups
+            const executionGroups = PhaseExecutorTool.buildExecutionGroups(tasks, executionSteps, parallelGroups);
+
+            let shouldBreak = false;
+            for (const group of executionGroups) {
                 assertRunActive();
-                const task = tasks[i];
-                const askedFor = String(task.tool || '').trim();
-                const taskDesc = String(task.task || task.description || `Task ${i + 1}`);
-
-                if (!askedFor || askedFor === 'manual') {
-                    appendLog(`[PhaseExecutor] Task ${i + 1}: "${taskDesc}" — skipped (manual/no tool)`);
-                    results.push({ task: taskDesc, tool: 'manual', ok: true, execution: 'skipped' });
-                    continue;
-                }
-
-                /**
-                 * DEFENCE IN DEPTH — the planner already snaps names onto real
-                 * tools, but a phase can reach this executor from anywhere (a
-                 * repair ticket, a hand-written plan, an older stored plan), and
-                 * the field log that motivated this reads:
-                 *
-                 *   Task 1/2: "Create project repository" — executing tool: Git
-                 *   ❌ Task 1 failed: Git — unknown_tool: "Git"
-                 *
-                 * A name nobody can execute is a defect of the PLAN. Executing it
-                 * cannot be attempted, so it is not counted as an attempt that
-                 * failed: it is recorded, skipped, and the build carries on.
-                 */
-                const resolved = resolvePlannedTool(askedFor);
-                if (!resolved.tool) {
-                    appendLog(`[PhaseExecutor] ⏭️ Task ${i + 1}: "${taskDesc}" — «${askedFor}» ليست أداة في هذا النظام` +
-                        `${(resolved as any).why === 'not_software' ? ' (عمل تنظيمي بشري)' : ''}. تخطّيتُها ولم أوقف البناء.`);
-                    results.push({ task: taskDesc, tool: 'manual', ok: true, execution: 'skipped' });
-                    continue;
-                }
-                let toolName = resolved.tool;
-                let rawTaskArgs: any = { ...(task.args || {}), ...(task.input || {}) };
-                const browserStart = (toolName === 'shell_execute' || toolName === 'terminal_manager')
-                    ? reactProjectStartFallback(rawTaskArgs.command, taskDesc, rawTaskArgs, projectContext, executionContext.workspaceId)
-                    : null;
-                const serverStart = !browserStart && (toolName === 'shell_execute' || toolName === 'terminal_manager')
-                    ? reactProjectServerFallback(rawTaskArgs.command, taskDesc, rawTaskArgs, projectContext, executionContext.workspaceId)
-                    : null;
-                if (browserStart) {
-                    toolName = 'project_run';
-                    rawTaskArgs = { ...rawTaskArgs, cwd: browserStart.cwd };
-                    delete rawTaskArgs.command;
-                    delete rawTaskArgs.background;
-                    appendLog(`[PhaseExecutor] ↪️ Task ${i + 1}: replaced direct Node TypeScript launch with project_run (${browserStart.cwd.slice(0, 240)})`);
-                } else if (serverStart) {
-                    toolName = 'project_run';
-                    rawTaskArgs = { ...rawTaskArgs, cwd: serverStart.cwd, command: `npm run ${serverStart.script}` };
-                    delete rawTaskArgs.background;
-                    appendLog(`[PhaseExecutor] ↪️ Task ${i + 1}: declared preview server uses project_run (${serverStart.cwd.slice(0, 240)})`);
-                }
-                if (toolName !== askedFor) {
-                    appendLog(`[PhaseExecutor] ↪️ «${askedFor}» تعني ${toolName} — نفّذتُ الأداة الحقيقية.`);
-                }
-
-                // The same run also tried `sudo apt-get install git -y` on
-                // Windows, moments after `git --version` answered exit 0. An
-                // impossible command is not a task that failed; it is a task
-                // that was never possible, and retrying it burns the run.
-                if (toolName === 'shell_execute' || toolName === 'terminal_manager') {
-                    const why = unrunnableShellStep(rawTaskArgs.command);
-                    if (why) {
-                        appendLog(`[PhaseExecutor] ⏭️ Task ${i + 1}: "${taskDesc}" — ${why}`);
-                        results.push({ task: taskDesc, tool: 'manual', ok: true, execution: 'skipped' });
-                        continue;
-                    }
-                }
-
-                appendLog(`[PhaseExecutor] Task ${i + 1}/${totalTasks}: "${taskDesc}" — executing tool: ${toolName}`);
-
-                // A plan's arguments are model-written too: «Git» came with
-                // `{action:'status'}` and git_ops declares `operation`, so the
-                // renamed tool still failed on its first real run. Speak the
-                // tool's own vocabulary.
-                // The session goes in BEFORE the adapter runs: an audit with no
-                // address is completed from what THIS session just built, and
-                // the adapter cannot find that without knowing whose it is.
-                const planned: any = { ...rawTaskArgs };
-                if (executionContext.sessionId && typeof planned.sessionId !== 'string') planned.sessionId = executionContext.sessionId;
-                if (executionContext.workspaceId && typeof planned.workspaceId !== 'string') planned.workspaceId = executionContext.workspaceId;
-                const requirementsContext = String(projectContext?.requirementsContext || '').trim();
-                if (['api_project', 'react_project'].includes(toolName)) {
-                    // Builder tools receive their semantics through `request`,
-                    // not through the narrowed execution context. Preserve the
-                    // planner's request, then append the bounded evidence brief
-                    // that was derived from the fully read specification. This
-                    // keeps the handoff evidence-first without inventing a
-                    // product template or replacing an explicit builder brief.
-                    const taskRequest = String(planned.request || '').trim();
-                    const evidenceMarker = 'COMPACT REQUIREMENTS EVIDENCE';
-                    const canonicalRequest = projectContext?.createsNewProject === true
-                        ? String(projectContext?.request || '').trim()
-                        : '';
-                    if (canonicalRequest) {
-                        planned.request = canonicalRequest;
-                    }
-                    if (requirementsContext
-                        && !taskRequest.includes(evidenceMarker)
-                        && !taskRequest.includes(requirementsContext.slice(0, 160))) {
-                        const baseRequest = canonicalRequest || taskRequest;
-                        planned.request = baseRequest
-                            ? `${baseRequest}\n\n${requirementsContext}`
-                            : requirementsContext;
-                    }
-                }
-                if (toolName === 'ai_write_file') {
-                    if (requirementsContext) {
-                        const taskContext = String(planned.context || '').trim();
-                        planned.context = taskContext
-                            ? `${taskContext}\n\n${requirementsContext}`
-                            : requirementsContext;
-                    }
-                    // A task title is a real planning datum; use it as a final
-                    // fallback so an otherwise valid write never reaches the
-                    // generator with an empty semantic requirement.
-                    if (!String(planned.description || '').trim()) planned.description = taskDesc;
-                }
-
-                if (['api_project', 'react_project'].includes(toolName)
-                    && projectContext?.createsNewProject === true
-                    && String(projectContext?.projectName || '').trim()
-                    && !String(planned.projectName || '').trim()) {
-                    planned.projectName = String(projectContext.projectName).trim();
-                    appendLog(`[PhaseExecutor] ${toolName}: inherited canonical project identity (${planned.projectName})`);
-                }
-
-                if (toolName === 'react_project' && apiSelection) {
-                    planned.apiSelection = apiSelection;
-                    appendLog(`[PhaseExecutor] react_project: received trusted API selection (${apiSelection.providerName})`);
-                }
-                if ((toolName === 'inspect_api' || toolName === 'validate_api')
-                    && apiSelection
-                    && !String(planned.apiId || '').trim()) {
-                    planned.apiId = apiSelection.apiId;
-                    appendLog(`[PhaseExecutor] ${toolName}: received trusted API id (${apiSelection.apiId})`);
-                }
-
-                // Preserve the planner's structured evidence before runtime
-                // rebasing normalizes stale cwd/projectPath values. This snapshot
-                // is metadata only; it is never used as an execution path.
-                const originalPlannedEvidence = { ...planned };
-                applyPhaseExecutionEvidence(toolName, planned, projectContext, logs);
-
-                // Builder tools establish the artifact identity for the rest of
-                // the phase. Downstream package/install commands must execute
-                // inside that artifact, not silently fall back to the workspace
-                // root when the planner omitted cwd/projectPath.
-                inheritRuntimeProjectArguments(toolName, planned, projectContext, logs);
-
-                // Preserve builder semantics for either a returned tool failure or
-                // an exception, so both paths can create a faithful self-fix ticket.
-                const repairDescription = ['react_project', 'api_project'].includes(toolName)
-                    ? boundedRepairEvidence(planned.request || planned.description || taskDesc)
-                    : '';
-                const repairContext = ['react_project', 'api_project'].includes(toolName)
-                    ? boundedRepairEvidence(planned.context || projectContext?.requirementsContext || '')
-                    : '';
-
-                const adaptedPlanned = adaptPlannedArgs(toolName, planned);
-                const toolArgs = adaptPlannedArgsFromDescription(toolName, adaptedPlanned, taskDesc);
-                /**
-                 * A local engineering pipeline must never turn its live QA step
-                 * into a public localtunnel deployment. The generated app is
-                 * already reachable on loopback through project_run, while
-                 * expose_port crosses the future multi-user server boundary and
-                 * must remain an explicitly approved operation. Treat the
-                 * planner's unnecessary public-exposure task as a successful
-                 * no-op so the following project_run/browser QA tasks can run.
-                 */
-                const requestedPublicExposure = toolName === 'deploy_project'
-                    && String(toolArgs?.action || '').trim().toLowerCase() === 'expose_port';
-                const explicitlyApprovedPublicExposure = toolArgs?.allowPublicExposure === true
-                    || toolArgs?.approvedPublicExposure === true
-                    || projectContext?.allowPublicExposure === true
-                    || executionContext?.allowPublicExposure === true;
-                if (requestedPublicExposure
-                    && executionContext.engineeringPipeline === true
-                    && !explicitlyApprovedPublicExposure) {
-                    appendLog(`[PhaseExecutor] ⏭️ Task ${i + 1}: "${taskDesc}" — skipped public expose_port during local engineering QA; project_run/localhost remains the verification path.`);
-                    results.push({
-                        task: taskDesc,
-                        tool: toolName,
-                        ok: true,
-                        execution: 'skipped',
-                        message: 'Skipped unapproved public exposure in the local engineering pipeline; use the verified loopback project_run URL.',
-                    });
-                    continue;
-                }
-                const argsIssue = plannedArgsIssue(toolName, toolArgs);
-                if (argsIssue) {
-                    appendLog(`[PhaseExecutor] ⏭️ Task ${i + 1}: "${taskDesc}" — ${argsIssue}`);
-                    results.push({ task: taskDesc, tool: 'manual', ok: true, execution: 'skipped', message: argsIssue });
-                    continue;
-                }
-
-                const dependencyPreflight = await ensureNpmScriptDependencies(
-                    toolName,
-                    toolArgs,
-                    projectContext,
-                    liveExecutionContext(),
-                    appendLog,
-                );
-                assertRunActive();
-                if (!dependencyPreflight.ok) {
-                    const preflightError = dependencyPreflight.error;
-                    appendLog(`[PhaseExecutor] ❌ Task ${i + 1} blocked by npm preflight: ${preflightError}`);
-                    results.push({
-                        task: taskDesc,
-                        tool: toolName,
-                        ok: false,
-                        execution: 'ran',
-                        error: preflightError,
-                        ...(toolName === 'shell_execute' && typeof toolArgs.command === 'string'
-                            ? { command: toolArgs.command.slice(0, 1000) }
-                            : {}),
-                        ...(typeof (toolArgs.cwd || toolArgs.projectPath) === 'string' ? { cwd: String(toolArgs.cwd || toolArgs.projectPath).slice(0, 1000) } : {}),
-                    });
-                    if (task.priority === 'high' || task.required === true) break;
-                    continue;
-                }
-
-                let verificationSelection: VerificationSelection | undefined;
-                let verificationStartedAt = 0;
-                let verificationSelectedAt = 0;
-                let verificationLastActivityAt = 0;
-                const explicitlyMarkedVerification = Boolean(
-                    task.verificationId
-                    || task.verificationMode
-                    || task.verificationBoundary
-                    || rawTaskArgs.verificationId
-                    || rawTaskArgs.verificationMode
-                    || rawTaskArgs.verificationBoundary,
-                );
-                if (isVerificationTool(toolName, toolArgs, explicitlyMarkedVerification)) {
-                    const scopeRoot = String(
-                        toolArgs.cwd
-                        || toolArgs.projectPath
-                        || toolArgs.path
-                        || (projectContext?.projectRootRuntimeBound === true ? projectContext?.projectRoot : '')
-                        || workspaceService.getActiveRoot(executionContext.workspaceId)
-                        || '',
-                    ).trim();
-                    const verificationId = String(
-                        task.verificationId
-                        || rawTaskArgs.verificationId
-                        || `${toolName}:${taskDesc}`,
-                    ).trim().slice(0, 240);
-                    const relevantPaths = [
-                        ...(Array.isArray(task.relevantPaths) ? task.relevantPaths : []),
-                        ...(Array.isArray(rawTaskArgs.verificationRelevantPaths) ? rawTaskArgs.verificationRelevantPaths : []),
-                    ].map((item: unknown) => String(item || '').trim()).filter(Boolean);
-                    const mode = task.verificationMode
-                        || rawTaskArgs.verificationMode
-                        || (projectContext?.isFinalPhase === true ? 'final' : 'focused');
-                    const boundary = String(task.verificationBoundary || rawTaskArgs.verificationBoundary || '').trim();
-                    if (!relevantPaths.length && !boundary) relevantPaths.push(...changedPhaseFiles);
-                    const runtimeRevision = runtimeRevisionFor(toolName);
-                    delete toolArgs.verificationId;
-                    delete toolArgs.verificationMode;
-                    delete toolArgs.verificationBoundary;
-                    delete toolArgs.verificationRelevantPaths;
-                    delete toolArgs.verificationRuntimeRevision;
-                    if (scopeRoot) {
-                        const selected = selectVerification(verificationLedger, {
-                            checkId: verificationId,
-                            tool: toolName,
-                            args: toolArgs,
-                            workspaceId: String(executionContext.workspaceId || ''),
-                            workspaceRoot: trustedWorkspaceRoot,
-                            scopeRoot,
-                            relevantPaths,
-                            boundary,
-                            boundaries: projectContext?.verificationBoundaries,
-                            runtimeTarget: runtimeTargetFor(toolName, toolArgs),
-                            runtimeRevision,
-                            mode,
-                        });
-                        verificationLedger = selected.ledger;
-                        verificationSelection = selected.selection;
-                        appendLog(`[PhaseExecutor] verification ${selected.selection.action}: ${verificationId} — ${selected.selection.reason}`);
-                        if (selected.selection.action === 'reuse') {
-                            results.push({
-                                task: taskDesc,
-                                tool: toolName,
-                                ok: true,
-                                execution: 'reused',
-                                message: selected.selection.reason,
-                            });
-                            completedCount++;
-                            continue;
-                        }
-                        verificationSelectedAt = Date.now();
-                    }
-                }
-
-                try {
-                    if (verificationSelection) {
-                        verificationStartedAt = Date.now();
-                        verificationLastActivityAt = verificationStartedAt;
-                    }
-                    const toolResult = await executeTool(toolName, toolArgs, {
-                        ...liveExecutionContext(),
-                        onProgress: (m: string) => {
-                            if (verificationSelection) verificationLastActivityAt = Date.now();
-                            context?.onProgress?.(`[${toolName}] ${m}`);
-                        },
-                    });
-                    assertRunActive();
-                    const verificationOutcome = verificationSelection
-                        ? verificationResultFromToolResult(toolResult)
-                        : undefined;
-
-                    if (toolResult.ok && (!verificationOutcome || verificationOutcome === 'passed')) {
-                        if (verificationSelection) {
-                            verificationLedger = recordVerification(
-                                verificationLedger,
-                                verificationSelection,
-                                verificationOutcome || 'passed',
-                                Date.now() - verificationStartedAt,
-                                Date.now(),
-                                verificationMetricsFrom(toolResult, {
-                                    selectedAt: verificationSelectedAt,
-                                    startedAt: verificationStartedAt,
-                                    lastActivityAt: verificationLastActivityAt,
-                                }),
-                            );
-                        }
-                        appendLog(`[PhaseExecutor] ✅ Task ${i + 1} completed: ${toolName}`);
-                        bindRuntimeProjectFromEvidence(toolName, toolArgs, toolResult, projectContext, executionContext.runId, logs);
-                        syncRuntimeProjectContext(projectContext, executionContext.runId, logs);
-                        changedPhaseFiles.push(...mutationPathsFor(toolName, toolArgs));
-                        if (changedPhaseFiles.length > 64) changedPhaseFiles.splice(0, changedPhaseFiles.length - 64);
-                        if (!verificationSelection && /^(?:browser_|visual_qa$)/u.test(toolName)) {
-                            projectContext.browserRuntimeRevision = `interaction:${executionContext.runId || 'run'}:${Date.now()}:${i}`;
-                        }
-                        /**
-                         * THE BUILDER'S OWN WORDS SURVIVE THE PHASE.
-                         *
-                         * His prompt ended with «At the end, show me plainly
-                         * what you actually built and what you did not» — and
-                         * he got a list of three phase names. The answer he
-                         * asked for was WRITTEN: `react_project` composes a
-                         * message naming the live streaming, the video calls
-                         * and the AI diagnosis it did NOT build, the two QA
-                         * scores, and the owner account. This line threw all
-                         * of it away — `{task, tool, ok}` and nothing else —
-                         * so the pipeline's report had nothing to carry.
-                         *
-                         * Bounded, because a report is read, not scrolled.
-                         */
-                        const output = (toolResult as any)?.output || {};
-                        if (toolName === 'search_public_apis') {
-                            apiSelection = compactApiSelectionArtifact(output.selection);
-                            if (apiSelection) appendLog(`[PhaseExecutor] API selection captured for builder handoff: ${apiSelection.providerName}`);
-                        }
-                        if (toolName === 'decide_capability_route') {
-                            capabilityDecision = compactCapabilityDecisionEvidence(output);
-                            if (capabilityDecision?.selected) appendLog(`[PhaseExecutor] Capability decision captured: ${capabilityDecision.selected.route}`);
-                        }
-                        if (toolName === 'validate_api'
-                            && apiSelection
-                            && String(toolArgs.apiId || '').trim() === apiSelection.apiId
-                            && output.api
-                            && String(output.api.id || '').trim() === apiSelection.apiId) {
-                            apiSelection = compactApiSelectionArtifact({
-                                ...apiSelection,
-                                health: output.api.health,
-                                warnings: Array.from(new Set([
-                                    ...apiSelection.warnings,
-                                    ...(output.api.healthDetail ? [String(output.api.healthDetail)] : []),
-                                ])),
-                            });
-                            if (apiSelection?.health === 'UNAVAILABLE') {
-                                const validationError = `selected_api_unavailable:${apiSelection.apiId}`;
-                                appendLog(`[PhaseExecutor] API_VALIDATION blocked integration: ${apiSelection.apiId} is unavailable`);
-                                results.push({
-                                    task: taskDesc,
-                                    tool: toolName,
-                                    ok: false,
-                                    execution: 'ran',
-                                    error: validationError,
-                                });
-                                break;
-                            }
-                            if (apiSelection) appendLog(`[PhaseExecutor] API selection health refreshed: ${apiSelection.health}`);
-                        }
-                        // Most builder tools return a prose message, while shell tools
-                        // deliberately return structured stdout/stderr. Preserve both
-                        // contracts so a successful terminal task is visible in the
-                        // phase report instead of looking like an empty completion.
-                        const stdout = String(output.stdout || '').trim();
-                        const stderr = String(output.stderr || '').trim();
-                        const terminalReport = toolName === 'shell_execute' && (stdout || stderr)
-                            ? `${stdout}${stdout && stderr ? '\n' : ''}${stderr ? `stderr: ${stderr}` : ''}`
-                            : '';
-                        const said = String(output.message || terminalReport).trim();
-                        results.push({
-                            task: taskDesc, tool: toolName, ok: true, execution: 'ran',
-                            ...(said ? { message: said.slice(0, 8000) } : {}),
-                        });
-                        completedCount++;
-                    } else {
-                        if (verificationSelection) {
-                            verificationLedger = recordVerification(
-                                verificationLedger,
-                                verificationSelection,
-                                verificationResultFromToolResult(toolResult),
-                                Date.now() - verificationStartedAt,
-                                Date.now(),
-                                verificationMetricsFrom(toolResult, {
-                                    selectedAt: verificationSelectedAt,
-                                    startedAt: verificationStartedAt,
-                                    lastActivityAt: verificationLastActivityAt,
-                                }),
-                            );
-                        }
-                        // A builder may have written a real artifact and returned ok:false
-                        // only because its delivery/QA gate is blocked. Bind that artifact
-                        // before recording the failure; otherwise every following task
-                        // resolves against the logical project name (for example
-                        // workspace/WeatherGo), loses the manifest, and reports false
-                        // dependency/import failures. The evidence binder is deliberately
-                        // strict: it accepts only a package-bearing child or bounded file
-                        // evidence, so ordinary failed tools cannot relabel the workspace.
-                        bindRuntimeProjectFromEvidence(toolName, toolArgs, toolResult, projectContext, executionContext.runId, logs);
-                        syncRuntimeProjectContext(projectContext, executionContext.runId, logs);
-                        const errMsg = String(
-                            toolResult.error
-                            || (verificationOutcome ? `Verification ${verificationOutcome}` : '')
-                            || 'Unknown error',
-                        );
-                        const failedOutput = (toolResult as any)?.output || {};
-                        const deliveryEvidence = compactPhaseDeliveryEvidence(failedOutput.delivery);
-                        phaseDelivery = mergePhaseDeliveryEvidence(phaseDelivery, deliveryEvidence);
-                        const failureText = `${errMsg}\n${String(failedOutput.stderr || '')}\n${String(failedOutput.stdout || '')}`;
-                        const runEvidenceId = String(executionContext.runId || projectContext?.runId || '').trim();
-                        const runEvidenceRoot = projectContext?.projectRootRuntimeBound === true && String(projectContext?.projectRoot || '').trim()
-                            ? path.resolve(String(projectContext.projectRoot))
-                            : '';
-                        const evidenceClassification = classifyStructuredRuntimeEvidence(
-                            toolResult,
-                            originalPlannedEvidence,
-                            projectContext,
-                            runEvidenceId,
-                        );
-                        // Preserve the tool's diagnostic verbatim. Stale status is
-                        // structured metadata; it must never rewrite a runtime
-                        // contract's verified root or manifest prose.
-                        const currentRunError = errMsg;
-                        const staleRunEvidenceDropped = evidenceClassification.evidenceStatus === 'stale_run_dropped';
-                        // Evidence-aware launcher recovery. Do not invent a
-                        // `server` script and do not rewrite arbitrary npm
-                        // commands: inspect the manifest and retry only when
-                        // the repository proves a valid launcher exists.
-                        if (toolName === 'shell_execute' && /missing script/i.test(failureText)) {
-                            const launcher = recoverMissingNpmLauncher(
-                                toolArgs.command,
-                                taskDesc,
-                                toolArgs.cwd,
-                                executionContext.workspaceId,
-                                toolArgs.background,
-                            );
-                            if (launcher) {
-                                const launcherArgs = { ...toolArgs, ...launcher };
-                                appendLog(`[PhaseExecutor] 🔎 Missing npm script detected; package evidence at ${launcher.manifest} selects npm run ${launcher.script}.`);
-                                try {
-                                    const launcherResult = await executeTool(toolName, launcherArgs, {
-                                        ...liveExecutionContext(),
-                                        onProgress: (m: string) => context?.onProgress?.(`[${toolName} MANIFEST RECOVERY] ${m}`),
-                                    });
-                                    assertRunActive();
-                                    if (launcherResult.ok) {
-                                        appendLog(`[PhaseExecutor] ✅ Manifest-aware launcher recovery succeeded: npm run ${launcher.script}`);
-                                        results.push({ task: taskDesc, tool: toolName, ok: true, execution: 'ran', message: `Used package.json script ${launcher.script} after the requested npm script was absent.` });
-                                        completedCount++;
-                                        continue;
-                                    }
-                                    appendLog(`[PhaseExecutor] ⚠️ Manifest-aware launcher recovery failed: ${String(launcherResult.error || 'unknown error')}`);
-                                } catch (launcherError: any) {
-                                    appendLog(`[PhaseExecutor] ⚠️ Manifest-aware launcher recovery threw: ${String(launcherError?.message || launcherError)}`);
-                                }
-                            }
-                        }
-                        // A blocked delivery can still provide a live draft, a
-                        // preview link and the precise QA evidence. Keep that
-                        // report visible instead of reducing it to one error line.
-                        const failedMessage = String(failedOutput.message || '').trim();
-                        // Carry only the structured repair routing contract emitted by
-                        // the tool. In particular, a fidelity mismatch is an engine
-                        // regeneration handoff, not permission to invent a file target.
-                        const repairKind = failedOutput.repairKind === 'regenerate_engine'
-                            || failedOutput.repairKind === 'code_fix'
-                            ? failedOutput.repairKind
-                            : undefined;
-                        const repairFile = repairKind === 'code_fix' && typeof failedOutput.repairFile === 'string'
-                            ? failedOutput.repairFile.slice(0, 1000)
-                            : undefined;
-                        appendLog(`[PhaseExecutor] ❌ Task ${i + 1} failed: ${toolName} — ${errMsg}`);
-                        results.push({
-                            task: taskDesc,
-                            tool: toolName,
-                            ok: false,
-                            execution: 'ran',
-                            error: currentRunError,
-                            ...((toolResult as any)?.recoverable === true ? { recoverable: true } : {}),
-                            ...(failedMessage ? { message: failedMessage.slice(0, 8000) } : {}),
-                            ...(repairKind ? { repairKind } : {}),
-                            ...(repairFile ? { repairFile } : {}),
-                            ...(runEvidenceId ? { runId: runEvidenceId } : {}),
-                            ...(runEvidenceRoot ? { projectRoot: runEvidenceRoot } : {}),
-                            ...(staleRunEvidenceDropped
-                                ? { evidenceStatus: 'stale_run_dropped' as const }
-                                : { evidenceStatus: 'current_run' as const }),
-                            ...(evidenceClassification.staleEvidence
-                                ? { staleEvidence: evidenceClassification.staleEvidence }
-                                : {}),
-                            ...(toolName === 'shell_execute' && typeof toolArgs.command === 'string'
-                                ? { command: toolArgs.command.slice(0, 1000) }
-                                : {}),
-                            ...(!staleRunEvidenceDropped && typeof (toolArgs.cwd || toolArgs.projectPath || failedOutput.cwd || failedOutput.projectPath) === 'string'
-                                ? { cwd: String(toolArgs.cwd || toolArgs.projectPath || failedOutput.cwd || failedOutput.projectPath).slice(0, 1000) }
-                                : {}),
-                            ...(toolName === 'shell_execute' && typeof toolArgs.background === 'boolean'
-                                ? { background: toolArgs.background }
-                                : {}),
-                            ...(!staleRunEvidenceDropped ? fileFailureEvidence(toolName, toolArgs, projectContext) : {}),
-                            ...(!staleRunEvidenceDropped ? generatedArtifactFailureEvidence(toolName, failedOutput, projectContext) : {}),
-                            ...(deliveryEvidence ? {
-                                delivery: deliveryEvidence,
-                                ...(deliveryEvidence.acceptanceUnmet ? { acceptanceUnmet: deliveryEvidence.acceptanceUnmet } : {}),
-                                ...(typeof deliveryEvidence.fidelityMismatch === 'boolean' ? { fidelityMismatch: deliveryEvidence.fidelityMismatch } : {}),
-                            } : {}),
-                            ...(repairDescription ? { description: repairDescription } : {}),
-                            ...(repairContext ? { artifactContext: repairContext } : {}),
-                        });
-
-                        const recoverableFailure = (toolResult as any)?.recoverable === true;
-                        if (recoverableFailure) {
-                            appendLog('[PhaseExecutor] ↪️ Recoverable task failure recorded; continuing so downstream verification and self-fix can use the exact evidence.');
-                        } else if (!verificationSelection && (task.priority === 'high' || task.required === true)) {
-                            appendLog('[PhaseExecutor] ⚠️ High-priority task failed. Retrying once...');
-                            try {
-                                assertRunActive();
-                                const retryResult = await executeTool(toolName, toolArgs, {
-                                    ...liveExecutionContext(),
-                                    onProgress: (m: string) => context?.onProgress?.(`[${toolName} RETRY] ${m}`),
-                                });
-                                assertRunActive();
-                                if (retryResult.ok) {
-                                    appendLog(`[PhaseExecutor] ✅ Retry succeeded for task ${i + 1}: ${toolName}`);
-                                    results[results.length - 1] = { task: taskDesc, tool: toolName, ok: true, execution: 'ran' };
-                                    completedCount++;
-                                } else {
-                                    appendLog('[PhaseExecutor] ⛔ Retry also failed. Stopping phase.');
-                                    break;
-                                }
-                            } catch (retryErr: any) {
-                                if (context?.isCancelled?.() || String(retryErr?.message || retryErr).includes('run_cancelled_by_owner')) {
-                                    throw new Error('run_cancelled_by_owner');
-                                }
-                                appendLog(`[PhaseExecutor] ⛔ Retry threw error: ${retryErr?.message}. Stopping phase.`);
-                                break;
-                            }
-                        }
-                    }
-                } catch (toolError: any) {
-                    if (verificationSelection) {
-                        verificationLedger = recordVerification(
-                            verificationLedger,
-                            verificationSelection,
-                            verificationResultFrom(toolError, false),
-                            Date.now() - verificationStartedAt,
-                            Date.now(),
-                            verificationMetricsFrom(undefined, {
-                                selectedAt: verificationSelectedAt,
-                                startedAt: verificationStartedAt,
-                                lastActivityAt: verificationLastActivityAt,
-                            }),
-                        );
-                    }
-                    const errMsg = String(toolError?.message || toolError || 'Execution error');
-                    if (context?.isCancelled?.() || errMsg.includes('run_cancelled_by_owner')) {
-                        throw new Error('run_cancelled_by_owner');
-                    }
-                    const runEvidenceId = String(executionContext.runId || projectContext?.runId || '').trim();
-                    const runEvidenceRoot = projectContext?.projectRootRuntimeBound === true && String(projectContext?.projectRoot || '').trim()
-                        ? path.resolve(String(projectContext.projectRoot))
-                        : '';
-                    const evidenceClassification = classifyStructuredRuntimeEvidence(
-                        { error: errMsg },
-                        originalPlannedEvidence,
-                        projectContext,
-                        runEvidenceId,
+                if (group.length === 1) {
+                    const task = group[0];
+                    const taskResult = await PhaseExecutorTool.executeSingleTask(
+                        task,
+                        group.indexOf(task),
+                        totalTasks,
+                        taskDesc => taskDesc,
+                        { phase, projectContext, executionContext, logs, appendLog, results, completedCount, changedPhaseFiles, verificationLedger, apiSelection, capabilityDecision, phaseDelivery, liveExecutionContext, trustedWorkspaceRoot, runtimeTargetFor, runtimeRevisionFor, bindRuntimeProjectFromEvidence, syncRuntimeProjectContext, mutationPathsFor, compactPhaseDeliveryEvidence, mergePhaseDeliveryEvidence, classifyStructuredRuntimeEvidence, boundedRepairEvidence, recoverMissingNpmLauncher, fileFailureEvidence, generatedArtifactFailureEvidence, executeTool, context, verificationMetricsFrom }
                     );
-                    const currentRunError = errMsg;
-                    const staleRunEvidenceDropped = evidenceClassification.evidenceStatus === 'stale_run_dropped';
-                    appendLog(`[PhaseExecutor] ❌ Task ${i + 1} threw: ${currentRunError}`);
-                    results.push({
-                        task: taskDesc,
-                        tool: toolName,
-                        ok: false,
-                        execution: 'ran',
-                        error: currentRunError,
-                        ...(runEvidenceId ? { runId: runEvidenceId } : {}),
-                        ...(runEvidenceRoot ? { projectRoot: runEvidenceRoot } : {}),
-                        ...(staleRunEvidenceDropped
-                            ? { evidenceStatus: 'stale_run_dropped' as const }
-                            : { evidenceStatus: 'current_run' as const }),
-                        ...(evidenceClassification.staleEvidence
-                            ? { staleEvidence: evidenceClassification.staleEvidence }
-                            : {}),
-                        ...(toolName === 'shell_execute' && typeof toolArgs.command === 'string'
-                            ? { command: toolArgs.command.slice(0, 1000) }
-                            : {}),
-                        ...(!staleRunEvidenceDropped && typeof (toolArgs.cwd || toolArgs.projectPath) === 'string'
-                            ? { cwd: String(toolArgs.cwd || toolArgs.projectPath).slice(0, 1000) }
-                            : {}),
-                        ...(toolName === 'shell_execute' && typeof toolArgs.background === 'boolean'
-                            ? { background: toolArgs.background }
-                            : {}),
-                        ...(!staleRunEvidenceDropped ? fileFailureEvidence(toolName, toolArgs, projectContext) : {}),
-                        ...(repairDescription ? { description: repairDescription } : {}),
-                        ...(repairContext ? { artifactContext: repairContext } : {}),
-                    });
-
-                    if (task.priority === 'high' || task.required === true) {
-                        appendLog('[PhaseExecutor] ⛔ Critical task threw. Stopping phase.');
-                        break;
+                    verificationLedger = taskResult.verificationLedger;
+                    apiSelection = taskResult.apiSelection;
+                    capabilityDecision = taskResult.capabilityDecision;
+                    phaseDelivery = taskResult.phaseDelivery;
+                    if (taskResult.shouldBreak) { shouldBreak = true; break; }
+                } else {
+                    appendLog(`[PhaseExecutor] Executing ${group.length} tasks in parallel`);
+                    const parallelResults = await Promise.all(
+                        group.map((task, idx) => PhaseExecutorTool.executeSingleTask(
+                            task,
+                            idx,
+                            totalTasks,
+                            taskDesc => `${taskDesc} (parallel)`,
+                            { phase, projectContext, executionContext, logs, appendLog, results: [], completedCount: { value: 0 }, changedPhaseFiles, verificationLedger, apiSelection, capabilityDecision, phaseDelivery, liveExecutionContext, trustedWorkspaceRoot, runtimeTargetFor, runtimeRevisionFor, bindRuntimeProjectFromEvidence, syncRuntimeProjectContext, mutationPathsFor, compactPhaseDeliveryEvidence, mergePhaseDeliveryEvidence, classifyStructuredRuntimeEvidence, boundedRepairEvidence, recoverMissingNpmLauncher, fileFailureEvidence, generatedArtifactFailureEvidence, executeTool, context, verificationMetricsFrom }
+                        ))
+                    );
+                    for (const pr of parallelResults) {
+                        results.push(...pr.results);
+                        completedCount.value += pr.completedCount.value;
+                        verificationLedger = pr.verificationLedger;
+                        apiSelection = pr.apiSelection;
+                        capabilityDecision = pr.capabilityDecision;
+                        phaseDelivery = mergePhaseDeliveryEvidence(phaseDelivery, pr.phaseDelivery);
+                        if (pr.shouldBreak) { shouldBreak = true; break; }
                     }
+                    if (shouldBreak) break;
                 }
+            }
+
+            // Checkpoint the completed phase
+            const artifactDir = String(projectContext?.projectRoot || executionContext.projectRoot || '');
+            if (artifactDir && executionContext.runId && phase.phaseNumber !== undefined) {
+                const phaseResult = {
+                    ok: true,
+                    output: {
+                        phaseNumber: phase.phaseNumber,
+                        phaseName: phase.name,
+                        results,
+                    }
+                };
+                checkpointPhase(
+                    artifactDir,
+                    executionContext.runId,
+                    phase.phaseNumber,
+                    phase.name,
+                    phaseResult,
+                    projectContext,
+                    executionContext
+                );
             }
 
             const taskResults = results.slice();
@@ -2006,17 +2174,11 @@ export class PhaseExecutorTool implements ToolDefinition {
             const executedCount = taskResults.filter(r => r.execution === 'ran').length;
             const failedCount = taskResults.filter(r => r.execution === 'ran' && !r.ok).length;
             const allOk = taskResults.length > 0 && taskResults.every(r => r.ok);
-            // `ok` remains the no-error signal for individual tasks. Phase status
-            // is the execution truth: skipped-only is never completed, while
-            // mixed work is partial rather than a failed tool run.
             let status = allOk && skippedCount === 0
                 ? 'completed'
                 : (skippedCount > 0 && executedCount === 0
                     ? 'skipped'
-                    : (skippedCount > 0 || completedCount > 0 ? 'partial' : 'failed'));
-            // This is evidence, not merely an English error message. Downstream
-            // orchestration must distinguish a code task that failed to run from
-            // a phase whose explicit acceptance check disproved delivery.
+                    : (skippedCount > 0 || completedCount.value > 0 ? 'partial' : 'failed'));
             let verificationFailed = false;
             let verificationUnavailable = false;
 
@@ -2025,8 +2187,6 @@ export class PhaseExecutorTool implements ToolDefinition {
             if (phase.verificationTask && allOk && (executedCount + reusedCount) > 0) {
                 assertRunActive();
                 const vTask = phase.verificationTask;
-                // Detection is not acceptance evidence; never substitute it for
-                // an unavailable or unsupported verification contract.
                 const requestedVerificationTool = String(vTask.tool || '').trim();
                 const vToolName = resolvePlannedTool(requestedVerificationTool).tool || requestedVerificationTool;
                 const vTaskDesc = String(vTask.task || 'Verify phase output');
@@ -2037,18 +2197,9 @@ export class PhaseExecutorTool implements ToolDefinition {
                 let phaseVerificationLastActivityAt = 0;
 
                 try {
-                    // Verification is a real tool invocation, not privileged prose.
-                    // Apply the same context injection and argument adaptation used
-                    // for ordinary phase tasks so `code_reviewer` and file tools
-                    // observe the selected workspace rather than the API process cwd.
                     const plannedVerification: any = { ...(vTask.args || {}), ...(vTask.input || {}) };
                     if (executionContext.sessionId && typeof plannedVerification.sessionId !== 'string') plannedVerification.sessionId = executionContext.sessionId;
                     if (executionContext.workspaceId && typeof plannedVerification.workspaceId !== 'string') plannedVerification.workspaceId = executionContext.workspaceId;
-                    // A reviewer that merely ran is not proof that its output is
-                    // acceptable. Keep exploratory reviews informative, but make a
-                    // review selected as a phase acceptance check enforce a clear,
-                    // conservative quality floor unless the evidence-backed plan
-                    // explicitly asks for a stricter one.
                     if (vToolName === 'code_reviewer') {
                         const suppliedScore = Number(plannedVerification.minimumScore);
                         plannedVerification.minimumScore = Number.isFinite(suppliedScore)
@@ -2056,9 +2207,6 @@ export class PhaseExecutorTool implements ToolDefinition {
                             : 70;
                         plannedVerification.failOnCritical = true;
                     }
-                    // Verification calls are still planned tool calls. Apply the
-                    // same accepted project identity used by ordinary tasks so a
-                    // live check never falls back silently to the workspace root.
                     applyPhaseExecutionEvidence(vToolName, plannedVerification, projectContext, logs);
                     inheritRuntimeProjectArguments(vToolName, plannedVerification, projectContext, logs);
                     const adaptedVerification = adaptPlannedArgs(vToolName, plannedVerification);
@@ -2202,14 +2350,6 @@ export class PhaseExecutorTool implements ToolDefinition {
                 ['ai_write_file', 'write_file', 'file_edit', 'file_edit_advanced', 'scaffold_project'].includes(String(t.tool || ''))
             );
             if (hasCodeTasks && !phase.verificationTask && allOk && executedCount > 0 && executionContext.workspaceId) {
-                // The check must run WHERE the project lives and ONLY when there
-                // is build tooling to check. The old version ran `npm run build`
-                // at the workspace ROOT: generated projects live in subfolders,
-                // so npm found no package.json, printed an error, and every
-                // code phase was falsely marked partial — self-fix churn over a
-                // build that never existed. The project dir is derived from the
-                // plan's own written package.json path; no package.json written
-                // means nothing to build, and skipping is the honest verdict.
                 const writtenPaths = tasks
                     .map((t: any) => String(t?.args?.path || t?.args?.filename || t?.input?.path || t?.input?.filename || ''))
                     .filter(Boolean);
@@ -2224,8 +2364,6 @@ export class PhaseExecutorTool implements ToolDefinition {
                     let buildStartedAt = 0;
                     try {
                         const buildArgs = {
-                            // --if-present: a project without a build script is
-                            // NOT a failure (most simple Node apps have none).
                             command: 'npm run --if-present build 2>&1 || echo BUILD_CHECK_FAILED',
                             ...(projectDir ? { cwd: projectDir } : {}),
                             timeout: 300000,
@@ -2314,16 +2452,9 @@ export class PhaseExecutorTool implements ToolDefinition {
                 }
             }
 
-            // A partial phase contains useful artefacts, but it is not verified
-            // delivery. Propagating ok:true here previously let pipeline and chat
-            // callers mistake a failed check for a completed engineering phase.
             const ok = status === 'completed'
                 || (status === 'partial' && executedCount > 0 && allOk && !verificationFailed && !verificationUnavailable);
             const primaryError = ok ? undefined : (results.find(r => !r.ok)?.error || (status === 'partial' ? 'Phase completed only partially' : 'Phase failed'));
-            // ToolService may serialize the phase result before AgentLoop starts
-            // the next phase. Carry only the root already proven by this executor
-            // so later phases and self-fix reruns cannot fall back to the workspace
-            // parent. This is evidence propagation, not a guessed project path.
             const runtimeProjectEvidence = projectContext?.projectRootRuntimeBound === true
                 && String(projectContext?.projectRoot || '').trim()
                 ? {
@@ -2340,7 +2471,7 @@ export class PhaseExecutorTool implements ToolDefinition {
                     phaseNumber: phase.phaseNumber,
                     phaseName: phase.name,
                     status,
-                    completedTasks: completedCount,
+                    completedTasks: completedCount.value,
                     executedTasks: executedCount,
                     skippedTasks: skippedCount,
                     reusedTasks: reusedCount,
@@ -2374,7 +2505,7 @@ export class PhaseExecutorTool implements ToolDefinition {
                         : {}),
                     phaseNumber: phase?.phaseNumber,
                     status: 'fatal_error',
-                    completedTasks: completedCount,
+                    completedTasks: completedCount.value,
                     executedTasks: results.filter(r => r.execution === 'ran').length,
                     skippedTasks: results.filter(r => r.execution === 'skipped').length,
                     reusedTasks: results.filter(r => r.execution === 'reused').length,
