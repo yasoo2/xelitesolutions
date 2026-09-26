@@ -105,6 +105,11 @@ export class RepairMemory {
         if (!signature) return null;
         return this.load().find((r) => r.signature === signature) || null;
     }
+
+    /** All stored cures, for fuzzy lesson retrieval. Never throws. */
+    all(): RepairRecord[] {
+        return this.load();
+    }
 }
 
 export const repairMemory = new RepairMemory();

@@ -17,6 +17,8 @@ import {
 } from '../../core/quality/verification-ledger';
 import { executionFirewall } from '../../orchestration/AgentExecutionFirewall';
 import { longTermMemory } from '../../core/memory/long-term-memory';
+import { repairMemory } from '../../core/memory/repair-memory';
+import { appendLessons } from '../../core/memory/lesson-loop';
 import { uiText, languageName, messageLanguage } from '../../shared/utils/language';
 import { isArabicReply, replyLanguageCode, say as pick } from '../../shared/reply-language';
 import { formatAttachmentsBlock } from '../../shared/attachments';
@@ -641,6 +643,14 @@ export class AgentLoopService {
             if (memoryDetails.hasWorkspaceContext) {
                 broadcastThinkingDetail(sessionId, uiText('recalledContext', language));
             }
+        } catch { /* non-fatal */ }
+
+        // [LESSON LOOP] Surface cures from previous runs that fuzzily match the
+        // goal, so the planner avoids re-discovering beaten failures. The exact
+        // repair loop is untouched; this is prevention, appended as context.
+        // Best-effort: never blocks the run.
+        try {
+            memoryContext = appendLessons(memoryContext, repairMemory, goal);
         } catch { /* non-fatal */ }
 
         try {
