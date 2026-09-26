@@ -2,6 +2,7 @@ import type { Locator, Page } from 'playwright';
 import type { FailureReason } from './types';
 import { DEFAULT_BROWSER_CONFIG } from './config';
 import { broadcastBrowserEvent } from './wsHub';
+import { gotoResilient } from './navigation';
 import { getBrowserSession, setStreamMask, touchSession, withBrowserConcurrency } from './manager';
 import { getSessionSecret, getUserSecret } from '../services/secrets';
 import { AdvancedInteractionSystem } from './interactions';
@@ -367,33 +368,29 @@ export async function executePlannedActions(params: {
             return out.slice(0, 6);
           })();
 
-          let navigated = false;
-          let lastErr = '';
-          for (const u of gotoCandidates) {
+          // Resilient navigation: one bounded second pass over transient failures,
+          // HTTP verdicts recorded (never retried), readiness probed instead of a
+          // fixed sleep. Candidate fallback order and result shapes preserved.
+          const nav = await gotoResilient(page, gotoCandidates, { timeoutMs: cfg.navTimeoutMs });
+          if (!nav.ok) {
+            const baseMsg = nav.message || 'navigation_failed';
+            const httpStatus = nav.attempts.find(a => a.httpStatus !== undefined)?.httpStatus;
+            const msg = (httpStatus !== undefined ? baseMsg + ' [http ' + httpStatus + ']' : baseMsg).slice(0, 600);
+            // navigation.ts reasons stay internal; the step keeps the shared
+            // FailureReason vocabulary with HTTP detail in message + data.
+            const reason = nav.reason === 'timeout' ? 'timeout' : navReason(msg);
+            results.push({ stepId: sid, name, ok: false, reason, message: msg });
+            broadcastBrowserEvent(sessionId, { type: 'step_error', stepId: sid, name, ts: now(), reason, message: msg, data: { attempts: nav.attempts } });
             try {
-              await page.goto(u, { waitUntil: 'domcontentloaded', timeout: cfg.navTimeoutMs });
-              navigated = true;
-              break;
-            } catch (e: any) {
-              lastErr = String(e?.message || e || '');
-            }
-          }
-          if (!navigated) {
-            const msg = lastErr.trim() || 'navigation_failed';
-            const reason = navReason(msg);
-            results.push({ stepId: sid, name, ok: false, reason, message: msg.slice(0, 600) });
-            broadcastBrowserEvent(sessionId, { type: 'step_error', stepId: sid, name, ts: now(), reason, message: msg.slice(0, 600) });
-            try {
-              broadcastBrowserEvent(sessionId, { type: 'action_error', ts: now(), actionId: sid, actionType: name, reason, error: msg.slice(0, 600) });
+              broadcastBrowserEvent(sessionId, { type: 'action_error', ts: now(), actionId: sid, actionType: name, reason, error: msg });
             } catch { }
             continue;
           }
-          await page.waitForTimeout(250);
 
           const after = await screenshotJpegBase64(page);
           evidence.push({ kind: 'screenshot', jpegBase64: after, ts: now(), stepId: sid });
 
-          broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now(), data: { url: page.url() } });
+          broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now(), data: { url: page.url(), attempts: nav.attempts, readiness: nav.readiness } });
           results.push({ stepId: sid, name, ok: true });
           try {
             broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name });

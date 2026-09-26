@@ -6,6 +6,7 @@ import { stopSession, getBrowserSession, saveBrowserSession, clearBrowserSession
 import { canAccessBrowserSession } from '../../modules/browser/wsHub';
 import { claimNavigation } from '../../modules/browser/navigation-order';
 import { readDocumentState } from '../../modules/browser/navigation-diagnostics';
+import { transientNavigationError as sharedTransientNavigationError } from '../../modules/browser/navigation';
 
 const router = Router();
 
@@ -209,8 +210,9 @@ router.post('/nav/refresh', authenticate as any, async (req: Request, res: Respo
 });
 
 export function transientNavigationError(error: unknown): boolean {
-  const text = String((error as any)?.message || error || '').toLowerCase();
-  return /econnrefused|econnreset|net::err_connection|target page.*closed|timeout.*exceed|timed out/.test(text);
+  // Single definition lives in modules/browser/navigation so the executor
+  // shares it; this wrapper preserves the route export and its tests.
+  return sharedTransientNavigationError(error);
 }
 
 /** A failed Chromium navigation leaves a reusable session on an internal
