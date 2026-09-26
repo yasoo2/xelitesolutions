@@ -2692,15 +2692,17 @@ function fieldsDeclaredInsideAForm(request: string): DerivedField[] | null {
     const tail = match[1].split(/\s*(?:[;；]\s*|(?=(?:required(?:[-\s]field)?\s+validation|validation|allow|add|delete|ensure|fix|persist|show|test|validate|verify)\b))/iu)[0];
     const parts = tail
         .split(/\s*[,，]\s*|\s+and\s+|\s+&\s+/iu)
-        .map(part => part.replace(/^(?:a|an|the|and)\s+/iu, '').replace(/\s*\([^)]{0,80}\)\s*$/u, '').trim())
+        .map(part => part.replace(/^(?:a|an|the|and)\s+/iu, '').trim())
         .filter(part => part.length >= 2 && part.length <= 32);
-    if (parts.length < 3) return null;
+    const annotations = declaredFieldAnnotations(parts);
+    const declaredParts = annotations.labels;
+    if (declaredParts.length < 3) return null;
     // A form's controls are data fields; its buttons and display states are
     // not. This keeps a request for a search form from becoming a fake table.
-    if (parts.some(part => /\b(?:button|state|theme|layout|dashboard|title|link|page|preview|build|loading|error)\b/iu.test(part))) return null;
-    if (parts.some(part => !isAName(part) || !notAContainerItself(part))) return null;
-    const built = fieldsFromLabels(parts);
-    return built ? applyStatedRules(built, statedRules(request)).fields : null;
+    if (declaredParts.some(part => /\b(?:button|state|theme|layout|dashboard|title|link|page|preview|build|loading|error)\b/iu.test(part))) return null;
+    if (declaredParts.some(part => !isAName(part) || !notAContainerItself(part))) return null;
+    const built = fieldsFromLabels(declaredParts, annotations.singleValueLabels);
+    return built ? applyStatedRules(applyDeclaredFieldOptions(built, annotations.optionsByLabel), statedRules(request)).fields : null;
 }
 
 function theListAnIntroducerHandedOver(request: string): DerivedField[] | null {
@@ -2720,7 +2722,7 @@ function theListAnIntroducerHandedOver(request: string): DerivedField[] | null {
             .split(/\s*[,，]\s*|\s+and\s+|\s+&\s+/iu)
             // Parenthetical type hints describe the field contract; they are
             // not part of the user's field name ("amount (numeric only)").
-            .map(part => part.replace(/^and\s+/iu, '').replace(/\s*\([^)]{0,80}\)\s*$/u, '').trim())
+            .map(part => part.replace(/^and\s+/iu, '').trim())
             .filter(part => part.length >= 2 && part.length <= 32);
         const items = rawItems.map(part => part
             .replace(/^(?:a|an|the)\s+/iu, '')
@@ -2729,6 +2731,7 @@ function theListAnIntroducerHandedOver(request: string): DerivedField[] | null {
             .replace(/^(?:numeric|number)(?:[-\s]only)?\s+/iu, '')
             .replace(/\s+fields?$/iu, '')
             .trim());
+        const annotations = declaredFieldAnnotations(items);
         // A field list may be followed by capabilities in the same sentence:
         // "needs title, owner, due date, filtering and validation". The first
         // capability is a boundary, not evidence that the preceding field
@@ -2741,15 +2744,15 @@ function theListAnIntroducerHandedOver(request: string): DerivedField[] | null {
         //  An article means he is asking for the THING, not naming a
         //  column of one.
         if (rawItems.length && rawItems.every(part => OPENS_WITH_AN_ARTICLE.test(part))) continue;
-        const run = columnsEndWhereHisNextRequestBegins(items);
+        const run = columnsEndWhereHisNextRequestBegins(annotations.labels);
         const containerPrefix = sentence.slice(0, at.index);
         const typedPair = /\b(?:app|application|board|tracker|table|register|directory|form)\b/iu.test(containerPrefix)
             && run.some(part => /\b(?:toggle|checkbox|switch|input|field)\s*$/iu.test(part));
         if (run.length < (typedPair ? 2 : 3)) continue;
         const named = run.filter(isAName).filter(notAContainerItself);
         if (named.length !== run.length) continue;
-        const built = fieldsFromLabels(named);
-        if (built) return applyStatedRules(built, statedRules(request)).fields;
+        const built = fieldsFromLabels(named, annotations.singleValueLabels);
+        if (built) return applyStatedRules(applyDeclaredFieldOptions(built, annotations.optionsByLabel), statedRules(request)).fields;
     }
     return null;
 }
@@ -3047,16 +3050,8 @@ export function derivedColumns(requestRaw: string): DerivedField[] | null {
      *  field offering «متوفر» and «نافد», not a free-text box he retypes into
      *  every row. The cap still guards the name itself, which is its job.
      */
-    const declaredOptions = new Map();
-    parts = parts.map(p => {
-        const m = /^([\s\S]*?)\s*[(（]([^)）]{1,60})[)）]\s*$/.exec(p);
-        if (!m) return p;
-        const label = m[1].trim();
-        const opts = m[2].split(/\s*[،,\/|]\s*|\s+أو\s+|\s+او\s+|\s+or\s+/iu)
-            .map(x => x.trim()).filter(x => x.length >= 1 && x.length <= 24);
-        if (label.length >= 2 && opts.length >= 2) declaredOptions.set(label, opts);
-        return label.length >= 2 ? label : p;
-    });
+    const annotations = declaredFieldAnnotations(parts);
+    parts = annotations.labels;
     //  …and the bracket comes off BEFORE the list is cut, not after.
     //  `columnsEndWhereHisNextRequestBegins` stops at the first part that
     //  does not read as a column, and «الحالة (متوفر أو نافد)» does not —
@@ -3097,13 +3092,9 @@ export function derivedColumns(requestRaw: string): DerivedField[] | null {
     //  says «أكبر من N» in its own error. Four parts of one chain,
     //  built, and this link never joined — so «والسعر لا يقبل صفر»
     //  reached a field with no min and zero was accepted.
-    const built = fieldsFromLabels(named);
+    const built = fieldsFromLabels(named, annotations.singleValueLabels);
     //  …and the answers reach the field, so the app renders a select.
-    if (built) for (const f of built) {
-        const opts = declaredOptions.get(String(f.label));
-        if (opts) { (f as any).options = opts; (f as any).type = 'select'; }
-    }
-    return built ? applyStatedRules(built, statedRules(request)).fields : built;
+    return built ? applyStatedRules(applyDeclaredFieldOptions(built, annotations.optionsByLabel), statedRules(request)).fields : built;
 }
 
 /**
@@ -3199,6 +3190,38 @@ export function columnsAnywhereInHisRequest(requestRaw: string): DerivedField[] 
     return whole;
 }
 
+interface DeclaredFieldAnnotations {
+    labels: string[];
+    optionsByLabel: Map<string, string[]>;
+    singleValueLabels: Set<string>;
+}
+
+/** Keep explicit field annotations available until type inference has finished. */
+function declaredFieldAnnotations(parts: string[]): DeclaredFieldAnnotations {
+    const optionsByLabel = new Map<string, string[]>();
+    const singleValueLabels = new Set<string>();
+    const labels = parts.map(part => {
+        const match = /^([\s\S]*?)\s*[(（]([^)）]{1,60})[)）]\s*$/.exec(part);
+        if (!match) return part;
+        const label = match[1].trim();
+        const options = match[2].split(/\s*[،,\/|]\s*|\s+أو\s+|\s+او\s+|\s+or\s+/iu)
+            .map(value => value.trim()).filter(value => value.length >= 1 && value.length <= 24);
+        if (label.length >= 2 && options.length >= 2) optionsByLabel.set(label, options);
+        if (label.length >= 2 && options.length === 1) singleValueLabels.add(label);
+        return label.length >= 2 ? label : part;
+    });
+    return { labels, optionsByLabel, singleValueLabels };
+}
+
+function applyDeclaredFieldOptions(fields: DerivedField[], optionsByLabel: ReadonlyMap<string, string[]>): DerivedField[] {
+    for (const field of fields) {
+        const options = optionsByLabel.get(field.label);
+        if (!options) continue;
+        field.options = options;
+        field.type = 'select';
+    }
+    return fields;
+}
 /** Turn the labels he wrote into fields, once, for every path that finds them. */
 /**
  * Preserve the stable identity of a universally understood field only when
@@ -3243,7 +3266,7 @@ export function hasExplicitRecordSchema(requestRaw: string): boolean {
     return Array.isArray(columns) && columns.length >= 2;
 }
 
-function fieldsFromLabels(parts: string[]): DerivedField[] | null {
+function fieldsFromLabels(parts: string[], singleExplicitAnnotations = new Set<string>()): DerivedField[] | null {
     const seen = new Map<DerivedRole, number>();
     const usedKeys = new Set<string>();
     const out: DerivedField[] = [];
@@ -3259,6 +3282,7 @@ function fieldsFromLabels(parts: string[]): DerivedField[] | null {
             type = 'select';
         } else {
             for (const [mark, r, t] of TYPE_MARKS) {
+                if (singleExplicitAnnotations.has(label) && r === 'flag' && t === 'select' && /status|state|مرحلة|حالة|وضع/iu.test(label)) continue;
                 if (mark.test(label)) { role = r; type = t; break; }
             }
         }

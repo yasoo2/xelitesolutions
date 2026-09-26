@@ -106,7 +106,7 @@ describe('and it reaches the app that is written to his disk', () => {
             expect.objectContaining({ label: 'الحالة' }),
         ]));
         expect(inventory.statusField).toBe('status');
-        expect(inventory.fields.find(field => field.key === 'status')).toMatchObject({
+        expect(inventory.fields.find((field: any) => field.key === 'status')).toMatchObject({
             type: 'select', options: ['جديد', 'قيد التنفيذ', 'مكتمل'],
         });
         expect(apiColumnsForRequest(ACCUSATIVE_INVENTORY_REQUEST).map(column => column.key)).toContain('status');
