@@ -3,7 +3,7 @@ import type { FailureReason } from './types';
 import { DEFAULT_BROWSER_CONFIG } from './config';
 import { broadcastBrowserEvent } from './wsHub';
 import { gotoResilient, probeNavigationReadiness, type NavigationReadiness } from './navigation';
-import { buildExtractReadEval, buildScrollIntoViewEval, buildScrollTargetReadEval, buildSelectReadEval, buildSelectSetEval, captureEvidence, CLICK_FINGERPRINT_SCRIPT, classifyActionError, compareClickEffect, compareGotoEffect, compareKeyEffect, compareScrollEffect, compareTraversalEffect, compareTypeEffect, compareWaitEffect, ELEMENTS_READ_SCRIPT, ensureTypedValue, evaluateElementsObservation, evaluateExtractObservation, evaluateUiAuditObservation, KEY_FOCUS_SCRIPT, SCROLL_SNAPSHOT_SCRIPT, TRAVERSAL_IDENTITY_SCRIPT, typeActionText, type ClickContext, type GotoEffect, type KeyContext, type KeyFocus, type ScrollSnapshot, type TraversalContext, type TraversalIdentity, type TypeExpectMode, type AssertObservation, parseAssertTarget, observeAssertState, evaluateAssertObservation, isSelectorSyntaxError, summarizeEvaluateResult } from './actionVerification';
+import { buildExtractReadEval, buildScrollIntoViewEval, buildScrollTargetReadEval, buildSelectReadEval, buildSelectSetEval, captureEvidence, CLICK_FINGERPRINT_SCRIPT, classifyActionError, compareClickEffect, compareGotoEffect, compareKeyEffect, compareScrollEffect, compareTraversalEffect, compareTypeEffect, compareWaitEffect, ELEMENTS_READ_SCRIPT, ensureTypedValue, ensureSecretValue, secretMismatchDetail, evaluateElementsObservation, evaluateExtractObservation, evaluateUiAuditObservation, KEY_FOCUS_SCRIPT, SCROLL_SNAPSHOT_SCRIPT, TRAVERSAL_IDENTITY_SCRIPT, typeActionText, type ClickContext, type GotoEffect, type KeyContext, type KeyFocus, type ScrollSnapshot, type TraversalContext, type TraversalIdentity, type TypeExpectMode, type AssertObservation, parseAssertTarget, observeAssertState, evaluateAssertObservation, isSelectorSyntaxError, summarizeEvaluateResult } from './actionVerification';
 import { getBrowserTelemetryErrorCounts } from './telemetry';
 import { getBrowserSession, setStreamMask, touchSession, withBrowserConcurrency } from './manager';
 import { getSessionSecret, getUserSecret } from '../services/secrets';
@@ -977,7 +977,41 @@ export async function executePlannedActions(params: {
 
           // Global type/fill (interactive mode, no selector/coords)
           if ((name === 'type' || name === 'fill') && !a?.selector && !a?.role && !a?.name && !a?.textTarget && (!Number.isFinite(Number(a?.x)) || !Number.isFinite(Number(a?.y)))) {
-            const text = String(a?.text || '');
+            const rawGlobal = String(a?.text || '');
+            const globalSecretMatch = rawGlobal.match(SECRET_TOKEN_RE);
+            let text = rawGlobal;
+            if (globalSecretMatch) {
+              const globalSecretKey = String(globalSecretMatch[1] || '').trim();
+              const globalSecretValue =
+                (globalSecretKey ? getSessionSecret(sessionId, globalSecretKey) : null) ||
+                (globalSecretKey ? await getUserSecret(userId, 'internal', globalSecretKey) : null) ||
+                '';
+              if (!globalSecretValue) {
+                results.push({ stepId: sid, name, ok: false, reason: 'unknown', message: `missing_secret:${globalSecretKey}` });
+                broadcastBrowserEvent(sessionId, { type: 'step_error', stepId: sid, name, ts: now(), reason: 'unknown', message: `missing_secret:${globalSecretKey}` });
+                // ASK for it, like the other secret paths: the run must
+                // not silently type the literal placeholder instead.
+                try {
+                  const { broadcastSecretRequired } = require('../../api/ws');
+                  broadcastSecretRequired(sessionId, String(globalSecretKey), { label: String(globalSecretKey) });
+                } catch { /* the UI is optional */ }
+                try {
+                  broadcastBrowserEvent(sessionId, {
+                    type: 'action_error',
+                    ts: now(),
+                    actionId: sid,
+                    actionType: name,
+                    reason: 'unknown',
+                    error: `missing_secret:${globalSecretKey}`,
+                  });
+                } catch { }
+                continue;
+              }
+              // Resolve the token: typing the literal placeholder would
+              // report a wrong-content success. The receipt below stays
+              // booleans-only, so the value shares it safely.
+              text = globalSecretValue;
+            }
             setStreamMask(sessionId, []);
             const before = await screenshotJpegBase64(page);
             evidence.push({ kind: 'screenshot', jpegBase64: before, ts: now(), stepId: sid });
@@ -1176,11 +1210,50 @@ export async function executePlannedActions(params: {
                 evidence.push({ kind: 'screenshot', jpegBase64: before, ts: now(), stepId: sid });
                 await fieldLoc.first().click({ timeout: cfg.actionTimeoutMs });
                 await fieldLoc.first().fill(secretValue, { timeout: cfg.actionTimeoutMs });
+                // Secret effect evidence: read the credential field back
+                // with booleans only — never values, never lengths.
+                let credVerified = false;
+                let credValueMatch: boolean | undefined = undefined;
+                let credRepaired = false;
+                try {
+                  const credCheck = await ensureSecretValue(
+                    {
+                      read: () => fieldLoc.first().inputValue(),
+                      clearAndSet: (text: string) => fieldLoc.first().fill(text, { timeout: cfg.actionTimeoutMs }),
+                    },
+                    secretValue,
+                  );
+                  if (credCheck.readOk) {
+                    credVerified = true;
+                    credValueMatch = credCheck.match;
+                    credRepaired = credCheck.repaired;
+                  }
+                } catch (eCred: any) {
+                  const msgCred = String(eCred?.message || eCred);
+                  const reasonCred: FailureReason = classifyActionError(eCred);
+                  if (isSensitive) setStreamMask(sessionId, []);
+                  broadcastBrowserEvent(sessionId, { type: 'step_error', stepId: sid, name, ts: now(), reason: reasonCred, message: msgCred });
+                  results.push({ stepId: sid, name, ok: false, reason: reasonCred, message: msgCred, verified: false });
+                  try {
+                    broadcastBrowserEvent(sessionId, { type: 'action_error', ts: now(), actionId: sid, actionType: name, reason: reasonCred, error: msgCred });
+                  } catch { }
+                  continue;
+                }
+                if (credVerified && credValueMatch === false) {
+                  const credDetail = secretMismatchDetail(credRepaired);
+                  if (isSensitive) setStreamMask(sessionId, []);
+                  broadcastBrowserEvent(sessionId, { type: 'step_error', stepId: sid, name, ts: now(), reason: 'value_not_applied', message: credDetail });
+                  results.push({ stepId: sid, name, ok: false, reason: 'value_not_applied', message: credDetail, verified: credVerified, valueMatch: credValueMatch, repaired: credRepaired });
+                  try {
+                    broadcastBrowserEvent(sessionId, { type: 'action_error', ts: now(), actionId: sid, actionType: name, reason: 'value_not_applied', error: credDetail });
+                  } catch { }
+                  continue;
+                }
                 const after = await screenshotJpegBase64(page, isSensitive ? mask : undefined);
                 evidence.push({ kind: 'screenshot', jpegBase64: after, ts: now(), stepId: sid });
                 if (isSensitive) setStreamMask(sessionId, []);
                 broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now() });
-                results.push({ stepId: sid, name, ok: true });
+                results.push({ stepId: sid, name, ok: true, verified: credVerified, valueMatch: credValueMatch, repaired: credRepaired });
                 try {
                   broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name });
                 } catch { }
@@ -1313,11 +1386,67 @@ export async function executePlannedActions(params: {
               await loc.first().click({ timeout: cfg.actionTimeoutMs });
               await loc.first().fill(secretValue, { timeout: cfg.actionTimeoutMs });
             }
+            // Secret effect evidence: read the field back with booleans
+            // only — never values, never lengths.
+            let secretVerified = false;
+            let secretValueMatch: boolean | undefined = undefined;
+            let secretRepaired = false;
+            try {
+              const secretCheck = await ensureSecretValue(
+                targetCenter
+                  ? {
+                    read: () => loc.first().inputValue(),
+                    clearAndSet: async (text: string) => {
+                      try {
+                        await page.keyboard.press('Meta+A');
+                      } catch {
+                        try {
+                          await page.keyboard.press('Control+A');
+                        } catch { }
+                      }
+                      try {
+                        await page.keyboard.press('Backspace');
+                      } catch { }
+                      await interactions.naturalType(page, 'secret_type_repair', text);
+                    },
+                  }
+                  : {
+                    read: () => loc.first().inputValue(),
+                    clearAndSet: (text: string) => loc.first().fill(text, { timeout: cfg.actionTimeoutMs }),
+                  },
+                secretValue,
+              );
+              if (secretCheck.readOk) {
+                secretVerified = true;
+                secretValueMatch = secretCheck.match;
+                secretRepaired = secretCheck.repaired;
+              }
+            } catch (eSecret: any) {
+              const msgSecret = String(eSecret?.message || eSecret);
+              const reasonSecret: FailureReason = classifyActionError(eSecret);
+              setStreamMask(sessionId, []);
+              broadcastBrowserEvent(sessionId, { type: 'step_error', stepId: sid, name, ts: now(), reason: reasonSecret, message: msgSecret });
+              results.push({ stepId: sid, name, ok: false, reason: reasonSecret, message: msgSecret, verified: false });
+              try {
+                broadcastBrowserEvent(sessionId, { type: 'action_error', ts: now(), actionId: sid, actionType: name, reason: reasonSecret, error: msgSecret });
+              } catch { }
+              continue;
+            }
+            if (secretVerified && secretValueMatch === false) {
+              const secretDetail = secretMismatchDetail(secretRepaired);
+              setStreamMask(sessionId, []);
+              broadcastBrowserEvent(sessionId, { type: 'step_error', stepId: sid, name, ts: now(), reason: 'value_not_applied', message: secretDetail });
+              results.push({ stepId: sid, name, ok: false, reason: 'value_not_applied', message: secretDetail, verified: secretVerified, valueMatch: secretValueMatch, repaired: secretRepaired });
+              try {
+                broadcastBrowserEvent(sessionId, { type: 'action_error', ts: now(), actionId: sid, actionType: name, reason: 'value_not_applied', error: secretDetail });
+              } catch { }
+              continue;
+            }
             const after = await screenshotJpegBase64(page, mask);
             evidence.push({ kind: 'screenshot', jpegBase64: after, ts: now(), stepId: sid });
             setStreamMask(sessionId, []);
             broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now() });
-            results.push({ stepId: sid, name, ok: true });
+            results.push({ stepId: sid, name, ok: true, verified: secretVerified, valueMatch: secretValueMatch, repaired: secretRepaired });
             try {
               broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name });
             } catch { }
@@ -1437,7 +1566,10 @@ export async function executePlannedActions(params: {
                 valueMatch = check.match;
                 repaired = check.repaired;
                 if (!check.match) {
-                  const detail = `value_mismatch expected_len=${check.expectedLength} observed_len=${check.observedLength}${check.repaired ? ' repaired_once' : ''}`;
+                  // Password fields redact the mismatch: lengths are part of the secret.
+                  const detail = isSensitiveType
+                    ? secretMismatchDetail(check.repaired)
+                    : `value_mismatch expected_len=${check.expectedLength} observed_len=${check.observedLength}${check.repaired ? ' repaired_once' : ''}`;
                   broadcastBrowserEvent(sessionId, { type: 'step_error', stepId: sid, name, ts: now(), reason: 'value_not_applied', message: detail });
                   results.push({ stepId: sid, name, ok: false, reason: 'value_not_applied', message: detail, verified, valueMatch, repaired });
                   try {

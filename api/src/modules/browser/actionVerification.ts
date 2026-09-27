@@ -203,6 +203,52 @@ export async function ensureTypedValue(ops: FieldOps, expected: string): Promise
     return { ...second, repaired: true };
 }
 
+/**
+ * Secret-safe field check: booleans only. A length is part of the secret
+ * (it narrows brute force), so unlike FieldValueCheck this carries no
+ * expectedLength/observedLength — exact equality is still compared in
+ * memory, but nothing value- or length-bearing is recorded.
+ */
+export interface SecretValueCheck {
+    match: boolean;
+    /** False when the field could not be read back at all. */
+    readOk: boolean;
+}
+
+export function compareSecretValue(observed: string | null | undefined, expected: string): SecretValueCheck {
+    if (observed === null || observed === undefined) return { match: false, readOk: false };
+    return { match: observed === String(expected), readOk: true };
+}
+
+export interface EnsureSecretValueResult extends SecretValueCheck {
+    /** True when exactly one clear+set repair was attempted. Never more. */
+    repaired: boolean;
+}
+
+/**
+ * Verify a secret type/fill by reading it back. Same shape as
+ * ensureTypedValue — one bounded clear+set repair and a second read —
+ * but the result is booleans only. A throwing repair propagates so the
+ * caller classifies the real error.
+ */
+export async function ensureSecretValue(ops: FieldOps, expected: string): Promise<EnsureSecretValueResult> {
+    const first = compareSecretValue(await readSafely(ops), expected);
+    if (!first.readOk) return { ...first, repaired: false };
+    if (first.match) return { ...first, repaired: false };
+    await ops.clearAndSet(expected);
+    const second = compareSecretValue(await readSafely(ops), expected);
+    return { ...second, repaired: true };
+}
+
+/**
+ * Mismatch detail for secret fields: names the cure (the field did not
+ * hold the value) while redacting everything else. Contains no digits,
+ * so no length can leak through it.
+ */
+export function secretMismatchDetail(repaired: boolean): string {
+    return `value_mismatch redacted${repaired ? ' repaired_once' : ''}`;
+}
+
 /** One select option as seen by the resolver: value and visible text. */
 export interface SelectOption {
     value: string;
