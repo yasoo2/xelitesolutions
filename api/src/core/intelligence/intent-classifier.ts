@@ -270,6 +270,53 @@ export function isBuildRequest(goalRaw: string): { isBuild: boolean; confidence:
     return hasBuildStructure(goalRaw);
 }
 
+/**
+ * Whether the goal orders REPAIR work: named faults in an existing thing
+ * must be reproduced, fixed and verified. Structural, like hasBuildStructure:
+ * a repair verb aimed at a fault/engineering object, or a fault noun with an
+ * explicit work verb. Questions are never repairs, even when they name a
+ * fault («why does it crash?» asks; «fix the crash» orders).
+ *
+ * Measured need (EVAL-001 harborlog): a local repair objective sliced into a
+ * browser_page_fix -> deploy_project capability chain collapsed into questions
+ * and ended "done" with zero faults fixed. The planner keeps such objectives
+ * whole only when it can see they are repairs.
+ */
+const REPAIR_VERB_PATTERN = /(?:^|[\s،:؛("])(?:fix|fixing|fixed|fixes|repair|repairing|repaired|repairs|reproduce|reproducing|reproduced|diagnose|diagnosing|diagnosed|diagnosis|diagnostic|debug|debugging|debugged|troubleshoot|troubleshooting|patch|patching|patched|resolve|resolving|resolved|correct|correcting|corrected)(?=$|[\s،:؛).,"'])/iu;
+const REPAIR_VERB_AR_PATTERN = /(?:^|[\s،:؛("])(?:اصلح|أصلح|اصلاح|إصلاح|تصليح|صلح|يصلح|تشخيص|شخص)(?=$|[\s،:؛).,"'])/iu;
+const FAULT_NOUN_PATTERN = /\b(?:bugs?|faults?|crash(?:es|ing|ed)?|failures?|failing|failed|errors?|defects?|broken|breaks?|not\s+working|doesn(?:'t|t)\s+work)\b/i;
+const FAULT_NOUN_AR_PATTERN = /(?:^|[\s،:؛("])(?:خطأ|خطا|أخطاء|اخطاء|عطل|اعطال|أعطال|خلل|مشكلة|مشاكل)(?=$|[\s،:؛).,"'])/iu;
+const REPAIR_WORK_VERB_PATTERN = /\b(?:investigate|investigating|inspect|inspecting|examine|examining|analy[sz]e|review|verify|verifying|prove|proving|test(?:s|ing)?|checks?|make\s+it\s+work|get\s+it\s+working)\b|(?:^|[\s،:؛("])(?:افحص|فحص|دقق|تدقيق|حلل|تحليل|راجع|مراجعة|تحقق|اختبار|اختبر|شغل|تشغيل)(?=$|[\s،:؛).,"'])/iu;
+
+function hasRepairStructure(goalRaw: string): { isRepair: boolean; confidence: number; reason: string } {
+    const g = String(goalRaw || '');
+    if (!g.trim()) return { isRepair: false, confidence: 0, reason: 'empty goal' };
+    if (isKnowledgeQuestionStructural(g)) {
+        return { isRepair: false, confidence: 0.9, reason: 'question, not an order' };
+    }
+    const bare = stripArabicDiacritics(g);
+    const normalized = normalizeIntentText(g);
+    const probe = normalized && normalized !== g.toLowerCase() ? `${g}\n${normalized}` : g;
+    const bareProbe = stripArabicDiacritics(probe);
+
+    const hasRepairVerb = REPAIR_VERB_PATTERN.test(probe) || REPAIR_VERB_AR_PATTERN.test(bareProbe);
+    const hasFault = FAULT_NOUN_PATTERN.test(probe) || FAULT_NOUN_AR_PATTERN.test(bareProbe);
+    const hasWorkVerb = REPAIR_WORK_VERB_PATTERN.test(bareProbe);
+    const hasEngObject = ENGINEERING_NOUN_PATTERN.test(probe);
+
+    if (hasRepairVerb && (hasFault || hasEngObject || hasWorkVerb)) {
+        return { isRepair: true, confidence: 0.9, reason: 'repair verb + fault/engineering object' };
+    }
+    if (hasFault && hasWorkVerb) {
+        return { isRepair: true, confidence: 0.8, reason: 'fault noun + work verb' };
+    }
+    return { isRepair: false, confidence: 0, reason: 'no repair structure detected' };
+}
+
+export function isRepairRequest(goalRaw: string): { isRepair: boolean; confidence: number; reason: string } {
+    return hasRepairStructure(goalRaw);
+}
+
 export function isBrowserRequest(goalRaw: string): { isBrowser: boolean; confidence: number; reason: string; hasExternalWebTarget: boolean } {
     return hasBrowserStructure(goalRaw);
 }

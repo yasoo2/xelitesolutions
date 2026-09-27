@@ -14,7 +14,7 @@ import { StructuredIntent } from '../intelligence/IntentParser';
 import { routeToModel, TaskAnalysis } from '../llm/intelligent-router';
 import { catalogueFor } from './toolCatalog';
 import { compactHistoryForPrompt } from './history-compact';
-import { isBuildRequest } from '../intelligence/intent-classifier';
+import { isBuildRequest, isRepairRequest } from '../intelligence/intent-classifier';
 
 export interface ParallelGroup {
     stepIds: string[];
@@ -254,6 +254,19 @@ export function validatePlan(steps: ExecutionStep[], intent: StructuredIntent): 
         }
     }
 
+    // Check for repair requests planned without any engineering step: opening
+    // the folder plus answers changes nothing. Measured live (EVAL-001
+    // harborlog): a repair goal planned as import_project -> central_answer
+    // ended "done" with zero faults fixed.
+    const repairRequest = isRepairRequest(String(intent.goal || '')).isRepair;
+    if (repairRequest) {
+        const nonExecutingTools = new Set(['central_answer', 'echo', 'alert_manager', 'template_manager', 'ask_user', 'import_project']);
+        const noEngineeringStep = steps.length > 0 && steps.every(s => nonExecutingTools.has(String(s.tool || '')));
+        if (noEngineeringStep) {
+            issues.push('Repair request planned without any investigate/repair/verify step - import and answers alone fix nothing');
+        }
+    }
+
     // Check for orphaned steps (no one depends on them and they're not final)
     const dependedOn = new Set<string>();
     for (const step of steps) {
@@ -356,6 +369,7 @@ ${catalogueFor(intent.goal)}
 - DO NOT use static templates. Analyze the specific goal from a fresh perspective.
 - Provide a brief "reasoning" field for EACH step explaining why this path was chosen.
 - Tool/target fit: browser_* tools open EXTERNAL http(s) pages only and need a real URL from the goal - never aim them at a local folder or project on disk. A goal naming a workspace folder starts with import_project(path), inspect_directory, read_file or shell_execute, never a browser tool.
+- Repair shape: a goal naming a workspace folder WITH faults to fix is ONE engineering job - open the folder, reproduce each fault, repair the code, then run the project's own tests. Never end with only import/answers: a plan that changes nothing is a failed plan.
 - PARALLEL EXECUTION: Steps with no shared dependencies CAN run in parallel. Mark them with "parallel": true.
 ${recoveryRules}
 

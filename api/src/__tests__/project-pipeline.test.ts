@@ -297,6 +297,8 @@ describe('read-only workspace discovery', () => {
         expect(isWorkspaceOverviewRequest('Inspect the workspace and list its top-level files without making changes.')).toBe(true);
         expect(isWorkspaceOverviewRequest('Summarize the workspace README without making changes.')).toBe(true);
         expect(isWorkspaceOverviewRequest('Create a website and list its files.')).toBe(false);
+        expect(isWorkspaceOverviewRequest(`In workspace folder 'sproutbed' there is a small scheduler with two faults. Read the code, reproduce both faults, repair them, match the policy in the project's own README, and prove it by running the tests.`)).toBe(false);
+        expect(isWorkspaceOverviewRequest('Build a task tracker with projects and columns, following the palette in the README.')).toBe(false);
     });
 });
 

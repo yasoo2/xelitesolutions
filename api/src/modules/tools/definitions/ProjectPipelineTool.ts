@@ -33,7 +33,19 @@ export function isWorkspaceOverviewRequest(request: string): boolean {
     // non-destructive questions. Requiring both made a plain "list the
     // top-level files" request ask the user for a project path even though
     // the active workspace is the exact safe target.
-    return asksForRootListing || asksForReadme;
+    if (!asksForRootListing && !asksForReadme) return false;
+    // An overview is a bounded non-destructive QUESTION. A request that
+    // orders engineering work is not one, even when it cites the README as
+    // a policy source. Measured live (EVAL-001 sproutbed): a repair goal
+    // mentioning "the policy in the project's own README" was answered with
+    // a root listing and zero fixes. Lazy require: a static import would join
+    // the ToolService->definitions import cycle.
+    try {
+        const { isRepairRequest, isBuildRequest } = require('../../../core/intelligence/intent-classifier');
+        if (isRepairRequest(text).isRepair) return false;
+        if (isBuildRequest(text).isBuild) return false;
+    } catch { /* classifier unavailable - keep the keyword verdict */ }
+    return true;
 }
 
 function summarizeReadme(content: string): string {

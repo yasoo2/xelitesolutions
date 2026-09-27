@@ -12,7 +12,7 @@ import { saysAny } from '../language/arabic';
 import { parseExplicitAppendFileRequest, parseExplicitFileRequest, parseExplicitDirectoryInspectionRequest, parseExplicitReadFilesRequest, parseExpectedReadMarkers } from './file-intent';
 import { workspaceService } from '../../modules/services/WorkspaceService';
 import { tools as registeredTools } from '../../modules/tools/registry';
-import { isBuildRequest, isKnowledgeQuestionStructural, isReadOnlyStructural } from '../intelligence/intent-classifier';
+import { isBuildRequest, isKnowledgeQuestionStructural, isReadOnlyStructural, isRepairRequest } from '../intelligence/intent-classifier';
 import { diagnoseFailure, detectParallelGroups, generatePlanAttempts, selectBestPlan, validatePlan } from './adaptive-dag-planner';
 import fs from 'fs';
 import path from 'path';
@@ -278,6 +278,22 @@ export class PlanningEngine {
      *  existing call site and test keeps working unchanged. */
     static looksLikeBuild(goalRaw: string): boolean {
         return isBuildRequest(goalRaw).isBuild;
+    }
+
+    /**
+     * A local repair objective: the goal points at a workspace folder AND
+     * orders repair work on it. Like a build, it is one engineering job and
+     * must reach evidence-first planning whole — never sliced into a
+     * capability chain of page/deployment verbs (measured: harborlog sliced
+     * into browser_page_fix -> deploy_project, collapsed into questions, zero
+     * faults fixed). Either signal alone is not enough: a folder can host
+     * non-repair chains, and a repair order without a folder anchor keeps its
+     * existing route.
+     */
+    static looksLikeLocalRepair(goalRaw: string): boolean {
+        const goal = String(goalRaw || '');
+        if (!goal) return false;
+        return isLocalFolderGoal(goal) && isRepairRequest(goal).isRepair;
     }
 
     /**
@@ -567,6 +583,14 @@ Rules:
             // Keeping this guard here is essential because capabilityPlan is also
             // called before the later routing guards.
             if (PlanningEngine.looksLikeBuild(goal)) return null;
+
+            // A local repair objective is one engineering job, not a bag of
+            // page/deployment verbs. Measured live (EVAL-001 harborlog): the
+            // chain sliced it into browser_page_fix -> deploy_project, the
+            // unfillable tail collapsed into central_answer questions, and the
+            // run ended "done" with zero faults fixed. The whole objective
+            // must reach evidence-first planning instead.
+            if (PlanningEngine.looksLikeLocalRepair(goal)) return null;
 
             /**
              * A QUESTION IS NOT AN ORDER, AND A TECHNOLOGY'S NAME IS NOT A
@@ -3217,6 +3241,7 @@ ${dynamicCatalogue}
 - DO NOT use static templates. Analyze the specific goal from a fresh perspective.
 - Provide a brief "reasoning" field for EACH step explaining why this path was chosen.
 - Tool/target fit: browser_* tools open EXTERNAL http(s) pages only and need a real URL from the goal - never aim them at a local folder or project on disk. A goal naming a workspace folder starts with import_project(path), inspect_directory, read_file or shell_execute, never a browser tool.
+- Repair shape: a goal naming a workspace folder WITH faults to fix is ONE engineering job - open the folder, reproduce each fault, repair the code, then run the project's own tests. Never end with only import/answers: a plan that changes nothing is a failed plan.
 
 Goal: ${intent.goal}
 Complexity: ${intent.complexity}
