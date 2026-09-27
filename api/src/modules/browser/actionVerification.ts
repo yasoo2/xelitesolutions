@@ -33,6 +33,21 @@
  * at all (non-field target, closed page), the step keeps the action's own
  * verdict and is marked unverified instead of failed — verification is
  * evidence, not a new failure mode.
+ *
+ * Clicks had the same disease from the other side: a click that threw nothing
+ * was reported ok:true with no record of what it caused, so a dead control
+ * and a working one were indistinguishable in the receipt. The click half of
+ * this module fixes that with the same evidence-only philosophy:
+ *
+ *   - CLICK_FINGERPRINT_SCRIPT: one in-page evaluate returning a lightweight
+ *     DOM fingerprint (url, title, element count, text length, djb2 hash of
+ *     the markup). Cheap to capture, sensitive to real change.
+ *   - compareClickEffect: two snapshots (before/after) -> navigated,
+ *     domChanged, effectObserved, plus the count of NEW runtime error
+ *     signals (pageerror/console-error/requestfailed) observed during the
+ *     step. A no-effect click is reported, never failed: plenty of
+ *     legitimate clicks change nothing observable, and verification is
+ *     evidence, not a new failure mode.
  */
 
 import type { FailureReason } from './types';
@@ -115,4 +130,100 @@ export async function ensureTypedValue(ops: FieldOps, expected: string): Promise
     await ops.clearAndSet(expected);
     const second = compareFieldValue(await readSafely(ops), expected);
     return { ...second, repaired: true };
+}
+
+/**
+ * One in-page evaluate returning a lightweight DOM fingerprint. It is an
+ * IIFE: pass it straight to page.evaluate. The markup hash is computed
+ * INSIDE the page (djb2 over outerHTML) so the round-trip carries a few
+ * dozen bytes no matter how large the document is. Counts and lengths
+ * only — no markup, text or values ever leave the page.
+ */
+export const CLICK_FINGERPRINT_SCRIPT = `(() => {
+  const doc = document;
+  const html = (doc && doc.documentElement && doc.documentElement.outerHTML) || '';
+  let h = 5381;
+  for (let i = 0; i < html.length; i += 1) h = ((h << 5) + h + html.charCodeAt(i)) | 0;
+  return {
+    url: String((doc && doc.location && doc.location.href) || ''),
+    title: String((doc && doc.title) || ''),
+    elements: doc ? doc.getElementsByTagName('*').length : 0,
+    textLength: (doc && doc.body && doc.body.innerText ? String(doc.body.innerText) : '').length,
+    htmlHash: (h >>> 0).toString(36),
+  };
+})()`;
+
+/** What the page looked like at one instant. Null means it could not be read. */
+export interface ClickFingerprint {
+    url: string;
+    title: string;
+    elements: number;
+    textLength: number;
+    htmlHash: string;
+}
+
+/** Cumulative session runtime-error counters. Null means no telemetry feeds them. */
+export interface RuntimeErrorCounts {
+    js: number;
+    console: number;
+    network: number;
+}
+
+export interface ClickContext {
+    fingerprint: ClickFingerprint | null;
+    errors: RuntimeErrorCounts | null;
+}
+
+export interface ClickEffect {
+    /** False when the page could not be read before or after the click. */
+    readOk: boolean;
+    /** The URL changed across the click (a same-page anchor jump counts). */
+    navigated: boolean;
+    /** Title, element count, text length or markup hash changed. */
+    domChanged: boolean;
+    /** navigated || domChanged. Evidence only — never a failure by itself. */
+    effectObserved: boolean;
+    /**
+     * New runtime error signals (pageerror + console-error + requestfailed)
+     * observed during the step. Absent when unmeasurable: no telemetry, or
+     * the counters reset mid-step (telemetry re-created), which makes any
+     * delta meaningless. Reported even when the DOM itself is unreadable —
+     * a click that kills the page can still leave its error behind.
+     */
+    runtimeErrors?: number;
+}
+
+/**
+ * Compare two click snapshots. Null-tolerant: a missing snapshot (page
+ * closed, evaluate threw, no telemetry) degrades to readOk:false and/or an
+ * absent runtimeErrors count instead of inventing an effect.
+ */
+export function compareClickEffect(before: ClickContext | null, after: ClickContext | null): ClickEffect {
+    const noEffect: ClickEffect = { readOk: false, navigated: false, domChanged: false, effectObserved: false };
+    const b = before?.fingerprint ?? null;
+    const a = after?.fingerprint ?? null;
+    if (b && a) {
+        noEffect.readOk = true;
+        noEffect.navigated = b.url !== a.url;
+        noEffect.domChanged =
+            b.title !== a.title ||
+            b.elements !== a.elements ||
+            b.textLength !== a.textLength ||
+            b.htmlHash !== a.htmlHash;
+        noEffect.effectObserved = noEffect.navigated || noEffect.domChanged;
+    }
+    const be = before?.errors ?? null;
+    const ae = after?.errors ?? null;
+    if (be && ae) {
+        const beforeTotal = be.js + be.console + be.network;
+        const afterTotal = ae.js + ae.console + ae.network;
+        // A reset counter reads lower than before; the delta is meaningless.
+        if (afterTotal >= beforeTotal) noEffect.runtimeErrors = afterTotal - beforeTotal;
+    }
+    return noEffect;
+}
+
+/** Minimal snapshot surface: real Playwright pages and test fakes both satisfy it. */
+export interface ClickEffectOps {
+    snapshot(): Promise<ClickContext>;
 }

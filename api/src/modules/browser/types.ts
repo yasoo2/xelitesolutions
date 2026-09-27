@@ -138,7 +138,7 @@ export type FinalReportEvent = {
   ts: number;
   ok: boolean;
   summary: string;
-  steps: Array<{ stepId: string; name: string; ok: boolean; reason?: FailureReason; message?: string; verified?: boolean; valueMatch?: boolean; repaired?: boolean }>;
+  steps: Array<{ stepId: string; name: string; ok: boolean; reason?: FailureReason; message?: string; verified?: boolean; valueMatch?: boolean; repaired?: boolean; navigated?: boolean; domChanged?: boolean; effectObserved?: boolean; runtimeErrors?: number }>;
   evidence: Array<{ kind: 'screenshot'; jpegBase64: string; ts: number; stepId: string }>;
 };
 

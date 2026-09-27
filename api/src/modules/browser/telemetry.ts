@@ -118,6 +118,19 @@ export function getBrowserTelemetrySnapshot(sessionId: string): BrowserRuntimeSn
   return state ? snapshotState(state) : undefined;
 }
 
+/**
+ * Cumulative session runtime-error counters for per-step delta attribution:
+ * the executor snapshots these before and after a click and reports how many
+ * NEW pageerror/console-error/requestfailed signals the step produced.
+ * Undefined when no telemetry runs for the session — the caller must treat
+ * that as unmeasurable, never as zero.
+ */
+export function getBrowserTelemetryErrorCounts(sessionId: string): { js: number; console: number; network: number } | undefined {
+  const state = telemetryBySession.get(sidOf(sessionId));
+  if (!state) return undefined;
+  return { js: state.jsErrors, console: state.consoleErrors, network: state.networkErrors };
+}
+
 async function emitPageSnapshot(state: BrowserTelemetry) {
   const now = Date.now();
   try {

@@ -3,7 +3,8 @@ import type { FailureReason } from './types';
 import { DEFAULT_BROWSER_CONFIG } from './config';
 import { broadcastBrowserEvent } from './wsHub';
 import { gotoResilient } from './navigation';
-import { classifyActionError, ensureTypedValue, typeActionText } from './actionVerification';
+import { CLICK_FINGERPRINT_SCRIPT, classifyActionError, compareClickEffect, ensureTypedValue, typeActionText, type ClickContext } from './actionVerification';
+import { getBrowserTelemetryErrorCounts } from './telemetry';
 import { getBrowserSession, setStreamMask, touchSession, withBrowserConcurrency } from './manager';
 import { getSessionSecret, getUserSecret } from '../services/secrets';
 import { AdvancedInteractionSystem } from './interactions';
@@ -155,6 +156,35 @@ async function boxFor(locator: Locator) {
   }
 }
 
+/**
+ * Snapshot the page for click effect evidence: one lightweight DOM
+ * fingerprint plus the session's cumulative runtime-error counters. Never
+ * throws — an unreadable page or missing telemetry degrades to null fields
+ * and the comparator reports the step as unmeasured, never as no-effect.
+ */
+async function snapshotClickContext(page: Page, sessionId: string): Promise<ClickContext | null> {
+  let fingerprint: ClickContext['fingerprint'] = null;
+  try {
+    const fp: any = await page.evaluate(CLICK_FINGERPRINT_SCRIPT);
+    if (fp && typeof fp.url === 'string') {
+      fingerprint = {
+        url: String(fp.url),
+        title: String(fp.title || ''),
+        elements: Number(fp.elements || 0),
+        textLength: Number(fp.textLength || 0),
+        htmlHash: String(fp.htmlHash || ''),
+      };
+    }
+  } catch { /* unreadable page — the comparator reports readOk:false */ }
+  let errors: ClickContext['errors'] = null;
+  try {
+    const counts = getBrowserTelemetryErrorCounts(sessionId);
+    if (counts) errors = { js: counts.js, console: counts.console, network: counts.network };
+  } catch { /* no telemetry — runtimeErrors stays unmeasurable */ }
+  if (!fingerprint && !errors) return null;
+  return { fingerprint, errors };
+}
+
 async function tryDismissOverlays(page: Page) {
   const candidates = [
     'button:has-text("Accept")',
@@ -231,7 +261,7 @@ export async function executePlannedActions(params: {
         workerStatus: 'running',
       });
     } catch { }
-    const results: Array<{ stepId: string; name: string; ok: boolean; reason?: FailureReason; message?: string; verified?: boolean; valueMatch?: boolean; repaired?: boolean }> = [];
+    const results: Array<{ stepId: string; name: string; ok: boolean; reason?: FailureReason; message?: string; verified?: boolean; valueMatch?: boolean; repaired?: boolean; navigated?: boolean; domChanged?: boolean; effectObserved?: boolean; runtimeErrors?: number }> = [];
     const evidence: Array<{ kind: 'screenshot'; jpegBase64: string; ts: number; stepId: string }> = [];
 
     for (let i = 0; i < Math.min(cfg.maxSteps, actions.length); i += 1) {
@@ -903,6 +933,15 @@ export async function executePlannedActions(params: {
           const before = await screenshotJpegBase64(page, isSensitiveType ? mask : undefined);
           evidence.push({ kind: 'screenshot', jpegBase64: before, ts: now(), stepId: sid });
 
+          // Click effect evidence: snapshot the page before acting; the
+          // after-snapshot lands after the settle wait below. Clicks only —
+          // type/fill carry their own read-back verification.
+          const clickBefore: ClickContext | null = name === 'click' ? await snapshotClickContext(page, sessionId) : null;
+          let navigated: boolean | undefined = undefined;
+          let domChanged: boolean | undefined = undefined;
+          let effectObserved: boolean | undefined = undefined;
+          let runtimeErrors: number | undefined = undefined;
+
           try {
             if (name === 'click') {
               if (targetCenter) {
@@ -1019,6 +1058,20 @@ export async function executePlannedActions(params: {
           evidence.push({ kind: 'screenshot', jpegBase64: after, ts: now(), stepId: sid });
           if (isSensitiveType) setStreamMask(sessionId, []);
 
+          // Click effect evidence: compare the after-settle page against the
+          // before-snapshot. Evidence only — a no-effect click is reported,
+          // never failed.
+          if (name === 'click' && clickBefore) {
+            const clickAfter = await snapshotClickContext(page, sessionId);
+            const effect = compareClickEffect(clickBefore, clickAfter);
+            if (effect.readOk) {
+              navigated = effect.navigated;
+              domChanged = effect.domChanged;
+              effectObserved = effect.effectObserved;
+            }
+            runtimeErrors = effect.runtimeErrors;
+          }
+
           if (cfg.strictSameSite && s.allowedOrigin) {
             const cur = page.url();
             try {
@@ -1042,8 +1095,10 @@ export async function executePlannedActions(params: {
             } catch { }
           }
 
-          broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now(), data: verified === undefined ? undefined : { verified, valueMatch, repaired } });
-          results.push({ stepId: sid, name, ok: true, verified, valueMatch, repaired });
+          const clickEffectData = effectObserved === undefined && runtimeErrors === undefined ? {} : { navigated, domChanged, effectObserved, runtimeErrors };
+          const stepData = { ...(verified === undefined ? {} : { verified, valueMatch, repaired }), ...clickEffectData };
+          broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now(), data: Object.keys(stepData).length ? stepData : undefined });
+          results.push({ stepId: sid, name, ok: true, verified, valueMatch, repaired, navigated, domChanged, effectObserved, runtimeErrors });
           try {
             broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name });
           } catch { }
