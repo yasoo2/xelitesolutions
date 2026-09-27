@@ -35,10 +35,19 @@ describe('what counts as public', () => {
 });
 
 describe('server bind scope', () => {
-    it('keeps the production-compatible default and supports loopback-only development', () => {
-        expect(serverBindHost({} as any)).toBe('0.0.0.0');
+    it('binds local previews to loopback while preserving production and public defaults', () => {
+        expect(serverBindHost({} as any)).toBe('127.0.0.1');
+        expect(serverBindHost({ NODE_ENV: 'development' } as any)).toBe('127.0.0.1');
+        expect(serverBindHost({ NODE_ENV: 'production' } as any)).toBe('0.0.0.0');
+        expect(serverBindHost({ JOE_PUBLIC: '1' } as any)).toBe('0.0.0.0');
         expect(serverBindHost({ JOE_BIND_HOST: '127.0.0.1' } as any)).toBe('127.0.0.1');
         expect(serverBindHost({ JOE_BIND_HOST: '::1' } as any)).toBe('::1');
+    });
+
+    it('treats an explicit all-interface bind as public for the startup guard', () => {
+        expect(serverBindHost({ JOE_BIND_HOST: '0.0.0.0' } as any)).toBe('0.0.0.0');
+        expect(looksPublic({ JOE_BIND_HOST: '0.0.0.0' } as any)).toBe(true);
+        expect(goLiveCheck({ ...LOCAL, JOE_BIND_HOST: '0.0.0.0' } as any).public).toBe(true);
     });
 
     it('rejects an unexpected interface value', () => {
@@ -86,6 +95,11 @@ describe('it refuses rather than warns', () => {
 
     it('a public server with single-user switches does not start', () => {
         assertSafeToServe({ ...LOCAL, JOE_PUBLIC: '1' } as any, exit);
+        expect(exits).toEqual([1]);
+    });
+
+    it('an explicit all-interface bind cannot bypass public safety checks', () => {
+        assertSafeToServe({ ...LOCAL, JOE_BIND_HOST: '0.0.0.0' } as any, exit);
         expect(exits).toEqual([1]);
     });
 

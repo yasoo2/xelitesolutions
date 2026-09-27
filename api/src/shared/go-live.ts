@@ -8,8 +8,8 @@
  * every permission — and the person switching it on is exactly the person too
  * busy to remember a note written days earlier.
  *
- * So the note is machinery. It looks at the two facts that decide whether Joe
- * is public — a PUBLIC_URL that is not localhost, or an explicit
+ * So the note is machinery. It checks the configuration that decides whether Joe
+ * is public — an all-interface bind, a non-local PUBLIC_URL, or an explicit
  * JOE_PUBLIC=1 — and speaks up when they disagree with the safety switches.
  * On a private machine it says nothing at all.
  */
@@ -24,17 +24,19 @@ export interface GoLiveVerdict {
 
 const LOCAL_HOST = /^(localhost|127\.0\.0\.1|\[::1\]|0\.0\.0\.0)(:\d+)?$/i;
 
-/** Bind explicitly for local single-user runs without changing the production
- * default. Only known interface literals are accepted so a misspelled value
- * cannot silently broaden or redirect the listening surface. */
+/** Local single-user runs stay on loopback by default; public and production
+ * deployments retain the all-interface default. An explicit bind must be a
+ * known interface literal so a typo cannot silently broaden the socket. */
 export function serverBindHost(env: NodeJS.ProcessEnv = process.env): string {
-    const host = String(env.JOE_BIND_HOST || '0.0.0.0').trim();
+    const defaultHost = env.NODE_ENV === 'production' || looksPublic(env) ? '0.0.0.0' : '127.0.0.1';
+    const host = String(env.JOE_BIND_HOST || defaultHost).trim();
     if (/^(?:127\.0\.0\.1|localhost|::1|0\.0\.0\.0)$/.test(host)) return host;
     throw new Error(`invalid_joe_bind_host:${host}`);
 }
 
-/** A URL that names a real host is the clearest evidence Joe is being shared. */
+/** An explicit all-interface bind or a non-local URL signals potential external access. */
 export function looksPublic(env: NodeJS.ProcessEnv = process.env): boolean {
+    if (String(env.JOE_BIND_HOST || '').trim() === '0.0.0.0') return true;
     if (String(env.JOE_PUBLIC || '').trim() === '1') return true;
     const url = String(env.PUBLIC_URL || '').trim();
     if (!url) return false;
