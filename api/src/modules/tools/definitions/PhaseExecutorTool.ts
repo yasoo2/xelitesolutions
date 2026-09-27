@@ -1649,7 +1649,8 @@ delete toolArgs.verificationMode;
             const workspaceRoot = executionContext.workspaceId
                 ? String(workspaceService.getActiveRoot(executionContext.workspaceId) || '').trim()
                 : '';
-            const artifactDir = String(projectContext?.projectRoot || executionContext.projectRoot || workspaceRoot || '');
+            // Use workspace root as stable artifact directory; project root may change when project is bound
+            const artifactDir = String(workspaceRoot || executionContext.projectRoot || projectContext?.projectRoot || '');
             if (artifactDir && executionContext.runId) {
                 checkpointTool(
                     artifactDir,
@@ -2118,9 +2119,12 @@ delete toolArgs.verificationMode;
                 const workspaceRoot = executionContext.workspaceId
                     ? String(workspaceService.getActiveRoot(executionContext.workspaceId) || '').trim()
                     : '';
-                const artifactDir = String(projectContext?.projectRoot || executionContext.projectRoot || workspaceRoot || '');
+                // Use workspace root as stable artifact directory; project root may change when project is bound
+                const artifactDir = String(workspaceRoot || executionContext.projectRoot || projectContext?.projectRoot || '');
+                console.log(`[DEBUG] Checkpoint artifactDir: ${artifactDir}, runId: ${executionContext.runId}`);
                 if (artifactDir) {
                     const runCheckpoints = loadAllRunCheckpoints(artifactDir, executionContext.runId);
+                    console.log(`[DEBUG] Loaded ${runCheckpoints.length} checkpoints for run`);
                     // Build ordered list of checkpoints for this phase
                     const phaseCheckpoints: Array<{ taskKey: string; output: any; order: number }> = [];
                     let order = 0;
@@ -2164,8 +2168,9 @@ delete toolArgs.verificationMode;
                 if (group.length === 1) {
                     const task = group[0];
                     // Checkpoint resumption: skip already-completed tasks
-                    const taskKey = `${String(task.tool || '').trim()}:${String(task.task || task.description || '').trim()}`;
-                    if (completedTaskKeys.has(taskKey)) {
+                    const currentTaskKey = `${String(task.tool || '').trim()}:${String(task.task || task.description || '').trim()}`;
+                    console.log(`[DEBUG] Task key: ${currentTaskKey}, in completedTaskKeys: ${completedTaskKeys.has(currentTaskKey)}`);
+                    if (completedTaskKeys.has(currentTaskKey)) {
                         const taskDesc = String(task.task || task.description || `Task ${totalTasks}`);
                         appendLog(`[PhaseExecutor] ⏭️ Task "${taskDesc}" — skipped (resumed from checkpoint)`);
                         results.push({ task: taskDesc, tool: String(task.tool || '').trim(), ok: true, execution: 'reused', message: 'Resumed from checkpoint' });
@@ -2187,8 +2192,9 @@ delete toolArgs.verificationMode;
                 } else {
                     // Filter out already-completed tasks for parallel execution
                     const filteredGroup = group.filter(task => {
-                        const taskKey = `${String(task.tool || '').trim()}:${String(task.task || task.description || '').trim()}`;
-                        if (completedTaskKeys.has(taskKey)) {
+                        const currentTaskKey = `${String(task.tool || '').trim()}:${String(task.task || task.description || '').trim()}`;
+                        console.log(`[DEBUG] Parallel task key: ${currentTaskKey}, in completedTaskKeys: ${completedTaskKeys.has(currentTaskKey)}`);
+                        if (completedTaskKeys.has(currentTaskKey)) {
                             const taskDesc = String(task.task || task.description || `Task ${totalTasks}`);
                             appendLog(`[PhaseExecutor] ⏭️ Task "${taskDesc}" — skipped (resumed from checkpoint)`);
                             results.push({ task: taskDesc, tool: String(task.tool || '').trim(), ok: true, execution: 'reused', message: 'Resumed from checkpoint' });
@@ -2249,16 +2255,20 @@ delete toolArgs.verificationMode;
             }
 
             const taskResults = results.slice();
-            const skippedCount = taskResults.filter(r => r.execution === 'skipped').length;
+const skippedCount = taskResults.filter(r => r.execution === 'skipped').length;
             const reusedCount = taskResults.filter(r => r.execution === 'reused').length;
             const executedCount = taskResults.filter(r => r.execution === 'ran').length;
             const failedCount = taskResults.filter(r => r.execution === 'ran' && !r.ok).length;
             const allOk = taskResults.length > 0 && taskResults.every(r => r.ok);
-            let status = allOk && skippedCount === 0
+            // When all tasks are reused from checkpoints, the phase is effectively completed (just reused)
+            const allReused = (reusedCount === totalTasks && executedCount === 0);
+            let status = allOk && (skippedCount === 0 || allReused)
                 ? 'completed'
                 : (skippedCount > 0 && executedCount === 0
                     ? 'skipped'
                     : (skippedCount > 0 || completedCount.value > 0 ? 'partial' : 'failed'));
+            // Determine phase execution type: 'reused' if all tasks were reused from checkpoints
+            const phaseExecution = (reusedCount === totalTasks && executedCount === 0) ? 'reused' : 'ran';
             let verificationFailed = false;
             let verificationUnavailable = false;
 
@@ -2550,6 +2560,7 @@ delete toolArgs.verificationMode;
                     phaseNumber: phase.phaseNumber,
                     phaseName: phase.name,
                     status,
+                    execution: phaseExecution,
                     completedTasks: completedCount.value,
                     executedTasks: executedCount,
                     skippedTasks: skippedCount,
