@@ -1177,6 +1177,41 @@ export function evaluateElementsObservation(obs: ElementsObservation | null | un
     return { elementCount: returned, totalMatched: total, truncated: total > ELEMENTS_RETURN_CAP };
 }
 
+/**
+ * A `ui_audit` is the grounding re-scan: the DOM fingerprint plus the
+ * interactive-element read, summarized as counts. It backs
+ * `browser_get_state` and `browser_snapshot`, so a bare ok:true there
+ * answered "what is on screen?" with nothing. An unreadable page
+ * reports scanned:false, never fails - there is no curing reason for
+ * it, so the planner decides from the flag (the screenshot precedent).
+ */
+export interface UiAuditObservation {
+    fingerprint: ClickFingerprint | null;
+    elements: ElementsObservation | null;
+}
+
+/** Verdict over a ui_audit re-scan: page shape plus element counts. */
+export interface UiAuditVerdict {
+    /** False when the DOM fingerprint could not be read. */
+    scanned: boolean;
+    /** DOM node count; -1 when unreadable. */
+    domNodes: number;
+    /** Rendered text length; -1 when unreadable. */
+    textLength: number;
+    elementCount: number;
+    totalMatched: number;
+    truncated: boolean;
+}
+
+export function evaluateUiAuditObservation(obs: UiAuditObservation | null | undefined): UiAuditVerdict {
+    const fp = (obs as any)?.fingerprint ?? null;
+    const scanned = !!fp && typeof fp.url === 'string';
+    const domNodes = scanned ? Math.max(0, Math.floor(Number(fp.elements) || 0)) : -1;
+    const textLength = scanned ? Math.max(0, Math.floor(Number(fp.textLength) || 0)) : -1;
+    const els = evaluateElementsObservation((obs as any)?.elements ?? null);
+    return { scanned, domNodes, textLength, elementCount: els.elementCount, totalMatched: els.totalMatched, truncated: els.truncated };
+}
+
 /** What a screenshot capture observed: integrity of the bytes, never the pixels. */
 export interface CaptureEvidence {
     captured: boolean;

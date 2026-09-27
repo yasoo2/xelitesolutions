@@ -3,7 +3,7 @@ import type { FailureReason } from './types';
 import { DEFAULT_BROWSER_CONFIG } from './config';
 import { broadcastBrowserEvent } from './wsHub';
 import { gotoResilient, probeNavigationReadiness, type NavigationReadiness } from './navigation';
-import { buildExtractReadEval, buildScrollIntoViewEval, buildScrollTargetReadEval, buildSelectReadEval, buildSelectSetEval, captureEvidence, CLICK_FINGERPRINT_SCRIPT, classifyActionError, compareClickEffect, compareGotoEffect, compareKeyEffect, compareScrollEffect, compareTraversalEffect, compareTypeEffect, compareWaitEffect, ELEMENTS_READ_SCRIPT, ensureTypedValue, evaluateElementsObservation, evaluateExtractObservation, KEY_FOCUS_SCRIPT, SCROLL_SNAPSHOT_SCRIPT, TRAVERSAL_IDENTITY_SCRIPT, typeActionText, type ClickContext, type GotoEffect, type KeyContext, type KeyFocus, type ScrollSnapshot, type TraversalContext, type TraversalIdentity, type TypeExpectMode, type AssertObservation, parseAssertTarget, observeAssertState, evaluateAssertObservation, isSelectorSyntaxError, summarizeEvaluateResult } from './actionVerification';
+import { buildExtractReadEval, buildScrollIntoViewEval, buildScrollTargetReadEval, buildSelectReadEval, buildSelectSetEval, captureEvidence, CLICK_FINGERPRINT_SCRIPT, classifyActionError, compareClickEffect, compareGotoEffect, compareKeyEffect, compareScrollEffect, compareTraversalEffect, compareTypeEffect, compareWaitEffect, ELEMENTS_READ_SCRIPT, ensureTypedValue, evaluateElementsObservation, evaluateExtractObservation, evaluateUiAuditObservation, KEY_FOCUS_SCRIPT, SCROLL_SNAPSHOT_SCRIPT, TRAVERSAL_IDENTITY_SCRIPT, typeActionText, type ClickContext, type GotoEffect, type KeyContext, type KeyFocus, type ScrollSnapshot, type TraversalContext, type TraversalIdentity, type TypeExpectMode, type AssertObservation, parseAssertTarget, observeAssertState, evaluateAssertObservation, isSelectorSyntaxError, summarizeEvaluateResult } from './actionVerification';
 import { getBrowserTelemetryErrorCounts } from './telemetry';
 import { getBrowserSession, setStreamMask, touchSession, withBrowserConcurrency } from './manager';
 import { getSessionSecret, getUserSecret } from '../services/secrets';
@@ -443,7 +443,7 @@ export async function executePlannedActions(params: {
         workerStatus: 'running',
       });
     } catch { }
-    const results: Array<{ stepId: string; name: string; ok: boolean; reason?: FailureReason; message?: string; resultType?: string; resultLength?: number; verified?: boolean; valueMatch?: boolean; repaired?: boolean; valueApplied?: boolean; typedIntoVoid?: boolean; navigated?: boolean; domChanged?: boolean; focusChanged?: boolean; documentChanged?: boolean; navigationError?: boolean; landedOnRequested?: boolean; httpStatus?: number; effectObserved?: boolean; runtimeErrors?: number; scrolled?: boolean; scrollDeltaY?: number; atEdge?: boolean; inViewport?: boolean; elapsedMs?: number; matched?: number; visibleCount?: number; found?: boolean; textLength?: number; elementCount?: number; totalMatched?: number; truncated?: boolean; captured?: boolean; captureBytes?: number }> = [];
+    const results: Array<{ stepId: string; name: string; ok: boolean; reason?: FailureReason; message?: string; resultType?: string; resultLength?: number; verified?: boolean; valueMatch?: boolean; repaired?: boolean; valueApplied?: boolean; typedIntoVoid?: boolean; navigated?: boolean; domChanged?: boolean; focusChanged?: boolean; documentChanged?: boolean; navigationError?: boolean; landedOnRequested?: boolean; httpStatus?: number; effectObserved?: boolean; runtimeErrors?: number; scrolled?: boolean; scrollDeltaY?: number; atEdge?: boolean; inViewport?: boolean; elapsedMs?: number; matched?: number; visibleCount?: number; found?: boolean; textLength?: number; elementCount?: number; totalMatched?: number; truncated?: boolean; scanned?: boolean; domNodes?: number; captured?: boolean; captureBytes?: number }> = [];
     const evidence: Array<{ kind: 'screenshot'; jpegBase64: string; ts: number; stepId: string }> = [];
 
     for (let i = 0; i < Math.min(cfg.maxSteps, actions.length); i += 1) {
@@ -760,12 +760,28 @@ export async function executePlannedActions(params: {
         }
 
         if (name === 'ui_audit') {
+          // Grounding re-scan: the documented contract is a DOM + elements
+          // re-scan, and browser_get_state/browser_snapshot degrade to this
+          // action - so a bare ok:true answered "what is on screen?" with
+          // nothing. The receipt carries the scan summary; an unreadable page
+          // reports scanned:false, never fails (the screenshot precedent: no
+          // curing reason, the planner decides from the flag).
           const before = await screenshotJpegBase64(page);
           evidence.push({ kind: 'screenshot', jpegBase64: before, ts: now(), stepId: sid });
+          const ctx = await snapshotClickContext(page, sessionId);
+          let elsRead: any = null;
+          try {
+            elsRead = await page.evaluate(ELEMENTS_READ_SCRIPT);
+          } catch { elsRead = null; }
+          const elements = Array.isArray(elsRead?.elements) ? elsRead.elements : [];
+          const verdict = evaluateUiAuditObservation({
+            fingerprint: ctx?.fingerprint ?? null,
+            elements: elsRead ? { total: elsRead.total, returned: elements.length } : null,
+          });
           const after = await screenshotJpegBase64(page);
           evidence.push({ kind: 'screenshot', jpegBase64: after, ts: now(), stepId: sid });
-          broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now(), data: { ok: true } });
-          results.push({ stepId: sid, name, ok: true });
+          broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now(), data: { elements, scanned: verdict.scanned, domNodes: verdict.domNodes, textLength: verdict.textLength, elementCount: verdict.elementCount, totalMatched: verdict.totalMatched, truncated: verdict.truncated } });
+          results.push({ stepId: sid, name, ok: true, scanned: verdict.scanned, domNodes: verdict.domNodes, textLength: verdict.textLength, elementCount: verdict.elementCount, totalMatched: verdict.totalMatched, truncated: verdict.truncated });
           try {
             broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name });
           } catch { }
