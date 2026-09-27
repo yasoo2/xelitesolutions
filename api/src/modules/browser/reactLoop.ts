@@ -106,6 +106,60 @@ export interface ObservedElement {
   isPassword?: boolean;
 }
 
+/** Observed-effect summary copied from one executor step receipt. Booleans and
+ *  counts only — never secrets, selectors, or page text. Every field is
+ *  optional because different action kinds report different signals. */
+export interface StepEffect {
+  effectObserved?: boolean;
+  navigated?: boolean;
+  domChanged?: boolean;
+  focusChanged?: boolean;
+  documentChanged?: boolean;
+  landedOnRequested?: boolean;
+  valueApplied?: boolean;
+  typedIntoVoid?: boolean;
+  valueMatch?: boolean;
+  verified?: boolean;
+  scrolled?: boolean;
+  atEdge?: boolean;
+  inViewport?: boolean;
+  runtimeErrors?: number;
+}
+
+/** Stable render order for the EFFECT line (only defined fields are shown). */
+const STEP_EFFECT_KEYS: Array<keyof StepEffect> = [
+  'effectObserved', 'navigated', 'domChanged', 'focusChanged', 'documentChanged',
+  'landedOnRequested', 'valueApplied', 'typedIntoVoid', 'valueMatch', 'verified',
+  'scrolled', 'atEdge', 'inViewport', 'runtimeErrors',
+];
+
+/** Copy the observed-effect signal out of an executor step receipt.
+ *  Returns undefined when the step carries no effect signal at all, so
+ *  effect-less observations render exactly as before. */
+export function summarizeStepEffect(step: any): StepEffect | undefined {
+  if (!step || typeof step !== 'object') return undefined;
+  const out: StepEffect = {};
+  let found = false;
+  for (const k of STEP_EFFECT_KEYS) {
+    const v = (step as any)[k];
+    if (v === undefined) continue;
+    const wantNumber = k === 'runtimeErrors';
+    if (typeof v === (wantNumber ? 'number' : 'boolean')) {
+      (out as any)[k] = v;
+      found = true;
+    }
+  }
+  return found ? out : undefined;
+}
+
+/** Pick the step whose effect describes the brain's action: the first
+ *  non-'wait' step (executor action lists trail a settling wait), falling
+ *  back to the first step when every step is a wait. */
+export function selectPrimaryStep(steps: any[]): any | undefined {
+  if (!Array.isArray(steps) || steps.length === 0) return undefined;
+  return steps.find((s) => String(s?.name || '') !== 'wait') ?? steps[0];
+}
+
 export interface Observation {
   url: string;
   title: string;
@@ -114,7 +168,7 @@ export interface Observation {
   /** Runtime evidence from the same watched browser session; optional for old callers/tests. */
   runtime?: BrowserRuntimeSnapshot;
   /** Evidence about the immediately preceding action, so the brain can recover deliberately. */
-  lastActionResult?: { action: string; ok: boolean; note?: string };
+  lastActionResult?: { action: string; ok: boolean; note?: string; effect?: StepEffect };
 }
 
 export type ReactAction =
@@ -138,6 +192,7 @@ export interface ReactStep {
   ok: boolean;
   note?: string;
   url?: string;
+  effect?: StepEffect;
 }
 
 export interface ReactResult {
@@ -251,6 +306,23 @@ export async function observePage(page: any): Promise<Observation> {
   return { url, title, textSnippet: raw.snippet || '', elements: raw.elements || [] };
 }
 
+/** Render the observed-effect signal of the previous action, if any. Purely
+ *  additive: observations without an effect render exactly as before. */
+function renderEffectLines(r: NonNullable<Observation['lastActionResult']>): string[] {
+  if (!r.effect) return [];
+  const parts: string[] = [];
+  for (const k of STEP_EFFECT_KEYS) {
+    const v = (r.effect as any)[k];
+    if (v !== undefined) parts.push(`${k}=${v}`);
+  }
+  if (parts.length === 0) return [];
+  const lines = [`LAST ACTION EFFECT: ${parts.join('; ')}`];
+  if (r.ok && r.effect.effectObserved === false) {
+    lines.push('NO-EFFECT RULE: the previous action executed (ok=true) but produced no observable page effect; do NOT assume progress — re-observe the page and choose a different evidence-based step (another target, scroll it into view, dismiss an overlay) instead of repeating blindly.');
+  }
+  return lines;
+}
+
 /** Render an observation as compact text the brain can reason over. */
 export function renderObservation(o: Observation): string {
   const lines = o.elements.map(e => {
@@ -268,6 +340,7 @@ export function renderObservation(o: Observation): string {
     ] : []),
     ...(o.lastActionResult ? [
       `LAST ACTION RESULT: ${o.lastActionResult.action}; ok=${o.lastActionResult.ok};${o.lastActionResult.note ? ` note=${o.lastActionResult.note}` : ''}`,
+      ...renderEffectLines(o.lastActionResult),
       ...(o.lastActionResult.ok ? [] : ['RECOVERY RULE: the previous action failed; choose a different evidence-based recovery step or ask the user instead of repeating blindly.']),
     ] : []),
     `ELEMENTS (act on these by index):`,
@@ -537,8 +610,9 @@ export async function runReactBrowserTask(params: {
     const actionOk = Boolean(res?.ok);
     const actionNote = actionOk ? undefined : String(res?.summary || 'step_failed').slice(0, 180);
     failureStreak = actionOk ? 0 : failureStreak + 1;
-    lastActionResult = { action: describeAction(action, observation), ok: actionOk, ...(actionNote ? { note: actionNote } : {}) };
-    steps.push({ n, action, ok: actionOk, note: actionNote, url: page.url() });
+    const stepEffect = summarizeStepEffect(selectPrimaryStep(Array.isArray(res?.steps) ? res.steps : []));
+    lastActionResult = { action: describeAction(action, observation), ok: actionOk, ...(actionNote ? { note: actionNote } : {}), ...(stepEffect ? { effect: stepEffect } : {}) };
+    steps.push({ n, action, ok: actionOk, note: actionNote, url: page.url(), ...(stepEffect ? { effect: stepEffect } : {}) });
     emitAgentStep(sessionId, { phase: 'result', step: n, ok: actionOk, url: page.url(), note: actionNote });
     if (failureStreak >= 3) {
       // Telemetry may not be registered for this session (old callers, tests,

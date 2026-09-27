@@ -709,9 +709,11 @@ export async function executePlannedActions(params: {
             scrollData.scrolled = scrollEffect.moved;
             scrollData.scrollDeltaY = scrollEffect.deltaY;
             scrollData.atEdge = atRequestedEdge(scrollEffect);
+            scrollData.effectObserved = scrollEffect.moved;
             scrollReceipt.scrolled = scrollEffect.moved;
             scrollReceipt.scrollDeltaY = scrollEffect.deltaY;
             scrollReceipt.atEdge = atRequestedEdge(scrollEffect);
+            scrollReceipt.effectObserved = scrollEffect.moved;
           }
           broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now(), data: scrollData });
           results.push({ stepId: sid, name, ok: true, ...scrollReceipt });
