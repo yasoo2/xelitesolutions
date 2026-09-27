@@ -1015,3 +1015,60 @@ export function captureEvidence(base64: string | null | undefined): CaptureEvide
     if (bytes <= 0) return { captured: false, captureBytes: 0 };
     return { captured: true, captureBytes: bytes };
 }
+
+/** Bounded preview length for an evaluate result: the receipt names the outcome, it never dumps an unbounded page value into logs. */
+export const EVALUATE_RESULT_PREVIEW_MAX = 200;
+
+/** What an `evaluate` script returned, summarized for the receipt. */
+export interface EvaluateResultSummary {
+    resultType: 'undefined' | 'null' | 'string' | 'number' | 'boolean' | 'bigint' | 'array' | 'object' | 'function' | 'symbol';
+    /** Length of the full serialized form; the preview may be shorter. */
+    resultLength: number;
+    /** First EVALUATE_RESULT_PREVIEW_MAX chars of the serialized form. */
+    resultPreview: string;
+}
+
+/**
+ * Summarize an arbitrary evaluate return for the receipt. Never throws
+ * and never leaks unbounded content: circular structures degrade to a
+ * marker, huge values are measured but cut. Strings pass through as-is
+ * (truncated); anything else is JSON-shaped when possible,
+ * String()-shaped otherwise.
+ */
+export function summarizeEvaluateResult(value: unknown): EvaluateResultSummary {
+    let resultType: EvaluateResultSummary['resultType'] = 'object';
+    if (value === undefined) resultType = 'undefined';
+    else if (value === null) resultType = 'null';
+    else if (typeof value === 'string') resultType = 'string';
+    else if (typeof value === 'number') resultType = 'number';
+    else if (typeof value === 'boolean') resultType = 'boolean';
+    else if (typeof value === 'bigint') resultType = 'bigint';
+    else if (Array.isArray(value)) resultType = 'array';
+    else if (typeof value === 'function') resultType = 'function';
+    else if (typeof value === 'symbol') resultType = 'symbol';
+    let serialized = '';
+    try {
+        if (typeof value === 'string') {
+            serialized = value;
+        } else if (typeof value === 'bigint' || typeof value === 'function' || typeof value === 'symbol') {
+            serialized = String(value);
+        } else {
+            const seen = new Set<object>();
+            const hit = JSON.stringify(value, (_k, v) => {
+                if (v !== null && typeof v === 'object') {
+                    if (seen.has(v)) return '[circular]';
+                    seen.add(v);
+                }
+                return v;
+            });
+            serialized = typeof hit === 'string' ? hit : String(value);
+        }
+    } catch {
+        try { serialized = String(value); } catch { serialized = ''; }
+    }
+    return {
+        resultType,
+        resultLength: serialized.length,
+        resultPreview: serialized.slice(0, EVALUATE_RESULT_PREVIEW_MAX),
+    };
+}

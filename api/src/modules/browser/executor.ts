@@ -3,7 +3,7 @@ import type { FailureReason } from './types';
 import { DEFAULT_BROWSER_CONFIG } from './config';
 import { broadcastBrowserEvent } from './wsHub';
 import { gotoResilient, probeNavigationReadiness, type NavigationReadiness } from './navigation';
-import { buildExtractReadEval, buildScrollIntoViewEval, buildScrollTargetReadEval, buildSelectReadEval, buildSelectSetEval, captureEvidence, CLICK_FINGERPRINT_SCRIPT, classifyActionError, compareClickEffect, compareKeyEffect, compareScrollEffect, compareTraversalEffect, compareWaitEffect, ELEMENTS_READ_SCRIPT, ensureTypedValue, evaluateElementsObservation, evaluateExtractObservation, KEY_FOCUS_SCRIPT, SCROLL_SNAPSHOT_SCRIPT, TRAVERSAL_IDENTITY_SCRIPT, typeActionText, type ClickContext, type KeyContext, type KeyFocus, type ScrollSnapshot, type TraversalContext, type TraversalIdentity, type AssertObservation, parseAssertTarget, observeAssertState, evaluateAssertObservation, isSelectorSyntaxError } from './actionVerification';
+import { buildExtractReadEval, buildScrollIntoViewEval, buildScrollTargetReadEval, buildSelectReadEval, buildSelectSetEval, captureEvidence, CLICK_FINGERPRINT_SCRIPT, classifyActionError, compareClickEffect, compareKeyEffect, compareScrollEffect, compareTraversalEffect, compareWaitEffect, ELEMENTS_READ_SCRIPT, ensureTypedValue, evaluateElementsObservation, evaluateExtractObservation, KEY_FOCUS_SCRIPT, SCROLL_SNAPSHOT_SCRIPT, TRAVERSAL_IDENTITY_SCRIPT, typeActionText, type ClickContext, type KeyContext, type KeyFocus, type ScrollSnapshot, type TraversalContext, type TraversalIdentity, type AssertObservation, parseAssertTarget, observeAssertState, evaluateAssertObservation, isSelectorSyntaxError, summarizeEvaluateResult } from './actionVerification';
 import { getBrowserTelemetryErrorCounts } from './telemetry';
 import { getBrowserSession, setStreamMask, touchSession, withBrowserConcurrency } from './manager';
 import { getSessionSecret, getUserSecret } from '../services/secrets';
@@ -374,7 +374,7 @@ export async function executePlannedActions(params: {
         workerStatus: 'running',
       });
     } catch { }
-    const results: Array<{ stepId: string; name: string; ok: boolean; reason?: FailureReason; message?: string; verified?: boolean; valueMatch?: boolean; repaired?: boolean; navigated?: boolean; domChanged?: boolean; focusChanged?: boolean; documentChanged?: boolean; navigationError?: boolean; effectObserved?: boolean; runtimeErrors?: number; scrolled?: boolean; scrollDeltaY?: number; atEdge?: boolean; inViewport?: boolean; elapsedMs?: number; matched?: number; visibleCount?: number; found?: boolean; textLength?: number; elementCount?: number; totalMatched?: number; truncated?: boolean; captured?: boolean; captureBytes?: number }> = [];
+    const results: Array<{ stepId: string; name: string; ok: boolean; reason?: FailureReason; message?: string; resultType?: string; resultLength?: number; verified?: boolean; valueMatch?: boolean; repaired?: boolean; navigated?: boolean; domChanged?: boolean; focusChanged?: boolean; documentChanged?: boolean; navigationError?: boolean; effectObserved?: boolean; runtimeErrors?: number; scrolled?: boolean; scrollDeltaY?: number; atEdge?: boolean; inViewport?: boolean; elapsedMs?: number; matched?: number; visibleCount?: number; found?: boolean; textLength?: number; elementCount?: number; totalMatched?: number; truncated?: boolean; captured?: boolean; captureBytes?: number }> = [];
     const evidence: Array<{ kind: 'screenshot'; jpegBase64: string; ts: number; stepId: string }> = [];
 
     for (let i = 0; i < Math.min(cfg.maxSteps, actions.length); i += 1) {
@@ -795,9 +795,23 @@ export async function executePlannedActions(params: {
         if (name === 'evaluate') {
           const script = String(a?.script || '');
           if (script) {
+            // Evaluate effect evidence: an arbitrary script can do
+            // anything, so the receipt names what it returned (a bounded
+            // summary) plus the observed page effect around it. Evidence
+            // only — a thrown script still fails its step through the
+            // outer catch, and an empty script keeps its fall-through.
+            const evalBefore = await snapshotClickContext(page, sessionId);
             const res = await page.evaluate(script);
-            broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now(), data: { result: String(res) } });
-            results.push({ stepId: sid, name, ok: true });
+            const summary = summarizeEvaluateResult(res);
+            await page.waitForTimeout(250);
+            const evalEffect = compareClickEffect(evalBefore, await snapshotClickContext(page, sessionId));
+            const evalNavigated: boolean | undefined = evalEffect.readOk ? evalEffect.navigated : undefined;
+            const evalDomChanged: boolean | undefined = evalEffect.readOk ? evalEffect.domChanged : undefined;
+            const evalEffectObserved: boolean | undefined = evalEffect.readOk ? evalEffect.effectObserved : undefined;
+            const evalRuntimeErrors: number | undefined = evalEffect.runtimeErrors;
+            const evalData = { result: summary.resultPreview, resultType: summary.resultType, resultLength: summary.resultLength, navigated: evalNavigated, domChanged: evalDomChanged, effectObserved: evalEffectObserved, runtimeErrors: evalRuntimeErrors };
+            broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now(), data: evalData });
+            results.push({ stepId: sid, name, ok: true, message: summary.resultPreview, resultType: summary.resultType, resultLength: summary.resultLength, navigated: evalNavigated, domChanged: evalDomChanged, effectObserved: evalEffectObserved, runtimeErrors: evalRuntimeErrors });
             try { broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name }); } catch { }
             continue;
           }
@@ -827,24 +841,24 @@ export async function executePlannedActions(params: {
               // the same snapshot/compare receipt as `click_coordinates`, so a
               // dead-region poke and a working control never share the same
               // bare ok:true. Settle matches the proven 250ms. Evidence only.
-              const clickBefore = await snapshotClickContext(page, sessionId);
+              const coordClickBefore = await snapshotClickContext(page, sessionId);
               await interactions.naturalClick(page, 'click', x, y);
 
               await page.waitForTimeout(250);
-              const clickAfter = await snapshotClickContext(page, sessionId);
-              const clickEffect = compareClickEffect(clickBefore, clickAfter);
-              const clickNavigated: boolean | undefined = clickEffect.readOk ? clickEffect.navigated : undefined;
-              const clickDomChanged: boolean | undefined = clickEffect.readOk ? clickEffect.domChanged : undefined;
-              const clickEffectObserved: boolean | undefined = clickEffect.readOk ? clickEffect.effectObserved : undefined;
-              const clickRuntimeErrors: number | undefined = clickEffect.runtimeErrors;
+              const coordClickAfter = await snapshotClickContext(page, sessionId);
+              const coordClickEffect = compareClickEffect(coordClickBefore, coordClickAfter);
+              const coordClickNavigated: boolean | undefined = coordClickEffect.readOk ? coordClickEffect.navigated : undefined;
+              const coordClickDomChanged: boolean | undefined = coordClickEffect.readOk ? coordClickEffect.domChanged : undefined;
+              const coordClickEffectObserved: boolean | undefined = coordClickEffect.readOk ? coordClickEffect.effectObserved : undefined;
+              const coordClickRuntimeErrors: number | undefined = coordClickEffect.runtimeErrors;
               const after = await screenshotJpegBase64(page);
               evidence.push({ kind: 'screenshot', jpegBase64: after, ts: now(), stepId: sid });
 
-              const clickEffectData = clickEffectObserved === undefined && clickRuntimeErrors === undefined
+              const coordClickEffectData = coordClickEffectObserved === undefined && coordClickRuntimeErrors === undefined
                 ? undefined
-                : { navigated: clickNavigated, domChanged: clickDomChanged, effectObserved: clickEffectObserved, runtimeErrors: clickRuntimeErrors };
-              broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now(), data: clickEffectData });
-              results.push({ stepId: sid, name, ok: true, navigated: clickNavigated, domChanged: clickDomChanged, effectObserved: clickEffectObserved, runtimeErrors: clickRuntimeErrors });
+                : { navigated: coordClickNavigated, domChanged: coordClickDomChanged, effectObserved: coordClickEffectObserved, runtimeErrors: coordClickRuntimeErrors };
+              broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now(), data: coordClickEffectData });
+              results.push({ stepId: sid, name, ok: true, navigated: coordClickNavigated, domChanged: coordClickDomChanged, effectObserved: coordClickEffectObserved, runtimeErrors: coordClickRuntimeErrors });
               try {
                 broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name });
               } catch { }
