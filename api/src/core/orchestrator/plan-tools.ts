@@ -393,10 +393,45 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
         const stem = dot > 0 ? filename.slice(0, dot) : filename;
         return `${dir ? `${dir}/` : ''}__tests__/${stem}.test.ts`;
     };
+    /**
+     * A scaffold's structure keys are plan-declared file outputs with the same
+     * standing as write_file paths: the executor writes exactly these files
+     * under baseDir. Null values are empty directories, not files. Mirror the
+     * executor's repeated-prefix strip so evidence paths match what lands on
+     * disk. Without this, manifests produced by scaffold_project are invisible
+     * to every evidence gate below (CRITICAL-REAL-JOE-UI-001 run 3: a plan
+     * that scaffolded package.json still had `npm test` dropped as unproven).
+     */
+    const scaffoldOutputPaths = (task: any): string[] => {
+        const structure = task?.args?.structure ?? task?.input?.structure;
+        if (!structure || typeof structure !== 'object' || Array.isArray(structure)) return [];
+        const declaredBaseDir = String(
+            task?.args?.baseDir || task?.args?.projectName || task?.args?.name
+            || task?.input?.baseDir || task?.input?.projectName || task?.input?.name
+            || '.',
+        ).trim() || '.';
+        const basePrefix = declaredBaseDir.replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/$/u, '');
+        const fileKeys = Object.entries(structure)
+            .filter(([, contents]) => typeof contents === 'string')
+            .map(([relativePath]) => String(relativePath).replace(/\\/g, '/'));
+        if (!fileKeys.length) return [];
+        const repeatedPrefix = basePrefix !== '.'
+            && fileKeys.every(key => key === basePrefix || key.startsWith(`${basePrefix}/`));
+        return fileKeys
+            .map(key => {
+                const stripped = repeatedPrefix
+                    ? (key === basePrefix ? '' : key.slice(`${basePrefix}/`.length))
+                    : key;
+                if (!stripped) return '';
+                return basePrefix === '.' ? stripped : `${basePrefix}/${stripped}`;
+            })
+            .filter(key => !!key && !unsafeWorkspacePath(key));
+    };
     const taskOutputPaths = (tasks: any[]) => tasks
         .flatMap((task: any) => {
             const tool = String(task?.tool || '');
             if (tool === 'test_generator') return [testGeneratorOutputPath(task)];
+            if (tool === 'scaffold_project') return scaffoldOutputPaths(task);
             if (!['write_file', 'ai_write_file', 'file_edit', 'file_edit_advanced'].includes(tool)) return [];
             return [task?.args?.path || task?.args?.filePath || task?.args?.filename || task?.input?.path || task?.input?.filePath || task?.input?.filename];
         })
@@ -663,7 +698,7 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
                 }
                 const argsIssue = plannedArgsIssue(r.tool, adaptedArgs);
                 const shellIssue = r.tool === 'shell_execute'
-                    ? unprovenProjectCheckIssue(adaptedArgs?.command, candidateCheckCommands)
+                    ? unprovenProjectCheckIssueUnlessPlanProduced(adaptedArgs?.command, candidateCheckCommands, [...generatedPaths, ...knownPhaseOutputs])
                     : null;
                 // A small registry, not a growing list of copied exceptions,
                 // defines fields supplied by the trusted runtime after an earlier
@@ -921,7 +956,7 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
             } else {
                 const verificationIssue = plannedArgsIssue(verificationTool, verificationArgs)
                     || (verificationTool === 'shell_execute'
-                        ? unprovenProjectCheckIssue(verificationArgs?.command, candidateCheckCommands)
+                        ? unprovenProjectCheckIssueUnlessPlanProduced(verificationArgs?.command, candidateCheckCommands, [...generatedPaths, ...phaseProducedPaths])
                         : null);
                 // A browser verifier is itself the evidence boundary. Replacing
                 // an invalid browser contract with project_detect would make an
@@ -1389,8 +1424,39 @@ export function normaliseShellCommand(command: unknown): string {
  * A raw package-script command is executable only when discovery proved that
  * exact command exists in the selected project.  In a greenfield workspace,
  * `npm test` is not a test: it is an unsupported assumption that cannot verify
- * the files the plan has just produced.
+ * the files the plan has just produced — unless the plan itself produced the
+ * manifest, which turns the assumption into the project's own declared check
+ * (see planProducedCheckProven): execution failures then stay honest product
+ * feedback instead of dying on an internal contract.
  */
+/**
+ * A greenfield plan that produces its own Node manifest is not assuming a
+ * project: it is declaring one. `npm test` (and build/lint/typecheck) against
+ * a plan-produced manifest is the project's own check; a missing script or a
+ * failing test is honest product feedback for the repair loop, not a
+ * hallucinated success. Pass ONLY plan-produced paths here — never
+ * discovery-evidenced ones — so existing-project behavior is unchanged.
+ */
+export function planProducedCheckProven(command: unknown, planProducedPaths: Iterable<string>): boolean {
+    const normalised = normaliseShellCommand(command);
+    if (!/^(?:npm\s+(?:run\s+)?(?:test|build|lint|typecheck)|pnpm\s+(?:run\s+)?(?:test|build|lint|typecheck)|yarn\s+(?:test|build|lint|typecheck))(?:\s|$)/i.test(normalised)) return false;
+    for (const candidate of planProducedPaths) {
+        if (/(?:^|\/)package\.json$/i.test(String(candidate || '').trim())) return true;
+    }
+    return false;
+}
+
+/**
+ * Discovery-declared checks pass through untouched. Otherwise the plan's own
+ * produced manifest (earlier phases, or earlier/same-phase tasks in execution
+ * order) proves the check instead of dropping it.
+ */
+export function unprovenProjectCheckIssueUnlessPlanProduced(command: unknown, declaredChecks: Set<string>, planProducedPaths: Iterable<string>): string | null {
+    const issue = unprovenProjectCheckIssue(command, declaredChecks);
+    if (!issue) return null;
+    return planProducedCheckProven(command, planProducedPaths) ? null : issue;
+}
+
 export function unprovenProjectCheckIssue(command: unknown, declaredChecks: Set<string>): string | null {
     const normalised = normaliseShellCommand(command);
     if (!/^(?:npm\s+(?:run\s+)?(?:test|build|lint|typecheck)|pnpm\s+(?:run\s+)?(?:test|build|lint|typecheck)|yarn\s+(?:test|build|lint|typecheck))(?:\s|$)/i.test(normalised)) return null;
