@@ -3,6 +3,7 @@ import type { FailureReason } from './types';
 import { DEFAULT_BROWSER_CONFIG } from './config';
 import { broadcastBrowserEvent } from './wsHub';
 import { gotoResilient } from './navigation';
+import { classifyActionError, ensureTypedValue, typeActionText } from './actionVerification';
 import { getBrowserSession, setStreamMask, touchSession, withBrowserConcurrency } from './manager';
 import { getSessionSecret, getUserSecret } from '../services/secrets';
 import { AdvancedInteractionSystem } from './interactions';
@@ -230,7 +231,7 @@ export async function executePlannedActions(params: {
         workerStatus: 'running',
       });
     } catch { }
-    const results: Array<{ stepId: string; name: string; ok: boolean; reason?: FailureReason; message?: string }> = [];
+    const results: Array<{ stepId: string; name: string; ok: boolean; reason?: FailureReason; message?: string; verified?: boolean; valueMatch?: boolean; repaired?: boolean }> = [];
     const evidence: Array<{ kind: 'screenshot'; jpegBase64: string; ts: number; stepId: string }> = [];
 
     for (let i = 0; i < Math.min(cfg.maxSteps, actions.length); i += 1) {
@@ -841,8 +842,8 @@ export async function executePlannedActions(params: {
             } catch { }
           }
 
-          const textRaw = name === 'type' ? String(a?.text || '') : '';
-          const secretMatch = name === 'type' ? textRaw.match(SECRET_TOKEN_RE) : null;
+          const textRaw = typeActionText(name, a);
+          const secretMatch = (name === 'type' || name === 'fill') ? textRaw.match(SECRET_TOKEN_RE) : null;
           if (secretMatch) {
             const secretKey = String(secretMatch[1] || '').trim();
             const secretValue =
@@ -887,7 +888,7 @@ export async function executePlannedActions(params: {
           }
 
           const isSensitiveType =
-            name === 'type' &&
+            (name === 'type' || name === 'fill') &&
             (typeof a?.selector === 'string'
               ? /type\s*=\s*["']password["']|password|current-password/i.test(String(a.selector))
               : typeof a?.name === 'string'
@@ -917,7 +918,7 @@ export async function executePlannedActions(params: {
               } else {
                 await loc.first().waitFor({ state: 'visible', timeout: 5000 }).catch(() => { });
                 await loc.first().click({ timeout: cfg.actionTimeoutMs });
-                await loc.first().fill(textRaw);
+                await loc.first().fill(textRaw, { timeout: cfg.actionTimeoutMs });
               }
             }
           } catch (e: any) {
@@ -936,16 +937,77 @@ export async function executePlannedActions(params: {
                 } else {
                   await loc.first().scrollIntoViewIfNeeded().catch(() => { });
                   await loc.first().click({ timeout: cfg.actionTimeoutMs, force: true });
-                  await loc.first().fill(textRaw);
+                  await loc.first().fill(textRaw, { timeout: cfg.actionTimeoutMs });
                 }
               }
             } catch (e2: any) {
               const msg = String(e2?.message || e2);
-              const reason: FailureReason = /timeout/i.test(msg) ? 'timeout' : /overlay|intercept|not clickable/i.test(msg) ? 'overlay_blocking_click' : 'unknown';
+              const reason: FailureReason = classifyActionError(e2);
               broadcastBrowserEvent(sessionId, { type: 'step_error', stepId: sid, name, ts: now(), reason, message: msg });
               results.push({ stepId: sid, name, ok: false, reason, message: msg });
               try {
                 broadcastBrowserEvent(sessionId, { type: 'action_error', ts: now(), actionId: sid, actionType: name, reason, error: msg });
+              } catch { }
+              if (isSensitiveType) setStreamMask(sessionId, []);
+              continue;
+            }
+          }
+          // Effect evidence for type/fill: read the field back; on mismatch
+          // make exactly one bounded repair, then report what was observed.
+          // Only booleans and lengths are recorded -- never the values.
+          let verified: boolean | undefined = undefined;
+          let valueMatch: boolean | undefined = undefined;
+          let repaired = false;
+          if (name === 'type' || name === 'fill') {
+            try {
+              const check = await ensureTypedValue(
+                targetCenter
+                  ? {
+                    read: () => loc.first().inputValue(),
+                    clearAndSet: async (text: string) => {
+                      try {
+                        await page.keyboard.press('Meta+A');
+                      } catch {
+                        try {
+                          await page.keyboard.press('Control+A');
+                        } catch { }
+                      }
+                      try {
+                        await page.keyboard.press('Backspace');
+                      } catch { }
+                      await interactions.naturalType(page, 'type_text_repair', text);
+                    },
+                  }
+                  : {
+                    read: () => loc.first().inputValue(),
+                    clearAndSet: (text: string) => loc.first().fill(text, { timeout: cfg.actionTimeoutMs }),
+                  },
+                textRaw,
+              );
+              if (!check.readOk) {
+                verified = false;
+              } else {
+                verified = true;
+                valueMatch = check.match;
+                repaired = check.repaired;
+                if (!check.match) {
+                  const detail = `value_mismatch expected_len=${check.expectedLength} observed_len=${check.observedLength}${check.repaired ? ' repaired_once' : ''}`;
+                  broadcastBrowserEvent(sessionId, { type: 'step_error', stepId: sid, name, ts: now(), reason: 'value_not_applied', message: detail });
+                  results.push({ stepId: sid, name, ok: false, reason: 'value_not_applied', message: detail, verified, valueMatch, repaired });
+                  try {
+                    broadcastBrowserEvent(sessionId, { type: 'action_error', ts: now(), actionId: sid, actionType: name, reason: 'value_not_applied', error: detail });
+                  } catch { }
+                  if (isSensitiveType) setStreamMask(sessionId, []);
+                  continue;
+                }
+              }
+            } catch (e3: any) {
+              const msg3 = String(e3?.message || e3);
+              const reason3: FailureReason = classifyActionError(e3);
+              broadcastBrowserEvent(sessionId, { type: 'step_error', stepId: sid, name, ts: now(), reason: reason3, message: msg3 });
+              results.push({ stepId: sid, name, ok: false, reason: reason3, message: msg3, verified: false });
+              try {
+                broadcastBrowserEvent(sessionId, { type: 'action_error', ts: now(), actionId: sid, actionType: name, reason: reason3, error: msg3 });
               } catch { }
               if (isSensitiveType) setStreamMask(sessionId, []);
               continue;
@@ -980,8 +1042,8 @@ export async function executePlannedActions(params: {
             } catch { }
           }
 
-          broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now() });
-          results.push({ stepId: sid, name, ok: true });
+          broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now(), data: verified === undefined ? undefined : { verified, valueMatch, repaired } });
+          results.push({ stepId: sid, name, ok: true, verified, valueMatch, repaired });
           try {
             broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name });
           } catch { }
@@ -1169,7 +1231,7 @@ export async function executePlannedActions(params: {
         } catch { }
       } catch (e: any) {
         const msg = String(e?.message || e);
-        const reason: FailureReason = /timeout/i.test(msg) ? 'timeout' : 'unknown';
+        const reason: FailureReason = classifyActionError(e);
         results.push({ stepId: sid, name, ok: false, reason, message: msg });
         broadcastBrowserEvent(sessionId, { type: 'step_error', stepId: sid, name, ts: now(), reason, message: msg });
         try {

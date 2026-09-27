@@ -8,6 +8,10 @@ export type BrowserRunRequest = {
 
 export type FailureReason =
   | 'element_not_found'
+  | 'element_detached'
+  | 'selector_ambiguous'
+  | 'element_disabled'
+  | 'value_not_applied'
   | 'overlay_blocking_click'
   | 'needs_scroll'
   | 'iframe_or_shadow_dom'
@@ -134,7 +138,7 @@ export type FinalReportEvent = {
   ts: number;
   ok: boolean;
   summary: string;
-  steps: Array<{ stepId: string; name: string; ok: boolean; reason?: FailureReason; message?: string }>;
+  steps: Array<{ stepId: string; name: string; ok: boolean; reason?: FailureReason; message?: string; verified?: boolean; valueMatch?: boolean; repaired?: boolean }>;
   evidence: Array<{ kind: 'screenshot'; jpegBase64: string; ts: number; stepId: string }>;
 };
 
