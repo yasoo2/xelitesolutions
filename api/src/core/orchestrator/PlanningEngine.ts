@@ -1,5 +1,5 @@
 import { StructuredIntent } from '../intelligence/IntentParser';
-import { catalogueFor, registeredToolNames, inputForTool } from './toolCatalog';
+import { catalogueFor, registeredToolNames, inputForTool, extractLocalFolderName, isLocalFolderGoal } from './toolCatalog';
 import { catalogueForAsync, capabilityRouteAsync } from './tool-rerank';
 import { routeToModel, TaskAnalysis } from '../llm/intelligent-router';
 import { normalizeIntentText, stripArabicDiacritics, foldChars } from './promptNormalizer';
@@ -3216,6 +3216,7 @@ ${dynamicCatalogue}
 - Assign an agent to each node: Dev, Security, Browser, General.
 - DO NOT use static templates. Analyze the specific goal from a fresh perspective.
 - Provide a brief "reasoning" field for EACH step explaining why this path was chosen.
+- Tool/target fit: browser_* tools open EXTERNAL http(s) pages only and need a real URL from the goal - never aim them at a local folder or project on disk. A goal naming a workspace folder starts with import_project(path), inspect_directory, read_file or shell_execute, never a browser tool.
 
 Goal: ${intent.goal}
 Complexity: ${intent.complexity}
@@ -3526,6 +3527,26 @@ Return ONLY a JSON array of steps:
             const still = missing();
             const stillAny = missingAny();
             if (!still.length && !stillAny.length) continue;
+            // A browser step that still needs a URL on a local-folder goal is
+            // a MISROUTE, not a question: the goal points at disk, never at a
+            // page, so asking for a URL can only dead-end the run (measured
+            // live on EVAL-001 run-1: browser_page_fix -> "please give me a
+            // URL" -> run failed). Open the named folder instead; when the
+            // name does not exist import_project fails honestly with
+            // no_such_path rather than inventing work.
+            if (String(s.tool || '').startsWith('browser_')
+                && (still.includes('url') || stillAny.some(group => group.includes('url')))) {
+                try {
+                    if (isLocalFolderGoal(goal)) {
+                        const folder = extractLocalFolderName(goal);
+                        console.warn(`[PlanningEngine] "${s.tool}" needs a URL the local-folder goal never mentions - routing to import_project('${folder}') instead of asking`);
+                        s.tool = 'import_project';
+                        s.description = `Open the local folder '${folder}' and review it: ${goal}`.slice(0, 500);
+                        s.input = { path: folder, request: goal };
+                        continue;
+                    }
+                } catch { /* the reroute is a helper, never a blocker */ }
+            }
             const missingLabels = [...still, ...stillAny.map(group => group.join(' أو '))];
 
             console.warn(`[PlanningEngine] «${s.tool}» needs ${missingLabels.join(', ')} and nothing in the request provides it — asking instead of failing`);

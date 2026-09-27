@@ -131,6 +131,17 @@ function hasBrowserStructure(goalRaw: string): { isBrowser: boolean; confidence:
     return { isBrowser: false, confidence: 0, reason: 'no browser structure', hasExternalWebTarget: false };
 }
 
+/**
+ * Whether the text names a web target a browser tool could act on: an
+ * explicit URL or a known site. Shared by retrieval (a URL-required tool is
+ * a dead end without one) and plan repair (a browser step without one on a
+ * local-folder goal is a misroute, not a question).
+ */
+export function hasExternalWebTarget(text: string): boolean {
+    const probe = String(text || '');
+    return URL_PATTERN.test(probe) || KNOWN_SITE_PATTERN.test(probe);
+}
+
 export function isKnowledgeQuestionStructural(goalRaw: string): boolean {
     const g = String(goalRaw || '');
     const bare = stripArabicDiacritics(g);

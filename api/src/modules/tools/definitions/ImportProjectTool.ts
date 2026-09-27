@@ -220,7 +220,7 @@ export class ImportProjectTool extends BaseTool {
     name = 'import_project';
     description = 'Clone an existing GitHub repository (or open a local folder), perform a bounded evidence-backed local engineering review, and make it the session\'s active project for surgical edits.';
     version = '1.1.0';
-    tags = ['import', 'github', 'project', 'analyze', 'verify'];
+    tags = ['import', 'github', 'project', 'analyze', 'verify', 'folder', 'local', 'workspace'];
     inputSchema = {
         type: 'object' as const,
         properties: {

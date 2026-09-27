@@ -355,6 +355,7 @@ ${catalogueFor(intent.goal)}
 - Assign an agent to each node: Dev, Security, Browser, General.
 - DO NOT use static templates. Analyze the specific goal from a fresh perspective.
 - Provide a brief "reasoning" field for EACH step explaining why this path was chosen.
+- Tool/target fit: browser_* tools open EXTERNAL http(s) pages only and need a real URL from the goal - never aim them at a local folder or project on disk. A goal naming a workspace folder starts with import_project(path), inspect_directory, read_file or shell_execute, never a browser tool.
 - PARALLEL EXECUTION: Steps with no shared dependencies CAN run in parallel. Mark them with "parallel": true.
 ${recoveryRules}
 

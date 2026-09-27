@@ -186,8 +186,23 @@ export function toolLine(tool: any): string {
 export function selectToolsFor(goal: string, limit = 30): ScoredTool[] {
     const terms = goalTerms(goal);
     const all = (tools as any[]).filter(t => t?.name && t?.description);
+    // A browser tool that needs a URL is a dead end on a local-folder goal:
+    // the filler cannot feed it, so the step collapses into a question asking
+    // for a URL the goal never mentioned (measured on a real EVAL-001 run:
+    // browser_page_fix #3, import_project #9, then "please give me a URL").
+    // Demote, never remove - the planner prompt and plan repair carry the
+    // rest of the correction.
+    const localDisk = isLocalFolderGoal(goal);
+    const needsUrl = (t: any) => Array.isArray(t?.inputSchema?.required)
+        && (t.inputSchema.required as any[]).map(String).includes('url');
     const scored = all
-        .map(t => ({ name: t.name, score: scoreTool(t, terms), line: toolLine(t) }))
+        .map(t => {
+            let score = scoreTool(t, terms);
+            if (localDisk && needsUrl(t) && String(t.name || '').startsWith('browser_')) {
+                score = Math.round(score * 0.2 * 10) / 10;
+            }
+            return { name: t.name, score, line: toolLine(t) };
+        })
         .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
 
     const picked = new Map<string, ScoredTool>();
@@ -211,6 +226,56 @@ export function catalogueFor(goal: string, limit = 30): string {
 
 /** Every registered name — the planner's answers are checked against this. */
 export const registeredToolNames = (): string[] => (tools as any[]).map(t => t.name);
+
+/**
+ * A LOCAL DISK READING of the goal: the folder the user points at on their
+ * own machine. Returns '' when no folder is named.
+ *
+ * Measured need: a local repair goal ranked browser_page_fix #3 and
+ * import_project #9, and a paraphrase left import_project out of the top 30
+ * entirely - so the model aimed a URL-required browser tool at a disk folder
+ * and the run died asking the user for a URL the goal never mentioned. The
+ * folder name is the evidence of that reading; retrieval, the planner prompt
+ * and plan repair all consult it.
+ *
+ * Conservative on purpose: only a bare name (no slashes, no traversal, no
+ * scheme, no domain-like suffix) counts, so a URL or a sentence fragment can
+ * never be mistaken for a folder.
+ */
+export function extractLocalFolderName(goal: string): string {
+    const g = String(goal || '');
+    const candidates: string[] = [];
+    // Quoted names first: in "the 'crumbworks' folder in my workspace" the
+    // bare word after "folder" is "in", not the folder. Bare words are a
+    // last resort and never a stopword.
+    const STOPWORD = /^(in|on|at|the|a|an|my|your|this|that|it|is|of|for|to|and|or|named?|called|folder|folders|workspace|project|directory|here|there)$/i;
+    const quotedAfterFolder = g.match(/(?:workspace\s+)?folders?\s+(?:named\s+)?['"“”‘’`]([^'"“”‘’`]+)['"“”‘’`]/i);
+    if (quotedAfterFolder) candidates.push(quotedAfterFolder[1]);
+    const bareAfterFolder = g.match(/(?:workspace\s+)?folders?\s+(?:named\s+)?([A-Za-z0-9_][A-Za-z0-9_.-]*)/i);
+    if (bareAfterFolder) candidates.push(bareAfterFolder[1]);
+    const quotedBeforeFolder = g.match(/['"“”‘’`]([^'"“”‘’`]+)['"“”‘’`]\s+folders?/i);
+    if (quotedBeforeFolder) candidates.push(quotedBeforeFolder[1]);
+    for (const raw of candidates) {
+        const name = String(raw || '').trim().replace(/[/\\]+$/, '');
+        if (!name || name.length > 64 || STOPWORD.test(name)) continue;
+        if (/^[A-Za-z0-9_][A-Za-z0-9_.~-]*$/.test(name) && !name.includes('..') && !/\.[A-Za-z]{2,}$/.test(name)) return name;
+    }
+    return '';
+}
+
+/** True when the goal points at local disk with no web target to browse. */
+export function isLocalFolderGoal(goal: string): boolean {
+    if (!extractLocalFolderName(goal)) return false;
+    try {
+        // Lazy: the classifier pulls the LLM stack, and this module loads
+        // under every planner/registry import in the system.
+        const { hasExternalWebTarget } = require('../intelligence/intent-classifier');
+        return !hasExternalWebTarget(goal);
+    } catch {
+        return !URL_RE.test(String(goal || ''));
+    }
+}
+
 
 /**
  * THE CAPABILITY ROUTER — because a catalogue nobody consults is a catalogue
