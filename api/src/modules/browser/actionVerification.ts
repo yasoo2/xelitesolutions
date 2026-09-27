@@ -843,3 +843,175 @@ export function isSelectorSyntaxError(error: unknown): boolean {
     const msg = String((error as any)?.message ?? error ?? '');
     return /while parsing .* selector|CSS\.escape|unexpected token.*parsing|invalid selector/i.test(msg);
 }
+
+/**
+ * OBSERVATION RECEIPTS — screenshot/extract_text/get_elements report what
+ * they observed, not just that they ran.
+ *
+ * The observation actions were the last readers without self-describing
+ * receipts (proven by probe-m15 against real Chromium, pre-fix):
+ *
+ *   - An `extract_text` whose selector matched nothing reported ok:true
+ *     with the literal text "Element not found" as its message — a miss
+ *     indistinguishable from a page that really says that. The planner
+ *     cannot re-query what looks like success.
+ *   - An `extract_text` with an invalid selector let the in-page
+ *     querySelector throw, so the whole RUN aborted with reason
+ *     'unknown' and a raw Playwright call log as the message — the
+ *     scroll_to_element disease one action over, already cured there by
+ *     reading the target state in-page instead of letting it throw.
+ *   - A `get_elements` reported a bare ok:true whether the page held 50
+ *     controls, none, or 500 (silently capped at 100): empty and
+ *     truncated reads shared one receipt.
+ *   - A `screenshot` reported a bare ok:true with no record of the
+ *     capture itself: an empty capture would arrive as success.
+ *
+ * Observations now carry their own evidence, same philosophy as every
+ * prior receipt: counts and flags, never new page content (extract_text
+ * keeps its pre-existing text payload — that IS the action — but the
+ * miss/invalid verdicts are structured counts, never content).
+ *
+ *   - buildExtractReadEval: self-contained in-page read returning
+ *     { found, invalid, text }. Invalid syntax returns invalid:true
+ *     instead of throwing, so a bad selector fails its STEP with
+ *     'invalid_selector' instead of aborting the run with 'unknown'.
+ *   - evaluateExtractObservation: the read -> verdict. A miss fails as
+ *     'element_not_found' (cure: re-query, wait, different selector)
+ *     and the run continues — the goto/scroll_to_element precedent for
+ *     a step-scoped failure. An unreadable read keeps the action's own
+ *     verdict, marked unverified: verification is evidence, not a new
+ *     failure mode.
+ *   - ELEMENTS_READ_SCRIPT: one in-page evaluate returning
+ *     { total, elements } with the existing mapping untouched. The
+ *     receipt carries elementCount/totalMatched/truncated: an empty
+ *     page is a valid observation (ok:true, count 0), a crowded page
+ *     says it was cut.
+ *   - captureEvidence: base64 capture -> { captured, captureBytes }.
+ *     Evidence-only like clicks: a throw still fails fast through the
+ *     shared outer catch, but an empty capture is reported, never
+ *     failed — there is no curing reason for it, so the planner
+ *     decides from the flag.
+ */
+
+/** What the in-page extract read script reports. */
+export interface ExtractObservation {
+    found: boolean;
+    /** True when the selector itself is syntactically invalid — a planner bug, not a missing element. */
+    invalid: boolean;
+    /** Trimmed text of the matched element. */
+    text: string;
+}
+
+/**
+ * Build a self-contained in-page evaluate that reads a selector's text.
+ * Complete expression — pass it straight to page.evaluate with NO second
+ * argument; the selector is baked in as a JSON literal so hostile text
+ * stays inert. Resolves to ExtractObservation, never null, never throws.
+ */
+export function buildExtractReadEval(selector: string): string {
+    const fn = `(arg) => {
+  let el = null;
+  try { el = document.querySelector(arg.selector); } catch (err) { return { found: false, invalid: true, text: '' }; }
+  if (!el) return { found: false, invalid: false, text: '' };
+  return { found: true, invalid: false, text: (el.textContent || '').trim() };
+}`;
+    return `(${fn})(${JSON.stringify({ selector: String(selector === null || selector === undefined ? '' : selector) })})`;
+}
+
+/** Verdict over an extract observation: a miss names its cure. */
+export interface ExtractVerdict {
+    ok: boolean;
+    reason: FailureReason;
+    found: boolean;
+    /** False only when the read itself was unreadable — the step keeps the action's verdict. */
+    verified: boolean;
+    /** Observed text length; -1 when nothing could be read. */
+    textLength: number;
+    /** The observed text (flows to the event payload, never the receipt). */
+    text: string;
+    /** Structured counts, safe to store: no page text or markup. */
+    detail: string;
+}
+
+export function evaluateExtractObservation(obs: ExtractObservation | null | undefined, selector: string): ExtractVerdict {
+    const sel = String(selector === null || selector === undefined ? '' : selector).slice(0, 120);
+    if (!obs || typeof obs !== 'object') {
+        return { ok: true, reason: 'unknown', found: false, verified: false, textLength: -1, text: '', detail: 'extract_unverified' };
+    }
+    if ((obs as any).invalid === true) {
+        return { ok: false, reason: 'invalid_selector', found: false, verified: true, textLength: -1, text: '', detail: `extract_invalid_selector ${JSON.stringify(sel)} could not be parsed` };
+    }
+    if ((obs as any).found !== true) {
+        return { ok: false, reason: 'element_not_found', found: false, verified: true, textLength: -1, text: '', detail: `extract_target_not_found ${JSON.stringify(sel)}` };
+    }
+    const text = String((obs as any).text || '');
+    return { ok: true, reason: 'unknown', found: true, verified: true, textLength: text.length, text, detail: `extract_ok len=${text.length}` };
+}
+
+/** Cap on interactive elements returned per get_elements read — the page may hold more. */
+export const ELEMENTS_RETURN_CAP = 100;
+
+/**
+ * One in-page evaluate returning the interactive-element read: the total
+ * matched before the cap plus the capped visible-only list. IIFE — pass
+ * it straight to page.evaluate. The element mapping matches the compiled
+ * read it replaces field-for-field; only the { total, elements } wrapper
+ * is new.
+ */
+export const ELEMENTS_READ_SCRIPT = `(() => {
+  const interactiveSelectors = 'a, button, input, select, textarea, [role=button], [onclick], [tabindex]';
+  const els = Array.from(document.querySelectorAll(interactiveSelectors));
+  const total = els.length;
+  const elements = els.slice(0, ${ELEMENTS_RETURN_CAP}).map((el, i) => {
+    const rect = el.getBoundingClientRect();
+    return {
+      index: i,
+      tag: el.tagName.toLowerCase(),
+      text: (el.textContent || '').trim().substring(0, 100),
+      type: el.type || undefined,
+      x: Math.round(rect.x + rect.width / 2),
+      y: Math.round(rect.y + rect.height / 2),
+      width: Math.round(rect.width),
+      height: Math.round(rect.height),
+      visible: rect.width > 0 && rect.height > 0
+    };
+  }).filter(e => e.visible);
+  return { total, elements };
+})()`;
+
+/** What the in-page elements read reports: counts around the returned list. */
+export interface ElementsObservation {
+    /** Interactive nodes matched before the cap. */
+    total: number;
+    /** Elements actually returned (capped, visible-only). */
+    returned: number;
+}
+
+/** Verdict over an elements read: an empty page is data, a cut page says so. */
+export interface ElementsVerdict {
+    elementCount: number;
+    totalMatched: number;
+    truncated: boolean;
+}
+
+export function evaluateElementsObservation(obs: ElementsObservation | null | undefined): ElementsVerdict {
+    const total = Math.max(0, Math.floor(Number((obs as any)?.total) || 0));
+    const returned = Math.max(0, Math.floor(Number((obs as any)?.returned) || 0));
+    return { elementCount: returned, totalMatched: total, truncated: total > ELEMENTS_RETURN_CAP };
+}
+
+/** What a screenshot capture observed: integrity of the bytes, never the pixels. */
+export interface CaptureEvidence {
+    captured: boolean;
+    /** Decoded JPEG byte length; 0 when nothing was captured. */
+    captureBytes: number;
+}
+
+export function captureEvidence(base64: string | null | undefined): CaptureEvidence {
+    const s = typeof base64 === 'string' ? base64 : '';
+    if (!s) return { captured: false, captureBytes: 0 };
+    const pad = s.endsWith('==') ? 2 : s.endsWith('=') ? 1 : 0;
+    const bytes = Math.max(0, Math.floor((s.length * 3) / 4) - pad);
+    if (bytes <= 0) return { captured: false, captureBytes: 0 };
+    return { captured: true, captureBytes: bytes };
+}

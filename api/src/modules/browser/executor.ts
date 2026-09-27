@@ -3,7 +3,7 @@ import type { FailureReason } from './types';
 import { DEFAULT_BROWSER_CONFIG } from './config';
 import { broadcastBrowserEvent } from './wsHub';
 import { gotoResilient, probeNavigationReadiness, type NavigationReadiness } from './navigation';
-import { buildScrollIntoViewEval, buildScrollTargetReadEval, buildSelectReadEval, buildSelectSetEval, CLICK_FINGERPRINT_SCRIPT, classifyActionError, compareClickEffect, compareKeyEffect, compareScrollEffect, compareTraversalEffect, compareWaitEffect, ensureTypedValue, KEY_FOCUS_SCRIPT, SCROLL_SNAPSHOT_SCRIPT, TRAVERSAL_IDENTITY_SCRIPT, typeActionText, type ClickContext, type KeyContext, type KeyFocus, type ScrollSnapshot, type TraversalContext, type TraversalIdentity, type AssertObservation, parseAssertTarget, observeAssertState, evaluateAssertObservation, isSelectorSyntaxError } from './actionVerification';
+import { buildExtractReadEval, buildScrollIntoViewEval, buildScrollTargetReadEval, buildSelectReadEval, buildSelectSetEval, captureEvidence, CLICK_FINGERPRINT_SCRIPT, classifyActionError, compareClickEffect, compareKeyEffect, compareScrollEffect, compareTraversalEffect, compareWaitEffect, ELEMENTS_READ_SCRIPT, ensureTypedValue, evaluateElementsObservation, evaluateExtractObservation, KEY_FOCUS_SCRIPT, SCROLL_SNAPSHOT_SCRIPT, TRAVERSAL_IDENTITY_SCRIPT, typeActionText, type ClickContext, type KeyContext, type KeyFocus, type ScrollSnapshot, type TraversalContext, type TraversalIdentity, type AssertObservation, parseAssertTarget, observeAssertState, evaluateAssertObservation, isSelectorSyntaxError } from './actionVerification';
 import { getBrowserTelemetryErrorCounts } from './telemetry';
 import { getBrowserSession, setStreamMask, touchSession, withBrowserConcurrency } from './manager';
 import { getSessionSecret, getUserSecret } from '../services/secrets';
@@ -374,7 +374,7 @@ export async function executePlannedActions(params: {
         workerStatus: 'running',
       });
     } catch { }
-    const results: Array<{ stepId: string; name: string; ok: boolean; reason?: FailureReason; message?: string; verified?: boolean; valueMatch?: boolean; repaired?: boolean; navigated?: boolean; domChanged?: boolean; focusChanged?: boolean; documentChanged?: boolean; navigationError?: boolean; effectObserved?: boolean; runtimeErrors?: number; scrolled?: boolean; scrollDeltaY?: number; atEdge?: boolean; inViewport?: boolean; elapsedMs?: number; matched?: number; visibleCount?: number }> = [];
+    const results: Array<{ stepId: string; name: string; ok: boolean; reason?: FailureReason; message?: string; verified?: boolean; valueMatch?: boolean; repaired?: boolean; navigated?: boolean; domChanged?: boolean; focusChanged?: boolean; documentChanged?: boolean; navigationError?: boolean; effectObserved?: boolean; runtimeErrors?: number; scrolled?: boolean; scrollDeltaY?: number; atEdge?: boolean; inViewport?: boolean; elapsedMs?: number; matched?: number; visibleCount?: number; found?: boolean; textLength?: number; elementCount?: number; totalMatched?: number; truncated?: boolean; captured?: boolean; captureBytes?: number }> = [];
     const evidence: Array<{ kind: 'screenshot'; jpegBase64: string; ts: number; stepId: string }> = [];
 
     for (let i = 0; i < Math.min(cfg.maxSteps, actions.length); i += 1) {
@@ -1399,50 +1399,56 @@ export async function executePlannedActions(params: {
         if (name === 'screenshot') {
           const current = await screenshotJpegBase64(page);
           evidence.push({ kind: 'screenshot', jpegBase64: current, ts: now(), stepId: sid });
-          broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now() });
-          results.push({ stepId: sid, name, ok: true });
+          const cap = captureEvidence(current);
+          broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now(), data: { captured: cap.captured, captureBytes: cap.captureBytes } });
+          results.push({ stepId: sid, name, ok: true, captured: cap.captured, captureBytes: cap.captureBytes });
           try { broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name }); } catch { }
           continue;
         }
 
         if (name === 'extract_text') {
+          // Observation receipt: a selector miss fails its step with the
+          // reason that cures it (not ok:true with "Element not found" as
+          // the text), an invalid selector fails its step instead of the
+          // run, and a hit carries found + length. The run continues past
+          // a failed extract — the goto/scroll_to_element precedent for a
+          // step-scoped failure — while the final report still fails.
           const selector = String(a?.selector || '').trim();
-          let resultText = '';
           if (selector) {
-            resultText = await page.evaluate((sel: string) => {
-              const el = document.querySelector(sel);
-              return el ? (el.textContent || '').trim() : 'Element not found';
-            }, selector);
-          } else {
-            resultText = await page.evaluate(() => (document.body.innerText || '').substring(0, 10000));
+            const read: any = await page.evaluate(buildExtractReadEval(selector));
+            const verdict = evaluateExtractObservation(read, selector);
+            if (!verdict.ok) {
+              broadcastBrowserEvent(sessionId, { type: 'step_error', stepId: sid, name, ts: now(), reason: verdict.reason, message: verdict.detail });
+              results.push({ stepId: sid, name, ok: false, reason: verdict.reason, message: verdict.detail, found: false });
+              try {
+                broadcastBrowserEvent(sessionId, { type: 'action_error', ts: now(), actionId: sid, actionType: name, reason: verdict.reason, error: verdict.detail });
+              } catch { }
+              continue;
+            }
+            if (!verdict.verified) {
+              broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now(), data: { verified: false } });
+              results.push({ stepId: sid, name, ok: true, verified: false });
+              try { broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name }); } catch { }
+              continue;
+            }
+            broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now(), data: { text: verdict.text } });
+            results.push({ stepId: sid, name, ok: true, message: verdict.text.slice(0, 200), found: true, textLength: verdict.textLength });
+            try { broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name }); } catch { }
+            continue;
           }
-          broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now(), data: { text: resultText } });
-          results.push({ stepId: sid, name, ok: true, message: resultText.slice(0, 200) });
+          const bodyText: string = await page.evaluate(() => (document.body.innerText || '').substring(0, 10000));
+          broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now(), data: { text: bodyText } });
+          results.push({ stepId: sid, name, ok: true, message: bodyText.slice(0, 200), textLength: bodyText.length });
           try { broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name }); } catch { }
           continue;
         }
 
         if (name === 'get_elements') {
-          const elements = await page.evaluate(() => {
-            const interactiveSelectors = 'a, button, input, select, textarea, [role=button], [onclick], [tabindex]';
-            const els = Array.from(document.querySelectorAll(interactiveSelectors));
-            return els.slice(0, 100).map((el, i) => {
-              const rect = el.getBoundingClientRect();
-              return {
-                index: i,
-                tag: el.tagName.toLowerCase(),
-                text: (el.textContent || '').trim().substring(0, 100),
-                type: (el as any).type || undefined,
-                x: Math.round(rect.x + rect.width / 2),
-                y: Math.round(rect.y + rect.height / 2),
-                width: Math.round(rect.width),
-                height: Math.round(rect.height),
-                visible: rect.width > 0 && rect.height > 0
-              };
-            }).filter(e => e.visible);
-          });
-          broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now(), data: { elements } });
-          results.push({ stepId: sid, name, ok: true });
+          const obs: any = await page.evaluate(ELEMENTS_READ_SCRIPT);
+          const elements = Array.isArray(obs?.elements) ? obs.elements : [];
+          const verdict = evaluateElementsObservation({ total: obs?.total, returned: elements.length });
+          broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now(), data: { elements, totalMatched: verdict.totalMatched, truncated: verdict.truncated } });
+          results.push({ stepId: sid, name, ok: true, elementCount: verdict.elementCount, totalMatched: verdict.totalMatched, truncated: verdict.truncated });
           try { broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name }); } catch { }
           continue;
         }
