@@ -1,10 +1,11 @@
 import { analyzeContextualIntent, ConversationContext, buildConversationContext } from '../llm/context-engine';
-import { looksLikeBuild, isReadOnlyRequest, isBoundedTerminalDiagnosticRequest, isKnowledgeQuestion } from '../orchestrator/buildIntent';
+import { isBoundedTerminalDiagnosticRequest } from '../orchestrator/buildIntent';
 import intelligentRouter from '../llm/intelligent-router';
 import { normalizeIntentText } from '../orchestrator/promptNormalizer';
 import { parseExplicitFileRequest } from '../orchestrator/file-intent';
 import { capabilityFamilyFromRequest } from '../capabilities/decision-profiles';
 import { capableTools } from '../orchestrator/capability-match';
+import { classifyIntent, isBuildRequest, isBrowserRequest, isKnowledgeQuestionStructural, clearIntentCache } from './intent-classifier';
 
 export interface StructuredIntent {
     goal: string;
@@ -65,10 +66,14 @@ export class IntentParser {
                 rawIntent: { primary: userText, terminalDiagnostic: true, readOnly: true, deterministic: true },
             };
         }
+
+        // Use structural intent classification (fast, cached, no LLM)
+        const classification = await classifyIntent(userText);
+
         // Read-only requests are already bounded by their explicit safety
         // contract. A slow local model must not spend a minute deciding
         // whether "list files and summarize README" is a build request.
-        if (isReadOnlyRequest(userText)) {
+        if (classification.isReadOnly) {
             console.log('[IntentParser] ⚡ Explicit read-only request — skipping deep analysis.');
             return {
                 goal: userText,
@@ -78,6 +83,18 @@ export class IntentParser {
                 requiredTools: ['project_pipeline'],
                 constraints: ['Read-only: do not mutate, install, publish, or execute project changes.'],
                 rawIntent: { primary: userText, readOnly: true, deterministic: true },
+            };
+        }
+        if (classification.isKnowledgeQuestion) {
+            console.log('[IntentParser] ⚡ Knowledge question — skipping deep analysis.');
+            return {
+                goal: userText,
+                complexity: 'low',
+                riskLevel: 'low',
+                suggestedAgent: 'General',
+                requiredTools: ['central_answer'],
+                constraints: ['Answer the question directly; no tool execution needed.'],
+                rawIntent: { primary: userText, knowledgeQuestion: true, deterministic: true },
             };
         }
         const explicitFile = parseExplicitFileRequest(userText);
@@ -99,8 +116,7 @@ export class IntentParser {
         // actual engineering work before it can even inspect the workspace.
         // The pipeline still performs the detailed planning and tool policy;
         // this is only a provider-independent front-door classification.
-        const hasExternalWebTarget = /https?:\/\/|\b(?:www\.)[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/i.test(userText);
-        if (looksLikeBuild(userText) && !hasExternalWebTarget) {
+        if (classification.isBuild && !classification.hasExternalWebTarget) {
             console.log('[IntentParser] ⚡ Clear build request — routing directly to evidence-first project_pipeline.');
             return {
                 goal: userText,
@@ -218,7 +234,7 @@ Return ONLY a JSON object:
         if (!raw || !capabilityFamilyFromRequest(raw)) return null;
         const decision = /\b(?:choose|select|decide)\b|least[-\s]?setup|local\s+(?:or|vs)\s+external|اختر|اختيار|أقل\s*إعداد|مسار\s*(?:محلي|خارجي|أنسب)|مزود\s*(?:محلي|خارجي|أنسب)/iu.test(raw);
         const explicitDecisionLead = /^\s*(?:choose|select|decide)\b|^\s*(?:اختر|اختيار)/iu.test(raw);
-        if (!decision || (looksLikeBuild(raw) && !explicitDecisionLead)) return null;
+        if (!decision || (isBuildRequest(raw).isBuild && !explicitDecisionLead)) return null;
         return {
             goal: raw,
             complexity: 'low',
@@ -247,7 +263,9 @@ Return ONLY a JSON object:
         // the plan and ToolService remains the sole policy/execution gateway.
         // Questions and construction briefs stay out of this path so a noun
         // such as "security" cannot turn an explanation into an action.
-        if (!looksLikeBuild(raw) && !isKnowledgeQuestion(raw)) {
+        const buildCheck = isBuildRequest(raw);
+        const knowledgeCheck = isKnowledgeQuestionStructural(raw);
+        if (!buildCheck.isBuild && !knowledgeCheck) {
             const [candidate] = capableTools(raw, 1);
             if (candidate) {
                 return {
@@ -261,23 +279,10 @@ Return ONLY a JSON object:
                 };
             }
         }
-        const probe = `${raw}\n${normalizeIntentText(raw)}`;
-        const hasUrl = /https?:\/\/|\b[a-z0-9-]+\.(?:com|org|net|io|dev|ai|co|app|sa|eg|me)\b/i.test(probe);
-        // A well-known site named in words (dialect/transliteration) counts as a web
-        // target even without a URL — so «ادخل على جيت هاب» is web, not a code task.
-        const knownSite = /(جيت\s*هاب|github|يوتيوب|youtube|فيس\s*بوك|facebook|تويتر|twitter|\bx\.com\b|انست[غق]رام|instagram|جيميل|gmail|لينكد\s*ان|linkedin|ريديت|reddit|ويكيبيديا|wikipedia|قوقل|جوجل|google|امازون|amazon|نتفليكس|netflix|واتساب|whatsapp|تيك\s*توك|tiktok)/i.test(probe);
-        // STRONG web verbs are unambiguously about the web — they qualify ALONE
-        // (login/browse/search/visit). Without this, «سجّل الدخول الى حسابي» (no URL,
-        // no literal "موقع") fell to the slow LLM analysis.
-        const strongWebVerb = /(تصفّ?ح|سجّ?ل\s*(ال)?دخول|تسجيل\s*(ال)?دخول|ادخل\s*(على|الى|إلى|ل|حساب|موقع)|اذهب\s*(الى|إلى|ل)|ابحث|دوّ?ر\s*(لي\s*)?عن|open\s*(the\s*)?browser|browse\b|visit\b|go\s*to\b|log\s*-?\s*in|sign\s*-?\s*in|search\b)/i.test(probe);
-        // WEAK web verbs need a web noun or a known site to qualify (so «صف لي الفرق
-        // بين X و Y» is NOT hijacked to the browser).
-        const weakWebVerb = /(افتح|انظر|صِ?ف|وصف|لخّ?ص|ترجم|انقر|استخرج|open\b|describe|summari|translate|click|extract)/i.test(probe);
-        const webNoun = knownSite || /(متصفح|موقع|صفحة|رابط|الويب|browser|site|page|link|web)/i.test(probe);
-        // A page-interaction verb + a UI-element noun («اضغط على الزر», "click the
-        // button") is a continuation of the open page — unmistakably a browser task.
-        const interactUi = /(اضغط|انقر|اختر|اكتب|أدخل|مرّ?ر|انزل|عبّ?ئ|املأ|حدّ?د|click|press|scroll|select|type|fill)/i.test(probe)
-            && /(زر|الزر|حقل|الحقل|خانة|القائمة|قائمة|رابط|مربع|صندوق|التبويب|button|field|link|menu|dropdown|checkbox|tab|box|input)/i.test(probe);
+
+        // Use structural browser classification (fast, cached, no LLM)
+        const browserCheck = isBrowserRequest(raw);
+
         /**
          *  A VERB HE WANTS INSIDE HIS APP IS NOT A COMMAND TO JOE.
          *
@@ -295,18 +300,12 @@ Return ONLY a JSON object:
          *  for a calendar: a word lifted out of the request and read as if he
          *  had addressed it to the machine.
          *
-         *  The engineering-brief gate above should have caught it and did not,
-         *  because it demands 240 characters or a word like «حقيقي». Length is
-         *  a property of how wordy someone is, not of what he asked for — and
-         *  he writes short, plain sentences.
-         *
-         *  So: a request that describes something to be built, and names no web
-         *  target at all, is not a browser task. If he names a site or a URL,
-         *  the browser keeps it — he may well want both.
+         *  The structural classifier handles this: build requests with internal
+         *  features (search, filter, login) are classified as build, not browser.
          */
-        if (looksLikeBuild(raw) && !hasUrl && !knownSite) return null;
+        if (buildCheck.isBuild && !browserCheck.hasExternalWebTarget) return null;
         // Unmistakable web request: URL, strong web verb, weak verb + noun, or UI interaction.
-        if (!(hasUrl || strongWebVerb || interactUi || (weakWebVerb && webNoun))) return null;
+        if (!browserCheck.isBrowser) return null;
         return {
             goal: raw,
             complexity: 'medium',

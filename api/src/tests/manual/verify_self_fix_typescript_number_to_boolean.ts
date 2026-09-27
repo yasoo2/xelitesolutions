@@ -5,18 +5,18 @@ import dotenv from 'dotenv';
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 
 /**
- * Permanent verification for targeted TS2345 literal-argument self-fix execution.
- * Phase 1 repairs a numeric literal passed to a string parameter; phase 2
- * repairs a quoted numeric literal passed to a number parameter. Each repair
- * must be a single-line literal coercion via file_edit, nothing else.
+ * Permanent verification for targeted TS2322 number-to-boolean self-fix execution.
+ * Only exact 0/1 literals qualify: phase 1 repairs `= 0` to `= false`, phase 2
+ * repairs `= 1` to `= true`. Each repair must be a single-line literal
+ * coercion via file_edit, nothing else.
  */
-async function verifySelfFixTypeScriptArgumentCoercion() {
-  console.log('Starting TS2345 argument-coercion self-fix verification...');
+async function verifySelfFixTypeScriptNumberToBoolean() {
+  console.log('Starting TS2322 number-to-boolean self-fix verification...');
 
   process.env.JOE_PRO_ALPHA = '1';
   process.env.OFFLINE_MODE = 'true';
 
-  const projectsRoot = path.join(process.cwd(), 'data/tests/typescript_argument_coercion');
+  const projectsRoot = path.join(process.cwd(), 'data/tests/typescript_number_to_boolean');
   process.env.EXTERNAL_PROJECTS_DIR = projectsRoot;
 
   if (fs.existsSync(projectsRoot)) {
@@ -27,33 +27,33 @@ async function verifySelfFixTypeScriptArgumentCoercion() {
   const { AgentLoopService } = await import('../../modules/services/AgentLoopService');
 
   const sessionId = 'test-session-' + Date.now();
-  const workspaceId = 'test-typescript-argument-coercion-workspace';
+  const workspaceId = 'test-typescript-number-to-boolean-workspace';
   const userId = 'test-user';
   const testWorkspacePath = path.join(projectsRoot, workspaceId);
   const srcDir = path.join(testWorkspacePath, 'src');
   fs.mkdirSync(srcDir, { recursive: true });
 
-  const shoutPath = path.join(srcDir, 'Shout.ts');
-  const unquotePath = path.join(srcDir, 'Unquote.ts');
+  const flagAPath = path.join(srcDir, 'FlagA.ts');
+  const flagBPath = path.join(srcDir, 'FlagB.ts');
   const untouchedPath = path.join(srcDir, 'Untouched.ts');
   const checkAPath = path.join(testWorkspacePath, 'check-a.js');
   const checkBPath = path.join(testWorkspacePath, 'check-b.js');
 
-  fs.writeFileSync(shoutPath, 'const a: string = shout(42);\nexport default a;\n', 'utf-8');
-  fs.writeFileSync(unquotePath, 'const b: number = unquote("42");\nexport default b;\n', 'utf-8');
+  fs.writeFileSync(flagAPath, 'const flagA: boolean = 0;\nexport default flagA;\n', 'utf-8');
+  fs.writeFileSync(flagBPath, 'const flagB: boolean = 1;\nexport default flagB;\n', 'utf-8');
   fs.writeFileSync(untouchedPath, 'export const untouched = true;\n', 'utf-8');
   fs.writeFileSync(
     checkAPath,
     [
       "const fs = require('fs');",
-      "const app = fs.readFileSync('src/Shout.ts', 'utf8');",
-      "if (app.includes('shout(42)')) {",
-      "  console.error(\"src/Shout.ts(1,24): error TS2345: Argument of type 'number' is not assignable to parameter of type 'string'.\");",
-      "  console.error('const a: string = shout(42);');",
+      "const app = fs.readFileSync('src/FlagA.ts', 'utf8');",
+      "if (app.includes('= 0;')) {",
+      "  console.error(\"src/FlagA.ts(1,7): error TS2322: Type 'number' is not assignable to type 'boolean'.\");",
+      "  console.error('const flagA: boolean = 0;');",
       "  process.exit(1);",
       "}",
-      "if (!app.includes('shout(\"42\")')) {",
-      "  console.error('src/Shout.ts(1,24): error TS2345: TypeScript repair did not produce a string argument.');",
+      "if (!app.includes('= false;')) {",
+      "  console.error('src/FlagA.ts(1,7): error TS2322: TypeScript repair did not produce a boolean assignment.');",
       "  process.exit(1);",
       "}",
     ].join('\n'),
@@ -63,14 +63,14 @@ async function verifySelfFixTypeScriptArgumentCoercion() {
     checkBPath,
     [
       "const fs = require('fs');",
-      "const app = fs.readFileSync('src/Unquote.ts', 'utf8');",
-      "if (app.includes('unquote(\"42\")')) {",
-      "  console.error(\"src/Unquote.ts(1,24): error TS2345: Argument of type 'string' is not assignable to parameter of type 'number'.\");",
-      "  console.error('const b: number = unquote(\"42\");');",
+      "const app = fs.readFileSync('src/FlagB.ts', 'utf8');",
+      "if (app.includes('= 1;')) {",
+      "  console.error(\"src/FlagB.ts(1,7): error TS2322: Type 'number' is not assignable to type 'boolean'.\");",
+      "  console.error('const flagB: boolean = 1;');",
       "  process.exit(1);",
       "}",
-      "if (!app.includes('unquote(42)')) {",
-      "  console.error('src/Unquote.ts(1,24): error TS2345: TypeScript repair did not produce a numeric argument.');",
+      "if (!app.includes('= true;')) {",
+      "  console.error('src/FlagB.ts(1,7): error TS2322: TypeScript repair did not produce a boolean assignment.');",
       "  process.exit(1);",
       "}",
     ].join('\n'),
@@ -82,15 +82,15 @@ async function verifySelfFixTypeScriptArgumentCoercion() {
   const plannerResult = {
     ok: true,
     output: {
-      projectName: 'TypeScript Argument Coercion Repair Test',
+      projectName: 'TypeScript Number To Boolean Repair Test',
       totalPhases: 2,
       phases: [
         {
           phaseNumber: 1,
-          name: 'TS2345 number-to-string argument phase',
+          name: 'TS2322 zero-to-false phase',
           tasks: [
             {
-              task: 'Run TS2345 number-argument verification',
+              task: 'Run TS2322 zero verification',
               tool: 'shell_execute',
               args: { command: 'node check-a.js' },
               required: true,
@@ -100,10 +100,10 @@ async function verifySelfFixTypeScriptArgumentCoercion() {
         },
         {
           phaseNumber: 2,
-          name: 'TS2345 string-to-number argument phase',
+          name: 'TS2322 one-to-true phase',
           tasks: [
             {
-              task: 'Run TS2345 string-argument verification',
+              task: 'Run TS2322 one verification',
               tool: 'shell_execute',
               args: { command: 'node check-b.js' },
               required: true,
@@ -117,22 +117,22 @@ async function verifySelfFixTypeScriptArgumentCoercion() {
 
   const result: any = await (AgentLoopService as any).runPlannedPhasesIfPresent({
     sessionId,
-    runId: 'test-typescript-argument-coercion-run',
+    runId: 'test-typescript-number-to-boolean-run',
     userId,
     workspaceId,
     plannerResult,
   });
 
   let passed = true;
-  const shoutAfter = fs.readFileSync(shoutPath, 'utf-8');
-  const unquoteAfter = fs.readFileSync(unquotePath, 'utf-8');
+  const flagAAfter = fs.readFileSync(flagAPath, 'utf-8');
+  const flagBAfter = fs.readFileSync(flagBPath, 'utf-8');
   const untouchedAfter = fs.readFileSync(untouchedPath, 'utf-8');
   const firstPhaseResult = result.results?.[0];
   const secondPhaseResult = result.results?.[1];
 
   if (result.ok === true && result.completedPhases === 2
     && firstPhaseResult?.status === 'completed' && secondPhaseResult?.status === 'completed') {
-    console.log('PASS: pipeline completed after targeted TS2345 argument repairs');
+    console.log('PASS: pipeline completed after targeted TS2322 number-to-boolean repairs');
   } else {
     console.error('FAIL: pipeline did not complete after repairs:', result);
     passed = false;
@@ -147,17 +147,17 @@ async function verifySelfFixTypeScriptArgumentCoercion() {
     }
   }
 
-  if (shoutAfter.includes('shout("42")') && !shoutAfter.includes('shout(42)')) {
-    console.log('PASS: numeric argument was coerced to a string literal');
+  if (flagAAfter.includes('const flagA: boolean = false;')) {
+    console.log('PASS: zero assignment was converted to false');
   } else {
-    console.error('FAIL: Shout.ts was not patched as expected:', shoutAfter);
+    console.error('FAIL: FlagA.ts was not patched as expected:', flagAAfter);
     passed = false;
   }
 
-  if (unquoteAfter.includes('unquote(42)') && !unquoteAfter.includes('unquote("42")')) {
-    console.log('PASS: quoted numeric argument was coerced to a number');
+  if (flagBAfter.includes('const flagB: boolean = true;')) {
+    console.log('PASS: one assignment was converted to true');
   } else {
-    console.error('FAIL: Unquote.ts was not patched as expected:', unquoteAfter);
+    console.error('FAIL: FlagB.ts was not patched as expected:', flagBAfter);
     passed = false;
   }
 
@@ -173,7 +173,7 @@ async function verifySelfFixTypeScriptArgumentCoercion() {
   process.exit(0);
 }
 
-verifySelfFixTypeScriptArgumentCoercion().catch(e => {
+verifySelfFixTypeScriptNumberToBoolean().catch(e => {
   console.error('Test crashed:', e);
   process.exit(1);
 });

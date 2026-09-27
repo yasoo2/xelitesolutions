@@ -27,7 +27,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { isWithinRoot } from '../modules/tools/utils';
 
-const ROOT = 'C:\\Users\\home\\Documents\\xelitesolutions';
+// Synthetic Windows paths need no particular checkout or directory on disk.
+const DRIVE_ROOT = process.platform === 'win32' ? path.parse(__dirname).root : 'X:\\';
+const ROOT = path.win32.join(DRIVE_ROOT, 'joe-security-fixture');
 const PROJECTS = ROOT + '\\data\\projects';
 const win = process.platform === 'win32';
 
@@ -76,7 +78,7 @@ describe('a path escapes by what it means, not by how it is spelled — Windows 
     });
 
     onWin('somewhere else entirely is not a child', () => {
-        expect(isWithinRoot('C:\\Windows\\System32', ROOT)).toBe(false);
+        expect(isWithinRoot(path.win32.join(DRIVE_ROOT, 'unrelated-security-fixture'), ROOT)).toBe(false);
     });
 
     onWin('a real child is a child', () => {
@@ -136,7 +138,7 @@ describe('…and on Windows the case belongs to the filesystem, not the caller',
     const only = win ? it : it.skip;
 
     only('a lowercase drive letter is the same drive', () => {
-        expect(isWithinRoot('c:' + PROJECTS.slice(2) + '\\x', PROJECTS)).toBe(true);
+        expect(isWithinRoot(PROJECTS.slice(0, 2).toLowerCase() + PROJECTS.slice(2) + '\\x', PROJECTS)).toBe(true);
     });
 
     only('a wholly lowercased path is the same path', () => {

@@ -22,6 +22,7 @@ export class HuggingFaceProvider {
         this.client = new OpenAI({
             apiKey: key,
             baseURL: BASE_URL,
+            maxRetries: 0,
         });
     }
 
@@ -49,18 +50,8 @@ export class HuggingFaceProvider {
         } catch (error: any) {
             console.error('[HuggingFace] Chat Failed:', error.message);
 
-            // Better error messages
-            if (error.message?.includes('401') || error.message?.includes('unauthorized')) {
-                throw new Error('HUGGINGFACE_AUTH_FAILED: Invalid API key. Get yours at https://huggingface.co/settings/tokens');
-            }
-            if (error.message?.includes('rate limit')) {
-                throw new Error('HUGGINGFACE_RATE_LIMIT: Free tier limit reached. Upgrade or wait.');
-            }
-            if (error.message?.includes('model not found')) {
-                throw new Error(`HUGGINGFACE_MODEL_NOT_FOUND: Model ${model} not available`);
-            }
-
-            throw new Error(`HuggingFace API Failed: ${error.message}`);
+            // The router needs the original status, quota code and retry headers.
+            throw error;
         }
     }
 }

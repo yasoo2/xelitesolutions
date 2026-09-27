@@ -31,6 +31,7 @@
 export {};
 import fs from 'fs';
 import path from 'path';
+import { isWithinRoot } from '../../modules/tools/path-containment';
 
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'x';
 process.env.PERSISTENCE_MODE = 'JSON';
@@ -109,9 +110,7 @@ async function main() {
     check('البناء نجح', res?.ok === true, String(res?.error || '').slice(0, 140));
     const dir = String((global as any).joeProjects?.[sessionId]?.dir || '');
     console.log(`   ℹ️ ${dir}`);
-    const relative = dir ? path.relative(root, dir) : '..';
-    const isolated = !!dir && relative !== '..'
-        && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
+    const isolated = !!dir && isWithinRoot(dir, root);
     check('generated project stays inside this test run', isolated);
     if (!isolated) throw new Error('Refusing to boot a project outside the isolated test directory');
     check('على القرص', !!dir && fs.existsSync(path.join(dir, 'server.js')), dir);

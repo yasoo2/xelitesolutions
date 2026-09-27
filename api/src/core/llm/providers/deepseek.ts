@@ -36,6 +36,7 @@ export class DeepSeekProvider {
             this.client = new OpenAI({
                 apiKey: this.apiKey,
                 baseURL: DEEPSEEK_BASE_URL,
+                maxRetries: 0,
             });
             console.info('[DeepSeek] Provider initialized with API key');
         } else {

@@ -36,6 +36,7 @@ export class OpenRouterProvider {
         this.client = new OpenAI({
             apiKey: key,
             baseURL: BASE_URL,
+            maxRetries: 0,
             defaultHeaders: {
                 'HTTP-Referer': 'https://xelitesolutions.com',
                 'X-Title': 'Joe AI Assistant'
@@ -43,7 +44,13 @@ export class OpenRouterProvider {
         });
     }
 
-    async chatComplete(messages: any[], model: string = OPENROUTER_MODELS.DEFAULT_FREE, tools?: any[]): Promise<string> {
+    async chatComplete(
+        messages: any[],
+        model: string = OPENROUTER_MODELS.DEFAULT_FREE,
+        tools?: any[],
+        options?: { signal?: AbortSignal; timeoutMs?: number },
+    ): Promise<string> {
+        options?.signal?.throwIfAborted();
         try {
             const body: any = {
                 model: model,
@@ -65,7 +72,10 @@ export class OpenRouterProvider {
                 body.tool_choice = "auto";
             }
 
-            const completion = await this.client.chat.completions.create(body);
+            const requestOptions: { signal?: AbortSignal; timeout?: number } = {};
+            if (options?.signal) requestOptions.signal = options.signal;
+            if (Number.isFinite(options?.timeoutMs) && Number(options?.timeoutMs) > 0) requestOptions.timeout = options?.timeoutMs;
+            const completion = await this.client.chat.completions.create(body, Object.keys(requestOptions).length > 0 ? requestOptions : undefined);
 
             const message = completion.choices[0]?.message;
             if (message?.tool_calls && message.tool_calls.length > 0) {
@@ -77,13 +87,14 @@ export class OpenRouterProvider {
 
             return message?.content || '';
         } catch (error: any) {
+            if (options?.signal?.aborted || ['AbortError', 'APIUserAbortError'].includes(error?.name) || error?.code === 'ABORT_ERR') throw error;
             const isClerkError = error.status === 502 || error.message?.includes('Clerk');
             if (isClerkError) {
                 console.warn("[OpenRouter] Clerk Auth Failed (502). This normally means the free tier token expired.");
             }
             console.error("OpenRouter Chat Failed:", error.message);
-            // Throw so the intelligent router catches it and tries the next one
-            throw new Error(`OpenRouter API Failed: ${error.message}`);
+            // Preserve status, retry headers and quota codes for the router's cooldown policy.
+            throw error;
         }
     }
 

@@ -623,8 +623,8 @@ function buildTargetedTypeScriptEdit(buildContext: any) {
     }
   }
 
-  if (code === 'TS2345' && /argument of type 'number' is not assignable to parameter of type 'string'/i.test(message)) {
-    const replace = sourceLine.replace(/(\b[A-Za-z_$][\w$]*\()\s*(-?\d+(?:\.\d+)?)\s*(\))/, '$1"$2"$3');
+  if (code === 'TS2322' && /type 'boolean' is not assignable to type 'string'/i.test(message)) {
+    const replace = sourceLine.replace(/=\s*(true|false)(?![\w$])(\s*[;,]?)/, '= "$1"$2');
     if (replace !== sourceLine) {
       return {
         filename: buildContext.file,
@@ -634,8 +634,9 @@ function buildTargetedTypeScriptEdit(buildContext: any) {
     }
   }
 
-  if (code === 'TS2345' && /argument of type 'string' is not assignable to parameter of type 'number'/i.test(message)) {
-    const replace = sourceLine.replace(/(\b[A-Za-z_$][\w$]*\()\s*['"](-?\d+(?:\.\d+)?)['"]\s*(\))/, '$1$2$3');
+  // TS2322: boolean assigned to number variable (convert true->1, false->0)
+  if (code === 'TS2322' && /type 'boolean' is not assignable to type 'number'/i.test(message)) {
+    const replace = sourceLine.replace(/=\s*(true|false)(?![\w$])(\s*[;,]?)/, (_m: string, lit: string, tail: string) => `= ${lit === 'true' ? '1' : '0'}${tail}`);
     if (replace !== sourceLine) {
       return {
         filename: buildContext.file,
@@ -645,8 +646,9 @@ function buildTargetedTypeScriptEdit(buildContext: any) {
     }
   }
 
-  if (code === 'TS2322' && /type 'string' is not assignable to type 'boolean'/i.test(message)) {
-    const replace = sourceLine.replace(/=\s*['"](true|false)['"](\s*[;,]?)/, '= $1$2');
+  // TS2322: number assigned to boolean variable (only exact 0/1 literals)
+  if (code === 'TS2322' && /type 'number' is not assignable to type 'boolean'/i.test(message)) {
+    const replace = sourceLine.replace(/=\s*([01])(?![\w$.])(\s*[;,]?)/, (_m: string, lit: string, tail: string) => `= ${lit === '1' ? 'true' : 'false'}${tail}`);
     if (replace !== sourceLine) {
       return {
         filename: buildContext.file,
@@ -666,6 +668,192 @@ function buildTargetedTypeScriptEdit(buildContext: any) {
           filename: buildContext.file,
           find: sourceLine,
           replace: `${indent}const ${missingName} = 42;\n${sourceLine}`,
+        };
+      }
+    }
+  }
+
+  // TS2345: Argument of type 'X' is not assignable to parameter of type 'Y'
+  // Common case: passing string where number expected in function call
+  if (code === 'TS2345' && /argument of type 'string' is not assignable to parameter of type 'number'/i.test(message)) {
+    const replace = sourceLine.replace(/\((['"])([^'"]*?)\1\s*\)/, '($2)');
+    if (replace !== sourceLine) {
+      return {
+        filename: buildContext.file,
+        find: sourceLine,
+        replace,
+      };
+    }
+  }
+
+  // TS2345: number-literal argument to string parameter (quote it)
+  if (code === 'TS2345' && /argument of type 'number' is not assignable to parameter of type 'string'/i.test(message)) {
+    const replace = sourceLine.replace(/(\b[A-Za-z_$][\w$]*\()\s*(-?\d+(?:\.\d+)?)\s*(\))/, '$1"$2"$3');
+    if (replace !== sourceLine) {
+      return {
+        filename: buildContext.file,
+        find: sourceLine,
+        replace,
+      };
+    }
+  }
+
+  // TS2345: boolean-literal argument to string parameter (quote it)
+  if (code === 'TS2345' && /argument of type 'boolean' is not assignable to parameter of type 'string'/i.test(message)) {
+    const replace = sourceLine.replace(/(\b[A-Za-z_$][\w$]*\()\s*(true|false)\s*(\))/, '$1"$2"$3');
+    if (replace !== sourceLine) {
+      return {
+        filename: buildContext.file,
+        find: sourceLine,
+        replace,
+      };
+    }
+  }
+
+  // TS2345: quoted-numeric argument to number parameter (unquote it)
+  if (code === 'TS2345' && /argument of type 'string' is not assignable to parameter of type 'number'/i.test(message)) {
+    const replace = sourceLine.replace(/(\b[A-Za-z_$][\w$]*\()\s*['"](-?\d+(?:\.\d+)?)['"]\s*(\))/, '$1$2$3');
+    if (replace !== sourceLine) {
+      return {
+        filename: buildContext.file,
+        find: sourceLine,
+        replace,
+      };
+    }
+  }
+
+  // TS2345: quoted-boolean argument to boolean parameter (unquote it)
+  if (code === 'TS2345' && /argument of type 'string' is not assignable to parameter of type 'boolean'/i.test(message)) {
+    const replace = sourceLine.replace(/(\b[A-Za-z_$][\w$]*\()\s*['"](true|false)['"]\s*(\))/, '$1$2$3');
+    if (replace !== sourceLine) {
+      return {
+        filename: buildContext.file,
+        find: sourceLine,
+        replace,
+      };
+    }
+  }
+
+  // TS2345: boolean-literal argument to number parameter (convert true->1, false->0)
+  if (code === 'TS2345' && /argument of type 'boolean' is not assignable to parameter of type 'number'/i.test(message)) {
+    const replace = sourceLine.replace(/(\b[A-Za-z_$][\w$]*\()\s*(true|false)\s*(\))/, (_m: string, pre: string, lit: string, post: string) => `${pre}${lit === 'true' ? '1' : '0'}${post}`);
+    if (replace !== sourceLine) {
+      return {
+        filename: buildContext.file,
+        find: sourceLine,
+        replace,
+      };
+    }
+  }
+
+  // TS2345: number-literal argument to boolean parameter (only exact 0/1)
+  if (code === 'TS2345' && /argument of type 'number' is not assignable to parameter of type 'boolean'/i.test(message)) {
+    const replace = sourceLine.replace(/(\b[A-Za-z_$][\w$]*\()\s*([01])(?![\w$.])\s*(\))/, (_m: string, pre: string, lit: string, post: string) => `${pre}${lit === '1' ? 'true' : 'false'}${post}`);
+    if (replace !== sourceLine) {
+      return {
+        filename: buildContext.file,
+        find: sourceLine,
+        replace,
+      };
+    }
+  }
+
+  // TS2345: boolean argument to number parameter (convert true->1, false->0)
+  if (code === 'TS2345' && /argument of type 'boolean' is not assignable to parameter of type 'number'/i.test(message)) {
+    const replace = sourceLine.replace(/(\b[A-Za-z_$][\w$]*\()\s*(true|false)\s*(\))/, (_m: string, pre: string, lit: string, post: string) => `${pre}${lit === 'true' ? '1' : '0'}${post}`);
+    if (replace !== sourceLine) {
+      return {
+        filename: buildContext.file,
+        find: sourceLine,
+        replace,
+      };
+    }
+  }
+
+  // Only exact 0/1 literal arguments qualify; see the TS2322 note above.
+  if (code === 'TS2345' && /argument of type 'number' is not assignable to parameter of type 'boolean'/i.test(message)) {
+    const replace = sourceLine.replace(/(\b[A-Za-z_$][\w$]*\()\s*([01])(?![\w$.])\s*(\))/, (_m: string, pre: string, lit: string, post: string) => `${pre}${lit === '1' ? 'true' : 'false'}${post}`);
+    if (replace !== sourceLine) {
+      return {
+        filename: buildContext.file,
+        find: sourceLine,
+        replace,
+      };
+    }
+  }
+
+  // TS2322: true/false assignment to boolean (unquote)
+  if (code === 'TS2322' && /type 'string' is not assignable to type 'boolean'/i.test(message)) {
+    const replace = sourceLine.replace(/=\s*['"](true|false)['"](\s*[;,]?)/, '= $1$2');
+    if (replace !== sourceLine) {
+      return {
+        filename: buildContext.file,
+        find: sourceLine,
+        replace,
+      };
+    }
+  }
+
+  // TS2339: Property 'X' does not exist on type 'Y'
+  // Common case: accessing property that doesn't exist - add optional chaining or fix property name
+  if (code === 'TS2339' && /property\s+['"]([A-Za-z_$][\w$]*)['"]\s+does not exist on type/i.test(message)) {
+    const missingProp = message.match(/property\s+['"]([A-Za-z_$][\w$]*)['"]\s+does not exist on type/i)?.[1];
+    if (missingProp && sourceLine.includes(missingProp)) {
+      // Add optional chaining if accessing a possibly null/undefined object
+      const replace = sourceLine.replace(new RegExp(`(\\w+)\\.${missingProp}\\b`, 'g'), '$1?.${missingProp}');
+      if (replace !== sourceLine) {
+        return {
+          filename: buildContext.file,
+          find: sourceLine,
+          replace,
+        };
+      }
+    }
+  }
+
+  // TS2554: Expected X arguments, but got Y
+  // Common case: missing required arguments in function call
+  if (code === 'TS2554' && /expected\s+(\d+)\s+arguments, but got\s+(\d+)/i.test(message)) {
+    const expected = parseInt(message.match(/expected\s+(\d+)\s+arguments/i)?.[1] || '0', 10);
+    const got = parseInt(message.match(/but got\s+(\d+)/i)?.[1] || '0', 10);
+    if (expected > got && sourceLine.includes('(') && sourceLine.includes(')')) {
+      // Add missing arguments as undefined placeholders
+      const argsMatch = sourceLine.match(/\(([^)]*)\)/);
+      if (argsMatch) {
+        const currentArgs = argsMatch[1].split(',').filter(a => a.trim()).length;
+        const missing = expected - currentArgs;
+        const placeholders = Array(missing).fill('undefined').join(', ');
+        const newArgs = argsMatch[1].trim() ? `${argsMatch[1]}, ${placeholders}` : placeholders;
+        const replace = sourceLine.replace(/\([^)]*\)/, `(${newArgs})`);
+        if (replace !== sourceLine) {
+          return {
+            filename: buildContext.file,
+            find: sourceLine,
+            replace,
+          };
+        }
+      }
+    }
+  }
+
+  // TS2307: Cannot find module 'X' or its corresponding type declarations
+  // Common case: missing import or wrong path
+  if (code === 'TS2307' && /cannot find module ['"]([^'"]+)['"]/i.test(message)) {
+    const missingModule = message.match(/cannot find module ['"]([^'"]+)['"]/i)?.[1];
+    if (missingModule && sourceLine.includes(missingModule)) {
+      // Try to fix relative import path
+      const replace = sourceLine.replace(new RegExp(`['"]([^'"]*${missingModule.replace(/\./g, '\\.')}[^'"]*)['"]`), (match, path) => {
+        // If it's a relative import without ./ prefix, add it
+        if (!path.startsWith('.') && !path.startsWith('/')) {
+          return `'./${path}'`;
+        }
+        return match;
+      });
+      if (replace !== sourceLine) {
+        return {
+          filename: buildContext.file,
+          find: sourceLine,
+          replace,
         };
       }
     }

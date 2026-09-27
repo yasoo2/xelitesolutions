@@ -5,15 +5,15 @@ import dotenv from 'dotenv';
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 
 /**
- * Permanent verification for targeted TS2322 string-to-boolean self-fix execution.
+ * Permanent verification for targeted TS2322 boolean-to-string self-fix execution.
  */
-async function verifySelfFixTypeScriptStringToBoolean() {
-  console.log('Starting TS2322 string-to-boolean self-fix verification...');
+async function verifySelfFixTypeScriptBooleanToString() {
+  console.log('Starting TS2322 boolean-to-string self-fix verification...');
 
   process.env.JOE_PRO_ALPHA = '1';
   process.env.OFFLINE_MODE = 'true';
 
-  const projectsRoot = path.join(process.cwd(), 'data/tests/typescript_string_to_boolean');
+  const projectsRoot = path.join(process.cwd(), 'data/tests/typescript_boolean_to_string');
   process.env.EXTERNAL_PROJECTS_DIR = projectsRoot;
 
   if (fs.existsSync(projectsRoot)) {
@@ -24,30 +24,30 @@ async function verifySelfFixTypeScriptStringToBoolean() {
   const { AgentLoopService } = await import('../../modules/services/AgentLoopService');
 
   const sessionId = 'test-session-' + Date.now();
-  const workspaceId = 'test-typescript-string-to-boolean-workspace';
+  const workspaceId = 'test-typescript-boolean-to-string-workspace';
   const userId = 'test-user';
   const testWorkspacePath = path.join(projectsRoot, workspaceId);
   const srcDir = path.join(testWorkspacePath, 'src');
   fs.mkdirSync(srcDir, { recursive: true });
 
-  const appPath = path.join(srcDir, 'Flag.ts');
+  const appPath = path.join(srcDir, 'Label.ts');
   const untouchedPath = path.join(srcDir, 'Untouched.ts');
   const verifyPath = path.join(testWorkspacePath, 'verify-build.js');
 
-  fs.writeFileSync(appPath, 'const flag: boolean = "true";\nexport default flag;\n', 'utf-8');
+  fs.writeFileSync(appPath, 'const label: string = false;\nexport default label;\n', 'utf-8');
   fs.writeFileSync(untouchedPath, 'export const untouched = true;\n', 'utf-8');
   fs.writeFileSync(
     verifyPath,
     [
       "const fs = require('fs');",
-      "const app = fs.readFileSync('src/Flag.ts', 'utf8');",
-      "if (app.includes('= \"true\";')) {",
-      "  console.error(\"src/Flag.ts(1,7): error TS2322: Type 'string' is not assignable to type 'boolean'.\");",
-      "  console.error('const flag: boolean = \"true\";');",
+      "const app = fs.readFileSync('src/Label.ts', 'utf8');",
+      "if (app.includes('= false;')) {",
+      "  console.error(\"src/Label.ts(1,7): error TS2322: Type 'boolean' is not assignable to type 'string'.\");",
+      "  console.error('const label: string = false;');",
       "  process.exit(1);",
       "}",
-      "if (!app.includes('= true;')) {",
-      "  console.error('src/Flag.ts(1,7): error TS2322: TypeScript repair did not produce a boolean assignment.');",
+      "if (!app.includes('= \"false\";')) {",
+      "  console.error('src/Label.ts(1,7): error TS2322: TypeScript repair did not produce a string assignment.');",
       "  process.exit(1);",
       "}",
     ].join('\n'),
@@ -59,15 +59,15 @@ async function verifySelfFixTypeScriptStringToBoolean() {
   const plannerResult = {
     ok: true,
     output: {
-      projectName: 'TypeScript String To Boolean Repair Test',
+      projectName: 'TypeScript Boolean To String Repair Test',
       totalPhases: 1,
       phases: [
         {
           phaseNumber: 1,
-          name: 'TypeScript String To Boolean Build Phase',
+          name: 'TypeScript Boolean To String Build Phase',
           tasks: [
             {
-              task: 'Run TS2322 string-to-boolean verification',
+              task: 'Run TS2322 boolean-to-string verification',
               tool: 'shell_execute',
               args: { command: 'node verify-build.js' },
               required: true,
@@ -81,7 +81,7 @@ async function verifySelfFixTypeScriptStringToBoolean() {
 
   const result: any = await (AgentLoopService as any).runPlannedPhasesIfPresent({
     sessionId,
-    runId: 'test-typescript-string-to-boolean-run',
+    runId: 'test-typescript-boolean-to-string-run',
     userId,
     workspaceId,
     plannerResult,
@@ -93,7 +93,7 @@ async function verifySelfFixTypeScriptStringToBoolean() {
   const firstPhaseResult = result.results?.[0];
 
   if (result.ok === true && result.completedPhases === 1 && firstPhaseResult?.status === 'completed') {
-    console.log('PASS: pipeline completed after targeted TS2322 string-to-boolean repair');
+    console.log('PASS: pipeline completed after targeted TS2322 boolean-to-string repair');
   } else {
     console.error('FAIL: pipeline did not complete after repair:', result);
     passed = false;
@@ -106,8 +106,8 @@ async function verifySelfFixTypeScriptStringToBoolean() {
     passed = false;
   }
 
-  if (appAfter.includes('const flag: boolean = true;') && !appAfter.includes('"true"')) {
-    console.log('PASS: quoted boolean assignment was converted to a boolean');
+  if (appAfter.includes('const label: string = "false";')) {
+    console.log('PASS: boolean assignment was converted to a string');
   } else {
     console.error('FAIL: targeted TS2322 file was not patched as expected:', appAfter);
     passed = false;
@@ -125,7 +125,7 @@ async function verifySelfFixTypeScriptStringToBoolean() {
   process.exit(0);
 }
 
-verifySelfFixTypeScriptStringToBoolean().catch(e => {
+verifySelfFixTypeScriptBooleanToString().catch(e => {
   console.error('Test crashed:', e);
   process.exit(1);
 });
