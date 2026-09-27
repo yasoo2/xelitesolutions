@@ -99,6 +99,25 @@
  *     machinery (same fingerprint, same comparator, same telemetry
  *     delta): a revealed menu arrives as domChanged, a static hover as
  *     honestly no-effect.
+ *
+ * History traversal was the last navigation family without observed-effect
+ * evidence:
+ *
+ *   - A `back`/`forward`/`reload` swallowed its own outcome (the Playwright
+ *     response AND any thrown error went to `.catch(() => null)`) and
+ *     reported a bare ok:true, so a traversal that moved and a back
+ *     against an empty history shared one receipt. Worse, the response is
+ *     not even a reliable signal: real traversals on non-network pages
+ *     resolve null just like empty-history no-ops do (observed in a real
+ *     Chromium probe), so the outcome cannot be read from the response.
+ *   - Traversals now snapshot the document identity (performance.timeOrigin
+ *     plus the navigation entry type) alongside the click fingerprint: a
+ *     new document load arrives as documentChanged, a same-document move
+ *     as navigated, an empty-history no-op as honestly no-effect. The
+ *     thrown/not-thrown outcome is recorded as a boolean, and the fixed
+ *     250ms sleep is replaced by the same bounded readiness probe goto
+ *     uses. Evidence-only like clicks: a no-op traversal is reported,
+ *     never failed.
  */
 
 import type { FailureReason } from './types';
@@ -590,6 +609,91 @@ export function compareKeyEffect(before: KeyContext | null, after: KeyContext | 
         effect.focusReadOk = true;
         effect.focusChanged = !sameKeyFocus(bf, af);
         effect.effectObserved = effect.effectObserved || effect.focusChanged;
+    }
+    return effect;
+}
+
+/**
+ * One in-page evaluate returning the document identity: the load stamp
+ * (performance.timeOrigin — a new-document clock that changes on every
+ * full load) plus the navigation entry type. It is an IIFE: pass it
+ * straight to page.evaluate. A number and a small enum string only — no
+ * URL, title, markup or values ever leave the page.
+ */
+export const TRAVERSAL_IDENTITY_SCRIPT = `(() => {
+  let loadStamp = 0;
+  try {
+    const perf = (typeof performance !== 'undefined') ? performance : null;
+    const t = perf ? Number(perf.timeOrigin || 0) : 0;
+    loadStamp = Number.isFinite(t) ? Math.round(t) : 0;
+  } catch (e) { loadStamp = 0; }
+  let navType = '';
+  try {
+    const perf = (typeof performance !== 'undefined') ? performance : null;
+    const entries = (perf && (typeof perf.getEntriesByType === 'function')) ? perf.getEntriesByType('navigation') : null;
+    const first = (entries && entries[0]) ? entries[0] : null;
+    navType = (first && (typeof first.type === 'string')) ? String(first.type).slice(0, 32) : '';
+  } catch (e) { navType = ''; }
+  return { loadStamp: loadStamp, navType: navType };
+})()`;
+
+/** Document identity: when the current document loaded, and how it was reached. */
+export interface TraversalIdentity {
+    loadStamp: number;
+    navType: string;
+}
+
+/** Everything a history traversal can observably move: the page plus its identity. */
+export interface TraversalContext {
+    page: ClickContext | null;
+    identity: TraversalIdentity | null;
+}
+
+export interface TraversalEffect {
+    /** False when the page could not be read before or after the traversal. */
+    readOk: boolean;
+    /** The URL changed across the traversal. */
+    navigated: boolean;
+    /** Title, element count, text length or markup hash changed. */
+    domChanged: boolean;
+    /** False when the document identity could not be read before or after. */
+    identityReadOk: boolean;
+    /** A new document loaded (load stamp differs) — full back/forward/reload. */
+    documentChanged: boolean;
+    /** True when the traverse call itself threw (timeout, closed page). */
+    navigationError: boolean;
+    /** documentChanged || navigated || domChanged. Evidence only — never a failure by itself. */
+    effectObserved: boolean;
+    /** New runtime error signals observed during the step; absent when unmeasurable. */
+    runtimeErrors?: number;
+}
+
+/**
+ * Compare two traversal snapshots. The page half delegates to
+ * compareClickEffect (one truth for fingerprint deltas); the identity half
+ * compares load stamps. A stamp of 0 means the clock was unreadable, so two
+ * zero stamps never count as a change — only a positive delta does.
+ * Null-tolerant: missing halves degrade to readOk/identityReadOk:false and
+ * an absent runtimeErrors count instead of inventing an effect.
+ */
+export function compareTraversalEffect(before: TraversalContext | null, after: TraversalContext | null, threw: boolean): TraversalEffect {
+    const page = compareClickEffect(before?.page ?? null, after?.page ?? null);
+    const effect: TraversalEffect = {
+        readOk: page.readOk,
+        navigated: page.navigated,
+        domChanged: page.domChanged,
+        identityReadOk: false,
+        documentChanged: false,
+        navigationError: threw === true,
+        effectObserved: page.effectObserved,
+        ...(page.runtimeErrors === undefined ? {} : { runtimeErrors: page.runtimeErrors }),
+    };
+    const bi = before?.identity ?? null;
+    const ai = after?.identity ?? null;
+    if (bi && ai) {
+        effect.identityReadOk = true;
+        effect.documentChanged = bi.loadStamp !== ai.loadStamp && bi.loadStamp > 0 && ai.loadStamp > 0;
+        effect.effectObserved = effect.effectObserved || effect.documentChanged;
     }
     return effect;
 }

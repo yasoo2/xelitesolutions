@@ -2,8 +2,8 @@ import type { Locator, Page } from 'playwright';
 import type { FailureReason } from './types';
 import { DEFAULT_BROWSER_CONFIG } from './config';
 import { broadcastBrowserEvent } from './wsHub';
-import { gotoResilient } from './navigation';
-import { buildScrollIntoViewEval, buildScrollTargetReadEval, buildSelectReadEval, buildSelectSetEval, CLICK_FINGERPRINT_SCRIPT, classifyActionError, compareClickEffect, compareKeyEffect, compareScrollEffect, ensureTypedValue, KEY_FOCUS_SCRIPT, SCROLL_SNAPSHOT_SCRIPT, typeActionText, type ClickContext, type KeyContext, type KeyFocus, type ScrollSnapshot } from './actionVerification';
+import { gotoResilient, probeNavigationReadiness, type NavigationReadiness } from './navigation';
+import { buildScrollIntoViewEval, buildScrollTargetReadEval, buildSelectReadEval, buildSelectSetEval, CLICK_FINGERPRINT_SCRIPT, classifyActionError, compareClickEffect, compareKeyEffect, compareScrollEffect, compareTraversalEffect, ensureTypedValue, KEY_FOCUS_SCRIPT, SCROLL_SNAPSHOT_SCRIPT, TRAVERSAL_IDENTITY_SCRIPT, typeActionText, type ClickContext, type KeyContext, type KeyFocus, type ScrollSnapshot, type TraversalContext, type TraversalIdentity } from './actionVerification';
 import { getBrowserTelemetryErrorCounts } from './telemetry';
 import { getBrowserSession, setStreamMask, touchSession, withBrowserConcurrency } from './manager';
 import { getSessionSecret, getUserSecret } from '../services/secrets';
@@ -209,6 +209,69 @@ async function snapshotClickContext(page: Page, sessionId: string): Promise<Clic
 }
 
 /**
+ * Snapshot the document identity for traversal effect evidence. Never
+ * throws — an unreadable page degrades to null and the comparator reports
+ * the step as identity-unmeasured, never as unchanged.
+ */
+async function snapshotTraversalIdentity(page: Page): Promise<TraversalIdentity | null> {
+  try {
+    const r: any = await page.evaluate(TRAVERSAL_IDENTITY_SCRIPT);
+    if (!r || typeof r.loadStamp !== 'number' || !Number.isFinite(r.loadStamp)) return null;
+    return { loadStamp: r.loadStamp, navType: typeof r.navType === 'string' ? r.navType : '' };
+  } catch { return null; }
+}
+
+/**
+ * Run one history-traversal step (back/forward/reload) with observed-effect
+ * evidence: the page fingerprint plus the document identity are captured
+ * around the traverse call, the thrown/not-thrown outcome is recorded, and
+ * readiness is probed instead of slept. The Playwright response is NOT
+ * trusted — real traversals on non-network pages resolve null exactly like
+ * empty-history no-ops do, so only observed page state counts. Never
+ * throws; evidence only, never a new failure.
+ */
+async function observeTraversalStep(
+  page: Page,
+  sessionId: string,
+  traverse: () => Promise<unknown>,
+): Promise<{
+  navigated: boolean | undefined;
+  domChanged: boolean | undefined;
+  documentChanged: boolean | undefined;
+  effectObserved: boolean | undefined;
+  navigationError: boolean;
+  runtimeErrors: number | undefined;
+  readiness: NavigationReadiness | null;
+}> {
+  const before: TraversalContext = {
+    page: await snapshotClickContext(page, sessionId),
+    identity: await snapshotTraversalIdentity(page),
+  };
+  let threw = false;
+  try {
+    await traverse();
+  } catch { threw = true; }
+  let readiness: NavigationReadiness | null = null;
+  try {
+    readiness = await probeNavigationReadiness(page, {});
+  } catch { readiness = null; }
+  const after: TraversalContext = {
+    page: await snapshotClickContext(page, sessionId),
+    identity: await snapshotTraversalIdentity(page),
+  };
+  const effect = compareTraversalEffect(before, after, threw);
+  return {
+    navigated: effect.readOk ? effect.navigated : undefined,
+    domChanged: effect.readOk ? effect.domChanged : undefined,
+    documentChanged: effect.identityReadOk ? effect.documentChanged : undefined,
+    effectObserved: (effect.readOk || effect.identityReadOk) ? effect.effectObserved : undefined,
+    navigationError: effect.navigationError,
+    runtimeErrors: effect.runtimeErrors,
+    readiness,
+  };
+}
+
+/**
  * Snapshot the page scroll geometry for scroll effect evidence. Never
  * throws — an unreadable page degrades to null and the comparator reports
  * the step as unmeasured, never as unmoved.
@@ -311,7 +374,7 @@ export async function executePlannedActions(params: {
         workerStatus: 'running',
       });
     } catch { }
-    const results: Array<{ stepId: string; name: string; ok: boolean; reason?: FailureReason; message?: string; verified?: boolean; valueMatch?: boolean; repaired?: boolean; navigated?: boolean; domChanged?: boolean; focusChanged?: boolean; effectObserved?: boolean; runtimeErrors?: number; scrolled?: boolean; scrollDeltaY?: number; atEdge?: boolean; inViewport?: boolean }> = [];
+    const results: Array<{ stepId: string; name: string; ok: boolean; reason?: FailureReason; message?: string; verified?: boolean; valueMatch?: boolean; repaired?: boolean; navigated?: boolean; domChanged?: boolean; focusChanged?: boolean; documentChanged?: boolean; navigationError?: boolean; effectObserved?: boolean; runtimeErrors?: number; scrolled?: boolean; scrollDeltaY?: number; atEdge?: boolean; inViewport?: boolean }> = [];
     const evidence: Array<{ kind: 'screenshot'; jpegBase64: string; ts: number; stepId: string }> = [];
 
     for (let i = 0; i < Math.min(cfg.maxSteps, actions.length); i += 1) {
@@ -1214,12 +1277,15 @@ export async function executePlannedActions(params: {
         if (name === 'back') {
           const before = await screenshotJpegBase64(page);
           evidence.push({ kind: 'screenshot', jpegBase64: before, ts: now(), stepId: sid });
-          await page.goBack({ waitUntil: 'domcontentloaded', timeout: cfg.navTimeoutMs }).catch(() => null);
-          await page.waitForTimeout(250);
+          // Traversal effect evidence: an empty-history back is a provable
+          // no-op, a real one loads a new document. Evidence only — a
+          // no-op traversal is reported, never failed.
+          const observed = await observeTraversalStep(page, sessionId, () =>
+            page.goBack({ waitUntil: 'domcontentloaded', timeout: cfg.navTimeoutMs }));
           const after = await screenshotJpegBase64(page);
           evidence.push({ kind: 'screenshot', jpegBase64: after, ts: now(), stepId: sid });
-          broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now() });
-          results.push({ stepId: sid, name, ok: true });
+          broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now(), data: { navigated: observed.navigated, domChanged: observed.domChanged, documentChanged: observed.documentChanged, effectObserved: observed.effectObserved, navigationError: observed.navigationError, runtimeErrors: observed.runtimeErrors, readiness: observed.readiness } });
+          results.push({ stepId: sid, name, ok: true, navigated: observed.navigated, domChanged: observed.domChanged, documentChanged: observed.documentChanged, effectObserved: observed.effectObserved, navigationError: observed.navigationError, runtimeErrors: observed.runtimeErrors });
           try { broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name }); } catch { }
           continue;
         }
@@ -1227,12 +1293,14 @@ export async function executePlannedActions(params: {
         if (name === 'forward') {
           const before = await screenshotJpegBase64(page);
           evidence.push({ kind: 'screenshot', jpegBase64: before, ts: now(), stepId: sid });
-          await page.goForward({ waitUntil: 'domcontentloaded', timeout: cfg.navTimeoutMs }).catch(() => null);
-          await page.waitForTimeout(250);
+          // Traversal effect evidence: same contract as back — observed
+          // page state names the effect, evidence only, never failed.
+          const observed = await observeTraversalStep(page, sessionId, () =>
+            page.goForward({ waitUntil: 'domcontentloaded', timeout: cfg.navTimeoutMs }));
           const after = await screenshotJpegBase64(page);
           evidence.push({ kind: 'screenshot', jpegBase64: after, ts: now(), stepId: sid });
-          broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now() });
-          results.push({ stepId: sid, name, ok: true });
+          broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now(), data: { navigated: observed.navigated, domChanged: observed.domChanged, documentChanged: observed.documentChanged, effectObserved: observed.effectObserved, navigationError: observed.navigationError, runtimeErrors: observed.runtimeErrors, readiness: observed.readiness } });
+          results.push({ stepId: sid, name, ok: true, navigated: observed.navigated, domChanged: observed.domChanged, documentChanged: observed.documentChanged, effectObserved: observed.effectObserved, navigationError: observed.navigationError, runtimeErrors: observed.runtimeErrors });
           try { broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name }); } catch { }
           continue;
         }
@@ -1240,12 +1308,14 @@ export async function executePlannedActions(params: {
         if (name === 'reload') {
           const before = await screenshotJpegBase64(page);
           evidence.push({ kind: 'screenshot', jpegBase64: before, ts: now(), stepId: sid });
-          await page.reload({ waitUntil: 'domcontentloaded', timeout: cfg.navTimeoutMs }).catch(() => null);
-          await page.waitForTimeout(250);
+          // Traversal effect evidence: a reload keeps the URL, so only the
+          // document identity can prove it happened. Evidence only.
+          const observed = await observeTraversalStep(page, sessionId, () =>
+            page.reload({ waitUntil: 'domcontentloaded', timeout: cfg.navTimeoutMs }));
           const after = await screenshotJpegBase64(page);
           evidence.push({ kind: 'screenshot', jpegBase64: after, ts: now(), stepId: sid });
-          broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now() });
-          results.push({ stepId: sid, name, ok: true });
+          broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now(), data: { navigated: observed.navigated, domChanged: observed.domChanged, documentChanged: observed.documentChanged, effectObserved: observed.effectObserved, navigationError: observed.navigationError, runtimeErrors: observed.runtimeErrors, readiness: observed.readiness } });
+          results.push({ stepId: sid, name, ok: true, navigated: observed.navigated, domChanged: observed.domChanged, documentChanged: observed.documentChanged, effectObserved: observed.effectObserved, navigationError: observed.navigationError, runtimeErrors: observed.runtimeErrors });
           try { broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name }); } catch { }
           continue;
         }

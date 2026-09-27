@@ -137,6 +137,27 @@ async function probeReadiness(
 }
 
 /**
+ * Probe page readiness on its own: the same bounded poll goto uses after a
+ * successful navigation, exposed so history-traversal steps (back/forward/
+ * reload) can replace their fixed sleep with observed readiness. Never
+ * throws: an unreadable page yields a not-ready verdict, never an exception.
+ */
+export async function probeNavigationReadiness(
+    page: NavigablePage,
+    opts: NavigationOptions = {},
+): Promise<NavigationReadiness> {
+    const readinessBudgetMs = Math.max(0, Math.min(5000, Math.floor(opts.readinessBudgetMs ?? 2000)));
+    const readinessPollMs = Math.max(20, Math.min(1000, Math.floor(opts.readinessPollMs ?? 120)));
+    const sleep = opts.sleep ?? defaultSleep;
+    const now = opts.now ?? Date.now;
+    try {
+        return await probeReadiness(page, readinessBudgetMs, readinessPollMs, sleep, now);
+    } catch {
+        return { ready: false, readyState: 'unknown', bodyElements: -1, waitedMs: 0, polls: 0 };
+    }
+}
+
+/**
  * Navigate with one bounded second pass over transient failures, then probe
  * readiness. Never throws: every failure is returned as data.
  */
