@@ -3,7 +3,7 @@ import type { FailureReason } from './types';
 import { DEFAULT_BROWSER_CONFIG } from './config';
 import { broadcastBrowserEvent } from './wsHub';
 import { gotoResilient } from './navigation';
-import { CLICK_FINGERPRINT_SCRIPT, classifyActionError, compareClickEffect, ensureTypedValue, typeActionText, type ClickContext } from './actionVerification';
+import { buildSelectReadEval, buildSelectSetEval, CLICK_FINGERPRINT_SCRIPT, classifyActionError, compareClickEffect, ensureTypedValue, typeActionText, type ClickContext } from './actionVerification';
 import { getBrowserTelemetryErrorCounts } from './telemetry';
 import { getBrowserSession, setStreamMask, touchSession, withBrowserConcurrency } from './manager';
 import { getSessionSecret, getUserSecret } from '../services/secrets';
@@ -1216,9 +1216,28 @@ export async function executePlannedActions(params: {
           const x = Number(a?.x);
           const y = Number(a?.y);
           if (Number.isFinite(x) && Number.isFinite(y)) {
+            // Coordinate clicks reuse the click snapshot machinery: a
+            // dead-region poke and a working control must not share the
+            // same bare ok:true. Evidence only, never a new failure.
+            const coordBefore = await snapshotClickContext(page, sessionId);
             await interactions.naturalClick(page, 'coord_click', x, y);
-            broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now() });
-            results.push({ stepId: sid, name, ok: true });
+            await page.waitForTimeout(250);
+            const coordAfter = await snapshotClickContext(page, sessionId);
+            const effect = compareClickEffect(coordBefore, coordAfter);
+            let navigated: boolean | undefined = undefined;
+            let domChanged: boolean | undefined = undefined;
+            let effectObserved: boolean | undefined = undefined;
+            if (effect.readOk) {
+              navigated = effect.navigated;
+              domChanged = effect.domChanged;
+              effectObserved = effect.effectObserved;
+            }
+            const runtimeErrors: number | undefined = effect.runtimeErrors;
+            const effectData = effectObserved === undefined && runtimeErrors === undefined
+              ? undefined
+              : { navigated, domChanged, effectObserved, runtimeErrors };
+            broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now(), data: effectData });
+            results.push({ stepId: sid, name, ok: true, navigated, domChanged, effectObserved, runtimeErrors });
             try { broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name }); } catch { }
             continue;
           } else {
@@ -1236,30 +1255,70 @@ export async function executePlannedActions(params: {
             continue;
           }
           try {
-            const chosen = await page.evaluate((arg: { x: number; y: number; value: string }) => {
-              const at = document.elementFromPoint(arg.x, arg.y) as any;
-              const sel = (at && (at.tagName === 'SELECT' ? at : at.closest && at.closest('select'))) as HTMLSelectElement | null;
-              if (!sel) return null;
-              const norm = (s: any) => String(s || '').trim().toLowerCase();
-              const opts = Array.from(sel.options);
-              let opt = opts.find(o => norm(o.value) === norm(arg.value) || norm(o.textContent) === norm(arg.value))
-                || opts.find(o => norm(o.textContent).includes(norm(arg.value)) || norm(o.value).includes(norm(arg.value)));
-              if (!opt) return null;
-              sel.value = opt.value;
-              sel.dispatchEvent(new Event('input', { bubbles: true }));
-              sel.dispatchEvent(new Event('change', { bubbles: true }));
-              return opt.textContent || opt.value;
-            }, { x, y, value });
-            if (chosen == null) {
+            const setEval = buildSelectSetEval(x, y, value);
+            const applied: any = await page.evaluate(setEval);
+            const resolved: string | null = applied && typeof applied.resolvedValue === 'string' ? String(applied.resolvedValue) : null;
+            const chosen: string = applied && typeof applied.chosen === 'string' ? String(applied.chosen) : '';
+            if (resolved === null) {
               results.push({ stepId: sid, name, ok: false, reason: 'element_not_found', message: 'select_option_not_found' });
               continue;
             }
-            broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now(), data: { chosen } });
-            results.push({ stepId: sid, name, ok: true, message: String(chosen).slice(0, 80) });
+            // Readback verification with one bounded re-apply, mirroring
+            // type/fill: the read settles first so async framework reverts
+            // land before the comparison. Only booleans and lengths are
+            // recorded — never the option values.
+            const readEval = buildSelectReadEval(x, y);
+            const readSelectValue = async (): Promise<string | null> => {
+              try {
+                const cur: any = await page.evaluate(readEval);
+                return cur && typeof cur.value === 'string' ? String(cur.value) : null;
+              } catch {
+                return null;
+              }
+            };
+            const check = await ensureTypedValue(
+              {
+                read: async () => {
+                  await page.waitForTimeout(250);
+                  return readSelectValue();
+                },
+                clearAndSet: async () => {
+                  const again: any = await page.evaluate(setEval);
+                  if (!again || typeof again.resolvedValue !== 'string') throw new Error('select target not found on repair');
+                },
+              },
+              resolved,
+            );
+            const shortChosen = chosen.slice(0, 80);
+            if (!check.readOk) {
+              const data = { chosen: shortChosen, verified: false };
+              broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now(), data });
+              results.push({ stepId: sid, name, ok: true, message: shortChosen, verified: false });
+              try { broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name }); } catch { }
+              continue;
+            }
+            if (!check.match) {
+              const detail = `value_mismatch expected_len=${check.expectedLength} observed_len=${check.observedLength}${check.repaired ? ' repaired_once' : ''}`;
+              broadcastBrowserEvent(sessionId, { type: 'step_error', stepId: sid, name, ts: now(), reason: 'value_not_applied', message: detail });
+              results.push({ stepId: sid, name, ok: false, reason: 'value_not_applied', message: detail, verified: true, valueMatch: false, repaired: check.repaired });
+              try {
+                broadcastBrowserEvent(sessionId, { type: 'action_error', ts: now(), actionId: sid, actionType: name, reason: 'value_not_applied', error: detail });
+              } catch { }
+              continue;
+            }
+            const data = { chosen: shortChosen, verified: true, valueMatch: true, repaired: check.repaired };
+            broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now(), data });
+            results.push({ stepId: sid, name, ok: true, message: shortChosen, verified: true, valueMatch: true, repaired: check.repaired });
             try { broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name }); } catch { }
             continue;
-          } catch {
-            results.push({ stepId: sid, name, ok: false, reason: 'unknown', message: 'select_failed' });
+          } catch (e: any) {
+            const msg = String(e?.message || e);
+            const reason: FailureReason = classifyActionError(e);
+            broadcastBrowserEvent(sessionId, { type: 'step_error', stepId: sid, name, ts: now(), reason, message: msg });
+            results.push({ stepId: sid, name, ok: false, reason, message: msg });
+            try {
+              broadcastBrowserEvent(sessionId, { type: 'action_error', ts: now(), actionId: sid, actionType: name, reason, error: msg });
+            } catch { }
             continue;
           }
         }

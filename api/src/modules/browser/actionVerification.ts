@@ -48,6 +48,23 @@
  *     step. A no-effect click is reported, never failed: plenty of
  *     legitimate clicks change nothing observable, and verification is
  *     evidence, not a new failure mode.
+ *
+ * Selects and coordinate clicks were the last state-changing actions without
+ * observed-effect evidence:
+ *
+ *   - A `select` set the value and reported the resolved option text with no
+ *     readback, so a framework-controlled select that reverted on change
+ *     still arrived as ok:true. Selects now verify through the same
+ *     read-compare-repair-once lens as type/fill: matchSelectOption resolves
+ *     the wanted option (exact value-or-text, then substring), the built
+ *     in-page scripts apply it and read the live value back, and
+ *     ensureTypedValue drives the one bounded re-apply. Only booleans and
+ *     lengths are recorded — never the option values.
+ *   - A `click_coordinates` reported a bare ok:true with no record of what
+ *     it caused, so a dead-region poke and a working control were
+ *     indistinguishable. Coordinate clicks now reuse the click snapshot
+ *     machinery (same fingerprint, same comparator, same telemetry delta),
+ *     evidence-only like clicks: a no-effect poke is reported, never failed.
  */
 
 import type { FailureReason } from './types';
@@ -130,6 +147,88 @@ export async function ensureTypedValue(ops: FieldOps, expected: string): Promise
     await ops.clearAndSet(expected);
     const second = compareFieldValue(await readSafely(ops), expected);
     return { ...second, repaired: true };
+}
+
+/** One select option as seen by the resolver: value and visible text. */
+export interface SelectOption {
+    value: string;
+    text: string;
+}
+
+/**
+ * Resolve which option a select request means. Exact value-or-text first
+ * (case-insensitive, trimmed), then substring value-or-text. Returns the
+ * option index, or -1 when nothing matches or the request is empty.
+ *
+ * This is the single source of truth for option resolution: the in-page set
+ * script below embeds this exact function source, so unit tests on this
+ * function and real-browser runs of the built script can never drift apart.
+ * Keep it dependency-free (no imports, no outer references) so the embedded
+ * copy runs standalone inside the page.
+ */
+export function matchSelectOption(options: SelectOption[], wanted: string): number {
+    const norm = (s: string): string => String(s === null || s === undefined ? '' : s).trim().toLowerCase();
+    const w = norm(wanted);
+    if (!w) return -1;
+    const opts = Array.isArray(options) ? options : [];
+    const exact = opts.findIndex((o) => norm(o.value) === w || norm(o.text) === w);
+    if (exact >= 0) return exact;
+    return opts.findIndex((o) => norm(o.text).includes(w) || norm(o.value).includes(w));
+}
+
+/** What the in-page set script reports: the human label plus the exact value to verify. */
+export interface SelectSetResult {
+    chosen: string;
+    resolvedValue: string;
+    optionCount: number;
+}
+
+/** What the in-page read script reports: the live control state. */
+export interface SelectReadResult {
+    value: string;
+    selectedIndex: number;
+    optionCount: number;
+}
+
+/**
+ * Build a self-contained in-page evaluate that applies a select choice.
+ * The returned string is a complete expression — pass it straight to
+ * page.evaluate with NO second argument (Playwright's string form does not
+ * take args; the inputs are baked in as a JSON literal instead, which also
+ * keeps hostile option text inert). Resolves to SelectSetResult, or null
+ * when no select sits under the point or no option matches.
+ */
+export function buildSelectSetEval(x: number, y: number, wanted: string): string {
+    const fn = `(arg) => {
+  const matchSelectOption = ${matchSelectOption.toString()};
+  const at = document.elementFromPoint(arg.x, arg.y);
+  const sel = (at && (at.tagName === 'SELECT' ? at : (at.closest ? at.closest('select') : null)));
+  if (!sel) return null;
+  const opts = Array.from(sel.options).map((o) => ({ value: String(o.value), text: String(o.textContent || '') }));
+  const idx = matchSelectOption(opts, arg.value);
+  if (idx < 0 || idx >= sel.options.length) return null;
+  const opt = sel.options[idx];
+  sel.value = opt.value;
+  sel.dispatchEvent(new Event('input', { bubbles: true }));
+  sel.dispatchEvent(new Event('change', { bubbles: true }));
+  return { chosen: String(opt.textContent || opt.value || ''), resolvedValue: String(opt.value), optionCount: opts.length };
+}`;
+    return `(${fn})(${JSON.stringify({ x: Number(x), y: Number(y), value: String(wanted === null || wanted === undefined ? '' : wanted) })})`;
+}
+
+/**
+ * Build a self-contained in-page evaluate that reads the live select state
+ * under a point. Self-contained like the set script. Resolves to
+ * SelectReadResult, or null when no select sits under the point.
+ */
+export function buildSelectReadEval(x: number, y: number): string {
+    const fn = `(arg) => {
+  const at = document.elementFromPoint(arg.x, arg.y);
+  const sel = (at && (at.tagName === 'SELECT' ? at : (at.closest ? at.closest('select') : null)));
+  if (!sel) return null;
+  return { value: String(sel.value), selectedIndex: Number(sel.selectedIndex), optionCount: Number(sel.options ? sel.options.length : 0) };
+}`;
+    return `(${fn})(${JSON.stringify({ x: Number(x), y: Number(y) })})`;
 }
 
 /**
