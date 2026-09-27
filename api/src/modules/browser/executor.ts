@@ -3,7 +3,7 @@ import type { FailureReason } from './types';
 import { DEFAULT_BROWSER_CONFIG } from './config';
 import { broadcastBrowserEvent } from './wsHub';
 import { gotoResilient } from './navigation';
-import { buildSelectReadEval, buildSelectSetEval, CLICK_FINGERPRINT_SCRIPT, classifyActionError, compareClickEffect, ensureTypedValue, typeActionText, type ClickContext } from './actionVerification';
+import { buildScrollIntoViewEval, buildScrollTargetReadEval, buildSelectReadEval, buildSelectSetEval, CLICK_FINGERPRINT_SCRIPT, classifyActionError, compareClickEffect, compareScrollEffect, ensureTypedValue, SCROLL_SNAPSHOT_SCRIPT, typeActionText, type ClickContext, type ScrollSnapshot } from './actionVerification';
 import { getBrowserTelemetryErrorCounts } from './telemetry';
 import { getBrowserSession, setStreamMask, touchSession, withBrowserConcurrency } from './manager';
 import { getSessionSecret, getUserSecret } from '../services/secrets';
@@ -185,6 +185,33 @@ async function snapshotClickContext(page: Page, sessionId: string): Promise<Clic
   return { fingerprint, errors };
 }
 
+/**
+ * Snapshot the page scroll geometry for scroll effect evidence. Never
+ * throws — an unreadable page degrades to null and the comparator reports
+ * the step as unmeasured, never as unmoved.
+ */
+async function snapshotScrollPosition(page: Page): Promise<ScrollSnapshot | null> {
+  try {
+    const s: any = await page.evaluate(SCROLL_SNAPSHOT_SCRIPT);
+    if (!s) return null;
+    const nums = [s.x, s.y, s.innerW, s.innerH, s.scrollW, s.scrollH];
+    if (nums.some((n) => typeof n !== 'number' || !Number.isFinite(n))) return null;
+    return { x: s.x, y: s.y, innerW: s.innerW, innerH: s.innerH, scrollW: s.scrollW, scrollH: s.scrollH };
+  } catch { return null; }
+}
+
+/** Center the mouse so a wheel pulse scrolls the main view, not a nested region. Never throws. */
+async function centerMouseForScroll(page: Page, interactions: AdvancedInteractionSystem) {
+  try {
+    const vp = page.viewportSize();
+    if (vp) {
+      const currentX = (interactions as any).lastMousePosition.x || 0;
+      const currentY = (interactions as any).lastMousePosition.y || 0;
+      await interactions.naturalMouseMove(page, currentX, currentY, vp.width / 2, vp.height / 2, 200);
+    }
+  } catch { }
+}
+
 async function tryDismissOverlays(page: Page) {
   const candidates = [
     'button:has-text("Accept")',
@@ -261,7 +288,7 @@ export async function executePlannedActions(params: {
         workerStatus: 'running',
       });
     } catch { }
-    const results: Array<{ stepId: string; name: string; ok: boolean; reason?: FailureReason; message?: string; verified?: boolean; valueMatch?: boolean; repaired?: boolean; navigated?: boolean; domChanged?: boolean; effectObserved?: boolean; runtimeErrors?: number }> = [];
+    const results: Array<{ stepId: string; name: string; ok: boolean; reason?: FailureReason; message?: string; verified?: boolean; valueMatch?: boolean; repaired?: boolean; navigated?: boolean; domChanged?: boolean; effectObserved?: boolean; runtimeErrors?: number; scrolled?: boolean; scrollDeltaY?: number; atEdge?: boolean; inViewport?: boolean }> = [];
     const evidence: Array<{ kind: 'screenshot'; jpegBase64: string; ts: number; stepId: string }> = [];
 
     for (let i = 0; i < Math.min(cfg.maxSteps, actions.length); i += 1) {
@@ -451,21 +478,42 @@ export async function executePlannedActions(params: {
           evidence.push({ kind: 'screenshot', jpegBase64: before, ts: now(), stepId: sid });
 
           // Center mouse first to ensure we scroll the main view
-          try {
-            const vp = page.viewportSize();
-            if (vp) {
-              const currentX = (interactions as any).lastMousePosition.x || 0;
-              const currentY = (interactions as any).lastMousePosition.y || 0;
-              await interactions.naturalMouseMove(page, currentX, currentY, vp.width / 2, vp.height / 2, 200);
-            }
-          } catch { }
+          await centerMouseForScroll(page, interactions);
 
-          await page.mouse.wheel(0, direction === 'down' ? amount : -amount);
+          const wheelDelta = direction === 'down' ? amount : -amount;
+          const scrollBefore = await snapshotScrollPosition(page);
+          await page.mouse.wheel(0, wheelDelta);
           await page.waitForTimeout(250);
+          let scrollEffect = compareScrollEffect(scrollBefore, await snapshotScrollPosition(page));
+          const atRequestedEdge = (fx: { atTop: boolean; atBottom: boolean }) => direction === 'down' ? fx.atBottom : fx.atTop;
+          // One bounded re-pulse when movement was possible but nothing
+          // moved: the wheel may have landed in a nested scrollable region.
+          // At an edge there is nothing to repair — report the edge instead.
+          let repaired = false;
+          if (scrollEffect.readOk && !scrollEffect.moved && !atRequestedEdge(scrollEffect)) {
+            await centerMouseForScroll(page, interactions);
+            await page.mouse.wheel(0, wheelDelta);
+            await page.waitForTimeout(250);
+            scrollEffect = compareScrollEffect(scrollBefore, await snapshotScrollPosition(page));
+            repaired = true;
+          }
           const after = await screenshotJpegBase64(page);
           evidence.push({ kind: 'screenshot', jpegBase64: after, ts: now(), stepId: sid });
-          broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now() });
-          results.push({ stepId: sid, name, ok: true });
+          // Evidence only: an unmoved scroll is reported, never failed —
+          // sitting at an edge is routine, and the planner decides from
+          // moved/atEdge. Unreadable pages leave the fields absent.
+          const scrollData: any = { repaired };
+          const scrollReceipt: any = { repaired };
+          if (scrollEffect.readOk) {
+            scrollData.scrolled = scrollEffect.moved;
+            scrollData.scrollDeltaY = scrollEffect.deltaY;
+            scrollData.atEdge = atRequestedEdge(scrollEffect);
+            scrollReceipt.scrolled = scrollEffect.moved;
+            scrollReceipt.scrollDeltaY = scrollEffect.deltaY;
+            scrollReceipt.atEdge = atRequestedEdge(scrollEffect);
+          }
+          broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now(), data: scrollData });
+          results.push({ stepId: sid, name, ok: true, ...scrollReceipt });
           try {
             broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name });
           } catch { }
@@ -1201,15 +1249,89 @@ export async function executePlannedActions(params: {
             results.push({ stepId: sid, name, ok: false, reason: 'unknown', message: 'missing_selector' });
             continue;
           }
-          await page.evaluate((sel: string) => {
-            const el = document.querySelector(sel);
-            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          }, selector);
-          await page.waitForTimeout(500);
-          broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now() });
-          results.push({ stepId: sid, name, ok: true });
-          try { broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name }); } catch { }
-          continue;
+          try {
+            const targetReadEval = buildScrollTargetReadEval(selector);
+            const readTargetState = async (): Promise<{ found: boolean; inViewport: boolean; invalid: boolean } | null> => {
+              try {
+                const cur: any = await page.evaluate(targetReadEval);
+                if (!cur || typeof cur.found !== 'boolean') return null;
+                return { found: cur.found === true, inViewport: cur.inViewport === true, invalid: cur.invalid === true };
+              } catch {
+                return null;
+              }
+            };
+            const failScrollTarget = (reason: FailureReason, message: string, wasRepaired: boolean) => {
+              broadcastBrowserEvent(sessionId, { type: 'step_error', stepId: sid, name, ts: now(), reason, message });
+              results.push({ stepId: sid, name, ok: false, reason, message, inViewport: false, repaired: wasRepaired });
+              try {
+                broadcastBrowserEvent(sessionId, { type: 'action_error', ts: now(), actionId: sid, actionType: name, reason, error: message });
+              } catch { }
+            };
+            const succeedScrollTarget = (wasRepaired: boolean) => {
+              broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now(), data: { inViewport: true, repaired: wasRepaired } });
+              results.push({ stepId: sid, name, ok: true, inViewport: true, repaired: wasRepaired });
+              try { broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name }); } catch { }
+            };
+            let targetState = await readTargetState();
+            if (targetState && targetState.invalid) {
+              failScrollTarget('unknown', 'scroll_invalid_selector', false);
+              continue;
+            }
+            if (targetState && !targetState.found) {
+              failScrollTarget('element_not_found', 'scroll_target_not_found', false);
+              continue;
+            }
+            if (targetState && targetState.inViewport) {
+              // Already in view: no scroll needed, and recentering would only move it.
+              succeedScrollTarget(false);
+              continue;
+            }
+            // Found-but-outside, or an unreadable page: attempt the scroll,
+            // then read again. One bounded instant re-scroll on a
+            // still-outside target. Only booleans are recorded — never content.
+            let repaired = false;
+            try {
+              await page.evaluate(buildScrollIntoViewEval(selector, false));
+              await page.waitForTimeout(500);
+            } catch { /* fall through: the re-read below reports the truth */ }
+            targetState = await readTargetState();
+            if (targetState && targetState.found && !targetState.inViewport) {
+              try {
+                await page.evaluate(buildScrollIntoViewEval(selector, true));
+                await page.waitForTimeout(300);
+              } catch { /* the re-read below reports the truth */ }
+              targetState = await readTargetState();
+              repaired = true;
+            }
+            if (!targetState) {
+              // Unreadable page: keep the action's own verdict, marked unverified.
+              broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now(), data: { verified: false } });
+              results.push({ stepId: sid, name, ok: true, verified: false });
+              try { broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name }); } catch { }
+              continue;
+            }
+            if (!targetState.found) {
+              failScrollTarget('element_not_found', 'scroll_target_not_found', repaired);
+              continue;
+            }
+            if (!targetState.inViewport) {
+              // Twice-observed outside the viewport: positive evidence of failure.
+              failScrollTarget('scroll_target_not_visible', 'scroll_target_not_visible', repaired);
+              continue;
+            }
+            succeedScrollTarget(repaired);
+            continue;
+          } catch (e: any) {
+            // Contained per-action: a bad scroll target fails its step, not the run.
+            const msg = String(e?.message || e);
+            const reason: FailureReason = classifyActionError(e);
+            broadcastBrowserEvent(sessionId, { type: 'step_error', stepId: sid, name, ts: now(), reason, message: msg });
+            results.push({ stepId: sid, name, ok: false, reason, message: msg });
+            try {
+              broadcastBrowserEvent(sessionId, { type: 'action_error', ts: now(), actionId: sid, actionType: name, reason, error: msg });
+            } catch { }
+            continue;
+          }
         }
 
         if (name === 'click_coordinates') {

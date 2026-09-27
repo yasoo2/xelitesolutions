@@ -65,6 +65,23 @@
  *     indistinguishable. Coordinate clicks now reuse the click snapshot
  *     machinery (same fingerprint, same comparator, same telemetry delta),
  *     evidence-only like clicks: a no-effect poke is reported, never failed.
+ *
+ * Scrolls were the last movement actions without observed-effect evidence:
+ *
+ *   - A `scroll` fired the wheel and reported ok:true even when the page
+ *     never moved (unscrollable page, already at the edge, wheel swallowed
+ *     by a nested scrollable region), so Joe mis-grounded every coordinate
+ *     after it. Scrolls now snapshot the scroll geometry before and after
+ *     and report moved/delta/at-edge, with one bounded re-pulse when
+ *     movement was possible but nothing moved. Evidence-only: sitting at
+ *     an edge is routine, and the planner decides from moved/atEdge.
+ *   - A `scroll_to_element` scrolled blind and reported ok:true even when
+ *     the selector matched nothing, and an invalid selector aborted the
+ *     whole run. Targets are now read before and after (found/inViewport,
+ *     booleans only) with one bounded instant re-scroll: a missing target
+ *     fails as scroll_target_not_found, a twice-observed outside-viewport
+ *     target fails as scroll_target_not_visible, and an invalid selector
+ *     fails its step instead of the run.
  */
 
 import type { FailureReason } from './types';
@@ -325,4 +342,145 @@ export function compareClickEffect(before: ClickContext | null, after: ClickCont
 /** Minimal snapshot surface: real Playwright pages and test fakes both satisfy it. */
 export interface ClickEffectOps {
     snapshot(): Promise<ClickContext>;
+}
+
+/** One scroll-position snapshot: viewport/scroll geometry numbers only, never content. */
+export interface ScrollSnapshot {
+    x: number;
+    y: number;
+    innerW: number;
+    innerH: number;
+    scrollW: number;
+    scrollH: number;
+}
+
+/**
+ * One in-page evaluate returning the current scroll geometry. It is an
+ * IIFE: pass it straight to page.evaluate. Numbers only — no markup, text
+ * or values ever leave the page.
+ */
+export const SCROLL_SNAPSHOT_SCRIPT = `(() => {
+  const de = (document && document.documentElement) || null;
+  const w = (typeof window !== 'undefined') ? window : null;
+  return {
+    x: Math.round((w && (w.scrollX || w.pageXOffset)) || 0),
+    y: Math.round((w && (w.scrollY || w.pageYOffset)) || 0),
+    innerW: Math.round((w && w.innerWidth) || 0),
+    innerH: Math.round((w && w.innerHeight) || 0),
+    scrollW: de ? Math.round(de.scrollWidth || 0) : 0,
+    scrollH: de ? Math.round(de.scrollHeight || 0) : 0,
+  };
+})()`;
+
+export interface ScrollEffect {
+    /** False when the page could not be read before or after the scroll. */
+    readOk: boolean;
+    /** The viewport moved on either axis. */
+    moved: boolean;
+    deltaX: number;
+    deltaY: number;
+    /** After-state edge pins. A 1px tolerance absorbs subpixel rounding. */
+    atTop: boolean;
+    atBottom: boolean;
+}
+
+/**
+ * Compare two scroll snapshots. Null-tolerant: a missing snapshot (page
+ * closed, evaluate threw) degrades to readOk:false instead of inventing
+ * movement.
+ */
+export function compareScrollEffect(before: ScrollSnapshot | null, after: ScrollSnapshot | null): ScrollEffect {
+    const none: ScrollEffect = { readOk: false, moved: false, deltaX: 0, deltaY: 0, atTop: false, atBottom: false };
+    if (!before || !after) return none;
+    const dx = after.x - before.x;
+    const dy = after.y - before.y;
+    return {
+        readOk: true,
+        moved: dx !== 0 || dy !== 0,
+        deltaX: dx,
+        deltaY: dy,
+        atTop: after.y <= 0,
+        atBottom: after.y + after.innerH >= after.scrollH - 1,
+    };
+}
+
+/** Minimal rect surface: DOMRect and test fakes both satisfy it. */
+export interface ViewportRect {
+    top: number;
+    left: number;
+    bottom: number;
+    right: number;
+    width: number;
+    height: number;
+}
+
+/**
+ * Whether a box intersects the viewport. Zero-area boxes (display:none,
+ * detached) never count.
+ *
+ * Dependency-free so the in-page read script below can embed this exact
+ * source — unit tests and real-browser runs share one truth. Keep it that
+ * way: no imports, no outer references.
+ */
+export function isRectInViewport(rect: ViewportRect | null | undefined, vw: number, vh: number): boolean {
+    if (!rect) return false;
+    const w = Number((rect as any).width);
+    const h = Number((rect as any).height);
+    const top = Number((rect as any).top);
+    const left = Number((rect as any).left);
+    const bottom = Number((rect as any).bottom);
+    const right = Number((rect as any).right);
+    if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return false;
+    if (!Number.isFinite(top) || !Number.isFinite(left) || !Number.isFinite(bottom) || !Number.isFinite(right)) return false;
+    if (!Number.isFinite(vw) || !Number.isFinite(vh) || vw <= 0 || vh <= 0) return false;
+    return bottom > 0 && top < vh && right > 0 && left < vw;
+}
+
+/** What the in-page scroll-target read script reports: booleans only. */
+export interface ScrollTargetState {
+    found: boolean;
+    inViewport: boolean;
+    /** True when the selector itself is syntactically invalid — a planner bug, not a missing element. */
+    invalid: boolean;
+}
+
+/**
+ * Build a self-contained in-page evaluate that reports whether a selector
+ * matches an element and whether that element intersects the viewport.
+ * Complete expression — pass it straight to page.evaluate with NO second
+ * argument; the selector is baked in as a JSON literal so hostile text
+ * stays inert. Resolves to ScrollTargetState, never null, never throws.
+ */
+export function buildScrollTargetReadEval(selector: string): string {
+    const fn = `(arg) => {
+  const isRectInViewport = ${isRectInViewport.toString()};
+  let el = null;
+  try { el = document.querySelector(arg.selector); } catch (err) { return { found: false, inViewport: false, invalid: true }; }
+  if (!el) return { found: false, inViewport: false, invalid: false };
+  const r = el.getBoundingClientRect();
+  return { found: true, inViewport: isRectInViewport(r, window.innerWidth, window.innerHeight), invalid: false };
+}`;
+    return `(${fn})(${JSON.stringify({ selector: String(selector === null || selector === undefined ? '' : selector) })})`;
+}
+
+/**
+ * Build a self-contained in-page evaluate that scrolls a selector's element
+ * into centered view (smooth unless instant). Self-contained like the read
+ * script. Resolves true when an element was found and scrolled, false
+ * otherwise. Never throws.
+ */
+export function buildScrollIntoViewEval(selector: string, instant: boolean): string {
+    const fn = `(arg) => {
+  let el = null;
+  try { el = document.querySelector(arg.selector); } catch (err) { return false; }
+  if (!el) return false;
+  try {
+    if (arg.instant) el.scrollIntoView({ block: 'center' });
+    else el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  } catch (err) {
+    try { el.scrollIntoView(); } catch (e2) { return false; }
+  }
+  return true;
+}`;
+    return `(${fn})(${JSON.stringify({ selector: String(selector === null || selector === undefined ? '' : selector), instant: instant ? true : false })})`;
 }

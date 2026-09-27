@@ -19,6 +19,7 @@ export type FailureReason =
   | 'same_site_blocked'
   | 'dns_failed'
   | 'navigation_failed'
+  | 'scroll_target_not_visible'
   | 'unknown';
 
 export type StepEvent =
@@ -138,7 +139,7 @@ export type FinalReportEvent = {
   ts: number;
   ok: boolean;
   summary: string;
-  steps: Array<{ stepId: string; name: string; ok: boolean; reason?: FailureReason; message?: string; verified?: boolean; valueMatch?: boolean; repaired?: boolean; navigated?: boolean; domChanged?: boolean; effectObserved?: boolean; runtimeErrors?: number }>;
+  steps: Array<{ stepId: string; name: string; ok: boolean; reason?: FailureReason; message?: string; verified?: boolean; valueMatch?: boolean; repaired?: boolean; navigated?: boolean; domChanged?: boolean; effectObserved?: boolean; runtimeErrors?: number; scrolled?: boolean; scrollDeltaY?: number; atEdge?: boolean; inViewport?: boolean }>;
   evidence: Array<{ kind: 'screenshot'; jpegBase64: string; ts: number; stepId: string }>;
 };
 
