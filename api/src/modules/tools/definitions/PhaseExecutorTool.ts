@@ -1569,7 +1569,6 @@ export class PhaseExecutorTool implements ToolDefinition {
                 toolArgs.cwd
                 || toolArgs.projectPath
                 || toolArgs.path
-                || (projectContext?.projectRootRuntimeBound === true ? projectContext?.projectRoot : '')
                 || workspaceService.getActiveRoot(executionContext.workspaceId)
                 || '',
             ).trim();
@@ -1643,8 +1642,11 @@ export class PhaseExecutorTool implements ToolDefinition {
                 ? verificationResultFromToolResult(toolResult)
                 : undefined;
 
-            // Checkpoint the tool execution
-            const artifactDir = String(projectContext?.projectRoot || executionContext.projectRoot || '');
+            // Checkpoint the tool execution (always, for resumption tracking)
+            const workspaceRoot = executionContext.workspaceId
+                ? String(workspaceService.getActiveRoot(executionContext.workspaceId) || '').trim()
+                : '';
+            const artifactDir = String(projectContext?.projectRoot || executionContext.projectRoot || workspaceRoot || '');
             if (artifactDir && executionContext.runId) {
                 checkpointTool(
                     artifactDir,
@@ -1673,14 +1675,6 @@ export class PhaseExecutorTool implements ToolDefinition {
                             lastActivityAt: verificationLastActivityAt,
                         }),
                     );
-                }
-                appendLog(`[PhaseExecutor] ✅ Task ${taskIndex + 1} completed: ${toolName}`);
-                bindRuntimeProjectFromEvidence(toolName, toolArgs, toolResult, projectContext, executionContext.runId, logs);
-                syncRuntimeProjectContext(projectContext, executionContext.runId, logs);
-                changedPhaseFiles.push(...mutationPathsFor(toolName, toolArgs));
-                if (changedPhaseFiles.length > 64) changedPhaseFiles.splice(0, changedPhaseFiles.length - 64);
-                if (!verificationSelection && /^(?:browser_|visual_qa$)/u.test(toolName)) {
-                    projectContext.browserRuntimeRevision = `interaction:${executionContext.runId || 'run'}:${Date.now()}:${taskIndex}`;
                 }
                 const output = (toolResult as any)?.output || {};
                 if (toolName === 'search_public_apis') {
@@ -1729,6 +1723,14 @@ export class PhaseExecutorTool implements ToolDefinition {
                     ...(said ? { message: said.slice(0, 8000) } : {}),
                 });
                 completedCount.value++;
+                appendLog(`[PhaseExecutor] ✅ Task ${taskIndex + 1} completed: ${toolName}`);
+                bindRuntimeProjectFromEvidence(toolName, toolArgs, toolResult, projectContext, executionContext.runId, logs);
+                syncRuntimeProjectContext(projectContext, executionContext.runId, logs);
+                changedPhaseFiles.push(...mutationPathsFor(toolName, toolArgs));
+                if (changedPhaseFiles.length > 64) changedPhaseFiles.splice(0, changedPhaseFiles.length - 64);
+                if (!verificationSelection && /^(?:browser_|visual_qa$)/u.test(toolName)) {
+                    projectContext.browserRuntimeRevision = `interaction:${executionContext.runId || 'run'}:${Date.now()}:${taskIndex}`;
+                }
                 return { results, completedCount, verificationLedger, apiSelection, capabilityDecision, phaseDelivery, shouldBreak: false };
             } else {
                 if (verificationSelection) {
@@ -2107,19 +2109,48 @@ export class PhaseExecutorTool implements ToolDefinition {
 
             // Checkpoint resumption: load completed tasks from checkpoints and skip them
             const completedTaskKeys = new Set<string>();
+            let failurePointIndex = -1; // Index of first failed task in execution order
             if (executionContext.runId && phase.phaseNumber !== undefined) {
-                const artifactDir = String(projectContext?.projectRoot || executionContext.projectRoot || '');
+                // For greenfield projects, use workspace root as artifact directory
+                const workspaceRoot = executionContext.workspaceId
+                    ? String(workspaceService.getActiveRoot(executionContext.workspaceId) || '').trim()
+                    : '';
+                const artifactDir = String(projectContext?.projectRoot || executionContext.projectRoot || workspaceRoot || '');
                 if (artifactDir) {
                     const runCheckpoints = loadAllRunCheckpoints(artifactDir, executionContext.runId);
+                    // Build ordered list of checkpoints for this phase
+                    const phaseCheckpoints: Array<{ taskKey: string; output: any; order: number }> = [];
+                    let order = 0;
                     for (const cp of runCheckpoints) {
                         if (cp.phaseIndex === phase.phaseNumber && cp.toolName && cp.toolName !== 'phase') {
-                            // Mark this tool as completed (use toolName + taskDescription as key)
                             const taskKey = `${cp.toolName}:${cp.taskDescription}`;
-                            completedTaskKeys.add(taskKey);
+                            // Find the order of this task in the current phase's tasks
+                            const taskOrder = tasks.findIndex((t: any) => 
+                                String(t.tool || '').trim() === cp.toolName && 
+                                String(t.task || t.description || '').trim() === cp.taskDescription
+                            );
+                            phaseCheckpoints.push({ taskKey: `${cp.toolName}:${cp.taskDescription}`, output: cp.output, order: taskOrder >= 0 ? taskOrder : order++ });
+                        }
+                    }
+                    // Sort by execution order
+                    phaseCheckpoints.sort((a, b) => a.order - b.order);
+                    // Find first failure point
+                    for (const cp of phaseCheckpoints) {
+                        const toolResult = cp.output;
+                        const isFailed = toolResult && (toolResult.ok === false);
+                        if (isFailed) {
+                            failurePointIndex = cp.order;
+                            break;
+                        }
+                    }
+                    // Only mark tasks before the failure point as completed
+                    for (const cp of phaseCheckpoints) {
+                        if (failurePointIndex === -1 || cp.order < failurePointIndex) {
+                            completedTaskKeys.add(cp.taskKey);
                         }
                     }
                     if (completedTaskKeys.size > 0) {
-                        appendLog(`[PhaseExecutor] Resuming from checkpoints: ${completedTaskKeys.size} task(s) already completed, will skip`);
+                        appendLog(`[PhaseExecutor] Resuming from checkpoints: ${completedTaskKeys.size} task(s) before failure point will be skipped`);
                     }
                 }
             }
@@ -2190,7 +2221,10 @@ export class PhaseExecutorTool implements ToolDefinition {
             }
 
             // Checkpoint the completed phase
-            const artifactDir = String(projectContext?.projectRoot || executionContext.projectRoot || '');
+            const workspaceRoot = executionContext.workspaceId
+                ? String(workspaceService.getActiveRoot(executionContext.workspaceId) || '').trim()
+                : '';
+            const artifactDir = String(projectContext?.projectRoot || executionContext.projectRoot || workspaceRoot || '');
             if (artifactDir && executionContext.runId && phase.phaseNumber !== undefined) {
                 const phaseResult = {
                     ok: true,

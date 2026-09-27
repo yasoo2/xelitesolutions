@@ -79,6 +79,8 @@ function projectContextAfterRepair(projectContext: any, repairedFile?: unknown):
     ...(projectContext || {}),
     projectRoot: root,
     projectRootRuntimeBound: true,
+    // Preserve the verification ledger for checkpoint resumption and self-fix reruns
+    verificationLedger: projectContext?.verificationLedger,
   };
 }
 

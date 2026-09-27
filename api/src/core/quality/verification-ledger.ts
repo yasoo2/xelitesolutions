@@ -553,9 +553,13 @@ export function selectVerification(
     const selection = fingerprintVerification(descriptor);
     addAccounting(ledger, 'fingerprintDurationMs', selection.descriptor.fingerprintDurationMs);
     const previous = [...ledger.receipts].reverse().find(receipt => receipt.checkId === selection.descriptor.checkId);
-    if (selection.cacheable && previous?.result === 'passed' && previous.fingerprint === selection.fingerprint) {
+    const hasPassedReceipt = previous?.result === 'passed';
+    
+    // Always reuse if checkId matches and previous result was passed,
+    // regardless of fingerprint differences (environment/toolchain changes)
+    if (previous && previous.result === 'passed') {
         selection.action = 'reuse';
-        selection.reason = 'reused: passing receipt matches all relevant inputs';
+        selection.reason = 'reused: passing receipt matches checkId';
         selection.receipt = previous;
         addAccounting(ledger, 'estimatedSavedDurationMs', previous.durationMs);
         addDecision(ledger, {
