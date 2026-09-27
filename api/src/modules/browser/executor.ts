@@ -3,7 +3,7 @@ import type { FailureReason } from './types';
 import { DEFAULT_BROWSER_CONFIG } from './config';
 import { broadcastBrowserEvent } from './wsHub';
 import { gotoResilient, probeNavigationReadiness, type NavigationReadiness } from './navigation';
-import { buildScrollIntoViewEval, buildScrollTargetReadEval, buildSelectReadEval, buildSelectSetEval, CLICK_FINGERPRINT_SCRIPT, classifyActionError, compareClickEffect, compareKeyEffect, compareScrollEffect, compareTraversalEffect, compareWaitEffect, ensureTypedValue, KEY_FOCUS_SCRIPT, SCROLL_SNAPSHOT_SCRIPT, TRAVERSAL_IDENTITY_SCRIPT, typeActionText, type ClickContext, type KeyContext, type KeyFocus, type ScrollSnapshot, type TraversalContext, type TraversalIdentity } from './actionVerification';
+import { buildScrollIntoViewEval, buildScrollTargetReadEval, buildSelectReadEval, buildSelectSetEval, CLICK_FINGERPRINT_SCRIPT, classifyActionError, compareClickEffect, compareKeyEffect, compareScrollEffect, compareTraversalEffect, compareWaitEffect, ensureTypedValue, KEY_FOCUS_SCRIPT, SCROLL_SNAPSHOT_SCRIPT, TRAVERSAL_IDENTITY_SCRIPT, typeActionText, type ClickContext, type KeyContext, type KeyFocus, type ScrollSnapshot, type TraversalContext, type TraversalIdentity, type AssertObservation, parseAssertTarget, observeAssertState, evaluateAssertObservation, isSelectorSyntaxError } from './actionVerification';
 import { getBrowserTelemetryErrorCounts } from './telemetry';
 import { getBrowserSession, setStreamMask, touchSession, withBrowserConcurrency } from './manager';
 import { getSessionSecret, getUserSecret } from '../services/secrets';
@@ -374,7 +374,7 @@ export async function executePlannedActions(params: {
         workerStatus: 'running',
       });
     } catch { }
-    const results: Array<{ stepId: string; name: string; ok: boolean; reason?: FailureReason; message?: string; verified?: boolean; valueMatch?: boolean; repaired?: boolean; navigated?: boolean; domChanged?: boolean; focusChanged?: boolean; documentChanged?: boolean; navigationError?: boolean; effectObserved?: boolean; runtimeErrors?: number; scrolled?: boolean; scrollDeltaY?: number; atEdge?: boolean; inViewport?: boolean; elapsedMs?: number }> = [];
+    const results: Array<{ stepId: string; name: string; ok: boolean; reason?: FailureReason; message?: string; verified?: boolean; valueMatch?: boolean; repaired?: boolean; navigated?: boolean; domChanged?: boolean; focusChanged?: boolean; documentChanged?: boolean; navigationError?: boolean; effectObserved?: boolean; runtimeErrors?: number; scrolled?: boolean; scrollDeltaY?: number; atEdge?: boolean; inViewport?: boolean; elapsedMs?: number; matched?: number; visibleCount?: number }> = [];
     const evidence: Array<{ kind: 'screenshot'; jpegBase64: string; ts: number; stepId: string }> = [];
 
     for (let i = 0; i < Math.min(cfg.maxSteps, actions.length); i += 1) {
@@ -680,23 +680,77 @@ export async function executePlannedActions(params: {
         }
 
         if (name === 'assert') {
-          const selector = typeof a?.selector === 'string' ? a.selector : '';
-          const text = typeof a?.text === 'string' ? a.text : '';
+          // Assert observed state: wait as before, then read what the page
+          // actually showed (matched/visible counts). Success carries the
+          // counts; failure names the observed state with the reason that
+          // cures it. Fail-fast run semantics are unchanged — a failed
+          // assert still stops the run; it just says what it saw first.
+          const target = parseAssertTarget(a);
           const before = await screenshotJpegBase64(page);
           evidence.push({ kind: 'screenshot', jpegBase64: before, ts: now(), stepId: sid });
-          if (selector) {
-            const loc = page.locator(selector).first();
-            await loc.waitFor({ state: 'visible', timeout: cfg.actionTimeoutMs });
-          } else if (text) {
-            const loc = page.getByText(text, { exact: false }).first();
-            await loc.waitFor({ state: 'visible', timeout: cfg.actionTimeoutMs });
-          } else {
-            throw new Error('assert_missing_target');
+          if (target.kind === 'missing') {
+            const missingMsg = 'assert_missing_target: provide selector or text';
+            results.push({ stepId: sid, name, ok: false, reason: 'unknown', message: missingMsg });
+            broadcastBrowserEvent(sessionId, { type: 'step_error', stepId: sid, name, ts: now(), reason: 'unknown', message: missingMsg });
+            try {
+              broadcastBrowserEvent(sessionId, { type: 'action_error', ts: now(), actionId: sid, actionType: name, reason: 'unknown', error: missingMsg });
+            } catch { }
+            setStreamMask(sessionId, []);
+            break;
+          }
+          const query = target.kind === 'selector' ? page.locator(target.value) : page.getByText(target.value, { exact: false });
+          const observeAssert = (): Promise<AssertObservation> => observeAssertState({
+            count: () => query.count(),
+            isVisibleAt: (i: number) => query.nth(i).isVisible(),
+          });
+          const recordInvalidSelector = () => {
+            const syntaxMsg = `invalid_selector: ${target.kind} ${JSON.stringify(target.value.slice(0, 120))} could not be parsed`;
+            results.push({ stepId: sid, name, ok: false, reason: 'invalid_selector', message: syntaxMsg });
+            broadcastBrowserEvent(sessionId, { type: 'step_error', stepId: sid, name, ts: now(), reason: 'invalid_selector', message: syntaxMsg });
+            try {
+              broadcastBrowserEvent(sessionId, { type: 'action_error', ts: now(), actionId: sid, actionType: name, reason: 'invalid_selector', error: syntaxMsg });
+            } catch { }
+            setStreamMask(sessionId, []);
+          };
+          try {
+            await query.first().waitFor({ state: 'visible', timeout: cfg.actionTimeoutMs });
+          } catch (waitErr: any) {
+            if (isSelectorSyntaxError(waitErr)) {
+              recordInvalidSelector();
+              break;
+            }
+            let failureObs: AssertObservation | null = null;
+            try {
+              failureObs = await observeAssert();
+            } catch (obsErr: any) {
+              if (isSelectorSyntaxError(obsErr)) {
+                recordInvalidSelector();
+                break;
+              }
+              throw waitErr;
+            }
+            const verdict = evaluateAssertObservation(failureObs);
+            const afterFail = await screenshotJpegBase64(page);
+            evidence.push({ kind: 'screenshot', jpegBase64: afterFail, ts: now(), stepId: sid });
+            results.push({ stepId: sid, name, ok: false, reason: verdict.reason, message: verdict.detail, matched: failureObs.matched, visibleCount: failureObs.visible });
+            broadcastBrowserEvent(sessionId, { type: 'step_error', stepId: sid, name, ts: now(), reason: verdict.reason, message: verdict.detail });
+            try {
+              broadcastBrowserEvent(sessionId, { type: 'action_error', ts: now(), actionId: sid, actionType: name, reason: verdict.reason, error: verdict.detail });
+            } catch { }
+            setStreamMask(sessionId, []);
+            break;
+          }
+          let successObs: AssertObservation | null = null;
+          try {
+            successObs = await observeAssert();
+          } catch {
+            successObs = null;
           }
           const after = await screenshotJpegBase64(page);
           evidence.push({ kind: 'screenshot', jpegBase64: after, ts: now(), stepId: sid });
-          broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now() });
-          results.push({ stepId: sid, name, ok: true });
+          const assertData = successObs ? { matched: successObs.matched, visibleCount: successObs.visible } : undefined;
+          broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now(), data: assertData });
+          results.push({ stepId: sid, name, ok: true, matched: successObs?.matched, visibleCount: successObs?.visible });
           try {
             broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name });
           } catch { }

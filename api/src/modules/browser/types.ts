@@ -11,6 +11,8 @@ export type FailureReason =
   | 'element_detached'
   | 'selector_ambiguous'
   | 'element_disabled'
+  | 'element_hidden'
+  | 'invalid_selector'
   | 'value_not_applied'
   | 'overlay_blocking_click'
   | 'needs_scroll'
@@ -139,7 +141,7 @@ export type FinalReportEvent = {
   ts: number;
   ok: boolean;
   summary: string;
-  steps: Array<{ stepId: string; name: string; ok: boolean; reason?: FailureReason; message?: string; verified?: boolean; valueMatch?: boolean; repaired?: boolean; navigated?: boolean; domChanged?: boolean; focusChanged?: boolean; documentChanged?: boolean; navigationError?: boolean; effectObserved?: boolean; runtimeErrors?: number; scrolled?: boolean; scrollDeltaY?: number; atEdge?: boolean; inViewport?: boolean; elapsedMs?: number }>;
+  steps: Array<{ stepId: string; name: string; ok: boolean; reason?: FailureReason; message?: string; verified?: boolean; valueMatch?: boolean; repaired?: boolean; navigated?: boolean; domChanged?: boolean; focusChanged?: boolean; documentChanged?: boolean; navigationError?: boolean; effectObserved?: boolean; runtimeErrors?: number; scrolled?: boolean; scrollDeltaY?: number; atEdge?: boolean; inViewport?: boolean; elapsedMs?: number; matched?: number; visibleCount?: number }>;
   evidence: Array<{ kind: 'screenshot'; jpegBase64: string; ts: number; stepId: string }>;
 };
 

@@ -139,6 +139,7 @@ export function typeActionText(name: string, a: any): string {
  */
 export function classifyActionError(error: unknown): FailureReason {
     const msg = String((error as any)?.message ?? error ?? '');
+    if (isSelectorSyntaxError(msg)) return 'invalid_selector';
     if (/strict mode violation|resolv\w* to \d+ elements/i.test(msg)) return 'selector_ambiguous';
     if (/detached|not attached/i.test(msg)) return 'element_detached';
     if (/intercepts pointer events|intercepted|overlay|not clickable|receives pointer events/i.test(msg)) return 'overlay_blocking_click';
@@ -739,4 +740,106 @@ export function compareWaitEffect(before: ClickContext | null, after: ClickConte
         effect.elapsedMs = Math.round(elapsedMs);
     }
     return effect;
+}
+
+/**
+ * ASSERT OBSERVED STATE — an assert names what the page showed, not just
+ * whether a waitFor threw.
+ *
+ * The old assert waited for visible and reported ok:true, or threw a raw
+ * Playwright timeout whose call log was the only evidence. Three diseases:
+ *
+ *   - A selector matching hidden-only elements failed as
+ *     'element_not_found' — the element EXISTS, so re-query cures nothing.
+ *   - A failure carried no counts, so the planner could not distinguish
+ *     "0 matched" from "5 matched but hidden" from "page never settled".
+ *   - The raw call log embedded live page markup into the receipt, leaking
+ *     page content (possibly sensitive) into logs and reports.
+ *
+ * Asserts now observe the page after the wait resolves: how many nodes
+ * matched, how many are visible. Success carries the counts; failure names
+ * the observed state (matched=N visible=M) with the reason that cures it —
+ * 'element_not_found' when nothing matched, 'element_hidden' when nodes
+ * matched but none are visible. Counts only: the receipt never embeds page
+ * text or markup. Fail-fast run semantics are unchanged — a failed assert
+ * still stops the run; it just says what it saw first.
+ */
+
+/** What an assert step asks the page for. Selector wins, exactly like before. */
+export interface AssertTarget {
+    kind: 'selector' | 'text' | 'missing';
+    value: string;
+}
+
+export function parseAssertTarget(a: any): AssertTarget {
+    const selector = typeof a?.selector === 'string' ? a.selector : '';
+    const text = typeof a?.text === 'string' ? a.text : '';
+    if (selector) return { kind: 'selector', value: selector };
+    if (text) return { kind: 'text', value: text };
+    return { kind: 'missing', value: '' };
+}
+
+/** What the page showed for an assert target. Counts only, never content. */
+export interface AssertObservation {
+    /** Nodes matching the selector/text query. */
+    matched: number;
+    /** Of the checked nodes, how many are visible. */
+    visible: number;
+    /** Nodes actually visibility-checked (capped). */
+    checked: number;
+    /** True when matched exceeded the check cap. */
+    truncated: boolean;
+}
+
+/** Visibility probes are bounded: checking 10 answers "any visible" cheaply. */
+export const ASSERT_VISIBILITY_CHECK_CAP = 10;
+
+/** Minimal locator surface: real Playwright locators and test fakes fit. */
+export interface AssertLocatorOps {
+    /** Total nodes matching the query. May throw (e.g. bad selector syntax). */
+    count(): Promise<number>;
+    /** Whether the i-th match is visible. Must not wait. */
+    isVisibleAt(i: number): Promise<boolean>;
+}
+
+/**
+ * Observe the page for an assert target. Errors propagate: a throwing count
+ * (bad selector syntax, dead page) is itself the diagnosis, and the caller
+ * maps it — observation never invents a state it could not read.
+ */
+export async function observeAssertState(ops: AssertLocatorOps): Promise<AssertObservation> {
+    const matched = Math.max(0, Math.floor(Number(await ops.count())));
+    const checked = Math.min(matched, ASSERT_VISIBILITY_CHECK_CAP);
+    let visible = 0;
+    for (let i = 0; i < checked; i += 1) {
+        if (await ops.isVisibleAt(i)) visible += 1;
+    }
+    return { matched, visible, checked, truncated: matched > checked };
+}
+
+/** Verdict over an assert observation: pass needs one visible node. */
+export interface AssertVerdict {
+    pass: boolean;
+    reason: FailureReason;
+    /** Structured counts, safe to store: no page text or markup. */
+    detail: string;
+}
+
+export function evaluateAssertObservation(obs: AssertObservation): AssertVerdict {
+    const matched = Math.max(0, Math.floor(Number(obs.matched) || 0));
+    const visible = Math.max(0, Math.floor(Number(obs.visible) || 0));
+    const suffix = obs.truncated ? ` checked=${obs.checked} truncated` : '';
+    if (visible > 0) {
+        return { pass: true, reason: 'unknown', detail: `assert_ok matched=${matched} visible=${visible}${suffix}` };
+    }
+    if (matched === 0) {
+        return { pass: false, reason: 'element_not_found', detail: `assert_failed matched=0 visible=0` };
+    }
+    return { pass: false, reason: 'element_hidden', detail: `assert_failed matched=${matched} visible=0${suffix}` };
+}
+
+/** True when the error is a selector-syntax failure, not a page state. */
+export function isSelectorSyntaxError(error: unknown): boolean {
+    const msg = String((error as any)?.message ?? error ?? '');
+    return /while parsing .* selector|CSS\.escape|unexpected token.*parsing|invalid selector/i.test(msg);
 }
