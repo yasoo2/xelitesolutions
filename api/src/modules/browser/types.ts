@@ -139,7 +139,7 @@ export type FinalReportEvent = {
   ts: number;
   ok: boolean;
   summary: string;
-  steps: Array<{ stepId: string; name: string; ok: boolean; reason?: FailureReason; message?: string; verified?: boolean; valueMatch?: boolean; repaired?: boolean; navigated?: boolean; domChanged?: boolean; focusChanged?: boolean; documentChanged?: boolean; navigationError?: boolean; effectObserved?: boolean; runtimeErrors?: number; scrolled?: boolean; scrollDeltaY?: number; atEdge?: boolean; inViewport?: boolean }>;
+  steps: Array<{ stepId: string; name: string; ok: boolean; reason?: FailureReason; message?: string; verified?: boolean; valueMatch?: boolean; repaired?: boolean; navigated?: boolean; domChanged?: boolean; focusChanged?: boolean; documentChanged?: boolean; navigationError?: boolean; effectObserved?: boolean; runtimeErrors?: number; scrolled?: boolean; scrollDeltaY?: number; atEdge?: boolean; inViewport?: boolean; elapsedMs?: number }>;
   evidence: Array<{ kind: 'screenshot'; jpegBase64: string; ts: number; stepId: string }>;
 };
 

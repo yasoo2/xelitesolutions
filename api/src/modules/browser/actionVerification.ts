@@ -697,3 +697,46 @@ export function compareTraversalEffect(before: TraversalContext | null, after: T
     }
     return effect;
 }
+
+/** Observed effect of one `wait` step: what happened DURING the sleep. */
+export interface WaitEffect {
+    /** False when the page could not be read before or after the wait. */
+    readOk: boolean;
+    /** The URL changed while waiting (an unexpected navigation). */
+    navigated: boolean;
+    /** Title, element count, text length or markup hash changed while waiting. */
+    domChanged: boolean;
+    /** navigated || domChanged. Evidence only — never a failure by itself. */
+    effectObserved: boolean;
+    /** Measured sleep duration in ms. Absent when unmeasurable. */
+    elapsedMs?: number;
+    /**
+     * New runtime error signals (pageerror + console-error + requestfailed)
+     * observed during the wait. Absent when telemetry halves are missing or
+     * a counter reset makes the delta meaningless.
+     */
+    runtimeErrors?: number;
+}
+
+/**
+ * Compare two wait snapshots. The page halves delegate to
+ * compareClickEffect (one truth for fingerprint deltas); the elapsed half
+ * only validates the measured sleep. A quiet wait is reported, never
+ * failed: plenty of legitimate waits observe nothing, and verification is
+ * evidence, not a new failure mode. Null-tolerant: missing halves degrade
+ * to readOk:false and absent counts instead of inventing an effect.
+ */
+export function compareWaitEffect(before: ClickContext | null, after: ClickContext | null, elapsedMs: number): WaitEffect {
+    const page = compareClickEffect(before, after);
+    const effect: WaitEffect = {
+        readOk: page.readOk,
+        navigated: page.navigated,
+        domChanged: page.domChanged,
+        effectObserved: page.effectObserved,
+        ...(page.runtimeErrors === undefined ? {} : { runtimeErrors: page.runtimeErrors }),
+    };
+    if (typeof elapsedMs === 'number' && Number.isFinite(elapsedMs) && elapsedMs >= 0) {
+        effect.elapsedMs = Math.round(elapsedMs);
+    }
+    return effect;
+}

@@ -3,7 +3,7 @@ import type { FailureReason } from './types';
 import { DEFAULT_BROWSER_CONFIG } from './config';
 import { broadcastBrowserEvent } from './wsHub';
 import { gotoResilient, probeNavigationReadiness, type NavigationReadiness } from './navigation';
-import { buildScrollIntoViewEval, buildScrollTargetReadEval, buildSelectReadEval, buildSelectSetEval, CLICK_FINGERPRINT_SCRIPT, classifyActionError, compareClickEffect, compareKeyEffect, compareScrollEffect, compareTraversalEffect, ensureTypedValue, KEY_FOCUS_SCRIPT, SCROLL_SNAPSHOT_SCRIPT, TRAVERSAL_IDENTITY_SCRIPT, typeActionText, type ClickContext, type KeyContext, type KeyFocus, type ScrollSnapshot, type TraversalContext, type TraversalIdentity } from './actionVerification';
+import { buildScrollIntoViewEval, buildScrollTargetReadEval, buildSelectReadEval, buildSelectSetEval, CLICK_FINGERPRINT_SCRIPT, classifyActionError, compareClickEffect, compareKeyEffect, compareScrollEffect, compareTraversalEffect, compareWaitEffect, ensureTypedValue, KEY_FOCUS_SCRIPT, SCROLL_SNAPSHOT_SCRIPT, TRAVERSAL_IDENTITY_SCRIPT, typeActionText, type ClickContext, type KeyContext, type KeyFocus, type ScrollSnapshot, type TraversalContext, type TraversalIdentity } from './actionVerification';
 import { getBrowserTelemetryErrorCounts } from './telemetry';
 import { getBrowserSession, setStreamMask, touchSession, withBrowserConcurrency } from './manager';
 import { getSessionSecret, getUserSecret } from '../services/secrets';
@@ -374,7 +374,7 @@ export async function executePlannedActions(params: {
         workerStatus: 'running',
       });
     } catch { }
-    const results: Array<{ stepId: string; name: string; ok: boolean; reason?: FailureReason; message?: string; verified?: boolean; valueMatch?: boolean; repaired?: boolean; navigated?: boolean; domChanged?: boolean; focusChanged?: boolean; documentChanged?: boolean; navigationError?: boolean; effectObserved?: boolean; runtimeErrors?: number; scrolled?: boolean; scrollDeltaY?: number; atEdge?: boolean; inViewport?: boolean }> = [];
+    const results: Array<{ stepId: string; name: string; ok: boolean; reason?: FailureReason; message?: string; verified?: boolean; valueMatch?: boolean; repaired?: boolean; navigated?: boolean; domChanged?: boolean; focusChanged?: boolean; documentChanged?: boolean; navigationError?: boolean; effectObserved?: boolean; runtimeErrors?: number; scrolled?: boolean; scrollDeltaY?: number; atEdge?: boolean; inViewport?: boolean; elapsedMs?: number }> = [];
     const evidence: Array<{ kind: 'screenshot'; jpegBase64: string; ts: number; stepId: string }> = [];
 
     for (let i = 0; i < Math.min(cfg.maxSteps, actions.length); i += 1) {
@@ -546,11 +546,33 @@ export async function executePlannedActions(params: {
           const ms = Math.max(0, Math.min(30000, Number(a?.ms || 0)));
           const before = await screenshotJpegBase64(page);
           evidence.push({ kind: 'screenshot', jpegBase64: before, ts: now(), stepId: sid });
+          // Wait effect evidence: a wait is the agent's settle primitive,
+          // so the page is fingerprinted around the sleep. A quiet wait, a
+          // DOM that settled mid-wait, an unexpected navigation, and errors
+          // thrown during the wait must not share the same bare ok:true.
+          // Evidence only: a quiet wait is reported, never failed.
+          const waitBefore = await snapshotClickContext(page, sessionId);
+          const waitStarted = now();
           await page.waitForTimeout(ms);
+          const waitEffect = compareWaitEffect(waitBefore, await snapshotClickContext(page, sessionId), now() - waitStarted);
           const after = await screenshotJpegBase64(page);
           evidence.push({ kind: 'screenshot', jpegBase64: after, ts: now(), stepId: sid });
-          broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now() });
-          results.push({ stepId: sid, name, ok: true });
+          const waitData: any = waitEffect.elapsedMs === undefined ? {} : { elapsedMs: waitEffect.elapsedMs };
+          const waitReceipt: any = { ...(waitData as any) };
+          if (waitEffect.readOk) {
+            waitData.navigated = waitEffect.navigated;
+            waitData.domChanged = waitEffect.domChanged;
+            waitData.effectObserved = waitEffect.effectObserved;
+            waitReceipt.navigated = waitEffect.navigated;
+            waitReceipt.domChanged = waitEffect.domChanged;
+            waitReceipt.effectObserved = waitEffect.effectObserved;
+          }
+          if (waitEffect.runtimeErrors !== undefined) {
+            waitData.runtimeErrors = waitEffect.runtimeErrors;
+            waitReceipt.runtimeErrors = waitEffect.runtimeErrors;
+          }
+          broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now(), data: waitData });
+          results.push({ stepId: sid, name, ok: true, ...waitReceipt });
           try {
             broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name });
           } catch { }
