@@ -160,6 +160,27 @@ export function selectPrimaryStep(steps: any[]): any | undefined {
   return steps.find((s) => String(s?.name || '') !== 'wait') ?? steps[0];
 }
 
+/** Stop the loop after this many consecutive ok actions with explicitly no
+ *  observed effect — mirrors the three-consecutive-failure stop. Advice in
+ *  the prompt (NO-EFFECT RULE) was not enough: a brain clicking through dead
+ *  controls burned the whole budget and died at max_steps. */
+export const NO_EFFECT_STOP_AFTER = 3;
+
+/** Fold one action outcome into the no-effect streak.
+ *  - a failed action resets it (failures are the failure streak's domain);
+ *  - explicit effectObserved=false extends it;
+ *  - explicit effectObserved=true resets it (real progress);
+ *  - an unknown effect (unreadable receipt, action kinds without a binary
+ *    signal) leaves it unchanged: neither progress nor fruitlessness proven.
+ */
+export function updateNoEffectStreak(prev: number, actionOk: boolean, effect: StepEffect | undefined): number {
+  const base = Math.max(0, Math.floor(Number(prev) || 0));
+  if (!actionOk) return 0;
+  if (effect?.effectObserved === false) return base + 1;
+  if (effect?.effectObserved === true) return 0;
+  return base;
+}
+
 export interface Observation {
   url: string;
   title: string;
@@ -409,6 +430,7 @@ export async function runReactBrowserTask(params: {
   let lastSignature = '';
   let repeat = 0;
   let failureStreak = 0;
+  let noEffectStreak = 0;
   let lastActionResult: Observation['lastActionResult'];
 
   for (let n = 1; n <= maxSteps; n++) {
@@ -611,9 +633,28 @@ export async function runReactBrowserTask(params: {
     const actionNote = actionOk ? undefined : String(res?.summary || 'step_failed').slice(0, 180);
     failureStreak = actionOk ? 0 : failureStreak + 1;
     const stepEffect = summarizeStepEffect(selectPrimaryStep(Array.isArray(res?.steps) ? res.steps : []));
+    noEffectStreak = updateNoEffectStreak(noEffectStreak, actionOk, stepEffect);
     lastActionResult = { action: describeAction(action, observation), ok: actionOk, ...(actionNote ? { note: actionNote } : {}), ...(stepEffect ? { effect: stepEffect } : {}) };
     steps.push({ n, action, ok: actionOk, note: actionNote, url: page.url(), ...(stepEffect ? { effect: stepEffect } : {}) });
     emitAgentStep(sessionId, { phase: 'result', step: n, ok: actionOk, url: page.url(), note: actionNote });
+    if (noEffectStreak >= NO_EFFECT_STOP_AFTER) {
+      // Bounded fruitless behavior: consecutive ok actions that observably
+      // changed nothing (dead controls, swallowed clicks) stop here with
+      // their evidence, instead of burning the budget to max_steps.
+      const lastDesc = lastActionResult?.action || describeAction(action, observation);
+      const noEffectHonest = `توقّف الوكيل بعد ${noEffectStreak} أفعال ناجحة متتالية دون أي أثر مرصود على الصفحة (effectObserved=false) بدلاً من استنزاف الخطوات على عناصر لا تستجيب. آخر فعل: ${lastDesc}.`;
+      emitAgentStep(sessionId, { phase: 'result', step: n, ok: false, note: 'consecutive_no_effect_actions', url: page.url() });
+      chatDetail(chatSid, `⚠️ ${noEffectHonest} سيحتاج المتصفح إلى خطوة استرداد مختلفة أو تدخّلك.`);
+      const noEffectStopped = finish('stuck', false, noEffectHonest, undefined, page.url());
+      try {
+        const noEffectFinalObs = await observePage(page);
+        noEffectFinalObs.runtime = getBrowserTelemetrySnapshot(sessionId);
+        noEffectFinalObs.lastActionResult = lastActionResult;
+        noEffectStopped.evidence = evidenceFromObservation(noEffectFinalObs);
+      } catch { /* evidence is best-effort */ }
+      chatPhase(chatSid, 'idle', '');
+      return noEffectStopped;
+    }
     if (failureStreak >= 3) {
       // Telemetry may not be registered for this session (old callers, tests,
       // sid mismatch) — the stop must still be honest, never a TypeError. The

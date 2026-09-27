@@ -1934,9 +1934,11 @@ export async function executePlannedActions(params: {
               } catch { }
               continue;
             }
-            const data = { chosen: shortChosen, verified: true, valueMatch: true, repaired: check.repaired };
+            // The read-back match IS the observed effect: the wanted option is
+            // verifiably in place, so the loop's no-effect streak resets.
+            const data = { chosen: shortChosen, verified: true, valueMatch: true, repaired: check.repaired, effectObserved: true };
             broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now(), data });
-            results.push({ stepId: sid, name, ok: true, message: shortChosen, verified: true, valueMatch: true, repaired: check.repaired });
+            results.push({ stepId: sid, name, ok: true, message: shortChosen, verified: true, valueMatch: true, repaired: check.repaired, effectObserved: true });
             try { broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name }); } catch { }
             continue;
           } catch (e: any) {
