@@ -18,6 +18,7 @@ async function verifyCheckpointResumption() {
 
   process.env.JOE_PRO_ALPHA = '1';
   process.env.OFFLINE_MODE = 'true';
+  process.env.AUTO_APPROVE_ALL = '1';
 
   const projectsRoot = path.join(process.cwd(), 'data/tests/checkpoint_resumption');
   process.env.EXTERNAL_PROJECTS_DIR = projectsRoot;

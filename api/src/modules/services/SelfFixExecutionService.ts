@@ -4,6 +4,7 @@ import path from 'path';
 import { SelfFixService, type SelfFixPlan } from './SelfFixService';
 import { RepairTicketService } from './RepairTicketService';
 import { repairMemory } from '../../core/memory/repair-memory';
+import { workspaceService } from './WorkspaceService';
 
 const ALLOWED_SELF_FIX_TOOLS = new Set([
   'write_file',
@@ -75,10 +76,16 @@ function projectContextAfterRepair(projectContext: any, repairedFile?: unknown):
   // A repair may target a freshly generated child project while the parent
   // pipeline still carries a stale registry root. Rerun verification against
   // the artifact that supplied the repair evidence, not the parent identity.
+  // Clear runId to disable checkpoint resumption for self-fix rerun - all tasks
+  // must be re-executed so verification ledger can properly reuse passed checks.
+  // Preserve the original projectRootRuntimeBound to keep scopeRoot stable across runs.
   return {
     ...(projectContext || {}),
     projectRoot: root,
-    projectRootRuntimeBound: true,
+    projectRootRuntimeBound: projectContext?.projectRootRuntimeBound === true,
+    runId: undefined,
+    // Preserve the verification ledger for checkpoint resumption and self-fix reruns
+    verificationLedger: projectContext?.verificationLedger,
   };
 }
 
@@ -269,6 +276,7 @@ export interface SelfFixExecutionResult {
 export class SelfFixExecutionService {
   static async executeOnce(input: SelfFixExecutionInput): Promise<SelfFixExecutionResult> {
     const { phase, projectContext, selfFixPlan, executionContext } = input;
+    const execCtx = executionContext as { workspaceId?: string; projectRoot?: string };
 
     if (!selfFixPlan?.allowed) {
       return {
@@ -370,7 +378,7 @@ export class SelfFixExecutionService {
       {
         ...(selfFixPlan.suggestedInput || {}),
         sessionId: executionContext.sessionId,
-        workspaceId: executionContext.workspaceId,
+        workspaceId: execCtx.workspaceId,
       },
       projectContext,
     );
@@ -428,7 +436,7 @@ export class SelfFixExecutionService {
           },
           projectName: projectContext?.projectName,
           sessionId: executionContext.sessionId,
-          workspaceId: executionContext.workspaceId,
+          workspaceId: execCtx.workspaceId,
         });
         const candidate = SelfFixService.plan(failedRepairTicket);
         const candidateIsBounded = candidate.allowed
@@ -474,23 +482,42 @@ export class SelfFixExecutionService {
     // react_project, and overwrite the repaired source with the rejected
     // completion. Preserve the rebound target for all file repairs; npm has no
     // file target, so retain its cwd-derived manifest fallback.
-    const repairedFile = (typeof reboundTarget === 'string' && reboundTarget.trim()
-      ? reboundTarget
-      : undefined)
-      || originalTarget
-      || (repairTool === 'npm_manager' && typeof repairInput.cwd === 'string' && repairInput.cwd.trim()
-        ? path.join(repairInput.cwd.trim(), 'package.json')
-        : undefined);
-    const rerunProjectContext = projectContextAfterRepair(projectContext, repairedFile);
+    const repairedFile: string | undefined = (() => {
+      const candidates: (string | undefined)[] = [];
+      if (typeof reboundTarget === 'string' && reboundTarget.trim()) candidates.push(reboundTarget);
+      if (typeof originalTarget === 'string' && originalTarget.trim()) candidates.push(originalTarget);
+      if (repairTool === 'npm_manager' && typeof repairInput.cwd === 'string' && repairInput.cwd.trim()) {
+        candidates.push(path.join(repairInput.cwd.trim(), 'package.json'));
+      }
+      return candidates.find(c => c && c.trim()) ?? undefined;
+    })();
+    // Resolve relative repairedFile to absolute path using project root or workspace root
+    let absoluteRepairedFile: string | undefined;
+    if (repairedFile) {
+      const basePath = projectContext?.projectRoot || execCtx.projectRoot || workspaceService.getActiveRoot(execCtx.workspaceId as string);
+      if (basePath && !path.isAbsolute(repairedFile)) {
+        absoluteRepairedFile = path.resolve(basePath, repairedFile);
+      } else if (path.isAbsolute(repairedFile)) {
+        absoluteRepairedFile = repairedFile;
+      }
+    }
+    console.error('[DEBUG SelfFixExecutionService] repairedFile:', repairedFile, 'absoluteRepairedFile:', absoluteRepairedFile, 'reboundTarget:', reboundTarget, 'originalTarget:', originalTarget);
+    console.error('[DEBUG SelfFixExecutionService] calling projectContextAfterRepair');
+    const rerunProjectContext = projectContextAfterRepair(projectContext, absoluteRepairedFile);
     const resumed = phaseAfterRepair(phase, repairedFile);
     if (resumed.skipped.length > 0) {
       executionContext.onProgress?.(`[self-fix:rerun-phase] skipping repaired task(s): ${resumed.skipped.join('; ').slice(0, 800)}`);
     }
 
-    const rerunResult = await executeTool('phase_executor', { phase: resumed.phase, projectContext: rerunProjectContext }, {
+    // Disable checkpoint resumption for self-fix rerun by omitting runId
+    // This ensures all tasks in the phase are re-executed after repair
+    const rerunExecutionContext = {
       ...executionContext,
+      runId: undefined,
       onProgress: (m: string) => executionContext.onProgress?.(`[self-fix:rerun-phase] ${m}`),
-    });
+    };
+
+    const rerunResult = await executeTool('phase_executor', { phase: resumed.phase, projectContext: rerunProjectContext }, rerunExecutionContext);
 
     const rerunStatus = String(rerunResult?.output?.status || 'unknown');
     const rerunPassed = !!rerunResult?.ok && rerunStatus === 'completed';
@@ -507,7 +534,7 @@ export class SelfFixExecutionService {
         phaseResult: rerunResult,
         projectName: rerunProjectContext?.projectName,
         sessionId: executionContext.sessionId,
-        workspaceId: executionContext.workspaceId,
+        workspaceId: execCtx.workspaceId,
       });
       const candidate = SelfFixService.plan(followUpTicket);
       const candidateIsBounded = candidate.allowed

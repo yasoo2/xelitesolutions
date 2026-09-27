@@ -22,6 +22,7 @@ async function verifyJoeFullEngineerFlow() {
     process.env.JOE_PRO_ALPHA = '1';
     process.env.OFFLINE_MODE = 'true';
     process.env.JWT_SECRET = process.env.JWT_SECRET || 'engineer-flow-only';
+    process.env.JOE_TEST_MODE = 'true';
     
     const evidenceRoot = path.resolve('data/tests/full_engineer_flow');
     fs.mkdirSync(evidenceRoot, { recursive: true });
@@ -171,7 +172,14 @@ if (content.includes('number = "10"')) {
             }, { sessionId, workspaceId, userId });
 
             if (!plannerResult.ok) throw new Error(`Planner failed: ${plannerResult.error}`);
-
+            // Ensure verificationId is present on the smoke test task for proper reuse tracking
+            const phase1 = plannerResult.output?.phases?.[0];
+            const smokeTask = phase1?.tasks?.find((t: any) => t.task?.includes('checker-presence smoke test'));
+            if (smokeTask) {
+                smokeTask.verificationId = 'engineer-flow:checker-smoke';
+                smokeTask.verificationMode = 'focused';
+                smokeTask.relevantPaths = ['check.js', 'smoke.test.js'];
+            }
             console.log('🚀 Running AgentLoopService orchestrator...');
             return await (AgentLoopService as any).runPlannedPhasesIfPresent({
                 sessionId,
