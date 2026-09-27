@@ -355,6 +355,7 @@ export function boundedChangeValue(request: string): string {
 export function rankFilesForEdit(
     request: string,
     files: Array<{ f: string; body: string }>,
+    limit = 2,
 ): { scored: Array<{ f: string; body: string; score: number }>; evidence: number } {
     const words = String(request || '').split(/[\s،,.!؟?]+/).filter(w => w.length >= 3);
     let evidence = 0;
@@ -364,7 +365,7 @@ export function rankFilesForEdit(
         for (const w of words) if (body.includes(w)) found += 3;
         if (found > 0) evidence += 1;
         return { f, body, score: prior + found };
-    }).sort((a, b) => b.score - a.score).slice(0, 2)
+    }).sort((a, b) => b.score - a.score).slice(0, limit)
         .filter(x => x.body.length < 16_000);
     return { scored, evidence };
 }
@@ -391,6 +392,89 @@ export function applyEditBlock(content: string, block: EditBlock): string | null
         }
     } catch { /* pattern too wild — refuse */ }
     return null;
+}
+
+/**
+ * VERIFICATION SUITES ARE READ, NOT REWRITTEN.
+ *
+ * A repair brief shares its vocabulary with the project's checks («overdue»,
+ * «zone», «400»), so a word-overlap ranker keeps offering test.js as an edit
+ * target — and a model under pressure takes the offer: one run «fixed» a
+ * project by duplicating an assertion in its own suite. A repair must satisfy
+ * its checks, never rewrite them. Suites still travel to the model as
+ * READ-ONLY context (expected behaviour lives there); blocks targeting them
+ * are refused unless the request names the suite itself as the edit target.
+ */
+export function isVerificationFile(rel: string): boolean {
+    const norm = String(rel || '').replace(/\\/g, '/').toLowerCase();
+    const segs = norm.split('/');
+    if (segs.slice(0, -1).some(s => ['__tests__', '__test__', 'test', 'tests', 'spec', 'specs', 'e2e', 'check', 'checks'].includes(s))) return true;
+    const base = (segs[segs.length - 1] || '').replace(/\.[a-z0-9]+$/, '');
+    return /^(test|tests|spec|specs|check|checks|e2e)([._-].*)?$/.test(base)
+        || /[._-](test|tests|spec|specs|check|checks|e2e)$/.test(base);
+}
+
+/**
+ * An explicit order to change a suite («update test.js to expect …») names
+ * its target. Anything vaguer («prove it with the test suite») keeps the
+ * suite read-only: running the checks is not editing them.
+ */
+export function isExplicitVerificationTarget(request: string, rel: string): boolean {
+    const base = String(rel || '').replace(/\\/g, '/').split('/').pop() || '';
+    if (!base) return false;
+    return String(request || '').toLowerCase().includes(base.toLowerCase());
+}
+
+/** Material for one grounded second surgical round. */
+export interface SecondRoundMaterial {
+    request: string;
+    refused: EditBlock[];
+    currentBodies: Array<{ f: string; body: string }>;
+    uncovered: Array<{ f: string; body: string }>;
+    readOnly: Array<{ f: string; body: string }>;
+    edited: Array<{ f: string; body: string }>;
+}
+
+function excerptSearch(text: string, maxLines = 12, maxChars = 1200): string {
+    const lines = String(text || '').split('\n').slice(0, maxLines).join('\n');
+    return lines.length > maxChars ? `${lines.slice(0, maxChars)}\n…(truncated)` : lines;
+}
+
+/**
+ * THE QUOTE WAS THE FAILURE, NOT THE INTENT.
+ *
+ * Round 1 hands the model file content and the model still mis-quotes it —
+ * paraphrased lines, skimmed regions, guesses from memory. The refusal is
+ * correct (an unquoted edit is a guess), but stopping there strands every
+ * multi-part repair at whatever happened to match. The second round shows
+ * the model its own failed quotes next to the CURRENT content and asks for
+ * exact re-quotes, plus any ranked files round 1 never showed it. One round,
+ * same gates — a re-grounding, not a loop.
+ */
+export function composeSecondRoundUserContent(m: SecondRoundMaterial): string {
+    // Each failed quote sits directly above the CURRENT content it must be
+    // re-quoted from: a small model asked "what is the exact content of the
+    // FAILED QUOTES" when quotes and files travelled in separate sections.
+    const paired = m.currentBodies.map(s => {
+        const quotes = m.refused
+            .filter(b => b.file === s.f)
+            .map(b => `YOUR FAILED QUOTE for ${b.file} (wrong — re-quote from CURRENT CONTENT below):\n\`\`\`\n${excerptSearch(b.search)}\n\`\`\``)
+            .join('\n\n');
+        return `FILE: ${s.f}\n${quotes}\nCURRENT CONTENT of FILE: ${s.f} (quote SEARCH character-for-character from here):\n\`\`\`\n${s.body}\n\`\`\``;
+    });
+    // A refused quote without CURRENT content must still be visible: dropping
+    // it would ask the model to fix a quote it can no longer see.
+    const orphans = m.refused
+        .filter(b => !m.currentBodies.some(s => s.f === b.file))
+        .map(b => `YOUR FAILED QUOTE for ${b.file} (no CURRENT CONTENT available for this file):\n\`\`\`\n${excerptSearch(b.search)}\n\`\`\``);
+    const cards = [
+        ...paired,
+        ...orphans,
+        ...m.edited.map(s => `FILE: ${s.f} (already edited in round 1 — CURRENT content; you may extend it, quoting exactly from this)\n\`\`\`\n${s.body}\n\`\`\``),
+        ...m.uncovered.map(s => `FILE: ${s.f}\n\`\`\`\n${s.body}\n\`\`\``),
+        ...m.readOnly.map(s => `FILE: ${s.f} (READ-ONLY — states expected behaviour; NEVER emit blocks for this file)\n\`\`\`\n${s.body}\n\`\`\``),
+    ].join('\n\n');
+    return `THE REQUEST: ${m.request}\n\n${cards}\n\nOUTPUT: corrected FILE/SEARCH/REPLACE blocks only. No questions, no explanations.`;
 }
 
 /** The esbuild syntax gate: does this file still parse after the edit? */
@@ -482,8 +566,10 @@ export function adoptLocalImage(src: string, projDir: string, alt: string): { sr
 const EDITABLE = /\.(jsx?|tsx?|mjs|css|html|json)$/i;
 // `.joe-versions` is the project's own history. An editor that can see into it
 // would offer the model yesterday's copy of App.jsx as a file to change — and a
-// rewritten past is worse than no past at all.
-const SKIP_DIRS = new Set(['node_modules', 'dist', '.git', 'build', '.joe-versions']);
+// rewritten past is worse than no past at all. `.engineering-checkpoints` is
+// machine resume-state for the same reason: it once ranked as an edit
+// candidate and would have the model "repair" its own run ledger.
+const SKIP_DIRS = new Set(['node_modules', 'dist', '.git', 'build', '.joe-versions', '.engineering-checkpoints']);
 
 function listFiles(dir: string, base = ''): string[] {
     const out: string[] = [];
@@ -1644,13 +1730,27 @@ export class ProjectEditTool extends BaseTool {
             const { scored } = rankFilesForEdit(
                 request,
                 files.map(f => ({ f, body: fs.readFileSync(path.join(dir, f), 'utf-8') })),
+                6,
             );
             if (!scored.length) {
                 return { ok: true, output: { message: isAr ? 'لم أستطع تحديد الملف المقصود — سمِّ الملف أو الجزء المطلوب تعديله.' : 'Could not locate the file to edit — name the file or the part to change.' }, logs } as any;
             }
+            // Verification suites state the expected behaviour; a repair must
+            // satisfy them, never rewrite them — unless the request names the
+            // suite itself as the edit target.
+            const explicitlyTargeted = (f: string) => isExplicitVerificationTarget(request, f);
+            const editableFiles = scored.filter(s => !isVerificationFile(s.f) || explicitlyTargeted(s.f)).slice(0, 2);
+            const readOnlyFiles = scored.filter(s => isVerificationFile(s.f) && !explicitlyTargeted(s.f) && s.score > 0).slice(0, 2);
+            if (!editableFiles.length) {
+                return { ok: true, output: { message: isAr ? 'الملفات المطابقة هي ملفات تحقق، والإصلاح لا يعيد كتابتها — سمِّ ملف المنتج المطلوب تعديله.' : 'The matching files are verification suites, which a repair must not rewrite — name the product file to change.' }, logs } as any;
+            }
+            const sendList = [
+                ...editableFiles.map(s => ({ f: s.f, body: s.body, note: '' })),
+                ...readOnlyFiles.map(s => ({ f: s.f, body: s.body, note: ' (READ-ONLY — states expected behaviour; NEVER emit blocks for this file)' })),
+            ];
             if (sessionId) broadcastThinkingDetail(sessionId, isAr
-                ? `🔬 تعديل جراحي: ${scored.map(s => s.f).join('، ')}`
-                : `🔬 Surgical edit: ${scored.map(s => s.f).join(', ')}`);
+                ? `🔬 تعديل جراحي: ${editableFiles.map(s => s.f).join('، ')}${readOnlyFiles.length ? ` (للقراءة فقط: ${readOnlyFiles.map(s => s.f).join('، ')})` : ''}`
+                : `🔬 Surgical edit: ${editableFiles.map(s => s.f).join(', ')}${readOnlyFiles.length ? ` (read-only: ${readOnlyFiles.map(s => s.f).join(', ')})` : ''}`);
             const prompt = `You edit code SURGICALLY. Change ONLY what the request asks; never rewrite whole files.
 Reply with one or more blocks in EXACTLY this format — nothing else:
 
@@ -1661,16 +1761,16 @@ FILE: <relative path>
 <the replacement lines>
 >>>>>>> REPLACE
 
-Rules: the SEARCH text must be an exact quote of what is in the file. Keep edits minimal. ${artifactIsAr ? 'Any human-visible text you write must be Arabic.' : ''}
+Rules: the SEARCH text must be an exact quote of what is in the file — copy every line in full, never abbreviate a line with ... or similar. Keep edits minimal. ${artifactIsAr ? 'Any human-visible text you write must be Arabic.' : ''}
 
 If the request does NOT say what to change in these files — it names no element, no text, no colour, no file, and no behaviour that is in them — then do NOT invent one. Reply with exactly one line and nothing else:
 CANNOT TELL: <what you would need the user to say>
-This is a correct answer, not a failure. Changing something the user did not ask for is the failure.`;
+This is a correct answer, not a failure. Changing something the user did not ask for is the failure. Files marked READ-ONLY state expected behaviour: read them, never emit blocks for them.`;
             let raw = '';
             try {
                 raw = await routeToModel([
                     { role: 'system', content: prompt },
-                    { role: 'user', content: `THE REQUEST: ${request}\n\n${scored.map(s => `FILE: ${s.f}\n\`\`\`\n${s.body}\n\`\`\``).join('\n\n')}` },
+                    { role: 'user', content: `THE REQUEST: ${request}\n\n${sendList.map(s => `FILE: ${s.f}${s.note}\n\`\`\`\n${s.body}\n\`\`\``).join('\n\n')}` },
                 ], undefined, undefined, undefined, undefined, undefined, undefined, context);
             } catch (e: any) {
                 return { ok: false, error: `edit_model_failed: ${e?.message || e}`, logs } as any;
@@ -1694,7 +1794,7 @@ This is a correct answer, not a failure. Changing something the user did not ask
                 try {
                     raw = await routeToModel([
                         { role: 'system', content: retryPrompt },
-                        { role: 'user', content: `THE REQUEST: ${request}\n\n${scored.map(s => `FILE: ${s.f}\n\`\`\`\n${s.body}\n\`\`\``).join('\n\n')}` },
+                        { role: 'user', content: `THE REQUEST: ${request}\n\n${sendList.map(s => `FILE: ${s.f}${s.note}\n\`\`\`\n${s.body}\n\`\`\``).join('\n\n')}` },
                     ], undefined, undefined, undefined, undefined, undefined, undefined, context);
                     cannot = modelCannotTell(raw);
                 } catch (e: any) {
@@ -1720,19 +1820,71 @@ This is a correct answer, not a failure. Changing something the user did not ask
                     logs,
                 } as any;
             }
+            const readOnlyNames = new Set(readOnlyFiles.map(s => s.f));
+            const applySurgicalBlocks = (blocks: EditBlock[]): EditBlock[] => {
+                const mismatched: EditBlock[] = [];
+                for (const b of blocks.slice(0, 8)) {
+                    if (readOnlyNames.has(b.file)) { refused.push(`${b.file}: verification suite is read-only — refused (repair the product, not its checks)`); continue; }
+                    const abs = path.join(dir, b.file);
+                    if (!fs.existsSync(abs)) { refused.push(`${b.file}: no such file`); continue; }
+                    const current = touched.find(t => t.file === b.file)?.after ?? fs.readFileSync(abs, 'utf-8');
+                    const next = applyEditBlock(current, b);
+                    if (next === null) { refused.push(`${b.file}: SEARCH text not found — refused (the model quoted code that is not there)`); mismatched.push(b); continue; }
+                    const gate = syntaxOk(b.file, next);
+                    if (!gate.ok) { refused.push(`${b.file}: edit breaks the syntax (${gate.error}) — refused`); continue; }
+                    write(b.file, next);
+                }
+                return mismatched;
+            };
             const blocks = parseEditBlocks(raw);
             logs.push(`model returned ${blocks.length} edit block(s)`);
-            for (const b of blocks.slice(0, 8)) {
-                const abs = path.join(dir, b.file);
-                if (!fs.existsSync(abs)) { refused.push(`${b.file}: no such file`); continue; }
-                const current = touched.find(t => t.file === b.file)?.after ?? fs.readFileSync(abs, 'utf-8');
-                const next = applyEditBlock(current, b);
-                if (next === null) { refused.push(`${b.file}: SEARCH text not found — refused (the model quoted code that is not there)`); continue; }
-                const gate = syntaxOk(b.file, next);
-                if (!gate.ok) { refused.push(`${b.file}: edit breaks the syntax (${gate.error}) — refused`); continue; }
-                write(b.file, next);
-            }
+            const roundOneMismatched = applySurgicalBlocks(blocks);
             for (const r of refused) logs.push(`refused: ${r}`);
+            // ── grounded second round: re-quote refused blocks, cover the rest ──
+            // Round 1 mis-quotes are evidence the model's intent exceeded its
+            // grounding — not evidence the request is unservable. One more
+            // round shows the model its failed quotes beside the CURRENT file
+            // content plus ranked files round 1 never sent it. Same block cap,
+            // same syntax gate, same refusal rules; a second CANNOT TELL or a
+            // provider failure ends the attempt with honest logs, never a
+            // third call.
+            if (roundOneMismatched.length) {
+                const touchedNames = new Set(touched.map(t => t.file));
+                const mismatchedNames = new Set(roundOneMismatched.map(b => b.file));
+                const uncovered = scored.filter(s => !isVerificationFile(s.f) && !touchedNames.has(s.f) && !mismatchedNames.has(s.f) && s.score > 0).slice(0, 2);
+                const reground = [...mismatchedNames]
+                    .filter(f => fs.existsSync(path.join(dir, f)))
+                    .map(f => ({ f, body: fs.readFileSync(path.join(dir, f), 'utf-8') }));
+                // Round 1's own edits are the context follow-ups ground on: a
+                // live run declined round 2 asking for the server file it had
+                // just changed. Bounded like everything else here.
+                const editedCtx = touched
+                    .filter(t => !mismatchedNames.has(t.file))
+                    .slice(0, 2)
+                    .map(t => ({ f: t.file, body: fs.readFileSync(path.join(dir, t.file), 'utf-8') }));
+                logs.push(`surgical second round: re-grounding ${roundOneMismatched.length} refused block(s) in ${reground.length} file(s) + ${uncovered.length} uncovered file(s) + ${editedCtx.length} edited file(s)`);
+                if (sessionId) broadcastThinkingDetail(sessionId, isAr
+                    ? `🔁 جولة تثبيت ثانية: ${reground.map(r => r.f).join('، ')}`
+                    : `🔁 Grounded second round: ${reground.map(r => r.f).join(', ')}`);
+                try {
+                    const raw2 = await routeToModel([
+                        { role: 'system', content: `${prompt}\n\nSECOND ROUND: every quote marked YOUR FAILED QUOTE did not match its file. Re-quote each one character-for-character from the CURRENT CONTENT shown directly beneath it — never from memory. Output corrected blocks only.` },
+                        { role: 'user', content: composeSecondRoundUserContent({ request, refused: roundOneMismatched, currentBodies: reground, uncovered, readOnly: readOnlyFiles.map(s => ({ f: s.f, body: s.body })), edited: editedCtx }) },
+                    ], undefined, undefined, undefined, undefined, undefined, undefined, context);
+                    const cannot2 = modelCannotTell(raw2);
+                    if (cannot2) {
+                        logs.push(`surgical second round declined: ${cannot2}`);
+                    } else {
+                        const blocks2 = parseEditBlocks(raw2);
+                        logs.push(`second round returned ${blocks2.length} edit block(s)`);
+                        const refusedBefore = refused.length;
+                        applySurgicalBlocks(blocks2);
+                        for (const r of refused.slice(refusedBefore)) logs.push(`refused: ${r}`);
+                    }
+                } catch (e: any) {
+                    logs.push(`surgical second round failed: ${String(e?.message || e).slice(0, 120)}`);
+                }
+            }
         }
 
         if (!touched.length && !deterministicIntentHandled) {
