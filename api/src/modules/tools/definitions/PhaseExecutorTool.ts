@@ -1574,6 +1574,7 @@ export class PhaseExecutorTool implements ToolDefinition {
                 || workspaceService.getActiveRoot(executionContext.workspaceId)
                 || '',
             ).trim();
+            console.error('[DEBUG PhaseExecutor] scopeRoot calculation:', { cwd: toolArgs.cwd, projectPath: toolArgs.projectPath, path: toolArgs.path, executionContextProjectRootRuntimeBound: executionContext?.projectRootRuntimeBound, executionContextProjectRoot: executionContext?.projectRoot, projectContextProjectRootRuntimeBound: projectContext?.projectRootRuntimeBound, projectContextProjectRoot: projectContext?.projectRoot, workspaceRoot: workspaceService.getActiveRoot(executionContext.workspaceId), finalScopeRoot: scopeRoot });
             const verificationId = String(
                 task.verificationId
                 || rawTaskArgs.verificationId
@@ -1590,7 +1591,7 @@ export class PhaseExecutorTool implements ToolDefinition {
             if (!relevantPaths.length && !boundary) relevantPaths.push(...changedPhaseFiles);
             const runtimeRevision = runtimeRevisionFor(toolName);
             delete toolArgs.verificationId;
-            delete toolArgs.verificationMode;
+delete toolArgs.verificationMode;
             delete toolArgs.verificationBoundary;
             delete toolArgs.verificationRelevantPaths;
             delete toolArgs.verificationRuntimeRevision;
