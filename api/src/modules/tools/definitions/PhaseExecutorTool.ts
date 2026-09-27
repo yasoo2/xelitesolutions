@@ -2328,7 +2328,8 @@ const skippedCount = taskResults.filter(r => r.execution === 'skipped').length;
                         ? 'verification_unavailable: unsupported verification tool contract'
                         : plannedArgsIssue(vToolName, verificationArgs);
                     if (verificationArgsIssue) {
-                        appendLog(`[PhaseExecutor] ⚠️ Verification input invalid: ${verificationArgsIssue}`);
+                        const rejectedCommand = String((verificationArgs as any)?.command || '').trim().replace(/\s+/g, ' ').slice(0, 160);
+                        appendLog(`[PhaseExecutor] ⚠️ Verification input invalid: ${verificationArgsIssue} (requested=${requestedVerificationTool} resolved=${vToolName}${rejectedCommand ? ` command=${JSON.stringify(rejectedCommand)}` : ''})`);
                         const checkerError = vToolName === 'browser_run'
                             ? `verification_unavailable: ${verificationArgsIssue}`
                             : verificationArgsIssue;

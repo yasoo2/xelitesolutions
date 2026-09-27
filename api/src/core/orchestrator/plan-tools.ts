@@ -31,6 +31,7 @@
  */
 import { TOOL_ALIASES } from '../../modules/services/ToolService';
 import { syntaxFileKind } from '../../shared/syntax-contract';
+import { isVerificationTool } from '../quality/verification-ledger';
 
 /**
  * Runtime-bound fields are the small, explicit exception to the planner's
@@ -912,6 +913,20 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
                 && !observedOutputPaths.some((candidate: string) => candidate.replace(/^\.\//, '') === requestedReadPath);
             const referencesUnprovenFile = Boolean(unprovenVerificationReference);
             const runsBeforeRunnableArtifact = verificationTool === 'project_run' && !runHasRunnableEvidence;
+            // A mid-phase smoke command is not a checker contract. The phase
+            // gate (PhaseExecutorTool) only accepts test-runner invocations as
+            // shell_execute verifications, so a runtime smoke run such as
+            // `node index.js < sample.txt` is legitimate planner behavior that
+            // fails that contract and kills the whole build before the real
+            // checks run (CRITICAL-REAL-JOE-UI-001 run 4b: taglines died 1/4
+            // on exactly this). Rewrite it into the same output-existence
+            // observation used for other unverifiable checkers, so execution
+            // continues to the genuine test phases. Package-script checks keep
+            // their own handling below (unproven -> project_detect, unless the
+            // plan itself produced the manifest).
+            const shellSmokeWithoutCheckerContract = verificationTool === 'shell_execute'
+                && !isVerificationTool(verificationTool, verificationArgs, false, true)
+                && !unprovenProjectCheckIssue(verificationArgs?.command, candidateCheckCommands);
             const verificationTestType = norm(verificationArgs?.testType);
             const verificationProjectPath = verificationArgs?.projectPath || verificationArgs?.path || '';
             const verificationTestEvidenceCandidates = [...producedPaths, ...phaseProducedPaths, ...discoveredTestPaths];
@@ -933,7 +948,7 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
                     ? 'لا يوجد script تكاملي معلن وقابل للتشغيل لهذا المشروع'
                     : 'لا يوجد ملف اختبار مثبت داخل مسار المشروع أو test_generator سابق';
                 notes.push(`[plan] أزلتُ تحقق auto_tester من نوع ${verificationTestType} غير المدعوم — ${reason}؛ لن أدّعي نجاح اختبار غير موجود.`);
-            } else if (!verificationTool || generatesInsteadOfObserving.has(verificationTool) || readsUnprovenPhaseOutput || referencesUnprovenFile || runsBeforeRunnableArtifact) {
+            } else if (!verificationTool || generatesInsteadOfObserving.has(verificationTool) || readsUnprovenPhaseOutput || referencesUnprovenFile || runsBeforeRunnableArtifact || shellSmokeWithoutCheckerContract) {
                 verification = observedOutputPath
                     ? {
                         task: `Verify phase output exists: ${observedOutputPath}`,
@@ -947,12 +962,21 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
                     };
                 const reason = readsUnprovenPhaseOutput || referencesUnprovenFile
                     ? 'تحققاً مولّداً يشير إلى ملفاً غير مثبت'
-                    : runsBeforeRunnableArtifact
-                        ? 'تشغيلاً حياً قبل إنتاج artifact قابل للتشغيل'
-                        : 'تحققاً مولّداً';
-                notes.push(observedOutputPath
+                    : shellSmokeWithoutCheckerContract
+                        ? 'أمر تشغيل حي ليس عقد فحص معترفاً به'
+                        : runsBeforeRunnableArtifact
+                            ? 'تشغيلاً حياً قبل إنتاج artifact قابل للتشغيل'
+                            : 'تحققاً مولّداً';
+                // Name the dropped smoke command so the next such rewrite is
+                // diagnosable from the session log alone (run 4b needed a
+                // run-evidence dig to recover `node index.js < sample.txt`).
+                const droppedSmokeCommand = shellSmokeWithoutCheckerContract
+                    ? String(verificationArgs?.command || '').trim().replace(/\s+/g, ' ').slice(0, 120)
+                    : '';
+                const smokeSuffix = droppedSmokeCommand ? `؛ الأمر المسقط: «${droppedSmokeCommand}»` : '';
+                notes.push((observedOutputPath
                     ? `[plan] استبدلتُ ${reason} بقراءة المخرج المثبت «${observedOutputPath}»؛ التحقق يلاحظ الناتج ولا ينشئ أو يفترض ملفاً متخيلاً.`
-                    : `[plan] استبدلتُ ${reason} بفحص المشروع؛ لا يوجد مخرج مساري مثبت في هذه المرحلة لأفحصه.`);
+                    : `[plan] استبدلتُ ${reason} بفحص المشروع؛ لا يوجد مخرج مساري مثبت في هذه المرحلة لأفحصه.`) + smokeSuffix);
             } else {
                 const verificationIssue = plannedArgsIssue(verificationTool, verificationArgs)
                     || (verificationTool === 'shell_execute'
