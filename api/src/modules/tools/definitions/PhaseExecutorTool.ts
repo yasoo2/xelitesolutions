@@ -1569,6 +1569,7 @@ export class PhaseExecutorTool implements ToolDefinition {
                 toolArgs.cwd
                 || toolArgs.projectPath
                 || toolArgs.path
+                || (executionContext?.projectRootRuntimeBound === true ? executionContext?.projectRoot : '')
                 || (projectContext?.projectRootRuntimeBound === true ? projectContext?.projectRoot : '')
                 || workspaceService.getActiveRoot(executionContext.workspaceId)
                 || '',

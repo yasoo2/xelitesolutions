@@ -75,10 +75,13 @@ function projectContextAfterRepair(projectContext: any, repairedFile?: unknown):
   // A repair may target a freshly generated child project while the parent
   // pipeline still carries a stale registry root. Rerun verification against
   // the artifact that supplied the repair evidence, not the parent identity.
+  // Clear runId to disable checkpoint resumption for self-fix rerun - all tasks
+  // must be re-executed so verification ledger can properly reuse passed checks.
   return {
     ...(projectContext || {}),
     projectRoot: root,
     projectRootRuntimeBound: true,
+    runId: undefined,
     // Preserve the verification ledger for checkpoint resumption and self-fix reruns
     verificationLedger: projectContext?.verificationLedger,
   };
@@ -489,10 +492,15 @@ export class SelfFixExecutionService {
       executionContext.onProgress?.(`[self-fix:rerun-phase] skipping repaired task(s): ${resumed.skipped.join('; ').slice(0, 800)}`);
     }
 
-    const rerunResult = await executeTool('phase_executor', { phase: resumed.phase, projectContext: rerunProjectContext }, {
+    // Disable checkpoint resumption for self-fix rerun by omitting runId
+    // This ensures all tasks in the phase are re-executed after repair
+    const rerunExecutionContext = {
       ...executionContext,
+      runId: undefined,
       onProgress: (m: string) => executionContext.onProgress?.(`[self-fix:rerun-phase] ${m}`),
-    });
+    };
+
+    const rerunResult = await executeTool('phase_executor', { phase: resumed.phase, projectContext: rerunProjectContext }, rerunExecutionContext);
 
     const rerunStatus = String(rerunResult?.output?.status || 'unknown');
     const rerunPassed = !!rerunResult?.ok && rerunStatus === 'completed';

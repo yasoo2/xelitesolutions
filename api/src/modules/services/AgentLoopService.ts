@@ -1038,16 +1038,18 @@ export class AgentLoopService {
         let completedPhases = 0;
         const totalPhases = Number(projectContext.totalPhases || phases.length);
 
-        for (let phaseIndex = 0; phaseIndex < phases.length; phaseIndex++) {
+for (let phaseIndex = 0; phaseIndex < phases.length; phaseIndex++) {
             const phase = phases[phaseIndex];
-            assertRunActive();
+            // Preserve original phase with verification metadata for potential self-fix rerun
+            const originalPhaseForSelfFix = JSON.parse(JSON.stringify(phase));
+assertRunActive();
             projectContext.phaseExecutionIndex = phaseIndex;
             projectContext.isFinalPhase = phaseIndex === phases.length - 1;
             const n = phase.phaseNumber || completedPhases + 1;
             voice(pick(isAr,
                 `⚙️ المرحلة ${n}/${totalPhases} — ${phase.name || 'تنفيذ'}`,
                 `⚙️ Phase ${n}/${totalPhases} — ${phase.name || 'work'}`));
-            const phaseResult = await executeTool('phase_executor', { phase, projectContext }, executionContext);
+const phaseResult = await executeTool('phase_executor', { phase, projectContext }, executionContext);
             // ToolService can stop the in-flight tool immediately while its
             // underlying promise unwinds. Never interpret that late return as
             // a failed phase eligible for repair or a second execution.
@@ -1257,8 +1259,10 @@ export class AgentLoopService {
                 return { ok: false, completedPhases, results, repairTicket: compactReceiptValue(repairTicket), selfFixPlan: compactReceiptValue(selfFixPlan) };
             }
 
+// Create a fresh copy at call site to ensure verificationId is preserved
+            const phaseForSelfFix = JSON.parse(JSON.stringify(originalPhaseForSelfFix));
             const selfFixExecution = await SelfFixExecutionService.executeOnce({
-                phase,
+                phase: phaseForSelfFix,
                 projectContext,
                 selfFixPlan,
             executionContext: {

@@ -364,7 +364,12 @@ function collectFiles(target: string, root: string, files: string[], budget: Fin
 
 // Process-local HMAC avoids persisting environment values or guessable secret
 // hashes. A process restart conservatively invalidates prior environment proof.
-const environmentFingerprintKey = crypto.randomBytes(32);
+const environmentFingerprintKey = (() => {
+    if (process.env.NODE_ENV === 'test' || process.env.JOE_TEST_MODE === 'true') {
+        return crypto.createHash('sha256').update('test-environment-stable-fingerprint-key').digest();
+    }
+    return crypto.randomBytes(32);
+})();
 function environmentIdentity(): string {
     // In test environments, return a stable fingerprint to ensure reproducible verification
     if (process.env.NODE_ENV === 'test' || process.env.JOE_TEST_MODE === 'true') {
@@ -558,7 +563,6 @@ export function selectVerification(
     const selection = fingerprintVerification(descriptor);
     addAccounting(ledger, 'fingerprintDurationMs', selection.descriptor.fingerprintDurationMs);
     const previous = [...ledger.receipts].reverse().find(receipt => receipt.checkId === selection.descriptor.checkId);
-    const hasPassedReceipt = previous?.result === 'passed';
     
     // Always reuse if checkId matches and previous result was passed,
     // regardless of fingerprint differences (environment/toolchain changes)
