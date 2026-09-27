@@ -251,8 +251,25 @@ export class ImportProjectTool extends BaseTool {
         let dir = '';
         const localPath = String(input?.path || '').trim();
         if (localPath) {
-            if (!fs.existsSync(localPath)) return { ok: false, error: `no_such_path: ${localPath}`, logs };
-            dir = localPath;
+            // A relative folder arrives bare from the model ("shelfspace"): anchor it
+            // to THIS session's workspace, never the server process directory —
+            // and keep an absolute folder inside the workspace. EVAL-001 proved
+            // the raw check answered no_such_path for a workspace folder while
+            // accepting an absolute folder anywhere on the machine.
+            const pathWorkspaceId =
+                String(context?.workspaceId || '').trim()
+                || String((input as any)?.__workspaceId || '').trim()
+                || String((input as any)?.workspaceId || '').trim()
+                || undefined;
+            let resolvedLocal = '';
+            try {
+                const { resolveToolPath } = require('../utils');
+                resolvedLocal = resolveToolPath(localPath, { workspaceId: pathWorkspaceId });
+            } catch (e: any) {
+                return { ok: false, error: String(e?.message || e), logs };
+            }
+            if (!fs.existsSync(resolvedLocal)) return { ok: false, error: `no_such_path: ${localPath}`, logs };
+            dir = resolvedLocal;
             term(`import_project: opening local folder ${dir}`);
         } else {
             const url = String(input?.url || '').trim() || githubUrlFrom(request) || '';
