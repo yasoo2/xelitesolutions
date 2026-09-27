@@ -119,7 +119,7 @@ export function recordProviderCircuitFailure(key: string, error: unknown, now = 
         && (retryAt <= previous.retryAt || !['RATE_LIMITED', 'QUOTA_EXHAUSTED'].includes(state))) return;
     if (!circuits.has(key) && circuits.size >= MAX_CIRCUITS) {
         for (const [savedKey, saved] of circuits) {
-            if (saved.retryAt <= now && !saved.probingUntil) circuits.delete(savedKey);
+            if (saved.retryAt <= now && saved.probingUntil <= now) circuits.delete(savedKey);
         }
         if (circuits.size >= MAX_CIRCUITS) {
             // Preserve active quotas. Saturation fails closed until the longest
@@ -134,15 +134,15 @@ export function recordProviderCircuitFailure(key: string, error: unknown, now = 
 
 export function providerCircuitStatus(key: string, now = Date.now()): { blocked: boolean; state?: ProviderState; retryAt?: number } {
     const circuit = circuits.get(key);
-    return circuit ? { blocked: circuit.retryAt > now || circuit.probingUntil > 0, state: circuit.state, retryAt: circuit.retryAt }
+    return circuit ? { blocked: circuit.retryAt > now || circuit.probingUntil > now, state: circuit.state, retryAt: circuit.retryAt }
         : capacityRetryAt > now ? { blocked: true, state: 'TEMPORARILY_UNAVAILABLE', retryAt: capacityRetryAt } : { blocked: false };
 }
 
-/** Only one concurrent request may probe a circuit after its reset window. */
+/** One active lease probes after reset. Expire orphaned leases when a transport ignores cancellation. */
 export function claimProviderCircuit(key: string, now = Date.now()): { allowed: boolean; probe: boolean; lease?: number } {
     const circuit = circuits.get(key);
     if (!circuit) return { allowed: capacityRetryAt <= now, probe: false };
-    if (circuit.retryAt > now || circuit.probingUntil > 0) return { allowed: false, probe: false };
+    if (circuit.retryAt > now || circuit.probingUntil > now) return { allowed: false, probe: false };
     circuit.probingUntil = now + PROVIDER_RECOVERY_TIMEOUT_MS;
     circuit.lease = ++nextProbeLease;
     return { allowed: true, probe: true, lease: circuit.lease };

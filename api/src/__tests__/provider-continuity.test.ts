@@ -15,7 +15,7 @@ import * as localBrain from '../core/llm/local-brain';
 import {
     aiCostPolicy, claimProviderCircuit, markProviderCircuitHealthy, providerAllowedByCost,
     providerCircuitKey, providerCircuitStatus, providerRetryAfterMs, recordProviderCircuitFailure,
-    releaseProviderCircuitProbe, resetProviderContinuityForTests,
+    releaseProviderCircuitProbe, resetProviderContinuityForTests, PROVIDER_RECOVERY_TIMEOUT_MS,
 } from '../core/llm/provider-continuity';
 
 const registry = providers as any;
@@ -80,6 +80,29 @@ describe('free-only provider continuity through routeToModel', () => {
         } finally { clock.mockRestore(); }
     });
 
+    it('recovers a keyless provider after a timed-out health probe ignores cancellation', async () => {
+        jest.useFakeTimers();
+        try {
+            const key = providerCircuitKey('DeepSeek (Pollinations)');
+            recordProviderCircuitFailure(key, { status: 429, headers: { 'retry-after': '1' } }, Date.now() - 2_000);
+            let finishLate!: (value: string) => void;
+            registry.deepSeekProvider.chatComplete.mockImplementationOnce(() =>
+                new Promise<string>(resolve => { finishLate = resolve; }));
+            registry.deepSeekProvider.chatComplete.mockResolvedValue('OK');
+
+            const timedOut = verifyProviderDirect('deepseek');
+            await jest.advanceTimersByTimeAsync(20_001);
+            expect(await timedOut).toMatchObject({ ok: false });
+            expect(providerCircuitStatus(key).blocked).toBe(true);
+
+            await jest.advanceTimersByTimeAsync(60_001);
+            expect(await verifyProviderDirect('deepseek')).toMatchObject({ ok: true });
+            expect(registry.deepSeekProvider.chatComplete).toHaveBeenCalledTimes(2);
+            finishLate('late response from the abandoned probe');
+            await Promise.resolve();
+            expect(providerCircuitStatus(key).blocked).toBe(false);
+        } finally { jest.useRealTimers(); }
+    });
     it('reaches a free fallback after the Auto local preflight times out', async () => {
         jest.useFakeTimers();
         try {
@@ -234,11 +257,33 @@ describe('provider reset and bounded half-open probe', () => {
         const claim = claimProviderCircuit('shared', 2001);
         releaseProviderCircuitProbe('shared');
         releaseProviderCircuitProbe('shared', (claim.lease || 0) + 1);
-        expect(claimProviderCircuit('shared', 50_000).allowed).toBe(false);
+        expect(claimProviderCircuit('shared', 2_001 + PROVIDER_RECOVERY_TIMEOUT_MS - 1).allowed).toBe(false);
         releaseProviderCircuitProbe('shared', claim.lease);
-        expect(claimProviderCircuit('shared', 50_000).allowed).toBe(true);
+        expect(claimProviderCircuit('shared', 2_001 + PROVIDER_RECOVERY_TIMEOUT_MS - 1).allowed).toBe(true);
     });
 
+    it('reclaims a timed-out probe lease without letting its late owner clear the replacement', () => {
+        recordProviderCircuitFailure('orphaned', { status: 429, headers: { 'retry-after': '1' } }, 1_000);
+        const firstAt = 2_001;
+        const first = claimProviderCircuit('orphaned', firstAt);
+        expect(first).toMatchObject({ allowed: true, probe: true });
+        expect(claimProviderCircuit('orphaned', firstAt + PROVIDER_RECOVERY_TIMEOUT_MS - 1).allowed).toBe(false);
+
+        const recoveryAt = firstAt + PROVIDER_RECOVERY_TIMEOUT_MS;
+        const second = claimProviderCircuit('orphaned', recoveryAt);
+        expect(second).toMatchObject({ allowed: true, probe: true });
+        expect(second.lease).not.toBe(first.lease);
+        releaseProviderCircuitProbe('orphaned', first.lease);
+        markProviderCircuitHealthy('orphaned', first.lease, recoveryAt + 1);
+        expect(providerCircuitStatus('orphaned', recoveryAt + 1).blocked).toBe(true);
+        expect(claimProviderCircuit('orphaned', recoveryAt + 1).allowed).toBe(false);
+
+        releaseProviderCircuitProbe('orphaned', second.lease);
+        const third = claimProviderCircuit('orphaned', recoveryAt + 2);
+        expect(third).toMatchObject({ allowed: true, probe: true });
+        markProviderCircuitHealthy('orphaned', third.lease, recoveryAt + 2);
+        expect(providerCircuitStatus('orphaned', recoveryAt + 2)).toEqual({ blocked: false });
+    });
     it('does not treat paid or remote singleton aliases as free', () => {
         process.env.LOCAL_LLM_BASE_URL = 'https://billed.example/v1';
         expect(providerAllowedByCost('Local (Auto)')).toBe(false);
@@ -270,6 +315,18 @@ describe('provider reset and bounded half-open probe', () => {
         expect(providerCircuitStatus('key', reset)).toEqual({ blocked: false });
     });
 
+    it('reuses expired probe slots instead of globally blocking a fresh provider', () => {
+        const recoveryAt = 2_001 + PROVIDER_RECOVERY_TIMEOUT_MS;
+        for (let index = 0; index < 512; index++) {
+            const key = 'expired-probe-' + index;
+            recordProviderCircuitFailure(key, { status: 429, headers: { 'retry-after': '1' } }, 1_000);
+            expect(claimProviderCircuit(key, 2_001).allowed).toBe(true);
+        }
+        recordProviderCircuitFailure('fresh', { status: 429, headers: { 'retry-after': '1' } }, recoveryAt);
+        expect(providerCircuitStatus('fresh', recoveryAt + 1)).toMatchObject({
+            blocked: true, state: 'RATE_LIMITED',
+        });
+    });
     it('keeps active quota memory when the bounded circuit store fills', () => {
         for (let index = 0; index < 520; index++) recordProviderCircuitFailure('key-' + index, { status: 429, headers: { 'retry-after': '120' } }, 1_000);
         expect(claimProviderCircuit('key-0', 2_000).allowed).toBe(false);
