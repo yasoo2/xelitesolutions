@@ -465,6 +465,170 @@ function extractMissingNpmTestDependency(ticket: RepairTicket): MissingNpmTestDe
   return null;
 }
 
+interface TestHarnessMismatchEvidence {
+  testFile: string;
+  undefinedGlobal: string;
+  usageLine: string;
+  runnerLabel: string;
+  projectCwd: string;
+  observedError: string;
+}
+
+/**
+ * Bare test-framework globals. These are framework API names, not prompt
+ * vocabulary: the mismatch is proven structurally (undefined global named by
+ * the runtime + actual bare usage in the crashing file + a runner that
+ * cannot provide it), never by matching prose alone.
+ */
+const BARE_TEST_FRAMEWORK_GLOBALS = new Set([
+  'describe', 'it', 'test', 'expect',
+  'beforeEach', 'afterEach', 'beforeAll', 'afterAll',
+  'jest', 'vi', 'vitest',
+]);
+
+const TEST_RUNNER_FRAMEWORK_BINARIES = /(^|[\s/"'\\])(mocha|jest|vitest|ava|tap|c8|nyc)(\s|$|[."'])/i;
+
+function isBareNodeTestCommand(command: string, extraContext: string): boolean {
+  if (!/^\s*node(\s|$)/i.test(command)) return false;
+  if (TEST_RUNNER_FRAMEWORK_BINARIES.test(command)) return false;
+  return /(test|spec|check)|--test/i.test(`${command}\n${extraContext}`);
+}
+
+function resolveNpmTestScript(cwd: string, scriptName: string): string | null {
+  let directory = path.resolve(cwd);
+  for (let depth = 0; depth < 4; depth += 1) {
+    const manifestPath = path.join(directory, 'package.json');
+    try {
+      if (fs.existsSync(manifestPath) && fs.statSync(manifestPath).isFile()) {
+        const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as { scripts?: Record<string, unknown> };
+        const script = manifest?.scripts?.[scriptName];
+        return typeof script === 'string' && script.trim().length > 0 ? script.trim() : null;
+      }
+    } catch {
+      return null;
+    }
+    const parent = path.dirname(directory);
+    if (parent === directory) break;
+    directory = parent;
+  }
+  return null;
+}
+
+function extractCrashFile(errorTexts: Array<string | undefined>, pathHints: Array<string | undefined>, cwd: string): string | null {
+  const seen = new Set<string>();
+  const ordered: string[] = [];
+  for (const candidate of errorTexts) {
+    const text = String(candidate || '');
+    // V8 stack frame with an absolute path: at name (D:\proj\test.js:5:1).
+    for (const frame of text.matchAll(/at\s+(?:[^\s(]+\s+)?\(\s*([^()\n]+?\.(?:[cm]?jsx?|tsx?))\s*:\d+:\d+\s*\)/gi)) {
+      const hit = frame[1].trim();
+      if (hit && !seen.has(hit)) { seen.add(hit); ordered.push(hit); }
+    }
+    // Node terse header: D:\proj\test.js:5 on its own line.
+    for (const header of text.matchAll(/^\s*([A-Za-z]:[\\/][^:\n]+?\.(?:[cm]?jsx?|tsx?)|[^:\s\n][^:\n]*?\.(?:[cm]?jsx?|tsx?)):(\d+)\s*$/gim)) {
+      const hit = header[1].trim();
+      if (hit && !seen.has(hit)) { seen.add(hit); ordered.push(hit); }
+    }
+  }
+  // Ticket-preserved repair targets are paths already, not prose to parse.
+  for (const hint of pathHints) {
+    const trimmed = String(hint || '').trim();
+    if (trimmed && !seen.has(trimmed)) { seen.add(trimmed); ordered.push(trimmed); }
+  }
+  for (const hit of ordered) {
+    const resolved = path.isAbsolute(hit) ? path.normalize(hit) : path.resolve(cwd, hit);
+    try {
+      if (fs.existsSync(resolved) && fs.statSync(resolved).isFile()) return resolved;
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
+function findBareGlobalUsage(source: string, name: string): string | null {
+  // The file provides the name itself: an import, a declaration, or an
+  // explicit global assignment is a different bug class, not a harness gap.
+  const provides = new RegExp(
+    `(?:require\\s*\\(\\s*["'](?:node:test|mocha|jest|vitest|ava|tap)["']\\s*\\)|from\\s+["'](?:node:test|mocha|jest|vitest|ava|tap)["']|(?:const|let|var|function)\\s+${name}\\b|global(?:This)?\\.${name}\\s*=)`,
+  );
+  if (provides.test(source)) return null;
+  const callUsage = new RegExp(`(^|[^\\w$.])${name}\\s*\\(`);
+  const memberUsage = new RegExp(`(^|[^\\w$.])${name}\\s*\\.`);
+  for (const line of source.split(/\r?\n/)) {
+    if (callUsage.test(line) || memberUsage.test(line)) return line.trim().slice(0, 160);
+  }
+  return null;
+}
+
+/**
+ * Test-harness mismatch: the test file is written against a framework API
+ * (bare describe/it/expect/...) but the recorded test runner is bare node,
+ * which provides none of those globals. Real-UI evidence: run 7 scaffolded
+ * `"test": "node test.js"` with mocha-style tests; the blind regenerate
+ * loop rewrote test.js twice and the rerun failed identically because no
+ * branch named the runner/framework incoherence.
+ *
+ * Every gate is evidence-bound: a test execution command, the runtime-named
+ * undefined global, the crashing file on disk, actual bare usage of that
+ * global in the file, and a runner (resolved npm script or direct node
+ * command) that cannot provide it.
+ */
+function extractTestHarnessMismatch(ticket: RepairTicket): TestHarnessMismatchEvidence | null {
+  for (const failed of ticket.failedTasks) {
+    if (!['shell_execute', 'auto_tester'].includes(String(failed.tool))) continue;
+    const command = String(failed.command || '');
+    const combined = `${failed.error || ''}\n${ticket.primaryError || ''}`;
+    const undefinedName = combined.match(/ReferenceError:\s*([A-Za-z_$][\w$]*)\s+is not defined/)?.[1];
+    if (!undefinedName || !BARE_TEST_FRAMEWORK_GLOBALS.has(undefinedName)) continue;
+
+    const cwd = String(failed.cwd || '.');
+    const crashFile = extractCrashFile([failed.error, ticket.primaryError], [failed.repairFile, failed.file], cwd);
+    if (!crashFile) continue;
+
+    let usageLine: string | null = null;
+    try {
+      usageLine = findBareGlobalUsage(fs.readFileSync(crashFile, 'utf8'), undefinedName);
+    } catch {
+      continue;
+    }
+    if (!usageLine) continue;
+
+    // An npm-routed test must resolve its manifest script: the script (not
+    // the prose) proves what actually executed the file.
+    const npmRoute = command.match(/^\s*npm\s+(?:test\b|run\s+([A-Za-z0-9:_-]+))/i);
+    if (npmRoute) {
+      const scriptName = npmRoute[1] || 'test';
+      const script = resolveNpmTestScript(cwd, scriptName)
+        ?? resolveNpmTestScript(path.dirname(crashFile), scriptName);
+      if (!script) continue;
+      if (TEST_RUNNER_FRAMEWORK_BINARIES.test(`${command}\n${script}`)) continue;
+      if (!isBareNodeTestCommand(script, `${command}\n${failed.task || ''}\n${crashFile}`)) continue;
+      return {
+        testFile: crashFile,
+        undefinedGlobal: undefinedName,
+        usageLine,
+        runnerLabel: `npm run ${scriptName} -> ${script.slice(0, 120)}`,
+        projectCwd: cwd,
+        observedError: combined.trim().slice(0, 400),
+      };
+    }
+
+    // Direct node invocation: no manifest to resolve, the command is the runner.
+    if (isBareNodeTestCommand(command, `${failed.task || ''}\n${crashFile}\n${combined}`)) {
+      return {
+        testFile: crashFile,
+        undefinedGlobal: undefinedName,
+        usageLine,
+        runnerLabel: command.trim().slice(0, 120),
+        projectCwd: cwd,
+        observedError: combined.trim().slice(0, 400),
+      };
+    }
+  }
+  return null;
+}
+
 function extractEslintConfigFailure(ticket: RepairTicket) {
   const raw = rawTextOf(ticket);
   const isEslintConfigFailure = /eslint/i.test(raw)
@@ -1140,6 +1304,38 @@ export class SelfFixService {
           packages: [missingNpmTestDependency.packageName],
           dev: true,
           cwd: missingNpmTestDependency.cwd,
+        },
+        rememberedCure: cureNote || undefined,
+        safety: this.safety(),
+        sourceTicket: ticket,
+      };
+    }
+
+    // A test file written against a framework API but executed by bare node
+    // must be diagnosed as a harness mismatch, not blindly regenerated:
+    // without this branch the same mocha-shaped file is rewritten and the
+    // rerun fails identically (run-7 evidence). The repair constrains the
+    // single evidenced test file to the runner's actual contract.
+    const testHarnessMismatch = extractTestHarnessMismatch(ticket);
+    if (testHarnessMismatch) {
+      return {
+        type: 'self_fix_plan',
+        allowed: true,
+        reason: `Test-harness mismatch: ${testHarnessMismatch.testFile} uses bare ${testHarnessMismatch.undefinedGlobal} but the test runner (${testHarnessMismatch.runnerLabel}) is bare node, which provides no such global. Rewrite only that test file with Node.js built-ins and rerun the failed phase.`,
+        maxAttempts: 1,
+        strategy: 'code_fix',
+        suggestedTool: 'ai_write_file',
+        suggestedInput: {
+          path: testHarnessMismatch.testFile,
+          description: [
+            `Repair only ${testHarnessMismatch.testFile}; do not edit package.json, the implementation, or another file.`,
+            `DIAGNOSIS (do not re-litigate): this test file calls bare ${testHarnessMismatch.undefinedGlobal} (observed: ${testHarnessMismatch.usageLine}) but it is executed by ${testHarnessMismatch.runnerLabel}, which is bare node and provides no ${testHarnessMismatch.undefinedGlobal} global. The implementation under test is not proven broken; the harness contract is.`,
+            'Rewrite the complete test file using Node.js built-ins ONLY: node:test for the test structure (describe/it/beforeEach imported from node:test, matching the file\'s existing CommonJS/ESM style) and node:assert/strict for assertions.',
+            'Preserve every asserted behavior from the current file: keep each test case, its inputs/commands, and its expected values; translate framework shapes (describe/it/done callbacks) into node:test equivalents (async test functions, no done callback).',
+            `Do not use bare ${testHarnessMismatch.undefinedGlobal} or any other test-framework global; do not add dependencies, do not run npm install, and do not change the test command. The existing command must pass unchanged after this single-file repair.`,
+            `Observed failure: ${testHarnessMismatch.observedError}`,
+          ].join('\n'),
+          context: JSON.stringify({ testHarnessMismatch, repairTicket: ticket }),
         },
         rememberedCure: cureNote || undefined,
         safety: this.safety(),
