@@ -2323,8 +2323,8 @@ const skippedCount = taskResults.filter(r => r.execution === 'skipped').length;
                     delete verificationArgs.verificationBoundary;
                     delete verificationArgs.verificationRelevantPaths;
                     delete verificationArgs.verificationRuntimeRevision;
-                    const verificationArgsIssue = !isVerificationTool(requestedVerificationTool, verificationArgs)
-                        || !isVerificationTool(vToolName, verificationArgs)
+                    const verificationArgsIssue = !isVerificationTool(requestedVerificationTool, verificationArgs, false, true)
+                        || !isVerificationTool(vToolName, verificationArgs, false, true)
                         ? 'verification_unavailable: unsupported verification tool contract'
                         : plannedArgsIssue(vToolName, verificationArgs);
                     if (verificationArgsIssue) {
