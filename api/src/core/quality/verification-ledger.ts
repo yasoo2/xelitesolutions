@@ -107,7 +107,7 @@ const MAX_DECISIONS = 192;
 const MAX_FILES = 4_000;
 const MAX_TOTAL_BYTES = 64 * 1024 * 1024;
 const IGNORED_DIRECTORIES = new Set([
-    '.git', '.joe', 'node_modules', 'dist', 'build', 'coverage', '.next', '.cache', '.turbo',
+    '.git', '.joe', '.engineering-checkpoints', 'node_modules', 'dist', 'build', 'coverage', '.next', '.cache', '.turbo',
 ]);
 const ALWAYS_RELEVANT_FILES = [
     'package.json', 'package-lock.json', 'npm-shrinkwrap.json', 'pnpm-lock.yaml', 'yarn.lock',
@@ -371,10 +371,8 @@ const environmentFingerprintKey = (() => {
     return crypto.randomBytes(32);
 })();
 function environmentIdentity(): string {
-    // In test environments, return a stable fingerprint to ensure reproducible verification
-    if (process.env.NODE_ENV === 'test' || process.env.JOE_TEST_MODE === 'true') {
-        return 'test-environment-stable-fingerprint';
-    }
+    // Keep the key stable in tests, but still invalidate when an inherited
+    // environment value changes.
     const digest = crypto.createHmac('sha256', environmentFingerprintKey);
     for (const key of Object.keys(process.env).sort()) {
         digest.update(JSON.stringify([key, process.env[key]]));
@@ -386,8 +384,10 @@ function toolchainIdentity(root: string, budget: FingerprintBudget): string {
     let packageManager = '';
     const manifestPath = path.join(root, 'package.json');
     try {
-        fs.lstatSync(manifestPath);
-        if (readableContainedPath(root, manifestPath)) {
+        const manifestStat = fs.lstatSync(manifestPath);
+        if (manifestStat.isSymbolicLink()) {
+            budget.incomplete = true;
+        } else if (readableContainedPath(root, manifestPath)) {
             const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
             packageManager = boundedText(manifest?.packageManager, 120);
         } else budget.incomplete = true;
@@ -563,12 +563,12 @@ export function selectVerification(
     const selection = fingerprintVerification(descriptor);
     addAccounting(ledger, 'fingerprintDurationMs', selection.descriptor.fingerprintDurationMs);
     const previous = [...ledger.receipts].reverse().find(receipt => receipt.checkId === selection.descriptor.checkId);
-    
-    // Always reuse if checkId matches and previous result was passed,
-    // regardless of fingerprint differences (environment/toolchain changes)
-    if (previous && previous.result === 'passed') {
+    // A passing receipt proves only the exact inputs that produced it. Unsafe
+    // or incomplete fingerprints cannot justify reuse, even with the same id.
+    if (previous && previous.result === 'passed'
+        && selection.cacheable && previous.fingerprint === selection.fingerprint) {
         selection.action = 'reuse';
-        selection.reason = 'reused: passing receipt matches checkId';
+        selection.reason = 'reused: passing receipt matches all relevant inputs';
         selection.receipt = previous;
         addAccounting(ledger, 'estimatedSavedDurationMs', previous.durationMs);
         addDecision(ledger, {
