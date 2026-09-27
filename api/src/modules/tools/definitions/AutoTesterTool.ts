@@ -4,6 +4,7 @@ import path from 'path';
 import { syntaxFileKind } from '../../../shared/syntax-contract';
 import { ToolDefinition, ToolPermission } from '../types';
 import { executeTool } from '../../services/ToolService';
+import { quoteShellArg } from '../shell-quote';
 import { resolveToolPath } from '../utils';
 
 /**
@@ -205,9 +206,8 @@ export class AutoTesterTool implements ToolDefinition {
             .filter(item => item.kind === 'javascript' && ['.js', '.mjs', '.cjs'].includes(item.extension))
             .map(item => item.file);
         if (javascriptFiles.length > 0) {
-            const quote = (value: string) => `'${String(value).replace(/'/g, "'\\''")}'`;
             const command = javascriptFiles
-                .map(file => `node --check ${quote(path.relative(projectPath, file) || file)}`)
+                .map(file => `node --check ${quoteShellArg(path.relative(projectPath, file) || file)}`)
                 .join(' && ');
             const result = await executeTool('shell_execute', { command, cwd: projectPath }, ctx);
             const passed = Boolean(result.ok) && !String((result as any).output || '').includes('SyntaxError');

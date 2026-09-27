@@ -371,6 +371,23 @@ function extractMissingFilename(ticket: RepairTicket, text: string): string | nu
   return null;
 }
 
+/**
+ * A "missing module" whose reported specifier embeds literal quote
+ * characters is a corrupted command line, not a missing package: node
+ * quotes the specifier once, so a backslash-quote or a doubled quote
+ * inside the report means the producing command mis-quoted its argument
+ * for the executing shell (run-8: `node --check 'index.js'` through cmd
+ * resolved a file literally named `'index.js'`). npm install cannot cure
+ * that; the caller must refuse the doomed install.
+ */
+function extractQuotedModuleArtifact(text: string): string | null {
+  const match = String(text || '').match(/cannot find module\s*:?\s*([^\n]+)/i);
+  if (!match) return null;
+  const remainder = match[1].trim();
+  if (!/\\['"]|(['"])\1/.test(remainder)) return null;
+  return remainder.slice(0, 160);
+}
+
 interface EvidenceBoundRepairTarget {
   path: string;
   cwd?: string;
@@ -1517,6 +1534,14 @@ export class SelfFixService {
     // by the evidence-bound extractors above; otherwise a failed test with a
     // real file target must fall through to the bounded code_fix branch.
     if (/cannot find module|module not found|missing dependency/i.test(text)) {
+      const quotedModuleArtifact = extractQuotedModuleArtifact(text);
+      if (quotedModuleArtifact) {
+        return this.stop(
+          ticket,
+          `Module resolution failed on a specifier with literal quote characters (${quotedModuleArtifact}); the producing command mis-quoted its argument for the executing shell. Refusing npm install: no package install can resolve a quoting artifact. Repair the command producer to quote for the platform shell.`,
+          'manual_review',
+        );
+      }
       return {
         type: 'self_fix_plan',
         allowed: true,
