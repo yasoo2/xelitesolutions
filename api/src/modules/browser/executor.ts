@@ -3,7 +3,7 @@ import type { FailureReason } from './types';
 import { DEFAULT_BROWSER_CONFIG } from './config';
 import { broadcastBrowserEvent } from './wsHub';
 import { gotoResilient } from './navigation';
-import { buildScrollIntoViewEval, buildScrollTargetReadEval, buildSelectReadEval, buildSelectSetEval, CLICK_FINGERPRINT_SCRIPT, classifyActionError, compareClickEffect, compareScrollEffect, ensureTypedValue, SCROLL_SNAPSHOT_SCRIPT, typeActionText, type ClickContext, type ScrollSnapshot } from './actionVerification';
+import { buildScrollIntoViewEval, buildScrollTargetReadEval, buildSelectReadEval, buildSelectSetEval, CLICK_FINGERPRINT_SCRIPT, classifyActionError, compareClickEffect, compareKeyEffect, compareScrollEffect, ensureTypedValue, KEY_FOCUS_SCRIPT, SCROLL_SNAPSHOT_SCRIPT, typeActionText, type ClickContext, type KeyContext, type KeyFocus, type ScrollSnapshot } from './actionVerification';
 import { getBrowserTelemetryErrorCounts } from './telemetry';
 import { getBrowserSession, setStreamMask, touchSession, withBrowserConcurrency } from './manager';
 import { getSessionSecret, getUserSecret } from '../services/secrets';
@@ -141,6 +141,29 @@ async function findCredentialField(page: Page, kind: 'email' | 'password') {
   }
 
   return null;
+}
+
+/**
+ * Snapshot the focused element for key effect evidence. Never throws — an
+ * unreadable page or unexpected shape degrades to null and the comparator
+ * reports the focus as unmeasured, never as unchanged.
+ */
+async function snapshotKeyFocus(page: Page): Promise<KeyFocus | null> {
+  try {
+    const f: any = await page.evaluate(KEY_FOCUS_SCRIPT);
+    if (!f || typeof f.tag !== 'string') return null;
+    const lens = [f.idLen, f.classLen, f.nameLen, f.valueLen];
+    if (lens.some((n) => typeof n !== 'number' || !Number.isFinite(n))) return null;
+    return {
+      hasFocus: f.hasFocus === true,
+      tag: String(f.tag),
+      idLen: f.idLen,
+      classLen: f.classLen,
+      nameLen: f.nameLen,
+      valueLen: f.valueLen,
+      isBody: f.isBody === true,
+    };
+  } catch { return null; }
 }
 
 async function boxFor(locator: Locator) {
@@ -288,7 +311,7 @@ export async function executePlannedActions(params: {
         workerStatus: 'running',
       });
     } catch { }
-    const results: Array<{ stepId: string; name: string; ok: boolean; reason?: FailureReason; message?: string; verified?: boolean; valueMatch?: boolean; repaired?: boolean; navigated?: boolean; domChanged?: boolean; effectObserved?: boolean; runtimeErrors?: number; scrolled?: boolean; scrollDeltaY?: number; atEdge?: boolean; inViewport?: boolean }> = [];
+    const results: Array<{ stepId: string; name: string; ok: boolean; reason?: FailureReason; message?: string; verified?: boolean; valueMatch?: boolean; repaired?: boolean; navigated?: boolean; domChanged?: boolean; focusChanged?: boolean; effectObserved?: boolean; runtimeErrors?: number; scrolled?: boolean; scrollDeltaY?: number; atEdge?: boolean; inViewport?: boolean }> = [];
     const evidence: Array<{ kind: 'screenshot'; jpegBase64: string; ts: number; stepId: string }> = [];
 
     for (let i = 0; i < Math.min(cfg.maxSteps, actions.length); i += 1) {
@@ -521,6 +544,11 @@ export async function executePlannedActions(params: {
         }
 
         if (name === 'hover') {
+          // Hover effect evidence: a revealed menu/tooltip changes the DOM
+          // while a hover over static content changes nothing. The page
+          // fingerprint is element-independent, so it is captured whether
+          // or not the target resolves. Evidence only, never a new failure.
+          const hoverBefore = await snapshotClickContext(page, sessionId);
           const loc = locatorForAction(page, a);
           if (loc && (await loc.count().catch(() => 0)) > 0) {
             const b = await boxFor(loc);
@@ -534,10 +562,19 @@ export async function executePlannedActions(params: {
             // Base hover already done via interactions.hover above
           }
           await page.waitForTimeout(500);
+          const hoverAfter = await snapshotClickContext(page, sessionId);
+          const hoverEffect = compareClickEffect(hoverBefore, hoverAfter);
+          const hoverNavigated: boolean | undefined = hoverEffect.readOk ? hoverEffect.navigated : undefined;
+          const hoverDomChanged: boolean | undefined = hoverEffect.readOk ? hoverEffect.domChanged : undefined;
+          const hoverEffectObserved: boolean | undefined = hoverEffect.readOk ? hoverEffect.effectObserved : undefined;
+          const hoverRuntimeErrors: number | undefined = hoverEffect.runtimeErrors;
           const after = await screenshotJpegBase64(page);
           evidence.push({ kind: 'screenshot', jpegBase64: after, ts: now(), stepId: sid });
-          broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now() });
-          results.push({ stepId: sid, name, ok: true });
+          const hoverData = hoverEffectObserved === undefined && hoverRuntimeErrors === undefined
+            ? undefined
+            : { navigated: hoverNavigated, domChanged: hoverDomChanged, effectObserved: hoverEffectObserved, runtimeErrors: hoverRuntimeErrors };
+          broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now(), data: hoverData });
+          results.push({ stepId: sid, name, ok: true, navigated: hoverNavigated, domChanged: hoverDomChanged, effectObserved: hoverEffectObserved, runtimeErrors: hoverRuntimeErrors });
           try {
             broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name });
           } catch { }
@@ -584,12 +621,33 @@ export async function executePlannedActions(params: {
         if (name === 'key') {
           const key = String(a?.key || '');
           if (key) {
+            // Key effect evidence: the fingerprint names navigation/DOM
+            // change, the focus descriptor names Tab-order moves and typed
+            // text. Evidence only — a swallowed keypress is reported,
+            // never failed.
+            const keyBefore: KeyContext = {
+              page: await snapshotClickContext(page, sessionId),
+              focus: await snapshotKeyFocus(page),
+            };
             await page.keyboard.press(key);
             await page.waitForTimeout(100);
+            const keyAfter: KeyContext = {
+              page: await snapshotClickContext(page, sessionId),
+              focus: await snapshotKeyFocus(page),
+            };
+            const keyEffect = compareKeyEffect(keyBefore, keyAfter);
+            const keyNavigated: boolean | undefined = keyEffect.readOk ? keyEffect.navigated : undefined;
+            const keyDomChanged: boolean | undefined = keyEffect.readOk ? keyEffect.domChanged : undefined;
+            const keyFocusChanged: boolean | undefined = keyEffect.focusReadOk ? keyEffect.focusChanged : undefined;
+            const keyEffectObserved: boolean | undefined = (keyEffect.readOk || keyEffect.focusReadOk) ? keyEffect.effectObserved : undefined;
+            const keyRuntimeErrors: number | undefined = keyEffect.runtimeErrors;
             const after = await screenshotJpegBase64(page);
             evidence.push({ kind: 'screenshot', jpegBase64: after, ts: now(), stepId: sid });
-            broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now() });
-            results.push({ stepId: sid, name, ok: true });
+            const keyData = keyEffectObserved === undefined && keyRuntimeErrors === undefined
+              ? undefined
+              : { navigated: keyNavigated, domChanged: keyDomChanged, focusChanged: keyFocusChanged, effectObserved: keyEffectObserved, runtimeErrors: keyRuntimeErrors };
+            broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now(), data: keyData });
+            results.push({ stepId: sid, name, ok: true, navigated: keyNavigated, domChanged: keyDomChanged, focusChanged: keyFocusChanged, effectObserved: keyEffectObserved, runtimeErrors: keyRuntimeErrors });
             try { broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name }); } catch { }
             continue;
           }

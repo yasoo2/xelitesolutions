@@ -82,6 +82,23 @@
  *     fails as scroll_target_not_found, a twice-observed outside-viewport
  *     target fails as scroll_target_not_visible, and an invalid selector
  *     fails its step instead of the run.
+ *
+ * Keys and hovers were the remaining state-changing interactions without
+ * observed-effect evidence:
+ *
+ *   - A `key` pressed blind and reported ok:true even when nothing
+ *     happened (focus never moved, Enter submitted nothing, the keystroke
+ *     landed on a dead page), so keyboard-driven flows — search+Enter,
+ *     Tab order, Escape-dismissed dialogs — were indistinguishable from
+ *     success. Keys now snapshot the page fingerprint plus the focused
+ *     element before and after: navigation, DOM change, focus change and
+ *     new runtime errors are reported, evidence-only like clicks.
+ *   - A `hover` moved the mouse and reported ok:true with no record of
+ *     what it revealed, so a menu that opened and a hover over static
+ *     text shared one receipt. Hovers now reuse the click snapshot
+ *     machinery (same fingerprint, same comparator, same telemetry
+ *     delta): a revealed menu arrives as domChanged, a static hover as
+ *     honestly no-effect.
  */
 
 import type { FailureReason } from './types';
@@ -483,4 +500,96 @@ export function buildScrollIntoViewEval(selector: string, instant: boolean): str
   return true;
 }`;
     return `(${fn})(${JSON.stringify({ selector: String(selector === null || selector === undefined ? '' : selector), instant: instant ? true : false })})`;
+}
+
+/**
+ * One in-page evaluate returning the focused-element descriptor. It is an
+ * IIFE: pass it straight to page.evaluate. Tag (uppercased, capped) plus
+ * booleans and lengths only — no ids, classes, names or values ever leave
+ * the page, so a canary sitting in a field cannot leak into a receipt.
+ */
+export const KEY_FOCUS_SCRIPT = `(() => {
+  const ae = (document && document.activeElement) || null;
+  if (!ae) return { hasFocus: false, tag: '', idLen: 0, classLen: 0, nameLen: 0, valueLen: 0, isBody: false };
+  const tag = String(ae.tagName || '').toUpperCase().slice(0, 16);
+  const idLen = String((ae.id === null || ae.id === undefined) ? '' : ae.id).length;
+  const cn = ae.className;
+  const classStr = (typeof cn === 'string') ? cn : ((cn && typeof cn.baseVal === 'string') ? cn.baseVal : '');
+  const classLen = String(classStr || '').length;
+  let nameLen = 0;
+  try { const nm = ae.getAttribute ? ae.getAttribute('name') : null; nameLen = nm ? String(nm).length : 0; } catch (e) { nameLen = 0; }
+  let valueLen = 0;
+  try { const v = ae.value; valueLen = (typeof v === 'string') ? v.length : 0; } catch (e) { valueLen = 0; }
+  return { hasFocus: true, tag: tag, idLen: idLen, classLen: classLen, nameLen: nameLen, valueLen: valueLen, isBody: tag === 'BODY' };
+})()`;
+
+/** Focused-element descriptor: tag plus booleans and lengths, never content. */
+export interface KeyFocus {
+    hasFocus: boolean;
+    tag: string;
+    idLen: number;
+    classLen: number;
+    nameLen: number;
+    valueLen: number;
+    isBody: boolean;
+}
+
+/** Everything a keypress can observably move: the page plus the focus. */
+export interface KeyContext {
+    page: ClickContext | null;
+    focus: KeyFocus | null;
+}
+
+export interface KeyEffect {
+    /** False when the page could not be read before or after the key. */
+    readOk: boolean;
+    /** The URL changed across the keypress. */
+    navigated: boolean;
+    /** Title, element count, text length or markup hash changed. */
+    domChanged: boolean;
+    /** The focused-element descriptor changed (Tab order, dialog trap, typed text). */
+    focusChanged: boolean;
+    /** False when the focus could not be read before or after the key. */
+    focusReadOk: boolean;
+    /** navigated || domChanged || focusChanged. Evidence only — never a failure by itself. */
+    effectObserved: boolean;
+    /** New runtime error signals observed during the step; absent when unmeasurable. */
+    runtimeErrors?: number;
+}
+
+function sameKeyFocus(a: KeyFocus, b: KeyFocus): boolean {
+    return a.hasFocus === b.hasFocus
+        && a.tag === b.tag
+        && a.idLen === b.idLen
+        && a.classLen === b.classLen
+        && a.nameLen === b.nameLen
+        && a.valueLen === b.valueLen
+        && a.isBody === b.isBody;
+}
+
+/**
+ * Compare two key snapshots. The page half delegates to compareClickEffect
+ * (one truth for fingerprint deltas); the focus half compares descriptors.
+ * Null-tolerant: missing halves degrade to readOk/focusReadOk:false and an
+ * absent runtimeErrors count instead of inventing an effect.
+ */
+export function compareKeyEffect(before: KeyContext | null, after: KeyContext | null): KeyEffect {
+    const page = compareClickEffect(before?.page ?? null, after?.page ?? null);
+    const effect: KeyEffect = {
+        readOk: page.readOk,
+        navigated: page.navigated,
+        domChanged: page.domChanged,
+        focusChanged: false,
+        focusReadOk: false,
+        effectObserved: page.effectObserved,
+        ...(page.runtimeErrors === undefined ? {} : { runtimeErrors: page.runtimeErrors }),
+    };
+    const bf = before?.focus ?? null;
+    const af = after?.focus ?? null;
+    if (bf && af) {
+        effect.focusReadOk = true;
+        effect.focusChanged = !sameKeyFocus(bf, af);
+        effect.effectObserved = effect.effectObserved || effect.focusChanged;
+    }
+    return effect;
 }
