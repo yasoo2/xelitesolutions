@@ -823,14 +823,28 @@ export async function executePlannedActions(params: {
               const before = await screenshotJpegBase64(page);
               evidence.push({ kind: 'screenshot', jpegBase64: before, ts: now(), stepId: sid });
 
+              // Coordinate-click parity: the `click` spelling with x/y carries
+              // the same snapshot/compare receipt as `click_coordinates`, so a
+              // dead-region poke and a working control never share the same
+              // bare ok:true. Settle matches the proven 250ms. Evidence only.
+              const clickBefore = await snapshotClickContext(page, sessionId);
               await interactions.naturalClick(page, 'click', x, y);
 
-              await page.waitForTimeout(120);
+              await page.waitForTimeout(250);
+              const clickAfter = await snapshotClickContext(page, sessionId);
+              const clickEffect = compareClickEffect(clickBefore, clickAfter);
+              const clickNavigated: boolean | undefined = clickEffect.readOk ? clickEffect.navigated : undefined;
+              const clickDomChanged: boolean | undefined = clickEffect.readOk ? clickEffect.domChanged : undefined;
+              const clickEffectObserved: boolean | undefined = clickEffect.readOk ? clickEffect.effectObserved : undefined;
+              const clickRuntimeErrors: number | undefined = clickEffect.runtimeErrors;
               const after = await screenshotJpegBase64(page);
               evidence.push({ kind: 'screenshot', jpegBase64: after, ts: now(), stepId: sid });
 
-              broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now() });
-              results.push({ stepId: sid, name, ok: true });
+              const clickEffectData = clickEffectObserved === undefined && clickRuntimeErrors === undefined
+                ? undefined
+                : { navigated: clickNavigated, domChanged: clickDomChanged, effectObserved: clickEffectObserved, runtimeErrors: clickRuntimeErrors };
+              broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now(), data: clickEffectData });
+              results.push({ stepId: sid, name, ok: true, navigated: clickNavigated, domChanged: clickDomChanged, effectObserved: clickEffectObserved, runtimeErrors: clickRuntimeErrors });
               try {
                 broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name });
               } catch { }
