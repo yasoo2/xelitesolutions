@@ -8,8 +8,11 @@
  * package-script check), but the phase gate only accepts test-runner
  * invocations as shell_execute verifications, so the run died at 1/4 with
  * verification_unavailable — before the test-writing and test-running phases
- * ever executed. The deliverable was independently 8/8 correct; Joe never got
- * to verify it.
+ * ever executed. Independent artifact checks showed the run-4b deliverable
+ * itself fell short (missing taglines.js entrypoint, redirected-stdin --count
+ * exited 3, and npm test ran zero assertions) -- so this rewrite only unblocks
+ * execution toward the genuine test phases; it is intermediate evidence,
+ * never final acceptance.
  *
  * The sanitizer and the gate must agree on what a shell verification is. A
  * mid-phase smoke command that is neither a recognized checker contract nor a

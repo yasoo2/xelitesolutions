@@ -12,6 +12,40 @@ export function redactSecretsFromString(input: string): string {
         .replace(/\b(WORKER_API_KEY|BROWSER_WORKER_KEY|JWT_SECRET|OPENAI_API_KEY)\b\s*[:=]\s*[A-Za-z0-9._-]{6,}/gi, '$1=[REDACTED]');
 }
 
+/**
+ * A sensitive argument name inside a planner-produced shell command: the name
+ * itself must be an explicit secret word (optionally prefixed, suffixed by a
+ * plural, a separator continuation, or digits). Benign lookalikes such as
+ * `--author` or `--tokenizer` must not match, so any other trailing letter
+ * continuation disqualifies.
+ */
+const SENSITIVE_COMMAND_NAME = '(?:password|passwd|pwd|secret|token|api[_-]?key|apikey|private[_-]?key|client[_-]?secret|auth|bearer|credential)(?:s(?:[_-][A-Za-z0-9_-]*)?|[_-][A-Za-z0-9_-]*|[0-9]+)?';
+
+/**
+ * Bounded diagnostic rendering of a planner-produced shell command.
+ *
+ * Rejected verification commands are named in plan notes and phase logs so a
+ * contract mismatch is diagnosable without a run-evidence dig — but the
+ * command text itself is model-produced and may embed credentials
+ * (`--password=...`, `TOKEN=...`, pasted API keys). Redact sensitive argument
+ * values while preserving the command shape that explains the rejection.
+ */
+export function redactCommandForLog(command: unknown, maxLen = 160): string {
+    const collapsed = String(command ?? '').trim().replace(/\s+/g, ' ');
+    if (!collapsed) return '';
+    const value = '"[^"]*"|\'[^\']*\'|[^\\s,;]+';
+    const redacted = redactSecretsFromString(collapsed)
+        // --flag=value with a sensitive flag name.
+        .replace(new RegExp(`(--[A-Za-z0-9_-]*${SENSITIVE_COMMAND_NAME})=(${value})`, 'gi'), '$1=[REDACTED]')
+        // --flag value with a sensitive flag name (the value must not be another flag).
+        .replace(new RegExp(`(--[A-Za-z0-9_-]*${SENSITIVE_COMMAND_NAME}\\s+)(?!-)(${value})`, 'gi'), '$1[REDACTED]')
+        // Bare NAME=value (env-style prefix or key=value pair).
+        .replace(new RegExp(`\\b([A-Za-z0-9_-]*${SENSITIVE_COMMAND_NAME})=(${value})`, 'gi'), '$1=[REDACTED]')
+        // NAME: value pairs.
+        .replace(new RegExp(`\\b(${SENSITIVE_COMMAND_NAME})\\s*:\\s*(${value})`, 'gi'), '$1:[REDACTED]');
+    return redacted.slice(0, Math.max(0, maxLen));
+}
+
 export function safeErrorMessage(err: any): string {
     const raw = typeof err?.message === 'string' ? err.message : String(err);
     return redactSecretsFromString(raw);

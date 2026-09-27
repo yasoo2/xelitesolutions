@@ -32,6 +32,7 @@
 import { TOOL_ALIASES } from '../../modules/services/ToolService';
 import { syntaxFileKind } from '../../shared/syntax-contract';
 import { isVerificationTool } from '../quality/verification-ledger';
+import { redactCommandForLog } from '../../shared/utils/redaction';
 
 /**
  * Runtime-bound fields are the small, explicit exception to the planner's
@@ -969,9 +970,9 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
                             : 'تحققاً مولّداً';
                 // Name the dropped smoke command so the next such rewrite is
                 // diagnosable from the session log alone (run 4b needed a
-                // run-evidence dig to recover `node index.js < sample.txt`).
+                // run-evidence dig to recover `node index.js < sample.txt`). Sensitive argument values are redacted: the command is model-produced and may embed credentials.
                 const droppedSmokeCommand = shellSmokeWithoutCheckerContract
-                    ? String(verificationArgs?.command || '').trim().replace(/\s+/g, ' ').slice(0, 120)
+                    ? redactCommandForLog(verificationArgs?.command, 120)
                     : '';
                 const smokeSuffix = droppedSmokeCommand ? `؛ الأمر المسقط: «${droppedSmokeCommand}»` : '';
                 notes.push((observedOutputPath

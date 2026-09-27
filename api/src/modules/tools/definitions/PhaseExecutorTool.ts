@@ -22,6 +22,7 @@ import {
     summarizeVerificationLedger,
     type VerificationSelection,
 } from '../../../core/quality/verification-ledger';
+import { redactCommandForLog } from '../../../shared/utils/redaction';
 import { loadEngineeringCheckpoint, saveEngineeringCheckpoint, checkpointPhase, checkpointTool, engineeringCheckpointKey, loadAllRunCheckpoints, clearAllRunCheckpoints } from '../../../core/resume/engineering-checkpoint';
 
 type PhaseDeliveryEvidence = {
@@ -2328,7 +2329,7 @@ const skippedCount = taskResults.filter(r => r.execution === 'skipped').length;
                         ? 'verification_unavailable: unsupported verification tool contract'
                         : plannedArgsIssue(vToolName, verificationArgs);
                     if (verificationArgsIssue) {
-                        const rejectedCommand = String((verificationArgs as any)?.command || '').trim().replace(/\s+/g, ' ').slice(0, 160);
+                        const rejectedCommand = redactCommandForLog((verificationArgs as any)?.command, 160);
                         appendLog(`[PhaseExecutor] ⚠️ Verification input invalid: ${verificationArgsIssue} (requested=${requestedVerificationTool} resolved=${vToolName}${rejectedCommand ? ` command=${JSON.stringify(rejectedCommand)}` : ''})`);
                         const checkerError = vToolName === 'browser_run'
                             ? `verification_unavailable: ${verificationArgsIssue}`
