@@ -614,6 +614,61 @@ export function compareKeyEffect(before: KeyContext | null, after: KeyContext | 
     return effect;
 }
 
+/** How the typed text is expected to land in the focused field. */
+export type TypeExpectMode =
+    /** The field was cleared first (coordinate type): after-length must equal the text length. */
+    | 'set'
+    /** The text was typed at the cursor (global type): after-length must grow by the text length. */
+    | 'append'
+    /** Control keys (Enter/Tab/Backspace): length movement is unpredictable, only focus/page deltas count. */
+    | 'keys';
+
+/**
+ * Everything a locatorless type/fill can observably move: the key half
+ * (page + focus) plus what the typed text implies for the focused field.
+ * Booleans and the runtime delta only — no lengths — so the same receipt
+ * shape is safe for secret and non-secret text alike.
+ */
+export interface TypeEffect extends KeyEffect {
+    /** The focused field value length moved exactly as the typed text implies. Undefined when unmeasurable. */
+    valueApplied?: boolean;
+    /** Focus stayed in BODY with no page change: the text went nowhere observable. Undefined when unmeasurable. */
+    typedIntoVoid?: boolean;
+}
+
+/**
+ * Compare two locatorless-type snapshots. The page/focus halves delegate
+ * to compareKeyEffect (one truth for fingerprint and focus deltas); the
+ * value half reasons about lengths in memory and reports booleans only.
+ * Null-tolerant: missing halves degrade to undefined instead of inventing
+ * an effect. Evidence only — never a failure by itself.
+ */
+export function compareTypeEffect(
+    before: KeyContext | null,
+    after: KeyContext | null,
+    expectedLength: number,
+    mode: TypeExpectMode,
+): TypeEffect {
+    const key = compareKeyEffect(before, after);
+    const effect: TypeEffect = { ...key };
+    const bf = before?.focus ?? null;
+    const af = after?.focus ?? null;
+    if (!bf || !af) return effect;
+    const expected = Number(expectedLength);
+    if (mode !== 'keys' && Number.isFinite(expected) && expected > 0) {
+        effect.valueApplied = mode === 'set'
+            ? af.valueLen === expected
+            : af.valueLen - bf.valueLen === expected;
+    }
+    // The base comparator defaults to no-change when the page is
+    // unreadable, so the void verdict needs a readable page to mean
+    // anything; without one it stays undefined, never false comfort.
+    if (key.readOk) {
+        effect.typedIntoVoid = bf.isBody && af.isBody && !key.navigated && !key.domChanged;
+    }
+    return effect;
+}
+
 /**
  * One in-page evaluate returning the document identity: the load stamp
  * (performance.timeOrigin — a new-document clock that changes on every

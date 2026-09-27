@@ -3,7 +3,7 @@ import type { FailureReason } from './types';
 import { DEFAULT_BROWSER_CONFIG } from './config';
 import { broadcastBrowserEvent } from './wsHub';
 import { gotoResilient, probeNavigationReadiness, type NavigationReadiness } from './navigation';
-import { buildExtractReadEval, buildScrollIntoViewEval, buildScrollTargetReadEval, buildSelectReadEval, buildSelectSetEval, captureEvidence, CLICK_FINGERPRINT_SCRIPT, classifyActionError, compareClickEffect, compareKeyEffect, compareScrollEffect, compareTraversalEffect, compareWaitEffect, ELEMENTS_READ_SCRIPT, ensureTypedValue, evaluateElementsObservation, evaluateExtractObservation, KEY_FOCUS_SCRIPT, SCROLL_SNAPSHOT_SCRIPT, TRAVERSAL_IDENTITY_SCRIPT, typeActionText, type ClickContext, type KeyContext, type KeyFocus, type ScrollSnapshot, type TraversalContext, type TraversalIdentity, type AssertObservation, parseAssertTarget, observeAssertState, evaluateAssertObservation, isSelectorSyntaxError, summarizeEvaluateResult } from './actionVerification';
+import { buildExtractReadEval, buildScrollIntoViewEval, buildScrollTargetReadEval, buildSelectReadEval, buildSelectSetEval, captureEvidence, CLICK_FINGERPRINT_SCRIPT, classifyActionError, compareClickEffect, compareKeyEffect, compareScrollEffect, compareTraversalEffect, compareTypeEffect, compareWaitEffect, ELEMENTS_READ_SCRIPT, ensureTypedValue, evaluateElementsObservation, evaluateExtractObservation, KEY_FOCUS_SCRIPT, SCROLL_SNAPSHOT_SCRIPT, TRAVERSAL_IDENTITY_SCRIPT, typeActionText, type ClickContext, type KeyContext, type KeyFocus, type ScrollSnapshot, type TraversalContext, type TraversalIdentity, type TypeExpectMode, type AssertObservation, parseAssertTarget, observeAssertState, evaluateAssertObservation, isSelectorSyntaxError, summarizeEvaluateResult } from './actionVerification';
 import { getBrowserTelemetryErrorCounts } from './telemetry';
 import { getBrowserSession, setStreamMask, touchSession, withBrowserConcurrency } from './manager';
 import { getSessionSecret, getUserSecret } from '../services/secrets';
@@ -272,6 +272,50 @@ async function observeTraversalStep(
 }
 
 /**
+ * Run one locatorless type/fill step (global or coordinate, secret or
+ * not) with observed-effect evidence: the page fingerprint plus the
+ * focused-field descriptor are captured around the act call, and the
+ * value half reasons about lengths in memory. The receipt carries
+ * booleans and the runtime delta only — no lengths — so the same shape
+ * is safe for secret text. A throwing act propagates exactly as before;
+ * the receipt only names what success observably moved.
+ */
+async function observeTypeStep(
+  page: Page,
+  sessionId: string,
+  act: () => Promise<unknown>,
+  opts: { expectedLength: number; mode: TypeExpectMode },
+): Promise<{
+  navigated: boolean | undefined;
+  domChanged: boolean | undefined;
+  focusChanged: boolean | undefined;
+  valueApplied: boolean | undefined;
+  typedIntoVoid: boolean | undefined;
+  effectObserved: boolean | undefined;
+  runtimeErrors: number | undefined;
+}> {
+  const before: KeyContext = {
+    page: await snapshotClickContext(page, sessionId),
+    focus: await snapshotKeyFocus(page),
+  };
+  await act();
+  const after: KeyContext = {
+    page: await snapshotClickContext(page, sessionId),
+    focus: await snapshotKeyFocus(page),
+  };
+  const effect = compareTypeEffect(before, after, opts.expectedLength, opts.mode);
+  return {
+    navigated: effect.readOk ? effect.navigated : undefined,
+    domChanged: effect.readOk ? effect.domChanged : undefined,
+    focusChanged: effect.focusReadOk ? effect.focusChanged : undefined,
+    valueApplied: effect.valueApplied,
+    typedIntoVoid: effect.typedIntoVoid,
+    effectObserved: (effect.readOk || effect.focusReadOk) ? effect.effectObserved : undefined,
+    runtimeErrors: effect.runtimeErrors,
+  };
+}
+
+/**
  * Snapshot the page scroll geometry for scroll effect evidence. Never
  * throws — an unreadable page degrades to null and the comparator reports
  * the step as unmeasured, never as unmoved.
@@ -374,7 +418,7 @@ export async function executePlannedActions(params: {
         workerStatus: 'running',
       });
     } catch { }
-    const results: Array<{ stepId: string; name: string; ok: boolean; reason?: FailureReason; message?: string; resultType?: string; resultLength?: number; verified?: boolean; valueMatch?: boolean; repaired?: boolean; navigated?: boolean; domChanged?: boolean; focusChanged?: boolean; documentChanged?: boolean; navigationError?: boolean; effectObserved?: boolean; runtimeErrors?: number; scrolled?: boolean; scrollDeltaY?: number; atEdge?: boolean; inViewport?: boolean; elapsedMs?: number; matched?: number; visibleCount?: number; found?: boolean; textLength?: number; elementCount?: number; totalMatched?: number; truncated?: boolean; captured?: boolean; captureBytes?: number }> = [];
+    const results: Array<{ stepId: string; name: string; ok: boolean; reason?: FailureReason; message?: string; resultType?: string; resultLength?: number; verified?: boolean; valueMatch?: boolean; repaired?: boolean; valueApplied?: boolean; typedIntoVoid?: boolean; navigated?: boolean; domChanged?: boolean; focusChanged?: boolean; documentChanged?: boolean; navigationError?: boolean; effectObserved?: boolean; runtimeErrors?: number; scrolled?: boolean; scrollDeltaY?: number; atEdge?: boolean; inViewport?: boolean; elapsedMs?: number; matched?: number; visibleCount?: number; found?: boolean; textLength?: number; elementCount?: number; totalMatched?: number; truncated?: boolean; captured?: boolean; captureBytes?: number }> = [];
     const evidence: Array<{ kind: 'screenshot'; jpegBase64: string; ts: number; stepId: string }> = [];
 
     for (let i = 0; i < Math.min(cfg.maxSteps, actions.length); i += 1) {
@@ -873,18 +917,27 @@ export async function executePlannedActions(params: {
             const before = await screenshotJpegBase64(page);
             evidence.push({ kind: 'screenshot', jpegBase64: before, ts: now(), stepId: sid });
 
-            if (text === '\n') await page.keyboard.press('Enter');
-            else if (text === '\t') await page.keyboard.press('Tab');
-            else if (text === '\b') await page.keyboard.press('Backspace');
-            else if (text === '\x7f') await page.keyboard.press('Delete');
-            else await interactions.naturalType(page, 'global_type', text);
-
-            await page.waitForTimeout(50);
+            // Locatorless-type effect evidence: a global type can land in
+            // a field, submit a form, or vanish into the page body. The
+            // receipt names what was observed. Evidence only — typing
+            // into the void is reported, never failed.
+            const isControlKey = text === '\n' || text === '\t' || text === '\b' || text === '\x7f';
+            const observed = await observeTypeStep(page, sessionId, async () => {
+              if (text === '\n') await page.keyboard.press('Enter');
+              else if (text === '\t') await page.keyboard.press('Tab');
+              else if (text === '\b') await page.keyboard.press('Backspace');
+              else if (text === '\x7f') await page.keyboard.press('Delete');
+              else await interactions.naturalType(page, 'global_type', text);
+              await page.waitForTimeout(50);
+            }, { expectedLength: text.length, mode: isControlKey || !text ? 'keys' : 'append' });
             const after = await screenshotJpegBase64(page);
             evidence.push({ kind: 'screenshot', jpegBase64: after, ts: now(), stepId: sid });
 
-            broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now() });
-            results.push({ stepId: sid, name, ok: true });
+            const typeData = observed.effectObserved === undefined && observed.runtimeErrors === undefined && observed.valueApplied === undefined && observed.typedIntoVoid === undefined
+              ? undefined
+              : { navigated: observed.navigated, domChanged: observed.domChanged, focusChanged: observed.focusChanged, valueApplied: observed.valueApplied, typedIntoVoid: observed.typedIntoVoid, effectObserved: observed.effectObserved, runtimeErrors: observed.runtimeErrors };
+            broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now(), data: typeData });
+            results.push({ stepId: sid, name, ok: true, navigated: observed.navigated, domChanged: observed.domChanged, focusChanged: observed.focusChanged, valueApplied: observed.valueApplied, typedIntoVoid: observed.typedIntoVoid, effectObserved: observed.effectObserved, runtimeErrors: observed.runtimeErrors });
             try { broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name }); } catch { }
             continue;
           }
@@ -946,25 +999,33 @@ export async function executePlannedActions(params: {
                 const before = await screenshotJpegBase64(page);
                 evidence.push({ kind: 'screenshot', jpegBase64: before, ts: now(), stepId: sid });
 
-                await interactions.naturalClick(page, 'type_click', x, y);
-                try {
-                  await page.keyboard.press('Meta+A');
-                } catch {
+                // Locatorless-type effect evidence: the click can focus a
+                // field or hit dead page, and the value half is booleans
+                // only — no lengths — so secret text shares this receipt.
+                // Evidence only, never a failure.
+                const observed = await observeTypeStep(page, sessionId, async () => {
+                  await interactions.naturalClick(page, 'type_click', x, y);
                   try {
-                    await page.keyboard.press('Control+A');
+                    await page.keyboard.press('Meta+A');
+                  } catch {
+                    try {
+                      await page.keyboard.press('Control+A');
+                    } catch { }
+                  }
+                  try {
+                    await page.keyboard.press('Backspace');
                   } catch { }
-                }
-                try {
-                  await page.keyboard.press('Backspace');
-                } catch { }
-                await interactions.naturalType(page, 'type_secret', textToType);
-
-                await page.waitForTimeout(120);
+                  await interactions.naturalType(page, 'type_secret', textToType);
+                  await page.waitForTimeout(120);
+                }, { expectedLength: textToType.length, mode: 'set' });
                 const after = await screenshotJpegBase64(page);
                 evidence.push({ kind: 'screenshot', jpegBase64: after, ts: now(), stepId: sid });
 
-                broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now() });
-                results.push({ stepId: sid, name, ok: true });
+                const typeData = observed.effectObserved === undefined && observed.runtimeErrors === undefined && observed.valueApplied === undefined && observed.typedIntoVoid === undefined
+                  ? undefined
+                  : { navigated: observed.navigated, domChanged: observed.domChanged, focusChanged: observed.focusChanged, valueApplied: observed.valueApplied, typedIntoVoid: observed.typedIntoVoid, effectObserved: observed.effectObserved, runtimeErrors: observed.runtimeErrors };
+                broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now(), data: typeData });
+                results.push({ stepId: sid, name, ok: true, navigated: observed.navigated, domChanged: observed.domChanged, focusChanged: observed.focusChanged, valueApplied: observed.valueApplied, typedIntoVoid: observed.typedIntoVoid, effectObserved: observed.effectObserved, runtimeErrors: observed.runtimeErrors });
                 try {
                   broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name });
                 } catch { }
@@ -1064,14 +1125,22 @@ export async function executePlannedActions(params: {
                 const before = await screenshotJpegBase64(page);
                 evidence.push({ kind: 'screenshot', jpegBase64: before, ts: now(), stepId: sid });
 
-                await interactions.naturalType(page, 'type_text', textRaw);
-
-                await page.waitForTimeout(80);
+                // Locatorless-type effect evidence, same contract as the
+                // global path above: the receipt names what the text
+                // observably moved. Evidence only, never a failure.
+                const fallbackControlKey = textRaw === '\n' || textRaw === '\t' || textRaw === '\b' || textRaw === '\x7f';
+                const observed = await observeTypeStep(page, sessionId, async () => {
+                  await interactions.naturalType(page, 'type_text', textRaw);
+                  await page.waitForTimeout(80);
+                }, { expectedLength: textRaw.length, mode: fallbackControlKey || !textRaw ? 'keys' : 'append' });
                 const after = await screenshotJpegBase64(page);
                 evidence.push({ kind: 'screenshot', jpegBase64: after, ts: now(), stepId: sid });
 
-                broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now() });
-                results.push({ stepId: sid, name, ok: true });
+                const typeData = observed.effectObserved === undefined && observed.runtimeErrors === undefined && observed.valueApplied === undefined && observed.typedIntoVoid === undefined
+                  ? undefined
+                  : { navigated: observed.navigated, domChanged: observed.domChanged, focusChanged: observed.focusChanged, valueApplied: observed.valueApplied, typedIntoVoid: observed.typedIntoVoid, effectObserved: observed.effectObserved, runtimeErrors: observed.runtimeErrors };
+                broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now(), data: typeData });
+                results.push({ stepId: sid, name, ok: true, navigated: observed.navigated, domChanged: observed.domChanged, focusChanged: observed.focusChanged, valueApplied: observed.valueApplied, typedIntoVoid: observed.typedIntoVoid, effectObserved: observed.effectObserved, runtimeErrors: observed.runtimeErrors });
                 try {
                   broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name });
                 } catch { }
