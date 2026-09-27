@@ -3,7 +3,7 @@ import type { FailureReason } from './types';
 import { DEFAULT_BROWSER_CONFIG } from './config';
 import { broadcastBrowserEvent } from './wsHub';
 import { gotoResilient, probeNavigationReadiness, type NavigationReadiness } from './navigation';
-import { buildExtractReadEval, buildScrollIntoViewEval, buildScrollTargetReadEval, buildSelectReadEval, buildSelectSetEval, captureEvidence, CLICK_FINGERPRINT_SCRIPT, classifyActionError, compareClickEffect, compareKeyEffect, compareScrollEffect, compareTraversalEffect, compareTypeEffect, compareWaitEffect, ELEMENTS_READ_SCRIPT, ensureTypedValue, evaluateElementsObservation, evaluateExtractObservation, KEY_FOCUS_SCRIPT, SCROLL_SNAPSHOT_SCRIPT, TRAVERSAL_IDENTITY_SCRIPT, typeActionText, type ClickContext, type KeyContext, type KeyFocus, type ScrollSnapshot, type TraversalContext, type TraversalIdentity, type TypeExpectMode, type AssertObservation, parseAssertTarget, observeAssertState, evaluateAssertObservation, isSelectorSyntaxError, summarizeEvaluateResult } from './actionVerification';
+import { buildExtractReadEval, buildScrollIntoViewEval, buildScrollTargetReadEval, buildSelectReadEval, buildSelectSetEval, captureEvidence, CLICK_FINGERPRINT_SCRIPT, classifyActionError, compareClickEffect, compareGotoEffect, compareKeyEffect, compareScrollEffect, compareTraversalEffect, compareTypeEffect, compareWaitEffect, ELEMENTS_READ_SCRIPT, ensureTypedValue, evaluateElementsObservation, evaluateExtractObservation, KEY_FOCUS_SCRIPT, SCROLL_SNAPSHOT_SCRIPT, TRAVERSAL_IDENTITY_SCRIPT, typeActionText, type ClickContext, type GotoEffect, type KeyContext, type KeyFocus, type ScrollSnapshot, type TraversalContext, type TraversalIdentity, type TypeExpectMode, type AssertObservation, parseAssertTarget, observeAssertState, evaluateAssertObservation, isSelectorSyntaxError, summarizeEvaluateResult } from './actionVerification';
 import { getBrowserTelemetryErrorCounts } from './telemetry';
 import { getBrowserSession, setStreamMask, touchSession, withBrowserConcurrency } from './manager';
 import { getSessionSecret, getUserSecret } from '../services/secrets';
@@ -230,6 +230,31 @@ async function snapshotTraversalIdentity(page: Page): Promise<TraversalIdentity 
  * empty-history no-ops do, so only observed page state counts. Never
  * throws; evidence only, never a new failure.
  */
+
+/**
+ * Pack one goto effect into receipt fields. Unmeasured halves stay
+ * absent (never invented); the landing verdict is always a boolean —
+ * an unmeasured landing counts as not-requested, never as requested.
+ */
+function packGotoReceipt(effect: GotoEffect): {
+  navigated: boolean | undefined;
+  domChanged: boolean | undefined;
+  documentChanged: boolean | undefined;
+  landedOnRequested: boolean;
+  httpStatus: number | undefined;
+  effectObserved: boolean | undefined;
+  runtimeErrors: number | undefined;
+} {
+  return {
+    navigated: effect.readOk ? effect.navigated : undefined,
+    domChanged: effect.readOk ? effect.domChanged : undefined,
+    documentChanged: effect.identityReadOk ? effect.documentChanged : undefined,
+    landedOnRequested: effect.landedOnRequested,
+    httpStatus: effect.httpStatus,
+    effectObserved: (effect.readOk || effect.identityReadOk) ? effect.effectObserved : undefined,
+    runtimeErrors: effect.runtimeErrors,
+  };
+}
 async function observeTraversalStep(
   page: Page,
   sessionId: string,
@@ -418,7 +443,7 @@ export async function executePlannedActions(params: {
         workerStatus: 'running',
       });
     } catch { }
-    const results: Array<{ stepId: string; name: string; ok: boolean; reason?: FailureReason; message?: string; resultType?: string; resultLength?: number; verified?: boolean; valueMatch?: boolean; repaired?: boolean; valueApplied?: boolean; typedIntoVoid?: boolean; navigated?: boolean; domChanged?: boolean; focusChanged?: boolean; documentChanged?: boolean; navigationError?: boolean; effectObserved?: boolean; runtimeErrors?: number; scrolled?: boolean; scrollDeltaY?: number; atEdge?: boolean; inViewport?: boolean; elapsedMs?: number; matched?: number; visibleCount?: number; found?: boolean; textLength?: number; elementCount?: number; totalMatched?: number; truncated?: boolean; captured?: boolean; captureBytes?: number }> = [];
+    const results: Array<{ stepId: string; name: string; ok: boolean; reason?: FailureReason; message?: string; resultType?: string; resultLength?: number; verified?: boolean; valueMatch?: boolean; repaired?: boolean; valueApplied?: boolean; typedIntoVoid?: boolean; navigated?: boolean; domChanged?: boolean; focusChanged?: boolean; documentChanged?: boolean; navigationError?: boolean; landedOnRequested?: boolean; httpStatus?: number; effectObserved?: boolean; runtimeErrors?: number; scrolled?: boolean; scrollDeltaY?: number; atEdge?: boolean; inViewport?: boolean; elapsedMs?: number; matched?: number; visibleCount?: number; found?: boolean; textLength?: number; elementCount?: number; totalMatched?: number; truncated?: boolean; captured?: boolean; captureBytes?: number }> = [];
     const evidence: Array<{ kind: 'screenshot'; jpegBase64: string; ts: number; stepId: string }> = [];
 
     for (let i = 0; i < Math.min(cfg.maxSteps, actions.length); i += 1) {
@@ -492,6 +517,14 @@ export async function executePlannedActions(params: {
           const before = await screenshotJpegBase64(page);
           evidence.push({ kind: 'screenshot', jpegBase64: before, ts: now(), stepId: sid });
 
+          // Goto effect evidence: the page fingerprint plus the document
+          // identity are captured around the navigation attempt, so every
+          // outcome — landed, error page, or never left — reports what the
+          // page observably did. Evidence only, never a new failure.
+          const gotoBefore: TraversalContext = {
+            page: await snapshotClickContext(page, sessionId),
+            identity: await snapshotTraversalIdentity(page),
+          };
           // [Wakil 3.2] Port Validation Safeguard
           const { isPortOpen, isLocalOrInternalUrl } = await import('../../shared/utils/network');
           if (isLocalOrInternalUrl(url)) {
@@ -501,8 +534,13 @@ export async function executePlannedActions(params: {
               const open = await isPortOpen(u.hostname, port);
               if (!open) {
                 const msg = `Navigation failed because no running web server was detected at ${u.hostname}:${port}. No URL was provided or discovered.`;
-                results.push({ stepId: sid, name, ok: false, reason: 'navigation_failed', message: msg });
-                broadcastBrowserEvent(sessionId, { type: 'step_error', stepId: sid, name, ts: now(), reason: 'navigation_failed', message: msg });
+                const gotoAfterClosed: TraversalContext = {
+                  page: await snapshotClickContext(page, sessionId),
+                  identity: await snapshotTraversalIdentity(page),
+                };
+                const closedReceipt = packGotoReceipt(compareGotoEffect(gotoBefore, gotoAfterClosed, url));
+                results.push({ stepId: sid, name, ok: false, reason: 'navigation_failed', message: msg, ...closedReceipt });
+                broadcastBrowserEvent(sessionId, { type: 'step_error', stepId: sid, name, ts: now(), reason: 'navigation_failed', message: msg, data: { ...closedReceipt } });
                 try {
                   broadcastBrowserEvent(sessionId, { type: 'action_error', ts: now(), actionId: sid, actionType: name, reason: 'navigation_failed', error: msg });
                 } catch { }
@@ -567,8 +605,13 @@ export async function executePlannedActions(params: {
             // navigation.ts reasons stay internal; the step keeps the shared
             // FailureReason vocabulary with HTTP detail in message + data.
             const reason = nav.reason === 'timeout' ? 'timeout' : navReason(msg);
-            results.push({ stepId: sid, name, ok: false, reason, message: msg });
-            broadcastBrowserEvent(sessionId, { type: 'step_error', stepId: sid, name, ts: now(), reason, message: msg, data: { attempts: nav.attempts } });
+            const gotoAfterFail: TraversalContext = {
+              page: await snapshotClickContext(page, sessionId),
+              identity: await snapshotTraversalIdentity(page),
+            };
+            const failReceipt = packGotoReceipt(compareGotoEffect(gotoBefore, gotoAfterFail, url, httpStatus));
+            results.push({ stepId: sid, name, ok: false, reason, message: msg, ...failReceipt });
+            broadcastBrowserEvent(sessionId, { type: 'step_error', stepId: sid, name, ts: now(), reason, message: msg, data: { attempts: nav.attempts, ...failReceipt } });
             try {
               broadcastBrowserEvent(sessionId, { type: 'action_error', ts: now(), actionId: sid, actionType: name, reason, error: msg });
             } catch { }
@@ -578,8 +621,14 @@ export async function executePlannedActions(params: {
           const after = await screenshotJpegBase64(page);
           evidence.push({ kind: 'screenshot', jpegBase64: after, ts: now(), stepId: sid });
 
-          broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now(), data: { url: page.url(), attempts: nav.attempts, readiness: nav.readiness } });
-          results.push({ stepId: sid, name, ok: true });
+          const gotoAfterOk: TraversalContext = {
+            page: await snapshotClickContext(page, sessionId),
+            identity: await snapshotTraversalIdentity(page),
+          };
+          const winStatus = [...nav.attempts].reverse().find(x => x.outcome === 'ok')?.httpStatus;
+          const okReceipt = packGotoReceipt(compareGotoEffect(gotoBefore, gotoAfterOk, url, winStatus));
+          broadcastBrowserEvent(sessionId, { type: 'step_done', stepId: sid, name, ts: now(), data: { url: page.url(), attempts: nav.attempts, readiness: nav.readiness, ...okReceipt } });
+          results.push({ stepId: sid, name, ok: true, ...okReceipt });
           try {
             broadcastBrowserEvent(sessionId, { type: 'action_done', ts: now(), actionId: sid, actionType: name });
           } catch { }

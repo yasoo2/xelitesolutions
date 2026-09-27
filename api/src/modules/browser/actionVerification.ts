@@ -754,6 +754,128 @@ export function compareTraversalEffect(before: TraversalContext | null, after: T
     return effect;
 }
 
+/**
+ * GOTO OBSERVED EFFECT — a goto names where the browser went, not just
+ * that the navigation call resolved.
+ *
+ * The old goto reported ok:true for every resolved navigation. Three
+ * landings shared that receipt and meant different things:
+ *
+ *   - A real move to the requested page (new document, new URL).
+ *   - A same-URL re-goto: URL and DOM identical, only the document
+ *     identity proves anything happened at all.
+ *   - A fallback win: the www/http candidate race landed somewhere the
+ *     step never asked for, and nothing said so.
+ *
+ * And the failure side was blind in the other direction: gotoResilient
+ * treats HTTP error statuses as failures, but the browser DID navigate
+ * to the error page — "reached server, page missing" (HTTP 404, new
+ * document) is a different diagnosis from "never left" (DNS, closed
+ * port), and the receipt now carries the difference.
+ *
+ * The page half delegates to compareClickEffect and the identity half
+ * mirrors compareTraversalEffect (one truth for fingerprint and load-
+ * stamp deltas); the goto half adds the landing verdict — did the
+ * landed URL match the requested one — and the observed HTTP status.
+ * Evidence only, never a new failure: success stays success, failure
+ * keeps its reason, both gain observed state.
+ */
+
+/** Observed effect of one `goto` step: where the browser went and what it found. */
+export interface GotoEffect {
+    /** False when the page could not be read before or after the goto. */
+    readOk: boolean;
+    /** The URL changed across the goto. */
+    navigated: boolean;
+    /** Title, element count, text length or markup hash changed. */
+    domChanged: boolean;
+    /** False when the document identity could not be read before or after. */
+    identityReadOk: boolean;
+    /** A new document loaded — the proof a same-URL goto actually re-navigated. */
+    documentChanged: boolean;
+    /**
+     * The landed URL matches the requested URL (normalized). False when
+     * the after-half is unreadable — an unmeasured landing never counts
+     * as requested.
+     */
+    landedOnRequested: boolean;
+    /** Observed HTTP verdict of the attempt; absent when unmeasured. */
+    httpStatus?: number;
+    /** documentChanged || navigated || domChanged. Evidence only — never a failure by itself. */
+    effectObserved: boolean;
+    /** New runtime error signals observed during the step; absent when unmeasurable. */
+    runtimeErrors?: number;
+}
+
+/**
+ * Normalize a navigation URL for landing comparison: trimmed, scheme and
+ * host lowercased, default ports dropped, trailing slashes stripped. The
+ * path keeps its case, the query and hash are kept — they are part of
+ * "where asked". Unparseable landings (about:blank and friends) degrade
+ * to a trimmed string instead of throwing.
+ */
+export function normalizeGotoLanding(raw: string): string {
+    const s = String(raw ?? '').trim();
+    if (!s) return '';
+    // Only hierarchical web URLs decompose; about:blank, data: and other
+    // opaque landings degrade to a trimmed string instead of a mangled
+    // scheme:// form.
+    if (!/^https?:\/\//i.test(s)) return s.replace(/\/+$/, '');
+    try {
+        const u = new URL(s);
+        const scheme = String(u.protocol || '').toLowerCase();
+        const host = String(u.hostname || '').toLowerCase();
+        const port = String(u.port || '');
+        const defaultPort =
+            (scheme === 'http:' && port === '80') ||
+            (scheme === 'https:' && port === '443');
+        const path = String(u.pathname || '').replace(/\/+$/, '');
+        return `${scheme}//${host}${defaultPort || !port ? '' : `:${port}`}${path}${u.search || ''}${u.hash || ''}`;
+    } catch {
+        return s.replace(/\/+$/, '');
+    }
+}
+
+/**
+ * Compare two goto snapshots. Null-tolerant: missing halves degrade to
+ * readOk/identityReadOk:false, landedOnRequested:false and absent counts
+ * instead of inventing an effect. The HTTP verdict is validated — only a
+ * real 100-599 integer passes through.
+ */
+export function compareGotoEffect(
+    before: TraversalContext | null,
+    after: TraversalContext | null,
+    requestedUrl: string,
+    httpStatus?: number,
+): GotoEffect {
+    const page = compareClickEffect(before?.page ?? null, after?.page ?? null);
+    const effect: GotoEffect = {
+        readOk: page.readOk,
+        navigated: page.navigated,
+        domChanged: page.domChanged,
+        identityReadOk: false,
+        documentChanged: false,
+        landedOnRequested: false,
+        effectObserved: page.effectObserved,
+        ...(page.runtimeErrors === undefined ? {} : { runtimeErrors: page.runtimeErrors }),
+    };
+    const bi = before?.identity ?? null;
+    const ai = after?.identity ?? null;
+    if (bi && ai) {
+        effect.identityReadOk = true;
+        effect.documentChanged = bi.loadStamp !== ai.loadStamp && bi.loadStamp > 0 && ai.loadStamp > 0;
+        effect.effectObserved = effect.effectObserved || effect.documentChanged;
+    }
+    const landed = after?.page?.fingerprint?.url;
+    if (typeof landed === 'string' && landed) {
+        effect.landedOnRequested = normalizeGotoLanding(landed) === normalizeGotoLanding(requestedUrl);
+    }
+    if (typeof httpStatus === 'number' && Number.isInteger(httpStatus) && httpStatus >= 100 && httpStatus <= 599) {
+        effect.httpStatus = httpStatus;
+    }
+    return effect;
+}
+
 /** Observed effect of one `wait` step: what happened DURING the sleep. */
 export interface WaitEffect {
     /** False when the page could not be read before or after the wait. */
