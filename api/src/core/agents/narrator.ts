@@ -133,24 +133,31 @@ export function extractNarration(
  */
 export async function narrate(
     c: NarrationContext,
-    call: (prompt: string) => Promise<string>,
+    call: (prompt: string, signal: AbortSignal) => Promise<string>,
     opts: { timeoutMs?: number } = {},
 ): Promise<{ text: string; reject?: NarrationReject | 'timeout' | 'threw' }> {
     const timeoutMs = opts.timeoutMs ?? 6000;
+    const controller = new AbortController();
     let timer: NodeJS.Timeout | undefined;
+    let timedOut = false;
     try {
         const raw = await Promise.race([
-            call(narrationPrompt(c)),
-            new Promise<never>((_, rej) => { timer = setTimeout(() => rej(new Error('narration_timeout')), timeoutMs); }),
+            call(narrationPrompt(c), controller.signal),
+            new Promise<never>((_, reject) => {
+                timer = setTimeout(() => {
+                    timedOut = true;
+                    controller.abort(new Error('narration_timeout'));
+                    reject(new Error('narration_timeout'));
+                }, timeoutMs);
+            }),
         ]);
         return extractNarration(raw, c);
     } catch (e: any) {
-        return { text: '', reject: /timeout/.test(String(e?.message)) ? 'timeout' : 'threw' };
+        return { text: '', reject: timedOut || /timeout/.test(String(e?.message)) ? 'timeout' : 'threw' };
     } finally {
         if (timer) clearTimeout(timer);
     }
 }
-
 /**
  * Is narration switched on?
  *

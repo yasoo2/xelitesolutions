@@ -131,6 +131,14 @@ describe('narrate() never becomes the step\'s problem', () => {
         expect(Date.now() - started).toBeLessThan(1500);
     });
 
+    it('aborts an in-flight model request when narration times out', async () => {
+        let aborted = false;
+        const got = await narrate(ctx, (_prompt, signal?: AbortSignal) => new Promise<string>(() => {
+            signal?.addEventListener('abort', () => { aborted = true; }, { once: true });
+        }), { timeoutMs: 25 });
+        expect(got.reject).toBe('timeout');
+        expect(aborted).toBe(true);
+    });
     it('passes the real prompt to the model, not a summary of it', async () => {
         let seen = '';
         await narrate(ctx, async (p) => { seen = p; return 'أكتب الأسعار الآن.'; });

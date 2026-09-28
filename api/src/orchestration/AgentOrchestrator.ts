@@ -546,7 +546,7 @@ export class AgentOrchestrator {
                       total: dag.nodes.length,
                       isArabic: /[ؠ-ٟٮ-ۓۺ-ۿ]/.test(String(goalText || '')),
                   },
-                  (prompt) => routeToModel(
+                  (prompt, signal) => routeToModel(
                       [{ role: 'user', content: prompt }],
                       undefined, undefined, undefined, undefined, undefined, undefined,
                       {
@@ -555,6 +555,7 @@ export class AgentOrchestrator {
                         runId: goalContext?.runId || traceId || liveSessionId,
                         traceId,
                         engineeringPipeline: node.tool === 'project_pipeline',
+                        signal,
                       },
                   ),
               );
