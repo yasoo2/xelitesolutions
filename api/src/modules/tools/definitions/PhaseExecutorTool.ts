@@ -23,6 +23,7 @@ import {
     type VerificationSelection,
 } from '../../../core/quality/verification-ledger';
 import { redactCommandForLog } from '../../../shared/utils/redaction';
+import { parseExecutedTestReport } from '../../../shared/test-report';
 import { loadEngineeringCheckpoint, saveEngineeringCheckpoint, checkpointPhase, checkpointTool, engineeringCheckpointKey, loadAllRunCheckpoints, clearAllRunCheckpoints } from '../../../core/resume/engineering-checkpoint';
 
 type PhaseDeliveryEvidence = {
@@ -1812,6 +1813,14 @@ delete toolArgs.verificationMode;
                 const repairFile = repairKind === 'code_fix' && typeof failedOutput.repairFile === 'string'
                     ? failedOutput.repairFile.slice(0, 1000)
                     : undefined;
+                // A shell test command that produced an executed test report has a working
+                // harness: its failure is diagnostic evidence (a red step) for the remaining
+                // tasks, not a blocking defect. A recorded ledger failure stands (failed
+                // receipts are never reused), and the phase verification re-checks reality,
+                // so checkpoint-selected test steps continue the same way plain ones do.
+                const diagnosticReport = toolName === 'shell_execute'
+                    ? parseExecutedTestReport(`${String(failedOutput.stdout || '')}\n${String(failedOutput.stderr || '')}`)
+                    : null;
                 appendLog(`[PhaseExecutor] ❌ Task ${taskIndex + 1} failed: ${toolName} — ${errMsg}`);
                 results.push({
                     task: formatTaskDesc(taskDesc),
@@ -1820,6 +1829,7 @@ delete toolArgs.verificationMode;
                     execution: 'ran',
                     error: currentRunError,
                     ...((toolResult as any)?.recoverable === true ? { recoverable: true } : {}),
+                    ...(diagnosticReport ? { diagnosticTestReport: diagnosticReport.summary } : {}),
                     ...(failedMessage ? { message: failedMessage.slice(0, 8000) } : {}),
                     ...(repairKind ? { repairKind } : {}),
                     ...(repairFile ? { repairFile } : {}),
@@ -1854,6 +1864,9 @@ delete toolArgs.verificationMode;
                 const recoverableFailure = (toolResult as any)?.recoverable === true;
                 if (recoverableFailure) {
                     appendLog('[PhaseExecutor] ↪️ Recoverable task failure recorded; continuing so downstream verification and self-fix can use the exact evidence.');
+                    return { results, completedCount, verificationLedger, apiSelection, capabilityDecision, phaseDelivery: newPhaseDelivery, shouldBreak: false };
+                } else if (diagnosticReport) {
+                    appendLog(`[PhaseExecutor] Diagnostic test report recorded (${diagnosticReport.summary}); continuing so fix tasks and verification can use the exact evidence.`);
                     return { results, completedCount, verificationLedger, apiSelection, capabilityDecision, phaseDelivery: newPhaseDelivery, shouldBreak: false };
                 } else if (!verificationSelection && (task.priority === 'high' || task.required === true)) {
                     appendLog('[PhaseExecutor] ⚠️ High-priority task failed. Retrying once...');
@@ -1982,6 +1995,7 @@ delete toolArgs.verificationMode;
             cwd?: string;
             background?: boolean;
             recoverable?: boolean;
+            diagnosticTestReport?: string;
             runId?: string;
             projectRoot?: string;
             evidenceStatus?: 'current_run' | 'stale_run_dropped';
@@ -2261,6 +2275,9 @@ const skippedCount = taskResults.filter(r => r.execution === 'skipped').length;
             const executedCount = taskResults.filter(r => r.execution === 'ran').length;
             const failedCount = taskResults.filter(r => r.execution === 'ran' && !r.ok).length;
             const allOk = taskResults.length > 0 && taskResults.every(r => r.ok);
+            // Diagnostic test steps (red steps) must not gate the phase verification:
+            // their failure is recorded evidence, and the verification re-checks reality.
+            const gateOk = taskResults.length > 0 && taskResults.every(r => r.ok || typeof (r as any).diagnosticTestReport === 'string');
             // When all tasks are reused from checkpoints, the phase is effectively completed (just reused)
             const allReused = (reusedCount === totalTasks && executedCount === 0);
             let status = allOk && (skippedCount === 0 || allReused)
@@ -2272,10 +2289,11 @@ const skippedCount = taskResults.filter(r => r.execution === 'skipped').length;
             const phaseExecution = (reusedCount === totalTasks && executedCount === 0) ? 'reused' : 'ran';
             let verificationFailed = false;
             let verificationUnavailable = false;
+            let phaseVerificationFreshPassed = false;
 
             appendLog(`[PhaseExecutor] Phase ${phaseTag} ${status}: ${executedCount}/${totalTasks} executed · ${skippedCount} skipped · ${reusedCount} reused${failedCount ? ` · ${failedCount} failed` : ''}`);
 
-            if (phase.verificationTask && allOk && (executedCount + reusedCount) > 0) {
+            if (phase.verificationTask && gateOk && (executedCount + reusedCount) > 0) {
                 assertRunActive();
                 const vTask = phase.verificationTask;
                 const requestedVerificationTool = String(vTask.tool || '').trim();
@@ -2400,6 +2418,7 @@ const skippedCount = taskResults.filter(r => r.execution === 'skipped').length;
                             const verificationOutcome = verificationResultFromToolResult(vResult);
                             if (vResult.ok && verificationOutcome === 'passed') {
                                 appendLog(`[PhaseExecutor] ✅ Verification passed for Phase ${phaseTag}`);
+                                phaseVerificationFreshPassed = true;
                                 results.push({ task: vTaskDesc, tool: vToolName, ok: true, execution: 'ran' });
                             } else {
                                 const vErr = String(vResult.error || 'Verification failed');
@@ -2435,6 +2454,12 @@ const skippedCount = taskResults.filter(r => r.execution === 'skipped').length;
                     verificationFailed = true;
                     status = 'partial';
                 }
+            }
+
+            if (phaseVerificationFreshPassed && (status === 'partial' || status === 'failed') && skippedCount === 0 && failedCount > 0
+                && taskResults.filter(r => r.execution === 'ran' && !r.ok).every(r => typeof (r as any).diagnosticTestReport === 'string')) {
+                status = 'completed';
+                appendLog(`[PhaseExecutor] ✅ Phase ${phaseTag} completed: verification passed and all task failures were diagnostic test reports.`);
             }
 
             const hasCodeTasks = tasks.some((t: any) =>

@@ -761,11 +761,15 @@ export function isVerificationTool(tool: string, args: Record<string, unknown> =
             if (words[0] === '--') words.shift();
             return /^(?:test|lint|build|typecheck|check|guard)(?::[\w:-]+)?$/u.test(script || '') && testArgs(words);
         }
-        if (executable === 'node') return words.shift() === '--test' && words.every(word => !word.startsWith('-')
+        // tsx is node's TypeScript test runner: `tsx --test` carries the same report
+        // semantics as `node --test` (EVAL-003 red-green plans verify with it).
+        if (executable === 'node' || executable === 'tsx') return words.shift() === '--test' && words.every(word => !word.startsWith('-')
             || /^--test-(?:concurrency=[1-9][0-9]*|reporter=(?:spec|tap))$/u.test(word));
         const checker = executable === 'npx' ? words.shift() : executable;
         if (checker === 'playwright' || checker === 'cypress') return words.shift() === (checker === 'playwright' ? 'test' : 'run') && testArgs(words);
         if (checker === 'vitest') return words.shift() === 'run' && testArgs(words);
+        if (checker === 'tsx') return words.shift() === '--test' && words.every(word => !word.startsWith('-')
+            || /^--test-(?:concurrency=[1-9][0-9]*|reporter=(?:spec|tap))$/u.test(word));
         if (checker === 'tsc') return words.length === 1 && words[0] === '--noEmit';
         if (checker === 'eslint') return words.length > 0 && words.every(word => !word.startsWith('-'));
         return checker === 'jest' && testArgs(words);
