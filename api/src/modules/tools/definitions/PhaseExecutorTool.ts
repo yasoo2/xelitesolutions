@@ -2470,7 +2470,10 @@ const skippedCount = taskResults.filter(r => r.execution === 'skipped').length;
             const hasCodeTasks = tasks.some((t: any) =>
                 ['ai_write_file', 'write_file', 'file_edit', 'file_edit_advanced', 'scaffold_project'].includes(String(t.tool || ''))
             );
-            if (hasCodeTasks && !phase.verificationTask && allOk && executedCount > 0 && executionContext.workspaceId) {
+            // Non-object prose degrades to absent-verification semantics: it must
+            // receive this same auto-build observation, never less scrutiny.
+            const verificationAbsent = !phase.verificationTask || typeof phase.verificationTask !== 'object';
+            if (hasCodeTasks && verificationAbsent && allOk && executedCount > 0 && executionContext.workspaceId) {
                 const writtenPaths = tasks
                     .map((t: any) => String(t?.args?.path || t?.args?.filename || t?.input?.path || t?.input?.filename || ''))
                     .filter(Boolean);

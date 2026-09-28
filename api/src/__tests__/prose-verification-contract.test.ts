@@ -18,7 +18,10 @@
  * - the phase gate degrades a non-object verification to
  *   absent-verification semantics (phase completes on its tasks) instead of
  *   recording verification_unavailable, while still honestly rejecting
- *   object-shaped non-checker contracts.
+ *   object-shaped non-checker contracts;
+ * - degraded prose receives the SAME no-verifier auto-build observation as a
+ *   genuinely absent verifier (never less scrutiny than absence), and never
+ *   yields a passed verification receipt.
  */
 import { sanitisePlanPhases } from '../core/orchestrator/plan-tools';
 import { isVerificationTool } from '../core/quality/verification-ledger';
@@ -161,5 +164,46 @@ describe('prose verification contract', () => {
     );
     expect(result.output.status).toBe('partial');
     expect(result.logs.some((line: string) => line.includes('verification_unavailable'))).toBe(true);
+  });
+
+  it('phase gate gives prose the same auto-build observation as an absent verifier (package.json written)', async () => {
+    // Parity: a code-writing phase with NO verifier gets an honest
+    // auto-build observation. Prose degrades to absent-verification
+    // semantics, so it must receive that same observation — never less
+    // scrutiny than absence.
+    const result: any = await runPhase(
+      [{ task: 'Write manifest', tool: 'write_file', args: { path: 'myapp/package.json', content: '{}' } }],
+      'Verify the build output is correct',
+    );
+    expect(result.ok).toBe(true);
+    expect(result.output.status).toBe('completed');
+    expect(result.logs.some((line: string) => line.includes('Auto-running build check'))).toBe(true);
+    expect(result.logs.some((line: string) => line.includes('verification_unavailable'))).toBe(false);
+  });
+
+  it('phase gate honestly skips the auto-build check for prose when no package.json was written', async () => {
+    const result: any = await runPhase(
+      [{ task: 'Write entry', tool: 'write_file', args: { path: 'app/index.js', content: 'module.exports = {};' } }],
+      'Verify the technical stack is correctly implemented',
+    );
+    expect(result.ok).toBe(true);
+    expect(result.output.status).toBe('completed');
+    expect(result.logs.some((line: string) => line.includes('Auto-build check skipped honestly'))).toBe(true);
+    expect(result.logs.some((line: string) => line.includes('verification_unavailable'))).toBe(false);
+  });
+
+  it('prose verification records no passed verification receipt', async () => {
+    // Negative: prose must never yield a verification PASS claim. The phase
+    // completes on its tasks, but the ledger must hold no passed receipt.
+    const result: any = await runPhase(
+      [{ task: 'Run the real phase task', tool: 'echo', args: { message: 'ran' } }],
+      'Verify the technical stack is correctly implemented',
+    );
+    expect(result.ok).toBe(true);
+    expect(result.output.status).toBe('completed');
+    const receipts = Array.isArray(result.output?.verificationLedger?.receipts)
+      ? result.output.verificationLedger.receipts
+      : [];
+    expect(receipts.filter((r: any) => r?.result === 'passed')).toHaveLength(0);
   });
 });
