@@ -2239,7 +2239,7 @@ export async function routeToModel(
         return (status.state === 'RATE_LIMITED' || status.state === 'QUOTA_EXHAUSTED')
             && !!status.retryAt && status.retryAt <= now && !status.blocked;
     });
-    if (!quotaRecoveryReady && !canAttemptAfterDeadBrainLatch(
+    if (!providerHealthProbe && !quotaRecoveryReady && !canAttemptAfterDeadBrainLatch(
         scopedLastTotalFailureAt,
         now,
         DEAD_BRAIN_LATCH_MS,
@@ -2840,8 +2840,12 @@ export async function routeToModel(
     // write_file commands — that is how a browser once opened out of nowhere.)
     console.error(`[IntelligentRouter] CRITICAL: All LLM providers failed. providerAttempts=${JSON.stringify(providerAttempts)}. Returning honest error.`);
     const failureAt = Date.now();
-    failureLatchByScope.set(latchScope, failureAt);
-    lastTotalFailureAt = Date.now(); // compatibility marker and legacy observability; scoped reads use the map
+    // Health probes inspect current provider circuits and must not latch a shared
+    // failure that would block the next independent preflight.
+    if (!providerHealthProbe) {
+        failureLatchByScope.set(latchScope, failureAt);
+        lastTotalFailureAt = failureAt; // compatibility marker; scoped reads use the map
+    }
     const recentLocalTimeout = localTimedOutAt > 0 && failureAt - localTimedOutAt < 300_000;
     const localTimedOutThisCall = providerAttempts.some((attempt) =>
         attempt.provider === 'Local (Auto)' && isLocalTimeoutError(attempt.error));
@@ -3006,7 +3010,18 @@ export async function verifyProviderDirect(
             }
             const ans = await withTimeout(routeToModel(probe, undefined, undefined, undefined, undefined, undefined, undefined,
                 { modelConfig: { provider: 'auto', apiKey: 'auto-mode' }, providerHealthProbe: true, signal: probeAbort.signal }), 45_000);
-            return { ok: usable(ans), provider, detail: usable(ans) ? 'mesh_ok' : 'mesh_empty' };
+            if (usable(ans)) return { ok: true, provider, detail: 'mesh_ok' };
+            const localStatus = providerCircuitStatus(providerCircuitKey('Local (Auto)'));
+            const localQuotaActive = localProvider.isConfigured() && providerAllowedByCost('Local (Auto)')
+                && String(process.env.LOCAL_LLM_DISABLE || '').trim() !== '1'
+                && localStatus.blocked && localStatus.retryAt && localStatus.retryAt > Date.now()
+                && (localStatus.state === 'RATE_LIMITED' || localStatus.state === 'QUOTA_EXHAUSTED');
+            // Report the recorded provider window only when no fallback answered.
+            // A retryAt is the next check, never a promise that quota will reset.
+            const detail = localQuotaActive
+                ? `Local (Auto) ${localStatus.state}; next check in about ${Math.max(1, Math.ceil((localStatus.retryAt! - Date.now()) / 60_000))} minutes; no other provider answered`
+                : 'mesh_empty';
+            return { ok: false, provider, detail };
         }
 
         // A real user key → test THAT provider directly via the custom (non-mesh) route.

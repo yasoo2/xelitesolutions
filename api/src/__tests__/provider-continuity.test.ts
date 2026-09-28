@@ -133,6 +133,27 @@ describe('free-only provider continuity through routeToModel', () => {
         expect(registry.localProvider.chatComplete).toHaveBeenCalledTimes(1);
         expect(providerCircuitStatus(localKey)).toEqual({ blocked: false });
     });
+    it('reports the local 429 state and next check when Auto has no healthy fallback', async () => {
+        process.env.OFFLINE_MODE = 'true';
+        process.env.LOCAL_LLM_STRICT = '1';
+        delete process.env.LOCAL_LLM_DISABLE;
+        process.env.LOCAL_LLM_BASE_URL = 'http://127.0.0.1:11434/v1';
+        (localBrain.isLocalBrainReady as jest.Mock).mockReturnValue(true);
+        (localBrain.localWarmupMs as jest.Mock).mockReturnValue(1_200);
+        registry.localProvider.isConfigured.mockReturnValue(true);
+        recordProviderCircuitFailure(providerCircuitKey('Local (Auto)'),
+            { status: 429, headers: { 'Retry-After': '600' } });
+
+        const result = await verifyProviderDirect('auto');
+        expect(result).toMatchObject({ ok: false, provider: 'auto' });
+        expect(result.detail).toContain('RATE_LIMITED');
+        expect(result.detail).toMatch(/next check in about 10 minutes/);
+        expect(registry.localProvider.chatComplete).not.toHaveBeenCalled();
+        delete process.env.OFFLINE_MODE;
+        delete process.env.LOCAL_LLM_STRICT;
+        expect(await verifyProviderDirect('auto')).toMatchObject({ ok: true, detail: 'mesh_ok' });
+        expect(registry.llm7Provider.chatComplete).toHaveBeenCalledTimes(1);
+    });
     it('reaches a free fallback after the Auto local preflight times out', async () => {
         jest.useFakeTimers();
         try {
