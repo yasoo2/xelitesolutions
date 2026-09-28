@@ -1,14 +1,87 @@
 import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
 
 /** Policy/state for the existing router; this module never calls a provider. */
 export type ProviderState = 'RATE_LIMITED' | 'QUOTA_EXHAUSTED' | 'AUTH_FAILED' | 'TEMPORARILY_UNAVAILABLE';
 type Circuit = { state: ProviderState; retryAt: number; probingUntil: number; lease?: number };
+type SavedQuota = { key: string; state: 'RATE_LIMITED' | 'QUOTA_EXHAUSTED'; retryAt: number };
+type StorePayload = { version: 1; circuits: SavedQuota[]; capacityRetryAt: number };
 let nextProbeLease = 0;
 const MAX_CIRCUITS = 512;
 let capacityRetryAt = 0;
 const circuits = new Map<string, Circuit>();
-const identityKey = crypto.randomBytes(32);
+let identityKey = crypto.randomBytes(32);
+let storePath: string | undefined;
+let storeMacKey: Buffer | undefined;
+let initialized = false;
+let warnedPersistence = false;
 export const PROVIDER_RECOVERY_TIMEOUT_MS = 30_000;
+
+function storeSignature(payload: StorePayload): Buffer {
+    return crypto.createHmac('sha256', storeMacKey!).update(JSON.stringify(payload)).digest();
+}
+
+/** Only a stable server secret makes credential-scoped cooldowns safe to reload. */
+function initializeContinuity(): void {
+    if (initialized) return;
+    initialized = true;
+    const secret = String(process.env.JWT_SECRET || '');
+    const explicitTestStore = String(process.env.JOE_PROVIDER_CIRCUIT_STORE_DIR || '').trim();
+    if (secret.length < 24 || (process.env.NODE_ENV === 'test' && !explicitTestStore)) return;
+    const dir = explicitTestStore || String(process.env.JOE_CHAT_STORE_DIR || '').trim()
+        || path.join(process.cwd(), 'data', 'db');
+    identityKey = crypto.createHmac('sha256', secret).update('joe-provider-circuit-key-v1').digest();
+    storeMacKey = crypto.createHmac('sha256', secret).update('joe-provider-circuit-store-v1').digest();
+    storePath = path.join(dir, 'provider-circuits.json');
+    try {
+        if (fs.statSync(storePath).size > 256_000) throw new Error('oversized cooldown store');
+        const saved = JSON.parse(fs.readFileSync(storePath, 'utf8'));
+        if (saved?.version !== 1 || !Array.isArray(saved.circuits)
+            || saved.circuits.length > MAX_CIRCUITS || !/^[a-f0-9]{64}$/i.test(String(saved.mac || ''))) {
+            throw new Error('invalid cooldown store');
+        }
+        const payload: StorePayload = {
+            version: 1, circuits: saved.circuits, capacityRetryAt: saved.capacityRetryAt,
+        };
+        if (!crypto.timingSafeEqual(Buffer.from(saved.mac, 'hex'), storeSignature(payload))) {
+            throw new Error('invalid cooldown signature');
+        }
+        for (const entry of payload.circuits) {
+            if (!/^[a-f0-9]{64}$/.test(String(entry?.key || ''))
+                || (entry.state !== 'RATE_LIMITED' && entry.state !== 'QUOTA_EXHAUSTED')
+                || !Number.isSafeInteger(entry.retryAt) || entry.retryAt <= 0) continue;
+            circuits.set(entry.key, { state: entry.state, retryAt: entry.retryAt, probingUntil: 0 });
+        }
+        if (Number.isSafeInteger(payload.capacityRetryAt) && payload.capacityRetryAt > 0) {
+            capacityRetryAt = payload.capacityRetryAt;
+        }
+    } catch (error: any) {
+        if (error?.code !== 'ENOENT') console.warn('[ProviderContinuity] Ignoring unreadable cooldown store.');
+    }
+}
+
+/** Persist only bounded, signed quota state; never credentials or in-flight probe leases. */
+function persistContinuity(): void {
+    if (!storePath || !storeMacKey) return;
+    try {
+        const payload: StorePayload = {
+            version: 1,
+            circuits: [...circuits].filter(([key, value]) =>
+                /^[a-f0-9]{64}$/.test(key) && (value.state === 'RATE_LIMITED' || value.state === 'QUOTA_EXHAUSTED'))
+                .map(([key, value]) => ({ key, state: value.state as SavedQuota['state'], retryAt: value.retryAt })),
+            capacityRetryAt,
+        };
+        fs.mkdirSync(path.dirname(storePath), { recursive: true });
+        const temporary = storePath + '.' + process.pid + '.tmp';
+        fs.writeFileSync(temporary, JSON.stringify({ ...payload, mac: storeSignature(payload).toString('hex') }),
+            { encoding: 'utf8', mode: 0o600 });
+        fs.renameSync(temporary, storePath);
+    } catch {
+        if (!warnedPersistence) console.warn('[ProviderContinuity] Could not persist provider cooldowns.');
+        warnedPersistence = true;
+    }
+}
 
 const aliases: Record<string, string> = {
     google: 'gemini', claude: 'anthropic', xai: 'grok',
@@ -63,6 +136,7 @@ export function providerAllowedByCost(provider: string, model = '', baseUrl = ''
 export function providerCircuitKey(provider: string, config?: {
     apiKey?: string; baseUrl?: string; workspaceId?: string; userId?: string; sessionId?: string;
 }): string {
+    initializeContinuity();
     const name = canonicalProvider(provider);
     const keys = (envKeys[name] || []).map(key => String(process.env[key] || '').trim()).filter(Boolean);
     const credential = config ? String(config.apiKey || '').trim() : keys[0] || '';
@@ -116,6 +190,7 @@ export function providerRetryAfterMs(error: unknown, now = Date.now()): number |
 }
 
 export function recordProviderCircuitFailure(key: string, error: unknown, now = Date.now()): void {
+    initializeContinuity();
     const state = providerFailureState(error);
     if (!state) return;
     const fallback = state === 'QUOTA_EXHAUSTED' ? 30 * 60_000 : state === 'AUTH_FAILED' ? 5 * 60_000 : 60_000;
@@ -132,13 +207,16 @@ export function recordProviderCircuitFailure(key: string, error: unknown, now = 
             // outstanding reset, instead of evicting an active circuit.
             capacityRetryAt = Math.max(capacityRetryAt, now + (providerRetryAfterMs(error, now) || fallback),
                 ...Array.from(circuits.values(), saved => saved.retryAt));
+            persistContinuity();
             return;
         }
     }
     circuits.set(key, { state, retryAt, probingUntil: previous?.probingUntil || 0, ...(previous?.lease ? { lease: previous.lease } : {}) });
+    persistContinuity();
 }
 
 export function providerCircuitStatus(key: string, now = Date.now()): { blocked: boolean; state?: ProviderState; retryAt?: number } {
+    initializeContinuity();
     const circuit = circuits.get(key);
     return circuit ? { blocked: circuit.retryAt > now || circuit.probingUntil > now, state: circuit.state, retryAt: circuit.retryAt }
         : capacityRetryAt > now ? { blocked: true, state: 'TEMPORARILY_UNAVAILABLE', retryAt: capacityRetryAt } : { blocked: false };
@@ -146,6 +224,7 @@ export function providerCircuitStatus(key: string, now = Date.now()): { blocked:
 
 /** One active lease probes after reset. Expire orphaned leases when a transport ignores cancellation. */
 export function claimProviderCircuit(key: string, now = Date.now()): { allowed: boolean; probe: boolean; lease?: number } {
+    initializeContinuity();
     const circuit = circuits.get(key);
     if (!circuit) return { allowed: capacityRetryAt <= now, probe: false };
     if (circuit.retryAt > now || circuit.probingUntil > now) return { allowed: false, probe: false };
@@ -154,12 +233,14 @@ export function claimProviderCircuit(key: string, now = Date.now()): { allowed: 
     return { allowed: true, probe: true, lease: circuit.lease };
 }
 export function markProviderCircuitHealthy(key: string, lease?: number, now = Date.now()): void {
+    initializeContinuity();
     const circuit = circuits.get(key);
     // Another in-flight request may have just reported a newer quota window.
     if (circuit && (circuit.retryAt > now || circuit.lease && circuit.lease !== lease)) return;
-    circuits.delete(key);
+    if (circuits.delete(key)) persistContinuity();
 }
 export function releaseProviderCircuitProbe(key: string, lease?: number): void {
+    initializeContinuity();
     const circuit = circuits.get(key);
     if (circuit && lease && circuit.lease === lease) { circuit.probingUntil = 0; delete circuit.lease; }
 }
