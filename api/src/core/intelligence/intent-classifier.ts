@@ -83,8 +83,11 @@ function hasBuildStructure(goalRaw: string): { isBuild: boolean; confidence: num
 
     const infoQuestion = /^\s*(?:ما|ماذا|لماذا|ليش|كيف|متى|اين|أين|كم|ايهما|أيهما|وش\s+معنى|شو\s+معنى|ما\s+رايك|ما\s+رأيك)(?=$|[\s،:؛؟])/i.test(bare)
         || /^\s*هل(?=$|[\s،:؛])/i.test(bare);
-    const politeAction = /(?:^|[\s،:؛])هل\s+(?:يمكنك|تستطيع|تقدر)|(?:^|[\s،:؛])ممكن\s+(?:ان\s+|أن\s+)?(?:تصمم|تصميم|تبني|بناء|تنشئ|انشاء|إنشاء)/i.test(bare);
-    if (infoQuestion && !politeAction) {
+    const politeAction = /(?:^|[\s،:؛])هل\s+(?:يمكنك|تستطيع|تقدر)\s+(?:بناء|تبني|تبن[يى]|تصميم|تصمم|إنشاء|انشاء|تنشئ)|(?:^|[\s،:؛])ممكن\s+(?:ان\s+|أن\s+)?(?:تصمم|تصميم|تبني|بناء|تنشئ|انشاء|إنشاء)/i.test(bare);
+    if (politeAction && hasContainer) {
+        return { isBuild: true, confidence: 0.75, reason: 'polite build request + container' };
+    }
+    if (infoQuestion) {
         return { isBuild: false, confidence: 0.9, reason: 'information question' };
     }
 
@@ -136,6 +139,10 @@ export function isKnowledgeQuestionStructural(goalRaw: string): boolean {
     const bare = stripArabicDiacritics(g);
     const normalized = normalizeIntentText(g);
     const probe = normalized && normalized !== g.toLowerCase() ? `${g}\n${normalized}` : g;
+
+    if (hasBuildStructure(g).isBuild) return false;
+    // A command after an information question makes the whole request actionable.
+    if (/[؟?]\s*(?:انشره|انشرها|انشر|نفذه|نفذ|طبقه|طبق|deploy(?:\s+it)?|publish(?:\s+it)?|implement(?:\s+it)?)(?=$|[\s.!؟?،:؛])/iu.test(bare)) return false;
 
     return isKnowledgeQuestionPattern(bare) || isKnowledgeQuestionPattern(probe);
 }

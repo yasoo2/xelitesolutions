@@ -11,7 +11,7 @@ import os from 'os';
 import path from 'path';
 import { PlanningEngine, extractExactEchoRequest } from '../core/orchestrator/PlanningEngine';
 import { IntentParser } from '../core/intelligence/IntentParser';
-import intelligentRouter from '../core/llm/intelligent-router';
+import intelligentRouter, { providerProbeSucceeded, PROVIDER_FAILURE_PREFIX } from '../core/llm/intelligent-router';
 import {
     applyLiveRunOutcome,
     applyProjectQualityContractOutcome,
@@ -403,13 +403,15 @@ describe('the bridge tool — plan, execute phases, report honestly', () => {
         const router = fs.readFileSync(
             path.join(__dirname, '..', 'core', 'llm', 'intelligent-router.ts'), 'utf-8');
         expect(router).toMatch(/providerProbeSucceeded[\s\S]*!isProviderFailure/);
-        expect(router).toMatch(/const usable = \(s: any\) => providerProbeSucceeded\(s\)/);
+        expect(providerProbeSucceeded('OK')).toBe(true);
+        expect(providerProbeSucceeded(PROVIDER_FAILURE_PREFIX + ' no provider')).toBe(false);
+        expect(router).toMatch(/const usable = \(s: any\) => \{[\s\S]*?providerProbeSucceeded\(s\)/);
     });
 
     test('Auto preflight gives a measured local Ollama brain enough time before fallback', () => {
         const router = fs.readFileSync(
             path.join(__dirname, '..', 'core', 'llm', 'intelligent-router.ts'), 'utf-8');
-        expect(router).toContain("localProvider.chatComplete(probe as any, pickLocalModel('code_generation'))");
+        expect(router).toMatch(/localProvider\.chatComplete\(\s*probe as any,\s*pickLocalModel\('code_generation'\)/);
         expect(router).toContain("detail: 'local_ok'");
         expect(router).toContain('localWarmupMs');
         expect(router).toContain('warmup * 12');

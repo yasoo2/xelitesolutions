@@ -80,6 +80,19 @@ export class IntentParser {
             };
         }
 
+        const explicitFile = parseExplicitFileRequest(userText);
+        if (explicitFile) {
+            console.log(`[IntentParser] ⚡ Explicit file contract — skipping deep analysis (${explicitFile.path}).`);
+            return {
+                goal: userText,
+                complexity: 'low',
+                riskLevel: 'low',
+                suggestedAgent: 'Dev',
+                requiredTools: ['write_file', ...(explicitFile.readBack ? ['read_file'] : [])],
+                rawIntent: { primary: userText, fileRequest: explicitFile, deterministic: true },
+            };
+        }
+
         // Use structural intent classification (fast, cached, no LLM)
         const classification = await classifyIntent(userText);
 
@@ -110,19 +123,6 @@ export class IntentParser {
                 rawIntent: { primary: userText, knowledgeQuestion: true, deterministic: true },
             };
         }
-        const explicitFile = parseExplicitFileRequest(userText);
-        if (explicitFile) {
-            console.log(`[IntentParser] ⚡ Explicit file contract — skipping deep analysis (${explicitFile.path}).`);
-            return {
-                goal: userText,
-                complexity: 'low',
-                riskLevel: 'low',
-                suggestedAgent: 'Dev',
-                requiredTools: ['write_file', ...(explicitFile.readBack ? ['read_file'] : [])],
-                rawIntent: { primary: userText, fileRequest: explicitFile, deterministic: true },
-            };
-        }
-
         // A clear build request without an external web target already has
         // enough evidence for the evidence-first project pipeline. Waiting on
         // deep intent analysis here makes a missing/slow local model block the

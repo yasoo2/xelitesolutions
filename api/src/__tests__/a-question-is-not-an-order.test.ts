@@ -71,6 +71,21 @@ describe('INVARIANT: the guard refuses questions WITHOUT swallowing orders', () 
         expect(PlanningEngine.isKnowledgeQuestion(goal)).toBe(false);
     });
 
+    test.each([
+        'هل يمكنك بناء موقع لي؟',
+        'can you build me a website?',
+    ])('polite build request reaches the project pipeline: %s', async (goal) => {
+        const intent = await IntentParser.parse(goal, {} as any);
+        expect(intent.requiredTools).toEqual(['project_pipeline']);
+        expect(intent.rawIntent.buildRequest).toBe(true);
+    });
+
+    test('an explanation of deployment remains a question', async () => {
+        const goal = 'كيف أنشر المشروع؟';
+        expect(PlanningEngine.isKnowledgeQuestion(goal)).toBe(true);
+        const intent = await IntentParser.parse(goal, {} as any);
+        expect(intent.requiredTools).toEqual(['central_answer']);
+    });
     test('a build request is still a build request', () => {
         expect(PlanningEngine.isKnowledgeQuestion('ابن لي تطبيق React')).toBe(false);
         expect(PlanningEngine.looksLikeBuild('ابن لي تطبيق React')).toBe(true);
