@@ -88,6 +88,7 @@ const aliases: Record<string, string> = {
     'Groq (Free)': 'groq', 'Gemini (Free)': 'gemini', 'Cerebras (Free)': 'cerebras',
     'OpenRouter (Free)': 'openrouter', 'Mistral (Free)': 'mistral', 'HuggingFace (Free)': 'huggingface',
     'OpenAI (Direct)': 'openai', 'Local (Auto)': 'local', 'LLM7 (Keyless)': 'llm7',
+    'NVIDIA NIM': 'nvidia',
     'DuckAI (Keyless)': 'duckai', 'DeepSeek (Pollinations)': 'pollinations',
     'Pollinations (Backup)': 'pollinations', 'Pollinations (Forced)': 'pollinations',
 };
@@ -95,12 +96,14 @@ const hosts: Record<string, string> = {
     groq: 'api.groq.com', gemini: 'generativelanguage.googleapis.com', cerebras: 'api.cerebras.ai',
     openrouter: 'openrouter.ai', mistral: 'api.mistral.ai', huggingface: 'router.huggingface.co',
     openai: 'api.openai.com', anthropic: 'api.anthropic.com', grok: 'api.x.ai', deepseek: 'api.deepseek.com',
+    nvidia: 'integrate.api.nvidia.com',
 };
 const envKeys: Record<string, string[]> = {
     groq: ['GROQ_API_KEY'], gemini: ['GOOGLE_API_KEY', 'GEMINI_API_KEY'], cerebras: ['CEREBRAS_API_KEY'],
     openrouter: ['OPENROUTER_API_KEY'], mistral: ['MISTRAL_API_KEY'],
     huggingface: ['HUGGINGFACE_API_KEY', 'HF_TOKEN'], openai: ['OPENAI_API_KEY'],
     anthropic: ['ANTHROPIC_API_KEY'], grok: ['XAI_API_KEY'], deepseek: ['DEEPSEEK_API_KEY'],
+    nvidia: ['NVIDIA_API_KEY'],
 };
 function canonicalProvider(provider: string): string { return aliases[provider] || provider.toLowerCase(); }
 
@@ -122,6 +125,7 @@ export function providerAllowedByCost(provider: string, model = '', baseUrl = ''
             if (url.protocol !== 'https:' || url.hostname !== hosts[name]) return false;
         } catch { return false; }
     }
+    if (name === 'nvidia') return ['nvidia/nemotron-3-ultra-550b-a55b', 'nvidia/nemotron-3-super-120b-a12b'].includes(model || 'nvidia/nemotron-3-ultra-550b-a55b');
     if (name === 'openrouter') return /:free$/i.test(model || 'google/gemma-2-9b-it:free');
     if (name === 'llm7' && (String(process.env.LLM7_API_KEY || '').trim() && process.env.LLM7_API_KEY !== 'unused'
         || process.env.LLM7_BASE_URL && process.env.LLM7_BASE_URL.replace(/\/$/, '') !== 'https://api.llm7.io/v1')) return false;

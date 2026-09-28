@@ -196,6 +196,21 @@ describe('free-only provider continuity through routeToModel', () => {
         expect(mockOpenAI).not.toHaveBeenCalled();
     });
 
+    it('routes a selected NVIDIA Nemotron key only to the official endpoint and verifies no-key honestly', async () => {
+        expect(await verifyProviderDirect('nvidia', { model: 'nvidia/nemotron-3-ultra-550b-a55b' }))
+            .toMatchObject({ ok: false, detail: expect.stringContaining('no_key') });
+        expect(mockCreate).not.toHaveBeenCalled();
+        mockCreate.mockResolvedValue({ choices: [{ message: { content: 'OK' } }] });
+        expect(await verifyProviderDirect('nvidia', {
+            apiKey: 'test-nvidia-key', model: 'nvidia/nemotron-3-ultra-550b-a55b',
+        })).toMatchObject({ ok: true, detail: 'key_ok' });
+        expect(mockOpenAI).toHaveBeenCalledWith(expect.objectContaining({
+            baseURL: 'https://integrate.api.nvidia.com/v1', maxRetries: 0,
+        }));
+        expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({
+            model: 'nvidia/nemotron-3-ultra-550b-a55b',
+        }), expect.anything());
+    });
     it('does not certify a selected provider using a fallback answer', async () => {
         mockCreate.mockRejectedValue(Object.assign(new Error('429 rate limit'), { status: 429 }));
         const result = await verifyProviderDirect('groq', { apiKey: 'test-verification-key', model: 'test-model' });
@@ -383,6 +398,10 @@ describe('free-only provider continuity through routeToModel', () => {
         delete process.env.AI_FREE_PROVIDERS;
         expect(providerAllowedByCost('groq')).toBe(false);
         expect(providerAllowedByCost('openrouter', 'vendor/model:free')).toBe(true);
+        expect(providerAllowedByCost('nvidia', 'nvidia/nemotron-3-ultra-550b-a55b', 'https://integrate.api.nvidia.com/v1')).toBe(true);
+        expect(providerAllowedByCost('nvidia', 'nvidia/nemotron-3-super-120b-a12b', 'https://integrate.api.nvidia.com/v1')).toBe(true);
+        expect(providerAllowedByCost('nvidia', 'unknown-model', 'https://integrate.api.nvidia.com/v1')).toBe(false);
+        expect(providerAllowedByCost('nvidia', 'nvidia/nemotron-3-ultra-550b-a55b', 'https://other.example/v1')).toBe(false);
     });
 
     it('only operator allow_paid enables the explicitly configured paid route', async () => {

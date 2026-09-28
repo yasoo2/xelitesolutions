@@ -1644,7 +1644,7 @@ export async function routeToModel(
           };
           const quotaPausedUntil = customRouteCooldownUntil.get(routeKey) || 0;
           const strictProviderCheck = context?.strictProviderCheck === true;
-          const knownCustomEndpoint = ['openrouter', 'gemini', 'google', 'deepseek', 'grok', 'xai', 'groq', 'mistral', 'cerebras', 'openai', 'anthropic', 'claude'].includes(String(cfgProvider).toLowerCase()) || !!cfgBaseUrl;
+          const knownCustomEndpoint = ['openrouter', 'gemini', 'google', 'deepseek', 'grok', 'xai', 'groq', 'mistral', 'cerebras', 'openai', 'anthropic', 'claude', 'nvidia'].includes(String(cfgProvider).toLowerCase()) || !!cfgBaseUrl;
           if (!knownCustomEndpoint || !providerAllowedByCost(cfgProvider, cfgModel, cfgBaseUrl)) {
             if (strictProviderCheck) throw new Error('direct_provider_check_failed: free_only excludes the selected provider, model or endpoint');
             recordProviderAttempt(cfgProvider, false, 'skipped: free_only policy excludes this provider, model or endpoint');
@@ -1673,7 +1673,8 @@ export async function routeToModel(
             const effectiveApiKey = (cfgApiKey && cfgApiKey !== 'auto-mode') ? cfgApiKey.trim() : 
                 (cfgProvider === 'openai' ? process.env.OPENAI_API_KEY :
                  cfgProvider === 'gemini' || cfgProvider === 'google' ? (process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY) :
-                 cfgProvider === 'openrouter' ? process.env.OPENROUTER_API_KEY : '');
+                 cfgProvider === 'openrouter' ? process.env.OPENROUTER_API_KEY :
+                 cfgProvider === 'nvidia' ? process.env.NVIDIA_API_KEY : '');
 
             /**
              *  ⛔ ANTHROPIC DOES NOT SPEAK THIS PROTOCOL, SO IT LEAVES HERE.
@@ -1761,6 +1762,7 @@ export async function routeToModel(
                 mistral: 'https://api.mistral.ai/v1',
                 cerebras: 'https://api.cerebras.ai/v1',
                 openai: 'https://api.openai.com/v1',
+                nvidia: 'https://integrate.api.nvidia.com/v1',
             };
             const effectiveBaseUrl = cfgBaseUrl?.trim() || VENDOR_BASE[String(cfgProvider || '').toLowerCase()] || undefined;
             // A Promise.race only releases the caller; it does not stop the HTTP
@@ -1805,7 +1807,7 @@ export async function routeToModel(
                         baseURL: effectiveBaseUrl,
                         maxRetries: 0,
                     });
-                    const model = cfgModel || (cfgProvider === 'openai' ? 'gpt-4o' : 'google/gemma-2-9b-it:free');
+                    const model = cfgModel || (cfgProvider === 'nvidia' ? 'nvidia/nemotron-3-ultra-550b-a55b' : cfgProvider === 'openai' ? 'gpt-4o' : 'google/gemma-2-9b-it:free');
                     // When the caller wants live tokens and no tool-calling is in
                     // play, actually STREAM. This is the route the user's machine
                     // takes (custom groq config), and it was buffering complete
@@ -3059,6 +3061,13 @@ export async function verifyProviderDirect(
                 if (!envKey('CEREBRAS_API_KEY')) return { ok: false, provider, detail: 'no_key: يحتاج CEREBRAS_API_KEY (مجاني من cloud.cerebras.ai).' };
                 const ans = await withTimeout(cerebrasProvider.chatComplete(probe as any, cfg.model || 'llama-3.3-70b'));
                 return { ok: usable(ans), provider, detail: 'env_key' };
+            }
+            case 'nvidia': {
+                const nvidiaKey = envKey('NVIDIA_API_KEY');
+                if (!nvidiaKey) return { ok: false, provider, detail: 'no_key: يحتاج NVIDIA_API_KEY أو مفتاح NVIDIA NIM في الواجهة.' };
+                const ans = await withTimeout(routeToModel(probe, undefined, undefined, undefined, undefined, undefined, undefined,
+                    { modelConfig: { provider: p, apiKey: nvidiaKey, baseUrl: 'https://integrate.api.nvidia.com/v1', model: cfg.model || 'nvidia/nemotron-3-ultra-550b-a55b' }, strictProviderCheck: true, providerHealthProbe: true, signal: probeAbort.signal }));
+                return { ok: usable(ans), provider, detail: usable(ans) ? 'env_key' : 'env_key_empty' };
             }
             case 'mistral': {
                 if (!envKey('MISTRAL_API_KEY')) return { ok: false, provider, detail: 'no_key: يحتاج MISTRAL_API_KEY (مجاني من console.mistral.ai).' };
