@@ -480,7 +480,9 @@ async function handleAutoNaming(sessionId: string, messages: any[], isOffline: b
         const cleanTitle = (raw: string): string => {
             let t = String(raw || '').split('\n')[0].trim().replace(/^["'«»`*#\s]+|["'«»`*\s]+$/g, '').trim();
             const looksLikeSentence = t.length > 60 || /^(أهلا|أهلاً|مرحبا|السلام|welcome|hello|hi\b|hey\b|sure\b|بالطبع|حسنا)/i.test(t) || /[.!؟?]$/.test(t) && t.length > 45;
-            if (!t || looksLikeSentence) t = firstUser;
+            const titleWords = t.match(/[\p{L}\p{N}]+/gu) || [];
+            const lacksDescription = titleWords.length < 2 || !/\p{L}/u.test(t);
+            if (!t || looksLikeSentence || lacksDescription) t = firstUser;
             if (t.length > 60) t = t.slice(0, 57).trim() + '…';
             return t;
         };
