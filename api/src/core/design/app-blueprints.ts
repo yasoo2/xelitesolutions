@@ -2400,8 +2400,37 @@ function firstColumnBeginsAtTheName(firstRaw: string, afterAContainer: boolean):
  */
 const OPENS_A_NEW_REQUEST = /^(?:مع|plus|with|along\s+with|together\s+with|including|and)(?=$|[\s،,])/iu;
 
-/** A behaviour beside fields is an app requirement, not another column. */
-const CAPABILITY_CLAUSE = /^(?:(?:(?:distinct|clear|visible|live|forced|offline)\s+)*(?:loading|success|empty|error|retry|fallback|network(?:[-\s]+failure)?)(?:[-/\s]+(?:loading|success|empty|error|retry|fallback|states?))*|(?:empty[-\s]+)?(?:name|field|input)\s+validation|(?:status|state)\s+(?:filter(?:ing)?|selection)|(?:text\s+)?search(?:ing)?|filter(?:ing)?|sort(?:ing)?|export(?:ing)?(?:\s+(?:csv|data|records))?|validation|(?:بحث|تصفية|فلترة|فرز|تصدير|تحقق|تحقّق|صلاحية|التحقق|التأكد|تأكيد)(?:\s|$))/iu;
+/**
+ *  A behaviour beside fields is an app requirement, not another column —
+ *  but a capability word HEADING a noun phrase names a column.
+ *
+ *  Measured: «sort code», «search history», «filter type», «export
+ *  license» and «error code» were all cut as capabilities, and each
+ *  loss sank its request below the floor — five real schemas read as
+ *  no schema at all. The English branches were anchored at the start
+ *  of the item but open at the end, so «sort» matched «sort code».
+ *  The Arabic branches end in (?:\s|$) and OPENS_A_NEW_REQUEST ends
+ *  in (?=$|[\s]) plus comma — only the English branches were left
+ *  unclosed. («sortable by grade» was cut the same accidental way;
+ *  it reads as a column again, which restores the limitation
+ *  declared in a-capability-is-not-a-column.test.ts instead of
+ *  keeping an accident that looked like a repair.)
+ *
+ *  The closing is a continuation, not a bare word boundary: a bare
+ *  \b would still cut «error code» («error» followed by a space IS a
+ *  boundary). A leading capability word cuts only when nothing
+ *  follows it («loading»), when a state word follows it («error
+ *  states»), when a listed format follows it («export csv»), or when
+ *  a container adjunct follows it («sort by grade», «export to csv»)
+ *  — the closed adjunct-preposition class mirrored from
+ *  ENGLISH_ADJUNCT_PREPOSITION in subject-phrase.ts, which already
+ *  decided that class belongs to the sentence rather than the name.
+ *  What follows the head in the five cases above is a plain noun,
+ *  and a gerund-looking noun («search string», «error handling») is
+ *  a noun all the same: no pinned case needs an -ing continuation,
+ *  and over-cutting below the floor costs the whole schema.
+ */
+const CAPABILITY_CLAUSE = /^(?:(?:(?:(?:distinct|clear|visible|live|forced|offline)\s+)*(?:loading|success|empty|error|retry|fallback|network(?:[-\s]+failure)?)(?:[-/\s]+(?:loading|success|empty|error|retry|fallback|states?))*|(?:text\s+)?search(?:ing)?|filter(?:ing)?|sort(?:ing)?|export(?:ing)?(?:\s+(?:csv|data|records))?|validation)(?=$|[\s،,]+(?:by|from|with|about|on|at|to|into|over|per|via|through|for|of)\b)|(?:empty[-\s]+)?(?:name|field|input)\s+validation|(?:status|state)\s+(?:filter(?:ing)?|selection)|(?:بحث|تصفية|فلترة|فرز|تصدير|تحقق|تحقّق|صلاحية|التحقق|التأكد|تأكيد)(?:\s|$))/iu;
 
 /**
   ⛔ AND THIS LIST IS EXPLICIT ON PURPOSE, AFTER A LETTER RULE FAILED.
