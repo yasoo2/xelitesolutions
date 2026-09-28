@@ -44,7 +44,7 @@ async function main() {
     const { createSession } = require('../../api/controllers/sessionController');
     const mkRes = () => { const o: any = { code: 0, body: null }; o.status = (c: number) => { o.code = c; return o; }; o.json = (b: any) => { o.body = b; return o; }; return o; };
     const res1 = mkRes();
-    await createSession({ body: { title: 'جلسة جديدة', kind: 'agent', mode: 'agent' }, user: { id: 'u1' } } as any, res1 as any);
+    await createSession({ body: { title: 'جلسة جديدة', kind: 'agent', mode: 'agent' }, auth: { sub: 'u1', role: 'OWNER' } } as any, res1 as any);
     const sid = String(res1.body?.id || res1.body?._id || '');
     check('أُنشئت جلسة حقيقية', !!sid, sid);
     check('وعنوانها عام كما يبدأ أي حوار', titleOf(sid) === 'جلسة جديدة', titleOf(sid));
@@ -72,7 +72,7 @@ async function main() {
 
     console.log('\n[4] وعنوان اختاره المستخدم لا يُمسّ');
     const res2 = mkRes();
-    await createSession({ body: { title: 'مشروع العطور — لا تلمسه', kind: 'agent', mode: 'agent' }, user: { id: 'u1' } } as any, res2 as any);
+    await createSession({ body: { title: 'مشروع العطور — لا تلمسه', kind: 'agent', mode: 'agent' }, auth: { sub: 'u1', role: 'OWNER' } } as any, res2 as any);
     const sid2 = String(res2.body?.id || res2.body?._id || '');
     store.push({ _id: 'm4', sessionId: sid2, role: 'user', content: 'اكتب لي خطة تسويق', createdAt: new Date() });
     await autoNameSessionAfterReply(sid2);
@@ -112,13 +112,21 @@ async function main() {
                     const e = page.getByText(l, { exact: false }).first();
                     if (await e.count() && await e.isVisible().catch(() => false)) { await e.click(); await page.waitForTimeout(400); break; }
                 }
-                const seen = await page.evaluate(() => document.body.innerText);
-                check('القائمة تعرض العنوان الجديد للجلسة المسمّاة', seen.includes(named), `«${named}»`);
-                // …and a rename that lands while ANOTHER chat is on screen still shows.
-                broadcast({ type: 'sessions:refresh', data: { sessionId: 'some-other-session', newTitle: 'x' } } as any);
-                await page.waitForTimeout(600);
-                const J = fs.readFileSync(path.join(__dirname, '..', '..', '..', '..', 'web', 'src', 'pages', 'Joe.tsx'), 'utf-8');
-                check('وحارس الجلسات لا يحجب تحديث القائمة', /msg\?\.type === 'sessions:refresh'\) return true/.test(J));
+                const namedVisible = await page.locator('.joe-session-chip').filter({ hasText: named }).first()
+                    .waitFor({ state: 'visible', timeout: 5000 }).then(() => true).catch(() => false);
+                check('القائمة تعرض العنوان الجديد للجلسة المسمّاة', namedVisible, named);
+
+                // A run can finish before asynchronous naming broadcasts its title.
+                // Verify the shelf updates without a reload after the run is closed.
+                await page.locator('.joe-session-chip').filter({ hasText: 'مشروع العطور — لا تلمسه' }).first().click();
+                const liveTitle = 'عنوان محدث بعد اكتمال التشغيل';
+                const manualSession = ((global as any).mockSessions || []).find((item: any) => String(item.id) === sid2);
+                manualSession.title = liveTitle;
+                broadcast({ type: 'run_finished', sessionId: sid2, runId: 'title-test-run', data: { sessionId: sid2 } } as any);
+                broadcast({ type: 'sessions:refresh', data: { sessionId: sid2, newTitle: liveTitle } } as any);
+                const liveTitleVisible = await page.locator('.joe-session-chip').filter({ hasText: liveTitle }).first()
+                    .waitFor({ state: 'visible', timeout: 5000 }).then(() => true).catch(() => false);
+                check('تحديث العنوان يظهر بعد انتهاء التشغيل بلا إعادة تحميل', liveTitleVisible);
             } finally { await browser.close(); srv.close(); }
         }
     }

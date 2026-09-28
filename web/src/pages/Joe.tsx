@@ -256,7 +256,9 @@ export default function Joe() {
                 setDepartmentStatus(null);
             } else if (msg.type === 'user_input' && messageRunId && messageSessionId) {
                 terminalSessionIdsRef.current.delete(messageSessionId);
-            } else if (terminalSessionIdsRef.current.has(messageSessionId) || (messageRunId && terminalRunIdsRef.current.has(messageRunId))) {
+            } else if (msg.type !== 'sessions:refresh' && (
+                terminalSessionIdsRef.current.has(messageSessionId) || (messageRunId && terminalRunIdsRef.current.has(messageRunId))
+            )) {
                 // Never let delayed department/tool frames put a finished run
                 // back into the live state after the user has stopped it.
                 return;

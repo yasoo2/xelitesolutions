@@ -60,7 +60,8 @@ function msgTypeIsLive(type: string): boolean {
     && type !== 'run_failed'
     && type !== 'run_completed'
     && type !== 'text'
-    && type !== 'error';
+    && type !== 'error'
+    && type !== 'sessions:refresh';
 }
 
 function getSessionRuntime(sessionId?: string): SessionRuntimeState {
@@ -392,7 +393,9 @@ async function connect() {
       // they re-enter the live state here, the Stop button and neural row can
       // resurrect seconds after the user stopped the task. A new run_started
       // explicitly opens the session again.
-      if (runtime.closedAt > 0 && msgType !== 'run_started') {
+      // Durable session metadata may arrive after the run has finished.
+      // It cannot restart a run, but it must still refresh the visible shelf.
+      if (runtime.closedAt > 0 && msgType !== 'run_started' && msgType !== 'sessions:refresh') {
         const lateRunId = normalizeSessionId(data?.runId || data?.data?.runId);
         const closedRunId = runtime.activeRunId;
         const isClosingEvent = msgType === 'run_finished'
