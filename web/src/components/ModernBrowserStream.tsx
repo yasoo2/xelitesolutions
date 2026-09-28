@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { API_URL, WS_URL } from '../config';
 import { isValidToken } from '../utils/auth';
+import { redactCredentialsFromUrl } from '../utils/redactUrl';
 import { projectionMatchesFrame, viewportStampOrFallback } from '../lib/browserFrameProjection';
 
 type WsEvent =
@@ -367,7 +368,7 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
       } catch { }
 
       if (!alive) return;
-      console.log('[BrowserStream] Connecting to:', wsUrl);
+      console.log('[BrowserStream] Connecting to:', redactCredentialsFromUrl(wsUrl));
       ws = new WebSocket(wsUrl);
       setStatus('connecting');
       ws.onopen = () => {
