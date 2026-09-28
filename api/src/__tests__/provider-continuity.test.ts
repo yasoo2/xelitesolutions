@@ -180,6 +180,32 @@ describe('free-only provider continuity through routeToModel', () => {
             markProviderOk('Local (Auto)');
         }
     });
+    it('retries a local provider in the same session when its short quota window ends', async () => {
+        process.env.OFFLINE_MODE = 'true';
+        delete process.env.LOCAL_LLM_DISABLE;
+        process.env.LOCAL_LLM_BASE_URL = 'http://127.0.0.1:11434/v1';
+        (localBrain.isLocalBrainReady as jest.Mock).mockReturnValue(true);
+        registry.localProvider.isConfigured.mockReturnValue(true);
+        let now = Date.now();
+        const clock = jest.spyOn(Date, 'now').mockImplementation(() => now);
+        registry.localProvider.chatComplete.mockRejectedValueOnce(
+            Object.assign(new Error('429 rate limit'), { status: 429, headers: { 'Retry-After': '1' } }));
+        registry.localProvider.chatComplete.mockResolvedValue('Recovered local answer.');
+        try {
+            const first = await route({ sessionId: 'short-local-quota', runId: undefined });
+            expect(first).toContain('حدّ الطلبات مؤقتاً');
+            const beforeReset = await route({ sessionId: 'short-local-quota', runId: undefined });
+            expect(beforeReset).toBe(first);
+            expect(registry.localProvider.chatComplete).toHaveBeenCalledTimes(1);
+            now += 1_001;
+            await expect(route({ sessionId: 'short-local-quota', runId: undefined }))
+                .resolves.toBe('Recovered local answer.');
+            expect(registry.localProvider.chatComplete).toHaveBeenCalledTimes(2);
+        } finally {
+            clock.mockRestore();
+            markProviderOk('Local (Auto)');
+        }
+    });
     it('reports a header-only local retry window on the first failed run', async () => {
         process.env.OFFLINE_MODE = 'true';
         delete process.env.LOCAL_LLM_DISABLE;

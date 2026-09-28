@@ -2231,7 +2231,15 @@ export async function routeToModel(
         && engineeringPipeline
         && !deadBrainRecoveryAttempted;
     const internalRecoveryEvidence = healthyRecoveryEvidence || engineeringRecoveryPermit;
-    if (!canAttemptAfterDeadBrainLatch(
+    // A real quota window can end before the generic dead-brain latch. Let the
+    // circuit claim one bounded recovery probe instead of replaying a stale
+    // failure notice for the rest of the latch window in the same chat session.
+    const quotaRecoveryReady = meshProviders.some((provider) => {
+        const status = providerCircuitStatus(providerCircuitKey(provider.name), now);
+        return (status.state === 'RATE_LIMITED' || status.state === 'QUOTA_EXHAUSTED')
+            && !!status.retryAt && status.retryAt <= now && !status.blocked;
+    });
+    if (!quotaRecoveryReady && !canAttemptAfterDeadBrainLatch(
         scopedLastTotalFailureAt,
         now,
         DEAD_BRAIN_LATCH_MS,
@@ -2245,9 +2253,10 @@ export async function routeToModel(
             + `الحل: ${localBrainFailureAdvice(isLocalBrainReady(), recentLocalTimeout)}، `
             + "أو تحقّق من اتصال الإنترنت. (لن أدّعي أنني نفّذت شيئاً لم يُنفَّذ.)");
     }
-    if (scopedLastTotalFailureAt && latchAgeMs < DEAD_BRAIN_LATCH_MS && internalRecoveryEvidence) {
-        const permitKind = healthyRecoveryEvidence ? 'recent provider success' : 'engineering recovery permit';
-        console.warn(`[IntelligentRouter] 🩺 Internal recovery evidence (${permitKind}) found after total failure (${Math.round(Math.max(0, latchAgeMs) / 1000)}s ago) — opening one fresh mesh walk.`);
+    if (scopedLastTotalFailureAt && latchAgeMs < DEAD_BRAIN_LATCH_MS && (internalRecoveryEvidence || quotaRecoveryReady)) {
+        const permitKind = quotaRecoveryReady ? 'expired provider quota window'
+            : healthyRecoveryEvidence ? 'recent provider success' : 'engineering recovery permit';
+        console.warn(`[IntelligentRouter] 🩺 Recovery evidence (${permitKind}) found after total failure (${Math.round(Math.max(0, latchAgeMs) / 1000)}s ago) — opening one fresh mesh walk.`);
         if (engineeringPipeline && engineeringRecoveryPermit && context) {
             // This is deliberately stored on the run context, not globally: one
             // failed phase may earn one rescue pass, while another concurrent
