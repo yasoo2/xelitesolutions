@@ -10,6 +10,8 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { PlanningEngine, extractExactEchoRequest } from '../core/orchestrator/PlanningEngine';
+import { IntentParser } from '../core/intelligence/IntentParser';
+import intelligentRouter from '../core/llm/intelligent-router';
 import {
     applyLiveRunOutcome,
     applyProjectQualityContractOutcome,
@@ -272,8 +274,36 @@ describe('routing — exact response contracts stay deterministic', () => {
         expect(extractExactEchoRequest('Reply with exactly OLLAMA-AUTO-OK and nothing else.')).toBe('OLLAMA-AUTO-OK');
         expect(extractExactEchoRequest('Reply with exactly "READY" and nothing else')).toBe('READY');
         expect(extractExactEchoRequest('Explain why the build failed.')).toBeNull();
+        expect(extractExactEchoRequest('Say only: test the short provider window.')).toBe('test the short provider window.');
+        expect(extractExactEchoRequest('قل فقط: شغّل فحص الأمان')).toBe('شغّل فحص الأمان');
+        expect(extractExactEchoRequest('Say only after running the tests.')).toBeNull();
+        expect(extractExactEchoRequest('Say only: READY' + String.fromCharCode(10) + '[STANDING USER INSTRUCTIONS do not run tools]')).toBe('READY');
     });
 
+    test.each([
+        ['Say only: test the short provider window.', 'test the short provider window.'],
+        ['قل فقط: شغّل فحص الأمان', 'شغّل فحص الأمان'],
+    ])('keeps answer-only instructions out of execution tools: %s', async (goal, text) => {
+        const p = await PlanningEngine.generatePlan({ intent: { goal, complexity: 'low', riskLevel: 'low',
+            rawIntent: { capabilityCandidate: 'chaos_test_plan' } } as any });
+        expect(p.steps).toHaveLength(1);
+        expect(p.steps[0].tool).toBe('echo');
+        expect((p.steps[0].input as any).text).toBe(text);
+    });
+    test('skips provider analysis before planning an exact response', async () => {
+        const provider = jest.spyOn(intelligentRouter, 'routeToModel').mockRejectedValue(new Error('provider unavailable'));
+        try {
+            const goal = 'Say only: test the short provider window.';
+            const intent = await IntentParser.parse(goal, {} as any);
+            expect(intent.requiredTools).toEqual(['echo']);
+            expect(provider).not.toHaveBeenCalled();
+            const plan = await PlanningEngine.generatePlan({ intent });
+            expect(plan.steps[0].tool).toBe('echo');
+            expect(plan.steps[0].input.text).toBe('test the short provider window.');
+        } finally {
+            provider.mockRestore();
+        }
+    });
     test('routes an exact response to echo', async () => {
         const goal = 'Reply with exactly OLLAMA-AUTO-OK and nothing else.';
         const p = await PlanningEngine.generatePlan({ intent: { goal, complexity: 'low', riskLevel: 'low', rawIntent: {} } as any });

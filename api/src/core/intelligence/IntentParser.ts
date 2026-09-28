@@ -5,6 +5,7 @@ import { normalizeIntentText } from '../orchestrator/promptNormalizer';
 import { parseExplicitFileRequest } from '../orchestrator/file-intent';
 import { capabilityFamilyFromRequest } from '../capabilities/decision-profiles';
 import { capableTools } from '../orchestrator/capability-match';
+import { extractExactEchoRequest } from './exact-response';
 import { classifyIntent, isBuildRequest, isBrowserRequest, isKnowledgeQuestionStructural, clearIntentCache } from './intent-classifier';
 
 export interface StructuredIntent {
@@ -36,6 +37,18 @@ export class IntentParser {
         // been inspected.  Keep the fast path for genuinely browser-only requests,
         // but let substantial build/develop/debug work reach the evidence-first
         // planner (and its project_pipeline route).
+        // Exact-response text is data, even if it contains tool verbs. Resolve
+        // it before capability matching or provider-backed deep analysis.
+        if (extractExactEchoRequest(userText)) {
+            return {
+                goal: userText,
+                complexity: 'low',
+                riskLevel: 'low',
+                suggestedAgent: 'General',
+                requiredTools: ['echo'],
+                rawIntent: { primary: userText, exactResponse: true, deterministic: true },
+            };
+        }
         const capabilityDecision = IntentParser.capabilityDecisionIntent(userText);
         const engineeringBrief = IntentParser.looksLikeEngineeringBrief(userText);
         if (engineeringBrief && !capabilityDecision) {

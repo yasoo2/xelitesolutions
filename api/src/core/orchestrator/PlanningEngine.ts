@@ -12,6 +12,8 @@ import { parseExplicitAppendFileRequest, parseExplicitFileRequest, parseExplicit
 import { workspaceService } from '../../modules/services/WorkspaceService';
 import { tools as registeredTools } from '../../modules/tools/registry';
 import { isBuildRequest, isKnowledgeQuestionStructural, isReadOnlyStructural } from '../intelligence/intent-classifier';
+import { extractExactEchoRequest } from '../intelligence/exact-response';
+export { extractExactEchoRequest } from '../intelligence/exact-response';
 import { diagnoseFailure, detectParallelGroups, generatePlanAttempts, selectBestPlan, validatePlan } from './adaptive-dag-planner';
 import fs from 'fs';
 import path from 'path';
@@ -48,15 +50,6 @@ export function isLikelyUrl(value: string): boolean {
     // ASCII only: an Arabic "hostname" is always a hallucination here.
     if (!/^[A-Za-z0-9.-]+$/.test(host)) return false;
     return /^([A-Za-z0-9-]+\.)+[A-Za-z]{2,}$/.test(host);
-}
-
-/** Extract a deliberately exact response request before any model planning. */
-export function extractExactEchoRequest(goal: string): string | null {
-    const raw = String(goal || '').trim();
-    const match = raw.match(/^(?:reply|respond|answer)\s+with\s+exactly\s+(.+?)\s+and\s+nothing\s+else\.?$/i);
-    if (!match) return null;
-    const value = match[1].trim().replace(/^(["'`])([\s\S]*)\1$/, '$2').trim();
-    return value && value.length <= 240 ? value : null;
 }
 
 /**
