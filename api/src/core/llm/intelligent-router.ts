@@ -2439,7 +2439,12 @@ export async function routeToModel(
             continue;
         }
         const circuitKey = providerCircuitKey(p.name);
-        const circuitClaim = p.name === 'Local (Auto)' ? { allowed: true, probe: false, lease: undefined } : claimProviderCircuit(circuitKey);
+        // Local timeouts use the local breaker, but a real 429 is a provider quota
+        // and must retain its window across runs and admit one recovery probe.
+        const localQuotaState = p.name === 'Local (Auto)' ? providerCircuitStatus(circuitKey).state : undefined;
+        const localQuotaCircuit = localQuotaState === 'RATE_LIMITED' || localQuotaState === 'QUOTA_EXHAUSTED';
+        const circuitClaim = p.name === 'Local (Auto)' && !localQuotaCircuit
+            ? { allowed: true, probe: false, lease: undefined } : claimProviderCircuit(circuitKey);
         if (!circuitClaim.allowed) {
             const status = providerCircuitStatus(circuitKey);
             if (status.state === 'RATE_LIMITED' || status.state === 'QUOTA_EXHAUSTED') sawRateLimit = true;
@@ -2670,7 +2675,10 @@ export async function routeToModel(
             recordProviderCircuitFailure(circuitKey, new Error('temporarily unavailable: empty response'));
         } catch (e: any) {
             if (callerSignal?.aborted) throw callerAbortError();
-            if (p.name !== 'Local (Auto)') recordProviderCircuitFailure(circuitKey, e);
+            const failureState = providerFailureState(e);
+            if (p.name !== 'Local (Auto)' || failureState === 'RATE_LIMITED' || failureState === 'QUOTA_EXHAUSTED') {
+                recordProviderCircuitFailure(circuitKey, e);
+            }
             recordProviderAttempt(p.name, false, e?.message || e);
             console.warn(`[IntelligentRouter] ${p.name} failed or timed out: ${e.message} `);
             // A rate-limit error that names its own window cools the provider

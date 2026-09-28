@@ -99,9 +99,13 @@ describe('the patience is measured from this machine, and it learns', () => {
 
     it('and blames its own patience before it blames the engine', () => {
         const src = ROUTER();
-        const at = src.indexOf("if (p.name === 'Local (Auto)' && /TIMEOUT/i.test(");
+        const at = src.indexOf("if (p.name === 'Local (Auto)' && isLocalTimeoutError(");
+        expect(at).toBeGreaterThanOrEqual(0);
         const block = src.slice(at, at + 500);
-        expect(block.indexOf('noteInternalLeashTimeout')).toBeLessThan(block.indexOf('noteLocalBrainTimeout'));
+        const leashAt = block.indexOf('noteInternalLeashTimeout');
+        const breakerAt = block.indexOf('noteLocalBrainTimeout');
+        expect(leashAt).toBeGreaterThanOrEqual(0);
+        expect(breakerAt).toBeGreaterThan(leashAt);
     });
 });
 

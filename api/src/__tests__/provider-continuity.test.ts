@@ -152,6 +152,33 @@ describe('free-only provider continuity through routeToModel', () => {
         expect(registry.llm7Provider.chatComplete).not.toHaveBeenCalled();
     });
 
+    it('keeps a local 429 blocked across fresh runs until its retry window', async () => {
+        process.env.OFFLINE_MODE = 'true';
+        delete process.env.LOCAL_LLM_DISABLE;
+        process.env.LOCAL_LLM_BASE_URL = 'http://127.0.0.1:11434/v1';
+        (localBrain.isLocalBrainReady as jest.Mock).mockReturnValue(true);
+        registry.localProvider.isConfigured.mockReturnValue(true);
+        let now = Date.now();
+        const clock = jest.spyOn(Date, 'now').mockImplementation(() => now);
+        registry.localProvider.chatComplete.mockRejectedValueOnce(
+            Object.assign(new Error('429 Rate limit reached. Please try again in 24m40.896s'), { status: 429 }));
+        registry.localProvider.chatComplete.mockResolvedValue('Recovered local answer.');
+        try {
+            await route({ runId: 'local-quota-first' });
+            await route({ runId: 'local-quota-second' });
+            expect(registry.localProvider.chatComplete).toHaveBeenCalledTimes(1);
+            expect(providerCircuitStatus(providerCircuitKey('Local (Auto)'))).toMatchObject({
+                blocked: true, state: 'RATE_LIMITED',
+            });
+            now += 1_480_897;
+            await expect(route({ runId: 'local-quota-recovered' })).resolves.toBe('Recovered local answer.');
+            expect(registry.localProvider.chatComplete).toHaveBeenCalledTimes(2);
+            expect(providerCircuitStatus(providerCircuitKey('Local (Auto)')).blocked).toBe(false);
+        } finally {
+            clock.mockRestore();
+            markProviderOk('Local (Auto)');
+        }
+    });
     it('continues to a second free provider after a mesh quota failure and skips the exhausted one on the next call', async () => {
         registry.llm7Provider.chatComplete.mockRejectedValue(Object.assign(new Error('429 quota exhausted'), { status: 429 }));
         registry.duckAIProvider.isAvailable.mockReturnValue(true);

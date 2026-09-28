@@ -1,5 +1,6 @@
 import * as localBrain from '../core/llm/local-brain';
 import { localProvider } from '../core/llm/providers/registry';
+import { resetProviderContinuityForTests } from '../core/llm/provider-continuity';
 import {
     isProviderFailure,
     isLocalTimeoutError,
@@ -53,6 +54,7 @@ describe('provider failure diagnosis', () => {
             ready.mockRestore();
             resetLocalBrainBreaker();
             markProviderOk('Local (Auto)');
+            resetProviderContinuityForTests();
             for (const [key, value] of Object.entries(saved)) {
                 if (value === undefined) delete process.env[key];
                 else process.env[key] = value;
@@ -97,6 +99,7 @@ describe('provider failure diagnosis', () => {
             ready.mockRestore();
             resetLocalBrainBreaker();
             markProviderOk('Local (Auto)');
+            resetProviderContinuityForTests();
             for (const [key, value] of Object.entries(saved)) {
                 if (value === undefined) delete process.env[key];
                 else process.env[key] = value;
