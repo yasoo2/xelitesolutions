@@ -101,7 +101,8 @@ export function providerRetryAfterMs(error: unknown, now = Date.now()): number |
         const ms = Number.isFinite(seconds) ? seconds * 1000 : Date.parse(String(header)) - now;
         if (Number.isFinite(ms) && ms > 0) return Math.min(ms, Number.MAX_SAFE_INTEGER - now);
     }
-    const text = String(raw?.message || error || '');
+    const text = [raw?.response?.data?.error?.message, raw?.error?.message, raw?.message,
+        typeof error === 'string' ? error : ''].filter(Boolean).join(' ');
     const seconds = text.match(/retry[-\s]?after\s*:?\s*(\d+(?:\.\d+)?)\s*(?:seconds?|s)?/i);
     if (seconds) return Math.min(Number(seconds[1]) * 1000, Number.MAX_SAFE_INTEGER - now) || undefined;
     const hms = text.match(/try again in (?:(\d+)h)?(?:(\d+)m)?([\d.]+)s/i);

@@ -235,6 +235,16 @@ describe('free-only provider continuity through routeToModel', () => {
 });
 
 describe('provider reset and bounded half-open probe', () => {
+    it('honors retry timing in a nested adapter error instead of retrying after the default minute', () => {
+        const now = 1_000;
+        const error = {
+            message: 'upstream request failed',
+            response: { status: 429, data: { error: { message: 'Rate limit reached. Please try again in 24m40.896s' } } },
+        };
+        expect(providerRetryAfterMs(error, now)).toBe(1_480_896);
+        recordProviderCircuitFailure('nested-retry', error, now);
+        expect(providerCircuitStatus('nested-retry', now + 60_001)).toMatchObject({ blocked: true, retryAt: now + 1_480_896 });
+    });
     it.each([
         { message: 'request failed', response: { status: 429 } },
         { message: 'request failed', code: 'insufficient_quota' },
