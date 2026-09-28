@@ -2978,7 +2978,11 @@ export async function verifyProviderDirect(
             // local brain as unavailable before planning even starts. Probe the
             // configured local brain directly first, using the measured warm-up
             // time as evidence, and only then inspect fallback providers.
-            if (providerAllowedByCost('Local (Auto)') && isLocalBrainReady() && localProvider.isConfigured()) {
+            // A past warm-up cannot certify today's health after a quota or timeout.
+            // Let the mesh enforce the cooldown or claim the one recovery probe.
+            const localCircuit = providerCircuitStatus(providerCircuitKey('Local (Auto)'));
+            if (providerAllowedByCost('Local (Auto)') && isLocalBrainReady() && localProvider.isConfigured()
+                && !localCircuit.state && !isLocalBrainOpen()) {
                 const warmup = Number(localWarmupMs?.() || 0);
                 // Boot warm-up already sent a real request to this model. A
                 // second immediate probe can queue behind a slow CPU model and

@@ -7,7 +7,7 @@ jest.mock('../core/llm/providers/registry', () => {
         'geminiProvider', 'deepSeekProvider', 'openAIProvider', 'cerebrasProvider', 'mistralProvider',
         'huggingfaceProvider', 'llm7Provider', 'duckAIProvider'].map(name => [name, provider()]));
 });
-jest.mock('../core/llm/local-brain', () => ({ isLocalBrainReady: jest.fn(() => false), pickLocalModel: () => 'test-local', localWarmupMs: () => 0 }));
+jest.mock('../core/llm/local-brain', () => ({ isLocalBrainReady: jest.fn(() => false), pickLocalModel: () => 'test-local', localWarmupMs: jest.fn(() => 0) }));
 jest.mock('../modules/tools/definitions/LLMCacheTool', () => ({ LLMCacheTool: { checkCache: jest.fn(), saveToCache: jest.fn() } }));
 import { routeToModel, verifyProviderDirect, customRouteCooldownUntil, markProviderOk } from '../core/llm/intelligent-router';
 import * as providers from '../core/llm/providers/registry';
@@ -32,6 +32,7 @@ const route = (context: any = {}) => routeToModel(messages, undefined, undefined
 beforeEach(() => {
     jest.clearAllMocks();
     (localBrain.isLocalBrainReady as jest.Mock).mockReturnValue(false);
+    (localBrain.localWarmupMs as jest.Mock).mockReturnValue(0);
     resetProviderContinuityForTests();
     customRouteCooldownUntil.clear();
     for (const name of envNames) delete process.env[name];
@@ -103,6 +104,34 @@ describe('free-only provider continuity through routeToModel', () => {
             await Promise.resolve();
             expect(providerCircuitStatus(key).blocked).toBe(false);
         } finally { jest.useRealTimers(); }
+    });
+    it('does not certify Auto from an old warm-up while local quota is blocked', async () => {
+        delete process.env.LOCAL_LLM_DISABLE;
+        process.env.LOCAL_LLM_BASE_URL = 'http://127.0.0.1:11434/v1';
+        (localBrain.isLocalBrainReady as jest.Mock).mockReturnValue(true);
+        (localBrain.localWarmupMs as jest.Mock).mockReturnValue(1_200);
+        registry.localProvider.isConfigured.mockReturnValue(true);
+        recordProviderCircuitFailure(providerCircuitKey('Local (Auto)'),
+            { status: 429, headers: { 'Retry-After': '600' } });
+
+        expect(await verifyProviderDirect('auto')).toMatchObject({ ok: true, detail: 'mesh_ok' });
+        expect(registry.localProvider.chatComplete).not.toHaveBeenCalled();
+        expect(registry.llm7Provider.chatComplete).toHaveBeenCalledTimes(1);
+    });
+    it('probes an expired local quota instead of trusting an old warm-up', async () => {
+        delete process.env.LOCAL_LLM_DISABLE;
+        process.env.LOCAL_LLM_BASE_URL = 'http://127.0.0.1:11434/v1';
+        (localBrain.isLocalBrainReady as jest.Mock).mockReturnValue(true);
+        (localBrain.localWarmupMs as jest.Mock).mockReturnValue(1_200);
+        registry.localProvider.isConfigured.mockReturnValue(true);
+        registry.localProvider.chatComplete.mockResolvedValue('OK');
+        const localKey = providerCircuitKey('Local (Auto)');
+        recordProviderCircuitFailure(localKey, { status: 429, headers: { 'Retry-After': '1' } }, Date.now() - 2_000);
+        expect(providerCircuitStatus(localKey)).toMatchObject({ blocked: false, state: 'RATE_LIMITED' });
+
+        expect(await verifyProviderDirect('auto')).toMatchObject({ ok: true, detail: 'mesh_ok' });
+        expect(registry.localProvider.chatComplete).toHaveBeenCalledTimes(1);
+        expect(providerCircuitStatus(localKey)).toEqual({ blocked: false });
     });
     it('reaches a free fallback after the Auto local preflight times out', async () => {
         jest.useFakeTimers();
