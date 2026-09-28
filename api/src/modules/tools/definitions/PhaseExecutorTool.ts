@@ -2342,8 +2342,13 @@ const skippedCount = taskResults.filter(r => r.execution === 'skipped').length;
                     delete verificationArgs.verificationBoundary;
                     delete verificationArgs.verificationRelevantPaths;
                     delete verificationArgs.verificationRuntimeRevision;
-                    const verificationArgsIssue = !isVerificationTool(requestedVerificationTool, verificationArgs, false, true, true)
-                        || !isVerificationTool(vToolName, verificationArgs, false, true, true)
+                    // A file read is intermediate phase evidence, never final
+                    // acceptance: the output-existence observation opt-in applies
+                    // only to non-final checks, so a read at a final gate fails
+                    // closed instead of masquerading as delivery proof.
+                    const allowPhaseOutputObservation = verificationMode !== 'final';
+                    const verificationArgsIssue = !isVerificationTool(requestedVerificationTool, verificationArgs, false, allowPhaseOutputObservation, true)
+                        || !isVerificationTool(vToolName, verificationArgs, false, allowPhaseOutputObservation, true)
                         ? 'verification_unavailable: unsupported verification tool contract'
                         : plannedArgsIssue(vToolName, verificationArgs);
                     if (verificationArgsIssue) {
