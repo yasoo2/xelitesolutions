@@ -39,7 +39,11 @@ describe('the canonical pipeline narrates phase by phase', () => {
         expect(loop).toMatch(/voice\(pick\(isAr,\s*\n\s*`⚙️ المرحلة \$\{/);
         expect(loop).toMatch(/`⚙️ Phase \$\{n\}\/\$\{totalPhases\}/);
         expect(loop).toMatch(/`✅ اكتملت المرحلة/);
-        expect(loop).toMatch(/`✅ Phase \$\{n\}\/\$\{totalPhases\} completed and verified`/);
+        expect(loop).toMatch(/رُصد وجود المخرجات بدل الفحص المطلوب \(غير متحقق\)/);
+        expect(loop).toMatch(/اكتملت المهام دون تحقق/);
+        expect(loop).toMatch(/`✅ Phase \$\{n\}\/\$\{total\} completed and verified`/);
+        expect(loop).toMatch(/`✅ Phase \$\{n\}\/\$\{total\} completed — output existence observed instead of the requested check \(not verified\)`/);
+        expect(loop).toMatch(/`✅ Phase \$\{n\}\/\$\{total\} completed — tasks done, not verified`/);
         expect(loop).toMatch(/`⚠️ تعثرت المرحلة/);
         expect(loop).toMatch(/`⚠️ Phase \$\{n\} stumbled/);
         expect(loop).toMatch(/`⛔ لم ينجح الإصلاح الذاتي — أتوقف بصدق/);

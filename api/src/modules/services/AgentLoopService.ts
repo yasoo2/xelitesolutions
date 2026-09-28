@@ -160,6 +160,7 @@ async function recordPhaseVerificationEvidence(
     stage: 'phase' | 'repair_rerun' = 'phase',
 ): Promise<void> {
     const metrics = output?.verificationMetrics || summarizeVerificationLedger(output?.verificationLedger);
+    const provenance = phaseVerificationProvenance(phase);
     await appendRunEvidenceEvent(runId, {
         type: 'verification_summary',
         runId,
@@ -175,6 +176,7 @@ async function recordPhaseVerificationEvidence(
             skippedTasks: Math.max(0, Number(output?.skippedTasks) || 0),
             metrics,
             evidence: verificationEvidenceDetails(output?.verificationLedger),
+            ...(provenance ? { verificationProvenance: provenance } : {}),
         },
     });
 }
@@ -197,6 +199,103 @@ const retainedKeys = [
     receipt.logs = compactPhaseLogs(logs);
     for (const [key, value] of Object.entries(extras)) receipt[key] = compactReceiptValue(value);
     return receipt;
+}
+
+export type PhaseCompletionVoice = 'verified' | 'observed' | 'completed';
+
+export interface PhaseVerificationProvenance {
+    /** The originally requested check (bounded narrative or tool name). */
+    requested: string;
+    /** What actually ran: the substituted checker tool, 'dropped', or 'replaced'. */
+    observed: string;
+    /** Present when the request was rewritten into a narrower observation. */
+    downgradedTo?: string;
+}
+
+/**
+ * Requested-vs-observed provenance for a phase whose verification was
+ * rewritten or dropped by the planner/sanitizer. Returns null when the phase
+ * carries no verificationNote, i.e. its verification contract (if any) ran
+ * as requested. Reads the note from the loop's own phase copy: the executor
+ * output never forwards it.
+ */
+export function phaseVerificationProvenance(phase: any): PhaseVerificationProvenance | null {
+    const note = (phase as any)?.verificationNote;
+    if (note === undefined || note === null) return null;
+    if (typeof note === 'string') {
+        const requested = note.trim().slice(0, 160);
+        if (!requested) return null;
+        return { requested, observed: 'replaced' };
+    }
+    if (typeof note !== 'object') return null;
+    const requested = String((note as any).task || (note as any).tool || 'requested check').trim().slice(0, 160)
+        || 'requested check';
+    const downgraded = (note as any).downgradedTo;
+    if (downgraded && typeof downgraded === 'object') {
+        const tool = String(downgraded.tool || 'observation').slice(0, 80);
+        return { requested, observed: tool, downgradedTo: tool };
+    }
+    return { requested, observed: 'dropped' };
+}
+
+/**
+ * Honest completion wording for an ok+completed phase result.
+ *
+ * - 'observed': the requested check was downgraded to a narrower observation
+ *   (e.g. prose behavior -> read_file existence). Never "verified", even when
+ *   the substituted observation passed.
+ * - 'verified': no downgrade note, the phase requested an executable checker,
+ *   and this phase's execution added a newly passed receipt. Phase-local:
+ *   passes carried from earlier phases do not verify this one.
+ * - 'completed': tasks done with no new verification to claim (dropped or
+ *   absent checkers, reuse-only passes, zero-receipt completions).
+ */
+export function describePhaseCompletion(
+    phase: any,
+    output: any,
+    carriedCheckIds?: Iterable<string> | null,
+): PhaseCompletionVoice {
+    const provenance = phaseVerificationProvenance(phase);
+    if (provenance?.downgradedTo) return 'observed';
+    if (provenance) return 'completed';
+    const verification = (phase as any)?.verificationTask;
+    const requestedChecker = verification && typeof verification === 'object'
+        ? String((verification as any).tool || '').trim()
+        : '';
+    if (!requestedChecker) return 'completed';
+    const carried = carriedCheckIds instanceof Set
+        ? carriedCheckIds
+        : new Set<string>(carriedCheckIds || []);
+    const receipts = output?.verificationLedger?.receipts;
+    if (Array.isArray(receipts)) {
+        for (const receipt of receipts) {
+            if (receipt?.result === 'passed' && !carried.has(String(receipt?.checkId || ''))) return 'verified';
+        }
+    }
+    return 'completed';
+}
+
+export function phaseCompletionMessage(voice: PhaseCompletionVoice, n: number, total: number, isAr: boolean): string {
+    if (isAr) {
+        if (voice === 'verified') return `✅ اكتملت المرحلة ${n}/${total} وتحقَّقت`;
+        if (voice === 'observed') return `✅ اكتملت المرحلة ${n}/${total} — رُصد وجود المخرجات بدل الفحص المطلوب (غير متحقق)`;
+        return `✅ اكتملت المرحلة ${n}/${total} — اكتملت المهام دون تحقق`;
+    }
+    if (voice === 'verified') return `✅ Phase ${n}/${total} completed and verified`;
+    if (voice === 'observed') return `✅ Phase ${n}/${total} completed — output existence observed instead of the requested check (not verified)`;
+    return `✅ Phase ${n}/${total} completed — tasks done, not verified`;
+}
+
+export function carriedVerificationCheckIds(verificationLedger: any): Set<string> {
+    const receipts = verificationLedger?.receipts;
+    const ids = new Set<string>();
+    if (Array.isArray(receipts)) {
+        for (const receipt of receipts) {
+            const id = String(receipt?.checkId || '').trim();
+            if (id) ids.add(id);
+        }
+    }
+    return ids;
 }
 
 type ReceiptObject = Record<string, any>;
@@ -1059,6 +1158,7 @@ assertRunActive();
             voice(pick(isAr,
                 `⚙️ المرحلة ${n}/${totalPhases} — ${phase.name || 'تنفيذ'}`,
                 `⚙️ Phase ${n}/${totalPhases} — ${phase.name || 'work'}`));
+const carriedCheckIds = carriedVerificationCheckIds(projectContext?.verificationLedger);
 const phaseResult = await executeTool('phase_executor', { phase, projectContext }, executionContext);
             // ToolService can stop the in-flight tool immediately while its
             // underlying promise unwinds. Never interpret that late return as
@@ -1086,14 +1186,16 @@ const phaseResult = await executeTool('phase_executor', { phase, projectContext 
             }
 
             if (phaseResult?.ok && status === 'completed') {
+                const completionVoice = describePhaseCompletion(phase, phaseResult?.output, carriedCheckIds);
+                const completionProvenance = phaseVerificationProvenance(phase);
                 voice(pick(isAr,
-                    `✅ اكتملت المرحلة ${n}/${totalPhases} وتحقَّقت`,
-                    `✅ Phase ${n}/${totalPhases} completed and verified`));
+                    phaseCompletionMessage(completionVoice, n, totalPhases, true),
+                    phaseCompletionMessage(completionVoice, n, totalPhases, false)));
                 results.push(compactPhaseReceipt(
                     phaseResult.output,
                     phaseResult.logs,
                     'completed',
-                    phaseReceiptExtras(projectContext, phaseResult?.output?.results),
+                    phaseReceiptExtras(projectContext, phaseResult?.output?.results, completionProvenance ? { verificationProvenance: completionProvenance } : {}),
                 ));
                 completedPhases++;
                 continue;
@@ -1291,6 +1393,7 @@ const phaseResult = await executeTool('phase_executor', { phase, projectContext 
             }
 
             if (selfFixExecution.ok) {
+                const rerunProvenance = phaseVerificationProvenance(phase);
                 voice(pick(isAr,
                     `🔧 نجح الإصلاح الذاتي — المرحلة ${n} اكتملت بعد العلاج`,
                     `🔧 Self-healing worked — phase ${n} completed after the repair`));
@@ -1301,7 +1404,7 @@ const phaseResult = await executeTool('phase_executor', { phase, projectContext 
                     phaseReceiptExtras(
                         projectContext,
                         selfFixExecution.rerunResult?.output?.results || phaseResult?.output?.results,
-                        { selfFixPlan, selfFixExecution },
+                        { selfFixPlan, selfFixExecution, ...(rerunProvenance ? { verificationProvenance: rerunProvenance } : {}) },
                     ),
                 ));
                 completedPhases++;
