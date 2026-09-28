@@ -182,10 +182,24 @@ export function providerRetryAfterMs(error: unknown, now = Date.now()): number |
     }
     const text = [raw?.response?.data?.error?.message, raw?.error?.message, raw?.message,
         typeof error === 'string' ? error : ''].filter(Boolean).join(' ');
-    const seconds = text.match(/retry[-\s]?after\s*:?\s*(\d+(?:\.\d+)?)\s*(?:seconds?|s)?/i);
-    if (seconds) return Math.min(Number(seconds[1]) * 1000, Number.MAX_SAFE_INTEGER - now) || undefined;
-    const hms = text.match(/try again in (?:(\d+)h)?(?:(\d+)m)?([\d.]+)s/i);
-    if (hms) return Math.min((Number(hms[1] || 0) * 3600 + Number(hms[2] || 0) * 60 + Number(hms[3])) * 1000, Number.MAX_SAFE_INTEGER - now) || undefined;
+    // Provider messages may omit the seconds component ("2m", "1h30m").
+    // Parse explicit units before bare seconds so "retry after 2m" cannot
+    // silently become a two-second cooldown.
+    const compact = text.match(/(?:retry[-\s]?after|try again in)\s*:?\s*((?:\d+(?:\.\d+)?\s*[hms]\s*)+)(?![\w.])/i);
+    if (compact) {
+        const duration = [...compact[1].matchAll(/(\d+(?:\.\d+)?)\s*([hms])/gi)]
+            .reduce((total, [, amount, unit]) => total + Number(amount)
+                * ({ h: 3600, m: 60, s: 1 }[unit.toLowerCase() as 'h' | 'm' | 's']), 0) * 1000;
+        if (Number.isFinite(duration) && duration > 0) return Math.min(duration, Number.MAX_SAFE_INTEGER - now);
+    }
+    const spelled = text.match(/(?:retry[-\s]?after|try again in)\s*:?\s*(\d+(?:\.\d+)?)\s*(seconds?|minutes?|hours?)\b/i);
+    if (spelled) {
+        const unit = spelled[2].toLowerCase();
+        const multiplier = unit.startsWith('hour') ? 3_600_000 : unit.startsWith('minute') ? 60_000 : 1000;
+        return Math.min(Number(spelled[1]) * multiplier, Number.MAX_SAFE_INTEGER - now) || undefined;
+    }
+    const bareSeconds = text.match(/retry[-\s]?after\s*:?\s*(\d+(?:\.\d+)?)(?=$|[.,;)]|\s*$)/i);
+    if (bareSeconds) return Math.min(Number(bareSeconds[1]) * 1000, Number.MAX_SAFE_INTEGER - now) || undefined;
     return undefined;
 }
 

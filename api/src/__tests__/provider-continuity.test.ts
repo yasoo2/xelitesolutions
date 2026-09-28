@@ -379,6 +379,21 @@ describe('provider reset and bounded half-open probe', () => {
         expect(providerCircuitStatus('nested-retry', now + 60_001)).toMatchObject({ blocked: true, retryAt: now + 1_480_896 });
     });
     it.each([
+        ['Retry after 2m', 120_000],
+        ['Please try again in 2m', 120_000],
+        ['Retry after 1h30m', 5_400_000],
+        ['Retry after 2 minutes', 120_000],
+        ['429 Daily token quota exceeded. Retry after 7076 seconds.', 7_076_000],
+    ])('keeps a provider blocked for the full textual retry duration: %s', (message, duration) => {
+        const now = 1_000;
+        const error = { status: 429, message };
+        expect(providerRetryAfterMs(error, now)).toBe(duration);
+        recordProviderCircuitFailure('textual-retry', error, now);
+        expect(providerCircuitStatus('textual-retry', now + 60_001))
+            .toMatchObject({ blocked: true, retryAt: now + duration });
+    });
+
+    it.each([
         { status: 429, headers: { 'Retry-After': '600' } },
         { status: 429, headers: {}, response: { headers: { 'RETRY-AFTER': '600' } } },
     ])('honors a case-insensitive Retry-After header across adapter shapes %p', error => {
