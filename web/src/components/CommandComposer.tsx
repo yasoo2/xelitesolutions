@@ -3891,7 +3891,7 @@ export default function CommandComposer({
                             fontSize: 12
                           }}>
                             {selected.free ? (
-                              <span style={{ color: '#22c55e' }}>✓ هذا النموذج مجاني - لا يحتاج API Key</span>
+                              <span style={{ color: '#22c55e' }}>✓ هذا النموذج مجاني الاستخدام، لكنه يحتاج مفتاح OpenRouter مجانياً</span>
                             ) : (
                               <span style={{ color: '#3b82f6' }}>💳 هذا النموذج مدفوع - يحتاج API Key من OpenRouter</span>
                             )}
