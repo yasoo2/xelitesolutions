@@ -15,6 +15,7 @@ import { formatAttachmentsBlock } from '../shared/attachments';
 jest.mock('../core/llm/intelligent-router', () => ({
     routeToModel: jest.fn(),
     isProviderFailure: (text: unknown) => typeof text === 'string' && (text.trimStart().startsWith('⚠️ تعذّر الوصول إلى محرّك الذكاء') || /request timed out/i.test(text)),
+    isUsableAnswer: (text: unknown) => /[\p{L}\p{N}]/u.test(String(text ?? '').trim()),
 }));
 import { routeToModel } from '../core/llm/intelligent-router';
 import { CentralAnswerTool } from '../modules/tools/definitions/CentralAnswerTool';
@@ -142,6 +143,37 @@ describe('central_answer — an Arabic question gets an Arabic answer, measured'
         );
         expect(r.ok).toBe(false);
         expect(r.error).toBe('run_cancelled_by_owner');
+        expect(r.output).toBeUndefined();
+    });
+
+    test.each([
+        ["Hi, what's 2+2?", '4', 'en'],
+        ['مرحبا، ما عاصمة فرنسا؟', 'باريس', 'ar'],
+        ['Thanks, explain photosynthesis.', 'Photosynthesis converts light to energy.', 'en'],
+        ["Who are you and what's 2+2?", '4', 'en'],
+    ])('small-talk prefix does not swallow the request: %s', async (question, answer, language) => {
+        (routeToModel as jest.Mock).mockResolvedValueOnce(answer);
+        const r: any = await new CentralAnswerTool().execute({ question }, { language });
+        expect(r.ok).toBe(true);
+        expect(r.output).toBe(answer);
+        expect(routeToModel).toHaveBeenCalledTimes(1);
+        expect(r.logs.join(' ')).not.toContain('instant fast-path');
+    });
+
+    test.each(['Hello!', 'مرحبا', 'شكراً', 'Who are you?'])(
+        'pure small talk still answers without a model: %s', async (question) => {
+            const r: any = await new CentralAnswerTool().execute({ question });
+            expect(r.ok).toBe(true);
+            expect(String(r.output).length).toBeGreaterThan(0);
+            expect(r.logs.join(' ')).toContain('instant fast-path');
+            expect(routeToModel).not.toHaveBeenCalled();
+        },
+    );
+
+    test('punctuation without words or digits is not an answer', async () => {
+        (routeToModel as jest.Mock).mockResolvedValueOnce('?!');
+        const r: any = await new CentralAnswerTool().execute({ question: 'What is the result?' }, { language: 'en' });
+        expect(r.ok).toBe(false);
         expect(r.output).toBeUndefined();
     });
 

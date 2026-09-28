@@ -1,6 +1,6 @@
 import { isArabicReply } from '../../../shared/reply-language';
 import { ToolDefinition } from '../types';
-import { isProviderFailure, routeToModel } from '../../../core/llm/intelligent-router';
+import { isProviderFailure, isUsableAnswer, routeToModel } from '../../../core/llm/intelligent-router';
 import { safeProviderError } from '../../../core/llm/provider-continuity';
 import { arabicShare } from '../../../shared/utils/language';
 
@@ -179,16 +179,17 @@ Your goal is to build the extraordinary.`;
             const q = String(question || '').trim();
             const wordCount = q.split(/\s+/).filter(Boolean).length;
             if (q.length > 40 || wordCount > 6) return null;
-            const low = q.toLowerCase();
-            // NOTE: JS \b only recognises ASCII word chars, so it never matches after
-            // an Arabic letter. Match Arabic roots on the raw text (no \b) and keep
-            // \b only for the Latin alternatives.
-            const isGreeting = /^(هلا|مرحب|سلام|السلام|أهل|اهل|صباح|مساء|تحية|هاي)/.test(q) || /^(hi|hii|hey|hello|yo|hola)\b/i.test(low);
-            const isIdentity = /^(من ?ان?ت|من ?أنت|ما ?اسمك|عرّ?ف عن نفسك|عرف عن نفسك)/.test(q) || /^(who are you|what('?s| is) your name)/i.test(low);
-            const isThanks = /^(شكرا|شكراً|مشكور|يعطيك|تسلم)/.test(q) || /^(thanks|thank you|thx|tnx)\b/i.test(low);
-            // Reject if it also contains a task verb (build/create/open/write/...).
-            const hasTask = /(ابن|انش|اعمل|صمم|برمج|افتح|اكتب|اقرأ|احذف|شغل|نفذ|ابحث|build|create|make|open|write|read|delete|run|search|fix|add)/i.test(low);
-            if (hasTask) return null;
+            // Fast answers are safe only when the entire utterance is small talk.
+            // A greeting, thanks, or identity phrase can prefix a real request;
+            // matching only its opening silently discards that request.
+            const smallTalk = q.toLowerCase()
+                .replace(/[\u064B-\u065F\u0670]/g, '')
+                .replace(/[إأآ]/g, 'ا')
+                .replace(/[!?؟.,،؛:]+/g, ' ')
+                .replace(/\s+/g, ' ').trim();
+            const isGreeting = /^(?:هلا|مرحبا|سلام|السلام|السلام عليكم|اهلا|اهل|صباح|صباح الخير|مساء|مساء الخير|تحية|تحية طيبة|هاي|hi+|hey|hello|yo|hola)(?: (?:there|joe|جو)| يا (?:joe|جو))?$/.test(smallTalk);
+            const isIdentity = /^(?:من انت|من انتا|ما اسمك|عرف عن نفسك|who are you|what(?:'s| is) your name)$/.test(smallTalk);
+            const isThanks = /^(?:شكرا|مشكور|يعطيك|يعطيك العافية|تسلم|thanks|thank you|thx|tnx)$/.test(smallTalk);
             if (isThanks) return isAr ? 'على الرحب والسعة! 🙌 أنا **جو** جاهز لأي مهمة تالية.' : "You're welcome! 🙌 I'm **Joe**, ready for the next task.";
             if (isIdentity) return isAr
                 ? 'أنا **جو (Joe)** — محرّك الذكاء الهندسي المتقدّم من **XElite Solutions**، وأملك أدوات كاملة (الملفات، الطرفية، المتصفح). كيف أخدمك؟'
@@ -265,7 +266,7 @@ Your goal is to build the extraordinary.`;
                     logs.push(`central_answer: language rewrite failed (${e?.message || e}) — kept the original`);
                 }
             }
-            if (text && text.length >= 2) {
+            if (isUsableAnswer(text)) {
                 return {
                     ok: true,
                     output: text,
