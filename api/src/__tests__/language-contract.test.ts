@@ -92,6 +92,59 @@ describe('central_answer — an Arabic question gets an Arabic answer, measured'
         expect(r.output).toBe(ENGLISH_REPLY);
     });
 
+    test('a thrown provider timeout cannot become a fabricated success', async () => {
+        (routeToModel as jest.Mock).mockRejectedValueOnce(new Error('Request timed out.'));
+        const r: any = await new CentralAnswerTool().execute({ question: 'What is the capital of France?' }, { language: 'en' });
+        expect(r.ok).toBe(false);
+        expect(r.error).toMatch(/timed out/i);
+        expect(r.output).toBeUndefined();
+        expect(r.logs.join(' ')).not.toContain('fallback');
+    });
+
+    test('an empty model response cannot become a fabricated success', async () => {
+        (routeToModel as jest.Mock).mockResolvedValueOnce('');
+        const r: any = await new CentralAnswerTool().execute({ question: 'What is the capital of France?' }, { language: 'en' });
+        expect(r.ok).toBe(false);
+        expect(r.output).toBeUndefined();
+        expect(r.error).toMatch(/empty/i);
+    });
+
+    test('a thrown router error does not expose an environment credential', async () => {
+        const previous = process.env.GROQ_API_KEY;
+        process.env.GROQ_API_KEY = 'test-secret-only-for-central-answer';
+        try {
+            (routeToModel as jest.Mock).mockRejectedValueOnce(new Error('upstream echoed test-secret-only-for-central-answer'));
+            const r: any = await new CentralAnswerTool().execute({ question: 'What is the capital of France?' }, { language: 'en' });
+            expect(r.ok).toBe(false);
+            expect(JSON.stringify(r)).not.toContain(process.env.GROQ_API_KEY);
+            expect(r.error).toContain('[REDACTED]');
+        } finally {
+            if (previous === undefined) delete process.env.GROQ_API_KEY;
+            else process.env.GROQ_API_KEY = previous;
+        }
+    });
+
+    test('a thrown router error does not expose a selected provider credential', async () => {
+        const apiKey = 'test-selected-key-only-for-central-answer';
+        (routeToModel as jest.Mock).mockRejectedValueOnce(new Error('upstream echoed ' + apiKey));
+        const r: any = await new CentralAnswerTool().execute(
+            { question: 'What is the capital of France?' }, { language: 'en', modelConfig: { provider: 'groq', apiKey } },
+        );
+        expect(r.ok).toBe(false);
+        expect(JSON.stringify(r)).not.toContain(apiKey);
+        expect(r.error).toContain('[REDACTED]');
+    });
+
+    test('owner cancellation cannot become a generic answer', async () => {
+        (routeToModel as jest.Mock).mockRejectedValueOnce(new Error('run_cancelled_by_owner'));
+        const r: any = await new CentralAnswerTool().execute(
+            { question: 'What is the capital of France?' }, { language: 'en', isCancelled: () => true },
+        );
+        expect(r.ok).toBe(false);
+        expect(r.error).toBe('run_cancelled_by_owner');
+        expect(r.output).toBeUndefined();
+    });
+
     test('an English question is never touched by the Arabic enforcement', async () => {
         (routeToModel as jest.Mock).mockResolvedValueOnce(ENGLISH_REPLY);
         const tool = new CentralAnswerTool();

@@ -1,6 +1,7 @@
 import { isArabicReply } from '../../../shared/reply-language';
 import { ToolDefinition } from '../types';
 import { isProviderFailure, routeToModel } from '../../../core/llm/intelligent-router';
+import { safeProviderError } from '../../../core/llm/provider-continuity';
 import { arabicShare } from '../../../shared/utils/language';
 
 /**
@@ -170,23 +171,6 @@ Your goal is to build the extraordinary.`;
             ? `${baseSystemPrompt}\n\nCRITICAL INSTRUCTION: اكتب ردّك **بالعربية الفصحى بالكامل**. لا تخلط كلمات إنجليزية داخل الجملة العربية (هذا يُشوّش قراءة النص). عند الحاجة لمصطلح تقني، اكتب مقابله العربي، وإن لزم ضع الإنجليزي بين قوسين بعده — مثال: «الواجهة الأمامية (Frontend)». استثناء وحيد: أسماء الأوامر/الأكواد داخل علامات الكود.`
             : baseSystemPrompt) + personalBlock + standingBlock + memoryBlock;
 
-        // Deterministic reply so a conversational turn NEVER fails into the
-        // orchestrator's diagnostic "recovery" loop (the duplicated neural-thinking
-        // the user reported) even if every free provider is momentarily unavailable.
-        const fallbackReply = (): string => {
-            const low = String(question || '').toLowerCase();
-            const isGreeting = /مرحب|سلام|أهل|اهل|صباح|مساء|hello|\bhi\b|\bhey\b/.test(low);
-            const isIdentity = /من ?ان?ت|من ?أنت|who are you|عرّ?ف|ما ?اسمك|what are you/.test(low);
-            if (isAr) {
-                if (isIdentity) return 'أنا **جو (Joe)** — محرّك الذكاء الهندسي المتقدّم من **XElite Solutions**. متخصص في تطوير الويب وهندسة الأنظمة والتطبيقات، وأملك أدوات كاملة (الملفات، الطرفية، المتصفح). كيف أخدمك اليوم؟';
-                if (isGreeting) return 'مرحباً بك! 👋 أنا **جو**، مساعدك الهندسي من XElite. جاهز لبناء أي شيء تريده — أخبرني بما تحتاج.';
-                return 'أنا **جو** من XElite، جاهز لمساعدتك. أخبرني بتفاصيل ما تريد إنجازه.';
-            }
-            if (isIdentity) return "I'm **Joe** — the elite engineering AI by **XElite Solutions** (web, apps, and complex systems) with full tools: files, terminal, browser. How can I help?";
-            if (isGreeting) return "Hi! 👋 I'm **Joe**, your engineering assistant by XElite. Tell me what you'd like to build.";
-            return "I'm **Joe** by XElite, ready to help. Tell me what you need.";
-        };
-
         // [INSTANT FAST-PATH] Pure greetings / identity / thanks answer IMMEDIATELY
         // with no model call at all — instant even on a slow CPU-only laptop. Only
         // fires for SHORT messages that are ONLY small-talk (anything with a real
@@ -288,19 +272,21 @@ Your goal is to build the extraordinary.`;
                     logs
                 };
             }
-            // Empty/invalid router response -> deterministic reply (still a success).
             return {
-                ok: true,
-                output: fallbackReply(),
-                logs: ['central_answer: fallback (empty router response)']
+                ok: false,
+                error: 'central_answer: model returned an empty or invalid response',
+                logs: ['central_answer: no usable model answer produced']
             };
         } catch (e: any) {
-            // Never turn a simple conversational reply into a failure/recovery loop.
-            console.warn(`[central_answer] router failed, using deterministic reply: ${e?.message}`);
+            if (context?.isCancelled?.() || context?.signal?.aborted || String(e?.message || e).includes('run_cancelled_by_owner')) {
+                return { ok: false, error: 'run_cancelled_by_owner', logs: ['central_answer: cancelled before answer'] };
+            }
+            const reason = safeProviderError(e, context?.modelConfig?.apiKey) || 'unknown router error';
+            console.warn(`[central_answer] router failed: ${reason}`);
             return {
-                ok: true,
-                output: fallbackReply(),
-                logs: [`central_answer: fallback (router error: ${e?.message})`]
+                ok: false,
+                error: `central_answer: router failed: ${reason}`,
+                logs: ['central_answer: router failed; no answer produced']
             };
         }
     }
