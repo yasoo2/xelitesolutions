@@ -23,3 +23,20 @@ export function syntaxFileKind(file: string): SyntaxFileKind | null {
 export function isSyntaxCheckableFile(file: string): boolean {
     return syntaxFileKind(file) !== null;
 }
+
+/**
+ * Statement-free check shared by the vacuous-test detector (AutoTesterTool)
+ * and vacuous-test recovery (SelfFixService): a file is statement-free when
+ * nothing remains after removing the shebang, block/line comments, string
+ * literals and bare separators. Detection and repair re-verification must
+ * agree on this predicate, so it lives here rather than in either consumer.
+ */
+export function isStatementFreeNodeSource(source: string): boolean {
+    const stripped = String(source || '')
+        .replace(/^\s*#[^\n]*/, '')
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .replace(/(^|\s)\/\/[^\n]*/g, '$1')
+        .replace(/'(?:[^'\\\n]|\\.)*'|"(?:[^"\\\n]|\\.)*"|`(?:[^`\\]|\\.)*`/g, '')
+        .replace(/[\s;]+/g, '');
+    return stripped.length === 0;
+}

@@ -2,6 +2,7 @@ import type { RepairTicket } from './RepairTicketService';
 import fs from 'fs';
 import path from 'path';
 import { isWithinRoot } from '../tools/path-containment';
+import { isStatementFreeNodeSource } from '../../shared/syntax-contract';
 import { repairMemory } from '../../core/memory/repair-memory';
 import { recoverMissingNpmLauncher } from '../tools/npm-launcher-recovery';
 import { localFileExistsWithExactCase } from '../tools/definitions/ProjectRunTool';
@@ -670,6 +671,88 @@ function extractTestHarnessMismatch(ticket: RepairTicket): TestHarnessMismatchEv
         observedError: combined.trim().slice(0, 400),
       };
     }
+  }
+  return null;
+}
+
+interface VacuousTestEvidence {
+  testFile: string;
+  scriptName: string;
+  runnerLabel: string;
+  projectCwd: string;
+  observedError: string;
+}
+
+/**
+ * Vacuous-test recovery: auto_tester refused a declared script because the
+ * run exited 0 while executing zero tests. Real-UI evidence (runs 4b/8):
+ * Joe scaffolds comment-only test files whose bare `node test.js` exits 0
+ * with empty output. Without this branch the ticket has no ReferenceError
+ * and no repairFile, so planning stops with "no evidence-bound repair
+ * file" and the pipeline halts with detection but no recovery.
+ *
+ * Every gate is evidence-bound: the refusal must come from auto_tester
+ * (its own contract, not similar prose from another tool), the candidate
+ * file must resolve inside the ticket boundary, and the file must
+ * RE-VERIFY statement-free on disk — stale or mistaken prose never
+ * triggers a rewrite. Runner zero-reports resolve through the manifest;
+ * only a bare `node <file>` runner whose file re-verifies statement-free
+ * is this repair class. Framework runners (jest/vitest/...) report
+ * discovery/config failures that need different evidence and keep the
+ * honest stop.
+ */
+function extractVacuousTestEvidence(ticket: RepairTicket): VacuousTestEvidence | null {
+  for (const failed of ticket.failedTasks) {
+    if (String(failed.tool) !== 'auto_tester') continue;
+    const combined = `${failed.error || ''}\n${ticket.primaryError || ''}`;
+    // Both refusal shapes share the exit-0 marker; the zero-test verdict
+    // reads "executed zero tests" (runner zero-report) or "zero tests
+    // executed" (statement-free file). Both are auto_tester's own contract.
+    if (!/exited 0\b/.test(combined) || !/(?:zero tests executed|executed zero tests)/.test(combined)) continue;
+
+    const cwd = String(failed.cwd || '.');
+    const boundary = harnessMismatchBoundary(ticket, failed, cwd);
+    const declaredScript = combined.match(/declared\s+(?:unit test|integration test|test)\s+script\s+"([^"]+)"/i)?.[1] || 'test';
+
+    // The refusal either names the statement-free file directly, or carries
+    // only a runner zero-report and the declared script must resolve it.
+    let candidate: string | null = combined.match(/exited 0 with no output and\s+(.+?)\s+contains no executable statements/)?.[1]?.trim() || null;
+    let runnerLabel = `npm run ${declaredScript}`;
+    if (!candidate) {
+      const scriptName = combined.match(/declared\s+(?:unit test|integration test|test)\s+script\s+"([^"]+)"/i)?.[1];
+      if (!scriptName) continue;
+      const script = resolveNpmTestScript(cwd, scriptName, boundary);
+      if (!script || TEST_RUNNER_FRAMEWORK_BINARIES.test(script)) continue;
+      // Bare-node shape must match the detector's contract in
+      // AutoTesterTool.statementFreeBareNodeFile: flags, pipes and chained
+      // commands never resolve to a repair file here.
+      const bare = /^\s*node\s+["']?([^"'\s;&|]+)["']?\s*$/.exec(script);
+      if (!bare || bare[1].startsWith('-')) continue;
+      candidate = bare[1];
+      runnerLabel = `npm run ${scriptName} -> ${script.slice(0, 120)}`;
+    } else {
+      runnerLabel = `${runnerLabel} -> ${candidate.slice(0, 120)}`;
+    }
+
+    const resolved = path.isAbsolute(candidate) ? path.normalize(candidate) : path.resolve(cwd, candidate);
+    if (!isWithinRoot(resolved, boundary)) continue;
+    if (!['.js', '.mjs', '.cjs'].includes(path.extname(resolved).toLowerCase())) continue;
+    let source = '';
+    try {
+      const stat = fs.statSync(resolved);
+      if (!stat.isFile() || stat.size > 1024 * 1024) continue;
+      source = fs.readFileSync(resolved, 'utf8');
+    } catch {
+      continue;
+    }
+    if (!isStatementFreeNodeSource(source)) continue;
+    return {
+      testFile: resolved,
+      scriptName: declaredScript,
+      runnerLabel,
+      projectCwd: cwd,
+      observedError: combined.trim().slice(0, 400),
+    };
   }
   return null;
 }
@@ -1381,6 +1464,41 @@ export class SelfFixService {
             `Observed failure: ${testHarnessMismatch.observedError}`,
           ].join('\n'),
           context: JSON.stringify({ testHarnessMismatch, repairTicket: ticket }),
+        },
+        rememberedCure: cureNote || undefined,
+        safety: this.safety(),
+        sourceTicket: ticket,
+      };
+    }
+
+    // A tester-proven vacuous suite (exit 0, zero tests executed) whose
+    // test file re-verifies statement-free on disk is a diagnosed test
+    // gap, not a broken implementation: without this branch the refusal
+    // stops with "no evidence-bound repair file" and the pipeline halts
+    // with detection but no recovery (runs 4b/8 evidence). The repair
+    // constrains the single evidenced file to real Node built-in
+    // assertions derived from the implementation under test.
+    const vacuousTest = extractVacuousTestEvidence(ticket);
+    if (vacuousTest) {
+      return {
+        type: 'self_fix_plan',
+        allowed: true,
+        reason: `Vacuous test suite: the declared test script exited 0 but executed zero tests, and ${vacuousTest.testFile} re-verifies statement-free on disk. Rewrite only that test file with real Node.js built-in assertions and rerun the failed phase.`,
+        maxAttempts: 1,
+        strategy: 'code_fix',
+        suggestedTool: 'ai_write_file',
+        suggestedInput: {
+          path: vacuousTest.testFile,
+          description: [
+            `Repair only ${vacuousTest.testFile}; do not edit package.json, the implementation, or another file.`,
+            `DIAGNOSIS (do not re-litigate): the declared test script (${vacuousTest.runnerLabel}) exited 0 without executing any test because this test file contains no executable statements. The implementation under test is not proven broken; the test file is vacuous.`,
+            'First inspect the implementation under test (package.json main/scripts plus the sibling source files in the same project directory) and the phase acceptance criteria in context; derive the behaviors the tests must assert.',
+            'Rewrite the complete test file using Node.js built-ins ONLY: node:test for the test structure (matching the file\'s existing CommonJS/ESM style) and node:assert/strict for assertions.',
+            'Every test must FAIL when the implementation is broken: assert real behaviors (exit codes, stdout, return values, file outputs) by executing the implementation; no placeholders, no tests that pass without touching the implementation, no swallowed failures.',
+            'The file must print a per-test result summary and exit non-zero on any failure. Do not add dependencies, do not run npm install, and do not change the test command. The existing command must pass unchanged after this single-file repair.',
+            `Observed failure: ${vacuousTest.observedError}`,
+          ].join('\n'),
+          context: JSON.stringify({ vacuousTest, repairTicket: ticket }),
         },
         rememberedCure: cureNote || undefined,
         safety: this.safety(),

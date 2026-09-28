@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 
-import { syntaxFileKind } from '../../../shared/syntax-contract';
+import { isStatementFreeNodeSource, syntaxFileKind } from '../../../shared/syntax-contract';
 import { ToolDefinition, ToolPermission } from '../types';
 import { executeTool } from '../../services/ToolService';
 import { quoteShellArg } from '../shell-quote';
@@ -372,13 +372,9 @@ export class AutoTesterTool implements ToolDefinition {
             if (!stat.isFile() || stat.size > 1024 * 1024) return null;
             source = fs.readFileSync(candidate, 'utf8');
         } catch { return null; }
-        const stripped = source
-            .replace(/^\s*#[^\n]*/, '')
-            .replace(/\/\*[\s\S]*?\*\//g, '')
-            .replace(/(^|\s)\/\/[^\n]*/g, '$1')
-            .replace(/'(?:[^'\\\n]|\\.)*'|"(?:[^"\\\n]|\\.)*"|`(?:[^`\\]|\\.)*`/g, '')
-            .replace(/[\s;]+/g, '');
-        return stripped.length === 0 ? (relative.replace(/\\/g, '/') || match[1]) : null;
+        // Shared with SelfFix vacuous-test recovery so detection and repair
+        // re-verification agree on what "statement-free" means.
+        return isStatementFreeNodeSource(source) ? (relative.replace(/\\/g, '/') || match[1]) : null;
     }
 
     private async runDeclaredScript(projectPath: string, script: string, kind: string, logs: string[], ctx: { sessionId?: string; workspaceId?: string }) {
