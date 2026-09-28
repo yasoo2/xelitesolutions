@@ -355,7 +355,17 @@ export class PlanningEngine {
          * so the scope came back «app» and he would have received a front-end
          * with nowhere to put a supplier.
          */
-        const dataSignals = /(تسجيل\s*دخول|تسجيل\s*الدخول|حسابات?|مستخدمين|صلاحيات|أدوار\s*(?:المستخدمين|الأعضاء|الاعضاء)?|قاعدة\s*بيانات|قواعد\s*بيانات|حجوزات?|حجز|طلبات|طلبيّ?ات|مخزون|جرد|فواتير|فاتورة|تقارير|إحصائيات|احصائيات|نقاط\s*بيع|كاشير|رواتب|موظفين|عملاء|زبائن|مورّ?دي?ن|مورّ?دون|اشتراكات|مدفوعات|دفع\s*إلكتروني|قاعدة\s*البيانات|\bsign[- ]?in\b|\blogin\b|\bauth(?:entication)?\b|\bdatabase\b|\b(?:member|manager|user)\s+roles?\b|\brole[- ]?based\s+access\b|(?:registered|authenticated|multiple|admin|end)\s+users?\b|users?\s+(?:accounts?|roles?|permissions?|can\s+sign\s+in)|orders?|suppliers?|vendors?|inventory|invoices?|reports?|bookings?|payments?|subscriptions?|crm|erp|pos)/i;
+        const dataSignals = /(تسجيل\s*دخول|تسجيل\s*الدخول|حسابات?|مستخدمين|صلاحيات|أدوار\s*(?:المستخدمين|الأعضاء|الاعضاء)?|قاعدة\s*بيانات|قواعد\s*بيانات|حجوزات?|حجز|طلبات|طلبيّ?ات|مخزون|جرد|فواتير|فاتورة|تقارير|إحصائيات|احصائيات|نقاط\s*بيع|كاشير|رواتب|موظفين|عملاء|زبائن|مورّ?دي?ن|مورّ?دون|اشتراكات|مدفوعات|دفع\s*إلكتروني|قاعدة\s*البيانات|\bsign[- ]?in\b|\blogin\b|\bauth(?:entication)?\b|\bdatabase\b|\b(?:member|manager|user)\s+roles?\b|\brole[- ]?based\s+access\b|(?:registered|authenticated|multiple|admin|end)\s+users?\b|users?\s+(?:accounts?|roles?|permissions?|can\s+sign\s+in)|suppliers?|vendors?|inventory|invoices?|bookings?|payments?|subscriptions?|crm|erp|pos)/i;
+        /**
+         * AN ORDER OF ARRIVAL IS NOT A PURCHASE ORDER.
+         *
+         * «in order of appearance» is a sequence and «a summary report» is a
+         * document; neither commissions a database. These two nouns are the
+         * most ambiguous in the data list, so they are read separately and
+         * need corroboration below. A boundary alone cannot fix this: both
+         * senses above contain WHOLE-WORD «order»/«report».
+         */
+        const weakDataSignals = /\borders?\b|\breports?\b/i;
         // Consuming a public or third-party API is not the same as asking Joe
         // to own a backend.  Keep explicit API-building requests as systems,
         // while allowing browser apps to call services such as Open-Meteo.
@@ -387,9 +397,16 @@ export class PlanningEngine {
             && /\b(?:do\s+not|don't|without)\s+(?:build|create|implement)?\s*(?:a\s+)?(?:project[- ]owned\s+)?backend\b/i.test(g);
         const conditionalDemoAuth = /\bif\s+authentication\s+is\s+needed\b[^.!?\n]{0,160}\b(?:local|demo)\b[^.!?\n]{0,80}\bpersistence\b/i.test(g);
         const ownsBackend = ownedApiSignals.test(g) && !publicApiWithoutBackend;
-        const data = ownsBackend || (dataSignals.test(g) && !(publicApiWithoutBackend && conditionalDemoAuth));
         const app = appSignals.test(g) || structuredInteraction;
         const page = pageSignals.test(g);
+        const demoAuthException = publicApiWithoutBackend && conditionalDemoAuth;
+        const strongData = dataSignals.test(g) && !demoAuthException;
+        const weakData = weakDataSignals.test(g) && !demoAuthException;
+        // A bare ORDER/REPORT commissions a database only with corroboration:
+        // a second domain noun, an owned backend, or app-scope evidence («an
+        // order management system»). Uncorroborated, it is a sequence or a
+        // document — the same two-signal principle as structuredInteraction.
+        const data = ownsBackend || strongData || (weakData && app);
 
         // «صفحة هبوط لتطبيق جوال» is a PAGE about an app, not an app: when the
         // request names the document it wants, that wins over the subject it is

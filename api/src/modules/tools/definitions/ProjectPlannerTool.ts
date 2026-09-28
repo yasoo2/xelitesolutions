@@ -8,6 +8,7 @@ import { plannerToolPrompt, sanitisePlanPhases } from '../../../core/orchestrato
 import { EngineeringEvidence } from './EngineeringDiscoveryTool';
 import { BOUNDED_REPAIR_CONSTITUTION, ENGINEERING_CONSTITUTION } from '../../../core/orchestrator/engineering-policy';
 import { brandFrom } from '../../../core/design/page-head';
+import { demandsTerminalRuntime } from '../../../core/design/app-blueprints';
 
 const DEPENDENCY_RESOLUTION_CONTRACT = `DEPENDENCY RESOLUTION CONTRACT: Never invent npm package versions or copy an unverified exact patch. When a plan introduces or edits package.json, use a published stable release family grounded in the inspected project or an explicit requirement. Before declaring setup complete, run the real install in the project root and treat ETARGET/No matching version as evidence: inspect the registry for stable versions, update only the failing package specifier, retry once, then verify the manifest and install result. Do not use --force or --legacy-peer-deps to hide a missing package version, do not choose prerelease/dev/integration tags, and do not remove a dependency unless source inspection proves it is unused.`;
 
@@ -1622,8 +1623,7 @@ ${this.scopePlanningInstructions(projectDescription)}`;
         const existingWorkspace = evidence?.mode === 'existing_workspace'
             || Boolean(evidence?.selectedProject?.root)
             || evidence?.constraints?.userRequestedExistingProject === true;
-        const demandsNonBrowserRuntime = /command[ -]line|\bcli\b|\bstdin\b|\bstdout\b|\bstderr\b|exit\s+code|\bargv\b|shebang|console\s+(?:application|tool|program|utility|script)|terminal[ -]based|runs?\s+in\s+(?:the\s+)?terminal|`(?:node|python3?|ruby|deno|bun|php|java|dotnet|go run)\s+\S+\.(?:js|mjs|cjs|ts|py|rb|php|jar|go)\b/iu.test(request);
-        if (!createsFrontend || externalOrStateful || existingWorkspace || demandsNonBrowserRuntime) return null;
+        if (!createsFrontend || externalOrStateful || existingWorkspace || demandsTerminalRuntime(request)) return null;
 
         const scope = this.requirementScope(request);
         const projectName = brandFrom(request, /[؀-ۿ]/u.test(request)) || 'Requested web application';

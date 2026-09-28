@@ -648,6 +648,14 @@ export function deterministicPhasesFor(request: string): {
 } | null {
     const { PlanningEngine } = require('../../../core/orchestrator/PlanningEngine');
     if (!PlanningEngine.looksLikeBuild(request)) return null;
+    // A DEAD PLANNER IS NOT A WEB PAGE. The rescue owns web and data
+    // builders only and cannot author a CLI; for an explicit terminal
+    // runtime it refuses, so the pipeline stops honestly instead of
+    // building web artifacts for a command-line tool. The marker is
+    // shared with the constrained-frontend veto: one demand, one reader,
+    // every fixed-stack fallback.
+    const { demandsTerminalRuntime } = require('../../../core/design/app-blueprints');
+    if (demandsTerminalRuntime(request)) return null;
     const classifiedScope: 'page' | 'app' | 'system' = PlanningEngine.classifyBuildScope(request);
     // A declared record schema is an interaction contract, even when its
     // wording does not happen to include one of the broad "application"

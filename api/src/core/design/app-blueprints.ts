@@ -139,6 +139,22 @@ export function stripDeclaredOptions(requestRaw: string): string {
 }
 
 /**
+ * AN EXPLICIT TERMINAL RUNTIME VETOES EVERY FIXED-STACK FALLBACK.
+ *
+ * «Build a Node.js command-line tool ... exit with code 3» declares a
+ * runtime no web builder can satisfy. The constrained-frontend plan and
+ * the deterministic rescue both own web/data builders only, so both read
+ * this one marker and refuse: a single source of truth, because two
+ * copies of the demand would drift the first time one of them learned a
+ * marker the other did not. Domain words are not demands: «exit» without
+ * «code» and an airport terminal stay plannable.
+ */
+export function demandsTerminalRuntime(requestRaw: string): boolean {
+    const request = String(requestRaw || '');
+    return /command[ -]line|\bcli\b|\bstdin\b|\bstdout\b|\bstderr\b|exit\s+code|\bargv\b|shebang|console\s+(?:application|tool|program|utility|script)|terminal[ -]based|runs?\s+in\s+(?:the\s+)?terminal|`(?:node|python3?|ruby|deno|bun|php|java|dotnet|go run)\s+\S+\.(?:js|mjs|cjs|ts|py|rb|php|jar|go)\b/iu.test(request);
+}
+
+/**
  * A SECOND TABLE, AND THE LINE BETWEEN THEM — «علاقات بين أكثر من جدول
  * (طبيب ← مواعيده)».
  *
