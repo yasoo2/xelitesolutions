@@ -960,7 +960,7 @@ export function recordedSubject(requestRaw: string): string | null {
     // and inventing one would be worse than keeping the archetype's word.
     if (colon < 0 || colon > 40) return null;
     //  «فيه», «فيها», «in», «my» are grammar between the verb and the subject.
-    const LEAD = /^(?:فيه|فيها|به|بها|في|فى|the|my|our|a|an|all|of|for)$/i;
+    const LEAD = /^(?:فيه|فيها|به|بها|في|فى|the|my|our|a|an|all|of|for|by|from|with|about|on|at|to|into|over|per|via|through)$/i;
     const words: string[] = [];
     for (const w of after.slice(0, colon).trim().split(/\s+/)) {
         if (!w) continue;

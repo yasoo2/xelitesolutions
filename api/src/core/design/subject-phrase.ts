@@ -183,6 +183,14 @@ export function isInstructionClause(clause: string): boolean {
  *  not a catalogue: «زُرقمونيات» is read exactly as «مبيعات» is, and no
  *  domain, framework or app shape is named anywhere in it.
  */
+/**
+ * English prepositions that introduce a container adjunct rather than a name.
+ * «a directory by content» is about content; «by» belonged to the sentence.
+ * Closed class (whole-word match only, so «Byron» and «overs» are untouched).
+ * Mirrored by the LEAD set in recordedSubject (app-blueprints.ts).
+ */
+export const ENGLISH_ADJUNCT_PREPOSITION = /^(?:by|from|with|about|on|at|to|into|over|per|via|through|for|of)$/i;
+
 export function subjectAfterContainer(requestRaw: string): string {
     const request = String(requestRaw || '');
     // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -202,7 +210,8 @@ export function subjectAfterContainer(requestRaw: string): string {
         const w = raw
             .replace(/^لل(?=[\u0621-\u064A])/u, 'ال')
             .replace(/^ل(?=[\u0621-\u064A]{3,})/u, '')
-            .replace(/^(?:of|for|the|a|an)$/i, '');
+            .replace(/^(?:the|a|an)$/i, '')
+            .replace(ENGLISH_ADJUNCT_PREPOSITION, '');
         if (!w) continue;
         words.push(w);
         if (words.length === 2) break;
