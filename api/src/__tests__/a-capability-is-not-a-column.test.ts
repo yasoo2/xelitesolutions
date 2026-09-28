@@ -159,18 +159,13 @@ describe('a capability with no «مع» in front of it is cut by definiteness al
     });
 });
 
-describe('the boundary of the English cut, declared and not hidden', () => {
-    it('a bare English capability with no introducer IS still read as a column', () => {
-        //  Written down rather than hidden. Arabic stops this three ways —
-        //  the item is not definite, or a function word stands inside it.
-        //  English has neither: every Latin item passes definiteness by
-        //  design, and the only mark left is the introducer, which this
-        //  sentence does not use. The internal-function-word test cannot be
-        //  borrowed here, because «date of birth» and «price per unit» are
-        //  columns he might really write and they carry the same mark.
-        //  Closing it needs a signal this function does not have.
+describe('an English capability ends the field list even without an introducer', () => {
+    it('keeps the fields but does not turn a sort instruction into one', () => {
+        //  The capability-clause reader now recognizes a bare sort request.
+        //  A blanket ban on internal prepositions would also discard real
+        //  fields such as "date of birth", which the adjacent test preserves.
         expect(labels('A students table with name, class and grade, sortable by grade'))
-            .toEqual(['name', 'class', 'grade', 'sortable by grade']);
+            .toEqual(['name', 'class', 'grade']);
     });
 });
 
