@@ -103,10 +103,8 @@ export class PollinationsProvider {
             await delayWithSignal(250, signal);
             return await this.executeChat(messages, model, retries, tools, options);
         } catch (error: any) {
-            if (error?.name !== 'AbortError') {
-                console.error('[Pollinations Queue Error]:', error?.message || error);
-            }
-            return '';
+            if (error?.name === 'AbortError' || signal?.aborted) return '';
+            throw error;
         } finally {
             release();
         }
@@ -176,7 +174,7 @@ export class PollinationsProvider {
                 return this.executeChat(messages, model, retries - 1, tools, options);
             }
             console.error(`Pollinations Chat Failed: ${error.status || error.message}`);
-            return ''; // Return empty string to trigger router fallback immediately
+            throw error; // Preserve status and Retry-After for the router's provider circuit.
         }
     }
 }

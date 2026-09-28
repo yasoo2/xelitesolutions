@@ -154,6 +154,20 @@ describe('OpenRouter provider continuity', () => {
     });
 });
 
+describe('Pollinations failure evidence', () => {
+    it.each([429, 401])('preserves HTTP %i and retry headers for provider-level routing', async (status) => {
+        const failure = Object.assign(new Error('Provider unavailable'), {
+            status, headers: { 'retry-after': '120' },
+        });
+        mockCreate.mockRejectedValue(failure);
+        const provider = new PollinationsProvider();
+
+        await expect(provider.chatComplete(messages)).rejects.toBe(failure);
+
+        expect(mockCreate).toHaveBeenCalledTimes(1);
+    });
+});
+
 describe('SDK retry ownership', () => {
     it.each([
         ['Cerebras', () => new CerebrasProvider('test-key')],

@@ -11,6 +11,7 @@ jest.mock('../core/llm/local-brain', () => ({ isLocalBrainReady: jest.fn(() => f
 jest.mock('../modules/tools/definitions/LLMCacheTool', () => ({ LLMCacheTool: { checkCache: jest.fn(), saveToCache: jest.fn() } }));
 import { routeToModel, verifyProviderDirect, customRouteCooldownUntil, markProviderOk } from '../core/llm/intelligent-router';
 import * as providers from '../core/llm/providers/registry';
+import { PollinationsProvider } from '../core/llm/providers/pollinations';
 import * as localBrain from '../core/llm/local-brain';
 import {
     aiCostPolicy, claimProviderCircuit, markProviderCircuitHealthy, providerAllowedByCost,
@@ -252,6 +253,34 @@ describe('free-only provider continuity through routeToModel', () => {
         expect(first).toContain('10 دقيقة');
         expect(registry.localProvider.chatComplete).toHaveBeenCalledTimes(1);
     });
+    it('carries a Pollinations HTTP 429 through the real adapter to the circuit and free fallback', async () => {
+        process.env.LLM_PROVIDER = 'pollinations';
+        process.env.AI_FREE_PROVIDERS = 'pollinations,llm7';
+        const pollinations = new PollinationsProvider();
+        registry.pollinationsProvider.chatComplete.mockImplementation((...args: any[]) => (pollinations as any).chatComplete(...args));
+        mockCreate.mockRejectedValueOnce(Object.assign(new Error('Provider unavailable'), {
+            status: 429, headers: { 'retry-after': '120' },
+        }));
+        const first: any = { modelConfig: { provider: 'auto' }, runId: 'pollinations-test', workspaceId: 'pollinations-circuit', sessionId: 'first' };
+        const second: any = { modelConfig: { provider: 'auto' }, runId: 'pollinations-test', workspaceId: 'pollinations-circuit', sessionId: 'second' };
+
+        await expect(routeToModel(messages, undefined, undefined, undefined, undefined, undefined, tools, first)).resolves.toBe('Continued the same accepted plan.');
+        expect(providerCircuitStatus(providerCircuitKey('Pollinations (Forced)'))).toMatchObject({ blocked: true, state: 'RATE_LIMITED' });
+        await expect(routeToModel(messages, undefined, undefined, undefined, undefined, undefined, tools, second)).resolves.toBe('Continued the same accepted plan.');
+
+        expect(mockCreate).toHaveBeenCalledTimes(1);
+        expect(registry.llm7Provider.chatComplete).toHaveBeenCalledTimes(2);
+        for (const call of registry.llm7Provider.chatComplete.mock.calls) {
+            expect(JSON.stringify(call[0])).toContain('Continue the same project.');
+            expect(call[2]).toEqual(tools);
+        }
+        expect(first.providerAttempts).toEqual(expect.arrayContaining([
+            expect.objectContaining({ provider: 'Pollinations (Forced)', success: false }),
+            expect.objectContaining({ provider: 'LLM7 (Keyless)', success: true }),
+        ]));
+        expect(second.providerAttempts).toEqual([expect.objectContaining({ provider: 'LLM7 (Keyless)', success: true })]);
+    });
+
     it('continues to a second free provider after a mesh quota failure and skips the exhausted one on the next call', async () => {
         registry.llm7Provider.chatComplete.mockRejectedValue(Object.assign(new Error('429 quota exhausted'), { status: 429 }));
         registry.duckAIProvider.isAvailable.mockReturnValue(true);
