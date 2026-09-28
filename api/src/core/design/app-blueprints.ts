@@ -2723,6 +2723,20 @@ export function clausesBeyondTheColumns(requestRaw: string): string[] {
  */
 const ENGLISH_INTRODUCES_A_LIST = /(?:^|[.!?]\s+|[\s,;:(])(?:(?:must|should)\s+(?:provide|include|have)|needs?|requires?|add|include(?:s|d)?|containing|consisting\s+of|made\s+up\s+of|with)(?=\s)/iu;
 const OPENS_WITH_AN_ARTICLE = /^(?:a|an|the)\s+/iu;
+/**
+ *  THE LIST'S OWN NAME IS NOT ITS LAST ITEM'S NAME.
+ *
+ *  «tool, borrower and due columns» is three columns, the third called
+ *  «due»: the category noun dangles off the end of the enumeration and
+ *  belongs to ALL of it, not to the item it touches. One branch knew
+ *  half of this — it stripped a trailing «fields» but not «columns» —
+ *  and the other branches knew neither half, so «due columns»,
+ *  «phone fields» and «period columns» all reached the generated app
+ *  as labels the user never wrote. The strip needs the space: a bare
+ *  «columns» with no name in front of it has no item to attribute it
+ *  to, and the reader does not eat words it cannot place.
+ */
+const A_LISTS_OWN_NAME = /\s+(?:columns?|fields?)$/iu;
 
 /**
  * A long product brief can contain several English `with` clauses. The first
@@ -2737,7 +2751,7 @@ function fieldsDeclaredInsideAForm(request: string): DerivedField[] | null {
     const tail = match[1].split(/\s*(?:[;；]\s*|(?=(?:required(?:[-\s]field)?\s+validation|validation|allow|add|delete|ensure|fix|persist|show|test|validate|verify)\b))/iu)[0];
     const parts = tail
         .split(/\s*[,，]\s*|\s+and\s+|\s+&\s+/iu)
-        .map(part => part.replace(/^(?:a|an|the|and)\s+/iu, '').replace(/\s*\([^)]{0,80}\)\s*$/u, '').trim())
+        .map(part => part.replace(/^(?:a|an|the|and)\s+/iu, '').replace(/\s*\([^)]{0,80}\)\s*$/u, '').replace(A_LISTS_OWN_NAME, '').trim())
         .filter(part => part.length >= 2 && part.length <= 32);
     if (parts.length < 3) return null;
     // A form's controls are data fields; its buttons and display states are
@@ -2772,7 +2786,7 @@ function theListAnIntroducerHandedOver(request: string): DerivedField[] | null {
             // "numeric-only amount" declares the amount's contract; it is
             // not the label a person should see on the form.
             .replace(/^(?:numeric|number)(?:[-\s]only)?\s+/iu, '')
-            .replace(/\s+fields?$/iu, '')
+            .replace(A_LISTS_OWN_NAME, '')
             .trim());
         // A field list may be followed by capabilities in the same sentence:
         // "needs title, owner, due date, filtering and validation". The first
@@ -2938,7 +2952,7 @@ export function derivedColumns(requestRaw: string): DerivedField[] | null {
         const scope = (colonAt >= 0 ? tail.slice(colonAt + 1) : tail).split(/[.؟!\n]/)[0] || '';
         let items = scope
             .split(/\s*[،,]\s*|\s+و(?=\S)|\s+and\s+|\s+&\s+/iu)
-            .map(p => p.trim().replace(/^and\s+/iu, '').replace(/^[:：]\s*/u, '').trim())
+            .map(p => p.trim().replace(/^and\s+/iu, '').replace(/^[:：]\s*/u, '').replace(A_LISTS_OWN_NAME, '').trim())
             .filter(p => p.length >= 2 && p.length <= 32);
         //  The first item carries whatever stood between the container and the
         //  list — «جدول للمصاريف يحوي التاريخ» hands back «للمصاريف يحوي
@@ -3060,7 +3074,7 @@ export function derivedColumns(requestRaw: string): DerivedField[] | null {
         .map(p => p.trim()
             .replace(/^and\s+/iu, '')
             .replace(/^(?:ال)?كل\s+/u, '')
-            .replace(/^[:：]\s*/u, '').trim())
+            .replace(/^[:：]\s*/u, '').replace(A_LISTS_OWN_NAME, '').trim())
         .filter(p => p.length >= 2 && p.length <= 32);
     //  The lesson the container branch learned, applied here too: after
     //  «اسجل» the connector «فيه» is still standing, and it became a column.
