@@ -971,13 +971,23 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
                     // verificationNote and the note below.
                     verificationNote = { task: typeof v === 'string' ? v : (v as any)?.task, tool: (v as any)?.tool, args: (v as any)?.args ?? (v as any)?.input ?? {} };
                 }
-                verification = observedOutputPath
+                const substitutedObservation = observedOutputPath
                     ? {
                         task: `Verify phase output exists: ${observedOutputPath}`,
                         tool: 'read_file',
                         args: { path: observedOutputPath },
                     }
                     : undefined;
+                if (observedOutputPath) {
+                    // The requested check is downgraded to an existence
+                    // observation of a real phase output. Preserve the
+                    // original request plus the substitution so run evidence
+                    // keeps requested-vs-observed inspectable: the
+                    // substituted checker's own receipt must never be read as
+                    // proof of the original claim.
+                    verificationNote = { task: typeof v === 'string' ? v : (v as any)?.task, tool: (v as any)?.tool, args: (v as any)?.args ?? (v as any)?.input ?? {}, downgradedTo: substitutedObservation };
+                }
+                verification = substitutedObservation;
                 const reason = readsUnprovenPhaseOutput || referencesUnprovenFile
                     ? 'تحققاً مولّداً يشير إلى ملفاً غير مثبت'
                     : !verificationTool ? 'ملاحظة تحقق بدون عقد أداة قابلة للتشغيل' : shellSmokeWithoutCheckerContract

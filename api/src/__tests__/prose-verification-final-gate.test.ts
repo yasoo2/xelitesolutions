@@ -60,7 +60,13 @@ describe('prose verification final gate (non-React)', () => {
     expect(typeof emitted).toBe('object');
     expect(emitted.tool).toBe('read_file');
     expect(emitted.args).toMatchObject({ path: 'app/index.js' });
-    expect(phases[0].verificationNote).toBeUndefined();
+    // The rewrite preserves the original request plus the substitution, so
+    // run evidence keeps requested-vs-observed inspectable.
+    expect(phases[0].verificationNote).toMatchObject({
+      task: 'Verify the system is ready for delivery',
+      downgradedTo: { tool: 'read_file', args: { path: 'app/index.js' } },
+    });
+    expect(phases[0].verificationNote.downgradedTo.task).toBe(emitted.task);
     expect(notes.join('\n')).toMatch(/بدون عقد أداة/);
   });
 

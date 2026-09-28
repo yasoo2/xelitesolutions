@@ -12,16 +12,21 @@
  *
  * General contract, pinned here for both layers:
  * - the sanitizer rewrites tool-less prose into an output-existence
- *   observation of a real phase output when one exists, otherwise drops it
- *   with the narrative preserved in verificationNote — it never emits a
- *   contract the gate must reject, and never marks prose as passed;
+ *   observation of a real phase output when one exists, otherwise drops it.
+ *   In both cases the original request is preserved in verificationNote (a
+ *   rewrite additionally records the substitution as downgradedTo), so run
+ *   evidence keeps requested-vs-observed inspectable. It never emits a
+ *   contract the gate must reject;
  * - the phase gate degrades a non-object verification to
  *   absent-verification semantics (phase completes on its tasks) instead of
  *   recording verification_unavailable, while still honestly rejecting
  *   object-shaped non-checker contracts;
  * - degraded prose receives the SAME no-verifier auto-build observation as a
- *   genuinely absent verifier (never less scrutiny than absence), and never
- *   yields a passed verification receipt.
+ *   genuinely absent verifier (never less scrutiny than absence). Raw prose
+ *   reaching the gate yields no passed receipt; a sanitized non-final prose
+ *   rewrite yields a narrowly-described existence receipt for the substituted
+ *   observation only — never a PASS of the original behavior claim. Rewritten
+ *   finals fail closed (pinned in prose-verification-final-gate.test.ts).
  */
 import { sanitisePlanPhases } from '../core/orchestrator/plan-tools';
 import { isVerificationTool } from '../core/quality/verification-ledger';
@@ -193,8 +198,9 @@ describe('prose verification contract', () => {
   });
 
   it('prose verification records no passed verification receipt', async () => {
-    // Negative: prose must never yield a verification PASS claim. The phase
-    // completes on its tasks, but the ledger must hold no passed receipt.
+    // Negative, scoped to RAW prose reaching the gate (sanitizer bypassed):
+    // prose must never yield a verification PASS claim. The phase completes
+    // on its tasks, but the ledger must hold no passed receipt.
     const result: any = await runPhase(
       [{ task: 'Run the real phase task', tool: 'echo', args: { message: 'ran' } }],
       'Verify the technical stack is correctly implemented',
@@ -205,5 +211,51 @@ describe('prose verification contract', () => {
       ? result.output.verificationLedger.receipts
       : [];
     expect(receipts.filter((r: any) => r?.result === 'passed')).toHaveLength(0);
+  });
+
+  it('sanitizer preserves the original request as a downgrade note when rewriting prose into an observation', () => {
+    const { phases } = sanitisePlanPhases([{
+      phaseNumber: 1,
+      name: 'Build',
+      tasks: [{ task: 'Write entry', tool: 'write_file', args: { path: 'app/index.js', content: 'module.exports = false;' } }],
+      verificationTask: 'Verify the exported function returns true',
+    }], 'app', { mode: 'greenfield', candidateCheckCommands: [] });
+    expect(phases[0].verificationTask).toMatchObject({ tool: 'read_file', args: { path: 'app/index.js' } });
+    expect(phases[0].verificationNote).toMatchObject({
+      task: 'Verify the exported function returns true',
+      downgradedTo: { tool: 'read_file', args: { path: 'app/index.js' } },
+    });
+    expect(phases[0].verificationNote.downgradedTo.task).toBe(phases[0].verificationTask.task);
+  });
+
+  it('sanitized prose yields a narrow existence receipt with the downgrade preserved, never a behavior PASS', async () => {
+    // Negative integration: the behavior is deliberately wrong
+    // (module.exports = false vs "returns true"). The substituted existence
+    // observation may pass, but its receipt must describe only existence,
+    // and the downgrade must stay inspectable on the executed phase.
+    const { phases } = sanitisePlanPhases([{
+      phaseNumber: 1,
+      name: 'Build',
+      tasks: [{ task: 'Write entry', tool: 'write_file', args: { path: 'app/index.js', content: 'module.exports = false;' } }],
+      verificationTask: 'Verify the exported function returns true',
+    }], 'app', { mode: 'greenfield', candidateCheckCommands: [] });
+    const result: any = await new PhaseExecutorTool().execute({
+      phase: phases[0],
+      projectContext,
+    } as any, projectContext);
+    const receipts = Array.isArray(result.output?.verificationLedger?.receipts)
+      ? result.output.verificationLedger.receipts
+      : [];
+    const passed = receipts.filter((r: any) => r?.result === 'passed');
+    expect(passed).toHaveLength(1);
+    // The receipt describes the substituted existence check — never the
+    // original behavior claim.
+    expect(passed[0].checkId).toBe('read_file:Verify phase output exists: app/index.js');
+    expect(JSON.stringify(passed[0])).not.toContain('returns true');
+    // The downgrade stays machine-inspectable on the phase that ran.
+    expect(phases[0].verificationNote).toMatchObject({
+      task: 'Verify the exported function returns true',
+      downgradedTo: { tool: 'read_file', args: { path: 'app/index.js' } },
+    });
   });
 });
