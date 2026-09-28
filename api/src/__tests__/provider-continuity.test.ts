@@ -202,12 +202,16 @@ describe('free-only provider continuity through routeToModel', () => {
 
     it('fails over a custom 429 without reusing the same environment credential via another model or mesh', async () => {
         process.env.GROQ_API_KEY = 'test-shared-environment-key';
-        mockCreate.mockRejectedValue(Object.assign(new Error('429 tokens per day; retry-after: 600 seconds'), { status: 429 }));
+        mockCreate.mockRejectedValue(Object.assign(new Error('429 rate limit'), { status: 429, response: { headers: { 'Retry-After': '600' } } }));
         const context = { userId: 'owner', workspaceId: 'project', sessionId: 'first',
             modelConfig: { provider: 'groq', model: 'first-model', apiKey: process.env.GROQ_API_KEY } };
+        const firstAt = Date.now();
         await expect(route(context)).resolves.toBe('Continued the same accepted plan.');
-        await expect(route({ ...context, sessionId: 'second', modelConfig: { ...context.modelConfig, model: 'other-model' } }))
-            .resolves.toBe('Continued the same accepted plan.');
+        const clock = jest.spyOn(Date, 'now').mockReturnValue(firstAt + 61_000);
+        try {
+            await expect(route({ ...context, sessionId: 'second', modelConfig: { ...context.modelConfig, model: 'other-model' } }))
+                .resolves.toBe('Continued the same accepted plan.');
+        } finally { clock.mockRestore(); }
         expect(mockCreate).toHaveBeenCalledTimes(1);
         expect(global.fetch).not.toHaveBeenCalled();
         expect(registry.openAIProvider.chatComplete).not.toHaveBeenCalled();
@@ -272,6 +276,15 @@ describe('provider reset and bounded half-open probe', () => {
         expect(providerRetryAfterMs(error, now)).toBe(1_480_896);
         recordProviderCircuitFailure('nested-retry', error, now);
         expect(providerCircuitStatus('nested-retry', now + 60_001)).toMatchObject({ blocked: true, retryAt: now + 1_480_896 });
+    });
+    it.each([
+        { status: 429, headers: { 'Retry-After': '600' } },
+        { status: 429, headers: {}, response: { headers: { 'RETRY-AFTER': '600' } } },
+    ])('honors a case-insensitive Retry-After header across adapter shapes %p', error => {
+        const now = 1_000;
+        expect(providerRetryAfterMs(error, now)).toBe(600_000);
+        recordProviderCircuitFailure('header-retry', error, now);
+        expect(providerCircuitStatus('header-retry', now + 60_001)).toMatchObject({ blocked: true, retryAt: now + 600_000 });
     });
     it.each([
         { message: 'request failed', response: { status: 429 } },

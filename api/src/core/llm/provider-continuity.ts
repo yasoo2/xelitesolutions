@@ -94,9 +94,14 @@ export function providerFailureState(error: unknown): ProviderState | null {
 
 export function providerRetryAfterMs(error: unknown, now = Date.now()): number | undefined {
     const raw = error as any;
-    const headers = raw?.headers || raw?.response?.headers;
-    const header = headers?.get?.('retry-after') ?? headers?.['retry-after'];
-    if (header != null) {
+    for (const headers of [raw?.headers, raw?.response?.headers]) {
+        if (!headers) continue;
+        let header = typeof headers.get === 'function' ? headers.get('retry-after') : undefined;
+        if (header == null && typeof headers === 'object') {
+            const name = Object.keys(headers).find(name => name.toLowerCase() === 'retry-after');
+            if (name) header = headers[name];
+        }
+        if (header == null) continue;
         const seconds = Number(header);
         const ms = Number.isFinite(seconds) ? seconds * 1000 : Date.parse(String(header)) - now;
         if (Number.isFinite(ms) && ms > 0) return Math.min(ms, Number.MAX_SAFE_INTEGER - now);
