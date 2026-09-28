@@ -165,7 +165,8 @@ describe('free-only provider continuity through routeToModel', () => {
         registry.localProvider.chatComplete.mockResolvedValue('Recovered local answer.');
         try {
             await route({ runId: 'local-quota-first' });
-            await route({ runId: 'local-quota-second' });
+            const second = await route({ runId: 'local-quota-second' });
+            expect(second).toContain('دقيقة');
             expect(registry.localProvider.chatComplete).toHaveBeenCalledTimes(1);
             expect(providerCircuitStatus(providerCircuitKey('Local (Auto)'))).toMatchObject({
                 blocked: true, state: 'RATE_LIMITED',

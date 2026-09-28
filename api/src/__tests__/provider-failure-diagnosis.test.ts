@@ -44,9 +44,16 @@ describe('provider failure diagnosis', () => {
             const prompt = [{ role: 'user', content: 'What is 3+4?' }];
             const first = await routeToModel(prompt, undefined, undefined, undefined, undefined, undefined, undefined, context);
             const second = await routeToModel(prompt, undefined, undefined, undefined, undefined, undefined, undefined, context);
+            const nextRun = await routeToModel(prompt, undefined, undefined, undefined, undefined, undefined, undefined,
+                { ...context, runId: 'diagnosis-quota-next-run' });
             expect(isProviderFailure(first)).toBe(true);
             expect(first).toContain('429');
             expect(second).toContain('429');
+            expect(nextRun).toContain('429');
+            expect(nextRun).toContain('دقيقة');
+            expect(first).toContain('انتظر');
+            expect(nextRun).toContain('انتظر');
+            expect(nextRun).not.toContain('افحص سجل');
             expect(completion).toHaveBeenCalledTimes(1);
         } finally {
             completion.mockRestore();

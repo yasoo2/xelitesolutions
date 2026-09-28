@@ -2205,6 +2205,8 @@ export async function routeToModel(
     }
     let lastError = '';
     let sawRateLimit = false;
+    let blockedQuota: { state: 'RATE_LIMITED' | 'QUOTA_EXHAUSTED'; retryAt: number } | undefined;
+    let blockedLocalQuota: typeof blockedQuota;
     const groqCircuitKey = providerCircuitKey('groq');
 
     // Dead-brain latch: every provider failed moments ago; a re-walk costs
@@ -2447,7 +2449,15 @@ export async function routeToModel(
             ? { allowed: true, probe: false, lease: undefined } : claimProviderCircuit(circuitKey);
         if (!circuitClaim.allowed) {
             const status = providerCircuitStatus(circuitKey);
-            if (status.state === 'RATE_LIMITED' || status.state === 'QUOTA_EXHAUSTED') sawRateLimit = true;
+            if (status.state === 'RATE_LIMITED' || status.state === 'QUOTA_EXHAUSTED') {
+                sawRateLimit = true;
+                if (status.retryAt && (!blockedQuota || status.retryAt < blockedQuota.retryAt)) {
+                    blockedQuota = { state: status.state, retryAt: status.retryAt };
+                }
+                if (p.name === 'Local (Auto)' && status.retryAt) {
+                    blockedLocalQuota = { state: status.state, retryAt: status.retryAt };
+                }
+            }
             recordProviderAttempt(p.name, false, `skipped: ${status.state || 'provider recovery probe'}`);
             continue;
         }
@@ -2826,9 +2836,17 @@ export async function routeToModel(
     const recentLocalTimeout = localTimedOutAt > 0 && failureAt - localTimedOutAt < 300_000;
     const localTimedOutThisCall = providerAttempts.some((attempt) =>
         attempt.provider === 'Local (Auto)' && isLocalTimeoutError(attempt.error));
-    const localFailureAdvice = localBrainFailureAdvice(isLocalBrainReady(), recentLocalTimeout || localTimedOutThisCall);
+    const localQuotaStatus = hasLocal ? providerCircuitStatus(providerCircuitKey('Local (Auto)')) : undefined;
+    const localQuotaActive = localQuotaStatus?.blocked
+        && (localQuotaStatus.state === 'RATE_LIMITED' || localQuotaStatus.state === 'QUOTA_EXHAUSTED');
+    const localFailureAdvice = localQuotaActive
+        ? 'انتظر انتهاء مهلة حدّ الطلبات أو الحصة المحلية ثم أعد المحاولة'
+        : localBrainFailureAdvice(isLocalBrainReady(), recentLocalTimeout || localTimedOutThisCall);
+    const quotaWaitMinutes = (retryAt: number) => Math.max(1, Math.ceil((retryAt - failureAt) / 60_000));
     if (localStrict) {
-        const diagnosis = lastError ? safeProviderError(lastError, context?.modelConfig?.apiKey) : '';
+        const diagnosis = lastError ? safeProviderError(lastError, context?.modelConfig?.apiKey)
+            : blockedLocalQuota ? (blockedLocalQuota.state === 'RATE_LIMITED' ? '429 حد الطلبات' : 'نفاد الحصة')
+                + '؛ أعد المحاولة بعد نحو ' + quotaWaitMinutes(blockedLocalQuota.retryAt) + ' دقيقة' : '';
         return rememberFailureNotice(latchScope, PROVIDER_FAILURE_PREFIX + ` (الوضع المحلي الصارم — لم يستجب المحرّك المحلي${diagnosis ? `: ${diagnosis.slice(0, 160)}` : ''}). `
             + `${localFailureAdvice}.`);
     }
@@ -2838,7 +2856,7 @@ export async function routeToModel(
     // tokens gone, LLM7's daily quota gone — and the message blamed the
     // internet connection.
     if (sawRateLimit) {
-        const resetMs = retryAfterMsFrom(lastError);
+        const resetMs = retryAfterMsFrom(lastError) || (blockedQuota ? Math.max(0, blockedQuota.retryAt - failureAt) : undefined);
         const resetNote = resetMs ? ` (يزول أقرب حدّ خلال ~${Math.max(1, Math.round(resetMs / 60_000))} دقيقة)` : '';
         return rememberFailureNotice(latchScope, PROVIDER_FAILURE_PREFIX + ` — السبب: الحصص اليومية/الساعية المجانية للمزوّدات استُهلكت${resetNote}. `
             + "لم أنفّذ الطلب ولن أدّعي غير ذلك. الحلول: انتظر عودة الحصة. "
