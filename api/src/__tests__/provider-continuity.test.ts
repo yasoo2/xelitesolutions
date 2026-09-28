@@ -20,7 +20,7 @@ import {
 
 const registry = providers as any;
 const envNames = ['AI_COST_POLICY', 'AI_FREE_PROVIDERS', 'GROQ_API_KEY', 'OPENROUTER_API_KEY', 'LLM_CACHE_DISABLE',
-    'OFFLINE_MODE', 'LOCAL_LLM_DISABLE', 'MOCK_LLM', 'LLM7_DISABLE', 'LLM7_API_KEY', 'LLM7_BASE_URL', 'LLM_PROVIDER', 'LOCAL_LLM_BASE_URL', 'DEEPSEEK_API_KEY'];
+    'OFFLINE_MODE', 'LOCAL_LLM_DISABLE', 'LOCAL_LLM_STRICT', 'MOCK_LLM', 'LLM7_DISABLE', 'LLM7_API_KEY', 'LLM7_BASE_URL', 'LLM_PROVIDER', 'LOCAL_LLM_BASE_URL', 'DEEPSEEK_API_KEY'];
 const savedEnv = Object.fromEntries(envNames.map(name => [name, process.env[name]]));
 const originalFetch = global.fetch;
 const messages = [{ role: 'system', content: 'Preserve the accepted plan.' }, { role: 'user', content: 'Continue the same project.' }];
@@ -179,6 +179,35 @@ describe('free-only provider continuity through routeToModel', () => {
             clock.mockRestore();
             markProviderOk('Local (Auto)');
         }
+    });
+    it('reports a header-only local retry window on the first failed run', async () => {
+        process.env.OFFLINE_MODE = 'true';
+        delete process.env.LOCAL_LLM_DISABLE;
+        process.env.LOCAL_LLM_BASE_URL = 'http://127.0.0.1:11434/v1';
+        (localBrain.isLocalBrainReady as jest.Mock).mockReturnValue(true);
+        registry.localProvider.isConfigured.mockReturnValue(true);
+        registry.localProvider.chatComplete.mockRejectedValueOnce(
+            Object.assign(new Error('429 rate limit'), { status: 429, headers: { 'Retry-After': '600' } }));
+
+        const first = await route({ runId: 'header-only-first' });
+        expect(first).toContain('~10 دقيقة');
+        const second = await route({ runId: 'header-only-second' });
+        expect(second).toContain('دقيقة');
+        expect(registry.localProvider.chatComplete).toHaveBeenCalledTimes(1);
+    });
+    it('reports a header-only retry window in strict local mode', async () => {
+        process.env.OFFLINE_MODE = 'true';
+        process.env.LOCAL_LLM_STRICT = '1';
+        delete process.env.LOCAL_LLM_DISABLE;
+        process.env.LOCAL_LLM_BASE_URL = 'http://127.0.0.1:11434/v1';
+        (localBrain.isLocalBrainReady as jest.Mock).mockReturnValue(true);
+        registry.localProvider.isConfigured.mockReturnValue(true);
+        registry.localProvider.chatComplete.mockRejectedValueOnce(
+            Object.assign(new Error('429 rate limit'), { status: 429, headers: { 'Retry-After': '600' } }));
+
+        const first = await route({ runId: 'header-only-strict' });
+        expect(first).toContain('10 دقيقة');
+        expect(registry.localProvider.chatComplete).toHaveBeenCalledTimes(1);
     });
     it('continues to a second free provider after a mesh quota failure and skips the exhausted one on the next call', async () => {
         registry.llm7Provider.chatComplete.mockRejectedValue(Object.assign(new Error('429 quota exhausted'), { status: 429 }));

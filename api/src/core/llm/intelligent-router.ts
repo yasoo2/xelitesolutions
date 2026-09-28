@@ -2839,12 +2839,27 @@ export async function routeToModel(
     const localQuotaStatus = hasLocal ? providerCircuitStatus(providerCircuitKey('Local (Auto)')) : undefined;
     const localQuotaActive = localQuotaStatus?.blocked
         && (localQuotaStatus.state === 'RATE_LIMITED' || localQuotaStatus.state === 'QUOTA_EXHAUSTED');
+    // A first 429 has already opened the provider circuit, but no later mesh
+    // iteration has skipped that provider yet. Read the attempted circuits now
+    // so the first failure notice gets the same retry time as the health panel.
+    for (const providerName of attemptedProvidersThisCall) {
+        const status = providerCircuitStatus(providerCircuitKey(providerName), failureAt);
+        if (!status.retryAt || status.retryAt <= failureAt
+            || (status.state !== 'RATE_LIMITED' && status.state !== 'QUOTA_EXHAUSTED')) continue;
+        if (!blockedQuota || status.retryAt < blockedQuota.retryAt) {
+            blockedQuota = { state: status.state, retryAt: status.retryAt };
+        }
+        if (providerName === 'Local (Auto)') blockedLocalQuota = { state: status.state, retryAt: status.retryAt };
+    }
+    if (blockedQuota) sawRateLimit = true;
     const localFailureAdvice = localQuotaActive
         ? 'انتظر انتهاء مهلة حدّ الطلبات أو الحصة المحلية ثم أعد المحاولة'
         : localBrainFailureAdvice(isLocalBrainReady(), recentLocalTimeout || localTimedOutThisCall);
     const quotaWaitMinutes = (retryAt: number) => Math.max(1, Math.ceil((retryAt - failureAt) / 60_000));
     if (localStrict) {
-        const diagnosis = lastError ? safeProviderError(lastError, context?.modelConfig?.apiKey)
+        const localResetNote = localQuotaActive && localQuotaStatus?.retryAt
+            ? '؛ أعد المحاولة بعد نحو ' + quotaWaitMinutes(localQuotaStatus.retryAt) + ' دقيقة' : '';
+        const diagnosis = lastError ? safeProviderError(lastError, context?.modelConfig?.apiKey).slice(0, 100) + localResetNote
             : blockedLocalQuota ? (blockedLocalQuota.state === 'RATE_LIMITED' ? '429 حد الطلبات' : 'نفاد الحصة')
                 + '؛ أعد المحاولة بعد نحو ' + quotaWaitMinutes(blockedLocalQuota.retryAt) + ' دقيقة' : '';
         return rememberFailureNotice(latchScope, PROVIDER_FAILURE_PREFIX + ` (الوضع المحلي الصارم — لم يستجب المحرّك المحلي${diagnosis ? `: ${diagnosis.slice(0, 160)}` : ''}). `
@@ -2856,7 +2871,7 @@ export async function routeToModel(
     // tokens gone, LLM7's daily quota gone — and the message blamed the
     // internet connection.
     if (sawRateLimit) {
-        const resetMs = retryAfterMsFrom(lastError) || (blockedQuota ? Math.max(0, blockedQuota.retryAt - failureAt) : undefined);
+        const resetMs = blockedQuota ? Math.max(0, blockedQuota.retryAt - failureAt) : retryAfterMsFrom(lastError);
         const resetNote = resetMs ? ` (يزول أقرب حدّ خلال ~${Math.max(1, Math.round(resetMs / 60_000))} دقيقة)` : '';
         return rememberFailureNotice(latchScope, PROVIDER_FAILURE_PREFIX + ` — السبب: الحصص اليومية/الساعية المجانية للمزوّدات استُهلكت${resetNote}. `
             + "لم أنفّذ الطلب ولن أدّعي غير ذلك. الحلول: انتظر عودة الحصة. "
