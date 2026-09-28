@@ -66,6 +66,13 @@ export function buildTimeBlock(now: Date = new Date()): string {
         + ` If a greeting fits, open with the one that matches this moment («${f.part.greetAr}» / «${f.part.greetEn}») and vary only the rest of the sentence.`;
 }
 
+/** Include the live clock only when the question depends on the present moment. */
+function needsClockContext(question: string): boolean {
+    const english = /\b(?:what time|current time|local time|time now|date|today|tomorrow|yesterday|weekday|what day|which day|day of the week|tonight|this morning|this afternoon|this evening)\b/i;
+    const arabic = /الوقت|الساعة|التاريخ|اليوم|أي يوم|اي يوم|غد[اأً]|أمس|امس|الآن|الان|صباح اليوم|مساء اليوم/;
+    return english.test(question) || arabic.test(question);
+}
+
 /**
  * CentralAnswerTool - A simple Q&A tool for general questions
  * This tool is used when the agent needs to answer a question directly
@@ -132,12 +139,9 @@ export class CentralAnswerTool implements ToolDefinition {
             };
         }
 
-        const baseSystemPrompt = `You are **Joe**, the Elite AI Engine of **XElite Solutions**.
-You are a world-class specialist in **Web Development, App Architecture, and Complex System Engineering**.
-Your responses should be **powerful, enticing, and professional**. Use language that captivates the user and demonstrates superior expertise ("Elite", "Advanced", "Premium State-of-the-Art").
-You have full autonomous capabilities (Files, Terminal, Browser).
-Always identify as **Joe**. Never mention ChatGPT or OpenAI.
-Your goal is to build the extraordinary.`;
+        const baseSystemPrompt = `You are Joe, the AI software engineer at XElite Solutions.
+Answer the user's actual question accurately and directly. Follow the user's requested format, length, and language exactly.
+Do not add greetings, slogans, sales language, or claims about tools unless relevant or requested. If uncertain, say what is uncertain.`;
         // [PERSISTENT MEMORY] Inject what Joe remembers about this user/project so
         // replies are personalised and consistent across sessions.
         const memoryContext = String(context?.memoryContext || '').trim();
@@ -150,16 +154,16 @@ Your goal is to build the extraordinary.`;
         // Generic placeholder names («User», «anonymous») are never used as names.
         const rawName = String(context?.userName || '').trim();
         // First name only — a greeting says «يا يونس», not the full legal name.
-        const userName = /^(user|admin|anonymous|unknown|مستخدم)$/i.test(rawName)
-            ? '' : (rawName.split(/\s+/)[0] || '');
+        const firstName = rawName.split(/\s+/)[0] || '';
+        const userName = /^(user|guest|admin|anonymous|unknown|مستخدم)$/i.test(firstName)
+            ? '' : firstName;
         const now = new Date();
         const hour = now.getHours();
-        const personalBlock = `\n\nPERSONAL TOUCH:\n`
-            + (userName
-                ? `- The user's name is «${userName}». Address them by name naturally now and then (in Arabic: «يا ${userName}») — warm, never in every sentence.\n`
-                : `- The user's name is unknown — do NOT invent one.\n`)
-            + buildTimeBlock(now);
-
+        const personalFacts = [
+            userName ? `The user's first name is «${userName}». Use it only when natural and compatible with the requested format.` : '',
+            needsClockContext(question) ? buildTimeBlock(now) : '',
+        ].filter(Boolean);
+        const personalBlock = personalFacts.length ? '\n\n' + personalFacts.join('\n') : '';
         // Standing instructions from Settings — the user's permanent rules for
         // how Joe should work (e.g. terminal-first building).
         const standingIns = String(context?.systemInstructions || '').trim();

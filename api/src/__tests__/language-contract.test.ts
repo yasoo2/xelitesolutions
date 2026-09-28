@@ -34,6 +34,28 @@ describe('arabicShare — the measurement behind the contract', () => {
     });
 });
 
+describe('central_answer context is relevant to the question', () => {
+    beforeEach(() => (routeToModel as jest.Mock).mockReset());
+
+    test('a strict non-temporal answer is not burdened with clock or marketing instructions', async () => {
+        (routeToModel as jest.Mock).mockResolvedValueOnce('133');
+        await new CentralAnswerTool().execute({ question: 'What is 19 × 7? Answer with the number only.' }, { language: 'en', userName: 'Guest User' });
+        const system = String((routeToModel as jest.Mock).mock.calls[0][0][0].content);
+        expect(system).toMatch(/requested format/i);
+        expect(system).not.toContain('Right now it is');
+        expect(system).not.toContain('Guest');
+        expect(system).not.toMatch(/premium state-of-the-art|enticing/i);
+    });
+
+    test('a current-time question still receives the real clock context', async () => {
+        (routeToModel as jest.Mock).mockResolvedValueOnce('It is 09:30.');
+        await new CentralAnswerTool().execute({ question: 'What time is it now?' }, { language: 'en' });
+        const system = String((routeToModel as jest.Mock).mock.calls[0][0][0].content);
+        expect(system).toContain('Right now it is');
+        expect(system).toContain('ONLY clock you have');
+    });
+});
+
 describe('central_answer — an Arabic question gets an Arabic answer, measured', () => {
     const ENGLISH_REPLY = 'Good evening. I analyzed the image: it is a dashboard with charts and sliders.';
     const ARABIC_REWRITE = 'مساء الخير. حللت الصورة: إنها صفحة هبوط داكنة تحمل شعاراً ذهبياً وزرّين رئيسيين.';
