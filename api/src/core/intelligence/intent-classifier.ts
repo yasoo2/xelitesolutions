@@ -58,7 +58,7 @@ function hasBuildStructure(goalRaw: string): { isBuild: boolean; confidence: num
     }
 
     const hasRecordingVerb = RECORDING_VERB_PATTERN.test(bareProbe);
-    const hasDesireVerb = DESIRE_VERB_PATTERN.test(bareProbe) || ENGLISH_DESIRE_PATTERN.test(probe) || ENGLISH_IMPERATIVE_PATTERN.test(probe);
+    const hasDesireVerb = DESIRE_VERB_PATTERN.test(bareProbe) || /^\s*اعمل(?=$|[\s،:؛])/iu.test(bare) || ENGLISH_DESIRE_PATTERN.test(probe) || ENGLISH_IMPERATIVE_PATTERN.test(probe);
     const hasContainer = CONTAINER_PATTERN.test(probe);
     const hasRecordingIndicator = RECORDING_INDICATOR.test(bareProbe);
     const describesContents = !!columnsAnywhereInHisRequest(g);

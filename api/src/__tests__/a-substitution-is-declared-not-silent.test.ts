@@ -30,6 +30,7 @@ import {
     announceScaffoldSubstitution,
 } from '../core/design/scaffold-substitution';
 import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
+import { parseExplicitFileRequest } from '../core/orchestrator/file-intent';
 
 /** The exact sentence he typed. Fixed for judgement, never paraphrased. */
 /**
@@ -79,6 +80,21 @@ describe('a substitution is declared, not performed in silence', () => {
         expect(verdict.substituted).toBe(true);
     });
 
+    it('does not announce a page fallback for an explicit file contract', () => {
+        const request = 'Create a file named joe-uat-file-20260928.txt in the current workspace containing exactly two lines: isolated file contract; verified read-back. Then read the file back and report its exact content. Do not change any other files.';
+        expect(PlanningEngine.looksLikeBuild(request)).toBe(true);
+        expect(parseExplicitFileRequest(request)).not.toBeNull();
+        expect(scaffoldSubstitutionNotice(request, { building: false, isArabic: false })).toBeNull();
+        const source = codeWithoutComments(CALL_SITE_PATH);
+        expect(source).toContain('parseExplicitFileRequest(goal)');
+        expect(source).toContain('parseExplicitAppendFileRequest(goal)');
+        expect(source).toMatch(/building:\s*!!PlanningEngine\.looksLikeBuild\(goal\)\s*&&\s*!explicitFileWork/);
+        const spoken: string[] = [];
+        expect(announceScaffoldSubstitution({
+            request, building: false, isArabic: false, say: message => { spoken.push(message); },
+        })).toBe(false);
+        expect(spoken).toEqual([]);
+    });
     it('and the same request is NOT judged a substitution when nothing is being built', () => {
         const verdict = scaffoldSubstitutionFor(MEASURED_REQUEST, false);
         expect(verdict.substituted).toBe(false);

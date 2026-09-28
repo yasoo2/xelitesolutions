@@ -86,6 +86,12 @@ describe('INVARIANT: the guard refuses questions WITHOUT swallowing orders', () 
         const intent = await IntentParser.parse(goal, {} as any);
         expect(intent.requiredTools).toEqual(['central_answer']);
     });
+    test('how to make a site asks for guidance, while make me a tool orders a build', () => {
+        expect(PlanningEngine.looksLikeBuild('كيف اعمل موقع؟')).toBe(false);
+        expect(PlanningEngine.isKnowledgeQuestion('كيف اعمل موقع؟')).toBe(true);
+        expect(PlanningEngine.looksLikeBuild('اعمل لي أداة تحسب إيقاع القصيدة العربية')).toBe(true);
+    });
+
     test('a build request is still a build request', () => {
         expect(PlanningEngine.isKnowledgeQuestion('ابن لي تطبيق React')).toBe(false);
         expect(PlanningEngine.looksLikeBuild('ابن لي تطبيق React')).toBe(true);

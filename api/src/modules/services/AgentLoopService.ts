@@ -489,9 +489,11 @@ export class AgentLoopService {
          */
         try {
             const { PlanningEngine } = require('../../core/orchestrator/PlanningEngine');
+            const { parseExplicitFileRequest, parseExplicitAppendFileRequest } = require('../../core/orchestrator/file-intent');
+            const explicitFileWork = parseExplicitFileRequest(goal) || parseExplicitAppendFileRequest(goal);
             announceScaffoldSubstitution({
                 request: goal,
-                building: !!PlanningEngine.looksLikeBuild(goal),
+                building: !!PlanningEngine.looksLikeBuild(goal) && !explicitFileWork,
                 isArabic: language0 === 'ar',
                 say: (message: string) => broadcastThinkingDetail(sessionId, message),
             });
