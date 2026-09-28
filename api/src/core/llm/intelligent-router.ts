@@ -2865,18 +2865,19 @@ export async function routeToModel(
         return rememberFailureNotice(latchScope, PROVIDER_FAILURE_PREFIX + ` (الوضع المحلي الصارم — لم يستجب المحرّك المحلي${diagnosis ? `: ${diagnosis.slice(0, 160)}` : ''}). `
             + `${localFailureAdvice}.`);
     }
-    // Say WHY, precisely. "No provider answered" reads as an outage; a daily
-    // quota is a different problem with a different fix, and the error itself
-    // says when it lifts. Measured on the user's machine: Groq's daily 100k
-    // tokens gone, LLM7's daily quota gone — and the message blamed the
-    // internet connection.
+    // A 429 can be a short request-rate window, not evidence that a daily
+    // quota was consumed. Circuit retryAt is our next probe time; without
+    // provider evidence it must not be presented as a guaranteed quota reset.
     if (sawRateLimit) {
         const resetMs = blockedQuota ? Math.max(0, blockedQuota.retryAt - failureAt) : retryAfterMsFrom(lastError);
-        const resetNote = resetMs ? ` (يزول أقرب حدّ خلال ~${Math.max(1, Math.round(resetMs / 60_000))} دقيقة)` : '';
-        return rememberFailureNotice(latchScope, PROVIDER_FAILURE_PREFIX + ` — السبب: الحصص اليومية/الساعية المجانية للمزوّدات استُهلكت${resetNote}. `
-            + "لم أنفّذ الطلب ولن أدّعي غير ذلك. الحلول: انتظر عودة الحصة. "
-            + `${localFailureAdvice}. `
-            + "أو — الحل الدائم — أضِف مفتاح Gemini المجاني في ملف .env بسطر GOOGLE_API_KEY=... من aistudio.google.com (1500 طلب/يوم مجاناً).");
+        const resetNote = resetMs ? ` (أقرب إعادة تحقق بعد ~${Math.max(1, Math.round(resetMs / 60_000))} دقيقة)` : '';
+        const cause = blockedQuota?.state === 'QUOTA_EXHAUSTED'
+            ? 'نفدت حصة مزوّد متاح واحد على الأقل'
+            : blockedQuota?.state === 'RATE_LIMITED'
+                ? 'بلغ مزوّد متاح واحد على الأقل حدّ الطلبات مؤقتاً'
+                : 'بلغ مزوّد متاح واحد على الأقل حدّ الطلبات أو الحصة';
+        return rememberFailureNotice(latchScope, PROVIDER_FAILURE_PREFIX + ` — السبب: ${cause}${resetNote}. `
+            + 'لم أنفّذ الطلب ولن أدّعي غير ذلك. انتظر موعد إعادة التحقق أو اختر مزوّداً متاحاً آخر.');
     }
     return rememberFailureNotice(latchScope, PROVIDER_FAILURE_PREFIX + " (لم يستجب أي مزوّد). لم أستطع تنفيذ الطلب. "
         + `الحل: ${localFailureAdvice}، `

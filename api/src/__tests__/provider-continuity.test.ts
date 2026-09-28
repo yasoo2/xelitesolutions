@@ -191,9 +191,26 @@ describe('free-only provider continuity through routeToModel', () => {
 
         const first = await route({ runId: 'header-only-first' });
         expect(first).toContain('~10 دقيقة');
+        expect(first).toContain('حدّ الطلبات مؤقتاً');
+        expect(first).not.toContain('الحصص اليومية/الساعية');
+        expect(first).not.toContain('الحل الدائم');
         const second = await route({ runId: 'header-only-second' });
         expect(second).toContain('دقيقة');
         expect(registry.localProvider.chatComplete).toHaveBeenCalledTimes(1);
+    });
+    it('distinguishes an exhausted quota from a temporary rate limit', async () => {
+        process.env.OFFLINE_MODE = 'true';
+        delete process.env.LOCAL_LLM_DISABLE;
+        process.env.LOCAL_LLM_BASE_URL = 'http://127.0.0.1:11434/v1';
+        (localBrain.isLocalBrainReady as jest.Mock).mockReturnValue(true);
+        registry.localProvider.isConfigured.mockReturnValue(true);
+        registry.localProvider.chatComplete.mockRejectedValueOnce(
+            Object.assign(new Error('429 quota exhausted'), { status: 429, headers: { 'Retry-After': '600' } }));
+
+        const notice = await route({ runId: 'quota-exhausted-notice' });
+        expect(notice).toContain('نفدت حصة');
+        expect(notice).toContain('~10 دقيقة');
+        expect(notice).not.toContain('الحل الدائم');
     });
     it('reports a header-only retry window in strict local mode', async () => {
         process.env.OFFLINE_MODE = 'true';
