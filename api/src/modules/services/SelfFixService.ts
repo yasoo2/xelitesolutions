@@ -1,6 +1,7 @@
 import type { RepairTicket } from './RepairTicketService';
 import fs from 'fs';
 import path from 'path';
+import { isWithinRoot } from '../tools/path-containment';
 import { repairMemory } from '../../core/memory/repair-memory';
 import { recoverMissingNpmLauncher } from '../tools/npm-launcher-recovery';
 import { localFileExistsWithExactCase } from '../tools/definitions/ProjectRunTool';
@@ -511,9 +512,12 @@ function isBareNodeTestCommand(command: string, extraContext: string): boolean {
   return /(test|spec|check)|--test/i.test(`${command}\n${extraContext}`);
 }
 
-function resolveNpmTestScript(cwd: string, scriptName: string): string | null {
+function resolveNpmTestScript(cwd: string, scriptName: string, stopAt: string): string | null {
   let directory = path.resolve(cwd);
   for (let depth = 0; depth < 4; depth += 1) {
+    // Fail closed outside the ticket boundary: a manifest above the project
+    // root must neither be read nor trusted as the runner proof.
+    if (!isWithinRoot(directory, stopAt)) return null;
     const manifestPath = path.join(directory, 'package.json');
     try {
       if (fs.existsSync(manifestPath) && fs.statSync(manifestPath).isFile()) {
@@ -526,12 +530,32 @@ function resolveNpmTestScript(cwd: string, scriptName: string): string | null {
     }
     const parent = path.dirname(directory);
     if (parent === directory) break;
+    // A nested execution cwd may walk UP TO the project root, never above it.
+    if (!isWithinRoot(parent, stopAt)) break;
     directory = parent;
   }
   return null;
 }
 
-function extractCrashFile(errorTexts: Array<string | undefined>, pathHints: Array<string | undefined>, cwd: string): string | null {
+/**
+ * Trust boundary for harness-mismatch diagnosis: the ticket's own project
+ * root when the ticket carries one, else the failed task's absolute cwd,
+ * else the resolved cwd. Stack text and repair hints are untrusted paths;
+ * candidates resolving outside this boundary are skipped, never read.
+ */
+function harnessMismatchBoundary(
+  ticket: RepairTicket,
+  failed: RepairTicket['failedTasks'][number],
+  cwd: string,
+): string {
+  for (const candidate of [failed.projectRoot, ticket.context.projectRoot, failed.cwd]) {
+    const trimmed = String(candidate || '').trim();
+    if (trimmed && path.isAbsolute(trimmed)) return path.normalize(trimmed);
+  }
+  return path.resolve(cwd);
+}
+
+function extractCrashFile(errorTexts: Array<string | undefined>, pathHints: Array<string | undefined>, cwd: string, boundary: string): string | null {
   const seen = new Set<string>();
   const ordered: string[] = [];
   for (const candidate of errorTexts) {
@@ -554,6 +578,9 @@ function extractCrashFile(errorTexts: Array<string | undefined>, pathHints: Arra
   }
   for (const hit of ordered) {
     const resolved = path.isAbsolute(hit) ? path.normalize(hit) : path.resolve(cwd, hit);
+    // Outside the ticket boundary (absolute escape or `..` climb): skip the
+    // candidate without touching the filesystem there.
+    if (!isWithinRoot(resolved, boundary)) continue;
     try {
       if (fs.existsSync(resolved) && fs.statSync(resolved).isFile()) return resolved;
     } catch {
@@ -600,7 +627,8 @@ function extractTestHarnessMismatch(ticket: RepairTicket): TestHarnessMismatchEv
     if (!undefinedName || !BARE_TEST_FRAMEWORK_GLOBALS.has(undefinedName)) continue;
 
     const cwd = String(failed.cwd || '.');
-    const crashFile = extractCrashFile([failed.error, ticket.primaryError], [failed.repairFile, failed.file], cwd);
+    const boundary = harnessMismatchBoundary(ticket, failed, cwd);
+    const crashFile = extractCrashFile([failed.error, ticket.primaryError], [failed.repairFile, failed.file], cwd, boundary);
     if (!crashFile) continue;
 
     let usageLine: string | null = null;
@@ -616,8 +644,8 @@ function extractTestHarnessMismatch(ticket: RepairTicket): TestHarnessMismatchEv
     const npmRoute = command.match(/^\s*npm\s+(?:test\b|run\s+([A-Za-z0-9:_-]+))/i);
     if (npmRoute) {
       const scriptName = npmRoute[1] || 'test';
-      const script = resolveNpmTestScript(cwd, scriptName)
-        ?? resolveNpmTestScript(path.dirname(crashFile), scriptName);
+      const script = resolveNpmTestScript(cwd, scriptName, boundary)
+        ?? resolveNpmTestScript(path.dirname(crashFile), scriptName, boundary);
       if (!script) continue;
       if (TEST_RUNNER_FRAMEWORK_BINARIES.test(`${command}\n${script}`)) continue;
       if (!isBareNodeTestCommand(script, `${command}\n${failed.task || ''}\n${crashFile}`)) continue;

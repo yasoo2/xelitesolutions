@@ -51,8 +51,37 @@ describe('quoteShellArg', () => {
     expect(quoteShellArg('dir\\', 'win32')).toBe('"dir\\\\"');
   });
 
-  it('win32: doubles percent signs against cmd environment expansion', () => {
-    expect(quoteShellArg('100%.js', 'win32')).toBe('"100%%.js"');
+  it('win32: passes a lone percent through without doubling', () => {
+    // CODEX read-only review of 6b61602f (DEFECT_FOUND): on the cmd command
+    // line %% does NOT collapse the way it does in batch files — measured
+    // `"100%%.js"` delivers `100%%.js` to the child — so doubling corrupts
+    // real filenames such as `100%.js`. A lone % is literal to cmd.
+    expect(quoteShellArg('100%.js', 'win32')).toBe('"100%.js"');
+  });
+
+  it('win32: leaves an empty %% pair plain', () => {
+    // An empty pair cannot name a variable, so plain quoting stays verbatim.
+    expect(quoteShellArg('100%%.js', 'win32')).toBe('"100%%.js"');
+  });
+
+  it('win32: splits a non-empty %NAME% pair out of the quoted runs', () => {
+    // A non-empty pair MAY expand when NAME is defined, so every % leaves
+    // the quoted runs as ^% outside quotes; cmd consumes the carets and no
+    // pair can form a defined name across the separators.
+    expect(quoteShellArg('%PATH%.js', 'win32')).toBe('^%"PATH"^%".js"');
+    expect(quoteShellArg('%%A%%', 'win32')).toBe('^%^%"A"^%^%');
+  });
+
+  it('win32: doubles inner quotes inside split runs', () => {
+    // \" would desynchronize cmd's naive quote counter from the child
+    // parser and leave the ^% carets literal (measured); "" keeps both
+    // synchronized, the same rule cmd itself applies.
+    expect(quoteShellArg('say "%PATH%"', 'win32')).toBe('"say """^%"PATH"^%""""');
+  });
+
+  it('posix: passes percent signs through inside single quotes', () => {
+    expect(quoteShellArg('100%.js', 'posix')).toBe(`'100%.js'`);
+    expect(quoteShellArg('%PATH%.js', 'posix')).toBe(`'%PATH%.js'`);
   });
 
   it('win32: quotes the empty argument as an empty pair', () => {
@@ -166,6 +195,82 @@ describe('quoted command real-shell proof', () => {
       const result = spawnSync(`node --check 'index.js'`, { cwd: dir, shell: true, encoding: 'utf8' });
       expect(result.status).not.toBe(0);
       expect(`${result.stdout}${result.stderr}`).toMatch(/cannot find module/i);
+    },
+  );
+});
+
+describe('percent argv proof on cmd', () => {
+  let dir = '';
+  const probeVar = 'JOE_SHELL_QUOTE_PROBE';
+
+  function argvOf(word: string): { argv: string; status: number | null } {
+    const result = spawnSync(`node -p "process.argv[1]" ${word}`, {
+      cwd: dir,
+      shell: true,
+      encoding: 'utf8',
+      env: { ...process.env, [probeVar]: 'EXPLODED' },
+    });
+    return { argv: String(result.stdout || '').split('\n')[0], status: result.status };
+  }
+
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-shell-quote-pct-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  (process.platform === 'win32' ? it : it.skip)(
+    'a lone percent reaches the child verbatim',
+    () => {
+      const seen = argvOf(quoteShellArg('100%.js', 'win32'));
+      expect(seen.status).toBe(0);
+      expect(seen.argv).toBe('100%.js');
+    },
+  );
+
+  (process.platform === 'win32' ? it : it.skip)(
+    'a defined %NAME% pair reaches the child verbatim instead of expanding',
+    () => {
+      const seen = argvOf(quoteShellArg('%JOE_SHELL_QUOTE_PROBE%.js', 'win32'));
+      expect(seen.status).toBe(0);
+      expect(seen.argv).toBe('%JOE_SHELL_QUOTE_PROBE%.js');
+    },
+  );
+
+  (process.platform === 'win32' ? it : it.skip)(
+    'an undefined %NAME% pair reaches the child verbatim',
+    () => {
+      const seen = argvOf(quoteShellArg('%JOE_SHELL_QUOTE_UNDEF_9Z%.js', 'win32'));
+      expect(seen.status).toBe(0);
+      expect(seen.argv).toBe('%JOE_SHELL_QUOTE_UNDEF_9Z%.js');
+    },
+  );
+
+  (process.platform === 'win32' ? it : it.skip)(
+    'quotes combined with a defined pair reach the child verbatim',
+    () => {
+      const seen = argvOf(quoteShellArg('say "%JOE_SHELL_QUOTE_PROBE%"', 'win32'));
+      expect(seen.status).toBe(0);
+      expect(seen.argv).toBe('say "%JOE_SHELL_QUOTE_PROBE%"');
+    },
+  );
+
+  (process.platform === 'win32' ? it : it.skip)(
+    'node --check finds a real percent-named file through the quoted word',
+    () => {
+      fs.writeFileSync(path.join(dir, '%JOE_SHELL_QUOTE_PROBE%.js'), 'const ok = 1;\n');
+      const command = `node --check ${quoteShellArg('%JOE_SHELL_QUOTE_PROBE%.js', 'win32')}`;
+      const result = spawnSync(command, {
+        cwd: dir,
+        shell: true,
+        encoding: 'utf8',
+        env: { ...process.env, [probeVar]: 'EXPLODED' },
+      });
+      // Had cmd expanded the pair, node would chase EXPLODED.js and fail.
+      expect(`${result.stdout}${result.stderr}`).not.toMatch(/cannot find module/i);
+      expect(result.status).toBe(0);
     },
   );
 });

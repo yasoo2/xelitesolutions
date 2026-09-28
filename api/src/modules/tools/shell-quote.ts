@@ -25,12 +25,33 @@ export function quoteShellArg(value: string, platform: ShellQuotePlatform = defa
 }
 
 /**
- * cmd.exe double-quote wrapping with MSVCRT word rules: cmd strips the
- * outer quotes and the child C runtime parses `\"` escapes and trailing
- * backslashes. `%` is doubled because cmd expands %VAR% even inside
- * quotes. `!` needs no escape: delayed expansion is off under `cmd /c`.
+ * Whether cmd.exe could expand a `%NAME%` pair in this text: a non-empty
+ * pair exists. The scan mirrors cmd's own: at `%` find the next `%`; an
+ * empty `%%` cannot name a variable, but its closer may reopen (`%%A%%`
+ * still pairs `A`), so resume after the opening `%`, not after the pair.
+ * A lone `%`, an undefined `%NAME%`, and `%%` all pass through the cmd
+ * command line literally (measured); `%%` does NOT collapse the way it
+ * does in batch files, so doubling corrupts real names such as `100%.js`.
  */
-function quoteForCmd(text: string): string {
+function hasNonEmptyPercentPair(text: string): boolean {
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] !== '%') continue;
+    const close = text.indexOf('%', i + 1);
+    if (close === -1) return false;
+    if (close > i + 1) return true;
+  }
+  return false;
+}
+
+/**
+ * Quote one run for cmd.exe. `doubleInnerQuotes` selects the `"` escape:
+ * `\"` (MSVCRT backslash rules) for plain words, `""` for split runs,
+ * which carry no `%`. The split shape needs `""` because cmd counts
+ * quotes naively: a `\"` desynchronizes cmd's counter from the child
+ * parser and leaves the `^%` separators literal (measured), while `""`
+ * keeps both synchronized, the same rule cmd itself applies.
+ */
+function quoteCmdRun(text: string, doubleInnerQuotes: boolean): string {
   let out = '"';
   let backslashes = 0;
   for (const ch of text) {
@@ -39,14 +60,36 @@ function quoteForCmd(text: string): string {
       continue;
     }
     if (ch === '"') {
-      out += '\\'.repeat(backslashes * 2 + 1) + '"';
+      out += doubleInnerQuotes
+        ? '\\'.repeat(backslashes * 2) + '""'
+        : '\\'.repeat(backslashes * 2 + 1) + '"';
       backslashes = 0;
       continue;
     }
     out += '\\'.repeat(backslashes);
     backslashes = 0;
-    out += ch === '%' ? '%%' : ch;
+    out += ch;
   }
   out += '\\'.repeat(backslashes * 2) + '"';
   return out;
+}
+
+/**
+ * cmd.exe double-quote wrapping with MSVCRT word rules: cmd strips the
+ * outer quotes and the child C runtime parses `\"` escapes and trailing
+ * backslashes. `%` is passed through: lone and undefined pairs are literal
+ * to cmd. When a non-empty `%NAME%` pair exists, NAME may be defined and
+ * cmd WOULD expand it even inside quotes, so every `%` leaves the quoted
+ * runs as `^%` outside quotes instead: cmd consumes the carets, no pair
+ * can form a defined name across the separators, and the child runtime
+ * concatenates the runs back into the verbatim argument (all measured
+ * against the real shell). `!` needs no escape: delayed expansion is off
+ * under `cmd /c`.
+ */
+function quoteForCmd(text: string): string {
+  if (!hasNonEmptyPercentPair(text)) return quoteCmdRun(text, false);
+  return text
+    .split('%')
+    .map(run => (run ? quoteCmdRun(run, true) : ''))
+    .join('^%');
 }

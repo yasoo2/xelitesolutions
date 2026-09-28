@@ -47,7 +47,14 @@ describe('self-fix test-harness mismatch', () => {
     ].join('\n');
   }
 
-  function planFor(root: string, task: string, command: string, error: string) {
+  function planFor(
+    root: string,
+    task: string,
+    command: string,
+    error: string,
+    extraResult: Record<string, unknown> = {},
+    extraBuild: Record<string, unknown> = {},
+  ) {
     const ticket = RepairTicketService.build({
       projectName: 'HARNESS',
       phase: { phaseNumber: 4, name: 'Run Tests and Final Verification' },
@@ -62,9 +69,11 @@ describe('self-fix test-harness mismatch', () => {
             error,
             command,
             cwd: root,
+            ...extraResult,
           }],
         },
       },
+      ...extraBuild,
     });
     return SelfFixService.plan(ticket);
   }
@@ -192,6 +201,89 @@ describe('self-fix test-harness mismatch', () => {
     const plan = planFor(root, 'Run tests', 'npx mocha test.js', error);
 
     expect(String(plan.reason)).not.toMatch(/harness/i);
+  });
+
+  it('does not read a stack-derived crash file outside the project boundary', () => {
+    // CODEX read-only review of 354889a6 (REVIEW_FOLLOWUP): stack-derived
+    // absolute paths and repairFile/file hints must not let SelfFixService.plan
+    // read a local file outside the trusted project boundary before execution
+    // safety checks. A bare-describe file that exists, but outside the cwd
+    // boundary, must not produce a harness claim.
+    const root = makeProject(
+      'self-fix-thm-fence',
+      { name: 'fenced', scripts: { test: 'node test.js' } },
+      'test.js',
+      'console.log("fenced");\n',
+    );
+    const outside = path.join(path.dirname(root), `thm-outside-${Date.now()}-${Math.floor(Math.random() * 1e6)}`);
+    fs.mkdirSync(outside, { recursive: true });
+    roots.push(outside);
+    const outsideTest = path.join(outside, 'test.js');
+    fs.writeFileSync(outsideTest, "describe('outside', () => {});\n", 'utf8');
+    const error = harnessError(outsideTest, 'describe', "describe('outside', () => {});", 1);
+
+    const plan = planFor(root, 'Run tests', 'npm test', error);
+
+    expect(String(plan.reason)).not.toMatch(/harness/i);
+  });
+
+  it('does not follow a repairFile hint outside the project boundary', () => {
+    const root = makeProject(
+      'self-fix-thm-hint',
+      { name: 'hinted', scripts: { test: 'node test.js' } },
+      'test.js',
+      'console.log("hinted");\n',
+    );
+    const outside = path.join(path.dirname(root), `thm-hint-${Date.now()}-${Math.floor(Math.random() * 1e6)}`);
+    fs.mkdirSync(outside, { recursive: true });
+    roots.push(outside);
+    const outsideTest = path.join(outside, 'test.js');
+    fs.writeFileSync(outsideTest, "describe('hint', () => {});\n", 'utf8');
+    const ghost = path.join(root, 'deleted.test.js');
+    const error = harnessError(ghost, 'describe', "describe('hint', () => {});", 1);
+
+    const plan = planFor(root, 'Run tests', 'npm test', error, { repairFile: outsideTest });
+
+    expect(String(plan.reason)).not.toMatch(/harness/i);
+  });
+
+  it('does not ascend above the project root when resolving the npm script', () => {
+    // The manifest walk must stop at the ticket project root: a bare-node
+    // script found only in a manifest ABOVE the boundary must not prove the
+    // runner, or plan() reads and trusts a foreign package.json.
+    const parent = path.join(
+      process.cwd(), '..', 'data', 'builds', `thm-decoy-${Date.now()}-${Math.floor(Math.random() * 1e6)}`,
+    );
+    const root = path.join(parent, 'proj');
+    const nested = path.join(root, 'sub');
+    fs.mkdirSync(nested, { recursive: true });
+    fs.writeFileSync(path.join(parent, 'package.json'), JSON.stringify({ name: 'decoy', scripts: { test: 'node test.js' } }), 'utf8');
+    fs.writeFileSync(path.join(root, 'test.js'), "describe('decoyed', () => {});\n", 'utf8');
+    roots.push(parent);
+    const testPath = path.join(root, 'test.js');
+    const error = harnessError(testPath, 'describe', "describe('decoyed', () => {});", 1);
+
+    const plan = planFor(nested, 'Run tests', 'npm test', error, {}, { projectRoot: root });
+
+    expect(String(plan.reason)).not.toMatch(/harness/i);
+  });
+
+  it('still resolves a manifest at the project root from a nested cwd', () => {
+    // No-overblocking pin: a nested execution cwd inside the boundary keeps
+    // the upward walk up TO the project root.
+    const root = makeProject(
+      'self-fix-thm-nested',
+      { name: 'nested', scripts: { test: 'node sub/t.test.js' } },
+      path.join('sub', 't.test.js'),
+      "describe('nested', () => {});\n",
+    );
+    const nested = path.join(root, 'sub', 't.test.js');
+    const error = harnessError(nested, 'describe', "describe('nested', () => {});", 1);
+
+    const plan = planFor(path.join(root, 'sub'), 'Run tests', 'npm test', error, {}, { projectRoot: root });
+
+    expect(plan.strategy).toBe('code_fix');
+    expect(String(plan.reason)).toMatch(/harness/i);
   });
 
   it('does not claim a harness mismatch when the crashing file is absent', () => {
