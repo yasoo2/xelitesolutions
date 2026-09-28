@@ -14,6 +14,7 @@ const neuralModel = await readFile(resolve(root, 'src/lib/neuralTrace.ts'), 'utf
 const css = await readFile(resolve(root, 'src/styles/joe-premium.css'), 'utf8');
 const joePage = await readFile(resolve(root, 'src/pages/Joe.tsx'), 'utf8');
 const sessionsBar = await readFile(resolve(root, 'src/components/SessionsBar.tsx'), 'utf8');
+const i18n = await readFile(resolve(root, 'src/i18n.ts'), 'utf8');
 
 const checks = [
   ['the live stream exposes a stable root test hook', stream.includes('data-testid="browser-stream-root"')],
@@ -41,6 +42,9 @@ const checks = [
   ['primary workspace surfaces stay flat while real detail tools remain available', css.includes('MODERN WORKSPACE SURFACES') && css.includes('backdrop-filter: none;') && css.includes('box-shadow: none !important;') && css.includes('.joe-workspace-tab.active')],
   ['workspace tabs use a quiet active rule instead of nested pill cards', css.includes('.joe-tab-segment {') && css.includes('border: 0;') && css.includes('border-bottom-color: var(--joe-gold-primary);')],
   ['session navigation and user messages do not render as filled card stacks', css.includes('.joe-sessions-bar') && css.includes('.joe-session-chip') && css.includes('background: transparent;') && css.includes('border-inline-end: 2px solid var(--joe-blue-primary);') && sessionsBar.includes('className="joe-sessions-new"') && sessionsBar.includes('className="joe-session-chip"')],
+  ['model key notes derive from the provider key-need source of truth', composer.includes('needsProviderKey') && composer.includes('PROVIDER_KEY_INFO[selectedProvider]?.need') && composer.includes('يعمل بمفتاح')],
+  ['selecting a model never lights connected without a real key on required/paid providers', composer.includes('(keylessOk && isFreeModel) || hasRealKey') && !composer.includes('isConnected: isFreeModel ||')],
+  ['the retired no-key model strings cannot reappear', !i18n.includes('modelFreeNoKey') && !i18n.includes('modelPaidNeedsKey')],
 ];
 
 for (const [name, ok] of checks) {

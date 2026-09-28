@@ -3817,13 +3817,24 @@ export default function CommandComposer({
                         onChange={(e) => {
                           const selectedModel = OPENROUTER_MODELS.find(m => m.id === e.target.value);
                           const isFreeModel = selectedModel?.free ?? true;
+                          // A model pick is not a connection test (see the init
+                          // invariant: the dot reflects a REAL test in this
+                          // session). Keyless-capable providers may show
+                          // connected for a free model, but required/paid
+                          // providers need a REAL key — placeholders such as
+                          // 'free-mode' must never light the dot, and an
+                          // unknown key need fails closed to requiring a key.
+                          const modelNeed = PROVIDER_KEY_INFO[selectedProvider]?.need;
+                          const keylessOk = modelNeed === 'keyless' || modelNeed === 'optional';
+                          const modelRawKey = String(providers[selectedProvider].apiKey || '');
+                          const hasRealKey = !!modelRawKey.trim() && !/^(free-mode|auto-mode)$/.test(modelRawKey.trim());
                           setProviders(prev => ({
                             ...prev,
                             [selectedProvider]: {
                               ...prev[selectedProvider],
                               model: e.target.value,
                               isFree: isFreeModel,
-                              isConnected: isFreeModel || !!prev[selectedProvider].apiKey
+                              isConnected: (keylessOk && isFreeModel) || hasRealKey,
                             }
                           }));
                         }}
@@ -3842,6 +3853,14 @@ export default function CommandComposer({
                       {/* Show selected model info */}
                       {(() => {
                         const selected = OPENROUTER_MODELS.find(m => m.id === providers[selectedProvider].model);
+                        // The model note derives from the same PROVIDER_KEY_INFO
+                        // source of truth as the provider help box below: a free
+                        // MODEL on a required/paid provider still needs the
+                        // provider key. Claiming "no API key needed" here would
+                        // contradict that box on the same screen. Unknown needs
+                        // fail closed to requiring the key.
+                        const noteNeed = PROVIDER_KEY_INFO[selectedProvider]?.need;
+                        const needsProviderKey = noteNeed !== 'keyless' && noteNeed !== 'optional';
                         if (!selected) return null;
                         return (
                           <div style={{
@@ -3851,7 +3870,11 @@ export default function CommandComposer({
                             fontSize: 12
                           }}>
                             {selected.free ? (
-                              <span style={{ color: '#22c55e' }}>✓ هذا النموذج مجاني - لا يحتاج API Key</span>
+                              needsProviderKey ? (
+                                <span style={{ color: '#22c55e' }}>✓ هذا النموذج مجاني — يعمل بمفتاح {providers[selectedProvider].name} الخاص بك</span>
+                              ) : (
+                                <span style={{ color: '#22c55e' }}>✓ هذا النموذج مجاني - لا يحتاج API Key</span>
+                              )
                             ) : (
                               <span style={{ color: '#3b82f6' }}>💳 هذا النموذج مدفوع - يحتاج API Key من OpenRouter</span>
                             )}
