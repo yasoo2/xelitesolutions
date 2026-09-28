@@ -47,6 +47,23 @@ describe('central_answer context is relevant to the question', () => {
         expect(system).not.toMatch(/premium state-of-the-art|enticing/i);
     });
 
+    test('records the answering provider after fallback without logging the key', async () => {
+        (routeToModel as jest.Mock).mockImplementationOnce(async (...args: any[]) => {
+            const context = args[7];
+            context.providerAttempts = [
+                { provider: 'nvidia', success: false, error: 'provider request failed' },
+                { provider: 'LLM7 (Keyless)', success: true },
+            ];
+            return 'The answer is 133.';
+        });
+        const result: any = await new CentralAnswerTool().execute(
+            { question: 'What is 19 × 7?' },
+            { language: 'en', modelConfig: { provider: 'nvidia', apiKey: 'test-key-never-log' } },
+        );
+        expect(result.ok).toBe(true);
+        expect(result.logs).toContain('central_answer: provider_used=LLM7 (Keyless)');
+        expect(JSON.stringify(result)).not.toContain('test-key-never-log');
+    });
     test('a current-time question still receives the real clock context', async () => {
         (routeToModel as jest.Mock).mockResolvedValueOnce('It is 09:30.');
         await new CentralAnswerTool().execute({ question: 'What time is it now?' }, { language: 'en' });

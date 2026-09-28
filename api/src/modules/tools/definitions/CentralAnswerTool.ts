@@ -250,6 +250,14 @@ Do not add greetings, slogans, sales language, or claims about tools unless rele
              * once. The rewrite is kept only if it measurably complies.
              */
             const logs = ['central_answer: Answered via router'];
+            const successfulProvider = (): string | undefined => {
+                const attempts = Array.isArray(context?.providerAttempts) ? context.providerAttempts : [];
+                const name = String(attempts.slice().reverse().find((attempt: any) => attempt?.success === true)?.provider || '').trim();
+                const key = String(context?.modelConfig?.apiKey || '').trim();
+                return /^[A-Za-z][A-Za-z0-9 ()+._-]{0,63}$/.test(name)
+                    && !/[A-Za-z0-9]{20}/.test(name) && (!key || !name.includes(key)) ? name : undefined;
+            };
+            let answerProvider = successfulProvider();
             if (text && isAr && arabicShare(text) < 0.35) {
                 try {
                     const rewritten = await routeToModel([
@@ -263,6 +271,7 @@ Do not add greetings, slogans, sales language, or claims about tools unless rele
                     if (!isProviderFailure(rt) && rt.length >= 2 && arabicShare(rt) > Math.max(0.5, arabicShare(text))) {
                         logs.push(`central_answer: language enforced — reply was ${Math.round(arabicShare(text) * 100)}% Arabic, rewritten to ${Math.round(arabicShare(rt) * 100)}%`);
                         text = rt;
+                        answerProvider = successfulProvider() || answerProvider;
                     } else {
                         logs.push('central_answer: language rewrite did not comply — kept the original');
                     }
@@ -271,6 +280,7 @@ Do not add greetings, slogans, sales language, or claims about tools unless rele
                 }
             }
             if (isUsableAnswer(text)) {
+                if (answerProvider) logs.push(`central_answer: provider_used=${answerProvider}`);
                 return {
                     ok: true,
                     output: text,
