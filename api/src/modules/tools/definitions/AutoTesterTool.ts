@@ -13,7 +13,7 @@ import { resolveToolPath } from '../utils';
  * This tool is an acceptance observer: “ok” means a real declared check passed.
  * It must not treat a missing test script, an unknown test type, or an invalid
  * workspace path as a successful no-op, because PhaseExecutor uses this value to
- * decide whether a phase is verified.
+ * decide whether a phase is verified. Vacuous exit-0 test runs are also refused.
  */
 export class AutoTesterTool implements ToolDefinition {
     name = 'auto_tester';
@@ -319,6 +319,68 @@ export class AutoTesterTool implements ToolDefinition {
         return ports.size === 1 ? [...ports][0] : null;
     }
 
+    /**
+     * Explicit runner declarations that zero tests executed. Each signal is a
+     * stable, well-known report line â€” never a guess from thin output â€” so an
+     * unrecognized runner keeps its exit-0 pass (fail-open). Returns the
+     * matched snippet for the diagnostic, or null.
+     */
+    private zeroTestReportSignal(text: string): string | null {
+        const signals: RegExp[] = [
+            /no tests? found/iu, // jest, playwright
+            /no test files? found/iu, // vitest
+            /tests?:\s*0\s+total/iu, // jest "Tests: 0 total"
+            /(^|\D)0\s+passing\b/iu, // mocha, tap ("10 passing" must not match)
+            /^1\.\.0\s*$/gim, // TAP zero plan
+            /^# tests 0\s*$/gim, // node --test TAP summary
+            /\u2139 tests 0/iu, // node --test human summary
+        ];
+        for (const pattern of signals) {
+            pattern.lastIndex = 0;
+            const match = pattern.exec(text);
+            if (match) return match[0].trim().slice(0, 80);
+        }
+        return null;
+    }
+
+    private readDeclaredCommand(projectPath: string, script: string): string | null {
+        try {
+            const manifest = JSON.parse(fs.readFileSync(path.join(projectPath, 'package.json'), 'utf8')) || {};
+            const candidate = manifest?.scripts?.[String(script || '')];
+            return typeof candidate === 'string' && candidate.trim() ? candidate.trim() : null;
+        } catch { return null; }
+    }
+
+    /**
+     * A bare `node <file>` test command that exits 0 with no output is proven
+     * vacuous only when the resolved file contains no executable statements at
+     * all (comments, whitespace, string literals and directives only). Flags,
+     * pipes, chained commands, unresolvable files, oversized files, and files
+     * with real statements all keep their pass. Returns the display path when
+     * vacuous, else null.
+     */
+    private statementFreeBareNodeFile(projectPath: string, command: string): string | null {
+        const match = /^\s*node\s+["']?([^"'\s;&|]+)["']?\s*$/.exec(String(command || ''));
+        if (!match || match[1].startsWith('-')) return null;
+        const candidate = path.resolve(projectPath, match[1]);
+        const relative = path.relative(projectPath, candidate);
+        if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) return null;
+        if (!['.js', '.mjs', '.cjs'].includes(path.extname(candidate).toLowerCase())) return null;
+        let source = '';
+        try {
+            const stat = fs.statSync(candidate);
+            if (!stat.isFile() || stat.size > 1024 * 1024) return null;
+            source = fs.readFileSync(candidate, 'utf8');
+        } catch { return null; }
+        const stripped = source
+            .replace(/^\s*#[^\n]*/, '')
+            .replace(/\/\*[\s\S]*?\*\//g, '')
+            .replace(/(^|\s)\/\/[^\n]*/g, '$1')
+            .replace(/'(?:[^'\\\n]|\\.)*'|"(?:[^"\\\n]|\\.)*"|`(?:[^`\\]|\\.)*`/g, '')
+            .replace(/[\s;]+/g, '');
+        return stripped.length === 0 ? (relative.replace(/\\/g, '/') || match[1]) : null;
+    }
+
     private async runDeclaredScript(projectPath: string, script: string, kind: string, logs: string[], ctx: { sessionId?: string; workspaceId?: string }) {
         logs.push(`Executing declared ${kind} script "${script}"...`);
         const livePort = this.liveTestPort(projectPath, script);
@@ -336,13 +398,37 @@ export class AutoTesterTool implements ToolDefinition {
 
         try {
             const result = await executeTool('shell_execute', { command: `npm run ${script}`, cwd: projectPath }, ctx);
-            return result.ok
-                ? {
-                    ok: true,
-                    output: { passed: true, errors: [], summary: `${kind} check passed (${script})` },
-                    logs
+            if (!result.ok) {
+                return this.failure(String((result as any).error || (result as any).output || `${kind} check failed`), logs, kind);
+            }
+            if (kind !== 'build') {
+                const rawOutput = (result as any).output;
+                const outputText = typeof rawOutput === 'string' ? rawOutput : '';
+                const zeroSignal = outputText ? this.zeroTestReportSignal(outputText) : null;
+                if (zeroSignal) {
+                    return this.failure(
+                        `Declared ${kind} script "${script}" exited 0 but executed zero tests (output reports: "${zeroSignal}").`,
+                        logs,
+                        kind,
+                    );
                 }
-                : this.failure(String((result as any).error || (result as any).output || `${kind} check failed`), logs, kind);
+                if (typeof rawOutput === 'string' && !outputText.trim()) {
+                    const command = this.readDeclaredCommand(projectPath, script);
+                    const emptyFile = command ? this.statementFreeBareNodeFile(projectPath, command) : null;
+                    if (emptyFile) {
+                        return this.failure(
+                            `Declared ${kind} script "${script}" exited 0 with no output and ${emptyFile} contains no executable statements: zero tests executed.`,
+                            logs,
+                            kind,
+                        );
+                    }
+                }
+            }
+            return {
+                ok: true,
+                output: { passed: true, errors: [], summary: `${kind} check passed (${script})` },
+                logs
+            };
         } finally {
             if (startedForTest) {
                 const stopped = await executeTool('project_stop', {}, ctx);
