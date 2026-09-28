@@ -465,6 +465,24 @@ describe('provider reset and bounded half-open probe', () => {
         expect(providerAllowedByCost('LLM7 (Keyless)')).toBe(false);
     });
 
+    it('isolates a local quota cooldown from a newly configured loopback endpoint', () => {
+        process.env.LOCAL_LLM_BASE_URL = 'http://127.0.0.1:11434/v1';
+        const oldKey = providerCircuitKey('Local (Auto)');
+        recordProviderCircuitFailure(oldKey, { status: 429, headers: { 'retry-after': '3600' } }, 1_000);
+        expect(providerCircuitStatus(oldKey, 2_000).blocked).toBe(true);
+
+        process.env.LOCAL_LLM_BASE_URL = 'http://localhost:11434/';
+        expect(providerCircuitKey('Local (Auto)')).toBe(oldKey);
+        process.env.LOCAL_LLM_BASE_URL = 'http://127.0.0.1:11434';
+        expect(providerCircuitKey('Local (Auto)')).toBe(oldKey);
+
+        process.env.LOCAL_LLM_BASE_URL = 'http://127.0.0.1:5209/v1';
+        const newKey = providerCircuitKey('Local (Auto)');
+        expect(newKey).not.toBe(oldKey);
+        expect(providerCircuitStatus(newKey, 2_000).blocked).toBe(false);
+        expect(providerCircuitStatus(oldKey, 2_000).blocked).toBe(true);
+    });
+
     it('honors Retry-After beyond one day and allows only one post-reset probe', () => {
         const now = 1_000;
         const error = { status: 429, message: 'quota exhausted', headers: { 'retry-after': '172800' } };

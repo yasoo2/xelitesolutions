@@ -146,9 +146,19 @@ export function providerCircuitKey(provider: string, config?: {
         config?.userId || config?.workspaceId ? '' : config?.sessionId || '',
     ]);
     let endpoint = hosts[name] || name;
-    if (config?.baseUrl) {
-        try { endpoint = new URL(config.baseUrl).host.toLowerCase(); }
-        catch { endpoint = config.baseUrl; }
+    // A local daemon can be replaced without changing provider name. Keep its
+    // cooldown attached to the actual loopback endpoint across API restarts.
+    const baseUrl = config?.baseUrl || (name === 'local' ? process.env.LOCAL_LLM_BASE_URL : '');
+    if (baseUrl) {
+        try {
+            const url = new URL(baseUrl);
+            const pathname = url.pathname.replace(/\/+$/, '') || '/v1';
+            const host = ['localhost', '[::1]'].includes(url.hostname.toLowerCase())
+                ? '127.0.0.1' : url.hostname.toLowerCase();
+            endpoint = name === 'local'
+                ? url.protocol + '//' + host + (url.port ? ':' + url.port : '') + pathname
+                : url.host.toLowerCase();
+        } catch { endpoint = baseUrl; }
     }
     // No raw credentials or guessable hashes are persisted, logged, or exposed.
     return crypto.createHmac('sha256', identityKey).update(JSON.stringify([name, endpoint, scope, credential])).digest('hex');
