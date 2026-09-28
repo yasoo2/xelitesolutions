@@ -2,11 +2,11 @@
  * SANITIZER/GATE VERIFICATION CONTRACT CONFORMANCE.
  *
  * The phase gate accepts only a narrow checker contract (named checkers,
- * strict test-runner shell invocations, single-path read_file existence
- * observations) and reports anything else as verification_unavailable —
- * after all phase tasks already succeeded. Self-fix cannot repair a contract
- * rejection (no evidence-bound file), so a gate-rejected verification kills
- * the whole pipeline.
+ * strict test-runner shell invocations, single-path read_file existence observations,
+ * and gate-opted project_run live checks) and reports anything else as
+ * verification_unavailable after all phase tasks already succeeded. Self-fix cannot
+ * repair a contract rejection (no evidence-bound file), so a gate-rejected
+ * verification kills the whole pipeline.
  *
  * The plan sanitizer must therefore never EMIT a verification the gate
  * rejects. It previously fell back to a project_detect filler ("Inspect
@@ -21,7 +21,7 @@ import { isVerificationTool } from '../core/quality/verification-ledger';
 
 describe('sanitizer emits only gate-accepted verifications', () => {
     const phaseGateAccepts = (tool: string, args: Record<string, unknown>) =>
-        isVerificationTool(tool, args, false, true);
+        isVerificationTool(tool, args, false, true, true);
 
     it('rewrites a model-named project_detect check into an output observation when the phase produced files', () => {
         const { phases } = sanitisePlanPhases([{
@@ -142,9 +142,17 @@ describe('sanitizer emits only gate-accepted verifications', () => {
                 tasks: [{ task: 'Write', tool: 'write_file', args: { path: 'out.txt', content: 'x' } }],
                 verificationTask: { task: 'Browse', tool: 'browser_run', args: { actions: ['open the screen'] } },
             },
-            // project_run is deliberately excluded: the sanitizer pins its
-            // preservation for runnable phases (dedicated live-run handling),
-            // which the gate contract does not cover. That edge stays open.
+            {
+                name: 'preserved project_run live check (runnable phase)',
+                tasks: [
+                    { task: 'Write the service manifest', tool: 'write_file', args: { path: 'package.json', content: '{"name":"nexus","scripts":{"start":"node server.js"}}' } },
+                    { task: 'Install project dependencies', tool: 'npm_manager', args: { command: 'install', cwd: '.' } },
+                    { task: 'Write the server entry point', tool: 'write_file', args: { path: 'server.js', content: 'console.log("nexus")' } },
+                ],
+                verificationTask: { task: 'Start the live project', tool: 'project_run', args: {} },
+            },
+            // The live check above is preserved by the sanitizer (runnable evidence)
+            // and covered by the gate live-run opt-in; the historic edge is closed.
     ];
 
     it.each(gateCases)('gate accepts the emitted verification: $name', (input) => {

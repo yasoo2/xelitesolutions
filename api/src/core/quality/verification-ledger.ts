@@ -730,13 +730,21 @@ export function isSingleOutputObservationPath(args: Record<string, unknown>): st
     return candidate;
 }
 
-export function isVerificationTool(tool: string, args: Record<string, unknown> = {}, explicitlyMarked = false, allowExistenceObservation = false): boolean {
+export function isVerificationTool(tool: string, args: Record<string, unknown> = {}, explicitlyMarked = false, allowExistenceObservation = false, allowLiveRunCheck = false): boolean {
     const name = String(tool || '').trim().toLowerCase();
     if (new Set([
         'quality_run', 'auto_tester', 'code_reviewer', 'browser_console_scan', 'browser_ui_audit',
         'browser_contrast_audit', 'browser_check_links', 'browser_performance', 'dependency_audit',
         'secrets_scan_repo', 'browser_run', 'browser_responsive_check', 'visual_qa',
     ]).has(name)) return true;
+    // A live run is a genuine check: project_run starts the built artifact,
+    // waits until it answers, and returns a live URL receipt (or fails
+    // honestly when nothing is runnable). The plan sanitizer preserves this
+    // contract only once the plan produced a runnable artifact, so the phase
+    // gate opts in explicitly. Task-level ledger selection and plan-level
+    // final normalization never opt in: only the phase gate executes the
+    // preserved live check. Execution authority stays with ToolService.
+    if (allowLiveRunCheck && name === 'project_run') return true;
     if (name === 'shell_execute') {
         const command = String(args.command || '').trim();
         // Deliberately accept only a single, expansion-free invocation. Quotes,

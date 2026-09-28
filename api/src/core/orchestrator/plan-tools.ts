@@ -938,9 +938,9 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
             // succeeded (EVAL-002 phase 1). Generators keep their own reason
             // below; project_run keeps its dedicated runnable handling.
             const gateRejectsChecker = !!verificationTool
-                && verificationTool !== 'project_run'
+                // project_run needs no exclusion: the gate predicate below covers the preserved live check.
                 && !generatesInsteadOfObserving.has(verificationTool)
-                && !isVerificationTool(verificationTool, verificationArgs, false, true);
+                && !isVerificationTool(verificationTool, verificationArgs, false, true, true);
             const verificationTestType = norm(verificationArgs?.testType);
             const verificationProjectPath = verificationArgs?.projectPath || verificationArgs?.path || '';
             const verificationTestEvidenceCandidates = [...producedPaths, ...phaseProducedPaths, ...discoveredTestPaths];
