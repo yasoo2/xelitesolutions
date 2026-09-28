@@ -857,11 +857,11 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
             }
         }
 
-        const v = phase?.verificationTask;
-        let verification = v;
+        const v = phase?.verificationTask; // May be planner prose: the planner's own compact/recovery schemas teach string verifications, so every truthy shape must be normalised below — never passed through to the gate.
+        let verification: any = v || undefined;
         let verificationNote: any = (phase as any)?.verificationNote;
-        if (v && v.tool) {
-            const rv = resolvePlannedTool(v.tool);
+        if (v) {
+            const rv = resolvePlannedTool((v as any)?.tool);
             const verificationTool = rv.tool;
             // A verification task is an acceptance observation, never another
             // delivery action. In the first NEXUS run the planner used
@@ -969,7 +969,7 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
                     // filler the phase gate must reject. The phase completes
                     // on its tasks; the dropped checker stays diagnosable in
                     // verificationNote and the note below.
-                    verificationNote = { task: (v as any)?.task, tool: (v as any)?.tool, args: (v as any)?.args ?? (v as any)?.input ?? {} };
+                    verificationNote = { task: typeof v === 'string' ? v : (v as any)?.task, tool: (v as any)?.tool, args: (v as any)?.args ?? (v as any)?.input ?? {} };
                 }
                 verification = observedOutputPath
                     ? {
@@ -980,7 +980,7 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
                     : undefined;
                 const reason = readsUnprovenPhaseOutput || referencesUnprovenFile
                     ? 'تحققاً مولّداً يشير إلى ملفاً غير مثبت'
-                    : shellSmokeWithoutCheckerContract
+                    : !verificationTool ? 'ملاحظة تحقق بدون عقد أداة قابلة للتشغيل' : shellSmokeWithoutCheckerContract
                         ? 'أمر تشغيل حي ليس عقد فحص معترفاً به'
                         : runsBeforeRunnableArtifact
                             ? 'تشغيلاً حياً قبل إنتاج artifact قابل للتشغيل'

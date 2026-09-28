@@ -2293,9 +2293,9 @@ const skippedCount = taskResults.filter(r => r.execution === 'skipped').length;
 
             appendLog(`[PhaseExecutor] Phase ${phaseTag} ${status}: ${executedCount}/${totalTasks} executed · ${skippedCount} skipped · ${reusedCount} reused${failedCount ? ` · ${failedCount} failed` : ''}`);
 
-            if (phase.verificationTask && gateOk && (executedCount + reusedCount) > 0) {
+            if (phase.verificationTask && typeof phase.verificationTask === 'object' && gateOk && (executedCount + reusedCount) > 0) {
                 assertRunActive();
-                const vTask = phase.verificationTask;
+                const vTask = phase.verificationTask; // Object-checked by the gate above: prose verifications degrade to absent-verification semantics (phase completes on its tasks), never to verification_unavailable.
                 const requestedVerificationTool = String(vTask.tool || '').trim();
                 const vToolName = resolvePlannedTool(requestedVerificationTool).tool || requestedVerificationTool;
                 const vTaskDesc = String(vTask.task || 'Verify phase output');
