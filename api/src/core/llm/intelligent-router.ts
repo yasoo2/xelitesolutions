@@ -999,32 +999,48 @@ export function shouldProbeLocalBrain(now = Date.now(), lastProbeAt = localRecov
     return !lastProbeAt || now - lastProbeAt >= LOCAL_RECOVERY_PROBE_WINDOW_MS;
 }
 
+export async function boundedLocalRecoveryProbe(
+    request: (signal: AbortSignal) => Promise<string>,
+    timeoutMs: number,
+): Promise<string> {
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+        return await Promise.race([
+            request(controller.signal),
+            new Promise<never>((_, reject) => {
+                timer = setTimeout(() => {
+                    reject(new Error('local recovery probe timeout'));
+                    controller.abort();
+                }, timeoutMs);
+            }),
+        ]);
+    } finally {
+        if (timer) clearTimeout(timer);
+    }
+}
+
 async function probeLocalBrainForRecovery(): Promise<boolean> {
     if (!isLocalBrainReady() || !localProvider.isConfigured() || !shouldProbeLocalBrain()) return false;
     // Claim before awaiting so concurrent sessions cannot all wake a paused model.
     localRecoveryProbeAt = Date.now();
-    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-        const answer = await Promise.race([
-            localProvider.chatComplete(
+        const answer = await boundedLocalRecoveryProbe(
+            (signal) => localProvider.chatComplete(
                 [{ role: 'user', content: 'Reply with the single word: OK' }],
                 pickLocalModel('simple_chat'),
                 undefined,
-                undefined,
+                signal,
                 { maxCompletionTokens: 1 },
             ),
-            new Promise<string>((_, reject) => {
-                timer = setTimeout(() => reject(new Error('local recovery probe timeout')), LOCAL_RECOVERY_PROBE_TIMEOUT_MS);
-            }),
-        ]);
+            LOCAL_RECOVERY_PROBE_TIMEOUT_MS,
+        );
         if (isUsableAnswer(answer)) {
             noteLocalBrainOk();
             return true;
         }
     } catch {
         // The normal breaker remains authoritative when the recovery probe fails.
-    } finally {
-        if (timer) clearTimeout(timer);
     }
     return false;
 }
