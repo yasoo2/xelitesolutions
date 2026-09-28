@@ -13,11 +13,13 @@ const question = 'What is 19 × 7? Answer with the number only.';
 
 describe('session titles describe the user request, not the model answer', () => {
     const previousMode = process.env.PERSISTENCE_MODE;
+    const previousOfflineMode = process.env.OFFLINE_MODE;
     const previousSessions = (global as any).mockSessions;
     const previousMessages = (global as any).mockMessages;
 
     beforeEach(() => {
         process.env.PERSISTENCE_MODE = 'JSON';
+        delete process.env.OFFLINE_MODE;
         generated.mockReset();
         (global as any).mockSessions = [];
         (global as any).mockMessages = [];
@@ -26,6 +28,8 @@ describe('session titles describe the user request, not the model answer', () =>
     afterAll(() => {
         if (previousMode === undefined) delete process.env.PERSISTENCE_MODE;
         else process.env.PERSISTENCE_MODE = previousMode;
+        if (previousOfflineMode === undefined) delete process.env.OFFLINE_MODE;
+        else process.env.OFFLINE_MODE = previousOfflineMode;
         (global as any).mockSessions = previousSessions;
         (global as any).mockMessages = previousMessages;
     });
@@ -43,6 +47,22 @@ describe('session titles describe the user request, not the model answer', () =>
 
         expect((global as any).mockSessions[0].title).toBe(question);
         expect(generated).toHaveBeenCalledWith(question);
+    });
+
+    it('names an offline session from the request without another provider call', async () => {
+        process.env.OFFLINE_MODE = 'true';
+        const id = 'offline-title-case';
+        (global as any).mockSessions = [{ id, _id: id, title: 'New Chat' }];
+        (global as any).mockMessages = [
+            { sessionId: id, role: 'user', content: question },
+            { sessionId: id, role: 'assistant', content: '133' },
+        ];
+        generated.mockResolvedValueOnce('Unrelated provider response');
+
+        await autoNameSessionAfterReply(id);
+
+        expect((global as any).mockSessions[0].title).toBe(question);
+        expect(generated).not.toHaveBeenCalled();
     });
 
     it('keeps a descriptive title from the model', async () => {

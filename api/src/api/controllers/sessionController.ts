@@ -472,11 +472,14 @@ async function handleAutoNaming(sessionId: string, messages: any[], isOffline: b
         const userMsgs = messages.filter(m => m.role === 'user');
         if (userMsgs.length < 1) return;
 
-        const rawTitle = await generateSessionTitle(userMsgs.map(m => String(m.content || '')).join('\n'));
+        const firstUser = String(userMsgs[0]?.content || '').replace(/\s+/g, ' ').trim();
+        // Offline model capacity belongs to the user's task, not decorative naming.
+        const rawTitle = process.env.OFFLINE_MODE === 'true'
+            ? firstUser
+            : await generateSessionTitle(userMsgs.map(m => String(m.content || '')).join('\n'));
         // Sanitize: titles must be SHORT and content-based. Weak local models
         // sometimes return a whole greeting/sentence instead of a title — in that
         // case fall back to the user's first message, trimmed.
-        const firstUser = String(userMsgs[0]?.content || '').replace(/\s+/g, ' ').trim();
         const cleanTitle = (raw: string): string => {
             let t = String(raw || '').split('\n')[0].trim().replace(/^["'«»`*#\s]+|["'«»`*\s]+$/g, '').trim();
             const looksLikeSentence = t.length > 60 || /^(أهلا|أهلاً|مرحبا|السلام|welcome|hello|hi\b|hey\b|sure\b|بالطبع|حسنا)/i.test(t) || /[.!؟?]$/.test(t) && t.length > 45;
