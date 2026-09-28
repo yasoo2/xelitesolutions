@@ -101,6 +101,61 @@ function bridged(request: string): string[] {
     return out;
 }
 
+/* ─────────────────────── a mention is not an order ─────────────────────── */
+
+/**
+ * A MENTION IS NOT AN ORDER.
+ *
+ * Measured in a real Joe UI run: asked «أجب بكلمة واحدة: اختبار» (answer
+ * with one word: test), Joe routed to api_tester and asked for a URL and
+ * method. The mentioned word scored as an order to perform the capability
+ * it names — the bridge expanded it to tester, and the name hit did the rest.
+ *
+ * Words the user marks as literal content-to-reproduce are not instructions.
+ * The markers are shapes of the language again, finite like the bridge and
+ * the sequence list: quotation spans, and a short tail after an explicit
+ * answer-colon. The action verb lives OUTSIDE the mention; a real order
+ * keeps it («اختبر الواجهة», `Test the API at "https://…"`), while a bare
+ * utterance («قل: مرحبا», `Say the word "deploy"`) declines honestly and
+ * falls back to whatever the planner would have done.
+ *
+ * Two deliberate boundaries. First, the colon rule needs an utter-verb head
+ * («say», «أجب», …): a colon after any other verb is layout, and specs use
+ * colons («حلّل المستودع: البنية والاعتماديات»). Second, the tail must be a
+ * short single line — a literal is a word or phrase, a spec is sentences.
+ * Both keep this a language rule, not a list of tools or prompts.
+ */
+
+/** Quoted or code-fenced spans: literal content, never the order itself. */
+const MENTION_SPAN = /```[\s\S]{1,400}?```|«[^»\n]{1,120}»|“[^”\n]{1,120}”|‘[^’\n]{1,120}’|"[^"\n]{1,120}"|'[^'\n]{1,120}'|`[^`\n]{1,120}`/g;
+
+/** Verbs of saying and answering — a closed language class, matched whole. */
+const UTTER_WORD = 'say|answer|reply|respond|repeat|tell|قل|قول|أجب|اجب|رد|جاوب|أخبرني|اخبرني';
+const UTTER_IN_HEAD = new RegExp(`(^|[^\\p{L}])(${UTTER_WORD})([^\\p{L}]|$)`, 'iu');
+
+/** A literal utterance is a word or short phrase; more than this is a spec. */
+const LITERAL_TAIL_TOKENS = 5;
+
+/**
+ * The request minus its mention-marked spans: quoted literals are removed,
+ * and a short tail after an answer-colon is cut, leaving the uttering head.
+ * Everything else — real orders, specs, quoted data beside an outside verb —
+ * passes through untouched.
+ */
+export function matchableText(request: string): string {
+    const text = String(request || '').replace(MENTION_SPAN, ' ');
+    const colon = text.indexOf(':');
+    if (colon < 0) return text;
+    const head = text.slice(0, colon);
+    const tail = text.slice(colon + 1);
+    const tailTokens = tail.split(/\s+/).filter(Boolean);
+    const tailIsLiteral = tailTokens.length > 0
+        && tailTokens.length <= LITERAL_TAIL_TOKENS
+        && !/[\n\r]/.test(tail);
+    if (tailIsLiteral && UTTER_IN_HEAD.test(head)) return head;
+    return text;
+}
+
 interface Profile {
     name: string;
     nameTerms: Set<string>;
@@ -139,10 +194,12 @@ export function toolProfiles(force = false): Profile[] {
  * wordy tool cannot out-shout a precise one.
  */
 export function capableTools(request: string, limit = 4): Capable[] {
-    const want = terms(request);
+    // A mention is not an order: score the request minus its literal spans.
+    const matchable = matchableText(request);
+    const want = terms(matchable);
     if (!want.length) return [];
     // The words he wrote, and the words a tool would have written for them.
-    const seen = new Set([...want, ...bridged(String(request || ''))]);
+    const seen = new Set([...want, ...bridged(matchable)]);
 
     const scored: Capable[] = [];
     for (const p of toolProfiles()) {
