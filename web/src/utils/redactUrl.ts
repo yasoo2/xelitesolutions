@@ -4,8 +4,11 @@
  *
  * Classification is by credential meaning, not by one parameter name: any
  * query/fragment parameter whose name contains a credential hint (any case,
- * any affix) has its value replaced, and any JWT-shaped value is replaced
- * wherever it appears. Non-credential values such as sessionId pass through
+ * any affix) has its value replaced, any JWT-shaped value is replaced
+ * wherever it appears, and URL userinfo (username and password) is replaced:
+ * tokens are routinely carried as the username in basic-auth URLs
+ * (https://TOKEN@host), so the username position must not be treated as a
+ * safe identifier. Non-credential values such as sessionId pass through
  * unchanged so logs stay diagnosable.
  *
  * Deliberate over-redaction: a name like `author` (contains `auth`) is
@@ -58,6 +61,15 @@ function redactJwtShaped(text: string): string {
     return text.replace(JWT_PATTERN, REDACTED_URL_VALUE);
 }
 
+// `//userinfo@` in input the URL parser rejects (protocol-relative or
+// malformed). Requires the `//` prefix so bare emails never match.
+const USERINFO_FALLBACK_PATTERN = /\/\/([^\s/?#]+)@/g;
+
+function redactUserinfoFallback(text: string): string {
+    USERINFO_FALLBACK_PATTERN.lastIndex = 0;
+    return text.replace(USERINFO_FALLBACK_PATTERN, `//${REDACTED_URL_VALUE}@`);
+}
+
 export function redactCredentialsFromUrl(raw: string): string {
     if (typeof raw !== 'string') return REDACTED_URL_VALUE;
     if (raw.length === 0) return raw;
@@ -71,11 +83,16 @@ export function redactCredentialsFromUrl(raw: string): string {
         if (parsed.hash && parsed.hash.includes('=')) {
             parsed.hash = redactPairs(parsed.hash);
         }
+        if (parsed.username || parsed.password) {
+            // Both positions: tokens are routinely carried as the username.
+            parsed.username = REDACTED_URL_VALUE;
+            parsed.password = parsed.password ? REDACTED_URL_VALUE : '';
+        }
         out = parsed.toString();
-        // searchParams percent-encodes the marker; restore its readable form.
+        // URL serialization percent-encodes the marker; restore its readable form.
         out = out.split(encodeURIComponent(REDACTED_URL_VALUE)).join(REDACTED_URL_VALUE);
     } catch {
-        out = redactPairs(raw);
+        out = redactUserinfoFallback(redactPairs(raw));
     }
     return redactJwtShaped(out);
 }

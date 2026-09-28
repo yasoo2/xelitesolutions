@@ -8,9 +8,12 @@
  *
  * The redactor classifies by credential meaning, not by one parameter name:
  * token/auth/secret/password-family names (any case, any affix), API key
- * spellings, bearer/jwt markers, JWT-shaped values wherever they appear, and
- * credentials carried in the hash fragment. Non-credential values such as
- * sessionId pass through so logs stay diagnosable.
+ * spellings, bearer/jwt markers, JWT-shaped values wherever they appear,
+ * credentials carried in the hash fragment, and URL userinfo
+ * (username/password are both redacted: tokens are routinely carried as the
+ * username in basic-auth URLs, so keeping the username would leak them).
+ * Non-credential values such as sessionId pass through so logs stay
+ * diagnosable.
  */
 import fs from 'fs';
 import path from 'path';
@@ -50,6 +53,39 @@ describe('redactCredentialsFromUrl', () => {
         const out = redactCredentialsFromUrl(`https://joe.example/app#token=${JWT}&view=main`);
         expect(out).not.toContain(JWT);
         expect(out).toContain('view=main');
+    });
+
+    it('redacts URL userinfo credentials but keeps host, path and sessionId', () => {
+        const out = redactCredentialsFromUrl(
+            'wss://synthetic-user:synthetic-password@127.0.0.1:5000/ws?sessionId=synthetic-session',
+        );
+        expect(out).not.toContain('synthetic-user');
+        expect(out).not.toContain('synthetic-password');
+        expect(out).toContain('127.0.0.1:5000/ws');
+        expect(out).toContain('sessionId=synthetic-session');
+        // The marker preserves the fact that userinfo was present.
+        expect(out).toContain('[redacted]');
+    });
+
+    it('redacts a token carried as the URL username', () => {
+        // Token-as-username is a real basic-auth pattern (https://TOKEN@host),
+        // so the username position must not be treated as a safe identifier.
+        const out = redactCredentialsFromUrl(`https://oauth2:${JWT}@joe.example/api`);
+        expect(out).not.toContain(JWT);
+        expect(out).not.toContain('oauth2');
+        expect(out).toContain('joe.example/api');
+    });
+
+    it('redacts userinfo in unparseable URLs via the pattern fallback', () => {
+        const out = redactCredentialsFromUrl('//deploy:s3cr3t@[2001:db8::1/oops?token=x');
+        expect(out).not.toContain('s3cr3t');
+        expect(out).not.toContain('deploy:s3cr3t@');
+        expect(out).not.toContain('token=x');
+    });
+
+    it('does not mistake a bare email address for URL userinfo', () => {
+        const text = 'contact ops@example.com for access';
+        expect(redactCredentialsFromUrl(text)).toBe(text);
     });
 
     it('leaves URLs without credentials byte-for-byte identical', () => {
