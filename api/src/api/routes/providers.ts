@@ -1,8 +1,17 @@
 import { Router, Request, Response } from 'express';
 import OpenAI from 'openai';
 import { setDynamicOpenAIKey, getDynamicOpenAIKey } from '../../core/llm';
+import { authenticate } from '../middleware/auth';
+import { providerCircuitKey, providerCircuitStatus } from '../../core/llm/provider-continuity';
 
 const router = Router();
+
+/** Read-only local-provider circuit evidence; no probe or credential is exposed. */
+router.get('/health/local', authenticate as any, (_req: Request, res: Response) => {
+  const now = Date.now();
+  const status = providerCircuitStatus(providerCircuitKey('Local (Auto)'), now);
+  res.json({ provider: 'local', ...status, checkedAt: now });
+});
 
 /**
  * POST /providers/openai/key

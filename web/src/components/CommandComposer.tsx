@@ -1040,6 +1040,46 @@ export default function CommandComposer({
 
   // AI Provider State
   const [showProviders, setShowProviders] = useState(false);
+  const [healthRefreshTick, setHealthRefreshTick] = useState(0);
+  const [localProviderHealth, setLocalProviderHealth] = useState<{
+    blocked: boolean;
+    state?: 'RATE_LIMITED' | 'QUOTA_EXHAUSTED' | 'AUTH_FAILED' | 'TEMPORARILY_UNAVAILABLE';
+    retryAt?: number;
+    checkedAt: number;
+  } | 'unavailable' | null>(null);
+
+  // Read the router's current local circuit when the panel opens or a run ends.
+  // This never probes the model, so merely inspecting health cannot spend quota.
+  useEffect(() => {
+    if (!showProviders) return;
+    let cancelled = false;
+    setLocalProviderHealth(null);
+    fetch(`${API}/providers/health/local`, { headers: authenticatedHeaders() })
+      .then(async response => {
+        if (!response.ok) throw new Error('provider_health_unavailable');
+        return response.json();
+      })
+      .then(data => {
+        if (!cancelled) setLocalProviderHealth(
+          data?.provider === 'local' && typeof data?.blocked === 'boolean' && Number.isFinite(data?.checkedAt)
+            ? data : 'unavailable'
+        );
+      })
+      .catch(() => { if (!cancelled) setLocalProviderHealth('unavailable'); });
+    return () => { cancelled = true; };
+  }, [showProviders, status, healthRefreshTick]);
+
+  // One read at the recorded reset time prevents a stale "paused" badge after
+  // cooldown. No polling and no provider generation request.
+  useEffect(() => {
+    if (!showProviders || !localProviderHealth || localProviderHealth === 'unavailable'
+      || !localProviderHealth.blocked || !localProviderHealth.retryAt) return;
+    const remaining = localProviderHealth.retryAt - Date.now();
+    if (remaining <= 0) return;
+    const timer = setTimeout(() => setHealthRefreshTick(tick => tick + 1), Math.min(remaining + 50, 2_147_483_647));
+    return () => clearTimeout(timer);
+  }, [showProviders, localProviderHealth]);
+  const localCircuitBlocked = localProviderHealth !== null && localProviderHealth !== 'unavailable' && localProviderHealth.blocked;
   // Standing instructions are edited in Settings and read fresh at send time
   // inside run() — no component state needed here.
   const initialProviderState = useMemo(() => {
@@ -3863,9 +3903,18 @@ export default function CommandComposer({
 
                   {/* Auto is the pure keyless mesh — no key. */}
                   {selectedProvider === 'auto' && (
-                    <div className="info-box free">
+                    <div className={`info-box ${localCircuitBlocked ? 'cooldown' : 'free'}`}>
                       <div style={{ fontWeight: 700, marginBottom: 4 }}>✨ تلقائي — بلا مفتاح</div>
                       <div>يختار أفضل مزوّد مجاني متاح تلقائياً (محلي + مجاني). لا يحتاج أي مفتاح.</div>
+                      <div role="status" style={{ marginTop: 8, fontSize: 12 }}>
+                        {localProviderHealth === null ? 'جار قراءة حالة المزوّد المحلي…'
+                          : localProviderHealth === 'unavailable' ? 'تعذّر قراءة حالة المزوّد المحلي.'
+                          : localProviderHealth.blocked && (localProviderHealth.retryAt || 0) > localProviderHealth.checkedAt
+                            ? `${localProviderHealth.state === 'QUOTA_EXHAUSTED' ? 'نفدت حصة المزوّد المحلي' : localProviderHealth.state === 'RATE_LIMITED' ? 'المزوّد المحلي محدود الطلبات' : 'المزوّد المحلي غير متاح مؤقتاً'}؛ المحاولة التالية بعد ${new Date(localProviderHealth.retryAt!).toLocaleTimeString()}.`
+                          : localProviderHealth.blocked ? 'فحص تعافي المزوّد المحلي قيد التنفيذ.'
+                          : localProviderHealth.state ? 'انتهت مهلة المزوّد المحلي؛ سيُفحص عند الطلب التالي.'
+                          : 'لا يوجد حظر مسجّل للمزوّد المحلي.'}
+                      </div>
                     </div>
                   )}
 
@@ -4007,7 +4056,7 @@ export default function CommandComposer({
                       disabled={providers[selectedProvider].isVerifying}
                       style={{
                         flex: 1, padding: '12px', borderRadius: 8, border: 'none',
-                        background: providers[selectedProvider].isConnected ? '#22c55e' : providers[selectedProvider].lastError ? '#ef4444' : 'var(--accent-primary)',
+                        background: selectedProvider === 'auto' && localCircuitBlocked ? '#b45309' : providers[selectedProvider].isConnected ? '#22c55e' : providers[selectedProvider].lastError ? '#ef4444' : 'var(--accent-primary)',
                         color: 'var(--joe-on-accent, #fff)', fontSize: 14, fontWeight: 600, cursor: 'pointer',
                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                         opacity: providers[selectedProvider].isVerifying ? 0.7 : 1
@@ -4019,7 +4068,7 @@ export default function CommandComposer({
                         </>
                       ) : providers[selectedProvider].isConnected ? (
                         <>
-                          <CheckCircle2 size={18} /> Verified & Active
+                          {selectedProvider === 'auto' && localCircuitBlocked ? <><Clock size={18} /> Auto · Local paused</> : <><CheckCircle2 size={18} /> Verified earlier · Selected</>}
                         </>
                       ) : (
                         <>
