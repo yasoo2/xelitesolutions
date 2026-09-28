@@ -859,6 +859,7 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
 
         const v = phase?.verificationTask;
         let verification = v;
+        let verificationNote: any = (phase as any)?.verificationNote;
         if (v && v.tool) {
             const rv = resolvePlannedTool(v.tool);
             const verificationTool = rv.tool;
@@ -871,8 +872,10 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
             //
             // Prefer observing an explicit output of THIS phase. The path comes
             // from an earlier task in execution order, not from the model's
-            // verification prose. If the phase has no named file output, inspect
-            // the project instead of inventing one.
+            // verification prose. If the phase has no named file output and no
+            // gate-accepted checker, drop the verification (kept in
+            // verificationNote) instead of emitting a filler contract the
+            // phase gate must reject.
             const observedOutputPaths = phaseProducedPaths
                 .map((candidate: string) => String(candidate || '').trim())
                 .filter((candidate: string) => candidate && !candidate.startsWith('/') && !candidate.includes('..'));
@@ -923,11 +926,21 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
             // on exactly this). Rewrite it into the same output-existence
             // observation used for other unverifiable checkers, so execution
             // continues to the genuine test phases. Package-script checks keep
-            // their own handling below (unproven -> project_detect, unless the
-            // plan itself produced the manifest).
+            // their own handling below (an unproven check is dropped with its
+            // original preserved, unless the plan itself produced the manifest).
             const shellSmokeWithoutCheckerContract = verificationTool === 'shell_execute'
                 && !isVerificationTool(verificationTool, verificationArgs, false, true)
                 && !unprovenProjectCheckIssue(verificationArgs?.command, candidateCheckCommands);
+            // The sanitizer must only emit verification contracts the phase
+            // gate accepts. A model-named tool that is not a checker (for
+            // example project_detect) would otherwise pass through and die at
+            // the gate with verification_unavailable after all phase tasks
+            // succeeded (EVAL-002 phase 1). Generators keep their own reason
+            // below; project_run keeps its dedicated runnable handling.
+            const gateRejectsChecker = !!verificationTool
+                && verificationTool !== 'project_run'
+                && !generatesInsteadOfObserving.has(verificationTool)
+                && !isVerificationTool(verificationTool, verificationArgs, false, true);
             const verificationTestType = norm(verificationArgs?.testType);
             const verificationProjectPath = verificationArgs?.projectPath || verificationArgs?.path || '';
             const verificationTestEvidenceCandidates = [...producedPaths, ...phaseProducedPaths, ...discoveredTestPaths];
@@ -949,25 +962,31 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
                     ? 'لا يوجد script تكاملي معلن وقابل للتشغيل لهذا المشروع'
                     : 'لا يوجد ملف اختبار مثبت داخل مسار المشروع أو test_generator سابق';
                 notes.push(`[plan] أزلتُ تحقق auto_tester من نوع ${verificationTestType} غير المدعوم — ${reason}؛ لن أدّعي نجاح اختبار غير موجود.`);
-            } else if (!verificationTool || generatesInsteadOfObserving.has(verificationTool) || readsUnprovenPhaseOutput || referencesUnprovenFile || runsBeforeRunnableArtifact || shellSmokeWithoutCheckerContract) {
+            } else if (!verificationTool || generatesInsteadOfObserving.has(verificationTool) || readsUnprovenPhaseOutput || referencesUnprovenFile || runsBeforeRunnableArtifact || shellSmokeWithoutCheckerContract || gateRejectsChecker) {
+                if (!observedOutputPath) {
+                    // No produced output to observe and no gate-accepted
+                    // checker: drop the verification instead of emitting a
+                    // filler the phase gate must reject. The phase completes
+                    // on its tasks; the dropped checker stays diagnosable in
+                    // verificationNote and the note below.
+                    verificationNote = { task: (v as any)?.task, tool: (v as any)?.tool, args: (v as any)?.args ?? (v as any)?.input ?? {} };
+                }
                 verification = observedOutputPath
                     ? {
                         task: `Verify phase output exists: ${observedOutputPath}`,
                         tool: 'read_file',
                         args: { path: observedOutputPath },
                     }
-                    : {
-                        task: 'Inspect phase output on disk',
-                        tool: 'project_detect',
-                        args: {},
-                    };
+                    : undefined;
                 const reason = readsUnprovenPhaseOutput || referencesUnprovenFile
                     ? 'تحققاً مولّداً يشير إلى ملفاً غير مثبت'
                     : shellSmokeWithoutCheckerContract
                         ? 'أمر تشغيل حي ليس عقد فحص معترفاً به'
                         : runsBeforeRunnableArtifact
                             ? 'تشغيلاً حياً قبل إنتاج artifact قابل للتشغيل'
-                            : 'تحققاً مولّداً';
+                            : gateRejectsChecker
+                                ? 'تحققاً بأداة لا تقبلها بوابة التحقق'
+                                : 'تحققاً مولّداً';
                 // Name the dropped smoke command so the next such rewrite is
                 // diagnosable from the session log alone (run 4b needed a
                 // run-evidence dig to recover `node index.js < sample.txt`). Sensitive argument values are redacted: the command is model-produced and may embed credentials.
@@ -977,27 +996,35 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
                 const smokeSuffix = droppedSmokeCommand ? `؛ الأمر المسقط: «${droppedSmokeCommand}»` : '';
                 notes.push((observedOutputPath
                     ? `[plan] استبدلتُ ${reason} بقراءة المخرج المثبت «${observedOutputPath}»؛ التحقق يلاحظ الناتج ولا ينشئ أو يفترض ملفاً متخيلاً.`
-                    : `[plan] استبدلتُ ${reason} بفحص المشروع؛ لا يوجد مخرج مساري مثبت في هذه المرحلة لأفحصه.`) + smokeSuffix);
+                    : `[plan] أسقطتُ ${reason}؛ لا يوجد مخرج مساري مثبت في هذه المرحلة لأفحصه، وستكتمل المرحلة بنجاح مهامها دون ادعاء تحقق لم يحدث.`) + smokeSuffix);
             } else {
                 const verificationIssue = plannedArgsIssue(verificationTool, verificationArgs)
                     || (verificationTool === 'shell_execute'
                         ? unprovenProjectCheckIssueUnlessPlanProduced(verificationArgs?.command, candidateCheckCommands, [...generatedPaths, ...phaseProducedPaths])
                         : null);
-                // A browser verifier is itself the evidence boundary. Replacing
-                // an invalid browser contract with project_detect would make an
-                // unrun checker look like a passed verification. Preserve the
+                // A browser verifier is itself the evidence boundary. Dropping
+                // an invalid browser contract would make an unrun checker look
+                // like a passed verification. Preserve the
                 // named browser verifier so PhaseExecutor can report
                 // verification_unavailable honestly and never blame the product.
-                verification = verificationIssue && verificationTool !== 'browser_run'
-                    ? { task: 'Inspect phase output on disk', tool: 'project_detect', args: {} }
-                    : { ...v, tool: verificationTool, args: verificationArgs };
-                if (verificationIssue) notes.push(verificationTool === 'browser_run'
-                    ? `[plan] أبقيتُ تحقق browser_run مع عائق عقد مسمّى — ${verificationIssue}؛ لن أستبدله بفحص يوحي بنجاح لم يحدث.`
-                    : `[plan] استبدلتُ مهمة تحقق غير مكتملة بفحص المشروع — ${verificationIssue}`);
+                if (verificationIssue && verificationTool !== 'browser_run') {
+                    // The checker names a real tool but cannot be grounded
+                    // (unusable args, or an undeclared project check with no
+                    // plan-produced manifest). Drop it — with the original
+                    // preserved in verificationNote — so a phase whose tasks
+                    // succeeded completes instead of dying on planner
+                    // bookkeeping the repair loop cannot fix.
+                    verificationNote = { task: (v as any)?.task, tool: verificationTool, args: verificationArgs };
+                    verification = undefined;
+                    notes.push(`[plan] أسقطتُ مهمة تحقق غير مكتملة — ${verificationIssue}؛ لن أستبدلها بفحص وهمي، وستكتمل المرحلة بنجاح مهامها.`);
+                } else {
+                    verification = { ...v, tool: verificationTool, args: verificationArgs };
+                    if (verificationIssue) notes.push(`[plan] أبقيتُ تحقق browser_run مع عائق عقد مسمّى — ${verificationIssue}؛ لن أستبدله بفحص يوحي بنجاح لم يحدث.`);
+                }
             }
         }
 
-        return { ...phase, tasks: kept, verificationTask: verification };
+        return { ...phase, tasks: kept, verificationTask: verification, ...(verificationNote !== undefined ? { verificationNote } : {}) };
     });
 
     const sanitisedTasks = out.flatMap((phase: any) => Array.isArray(phase?.tasks) ? phase.tasks : []);

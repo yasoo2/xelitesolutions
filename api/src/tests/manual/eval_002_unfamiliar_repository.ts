@@ -300,7 +300,7 @@ test('divide handles division by zero', () => {
                     command: 'npm test'
                 }, { sessionId, workspaceId, userId });
             });
-            if (testResult.ok && testResult.output?.stdout?.includes('passed')) {
+            if (testResult.ok && /pass [1-9]\d*/.test(testResult.output?.stdout || '') && /fail 0/.test(testResult.output?.stdout || '')) {
                 console.log('✅ PASS: Existing tests still pass (no regressions).');
             } else {
                 console.error('❌ FAIL: Existing tests failed or regressions detected.', testResult.output?.stdout);
@@ -311,8 +311,8 @@ test('divide handles division by zero', () => {
             passed = false;
         }
 
-        // Verify power function was added
-        const calcPath = 'calculator.js';
+        // Verify power function was added (in the evaluation workspace repo, not CWD)
+        const calcPath = path.join(repoPath, 'calculator.js');
         const calcContent = fs.existsSync(calcPath) ? fs.readFileSync(calcPath, 'utf8') : '';
         if (calcContent.includes('power') && calcContent.includes('Math.pow')) {
             console.log('✅ PASS: Power function added to calculator.');
@@ -322,7 +322,7 @@ test('divide handles division by zero', () => {
         }
 
         // Check if power is exported
-        const calcContent2 = fs.existsSync('calculator.js') ? fs.readFileSync('calculator.js', 'utf8') : '';
+        const calcContent2 = fs.existsSync(calcPath) ? fs.readFileSync(calcPath, 'utf8') : '';
         if (calcContent2.includes('power') && calcContent2.includes('module.exports') && calcContent2.includes('power')) {
             console.log('✅ PASS: Power function exported.');
         } else {
@@ -331,7 +331,7 @@ test('divide handles division by zero', () => {
         }
 
         // Check if power tests added
-        const testPath = 'calculator.test.js';
+        const testPath = path.join(repoPath, 'calculator.test.js');
         const testContent = fs.existsSync(testPath) ? fs.readFileSync(testPath, 'utf8') : '';
         if (testContent.includes('power') && testContent.includes('power calculates correctly')) {
             console.log('✅ PASS: Power tests added.');
@@ -365,7 +365,7 @@ test('divide handles division by zero', () => {
                     command: 'npm test'
                 }, { sessionId, workspaceId, userId });
             });
-            if (finalTest.ok && finalTest.output?.stdout?.includes('passed')) {
+            if (finalTest.ok && /pass [1-9]\d*/.test(finalTest.output?.stdout || '') && /fail 0/.test(finalTest.output?.stdout || '')) {
                 console.log('✅ PASS: All tests pass (no regressions).');
             } else {
                 console.error('❌ FAIL: Final tests failed.', finalTest.output?.stdout);

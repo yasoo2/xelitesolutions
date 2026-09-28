@@ -84,14 +84,18 @@ describe('smoke verification without a checker contract', () => {
         expect(phases[1].verificationTask).toMatchObject({ args: { command: 'npm test' } });
     });
 
-    it('keeps the unproven package-script path on project_detect (no manifest produced)', () => {
-        const { phases } = sanitisePlanPhases([{
+    it('drops the unproven package-script verification when no manifest is produced', () => {
+        const { phases, notes } = sanitisePlanPhases([{
             phaseNumber: 1,
             name: 'Docs only',
             tasks: [{ task: 'Write doc', tool: 'write_file', args: { path: 'taglines/README.md', content: '# hi' } }],
             verificationTask: { task: 'Run tests', tool: 'shell_execute', args: { command: 'npm test' } },
         }], 'taglines', { mode: 'greenfield', candidateCheckCommands: [] });
-        expect(phases[0].verificationTask.tool).toBe('project_detect');
+        // Was project_detect; the gate rejects that filler, so the sanitizer
+        // drops the ungrounded checker and preserves it for diagnosis.
+        expect(phases[0].verificationTask).toBeUndefined();
+        expect(phases[0].verificationNote).toMatchObject({ tool: 'shell_execute', args: { command: 'npm test' } });
+        expect(notes.join('\n')).toMatch(/\u0623\u0633\u0642\u0637\u062a\u064f/);
     });
 
     it('observes the generated doc when a non-file phase is documented', () => {

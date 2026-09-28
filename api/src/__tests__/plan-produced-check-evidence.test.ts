@@ -70,7 +70,7 @@ describe('plan-produced manifests prove package-script checks', () => {
     });
 
     it('still drops npm test when the plan produces no manifest', () => {
-        const { phases } = sanitisePlanPhases([{
+        const { phases, notes } = sanitisePlanPhases([{
             phaseNumber: 1,
             name: 'Docs only',
             tasks: [{ task: 'Write doc', tool: 'write_file', args: { path: 'linecount/README.md', content: '# hi' } }],
@@ -78,7 +78,11 @@ describe('plan-produced manifests prove package-script checks', () => {
         }], 'linecount', { mode: 'greenfield', candidateCheckCommands: [] });
         expect(phases[0].tasks.some((task: any) =>
             task.tool === 'shell_execute' && task.args?.command === 'npm test')).toBe(false);
-        expect(phases[0].verificationTask.tool).toBe('project_detect');
+        // Was project_detect; the gate rejects that filler, so the sanitizer
+        // drops the ungrounded checker and preserves it for diagnosis.
+        expect(phases[0].verificationTask).toBeUndefined();
+        expect(phases[0].verificationNote).toMatchObject({ tool: 'shell_execute', args: { command: 'npm test' } });
+        expect(notes.join('\n')).toMatch(/\u0623\u0633\u0642\u0637\u062a\u064f/);
     });
 
     it('does not let discovery-evidenced manifests prove the check (existing projects unchanged)', () => {

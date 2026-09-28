@@ -905,7 +905,15 @@ describe('manifest-backed local verification commands', () => {
         });
         expect(phases[0].tasks.some((task: any) => task.tool === 'shell_execute')).toBe(false);
         expect(notes.join('\n')).toMatch(/ليس فحصاً معلناً/);
-        expect(phases[0].verificationTask.tool).toBe('project_detect');
+        // Contract decision (CRITICAL-REAL-JOE-UI-001 follow-up): the sanitizer
+        // no longer emits the project_detect filler the phase gate is pinned to
+        // reject — that filler killed EVAL-002 phase 1 after all its tasks
+        // succeeded. The ungrounded checker is dropped with its original
+        // preserved for diagnosis; the essential guard above (never run an
+        // undeclared npm script) is unchanged.
+        expect(phases[0].verificationTask).toBeUndefined();
+        expect(phases[0].verificationNote).toMatchObject({ tool: 'shell_execute', args: { command: 'npm test' } });
+        expect(notes.join('\n')).toMatch(/\u0623\u0633\u0642\u0637\u062a\u064f/);
     });
 
     it('keeps an exact check declared by inspected package metadata', () => {
