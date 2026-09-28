@@ -66,23 +66,27 @@ describe('a bracket after a column names its answers', () => {
         expect(cols(request)).toContain('الحالة');
     });
 
-    it('and the English side of this is a STATED limit, not a claim', () => {
-        //  «the status (in stock or sold out)» comes back without the status
-        //  column. The bracket reader above is written for the Arabic list
-        //  and the English path has its own definiteness rules, which this
-        //  change did not touch. Declaring the limit is the point: an
-        //  untested claim of English support would be the fake capability
-        //  this project keeps deleting. The assertion locks the CURRENT
-        //  behaviour so the day someone fixes it, this line tells them.
-        expect(cols('a products table with the item name, the price and the status (in stock or sold out)'))
-            .not.toContain('the status');
+    it('preserves explicit English options through the production list reader', () => {
+        const f = field('Create an inventory tracker with item name, price, and status (in stock or sold out).', 'status');
+        expect(f).toMatchObject({ type: 'select', options: ['in stock', 'sold out'] });
     });
 
-    it('a single value in brackets is a note, not a list of options', () => {
-        //  One answer is not a choice. Turning «(متوفر)» into a select with a
-        //  single option would be inventing a constraint he did not state.
-        const f = field('جدول المنتجات فيه اسم الصنف والسعر والحالة (متوفر)', 'الحالة');
-        expect(f?.options).toBeUndefined();
+    it.each([
+        ['Arabic', 'جدول المنتجات فيه اسم الصنف والسعر والحالة (متوفر)', 'الحالة'],
+        ['English record', 'record products: item name, price, status (available)', 'status'],
+        ['English tracker', 'Create an inventory tracker with item name, price, and status (available).', 'status'],
+    ])('a single explicit %s annotation suppresses inferred status options', (_language, request, label) => {
+        // One explicit value is evidence about the requested field, not a
+        // command to invent a one-choice select or a default status workflow.
+        expect(field(request, label)).toMatchObject({ type: 'text', role: 'text' });
+        expect(field(request, label)?.options).toBeUndefined();
+    });
+
+    it.each([
+        ['Arabic', 'جدول المنتجات فيه اسم الصنف والسعر والحالة', 'الحالة', ['قيد الانتظار', 'قيد الإصلاح', 'تم الإصلاح']],
+        ['English', 'Create an inventory tracker with item name, price, and status.', 'status', ['Pending', 'In progress', 'Completed']],
+    ])('keeps the default status workflow when %s has no explicit annotation', (_language, request, label, options) => {
+        expect(field(request, label)).toMatchObject({ type: 'select', role: 'flag', options });
     });
 });
 
