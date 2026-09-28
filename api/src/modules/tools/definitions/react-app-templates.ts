@@ -3691,9 +3691,26 @@ export function fileAppPackageJson(name: string, bp: AppBlueprint): string {
  * A deterministic, dependency-free test that every generated React app can run.
  * The Vite build remains the JSX/compiler gate; this test verifies the generated
  * scaffold and its declared contract before Browser QA is attempted.
+ *
+ * THE TEST MUST PROVE THE REQUEST, NOT ONLY THE SCAFFOLD.
+ *
+ * Measured live (CRITICAL-REAL-JOE-UI-001 run 19): a branches directory app
+ * with name / sort code / address columns and 3 seed rows shipped a test that
+ * asserted only scaffold completeness — it would pass identically for any
+ * other schema and stay green if every requested column were dropped. When
+ * the caller passes the request-derived schema, a second test block asserts
+ * that the columns and seed rows actually reached the generated app, so
+ * reader/seed regressions break the app's own suite instead of hiding behind
+ * a green scaffold check. Rendering itself remains Browser QA's job; this
+ * test proves the data the shell renders from.
  */
-export function fileAppSmokeTest(): string {
-    return `import test from 'node:test';
+export interface GroundedSchemaExpectation {
+    fields: Array<{ key: string; label: string }>;
+    seedCount: number;
+}
+
+export function fileAppSmokeTest(schema?: GroundedSchemaExpectation): string {
+    const scaffold = `import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -3710,6 +3727,36 @@ test('generated React app scaffold is complete and testable', () => {
   assert.equal(manifest.scripts.test, 'node --test scripts/smoke-test.test.mjs');
   assert.match(read('index.html'), /root/);
   assert.match(read('src/main.jsx'), /createRoot/);
+});
+`;
+    const fields = (schema?.fields || []).filter(f => f && (f.label || f.key));
+    const seedCount = schema && schema.seedCount > 0 ? Math.floor(schema.seedCount) : 0;
+    if (!fields.length && !seedCount) return scaffold;
+    // Embedded via JSON.stringify so labels with quotes/backslashes/unicode
+    // stay valid JS string literals in the generated file.
+    const labels = JSON.stringify(fields.map(f => String(f.label || f.key)));
+    const keys = JSON.stringify(fields.map(f => String(f.key || f.label)));
+    const seedBlock = seedCount > 0 ? `
+  const seeds = Array.isArray(content.seedRows) ? content.seedRows : [];
+  assert.equal(seeds.length, ${seedCount}, 'expected ${seedCount} seed rows, found ' + seeds.length);
+  for (const row of seeds) {
+    for (const key of expectedKeys) {
+      assert.ok(row && key in row, 'seed row is missing the requested column: ' + key);
+    }
+  }` : '';
+    return `${scaffold}
+test('requested columns and seed rows reach the generated app', async () => {
+  const content = (await import('../src/content.js')).content;
+  const actualLabels = (content.fields || []).map((f) => String(f && f.label));
+  const actualKeys = (content.fields || []).map((f) => String(f && f.key));
+  const expectedLabels = ${labels};
+  const expectedKeys = ${keys};
+  for (const label of expectedLabels) {
+    assert.ok(actualLabels.includes(label), 'missing requested column: ' + label);
+  }
+  for (const key of expectedKeys) {
+    assert.ok(actualKeys.includes(key), 'missing requested column key: ' + key);
+  }${seedBlock}
 });
 `;
 }
@@ -4576,7 +4623,10 @@ export function buildAppFiles(bp: AppBlueprint, o: AppBuildOptions, slugName: st
         'src/App.jsx': fileAppShellJsx(builtBp, o.isArabic, !!(o.model && o.model.length), !!o.api, roleSpecs, !!o.unifiedTables),
         'src/content.js': fileAppContentJs(builtBp, o),
         'src/app/store.js': fileAppStoreJs(),
-        'scripts/smoke-test.test.mjs': fileAppSmokeTest(),
+        'scripts/smoke-test.test.mjs': fileAppSmokeTest({
+            fields: (builtBp.fields || []).map(f => ({ key: String(f.key || ''), label: String(f.label || '') })),
+            seedCount: (o.seedRows || []).length,
+        }),
         ...engineEntry,
         ...(builtBp.engine === 'records' ? {
             'src/app/records-controller.js': fileRecordsControllerJs(o.isArabic),
