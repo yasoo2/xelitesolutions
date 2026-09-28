@@ -66,4 +66,51 @@ describe('LocalProvider cancellation', () => {
 
         expect(mockCreate).toHaveBeenCalledTimes(1);
     });
+
+    it('does not repeat a streamed request after a provider quota response', async () => {
+        const quotaError = Object.assign(new Error('Retry after 2m'), { status: 429 });
+        mockCreate.mockRejectedValue(quotaError);
+
+        await expect(new LocalProvider().chatComplete(
+            [{ role: 'user', content: 'hello' }],
+            'qwen2.5-coder:7b',
+            () => undefined,
+        )).rejects.toBe(quotaError);
+
+        expect(mockCreate).toHaveBeenCalledTimes(1);
+        expect(mockCreate.mock.calls[0][0]).toEqual(expect.objectContaining({ stream: true }));
+    });
+
+    it('falls back once when the endpoint explicitly rejects streaming', async () => {
+        const unsupported = Object.assign(new Error('streaming is not supported'), { status: 400 });
+        mockCreate.mockRejectedValueOnce(unsupported)
+            .mockResolvedValueOnce({ choices: [{ message: { content: 'OK' } }] });
+
+        await expect(new LocalProvider().chatComplete(
+            [{ role: 'user', content: 'hello' }],
+            'qwen2.5-coder:7b',
+            () => undefined,
+        )).resolves.toBe('OK');
+
+        expect(mockCreate).toHaveBeenCalledTimes(2);
+        expect(mockCreate.mock.calls[1][0]).not.toHaveProperty('stream');
+    });
+
+    it('does not replay a partially streamed answer after its connection fails', async () => {
+        const connectionError = new Error('connection reset');
+        mockCreate.mockResolvedValueOnce((async function* () {
+            yield { choices: [{ delta: { content: 'partial' } }] };
+            throw connectionError;
+        })());
+        const deltas: string[] = [];
+
+        await expect(new LocalProvider().chatComplete(
+            [{ role: 'user', content: 'hello' }],
+            'qwen2.5-coder:7b',
+            delta => { deltas.push(delta); },
+        )).rejects.toBe(connectionError);
+
+        expect(deltas).toEqual(['partial']);
+        expect(mockCreate).toHaveBeenCalledTimes(1);
+    });
 });

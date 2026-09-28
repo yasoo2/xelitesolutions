@@ -1,5 +1,13 @@
 import OpenAI from 'openai';
 
+function streamingUnsupported(error: unknown): boolean {
+    const raw = error as any;
+    const status = Number(raw?.status ?? raw?.statusCode ?? raw?.response?.status ?? 0);
+    if (status && ![400, 415, 422, 501].includes(status)) return false;
+    const message = String(raw?.error?.message || raw?.message || error || '');
+    return /\b(?:stream|streaming)\b.{0,48}\b(?:not supported|unsupported|not implemented|unavailable)\b|\b(?:unsupported|unknown)\b.{0,48}\bstream(?:ing)?\b/i.test(message);
+}
+
 export class LocalProvider {
     private baseUrl(): string | null {
         const raw = String(process.env.LOCAL_LLM_BASE_URL || '').trim();
@@ -71,6 +79,7 @@ export class LocalProvider {
         // agent "thinking" live. We still return the full accumulated text at the end,
         // so callers that ignore onDelta behave exactly as before.
         if (onDelta) {
+            let full = '';
             try {
                 const stream = await client.chat.completions.create({
                     model: model || this.model(),
@@ -79,7 +88,6 @@ export class LocalProvider {
                     ...(maxCompletionTokens ? { max_tokens: maxCompletionTokens } : {}),
                     stream: true,
                 } as any, { timeout: timeoutMs, signal }) as any;
-                let full = '';
                 for await (const chunk of stream) {
                     const piece = chunk?.choices?.[0]?.delta?.content || '';
                     if (piece) { full += piece; try { onDelta(piece); } catch { /* panel optional */ } }
@@ -87,10 +95,10 @@ export class LocalProvider {
                 if (full) return full;
                 // Empty stream (some servers don't stream): fall through to a normal call.
             } catch (error) {
-                // Streaming unsupported/failed — fall back to a single blocking call below.
-                // An aborted request must not fall through to a second request: that
-                // is how cancelled local calls accumulated behind a slow Ollama model.
-                if (signal?.aborted) throw error;
+                // Only an explicit stream-capability rejection merits a blocking fallback.
+                // Quotas, timeouts and partial streams must reach the router unchanged;
+                // retrying here repeats a failed request before its circuit can open.
+                if (signal?.aborted || full || !streamingUnsupported(error)) throw error;
             }
         }
 
