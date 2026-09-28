@@ -1365,6 +1365,22 @@ export interface ProviderAttempt {
     error?: string;
 }
 
+/** OpenAI-compatible servers use both TIMEOUT and "Request timed out." for the same failure. */
+export function isLocalTimeoutError(error: unknown): boolean {
+    return /timeout|timed[\s-]*out|etimedout/i.test(String(error || ''));
+}
+
+/** Describe the observed local failure without telling someone to start an already detected Ollama. */
+export function localBrainFailureAdvice(ready: boolean, timedOut: boolean): string {
+    if (ready && timedOut) {
+        return 'رُصد Ollama محلياً، لكن طلب التوليد تجاوز المهلة؛ افحص حمل الجهاز أو اختر نموذجاً أسرع ثم أعد المحاولة';
+    }
+    if (ready) {
+        return 'رُصد Ollama محلياً، لكن الطلب لم يحصل على رد صالح؛ افحص سجل النموذج المحلي ثم أعد المحاولة';
+    }
+    return 'شغّل Ollama محلياً (افتح تطبيق Ollama أو نفّذ: ollama serve) ثم أعد المحاولة';
+}
+
 export async function routeToModel(
     messages: any[],
     analysis?: TaskAnalysis,
@@ -2214,8 +2230,9 @@ export async function routeToModel(
         engineeringRecoveryPermit,
     )) {
         console.warn(`[IntelligentRouter] ⛔ Dead-brain latch: all providers failed ${Math.round(Math.max(0, latchAgeMs) / 1000)}s ago — answering without a re-walk.`);
+        const recentLocalTimeout = localTimedOutAt > 0 && now - localTimedOutAt < 300_000;
         return PROVIDER_FAILURE_PREFIX + " (لم يستجب أي مزوّد قبل لحظات). لم أستطع تنفيذ الطلب. "
-            + "الحل: شغّل Ollama محلياً (افتح تطبيق Ollama أو نفّذ: ollama serve) ثم أعد المحاولة، "
+            + `الحل: ${localBrainFailureAdvice(isLocalBrainReady(), recentLocalTimeout)}، `
             + "أو تحقّق من اتصال الإنترنت. (لن أدّعي أنني نفّذت شيئاً لم يُنفَّذ.)";
     }
     if (scopedLastTotalFailureAt && latchAgeMs < DEAD_BRAIN_LATCH_MS && internalRecoveryEvidence) {
@@ -2658,7 +2675,7 @@ export async function routeToModel(
                 rateLimitedProvidersThisCall.add(p.name);
                 markProviderRateLimited(p.name, retryAfterMs);
             }
-            if (p.name === 'Local (Auto)' && /TIMEOUT/i.test(String(e?.message || ''))) {
+            if (p.name === 'Local (Auto)' && isLocalTimeoutError(e?.message)) {
                 // Our patience may have been the fault, not the engine. Raise the
                 // floor before counting this against the breaker.
                 if (internalCall) noteInternalLeashTimeout(lastTimeoutUsed);
@@ -2790,9 +2807,13 @@ export async function routeToModel(
     const failureAt = Date.now();
     failureLatchByScope.set(latchScope, failureAt);
     lastTotalFailureAt = Date.now(); // compatibility marker and legacy observability; scoped reads use the map
+    const recentLocalTimeout = localTimedOutAt > 0 && failureAt - localTimedOutAt < 300_000;
+    const localTimedOutThisCall = providerAttempts.some((attempt) =>
+        attempt.provider === 'Local (Auto)' && isLocalTimeoutError(attempt.error));
+    const localFailureAdvice = localBrainFailureAdvice(isLocalBrainReady(), recentLocalTimeout || localTimedOutThisCall);
     if (localStrict) {
         return PROVIDER_FAILURE_PREFIX + ` (الوضع المحلي الصارم — لم يستجب المحرّك المحلي${lastError ? `: ${String(lastError).slice(0, 160)}` : ''}). `
-            + "شغّل Ollama محلياً (افتح تطبيق Ollama أو نفّذ: ollama serve) ثم أعد المحاولة.";
+            + `${localFailureAdvice}.`;
     }
     // Say WHY, precisely. "No provider answered" reads as an outage; a daily
     // quota is a different problem with a different fix, and the error itself
@@ -2803,12 +2824,12 @@ export async function routeToModel(
         const resetMs = retryAfterMsFrom(lastError);
         const resetNote = resetMs ? ` (يزول أقرب حدّ خلال ~${Math.max(1, Math.round(resetMs / 60_000))} دقيقة)` : '';
         return PROVIDER_FAILURE_PREFIX + ` — السبب: الحصص اليومية/الساعية المجانية للمزوّدات استُهلكت${resetNote}. `
-            + "لم أنفّذ الطلب ولن أدّعي غير ذلك. الحلول: انتظر عودة الحصة، "
-            + "أو شغّل Ollama محلياً (ollama serve)، "
+            + "لم أنفّذ الطلب ولن أدّعي غير ذلك. الحلول: انتظر عودة الحصة. "
+            + `${localFailureAdvice}. `
             + "أو — الحل الدائم — أضِف مفتاح Gemini المجاني في ملف .env بسطر GOOGLE_API_KEY=... من aistudio.google.com (1500 طلب/يوم مجاناً).";
     }
     return PROVIDER_FAILURE_PREFIX + " (لم يستجب أي مزوّد). لم أستطع تنفيذ الطلب. "
-        + "الحل: شغّل Ollama محلياً (افتح تطبيق Ollama أو نفّذ: ollama serve) ثم أعد المحاولة، "
+        + `الحل: ${localFailureAdvice}، `
         + "أو تحقّق من اتصال الإنترنت لاستخدام الذكاء المجّاني. (لن أدّعي أنني نفّذت شيئاً لم يُنفَّذ.)";
 }
 
