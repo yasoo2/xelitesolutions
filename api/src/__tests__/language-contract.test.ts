@@ -14,6 +14,7 @@ import { formatAttachmentsBlock } from '../shared/attachments';
 
 jest.mock('../core/llm/intelligent-router', () => ({
     routeToModel: jest.fn(),
+    isProviderFailure: (text: unknown) => typeof text === 'string' && (text.trimStart().startsWith('⚠️ تعذّر الوصول إلى محرّك الذكاء') || /request timed out/i.test(text)),
 }));
 import { routeToModel } from '../core/llm/intelligent-router';
 import { CentralAnswerTool } from '../modules/tools/definitions/CentralAnswerTool';
@@ -67,6 +68,26 @@ describe('central_answer — an Arabic question gets an Arabic answer, measured'
             .mockRejectedValueOnce(new Error('provider down'));
         const tool = new CentralAnswerTool();
         const r: any = await tool.execute({ question: 'حلل هذه الصورة بدقة من فضلك' }, { language: 'ar' });
+        expect(r.ok).toBe(true);
+        expect(r.output).toBe(ENGLISH_REPLY);
+    });
+
+    test('a provider failure is not an answer or a language rewrite candidate', async () => {
+        const failure = '⚠️ تعذّر الوصول إلى محرّك الذكاء — طلب التوليد تجاوز المهلة.';
+        (routeToModel as jest.Mock).mockResolvedValueOnce(failure);
+        const r: any = await new CentralAnswerTool().execute({ question: 'ما عاصمة فرنسا؟' }, { language: 'ar' });
+        expect(r.ok).toBe(false);
+        expect(r.error).toBe(failure);
+        expect(r.output).toBeUndefined();
+        expect(r.logs.join(' ')).not.toContain('Answered via router');
+        expect(routeToModel).toHaveBeenCalledTimes(1);
+    });
+
+    test('a failed language rewrite cannot replace a valid answer', async () => {
+        (routeToModel as jest.Mock)
+            .mockResolvedValueOnce(ENGLISH_REPLY)
+            .mockResolvedValueOnce('⚠️ تعذّر الوصول إلى محرّك الذكاء');
+        const r: any = await new CentralAnswerTool().execute({ question: 'حلل هذه الصورة بدقة من فضلك' }, { language: 'ar' });
         expect(r.ok).toBe(true);
         expect(r.output).toBe(ENGLISH_REPLY);
     });

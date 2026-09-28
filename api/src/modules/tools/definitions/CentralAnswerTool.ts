@@ -1,6 +1,6 @@
 import { isArabicReply } from '../../../shared/reply-language';
 import { ToolDefinition } from '../types';
-import { routeToModel } from '../../../core/llm/intelligent-router';
+import { isProviderFailure, routeToModel } from '../../../core/llm/intelligent-router';
 import { arabicShare } from '../../../shared/utils/language';
 
 /**
@@ -248,6 +248,9 @@ Your goal is to build the extraordinary.`;
             ], undefined, undefined, undefined, undefined, undefined, undefined, context);
 
             let text = (typeof answer === 'string' ? answer : '').trim();
+            if (isProviderFailure(text)) {
+                return { ok: false, error: text, logs: ['central_answer: provider failed; no answer produced'] };
+            }
             /**
              * ENFORCE THE LANGUAGE BY MEASUREMENT. The system prompt above
              * DEMANDS Arabic — and a weak fallback model answered the user's
@@ -268,7 +271,7 @@ Your goal is to build the extraordinary.`;
                         { role: 'user', content: text },
                     ], undefined, undefined, undefined, undefined, undefined, undefined, context);
                     const rt = String(rewritten || '').trim();
-                    if (rt.length >= 2 && arabicShare(rt) > Math.max(0.5, arabicShare(text))) {
+                    if (!isProviderFailure(rt) && rt.length >= 2 && arabicShare(rt) > Math.max(0.5, arabicShare(text))) {
                         logs.push(`central_answer: language enforced — reply was ${Math.round(arabicShare(text) * 100)}% Arabic, rewritten to ${Math.round(arabicShare(rt) * 100)}%`);
                         text = rt;
                     } else {
