@@ -1174,6 +1174,40 @@ body:not(.rtl) .joe-user-info {
     color: #3b82f6 !important;
 }
 
+/* The provider picker is a stacked sheet on phones. A fixed 180px sidebar
+   beside the details left each column too narrow to read or operate. */
+@media (max-width: 600px) {
+    .providers-modal {
+        width: calc(100vw - 24px) !important;
+        max-width: none !important;
+        max-height: calc(100dvh - 24px) !important;
+        flex-direction: column !important;
+        top: auto !important;
+        bottom: auto !important;
+        left: auto !important;
+    }
+
+    .providers-modal .providers-left {
+        width: 100% !important;
+        min-width: 0 !important;
+        max-height: 220px !important;
+        flex: 0 0 auto !important;
+        overflow-y: auto !important;
+        border-right: 0 !important;
+        border-bottom: 1px solid var(--joe-border) !important;
+        padding: 14px !important;
+        gap: 8px !important;
+    }
+
+    .providers-modal .providers-right {
+        width: 100% !important;
+        min-width: 0 !important;
+        min-height: 0 !important;
+        max-height: calc(100dvh - 280px) !important;
+        flex: 0 1 auto !important;
+        padding: 16px !important;
+    }
+}
 /* Close button positioning if needed (handled by grid usually) */
 
 /* Provider dots indicator */
