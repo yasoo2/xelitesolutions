@@ -5,6 +5,7 @@ import {
     isLocalTimeoutError,
     localBrainFailureAdvice,
     localBrainState,
+    markProviderOk,
     resetLocalBrainBreaker,
     routeToModel,
 } from '../core/llm/intelligent-router';
@@ -25,6 +26,39 @@ describe('provider failure diagnosis', () => {
         expect(localBrainFailureAdvice(false, false)).toContain('شغّل Ollama');
     });
 
+    it('keeps the quota diagnosis across the same run without re-hammering the local provider', async () => {
+        const saved = Object.fromEntries(['OFFLINE_MODE', 'LOCAL_LLM_STRICT', 'LOCAL_LLM_BASE_URL',
+            'LLM_CACHE_DISABLE', 'MOCK_LLM'].map(key => [key, process.env[key]]));
+        process.env.OFFLINE_MODE = 'true';
+        process.env.LOCAL_LLM_STRICT = '1';
+        process.env.LOCAL_LLM_BASE_URL = 'http://127.0.0.1:1/v1';
+        process.env.LLM_CACHE_DISABLE = '1';
+        delete process.env.MOCK_LLM;
+        const ready = jest.spyOn(localBrain, 'isLocalBrainReady').mockReturnValue(true);
+        const configured = jest.spyOn(localProvider, 'isConfigured').mockReturnValue(true);
+        const completion = jest.spyOn(localProvider, 'chatComplete').mockRejectedValue(
+            Object.assign(new Error('429 Rate limit reached. Please try again in 24m40.896s'), { status: 429 }));
+        try {
+            const context: any = { runId: 'diagnosis-quota-latch', providerTimeoutMs: 10_000 };
+            const prompt = [{ role: 'user', content: 'What is 3+4?' }];
+            const first = await routeToModel(prompt, undefined, undefined, undefined, undefined, undefined, undefined, context);
+            const second = await routeToModel(prompt, undefined, undefined, undefined, undefined, undefined, undefined, context);
+            expect(isProviderFailure(first)).toBe(true);
+            expect(first).toContain('429');
+            expect(second).toContain('429');
+            expect(completion).toHaveBeenCalledTimes(1);
+        } finally {
+            completion.mockRestore();
+            configured.mockRestore();
+            ready.mockRestore();
+            resetLocalBrainBreaker();
+            markProviderOk('Local (Auto)');
+            for (const [key, value] of Object.entries(saved)) {
+                if (value === undefined) delete process.env[key];
+                else process.env[key] = value;
+            }
+        }
+    });
     it('reports the observed local timeout from the router without claiming Ollama is stopped', async () => {
         const saved = {
             OFFLINE_MODE: process.env.OFFLINE_MODE,
@@ -62,6 +96,7 @@ describe('provider failure diagnosis', () => {
             configured.mockRestore();
             ready.mockRestore();
             resetLocalBrainBreaker();
+            markProviderOk('Local (Auto)');
             for (const [key, value] of Object.entries(saved)) {
                 if (value === undefined) delete process.env[key];
                 else process.env[key] = value;

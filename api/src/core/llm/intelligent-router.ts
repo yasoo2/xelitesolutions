@@ -918,6 +918,7 @@ let lastTotalFailureAt = 0;
 // legacy scalar remains for the unscoped compatibility path and observability;
 // real requests use a run/trace/session-scoped latch.
 const failureLatchByScope = new Map<string, number>();
+const failureNoticeByScope = new Map<string, string>();
 const DEAD_BRAIN_LATCH_MS = Math.max(0, parseInt(String(process.env.DEAD_BRAIN_LATCH_MS || '').trim(), 10) || 45_000);
 const ENGINEERING_KEYLESS_DEFAULT_TIMEOUT_MS = 90_000;
 
@@ -930,7 +931,13 @@ function failureLatchScope(context: any): string {
 
 function releaseFailureLatch(scope: string): void {
     failureLatchByScope.delete(scope);
+    failureNoticeByScope.delete(scope);
     lastTotalFailureAt = 0;
+}
+
+function rememberFailureNotice(scope: string, notice: string): string {
+    failureNoticeByScope.set(scope, notice);
+    return notice;
 }
 
 /**
@@ -2213,6 +2220,7 @@ export async function routeToModel(
     const latchAgeMs = scopedLastTotalFailureAt ? now - scopedLastTotalFailureAt : Number.POSITIVE_INFINITY;
     if (scopedLastTotalFailureAt && latchAgeMs >= DEAD_BRAIN_LATCH_MS) {
         failureLatchByScope.delete(latchScope);
+        failureNoticeByScope.delete(latchScope);
         lastTotalFailureAt = 0;
     }
     const healthyRecoveryEvidence = internalCall
@@ -2231,9 +2239,9 @@ export async function routeToModel(
     )) {
         console.warn(`[IntelligentRouter] ⛔ Dead-brain latch: all providers failed ${Math.round(Math.max(0, latchAgeMs) / 1000)}s ago — answering without a re-walk.`);
         const recentLocalTimeout = localTimedOutAt > 0 && now - localTimedOutAt < 300_000;
-        return PROVIDER_FAILURE_PREFIX + " (لم يستجب أي مزوّد قبل لحظات). لم أستطع تنفيذ الطلب. "
+        return failureNoticeByScope.get(latchScope) || (PROVIDER_FAILURE_PREFIX + " (لم يستجب أي مزوّد قبل لحظات). لم أستطع تنفيذ الطلب. "
             + `الحل: ${localBrainFailureAdvice(isLocalBrainReady(), recentLocalTimeout)}، `
-            + "أو تحقّق من اتصال الإنترنت. (لن أدّعي أنني نفّذت شيئاً لم يُنفَّذ.)";
+            + "أو تحقّق من اتصال الإنترنت. (لن أدّعي أنني نفّذت شيئاً لم يُنفَّذ.)");
     }
     if (scopedLastTotalFailureAt && latchAgeMs < DEAD_BRAIN_LATCH_MS && internalRecoveryEvidence) {
         const permitKind = healthyRecoveryEvidence ? 'recent provider success' : 'engineering recovery permit';
@@ -2812,8 +2820,9 @@ export async function routeToModel(
         attempt.provider === 'Local (Auto)' && isLocalTimeoutError(attempt.error));
     const localFailureAdvice = localBrainFailureAdvice(isLocalBrainReady(), recentLocalTimeout || localTimedOutThisCall);
     if (localStrict) {
-        return PROVIDER_FAILURE_PREFIX + ` (الوضع المحلي الصارم — لم يستجب المحرّك المحلي${lastError ? `: ${String(lastError).slice(0, 160)}` : ''}). `
-            + `${localFailureAdvice}.`;
+        const diagnosis = lastError ? safeProviderError(lastError, context?.modelConfig?.apiKey) : '';
+        return rememberFailureNotice(latchScope, PROVIDER_FAILURE_PREFIX + ` (الوضع المحلي الصارم — لم يستجب المحرّك المحلي${diagnosis ? `: ${diagnosis.slice(0, 160)}` : ''}). `
+            + `${localFailureAdvice}.`);
     }
     // Say WHY, precisely. "No provider answered" reads as an outage; a daily
     // quota is a different problem with a different fix, and the error itself
@@ -2823,14 +2832,14 @@ export async function routeToModel(
     if (sawRateLimit) {
         const resetMs = retryAfterMsFrom(lastError);
         const resetNote = resetMs ? ` (يزول أقرب حدّ خلال ~${Math.max(1, Math.round(resetMs / 60_000))} دقيقة)` : '';
-        return PROVIDER_FAILURE_PREFIX + ` — السبب: الحصص اليومية/الساعية المجانية للمزوّدات استُهلكت${resetNote}. `
+        return rememberFailureNotice(latchScope, PROVIDER_FAILURE_PREFIX + ` — السبب: الحصص اليومية/الساعية المجانية للمزوّدات استُهلكت${resetNote}. `
             + "لم أنفّذ الطلب ولن أدّعي غير ذلك. الحلول: انتظر عودة الحصة. "
             + `${localFailureAdvice}. `
-            + "أو — الحل الدائم — أضِف مفتاح Gemini المجاني في ملف .env بسطر GOOGLE_API_KEY=... من aistudio.google.com (1500 طلب/يوم مجاناً).";
+            + "أو — الحل الدائم — أضِف مفتاح Gemini المجاني في ملف .env بسطر GOOGLE_API_KEY=... من aistudio.google.com (1500 طلب/يوم مجاناً).");
     }
-    return PROVIDER_FAILURE_PREFIX + " (لم يستجب أي مزوّد). لم أستطع تنفيذ الطلب. "
+    return rememberFailureNotice(latchScope, PROVIDER_FAILURE_PREFIX + " (لم يستجب أي مزوّد). لم أستطع تنفيذ الطلب. "
         + `الحل: ${localFailureAdvice}، `
-        + "أو تحقّق من اتصال الإنترنت لاستخدام الذكاء المجّاني. (لن أدّعي أنني نفّذت شيئاً لم يُنفَّذ.)";
+        + "أو تحقّق من اتصال الإنترنت لاستخدام الذكاء المجّاني. (لن أدّعي أنني نفّذت شيئاً لم يُنفَّذ.)");
 }
 
 /**
