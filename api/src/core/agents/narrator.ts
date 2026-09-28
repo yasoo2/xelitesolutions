@@ -162,8 +162,8 @@ export async function narrate(
  * Is narration switched on?
  *
  * It costs one small completion per step. On a laptop with no GPU and a local
- * model that is real time the user waits, so it is a choice — but the default is
- * ON, because the alternative that was shipping was a fake.
+ * model that is real time the user waits. Offline mode defaults it off so
+ * the only local model can answer the user; an explicit opt-in keeps it on.
  */
 export function narrationEnabled(): boolean {
     // Both names are supported: JOE_NARRATION is the public switch, while
@@ -174,6 +174,8 @@ export function narrationEnabled(): boolean {
     const v = String(process.env.JOE_NARRATION ?? '').trim().toLowerCase();
     if (disabled === '1' || disabled === 'true' || disabled === 'on'
         || v === '0' || v === 'false' || v === 'off') return false;
+    const offline = /^(1|true|on)$/i.test(String(process.env.OFFLINE_MODE ?? ''));
+    if (offline && v !== '1' && v !== 'true' && v !== 'on') return false;
     // Narration is a DECORATION: one friendly line above a step. When the
     // local brain is paused, that line would be bought from the metered
     // provider — spending the day's quota, and the user's seconds, on

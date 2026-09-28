@@ -150,17 +150,33 @@ describe('narrate() never becomes the step\'s problem', () => {
 describe('it can be switched off, because it costs a call per step', () => {
     const original = process.env.JOE_NARRATION;
     const originalDisabled = process.env.DISABLE_NARRATION;
+    const originalOffline = process.env.OFFLINE_MODE;
     afterEach(() => {
         if (original === undefined) delete process.env.JOE_NARRATION; else process.env.JOE_NARRATION = original;
         if (originalDisabled === undefined) delete process.env.DISABLE_NARRATION; else process.env.DISABLE_NARRATION = originalDisabled;
+        if (originalOffline === undefined) delete process.env.OFFLINE_MODE; else process.env.OFFLINE_MODE = originalOffline;
     });
 
     it('is ON by default — the alternative that was shipping was a fake', () => {
         delete process.env.JOE_NARRATION;
         delete process.env.DISABLE_NARRATION;
+        delete process.env.OFFLINE_MODE;
         expect(narrationEnabled()).toBe(true);
     });
 
+    it('does not spend the only offline model on optional narration by default', () => {
+        process.env.OFFLINE_MODE = 'true';
+        delete process.env.JOE_NARRATION;
+        delete process.env.DISABLE_NARRATION;
+        expect(narrationEnabled()).toBe(false);
+    });
+
+    it('allows an explicit narration opt-in in offline mode', () => {
+        process.env.OFFLINE_MODE = 'true';
+        process.env.JOE_NARRATION = 'on';
+        delete process.env.DISABLE_NARRATION;
+        expect(narrationEnabled()).toBe(true);
+    });
     it.each(['0', 'false', 'off', 'OFF'])('is off for JOE_NARRATION=%s', (v) => {
         process.env.JOE_NARRATION = v;
         expect(narrationEnabled()).toBe(false);
