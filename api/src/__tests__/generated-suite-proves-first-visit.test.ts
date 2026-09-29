@@ -7,6 +7,7 @@ import { buildAppFiles, fileAppSmokeTest } from '../modules/tools/definitions/re
 import { blueprintFor } from '../core/design/app-blueprints';
 import { countHeAskedFor } from '../core/design/authored-catalogue';
 import { syntaxOk } from '../modules/tools/definitions/ProjectEditTool';
+import { requireChromiumOrThrow } from './helpers/require-chromium';
 
 /**
  * THE GENERATED SUITE MUST PROVE DELIVERY, NOT DESCRIBE IT.
@@ -41,6 +42,11 @@ import { syntaxOk } from '../modules/tools/definitions/ProjectEditTool';
  * remains Browser QA's job; these tests prove the data, the executed
  * first-visit delivery, and the shell→view→controller wiring toward it.
  * (Dead, unrendered JSX could still pass; that residual is out of scope.)
+ *
+ * The REAL BROWSER block below fails closed: no launchable Chromium means
+ * the suite FAILS, not a warn-and-skip green. Set JOE_ALLOW_NO_BROWSER=1
+ * for an explicit loud skip in browserless environments, JOE_FORCE_NO_BROWSER=1
+ * to run the fail-closed path itself RED on a machine that has Chromium.
  */
 
 // Scratch lives inside the repo (untracked api/.tmp/) because the sandbox
@@ -295,20 +301,9 @@ describe('REAL BROWSER — a first visit shows the requested rows', () => {
     beforeAll(async () => {
         const { files } = filesForRequest(REQUESTS[0]);
         genDir = writeApp(files);
-        const { findChromiumExecutable, getChromiumLaunchOptions } =
-            require('../modules/browser/manager');
-        const exe = findChromiumExecutable();
-        const { chromium } = require('playwright');
-        try {
-            browser = await chromium.launch({
-                ...getChromiumLaunchOptions(),
-                ...(exe ? { executablePath: exe } : {}),
-            });
-        } catch (e: any) {
-            // eslint-disable-next-line no-console
-            console.warn(`[first-visit] no browser, real-Chromium assertions skip: ${String(e?.message || e).slice(0, 120)}`);
-            browser = null;
-        }
+        browser = await requireChromiumOrThrow('first-visit');
+        // Null only under explicit JOE_ALLOW_NO_BROWSER=1 (the helper throws
+        // otherwise); the loud skip was already logged there.
         if (!browser) return;
         const HARNESS = `<!doctype html><html><body>
 <div id="count">?</div><div id="first">?</div><div id="cols">?</div>
@@ -351,11 +346,9 @@ document.getElementById('cols').textContent = (content.fields || []).map((f) => 
     });
 
     it('the real modules deliver 4 visible rows on a first visit', async () => {
-        if (!browser) {
-            // eslint-disable-next-line no-console
-            console.warn('[first-visit] SKIP: no Chromium available');
-            return;
-        }
+        // Reachable only under explicit JOE_ALLOW_NO_BROWSER=1: without the
+        // opt-out the beforeAll above already failed the suite.
+        if (!browser) return;
         // A fresh context means fresh storage: this IS a first visit, in a
         // real browser engine, executing the real generated modules. The
         // React compile step is vite's gate and full-app pixels are Browser

@@ -22,6 +22,7 @@ import fs from 'fs';
 import http from 'http';
 import path from 'path';
 import { compactQaFindings } from '../core/quality/app-audit';
+import { requireChromiumOrThrow } from './helpers/require-chromium';
 
 describe('compactQaFindings keeps findings durable', () => {
     it('keeps id, severity, message and capped evidence', () => {
@@ -221,7 +222,7 @@ describe('the durable writers use the compact mapping', () => {
 
 describe('the fragmented-header finding carries measurement provenance', () => {
     // Real Chromium + real inspectUi: geometry must be measured, not asserted
-    // from source text. Honest skip when no browser is available.
+    // from source text. Fail-closed with no browser; JOE_ALLOW_NO_BROWSER=1 is the only skip.
     jest.setTimeout(180_000);
     let browser: any = null;
     let server: http.Server | null = null;
@@ -242,20 +243,9 @@ describe('the fragmented-header finding carries measurement provenance', () => {
 </body></html>`;
 
     beforeAll(async () => {
-        const { findChromiumExecutable, getChromiumLaunchOptions } =
-            require('../modules/browser/manager');
-        const exe = findChromiumExecutable();
-        const { chromium } = require('playwright');
-        try {
-            browser = await chromium.launch({
-                ...getChromiumLaunchOptions(),
-                ...(exe ? { executablePath: exe } : {}),
-            });
-        } catch (e: any) {
-            // eslint-disable-next-line no-console
-            console.warn(`[qa-provenance] no browser, real-Chromium assertions skip: ${String(e?.message || e).slice(0, 120)}`);
-            browser = null;
-        }
+        browser = await requireChromiumOrThrow('qa-provenance');
+        // Null only under explicit JOE_ALLOW_NO_BROWSER=1 (the helper throws
+        // otherwise); the loud skip was already logged there.
         if (!browser) return;
         server = http.createServer((_req, res) => {
             res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
@@ -272,11 +262,9 @@ describe('the fragmented-header finding carries measurement provenance', () => {
     });
 
     it('records url, viewports and header/child geometry on the finding', async () => {
-        if (!browser) {
-            // eslint-disable-next-line no-console
-            console.warn('[qa-provenance] SKIP: no Chromium available');
-            return;
-        }
+        // Reachable only under explicit JOE_ALLOW_NO_BROWSER=1: without the
+        // opt-out the beforeAll above already failed the suite.
+        if (!browser) return;
         const { inspectUi } = require('../core/quality/ui-inspection');
         const context = await browser.newContext();
         try {
@@ -324,11 +312,9 @@ describe('the fragmented-header finding carries measurement provenance', () => {
     });
 
     it('redacts opaque path segments from the recorded url', async () => {
-        if (!browser) {
-            // eslint-disable-next-line no-console
-            console.warn('[qa-provenance] SKIP: no Chromium available');
-            return;
-        }
+        // Reachable only under explicit JOE_ALLOW_NO_BROWSER=1: without the
+        // opt-out the beforeAll above already failed the suite.
+        if (!browser) return;
         const { inspectUi } = require('../core/quality/ui-inspection');
         const context = await browser.newContext();
         try {
