@@ -147,6 +147,55 @@ describe('compactQaFindings keeps findings durable', () => {
         expect(new TextEncoder().encode(JSON.stringify(asciiKept)).length).toBeLessThanOrEqual(2048);
     });
 
+    it('bounds the FINAL summary including keysOmitted in UTF-8 bytes', () => {
+        // Codex's boundary counterexample (independent review of 86419dc7):
+        // 11 sixty-char CJK keys + 9 short ASCII keys, 200-char values.
+        // The shrink loop measured a provisional summary and appended
+        // keysOmitted AFTER it, emitting 2060 bytes against the 2048-byte
+        // contract. The FINAL persisted object must fit.
+        const obj: any = {};
+        for (let i = 0; i < 11; i++) {
+            obj[`${'球'.repeat(58)}${String(i).padStart(2, '0')}`] = 'v'.repeat(200);
+        }
+        for (let i = 11; i < 20; i++) {
+            obj[`key-${String(i).padStart(2, '0')}`] = 'v'.repeat(200);
+        }
+        // Exact Codex probe key: U+754C, not the fixture CJK above.
+        const exact: any = {};
+        for (let i = 0; i < 11; i++) {
+            exact[`${'\u754C'.repeat(58)}${String(i).padStart(2, '0')}`] = 'v'.repeat(200);
+        }
+        for (let i = 11; i < 20; i++) {
+            exact[`key-${String(i).padStart(2, '0')}`] = 'v'.repeat(200);
+        }
+        for (const probe of [obj, exact]) {
+            const kept = compactQaFindings(
+                [{ severity: 'low', detail: 'x', evidence: [probe] }])[0].evidence![0];
+            expect(kept.truncatedEvidence).toBe(true);
+            expect(kept.keysOmitted).toBeGreaterThan(0);
+            expect(kept.keys.length + kept.keysOmitted).toBe(20);
+            expect(new TextEncoder().encode(JSON.stringify(kept)).length).toBeLessThanOrEqual(2048);
+        }
+        // Neighboring over-budget shapes around the boundary must fit too.
+        for (let cjkKeys = 8; cjkKeys <= 14; cjkKeys++) {
+            for (let cjkLen = 56; cjkLen <= 62; cjkLen += 2) {
+                const probe: any = {};
+                for (let i = 0; i < cjkKeys; i++) {
+                    probe[`${'\u754C'.repeat(cjkLen - 2)}${String(i).padStart(2, '0')}`] = 'v'.repeat(200);
+                }
+                for (let i = cjkKeys; i < 20; i++) {
+                    probe[`key-${String(i).padStart(2, '0')}`] = 'v'.repeat(200);
+                }
+                const k = compactQaFindings(
+                    [{ severity: 'low', detail: 'x', evidence: [probe] }])[0].evidence![0];
+                expect(new TextEncoder().encode(JSON.stringify(k)).length).toBeLessThanOrEqual(2048);
+                if (k.truncatedEvidence && k.keys) {
+                    expect(k.keys.length + (k.keysOmitted || 0)).toBe(20);
+                }
+            }
+        }
+    });
+
     it('marks unserializable evidence instead of throwing', () => {
         const circular: any = { sel: 'header' };
         circular.self = circular;
