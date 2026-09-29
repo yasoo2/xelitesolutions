@@ -720,13 +720,17 @@ function measureResponsive(vw: number) {
         //  reach durable evidence.
         var headerPageUrl = '';
         //  reach durable evidence. A secret can also hide in a PATH segment
-        //  (/reset/<token>), so opaque-looking segments keep a short prefix
-        //  only. Deliberate over-redaction: a hidden long slug is harmless,
-        //  a persisted secret is not. Pure inline logic: this runs in-page.
+        //  (/reset/<token>), so any segment long enough to be an opaque
+        //  token (NanoID-21, UUID-36, JWT parts) is FULLY redacted with no
+        //  surviving prefix — kept characters of a token are still token
+        //  material. Deliberate over-redaction: a hidden long slug is
+        //  harmless, a persisted secret is not. Pure inline logic: this
+        //  runs in-page. Residual: short (<20 char) or word-like secrets
+        //  cannot be told from ordinary slugs by length alone.
         var sanitizeProvenancePath = function (pathname: any) {
           var segs = String(pathname || '').split('/');
           for (var i = 0; i < segs.length; i++) {
-            if (segs[i].length >= 32) segs[i] = segs[i].slice(0, 8) + '[redacted]';
+            if (segs[i].length >= 20) segs[i] = '[redacted]';
           }
           return segs.join('/');
         };

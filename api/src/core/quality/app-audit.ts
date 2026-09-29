@@ -87,10 +87,14 @@ export interface CompactQaFinding {
 }
 
 /** One evidence item may never bloat the per-project store: small items pass
- * through untouched, oversized ones keep a bounded preview plus their true
- * size, and unserializable ones (circular refs) are marked, never thrown. */
+ * through untouched, oversized ones keep structural metadata plus their true
+ * size, and unserializable ones (circular refs) are marked, never thrown.
+ * Deliberately NO raw content preview: a bounded raw prefix is not a
+ * redaction boundary — opaque token-shaped values inside the first bytes
+ * would persist verbatim into durable evidence. */
 const COMPACT_EVIDENCE_ITEM_JSON_LIMIT = 2048;
-const COMPACT_EVIDENCE_ITEM_PREVIEW = 512;
+const COMPACT_EVIDENCE_ITEM_MAX_KEYS = 20;
+const COMPACT_EVIDENCE_ITEM_MAX_KEY_LENGTH = 64;
 
 function compactEvidenceItem(item: any): any {
     let json: string | null = null;
@@ -100,7 +104,14 @@ function compactEvidenceItem(item: any): any {
         return { truncatedEvidence: true, unserializable: true };
     }
     if (json.length <= COMPACT_EVIDENCE_ITEM_JSON_LIMIT) return item;
-    return { truncatedEvidence: true, jsonLength: json.length, preview: json.slice(0, COMPACT_EVIDENCE_ITEM_PREVIEW) };
+    const summary: any = { truncatedEvidence: true, jsonLength: json.length };
+    if (Array.isArray(item)) {
+        summary.length = item.length;
+    } else if (item !== null && typeof item === 'object') {
+        summary.keys = Object.keys(item).slice(0, COMPACT_EVIDENCE_ITEM_MAX_KEYS)
+            .map((k) => String(k).slice(0, COMPACT_EVIDENCE_ITEM_MAX_KEY_LENGTH));
+    }
+    return summary;
 }
 
 export function compactQaFindings(findings: any[], limit = 12): CompactQaFinding[] {

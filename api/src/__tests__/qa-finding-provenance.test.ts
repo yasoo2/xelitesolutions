@@ -13,8 +13,10 @@
  *  2. The durable lastAudit mapping keeps finding id + capped evidence
  *     instead of dropping everything but an (empty) message.
  *  3. The provenance itself is bounded and secret-safe: opaque path
- *     segments never reach durable evidence, and no single evidence
- *     item can bloat the per-project store.
+ *     segments (>=20 chars) are fully redacted with no surviving prefix,
+ *     and oversized evidence keeps structural metadata (byte count, key
+ *     names) instead of a raw content preview — a bounded raw prefix is
+ *     not a redaction boundary.
  */
 import fs from 'fs';
 import http from 'http';
@@ -59,13 +61,43 @@ describe('compactQaFindings keeps findings durable', () => {
         const kept = out[0].evidence![0];
         expect(kept.truncatedEvidence).toBe(true);
         expect(kept.jsonLength).toBeGreaterThan(2000);
-        expect(typeof kept.preview).toBe('string');
-        expect(kept.preview.length).toBeLessThanOrEqual(512);
+        // Structural metadata only: no raw content preview may persist.
+        expect(kept.preview).toBeUndefined();
+        expect(kept.keys).toEqual(['sel', 'dump']);
         expect(JSON.stringify(kept).length).toBeLessThan(2000);
         // Small items still pass through untouched.
         const small = { sel: 'header', h: 154 };
         expect(compactQaFindings([{ severity: 'low', detail: 'x', evidence: [small] }])[0].evidence![0])
             .toEqual(small);
+    });
+
+    it('never persists raw opaque material from oversized evidence', () => {
+        const marker = `opaque-${'7Q'.repeat(20)}`; // 47-char token-shaped value
+        const big = { sel: 'header', opaquePath: `/reset/${marker}`, pad: 'y'.repeat(3000) };
+        const out = compactQaFindings([{ id: 'big', severity: 'low', detail: 'x', evidence: [big] }]);
+        const kept = out[0].evidence![0];
+        expect(kept.truncatedEvidence).toBe(true);
+        expect(kept.jsonLength).toBeGreaterThan(2000);
+        expect(JSON.stringify(kept)).not.toContain(marker);
+        expect(JSON.stringify(kept)).not.toContain('opaque-7Q');
+        expect(kept.keys).toContain('opaquePath');
+    });
+
+    it('summarizes oversized arrays and long primitives without raw content', () => {
+        const rows = Array.from({ length: 500 }, (_, i) => `row-${i}-` + 'z'.repeat(20));
+        const arrKept = compactQaFindings(
+            [{ severity: 'low', detail: 'x', evidence: [rows] }])[0].evidence![0];
+        expect(arrKept.truncatedEvidence).toBe(true);
+        expect(arrKept.length).toBe(500);
+        expect(arrKept.preview).toBeUndefined();
+        expect(JSON.stringify(arrKept)).not.toContain('row-42-');
+        const strKept = compactQaFindings(
+            [{ severity: 'low', detail: 'x', evidence: [`canary-${'s'.repeat(5000)}`] }])[0].evidence![0];
+        expect(strKept.truncatedEvidence).toBe(true);
+        expect(strKept.jsonLength).toBeGreaterThan(2000);
+        expect(strKept.preview).toBeUndefined();
+        expect('keys' in strKept).toBe(false);
+        expect(JSON.stringify(strKept)).not.toContain('canary-');
     });
 
     it('marks unserializable evidence instead of throwing', () => {
@@ -205,17 +237,33 @@ describe('the fragmented-header finding carries measurement provenance', () => {
         const context = await browser.newContext();
         try {
             const page = await context.newPage();
+            // Full redaction: no prefix of an opaque segment may survive.
             const opaque = '9f2c7a1e'.repeat(8); // 64-char token-shaped segment
             await page.goto(`${baseUrl}/reset/${opaque}`, { waitUntil: 'load', timeout: 30_000 });
             const ui = await inspectUi(page);
             const header = ui.findings.find((f: any) => f.code === 'mobile_header_fragmented');
             expect(header).toBeTruthy();
             const url = String(header.evidence[0].url);
-            // The full opaque value must not survive; the page stays identifiable.
             expect(url).not.toContain(opaque);
+            expect(url).not.toContain('9f2c7a1e');
             expect(url).toContain('[redacted]');
             expect(url.startsWith(`${baseUrl}/reset/`)).toBe(true);
-            expect(url).toContain('9f2c7a1e');
+            // Shorter token-shaped segments (NanoID-21 class) redact fully too.
+            const short = 'V1StGXR8_Z5jdHi6B-myT'; // 21 chars
+            await page.goto(`${baseUrl}/invite/${short}`, { waitUntil: 'load', timeout: 30_000 });
+            const ui2 = await inspectUi(page);
+            const header2 = ui2.findings.find((f: any) => f.code === 'mobile_header_fragmented');
+            expect(header2).toBeTruthy();
+            const url2 = String(header2.evidence[0].url);
+            expect(url2).not.toContain(short);
+            expect(url2).not.toContain('V1StGXR8');
+            expect(url2).toBe(`${baseUrl}/invite/[redacted]`);
+            // Ordinary short slugs stay readable for diagnosis.
+            await page.goto(`${baseUrl}/projects/annual-report`, { waitUntil: 'load', timeout: 30_000 });
+            const ui3 = await inspectUi(page);
+            const header3 = ui3.findings.find((f: any) => f.code === 'mobile_header_fragmented');
+            expect(header3).toBeTruthy();
+            expect(String(header3.evidence[0].url)).toBe(`${baseUrl}/projects/annual-report`);
         } finally {
             await context.close().catch(() => { });
         }
