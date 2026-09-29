@@ -100,12 +100,12 @@ DEPENDENCIES=none
 ---
 
 BATCH_ID=WIRING-P2-004
-CAPABILITIES=schema/execute consistency (task_lifecycle required-vs-default gap) + empty-input honesty sweep continuation (25/25 reviewed, 19 probed live in sweep2.json)
-ROOT_CAUSE=task_lifecycle declares required:['action'] but execute() defaults action='update' and returns ok:true on {} (sweep1.json, rerun-stable); no central schema gate — validation is per-tool; 25 no-required tools PARTITIONED 18 SAFE + 1 BOUND + 4 EMBARGO + 2 FIXTURE (006). Absence-as-success shape: project_stop/orders_read/form_inbox/browser_consent return ok:true for absence (honest messages; ok-only verifiers would misread). project_undo default-latest-restore code-indicated (ProjectUndoTool.ts:98-100), fixture-unconfirmed.
+CAPABILITIES=schema/execute consistency (task_lifecycle required-vs-default gap) + empty-input honesty sweep continuation (25/25 reviewed, 19 probed live in sweep2.json; risk-tier 19 in sweep3.json)
+ROOT_CAUSE=task_lifecycle declares required:['action'] but execute() defaults action='update' and returns ok:true on {} (sweep1.json, rerun-stable); no central schema gate — validation is per-tool; 25 no-required tools PARTITIONED 18 SAFE + 1 BOUND + 4 EMBARGO + 2 FIXTURE (006). Absence-as-success shape: project_stop/orders_read/form_inbox/browser_consent return ok:true for absence (honest messages; ok-only verifiers would misread) + read_file {} returns ok:true EMPTY directory auto-list (sweep3.json, rerun-stable — 5th instance). project_undo default-latest-restore code-indicated (ProjectUndoTool.ts:98-100), fixture-unconfirmed.
 FILES=TaskLifecycleTool.ts (enforce required OR drop it from schema) + absence-as-success verifier note for LEVEL 5-6 sweep + project_undo snapshot fixture
 IMPLEMENTATION_OWNER=UNASSIGNED
 REVIEW_OWNER=UNASSIGNED
-TESTS=schema/execute consistency gate for task_lifecycle ({} -> honest error OR schema without required); verifier MUST read message/flags, not ok alone, for the 4 absence tools; project_undo fixture (snapshots present) to confirm/deny default-restore; AGENTS gates if ToolService touched (it is not — tool-local fix + verifier note)
+TESTS=schema/execute consistency gate for task_lifecycle ({} -> honest error OR schema without required); verifier MUST read message/flags, not ok alone, for the 5 absence tools; project_undo fixture (snapshots present) to confirm/deny default-restore; AGENTS gates if ToolService touched (it is not — tool-local fix + verifier note)
 REAL_JOE_UAT=none (contract nits; UI behavior unchanged either way)
 ROLLBACK=revert schema/execute one-liner
 DEPENDENCIES=none
@@ -134,6 +134,32 @@ REVIEW_OWNER=UNASSIGNED
 TESTS=root-containment test (default root == session workspace, never Joe repo); dead-input gate (every declared input is read); fixture probes with explicit paths; AGENTS gates
 REAL_JOE_UAT=none (scope correction; behavior on explicit paths unchanged)
 ROLLBACK=revert root/input change
+DEPENDENCIES=none
+
+---
+
+BATCH_ID=WIRING-P2-007
+CAPABILITIES=approval-risk destructive-input scan coverage (shadowed branches)
+ROOT_CAUSE=classifyToolRisk line-200 name-regex low-return + the 4 early-branch tool returns (deploy_project/git_ops/browser_run/shell_execute) all precede the line-201 whole-input destructive scan — so echo/central_answer/task_lifecycle + deploy_project.buildCommand are never content-scanned. Proven live: echo {destructive text} executed ok:true (sweep3.json). Code-indicated: deploy_project {build_static + hostile buildCommand} classifies MEDIUM and executes via ExecutionGateway (DeployProjectTool.ts:96-104). NEVER live-probe with a destructive command.
+FILES=ToolService.ts classifyToolRisk (reorder/extend scan) + DeployProjectTool.ts (scan-or-constrain buildCommand) + scan-coverage contract test
+IMPLEMENTATION_OWNER=UNASSIGNED (ToolService is shared — coordinate)
+REVIEW_OWNER=UNASSIGNED
+TESTS=scan-coverage gate: destructive strings in ANY tool input classify critical (or the tool documents why its field is inert, e.g. echo text); deploy buildCommand hostile-content RED->GREEN via fixture (blocked pre-execution, never executed); full tier-matrix regression (19 sweep3 probes as contracts); AGENTS gates
+REAL_JOE_UAT=none (policy tightening; honest blocks only)
+ROLLBACK=revert classifier order change
+DEPENDENCIES=none
+
+---
+
+BATCH_ID=WIRING-P2-008
+CAPABILITIES=browser session-injection verdict honesty (browser_run {} -> forbidden)
+ROOT_CAUSE=Universal Browser Session Injection (ToolService.ts:562-568) copies the chat sessionId into effectiveInput.sessionId, bypassing execute()'s sessionId_required guard (BrowserRunTool.ts:248); authz then fails on an id the caller never named, with a cross-user message ("belongs to another user") for a nonexistent browser session (sweep3.json, rerun-stable). Deny direction is safe; evidence is wrong.
+FILES=ToolService.ts (injection block) + BrowserRunTool.ts (distinguish unnamed vs foreign session) + verdict contract test
+IMPLEMENTATION_OWNER=UNASSIGNED (ToolService/browser shared — coordinate)
+REVIEW_OWNER=UNASSIGNED
+TESTS=verdict test: browser_run {} (no browserSessionId anywhere) -> honest "no browser session addressed" (still deny); foreign-session case keeps forbidden; AGENTS gates
+REAL_JOE_UAT=none (error-path honesty)
+ROLLBACK=revert verdict change
 DEPENDENCIES=none
 
 ---

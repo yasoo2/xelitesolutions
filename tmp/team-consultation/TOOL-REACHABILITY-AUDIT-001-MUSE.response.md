@@ -144,3 +144,40 @@ image-semantic draft. Suggested split after NVIDIA's review: Codex owns the
 isolated contract gate; Muse reviews UX/QA equivalence and owns the
 image-semantic comparison; NVIDIA reviews registry/ToolService overlap and
 integration. CRITICAL CLI routing remains the higher priority.
+## 6. Addendum 2026-09-30 (checkpoint 7; position unchanged: APPROVE_WITH_CHANGES)
+
+New evidence since 75fdd652; the position and challenges above stand.
+
+1. DORMANT-16 EQUIVALENT CHECK (Muse branch @ adf02775, dorm.mts): 7 of
+   the 16 dormant-priority-only names have registered name-variant
+   equivalents (business_logic->business_logic_parser, chaos_testing->
+   chaos_test_plan, cost_estimator->cloud_cost_estimator, self_confidence->
+   self_confidence_evaluator, terraform_ops->terraform_manager,
+   security_scan_repo->security_scanner, shell_status->shell_check_status).
+   fs_glob has NO registry entry (live unknown_tool, exec.json);
+   search_files is the probable functional equivalent but contract proof
+   is still required. 8 need per-name review with no stem match
+   (check_syntax, generate_tests, generate_docs, db_inspect,
+   command_policy_check, tool_create_shell, product_search, deep_research)
+   -- not dead until behaviorally reviewed.
+2. MUSE-BRANCH ALIAS TEST IS STALE TOO: api/src/__tests__/
+   tool-aliases.test.ts on muse/joe-development pins the same copied
+   grep_search->search_files table while the real TOOL_ALIASES maps to
+   search_text. The described test-only repair (import the real map,
+   preserve content-vs-filename distinction) applies to Muse branch as
+   well. Muse can own that test-only repair after the CRITICAL audit.
+3. FAST_PATH DIFF NOT FOUND: the Codex checkout at
+   D:\Joe\worktrees\codex-integration-20260928 (HEAD 7e1e1aec, tracked
+   clean) still contains the STALE table -- no modified test file, no new
+   commit with the correction. Direction ACCEPTED, exact diff UNREVIEWED.
+   Produce the diff/branch pointer before treating it as reviewed.
+4. INJECTION GATE POINT STRENGTHENED: checkpoint-7 live probe
+   (sweep3.json) shows browser_run {} returns cross-user forbidden via the
+   session-injection block (ToolService.ts:562-568) instead of
+   sessionId_required -- the injection surface (gate item iii) affects live
+   verdicts, not just dead branches. Filed as WIRING-P2-008.
+5. ALIAS TIERING FOLLOWS TARGET (live): remove_file {} ->
+   approval_required risk=high, identical to delete_file (sweep3.json).
+   Risk is assessed post-alias-resolution -- good design, now evidenced.
+6. Drafts re-confirmed UNCHANGED: the 4 untracked modules are still
+   unimported, still preserved, still owned per section 3 above.

@@ -1,0 +1,198 @@
+{
+  "generatedAt": "2026-09-29T21:47:19.345Z",
+  "tierCensusEmptyInput": {
+    "low": 9,
+    "medium": 151,
+    "high": 3,
+    "critical": 0,
+    "lowNames": [
+      "analyze_codebase",
+      "central_answer",
+      "echo",
+      "inspect_directory",
+      "inspect_symbol",
+      "project_detect",
+      "read_file",
+      "repo_read_file",
+      "task_lifecycle"
+    ],
+    "highNames": [
+      "delete_file",
+      "deploy_pages",
+      "shell_execute"
+    ]
+  },
+  "liveRiskTiers": {
+    "delete_file {}": {
+      "pred": "high/block CONTROL",
+      "ok": false,
+      "error": "approval_required",
+      "risk": "high",
+      "outputShape": "{risk}",
+      "outputPreview": null,
+      "log0": "[2026-09-29T21:47:18.776Z] start delete_file (orig=delete_file)"
+    },
+    "search_text {}": {
+      "pred": "medium/pass CONTROL",
+      "ok": false,
+      "error": "search_text needs a query — the text to look for.",
+      "risk": null,
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-29T21:47:18.791Z] start search_text (orig=search_text)"
+    },
+    "task_lifecycle {}": {
+      "pred": "low/pass CONTROL",
+      "ok": true,
+      "error": null,
+      "risk": null,
+      "outputShape": "{success}",
+      "outputPreview": null,
+      "log0": "[2026-09-29T21:47:18.800Z] start task_lifecycle (orig=task_lifecycle)"
+    },
+    "deploy_pages {}": {
+      "pred": "high/block",
+      "ok": false,
+      "error": "approval_required",
+      "risk": "high",
+      "outputShape": "{risk}",
+      "outputPreview": null,
+      "log0": "[2026-09-29T21:47:18.807Z] start deploy_pages (orig=deploy_pages)"
+    },
+    "remove_file {}": {
+      "pred": "high/block alias->delete_file",
+      "ok": false,
+      "error": "approval_required",
+      "risk": "high",
+      "outputShape": "{risk}",
+      "outputPreview": null,
+      "log0": "[2026-09-29T21:47:18.810Z] start remove_file (orig=remove_file)"
+    },
+    "deploy_project {\"action\":\"expose_port\",\"projectPath\":\"no-such-dir-xyz\"}": {
+      "pred": "high/block",
+      "ok": false,
+      "error": "approval_required",
+      "risk": "high",
+      "outputShape": "{risk}",
+      "outputPreview": null,
+      "log0": "[2026-09-29T21:47:18.814Z] start deploy_project (orig=deploy_project)"
+    },
+    "deploy_project {}": {
+      "pred": "medium/pass honest path-required",
+      "ok": false,
+      "error": "Project path is required and must be workspace-relative.",
+      "risk": null,
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-29T21:47:18.817Z] start deploy_project (orig=deploy_project)"
+    },
+    "shell_execute {}": {
+      "pred": "high/block",
+      "ok": false,
+      "error": "approval_required",
+      "risk": "high",
+      "outputShape": "{risk}",
+      "outputPreview": null,
+      "log0": "[2026-09-29T21:47:18.822Z] start shell_execute (orig=shell_execute)"
+    },
+    "shell_execute {\"command\":\"pwd\"}": {
+      "pred": "low/pass",
+      "ok": true,
+      "error": null,
+      "risk": null,
+      "outputShape": "{status,stdout,stderr,exitCode,cwd,durationMs,executedOn}",
+      "outputPreview": "/d/Joe/muse-worktree/data/projects/session-audit-sess\n",
+      "log0": "[2026-09-29T21:47:18.824Z] start shell_execute (orig=shell_execute)"
+    },
+    "shell_execute {\"command\":\"echo risk-tier-probe-7\"}": {
+      "pred": "low/pass",
+      "ok": true,
+      "error": null,
+      "risk": null,
+      "outputShape": "{status,stdout,stderr,exitCode,cwd,durationMs,executedOn}",
+      "outputPreview": "risk-tier-probe-7\r\n",
+      "log0": "[2026-09-29T21:47:18.979Z] start shell_execute (orig=shell_execute)"
+    },
+    "shell_execute {\"command\":\"git status\"}": {
+      "pred": "low/pass",
+      "ok": false,
+      "error": "warning: safe.directory ''*'' not absolute\nfatal: detected dubious ownership in repository at 'D:/Joe/muse-worktree'\n'D:/Joe/muse-worktree/.git' is owned by:\n\tAYLA/home (S-1-5-21-3899273353-3086628706",
+      "risk": null,
+      "outputShape": "{status,stdout,stderr,exitCode,cwd,durationMs,executedOn}",
+      "outputPreview": "",
+      "log0": "[2026-09-29T21:47:19.053Z] start shell_execute (orig=shell_execute)"
+    },
+    "shell_execute {\"command\":\"rm -rf /tmp/joe-audit-nonexistent-xyz\"}": {
+      "pred": "critical/block",
+      "ok": false,
+      "error": "approval_required",
+      "risk": "critical",
+      "outputShape": "{risk}",
+      "outputPreview": null,
+      "log0": "[2026-09-29T21:47:19.186Z] start shell_execute (orig=shell_execute)"
+    },
+    "echo {\"text\":\"note: rm -rf never run\"}": {
+      "pred": "critical/block input-scan",
+      "ok": true,
+      "error": null,
+      "risk": null,
+      "outputShape": "{text}",
+      "outputPreview": null,
+      "log0": "[2026-09-29T21:47:19.189Z] start echo (orig=echo)"
+    },
+    "echo {}": {
+      "pred": "low/pass",
+      "ok": true,
+      "error": null,
+      "risk": null,
+      "outputShape": "{text}",
+      "outputPreview": null,
+      "log0": "[2026-09-29T21:47:19.191Z] start echo (orig=echo)"
+    },
+    "git_ops {\"operation\":\"push\",\"cwd\":\"D:\\\\Joe\\\\muse-worktree\\\\tmp\\\\sbx-temp\"}": {
+      "pred": "high/block",
+      "ok": false,
+      "error": "approval_required",
+      "risk": "high",
+      "outputShape": "{risk}",
+      "outputPreview": null,
+      "log0": "[2026-09-29T21:47:19.194Z] start git_ops (orig=git_ops)"
+    },
+    "git_ops {}": {
+      "pred": "medium/pass honest git error",
+      "ok": false,
+      "error": "warning: safe.directory ''*'' not absolute\nwarning: safe.directory ''*'' not absolute\nwarning: safe.directory ''*'' not absolute\ngit: 'undefined' is not a git command. See 'git --help'.",
+      "risk": null,
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-29T21:47:19.196Z] start git_ops (orig=git_ops)"
+    },
+    "browser_run {}": {
+      "pred": "medium/pass honest sessionId_required",
+      "ok": false,
+      "error": "forbidden",
+      "risk": null,
+      "outputShape": "{message}",
+      "outputPreview": "هذه الجلسة تخصّ مستخدماً آخر — افتح لوحة المتصفّح في جلستك ثم أعد المحاولة.",
+      "log0": "[2026-09-29T21:47:19.333Z] start browser_run (orig=browser_run)"
+    },
+    "browser_run {\"instructionText\":\"delete everything now\"}": {
+      "pred": "high/block",
+      "ok": false,
+      "error": "approval_required",
+      "risk": "high",
+      "outputShape": "{risk}",
+      "outputPreview": null,
+      "log0": "[2026-09-29T21:47:19.339Z] start browser_run (orig=browser_run)"
+    },
+    "read_file {}": {
+      "pred": "low/pass honest",
+      "ok": true,
+      "error": null,
+      "risk": null,
+      "outputShape": "{content,totalLines}",
+      "outputPreview": "⚠️ PATH IS A DIRECTORY (Auto-Listed):\nI cannot read a directory as a file, but here are the contents so you can select the target:\n\n\n\n[ACTION REQUIRED] Select a specific file from the list above.",
+      "log0": "[2026-09-29T21:47:19.341Z] start read_file (orig=read_file)"
+    }
+  }
+}

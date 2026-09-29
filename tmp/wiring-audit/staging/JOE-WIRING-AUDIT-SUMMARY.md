@@ -1,7 +1,7 @@
 # JOE WIRING AUDIT SUMMARY (Muse draft 2026-09-29 — staging for D:\Joe\coordination\team\JOE-WIRING-AUDIT-SUMMARY.md)
 
-BRANCH=muse/joe-development @ b90ba5e7. Evidence: tmp/wiring-audit/*.json + *.mts
-(checkpoints 1-6). NVIDIA cross-review PENDING (worker BLOCKED). No repairs done.
+BRANCH=muse/joe-development @ adf02775. Evidence: tmp/wiring-audit/*.json + *.mts
+(checkpoints 1-7). NVIDIA cross-review PENDING (worker BLOCKED). No repairs done.
 
 RAW_TOOL_DEFINITIONS=93 files / 182 name literals (14 literals are non-tool noise: app/author/description/desktop/entities/express/fullstack/mobile/next/q/tablet/title/viewport/visibility)
 REGISTERED_TOOLS=163 (0 dupes, 163/163 with execute(); boot log "Registered 163 tools (71 revived)")
@@ -16,13 +16,13 @@ WHY=no top-level workers/ dir; worker-like code (browser/wsHub, background jobs,
 NEXT_DISCOVERY_STEP=NVIDIA-scope service/worker inventory + Muse browser-worker pass
 
 FULLY_WIRED=UNKNOWN (bulk; no tool reaches FULLY until verification-compat is surveyed)
-PARTIALLY_WIRED=UNKNOWN (bulk; confirmed-partial items: 21+2 boot-defaulted declarations [exact lists in sweep1.json], dormant-21 group, catalogue-15 group [15/15 storied strong], alias layer 27/28 live, rewrite layer, 2 inline-shadowed memory tools [recall_memory divergence proven live], direct-HTTP duplicate path, LEVEL-4 spot tools + 28 empty-input batch-1+2 [8+8 honest, 1 unvalidated-success task_lifecycle, 1 approval pre-emption, 1 swallowed-cause, 4 absence-as-success, 1 honest offline fail], dead autoFix input, 2 uncontained default roots, deploy_pages token fallback)
+PARTIALLY_WIRED=UNKNOWN (bulk; confirmed-partial items: 21+2 boot-defaulted declarations [exact lists in sweep1.json], dormant-21 group, catalogue-15 group [15/15 storied strong], alias layer 27/28 live, rewrite layer, 2 inline-shadowed memory tools [recall_memory divergence proven live], direct-HTTP duplicate path, LEVEL-4 spot tools + 28 empty-input batch-1+2 [8+8 honest, 1 unvalidated-success task_lifecycle, 1 approval pre-emption, 1 swallowed-cause, 4 absence-as-success, 1 honest offline fail], dead autoFix input, 2 uncontained default roots, deploy_pages token fallback, risk-tier layer [census 9/151/3/0 + 19 live points: alias-tiering follows target, destructive-scan shadow order, browser injection verdict, read_file empty-dir ok:true])
 ORPHANED=5 confirmed (bulk_file_generator, codebase_navigator, generate_image, visual_qa, grep_search impl) + 4 preliminary (3 QA drafts + nvidia provider, untracked)
 DUPLICATE=2 (recall_memory, memorize_codebase: registry def + inline handler each)
 LEGACY_OR_DEAD=UNKNOWN (none proven; static absence alone is not the bar)
 INTERNAL_ONLY=UNKNOWN (ROUTER_EXCLUDED=32 is exclusion-from-keyword-router, not proof of internal-by-design; per-name intent unsurveyed)
 TEST_ONLY=UNKNOWN (api root selftest-*/verify_* harnesses are candidates, unverified)
-UNKNOWN=per-trunk stories (19 proposed) + services/workers + bulk per-tool firewall sweep (8 spot + 28 empty-input batch-1+2 done; 25/25 no-required reviewed: 18 SAFE + 1 BOUND + 4 EMBARGO + 2 FIXTURE; 6 embargo/fixture unprobed by rule) + risk table (1 live point: delete_file approval pre-emption, ToolService.ts:778-784) + LEVEL 5-6 proofs
+UNKNOWN=per-trunk stories (19 proposed) + services/workers + bulk per-tool firewall sweep (8 spot + 28 empty-input batch-1+2 done; 25/25 no-required reviewed: 18 SAFE + 1 BOUND + 4 EMBARGO + 2 FIXTURE; 6 embargo/fixture unprobed by rule) + risk table SURVEYED (static full + 19 live tier points, sweep3.json) + LEVEL 5-6 proofs
 
 IMPLEMENTED_NOT_REGISTERED=5 tool names (+4 untracked drafts preliminary)
 TARGETED_SELECTION=9/9 SELECTABLE_BY_KEYWORD (best rank 1 each on 2 self-grounded + 1 blind goal; target.json)
@@ -34,7 +34,9 @@ LEVEL4_SPOT_PROOFS=8 case-groups green-or-honest via canonical path (exec.json):
 REGISTERED_NOT_PLANNER_VISIBLE=UNKNOWN (planner visibility = keyword-router 132/163 UNION deterministic paths UNION priority/model surface; union uncomputed; catalogue-absent-15 now 15/15 storied)
 PLANNER_VISIBLE_NOT_EXECUTABLE=0 proven beyond image_generate rewrite (broken target) — per-name execution sweep pending
 EXECUTABLE_NOT_VERIFIABLE=UNKNOWN (verification-compat sweep pending)
-CONTRACT_MISMATCHES=5 confirmed: (1) web_search double mapping (rewrite vs alias, one corpse); (2) memory inline-vs-registry divergence + unenforced permissions; (3) verificationTask string/object planner-executor mismatch (cited from CRITICAL-REAL-JOE-UI-001 evidence, not re-audited here); (4) dead_code_detector autoFix declared-but-never-read (planner-facing dead input); (5) ok:false-without-error wrapper substitutes generic message, real cause stuck in output (2 instances: rss_fetch, repo_diff_summary)
+RISK_TABLE_CENSUS=low=9 (analyze_codebase, central_answer, echo, inspect_directory, inspect_symbol, project_detect, read_file, repo_read_file, task_lifecycle), medium=151 (incl. input-tiered deploy_project/git_ops/browser_run at {}), high=3 on {} (delete_file, deploy_pages, shell_execute), critical=0 on {} (sweep3.json transcription of ToolService.ts:142-203)
+RISK_TIER_LIVE=19/19 rerun-stable (sweep3.json): 8 approval_required blocks (1 critical: shell rm -rf; 7 high incl. deploy_pages, remove_file-alias, expose_port, shell{}, git push, browser delete-text) + 5 honest ok:false + 6 ok:true; gate semantics: high/critical need AUTO_APPROVE_ALL (default off, pre-empts before execute), low/medium pass under default autoSafe
+CONTRACT_MISMATCHES=7 confirmed: (1) web_search double mapping (rewrite vs alias, one corpse); (2) memory inline-vs-registry divergence + unenforced permissions; (3) verificationTask string/object planner-executor mismatch (cited from CRITICAL-REAL-JOE-UI-001 evidence, not re-audited here); (4) dead_code_detector autoFix declared-but-never-read (planner-facing dead input); (5) ok:false-without-error wrapper substitutes generic message, real cause stuck in output (2 instances: rss_fetch, repo_diff_summary); (6) risk-scan shadow order: line-200 low-return + early-branch returns precede the line-201 destructive-input scan, so echo/central_answer/task_lifecycle + deploy_project.buildCommand are never content-scanned (echo destructive-text executed live; buildCommand gap code-indicated, never live-probed); (7) browser session-injection verdict: browser_run {} returns cross-user forbidden on an injected chat id (ToolService.ts:562-568) instead of sessionId_required
 ALTERNATE_EXECUTION_PATHS=4 known: (a) ToolService canonical; (b) direct HTTP routes (runAsSystem, TOOL-HTTP-OWNER-GATE-001); (c) deterministic planner bypasses (ProjectPipeline hisOwnSchema, PlanningEngine classifyBuildScope/deterministicPhasesFor — NVIDIA-owned files, read-only cited); (d) ToolService inline execs (memory pair). Classification CANONICAL vs FALLBACK vs LEGACY per path: PENDING.
 
 EXECUTABLE_NOTE=The 40 rewrite-source names execute by rename (not registration). "Executable tools" as a single number is therefore misleading; the honest statement is: 163 registered executables + 40 rename-covered aliases + 2 conditional shadows + 1 broken rewrite. Do NOT sum these into a headline without the partition.

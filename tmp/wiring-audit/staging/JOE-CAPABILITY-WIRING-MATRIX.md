@@ -1,16 +1,17 @@
 # JOE CAPABILITY WIRING MATRIX (Muse draft 2026-09-29 — staging for D:\Joe\coordination\team\JOE-CAPABILITY-WIRING-MATRIX.md)
 
-SCOPE=Muse-branch discovery checkpoints 1-6 only (muse/joe-development @ b90ba5e7).
+SCOPE=Muse-branch discovery checkpoints 1-7 only (muse/joe-development @ adf02775).
 Rows below are EVIDENCED tool-level entries. HIGH_LEVEL_CAPABILITIES grouping
 (merge v1: 19 trunks PROPOSED, per-trunk stories pending), services/workers/
 internal-infra rows, and NVIDIA-owned registry/ingress/persistence areas are
 UNKNOWN/PENDING and must NOT be treated as covered.
 Evidence files: D:\Joe\muse-worktree\tmp\wiring-audit\{discovery,exposure,
-classification,reachability,target,exec,sweep1,sweep2,merge}.json +
-{discover,exposure,classify,reach,target,exec,sweep1,sweep2,merge}.mts +
-MUSE-WIRING-DISCOVERY-00{1,2,3,4,5,6}.md. All probes re-runnable; exec/sweep
+classification,reachability,target,exec,sweep1,sweep2,merge,sweep3}.json +
+{discover,exposure,classify,reach,target,exec,sweep1,sweep2,merge,sweep3}.mts +
+MUSE-WIRING-DISCOVERY-00{1,2,3,4,5,6,7}.md. All probes re-runnable; exec/sweep
 probes perform bounded safe runs only (fixtures created + removed by the
-probe; 6 no-required names embargoed/fixture-only by rule, see 006).
+probe; 6 no-required names embargoed/fixture-only by rule, see 006; sweep3
+risk probes control-gated, see 007).
 
 FORMAT per row follows CRITICAL-JOE-DEEP-CAPABILITY-WIRING-AUDIT.
 
@@ -588,5 +589,67 @@ RECOMMENDED_ACTION=WIRING-P2-004 family: fixture with snapshots to confirm/deny 
 
 ---
 
-END-OF-MUSE-DRAFT-ROWS=28 (21 individual + 5 group + 2 external-cited)
-COVERAGE-DISCLAIMER=This draft covers ONLY what Muse checkpoints 1-6 evidenced. Full matrix requires: per-trunk path stories (19 trunks PROPOSED in merge.json), services/workers/persistence/deployment rows (NVIDIA scope), bulk per-tool firewall sweep (8 spot + 28 empty-input batch-1+2 done; risk table 1 point; 6 embargo/fixture names unprobed), contract audit per boundary, LEVEL 5-6 proofs, and NVIDIA cross-review (currently BLOCKED).
+---
+
+CAPABILITY_ID=GROUP-approval-risk-tiers
+NAME=approval risk tiers (classifyToolRisk, ToolService.ts:142-203 + gate :772-784)
+CATEGORY=group/firewall-policy
+SOURCE_FILES=api/src/modules/tools/definitions/* (all 163 registered) + api/src/modules/services/ToolService.ts
+IMPLEMENTATION=4-tier classifier: input-tiered tools (deploy_project/shell_execute/git_ops/browser_run) + name-regex tiers + whole-input destructive scan + medium default; high/critical pre-empt execute unless AUTO_APPROVE_ALL
+REGISTERED=N/A (policy layer, not a tool)
+REGISTRY_EVIDENCE=census over live 163 (sweep3.json): low=9, medium=151, high=3 on {} (delete_file, deploy_pages, shell_execute), critical=0 on {}
+PLANNER_VISIBLE=N/A
+SELECTABLE=N/A
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE 19/19 rerun-stable (sweep3.json): 8 approval_required blocks (1 critical) + 5 honest ok:false + 6 ok:true; alias tiering follows target (remove_file->delete_file high); gate order: workspace/user gates default-pass, approval gate operative
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=the gate IS the permission layer for these probes; risk echoed in output={risk}
+INPUT_CONTRACT_VALID=PARTIAL (scan shadow F31; see TOOL-echo-input-scan-shadow row)
+OUTPUT_CONTRACT_VALID=YES (approval_required + {risk} shape stable)
+EVIDENCE_PRODUCED=YES
+VERIFICATION_COMPATIBLE=UNKNOWN (verifier handling of approval_required unsurveyed)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (tiers enforced live; scan-order + verdict gaps filed)
+RECOMMENDED_ACTION=WIRING-P2-007 (scan shadow) + WIRING-P2-008 (browser verdict); adopt 19 sweep3 probes as tier regression contracts
+
+---
+
+CAPABILITY_ID=TOOL-echo-input-scan-shadow
+NAME=echo destructive-input scan shadow (classifyToolRisk order)
+CATEGORY=tool/policy-gap
+SOURCE_FILES=api/src/modules/services/ToolService.ts (:200-201) + api/src/modules/tools/definitions/DeployProjectTool.ts (buildCommand path)
+IMPLEMENTATION=line-200 name-regex low-return + 4 early-branch tool returns precede the line-201 whole-input destructive scan; echo/central_answer/task_lifecycle + deploy_project.buildCommand never content-scanned
+REGISTERED=YES (echo in live 163)
+REGISTRY_EVIDENCE=echo registered; finding is classifier-order, not registration
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (sweep3.json): echo {text:'note: rm -rf never run'} -> ok:true executed, rerun-stable. deploy buildCommand hostile-content gap CODE-INDICATED only (DeployProjectTool.ts:96-104 executes buildCommand at MEDIUM with no content scan) — never live-probed by rule
+INPUT_CONTRACT_VALID=NO (destructive content not classified for these names/fields)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (tiering works; scan coverage has shadowed branches)
+SECURITY_RISK=medium (block direction is what matters: destructive shell/git/browser/delete paths ARE gated; gap is unscanned free-text fields on medium/low names + buildCommand execution)
+RECOMMENDED_ACTION=WIRING-P2-007: reorder/extend scan; fixture-only hostile-buildCommand RED->GREEN (blocked pre-execution, never executed)
+
+---
+
+CAPABILITY_ID=TOOL-browser_run-injection-verdict
+NAME=browser_run session-injection verdict (ToolService.ts:562-568)
+CATEGORY=tool/browser-evidence
+SOURCE_FILES=api/src/modules/services/ToolService.ts + api/src/modules/tools/definitions/BrowserRunTool.ts
+IMPLEMENTATION=Universal Browser Session Injection copies chat sessionId into effectiveInput.sessionId, bypassing execute()'s sessionId_required guard (:248); authz fails on an unnamed id with a cross-user message
+REGISTERED=YES
+REGISTRY_EVIDENCE=browser_run in live 163
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (sweep3.json): browser_run {} -> ok:false forbidden + Arabic "belongs to another user", rerun-stable (expected sessionId_required per execute body; injection verified at ToolService.ts:565-567)
+INPUT_CONTRACT_VALID=PARTIAL (deny-safe direction; wrong evidence)
+OUTPUT_CONTRACT_VALID=PARTIAL (verdict misattributes: no browser session was addressed)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (safe deny; dishonest verdict)
+RECOMMENDED_ACTION=WIRING-P2-008: distinguish "no browser session addressed" from cross-user forbidden; keep deny-safe
+
+---
+
+END-OF-MUSE-DRAFT-ROWS=31 (23 individual + 6 group + 2 external-cited)
+COVERAGE-DISCLAIMER=This draft covers ONLY what Muse checkpoints 1-7 evidenced. Full matrix requires: per-trunk path stories (19 trunks PROPOSED in merge.json), services/workers/persistence/deployment rows (NVIDIA scope), bulk per-tool firewall sweep (8 spot + 28 empty-input batch-1+2 + 19 risk-tier live done; 25/25 no-required reviewed; 6 embargo/fixture names unprobed; risk table SURVEYED), contract audit per boundary, LEVEL 5-6 proofs, and NVIDIA cross-review (currently BLOCKED).
