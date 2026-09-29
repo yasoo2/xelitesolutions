@@ -66,6 +66,16 @@ export interface AppBuildOptions {
      *  then opens honestly bare rather than stocked with invented goods.
      */
     seedRows?: Array<Record<string, any>>;
+    /**
+     *  HOW MANY ROWS HIS SENTENCE STATED — NOT HOW MANY THE BUILD SHIPPED.
+     *
+     *  The generated suite must assert the requested count, never the
+     *  artifact's own row count: measured in a real UI run, a build that
+     *  shipped zero rows for "Seed it with 6" passed a test named "seed rows
+     *  reach the generated app" because the expectation was read from the
+     *  empty artifact. Undefined when he stated no count.
+     */
+    wantedSeedCount?: number;
     /** The session's Joe API endpoint, when a backend was built first. */
     api?: string;
     /** localStorage namespace — one per project, so two apps never collide. */
@@ -3706,7 +3716,10 @@ export function fileAppPackageJson(name: string, bp: AppBlueprint): string {
  */
 export interface GroundedSchemaExpectation {
     fields: Array<{ key: string; label: string }>;
+    /** Seeds the artifact actually shipped — pins non-emptiness, never a count. */
     seedCount: number;
+    /** Seeds his sentence stated — drives the exact-count assertion when set. */
+    wantedSeedCount?: number;
 }
 
 export function fileAppSmokeTest(schema?: GroundedSchemaExpectation): string {
@@ -3730,22 +3743,43 @@ test('generated React app scaffold is complete and testable', () => {
 });
 `;
     const fields = (schema?.fields || []).filter(f => f && (f.label || f.key));
-    const seedCount = schema && schema.seedCount > 0 ? Math.floor(schema.seedCount) : 0;
-    if (!fields.length && !seedCount) return scaffold;
+    // What the artifact shipped pins non-emptiness; what HE STATED pins the
+    // count. The two must never be confused: asserting the shipped count
+    // lets an empty build pass a test named "seed rows reach" (real-UI
+    // run 23: "Seed it with 6" shipped zero rows, suite green).
+    const shipped = schema && schema.seedCount > 0 ? Math.floor(schema.seedCount) : 0;
+    const wanted = schema && schema.wantedSeedCount && schema.wantedSeedCount > 0
+        ? Math.floor(schema.wantedSeedCount) : 0;
+    if (!fields.length && !shipped && !wanted) return scaffold;
     // Embedded via JSON.stringify so labels with quotes/backslashes/unicode
     // stay valid JS string literals in the generated file.
     const labels = JSON.stringify(fields.map(f => String(f.label || f.key)));
     const keys = JSON.stringify(fields.map(f => String(f.key || f.label)));
-    const seedBlock = seedCount > 0 ? `
+    // A stated count is an exact promise; shipped-but-uncounted rows must at
+    // least exist and carry the requested columns. No stated count and no
+    // rows is the honest bare app — columns only, and the name says so.
+    const testName = fields.length && (wanted > 0 || shipped > 0)
+        ? 'requested columns and seed rows reach the generated app'
+        : (wanted > 0 || shipped > 0)
+            ? 'requested seed rows reach the generated app'
+            : 'requested columns reach the generated app';
+    const seedBlock = wanted > 0 ? `
   const seeds = Array.isArray(content.seedRows) ? content.seedRows : [];
-  assert.equal(seeds.length, ${seedCount}, 'expected ${seedCount} seed rows, found ' + seeds.length);
+  assert.equal(seeds.length, ${wanted}, 'expected ${wanted} seed rows, found ' + seeds.length);
+  for (const row of seeds) {
+    for (const key of expectedKeys) {
+      assert.ok(row && key in row, 'seed row is missing the requested column: ' + key);
+    }
+  }` : shipped > 0 ? `
+  const seeds = Array.isArray(content.seedRows) ? content.seedRows : [];
+  assert.ok(seeds.length > 0, 'expected seed rows in the generated app, found none');
   for (const row of seeds) {
     for (const key of expectedKeys) {
       assert.ok(row && key in row, 'seed row is missing the requested column: ' + key);
     }
   }` : '';
     return `${scaffold}
-test('requested columns and seed rows reach the generated app', async () => {
+test('${testName}', async () => {
   const content = (await import('../src/content.js')).content;
   const actualLabels = (content.fields || []).map((f) => String(f && f.label));
   const actualKeys = (content.fields || []).map((f) => String(f && f.key));
@@ -4626,6 +4660,7 @@ export function buildAppFiles(bp: AppBlueprint, o: AppBuildOptions, slugName: st
         'scripts/smoke-test.test.mjs': fileAppSmokeTest({
             fields: (builtBp.fields || []).map(f => ({ key: String(f.key || ''), label: String(f.label || '') })),
             seedCount: (o.seedRows || []).length,
+            wantedSeedCount: o.wantedSeedCount,
         }),
         ...engineEntry,
         ...(builtBp.engine === 'records' ? {

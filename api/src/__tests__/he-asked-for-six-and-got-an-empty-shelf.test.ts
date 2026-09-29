@@ -293,11 +293,16 @@ describe('the seed reaches the shelf, not just a variable', () => {
 
     it('POSITIVE — the generator writes a catalogue and hands it to the build', () => {
         expect(TOOL).toContain('authorCatalogue');
-        expect(TOOL).toMatch(/buildAppFiles\(runBp, \{\s*\n\s*seedRows,/);
+        expect(TOOL).toMatch(/buildAppFiles\(runBp, \{\s*\n\s*wantedSeedCount,\s*\n\s*seedRows,/);
         //  Run 22: «4 example plants» seeded 8 because the count reader never
         //  saw «plant» — the call site passed the request alone. The entity
         //  the build is seeding travels with the request now.
-        expect(TOOL).toMatch(/wanted: countHeAskedFor\(request,/);
+        //
+        //  Run 23: the same read feeds the generated suite, so the suite
+        //  asserts what he stated instead of what the artifact shipped. One
+        //  hoisted read, two uses — catalogue `wanted` and build options.
+        expect(TOOL).toMatch(/countHeAskedFor\(request, String\(\(runBp as any\)\.entityOne \|\| ''\)\)/);
+        expect(TOOL).toMatch(/wanted: wantedSeedCount,/);
     });
 
     it('POSITIVE — the build writes it into content.js', () => {

@@ -4,6 +4,7 @@ import path from 'path';
 
 import { buildAppFiles, fileAppSmokeTest } from '../modules/tools/definitions/react-app-templates';
 import { blueprintFor } from '../core/design/app-blueprints';
+import { countHeAskedFor } from '../core/design/authored-catalogue';
 import { syntaxOk } from '../modules/tools/definitions/ProjectEditTool';
 
 /**
@@ -21,6 +22,16 @@ import { syntaxOk } from '../modules/tools/definitions/ProjectEditTool';
  * unmet is intermediate evidence at best. The smoke test must additionally
  * assert the request-derived schema (columns) and seed rows it was built
  * with, so reader/seed regressions break the app's own suite.
+ *
+ * Real-UI evidence (CRITICAL-REAL-JOE-UI-001 run 23): the request stated
+ * "Seed it with 6 example donations", the build shipped `seedRows: []`, and
+ * the generated suite still passed a test NAMED "requested columns and seed
+ * rows reach the generated app" — because the seed expectation was read from
+ * the artifact's own row count (0, so no seed assertion was emitted) instead
+ * of from his sentence. The acceptance judge caught the missing seeds; the
+ * app's own suite blessed them. A test that derives its expectation from the
+ * artifact can never catch the artifact's absence: the requested count must
+ * drive the assertion, and the test name must not claim seeds it never checks.
  */
 const REQUEST = 'Build a small buoy readings web app: a table of buoy readings '
     + 'with buoy, height and period columns. Seed it with 2 example readings.';
@@ -49,14 +60,18 @@ const runSmoke = (dir: string) => spawnSync('node', ['--test', 'scripts/smoke-te
     timeout: 60000,
 });
 
-const filesForRequest = () => {
+const filesForRequest = (overrides: { seedRows?: Array<Record<string, any>>; wantedSeedCount?: number } = {}) => {
     const bp = blueprintFor('generic', REQUEST, false);
     const fields = (bp.fields || []).filter(f => f && (f.label || f.key));
     // Grounding is asserted on whatever the reader derives, so this suite
     // stays green through future reader-phrasing fixes (e.g. the known
     // trailing-noun infidelity that reads "period columns" for "period").
     expect(fields.length).toBeGreaterThanOrEqual(2);
-    const seedRows = [1, 2].map(n => {
+    // The request states its seed count ("Seed it with 2 example readings");
+    // the reader must see it, and the build must carry it into the suite.
+    const wanted = countHeAskedFor(REQUEST, String((bp as any).entityOne || ''));
+    expect(wanted).toBe(2);
+    const seedRows = overrides.seedRows !== undefined ? overrides.seedRows : [1, 2].map(n => {
         const row: Record<string, any> = { id: `seed-${n}` };
         for (const f of fields) row[f.key] = `shift ${n} ${f.key}`;
         return row;
@@ -66,9 +81,10 @@ const filesForRequest = () => {
         isArabic: false,
         storeKey: 'shift-log-generic',
         seedRows,
+        wantedSeedCount: overrides.wantedSeedCount !== undefined ? overrides.wantedSeedCount : wanted,
         sourceRequest: REQUEST,
     }, 'shift-log');
-    return { bp, fields, seedRows, files };
+    return { bp, fields, seedRows, wanted, files };
 };
 
 describe('the generated smoke test proves the request', () => {
@@ -89,10 +105,47 @@ describe('the generated smoke test proves the request', () => {
     });
 
     it('asserts the requested seed count in the generated test', () => {
-        const { seedRows, files } = filesForRequest();
+        const { wanted, files } = filesForRequest();
         const smoke = String(files['scripts/smoke-test.test.mjs'] || '');
         expect(smoke).toContain('seedRows');
-        expect(smoke).toContain(String(seedRows.length));
+        expect(smoke).toContain(`expected ${wanted} seed rows`);
+    });
+
+    it('the generated test fails when the requested seeds never reach the app', () => {
+        // Run 23 verbatim: the build shipped seedRows: [] for a request that
+        // stated a count, and the suite passed. The requested count — not the
+        // artifact's own row count — must drive the assertion.
+        const { wanted, files } = filesForRequest({ seedRows: [] });
+        expect(wanted).toBe(2);
+        const smoke = String(files['scripts/smoke-test.test.mjs'] || '');
+        expect(smoke).toContain('expected 2 seed rows');
+        const dir = writeApp(files);
+        const run = runSmoke(dir);
+        expect(run.status).not.toBe(0);
+        expect(`${run.stdout}\n${run.stderr}`).toMatch(/seed rows/i);
+    }, 90000);
+
+    it('without requested or present seeds the test names only the columns', () => {
+        // An honest bare app (no count stated, no rows shipped) keeps a
+        // columns-only test — and the name must not claim seeds it never
+        // checks.
+        const smoke = fileAppSmokeTest({
+            fields: [{ key: 'buoy', label: 'buoy' }],
+            seedCount: 0,
+        });
+        expect(smoke).toContain('requested columns reach the generated app');
+        expect(smoke).not.toContain('seed rows reach');
+    });
+
+    it('a different requested count drives its own exact assertion', () => {
+        // The fix is structural, not the number 2: any stated count pins the
+        // generated suite, even when the artifact currently holds no rows.
+        const smoke = fileAppSmokeTest({
+            fields: [{ key: 'item', label: 'item' }],
+            seedCount: 0,
+            wantedSeedCount: 5,
+        });
+        expect(smoke).toContain('expected 5 seed rows');
     });
 
     it('the generated test parses', () => {

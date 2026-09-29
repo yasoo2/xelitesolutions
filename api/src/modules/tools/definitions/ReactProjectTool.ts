@@ -5544,11 +5544,22 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
              *  which is honest.
              */
             let seedRows: Array<Record<string, any>> = [];
+            // How many rows his sentence stated — read once, used twice: the
+            // catalogue writes to it, and the generated suite asserts it. The
+            // suite must NEVER assert the artifact's own row count instead —
+            // a build that shipped zero rows passed its own "seed rows reach"
+            // test that way (real-UI run 23).
+            const wantedSeedCount = (() => {
+                try {
+                    const { countHeAskedFor } = require('../../../core/design/authored-catalogue');
+                    return countHeAskedFor(request, String((runBp as any).entityOne || ''));
+                } catch { return undefined; }
+            })();
             const seedFields = ((runBp as any).fields || []) as Array<any>;
             if (!copyProvidersRationing && !modelUnavailableDuringBuild && !unifiedTables
                 && seedFields.length && !input?.skipAuthoredCopy) {
                 try {
-                    const { authorCatalogue, countHeAskedFor, minimumHeStated } = require('../../../core/design/authored-catalogue');
+                    const { authorCatalogue, minimumHeStated } = require('../../../core/design/authored-catalogue');
                     const { routeToModel } = require('../../../core/llm/intelligent-router');
                     const written = await authorCatalogue({
                         request,
@@ -5556,7 +5567,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                         isArabic: artifactIsAr,
                         entityOne: String((runBp as any).entityOne || 'item'),
                         fields: seedFields,
-                        wanted: countHeAskedFor(request, String((runBp as any).entityOne || '')),
+                        wanted: wantedSeedCount,
                         minNumeric: minimumHeStated(request),
                     }, async (prompt: string) => {
                         let timer: any;
@@ -5589,6 +5600,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 }
             }
             const appFiles = buildAppFiles(runBp, {
+                wantedSeedCount,
                 seedRows,
                 brand: content.brand, isArabic: artifactIsAr, api: appApi, apiResources,
                 //  The app remembers the words it was built from, so an edit can
