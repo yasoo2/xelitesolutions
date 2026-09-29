@@ -1409,7 +1409,11 @@ function invalidFieldMessage(field) {
 
 // Mount consumers with a key derived from storeKey and api to isolate pending responses.
 export function useRecordsController(content) {
-  const store = useMemo(() => createStore(content.storeKey + ':rows'), [content.storeKey]);
+  // THE SEEDS REACH THE STORE. Run 24 shipped 5 content rows and rendered 0:
+  // this call carried the key and nothing else, and the store seeds a first visit
+  // only when handed a non-empty seed array. Missing or empty seedRows keeps the
+  // honest bare shelf; the seeded marker still protects rows he deleted himself.
+  const store = useMemo(() => createStore(content.storeKey + ':rows', content.seedRows), [content.storeKey]);
   const fields = content.fields;
   const primary = fields.find(f => f.primary) || fields[0];
   // The column that holds a picture, if this collection has one.
@@ -3720,6 +3724,8 @@ export interface GroundedSchemaExpectation {
     seedCount: number;
     /** Seeds his sentence stated — drives the exact-count assertion when set. */
     wantedSeedCount?: number;
+    /** Engine the app was built with — scopes engine-only assertions. */
+    engine?: string;
 }
 
 export function fileAppSmokeTest(schema?: GroundedSchemaExpectation): string {
@@ -3778,6 +3784,16 @@ test('generated React app scaffold is complete and testable', () => {
       assert.ok(row && key in row, 'seed row is missing the requested column: ' + key);
     }
   }` : '';
+    const engine = (schema && schema.engine) || '';
+    // The rows the content test counted must also REACH the store the screen
+    // reads from. Run 24 shipped 5 content seeds and rendered 0 because the
+    // records controller opened the store key-only. Only the records engine
+    // ships that controller, so only it gets this assertion.
+    const wireBlock = engine === 'records' && (wanted > 0 || shipped > 0) ? `
+test('requested seed rows reach the records store', () => {
+  assert.match(read('src/app/records-controller.js'), /createStore\\(content\\.storeKey \\+ ':rows', content\\.seedRows\\)/);
+});
+` : '';
     return `${scaffold}
 test('${testName}', async () => {
   const content = (await import('../src/content.js')).content;
@@ -3792,7 +3808,7 @@ test('${testName}', async () => {
     assert.ok(actualKeys.includes(key), 'missing requested column key: ' + key);
   }${seedBlock}
 });
-`;
+${wireBlock}`;
 }
 
 /**
@@ -4661,6 +4677,7 @@ export function buildAppFiles(bp: AppBlueprint, o: AppBuildOptions, slugName: st
             fields: (builtBp.fields || []).map(f => ({ key: String(f.key || ''), label: String(f.label || '') })),
             seedCount: (o.seedRows || []).length,
             wantedSeedCount: o.wantedSeedCount,
+            engine: builtBp.engine,
         }),
         ...engineEntry,
         ...(builtBp.engine === 'records' ? {
