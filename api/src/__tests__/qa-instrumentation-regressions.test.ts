@@ -15,16 +15,29 @@ describe('browser QA instrumentation regressions', () => {
         const source = read('ui-inspection.ts');
         const parsed = ts.createSourceFile('ui-inspection.ts', source, ts.ScriptTarget.Latest, true);
         const overrides: ts.CallExpression[] = [];
+        let retriesWithOverride = 0;
+        const isMetricsOverride = (node: ts.Node): node is ts.CallExpression =>
+            ts.isCallExpression(node) && !!node.arguments[0] && ts.isStringLiteral(node.arguments[0])
+            && node.arguments[0].text === 'Emulation.setDeviceMetricsOverride';
         const visit = (node: ts.Node) => {
-            if (ts.isCallExpression(node) && node.arguments[0] && ts.isStringLiteral(node.arguments[0])
-                && node.arguments[0].text === 'Emulation.setDeviceMetricsOverride') {
-                overrides.push(node);
+            if (isMetricsOverride(node)) overrides.push(node);
+            if (ts.isForStatement(node) || ts.isWhileStatement(node) || ts.isDoStatement(node)) {
+                let bodyHasOverride = false;
+                const inspectBody = (bodyNode: ts.Node) => {
+                    if (isMetricsOverride(bodyNode)) bodyHasOverride = true;
+                    ts.forEachChild(bodyNode, inspectBody);
+                };
+                inspectBody(node.statement);
+                if (bodyHasOverride) retriesWithOverride++;
             }
             ts.forEachChild(node, visit);
         };
         visit(parsed);
 
         expect(overrides.length).toBeGreaterThan(0);
+        // Retry existence is the contract; the iteration limit is a tunable budget.
+        // This AST matcher intentionally covers literal CDP method names in this file.
+        expect(retriesWithOverride).toBeGreaterThan(0);
         for (const override of overrides) {
             const parameters = override.arguments[1];
             expect(parameters && ts.isObjectLiteralExpression(parameters)).toBe(true);

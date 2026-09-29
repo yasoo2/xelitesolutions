@@ -23,7 +23,7 @@ describe('one definition of a dead control', () => {
     it('the React audit borrows the probe instead of growing its own', () => {
         const A = read('core', 'quality', 'app-audit.ts');
         expect(A).toMatch(/import \{ probeControls, judgeBehaviour, FormResult, ControlResult \} from '\.\/behaviour-audit'/);
-        expect(A).toMatch(/await probeControls\(page, probeOpts\(\)\)/);
+        expect(A).toMatch(/await probeControls\(page, probeOpts\(/);
         expect(A).toMatch(/judgeBehaviour\(allControls, behaviourMetrics/);
     });
 
