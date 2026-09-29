@@ -2290,6 +2290,12 @@ const skippedCount = taskResults.filter(r => r.execution === 'skipped').length;
             let verificationFailed = false;
             let verificationUnavailable = false;
             let phaseVerificationFreshPassed = false;
+            // Executor-reported outcome of THIS phase's own verificationTask
+            // check, keyed by the exact checkId the ledger receipt carries.
+            // Consumers (e.g. the AgentLoop completion voice) must bind a
+            // claimed pass to this identity instead of accepting any newly
+            // passed receipt from task-level or auto-build checks.
+            let phaseVerificationCheck: { checkId: string; tool: string; result: string; execution: string } | undefined;
 
             appendLog(`[PhaseExecutor] Phase ${phaseTag} ${status}: ${executedCount}/${totalTasks} executed · ${skippedCount} skipped · ${reusedCount} reused${failedCount ? ` · ${failedCount} failed` : ''}`);
 
@@ -2358,6 +2364,7 @@ const skippedCount = taskResults.filter(r => r.execution === 'skipped').length;
                             ? `verification_unavailable: ${verificationArgsIssue}`
                             : verificationArgsIssue;
                         results.push({ task: vTaskDesc, tool: vToolName, ok: false, execution: 'ran', error: checkerError });
+                        phaseVerificationCheck = { checkId: verificationId, tool: vToolName, result: 'invalid', execution: 'ran' };
                         verificationFailed = true;
                         verificationUnavailable = vToolName === 'browser_run';
                         status = 'partial';
@@ -2393,6 +2400,7 @@ const skippedCount = taskResults.filter(r => r.execution === 'skipped').length;
                         if (selected?.selection.action === 'reuse') {
                             appendLog(`[PhaseExecutor] ✅ Verification reused for Phase ${phaseTag}`);
                             results.push({ task: vTaskDesc, tool: vToolName, ok: true, execution: 'reused', message: selected.selection.reason });
+                            phaseVerificationCheck = { checkId: verificationId, tool: vToolName, result: 'passed', execution: 'reused' };
                         } else {
                             phaseVerificationSelectedAt = Date.now();
                             const startedAt = Date.now();
@@ -2424,6 +2432,7 @@ const skippedCount = taskResults.filter(r => r.execution === 'skipped').length;
                             if (vResult.ok && verificationOutcome === 'passed') {
                                 appendLog(`[PhaseExecutor] ✅ Verification passed for Phase ${phaseTag}`);
                                 phaseVerificationFreshPassed = true;
+                                phaseVerificationCheck = { checkId: verificationId, tool: vToolName, result: 'passed', execution: 'ran' };
                                 results.push({ task: vTaskDesc, tool: vToolName, ok: true, execution: 'ran' });
                             } else {
                                 const vErr = String(vResult.error || 'Verification failed');
@@ -2433,6 +2442,7 @@ const skippedCount = taskResults.filter(r => r.execution === 'skipped').length;
                                     ? `[PhaseExecutor] ⚠️ Verification unavailable: ${vErr}`
                                     : `[PhaseExecutor] ⚠️ Verification failed: ${vErr}`);
                                 results.push({ task: vTaskDesc, tool: vToolName, ok: false, execution: 'ran', error: checkerUnavailable ? `verification_unavailable: ${vErr}` : vErr });
+                                phaseVerificationCheck = { checkId: verificationId, tool: vToolName, result: 'failed', execution: 'ran' };
                                 verificationFailed = true;
                                 verificationUnavailable = checkerUnavailable;
                                 status = 'partial';
@@ -2456,6 +2466,7 @@ const skippedCount = taskResults.filter(r => r.execution === 'skipped').length;
                     }
                     appendLog(`[PhaseExecutor] ⚠️ Verification error: ${vError.message}`);
                     results.push({ task: vTaskDesc, tool: vToolName, ok: false, execution: 'ran', error: vError.message });
+                    phaseVerificationCheck = { checkId: `${vToolName}:${vTaskDesc}`.slice(0, 240), tool: vToolName, result: 'error', execution: 'ran' };
                     verificationFailed = true;
                     status = 'partial';
                 }
@@ -2610,6 +2621,7 @@ const skippedCount = taskResults.filter(r => r.execution === 'skipped').length;
                     ...(phaseDelivery ? { delivery: phaseDelivery } : {}),
                     ...(apiSelection ? { apiSelection } : {}),
                     ...(capabilityDecision ? { capabilityDecision } : {}),
+                    ...(phaseVerificationCheck ? { phaseVerificationCheck } : {}),
                     verificationLedger,
                     verificationMetrics: summarizeVerificationLedger(verificationLedger),
                 },

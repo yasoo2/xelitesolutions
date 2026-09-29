@@ -245,8 +245,11 @@ export function phaseVerificationProvenance(phase: any): PhaseVerificationProven
  *   (e.g. prose behavior -> read_file existence). Never "verified", even when
  *   the substituted observation passed.
  * - 'verified': no downgrade note, the phase requested an executable checker,
- *   and this phase's execution added a newly passed receipt. Phase-local:
- *   passes carried from earlier phases do not verify this one.
+ *   the executor reports that check ran fresh and passed, and the ledger
+ *   holds a matching newly passed receipt for that exact checkId.
+ *   Phase-local: passes carried from earlier phases do not verify this one.
+ *   A newly passed receipt for any OTHER check (task-level or auto-build)
+ *   never verifies the requested checker.
  * - 'completed': tasks done with no new verification to claim (dropped or
  *   absent checkers, reuse-only passes, zero-receipt completions).
  */
@@ -266,10 +269,20 @@ export function describePhaseCompletion(
     const carried = carriedCheckIds instanceof Set
         ? carriedCheckIds
         : new Set<string>(carriedCheckIds || []);
+    // The executor is the source of truth for which check is THIS phase's
+    // own verification. Without its report (e.g. fully reused phases or
+    // outputs that predate the field), no bare "verified" is claimed.
+    const reported = output?.phaseVerificationCheck;
+    const expectedCheckId = reported && typeof reported === 'object'
+        ? String(reported.checkId || '').trim()
+        : '';
+    if (!expectedCheckId) return 'completed';
+    if (String(reported.execution || '') !== 'ran' || String(reported.result || '') !== 'passed') return 'completed';
     const receipts = output?.verificationLedger?.receipts;
     if (Array.isArray(receipts)) {
         for (const receipt of receipts) {
-            if (receipt?.result === 'passed' && !carried.has(String(receipt?.checkId || ''))) return 'verified';
+            const id = String(receipt?.checkId || '');
+            if (id === expectedCheckId && receipt?.result === 'passed' && !carried.has(id)) return 'verified';
         }
     }
     return 'completed';
@@ -286,11 +299,17 @@ export function phaseCompletionMessage(voice: PhaseCompletionVoice, n: number, t
     return `✅ Phase ${n}/${total} completed — tasks done, not verified`;
 }
 
+/**
+ * CheckIds whose passes predate the current phase execution. Only passed
+ * receipts count as carried verification: a carried failure must not block
+ * the self-fix rerun's genuinely fresh pass from verifying the phase.
+ */
 export function carriedVerificationCheckIds(verificationLedger: any): Set<string> {
     const receipts = verificationLedger?.receipts;
     const ids = new Set<string>();
     if (Array.isArray(receipts)) {
         for (const receipt of receipts) {
+            if (receipt?.result !== 'passed') continue;
             const id = String(receipt?.checkId || '').trim();
             if (id) ids.add(id);
         }
