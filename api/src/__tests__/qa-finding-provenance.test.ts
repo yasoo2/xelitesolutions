@@ -7,11 +7,14 @@
  * prose — no URL, no requested/actual viewport, no selector geometry, no
  * child boxes — so the discrepancy could not be adjudicated from evidence.
  *
- * Two narrow repairs pin this:
+ * Three narrow repairs pin this:
  *  1. The responsive header finding carries measurement provenance
  *     (sanitized URL, requested/actual viewport, header + child boxes).
  *  2. The durable lastAudit mapping keeps finding id + capped evidence
  *     instead of dropping everything but an (empty) message.
+ *  3. The provenance itself is bounded and secret-safe: opaque path
+ *     segments never reach durable evidence, and no single evidence
+ *     item can bloat the per-project store.
  */
 import fs from 'fs';
 import http from 'http';
@@ -48,6 +51,28 @@ describe('compactQaFindings keeps findings durable', () => {
         expect(compactQaFindings(many)).toHaveLength(12);
         expect(compactQaFindings(undefined as any)).toEqual([]);
         expect(compactQaFindings(null as any)).toEqual([]);
+    });
+
+    it('caps each evidence item so one producer cannot bloat durable state', () => {
+        const big = { sel: 'header', dump: 'x'.repeat(5000) };
+        const out = compactQaFindings([{ id: 'big', severity: 'low', detail: 'x', evidence: [big] }]);
+        const kept = out[0].evidence![0];
+        expect(kept.truncatedEvidence).toBe(true);
+        expect(kept.jsonLength).toBeGreaterThan(2000);
+        expect(typeof kept.preview).toBe('string');
+        expect(kept.preview.length).toBeLessThanOrEqual(512);
+        expect(JSON.stringify(kept).length).toBeLessThan(2000);
+        // Small items still pass through untouched.
+        const small = { sel: 'header', h: 154 };
+        expect(compactQaFindings([{ severity: 'low', detail: 'x', evidence: [small] }])[0].evidence![0])
+            .toEqual(small);
+    });
+
+    it('marks unserializable evidence instead of throwing', () => {
+        const circular: any = { sel: 'header' };
+        circular.self = circular;
+        const out = compactQaFindings([{ id: 'c', severity: 'low', detail: 'x', evidence: [circular] }]);
+        expect(out[0].evidence![0]).toEqual({ truncatedEvidence: true, unserializable: true });
     });
 });
 
@@ -165,6 +190,32 @@ describe('the fragmented-header finding carries measurement provenance', () => {
             }]);
             expect(durable[0].evidence![0].url).toBe(`${baseUrl}/app/page`);
             expect(durable[0].evidence![0].headerBox.height).toBe(ev.h);
+        } finally {
+            await context.close().catch(() => { });
+        }
+    });
+
+    it('redacts opaque path segments from the recorded url', async () => {
+        if (!browser) {
+            // eslint-disable-next-line no-console
+            console.warn('[qa-provenance] SKIP: no Chromium available');
+            return;
+        }
+        const { inspectUi } = require('../core/quality/ui-inspection');
+        const context = await browser.newContext();
+        try {
+            const page = await context.newPage();
+            const opaque = '9f2c7a1e'.repeat(8); // 64-char token-shaped segment
+            await page.goto(`${baseUrl}/reset/${opaque}`, { waitUntil: 'load', timeout: 30_000 });
+            const ui = await inspectUi(page);
+            const header = ui.findings.find((f: any) => f.code === 'mobile_header_fragmented');
+            expect(header).toBeTruthy();
+            const url = String(header.evidence[0].url);
+            // The full opaque value must not survive; the page stays identifiable.
+            expect(url).not.toContain(opaque);
+            expect(url).toContain('[redacted]');
+            expect(url.startsWith(`${baseUrl}/reset/`)).toBe(true);
+            expect(url).toContain('9f2c7a1e');
         } finally {
             await context.close().catch(() => { });
         }

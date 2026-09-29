@@ -86,12 +86,29 @@ export interface CompactQaFinding {
     evidence?: any[];
 }
 
+/** One evidence item may never bloat the per-project store: small items pass
+ * through untouched, oversized ones keep a bounded preview plus their true
+ * size, and unserializable ones (circular refs) are marked, never thrown. */
+const COMPACT_EVIDENCE_ITEM_JSON_LIMIT = 2048;
+const COMPACT_EVIDENCE_ITEM_PREVIEW = 512;
+
+function compactEvidenceItem(item: any): any {
+    let json: string | null = null;
+    try {
+        json = JSON.stringify(item) ?? '';
+    } catch {
+        return { truncatedEvidence: true, unserializable: true };
+    }
+    if (json.length <= COMPACT_EVIDENCE_ITEM_JSON_LIMIT) return item;
+    return { truncatedEvidence: true, jsonLength: json.length, preview: json.slice(0, COMPACT_EVIDENCE_ITEM_PREVIEW) };
+}
+
 export function compactQaFindings(findings: any[], limit = 12): CompactQaFinding[] {
     return (Array.isArray(findings) ? findings : []).slice(0, limit).map((f: any) => ({
         ...(f && f.id != null ? { id: String(f.id).slice(0, 120) } : {}),
         severity: f?.severity,
         message: String(f?.detailEn || f?.detail || f?.message || f?.what || '').slice(0, 200),
-        ...(Array.isArray(f?.evidence) && f.evidence.length ? { evidence: f.evidence.slice(0, 4) } : {}),
+        ...(Array.isArray(f?.evidence) && f.evidence.length ? { evidence: f.evidence.slice(0, 4).map(compactEvidenceItem) } : {}),
     }));
 }
 

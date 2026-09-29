@@ -719,7 +719,22 @@ function measureResponsive(vw: number) {
         //  query and hash never leave the page, so a token in either cannot
         //  reach durable evidence.
         var headerPageUrl = '';
-        try { headerPageUrl = location.origin + location.pathname; } catch { headerPageUrl = ''; }
+        //  reach durable evidence. A secret can also hide in a PATH segment
+        //  (/reset/<token>), so opaque-looking segments keep a short prefix
+        //  only. Deliberate over-redaction: a hidden long slug is harmless,
+        //  a persisted secret is not. Pure inline logic: this runs in-page.
+        var sanitizeProvenancePath = function (pathname: any) {
+          var segs = String(pathname || '').split('/');
+          for (var i = 0; i < segs.length; i++) {
+            if (segs[i].length >= 32) segs[i] = segs[i].slice(0, 8) + '[redacted]';
+          }
+          return segs.join('/');
+        };
+        try {
+          headerPageUrl = location.origin + sanitizeProvenancePath(location.pathname);
+          headerPageUrl = headerPageUrl.replace(/eyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}/g, '[redacted]');
+          headerPageUrl = headerPageUrl.slice(0, 500);
+        } catch { headerPageUrl = ''; }
         var roundRect = function (box: any) {
           return { x: Math.round(box.left), y: Math.round(box.top), width: Math.round(box.width), height: Math.round(box.height) };
         };
