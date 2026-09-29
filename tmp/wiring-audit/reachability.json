@@ -1,0 +1,766 @@
+{
+  "generatedAt": "2026-09-29T20:06:53.991Z",
+  "registered": 163,
+  "rewriteMatrix": [
+    {
+      "line": 74,
+      "class": "SHAPING_ONLY",
+      "target": null,
+      "targetRegistered": null,
+      "sources": [
+        {
+          "name": "browser_run",
+          "registered": true
+        },
+        {
+          "name": "browser_open",
+          "registered": false
+        },
+        {
+          "name": "visual_qa",
+          "registered": false
+        }
+      ],
+      "identityShaped": [],
+      "conditionalShadow": [],
+      "fullShadow": [],
+      "note": "rate-limit bucket key only; no rename"
+    },
+    {
+      "line": 406,
+      "class": "RENAME_SHAPING",
+      "target": "npm_manager",
+      "targetRegistered": true,
+      "sources": [
+        {
+          "name": "npm_install",
+          "registered": false
+        },
+        {
+          "name": "install_package",
+          "registered": false
+        }
+      ],
+      "identityShaped": [],
+      "conditionalShadow": [],
+      "fullShadow": [],
+      "note": "+command=install default"
+    },
+    {
+      "line": 429,
+      "class": "PURE_RENAME",
+      "target": "shell_execute",
+      "targetRegistered": true,
+      "sources": [
+        {
+          "name": "command_execute",
+          "registered": false
+        },
+        {
+          "name": "run_command",
+          "registered": false
+        },
+        {
+          "name": "exec",
+          "registered": false
+        },
+        {
+          "name": "terminal",
+          "registered": false
+        }
+      ],
+      "identityShaped": [],
+      "conditionalShadow": [],
+      "fullShadow": [],
+      "note": ""
+    },
+    {
+      "line": 432,
+      "class": "PURE_RENAME",
+      "target": "project_detect",
+      "targetRegistered": true,
+      "sources": [
+        {
+          "name": "manual_test",
+          "registered": false
+        },
+        {
+          "name": "verify_build",
+          "registered": false
+        }
+      ],
+      "identityShaped": [],
+      "conditionalShadow": [],
+      "fullShadow": [],
+      "note": "safe fallback per comment"
+    },
+    {
+      "line": 438,
+      "class": "RENAME_SHAPING",
+      "target": "write_file",
+      "targetRegistered": true,
+      "sources": [
+        {
+          "name": "file_write",
+          "registered": false
+        },
+        {
+          "name": "write_to_file",
+          "registered": false
+        },
+        {
+          "name": "create_file",
+          "registered": false
+        },
+        {
+          "name": "ai_write_file",
+          "registered": true
+        }
+      ],
+      "identityShaped": [
+        "ai_write_file"
+      ],
+      "conditionalShadow": [],
+      "fullShadow": [],
+      "note": "ai_write_file maps to itself (shaping only); others contained via containPath"
+    },
+    {
+      "line": 477,
+      "class": "RENAME_SHAPING",
+      "target": "file_edit",
+      "targetRegistered": true,
+      "sources": [
+        {
+          "name": "edit_file",
+          "registered": false
+        },
+        {
+          "name": "modify_file",
+          "registered": false
+        },
+        {
+          "name": "file_edit",
+          "registered": true
+        }
+      ],
+      "identityShaped": [
+        "file_edit"
+      ],
+      "conditionalShadow": [],
+      "fullShadow": [],
+      "note": "edit_file is identity rename; containment shaping"
+    },
+    {
+      "line": 488,
+      "class": "RENAME_SHAPING",
+      "target": "read_file",
+      "targetRegistered": true,
+      "sources": [
+        {
+          "name": "file_read",
+          "registered": false
+        },
+        {
+          "name": "read_file",
+          "registered": true
+        },
+        {
+          "name": "view_file",
+          "registered": false
+        },
+        {
+          "name": "get_file",
+          "registered": false
+        }
+      ],
+      "identityShaped": [
+        "read_file"
+      ],
+      "conditionalShadow": [],
+      "fullShadow": [],
+      "note": "read_file is identity rename; containment shaping"
+    },
+    {
+      "line": 499,
+      "class": "PURE_RENAME",
+      "target": "dependency_audit",
+      "targetRegistered": true,
+      "sources": [
+        {
+          "name": "audit",
+          "registered": false
+        },
+        {
+          "name": "dependency_scan",
+          "registered": false
+        },
+        {
+          "name": "security_audit",
+          "registered": false
+        }
+      ],
+      "identityShaped": [],
+      "conditionalShadow": [],
+      "fullShadow": [],
+      "note": ""
+    },
+    {
+      "line": 502,
+      "class": "PURE_RENAME",
+      "target": "quality_run",
+      "targetRegistered": true,
+      "sources": [
+        {
+          "name": "run_quality",
+          "registered": false
+        },
+        {
+          "name": "lint_project",
+          "registered": false
+        }
+      ],
+      "identityShaped": [],
+      "conditionalShadow": [],
+      "fullShadow": [],
+      "note": ""
+    },
+    {
+      "line": 505,
+      "class": "PURE_RENAME",
+      "target": "project_detect",
+      "targetRegistered": true,
+      "sources": [
+        {
+          "name": "detect_project",
+          "registered": false
+        },
+        {
+          "name": "scan_project",
+          "registered": false
+        }
+      ],
+      "identityShaped": [],
+      "conditionalShadow": [],
+      "fullShadow": [],
+      "note": ""
+    },
+    {
+      "line": 508,
+      "class": "PURE_RENAME",
+      "target": "website_full_pipeline",
+      "targetRegistered": true,
+      "sources": [
+        {
+          "name": "web_pipeline",
+          "registered": false
+        },
+        {
+          "name": "scaffold_website",
+          "registered": false
+        }
+      ],
+      "identityShaped": [],
+      "conditionalShadow": [],
+      "fullShadow": [],
+      "note": ""
+    },
+    {
+      "line": 519,
+      "class": "RENAME_SHAPING",
+      "target": "inspect_directory",
+      "targetRegistered": true,
+      "sources": [
+        {
+          "name": "list_files",
+          "registered": false
+        },
+        {
+          "name": "list_directory",
+          "registered": false
+        },
+        {
+          "name": "dir",
+          "registered": false
+        }
+      ],
+      "identityShaped": [],
+      "conditionalShadow": [],
+      "fullShadow": [],
+      "note": "+depth=1 default"
+    },
+    {
+      "line": 526,
+      "class": "PURE_RENAME",
+      "target": "search_text",
+      "targetRegistered": true,
+      "sources": [
+        {
+          "name": "search_code",
+          "registered": false
+        },
+        {
+          "name": "find_in_files",
+          "registered": false
+        },
+        {
+          "name": "grep",
+          "registered": false
+        },
+        {
+          "name": "grep_search",
+          "registered": false
+        }
+      ],
+      "identityShaped": [],
+      "conditionalShadow": [],
+      "fullShadow": [],
+      "note": "deliberate one-hop per comment; orphans GrepSearchTool impl"
+    },
+    {
+      "line": 529,
+      "class": "PURE_RENAME",
+      "target": "browser_run",
+      "targetRegistered": true,
+      "sources": [
+        {
+          "name": "browse",
+          "registered": false
+        },
+        {
+          "name": "open_browser",
+          "registered": false
+        },
+        {
+          "name": "web_browse",
+          "registered": false
+        }
+      ],
+      "identityShaped": [],
+      "conditionalShadow": [],
+      "fullShadow": [],
+      "note": "no action shaping; empty actions+no instructionText fails honest (BrowserRunTool:331)"
+    },
+    {
+      "line": 532,
+      "class": "RENAME_SHAPING",
+      "target": "git_ops",
+      "targetRegistered": true,
+      "sources": [
+        {
+          "name": "git_commit",
+          "registered": false
+        },
+        {
+          "name": "commit",
+          "registered": false
+        }
+      ],
+      "identityShaped": [],
+      "conditionalShadow": [],
+      "fullShadow": [],
+      "note": "+operation=commit"
+    },
+    {
+      "line": 536,
+      "class": "RENAME_SHAPING",
+      "target": "git_ops",
+      "targetRegistered": true,
+      "sources": [
+        {
+          "name": "git_push",
+          "registered": false
+        },
+        {
+          "name": "push",
+          "registered": false
+        }
+      ],
+      "identityShaped": [],
+      "conditionalShadow": [],
+      "fullShadow": [],
+      "note": "+operation=push"
+    },
+    {
+      "line": 390,
+      "class": "CONDITIONAL",
+      "target": "react_project",
+      "targetRegistered": true,
+      "sources": [
+        {
+          "name": "scaffold_full_stack",
+          "registered": true
+        }
+      ],
+      "identityShaped": [],
+      "conditionalShadow": [
+        "scaffold_full_stack"
+      ],
+      "fullShadow": [],
+      "note": "only when input is frontendish && !backendish"
+    },
+    {
+      "line": 547,
+      "class": "CONDITIONAL",
+      "target": "git_ops",
+      "targetRegistered": true,
+      "sources": [
+        {
+          "name": "github_repo_manager",
+          "registered": true
+        }
+      ],
+      "identityShaped": [],
+      "conditionalShadow": [
+        "github_repo_manager"
+      ],
+      "fullShadow": [],
+      "note": "only when input.action=push; +operation=push"
+    },
+    {
+      "line": 571,
+      "class": "INLINE_EXEC",
+      "target": null,
+      "targetRegistered": null,
+      "sources": [
+        {
+          "name": "recall_memory",
+          "registered": true
+        }
+      ],
+      "identityShaped": [],
+      "conditionalShadow": [],
+      "fullShadow": [],
+      "note": "returns before registry/firewall; registry def shadowed"
+    },
+    {
+      "line": 583,
+      "class": "INLINE_EXEC",
+      "target": null,
+      "targetRegistered": null,
+      "sources": [
+        {
+          "name": "memorize_codebase",
+          "registered": true
+        }
+      ],
+      "identityShaped": [],
+      "conditionalShadow": [],
+      "fullShadow": [],
+      "note": "returns before registry/firewall; registry def shadowed"
+    }
+  ],
+  "shadowedRegistryEntries": [],
+  "conditionalShadow": [
+    {
+      "name": "scaffold_full_stack",
+      "via": "ToolService:390 (input-conditional)",
+      "winner": "react_project"
+    },
+    {
+      "name": "github_repo_manager",
+      "via": "ToolService:547 (input-conditional)",
+      "winner": "git_ops"
+    }
+  ],
+  "singleRenames": [
+    {
+      "line": 344,
+      "name": "browser_open",
+      "target": "browser_run",
+      "sourceRegistered": false,
+      "targetRegistered": true
+    },
+    {
+      "line": 354,
+      "name": "browser_get_state",
+      "target": "browser_run",
+      "sourceRegistered": false,
+      "targetRegistered": true
+    },
+    {
+      "line": 361,
+      "name": "browser_snapshot",
+      "target": "browser_run",
+      "sourceRegistered": false,
+      "targetRegistered": true
+    },
+    {
+      "line": 368,
+      "name": "web_search",
+      "target": "browser_run",
+      "sourceRegistered": false,
+      "targetRegistered": true
+    },
+    {
+      "line": 410,
+      "name": "npm_build",
+      "target": "npm_manager",
+      "sourceRegistered": false,
+      "targetRegistered": true
+    },
+    {
+      "line": 415,
+      "name": "npm_run",
+      "target": "npm_manager",
+      "sourceRegistered": false,
+      "targetRegistered": true
+    },
+    {
+      "line": 419,
+      "name": "npm_start",
+      "target": "npm_manager",
+      "sourceRegistered": false,
+      "targetRegistered": true
+    },
+    {
+      "line": 424,
+      "name": "npm_test",
+      "target": "npm_manager",
+      "sourceRegistered": false,
+      "targetRegistered": true
+    },
+    {
+      "line": 435,
+      "name": "project_scaffold",
+      "target": "scaffold_project",
+      "sourceRegistered": false,
+      "targetRegistered": true
+    },
+    {
+      "line": 511,
+      "name": "read_file_tree",
+      "target": "inspect_directory",
+      "sourceRegistered": false,
+      "targetRegistered": true
+    },
+    {
+      "line": 542,
+      "name": "github_create_repo",
+      "target": "github_repo_manager",
+      "sourceRegistered": false,
+      "targetRegistered": true
+    },
+    {
+      "line": 551,
+      "name": "image_generate",
+      "target": "generate_image",
+      "sourceRegistered": false,
+      "targetRegistered": false
+    }
+  ],
+  "catalogueAbsentStories": {
+    "ambiguity_resolver": {
+      "registered": true,
+      "hasExecute": true,
+      "permissions": [
+        "read"
+      ],
+      "routerExcluded": false,
+      "priorityListed": true,
+      "coreListed": false,
+      "deterministicRefs": {
+        "core/orchestrator/PlanningEngine.ts": 1,
+        "core/llm/tool-picker.ts": 1
+      }
+    },
+    "ask_user": {
+      "registered": true,
+      "hasExecute": true,
+      "permissions": [
+        "read"
+      ],
+      "routerExcluded": false,
+      "priorityListed": true,
+      "coreListed": false,
+      "deterministicRefs": {
+        "core/orchestrator/PlanningEngine.ts": 3,
+        "core/llm/tool-picker.ts": 1
+      }
+    },
+    "cloud_cost_estimator": {
+      "registered": true,
+      "hasExecute": true,
+      "permissions": [
+        "read"
+      ],
+      "routerExcluded": false,
+      "priorityListed": false,
+      "coreListed": false,
+      "deterministicRefs": {}
+    },
+    "docker_swarm_ops": {
+      "registered": true,
+      "hasExecute": true,
+      "permissions": [
+        "execute"
+      ],
+      "routerExcluded": false,
+      "priorityListed": false,
+      "coreListed": false,
+      "deterministicRefs": {}
+    },
+    "execute_python": {
+      "registered": true,
+      "hasExecute": true,
+      "permissions": [
+        "execute"
+      ],
+      "routerExcluded": false,
+      "priorityListed": true,
+      "coreListed": false,
+      "deterministicRefs": {
+        "core/orchestrator/PlanningEngine.ts": 1,
+        "core/llm/tool-picker.ts": 1
+      }
+    },
+    "json_query": {
+      "registered": true,
+      "hasExecute": true,
+      "permissions": [
+        "read"
+      ],
+      "routerExcluded": false,
+      "priorityListed": false,
+      "coreListed": false,
+      "deterministicRefs": {
+        "modules/tools/definitions/PhaseExecutorTool.ts": 1
+      }
+    },
+    "kubernetes_ops": {
+      "registered": true,
+      "hasExecute": true,
+      "permissions": [
+        "execute"
+      ],
+      "routerExcluded": false,
+      "priorityListed": true,
+      "coreListed": false,
+      "deterministicRefs": {
+        "core/orchestrator/plan-tools.ts": 1,
+        "core/llm/tool-picker.ts": 1
+      }
+    },
+    "llm_cache": {
+      "registered": true,
+      "hasExecute": true,
+      "permissions": [
+        "write"
+      ],
+      "routerExcluded": false,
+      "priorityListed": false,
+      "coreListed": false,
+      "deterministicRefs": {}
+    },
+    "multi_agent_debate": {
+      "registered": true,
+      "hasExecute": true,
+      "permissions": [
+        "read"
+      ],
+      "routerExcluded": false,
+      "priorityListed": true,
+      "coreListed": false,
+      "deterministicRefs": {
+        "core/orchestrator/PlanningEngine.ts": 1,
+        "core/llm/tool-picker.ts": 1
+      }
+    },
+    "project_planner": {
+      "registered": true,
+      "hasExecute": true,
+      "permissions": [
+        "read"
+      ],
+      "routerExcluded": false,
+      "priorityListed": false,
+      "coreListed": false,
+      "deterministicRefs": {
+        "modules/tools/definitions/ProjectPipelineTool.ts": 3,
+        "modules/tools/definitions/ProjectPlannerTool.ts": 2
+      }
+    },
+    "rss_fetch": {
+      "registered": true,
+      "hasExecute": true,
+      "permissions": [
+        "read",
+        "internet"
+      ],
+      "routerExcluded": false,
+      "priorityListed": false,
+      "coreListed": false,
+      "deterministicRefs": {}
+    },
+    "self_confidence_evaluator": {
+      "registered": true,
+      "hasExecute": true,
+      "permissions": [
+        "read"
+      ],
+      "routerExcluded": false,
+      "priorityListed": false,
+      "coreListed": false,
+      "deterministicRefs": {
+        "core/orchestrator/PlanningEngine.ts": 1
+      }
+    },
+    "task_lifecycle": {
+      "registered": true,
+      "hasExecute": true,
+      "permissions": [
+        "write"
+      ],
+      "routerExcluded": false,
+      "priorityListed": false,
+      "coreListed": false,
+      "deterministicRefs": {}
+    },
+    "template_manager": {
+      "registered": true,
+      "hasExecute": true,
+      "permissions": [
+        "write"
+      ],
+      "routerExcluded": false,
+      "priorityListed": false,
+      "coreListed": false,
+      "deterministicRefs": {}
+    },
+    "video_action": {
+      "registered": true,
+      "hasExecute": true,
+      "permissions": [
+        "execute",
+        "read",
+        "write"
+      ],
+      "routerExcluded": false,
+      "priorityListed": false,
+      "coreListed": false,
+      "deterministicRefs": {}
+    }
+  },
+  "inlineShadow": [
+    {
+      "name": "recall_memory",
+      "registered": true,
+      "registryHasExecute": true,
+      "registryPermissions": [
+        "read"
+      ],
+      "inlineHandledInToolService": true,
+      "verdict": "SHADOWED_REGISTRY_DEF"
+    },
+    {
+      "name": "memorize_codebase",
+      "registered": true,
+      "registryHasExecute": true,
+      "registryPermissions": [
+        "read",
+        "write"
+      ],
+      "inlineHandledInToolService": true,
+      "verdict": "SHADOWED_REGISTRY_DEF"
+    }
+  ]
+}
