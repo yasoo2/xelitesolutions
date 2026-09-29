@@ -91,8 +91,10 @@ export interface CompactQaFinding {
  * size, and unserializable ones (circular refs) are marked, never thrown.
  * Deliberately NO raw content preview: a bounded raw prefix is not a
  * redaction boundary — opaque token-shaped values inside the first bytes
- * would persist verbatim into durable evidence. */
-const COMPACT_EVIDENCE_ITEM_JSON_LIMIT = 2048;
+ * would persist verbatim into durable evidence.
+ * The budget is UTF-8 BYTES, not string length: the store persists bytes,
+ * and 1,200 CJK chars are ~3.6KB on disk while json.length says ~1.2K. */
+const COMPACT_EVIDENCE_ITEM_JSON_BYTE_LIMIT = 2048;
 const COMPACT_EVIDENCE_ITEM_MAX_KEYS = 20;
 const COMPACT_EVIDENCE_ITEM_MAX_KEY_LENGTH = 64;
 
@@ -103,8 +105,11 @@ function compactEvidenceItem(item: any): any {
     } catch {
         return { truncatedEvidence: true, unserializable: true };
     }
-    if (json.length <= COMPACT_EVIDENCE_ITEM_JSON_LIMIT) return item;
-    const summary: any = { truncatedEvidence: true, jsonLength: json.length };
+    // TextEncoder is portable (Node >= 11 and browsers); no Buffer import,
+    // so this module stays usable outside Node-only runtimes.
+    const byteLength = new TextEncoder().encode(json).length;
+    if (byteLength <= COMPACT_EVIDENCE_ITEM_JSON_BYTE_LIMIT) return item;
+    const summary: any = { truncatedEvidence: true, jsonByteLength: byteLength };
     if (Array.isArray(item)) {
         summary.length = item.length;
     } else if (item !== null && typeof item === 'object') {

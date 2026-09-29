@@ -60,7 +60,7 @@ describe('compactQaFindings keeps findings durable', () => {
         const out = compactQaFindings([{ id: 'big', severity: 'low', detail: 'x', evidence: [big] }]);
         const kept = out[0].evidence![0];
         expect(kept.truncatedEvidence).toBe(true);
-        expect(kept.jsonLength).toBeGreaterThan(2000);
+        expect(kept.jsonByteLength).toBeGreaterThan(2000);
         // Structural metadata only: no raw content preview may persist.
         expect(kept.preview).toBeUndefined();
         expect(kept.keys).toEqual(['sel', 'dump']);
@@ -77,7 +77,7 @@ describe('compactQaFindings keeps findings durable', () => {
         const out = compactQaFindings([{ id: 'big', severity: 'low', detail: 'x', evidence: [big] }]);
         const kept = out[0].evidence![0];
         expect(kept.truncatedEvidence).toBe(true);
-        expect(kept.jsonLength).toBeGreaterThan(2000);
+        expect(kept.jsonByteLength).toBeGreaterThan(2000);
         expect(JSON.stringify(kept)).not.toContain(marker);
         expect(JSON.stringify(kept)).not.toContain('opaque-7Q');
         expect(kept.keys).toContain('opaquePath');
@@ -94,10 +94,28 @@ describe('compactQaFindings keeps findings durable', () => {
         const strKept = compactQaFindings(
             [{ severity: 'low', detail: 'x', evidence: [`canary-${'s'.repeat(5000)}`] }])[0].evidence![0];
         expect(strKept.truncatedEvidence).toBe(true);
-        expect(strKept.jsonLength).toBeGreaterThan(2000);
+        expect(strKept.jsonByteLength).toBeGreaterThan(2000);
         expect(strKept.preview).toBeUndefined();
         expect('keys' in strKept).toBe(false);
         expect(JSON.stringify(strKept)).not.toContain('canary-');
+    });
+
+    it('measures the per-item budget in UTF-8 bytes, not UTF-16 code units', () => {
+        // Codex's Unicode probe shape: 1,200 CJK chars serialize to ~1.2K
+        // UTF-16 code units but ~3.6K UTF-8 bytes — over the 2KB store budget,
+        // so the item must summarize even though json.length is under 2048.
+        const cjk = { sel: 'header', dump: '表'.repeat(1200) };
+        expect(JSON.stringify(cjk).length).toBeLessThan(2048);
+        const kept = compactQaFindings(
+            [{ severity: 'low', detail: 'x', evidence: [cjk] }])[0].evidence![0];
+        expect(kept.truncatedEvidence).toBe(true);
+        expect(kept.jsonByteLength).toBeGreaterThan(2048);
+        expect(JSON.stringify(kept)).not.toContain('表');
+        expect(kept.keys).toEqual(['sel', 'dump']);
+        // Small multibyte items still pass through untouched.
+        const small = { sel: 'header', note: '表ヘッダー' };
+        expect(compactQaFindings([{ severity: 'low', detail: 'x', evidence: [small] }])[0].evidence![0])
+            .toEqual(small);
     });
 
     it('marks unserializable evidence instead of throwing', () => {
