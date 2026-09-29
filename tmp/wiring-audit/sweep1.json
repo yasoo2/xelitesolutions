@@ -1,0 +1,2923 @@
+{
+  "generatedAt": "2026-09-29T21:03:34.038Z",
+  "census": {
+    "registered": 163,
+    "withExecute": 163,
+    "emptySideEffects": 89,
+    "emptyRequired": 11,
+    "nullRequired": 14,
+    "noDescription": 0,
+    "defaultedPermissions": [
+      "business_logic_parser→read",
+      "chaos_test_plan→read",
+      "compliance_validator→read",
+      "cloud_cost_estimator→read",
+      "ambiguity_resolver→read",
+      "multi_agent_debate→read",
+      "self_confidence_evaluator→read",
+      "project_planner→read",
+      "central_answer→read",
+      "web_page_builder→write",
+      "form_inbox→read",
+      "echo→read",
+      "shell_check_status→read",
+      "ask_user→read",
+      "json_query→read",
+      "alert_manager→write",
+      "cache_manager→write",
+      "monitoring→read",
+      "project_state_manager→write",
+      "request_analyzer→read",
+      "template_manager→write"
+    ],
+    "defaultedRateLimit": [
+      "central_answer",
+      "web_page_builder"
+    ],
+    "unknownPermissions": []
+  },
+  "censusRows": [
+    {
+      "name": "browser_run",
+      "primaryTag": "browser",
+      "permissions": [
+        "internet",
+        "execute"
+      ],
+      "sideEffects": [
+        "execute",
+        "internet"
+      ],
+      "rateLimitPerMinute": 120,
+      "required": [
+        "sessionId"
+      ],
+      "hasRequired": 1,
+      "descLen": 75,
+      "description": "Execute browser actions, or compile instructionText into a multi-step plan.",
+      "hasExecute": true
+    },
+    {
+      "name": "browser_summarize",
+      "primaryTag": "browser",
+      "permissions": [
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "required": [
+        "url"
+      ],
+      "hasRequired": 1,
+      "descLen": 122,
+      "description": "Open a web page in the browser, read its content, and return a concise summary (optionally answering a question about it).",
+      "hasExecute": true
+    },
+    {
+      "name": "browser_ui_audit",
+      "primaryTag": "browser",
+      "permissions": [
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "required": [
+        "url"
+      ],
+      "hasRequired": 1,
+      "descLen": 171,
+      "description": "Open a web page and run a UI/UX and accessibility audit (missing alt text, unlabeled inputs, heading structure, broken images, viewport/lang, console errors) wi",
+      "hasExecute": true
+    },
+    {
+      "name": "browser_ui_fix",
+      "primaryTag": "browser",
+      "permissions": [
+        "write",
+        "execute"
+      ],
+      "sideEffects": [
+        "write",
+        "execute"
+      ],
+      "rateLimitPerMinute": 6,
+      "required": null,
+      "hasRequired": null,
+      "descLen": 237,
+      "description": "Audit a built interface in a real browser, REPAIR the accessibility and usability defects in its source (alt text, labels, dead links, tap targets, document lan",
+      "hasExecute": true
+    },
+    {
+      "name": "browser_page_fix",
+      "primaryTag": "browser",
+      "permissions": [
+        "internet",
+        "write"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 10,
+      "required": [
+        "url"
+      ],
+      "hasRequired": 1,
+      "descLen": 275,
+      "description": "Open ANY web page, measure its real UI defects (horizontal overflow, tiny tap targets, unreadable contrast, unsized/eager images), build a CSS patch that fixes ",
+      "hasExecute": true
+    },
+    {
+      "name": "project_undo",
+      "primaryTag": "project",
+      "permissions": [
+        "write",
+        "execute"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 12,
+      "required": null,
+      "hasRequired": null,
+      "descLen": 157,
+      "description": "Restore a project to an earlier snapshot taken automatically before Joe changed it (undo/rollback), or list the available versions. Rebuilds after restoring.",
+      "hasExecute": true
+    },
+    {
+      "name": "project_repair",
+      "primaryTag": "project",
+      "permissions": [
+        "write",
+        "execute"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 6,
+      "required": null,
+      "hasRequired": null,
+      "descLen": 200,
+      "description": "Re-audit this session's built project in a real browser and repair what is still broken (dead images, failed requests, console errors), then rebuild and re-meas",
+      "hasExecute": true
+    },
+    {
+      "name": "browser_fill_form",
+      "primaryTag": "browser",
+      "permissions": [
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "required": [
+        "fields"
+      ],
+      "hasRequired": 1,
+      "descLen": 110,
+      "description": "Open a page and fill a form. Provide fields as { \"label or name or placeholder\": \"value\" }. Optionally submit.",
+      "hasExecute": true
+    },
+    {
+      "name": "browser_compare",
+      "primaryTag": "browser",
+      "permissions": [
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "required": null,
+      "hasRequired": null,
+      "descLen": 213,
+      "description": "Compare a page before/after a change: pass {before,after} URLs, or a single {url} to capture a baseline the first time and diff on the next call. Returns what w",
+      "hasExecute": true
+    },
+    {
+      "name": "browser_extract_data",
+      "primaryTag": "browser",
+      "permissions": [
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "required": [
+        "url"
+      ],
+      "hasRequired": 1,
+      "descLen": 121,
+      "description": "Open a page and extract structured data (tables or lists) into JSON, and save a CSV file. Optionally pass a CSS selector.",
+      "hasExecute": true
+    },
+    {
+      "name": "browser_check_links",
+      "primaryTag": "browser",
+      "permissions": [
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "required": [
+        "url"
+      ],
+      "hasRequired": 1,
+      "descLen": 121,
+      "description": "Open a page, collect its links, and check each for broken (4xx/5xx/unreachable) status. Returns a report of broken links.",
+      "hasExecute": true
+    },
+    {
+      "name": "browser_performance",
+      "primaryTag": "browser",
+      "permissions": [
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "required": [
+        "url"
+      ],
+      "hasRequired": 1,
+      "descLen": 128,
+      "description": "Open a page and measure performance: load time, DOMContentLoaded, transfer size, resource counts by type, and slowest resources.",
+      "hasExecute": true
+    },
+    {
+      "name": "browser_seo_audit",
+      "primaryTag": "browser",
+      "permissions": [
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "required": [
+        "url"
+      ],
+      "hasRequired": 1,
+      "descLen": 141,
+      "description": "Open a page and audit its SEO: title, meta description, canonical, robots, Open Graph/Twitter cards, headings, image alt coverage, and HTTPS.",
+      "hasExecute": true
+    },
+    {
+      "name": "browser_console_scan",
+      "primaryTag": "browser",
+      "permissions": [
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "required": [
+        "url"
+      ],
+      "hasRequired": 1,
+      "descLen": 146,
+      "description": "Open a page and capture JavaScript errors, console errors/warnings, and failed network requests (4xx/5xx). Reports whether the page is error-free.",
+      "hasExecute": true
+    },
+    {
+      "name": "browser_save_pdf",
+      "primaryTag": "browser",
+      "permissions": [
+        "internet",
+        "write"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 20,
+      "required": [
+        "url"
+      ],
+      "hasRequired": 1,
+      "descLen": 63,
+      "description": "Open a page and save it as a PDF file (served from /artifacts).",
+      "hasExecute": true
+    },
+    {
+      "name": "browser_readability",
+      "primaryTag": "browser",
+      "permissions": [
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "required": [
+        "url"
+      ],
+      "hasRequired": 1,
+      "descLen": 135,
+      "description": "Open a page and extract the clean main article/content (stripping nav, ads, sidebars), with title, author, word count and reading time.",
+      "hasExecute": true
+    },
+    {
+      "name": "browser_contrast_audit",
+      "primaryTag": "browser",
+      "permissions": [
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "required": [
+        "url"
+      ],
+      "hasRequired": 1,
+      "descLen": 125,
+      "description": "Open a page and audit text colour contrast against WCAG AA (4.5:1 normal, 3:1 large). Lists low-contrast text with its ratio.",
+      "hasExecute": true
+    },
+    {
+      "name": "browser_a11y_deep",
+      "primaryTag": "browser",
+      "permissions": [
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "required": [
+        "url"
+      ],
+      "hasRequired": 1,
+      "descLen": 174,
+      "description": "Open a page and run a deep accessibility audit: landmarks, heading order, duplicate IDs, empty/# links, positive tabindex, aria-hidden focusables, skip link, fo",
+      "hasExecute": true
+    },
+    {
+      "name": "browser_extract_meta",
+      "primaryTag": "browser",
+      "permissions": [
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "required": [
+        "url"
+      ],
+      "hasRequired": 1,
+      "descLen": 161,
+      "description": "Open a page and extract ALL metadata: title, description, canonical, robots, Open Graph, Twitter cards, favicon, JSON-LD structured data, and a headings outline",
+      "hasExecute": true
+    },
+    {
+      "name": "browser_translate",
+      "primaryTag": "browser",
+      "permissions": [
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "required": [
+        "url"
+      ],
+      "hasRequired": 1,
+      "descLen": 200,
+      "description": "Open a page, extract its readable text (title, headings, paragraphs) and translate it into a target language (default Arabic) using the LLM, with a deterministi",
+      "hasExecute": true
+    },
+    {
+      "name": "browser_responsive_check",
+      "primaryTag": "browser",
+      "permissions": [
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "required": [
+        "url"
+      ],
+      "hasRequired": 1,
+      "descLen": 229,
+      "description": "Open a page and test it across mobile / tablet / desktop viewports: captures a screenshot of each, and flags horizontal overflow, tiny tap targets, unreadable f",
+      "hasExecute": true
+    },
+    {
+      "name": "browser_find_text",
+      "primaryTag": "browser",
+      "permissions": [
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "required": [
+        "url",
+        "query"
+      ],
+      "hasRequired": 2,
+      "descLen": 151,
+      "description": "Open a page and find every occurrence of a search term: returns the count, surrounding context snippets, and a screenshot with the matches highlighted.",
+      "hasExecute": true
+    },
+    {
+      "name": "browser_design_tokens",
+      "primaryTag": "browser",
+      "permissions": [
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "required": [
+        "url"
+      ],
+      "hasRequired": 1,
+      "descLen": 244,
+      "description": "Open a page and extract its de-facto design system: dominant colours (backgrounds, text, accents/links, buttons), font families and the type scale (font sizes i",
+      "hasExecute": true
+    },
+    {
+      "name": "browser_click",
+      "primaryTag": "browser",
+      "permissions": [
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "required": [
+        "url"
+      ],
+      "hasRequired": 1,
+      "descLen": 177,
+      "description": "Open a page and click an element identified by visible text or a CSS selector, then report what changed (URL navigation, new content, or nothing) with a before/",
+      "hasExecute": true
+    },
+    {
+      "name": "browser_fullpage_shot",
+      "primaryTag": "browser",
+      "permissions": [
+        "internet",
+        "write"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 20,
+      "required": [
+        "url"
+      ],
+      "hasRequired": 1,
+      "descLen": 152,
+      "description": "Open a page and capture a full-length screenshot of the entire scrollable page (top to bottom), plus its total pixel height and a quick content summary.",
+      "hasExecute": true
+    },
+    {
+      "name": "browser_smart_agent",
+      "primaryTag": "browser",
+      "permissions": [
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "required": [
+        "url"
+      ],
+      "hasRequired": 1,
+      "descLen": 280,
+      "description": "Autonomous multi-lens page analyst: opens a page once and gathers content summary, UI/accessibility issues, SEO/meta health, the design system (colours/fonts), ",
+      "hasExecute": true
+    },
+    {
+      "name": "browser_autofix",
+      "primaryTag": "browser",
+      "permissions": [
+        "internet",
+        "write"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 20,
+      "required": [
+        "url"
+      ],
+      "hasRequired": 1,
+      "descLen": 302,
+      "description": "Open a page, automatically apply deterministic accessibility & SEO fixes (viewport meta, html lang, missing alt text, unlabeled inputs, single H1, meta descript",
+      "hasExecute": true
+    },
+    {
+      "name": "browser_consent",
+      "primaryTag": "browser",
+      "permissions": [
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "required": [],
+      "hasRequired": 0,
+      "descLen": 152,
+      "description": "Ask for, or record, the user's one-time permission for Joe to use their local Chrome profile (their own logged-in account). grant=true records approval.",
+      "hasExecute": true
+    },
+    {
+      "name": "browser_search",
+      "primaryTag": "browser",
+      "permissions": [
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "required": [
+        "query"
+      ],
+      "hasRequired": 1,
+      "descLen": 274,
+      "description": "Perform a web search the human way, visibly: open the search engine, move the cursor to the search box, type the query letter-by-letter in the live stream, pres",
+      "hasExecute": true
+    },
+    {
+      "name": "browser_launch",
+      "primaryTag": "browser",
+      "permissions": [
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "required": [],
+      "hasRequired": 0,
+      "descLen": 225,
+      "description": "Open the live browser panel and navigate to a URL (or a default start page when none is given). Starts the live stream so the user watches the page load in real",
+      "hasExecute": true
+    },
+    {
+      "name": "google_account",
+      "primaryTag": "google",
+      "permissions": [
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "required": [
+        "action"
+      ],
+      "hasRequired": 1,
+      "descLen": 209,
+      "description": "Act in the user's connected Google account through official APIs. actions: profile | gmail_list | gmail_read | gmail_send | calendar_list | drive_list. Requires",
+      "hasExecute": true
+    },
+    {
+      "name": "user_browser",
+      "primaryTag": "browser",
+      "permissions": [
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "required": [
+        "action"
+      ],
+      "hasRequired": 1,
+      "descLen": 254,
+      "description": "Drive the user's OWN real browser (their logins, any website) via the installed Joe browser extension. actions: open(url) | read | screenshot | click(text|selec",
+      "hasExecute": true
+    },
+    {
+      "name": "recall_memory",
+      "primaryTag": "memory",
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "required": [
+        "query"
+      ],
+      "hasRequired": 1,
+      "descLen": 168,
+      "description": "Search the deep memory (Project Knowledge Base) for code snippets, logic, or architectural details. Use this when the user asks about something not in the curre",
+      "hasExecute": true
+    },
+    {
+      "name": "memorize_codebase",
+      "primaryTag": "memory",
+      "permissions": [
+        "read",
+        "write"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 10,
+      "required": null,
+      "hasRequired": null,
+      "descLen": 123,
+      "description": "Scan and index the entire codebase (or a specific directory) into Deep Memory. Run this to initialize or update the memory.",
+      "hasExecute": true
+    },
+    {
+      "name": "repo_read_file",
+      "primaryTag": "repo",
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 120,
+      "required": [
+        "path"
+      ],
+      "hasRequired": 1,
+      "descLen": 73,
+      "description": "Read a UTF-8 file from the current repository using a safe relative path.",
+      "hasExecute": true
+    },
+    {
+      "name": "repo_search",
+      "primaryTag": "repo",
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "required": [
+        "query"
+      ],
+      "hasRequired": 1,
+      "descLen": 64,
+      "description": "Search repository files by text query with safe default ignores.",
+      "hasExecute": true
+    },
+    {
+      "name": "repo_apply_patch",
+      "primaryTag": "repo",
+      "permissions": [
+        "read",
+        "write"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 30,
+      "required": [
+        "path",
+        "find",
+        "replace"
+      ],
+      "hasRequired": 3,
+      "descLen": 86,
+      "description": "Apply a conservative find/replace patch to a repository file. Supports dryRun preview.",
+      "hasExecute": true
+    },
+    {
+      "name": "repo_run_command",
+      "primaryTag": "repo",
+      "permissions": [
+        "execute"
+      ],
+      "sideEffects": [
+        "execute"
+      ],
+      "rateLimitPerMinute": 30,
+      "required": [
+        "command"
+      ],
+      "hasRequired": 1,
+      "descLen": 102,
+      "description": "Run a whitelisted repository QA command such as build, test, lint, typecheck, git diff, or git status.",
+      "hasExecute": true
+    },
+    {
+      "name": "repo_diff_summary",
+      "primaryTag": "repo",
+      "permissions": [
+        "read",
+        "execute"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "required": null,
+      "hasRequired": null,
+      "descLen": 58,
+      "description": "Show a git status and diff summary for repository changes.",
+      "hasExecute": true
+    },
+    {
+      "name": "architect_plan",
+      "primaryTag": "planning",
+      "permissions": [
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 10,
+      "required": [
+        "goal"
+      ],
+      "hasRequired": 1,
+      "descLen": 92,
+      "description": "Generate a comprehensive architectural plan and file structure for a new feature or project.",
+      "hasExecute": true
+    },
+    {
+      "name": "ai_write_file",
+      "primaryTag": "generation",
+      "permissions": [
+        "write"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 60,
+      "required": [
+        "path",
+        "description"
+      ],
+      "hasRequired": 2,
+      "descLen": 91,
+      "description": "Generate and write high-quality, professional file content using AI based on a description.",
+      "hasExecute": true
+    },
+    {
+      "name": "progressive_generator",
+      "primaryTag": "codegen",
+      "permissions": [
+        "read",
+        "write"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 60,
+      "required": [
+        "action"
+      ],
+      "hasRequired": 1,
+      "descLen": 99,
+      "description": "Generate large-scale projects progressively with batching, progress tracking, and resume capability",
+      "hasExecute": true
+    },
+    {
+      "name": "dependency_graph",
+      "primaryTag": "analysis",
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 10,
+      "required": [
+        "path"
+      ],
+      "hasRequired": 1,
+      "descLen": 68,
+      "description": "Analyze source code to build a visualization of module dependencies.",
+      "hasExecute": true
+    },
+    {
+      "name": "business_logic_parser",
+      "primaryTag": "analysis",
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "required": [
+        "requirements"
+      ],
+      "hasRequired": 1,
+      "descLen": 34,
+      "description": "Extract structured business rules.",
+      "hasExecute": true
+    },
+    {
+      "name": "chaos_test_plan",
+      "primaryTag": "testing",
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 5,
+      "required": [
+        "architecture"
+      ],
+      "hasRequired": 1,
+      "descLen": 32,
+      "description": "Generate Chaos Engineering plan.",
+      "hasExecute": true
+    },
+    {
+      "name": "compliance_validator",
+      "primaryTag": "audit",
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 10,
+      "required": [
+        "content",
+        "standard"
+      ],
+      "hasRequired": 2,
+      "descLen": 17,
+      "description": "Check compliance.",
+      "hasExecute": true
+    },
+    {
+      "name": "cloud_cost_estimator",
+      "primaryTag": "cost",
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "required": [
+        "resources"
+      ],
+      "hasRequired": 1,
+      "descLen": 21,
+      "description": "Estimate cloud costs.",
+      "hasExecute": true
+    },
+    {
+      "name": "ambiguity_resolver",
+      "primaryTag": "analysis",
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "required": [
+        "text"
+      ],
+      "hasRequired": 1,
+      "descLen": 18,
+      "description": "Resolve ambiguity.",
+      "hasExecute": true
+    },
+    {
+      "name": "multi_agent_debate",
+      "primaryTag": "decision",
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 5,
+      "required": [
+        "topic"
+      ],
+      "hasRequired": 1,
+      "descLen": 16,
+      "description": "Simulate debate.",
+      "hasExecute": true
+    },
+    {
+      "name": "self_confidence_evaluator",
+      "primaryTag": "analysis",
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "required": [
+        "content"
+      ],
+      "hasRequired": 1,
+      "descLen": 20,
+      "description": "Evaluate confidence.",
+      "hasExecute": true
+    },
+    {
+      "name": "engineering_discovery",
+      "primaryTag": "engineering",
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 30,
+      "required": [],
+      "hasRequired": 0,
+      "descLen": 188,
+      "description": "Read-only engineering discovery. Inspect the selected workspace for existing projects, manifests, Git facts, likely entrypoints, and declared local checks befor",
+      "hasExecute": true
+    },
+    {
+      "name": "decide_capability_route",
+      "primaryTag": "capability",
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 30,
+      "required": [
+        "request"
+      ],
+      "hasRequired": 1,
+      "descLen": 137,
+      "description": "Choose the least-burdensome safe local or external capability route and return inspectable evidence and at most one required user action.",
+      "hasExecute": true
+    },
+    {
+      "name": "search_public_apis",
+      "primaryTag": "api",
+      "permissions": [
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "required": [
+        "query"
+      ],
+      "hasRequired": 1,
+      "descLen": 113,
+      "description": "Find and rank public APIs for a capability using Joe’s vetted catalog. Does not make arbitrary endpoint requests.",
+      "hasExecute": true
+    },
+    {
+      "name": "inspect_api",
+      "primaryTag": "api",
+      "permissions": [
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "required": [
+        "apiId"
+      ],
+      "hasRequired": 1,
+      "descLen": 99,
+      "description": "Inspect catalog metadata, auth, pricing, CORS, source, health, and warnings for one discovered API.",
+      "hasExecute": true
+    },
+    {
+      "name": "validate_api",
+      "primaryTag": "api",
+      "permissions": [
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "required": [
+        "apiId"
+      ],
+      "hasRequired": 1,
+      "descLen": 97,
+      "description": "Perform a cached, read-only, SSRF-protected health validation against a Joe-maintained API probe.",
+      "hasExecute": true
+    },
+    {
+      "name": "project_planner",
+      "primaryTag": "planning",
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 5,
+      "required": [
+        "projectDescription"
+      ],
+      "hasRequired": 1,
+      "descLen": 113,
+      "description": "Break down complex projects into phases and tasks for systematic execution. Planner-only; does not execute tasks.",
+      "hasExecute": true
+    },
+    {
+      "name": "phase_executor",
+      "primaryTag": "execution",
+      "permissions": [
+        "execute"
+      ],
+      "sideEffects": [
+        "execute"
+      ],
+      "rateLimitPerMinute": 10,
+      "required": [
+        "phase"
+      ],
+      "hasRequired": 1,
+      "descLen": 99,
+      "description": "Execute a single phase of a project plan by running each task's tool with trusted execution context",
+      "hasExecute": true
+    },
+    {
+      "name": "project_pipeline",
+      "primaryTag": "execution",
+      "permissions": [
+        "execute"
+      ],
+      "sideEffects": [
+        "execute"
+      ],
+      "rateLimitPerMinute": 3,
+      "required": [
+        "request"
+      ],
+      "hasRequired": 1,
+      "descLen": 187,
+      "description": "Build a complete multi-file project through the canonical engineering pipeline: plan phases, execute each with verification and auto build checks, self-heal fai",
+      "hasExecute": true
+    },
+    {
+      "name": "enterprise_platform_foundation",
+      "primaryTag": "enterprise",
+      "permissions": [
+        "read",
+        "write",
+        "execute"
+      ],
+      "sideEffects": [
+        "write",
+        "execute"
+      ],
+      "rateLimitPerMinute": 2,
+      "required": [
+        "request"
+      ],
+      "hasRequired": 1,
+      "descLen": 182,
+      "description": "Create and locally verify an enterprise multi-agent platform foundation: architecture, API contracts, service skeletons, CI, observability, security policy, and",
+      "hasExecute": true
+    },
+    {
+      "name": "orion_business_foundation",
+      "primaryTag": "orion",
+      "permissions": [
+        "read",
+        "write",
+        "execute"
+      ],
+      "sideEffects": [
+        "write",
+        "execute"
+      ],
+      "rateLimitPerMinute": 2,
+      "required": [
+        "request"
+      ],
+      "hasRequired": 1,
+      "descLen": 205,
+      "description": "Create and locally verify the ORION Business Operating System phase-one foundation: multi-tenant business core, governance, contracts, UI starter, infrastructur",
+      "hasExecute": true
+    },
+    {
+      "name": "project_run",
+      "primaryTag": "run",
+      "permissions": [
+        "execute"
+      ],
+      "sideEffects": [
+        "execute"
+      ],
+      "rateLimitPerMinute": 10,
+      "required": null,
+      "hasRequired": null,
+      "descLen": 186,
+      "description": "Run the built project as a LIVE server (Node/React/full-stack/static), wait until it responds, and open its live preview. Use to actually start and view a syste",
+      "hasExecute": true
+    },
+    {
+      "name": "project_stop",
+      "primaryTag": "run",
+      "permissions": [
+        "execute"
+      ],
+      "sideEffects": [
+        "execute"
+      ],
+      "rateLimitPerMinute": 20,
+      "required": null,
+      "hasRequired": null,
+      "descLen": 68,
+      "description": "Stop the live server started by project_run for the current project.",
+      "hasExecute": true
+    },
+    {
+      "name": "deploy_pages",
+      "primaryTag": "deploy",
+      "permissions": [
+        "execute",
+        "internet"
+      ],
+      "sideEffects": [
+        "execute",
+        "internet"
+      ],
+      "rateLimitPerMinute": 4,
+      "required": null,
+      "hasRequired": null,
+      "descLen": 208,
+      "description": "Deploy a static/frontend build permanently and FREE to GitHub Pages (reuses the connected token). Returns a permanent https://<owner>.github.io/<repo>/ URL. Bac",
+      "hasExecute": true
+    },
+    {
+      "name": "central_answer",
+      "primaryTag": "qa",
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 30,
+      "required": [
+        "question"
+      ],
+      "hasRequired": 1,
+      "descLen": 69,
+      "description": "Answer a general question or provide information directly to the user",
+      "hasExecute": true
+    },
+    {
+      "name": "web_page_builder",
+      "primaryTag": "web",
+      "permissions": [
+        "write"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 30,
+      "required": [
+        "request"
+      ],
+      "hasRequired": 1,
+      "descLen": 107,
+      "description": "Generate a complete standalone web page (HTML/CSS/JS), write it to a file, and open it in the live preview.",
+      "hasExecute": true
+    },
+    {
+      "name": "react_project",
+      "primaryTag": "build",
+      "permissions": [
+        "execute",
+        "write"
+      ],
+      "sideEffects": [
+        "execute",
+        "write"
+      ],
+      "rateLimitPerMinute": 6,
+      "required": [
+        "request"
+      ],
+      "hasRequired": 1,
+      "descLen": 129,
+      "description": "Scaffold a complete runnable Vite + React project (RTL-aware, Joe design tokens), then install and build it to prove it compiles.",
+      "hasExecute": true
+    },
+    {
+      "name": "project_edit",
+      "primaryTag": "edit",
+      "permissions": [
+        "execute",
+        "write"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 12,
+      "required": [
+        "request"
+      ],
+      "hasRequired": 1,
+      "descLen": 133,
+      "description": "Surgically edit files of a scaffolded project via SEARCH/REPLACE diffs, with a syntax gate, build verification, and automatic revert.",
+      "hasExecute": true
+    },
+    {
+      "name": "form_inbox",
+      "primaryTag": "forms",
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 30,
+      "required": null,
+      "hasRequired": null,
+      "descLen": 72,
+      "description": "List the form submissions delivered to this session's built site or app.",
+      "hasExecute": true
+    },
+    {
+      "name": "import_project",
+      "primaryTag": "import",
+      "permissions": [
+        "execute",
+        "write",
+        "internet"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 6,
+      "required": [
+        "request"
+      ],
+      "hasRequired": 1,
+      "descLen": 182,
+      "description": "Clone an existing GitHub repository (or open a local folder), perform a bounded evidence-backed local engineering review, and make it the session's active proje",
+      "hasExecute": true
+    },
+    {
+      "name": "api_project",
+      "primaryTag": "build",
+      "permissions": [
+        "execute",
+        "write"
+      ],
+      "sideEffects": [
+        "execute",
+        "write"
+      ],
+      "rateLimitPerMinute": 6,
+      "required": [
+        "request"
+      ],
+      "hasRequired": 1,
+      "descLen": 167,
+      "description": "Scaffold a complete runnable Express API with a real zero-dependency database (node:sqlite or JSON fallback), then boot it and prove a real HTTP write/read roun",
+      "hasExecute": true
+    },
+    {
+      "name": "image_studio",
+      "primaryTag": "images",
+      "permissions": [
+        "internet",
+        "write"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 6,
+      "required": [],
+      "hasRequired": 0,
+      "descLen": 272,
+      "description": "Fill the pictures of a built system: a real licensed photograph searched by each row's own name, a generated image when no archive matches it, and a designed ca",
+      "hasExecute": true
+    },
+    {
+      "name": "orders_read",
+      "primaryTag": "orders",
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "required": [],
+      "hasRequired": 0,
+      "descLen": 123,
+      "description": "Read visitor orders from the session's API database (disk-direct, works with the server stopped) and list them in the chat.",
+      "hasExecute": true
+    },
+    {
+      "name": "business_profile",
+      "primaryTag": "profile",
+      "permissions": [
+        "read",
+        "write"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 20,
+      "required": [
+        "request"
+      ],
+      "hasRequired": 1,
+      "descLen": 119,
+      "description": "Save, show or clear the user's real business details (brand, phone, email, socials) — injected into every future build.",
+      "hasExecute": true
+    },
+    {
+      "name": "auto_tester",
+      "primaryTag": "testing",
+      "permissions": [
+        "execute"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "required": [
+        "testType",
+        "projectPath"
+      ],
+      "hasRequired": 2,
+      "descLen": 63,
+      "description": "Automatically test code, check syntax, and verify functionality",
+      "hasExecute": true
+    },
+    {
+      "name": "code_reviewer",
+      "primaryTag": "review",
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 10,
+      "required": [
+        "files"
+      ],
+      "hasRequired": 1,
+      "descLen": 68,
+      "description": "AI-powered code review for quality, best practices, and improvements",
+      "hasExecute": true
+    },
+    {
+      "name": "security_scanner",
+      "primaryTag": "security",
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "required": [],
+      "hasRequired": 0,
+      "descLen": 57,
+      "description": "Scan code for security vulnerabilities and best practices",
+      "hasExecute": true
+    },
+    {
+      "name": "performance_analyzer",
+      "primaryTag": "performance",
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "required": [
+        "files"
+      ],
+      "hasRequired": 1,
+      "descLen": 50,
+      "description": "Analyze code performance and suggest optimizations",
+      "hasExecute": true
+    },
+    {
+      "name": "error_recovery",
+      "primaryTag": "error",
+      "permissions": [
+        "execute",
+        "write",
+        "read"
+      ],
+      "sideEffects": [
+        "write",
+        "execute"
+      ],
+      "rateLimitPerMinute": 20,
+      "required": [
+        "error"
+      ],
+      "hasRequired": 1,
+      "descLen": 102,
+      "description": "Wolverine-style self-healing: Detects errors, AI-analyzes them, auto-fixes, and retries until success.",
+      "hasExecute": true
+    },
+    {
+      "name": "joe_engineering_report",
+      "primaryTag": "joe",
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "required": null,
+      "hasRequired": null,
+      "descLen": 157,
+      "description": "Return a clear engineering status report for Joe, including canonical pipeline, verified capabilities, safety rules, and optional pipeline execution summary.",
+      "hasExecute": true
+    },
+    {
+      "name": "echo",
+      "primaryTag": "utility",
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 120,
+      "required": [
+        "text"
+      ],
+      "hasRequired": 1,
+      "descLen": 34,
+      "description": "Return the input text (ping/pong).",
+      "hasExecute": true
+    },
+    {
+      "name": "file_edit",
+      "primaryTag": "fs",
+      "permissions": [
+        "write",
+        "read"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 60,
+      "required": [
+        "filename",
+        "find",
+        "replace"
+      ],
+      "hasRequired": 3,
+      "descLen": 23,
+      "description": "Replace text in a file.",
+      "hasExecute": true
+    },
+    {
+      "name": "shell_execute",
+      "primaryTag": "shell",
+      "permissions": [
+        "execute"
+      ],
+      "sideEffects": [
+        "execute"
+      ],
+      "rateLimitPerMinute": 60,
+      "required": [
+        "command"
+      ],
+      "hasRequired": 1,
+      "descLen": 49,
+      "description": "Execute shell commands with persistent CWD state.",
+      "hasExecute": true
+    },
+    {
+      "name": "write_file",
+      "primaryTag": "fs",
+      "permissions": [
+        "write"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 60,
+      "required": [
+        "content"
+      ],
+      "hasRequired": 1,
+      "descLen": 91,
+      "description": "Write content to a file, or append literal content to an existing file when mode is append.",
+      "hasExecute": true
+    },
+    {
+      "name": "delete_file",
+      "primaryTag": "fs",
+      "permissions": [
+        "write"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 60,
+      "required": [],
+      "hasRequired": 0,
+      "descLen": 103,
+      "description": "Delete a file (or, with recursive:true, a directory) inside the workspace. Refuses anything outside it.",
+      "hasExecute": true
+    },
+    {
+      "name": "scaffold_project",
+      "primaryTag": "scaffold",
+      "permissions": [
+        "write"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 60,
+      "required": [
+        "structure"
+      ],
+      "hasRequired": 1,
+      "descLen": 54,
+      "description": "Scaffold a project structure from a definition object.",
+      "hasExecute": true
+    },
+    {
+      "name": "git_local_workflow",
+      "primaryTag": "git",
+      "permissions": [
+        "read",
+        "write",
+        "execute"
+      ],
+      "sideEffects": [
+        "write",
+        "execute"
+      ],
+      "rateLimitPerMinute": 6,
+      "required": [
+        "request"
+      ],
+      "hasRequired": 1,
+      "descLen": 201,
+      "description": "Complete a bounded local Git workflow after a project import: create a local branch, write one requested docs note, verify the staged diff, and commit locally. ",
+      "hasExecute": true
+    },
+    {
+      "name": "ls",
+      "primaryTag": "fs",
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 120,
+      "required": null,
+      "hasRequired": null,
+      "descLen": 23,
+      "description": "List directory entries.",
+      "hasExecute": true
+    },
+    {
+      "name": "npm_manager",
+      "primaryTag": "npm",
+      "permissions": [
+        "execute",
+        "write",
+        "internet"
+      ],
+      "sideEffects": [
+        "execute",
+        "write",
+        "internet"
+      ],
+      "rateLimitPerMinute": 30,
+      "required": [
+        "command"
+      ],
+      "hasRequired": 1,
+      "descLen": 40,
+      "description": "Manage npm dependencies and run scripts.",
+      "hasExecute": true
+    },
+    {
+      "name": "shell_check_status",
+      "primaryTag": "shell",
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "required": [
+        "id"
+      ],
+      "hasRequired": 1,
+      "descLen": 41,
+      "description": "Check the status of a background command.",
+      "hasExecute": true
+    },
+    {
+      "name": "terminal_manager",
+      "primaryTag": "shell",
+      "permissions": [
+        "execute"
+      ],
+      "sideEffects": [
+        "execute"
+      ],
+      "rateLimitPerMinute": 60,
+      "required": [
+        "action"
+      ],
+      "hasRequired": 1,
+      "descLen": 237,
+      "description": "Open a terminal, run a command in it, and READ its output — the live terminal panel, its history, and the last error it printed. Use for \"read the terminal\", \"w",
+      "hasExecute": true
+    },
+    {
+      "name": "read_file",
+      "primaryTag": "fs",
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "required": [
+        "path"
+      ],
+      "hasRequired": 1,
+      "descLen": 48,
+      "description": "Read file content safely with pagination limits.",
+      "hasExecute": true
+    },
+    {
+      "name": "ask_user",
+      "primaryTag": "user",
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "required": [
+        "question"
+      ],
+      "hasRequired": 1,
+      "descLen": 99,
+      "description": "Ask the user a question and wait for a response. Use this if you are blocked or need clarification.",
+      "hasExecute": true
+    },
+    {
+      "name": "analyze_project",
+      "primaryTag": "analysis",
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "required": [],
+      "hasRequired": 0,
+      "descLen": 59,
+      "description": "Analyze the project structure and architectural components.",
+      "hasExecute": true
+    },
+    {
+      "name": "analyze_codebase",
+      "primaryTag": "analysis",
+      "permissions": [
+        "read",
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "required": [],
+      "hasRequired": 0,
+      "descLen": 68,
+      "description": "Deep analyze of codebase using file structure and LLM summarization.",
+      "hasExecute": true
+    },
+    {
+      "name": "project_detect",
+      "primaryTag": "analysis",
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 30,
+      "required": [],
+      "hasRequired": 0,
+      "descLen": 227,
+      "description": "Detect common project roots (Node/Python/Go) under a given path. Use this for initial discovery. After identifying project roots, transition to deep analysis to",
+      "hasExecute": true
+    },
+    {
+      "name": "codebase_outline",
+      "primaryTag": "code",
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "required": [
+        "filePath"
+      ],
+      "hasRequired": 1,
+      "descLen": 105,
+      "description": "Scan a file and extract its structure (Classes, Functions, Interfaces) using fast regex pattern matching.",
+      "hasExecute": true
+    },
+    {
+      "name": "dead_code_detector",
+      "primaryTag": "analysis",
+      "permissions": [
+        "read",
+        "execute"
+      ],
+      "sideEffects": [
+        "execute"
+      ],
+      "rateLimitPerMinute": 10,
+      "required": null,
+      "hasRequired": null,
+      "descLen": 88,
+      "description": "Analyzes the codebase using Knip to find unused files, dependencies, exports, and types.",
+      "hasExecute": true
+    },
+    {
+      "name": "api_tester",
+      "primaryTag": "network",
+      "permissions": [
+        "execute",
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 30,
+      "required": [
+        "url",
+        "method"
+      ],
+      "hasRequired": 2,
+      "descLen": 107,
+      "description": "Test APIs robustly like Postman. Supports custom Headers, JSON bodies, Authentication, and dynamic methods.",
+      "hasExecute": true
+    },
+    {
+      "name": "http_fetch",
+      "primaryTag": "network",
+      "permissions": [
+        "read",
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "required": [
+        "url"
+      ],
+      "hasRequired": 1,
+      "descLen": 40,
+      "description": "Fetch the content of a URL via HTTP GET.",
+      "hasExecute": true
+    },
+    {
+      "name": "html_extract",
+      "primaryTag": "network",
+      "permissions": [
+        "read",
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 30,
+      "required": [
+        "url"
+      ],
+      "hasRequired": 1,
+      "descLen": 56,
+      "description": "Extract metadata, text, and structure from HTML content.",
+      "hasExecute": true
+    },
+    {
+      "name": "rss_fetch",
+      "primaryTag": "network",
+      "permissions": [
+        "read",
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "required": [
+        "url"
+      ],
+      "hasRequired": 1,
+      "descLen": 28,
+      "description": "Fetch and parse an RSS feed.",
+      "hasExecute": true
+    },
+    {
+      "name": "json_query",
+      "primaryTag": "data",
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "required": [
+        "json",
+        "path"
+      ],
+      "hasRequired": 2,
+      "descLen": 66,
+      "description": "Query a specific value from a JSON object using dot notation path.",
+      "hasExecute": true
+    },
+    {
+      "name": "search_api",
+      "primaryTag": "search",
+      "permissions": [
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "required": [
+        "query"
+      ],
+      "hasRequired": 1,
+      "descLen": 56,
+      "description": "Search the public web with strict safe-search filtering.",
+      "hasExecute": true
+    },
+    {
+      "name": "query_datasource",
+      "primaryTag": "data",
+      "permissions": [
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "required": [
+        "source"
+      ],
+      "hasRequired": 1,
+      "descLen": 234,
+      "description": "Query authoritative data sources using a unified interface. Supports weather, exchange rates, IP geolocation, random facts, and more. Use this instead of writin",
+      "hasExecute": true
+    },
+    {
+      "name": "auth_builder",
+      "primaryTag": "auth",
+      "permissions": [
+        "write"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 60,
+      "required": [
+        "type",
+        "outputDir"
+      ],
+      "hasRequired": 2,
+      "descLen": 77,
+      "description": "Generate complete authentication systems with OAuth, JWT, sessions, and RBAC.",
+      "hasExecute": true
+    },
+    {
+      "name": "mobile_builder",
+      "primaryTag": "mobile",
+      "permissions": [
+        "write",
+        "execute"
+      ],
+      "sideEffects": [
+        "write",
+        "execute"
+      ],
+      "rateLimitPerMinute": 60,
+      "required": [
+        "action"
+      ],
+      "hasRequired": 1,
+      "descLen": 108,
+      "description": "Generate React Native / Expo mobile applications with navigation, state management, and native integrations.",
+      "hasExecute": true
+    },
+    {
+      "name": "swagger_docs",
+      "primaryTag": "api",
+      "permissions": [
+        "read",
+        "write"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 60,
+      "required": [
+        "action"
+      ],
+      "hasRequired": 1,
+      "descLen": 82,
+      "description": "Generate OpenAPI/Swagger documentation for APIs with automatic endpoint detection.",
+      "hasExecute": true
+    },
+    {
+      "name": "i18n_translator",
+      "primaryTag": "i18n",
+      "permissions": [
+        "read",
+        "write"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 5,
+      "required": [
+        "sourceFile",
+        "targetLanguages"
+      ],
+      "hasRequired": 2,
+      "descLen": 113,
+      "description": "Translate a JSON language file to multiple target languages automatically using AI. Preserves keys and structure.",
+      "hasExecute": true
+    },
+    {
+      "name": "website_full_pipeline",
+      "primaryTag": "pipeline",
+      "permissions": [
+        "write",
+        "execute"
+      ],
+      "sideEffects": [
+        "write",
+        "execute"
+      ],
+      "rateLimitPerMinute": 10,
+      "required": [
+        "name"
+      ],
+      "hasRequired": 1,
+      "descLen": 64,
+      "description": "Scaffold, build, test, and preview a full-stack website project.",
+      "hasExecute": true
+    },
+    {
+      "name": "dev_server_start",
+      "primaryTag": "dev",
+      "permissions": [
+        "execute"
+      ],
+      "sideEffects": [
+        "execute"
+      ],
+      "rateLimitPerMinute": 15,
+      "required": [
+        "cwd"
+      ],
+      "hasRequired": 1,
+      "descLen": 41,
+      "description": "Start a development server for a project.",
+      "hasExecute": true
+    },
+    {
+      "name": "scaffold_full_stack",
+      "primaryTag": "scaffold",
+      "permissions": [
+        "write"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 30,
+      "required": [
+        "name"
+      ],
+      "hasRequired": 1,
+      "descLen": 79,
+      "description": "Generate a new full-stack project using 3-Tier architecture and best practices.",
+      "hasExecute": true
+    },
+    {
+      "name": "browser_action",
+      "primaryTag": "browser",
+      "permissions": [
+        "internet",
+        "execute"
+      ],
+      "sideEffects": [
+        "execute"
+      ],
+      "rateLimitPerMinute": 60,
+      "required": [
+        "sessionId",
+        "action"
+      ],
+      "hasRequired": 2,
+      "descLen": 87,
+      "description": "Perform atomic browser actions (click, type, scroll, wait, eval) directly on a session.",
+      "hasExecute": true
+    },
+    {
+      "name": "browser_vision",
+      "primaryTag": "browser",
+      "permissions": [
+        "internet",
+        "read",
+        "write"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 60,
+      "required": [
+        "url"
+      ],
+      "hasRequired": 1,
+      "descLen": 114,
+      "description": "Open a URL in a real headless browser and capture an actual screenshot of the page (returns the saved image path).",
+      "hasExecute": true
+    },
+    {
+      "name": "screenshot",
+      "primaryTag": "browser",
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 30,
+      "required": [
+        "url"
+      ],
+      "hasRequired": 1,
+      "descLen": 59,
+      "description": "Capture a screenshot of a web page for visual verification.",
+      "hasExecute": true
+    },
+    {
+      "name": "visual_compare",
+      "primaryTag": "browser",
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 30,
+      "required": [
+        "baseline",
+        "current"
+      ],
+      "hasRequired": 2,
+      "descLen": 54,
+      "description": "Compare two screenshots and report visual differences.",
+      "hasExecute": true
+    },
+    {
+      "name": "video_action",
+      "primaryTag": "media",
+      "permissions": [
+        "execute",
+        "read",
+        "write"
+      ],
+      "sideEffects": [
+        "execute",
+        "write"
+      ],
+      "rateLimitPerMinute": 5,
+      "required": [
+        "action",
+        "inputFile",
+        "outputFile"
+      ],
+      "hasRequired": 3,
+      "descLen": 89,
+      "description": "Edit, convert, and process videos/audio using FFMPEG. Machine must have ffmpeg installed.",
+      "hasExecute": true
+    },
+    {
+      "name": "db_schema_migrator",
+      "primaryTag": "database",
+      "permissions": [
+        "execute",
+        "read"
+      ],
+      "sideEffects": [
+        "execute"
+      ],
+      "rateLimitPerMinute": 60,
+      "required": [
+        "action"
+      ],
+      "hasRequired": 1,
+      "descLen": 159,
+      "description": "Execute an existing database schema or SQL migration. For .sql files use engine sqlite; for .prisma files use engine prisma. This tool does not design schemas.",
+      "hasExecute": true
+    },
+    {
+      "name": "query_optimizer",
+      "primaryTag": "database",
+      "permissions": [
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "required": [
+        "sql"
+      ],
+      "hasRequired": 1,
+      "descLen": 70,
+      "description": "Analyze SQL queries for performance bottlenecks using EXPLAIN ANALYZE.",
+      "hasExecute": true
+    },
+    {
+      "name": "large_data_seeder",
+      "primaryTag": "database",
+      "permissions": [
+        "write"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 60,
+      "required": [
+        "rows",
+        "headers",
+        "outputPath"
+      ],
+      "hasRequired": 3,
+      "descLen": 56,
+      "description": "Generate massive datasets (CSV/JSON) for stress testing.",
+      "hasExecute": true
+    },
+    {
+      "name": "docker_manager",
+      "primaryTag": "docker",
+      "permissions": [
+        "execute",
+        "write"
+      ],
+      "sideEffects": [
+        "execute",
+        "write"
+      ],
+      "rateLimitPerMinute": 15,
+      "required": [
+        "action"
+      ],
+      "hasRequired": 1,
+      "descLen": 108,
+      "description": "Manage Docker containers, images, and volumes. Use this to start/stop services, build images, or check logs.",
+      "hasExecute": true
+    },
+    {
+      "name": "terraform_manager",
+      "primaryTag": "infrastructure",
+      "permissions": [
+        "execute",
+        "read",
+        "write"
+      ],
+      "sideEffects": [
+        "execute"
+      ],
+      "rateLimitPerMinute": 60,
+      "required": [
+        "action",
+        "directory"
+      ],
+      "hasRequired": 2,
+      "descLen": 75,
+      "description": "Manage Infrastructure as Code using Terraform (init, plan, apply, destroy).",
+      "hasExecute": true
+    },
+    {
+      "name": "kubernetes_ops",
+      "primaryTag": "infrastructure",
+      "permissions": [
+        "execute"
+      ],
+      "sideEffects": [
+        "execute"
+      ],
+      "rateLimitPerMinute": 60,
+      "required": [
+        "command"
+      ],
+      "hasRequired": 1,
+      "descLen": 39,
+      "description": "Manage Kubernetes clusters via kubectl.",
+      "hasExecute": true
+    },
+    {
+      "name": "docker_swarm_ops",
+      "primaryTag": "infrastructure",
+      "permissions": [
+        "execute"
+      ],
+      "sideEffects": [
+        "execute"
+      ],
+      "rateLimitPerMinute": 60,
+      "required": [
+        "action"
+      ],
+      "hasRequired": 1,
+      "descLen": 40,
+      "description": "Manage Docker Swarm services and stacks.",
+      "hasExecute": true
+    },
+    {
+      "name": "git_ops",
+      "primaryTag": "git",
+      "permissions": [
+        "execute",
+        "internet",
+        "read",
+        "write"
+      ],
+      "sideEffects": [
+        "execute",
+        "write",
+        "internet"
+      ],
+      "rateLimitPerMinute": 30,
+      "required": [
+        "operation"
+      ],
+      "hasRequired": 1,
+      "descLen": 74,
+      "description": "Perform git operations (commit, push, pull, etc) with auto-authentication.",
+      "hasExecute": true
+    },
+    {
+      "name": "github_repo_manager",
+      "primaryTag": "github",
+      "permissions": [
+        "execute"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 10,
+      "required": [
+        "action"
+      ],
+      "hasRequired": 1,
+      "descLen": 121,
+      "description": "Create, manage and ANALYZE GitHub repositories (analyze = real repo report: languages, file tree, README, latest commits)",
+      "hasExecute": true
+    },
+    {
+      "name": "github_pr",
+      "primaryTag": "github",
+      "permissions": [
+        "execute"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 10,
+      "required": [
+        "action",
+        "owner",
+        "repo"
+      ],
+      "hasRequired": 3,
+      "descLen": 52,
+      "description": "Create and manage GitHub Pull Requests automatically",
+      "hasExecute": true
+    },
+    {
+      "name": "github_actions",
+      "primaryTag": "github",
+      "permissions": [
+        "write"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 20,
+      "required": [
+        "workflowType",
+        "projectPath"
+      ],
+      "hasRequired": 2,
+      "descLen": 54,
+      "description": "Generate GitHub Actions workflows for CI/CD automation",
+      "hasExecute": true
+    },
+    {
+      "name": "alert_manager",
+      "primaryTag": "alerts",
+      "permissions": [
+        "write"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 60,
+      "required": [
+        "action"
+      ],
+      "hasRequired": 1,
+      "descLen": 66,
+      "description": "Manage alerts with conditions, notifications, and history tracking",
+      "hasExecute": true
+    },
+    {
+      "name": "cache_manager",
+      "primaryTag": "cache",
+      "permissions": [
+        "write"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 100,
+      "required": [
+        "action"
+      ],
+      "hasRequired": 1,
+      "descLen": 56,
+      "description": "Manage in-memory cache with TTL, stats, and invalidation",
+      "hasExecute": true
+    },
+    {
+      "name": "go_builder",
+      "primaryTag": "go",
+      "permissions": [
+        "write",
+        "read"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 10,
+      "required": [
+        "action"
+      ],
+      "hasRequired": 1,
+      "descLen": 49,
+      "description": "Build Go projects with Gin/Echo framework support",
+      "hasExecute": true
+    },
+    {
+      "name": "java_builder",
+      "primaryTag": "java",
+      "permissions": [
+        "write",
+        "read"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 10,
+      "required": [
+        "action"
+      ],
+      "hasRequired": 1,
+      "descLen": 57,
+      "description": "Build Java/Spring Boot projects with Maven/Gradle support",
+      "hasExecute": true
+    },
+    {
+      "name": "llm_cache",
+      "primaryTag": "cache",
+      "permissions": [
+        "write"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 200,
+      "required": [
+        "action"
+      ],
+      "hasRequired": 1,
+      "descLen": 53,
+      "description": "Cache LLM responses to reduce costs and improve speed",
+      "hasExecute": true
+    },
+    {
+      "name": "logger",
+      "primaryTag": "logging",
+      "permissions": [
+        "write"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 100,
+      "required": [
+        "action"
+      ],
+      "hasRequired": 1,
+      "descLen": 66,
+      "description": "Structured logging system with log levels, rotation, and filtering",
+      "hasExecute": true
+    },
+    {
+      "name": "monitoring",
+      "primaryTag": "monitoring",
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 200,
+      "required": [
+        "action"
+      ],
+      "hasRequired": 1,
+      "descLen": 47,
+      "description": "Monitor system performance, metrics, and health",
+      "hasExecute": true
+    },
+    {
+      "name": "project_state_manager",
+      "primaryTag": "state",
+      "permissions": [
+        "write"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 30,
+      "required": [
+        "action",
+        "projectId"
+      ],
+      "hasRequired": 2,
+      "descLen": 83,
+      "description": "Track project progress, save checkpoints, and enable resumption after interruptions",
+      "hasExecute": true
+    },
+    {
+      "name": "python_builder",
+      "primaryTag": "python",
+      "permissions": [
+        "write"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 10,
+      "required": [
+        "framework",
+        "projectName",
+        "projectPath"
+      ],
+      "hasRequired": 3,
+      "descLen": 52,
+      "description": "Build Python projects with Django, Flask, or FastAPI",
+      "hasExecute": true
+    },
+    {
+      "name": "request_analyzer",
+      "primaryTag": "analysis",
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 10,
+      "required": [
+        "userRequest"
+      ],
+      "hasRequired": 1,
+      "descLen": 88,
+      "description": "Analyze complex build requests to extract requirements, modules, and estimate complexity",
+      "hasExecute": true
+    },
+    {
+      "name": "template_manager",
+      "primaryTag": "templates",
+      "permissions": [
+        "write"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 30,
+      "required": [
+        "templateType"
+      ],
+      "hasRequired": 1,
+      "descLen": 77,
+      "description": "Get pre-built templates for common project types (React, Node, Express, etc.)",
+      "hasExecute": true
+    },
+    {
+      "name": "deploy_project",
+      "primaryTag": "deploy",
+      "permissions": [
+        "execute",
+        "write",
+        "internet"
+      ],
+      "sideEffects": [
+        "execute",
+        "write"
+      ],
+      "rateLimitPerMinute": 10,
+      "required": [
+        "action",
+        "projectPath"
+      ],
+      "hasRequired": 2,
+      "descLen": 308,
+      "description": "Deploy a project or expose a local service for public access. Actions: \"expose_port\" to create a temporary public URL for a local port, \"build_static\" to build ",
+      "hasExecute": true
+    },
+    {
+      "name": "archive_files",
+      "primaryTag": "files",
+      "permissions": [
+        "read",
+        "write",
+        "execute"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 20,
+      "required": [
+        "action",
+        "archivePath"
+      ],
+      "hasRequired": 2,
+      "descLen": 234,
+      "description": "Create or extract file archives (zip, tar.gz, tar). Use action \"create\" to compress files/directories into an archive. Use action \"extract\" to decompress an arc",
+      "hasExecute": true
+    },
+    {
+      "name": "execute_python",
+      "primaryTag": "python",
+      "permissions": [
+        "execute"
+      ],
+      "sideEffects": [
+        "execute"
+      ],
+      "rateLimitPerMinute": 20,
+      "required": [
+        "code"
+      ],
+      "hasRequired": 1,
+      "descLen": 354,
+      "description": "Execute a Python 3 script in an isolated environment. Use this for mathematical calculations, data analysis, file processing, JSON/CSV manipulation, or any comp",
+      "hasExecute": true
+    },
+    {
+      "name": "sonar_analysis",
+      "primaryTag": "quality",
+      "permissions": [
+        "execute",
+        "internet"
+      ],
+      "sideEffects": [
+        "execute"
+      ],
+      "rateLimitPerMinute": 60,
+      "required": [
+        "projectKey"
+      ],
+      "hasRequired": 1,
+      "descLen": 65,
+      "description": "Run Static Code Analysis using SonarScanner (or mock if missing).",
+      "hasExecute": true
+    },
+    {
+      "name": "dependency_audit",
+      "primaryTag": "security",
+      "permissions": [
+        "execute",
+        "internet"
+      ],
+      "sideEffects": [
+        "execute"
+      ],
+      "rateLimitPerMinute": 60,
+      "required": null,
+      "hasRequired": null,
+      "descLen": 62,
+      "description": "Check project dependencies for known security vulnerabilities.",
+      "hasExecute": true
+    },
+    {
+      "name": "quality_run",
+      "primaryTag": "quality",
+      "permissions": [
+        "execute",
+        "read"
+      ],
+      "sideEffects": [
+        "execute"
+      ],
+      "rateLimitPerMinute": 60,
+      "required": [
+        "path"
+      ],
+      "hasRequired": 1,
+      "descLen": 56,
+      "description": "Run project quality tasks: lint, typecheck, test, build.",
+      "hasExecute": true
+    },
+    {
+      "name": "secrets_scan_repo",
+      "primaryTag": "security",
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "required": [
+        "path"
+      ],
+      "hasRequired": 1,
+      "descLen": 45,
+      "description": "Scan a repository for common secret patterns.",
+      "hasExecute": true
+    },
+    {
+      "name": "ci_generate_pipeline",
+      "primaryTag": "ci",
+      "permissions": [
+        "write",
+        "read"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 60,
+      "required": [
+        "path"
+      ],
+      "hasRequired": 1,
+      "descLen": 54,
+      "description": "Generate a basic CI workflow for a project if missing.",
+      "hasExecute": true
+    },
+    {
+      "name": "load_tester",
+      "primaryTag": "testing",
+      "permissions": [
+        "execute",
+        "internet"
+      ],
+      "sideEffects": [
+        "execute"
+      ],
+      "rateLimitPerMinute": 60,
+      "required": [
+        "url"
+      ],
+      "hasRequired": 1,
+      "descLen": 54,
+      "description": "Run performance stress tests (using k6 logic wrapper).",
+      "hasExecute": true
+    },
+    {
+      "name": "pattern_recognize",
+      "primaryTag": "analysis",
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "required": [
+        "code",
+        "language"
+      ],
+      "hasRequired": 2,
+      "descLen": 68,
+      "description": "Analyze code patterns and suggest improvements using static analysis",
+      "hasExecute": true
+    },
+    {
+      "name": "auto_refactor",
+      "primaryTag": "refactor",
+      "permissions": [
+        "read",
+        "write"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "required": [
+        "filePath"
+      ],
+      "hasRequired": 1,
+      "descLen": 51,
+      "description": "Automatically refactor code based on best practices",
+      "hasExecute": true
+    },
+    {
+      "name": "test_generator",
+      "primaryTag": "testing",
+      "permissions": [
+        "read",
+        "write"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "required": [
+        "filePath"
+      ],
+      "hasRequired": 1,
+      "descLen": 43,
+      "description": "Generate comprehensive test suites for code",
+      "hasExecute": true
+    },
+    {
+      "name": "performance_profile",
+      "primaryTag": "performance",
+      "permissions": [
+        "read",
+        "execute"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "required": [
+        "filePath"
+      ],
+      "hasRequired": 1,
+      "descLen": 49,
+      "description": "Profile code performance and identify bottlenecks",
+      "hasExecute": true
+    },
+    {
+      "name": "doc_generator",
+      "primaryTag": "documentation",
+      "permissions": [
+        "read",
+        "write"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "required": [
+        "filePath"
+      ],
+      "hasRequired": 1,
+      "descLen": 46,
+      "description": "Generate comprehensive documentation from code",
+      "hasExecute": true
+    },
+    {
+      "name": "knowledge_search",
+      "primaryTag": "knowledge",
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "required": [
+        "query"
+      ],
+      "hasRequired": 1,
+      "descLen": 50,
+      "description": "Search the knowledge base using vector similarity.",
+      "hasExecute": true
+    },
+    {
+      "name": "knowledge_add",
+      "primaryTag": "knowledge",
+      "permissions": [
+        "write"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 10,
+      "required": [
+        "filename",
+        "content"
+      ],
+      "hasRequired": 2,
+      "descLen": 37,
+      "description": "Add a document to the knowledge base.",
+      "hasExecute": true
+    },
+    {
+      "name": "task_lifecycle",
+      "primaryTag": "system",
+      "permissions": [
+        "write"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "required": [
+        "action"
+      ],
+      "hasRequired": 1,
+      "descLen": 114,
+      "description": "Manage the lifecycle of an agent task loop. Use this to update the UI with your current status, summary, and mode.",
+      "hasExecute": true
+    },
+    {
+      "name": "inspect_directory",
+      "primaryTag": "fs",
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "required": [
+        "path"
+      ],
+      "hasRequired": 1,
+      "descLen": 74,
+      "description": "List directory contents in a structured JSON format (recursive supported).",
+      "hasExecute": true
+    },
+    {
+      "name": "search_files",
+      "primaryTag": "fs",
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "required": [
+        "pattern"
+      ],
+      "hasRequired": 1,
+      "descLen": 41,
+      "description": "Search for files by name patterns (glob).",
+      "hasExecute": true
+    },
+    {
+      "name": "search_text",
+      "primaryTag": "search",
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "required": [],
+      "hasRequired": 0,
+      "descLen": 123,
+      "description": "Search for TEXT (or a regular expression) inside files in the workspace, returning file, line number and the matching line.",
+      "hasExecute": true
+    },
+    {
+      "name": "inspect_symbol",
+      "primaryTag": "code",
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "required": [
+        "filePath",
+        "symbolName"
+      ],
+      "hasRequired": 2,
+      "descLen": 68,
+      "description": "Extract the code definition of a specific Class or Function by name.",
+      "hasExecute": true
+    },
+    {
+      "name": "file_edit_advanced",
+      "primaryTag": "fs",
+      "permissions": [
+        "write",
+        "read"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 60,
+      "required": [
+        "filePath",
+        "edits"
+      ],
+      "hasRequired": 2,
+      "descLen": 64,
+      "description": "Advanced file editing with multiple non-contiguous replacements.",
+      "hasExecute": true
+    },
+    {
+      "name": "notify_user",
+      "primaryTag": "communication",
+      "permissions": [
+        "write"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 30,
+      "required": [
+        "message"
+      ],
+      "hasRequired": 1,
+      "descLen": 287,
+      "description": "Send a non-blocking progress update to the user's chat UI. Unlike `echo`, this does NOT stop your autonomous execution loop. Use this to keep the user informed ",
+      "hasExecute": true
+    },
+    {
+      "name": "payments_create_checkout_session",
+      "primaryTag": "payments",
+      "permissions": [
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 10,
+      "required": [
+        "amount",
+        "productName"
+      ],
+      "hasRequired": 2,
+      "descLen": 99,
+      "description": "Creates a Stripe checkout session for payment processing. Requires Stripe API key to be configured.",
+      "hasExecute": true
+    },
+    {
+      "name": "todo_write",
+      "primaryTag": "task",
+      "permissions": [
+        "write"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 60,
+      "required": [
+        "merge",
+        "todos"
+      ],
+      "hasRequired": 2,
+      "descLen": 178,
+      "description": "Proactively create and manage a structured task list for your current coding session. This helps track progress, organize complex tasks, and demonstrate thoroug",
+      "hasExecute": true
+    }
+  ],
+  "liveEmptyInput": {
+    "cloud_cost_estimator": {
+      "ok": false,
+      "error": "cloud_cost_estimator needs a resources list (e.g. [\"EC2 t3.small\", \"RDS\"]).",
+      "outputShape": "null",
+      "log0": "[2026-09-29T21:03:33.764Z] start cloud_cost_estimator (orig=cloud_cost_estimator)"
+    },
+    "docker_swarm_ops": {
+      "ok": false,
+      "error": "docker_swarm_ops needs an action: deploy_stack | list_services | service_logs | remove_stack.",
+      "outputShape": "null",
+      "log0": "[2026-09-29T21:03:33.808Z] start docker_swarm_ops (orig=docker_swarm_ops)"
+    },
+    "llm_cache": {
+      "ok": false,
+      "error": "Unknown action: undefined",
+      "outputShape": "null",
+      "log0": "[2026-09-29T21:03:33.816Z] start llm_cache (orig=llm_cache)"
+    },
+    "rss_fetch": {
+      "ok": false,
+      "error": "Tool reported failure without an error message",
+      "outputShape": "null",
+      "log0": "[2026-09-29T21:03:33.825Z] start rss_fetch (orig=rss_fetch)"
+    },
+    "task_lifecycle": {
+      "ok": true,
+      "error": null,
+      "outputShape": "{success}",
+      "log0": "[2026-09-29T21:03:34.002Z] start task_lifecycle (orig=task_lifecycle)"
+    },
+    "template_manager": {
+      "ok": false,
+      "error": "Template 'undefined' not found",
+      "outputShape": "null",
+      "log0": "[2026-09-29T21:03:34.010Z] start template_manager (orig=template_manager)"
+    },
+    "video_action": {
+      "ok": false,
+      "error": "Unknown action",
+      "outputShape": "null",
+      "log0": "[2026-09-29T21:03:34.017Z] start video_action (orig=video_action)"
+    },
+    "execute_python": {
+      "ok": false,
+      "error": "No Python code provided.",
+      "outputShape": "null",
+      "log0": "[2026-09-29T21:03:34.023Z] start execute_python (orig=execute_python)"
+    },
+    "json_query": {
+      "ok": false,
+      "error": "json required",
+      "outputShape": "null",
+      "log0": "[2026-09-29T21:03:34.031Z] start json_query (orig=json_query)"
+    }
+  }
+}

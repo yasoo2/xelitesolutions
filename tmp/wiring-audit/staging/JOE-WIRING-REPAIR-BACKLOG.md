@@ -76,7 +76,7 @@ DEPENDENCIES=image_generate target decision (free-first creative contract)
 BATCH_ID=WIRING-P2-003
 CAPABILITIES=21 boot-defaulted permission/rate-limit declarations (source fix)
 ROOT_CAUSE=tools declare empty permissions / zero rateLimit; enforceContract mutes at boot instead of source fix
-FILES=21 definition sites (list in exposure.json/contractDefaults)
+FILES=21 definition sites (exact 21+2 lists in sweep1.json contractDefaults)
 IMPLEMENTATION_OWNER=UNASSIGNED
 REVIEW_OWNER=UNASSIGNED
 TESTS=declaration-presence gate (no boot-defaulting) + focused tests + AGENTS gates
@@ -86,13 +86,26 @@ DEPENDENCIES=none
 
 ---
 
+BATCH_ID=WIRING-P2-004
+CAPABILITIES=schema/execute consistency (task_lifecycle required-vs-default gap) + empty-input honesty sweep continuation
+ROOT_CAUSE=task_lifecycle declares required:['action'] but execute() defaults action='update' and returns ok:true on {} (sweep1.json, rerun-stable); no central schema gate — validation is per-tool; 25 tools declare no required inputs (incl. delete_file, deploy_pages, project_run/stop)
+FILES=TaskLifecycleTool.ts (enforce required OR drop it from schema) + per-tool review notes for the 25
+IMPLEMENTATION_OWNER=UNASSIGNED
+REVIEW_OWNER=UNASSIGNED
+TESTS=schema/execute consistency gate for task_lifecycle ({} -> honest error OR schema without required); batch-2+ live calls ONLY after per-tool execute() review (review-then-call rule); AGENTS gates if ToolService touched (it is not — tool-local fix)
+REAL_JOE_UAT=none (contract nit; UI behavior unchanged either way)
+ROLLBACK=revert schema/execute one-liner
+DEPENDENCIES=none
+
+---
+
 BATCH_ID=WIRING-P3-001
-CAPABILITIES=15 dormant/absent-static-candidate names (behavioral review). The 7 keyword-only tools are CLOSED: targeted probes (target.json) rank all 7 at 1-2 on self-grounded + blind goals — no keyword-map repair needed.
+CAPABILITIES=15 dormant/absent-static-candidate names (behavioral review). Selection stories FULLY CLOSED: 9/9 targeted rank-1 (target.json) + catalogue-absent 15/15 storied strong — no keyword-map repair needed.
 ROOT_CAUSE=unknown whether name similarity/dormancy equals missing capability
 FILES=none yet (review first)
 IMPLEMENTATION_OWNER=UNASSIGNED
 REVIEW_OWNER=UNASSIGNED
-TESTS=targeted-goal selection probes (DONE for keyword-7); per-name equivalence verdicts for the 15 before any code change; +1 json_query keyword-rank micro-probe (checkpoint-5)
+TESTS=targeted-goal selection probes (DONE 9/9); per-name equivalence verdicts for the 15 dormant candidates before any code change
 REAL_JOE_UAT=only for names promoted to real gaps
 ROLLBACK=N/A (review batch)
 DEPENDENCIES=none

@@ -1,0 +1,399 @@
+{
+  "generatedAt": "2026-09-29T21:04:55.276Z",
+  "method": "purpose-merge of 75 primary-tag clusters; mapping table in merge.mts (explicit judgment, grounded in sweep1 descriptions)",
+  "status": "PROPOSED_TRUNKS_V1 — not proven capabilities; per-trunk path/contract stories pending",
+  "trunkCount": 19,
+  "memberTotal": 163,
+  "trunks": {
+    "browser_ui": {
+      "why": "operate/inspect/repair pages in a real browser",
+      "tags": [
+        "browser"
+      ],
+      "count": 33,
+      "members": [
+        "browser_a11y_deep",
+        "browser_action",
+        "browser_autofix",
+        "browser_check_links",
+        "browser_click",
+        "browser_compare",
+        "browser_consent",
+        "browser_console_scan",
+        "browser_contrast_audit",
+        "browser_design_tokens",
+        "browser_extract_data",
+        "browser_extract_meta",
+        "browser_fill_form",
+        "browser_find_text",
+        "browser_fullpage_shot",
+        "browser_launch",
+        "browser_page_fix",
+        "browser_performance",
+        "browser_readability",
+        "browser_responsive_check",
+        "browser_run",
+        "browser_save_pdf",
+        "browser_search",
+        "browser_seo_audit",
+        "browser_smart_agent",
+        "browser_summarize",
+        "browser_translate",
+        "browser_ui_audit",
+        "browser_ui_fix",
+        "browser_vision",
+        "screenshot",
+        "user_browser",
+        "visual_compare"
+      ]
+    },
+    "code_understanding": {
+      "why": "read, analyze, review and navigate code",
+      "tags": [
+        "analysis",
+        "code",
+        "review",
+        "audit",
+        "refactor",
+        "engineering"
+      ],
+      "count": 16,
+      "members": [
+        "ambiguity_resolver",
+        "analyze_codebase",
+        "analyze_project",
+        "auto_refactor",
+        "business_logic_parser",
+        "code_reviewer",
+        "codebase_outline",
+        "compliance_validator",
+        "dead_code_detector",
+        "dependency_graph",
+        "engineering_discovery",
+        "inspect_symbol",
+        "pattern_recognize",
+        "project_detect",
+        "request_analyzer",
+        "self_confidence_evaluator"
+      ]
+    },
+    "files": {
+      "why": "read/write/edit/list/archive workspace files",
+      "tags": [
+        "fs",
+        "files",
+        "edit"
+      ],
+      "count": 10,
+      "members": [
+        "archive_files",
+        "delete_file",
+        "file_edit",
+        "file_edit_advanced",
+        "inspect_directory",
+        "ls",
+        "project_edit",
+        "read_file",
+        "search_files",
+        "write_file"
+      ]
+    },
+    "vcs_repo": {
+      "why": "version control and repository operations incl. GitHub",
+      "tags": [
+        "repo",
+        "git",
+        "import",
+        "github"
+      ],
+      "count": 11,
+      "members": [
+        "git_local_workflow",
+        "git_ops",
+        "github_actions",
+        "github_pr",
+        "github_repo_manager",
+        "import_project",
+        "repo_apply_patch",
+        "repo_diff_summary",
+        "repo_read_file",
+        "repo_run_command",
+        "repo_search"
+      ]
+    },
+    "build_generate": {
+      "why": "generate/scaffold/build projects, systems and templates",
+      "tags": [
+        "build",
+        "scaffold",
+        "codegen",
+        "generation",
+        "templates",
+        "mobile",
+        "web",
+        "pipeline",
+        "auth",
+        "enterprise",
+        "orion"
+      ],
+      "count": 13,
+      "members": [
+        "ai_write_file",
+        "api_project",
+        "auth_builder",
+        "enterprise_platform_foundation",
+        "mobile_builder",
+        "orion_business_foundation",
+        "progressive_generator",
+        "react_project",
+        "scaffold_full_stack",
+        "scaffold_project",
+        "template_manager",
+        "web_page_builder",
+        "website_full_pipeline"
+      ]
+    },
+    "runtime_services": {
+      "why": "run/stop/serve/deploy projects",
+      "tags": [
+        "run",
+        "dev",
+        "deploy"
+      ],
+      "count": 5,
+      "members": [
+        "deploy_pages",
+        "deploy_project",
+        "dev_server_start",
+        "project_run",
+        "project_stop"
+      ]
+    },
+    "shell_terminal": {
+      "why": "shell commands, terminals and npm",
+      "tags": [
+        "shell",
+        "npm"
+      ],
+      "count": 4,
+      "members": [
+        "npm_manager",
+        "shell_check_status",
+        "shell_execute",
+        "terminal_manager"
+      ]
+    },
+    "testing_qa": {
+      "why": "generate and run tests, quality gates",
+      "tags": [
+        "testing",
+        "quality"
+      ],
+      "count": 6,
+      "members": [
+        "auto_tester",
+        "chaos_test_plan",
+        "load_tester",
+        "quality_run",
+        "sonar_analysis",
+        "test_generator"
+      ]
+    },
+    "network_api": {
+      "why": "HTTP/network/API interaction incl. search, accounts, payments",
+      "tags": [
+        "network",
+        "api",
+        "search",
+        "payments",
+        "google"
+      ],
+      "count": 12,
+      "members": [
+        "api_tester",
+        "google_account",
+        "html_extract",
+        "http_fetch",
+        "inspect_api",
+        "payments_create_checkout_session",
+        "rss_fetch",
+        "search_api",
+        "search_public_apis",
+        "search_text",
+        "swagger_docs",
+        "validate_api"
+      ]
+    },
+    "database_data": {
+      "why": "databases, datastores and data query/transform",
+      "tags": [
+        "database",
+        "data",
+        "orders"
+      ],
+      "count": 6,
+      "members": [
+        "db_schema_migrator",
+        "json_query",
+        "large_data_seeder",
+        "orders_read",
+        "query_datasource",
+        "query_optimizer"
+      ]
+    },
+    "infra_ops": {
+      "why": "containers, orchestration, IaC, CI and cost",
+      "tags": [
+        "infrastructure",
+        "docker",
+        "ci",
+        "cost"
+      ],
+      "count": 6,
+      "members": [
+        "ci_generate_pipeline",
+        "cloud_cost_estimator",
+        "docker_manager",
+        "docker_swarm_ops",
+        "kubernetes_ops",
+        "terraform_manager"
+      ]
+    },
+    "observability": {
+      "why": "logs, metrics, alerts and performance",
+      "tags": [
+        "monitoring",
+        "logging",
+        "alerts",
+        "performance"
+      ],
+      "count": 5,
+      "members": [
+        "alert_manager",
+        "logger",
+        "monitoring",
+        "performance_analyzer",
+        "performance_profile"
+      ]
+    },
+    "security": {
+      "why": "scan/audit secrets, deps and repos",
+      "tags": [
+        "security"
+      ],
+      "count": 3,
+      "members": [
+        "dependency_audit",
+        "secrets_scan_repo",
+        "security_scanner"
+      ]
+    },
+    "language_runtimes": {
+      "why": "build/run Python, Go, Java",
+      "tags": [
+        "python",
+        "go",
+        "java"
+      ],
+      "count": 4,
+      "members": [
+        "execute_python",
+        "go_builder",
+        "java_builder",
+        "python_builder"
+      ]
+    },
+    "media_images": {
+      "why": "video/audio processing and image fill",
+      "tags": [
+        "media",
+        "images"
+      ],
+      "count": 2,
+      "members": [
+        "image_studio",
+        "video_action"
+      ]
+    },
+    "planning_orchestration": {
+      "why": "plan, phase, route, recover and report engineering work",
+      "tags": [
+        "planning",
+        "execution",
+        "project",
+        "capability",
+        "decision",
+        "joe",
+        "error"
+      ],
+      "count": 10,
+      "members": [
+        "architect_plan",
+        "decide_capability_route",
+        "error_recovery",
+        "joe_engineering_report",
+        "multi_agent_debate",
+        "phase_executor",
+        "project_pipeline",
+        "project_planner",
+        "project_repair",
+        "project_undo"
+      ]
+    },
+    "memory_knowledge": {
+      "why": "remember, recall, cache and checkpoint across runs",
+      "tags": [
+        "memory",
+        "knowledge",
+        "cache",
+        "state"
+      ],
+      "count": 7,
+      "members": [
+        "cache_manager",
+        "knowledge_add",
+        "knowledge_search",
+        "llm_cache",
+        "memorize_codebase",
+        "project_state_manager",
+        "recall_memory"
+      ]
+    },
+    "interaction": {
+      "why": "talk to / update / track for the user",
+      "tags": [
+        "user",
+        "utility",
+        "communication",
+        "system",
+        "task",
+        "profile",
+        "forms",
+        "qa"
+      ],
+      "count": 8,
+      "members": [
+        "ask_user",
+        "business_profile",
+        "central_answer",
+        "echo",
+        "form_inbox",
+        "notify_user",
+        "task_lifecycle",
+        "todo_write"
+      ]
+    },
+    "documentation": {
+      "why": "generate docs and translate content",
+      "tags": [
+        "documentation",
+        "i18n"
+      ],
+      "count": 2,
+      "members": [
+        "doc_generator",
+        "i18n_translator"
+      ]
+    }
+  }
+}

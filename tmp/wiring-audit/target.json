@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-29T20:44:30.245Z",
+  "generatedAt": "2026-09-29T21:01:07.154Z",
   "targetVerdicts": {
     "cloud_cost_estimator": {
       "registered": true,
@@ -581,6 +581,78 @@
           "selectedCount30": 30
         }
       ]
+    },
+    "json_query": {
+      "registered": true,
+      "hasExecute": true,
+      "description": "Query a specific value from a JSON object using dot notation path.",
+      "tags": [
+        "data",
+        "json"
+      ],
+      "required": [
+        "json",
+        "path"
+      ],
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "perGoal": [
+        {
+          "kind": "SELF_NAME",
+          "goal": "use json query for this task",
+          "rank30": {
+            "rank": 1,
+            "score": 13.7
+          },
+          "rankFull": {
+            "rank": 1,
+            "score": 13.7
+          },
+          "top3": [
+            "json_query:13.7",
+            "ask_user:7.1",
+            "user_browser:7.1"
+          ],
+          "selectedCount30": 30
+        },
+        {
+          "kind": "SELF_DESC",
+          "goal": "I need: Query a specific value from a JSON object using dot notation path.",
+          "rank30": {
+            "rank": 1,
+            "score": 21.4
+          },
+          "rankFull": {
+            "rank": 1,
+            "score": 21.4
+          },
+          "top3": [
+            "json_query:21.4",
+            "ci_generate_pipeline:15",
+            "github_actions:12.2"
+          ],
+          "selectedCount30": 30
+        },
+        {
+          "kind": "HAND",
+          "goal": "what value sits at user.address.city in this json object",
+          "rank30": {
+            "rank": 3,
+            "score": 11.9
+          },
+          "rankFull": {
+            "rank": 3,
+            "score": 11.9
+          },
+          "top3": [
+            "ci_generate_pipeline:15",
+            "github_actions:12.2",
+            "json_query:11.9"
+          ],
+          "selectedCount30": 30
+        }
+      ]
     }
   },
   "groupingDraft": {
@@ -889,6 +961,321 @@
         "tag": "task",
         "count": 1
       }
-    ]
+    ],
+    "clusters": {
+      "browser": [
+        "browser_run",
+        "browser_summarize",
+        "browser_ui_audit",
+        "browser_ui_fix",
+        "browser_page_fix",
+        "browser_fill_form",
+        "browser_compare",
+        "browser_extract_data",
+        "browser_check_links",
+        "browser_performance",
+        "browser_seo_audit",
+        "browser_console_scan",
+        "browser_save_pdf",
+        "browser_readability",
+        "browser_contrast_audit",
+        "browser_a11y_deep",
+        "browser_extract_meta",
+        "browser_translate",
+        "browser_responsive_check",
+        "browser_find_text",
+        "browser_design_tokens",
+        "browser_click",
+        "browser_fullpage_shot",
+        "browser_smart_agent",
+        "browser_autofix",
+        "browser_consent",
+        "browser_search",
+        "browser_launch",
+        "user_browser",
+        "browser_action",
+        "browser_vision",
+        "screenshot",
+        "visual_compare"
+      ],
+      "project": [
+        "project_undo",
+        "project_repair"
+      ],
+      "google": [
+        "google_account"
+      ],
+      "memory": [
+        "recall_memory",
+        "memorize_codebase"
+      ],
+      "repo": [
+        "repo_read_file",
+        "repo_search",
+        "repo_apply_patch",
+        "repo_run_command",
+        "repo_diff_summary"
+      ],
+      "planning": [
+        "architect_plan",
+        "project_planner"
+      ],
+      "generation": [
+        "ai_write_file"
+      ],
+      "codegen": [
+        "progressive_generator"
+      ],
+      "analysis": [
+        "dependency_graph",
+        "business_logic_parser",
+        "ambiguity_resolver",
+        "self_confidence_evaluator",
+        "analyze_project",
+        "analyze_codebase",
+        "project_detect",
+        "dead_code_detector",
+        "request_analyzer",
+        "pattern_recognize"
+      ],
+      "testing": [
+        "chaos_test_plan",
+        "auto_tester",
+        "load_tester",
+        "test_generator"
+      ],
+      "audit": [
+        "compliance_validator"
+      ],
+      "cost": [
+        "cloud_cost_estimator"
+      ],
+      "decision": [
+        "multi_agent_debate"
+      ],
+      "engineering": [
+        "engineering_discovery"
+      ],
+      "capability": [
+        "decide_capability_route"
+      ],
+      "api": [
+        "search_public_apis",
+        "inspect_api",
+        "validate_api",
+        "swagger_docs"
+      ],
+      "execution": [
+        "phase_executor",
+        "project_pipeline"
+      ],
+      "enterprise": [
+        "enterprise_platform_foundation"
+      ],
+      "orion": [
+        "orion_business_foundation"
+      ],
+      "run": [
+        "project_run",
+        "project_stop"
+      ],
+      "deploy": [
+        "deploy_pages",
+        "deploy_project"
+      ],
+      "qa": [
+        "central_answer"
+      ],
+      "web": [
+        "web_page_builder"
+      ],
+      "build": [
+        "react_project",
+        "api_project"
+      ],
+      "edit": [
+        "project_edit"
+      ],
+      "forms": [
+        "form_inbox"
+      ],
+      "import": [
+        "import_project"
+      ],
+      "images": [
+        "image_studio"
+      ],
+      "orders": [
+        "orders_read"
+      ],
+      "profile": [
+        "business_profile"
+      ],
+      "review": [
+        "code_reviewer"
+      ],
+      "security": [
+        "security_scanner",
+        "dependency_audit",
+        "secrets_scan_repo"
+      ],
+      "performance": [
+        "performance_analyzer",
+        "performance_profile"
+      ],
+      "error": [
+        "error_recovery"
+      ],
+      "joe": [
+        "joe_engineering_report"
+      ],
+      "utility": [
+        "echo"
+      ],
+      "fs": [
+        "file_edit",
+        "write_file",
+        "delete_file",
+        "ls",
+        "read_file",
+        "inspect_directory",
+        "search_files",
+        "file_edit_advanced"
+      ],
+      "shell": [
+        "shell_execute",
+        "shell_check_status",
+        "terminal_manager"
+      ],
+      "scaffold": [
+        "scaffold_project",
+        "scaffold_full_stack"
+      ],
+      "git": [
+        "git_local_workflow",
+        "git_ops"
+      ],
+      "npm": [
+        "npm_manager"
+      ],
+      "user": [
+        "ask_user"
+      ],
+      "code": [
+        "codebase_outline",
+        "inspect_symbol"
+      ],
+      "network": [
+        "api_tester",
+        "http_fetch",
+        "html_extract",
+        "rss_fetch"
+      ],
+      "data": [
+        "json_query",
+        "query_datasource"
+      ],
+      "search": [
+        "search_api",
+        "search_text"
+      ],
+      "auth": [
+        "auth_builder"
+      ],
+      "mobile": [
+        "mobile_builder"
+      ],
+      "i18n": [
+        "i18n_translator"
+      ],
+      "pipeline": [
+        "website_full_pipeline"
+      ],
+      "dev": [
+        "dev_server_start"
+      ],
+      "media": [
+        "video_action"
+      ],
+      "database": [
+        "db_schema_migrator",
+        "query_optimizer",
+        "large_data_seeder"
+      ],
+      "docker": [
+        "docker_manager"
+      ],
+      "infrastructure": [
+        "terraform_manager",
+        "kubernetes_ops",
+        "docker_swarm_ops"
+      ],
+      "github": [
+        "github_repo_manager",
+        "github_pr",
+        "github_actions"
+      ],
+      "alerts": [
+        "alert_manager"
+      ],
+      "cache": [
+        "cache_manager",
+        "llm_cache"
+      ],
+      "go": [
+        "go_builder"
+      ],
+      "java": [
+        "java_builder"
+      ],
+      "logging": [
+        "logger"
+      ],
+      "monitoring": [
+        "monitoring"
+      ],
+      "state": [
+        "project_state_manager"
+      ],
+      "python": [
+        "python_builder",
+        "execute_python"
+      ],
+      "templates": [
+        "template_manager"
+      ],
+      "files": [
+        "archive_files"
+      ],
+      "quality": [
+        "sonar_analysis",
+        "quality_run"
+      ],
+      "ci": [
+        "ci_generate_pipeline"
+      ],
+      "refactor": [
+        "auto_refactor"
+      ],
+      "documentation": [
+        "doc_generator"
+      ],
+      "knowledge": [
+        "knowledge_search",
+        "knowledge_add"
+      ],
+      "system": [
+        "task_lifecycle"
+      ],
+      "communication": [
+        "notify_user"
+      ],
+      "payments": [
+        "payments_create_checkout_session"
+      ],
+      "task": [
+        "todo_write"
+      ]
+    }
   }
 }

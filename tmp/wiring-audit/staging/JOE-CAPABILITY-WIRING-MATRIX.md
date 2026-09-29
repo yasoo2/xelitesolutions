@@ -244,13 +244,13 @@ CAPABILITY_ID=GROUP-catalogue-absent-15
 NAME=15 registered tools never selected by 20-goal deterministic corpus
 CATEGORY=tool-group/planner-surface
 SOURCE_FILES=api/src/core/orchestrator/toolCatalog.ts (selectToolsFor) + reachability.json
-IMPLEMENTATION=8 DETERMINISTIC_REFS (ask_user clarify fallback + ANSWER_ONLY; ambiguity_resolver/multi_agent_debate/self_confidence_evaluator ANSWER_ONLY; project_planner pipeline refs; kubernetes_ops infra map; json_query executor-known; execute_python comment-level) + 7 KEYWORD_SELECTABLE (cloud_cost_estimator, docker_swarm_ops, llm_cache, rss_fetch, task_lifecycle, template_manager, video_action — targeted ranks 1-2 on 2 self-grounded + 1 blind goal each; corpus absence was coverage, not a gap). execute_python is dual-story (comment ref + rank-1 selectable).
+IMPLEMENTATION=7 DETERMINISTIC_REFS (ask_user clarify fallback + ANSWER_ONLY; ambiguity_resolver/multi_agent_debate/self_confidence_evaluator ANSWER_ONLY; project_planner pipeline refs; kubernetes_ops infra map) + 7 KEYWORD_SELECTABLE (cloud_cost_estimator, docker_swarm_ops, llm_cache, rss_fetch, task_lifecycle, template_manager, video_action — targeted best-rank 1 each on 2 self-grounded + 1 blind goal; corpus absence was coverage, not a gap) + 2 DUAL-STORY (execute_python: comment ref + rank 1; json_query: executor-known + rank 1, HAND rank 3 with router noise from ci_generate_pipeline/github_actions above it).
 REGISTERED=YES (15/15, all with execute())
-PLANNER_VISIBLE=PARTIAL (14/15 storied strong: 5 PRIORITY-listed + deterministic refs + 7/7 targeted-selectable ranks 1-2; json_query weakest: executor-known only, keyword rank unprobed)
+PLANNER_VISIBLE=YES (15/15 storied strong; evidence target.json + reachability.json)
 CANONICAL_PATH_CONNECTED=PARTIAL (reachability storied; per-tool execution/verification sweep pending)
 REAL_JOE_PROVEN=NO
 PRIMARY_STATE=PARTIALLY_WIRED (group) — storied, none dead; json_query reached LEVEL 4 (exec.json value=42)
-RECOMMENDED_ACTION=CLOSED for selection stories except one json_query keyword-rank probe (checkpoint-5 micro-task). Remaining: execution/verification sweep per tool (bulk work, not this group).
+RECOMMENDED_ACTION=CLOSED for selection stories. Remaining: execution/verification sweep per tool (bulk work, not this group).
 
 ---
 
@@ -283,9 +283,9 @@ SOURCE_FILES=api/src/modules/tools/registry.ts + definitions/*.ts (93 files)
 IMPLEMENTATION=163/163 with execute(), 0 duplicate names. 21 boot-defaulted permissions + 2 defaulted rate limits (enforceContract; source declarations missing).
 REGISTERED=YES
 PLANNER_VISIBLE=PARTIAL (132/163 via keyword router after 32 ROUTER_EXCLUDED; 36/57 PRIORITY resolve; deterministic paths uncounted)
-EXECUTOR_REACHABLE=PARTIAL (8 LEVEL-4 spot cases green-or-honest: json_query, search_text, grep, recall_memory pair, fs_glob, image_generate; bulk sweep pending)
+EXECUTOR_REACHABLE=PARTIAL (8 LEVEL-4 spot cases green-or-honest + 9 empty-input batch-1: 8 honest ok:false, 1 unvalidated ok:true task_lifecycle; bulk sweep pending with review-then-call rule for 25 no-required names)
 PRIMARY_STATE=UNKNOWN_REQUIRES_INVESTIGATION (bulk — per-tool rows pending; do NOT mark wired from registration alone)
-RECOMMENDED_ACTION=checkpoint-5: grouping merge pass + wider firewall/approval sweep; checkpoint-4 delivered spot proofs + selection stories + grouping scaffolding (75 tags/47 singletons/0 untagged)
+RECOMMENDED_ACTION=checkpoint-5 delivered: 9/9 selection, declaration census (sweep1.json), empty-input batch 1, merge v1 (19 trunks PROPOSED). Next: per-trunk stories + sweep batch 2 (review-then-call) + approval-gate design
 
 ---
 
@@ -345,9 +345,9 @@ SOURCE_FILES=api/src/modules/tools/definitions/ContentTools.ts
 IMPLEMENTATION=pure dot-notation JSON query ({json, path} -> {value})
 REGISTERED=YES
 REGISTRY_EVIDENCE=in live 163; tags [data, json]; boot-defaulted permission ->read (source declares none)
-PLANNER_VISIBLE=PARTIAL
-PLANNER_EVIDENCE=PhaseExecutor path-mapper known (:256); absent from 20-goal corpus; targeted rank probe NOT yet run for this name (8/8 targeted probes covered the other absent members)
-SELECTABLE=PARTIAL (deterministic refs only; keyword rank unverified)
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=PhaseExecutor path-mapper known (:256); absent from 20-goal corpus (coverage); targeted probe rank 1 (SELF_NAME 13.7, SELF_DESC 21.4, HAND 3 behind ci_generate_pipeline/github_actions noise)
+SELECTABLE=YES (deterministic-known + keyword rank 1)
 EXECUTOR_REACHABLE=YES
 EXECUTOR_EVIDENCE=LIVE (exec.json): {a:{b:42}} path a.b -> ok:true value=42. LEVEL 4 reached.
 PERMISSION_REACHABLE=YES
@@ -357,7 +357,7 @@ EVIDENCE_PRODUCED=UNKNOWN
 VERIFICATION_COMPATIBLE=UNKNOWN
 CANONICAL_PATH_CONNECTED=YES
 REAL_JOE_PROVEN=NO
-PRIMARY_STATE=PARTIALLY_WIRED (LEVEL 4 proven; selection-rank + verification-compat open)
+PRIMARY_STATE=PARTIALLY_WIRED (LEVEL 4 proven; verification-compat open)
 RECOMMENDED_ACTION=source-fix its empty permission declaration (WIRING-P2-003); cover in verification sweep
 
 ---
@@ -380,5 +380,25 @@ RECOMMENDED_ACTION=none for wiring; single-winner gate (WIRING-P2-002) must asse
 
 ---
 
-END-OF-MUSE-DRAFT-ROWS=17 (10 individual + 5 group + 2 external-cited)
-COVERAGE-DISCLAIMER=This draft covers ONLY what Muse checkpoints 1-4 evidenced. Full matrix requires: high-level capability grouping merge (75-tag scaffolding recorded), services/workers/persistence/deployment rows (NVIDIA scope), bulk per-tool firewall sweep (8 spot cases done), contract audit per boundary, LEVEL 5-6 proofs, and NVIDIA cross-review (currently BLOCKED).
+CAPABILITY_ID=TOOL-task_lifecycle
+NAME=task_lifecycle (TaskLifecycleTool.ts:26-44)
+CATEGORY=tool/interaction
+SOURCE_FILES=api/src/modules/tools/definitions/TaskLifecycleTool.ts
+IMPLEMENTATION=broadcasts task_update UI event; action defaults to 'update'; always returns ok:true {success}
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163; tags [system, ui, lifecycle]; permissions ['write'] declared at source (no boot default)
+PLANNER_VISIBLE=YES (targeted probe best-rank 1; risk classifier rates it 'low')
+SELECTABLE=YES
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (sweep1.json): {} -> ok:true {success} via canonical path, rerun-stable. broadcast() no-op'd in-probe (liveWssRef null).
+INPUT_CONTRACT_VALID=NO — declares required:['action'] but execute() ignores it (decorative schema)
+OUTPUT_CONTRACT_VALID=PARTIAL (success:true always; no failure mode exercised)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (executes; schema/execute inconsistent)
+RECOMMENDED_ACTION=WIRING-P2-004: enforce required OR drop it from schema (one-liner, tool-local)
+
+---
+
+END-OF-MUSE-DRAFT-ROWS=18 (11 individual + 5 group + 2 external-cited)
+COVERAGE-DISCLAIMER=This draft covers ONLY what Muse checkpoints 1-5 evidenced. Full matrix requires: per-trunk path stories (19 trunks PROPOSED in merge.json), services/workers/persistence/deployment rows (NVIDIA scope), bulk per-tool firewall sweep (8 spot + 9 empty-input batch-1 done; 25 no-required need review-then-call), contract audit per boundary, LEVEL 5-6 proofs, and NVIDIA cross-review (currently BLOCKED).

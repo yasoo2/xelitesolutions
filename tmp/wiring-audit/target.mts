@@ -14,6 +14,7 @@ const imp = (p: string) => import(pathToFileURL(p).href);
 const TARGETS = [
   'cloud_cost_estimator', 'docker_swarm_ops', 'llm_cache', 'rss_fetch',
   'task_lifecycle', 'template_manager', 'video_action', 'execute_python',
+  'json_query',
 ];
 
 // Hand-written natural goals (secondary realism signal; verdicts rest on self-grounded).
@@ -26,6 +27,7 @@ const HAND_GOALS: Record<string, string> = {
   template_manager: 'list the available project templates to scaffold from',
   video_action: 'press play on the embedded video and confirm it started',
   execute_python: 'run this python snippet and show me its output',
+  json_query: 'what value sits at user.address.city in this json object',
 };
 
 function rankOf(picks: Array<{ name: string; score: number }>, name: string): { rank: number; score: number } | null {
@@ -103,6 +105,7 @@ async function main() {
       distinctPrimaryTags: Object.keys(clusters).length,
       untaggedCount: untagged.length, untagged,
       clusterSizes,
+      clusters,
     },
   };
   const jsonPath = path.join(ROOT, 'tmp', 'wiring-audit', 'target.json');
