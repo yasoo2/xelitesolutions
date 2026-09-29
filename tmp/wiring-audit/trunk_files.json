@@ -1,0 +1,426 @@
+{
+  "generatedAt": "2026-09-29T22:10:10.582Z",
+  "trunk": "files",
+  "declarations": {
+    "archive_files": {
+      "descriptionHead": "Create or extract file archives (zip, tar.gz, tar). Use action \"create\" to compress files/directories into an archive. Use action \"extract\" to decompress an arc",
+      "tags": [
+        "files",
+        "archive",
+        "compression",
+        "zip",
+        "tar"
+      ],
+      "required": [
+        "action",
+        "archivePath"
+      ],
+      "permissions": [
+        "read",
+        "write",
+        "execute"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 20,
+      "routerExcluded": false,
+      "priorityListed": true,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "archive_files:15.3",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ]
+    },
+    "delete_file": {
+      "descriptionHead": "Delete a file (or, with recursive:true, a directory) inside the workspace. Refuses anything outside it.",
+      "tags": [
+        "fs",
+        "delete"
+      ],
+      "required": [],
+      "permissions": [
+        "write"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 60,
+      "routerExcluded": true,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "delete_file:13.5",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ]
+    },
+    "file_edit": {
+      "descriptionHead": "Replace text in a file.",
+      "tags": [
+        "fs",
+        "edit",
+        "write"
+      ],
+      "required": [
+        "filename",
+        "find",
+        "replace"
+      ],
+      "permissions": [
+        "write",
+        "read"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 60,
+      "routerExcluded": true,
+      "priorityListed": true,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 2,
+      "bestRankFull": 2,
+      "top3SelfName": [
+        "file_edit_advanced:10.8",
+        "file_edit:10",
+        "project_edit:7.7"
+      ]
+    },
+    "file_edit_advanced": {
+      "descriptionHead": "Advanced file editing with multiple non-contiguous replacements.",
+      "tags": [
+        "fs",
+        "edit",
+        "write",
+        "advanced"
+      ],
+      "required": [
+        "filePath",
+        "edits"
+      ],
+      "permissions": [
+        "write",
+        "read"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 60,
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "file_edit_advanced:19.8",
+        "file_edit:10",
+        "project_edit:7.7"
+      ]
+    },
+    "inspect_directory": {
+      "descriptionHead": "List directory contents in a structured JSON format (recursive supported).",
+      "tags": [
+        "fs",
+        "ls",
+        "inspect"
+      ],
+      "required": [
+        "path"
+      ],
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "routerExcluded": true,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "inspect_directory:12.3",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ]
+    },
+    "ls": {
+      "descriptionHead": "List directory entries.",
+      "tags": [
+        "fs",
+        "ls",
+        "read"
+      ],
+      "required": null,
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 120,
+      "routerExcluded": false,
+      "priorityListed": true,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 2,
+      "bestRankFull": 2,
+      "top3SelfName": [
+        "ask_user:7.1",
+        "user_browser:7.1",
+        "task_lifecycle:6"
+      ]
+    },
+    "project_edit": {
+      "descriptionHead": "Surgically edit files of a scaffolded project via SEARCH/REPLACE diffs, with a syntax gate, build verification, and automatic revert.",
+      "tags": [
+        "edit",
+        "project",
+        "react",
+        "diff"
+      ],
+      "required": [
+        "request"
+      ],
+      "permissions": [
+        "execute",
+        "write"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 12,
+      "routerExcluded": true,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "project_edit:11.2",
+        "ask_user:7.1",
+        "file_edit_advanced:7.1"
+      ]
+    },
+    "read_file": {
+      "descriptionHead": "Read file content safely with pagination limits.",
+      "tags": [
+        "fs",
+        "read",
+        "safe"
+      ],
+      "required": [
+        "path"
+      ],
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "routerExcluded": true,
+      "priorityListed": true,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "read_file:9.5",
+        "repo_read_file:9.5",
+        "user_browser:7.7"
+      ]
+    },
+    "search_files": {
+      "descriptionHead": "Search for files by name patterns (glob).",
+      "tags": [
+        "fs",
+        "find",
+        "search"
+      ],
+      "required": [
+        "pattern"
+      ],
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "search_files:8.8",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ]
+    },
+    "write_file": {
+      "descriptionHead": "Write content to a file, or append literal content to an existing file when mode is append.",
+      "tags": [
+        "fs",
+        "write",
+        "create"
+      ],
+      "required": [
+        "content"
+      ],
+      "permissions": [
+        "write"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 60,
+      "routerExcluded": true,
+      "priorityListed": true,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "ai_write_file:9.5",
+        "write_file:9.5",
+        "todo_write:7.5"
+      ]
+    }
+  },
+  "live": {
+    "write_file:create": {
+      "input": "{\"path\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-files-fx\\\\note.txt\",\"content\":\"alpha line WIRING_FILES_TOKEN_c41d\\nbeta line\\n\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{success,path,operation,appended,alreadySatisfied,totalLines}",
+      "outputPreview": "{\"success\":true,\"path\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-files-fx\\\\note.txt\",\"operation\":\"overwrite\",\"appended\":false,\"alreadySatisfied\":false,\"totalLines\":2}",
+      "log0": "[2026-09-29T22:09:25.681Z] start write_file (orig=write_file)"
+    },
+    "read_file:read": {
+      "input": "{\"path\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-files-fx\\\\note.txt\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{content,totalLines,truncated}",
+      "outputPreview": "{\"content\":\"alpha line WIRING_FILES_TOKEN_c41d\\nbeta line\",\"totalLines\":2,\"truncated\":false}",
+      "log0": "[2026-09-29T22:09:25.782Z] start read_file (orig=read_file)"
+    },
+    "file_edit:roundtrip": {
+      "input": "{\"filename\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-files-fx\\\\note.txt\",\"find\":\"beta line\",\"replace\":\"BETA line\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{success}",
+      "outputPreview": "{\"success\":true}",
+      "log0": "[2026-09-29T22:09:25.805Z] start file_edit (orig=file_edit)"
+    },
+    "read_file:verify-edit": {
+      "input": "{\"path\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-files-fx\\\\note.txt\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{content,totalLines,truncated}",
+      "outputPreview": "{\"content\":\"alpha line WIRING_FILES_TOKEN_c41d\\nBETA line\",\"totalLines\":2,\"truncated\":false}",
+      "log0": "[2026-09-29T22:09:25.829Z] start read_file (orig=read_file)"
+    },
+    "file_edit_advanced:multi": {
+      "input": "{\"filePath\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-files-fx\\\\note.txt\",\"edits\":[{\"find\":\"alpha line\",\"replace\":\"ALPHA line\"},{\"find\":\"BETA line\",\"replace\":\"BETA2 line\"}]}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{success,failedCount}",
+      "outputPreview": "{\"success\":true,\"failedCount\":0}",
+      "log0": "[2026-09-29T22:09:25.843Z] start file_edit_advanced (orig=file_edit_advanced)"
+    },
+    "read_file:verify-advanced": {
+      "input": "{\"path\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-files-fx\\\\note.txt\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{content,totalLines,truncated}",
+      "outputPreview": "{\"content\":\"ALPHA line WIRING_FILES_TOKEN_c41d\\nBETA2 line\",\"totalLines\":2,\"truncated\":false}",
+      "log0": "[2026-09-29T22:09:25.865Z] start read_file (orig=read_file)"
+    },
+    "file_edit_advanced:partial-fail-atomic": {
+      "input": "{\"filePath\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-files-fx\\\\note.txt\",\"edits\":[{\"find\":\"ALPHA line\",\"replace\":\"A line\"},{\"find\":\"NOPE_MISSING_TOKEN\",\"replace\":\"X\"}]}",
+      "ok": false,
+      "error": "Advanced edit could not match 1 replacement(s).",
+      "outputShape": "{success,failedCount}",
+      "outputPreview": "{\"success\":false,\"failedCount\":1}",
+      "log0": "[2026-09-29T22:09:25.879Z] start file_edit_advanced (orig=file_edit_advanced)"
+    },
+    "read_file:verify-atomic": {
+      "input": "{\"path\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-files-fx\\\\note.txt\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{content,totalLines,truncated}",
+      "outputPreview": "{\"content\":\"ALPHA line WIRING_FILES_TOKEN_c41d\\nBETA2 line\",\"totalLines\":2,\"truncated\":false}",
+      "log0": "[2026-09-29T22:09:25.897Z] start read_file (orig=read_file)"
+    },
+    "inspect_directory:list": {
+      "input": "{\"path\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-files-fx\",\"depth\":1}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{tree}",
+      "outputPreview": "{\"tree\":[{\"name\":\"doomed.txt\",\"type\":\"file\",\"size\":34},{\"name\":\"note.txt\",\"type\":\"file\",\"size\":45},{\"name\":\"package.json\",\"type\":\"file\",\"size\":69}]}",
+      "log0": "[2026-09-29T22:09:26.853Z] start inspect_directory (orig=inspect_directory)"
+    },
+    "ls:list": {
+      "input": "{\"path\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-files-fx\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{path,entries}",
+      "outputPreview": "{\"path\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-files-fx\",\"entries\":[\"doomed.txt\",\"note.txt\",\"package.json\"]}",
+      "log0": "[2026-09-29T22:09:26.865Z] start ls (orig=ls)"
+    },
+    "search_files:glob": {
+      "input": "{\"pattern\":\"*.txt\",\"path\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-files-fx\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{files}",
+      "outputPreview": "{\"files\":[\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-files-fx\\\\note.txt\",\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-files-fx\\\\doomed.txt\"]}",
+      "log0": "[2026-09-29T22:09:26.882Z] start search_files (orig=search_files)"
+    },
+    "project_edit:no-project": {
+      "input": "{\"request\":\"change the title\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{message}",
+      "outputPreview": "{\"message\":\"No active project in this session — scaffold one first.\"}",
+      "log0": "[2026-09-29T22:09:26.920Z] start project_edit (orig=project_edit)"
+    },
+    "archive_files:create": {
+      "input": "{\"action\":\"create\",\"archivePath\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-files-fx\\\\b.zip\",\"sourcePaths\":[\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring",
+      "ok": false,
+      "error": "Archive operation failed: ENOENT: no such file or directory, stat 'D:\\Joe\\muse-worktree\\data\\projects\\session-audit-sess\\wiring-files-fx\\b.zip'",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-29T22:09:26.953Z] start archive_files (orig=archive_files)"
+    },
+    "delete_file:verdict-only": {
+      "input": "{\"path\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-files-fx\\\\doomed.txt\"}",
+      "ok": false,
+      "error": "approval_required",
+      "outputShape": "{risk}",
+      "outputPreview": "{\"risk\":\"high\"}",
+      "log0": "[2026-09-29T22:09:27.355Z] start delete_file (orig=delete_file)"
+    },
+    "dead_code_detector:contained-fixture": {
+      "input": "{\"projectPath\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-files-fx\",\"mode\":\"files\"}",
+      "ok": false,
+      "error": "knip produced output that is not JSON, so nothing was scanned: npm error code EPERM\nnpm error syscall open\nnpm error path C:\\Users\\home\\AppData\\Local\\npm-cache\\_cacache\\tmp\\***\nnpm error errno EPERM\nnpm error FetchError:",
+      "outputShape": "{scanned,raw,stderr}",
+      "outputPreview": "{\"scanned\":false,\"raw\":\"\",\"stderr\":\"npm error code EPERM\\nnpm error syscall open\\nnpm error path C:\\\\Users\\\\home\\\\AppData\\\\Local\\\\npm-cache\\\\_cacache\\\\tmp\\\\***\\nnpm error errno EPERM\\nnpm error FetchError: Invalid response body while trying to fetch https://registry.npmjs.org/knip: EPERM: operation ",
+      "log0": "[2026-09-29T22:09:27.364Z] start dead_code_detector (orig=dead_code_detector)"
+    },
+    "dependency_audit:contained-fixture": {
+      "input": "{\"path\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-files-fx\"}",
+      "ok": false,
+      "error": "Audit found security vulnerabilities.",
+      "outputShape": "{report}",
+      "outputPreview": "{\"report\":\"npm error code ENOLOCK\\nnpm error audit This command requires an existing lockfile.\\nnpm error audit Try creating one first with: npm i --package-lock-only\\nnpm error audit Original error: loadVirtual requires existing shrinkwrap file\\nnpm error Log files were not written due to an error ",
+      "log0": "[2026-09-29T22:10:04.639Z] start dependency_audit (orig=dependency_audit)"
+    }
+  },
+  "sessionRoot": "D:\\Joe\\muse-worktree\\data\\projects\\session-audit-sess",
+  "deleteFileDoomedSurvived": true,
+  "fixtures": {
+    "before": [
+      "doomed.txt",
+      "note.txt",
+      "package.json"
+    ],
+    "removed": true
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "generatedAt": "2026-09-29T22:12:17.110Z",
+  "cases": {
+    "targz:create": {
+      "ok": true,
+      "error": null,
+      "output": "{\"archivePath\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-arch-fx\\\\b.tar.gz\",\"size\":\"0.2 KB\",\"files\":[\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-arch-fx\\\\a.txt\"]}"
+    },
+    "targz:list": {
+      "ok": true,
+      "error": null,
+      "output": "{\"archivePath\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-arch-fx\\\\b.tar.gz\",\"files\":[\"Joe/muse-worktree/data/projects/session-audit-sess/wiring-arch-fx/a.txt\"],\"count\":1}"
+    },
+    "zip:create-rerun": {
+      "ok": false,
+      "error": "Archive operation failed: ENOENT: no such file or directory, stat 'D:\\Joe\\muse-worktree\\data\\projects\\session-audit-sess\\wiring-arch-fx\\c.zip'",
+      "output": null
+    }
+  },
+  "before": [
+    "a.txt",
+    "b.tar.gz"
+  ],
+  "removed": true
+}

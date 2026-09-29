@@ -53,7 +53,7 @@ ROOT_CAUSE=registry defs added without removing ToolService inline handlers (or 
 FILES=ToolService.ts (:571-608) + MemoryTool.ts + memory-related tests
 IMPLEMENTATION_OWNER=UNASSIGNED (ToolService is shared — coordinate)
 REVIEW_OWNER=UNASSIGNED
-TESTS=single-implementation proof (one path owns each name) + permission-enforcement test + focused memory tests + AGENTS gates. EXECUTION EMBARGO: never live-verify memorize_codebase via global vectorDb.clear(); use routing/contract tests + a scoped-memory fixture.
+TESTS=single-implementation proof (one path owns each name) + permission-enforcement test + focused memory tests + AGENTS gates. EXECUTION EMBARGO: never live-verify memorize_codebase via global vectorDb.clear(); use routing/contract tests + the isolated-cwd scoped-memory fixture designed in 008 (vectorDb singleton resolves under process.cwd()/data/memory — fixture chdir()s to temp BEFORE import; that cwd-relative default is itself a portability smell riding with this batch).
 REAL_JOE_UAT=memory recall/index through real Joe UI
 ROLLBACK=revert to dual implementation
 DEPENDENCIES=none; note vectorDb.clear() global-scope review (security) rides with this batch
@@ -100,9 +100,9 @@ DEPENDENCIES=none
 ---
 
 BATCH_ID=WIRING-P2-004
-CAPABILITIES=schema/execute consistency (task_lifecycle required-vs-default gap) + empty-input honesty sweep continuation (25/25 reviewed, 19 probed live in sweep2.json; risk-tier 19 in sweep3.json)
-ROOT_CAUSE=task_lifecycle declares required:['action'] but execute() defaults action='update' and returns ok:true on {} (sweep1.json, rerun-stable); no central schema gate — validation is per-tool; 25 no-required tools PARTITIONED 18 SAFE + 1 BOUND + 4 EMBARGO + 2 FIXTURE (006). Absence-as-success shape: project_stop/orders_read/form_inbox/browser_consent return ok:true for absence (honest messages; ok-only verifiers would misread) + read_file {} returns ok:true EMPTY directory auto-list (sweep3.json, rerun-stable — 5th instance). project_undo default-latest-restore code-indicated (ProjectUndoTool.ts:98-100), fixture-unconfirmed.
-FILES=TaskLifecycleTool.ts (enforce required OR drop it from schema) + absence-as-success verifier note for LEVEL 5-6 sweep + project_undo snapshot fixture
+CAPABILITIES=schema/execute consistency (task_lifecycle required-vs-default gap) + empty-input honesty sweep continuation (25/25 reviewed, 19 probed live in sweep2.json; risk-tier 19 in sweep3.json; files-trunk 16 live in trunk_files.json)
+ROOT_CAUSE=task_lifecycle declares required:['action'] but execute() defaults action='update' and returns ok:true on {} (sweep1.json, rerun-stable); no central schema gate — validation is per-tool; 25 no-required tools PARTITIONED 18 SAFE + 1 BOUND + 4 EMBARGO (static fixture designs in 008) + 2 FIXTURE (probed contained in 008). Absence-as-success shape: project_stop/orders_read/form_inbox/browser_consent return ok:true for absence (honest messages; ok-only verifiers would misread) + read_file {} returns ok:true EMPTY directory auto-list (sweep3.json, rerun-stable — 5th instance) + project_edit no-project returns ok:true 'No active project' message (trunk_files.json, live — 6th instance). project_undo default-latest-restore code-indicated (ProjectUndoTool.ts:98-100), fixture-unconfirmed.
+FILES=TaskLifecycleTool.ts (enforce required OR drop it from schema) + absence-as-success verifier note for LEVEL 5-6 sweep (6 instances) + project_undo snapshot fixture
 IMPLEMENTATION_OWNER=UNASSIGNED
 REVIEW_OWNER=UNASSIGNED
 TESTS=schema/execute consistency gate for task_lifecycle ({} -> honest error OR schema without required); verifier MUST read message/flags, not ok alone, for the 5 absence tools; project_undo fixture (snapshots present) to confirm/deny default-restore; AGENTS gates if ToolService touched (it is not — tool-local fix + verifier note)
@@ -160,6 +160,32 @@ REVIEW_OWNER=UNASSIGNED
 TESTS=verdict test: browser_run {} (no browserSessionId anywhere) -> honest "no browser session addressed" (still deny); foreign-session case keeps forbidden; AGENTS gates
 REAL_JOE_UAT=none (error-path honesty)
 ROLLBACK=revert verdict change
+DEPENDENCIES=none
+
+---
+
+BATCH_ID=WIRING-P2-009
+CAPABILITIES=archive_files zip backend portability + swallowed failure cause
+ROOT_CAUSE=zip create shells `zip -r ... 2>/dev/null || true` (ArchiveFilesTool.ts:92): no `zip` binary on Windows, `|| true` swallows the failure, then statSync on the never-created archive throws ENOENT surfaced as 'Archive operation failed: ENOENT ... stat b.zip' — 'tool missing' misreported as 'archive missing'. Proven live: zip create 0/2, tar.gz create+list ok:true on the same fixture (trunk_files.json + arch2.json). Secondary: tar.gz list shows absolute-source path stored in archive (extraction-path review).
+FILES=ArchiveFilesTool.ts (zip backend: bundled dep / documented prereq / tar fallback; remove `|| true`; honest binary-missing error; review absolute-source storage) + backend contract test
+IMPLEMENTATION_OWNER=UNASSIGNED
+REVIEW_OWNER=UNASSIGNED
+TESTS=zip-create on Windows RED->GREEN (or honest binary-missing verdict + documented fallback); tar.gz regression; no `|| true` cause-swallow; extraction-path containment test; AGENTS gates
+REAL_JOE_UAT=none (tool-local backend; planner-visible behavior unchanged on tar)
+ROLLBACK=revert backend change
+DEPENDENCIES=none
+
+---
+
+BATCH_ID=WIRING-P2-010
+CAPABILITIES=dependency_audit misleading error text (setup failure labeled as vulnerabilities)
+ROOT_CAUSE=any non-ok npm audit result returns error 'Audit found security vulnerabilities.' (QualityTools.ts:102) even when the cause is environmental (proven: ENOLOCK missing-lockfile in contained fixture, trunk_files.json). output.report DOES carry the real stderr, so cause is recoverable — but ok/error-only consumers (planner/verifier) misread a setup failure as a security finding.
+FILES=QualityTools.ts DependencyAuditTool (classify cause: vulnerabilities vs setup/environment failure; error text must reflect the class) + error-text contract test
+IMPLEMENTATION_OWNER=UNASSIGNED
+REVIEW_OWNER=UNASSIGNED
+TESTS=ENOLOCK/setup RED->GREEN (honest setup-failure error); true-vulnerability case keeps current text; AGENTS gates
+REAL_JOE_UAT=none (error-text honesty)
+ROLLBACK=revert one-liner
 DEPENDENCIES=none
 
 ---

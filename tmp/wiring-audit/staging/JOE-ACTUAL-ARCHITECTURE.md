@@ -1,6 +1,6 @@
 # JOE ACTUAL ARCHITECTURE (Muse draft 2026-09-29 — staging for D:\Joe\coordination\team\JOE-ACTUAL-ARCHITECTURE.md)
 
-AS-IS at muse/joe-development @ adf02775, from Muse checkpoints 1-7.
+AS-IS at muse/joe-development @ ef3476e7, from Muse checkpoints 1-8.
 NVIDIA-scope rows are marked PENDING (registries/canonical-ingress/services/
 workers/persistence/deployment + main-vs-Muse diff). No aspirational content.
 
@@ -15,7 +15,7 @@ workers/persistence/deployment + main-vs-Muse diff). No aspirational content.
 - Execution (ToolService.executeTool): CONNECTED canonical front door; PARTIAL policy (memory inline bypass; direct-HTTP duplicate). LEVEL-4 spot-proven (checkpoint 4): firewall runInContext is the legitimate entry (direct calls throw by design); search_text/grep/json_query execute; containment refuses out-of-workspace reads honestly; unknown_tool errors suggest closest names. Approval gate (checkpoints 6-7): classifyToolRisk pre-empts execute for high/critical (delete_file {} -> approval_required live); per-tool risk, NOT uniform by permission (write+execute peers project_undo/repair/ui_fix reached execute); risk table SURVEYED (checkpoint 7: {} census low=9/medium=151/high=3/critical=0; 19 live tier points rerun-stable; alias tiering follows target; destructive-input scan shadowed for echo/answer/lifecycle + deploy.buildCommand unscanned P2-007; browser injection verdict P2-008).
 - Browser (modules/browser 18 files + BrowserRunTool + QA stack): CONNECTED — real Chromium evidence (Muse M01/M08 + QA provenance, unintegrated); action-effect receipts work.
 - Terminal (shell_execute + npm_manager + BinaryService): CONNECTED (assumed; per-tool sweep pending).
-- Files/projects (write/read/edit + containment): CONNECTED — containPath at ToolService layer (:438-498); ai_write_file runtime-bound contract.
+- Files/projects (write/read/edit + containment): CONNECTED — containPath at ToolService layer (:438-498); ai_write_file runtime-bound contract. Files trunk FULLY STORIED 10/10 (checkpoint 8): 7 FULLY_WIRED at tool level (write/read/edit/advanced/inspect/ls/search), 3 PARTIALLY_WIRED (project_edit scaffolded-path unprobed + absence ok:true; archive_files zip backend broken on Windows, tar.gz works; delete_file gate proven, body unreached). Advanced-edit atomicity proven live; ROUTER_EXCLUDED refined to fast-path-only.
 - Verification (core/quality 33 files + ledger + acceptance + audits): PARTIAL — ledger works (engineer-flow green); prose/behavioral contract gaps open; 3 QA drafts orphaned.
 - Self-fix (SelfFixService + handlers + diagnostic reasoning on main): PARTIAL — TS-handler family broad (Muse + NVIDIA rule sets coexist on main); general diagnostic reasoning claimed by NVIDIA handoff WITHOUT supporting diff (INVALID_HANDOFF per TEAM-STATE — do NOT rely on it).
 - Memory (MemoryTools + vectorDb + LongTermMemory): PARTIAL — dual implementation (registry + inline) + global clear() scope issue (P2 backlog).
@@ -39,4 +39,4 @@ Run evidence (JSON store) is the spine: tool_started inputs, phase results, veri
 
 ## What is NOT in this map yet
 
-Services/workers/persistence/deployment detail, per-trunk path stories (19 trunks PROPOSED in merge.json v1, 0 storied), bulk per-tool firewall matrix (8 spot + 28 empty-input batch-1+2 + 19 risk-tier live done; 25/25 no-required reviewed: 18 SAFE + 1 BOUND + 4 EMBARGO + 2 FIXTURE), contract audit per boundary (9 boundaries listed in CRITICAL command, 7 mismatches confirmed + schema/execute family: task_lifecycle decorative required, 5 absence-as-success, project_undo code-indicated default-restore), LEVEL 5-6 proofs, main-vs-Muse diff reconciliation, NVIDIA cross-review. All queued, none claimed.
+Services/workers/persistence/deployment detail, per-trunk path stories (19 trunks PROPOSED in merge.json v1, 1 STORIED: files), bulk per-tool firewall matrix (8 spot + 28 empty-input batch-1+2 + 19 risk-tier + 16 trunk-files + 3 arch-backend live done; 25/25 no-required reviewed: 18 SAFE + 1 BOUND + 4 EMBARGO with static fixture designs + 2 FIXTURE probed contained), contract audit per boundary (9 boundaries listed in CRITICAL command, 7 mismatches confirmed + schema/execute family: task_lifecycle decorative required, 6 absence-as-success, project_undo code-indicated default-restore; + 2 tool-local error-evidence defects P2-009/P2-010), LEVEL 5-6 proofs, main-vs-Muse diff reconciliation, NVIDIA cross-review. All queued, none claimed.

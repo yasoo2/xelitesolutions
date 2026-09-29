@@ -1,17 +1,20 @@
 # JOE CAPABILITY WIRING MATRIX (Muse draft 2026-09-29 — staging for D:\Joe\coordination\team\JOE-CAPABILITY-WIRING-MATRIX.md)
 
-SCOPE=Muse-branch discovery checkpoints 1-7 only (muse/joe-development @ adf02775).
+SCOPE=Muse-branch discovery checkpoints 1-8 only (muse/joe-development @ ef3476e7).
 Rows below are EVIDENCED tool-level entries. HIGH_LEVEL_CAPABILITIES grouping
-(merge v1: 19 trunks PROPOSED, per-trunk stories pending), services/workers/
-internal-infra rows, and NVIDIA-owned registry/ingress/persistence areas are
-UNKNOWN/PENDING and must NOT be treated as covered.
+(merge v1: 19 trunks PROPOSED, 1 STORIED: files 10/10 in checkpoint 8),
+services/workers/internal-infra rows, and NVIDIA-owned
+registry/ingress/persistence areas are UNKNOWN/PENDING and must NOT be treated
+as covered.
 Evidence files: D:\Joe\muse-worktree\tmp\wiring-audit\{discovery,exposure,
-classification,reachability,target,exec,sweep1,sweep2,merge,sweep3}.json +
-{discover,exposure,classify,reach,target,exec,sweep1,sweep2,merge,sweep3}.mts +
-MUSE-WIRING-DISCOVERY-00{1,2,3,4,5,6,7}.md. All probes re-runnable; exec/sweep
-probes perform bounded safe runs only (fixtures created + removed by the
-probe; 6 no-required names embargoed/fixture-only by rule, see 006; sweep3
-risk probes control-gated, see 007).
+classification,reachability,target,exec,sweep1,sweep2,merge,sweep3,trunk_files,
+arch2}.json + {discover,exposure,classify,reach,target,exec,sweep1,sweep2,merge,
+sweep3,trunk_files,arch2}.mts + MUSE-WIRING-DISCOVERY-00{1,2,3,4,5,6,7}.md +
+MUSE-WIRING-DISCOVERY-008.md. All probes re-runnable; exec/sweep/trunk probes
+perform bounded safe runs only (fixtures created + removed by the probe; 4
+EMBARGO names never executed — static fixture designs in 008; 2 FIXTURE names
+probed with contained explicit inputs only; sweep3 risk probes control-gated,
+see 007; delete_file verdict-only with target-survival check, see 008).
 
 FORMAT per row follows CRITICAL-JOE-DEEP-CAPABILITY-WIRING-AUDIT.
 
@@ -651,5 +654,270 @@ RECOMMENDED_ACTION=WIRING-P2-008: distinguish "no browser session addressed" fro
 
 ---
 
-END-OF-MUSE-DRAFT-ROWS=31 (23 individual + 6 group + 2 external-cited)
-COVERAGE-DISCLAIMER=This draft covers ONLY what Muse checkpoints 1-7 evidenced. Full matrix requires: per-trunk path stories (19 trunks PROPOSED in merge.json), services/workers/persistence/deployment rows (NVIDIA scope), bulk per-tool firewall sweep (8 spot + 28 empty-input batch-1+2 + 19 risk-tier live done; 25/25 no-required reviewed; 6 embargo/fixture names unprobed; risk table SURVEYED), contract audit per boundary, LEVEL 5-6 proofs, and NVIDIA cross-review (currently BLOCKED).
+CAPABILITY_ID=TOOL-write_file
+NAME=write_file (WriteFileTool, SystemTools.ts:854)
+CATEGORY=tool/files-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/SystemTools.ts
+IMPLEMENTATION=overwrite/append with destination contract (prepareArtifactContent) + safePath containment decided BEFORE mkdir; required:['content'], path via filename|path
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=CORE_TOOLS pinned + SELECTABLE_BY_KEYWORD best-rank-1 (trunk_files.json); ROUTER_EXCLUDED membership is fast-path-only, not catalogue (F34)
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1 (tied ai_write_file 9.5); priority-listed
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_files.json): contained overwrite ok:true totalLines=2, content byte-verified via read_file
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=risk medium (name-regex) -> passes default autoSafe (sweep3 census)
+INPUT_CONTRACT_VALID=YES
+OUTPUT_CONTRACT_VALID=YES ({success,path,operation,appended,alreadySatisfied,totalLines})
+EVIDENCE_PRODUCED=YES (structured output + audit filename)
+VERIFICATION_COMPATIBLE=UNKNOWN (LEVEL 5-6 pending)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=FULLY_WIRED (at tool level; verification-compat unproven)
+RECOMMENDED_ACTION=none (trunk reference implementation)
+
+---
+
+CAPABILITY_ID=TOOL-read_file
+NAME=read_file (TaskInteractionTools.ts:166)
+CATEGORY=tool/files-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/TaskInteractionTools.ts
+IMPLEMENTATION=paginated safe read + Smart Directory Peek on empty path; required:['path']
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=CORE_TOOLS pinned + best-rank-1 (tied repo_read_file); ROUTER_EXCLUDED is fast-path-only (F34)
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1; priority-listed
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_files.json): 4/4 contained reads ok:true with exact expected content incl. post-edit verification; risk low
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=risk low -> passes default autoSafe
+INPUT_CONTRACT_VALID=YES ({} edge: empty dir-list ok:true, F33, verifier note)
+OUTPUT_CONTRACT_VALID=YES ({content,totalLines,truncated})
+EVIDENCE_PRODUCED=YES
+VERIFICATION_COMPATIBLE=UNKNOWN (LEVEL 5-6 pending)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=FULLY_WIRED (at tool level; {} peek joins P2-004 absence note)
+RECOMMENDED_ACTION=none beyond P2-004 verifier note
+
+---
+
+CAPABILITY_ID=TOOL-file_edit
+NAME=file_edit (FileEditTool, SystemTools.ts:674)
+CATEGORY=tool/files-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/SystemTools.ts
+IMPLEMENTATION=single exact-match replace with CRLF/LF normalization, find-aliases (search/old_string), empty-find corruption guard, near-miss repair hints; required all three
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=CORE_TOOLS pinned + best-rank-2 (behind file_edit_advanced); ROUTER_EXCLUDED fast-path-only (F34)
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 2; priority-listed
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_files.json): contained round-trip ok:true, replacement byte-verified via read_file
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=risk medium (name-regex) -> passes default autoSafe
+INPUT_CONTRACT_VALID=YES
+OUTPUT_CONTRACT_VALID=YES ({success})
+EVIDENCE_PRODUCED=YES (+ diff broadcast for UI)
+VERIFICATION_COMPATIBLE=UNKNOWN (LEVEL 5-6 pending)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=FULLY_WIRED (at tool level)
+RECOMMENDED_ACTION=none
+
+---
+
+CAPABILITY_ID=TOOL-file_edit_advanced
+NAME=file_edit_advanced (AdvancedFileEditTool, UtilityTools.ts:333)
+CATEGORY=tool/files-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/UtilityTools.ts
+IMPLEMENTATION=multi-replacement with ALL-OR-NOTHING atomicity (failedEdits>0 -> no persist); required:['filePath','edits']
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=best-rank-1 (score 19.8, top of edit family); NOT router-excluded; not priority-listed (rank suffices)
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_files.json): 2-edit success ok:true failedCount=0 + partial-fail ok:false with file byte-identical after (atomicity PROVEN live, F35)
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=risk medium -> passes default autoSafe
+INPUT_CONTRACT_VALID=YES
+OUTPUT_CONTRACT_VALID=YES ({success,failedCount})
+EVIDENCE_PRODUCED=YES (applied/failed counts in logs)
+VERIFICATION_COMPATIBLE=UNKNOWN (LEVEL 5-6 pending)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=FULLY_WIRED (at tool level; atomicity is the family reference)
+RECOMMENDED_ACTION=none
+
+---
+
+CAPABILITY_ID=TOOL-inspect_directory
+NAME=inspect_directory (DirectoryInspectionTool, UtilityTools.ts:38)
+CATEGORY=tool/files-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/UtilityTools.ts
+IMPLEMENTATION=recursive structured tree (depth param); required:['path']
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=CORE_TOOLS pinned + best-rank-1; ROUTER_EXCLUDED fast-path-only (F34)
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1; not priority-listed
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_files.json): contained depth-1 ok:true, tree names+sizes exact
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=risk low -> passes default autoSafe
+INPUT_CONTRACT_VALID=YES
+OUTPUT_CONTRACT_VALID=YES ({tree[]})
+EVIDENCE_PRODUCED=YES
+VERIFICATION_COMPATIBLE=UNKNOWN (LEVEL 5-6 pending)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=FULLY_WIRED (at tool level)
+OVERLAP=ls (flat entries) — complementary shapes, not duplicates
+RECOMMENDED_ACTION=none
+
+---
+
+CAPABILITY_ID=TOOL-ls
+NAME=ls (LsTool, SystemTools.ts:981)
+CATEGORY=tool/files-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/SystemTools.ts
+IMPLEMENTATION=flat sorted entries with directory suffix, hidden filtering; NO required inputs (default path '.')
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=best-rank-2 on self-name (short name scores weakly; SELF_DESC carries it); NOT router-excluded; priority-listed
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded best rank 2 (SELECTABLE_BY_KEYWORD)
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_files.json): contained ok:true entries exact; also batch-2 {} ok:true (sweep2.json)
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=permissions read-only; risk default medium -> passes default autoSafe
+INPUT_CONTRACT_VALID=YES
+OUTPUT_CONTRACT_VALID=YES ({path,entries[]})
+EVIDENCE_PRODUCED=YES
+VERIFICATION_COMPATIBLE=UNKNOWN (LEVEL 5-6 pending)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=FULLY_WIRED (at tool level)
+OVERLAP=inspect_directory (tree) — complementary, not duplicate
+RECOMMENDED_ACTION=none
+
+---
+
+CAPABILITY_ID=TOOL-search_files
+NAME=search_files (FileSearchTool, UtilityTools.ts:89)
+CATEGORY=tool/files-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/UtilityTools.ts
+IMPLEMENTATION=filename glob (cwd-bounded, node_modules/.git/dist ignored, 100-cap); required:['pattern']
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=best-rank-1; NOT router-excluded; not priority-listed
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_files.json): contained *.txt glob ok:true, both fixture files returned absolute
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=permissions read-only; risk default medium -> passes
+INPUT_CONTRACT_VALID=YES
+OUTPUT_CONTRACT_VALID=YES ({files[]})
+EVIDENCE_PRODUCED=YES
+VERIFICATION_COMPATIBLE=UNKNOWN (LEVEL 5-6 pending)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=FULLY_WIRED (at tool level)
+OVERLAP=search_text (content) — filename vs content split is INTENTIONAL and documented at UtilityTools.ts:128-138; grep-family aliases now route to search_text, not here
+RECOMMENDED_ACTION=none
+
+---
+
+CAPABILITY_ID=TOOL-project_edit
+NAME=project_edit (ProjectEditTool, ProjectEditTool.ts:587)
+CATEGORY=tool/files-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/ProjectEditTool.ts
+IMPLEMENTATION=surgical SEARCH/REPLACE on scaffolded projects (syntax gate, build verify, auto-revert, undo); required:['request']; dir defaults to session active project
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=best-rank-1; ROUTER_EXCLUDED fast-path-only (has deterministic path; F34)
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1; not priority-listed
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_files.json): no-project request -> ok:true + honest 'No active project' message (absence-as-success, F36); edit path itself unprobed (needs scaffolded project)
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=risk medium (name-regex) -> reaches execute (proven: message came from execute body, not firewall)
+INPUT_CONTRACT_VALID=YES
+OUTPUT_CONTRACT_VALID=PARTIAL (ok:true for absence — verifier must read message)
+EVIDENCE_PRODUCED=YES
+VERIFICATION_COMPATIBLE=UNKNOWN (LEVEL 5-6 pending)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (no-project path evidenced; scaffolded-edit path + build-verify unprobed)
+RECOMMENDED_ACTION=WIRING-P2-004 verifier note (6th absence instance); deep edit-path story needs a scaffolded-project fixture (future)
+
+---
+
+CAPABILITY_ID=TOOL-archive_files
+NAME=archive_files (ArchiveFilesTool.ts:12)
+CATEGORY=tool/files-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/ArchiveFilesTool.ts
+IMPLEMENTATION=create/extract/list over zip|tar.gz|tar via shell (zip/tar/unzip binaries); required:['action','archivePath']
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=best-rank-1 (score 15.3); NOT router-excluded; priority-listed
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (arch2.json + trunk_files.json): tar.gz create+list ok:true on contained fixture; zip create 0/2 — `zip` binary absent on Windows, `|| true` swallows the failure, statSync throws misleading ENOENT (F37)
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=risk medium -> reaches execute (failures come from execute body)
+INPUT_CONTRACT_VALID=YES
+OUTPUT_CONTRACT_VALID=PARTIAL (tar.gz honest; zip failure misreports cause)
+EVIDENCE_PRODUCED=YES
+VERIFICATION_COMPATIBLE=UNKNOWN (LEVEL 5-6 pending)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (tar backends work; zip backend broken on Windows + cause-swallow)
+SECURITY_RISK=low-medium: tar.gz list shows absolute-source path stored in archive ('Joe/muse-worktree/.../a.txt') — extraction-path review required
+PORTABILITY_RISK=HIGH for zip path (external Unix binary + /dev/null redirect on Windows)
+RECOMMENDED_ACTION=WIRING-P2-009: zip backend (bundle/dep/fallback + remove `|| true` + honest binary-missing error); review absolute-source storage; extract path still unprobed
+
+---
+
+CAPABILITY_ID=TOOL-delete_file
+NAME=delete_file (DeleteFileTool, SystemTools.ts:808)
+CATEGORY=tool/files-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/SystemTools.ts
+IMPLEMENTATION=contained unlink/rm with not_found/is_directory honesty branches; required:[] (path validated in body)
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=CORE_TOOLS pinned + best-rank-1; ROUTER_EXCLUDED fast-path-only (F34)
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1; not priority-listed
+EXECUTOR_REACHABLE=YES (to firewall)
+EXECUTOR_EVIDENCE=LIVE (trunk_files.json): explicit contained path -> approval_required risk=high pre-execution, target file verified SURVIVING after (F38); execute-body branches (not_found/is_directory/delete) unprobed — firewall pre-empts first under default policy
+PERMISSION_REACHABLE=GATED (by design)
+PERMISSION_EVIDENCE=risk high (name-regex) -> approval_required without AUTO_APPROVE_ALL (sweep3 + trunk rerun-stable)
+INPUT_CONTRACT_VALID=YES (code-read; live body unreached)
+OUTPUT_CONTRACT_VALID=UNKNOWN (live body unreached)
+EVIDENCE_PRODUCED=YES (gate verdict is explicit)
+VERIFICATION_COMPATIBLE=UNKNOWN (LEVEL 5-6 pending)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (gate proven; execute-body honesty branches need an approval-harness probe, future)
+RECOMMENDED_ACTION=none (gate is correct); future: approved-context fixture for body branches (safe temp target only)
+
+---
+
+END-OF-MUSE-DRAFT-ROWS=41 (33 individual + 6 group + 2 external-cited)
+COVERAGE-DISCLAIMER=This draft covers ONLY what Muse checkpoints 1-8 evidenced. Full matrix requires: per-trunk path stories (19 trunks PROPOSED in merge.json, 1 STORIED: files 10/10), services/workers/persistence/deployment rows (NVIDIA scope), bulk per-tool firewall sweep (8 spot + 28 empty-input batch-1+2 + 19 risk-tier live + 16 trunk-files + 3 arch-backend live done; 25/25 no-required reviewed: 18 SAFE + 1 BOUND + 4 EMBARGO with static fixture designs + 2 FIXTURE probed contained; risk table SURVEYED), contract audit per boundary, LEVEL 5-6 proofs, and NVIDIA cross-review (currently BLOCKED).
