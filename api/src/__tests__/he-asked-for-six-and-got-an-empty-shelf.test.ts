@@ -85,6 +85,71 @@ describe('the count and the constraints are read from his sentence', () => {
         expect(countHeAskedFor('اعمل متجراً وافتحه على المنفذ 3000')).toBeUndefined();
     });
 
+    /**
+     *  HE ASKED FOR FOUR EXAMPLE PLANTS AND GOT EIGHT.
+     *
+     *  Measured in a real Joe UI run (plant watering rota, fresh prompt):
+     *  «Seed it with 4 example plants» seeded 8 rows. The reader below only
+     *  knew SHOP nouns — items, products, kinds, types, منتج, صنف, انواع —
+     *  so «4 example» read as no count at all and the brief fell back to
+     *  «Write between 4 and 8 rows». The seeding path is engine-agnostic —
+     *  every build with fields walks through it — but the count reader was
+     *  shop-shaped. The class: a stated quantity honored in one domain and
+     *  silently dropped in every other.
+     *
+     *  The fix reads the count from three domain-independent anchors —
+     *  seed-data nouns (examples, samples, seeds, rows, records, entries,
+     *  demos), the seed verb itself («seed it with N»), and the entity the
+     *  build is actually seeding — in digits and in number words, in both
+     *  languages. The negatives below are the load-bearing half: a count
+     *  reader that fires on ports, prices, versions, pagination, deletions
+     *  or seed-funding would be worse than one that stays silent.
+     */
+    it('⛔ POSITIVE — «Seed it with 4 example plants» is four, not eight', () => {
+        expect(countHeAskedFor('Seed it with 4 example plants', 'plant')).toBe(4);
+        expect(countHeAskedFor('Seed it with 4 example plants')).toBe(4);
+        expect(countHeAskedFor('a table of tasks with 5 sample rows', 'task')).toBe(5);
+        expect(countHeAskedFor('seed the users table with 3 demo accounts', 'user')).toBe(3);
+        expect(countHeAskedFor('أضف 4 أمثلة للاختبار', 'نبتة')).toBe(4);
+    });
+
+    it('POSITIVE — the entity he named counts, whatever the domain', () => {
+        expect(countHeAskedFor('4 plants for the rota', 'plant')).toBe(4);
+        expect(countHeAskedFor('6 delivery vans', 'van')).toBe(6);
+        expect(countHeAskedFor('6 honeys on the shelf', 'honey')).toBe(6);
+        expect(countHeAskedFor('add 4 new tasks', 'task')).toBe(4);
+        expect(countHeAskedFor('8 المنتجات الجديدة', 'منتج')).toBe(8);
+        expect(countHeAskedFor('5 طلبات جديدة', 'طلب')).toBe(5);
+    });
+
+    it('POSITIVE — a bare seed verb with a number, and numbers written as words', () => {
+        expect(countHeAskedFor('Seed the table with 6', 'task')).toBe(6);
+        expect(countHeAskedFor('seeds: 5', 'order')).toBe(5);
+        expect(countHeAskedFor('four example invoices', 'invoice')).toBe(4);
+        expect(countHeAskedFor('four new invoices', 'invoice')).toBe(4);
+        expect(countHeAskedFor('six kinds of honey', 'honey')).toBe(6);
+    });
+
+    it('POSITIVE — two counts in one sentence: the first one wins', () => {
+        expect(countHeAskedFor('seed 4 plants and show 5 examples per page', 'plant')).toBe(4);
+    });
+
+    it('⛔ NEGATIVE — ports, versions, prices, pagination and digit-splits stay unread', () => {
+        expect(countHeAskedFor('open the app on port 4', 'plant')).toBeUndefined();
+        expect(countHeAskedFor('version 2 of the records page', 'record')).toBeUndefined();
+        expect(countHeAskedFor('the price is 5 dollars', 'plant')).toBeUndefined();
+        expect(countHeAskedFor('show 5 rows per page', 'plant')).toBeUndefined();
+        expect(countHeAskedFor('101 products in the catalogue', 'product')).toBeUndefined();
+    });
+
+    it('⛔ NEGATIVE — seed words that are not seed data, deletions, and hedged counts', () => {
+        expect(countHeAskedFor('the seed round raised $2M', 'startup')).toBeUndefined();
+        expect(countHeAskedFor('write down the 12-word seed phrase', 'wallet')).toBeUndefined();
+        expect(countHeAskedFor('delete 5 old tasks', 'task')).toBeUndefined();
+        expect(countHeAskedFor('more than one product on offer', 'product')).toBeUndefined();
+        expect(countHeAskedFor('6 of the vans are ready', 'van')).toBeUndefined();
+    });
+
     it('⛔ POSITIVE — «ولا تقبل سعراً صفراً أو سالباً» becomes a real floor', () => {
         expect(minimumHeStated(REQUEST)).toBe(1);
     });
@@ -229,6 +294,10 @@ describe('the seed reaches the shelf, not just a variable', () => {
     it('POSITIVE — the generator writes a catalogue and hands it to the build', () => {
         expect(TOOL).toContain('authorCatalogue');
         expect(TOOL).toMatch(/buildAppFiles\(runBp, \{\s*\n\s*seedRows,/);
+        //  Run 22: «4 example plants» seeded 8 because the count reader never
+        //  saw «plant» — the call site passed the request alone. The entity
+        //  the build is seeding travels with the request now.
+        expect(TOOL).toMatch(/wanted: countHeAskedFor\(request,/);
     });
 
     it('POSITIVE — the build writes it into content.js', () => {
@@ -259,7 +328,12 @@ describe('the seed reaches the shelf, not just a variable', () => {
     it('NEGATIVE — and the catalogue stands down with the other authors', () => {
         //  It spends the same rationed fuel as the section and copy authors;
         //  guarding two of three is the «one layer, two generators» class.
-        expect(TOOL).toMatch(/if \(!copyProvidersRationing && seedFields\.length/);
+        //  The pin used to spell the two-condition guard; the guard has since grown
+        //  two more stand-downs (model unavailable, unified tables) plus an
+        //  explicit skip. The claim is unchanged — the catalogue spends
+        //  rationed fuel and stands down with the other authors — so the pin
+        //  spells the current guard instead of defending the old spelling.
+        expect(TOOL).toMatch(/if\s*\(\s*!copyProvidersRationing\s*&&\s*!modelUnavailableDuringBuild\s*&&\s*!unifiedTables\s*&&\s*seedFields\.length\s*&&\s*!input\?\.skipAuthoredCopy\s*\)/);
     });
 });
 

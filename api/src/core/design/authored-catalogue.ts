@@ -71,26 +71,135 @@ const ARABIC_NUMBER_WORDS: Record<string, number> = {
     'تسع': 9, 'تسعة': 9, 'عشر': 10, 'عشرة': 10, 'اثني عشر': 12, 'اثنا عشر': 12,
 };
 
-export function countHeAskedFor(request: string): number | undefined {
+/** English number words — «four plants» counts exactly like «4 plants». */
+const ENGLISH_NUMBER_WORDS: Record<string, number> = {
+    'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5, 'six': 6,
+    'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10, 'eleven': 11, 'twelve': 12,
+};
+
+/** Nouns that mean «seed rows» in any domain — never things one shop sells. */
+const SEED_NOUNS_EN = 'examples?|samples?|seeds?|rows?|records?|entries?|demos?';
+/** Folded spelling (the ة stays, the hamza is already ا by the time we run). */
+const SEED_NOUNS_AR = 'امثلة|مثال|عينات|عينة';
+const SHOP_NOUNS_EN = 'items?|products?|kinds?|types?';
+const SHOP_NOUNS_AR_FOLDED = 'انواع|منتج|صنف';
+/** One optional adjective between the number and its noun — «6 delivery vans», «4 new tasks». Prepositions, articles and their Arabic twins never qualify: «6 of the vans» counts existing vans, it does not seed six. */
+const ADJECTIVE_STOPS = 'of|the|a|an|to|for|from|in|on|with|per|each|than|that|which|who|and|or|as|by|at|من|في|على|الى|عن|مع|ال';
+const ADJECTIVE_SKIP = `(?:(?!(?:${ADJECTIVE_STOPS})(?=\\s|$))[A-Za-z\\u0600-\\u06FF][^\\s,.!?;:()«»"']*\\s+)?`;
+
+export function countHeAskedFor(request: string, entityOne = ''): number | undefined {
     const text = String(request || '')
         .replace(/[\u064b-\u0652\u0640]/g, '')
         .replace(/[\u0623\u0625\u0622]/g, '\u0627');
-    //  A digit next to a counted noun: «6 أنواع», «6 منتجات», «6 products».
-    const digit = text.match(/(\d{1,2})\s*(?:\u0623?\u0646\u0648\u0627\u0639|\u0645\u0646\u062a\u062c|\u0635\u0646\u0641|items?|products?|kinds?|types?)/i);
-    if (digit) {
-        const n = parseInt(digit[1], 10);
-        if (n >= 1 && n <= 60) return n;
+    const inRange = (n: number): number | undefined =>
+        (Number.isInteger(n) && n >= 1 && n <= 60) ? n : undefined;
+
+    /**
+     *  ⛔ WHAT NEVER COUNTS, IN EITHER LANGUAGE.
+     *
+     *  A count reader that fires on «delete 5 tasks» would seed five rows the
+     *  moment he asked them gone — the exact inversion of his sentence. So a
+     *  number spent on a deletion, on pagination («5 rows per page»), or split
+     *  out of a longer number («101 products» is not «01») reads as no count.
+     *  The guards below are the load-bearing half of every pattern above them.
+     */
+    const DIGIT = '(?<![\\d.-])(\\d{1,2})(?!\\d)';
+    const NO_DELETE_BEFORE_EN = '(?<!\\b(?:delete|remove|drop|clear|erase)(?:s|d|ing)?\\s+(?:the\\s+)?)';
+    const NO_DELETE_BEFORE_AR = '(?<!(?:احذف|حذف|امسح|مسح|ازل)(?:\\s+ال)?\\s+)';
+    const NO_DELETE_AFTER_EN = '(?!\\s+(?:\\w+\\s+){0,2}(?:delet|remov|drop|clear|eras)\\w*\\b)';
+    const NO_PER_PAGE = '(?!\\s*(?:per|a|each)\\s+pages?\\b)';
+
+    //  Several counts may share one sentence («4 plants and 5 examples»); the
+    //  first one he stated wins, whichever anchor reads it.
+    const found: Array<{ index: number; value: number }> = [];
+    const considerFirst = (re: RegExp, valueOf: (m: RegExpMatchArray) => number | undefined) => {
+        const m = text.match(re);
+        if (m && m.index !== undefined) {
+            const v = valueOf(m);
+            if (v !== undefined) found.push({ index: m.index, value: v });
+        }
+    };
+    const digitValue = (m: RegExpMatchArray) => inRange(parseInt(m[1], 10));
+
+    //  1. The shop nouns this reader was built for: «6 منتجات», «5 products».
+    considerFirst(
+        new RegExp(`${NO_DELETE_BEFORE_EN}${DIGIT}\\s*(?:${ADJECTIVE_SKIP}(?:ال)?(?:${SHOP_NOUNS_AR_FOLDED})|${ADJECTIVE_SKIP}(?:${SHOP_NOUNS_EN}))${NO_PER_PAGE}${NO_DELETE_AFTER_EN}`, 'i'),
+        digitValue,
+    );
+
+    //  2. Seed-data nouns in any domain: «4 example plants», «5 sample rows».
+    considerFirst(
+        new RegExp(`${NO_DELETE_BEFORE_EN}${DIGIT}\\s*${ADJECTIVE_SKIP}(?:${SEED_NOUNS_EN})\\b${NO_PER_PAGE}${NO_DELETE_AFTER_EN}`, 'i'),
+        digitValue,
+    );
+
+    //  3. Their Arabic twins: «4 امثلة».
+    considerFirst(
+        new RegExp(`${NO_DELETE_BEFORE_AR}${DIGIT}\\s*${ADJECTIVE_SKIP}(?:ال)?(?:${SEED_NOUNS_AR})`),
+        digitValue,
+    );
+
+    //  4. The entity the build is actually seeding: «4 plants» with entityOne
+    //  «plant», «5 طلبات» with entityOne «طلب». This is the structural end of
+    //  the shop-noun list — one dynamic noun per request instead of a noun
+    //  for every domain anyone will ever seed. (Irregular plurals — children,
+    //  broken Arabic plurals — still miss; the anchors above stay the fallback.)
+    const entity = String(entityOne || '').trim();
+    if (entity.length >= 2) {
+        const stem = entity.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
+        if (/[a-z]/i.test(entity)) {
+            considerFirst(
+                new RegExp(`${NO_DELETE_BEFORE_EN}${DIGIT}\\s*${ADJECTIVE_SKIP}${stem}(?:s|es)?\\b(?!-)${NO_PER_PAGE}${NO_DELETE_AFTER_EN}`, 'i'),
+                digitValue,
+            );
+        } else {
+            considerFirst(
+                new RegExp(`${NO_DELETE_BEFORE_AR}${DIGIT}\\s*${ADJECTIVE_SKIP}(?:ال)?${stem}(?:ة|ات|ين|ون|ان)?(?=$|[^0-9A-Za-z_\u0600-\u06FF])`),
+                digitValue,
+            );
+        }
     }
-    //  Or the number written as a word, immediately before the counted noun.
+
+    //  5. The seed verb itself: «seed it with 4», «seeds: 5». Deliberately
+    //  narrow constructions — «seed round», «seed phrase» and «seed bank»
+    //  are funding, crypto and agriculture, not seed data.
+    for (const re of [
+        new RegExp(`seed(?:s|ed|ing)?\\s+(?:it\\s+|them\\s+|the\\s+(?:\\w+\\s+){1,3})?with\\s+${DIGIT}`, 'i'),
+        new RegExp(`${DIGIT}\\s+seeds?\\b`, 'i'),
+        new RegExp(`seeds?\\s*(?:data\\s*)?:\\s*${DIGIT}`, 'i'),
+    ]) {
+        considerFirst(re, digitValue);
+    }
+
+    //  6. The number written as a word. Arabic keeps its shop nouns and gains
+    //  the seed nouns; English gains words beside its digits. «More than one»
+    //  and «not one» hedge the count instead of stating it, so they stay out.
+    //  ⛔ The text is FOLDED before this runs (أإآ -> ا), so the pattern must
+    //  expect the folded spelling. Written with ا rather than أ?, because a
+    //  pattern that still carries the hamza matches nothing at all — measured:
+    //  «ستة أنواع» folds to «ستة انواع» and the first version read zero.
     for (const [word, n] of Object.entries(ARABIC_NUMBER_WORDS)) {
-        //  ⛔ The text is FOLDED before this runs (أإآ -> ا), so the pattern must
-        //  expect the folded spelling. Written with ا rather than أ?, because a
-        //  pattern that still carries the hamza matches nothing at all — measured:
-        //  «ستة أنواع» folds to «ستة انواع» and the first version read zero.
-        const re = new RegExp(word + '[\\s]+(?:انواع|منتج|صنف)');
-        if (re.test(text)) return n;
+        considerFirst(
+            new RegExp(`${NO_DELETE_BEFORE_AR}${word}[\\s]+${ADJECTIVE_SKIP}(?:ال)?(?:${SHOP_NOUNS_AR_FOLDED}|${SEED_NOUNS_AR})`),
+            () => n,
+        );
     }
-    return undefined;
+    {
+        const entityBit = entity.length >= 2 && /[a-z]/i.test(entity)
+            ? `|${entity.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+')}(?:s|es)?`
+            : '';
+        const words = Object.keys(ENGLISH_NUMBER_WORDS).join('|');
+        considerFirst(
+            new RegExp(`(?<!\\b(?:more|less|fewer|than|not|n\'t|never|without)\\s+)\\b(${words})\\b\\s+${ADJECTIVE_SKIP}(?:${SHOP_NOUNS_EN}|${SEED_NOUNS_EN}${entityBit})\\b(?!-)${NO_PER_PAGE}${NO_DELETE_AFTER_EN}`, 'i'),
+            (m) => ENGLISH_NUMBER_WORDS[m[1].toLowerCase()],
+        );
+    }
+
+    let best: { index: number; value: number } | undefined;
+    for (const c of found) {
+        if (!best || c.index < best.index) best = c;
+    }
+    return best?.value;
 }
 
 /**

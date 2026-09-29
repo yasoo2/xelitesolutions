@@ -5556,7 +5556,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                         isArabic: artifactIsAr,
                         entityOne: String((runBp as any).entityOne || 'item'),
                         fields: seedFields,
-                        wanted: countHeAskedFor(request),
+                        wanted: countHeAskedFor(request, String((runBp as any).entityOne || '')),
                         minNumeric: minimumHeStated(request),
                     }, async (prompt: string) => {
                         let timer: any;
