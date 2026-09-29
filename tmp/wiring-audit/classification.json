@@ -1,0 +1,299 @@
+{
+  "generatedAt": "2026-09-29T19:53:24.658Z",
+  "registered": 163,
+  "literalNames": 182,
+  "definedNotRegistered": [
+    {
+      "name": "app",
+      "files": [
+        "MobileBuilderTool.ts"
+      ]
+    },
+    {
+      "name": "author",
+      "files": [
+        "BrowserSmartTools.ts"
+      ]
+    },
+    {
+      "name": "bulk_file_generator",
+      "files": [
+        "BulkFileGeneratorTool.ts"
+      ]
+    },
+    {
+      "name": "codebase_navigator",
+      "files": [
+        "CodebaseNavigatorTool.ts"
+      ]
+    },
+    {
+      "name": "description",
+      "files": [
+        "BrowserSmartTools.ts",
+        "ContentTools.ts",
+        "ReactProjectTool.ts",
+        "WebPageBuilderTool.ts",
+        "react-app-templates.ts"
+      ]
+    },
+    {
+      "name": "desktop",
+      "files": [
+        "BrowserSmartTools.ts"
+      ]
+    },
+    {
+      "name": "entities",
+      "files": [
+        "JavaBuilderTool.ts"
+      ]
+    },
+    {
+      "name": "express",
+      "files": [
+        "DatasourceTool.ts"
+      ]
+    },
+    {
+      "name": "fullstack",
+      "files": [
+        "TemplateManagerTool.ts"
+      ]
+    },
+    {
+      "name": "generate_image",
+      "files": [
+        "ImageGenerationTool.ts"
+      ]
+    },
+    {
+      "name": "grep_search",
+      "files": [
+        "SystemTools.ts"
+      ]
+    },
+    {
+      "name": "mobile",
+      "files": [
+        "BrowserSmartTools.ts"
+      ]
+    },
+    {
+      "name": "next",
+      "files": [
+        "OrionBusinessFoundationTool.ts"
+      ]
+    },
+    {
+      "name": "q",
+      "files": [
+        "BrowserSmartTools.ts"
+      ]
+    },
+    {
+      "name": "tablet",
+      "files": [
+        "BrowserSmartTools.ts"
+      ]
+    },
+    {
+      "name": "title",
+      "files": [
+        "react-app-templates.ts"
+      ]
+    },
+    {
+      "name": "viewport",
+      "files": [
+        "BrowserSmartTools.ts",
+        "ProgressiveGeneratorTool.ts",
+        "ReactProjectTool.ts",
+        "SystemTools.ts",
+        "TemplateManagerTool.ts",
+        "WebPageBuilderTool.ts",
+        "react-app-templates.ts"
+      ]
+    },
+    {
+      "name": "visibility",
+      "files": [
+        "react-app-templates.ts"
+      ]
+    },
+    {
+      "name": "visual_qa",
+      "files": [
+        "VisualQATool.ts"
+      ]
+    }
+  ],
+  "registeredNoLiteralFactoryOrDynamic": [],
+  "hardRewrites": {
+    "browser_open": "browser_run",
+    "browser_get_state": "browser_run",
+    "browser_snapshot": "browser_run",
+    "web_search": "browser_run",
+    "npm_build": "npm_manager",
+    "npm_run": "npm_manager",
+    "npm_start": "npm_manager",
+    "npm_test": "npm_manager",
+    "project_scaffold": "scaffold_project",
+    "read_file_tree": "inspect_directory",
+    "github_create_repo": "github_repo_manager",
+    "image_generate": "generate_image"
+  },
+  "dormantClassification": {
+    "read_file_tree": {
+      "class": "REWRITE_COVERED",
+      "target": "inspect_directory"
+    },
+    "grep_search": {
+      "class": "ALIAS_COVERED",
+      "target": "search_text"
+    },
+    "fs_glob": {
+      "class": "ABSENT_NO_CANDIDATE",
+      "staticCandidates": []
+    },
+    "check_syntax": {
+      "class": "ABSENT_STATIC_CANDIDATES",
+      "staticCandidates": [
+        "browser_check_links",
+        "browser_responsive_check",
+        "shell_check_status"
+      ]
+    },
+    "generate_tests": {
+      "class": "ABSENT_STATIC_CANDIDATES",
+      "staticCandidates": [
+        "ci_generate_pipeline"
+      ]
+    },
+    "generate_docs": {
+      "class": "ABSENT_STATIC_CANDIDATES",
+      "staticCandidates": [
+        "ci_generate_pipeline",
+        "swagger_docs"
+      ]
+    },
+    "db_inspect": {
+      "class": "ABSENT_STATIC_CANDIDATES",
+      "staticCandidates": [
+        "db_schema_migrator",
+        "inspect_api",
+        "inspect_directory"
+      ]
+    },
+    "command_policy_check": {
+      "class": "ABSENT_STATIC_CANDIDATES",
+      "staticCandidates": [
+        "browser_check_links",
+        "browser_responsive_check",
+        "repo_run_command"
+      ]
+    },
+    "tool_create_shell": {
+      "class": "ABSENT_STATIC_CANDIDATES",
+      "staticCandidates": [
+        "payments_create_checkout_session",
+        "shell_check_status",
+        "shell_execute"
+      ]
+    },
+    "shell_status": {
+      "class": "ABSENT_STATIC_CANDIDATES",
+      "staticCandidates": [
+        "shell_check_status",
+        "shell_execute"
+      ]
+    },
+    "product_search": {
+      "class": "ABSENT_STATIC_CANDIDATES",
+      "staticCandidates": [
+        "browser_search",
+        "knowledge_search",
+        "repo_search"
+      ]
+    },
+    "web_search": {
+      "class": "ALIAS_COVERED",
+      "target": "search_api"
+    },
+    "github_create_repo": {
+      "class": "REWRITE_COVERED",
+      "target": "github_repo_manager"
+    },
+    "image_generate": {
+      "class": "REWRITE_BROKEN",
+      "target": "generate_image"
+    },
+    "deep_research": {
+      "class": "ABSENT_STATIC_CANDIDATES",
+      "staticCandidates": [
+        "browser_a11y_deep"
+      ]
+    },
+    "business_logic": {
+      "class": "ABSENT_STATIC_CANDIDATES",
+      "staticCandidates": [
+        "business_logic_parser",
+        "business_profile",
+        "orion_business_foundation"
+      ]
+    },
+    "chaos_testing": {
+      "class": "ABSENT_STATIC_CANDIDATES",
+      "staticCandidates": [
+        "chaos_test_plan"
+      ]
+    },
+    "cost_estimator": {
+      "class": "ABSENT_STATIC_CANDIDATES",
+      "staticCandidates": [
+        "cloud_cost_estimator"
+      ]
+    },
+    "self_confidence": {
+      "class": "ABSENT_STATIC_CANDIDATES",
+      "staticCandidates": [
+        "self_confidence_evaluator"
+      ]
+    },
+    "terraform_ops": {
+      "class": "ABSENT_STATIC_CANDIDATES",
+      "staticCandidates": [
+        "docker_swarm_ops",
+        "git_ops",
+        "kubernetes_ops"
+      ]
+    },
+    "security_scan_repo": {
+      "class": "ABSENT_STATIC_CANDIDATES",
+      "staticCandidates": [
+        "secrets_scan_repo",
+        "browser_console_scan",
+        "github_repo_manager"
+      ]
+    }
+  },
+  "corpusSize": 20,
+  "catalogueSelectedAtLeastOnce": 148,
+  "catalogueAbsent": [
+    "ambiguity_resolver",
+    "ask_user",
+    "cloud_cost_estimator",
+    "docker_swarm_ops",
+    "execute_python",
+    "json_query",
+    "kubernetes_ops",
+    "llm_cache",
+    "multi_agent_debate",
+    "project_planner",
+    "rss_fetch",
+    "self_confidence_evaluator",
+    "task_lifecycle",
+    "template_manager",
+    "video_action"
+  ]
+}
