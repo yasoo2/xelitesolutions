@@ -1,0 +1,38 @@
+{
+  "generatedAt": "2026-09-29T19:40:55.059Z",
+  "registered": 163,
+  "priorityNames": 57,
+  "priorityMissingFromRegistry": [
+    "read_file_tree",
+    "grep_search",
+    "fs_glob",
+    "check_syntax",
+    "generate_tests",
+    "generate_docs",
+    "db_inspect",
+    "command_policy_check",
+    "tool_create_shell",
+    "shell_status",
+    "product_search",
+    "web_search",
+    "github_create_repo",
+    "image_generate",
+    "deep_research",
+    "business_logic",
+    "chaos_testing",
+    "cost_estimator",
+    "self_confidence",
+    "terraform_ops",
+    "security_scan_repo"
+  ],
+  "routerExcluded": 32,
+  "routerExcludedMissingFromRegistry": [
+    "bulk_file_generator"
+  ],
+  "plannerVisibleViaKeywordRouter": 132,
+  "coreTools": 9,
+  "coreToolsMissingFromRegistry": [],
+  "aliasCount": 28,
+  "aliasTargetsMissingFromRegistry": [],
+  "aliasSourcesAlsoRegistered": []
+}

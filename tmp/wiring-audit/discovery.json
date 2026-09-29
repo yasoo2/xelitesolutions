@@ -1,0 +1,660 @@
+{
+  "generatedAt": "2026-09-29T19:37:56.498Z",
+  "worktree": "D:\\Joe\\muse-worktree",
+  "rawDefinitionFiles": 93,
+  "definitionFiles": [
+    "AIGeneratorTool.ts",
+    "AdvancedTools.ts",
+    "AlertManagerTool.ts",
+    "AnalysisTools.ts",
+    "ApiProjectTool.ts",
+    "ApiTesterTool.ts",
+    "ArchitectTool.ts",
+    "ArchiveFilesTool.ts",
+    "AuthBuilderTool.ts",
+    "AutoTesterTool.ts",
+    "BrowserActionTool.ts",
+    "BrowserRunTool.ts",
+    "BrowserSmartTools.ts",
+    "BrowserVisionTool.ts",
+    "BulkFileGeneratorTool.ts",
+    "BusinessProfileTool.ts",
+    "CacheManagerTool.ts",
+    "CapabilityDecisionTool.ts",
+    "CentralAnswerTool.ts",
+    "CodeReviewerTool.ts",
+    "CodebaseNavigatorTool.ts",
+    "CodebaseOutlineTool.ts",
+    "ContentTools.ts",
+    "DatabaseEnterpriseTools.ts",
+    "DatasourceTool.ts",
+    "DeadCodeTool.ts",
+    "DeployPagesTool.ts",
+    "DeployProjectTool.ts",
+    "DockerManagerTool.ts",
+    "EliteTools.ts",
+    "EngineeringDiscoveryTool.ts",
+    "EnterprisePlatformFoundationTool.ts",
+    "ErrorRecoveryTool.ts",
+    "FormInboxTool.ts",
+    "GitHubActionsTool.ts",
+    "GitHubPRTool.ts",
+    "GitHubRepoManagerTool.ts",
+    "GitLocalWorkflowTool.ts",
+    "GitTools.ts",
+    "GoBuilderTool.ts",
+    "GoogleAccountTool.ts",
+    "I18nTranslatorTool.ts",
+    "ImageGenerationTool.ts",
+    "ImageStudioTool.ts",
+    "ImportProjectTool.ts",
+    "InfrastructureTools.ts",
+    "JavaBuilderTool.ts",
+    "JoeEngineeringReportTool.ts",
+    "KnowledgeTools.ts",
+    "LLMCacheTool.ts",
+    "LoggerTool.ts",
+    "MemoryTool.ts",
+    "MobileBuilderTool.ts",
+    "MonitoringTool.ts",
+    "NotifyUserTool.ts",
+    "OrdersReadTool.ts",
+    "OrionBusinessFoundationTool.ts",
+    "PageFixTool.ts",
+    "PaymentsTool.ts",
+    "PerformanceAnalyzerTool.ts",
+    "PhaseExecutorTool.ts",
+    "ProgressiveGeneratorTool.ts",
+    "ProjectEditTool.ts",
+    "ProjectPipelineTool.ts",
+    "ProjectPlannerTool.ts",
+    "ProjectRepairTool.ts",
+    "ProjectRunTool.ts",
+    "ProjectStateManagerTool.ts",
+    "ProjectUndoTool.ts",
+    "PublicApiDiscoveryTools.ts",
+    "PythonBuilderTool.ts",
+    "PythonExecutionTool.ts",
+    "QualityTools.ts",
+    "ReactProjectTool.ts",
+    "RepoSelfCodingTools.ts",
+    "RequestAnalyzerTool.ts",
+    "ScreenshotTool.ts",
+    "SearchApiTool.ts",
+    "SecurityScannerTool.ts",
+    "SwaggerDocsTool.ts",
+    "SystemTools.ts",
+    "TaskInteractionTools.ts",
+    "TaskLifecycleTool.ts",
+    "TemplateManagerTool.ts",
+    "TodoWriteTool.ts",
+    "UiFixTool.ts",
+    "UserBrowserTool.ts",
+    "UtilityTools.ts",
+    "VideoActionTool.ts",
+    "VisualQATool.ts",
+    "WebDevelopmentTools.ts",
+    "WebPageBuilderTool.ts",
+    "react-app-templates.ts"
+  ],
+  "exportedToolSymbols": 172,
+  "symbolsByFile": {
+    "AIGeneratorTool.ts": [
+      "AIGeneratorTool"
+    ],
+    "AdvancedTools.ts": [
+      "PatternRecognitionTool",
+      "AutoRefactorTool",
+      "TestGeneratorTool",
+      "PerformanceProfilerTool",
+      "DocumentationGeneratorTool",
+      "AdvancedTools"
+    ],
+    "AlertManagerTool.ts": [
+      "AlertManagerTool"
+    ],
+    "AnalysisTools.ts": [
+      "AnalyzeProjectTool",
+      "AnalyzeCodebaseTool",
+      "ProjectDetectTool"
+    ],
+    "ApiProjectTool.ts": [
+      "ApiProjectTool"
+    ],
+    "ApiTesterTool.ts": [
+      "ApiTesterTool"
+    ],
+    "ArchitectTool.ts": [
+      "ArchitectTool"
+    ],
+    "ArchiveFilesTool.ts": [
+      "ArchiveFilesTool"
+    ],
+    "AuthBuilderTool.ts": [
+      "AuthBuilderTool"
+    ],
+    "AutoTesterTool.ts": [
+      "AutoTesterTool"
+    ],
+    "BrowserActionTool.ts": [
+      "BrowserActionTool"
+    ],
+    "BrowserRunTool.ts": [
+      "BrowserRunTool"
+    ],
+    "BrowserSmartTools.ts": [
+      "BrowserExtractDataTool",
+      "BrowserCheckLinksTool",
+      "BrowserPerformanceTool",
+      "BrowserSEOAuditTool",
+      "BrowserConsoleScanTool",
+      "BrowserSavePdfTool",
+      "BrowserReadabilityTool",
+      "BrowserContrastAuditTool",
+      "BrowserA11yDeepTool",
+      "BrowserExtractMetaTool",
+      "BrowserCompareTool",
+      "BrowserSummarizeTool",
+      "BrowserUIAuditTool",
+      "BrowserFillFormTool",
+      "BrowserTranslateTool",
+      "BrowserResponsiveCheckTool",
+      "BrowserFindTextTool",
+      "BrowserDesignTokensTool",
+      "BrowserClickTool",
+      "BrowserFullPageShotTool",
+      "BrowserSmartAgentTool",
+      "BrowserAutofixTool",
+      "BrowserConsentTool",
+      "BrowserSearchTool",
+      "BrowserOpenTool"
+    ],
+    "BrowserVisionTool.ts": [
+      "BrowserVisionTool"
+    ],
+    "BulkFileGeneratorTool.ts": [
+      "BulkFileGeneratorTool"
+    ],
+    "BusinessProfileTool.ts": [
+      "BusinessProfileTool"
+    ],
+    "CacheManagerTool.ts": [
+      "CacheManagerTool"
+    ],
+    "CapabilityDecisionTool.ts": [
+      "CapabilityDecisionTool"
+    ],
+    "CentralAnswerTool.ts": [
+      "CentralAnswerTool"
+    ],
+    "CodeReviewerTool.ts": [
+      "CodeReviewerTool"
+    ],
+    "CodebaseNavigatorTool.ts": [
+      "CodebaseNavigatorTool"
+    ],
+    "CodebaseOutlineTool.ts": [
+      "CodebaseOutlineTool"
+    ],
+    "ContentTools.ts": [
+      "HttpFetchTool",
+      "HtmlExtractTool",
+      "RssFetchTool",
+      "JsonQueryTool"
+    ],
+    "DatabaseEnterpriseTools.ts": [
+      "DbSchemaMigratorTool",
+      "QueryOptimizerTool",
+      "LargeDataSeederTool"
+    ],
+    "DatasourceTool.ts": [
+      "DatasourceTool"
+    ],
+    "DeadCodeTool.ts": [
+      "DeadCodeTool"
+    ],
+    "DeployPagesTool.ts": [
+      "DeployPagesTool"
+    ],
+    "DeployProjectTool.ts": [
+      "DeployProjectTool"
+    ],
+    "DockerManagerTool.ts": [
+      "DockerManagerTool"
+    ],
+    "EliteTools.ts": [
+      "DependencyGraphTool",
+      "BusinessLogicTool",
+      "ChaosTestingTool",
+      "ComplianceValidatorTool",
+      "CostEstimatorTool",
+      "AmbiguityResolverTool",
+      "MultiAgentDebateTool",
+      "SelfConfidenceTool"
+    ],
+    "EngineeringDiscoveryTool.ts": [
+      "EngineeringDiscoveryTool"
+    ],
+    "EnterprisePlatformFoundationTool.ts": [
+      "EnterprisePlatformFoundationTool"
+    ],
+    "ErrorRecoveryTool.ts": [
+      "ErrorRecoveryTool"
+    ],
+    "FormInboxTool.ts": [
+      "FormInboxTool"
+    ],
+    "GitHubActionsTool.ts": [
+      "GitHubActionsTool"
+    ],
+    "GitHubPRTool.ts": [
+      "GitHubPRTool"
+    ],
+    "GitHubRepoManagerTool.ts": [
+      "GitHubRepoManagerTool"
+    ],
+    "GitLocalWorkflowTool.ts": [
+      "GitLocalWorkflowTool"
+    ],
+    "GitTools.ts": [
+      "GitOpsTool"
+    ],
+    "GoBuilderTool.ts": [
+      "GoBuilderTool"
+    ],
+    "GoogleAccountTool.ts": [
+      "GoogleAccountTool"
+    ],
+    "I18nTranslatorTool.ts": [
+      "I18nTranslatorTool"
+    ],
+    "ImageGenerationTool.ts": [
+      "ImageGenerationTool"
+    ],
+    "ImageStudioTool.ts": [
+      "ImageStudioTool"
+    ],
+    "ImportProjectTool.ts": [
+      "ImportProjectTool"
+    ],
+    "InfrastructureTools.ts": [
+      "TerraformManagerTool",
+      "KubernetesOpsTool",
+      "DockerSwarmOpsTool"
+    ],
+    "JavaBuilderTool.ts": [
+      "JavaBuilderTool"
+    ],
+    "JoeEngineeringReportTool.ts": [
+      "JoeEngineeringReportTool"
+    ],
+    "KnowledgeTools.ts": [
+      "KnowledgeSearchTool",
+      "KnowledgeAddTool"
+    ],
+    "LLMCacheTool.ts": [
+      "LLMCacheTool"
+    ],
+    "LoggerTool.ts": [
+      "LoggerTool"
+    ],
+    "MemoryTool.ts": [
+      "MemoryTools"
+    ],
+    "MobileBuilderTool.ts": [
+      "MobileBuilderTool"
+    ],
+    "MonitoringTool.ts": [
+      "MonitoringTool"
+    ],
+    "NotifyUserTool.ts": [
+      "NotifyUserTool"
+    ],
+    "OrdersReadTool.ts": [
+      "OrdersReadTool"
+    ],
+    "OrionBusinessFoundationTool.ts": [
+      "OrionBusinessFoundationTool"
+    ],
+    "PageFixTool.ts": [
+      "PageFixTool"
+    ],
+    "PaymentsTool.ts": [
+      "PaymentsTool"
+    ],
+    "PerformanceAnalyzerTool.ts": [
+      "PerformanceAnalyzerTool"
+    ],
+    "PhaseExecutorTool.ts": [
+      "PhaseExecutorTool"
+    ],
+    "ProgressiveGeneratorTool.ts": [
+      "ProgressiveGeneratorTool"
+    ],
+    "ProjectEditTool.ts": [
+      "ProjectEditTool"
+    ],
+    "ProjectPipelineTool.ts": [
+      "planContainsTool",
+      "ProjectPipelineTool"
+    ],
+    "ProjectPlannerTool.ts": [
+      "ProjectPlannerTool"
+    ],
+    "ProjectRepairTool.ts": [
+      "ProjectRepairTool"
+    ],
+    "ProjectRunTool.ts": [
+      "ProjectRunTool",
+      "ProjectStopTool"
+    ],
+    "ProjectStateManagerTool.ts": [
+      "ProjectStateManagerTool"
+    ],
+    "ProjectUndoTool.ts": [
+      "ProjectUndoTool"
+    ],
+    "PublicApiDiscoveryTools.ts": [
+      "SearchPublicApisTool",
+      "InspectApiTool",
+      "ValidateApiTool"
+    ],
+    "PythonBuilderTool.ts": [
+      "PythonBuilderTool"
+    ],
+    "PythonExecutionTool.ts": [
+      "PythonExecutionTool"
+    ],
+    "QualityTools.ts": [
+      "SonarAnalysisTool",
+      "DependencyAuditTool",
+      "QualityRunTool",
+      "SecretsScanRepoTool",
+      "CiGeneratePipelineTool",
+      "LoadTesterTool"
+    ],
+    "ReactProjectTool.ts": [
+      "shouldRepairInterruptedNativeBuildTools",
+      "nativeBuildToolRepairSpec",
+      "interruptedWindowsNativeTools",
+      "ReactProjectTool"
+    ],
+    "RepoSelfCodingTools.ts": [
+      "RepoReadFileTool",
+      "RepoSearchTool",
+      "RepoApplyPatchTool",
+      "RepoRunCommandTool",
+      "RepoDiffSummaryTool"
+    ],
+    "RequestAnalyzerTool.ts": [
+      "RequestAnalyzerTool"
+    ],
+    "ScreenshotTool.ts": [
+      "ScreenshotTool",
+      "VisualComparisonTool"
+    ],
+    "SearchApiTool.ts": [
+      "SearchApiTool"
+    ],
+    "SecurityScannerTool.ts": [
+      "SecurityScannerTool"
+    ],
+    "SwaggerDocsTool.ts": [
+      "SwaggerDocsTool"
+    ],
+    "SystemTools.ts": [
+      "EchoTool",
+      "FileEditTool",
+      "DeleteFileTool",
+      "WriteFileTool",
+      "LsTool",
+      "GrepSearchTool",
+      "NpmManagerTool",
+      "ScaffoldProjectTool",
+      "ShellExecuteTool",
+      "ShellStatusTool"
+    ],
+    "TaskInteractionTools.ts": [
+      "TerminalManagerTool",
+      "SafeReadFileTool",
+      "AskUserTool"
+    ],
+    "TaskLifecycleTool.ts": [
+      "TaskLifecycleTool"
+    ],
+    "TemplateManagerTool.ts": [
+      "TemplateManagerTool"
+    ],
+    "TodoWriteTool.ts": [
+      "TodoWriteTool"
+    ],
+    "UiFixTool.ts": [
+      "UiFixTool"
+    ],
+    "UserBrowserTool.ts": [
+      "UserBrowserTool"
+    ],
+    "UtilityTools.ts": [
+      "DirectoryInspectionTool",
+      "FileSearchTool",
+      "SearchTextTool",
+      "SymbolInspectorTool",
+      "AdvancedFileEditTool"
+    ],
+    "VideoActionTool.ts": [
+      "VideoActionTool"
+    ],
+    "VisualQATool.ts": [
+      "VisualQATool"
+    ],
+    "WebDevelopmentTools.ts": [
+      "WebPipelineTool",
+      "DevServerTool",
+      "ScaffoldTool"
+    ],
+    "WebPageBuilderTool.ts": [
+      "WebPageBuilderTool"
+    ],
+    "react-app-templates.ts": []
+  },
+  "registeredTools": 163,
+  "registeredNames": [
+    "ai_write_file",
+    "alert_manager",
+    "ambiguity_resolver",
+    "analyze_codebase",
+    "analyze_project",
+    "api_project",
+    "api_tester",
+    "architect_plan",
+    "archive_files",
+    "ask_user",
+    "auth_builder",
+    "auto_refactor",
+    "auto_tester",
+    "browser_a11y_deep",
+    "browser_action",
+    "browser_autofix",
+    "browser_check_links",
+    "browser_click",
+    "browser_compare",
+    "browser_consent",
+    "browser_console_scan",
+    "browser_contrast_audit",
+    "browser_design_tokens",
+    "browser_extract_data",
+    "browser_extract_meta",
+    "browser_fill_form",
+    "browser_find_text",
+    "browser_fullpage_shot",
+    "browser_launch",
+    "browser_page_fix",
+    "browser_performance",
+    "browser_readability",
+    "browser_responsive_check",
+    "browser_run",
+    "browser_save_pdf",
+    "browser_search",
+    "browser_seo_audit",
+    "browser_smart_agent",
+    "browser_summarize",
+    "browser_translate",
+    "browser_ui_audit",
+    "browser_ui_fix",
+    "browser_vision",
+    "business_logic_parser",
+    "business_profile",
+    "cache_manager",
+    "central_answer",
+    "chaos_test_plan",
+    "ci_generate_pipeline",
+    "cloud_cost_estimator",
+    "code_reviewer",
+    "codebase_outline",
+    "compliance_validator",
+    "db_schema_migrator",
+    "dead_code_detector",
+    "decide_capability_route",
+    "delete_file",
+    "dependency_audit",
+    "dependency_graph",
+    "deploy_pages",
+    "deploy_project",
+    "dev_server_start",
+    "doc_generator",
+    "docker_manager",
+    "docker_swarm_ops",
+    "echo",
+    "engineering_discovery",
+    "enterprise_platform_foundation",
+    "error_recovery",
+    "execute_python",
+    "file_edit",
+    "file_edit_advanced",
+    "form_inbox",
+    "git_local_workflow",
+    "git_ops",
+    "github_actions",
+    "github_pr",
+    "github_repo_manager",
+    "go_builder",
+    "google_account",
+    "html_extract",
+    "http_fetch",
+    "i18n_translator",
+    "image_studio",
+    "import_project",
+    "inspect_api",
+    "inspect_directory",
+    "inspect_symbol",
+    "java_builder",
+    "joe_engineering_report",
+    "json_query",
+    "knowledge_add",
+    "knowledge_search",
+    "kubernetes_ops",
+    "large_data_seeder",
+    "llm_cache",
+    "load_tester",
+    "logger",
+    "ls",
+    "memorize_codebase",
+    "mobile_builder",
+    "monitoring",
+    "multi_agent_debate",
+    "notify_user",
+    "npm_manager",
+    "orders_read",
+    "orion_business_foundation",
+    "pattern_recognize",
+    "payments_create_checkout_session",
+    "performance_analyzer",
+    "performance_profile",
+    "phase_executor",
+    "progressive_generator",
+    "project_detect",
+    "project_edit",
+    "project_pipeline",
+    "project_planner",
+    "project_repair",
+    "project_run",
+    "project_state_manager",
+    "project_stop",
+    "project_undo",
+    "python_builder",
+    "quality_run",
+    "query_datasource",
+    "query_optimizer",
+    "react_project",
+    "read_file",
+    "recall_memory",
+    "repo_apply_patch",
+    "repo_diff_summary",
+    "repo_read_file",
+    "repo_run_command",
+    "repo_search",
+    "request_analyzer",
+    "rss_fetch",
+    "scaffold_full_stack",
+    "scaffold_project",
+    "screenshot",
+    "search_api",
+    "search_files",
+    "search_public_apis",
+    "search_text",
+    "secrets_scan_repo",
+    "security_scanner",
+    "self_confidence_evaluator",
+    "shell_check_status",
+    "shell_execute",
+    "sonar_analysis",
+    "swagger_docs",
+    "task_lifecycle",
+    "template_manager",
+    "terminal_manager",
+    "terraform_manager",
+    "test_generator",
+    "todo_write",
+    "user_browser",
+    "validate_api",
+    "video_action",
+    "visual_compare",
+    "web_page_builder",
+    "website_full_pipeline",
+    "write_file"
+  ],
+  "withExecute": 163,
+  "withoutExecute": 0,
+  "missingExecuteNames": [],
+  "contractDefaults": {
+    "permissions": [
+      "business_logic_parser→read",
+      "chaos_test_plan→read",
+      "compliance_validator→read",
+      "cloud_cost_estimator→read",
+      "ambiguity_resolver→read",
+      "multi_agent_debate→read",
+      "self_confidence_evaluator→read",
+      "project_planner→read",
+      "central_answer→read",
+      "web_page_builder→write",
+      "form_inbox→read",
+      "echo→read",
+      "shell_check_status→read",
+      "ask_user→read",
+      "json_query→read",
+      "alert_manager→write",
+      "cache_manager→write",
+      "monitoring→read",
+      "project_state_manager→write",
+      "request_analyzer→read",
+      "template_manager→write"
+    ],
+    "rateLimit": [
+      "central_answer",
+      "web_page_builder"
+    ],
+    "unknown": []
+  },
+  "duplicateRegisteredNames": []
+}
