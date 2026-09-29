@@ -1,0 +1,1327 @@
+{
+  "generated": "checkpoint 9 batch 1 (read-only)",
+  "registered": 163,
+  "agg": {
+    "trunk": "browser_ui",
+    "members": 33,
+    "selectable30": [
+      "browser_a11y_deep",
+      "browser_action",
+      "browser_autofix",
+      "browser_check_links",
+      "browser_click",
+      "browser_compare",
+      "browser_consent",
+      "browser_console_scan",
+      "browser_contrast_audit",
+      "browser_design_tokens",
+      "browser_extract_data",
+      "browser_extract_meta",
+      "browser_fill_form",
+      "browser_find_text",
+      "browser_fullpage_shot",
+      "browser_launch",
+      "browser_page_fix",
+      "browser_performance",
+      "browser_readability",
+      "browser_responsive_check",
+      "browser_run",
+      "browser_save_pdf",
+      "browser_search",
+      "browser_seo_audit",
+      "browser_smart_agent",
+      "browser_summarize",
+      "browser_translate",
+      "browser_ui_audit",
+      "browser_ui_fix",
+      "browser_vision",
+      "screenshot",
+      "user_browser",
+      "visual_compare"
+    ],
+    "longTail": [],
+    "unselectable": [],
+    "rank1": [
+      "browser_a11y_deep",
+      "browser_action",
+      "browser_autofix",
+      "browser_check_links",
+      "browser_click",
+      "browser_compare",
+      "browser_consent",
+      "browser_console_scan",
+      "browser_contrast_audit",
+      "browser_design_tokens",
+      "browser_extract_data",
+      "browser_extract_meta",
+      "browser_fill_form",
+      "browser_find_text",
+      "browser_fullpage_shot",
+      "browser_launch",
+      "browser_page_fix",
+      "browser_performance",
+      "browser_readability",
+      "browser_responsive_check",
+      "browser_run",
+      "browser_save_pdf",
+      "browser_search",
+      "browser_seo_audit",
+      "browser_smart_agent",
+      "browser_summarize",
+      "browser_translate",
+      "browser_ui_audit",
+      "browser_ui_fix",
+      "browser_vision",
+      "user_browser",
+      "visual_compare"
+    ],
+    "withSessionProps": [
+      "browser_action",
+      "browser_page_fix",
+      "browser_run",
+      "browser_ui_fix"
+    ],
+    "withSessionRequired": [
+      "browser_action",
+      "browser_run"
+    ],
+    "noRequired": [
+      "browser_compare",
+      "browser_consent",
+      "browser_launch",
+      "browser_ui_fix"
+    ],
+    "emptySideEffects": [
+      "browser_a11y_deep",
+      "browser_check_links",
+      "browser_click",
+      "browser_compare",
+      "browser_consent",
+      "browser_console_scan",
+      "browser_contrast_audit",
+      "browser_design_tokens",
+      "browser_extract_data",
+      "browser_extract_meta",
+      "browser_fill_form",
+      "browser_find_text",
+      "browser_launch",
+      "browser_performance",
+      "browser_readability",
+      "browser_responsive_check",
+      "browser_search",
+      "browser_seo_audit",
+      "browser_smart_agent",
+      "browser_summarize",
+      "browser_translate",
+      "browser_ui_audit",
+      "screenshot",
+      "user_browser",
+      "visual_compare"
+    ],
+    "bootDefaultedPerm": [],
+    "routerExcluded": [],
+    "corePinned": [],
+    "priorityListed": [
+      "browser_action",
+      "browser_run",
+      "browser_vision"
+    ]
+  },
+  "rows": {
+    "browser_a11y_deep": {
+      "descriptionHead": "Open a page and run a deep accessibility audit: landmarks, heading order, duplicate IDs, empty/# links, positive tabindex, aria-hidden focusables, skip link, fo",
+      "descLen": 174,
+      "tags": [
+        "browser",
+        "web",
+        "accessibility",
+        "a11y",
+        "aria",
+        "audit"
+      ],
+      "required": [
+        "url"
+      ],
+      "propCount": 1,
+      "sessionProps": [],
+      "sessionRequired": [],
+      "permissions": [
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "bootDefaultedPerm": false,
+      "bootDefaultedRate": false,
+      "routerExcluded": false,
+      "corePinned": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "browser_a11y_deep:23.1",
+        "user_browser:9.8",
+        "browser_contrast_audit:8.4"
+      ]
+    },
+    "browser_action": {
+      "descriptionHead": "Perform atomic browser actions (click, type, scroll, wait, eval) directly on a session.",
+      "descLen": 87,
+      "tags": [
+        "browser",
+        "interaction",
+        "atomic"
+      ],
+      "required": [
+        "sessionId",
+        "action"
+      ],
+      "propCount": 8,
+      "sessionProps": [
+        "sessionId"
+      ],
+      "sessionRequired": [
+        "sessionId"
+      ],
+      "permissions": [
+        "internet",
+        "execute"
+      ],
+      "sideEffects": [
+        "execute"
+      ],
+      "rateLimitPerMinute": 60,
+      "bootDefaultedPerm": false,
+      "bootDefaultedRate": false,
+      "routerExcluded": false,
+      "corePinned": false,
+      "priorityListed": true,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "user_browser:10.6",
+        "browser_action:9.8",
+        "ask_user:9.4"
+      ]
+    },
+    "browser_autofix": {
+      "descriptionHead": "Open a page, automatically apply deterministic accessibility & SEO fixes (viewport meta, html lang, missing alt text, unlabeled inputs, single H1, meta descript",
+      "descLen": 302,
+      "tags": [
+        "browser",
+        "web",
+        "autofix",
+        "accessibility",
+        "seo",
+        "repair"
+      ],
+      "required": [
+        "url"
+      ],
+      "propCount": 1,
+      "sessionProps": [],
+      "sessionRequired": [],
+      "permissions": [
+        "internet",
+        "write"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 20,
+      "bootDefaultedPerm": false,
+      "bootDefaultedRate": false,
+      "routerExcluded": false,
+      "corePinned": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "user_browser:9.8",
+        "browser_autofix:9.4",
+        "ask_user:7.1"
+      ]
+    },
+    "browser_check_links": {
+      "descriptionHead": "Open a page, collect its links, and check each for broken (4xx/5xx/unreachable) status. Returns a report of broken links.",
+      "descLen": 121,
+      "tags": [
+        "browser",
+        "web",
+        "links",
+        "audit",
+        "qa"
+      ],
+      "required": [
+        "url"
+      ],
+      "propCount": 2,
+      "sessionProps": [],
+      "sessionRequired": [],
+      "permissions": [
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "bootDefaultedPerm": false,
+      "bootDefaultedRate": false,
+      "routerExcluded": false,
+      "corePinned": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "browser_check_links:16.2",
+        "user_browser:9.8",
+        "ask_user:7.1"
+      ]
+    },
+    "browser_click": {
+      "descriptionHead": "Open a page and click an element identified by visible text or a CSS selector, then report what changed (URL navigation, new content, or nothing) with a before/",
+      "descLen": 177,
+      "tags": [
+        "browser",
+        "web",
+        "click",
+        "interact",
+        "automation",
+        "test"
+      ],
+      "required": [
+        "url"
+      ],
+      "propCount": 3,
+      "sessionProps": [],
+      "sessionRequired": [],
+      "permissions": [
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "bootDefaultedPerm": false,
+      "bootDefaultedRate": false,
+      "routerExcluded": false,
+      "corePinned": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "browser_click:11.5",
+        "user_browser:10.8",
+        "ask_user:7.1"
+      ]
+    },
+    "browser_compare": {
+      "descriptionHead": "Compare a page before/after a change: pass {before,after} URLs, or a single {url} to capture a baseline the first time and diff on the next call. Returns what w",
+      "descLen": 213,
+      "tags": [
+        "browser",
+        "web",
+        "compare",
+        "diff",
+        "visual",
+        "qa"
+      ],
+      "required": [],
+      "propCount": 3,
+      "sessionProps": [],
+      "sessionRequired": [],
+      "permissions": [
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "bootDefaultedPerm": false,
+      "bootDefaultedRate": false,
+      "routerExcluded": false,
+      "corePinned": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "browser_compare:10.2",
+        "user_browser:9.8",
+        "ask_user:7.1"
+      ]
+    },
+    "browser_consent": {
+      "descriptionHead": "Ask for, or record, the user's one-time permission for Joe to use their local Chrome profile (their own logged-in account). grant=true records approval.",
+      "descLen": 152,
+      "tags": [
+        "browser",
+        "consent",
+        "permission",
+        "privacy"
+      ],
+      "required": [],
+      "propCount": 1,
+      "sessionProps": [],
+      "sessionRequired": [],
+      "permissions": [
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "bootDefaultedPerm": false,
+      "bootDefaultedRate": false,
+      "routerExcluded": false,
+      "corePinned": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "browser_consent:11.2",
+        "user_browser:9.8",
+        "ask_user:7.1"
+      ]
+    },
+    "browser_console_scan": {
+      "descriptionHead": "Open a page and capture JavaScript errors, console errors/warnings, and failed network requests (4xx/5xx). Reports whether the page is error-free.",
+      "descLen": 146,
+      "tags": [
+        "browser",
+        "web",
+        "errors",
+        "console",
+        "qa",
+        "debug"
+      ],
+      "required": [
+        "url"
+      ],
+      "propCount": 1,
+      "sessionProps": [],
+      "sessionRequired": [],
+      "permissions": [
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "bootDefaultedPerm": false,
+      "bootDefaultedRate": false,
+      "routerExcluded": false,
+      "corePinned": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "browser_console_scan:14.6",
+        "user_browser:9.8",
+        "secrets_scan_repo:7.8"
+      ]
+    },
+    "browser_contrast_audit": {
+      "descriptionHead": "Open a page and audit text colour contrast against WCAG AA (4.5:1 normal, 3:1 large). Lists low-contrast text with its ratio.",
+      "descLen": 125,
+      "tags": [
+        "browser",
+        "web",
+        "accessibility",
+        "contrast",
+        "wcag",
+        "audit"
+      ],
+      "required": [
+        "url"
+      ],
+      "propCount": 1,
+      "sessionProps": [],
+      "sessionRequired": [],
+      "permissions": [
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "bootDefaultedPerm": false,
+      "bootDefaultedRate": false,
+      "routerExcluded": false,
+      "corePinned": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "browser_contrast_audit:16.2",
+        "user_browser:9.8",
+        "browser_seo_audit:7.2"
+      ]
+    },
+    "browser_design_tokens": {
+      "descriptionHead": "Open a page and extract its de-facto design system: dominant colours (backgrounds, text, accents/links, buttons), font families and the type scale (font sizes i",
+      "descLen": 244,
+      "tags": [
+        "browser",
+        "web",
+        "design",
+        "tokens",
+        "colors",
+        "typography",
+        "ui"
+      ],
+      "required": [
+        "url"
+      ],
+      "propCount": 1,
+      "sessionProps": [],
+      "sessionRequired": [],
+      "permissions": [
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "bootDefaultedPerm": false,
+      "bootDefaultedRate": false,
+      "routerExcluded": false,
+      "corePinned": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "browser_design_tokens:18.3",
+        "user_browser:9.8",
+        "ask_user:7.1"
+      ]
+    },
+    "browser_extract_data": {
+      "descriptionHead": "Open a page and extract structured data (tables or lists) into JSON, and save a CSV file. Optionally pass a CSS selector.",
+      "descLen": 121,
+      "tags": [
+        "browser",
+        "web",
+        "extract",
+        "data",
+        "scrape",
+        "csv"
+      ],
+      "required": [
+        "url"
+      ],
+      "propCount": 2,
+      "sessionProps": [],
+      "sessionRequired": [],
+      "permissions": [
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "bootDefaultedPerm": false,
+      "bootDefaultedRate": false,
+      "routerExcluded": false,
+      "corePinned": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "browser_extract_data:14.6",
+        "browser_extract_meta:11.5",
+        "user_browser:9.8"
+      ]
+    },
+    "browser_extract_meta": {
+      "descriptionHead": "Open a page and extract ALL metadata: title, description, canonical, robots, Open Graph, Twitter cards, favicon, JSON-LD structured data, and a headings outline",
+      "descLen": 161,
+      "tags": [
+        "browser",
+        "web",
+        "meta",
+        "seo",
+        "structured-data",
+        "extract"
+      ],
+      "required": [
+        "url"
+      ],
+      "propCount": 1,
+      "sessionProps": [],
+      "sessionRequired": [],
+      "permissions": [
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "bootDefaultedPerm": false,
+      "bootDefaultedRate": false,
+      "routerExcluded": false,
+      "corePinned": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "browser_extract_meta:19.1",
+        "browser_seo_audit:13",
+        "user_browser:9.8"
+      ]
+    },
+    "browser_fill_form": {
+      "descriptionHead": "Open a page and fill a form. Provide fields as { \"label or name or placeholder\": \"value\" }. Optionally submit.",
+      "descLen": 110,
+      "tags": [
+        "browser",
+        "web",
+        "form",
+        "automation"
+      ],
+      "required": [
+        "fields"
+      ],
+      "propCount": 3,
+      "sessionProps": [],
+      "sessionRequired": [],
+      "permissions": [
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "bootDefaultedPerm": false,
+      "bootDefaultedRate": false,
+      "routerExcluded": false,
+      "corePinned": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "browser_fill_form:14.3",
+        "user_browser:9.8",
+        "browser_performance:8.3"
+      ]
+    },
+    "browser_find_text": {
+      "descriptionHead": "Open a page and find every occurrence of a search term: returns the count, surrounding context snippets, and a screenshot with the matches highlighted.",
+      "descLen": 151,
+      "tags": [
+        "browser",
+        "web",
+        "find",
+        "search",
+        "text",
+        "highlight"
+      ],
+      "required": [
+        "url",
+        "query"
+      ],
+      "propCount": 2,
+      "sessionProps": [],
+      "sessionRequired": [],
+      "permissions": [
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "bootDefaultedPerm": false,
+      "bootDefaultedRate": false,
+      "routerExcluded": false,
+      "corePinned": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "browser_find_text:18",
+        "user_browser:10.7",
+        "ask_user:7.1"
+      ]
+    },
+    "browser_fullpage_shot": {
+      "descriptionHead": "Open a page and capture a full-length screenshot of the entire scrollable page (top to bottom), plus its total pixel height and a quick content summary.",
+      "descLen": 152,
+      "tags": [
+        "browser",
+        "web",
+        "screenshot",
+        "capture",
+        "fullpage"
+      ],
+      "required": [
+        "url"
+      ],
+      "propCount": 1,
+      "sessionProps": [],
+      "sessionRequired": [],
+      "permissions": [
+        "internet",
+        "write"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 20,
+      "bootDefaultedPerm": false,
+      "bootDefaultedRate": false,
+      "routerExcluded": false,
+      "corePinned": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "browser_fullpage_shot:16.4",
+        "user_browser:10.6",
+        "screenshot:8"
+      ]
+    },
+    "browser_launch": {
+      "descriptionHead": "Open the live browser panel and navigate to a URL (or a default start page when none is given). Starts the live stream so the user watches the page load in real",
+      "descLen": 225,
+      "tags": [
+        "browser",
+        "web",
+        "open",
+        "navigate",
+        "live"
+      ],
+      "required": [],
+      "propCount": 3,
+      "sessionProps": [],
+      "sessionRequired": [],
+      "permissions": [
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "bootDefaultedPerm": false,
+      "bootDefaultedRate": false,
+      "routerExcluded": false,
+      "corePinned": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "user_browser:9.8",
+        "browser_launch:8.6",
+        "ask_user:7.1"
+      ]
+    },
+    "browser_page_fix": {
+      "descriptionHead": "Open ANY web page, measure its real UI defects (horizontal overflow, tiny tap targets, unreadable contrast, unsized/eager images), build a CSS patch that fixes ",
+      "descLen": 275,
+      "tags": [
+        "browser",
+        "ui",
+        "css",
+        "repair",
+        "accessibility",
+        "responsive"
+      ],
+      "required": [
+        "url"
+      ],
+      "propCount": 2,
+      "sessionProps": [
+        "sessionId"
+      ],
+      "sessionRequired": [],
+      "permissions": [
+        "internet",
+        "write"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 10,
+      "bootDefaultedPerm": false,
+      "bootDefaultedRate": false,
+      "routerExcluded": false,
+      "corePinned": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "browser_page_fix:13.1",
+        "browser_autofix:11.1",
+        "browser_fullpage_shot:10.2"
+      ]
+    },
+    "browser_performance": {
+      "descriptionHead": "Open a page and measure performance: load time, DOMContentLoaded, transfer size, resource counts by type, and slowest resources.",
+      "descLen": 128,
+      "tags": [
+        "browser",
+        "web",
+        "performance",
+        "speed",
+        "audit"
+      ],
+      "required": [
+        "url"
+      ],
+      "propCount": 1,
+      "sessionProps": [],
+      "sessionRequired": [],
+      "permissions": [
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "bootDefaultedPerm": false,
+      "bootDefaultedRate": false,
+      "routerExcluded": false,
+      "corePinned": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "user_browser:9.8",
+        "browser_performance:8.3",
+        "ask_user:7.1"
+      ]
+    },
+    "browser_readability": {
+      "descriptionHead": "Open a page and extract the clean main article/content (stripping nav, ads, sidebars), with title, author, word count and reading time.",
+      "descLen": 135,
+      "tags": [
+        "browser",
+        "web",
+        "readability",
+        "article",
+        "extract"
+      ],
+      "required": [
+        "url"
+      ],
+      "propCount": 1,
+      "sessionProps": [],
+      "sessionRequired": [],
+      "permissions": [
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "bootDefaultedPerm": false,
+      "bootDefaultedRate": false,
+      "routerExcluded": false,
+      "corePinned": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "user_browser:9.8",
+        "browser_readability:7.6",
+        "ask_user:7.1"
+      ]
+    },
+    "browser_responsive_check": {
+      "descriptionHead": "Open a page and test it across mobile / tablet / desktop viewports: captures a screenshot of each, and flags horizontal overflow, tiny tap targets, unreadable f",
+      "descLen": 229,
+      "tags": [
+        "browser",
+        "web",
+        "responsive",
+        "mobile",
+        "ui",
+        "audit"
+      ],
+      "required": [
+        "url"
+      ],
+      "propCount": 1,
+      "sessionProps": [],
+      "sessionRequired": [],
+      "permissions": [
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "bootDefaultedPerm": false,
+      "bootDefaultedRate": false,
+      "routerExcluded": false,
+      "corePinned": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "browser_responsive_check:18.6",
+        "user_browser:9.8",
+        "mobile_builder:7.8"
+      ]
+    },
+    "browser_run": {
+      "descriptionHead": "Execute browser actions, or compile instructionText into a multi-step plan.",
+      "descLen": 75,
+      "tags": [
+        "browser",
+        "web",
+        "actions",
+        "smart"
+      ],
+      "required": [
+        "sessionId"
+      ],
+      "propCount": 5,
+      "sessionProps": [
+        "sessionId"
+      ],
+      "sessionRequired": [
+        "sessionId"
+      ],
+      "permissions": [
+        "internet",
+        "execute"
+      ],
+      "sideEffects": [
+        "execute",
+        "internet"
+      ],
+      "rateLimitPerMinute": 120,
+      "bootDefaultedPerm": false,
+      "bootDefaultedRate": false,
+      "routerExcluded": false,
+      "corePinned": false,
+      "priorityListed": true,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "user_browser:9.8",
+        "ask_user:7.1",
+        "project_run:6.9"
+      ]
+    },
+    "browser_save_pdf": {
+      "descriptionHead": "Open a page and save it as a PDF file (served from /artifacts).",
+      "descLen": 63,
+      "tags": [
+        "browser",
+        "web",
+        "pdf",
+        "export"
+      ],
+      "required": [
+        "url"
+      ],
+      "propCount": 1,
+      "sessionProps": [],
+      "sessionRequired": [],
+      "permissions": [
+        "internet",
+        "write"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 20,
+      "bootDefaultedPerm": false,
+      "bootDefaultedRate": false,
+      "routerExcluded": false,
+      "corePinned": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "browser_save_pdf:17.5",
+        "user_browser:9.8",
+        "ask_user:7.1"
+      ]
+    },
+    "browser_search": {
+      "descriptionHead": "Perform a web search the human way, visibly: open the search engine, move the cursor to the search box, type the query letter-by-letter in the live stream, pres",
+      "descLen": 274,
+      "tags": [
+        "browser",
+        "web",
+        "search",
+        "google",
+        "live",
+        "agent"
+      ],
+      "required": [
+        "query"
+      ],
+      "propCount": 3,
+      "sessionProps": [],
+      "sessionRequired": [],
+      "permissions": [
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "bootDefaultedPerm": false,
+      "bootDefaultedRate": false,
+      "routerExcluded": false,
+      "corePinned": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "user_browser:9.8",
+        "browser_search:8.4",
+        "ask_user:7.1"
+      ]
+    },
+    "browser_seo_audit": {
+      "descriptionHead": "Open a page and audit its SEO: title, meta description, canonical, robots, Open Graph/Twitter cards, headings, image alt coverage, and HTTPS.",
+      "descLen": 141,
+      "tags": [
+        "browser",
+        "web",
+        "seo",
+        "audit",
+        "meta"
+      ],
+      "required": [
+        "url"
+      ],
+      "propCount": 1,
+      "sessionProps": [],
+      "sessionRequired": [],
+      "permissions": [
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "bootDefaultedPerm": false,
+      "bootDefaultedRate": false,
+      "routerExcluded": false,
+      "corePinned": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "browser_seo_audit:17.7",
+        "browser_extract_meta:12.6",
+        "user_browser:9.8"
+      ]
+    },
+    "browser_smart_agent": {
+      "descriptionHead": "Autonomous multi-lens page analyst: opens a page once and gathers content summary, UI/accessibility issues, SEO/meta health, the design system (colours/fonts), ",
+      "descLen": 280,
+      "tags": [
+        "browser",
+        "web",
+        "agent",
+        "analyze",
+        "audit",
+        "comprehensive"
+      ],
+      "required": [
+        "url"
+      ],
+      "propCount": 2,
+      "sessionProps": [],
+      "sessionRequired": [],
+      "permissions": [
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "bootDefaultedPerm": false,
+      "bootDefaultedRate": false,
+      "routerExcluded": false,
+      "corePinned": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "browser_smart_agent:12.3",
+        "user_browser:9.8",
+        "ask_user:7.1"
+      ]
+    },
+    "browser_summarize": {
+      "descriptionHead": "Open a web page in the browser, read its content, and return a concise summary (optionally answering a question about it).",
+      "descLen": 122,
+      "tags": [
+        "browser",
+        "web",
+        "summarize",
+        "research"
+      ],
+      "required": [
+        "url"
+      ],
+      "propCount": 2,
+      "sessionProps": [],
+      "sessionRequired": [],
+      "permissions": [
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "bootDefaultedPerm": false,
+      "bootDefaultedRate": false,
+      "routerExcluded": false,
+      "corePinned": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "browser_summarize:10.8",
+        "user_browser:9.8",
+        "ask_user:7.1"
+      ]
+    },
+    "browser_translate": {
+      "descriptionHead": "Open a page, extract its readable text (title, headings, paragraphs) and translate it into a target language (default Arabic) using the LLM, with a deterministi",
+      "descLen": 200,
+      "tags": [
+        "browser",
+        "web",
+        "translate",
+        "i18n",
+        "language"
+      ],
+      "required": [
+        "url"
+      ],
+      "propCount": 2,
+      "sessionProps": [],
+      "sessionRequired": [],
+      "permissions": [
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "bootDefaultedPerm": false,
+      "bootDefaultedRate": false,
+      "routerExcluded": false,
+      "corePinned": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "browser_translate:11.5",
+        "user_browser:9.8",
+        "ask_user:7.1"
+      ]
+    },
+    "browser_ui_audit": {
+      "descriptionHead": "Open a web page and run a UI/UX and accessibility audit (missing alt text, unlabeled inputs, heading structure, broken images, viewport/lang, console errors) wi",
+      "descLen": 171,
+      "tags": [
+        "browser",
+        "web",
+        "ui",
+        "audit",
+        "accessibility",
+        "qa"
+      ],
+      "required": [
+        "url"
+      ],
+      "propCount": 1,
+      "sessionProps": [],
+      "sessionRequired": [],
+      "permissions": [
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "bootDefaultedPerm": false,
+      "bootDefaultedRate": false,
+      "routerExcluded": false,
+      "corePinned": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "user_browser:9.8",
+        "browser_contrast_audit:7.2",
+        "browser_seo_audit:7.2"
+      ]
+    },
+    "browser_ui_fix": {
+      "descriptionHead": "Audit a built interface in a real browser, REPAIR the accessibility and usability defects in its source (alt text, labels, dead links, tap targets, document lan",
+      "descLen": 237,
+      "tags": [
+        "browser",
+        "ui",
+        "quality",
+        "accessibility",
+        "repair",
+        "fix"
+      ],
+      "required": [],
+      "propCount": 2,
+      "sessionProps": [
+        "sessionId"
+      ],
+      "sessionRequired": [],
+      "permissions": [
+        "write",
+        "execute"
+      ],
+      "sideEffects": [
+        "write",
+        "execute"
+      ],
+      "rateLimitPerMinute": 6,
+      "bootDefaultedPerm": false,
+      "bootDefaultedRate": false,
+      "routerExcluded": false,
+      "corePinned": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "browser_autofix:10.2",
+        "user_browser:9.8",
+        "browser_ui_fix:9.7"
+      ]
+    },
+    "browser_vision": {
+      "descriptionHead": "Open a URL in a real headless browser and capture an actual screenshot of the page (returns the saved image path).",
+      "descLen": 114,
+      "tags": [
+        "browser",
+        "vision",
+        "screenshot"
+      ],
+      "required": [
+        "url"
+      ],
+      "propCount": 3,
+      "sessionProps": [],
+      "sessionRequired": [],
+      "permissions": [
+        "internet",
+        "read",
+        "write"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 60,
+      "bootDefaultedPerm": false,
+      "bootDefaultedRate": false,
+      "routerExcluded": false,
+      "corePinned": false,
+      "priorityListed": true,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "browser_vision:10.8",
+        "user_browser:9.8",
+        "ask_user:7.1"
+      ]
+    },
+    "screenshot": {
+      "descriptionHead": "Capture a screenshot of a web page for visual verification.",
+      "descLen": 59,
+      "tags": [
+        "browser",
+        "visual",
+        "qa",
+        "screenshot"
+      ],
+      "required": [
+        "url"
+      ],
+      "propCount": 6,
+      "sessionProps": [],
+      "sessionRequired": [],
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 30,
+      "bootDefaultedPerm": false,
+      "bootDefaultedRate": false,
+      "routerExcluded": false,
+      "corePinned": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 2,
+      "bestRankFull": 2,
+      "top3SelfName": [
+        "user_browser:7.8",
+        "ask_user:7.1",
+        "screenshot:7.1"
+      ]
+    },
+    "user_browser": {
+      "descriptionHead": "Drive the user's OWN real browser (their logins, any website) via the installed Joe browser extension. actions: open(url) | read | screenshot | click(text|selec",
+      "descLen": 254,
+      "tags": [
+        "browser",
+        "extension",
+        "user",
+        "real",
+        "remote"
+      ],
+      "required": [
+        "action"
+      ],
+      "propCount": 4,
+      "sessionProps": [],
+      "sessionRequired": [],
+      "permissions": [
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "bootDefaultedPerm": false,
+      "bootDefaultedRate": false,
+      "routerExcluded": false,
+      "corePinned": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "user_browser:16.9",
+        "ask_user:14.1",
+        "notify_user:9.4"
+      ]
+    },
+    "visual_compare": {
+      "descriptionHead": "Compare two screenshots and report visual differences.",
+      "descLen": 54,
+      "tags": [
+        "browser",
+        "visual",
+        "qa",
+        "testing"
+      ],
+      "required": [
+        "baseline",
+        "current"
+      ],
+      "propCount": 3,
+      "sessionProps": [],
+      "sessionRequired": [],
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 30,
+      "bootDefaultedPerm": false,
+      "bootDefaultedRate": false,
+      "routerExcluded": false,
+      "corePinned": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "visual_compare:12.2",
+        "browser_compare:10.9",
+        "ask_user:7.1"
+      ]
+    }
+  }
+}

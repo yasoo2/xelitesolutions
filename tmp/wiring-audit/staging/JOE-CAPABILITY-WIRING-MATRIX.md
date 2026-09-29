@@ -1,20 +1,23 @@
 # JOE CAPABILITY WIRING MATRIX (Muse draft 2026-09-29 — staging for D:\Joe\coordination\team\JOE-CAPABILITY-WIRING-MATRIX.md)
 
-SCOPE=Muse-branch discovery checkpoints 1-8 only (muse/joe-development @ ef3476e7).
+SCOPE=Muse-branch discovery checkpoints 1-9 only (muse/joe-development @ d5f51787).
 Rows below are EVIDENCED tool-level entries. HIGH_LEVEL_CAPABILITIES grouping
-(merge v1: 19 trunks PROPOSED, 1 STORIED: files 10/10 in checkpoint 8),
-services/workers/internal-infra rows, and NVIDIA-owned
-registry/ingress/persistence areas are UNKNOWN/PENDING and must NOT be treated
-as covered.
+(merge v1: 19 trunks PROPOSED, 1 STORIED: files 10/10 in checkpoint 8;
+browser_ui 33 batch-1 PARTIAL: declarations + selection + session survey, live
+pending — checkpoint 9), services/workers/internal-infra rows, and
+NVIDIA-owned registry/ingress/persistence areas are UNKNOWN/PENDING and must
+NOT be treated as covered.
 Evidence files: D:\Joe\muse-worktree\tmp\wiring-audit\{discovery,exposure,
 classification,reachability,target,exec,sweep1,sweep2,merge,sweep3,trunk_files,
-arch2}.json + {discover,exposure,classify,reach,target,exec,sweep1,sweep2,merge,
-sweep3,trunk_files,arch2}.mts + MUSE-WIRING-DISCOVERY-00{1,2,3,4,5,6,7}.md +
-MUSE-WIRING-DISCOVERY-008.md. All probes re-runnable; exec/sweep/trunk probes
+arch2,trunk_browser1}.json + {discover,exposure,classify,reach,target,exec,
+sweep1,sweep2,merge,sweep3,trunk_files,arch2,trunk_browser1}.mts +
+MUSE-WIRING-DISCOVERY-00{1,2,3,4,5,6,7}.md + MUSE-WIRING-DISCOVERY-008.md +
+MUSE-WIRING-DISCOVERY-009.md. All probes re-runnable; exec/sweep/trunk probes
 perform bounded safe runs only (fixtures created + removed by the probe; 4
 EMBARGO names never executed — static fixture designs in 008; 2 FIXTURE names
 probed with contained explicit inputs only; sweep3 risk probes control-gated,
-see 007; delete_file verdict-only with target-survival check, see 008).
+see 007; delete_file verdict-only with target-survival check, see 008;
+trunk_browser1 is read-only: zero tool executions, see 009).
 
 FORMAT per row follows CRITICAL-JOE-DEEP-CAPABILITY-WIRING-AUDIT.
 
@@ -919,5 +922,62 @@ RECOMMENDED_ACTION=none (gate is correct); future: approved-context fixture for 
 
 ---
 
-END-OF-MUSE-DRAFT-ROWS=41 (33 individual + 6 group + 2 external-cited)
-COVERAGE-DISCLAIMER=This draft covers ONLY what Muse checkpoints 1-8 evidenced. Full matrix requires: per-trunk path stories (19 trunks PROPOSED in merge.json, 1 STORIED: files 10/10), services/workers/persistence/deployment rows (NVIDIA scope), bulk per-tool firewall sweep (8 spot + 28 empty-input batch-1+2 + 19 risk-tier live + 16 trunk-files + 3 arch-backend live done; 25/25 no-required reviewed: 18 SAFE + 1 BOUND + 4 EMBARGO with static fixture designs + 2 FIXTURE probed contained; risk table SURVEYED), contract audit per boundary, LEVEL 5-6 proofs, and NVIDIA cross-review (currently BLOCKED).
+CAPABILITY_ID=TRUNK-browser_ui-batch1
+NAME=browser_ui trunk batch-1: 33 members (declarations + selection + session survey; live pending)
+CATEGORY=trunk/browser-ui (group row, checkpoint 9)
+SOURCE_FILES=25 in api/src/modules/tools/definitions/BrowserSmartTools.ts; BrowserActionTool.ts; BrowserVisionTool.ts (2); PageFixTool.ts; ScreenshotTool.ts (2); UiFixTool.ts; UserBrowserTool.ts; BrowserRunTool.ts
+IMPLEMENTATION=operate/inspect/repair pages in a real browser (merge.json trunk why)
+REGISTERED=YES (33/33)
+REGISTRY_EVIDENCE=in live 163 (trunk_browser1.json; probe aborts unless 163)
+PLANNER_VISIBLE=YES (33/33)
+PLANNER_EVIDENCE=33/33 SELECTABLE_BY_KEYWORD (32 rank-1; screenshot rank-2 behind user_browser on self-name goal — user_browser description names 'screenshot' as an action; both selectable, F42)
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded top-30 ranks in trunk_browser1.json; 0 router-excluded; 3 priority-listed (browser_action, browser_run, browser_vision); 0 core-pinned
+EXECUTOR_REACHABLE=UNKNOWN (live pending)
+EXECUTOR_EVIDENCE=zero executions in batch-1 (read-only by design); session-binding mechanism surveyed per tool instead (F43): context-derived 25 (browserSid: explicit browserSessionId else browser:sessionId else throw browser_session_required, BrowserSmartTools.ts:21-27) / input-required 2 (browser_action, browser_run) / optional+fallback 2 (browser_page_fix, browser_ui_fix) / standalone chromium.launch 2 (screenshot, visual_compare) / separate real-browser channel 1 (user_browser)
+PERMISSION_REACHABLE=UNKNOWN (live pending)
+PERMISSION_EVIDENCE=declarations only: internet-only 23, internet+write 4, internet+execute 2, read 2, write+execute 1, internet+read+write 1; zero boot-defaulted in trunk (F46)
+INPUT_CONTRACT_VALID=PARTIAL (declarations read; bodies unprobed)
+OUTPUT_CONTRACT_VALID=UNKNOWN
+EVIDENCE_PRODUCED=UNKNOWN
+VERIFICATION_COMPATIBLE=UNKNOWN (LEVEL 5-6 pending)
+CANONICAL_PATH_CONNECTED=UNKNOWN (live pending)
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=UNKNOWN_REQUIRES_INVESTIGATION (batch-1 is LEVEL 2-3 only)
+BLOCKER=LEVEL-4 live batch needs: session-fixture design for 25 context tools; contained-URL design for standalone pair; user_browser helper contract; isolated-process harness for browser_launch EMBARGO
+OVERLAP=Muse M01/M08 browser action-verification work (unintegrated)
+LEGACY_RISK=UNKNOWN
+SECURITY_RISK=25/33 declare empty sideEffects incl. state-changing click/fill (F45, planner-signal debt -> WIRING-P2-011); browser_launch defaults to BROWSER_HOME_URL || google.com (F48, embargo rationale confirmed)
+PORTABILITY_RISK=UNKNOWN
+RECOMMENDED_ACTION=WIRING-P2-011 for sideEffects honesty; then LEVEL-4 live batch per mechanism (never live-call write+execute ui_fix or launch without fixture designs)
+
+---
+
+CAPABILITY_ID=TOOL-browser_ui_fix
+NAME=browser_ui_fix (UiFixTool.ts)
+CATEGORY=tool/browser-ui-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/UiFixTool.ts
+IMPLEMENTATION=audits a built interface in a real browser + REPAIRs a11y/usability defects in source; NO required inputs; permissions write+execute
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=self-grounded rank (trunk_browser1.json); not router-excluded; not priority-listed
+SELECTABLE=YES
+SELECTION_EVIDENCE=SELECTABLE_BY_KEYWORD (batch-1)
+EXECUTOR_REACHABLE=UNKNOWN (live unprobed — write+execute, read-only batch)
+EXECUTOR_EVIDENCE=code-read only: dir resolves from input.projectDir or session project entry; missing dir returns {ok:false, error:'no_project'} (UiFixTool.ts:60-64) — honest failure shape, code-indicated (F44)
+PERMISSION_REACHABLE=UNKNOWN
+PERMISSION_EVIDENCE=write+execute declared (risk tier from sweep3 census, not re-probed here)
+INPUT_CONTRACT_VALID=YES (code-read: no required, body validates dir)
+OUTPUT_CONTRACT_VALID=UNKNOWN (live unprobed)
+EVIDENCE_PRODUCED=UNKNOWN
+VERIFICATION_COMPATIBLE=UNKNOWN (LEVEL 5-6 pending)
+CANONICAL_PATH_CONNECTED=UNKNOWN
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=UNKNOWN_REQUIRES_INVESTIGATION (needs throwaway-fixture live probe: no_project control first, then scaffolded-project repair)
+RECOMMENDED_ACTION=future LEVEL-4 probe with fixture project only; joins P2-004 read-before-call rule
+
+---
+
+END-OF-MUSE-DRAFT-ROWS=43 (34 individual + 7 group + 2 external-cited)
+COVERAGE-DISCLAIMER=This draft covers ONLY what Muse checkpoints 1-9 evidenced. Full matrix requires: per-trunk path stories (19 trunks PROPOSED in merge.json, 1 STORIED: files 10/10; browser_ui 33 batch-1 PARTIAL: declarations+selection+session survey, live pending), services/workers/persistence/deployment rows (NVIDIA scope), bulk per-tool firewall sweep (8 spot + 28 empty-input batch-1+2 + 19 risk-tier live + 16 trunk-files + 3 arch-backend live done + 33 browser read-only surveyed; 25/25 no-required reviewed: 18 SAFE + 1 BOUND + 4 EMBARGO with static fixture designs + 2 FIXTURE probed contained; risk table SURVEYED), contract audit per boundary, LEVEL 5-6 proofs, and NVIDIA cross-review (currently BLOCKED).

@@ -190,6 +190,19 @@ DEPENDENCIES=none
 
 ---
 
+BATCH_ID=WIRING-P2-011
+CAPABILITIES=sideEffects declaration honesty for mutating tools (browser trunk: 25/33 empty incl. click/fill/navigate)
+ROOT_CAUSE=tools that mutate page state declare sideEffects:[] (trunk_browser1.json; proven pattern: browser_click/browser_fill_form family). Planner-facing signal debt — a planner trusting sideEffects would treat mutating tools as pure. Distinct from P2-003 (boot-defaulted permissions): this trunk has ZERO boot-defaulted names; the declarations are explicit-but-empty.
+FILES=25 browser definition sites (exact list in trunk_browser1.json emptySideEffects) + sideEffects-honesty contract test
+IMPLEMENTATION_OWNER=UNASSIGNED
+REVIEW_OWNER=UNASSIGNED
+TESTS=per-tool sideEffects review (mutating tools declare honestly or document why a field is inert); contract test pinning the reviewed declarations; AGENTS gates
+REAL_JOE_UAT=none (declaration honesty; behavior unchanged)
+ROLLBACK=revert declaration change
+DEPENDENCIES=none
+
+---
+
 BATCH_ID=WIRING-P3-001
 CAPABILITIES=15 dormant/absent-static-candidate names (behavioral review). Selection stories FULLY CLOSED: 9/9 targeted rank-1 (target.json) + catalogue-absent 15/15 storied strong — no keyword-map repair needed.
 ROOT_CAUSE=unknown whether name similarity/dormancy equals missing capability

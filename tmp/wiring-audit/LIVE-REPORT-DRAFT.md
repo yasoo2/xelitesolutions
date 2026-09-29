@@ -1,27 +1,26 @@
 # JOE LIVE TEAM REPORT (Muse draft 2026-09-29 — for coordinator to persist to team/LIVE-REPORT.md; Muse sandbox cannot write shared coordination files)
 
-UPDATED=2026-09-30T01:30Z
-OVERALL_STATUS=CRITICAL wiring audit checkpoint 8 done (files trunk 10/10 STORIED: selection + live round-trip + atomicity proof; archive zip-backend defect + dep_audit mislabel filed P2-009/P2-010; 4 embargo fixture designs; 41 matrix rows); CLI routing fix still owned by NVIDIA (worker blocked); no Real Joe PASS yet.
+UPDATED=2026-09-30T02:00Z
+OVERALL_STATUS=CRITICAL wiring audit checkpoint 9 done (browser_ui batch-1: 33/33 selectable, 5 session-binding mechanisms surveyed, sideEffects honesty filed P2-011, 43 matrix rows; read-only, zero executions); CLI routing fix still owned by NVIDIA (worker blocked); no Real Joe PASS yet.
 
 ## ماذا نعمل الآن؟
-Muse أكمل المرحلة الثامنة: أول قصة جذع (trunk) كاملة — أدوات الملفات العشر: إعلان + اختيار ذاتي + تنفيذ حي بدورة كتابة/قراءة/تحرير كاملة وإثبات ذرية التحرير المتقدم. عيبان جديدان بأدلة حية (zip مكسور على Windows وtar يعمل؛ رسالة تدقيق التبعيات مضللة) + 4 تصاميم فحص للأسماء المحظورة. اكتشاف فقط — لا حذف ولا إعادة هيكلة ولا تسجيل أدوات.
+Muse أكمل المرحلة التاسعة: الدفعة الأولى من جذع المتصفح (33 أداة): إعلانات + اختيار ذاتي + مسح ربط الجلسات — قراءة فقط، صفر تنفيذ. خمس آليات ربط جلسات مختلفة موثقة بالمصدر، ودين إعلانات جديد (أدوات مغيّرة للصفحة تعلن آثارًا فارغة) مسجل P2-011. اكتشاف فقط — لا حذف ولا إعادة هيكلة ولا تسجيل أدوات.
 
 ## ماذا اكتشفنا؟
-- الجذع كامل: 10/10 قابلة للاختيار بالكلمات (8 مرتبة أولى)؛ الاستبعاد من الموجه السريع فقط — الكتالوج يحملها جميعًا (تصميم سليم، مثبت).
-- التحرير المتقدم ذري حيًا: فشل جزئي ترك الملف مطابقًا للبايت قبل المحاولة.
-- project_edit بلا مشروع يُرجع ok:true — الحالة السادسة من الغياب-بشكل-نجاح (توسيع P2-004).
-- الأرشيف: zip يفشل 0/2 (لا يوجد ثنائي + `|| true` يبتلع السبب + ENOENT مضلل) بينما tar.gz ينجح إنشاءً وسردًا (P2-009 جديد).
-- delete_file بمسار صريح يُرفض approval_required والملف المستهدف نجا مُتحققًا (إثبات ثانٍ للبوابة).
-- dead_code بمسار محصور: فشل صادق؛ dependency_audit أثبت جذر المسار المعطى لكن رسالته تصف ENOLOCK كثغرات (P2-010 جديد).
+- الجذع قابل للاختيار: 33/33 بالكلمات (32 مرتبة أولى)؛ screenshot مرتبة ثانية خلف user_browser لسبب مفهوم — كلاهما قابل للاختيار.
+- خمس آليات ربط جلسات: مشتقة من السياق 25 / مطلوبة بالإدخال 2 / اختيارية مع بديل 2 / إطلاق مستقل 2 / قناة منفصلة 1 — العقود تختلف ويجب توثيقها لكل أداة.
+- browser_ui_fix بلا مشروع يفشل بصدق no_project (مقروء من الشيفرة؛ write+execute لذا لم يُنفذ حيًا).
+- 25/33 تعلن آثارًا جانبية فارغة رغم أن النقر/التعبئة يغيّر الصفحة (دين إشارات للمخطط — P2-011 جديد).
+- browser_launch الافتراضي BROWSER_HOME_URL أو google.com — تأكيد سبب الحظر في المصدر.
 
 ## ماذا أنجزنا؟
-- trunk_files.mts يعمل (exit 0، 16 حالة حية) + arch2.mts يعمل (exit 0، 3 حالات) والدليل في trunk_files.json + arch2.json.
-- MUSE-WIRING-DISCOVERY-008.md + تحديث المسودات (المصفوفة 41 صفًا، الملخص: جذع مُوثّق + عيبا أدلة، التراكم P2-009 + P2-010 + توسيع P2-004/P2-001، الخريطة المعمارية).
+- trunk_browser1.mts يعمل (exit 0، قراءة فقط، صفر تنفيذ) والدليل في trunk_browser1.json.
+- MUSE-WIRING-DISCOVERY-009.md + تحديث المسودات (المصفوفة 43 صفًا، الملخص: دفعة المتصفح الأولى، التراكم P2-011، الخريطة المعمارية).
 - هذه المسودة محدثة.
 
 ## Muse الآن
-CURRENT_TASK=Wiring audit checkpoint 8 (staged outputs, awaiting coordinator import + push)
-LATEST_RESULT=Files trunk 10/10 storied; 16+3 live probes exit 0; 41 matrix rows; guard re-run at commit
+CURRENT_TASK=Wiring audit checkpoint 9 (staged outputs, awaiting coordinator import + push)
+LATEST_RESULT=Browser_ui batch-1: 33 surveyed read-only, exit 0; 43 matrix rows; guard re-run at commit
 BLOCKER=None for audit; shared coordination writes denied (fallback report used)
 
 ## NVIDIA الآن
@@ -37,6 +36,7 @@ DISCOVERED_TOOLS=163 (registered runtime names)
 REGISTERED_TOOLS=163
 TARGETED_SELECTION=9/9 SELECTABLE_BY_KEYWORD (best rank 1)
 TRUNK_FILES=10/10 SELECTABLE_BY_KEYWORD (8 rank-1) + live round-trip + atomicity proof (FIRST trunk story 1/19)
+TRUNK_BROWSER1=33/33 SELECTABLE_BY_KEYWORD (32 rank-1) + declarations + 5 session mechanisms surveyed (read-only, live pending)
 STORIES_DONE=15/15 catalogue-absent (selection CLOSED)
 CENSUS=163 rows: 21 perm-defaulted + 2 ratelimit-defaulted + 0 unknown; 25 no-required; 0 no-description
 EMPTY_INPUT_BATCH1=8/9 honest ok:false + 1 unvalidated ok:true (task_lifecycle)
@@ -44,7 +44,7 @@ EMPTY_INPUT_BATCH2=19/19 rerun-stable: 8 honest + 7 ok:true reads/absences + 1 a
 NO_REQUIRED_PARTITION=25/25: 18 SAFE + 1 BOUND + 4 EMBARGO + 2 FIXTURE
 CONTRACT_MISMATCHES=7 (+ risk-scan shadow order; + browser injection verdict)
 ERROR_EVIDENCE_DEFECTS=2 tool-local (zip cause-swallow P2-009; dep_audit mislabel P2-010)
-MATRIX_ROWS=41 (33 individual + 6 group + 2 external-cited)
+MATRIX_ROWS=43 (34 individual + 7 group + 2 external-cited)
 RISK_TIERS=census 9/151/3/0 on {}; 19/19 live rerun-stable (8 blocks/1 critical + 5 honest + 6 ok:true)
 LEVEL4_SPOT=8 case-groups green-or-honest (checkpoint 4, unchanged)
 MERGE_V1=19 trunks / 163 members (PROPOSED, coverage-asserted; 1/19 STORIED: files)
@@ -58,9 +58,9 @@ VERIFIED=0 new Real Joe UAT this checkpoint
 REAL_JOE_PROVEN=No PASS; latest runs PARTIAL/FAIL (see TEAM-STATE)
 
 ## آخر نتيجة اختبار
-TEST=trunk_files.mts + arch2.mts probes + guard:architecture
-RESULT=trunk_files exit 0 (16 live cases) + arch2 exit 0 (3 cases); guard result recorded at commit time
-WHAT_IT_PROVES=First per-trunk story (files 10/10: selection + execution + atomicity) + 2 tool-local error-evidence defects; NOT a Real Joe UI PASS.
+TEST=trunk_browser1.mts probe + guard:architecture
+RESULT=trunk_browser1 exit 0 (33 surveyed, zero executions); guard result recorded at commit time
+WHAT_IT_PROVES=Browser_ui declarations + selection + session contracts surveyed (LEVEL 2-3); live behavior still pending; NOT a Real Joe UI PASS.
 
 ## المشاكل الحالية
 - NVIDIA worker blocked: provider 429/503 failures; no resume yet; cross-review pending.
@@ -69,7 +69,7 @@ WHAT_IT_PROVES=First per-trunk story (files 10/10: selection + execution + atomi
 
 ## الخطوة التالية
 1. Coordinator imports Muse consultation responses + follow-ups + 5 staged audit drafts + live report.
-2. Muse checkpoint 9: browser_ui trunk stories (33 members, batched: read-only QA first) + isolated-process harness for the 4 embargo fixtures.
+2. Muse checkpoint 10: browser_ui LEVEL-4 live batch per session mechanism (session fixture + contained-URL + user_browser helper contract) + isolated-process harness for the 4 embargo fixtures.
 3. NVIDIA resumes, cross-reviews, acknowledges CLI-BATCH1 ownership.
 
 ## آخر الإنجازات
@@ -96,3 +96,5 @@ WHAT_IT_PROVES=First per-trunk story (files 10/10: selection + execution + atomi
 [2026-09-30] DISCOVERY — ROUTER_EXCLUDED refined to fast-path-only (catalogue still carries excluded tools).
 [2026-09-30] DISCOVERY — archive zip 0/2 vs tar.gz green (P2-009); dep_audit ENOLOCK mislabeled (P2-010); 4 embargo fixture designs.
 [2026-09-30] DELIVERABLE — matrix 41 rows; backlog +2 batches; guard re-run at checkpoint 8 commit.
+[2026-09-30] DISCOVERY — browser_ui 33/33 selectable (32 rank-1); 5 session mechanisms; 25 empty sideEffects (P2-011).
+[2026-09-30] DELIVERABLE — matrix 43 rows; backlog +1 batch; guard re-run at checkpoint 9 commit.
