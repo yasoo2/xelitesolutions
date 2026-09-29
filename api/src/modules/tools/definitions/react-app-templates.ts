@@ -3722,11 +3722,11 @@ export function fileAppPackageJson(name: string, bp: AppBlueprint): string {
  * replaced App.jsx with a null component without breaking the suite at all:
  * nothing executed the delivery path or touched the view. For records apps
  * with seeds the suite therefore also EXECUTES the first-visit store delivery
- * against the real store.js and pins the shell->view->controller render
- * chain, so a severed controller, an ignored seed, or a dropped view fails
- * the app's own `npm test`. Pixels remain Browser QA's job; this test proves
- * the data the shell renders from, the executed first-visit delivery, and
- * the chain that carries it to the screen.
+ * against the real store.js and pins the shell->view->controller wiring
+ * chain, so a severed controller, an ignored seed, or a view that stops
+ * invoking its controller fails the app's own `npm test`. Pixels remain
+ * Browser QA's job; this test proves the data, the executed first-visit
+ * delivery, and the wiring that carries it toward the screen.
  */
 export interface GroundedSchemaExpectation {
     fields: Array<{ key: string; label: string }>;
@@ -3837,15 +3837,15 @@ test('requested seed rows load on a first visit', async () => {
 ` : '';
     // The data path means nothing if the screen never reads it. An
     // independent mutation replaced App.jsx with a null component and the
-    // suite stayed green, because no test touched the view. The shell must
-    // import and render the records view, and the view must consume the
-    // records controller - the chain that carries rows to the screen.
+    // suite stayed green, because no test touched the view; a follow-up
+    // mutant kept the imports and returned null, so this pins the hook
+    // invocation and the view JSX - wiring, not an executed render.
     const shellBlock = engine === 'records' && (wanted > 0 || shipped > 0) ? `
-test('the app shell renders the records view it was built with', () => {
+test('the app shell wires the records view to its controller', () => {
   assert.match(read('src/App.jsx'), /from '\\.\\/components\\/RecordsApp\\.jsx'/);
   assert.match(read('src/App.jsx'), /<RecordsApp[\\s>]/);
-  assert.match(read('src/components/RecordsApp.jsx'), /useRecordsController/);
-  assert.match(read('src/components/RecordsApp.jsx'), /RecordsView/);
+  assert.match(read('src/components/RecordsApp.jsx'), /useRecordsController\\(/);
+  assert.match(read('src/components/RecordsApp.jsx'), /<RecordsView[\\s>]/);
 });
 ` : '';
     return `${scaffold}

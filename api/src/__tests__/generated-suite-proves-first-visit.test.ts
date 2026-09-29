@@ -27,9 +27,9 @@ import { syntaxOk } from '../modules/tools/definitions/ProjectEditTool';
  *      in-memory browser, and asserts the first-visit read returns the
  *      requested rows with the requested columns. A store that ignores its
  *      seed, or content that drops rows/keys, fails the app's own npm test.
- *   2. RENDER CHAIN — the suite asserts the shell imports and renders the
- *      records view and the view consumes the records controller. A null
- *      App, or a view that drops the controller, fails the app's own test.
+ *   2. WIRING CHAIN — the suite asserts the shell mounts the records view
+ *      and the view invokes the controller hook and instantiates it.
+ *      A null App, or a null view even with its imports kept, fails here.
  *
  * The source-text pin of the controller call site stays: it catches the
  * run-24 cut (controller opens the store key-only) which the executed test
@@ -38,9 +38,9 @@ import { syntaxOk } from '../modules/tools/definitions/ProjectEditTool';
  * refactor that deletes one pin thinking another covers it breaks red here.
  *
  * What this still does NOT prove: pixels. Whether rows are VISIBLE on screen
- * remains Browser QA's job; these tests prove the data the shell renders
- * from, the executed first-visit delivery, and the shell→view→controller
- * chain that carries it.
+ * remains Browser QA's job; these tests prove the data, the executed
+ * first-visit delivery, and the shell→view→controller wiring toward it.
+ * (Dead, unrendered JSX could still pass; that residual is out of scope.)
  */
 
 // Scratch lives inside the repo (untracked api/.tmp/) because the sandbox
@@ -99,7 +99,7 @@ const filesForRequest = (request: string) => {
 };
 
 const EXECUTED_TEST = 'requested seed rows load on a first visit';
-const SHELL_TEST = 'the app shell renders the records view it was built with';
+const SHELL_TEST = 'the app shell wires the records view to its controller';
 
 describe('the generated suite executes the first-visit delivery', () => {
     const seeded = () => fileAppSmokeTest({
@@ -122,7 +122,10 @@ describe('the generated suite executes the first-visit delivery', () => {
         const smoke = seeded();
         expect(smoke).toContain(SHELL_TEST);
         expect(smoke).toContain('RecordsApp.jsx');
-        expect(smoke).toContain('useRecordsController');
+        // The pin is invocation + instantiation, not token presence: a view
+        // that merely imports the controller must not satisfy it.
+        expect(smoke).toContain('useRecordsController\\(');
+        expect(smoke).toContain('<RecordsView');
     });
 
     it('NEGATIVE — other engines get neither records assertion', () => {
@@ -183,6 +186,26 @@ describe('MUTATION — each layer fails on its own break', () => {
         const broken = {
             ...files,
             'src/components/RecordsApp.jsx': 'export default function RecordsApp() { return null; }\n',
+        };
+        const fail = runSmoke(writeApp(broken));
+        expect(fail.status).not.toBe(0);
+        expect(`${fail.stdout}\n${fail.stderr}`).toContain(SHELL_TEST);
+    }, 120000);
+
+    it('a null view that keeps its imports fails the shell test', () => {
+        // The independent follow-up mutant: both checked symbols are still
+        // imported, but the view renders nothing. Token presence must not
+        // satisfy the wiring pin - only the hook invocation and the view
+        // instantiation do.
+        const { files } = filesForRequest(REQUESTS[2]);
+        const broken = {
+            ...files,
+            'src/components/RecordsApp.jsx': [
+                "import { useRecordsController } from '../app/records-controller.js';",
+                "import RecordsView from './RecordsView.jsx';",
+                'export default function RecordsApp() { return null; }',
+                '',
+            ].join('\n'),
         };
         const fail = runSmoke(writeApp(broken));
         expect(fail.status).not.toBe(0);
