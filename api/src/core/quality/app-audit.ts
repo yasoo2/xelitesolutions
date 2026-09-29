@@ -113,8 +113,22 @@ function compactEvidenceItem(item: any): any {
     if (Array.isArray(item)) {
         summary.length = item.length;
     } else if (item !== null && typeof item === 'object') {
-        summary.keys = Object.keys(item).slice(0, COMPACT_EVIDENCE_ITEM_MAX_KEYS)
+        const encoder = new TextEncoder();
+        const allKeys = Object.keys(item)
             .map((k) => String(k).slice(0, COMPACT_EVIDENCE_ITEM_MAX_KEY_LENGTH));
+        // The summary is itself persisted: shrink the key list until the
+        // serialized summary fits the byte budget. This always converges:
+        // an empty key list plus fixed overhead is far under budget.
+        let keys = allKeys.slice(0, COMPACT_EVIDENCE_ITEM_MAX_KEYS);
+        let omitted = allKeys.length - keys.length;
+        summary.keys = keys;
+        while (keys.length > 0
+            && encoder.encode(JSON.stringify(summary)).length > COMPACT_EVIDENCE_ITEM_JSON_BYTE_LIMIT) {
+            keys = keys.slice(0, -1);
+            omitted += 1;
+            summary.keys = keys;
+        }
+        if (omitted > 0) summary.keysOmitted = omitted;
     }
     return summary;
 }

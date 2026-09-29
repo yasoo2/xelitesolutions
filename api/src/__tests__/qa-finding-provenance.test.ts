@@ -118,6 +118,35 @@ describe('compactQaFindings keeps findings durable', () => {
             .toEqual(small);
     });
 
+    it('bounds the emitted summary itself in UTF-8 bytes', () => {
+        // Second half of the byte-bound contract: the summary is itself
+        // persisted, so 20 distinct 64-char CJK keys (~3.9KB serialized)
+        // must shrink until the EMITTED summary fits the 2KB byte budget.
+        const obj: any = {};
+        for (let i = 0; i < 20; i++) {
+            const key = `键${String(i).padStart(2, '0')}${'表'.repeat(61)}`;
+            expect(key.length).toBe(64);
+            obj[key] = i;
+        }
+        const kept = compactQaFindings(
+            [{ severity: 'low', detail: 'x', evidence: [obj] }])[0].evidence![0];
+        expect(kept.truncatedEvidence).toBe(true);
+        const emittedBytes = new TextEncoder().encode(JSON.stringify(kept)).length;
+        expect(emittedBytes).toBeLessThanOrEqual(2048);
+        // Provenance stays honest: dropped keys are counted, not silent.
+        expect(kept.keysOmitted).toBeGreaterThan(0);
+        expect(kept.keys.length + kept.keysOmitted).toBe(20);
+        // ASCII control: 20 short-ASCII keys fit, so nothing is dropped.
+        const ascii: any = {};
+        for (let i = 0; i < 20; i++) ascii[`key-${String(i).padStart(2, '0')}`] = 'v'.repeat(200);
+        const asciiKept = compactQaFindings(
+            [{ severity: 'low', detail: 'x', evidence: [ascii] }])[0].evidence![0];
+        expect(asciiKept.truncatedEvidence).toBe(true);
+        expect(asciiKept.keys).toHaveLength(20);
+        expect(asciiKept.keysOmitted || 0).toBe(0);
+        expect(new TextEncoder().encode(JSON.stringify(asciiKept)).length).toBeLessThanOrEqual(2048);
+    });
+
     it('marks unserializable evidence instead of throwing', () => {
         const circular: any = { sel: 'header' };
         circular.self = circular;
