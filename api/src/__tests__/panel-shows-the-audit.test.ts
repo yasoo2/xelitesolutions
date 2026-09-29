@@ -38,14 +38,24 @@ describe('the browser is awake before the audit needs it', () => {
     it('and the build wakes it BEFORE npm install, not when the audit starts', () => {
         const r = read('modules', 'tools', 'definitions', 'ReactProjectTool.ts');
         const warmAt = r.indexOf('warmBrowserSession(');
-        const installAt = r.indexOf("run('npm', ['install'");
+        // The dependency phase grew a second road - an exact-cache `npm ci`
+        // beside the network `npm install` - and both invocations are now
+        // multi-line. The guarantee never named an argument layout: the
+        // browser warms before EITHER road is taken, and either road runs
+        // before the audit starts.
+        const ciAt = r.indexOf("'ci', '--offline'");
+        const installAt = r.indexOf("'install', '--prefer-offline'");
         const auditAt = r.indexOf('audit = await auditBuiltApp');
         expect(warmAt).toBeGreaterThan(0);
         expect(r).toContain('browserSessionId');
         expect(r).toContain('const auditSid = String(context?.browserSessionId || \'\').trim() || PANEL_BROWSER_SID;');
         expect(r).toContain('waitForPanelWatcher(auditSid, 15_000)');
         expect(r).toContain('watchSessionId: auditSid');
+        expect(ciAt).toBeGreaterThan(0);
+        expect(installAt).toBeGreaterThan(0);
+        expect(warmAt).toBeLessThan(ciAt);
         expect(warmAt).toBeLessThan(installAt);
+        expect(ciAt).toBeLessThan(auditAt);
         expect(installAt).toBeLessThan(auditAt);
     });
 
@@ -60,7 +70,12 @@ describe('the browser is awake before the audit needs it', () => {
 
     it('and «أصلح ما تبقّى» warms it too — it audits within seconds of starting', () => {
         const p = read('modules', 'tools', 'definitions', 'ProjectRepairTool.ts');
-        expect(p).toMatch(/warmBrowserSession\(PANEL_BROWSER_SID\)/);
+        // The repair used to warm the panel session by name; it now warms
+        // the EFFECTIVE session - an explicit input, else the context
+        // session, else the panel - so a repair handed another session does
+        // not warm a browser nobody watches. The panel remains the fallback.
+        expect(p).toMatch(/warmBrowserSession\(watchSessionId\)/);
+        expect(p).toContain("const watchSessionId = String(input?.watchSessionId || context?.browserSessionId || PANEL_BROWSER_SID || '').trim();");
         // …before the first MEASUREMENT (the import above it is not the audit).
         // The directory the audit is handed was once called `dist` and is now
         // `auditDir`. The guarantee was never the NAME of that variable — it is
@@ -162,12 +177,19 @@ describe('and he is never invited to watch a browser he cannot see', () => {
 
     it('and nothing AFTER it invites him to watch — «👁️» three seconds later was a lie', () => {
         const r = read('modules', 'tools', 'definitions', 'ReactProjectTool.ts');
-        // The audit emits 'pressing' as well as 'watching' / 'private'.
+        // The audit's mid-run vocabulary moved on: auditBuiltApp now emits
+        // 'discovering' where it once emitted 'pressing' ('pressing' still
+        // lives on the page-builder path, pinned by audit-plumbing). The
+        // guarantee never named the word - it is that every later event is
+        // gated on the watcher - so this pins the CURRENT emission and its
+        // guarded handler as a pair. A lone emission assertion let the
+        // rename drift unpinned for weeks.
         expect(r).toMatch(/if \(where === 'watching'\) \{\s*\n\s*auditVisible = true;/);
         expect(r).toMatch(/if \(where === 'pressing' && auditVisible\)/);
         expect(r).toMatch(/auditVisible = false;/);
+        expect(r).toMatch(/if \(where === 'discovering' && auditVisible\)/);
         const a = read('core', 'quality', 'app-audit.ts');
-        expect(a).toMatch(/onProgress\?\.\('pressing'\)/);
+        expect(a).toMatch(/onProgress\?\.\('discovering'\)/);
     });
 
     it('never calls a borrowed-but-unwatched browser visible', () => {
