@@ -47,6 +47,19 @@ DEPENDENCIES=ownership decision for provider draft
 
 ---
 
+BATCH_ID=WIRING-P1-004
+CAPABILITIES=browser_page_fix session-ownership bypass (drives shared panel-browser)
+ROOT_CAUSE=PageFixTool.execute ignores its session input and drives getBrowserSession(PANEL_BROWSER_SID) unconditionally (PageFixTool.ts:133), then goto + live style injection on the shared session — the exact cross-session page mutation browserSid's no-shared-fallback rule prevents (BrowserSmartTools.ts:16-20). Code-indicated in checkpoint 10 (positive deliberately unprobed: shared session + forced https + file write). UiFixTool only WATCHES the panel session (audit display) and is not implicated.
+FILES=PageFixTool.ts (bind to addressed session like browserSid; fall back honestly when none) + session-ownership contract test
+IMPLEMENTATION_OWNER=UNASSIGNED
+REVIEW_OWNER=UNASSIGNED
+TESTS=two-session test: page_fix on session A never navigates/mutates session B's page; unaddressed session -> honest error (still deny-safe); AGENTS gates
+REAL_JOE_UAT=page-fix-via-UI on a throwaway local page only after the fix
+ROLLBACK=revert session binding change
+DEPENDENCIES=WIRING-P2-013 (contained-URL vocabulary for safe testing)
+
+---
+
 BATCH_ID=WIRING-P2-001
 CAPABILITIES=memory-tool dual implementation (recall_memory, memorize_codebase)
 ROOT_CAUSE=registry defs added without removing ToolService inline handlers (or vice versa); inline path bypasses firewall/permissions; implementations already diverge on validation
@@ -153,7 +166,7 @@ DEPENDENCIES=none
 
 BATCH_ID=WIRING-P2-008
 CAPABILITIES=browser session-injection verdict honesty (browser_run {} -> forbidden)
-ROOT_CAUSE=Universal Browser Session Injection (ToolService.ts:562-568) copies the chat sessionId into effectiveInput.sessionId, bypassing execute()'s sessionId_required guard (BrowserRunTool.ts:248); authz then fails on an id the caller never named, with a cross-user message ("belongs to another user") for a nonexistent browser session (sweep3.json, rerun-stable). Deny direction is safe; evidence is wrong.
+ROOT_CAUSE=Universal Browser Session Injection (ToolService.ts:562-568) copies the chat sessionId into effectiveInput.sessionId, bypassing execute()'s sessionId_required guard (BrowserRunTool.ts:248); authz then fails on an id the caller never named, with a cross-user message ("belongs to another user") for a nonexistent browser session (sweep3.json, rerun-stable; second live shape run_empty in trunk_browser_live1.json, 010/F54, 3/3 rerun-stable). Deny direction is safe; evidence is wrong.
 FILES=ToolService.ts (injection block) + BrowserRunTool.ts (distinguish unnamed vs foreign session) + verdict contract test
 IMPLEMENTATION_OWNER=UNASSIGNED (ToolService/browser shared — coordinate)
 REVIEW_OWNER=UNASSIGNED
@@ -199,6 +212,45 @@ REVIEW_OWNER=UNASSIGNED
 TESTS=per-tool sideEffects review (mutating tools declare honestly or document why a field is inert); contract test pinning the reviewed declarations; AGENTS gates
 REAL_JOE_UAT=none (declaration honesty; behavior unchanged)
 ROLLBACK=revert declaration change
+DEPENDENCIES=none
+
+---
+
+BATCH_ID=WIRING-P2-012
+CAPABILITIES=browser_run action-result surfacing (extract_text results discarded)
+ROOT_CAUSE=browser_run output carries only sessionId/pageUrl/title/screenshotHref/summary/missingSecrets with a generic summary; executed action results (e.g. extract_text) never surface (run_extract_raw in trunk_browser_live2.json, rerun-stable; MISMATCH #8). Sibling browser_action returns {success,result} correctly. Planner/verifier cannot consume run extractions.
+FILES=BrowserRunTool.ts (surface per-action results in output, e.g. actionResults[]; keep keys backward-compatible) + output contract test
+IMPLEMENTATION_OWNER=UNASSIGNED
+REVIEW_OWNER=UNASSIGNED
+TESTS=extract-result contract test: run [goto loopback, extract_text] output contains the page marker (RED->GREEN); navigation-only regression (pageUrl/title/summary intact); AGENTS gates
+REAL_JOE_UAT=extract-via-UI sanity after fix (read a value from a page through real Joe)
+ROLLBACK=revert output change
+DEPENDENCIES=none
+
+---
+
+BATCH_ID=WIRING-P2-013
+CAPABILITIES=contained-URL vocabulary for browser tools (normalizeUrl/data-URL gap)
+ROOT_CAUSE=openPage->normalizeUrl (BrowserSmartTools.ts:30-35) mangles non-http URLs: about:blank -> https://about:blank (honest open_failed, proven live1); data:/file: equally unusable — so 22/25 context-derived tools cannot be pointed at contained URLs. browser_run.goto rejects data-URLs ('invalid URL', proven live2) while browser_action.goto accepts them (undocumented sibling split). PageFixTool forces https:// (PageFixTool.ts:124).
+FILES=BrowserSmartTools.ts normalizeUrl (allowlist data:/about:blank/file-under-workspace OR explicit contained-mode) + BrowserRunTool.ts goto vocabulary (document-or-align with action) + PageFixTool.ts URL handling + vocabulary contract test
+IMPLEMENTATION_OWNER=UNASSIGNED
+REVIEW_OWNER=UNASSIGNED
+TESTS=vocabulary matrix test (http/data/about-blank/file × action/run/smart-launch) RED->GREEN per decided contract; no behavior change for real https URLs; AGENTS gates
+REAL_JOE_UAT=none (contract expansion; contained cases only)
+ROLLBACK=revert normalizer change
+DEPENDENCIES=none (unblocks audit batch-3 for the 22 (a)-tools either way via loopback pattern)
+
+---
+
+BATCH_ID=WIRING-P2-014
+CAPABILITIES=standalone QA pair fidelity (visual_compare heuristic + screenshot containment)
+ROOT_CAUSE=(a) visual_compare measures BYTE SIZE (|lenA-lenB|/max, ScreenshotTool.ts:244-249), proven live (+64B -> 0.62% diff, still match) — the 'visual differences' description overclaims; a same-size different-pixel pair would 'match' (code-indicated, unstaged). (b) screenshot `filename` joins unsanitized under process.cwd()/screenshots (ScreenshotTool.ts:75-85; traversal-shaped input never sent — review item, not a proven exploit).
+FILES=ScreenshotTool.ts (relabel byte-compare OR implement pixel diff; sanitize filename to basename + contain under workspace-aware dir) + fidelity/containment tests
+IMPLEMENTATION_OWNER=UNASSIGNED
+REVIEW_OWNER=UNASSIGNED
+TESTS=same-size-different-pixel negative (RED->GREEN per decided contract); filename-traversal negative (../ stays inside screenshots dir); PNG-output regression (F49 case as contract); AGENTS gates
+REAL_JOE_UAT=none (tool-local fidelity)
+ROLLBACK=revert label/sanitize change
 DEPENDENCIES=none
 
 ---

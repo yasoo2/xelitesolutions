@@ -1,0 +1,67 @@
+{
+  "generated": "2026-09-29T23:12:53.428Z",
+  "live": {
+    "fixture_server": {
+      "host": "127.0.0.1",
+      "port": 59789,
+      "path": "/"
+    },
+    "launch_loopback": {
+      "ok": true,
+      "error": null,
+      "output": {
+        "title": "LoopSeven",
+        "message": "Opened the browser at http://127.0.0.1:59789/\nTitle: LoopSeven"
+      },
+      "sessionUrl": "http://127.0.0.1:59789/",
+      "sessionTitle": "LoopSeven"
+    },
+    "run_goto_data_fresh": {
+      "ok": false,
+      "error": "navigation_failed",
+      "output": {
+        "sessionId": "browser:run2-user",
+        "pageUrl": "about:blank",
+        "title": "",
+        "summary": "فشل تنفيذ بعض الخطوات (1/2). السبب: navigation_failed (invalid URL)",
+        "hasShot": true
+      }
+    },
+    "run_goto_loopback": {
+      "ok": true,
+      "error": null,
+      "output": {
+        "sessionId": "browser:run2-user",
+        "pageUrl": "http://127.0.0.1:59789/",
+        "title": "LoopSeven",
+        "summary": "Check browser window for results.",
+        "hasShot": true
+      },
+      "hasMarker": false
+    },
+    "run_extract_raw": {
+      "ok": true,
+      "error": null,
+      "keys": [
+        "sessionId",
+        "pageUrl",
+        "title",
+        "screenshotHref",
+        "summary",
+        "missingSecrets"
+      ],
+      "sessionId": "browser:run3-user",
+      "pageUrl": "http://127.0.0.1:59789/",
+      "title": "LoopSeven",
+      "screenshotHref": "/artifacts/browser-browser_run3-user-1790723554097.jpg",
+      "summary": "Check browser window for results.",
+      "missingSecrets": "undefined",
+      "hasMarkerAnywhere": false
+    },
+    "closedSessions": {
+      "browser:audit-launch2": "closed",
+      "browser:run2-user": "closed"
+    },
+    "fixture_server_closed": true
+  }
+}

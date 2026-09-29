@@ -1,23 +1,30 @@
 # JOE CAPABILITY WIRING MATRIX (Muse draft 2026-09-29 — staging for D:\Joe\coordination\team\JOE-CAPABILITY-WIRING-MATRIX.md)
 
-SCOPE=Muse-branch discovery checkpoints 1-9 only (muse/joe-development @ d5f51787).
+SCOPE=Muse-branch discovery checkpoints 1-10 only (muse/joe-development @ 0a0af4b7).
 Rows below are EVIDENCED tool-level entries. HIGH_LEVEL_CAPABILITIES grouping
 (merge v1: 19 trunks PROPOSED, 1 STORIED: files 10/10 in checkpoint 8;
-browser_ui 33 batch-1 PARTIAL: declarations + selection + session survey, live
-pending — checkpoint 9), services/workers/internal-infra rows, and
-NVIDIA-owned registry/ingress/persistence areas are UNKNOWN/PENDING and must
-NOT be treated as covered.
+browser_ui 33 batch-2 PARTIAL: 11/33 with LEVEL-4 points, 22 (a)-tools
+pending via the loopback-fixture pattern — checkpoint 10),
+services/workers/internal-infra rows, and NVIDIA-owned
+registry/ingress/persistence areas are UNKNOWN/PENDING and must NOT be
+treated as covered.
 Evidence files: D:\Joe\muse-worktree\tmp\wiring-audit\{discovery,exposure,
 classification,reachability,target,exec,sweep1,sweep2,merge,sweep3,trunk_files,
-arch2,trunk_browser1}.json + {discover,exposure,classify,reach,target,exec,
-sweep1,sweep2,merge,sweep3,trunk_files,arch2,trunk_browser1}.mts +
+arch2,trunk_browser1,trunk_browser_live1,trunk_browser_live2}.json +
+{discover,exposure,classify,reach,target,exec,
+sweep1,sweep2,merge,sweep3,trunk_files,arch2,trunk_browser1,
+trunk_browser_live1,trunk_browser_live2}.mts +
 MUSE-WIRING-DISCOVERY-00{1,2,3,4,5,6,7}.md + MUSE-WIRING-DISCOVERY-008.md +
-MUSE-WIRING-DISCOVERY-009.md. All probes re-runnable; exec/sweep/trunk probes
-perform bounded safe runs only (fixtures created + removed by the probe; 4
-EMBARGO names never executed — static fixture designs in 008; 2 FIXTURE names
-probed with contained explicit inputs only; sweep3 risk probes control-gated,
-see 007; delete_file verdict-only with target-survival check, see 008;
-trunk_browser1 is read-only: zero tool executions, see 009).
+MUSE-WIRING-DISCOVERY-009.md + MUSE-WIRING-DISCOVERY-010.md. All probes
+re-runnable; exec/sweep/trunk probes perform bounded safe runs only
+(fixtures created + removed by the probe; 4 EMBARGO names never executed
+except browser_launch contained-http partial lift in 010 — static fixture
+designs in 008; 2 FIXTURE names probed with contained explicit inputs only;
+sweep3 risk probes control-gated, see 007; delete_file verdict-only with
+target-survival check, see 008; trunk_browser1 is read-only: zero tool
+executions, see 009; live1/live2 launch ephemeral headless only with
+sandbox dirs + active approval gate + loopback/data-URL-only traffic,
+see 010).
 
 FORMAT per row follows CRITICAL-JOE-DEEP-CAPABILITY-WIRING-AUDIT.
 
@@ -550,13 +557,13 @@ SOURCE_FILES=api/src/modules/tools/definitions/BrowserSmartTools.ts
 IMPLEMENTATION={} -> opens a REAL browser to BROWSER_HOME_URL or google.com, streams + screenshots (:2080-2092)
 REGISTERED=YES
 REGISTRY_EVIDENCE=in live 163; required:[] declared
-EXECUTOR_REACHABLE=NOT_PROBED (embargoed: external navigation + browser side effects on {})
-EXECUTOR_EVIDENCE=static only
-INPUT_CONTRACT_VALID=NO — empty input triggers external navigation by default instead of refusing or asking
-CANONICAL_PATH_CONNECTED=UNKNOWN (unprobed by rule)
+EXECUTOR_REACHABLE=YES (contained-http case only; embargo partially lifted in 010)
+EXECUTOR_EVIDENCE=LIVE (trunk_browser_live2.json, 2/2 reruns): BROWSER_HOME_URL=http://127.0.0.1:<eph>/ -> ok:true, sessionUrl+sessionTitle LoopSeven verified on live session, session closed. about:blank IMPOSSIBLE: normalizeUrl mangles to https://about:blank -> honest open_failed (live1). Default {} still opens BROWSER_HOME_URL||google.com (external by design; unprobed live by rule)
+INPUT_CONTRACT_VALID=PARTIAL (explicit contained http URL works; no data:/about:/file: vocabulary — WIRING-P2-013)
+CANONICAL_PATH_CONNECTED=YES (contained-http leg via executeTool+firewall)
 REAL_JOE_PROVEN=NO
-PRIMARY_STATE=PARTIALLY_WIRED (registered; default behavior externally effective)
-RECOMMENDED_ACTION=fixture probe with explicit local URL only; consider honest no-url behavior as P2 (unfiled — needs cross-review whether default-start-page is intended UX)
+PRIMARY_STATE=PARTIALLY_WIRED (contained launch proven; external default + no-url behavior unchanged)
+RECOMMENDED_ACTION=WIRING-P2-013 for contained-URL vocabulary; default-start-page UX needs cross-review before any change
 
 ---
 
@@ -647,7 +654,7 @@ IMPLEMENTATION=Universal Browser Session Injection copies chat sessionId into ef
 REGISTERED=YES
 REGISTRY_EVIDENCE=browser_run in live 163
 EXECUTOR_REACHABLE=YES
-EXECUTOR_EVIDENCE=LIVE (sweep3.json): browser_run {} -> ok:false forbidden + Arabic "belongs to another user", rerun-stable (expected sessionId_required per execute body; injection verified at ToolService.ts:565-567)
+EXECUTOR_EVIDENCE=LIVE (sweep3.json + trunk_browser_live1.json run_empty, 3/3 rerun-stable): browser_run {} -> ok:false forbidden + Arabic "belongs to another user" (expected sessionId_required per execute body; injection verified at ToolService.ts:565-567). Second live shape of the same injection confirmed in 010/F54
 INPUT_CONTRACT_VALID=PARTIAL (deny-safe direction; wrong evidence)
 OUTPUT_CONTRACT_VALID=PARTIAL (verdict misattributes: no browser session was addressed)
 CANONICAL_PATH_CONNECTED=YES
@@ -964,8 +971,8 @@ PLANNER_VISIBLE=YES
 PLANNER_EVIDENCE=self-grounded rank (trunk_browser1.json); not router-excluded; not priority-listed
 SELECTABLE=YES
 SELECTION_EVIDENCE=SELECTABLE_BY_KEYWORD (batch-1)
-EXECUTOR_REACHABLE=UNKNOWN (live unprobed — write+execute, read-only batch)
-EXECUTOR_EVIDENCE=code-read only: dir resolves from input.projectDir or session project entry; missing dir returns {ok:false, error:'no_project'} (UiFixTool.ts:60-64) — honest failure shape, code-indicated (F44)
+EXECUTOR_REACHABLE=PARTIAL (pre-browser leg live; repair body unprobed — write+execute+build)
+EXECUTOR_EVIDENCE=LIVE (trunk_browser_live1.json ui_fix_empty): {} -> ok:false no_project via canonical path, no browser launched, no writes (F44 now live-proven, 010/F59). Repair/rebuild/audit-again body (UiFixTool.ts:72-106) deliberately unprobed
 PERMISSION_REACHABLE=UNKNOWN
 PERMISSION_EVIDENCE=write+execute declared (risk tier from sweep3 census, not re-probed here)
 INPUT_CONTRACT_VALID=YES (code-read: no required, body validates dir)
@@ -979,5 +986,205 @@ RECOMMENDED_ACTION=future LEVEL-4 probe with fixture project only; joins P2-004 
 
 ---
 
-END-OF-MUSE-DRAFT-ROWS=43 (34 individual + 7 group + 2 external-cited)
-COVERAGE-DISCLAIMER=This draft covers ONLY what Muse checkpoints 1-9 evidenced. Full matrix requires: per-trunk path stories (19 trunks PROPOSED in merge.json, 1 STORIED: files 10/10; browser_ui 33 batch-1 PARTIAL: declarations+selection+session survey, live pending), services/workers/persistence/deployment rows (NVIDIA scope), bulk per-tool firewall sweep (8 spot + 28 empty-input batch-1+2 + 19 risk-tier live + 16 trunk-files + 3 arch-backend live done + 33 browser read-only surveyed; 25/25 no-required reviewed: 18 SAFE + 1 BOUND + 4 EMBARGO with static fixture designs + 2 FIXTURE probed contained; risk table SURVEYED), contract audit per boundary, LEVEL 5-6 proofs, and NVIDIA cross-review (currently BLOCKED).
+---
+
+CAPABILITY_ID=TOOL-screenshot
+NAME=screenshot (ScreenshotTool.ts)
+CATEGORY=tool/browser-ui-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/ScreenshotTool.ts
+IMPLEMENTATION=standalone chromium.launch (headless) + goto + PNG to process.cwd()/screenshots; required:['url']; permissions read
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=self-grounded rank-2 behind user_browser on self-name goal (both selectable, 009/F42); not router-excluded
+SELECTABLE=YES
+SELECTION_EVIDENCE=SELECTABLE_BY_KEYWORD (batch-1)
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_browser_live1.json): data-URL -> ok:true, 10237-byte PNG verified on disk at reported path, removed by probe (cleaned:true); {} -> honest 'needs a url'. No approval gate; ephemeral headless (hasUserDataDir:false)
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=read-only tool; canonical executeTool+firewall passed
+INPUT_CONTRACT_VALID=YES (url required + enforced in body :66-67)
+OUTPUT_CONTRACT_VALID=YES (success/path/publicUrl/width/height; path verified real)
+EVIDENCE_PRODUCED=YES (PNG file + broadcast event)
+VERIFICATION_COMPATIBLE=UNKNOWN (LEVEL 5-6 pending)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=FULLY_WIRED (at tool level; verification-compat unsurveyed)
+BLOCKER=none for execution
+OVERLAP=screenshot action inside user_browser (separate channel) + browser_fullpage_shot (unsurveyed)
+LEGACY_RISK=low
+SECURITY_RISK=filename joins unsanitized under process.cwd()/screenshots (code-indicated :75-85, never probed with traversal input) — WIRING-P2-014 review item
+PORTABILITY_RISK=low (cwd-relative screenshots dir; headless-shell missing in sandbox is env)
+RECOMMENDED_ACTION=WIRING-P2-014 containment review; else no change
+
+---
+
+CAPABILITY_ID=TOOL-visual_compare
+NAME=visual_compare (VisualComparisonTool, ScreenshotTool.ts:190-268)
+CATEGORY=tool/browser-ui-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/ScreenshotTool.ts
+IMPLEMENTATION=byte-size heuristic: |lenA-lenB|/max <= threshold (pure local fs, no browser); required:['baseline','current']; permissions read
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD (batch-1)
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded (trunk_browser1.json)
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_browser_live1.json): self -> match:true diff 0; +64B grown -> match:true diff 0.62% (heuristic PROVEN live); missing files -> honest not-found
+PERMISSION_REACHABLE=YES
+INPUT_CONTRACT_VALID=YES
+OUTPUT_CONTRACT_VALID=PARTIAL (match/diffPercentage honest for what it measures, but it measures BYTE SIZE, not pixels — description 'Compare two screenshots and report visual differences' overclaims)
+EVIDENCE_PRODUCED=YES (match + diff%)
+VERIFICATION_COMPATIBLE=PARTIAL (a same-size different-pixel pair would 'match' — code-indicated, unstaged)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (executes honestly; fidelity gap vs description)
+RECOMMENDED_ACTION=WIRING-P2-014: rename/relabeled contract (byte-compare) or pixel diff; add same-size-negative test
+
+---
+
+CAPABILITY_ID=TOOL-browser_action
+NAME=browser_action (BrowserActionTool.ts)
+CATEGORY=tool/browser-ui-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/BrowserActionTool.ts
+IMPLEMENTATION=atomic session actions (goto/click/fill/scroll/evaluate/extract_text/...); required:['sessionId','action']; permissions internet+execute; local-URL port guard (:53-70)
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163; PRIORITY_TOOL_NAMES-listed
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD rank-1 (batch-1)
+SELECTABLE=YES
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_browser_live1.json, canonical, no approval gate): goto data-URL ok:true; extract_text returns page marker; evaluate '40+2' -> 42. Session closed after
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=internet+execute passed gate for data-URL inputs (input-dependent tiering; contrast sweep3 delete-text HIGH)
+INPUT_CONTRACT_VALID=YES (goto accepts data-URLs via normalizeUrlForGoto passthrough — payload must avoid label substrings, url.ts:93-99)
+OUTPUT_CONTRACT_VALID=YES ({success,result}; extract text reaches caller)
+EVIDENCE_PRODUCED=YES (result strings)
+VERIFICATION_COMPATIBLE=UNKNOWN (LEVEL 5-6 pending)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=FULLY_WIRED (at tool level)
+OVERLAP=browser_run (sibling; DIVERGES on data-URL goto + extract surfacing — see TOOL-browser_run-behavior)
+RECOMMENDED_ACTION=none (reference behavior for the run/action divergence)
+
+---
+
+CAPABILITY_ID=TOOL-browser_run-behavior
+NAME=browser_run behavior (BrowserRunTool.ts; ownership verdict is TOOL-browser_run-injection-verdict)
+CATEGORY=tool/browser-ui-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/BrowserRunTool.ts
+IMPLEMENTATION=multi-action executor + instructionText->plan path; required:['sessionId']; ownership via canAccessBrowserSession (legacy sid==browser:uid path used by probe, no bypass)
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163; PRIORITY_TOOL_NAMES-listed
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD rank-1 (batch-1)
+SELECTABLE=YES
+EXECUTOR_REACHABLE=PARTIAL
+EXECUTOR_EVIDENCE=LIVE (live1+live2, canonical, no approval gate): goto http-loopback ok:true (pageUrl+title proven, 2/2 reruns); goto data-URL -> navigation_failed 'invalid URL' on FRESH session (about:blank) — DIVERGES from browser_action (F51). instructionText->model path unprobed (needs provider)
+PERMISSION_REACHABLE=YES (legacy-ownership positive; foreign -> forbidden honest; {} -> forbidden via injection, see injection-verdict row)
+INPUT_CONTRACT_VALID=PARTIAL (http(s) yes; data-URL no — undocumented vocabulary split vs sibling)
+OUTPUT_CONTRACT_VALID=NO (extract_text executes but its result is DISCARDED: output keys sessionId/pageUrl/title/screenshotHref/summary/missingSecrets only, generic summary, marker absent anywhere — run_extract_raw. MISMATCH #8)
+EVIDENCE_PRODUCED=PARTIAL (navigation proof + screenshot artifact; NO action results)
+VERIFICATION_COMPATIBLE=NO for extract legs (result unreachable)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (navigates; loses action results; narrower URL vocabulary than sibling)
+RECOMMENDED_ACTION=WIRING-P2-012 (surface per-action results) + vocabulary note under P2-013
+
+---
+
+CAPABILITY_ID=TOOL-browser_consent
+NAME=browser_consent (BrowserSmartTools.ts:1866-1889)
+CATEGORY=tool/browser-ui-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/BrowserSmartTools.ts + api/src/modules/browser/manager.ts (:306-325)
+IMPLEMENTATION=consent ask/record for persistent-profile mode; required:[]; no browser launch on either leg
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD (batch-1)
+SELECTABLE=YES
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (live1, canonical): {} with session context -> ok:true consent:false needsConsent:true, no browser; sessionless context -> fail-closed internal_exception browser_session_required (error carries stack string — observability note). grant:true leg NOT probed (writes consent file; design-reviewed only)
+PERMISSION_REACHABLE=YES
+INPUT_CONTRACT_VALID=YES
+OUTPUT_CONTRACT_VALID=YES (message+consent+needsConsent)
+EVIDENCE_PRODUCED=YES
+VERIFICATION_COMPATIBLE=UNKNOWN
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=FULLY_WIRED (at tool level; grant leg design-only)
+BLOCKER=none (F48 resolved: ephemeral mode needs no gate by design; enforcement is PlanningEngine persistent-mode check)
+RECOMMENDED_ACTION=none
+
+---
+
+CAPABILITY_ID=TOOL-browser_find_text
+NAME=browser_find_text (BrowserSmartTools.ts:1306+)
+CATEGORY=tool/browser-ui-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/BrowserSmartTools.ts
+IMPLEMENTATION=goto url + count/snippets/highlight matches; required:['url','query']; enforces no_url/no_query in body (:1326-1327, cannot operate on current page without URL)
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD (batch-1)
+SELECTABLE=YES
+EXECUTOR_REACHABLE=PARTIAL (negative leg live; positive needs loopback pattern)
+EXECUTOR_EVIDENCE=LIVE (live1, canonical): {http://127.0.0.1:9/} -> fast honest find_text_failed (Chrome ERR_UNSAFE_PORT on :9 — fixture note, F56). Zero external traffic. Positive unprobed (representative of 22 (a)-tools awaiting loopback pattern)
+PERMISSION_REACHABLE=YES (negative leg passed gate)
+INPUT_CONTRACT_VALID=PARTIAL (requires URL; data:/about: URLs mangled by normalizeUrl — P2-013)
+OUTPUT_CONTRACT_VALID=UNKNOWN (positive unprobed)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (honest failures; success path unprobed)
+RECOMMENDED_ACTION=loopback-fixture positive in next live batch (pattern ready)
+
+---
+
+CAPABILITY_ID=TOOL-browser_page_fix
+NAME=browser_page_fix (PageFixTool.ts)
+CATEGORY=tool/browser-ui-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/PageFixTool.ts
+IMPLEMENTATION=measure UI defects + build CSS patch + apply live + save file; required:['url']; permissions internet+write; DRIVES SHARED panel-browser session unconditionally (:133) ignoring its session input
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD (batch-1)
+SELECTABLE=YES
+EXECUTOR_REACHABLE=PARTIAL (pre-browser leg live; body deliberately unprobed)
+EXECUTOR_EVIDENCE=LIVE (live1, canonical): {} -> no_url, no browser launched. Positive NOT probed: forces https:// (:124), drives shared PANEL_BROWSER_SID (cross-session mutation — WIRING-P1-004), writes CSS under process.cwd()/data/artifacts (:262-266)
+PERMISSION_REACHABLE=UNKNOWN (body unreached)
+INPUT_CONTRACT_VALID=PARTIAL (no contained-URL vocabulary)
+OUTPUT_CONTRACT_VALID=UNKNOWN
+CANONICAL_PATH_CONNECTED=PARTIAL
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (reachable; session-ownership bypass defect)
+SECURITY_RISK=drives a session the caller did not address (shared panel) — session-ownership bypass in a write tool
+RECOMMENDED_ACTION=WIRING-P1-004 (bind to addressed session like browserSid) + P2-013 vocabulary
+
+---
+
+CAPABILITY_ID=TOOL-user_browser
+NAME=user_browser (UserBrowserTool.ts; separate extension channel)
+CATEGORY=tool/browser-ui-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/UserBrowserTool.ts + api/src/modules/extension/gateway.ts
+IMPLEMENTATION=drives the USER's real browser via Joe extension (open/read/screenshot/click/type/status); required:['action']; server holds no cookies
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD (batch-1; outranks screenshot on self-name goal — curiosity, not defect)
+SELECTABLE=YES
+EXECUTOR_REACHABLE=PARTIAL (fail-closed legs live; helper-present path unprobed — no extension in sandbox)
+EXECUTOR_EVIDENCE=LIVE (live1, canonical): status -> ok:true connected:false; open(data-URL) -> honest extension_not_connected. No browser touched, no helper traffic
+PERMISSION_REACHABLE=YES
+INPUT_CONTRACT_VALID=YES
+OUTPUT_CONTRACT_VALID=PARTIAL (fail-closed shapes honest; connected shapes unsurveyed)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (fail-closed proven; live channel unprobed)
+RECOMMENDED_ACTION=helper-present probe only with a real test extension + consent; never against the owner's daily browser
+
+---
+
+END-OF-MUSE-DRAFT-ROWS=51 (42 individual + 7 group + 2 external-cited)
+COVERAGE-DISCLAIMER=This draft covers ONLY what Muse checkpoints 1-10 evidenced. Full matrix requires: per-trunk path stories (19 trunks PROPOSED in merge.json, 1 STORIED: files 10/10; browser_ui 33 batch-2 PARTIAL: 11/33 LEVEL-4, 22 (a)-tools pending), services/workers/persistence/deployment rows (NVIDIA scope), bulk per-tool firewall sweep (8 spot + 28 empty-input batch-1+2 + 19 risk-tier live + 16 trunk-files + 3 arch-backend + 26 browser live1/live2 done; 25/25 no-required reviewed: 18 SAFE + 1 BOUND + 4 EMBARGO with static fixture designs + 2 FIXTURE probed contained; browser_launch embargo partially lifted for contained-http; risk table SURVEYED), contract audit per boundary (8 mismatches), LEVEL 5-6 proofs, and NVIDIA cross-review (currently BLOCKED).
