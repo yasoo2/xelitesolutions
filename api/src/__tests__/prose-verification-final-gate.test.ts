@@ -29,6 +29,15 @@ jest.mock('../modules/services/ToolService', () => ({
   })),
 }));
 
+// This suite asserts on in-memory final-gate receipts, not the durable run
+// ledger. Keep its synthetic fixed-id runs out of the real UI history, where
+// they mutate a shared record and look like active work.
+jest.mock('../shared/run-evidence-store', () => ({
+  createRunEvidence: jest.fn(async () => undefined),
+  appendRunEvidenceEvent: jest.fn(async () => undefined),
+  saveRunReceipt: jest.fn(async () => undefined),
+}));
+
 import { AgentLoopService } from '../modules/services/AgentLoopService';
 import { executeTool } from '../modules/services/ToolService';
 import { PhaseExecutorTool } from '../modules/tools/definitions/PhaseExecutorTool';
