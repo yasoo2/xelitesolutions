@@ -65,6 +65,36 @@ export function findingText(f: AppAuditFinding, isAr: boolean): string {
     return (isAr ? f.detail : (f.detailEn || f.detail)) || '';
 }
 
+/**
+ * THE FINDING AS IT SURVIVES.
+ *
+ * The audit result lives in memory; what reaches durable state is this
+ * compact shape on the project entry's lastAudit. It used to keep only
+ * {severity, message} — and the message read fields the finding does
+ * not have, so even the prose arrived empty and the finding id and all
+ * measured evidence were lost. Post-hoc diagnosis (which URL, which
+ * viewport, which boxes) was then impossible.
+ *
+ * The compact form keeps the id, the severity, the reader sentence and
+ * the first evidence items, all bounded: the store is per-project
+ * durable state, not a second run log.
+ */
+export interface CompactQaFinding {
+    id?: string;
+    severity: 'high' | 'medium' | 'low' | string;
+    message: string;
+    evidence?: any[];
+}
+
+export function compactQaFindings(findings: any[], limit = 12): CompactQaFinding[] {
+    return (Array.isArray(findings) ? findings : []).slice(0, limit).map((f: any) => ({
+        ...(f && f.id != null ? { id: String(f.id).slice(0, 120) } : {}),
+        severity: f?.severity,
+        message: String(f?.detailEn || f?.detail || f?.message || f?.what || '').slice(0, 200),
+        ...(Array.isArray(f?.evidence) && f.evidence.length ? { evidence: f.evidence.slice(0, 4) } : {}),
+    }));
+}
+
 export interface AppAudit {
     skipped?: string;
     score: number;

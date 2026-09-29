@@ -413,7 +413,7 @@ export class ProjectRepairTool extends BaseTool {
             if (entry) {
                 entry.lastAudit = {
                     score: finalMeasurement.score, at: Date.now(),
-                    findings: remaining.slice(0, 12).map((f: any) => ({ severity: f.severity, message: String(f.detail || '').slice(0, 200) })),
+                    findings: require('../../../core/quality/app-audit').compactQaFindings(remaining),
                 };
             }
         } catch { /* memory is a bonus */ }

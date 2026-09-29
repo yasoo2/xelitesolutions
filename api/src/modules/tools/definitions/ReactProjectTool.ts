@@ -7922,8 +7922,7 @@ Use the actual definitions above. Do not rewrite these files or implement persis
             ...(audit && !audit.skipped ? {
                 lastAudit: {
                     score: audit.score, at: Date.now(),
-                    findings: (audit.findings || []).slice(0, 12)
-                        .map((f: any) => ({ severity: f.severity, message: String(f.message || f.what || '').slice(0, 200) })),
+                    findings: require('../../../core/quality/app-audit').compactQaFindings(audit.findings),
                 },
             } : {}),
         }, currentPipelineRunId || null);

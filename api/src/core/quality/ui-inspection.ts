@@ -712,9 +712,27 @@ function measureResponsive(vw: number) {
         return box.width > 2 && box.height > 2 && (box.left < -2 || box.right > measuredVw + 2);
       }).length;
       if (bannerBox.height > 144 || rows >= 3 || offscreenControls > 0) {
+        //  PROVENANCE — a number without its measurement context cannot be
+        //  re-checked. One run reported 154px where a replay of the same
+        //  build measured 105px, and the record kept no URL, viewport or
+        //  geometry to decide between them. The URL is origin + path only:
+        //  query and hash never leave the page, so a token in either cannot
+        //  reach durable evidence.
+        var headerPageUrl = '';
+        try { headerPageUrl = location.origin + location.pathname; } catch { headerPageUrl = ''; }
+        var roundRect = function (box: any) {
+          return { x: Math.round(box.left), y: Math.round(box.top), width: Math.round(box.width), height: Math.round(box.height) };
+        };
         fragmentedHeader = {
           sel: selectorFor(layout), label: 'fragmented mobile header',
           w: Math.round(bannerBox.width), h: Math.round(bannerBox.height), rows: rows, offscreenControls: offscreenControls,
+          url: headerPageUrl,
+          headerBox: roundRect(bannerBox),
+          childBoxes: visibleChildren.slice(0, 10).map(function (child: any) {
+            var childBox: any = roundRect(child.getBoundingClientRect());
+            childBox.tag = String(child.tagName || '').toLowerCase().slice(0, 16);
+            return childBox;
+          }),
         };
       }
     }
@@ -893,7 +911,7 @@ export async function inspectUi(
                 mobileTiny = r.tiny; mobileFonts = r.smallFonts; mobileTinyNames = r.tinyNames || [];
                 mobileTinyEvidence = Array.isArray(r.tinyEvidence) ? r.tinyEvidence.slice(0, 8) : [];
                 if (r.tinyBoxes?.length) await eyes?.mark(page, r.tinyBoxes, { note: `أهداف لمس أصغر من ${TAP_TARGET_MIN_PX}px`, tone: 'warn', holdMs: 1000 });
-                if (r.fragmentedHeader) fragmentedHeader = r.fragmentedHeader;
+                if (r.fragmentedHeader) fragmentedHeader = { ...r.fragmentedHeader, requestedVw: vp.w, actualVw: actualVw };
             }
         } catch { /* one width failing must not lose the others */ }
     }
