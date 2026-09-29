@@ -3726,7 +3726,11 @@ export function fileAppPackageJson(name: string, bp: AppBlueprint): string {
  * chain, so a severed controller, an ignored seed, or a view that stops
  * invoking its controller fails the app's own `npm test`. Pixels remain
  * Browser QA's job; this test proves the data, the executed first-visit
- * delivery, and the wiring that carries it toward the screen.
+ * delivery, and the wiring that carries it toward the screen. A delivered
+ * STATIC records fallback gets the same treatment: run 25 shipped 0 rows
+ * in dist/index.html with a green suite, so the suite now reads the static
+ * bundle's own embedded seeds when the static-records marker is present,
+ * and asserts the request against them.
  */
 export interface GroundedSchemaExpectation {
     fields: Array<{ key: string; label: string }>;
@@ -3848,6 +3852,36 @@ test('the app shell wires the records view to its controller', () => {
   assert.match(read('src/components/RecordsApp.jsx'), /<RecordsView[\\s>]/);
 });
 ` : '';
+    // CONTENT IS NOT DELIVERY, SECOND INSTANCE. Run 25 delivered the
+    // static records fallback with 0 rows while every React assertion
+    // above stayed green: they read src/content.js and the React store,
+    // never dist/index.html. When Joe delivered a static artifact (the
+    // marker says so), the suite reads ITS embedded seeds and asserts
+    // the request against them. The file is written before the fallback
+    // is known, so the check runs at test time; no static artifact means
+    // the React path, where this block stays vacuous by design.
+    const staticCountAssertion = wanted > 0
+        ? `assert.equal(staticSeeds.length, ${wanted}, 'expected ${wanted} seed rows in the delivered static artifact, found ' + staticSeeds.length);`
+        : `assert.ok(staticSeeds.length > 0, 'expected seed rows in the delivered static artifact, found none');`;
+    const staticBlock = engine === 'records' && (wanted > 0 || shipped > 0) ? `
+test('requested seed rows reach the delivered static records artifact', () => {
+  const expectedKeys = ${keys};
+  const staticEntry = path.join(root, 'dist', 'index.html');
+  if (!fs.existsSync(staticEntry)) return;
+  const staticDocument = fs.readFileSync(staticEntry, 'utf8');
+  if (!/<meta\\s+name="joe-artifact-mode"\\s+content="static-records"/.test(staticDocument)) return;
+  const staticConfigText = (staticDocument.match(/<script id="joe-config" type="application[/]json">([\\s\\S]*?)<[/]script>/) || [])[1] || '';
+  assert.ok(staticConfigText, 'the delivered static records artifact has no embedded config');
+  const staticConfig = JSON.parse(staticConfigText);
+  const staticSeeds = Array.isArray(staticConfig.seedRows) ? staticConfig.seedRows : [];
+  ${staticCountAssertion}
+  for (const row of staticSeeds) {
+    for (const key of expectedKeys) {
+      assert.ok(row && key in row, 'delivered static row is missing the requested column: ' + key);
+    }
+  }
+});
+` : '';
     return `${scaffold}
 test('${testName}', async () => {
   const content = (await import('../src/content.js')).content;
@@ -3862,7 +3896,7 @@ test('${testName}', async () => {
     assert.ok(actualKeys.includes(key), 'missing requested column key: ' + key);
   }${seedBlock}
 });
-${wireBlock}${executedBlock}${shellBlock}`;
+${wireBlock}${executedBlock}${shellBlock}${staticBlock}`;
 }
 
 /**

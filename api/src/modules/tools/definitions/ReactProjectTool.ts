@@ -442,10 +442,19 @@ export function writeDependencyFreeRecordsBundle(
     projectRoot: string,
     blueprint: Pick<AppBlueprint, 'title' | 'lede' | 'entityOne' | 'entityMany' | 'fields'>,
     isArabic: boolean,
+    seedRows?: Array<Record<string, any>>,
 ): string {
     const outputDir = path.join(projectRoot, 'dist');
     fs.mkdirSync(outputDir, { recursive: true });
+    // Only validated catalogue rows ever reach this writer: the execute
+    // fallback call passes the same array buildAppFiles received. This
+    // filter is boundary hygiene - plain objects in, nothing invented,
+    // nothing re-derived - not a second validation.
+    const seeds = Array.isArray(seedRows)
+        ? seedRows.filter(row => !!row && typeof row === 'object' && !Array.isArray(row))
+        : [];
     const config = {
+        seedRows: seeds,
         title: String(blueprint.title || (isArabic ? 'سجل' : 'Records')),
         lede: String(blueprint.lede || ''),
         entityOne: String(blueprint.entityOne || (isArabic ? 'سجل' : 'record')),
@@ -486,7 +495,7 @@ export function writeDependencyFreeRecordsBundle(
   </style>
 </head>
 <body><main class="shell"><header class="top"><div><h1 id="title"></h1><p id="lede"></p></div><p class="count" id="count" aria-live="polite"></p></header><section class="toolbar"><label class="sr-only" for="search" id="search-label"></label><input id="search" type="search" aria-labelledby="search-label"><button class="button secondary" type="button" id="export"></button><button class="button" type="button" id="add"></button></section><p class="status" id="status" role="status" aria-live="polite"></p><section class="form-panel" id="panel"><form id="form" novalidate><div class="fields" id="fields"></div><p class="alert" id="alert" role="alert" hidden></p><div class="form-actions"><button class="button" id="submit" type="submit"></button><button class="button secondary" id="cancel" type="button"></button></div></form></section><section id="records"></section></main><script id="joe-config" type="application/json">${data}</script><script>
-(()=>{const c=JSON.parse(document.getElementById('joe-config').textContent),q=s=>document.querySelector(s),store='joe-static-records:'+c.title,el=(tag,props={})=>{const n=document.createElement(tag);Object.assign(n,props);return n};let rows=[],editing=null;try{rows=JSON.parse(localStorage.getItem(store)||'[]')}catch{};const title=q('#title'),lede=q('#lede'),count=q('#count'),fields=q('#fields'),form=q('#form'),panel=q('#panel'),alert=q('#alert'),records=q('#records'),search=q('#search');title.textContent=c.title;lede.textContent=c.lede;search.placeholder=c.labels.search;q('#add').textContent=c.labels.add;q('#export').textContent=c.labels.export;q('#cancel').textContent=c.labels.cancel;
+(()=>{const c=JSON.parse(document.getElementById('joe-config').textContent),q=s=>document.querySelector(s),store='joe-static-records:'+c.title,el=(tag,props={})=>{const n=document.createElement(tag);Object.assign(n,props);return n};let rows=[],editing=null;{const prior=localStorage.getItem(store);if(prior===null&&Array.isArray(c.seedRows)&&c.seedRows.length){rows=c.seedRows.slice();save()}else{try{rows=JSON.parse(prior||'[]')}catch{rows=[]}}}const title=q('#title'),lede=q('#lede'),count=q('#count'),fields=q('#fields'),form=q('#form'),panel=q('#panel'),alert=q('#alert'),records=q('#records'),search=q('#search');title.textContent=c.title;lede.textContent=c.lede;search.placeholder=c.labels.search;q('#add').textContent=c.labels.add;q('#export').textContent=c.labels.export;q('#cancel').textContent=c.labels.cancel;
 function inputFor(f){const wrap=el('label',{className:'field'}),caption=el('span',{textContent:f.label});let input;if(f.type==='textarea'){input=el('textarea',{name:f.key})}else if(f.type==='select'){input=el('select',{name:f.key});input.append(el('option',{value:'',textContent:''}));f.options.forEach(o=>input.append(el('option',{value:o,textContent:o})))}else{input=el('input',{name:f.key,type:f.type==='tel'?'tel':f.type==='email'?'email':f.type==='number'?'number':f.type==='date'?'date':f.type==='time'?'time':'text'})}input.required=!!f.required;if(f.type==='tel')input.pattern='[0-9+() -]{6,}';if(f.min!==undefined){input.min=String(f.min+(f.minExclusive?Number.EPSILON:0))}if(f.minLength!==undefined)input.minLength=f.minLength;wrap.append(caption,input);return wrap}
 c.fields.forEach(f=>fields.append(inputFor(f)));function save(){localStorage.setItem(store,JSON.stringify(rows))}function value(row,f){return String(row[f.key]??'')}function clear(){editing=null;form.reset();alert.hidden=true;panel.hidden=false;q('#submit').textContent=c.labels.save}function edit(row){editing=row.id;c.fields.forEach(f=>{const input=form.elements.namedItem(f.key);if(input)input.value=value(row,f)});alert.hidden=true;panel.hidden=false;q('#submit').textContent=c.labels.update;panel.scrollIntoView({behavior:'smooth',block:'start'})}function remove(id){rows=rows.filter(r=>r.id!==id);if(editing===id)clear();save();render()}function render(){const needle=search.value.trim().toLocaleLowerCase();const visible=rows.filter(r=>c.fields.some(f=>value(r,f).toLocaleLowerCase().includes(needle)));count.textContent=rows.length+' '+c.labels.count;records.replaceChildren();if(!visible.length){records.append(el('p',{className:'empty',textContent:c.labels.empty}));return}const wrap=el('div',{className:'table-wrap'}),table=el('table'),thead=el('thead'),hr=el('tr');c.fields.forEach(f=>hr.append(el('th',{scope:'col',textContent:f.label})));hr.append(el('th',{scope:'col',textContent:c.labels.actions}));thead.append(hr);const body=el('tbody');visible.forEach(row=>{const tr=el('tr');c.fields.forEach(f=>tr.append(el('td',{textContent:value(row,f)})));const actions=el('td',{className:'actions'}),editButton=el('button',{className:'link-button',type:'button',textContent:c.labels.edit}),removeButton=el('button',{className:'link-button',type:'button',textContent:c.labels.remove});editButton.onclick=()=>edit(row);removeButton.onclick=()=>remove(row.id);actions.append(editButton,removeButton);tr.append(actions);body.append(tr)});table.append(thead,body);wrap.append(table);records.append(wrap)}
 form.addEventListener('submit',event=>{event.preventDefault();if(!form.checkValidity()){alert.textContent=c.labels.invalid;alert.hidden=false;form.reportValidity();return}const row={id:editing||String(Date.now())};c.fields.forEach(f=>row[f.key]=String(form.elements.namedItem(f.key).value).trim());if(editing){rows=rows.map(r=>r.id===editing?row:r)}else rows.unshift(row);save();clear();render()});q('#add').onclick=clear;q('#cancel').onclick=()=>{panel.hidden=true;alert.hidden=true};search.addEventListener('input',render);q('#export').onclick=()=>{const esc=v=>'"'+String(v).replace(/"/g,'""')+'"',lines=[[...c.fields.map(f=>f.label)].map(esc).join(','),...rows.map(r=>c.fields.map(f=>esc(value(r,f))).join(','))];const url=URL.createObjectURL(new Blob([lines.join('\\n')],{type:'text/csv;charset=utf-8'})),a=el('a',{href:url,download:'records.csv'});a.click();URL.revokeObjectURL(url)};clear();render()})()
@@ -5367,6 +5376,11 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
         let adminModel: Array<any> = [];
         let unifiedTables = false;
         let apiResources: { notes: string; tasks: string } | undefined;
+        // Carried out of the appBp branch so the dependency-free records
+        // fallback below embeds the SAME validated seeds the React tree
+        // received. Run-25 evidence: the fallback delivered 0 rows while the
+        // React source held 5, because the seeds never left that branch.
+        let staticFallbackSeedRows: Array<Record<string, any>> = [];
         if (appBp) {
             for (const k of Object.keys(files)) {
                 if (k !== 'vite.config.js' && k !== 'src/styles/tokens.css' && !isExternalIntegrationArtifact(k)) delete files[k];
@@ -5618,6 +5632,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                     term(`catalogue authoring skipped: ${String(e && e.message || e).slice(0, 120)}`);
                 }
             }
+            staticFallbackSeedRows = seedRows;
             const appFiles = buildAppFiles(runBp, {
                 wantedSeedCount,
                 seedRows,
@@ -6981,7 +6996,7 @@ Use the actual definitions above. Do not rewrite these files or implement persis
             artifactMode = 'react';
         } else if (!noInstall && installExit !== null && dependencyFreeRecordsFallback) {
             try {
-                const artifact = writeDependencyFreeRecordsBundle(proj, runBp, artifactIsAr);
+                const artifact = writeDependencyFreeRecordsBundle(proj, runBp, artifactIsAr, staticFallbackSeedRows);
                 built = fs.existsSync(artifact);
                 artifactMode = built ? 'static_records' : null;
                 if (built) {
