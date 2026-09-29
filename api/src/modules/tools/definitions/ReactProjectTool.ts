@@ -75,6 +75,24 @@ export function isExternalIntegrationArtifact(file: string): boolean {
 }
 
 /**
+ * How many seed rows his sentence stated - read once, used twice: the
+ * catalogue writes to it, and the generated suite asserts it. A reader that
+ * cannot load (or throws) must say so through onSkip: silently returning
+ * undefined would demote the suite's exact-count assertion to a shipped-rows
+ * assertion with nobody told (the fail-open an independent review flagged).
+ * Only the READER saying "no count stated" is a quiet undefined.
+ */
+export function wantedSeedCountFor(request: string, entityOne: string, onSkip?: (note: string) => void): number | undefined {
+    try {
+        const { countHeAskedFor } = require('../../../core/design/authored-catalogue');
+        return countHeAskedFor(request, String(entityOne || ''));
+    } catch (e: any) {
+        if (onSkip) onSkip(`seed-count reader unavailable (${String(e && e.message || e).slice(0, 100)}) - the suite asserts shipped rows, not his stated count`);
+        return undefined;
+    }
+}
+
+/**
  * A known app may use its request-derived engine only when the model did not
  * provide usable artifact text. Format failure is included because the author
  * already spent its one bounded format retry; syntax/runtime failures must
@@ -5549,12 +5567,13 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             // suite must NEVER assert the artifact's own row count instead —
             // a build that shipped zero rows passed its own "seed rows reach"
             // test that way (real-UI run 23).
-            const wantedSeedCount = (() => {
-                try {
-                    const { countHeAskedFor } = require('../../../core/design/authored-catalogue');
-                    return countHeAskedFor(request, String((runBp as any).entityOne || ''));
-                } catch { return undefined; }
-            })();
+            // A reader that cannot load is a build note, never a silent
+            // downgrade: see wantedSeedCountFor.
+            const wantedSeedCount = wantedSeedCountFor(
+                request,
+                String((runBp as any).entityOne || ''),
+                (note) => term(note),
+            );
             const seedFields = ((runBp as any).fields || []) as Array<any>;
             if (!copyProvidersRationing && !modelUnavailableDuringBuild && !unifiedTables
                 && seedFields.length && !input?.skipAuthoredCopy) {

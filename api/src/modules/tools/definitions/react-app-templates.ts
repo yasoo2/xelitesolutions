@@ -3715,8 +3715,18 @@ export function fileAppPackageJson(name: string, bp: AppBlueprint): string {
  * the caller passes the request-derived schema, a second test block asserts
  * that the columns and seed rows actually reached the generated app, so
  * reader/seed regressions break the app's own suite instead of hiding behind
- * a green scaffold check. Rendering itself remains Browser QA's job; this
- * test proves the data the shell renders from.
+ * a green scaffold check.
+ *
+ * CONTENT IS NOT DELIVERY. Run 24 shipped 5 valid content seeds with a green
+ * suite while the browser showed 0 records, and an independent mutation then
+ * replaced App.jsx with a null component without breaking the suite at all:
+ * nothing executed the delivery path or touched the view. For records apps
+ * with seeds the suite therefore also EXECUTES the first-visit store delivery
+ * against the real store.js and pins the shell->view->controller render
+ * chain, so a severed controller, an ignored seed, or a dropped view fails
+ * the app's own `npm test`. Pixels remain Browser QA's job; this test proves
+ * the data the shell renders from, the executed first-visit delivery, and
+ * the chain that carries it to the screen.
  */
 export interface GroundedSchemaExpectation {
     fields: Array<{ key: string; label: string }>;
@@ -3794,6 +3804,50 @@ test('requested seed rows reach the records store', () => {
   assert.match(read('src/app/records-controller.js'), /createStore\\(content\\.storeKey \\+ ':rows', content\\.seedRows\\)/);
 });
 ` : '';
+    // The text pin above sees the call; it cannot see the BEHAVIOUR. Run the
+    // real store under a fresh in-memory browser and read the first visit
+    // exactly as the controller does. A store that ignores its seed, or
+    // content that drops rows/keys, fails here even when every file exists.
+    // The isolation guard is load-bearing: without it the test could read a
+    // shared native storage instead of a first visit and lie green.
+    const firstVisitBlock = wanted > 0 ? `
+  assert.equal(firstVisit.length, ${wanted}, 'expected ${wanted} rows on a first visit, found ' + firstVisit.length);` : `
+  assert.ok(firstVisit.length > 0, 'expected seed rows on a first visit, found none');`;
+    const executedBlock = engine === 'records' && (wanted > 0 || shipped > 0) ? `
+test('requested seed rows load on a first visit', async () => {
+  const mem = new Map();
+  const freshBrowser = {
+    getItem: (k) => (mem.has(k) ? mem.get(k) : null),
+    setItem: (k, v) => { mem.set(k, String(v)); },
+    removeItem: (k) => { mem.delete(k); },
+  };
+  globalThis.localStorage = freshBrowser;
+  assert.equal(globalThis.localStorage, freshBrowser, 'the test could not isolate browser storage');
+  const store = await import('../src/app/store.js');
+  const content = (await import('../src/content.js')).content;
+  assert.equal(typeof store.createStore, 'function', 'the generated store has no createStore');
+  const expectedKeys = ${keys};
+  const firstVisit = store.createStore(content.storeKey + ':rows', content.seedRows).read();${firstVisitBlock}
+  for (const row of firstVisit) {
+    for (const key of expectedKeys) {
+      assert.ok(row && key in row, 'first-visit row is missing the requested column: ' + key);
+    }
+  }
+});
+` : '';
+    // The data path means nothing if the screen never reads it. An
+    // independent mutation replaced App.jsx with a null component and the
+    // suite stayed green, because no test touched the view. The shell must
+    // import and render the records view, and the view must consume the
+    // records controller - the chain that carries rows to the screen.
+    const shellBlock = engine === 'records' && (wanted > 0 || shipped > 0) ? `
+test('the app shell renders the records view it was built with', () => {
+  assert.match(read('src/App.jsx'), /from '\\.\\/components\\/RecordsApp\\.jsx'/);
+  assert.match(read('src/App.jsx'), /<RecordsApp[\\s>]/);
+  assert.match(read('src/components/RecordsApp.jsx'), /useRecordsController/);
+  assert.match(read('src/components/RecordsApp.jsx'), /RecordsView/);
+});
+` : '';
     return `${scaffold}
 test('${testName}', async () => {
   const content = (await import('../src/content.js')).content;
@@ -3808,7 +3862,7 @@ test('${testName}', async () => {
     assert.ok(actualKeys.includes(key), 'missing requested column key: ' + key);
   }${seedBlock}
 });
-${wireBlock}`;
+${wireBlock}${executedBlock}${shellBlock}`;
 }
 
 /**

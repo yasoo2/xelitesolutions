@@ -301,7 +301,14 @@ describe('the seed reaches the shelf, not just a variable', () => {
         //  Run 23: the same read feeds the generated suite, so the suite
         //  asserts what he stated instead of what the artifact shipped. One
         //  hoisted read, two uses — catalogue `wanted` and build options.
-        expect(TOOL).toMatch(/countHeAskedFor\(request, String\(\(runBp as any\)\.entityOne \|\| ''\)\)/);
+        //
+        //  The hoisted read now lives in wantedSeedCountFor, so a reader
+        //  that cannot load (or throws) becomes a build note instead of a
+        //  silent downgrade to a shipped-rows assertion. The pin follows the
+        //  CLAIM, not the old spelling: request and entity still travel
+        //  together into countHeAskedFor, and one read still feeds both uses.
+        expect(TOOL).toMatch(/const wantedSeedCount = wantedSeedCountFor\(\s+request,\s+String\(\(runBp as any\)\.entityOne \|\| ''\),/);
+        expect(TOOL).toMatch(/return countHeAskedFor\(request, String\(entityOne \|\| ''\)\);/);
         expect(TOOL).toMatch(/wanted: wantedSeedCount,/);
     });
 
