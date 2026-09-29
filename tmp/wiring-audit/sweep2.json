@@ -1,0 +1,138 @@
+{
+  "generatedAt": "2026-09-29T21:18:36.648Z",
+  "liveEmptyInputBatch2": {
+    "delete_file": {
+      "ok": false,
+      "error": "approval_required",
+      "outputShape": "{risk}",
+      "outputPreview": null,
+      "log0": "[2026-09-29T21:18:36.160Z] start delete_file (orig=delete_file)"
+    },
+    "browser_compare": {
+      "ok": false,
+      "error": "browser_compare needs a url (or before/after urls) to compare.",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-29T21:18:36.178Z] start browser_compare (orig=browser_compare)"
+    },
+    "browser_consent": {
+      "ok": true,
+      "error": null,
+      "outputShape": "{message,consent,needsConsent}",
+      "outputPreview": "🔐 لكي أستخدم متصفحك المحلي (Chrome) بحسابك الشخصي، أحتاج موافقتك مرّة واحدة.\n\nاكتب: **أوافق**\n\n• لن أحفظ أي كلمة مرور — أنت تسجّل دخولك بنفسك داخل النافذة.\n• ي",
+      "log0": "[2026-09-29T21:18:36.189Z] start browser_consent (orig=browser_consent)"
+    },
+    "browser_ui_fix": {
+      "ok": false,
+      "error": "no_project",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-29T21:18:36.193Z] start browser_ui_fix (orig=browser_ui_fix)"
+    },
+    "project_undo": {
+      "ok": false,
+      "error": "no_project",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-29T21:18:36.197Z] start project_undo (orig=project_undo)"
+    },
+    "project_repair": {
+      "ok": false,
+      "error": "No built project in this session to repair — build something first.",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-29T21:18:36.202Z] start project_repair (orig=project_repair)"
+    },
+    "image_studio": {
+      "ok": false,
+      "error": "This session has no system with tables — build one first, then ask for the pictures.",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-29T21:18:36.209Z] start image_studio (orig=image_studio)"
+    },
+    "repo_diff_summary": {
+      "ok": false,
+      "error": "Tool reported failure without an error message",
+      "outputShape": "{status,diffStat,stderr}",
+      "outputPreview": null,
+      "log0": "[2026-09-29T21:18:36.213Z] start repo_diff_summary (orig=repo_diff_summary)"
+    },
+    "engineering_discovery": {
+      "ok": true,
+      "error": null,
+      "outputShape": "{evidence}",
+      "outputPreview": null,
+      "log0": "[2026-09-29T21:18:36.473Z] start engineering_discovery (orig=engineering_discovery)"
+    },
+    "project_stop": {
+      "ok": true,
+      "error": null,
+      "outputShape": "{stopped,message}",
+      "outputPreview": "لا يوجد خادم يعمل لهذا المشروع.",
+      "log0": "[2026-09-29T21:18:36.588Z] start project_stop (orig=project_stop)"
+    },
+    "form_inbox": {
+      "ok": true,
+      "error": null,
+      "outputShape": "{message}",
+      "outputPreview": "📭 لا توجد رسائل في صندوق النموذج بعد — عندما يملأ زائر نموذج موقعك (في المعاينة) ستصل هنا فوراً.",
+      "log0": "[2026-09-29T21:18:36.593Z] start form_inbox (orig=form_inbox)"
+    },
+    "orders_read": {
+      "ok": true,
+      "error": null,
+      "outputShape": "{message}",
+      "outputPreview": "لا يوجد مشروع API في هذه الجلسة — ابنِ واحداً أولاً: «ابنِ لي API لمنتجات متجري»، ثم اربط واجهتك به.",
+      "log0": "[2026-09-29T21:18:36.598Z] start orders_read (orig=orders_read)"
+    },
+    "security_scanner": {
+      "ok": false,
+      "error": "security_scanner requires a non-empty files array or an existing project target containing source files",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-29T21:18:36.603Z] start security_scanner (orig=security_scanner)"
+    },
+    "joe_engineering_report": {
+      "ok": true,
+      "error": null,
+      "outputShape": "{report,markdown}",
+      "outputPreview": null,
+      "log0": "[2026-09-29T21:18:36.609Z] start joe_engineering_report (orig=joe_engineering_report)"
+    },
+    "ls": {
+      "ok": true,
+      "error": null,
+      "outputShape": "{path,entries}",
+      "outputPreview": null,
+      "log0": "[2026-09-29T21:18:36.613Z] start ls (orig=ls)"
+    },
+    "analyze_project": {
+      "ok": true,
+      "error": null,
+      "outputShape": "{status,type,techStack,hasDocker,structure,suggestions}",
+      "outputPreview": null,
+      "log0": "[2026-09-29T21:18:36.618Z] start analyze_project (orig=analyze_project)"
+    },
+    "search_text": {
+      "ok": false,
+      "error": "search_text needs a query — the text to look for.",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-29T21:18:36.625Z] start search_text (orig=search_text)"
+    },
+    "project_detect": {
+      "ok": true,
+      "error": null,
+      "outputShape": "{root,nodeProjects,pythonProjects,goProjects,hint}",
+      "outputPreview": null,
+      "log0": "[2026-09-29T21:18:36.630Z] start project_detect (orig=project_detect)"
+    },
+    "analyze_codebase": {
+      "ok": false,
+      "error": "⚠️ تعذّر الوصول إلى محرّك الذكاء (لم يستجب أي مزوّد). لم أستطع تنفيذ الطلب. الحل: شغّل Ollama محلياً (افتح تطبيق Ollama أو نفّذ: ollama serve) ثم أعد المحاولة، أو تحقّق من اتصال الإنترنت لاستخدام الذك",
+      "outputShape": "{summary}",
+      "outputPreview": null,
+      "log0": "[2026-09-29T21:18:36.635Z] start analyze_codebase (orig=analyze_codebase)"
+    }
+  }
+}

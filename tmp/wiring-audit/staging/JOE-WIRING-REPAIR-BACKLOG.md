@@ -86,15 +86,54 @@ DEPENDENCIES=none
 
 ---
 
-BATCH_ID=WIRING-P2-004
-CAPABILITIES=schema/execute consistency (task_lifecycle required-vs-default gap) + empty-input honesty sweep continuation
-ROOT_CAUSE=task_lifecycle declares required:['action'] but execute() defaults action='update' and returns ok:true on {} (sweep1.json, rerun-stable); no central schema gate — validation is per-tool; 25 tools declare no required inputs (incl. delete_file, deploy_pages, project_run/stop)
-FILES=TaskLifecycleTool.ts (enforce required OR drop it from schema) + per-tool review notes for the 25
+BATCH_ID=WIRING-P1-003
+CAPABILITIES=deploy_pages token scope + input gating (fixture-only)
+ROOT_CAUSE=cwd defaults to workspace root with no validation gate; resolveRepoAndToken falls back to getAllWorkspacesForLookup() (DeployPagesTool.ts:60-70) — any connected workspace; success path builds + pushes gh-pages (checkpoint 6 static; EMBARGOED live)
+FILES=DeployPagesTool.ts (scope tokens to session/user context; add explicit repo confirmation) + fixture probe design
 IMPLEMENTATION_OWNER=UNASSIGNED
 REVIEW_OWNER=UNASSIGNED
-TESTS=schema/execute consistency gate for task_lifecycle ({} -> honest error OR schema without required); batch-2+ live calls ONLY after per-tool execute() review (review-then-call rule); AGENTS gates if ToolService touched (it is not — tool-local fix)
-REAL_JOE_UAT=none (contract nit; UI behavior unchanged either way)
+TESTS=token-scope test (foreign workspace token NOT usable); fixture-only probe with fake token store (never live gh-pages); AGENTS gates
+REAL_JOE_UAT=none until scoped; then deploy-via-UI to a throwaway repo only
+ROLLBACK=revert scope change
+DEPENDENCIES=none
+
+---
+
+BATCH_ID=WIRING-P2-004
+CAPABILITIES=schema/execute consistency (task_lifecycle required-vs-default gap) + empty-input honesty sweep continuation (25/25 reviewed, 19 probed live in sweep2.json)
+ROOT_CAUSE=task_lifecycle declares required:['action'] but execute() defaults action='update' and returns ok:true on {} (sweep1.json, rerun-stable); no central schema gate — validation is per-tool; 25 no-required tools PARTITIONED 18 SAFE + 1 BOUND + 4 EMBARGO + 2 FIXTURE (006). Absence-as-success shape: project_stop/orders_read/form_inbox/browser_consent return ok:true for absence (honest messages; ok-only verifiers would misread). project_undo default-latest-restore code-indicated (ProjectUndoTool.ts:98-100), fixture-unconfirmed.
+FILES=TaskLifecycleTool.ts (enforce required OR drop it from schema) + absence-as-success verifier note for LEVEL 5-6 sweep + project_undo snapshot fixture
+IMPLEMENTATION_OWNER=UNASSIGNED
+REVIEW_OWNER=UNASSIGNED
+TESTS=schema/execute consistency gate for task_lifecycle ({} -> honest error OR schema without required); verifier MUST read message/flags, not ok alone, for the 4 absence tools; project_undo fixture (snapshots present) to confirm/deny default-restore; AGENTS gates if ToolService touched (it is not — tool-local fix + verifier note)
+REAL_JOE_UAT=none (contract nits; UI behavior unchanged either way)
 ROLLBACK=revert schema/execute one-liner
+DEPENDENCIES=none
+
+---
+
+BATCH_ID=WIRING-P2-005
+CAPABILITIES=ok:false-without-error wrapper (cause-swallowing)
+ROOT_CAUSE=tools returning {ok:false} with no `error` field get generic 'Tool reported failure without an error message'; real cause sits in output (e.g. output.stderr) and never surfaces (2 instances: batch-1 rss_fetch, batch-2 repo_diff_summary in sweep1/2.json)
+FILES=ToolService/firewall wrapper (surface output.stderr/cause) + the 2 tool sites (return error with ok:false)
+IMPLEMENTATION_OWNER=UNASSIGNED
+REVIEW_OWNER=UNASSIGNED
+TESTS=contract test: no ok:false result without a specific error (or wrapper carries output cause); RED->GREEN on both instances; AGENTS gates
+REAL_JOE_UAT=none (error-text quality; behavior unchanged)
+ROLLBACK=revert wrapper/tool one-liners
+DEPENDENCIES=none
+
+---
+
+BATCH_ID=WIRING-P2-006
+CAPABILITIES=uncontained execution roots + dead autoFix input (dead_code_detector, dependency_audit)
+ROOT_CAUSE=both default to getWorkspaceRoot() (Joe's own repo) ignoring session context (DeadCodeTool.ts:46-52, QualityTools.ts:89-96); then run npx knip / npm audit (network + long runtime). autoFix:boolean declared on dead_code_detector but never read — planner-facing dead input (checkpoint 6 static; fixture-only, never {})
+FILES=DeadCodeTool.ts + QualityTools.ts (contain default root to session context or document internal-only; drop-or-implement autoFix)
+IMPLEMENTATION_OWNER=UNASSIGNED
+REVIEW_OWNER=UNASSIGNED
+TESTS=root-containment test (default root == session workspace, never Joe repo); dead-input gate (every declared input is read); fixture probes with explicit paths; AGENTS gates
+REAL_JOE_UAT=none (scope correction; behavior on explicit paths unchanged)
+ROLLBACK=revert root/input change
 DEPENDENCIES=none
 
 ---

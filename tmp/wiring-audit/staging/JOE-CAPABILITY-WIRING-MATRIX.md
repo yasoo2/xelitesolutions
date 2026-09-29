@@ -1,15 +1,16 @@
 # JOE CAPABILITY WIRING MATRIX (Muse draft 2026-09-29 — staging for D:\Joe\coordination\team\JOE-CAPABILITY-WIRING-MATRIX.md)
 
-SCOPE=Muse-branch discovery checkpoints 1-4 only (muse/joe-development @ 389acc31).
+SCOPE=Muse-branch discovery checkpoints 1-6 only (muse/joe-development @ b90ba5e7).
 Rows below are EVIDENCED tool-level entries. HIGH_LEVEL_CAPABILITIES grouping
-(75-tag draft scaffolding only; merge pass pending), services/workers/
+(merge v1: 19 trunks PROPOSED, per-trunk stories pending), services/workers/
 internal-infra rows, and NVIDIA-owned registry/ingress/persistence areas are
 UNKNOWN/PENDING and must NOT be treated as covered.
 Evidence files: D:\Joe\muse-worktree\tmp\wiring-audit\{discovery,exposure,
-classification,reachability,target,exec}.json + {discover,exposure,classify,
-reach,target,exec}.mts + MUSE-WIRING-DISCOVERY-00{1,2,3,4}.md. All probes
-re-runnable; checkpoint-4 exec probe performs bounded safe LEVEL-4 runs
-(fixtures created + removed by the probe; memorize_codebase embargoed).
+classification,reachability,target,exec,sweep1,sweep2,merge}.json +
+{discover,exposure,classify,reach,target,exec,sweep1,sweep2,merge}.mts +
+MUSE-WIRING-DISCOVERY-00{1,2,3,4,5,6}.md. All probes re-runnable; exec/sweep
+probes perform bounded safe runs only (fixtures created + removed by the
+probe; 6 no-required names embargoed/fixture-only by rule, see 006).
 
 FORMAT per row follows CRITICAL-JOE-DEEP-CAPABILITY-WIRING-AUDIT.
 
@@ -400,5 +401,192 @@ RECOMMENDED_ACTION=WIRING-P2-004: enforce required OR drop it from schema (one-l
 
 ---
 
-END-OF-MUSE-DRAFT-ROWS=18 (11 individual + 5 group + 2 external-cited)
-COVERAGE-DISCLAIMER=This draft covers ONLY what Muse checkpoints 1-5 evidenced. Full matrix requires: per-trunk path stories (19 trunks PROPOSED in merge.json), services/workers/persistence/deployment rows (NVIDIA scope), bulk per-tool firewall sweep (8 spot + 9 empty-input batch-1 done; 25 no-required need review-then-call), contract audit per boundary, LEVEL 5-6 proofs, and NVIDIA cross-review (currently BLOCKED).
+CAPABILITY_ID=TOOL-delete_file
+NAME=delete_file (SystemTools.ts:808-852)
+CATEGORY=tool/files
+SOURCE_FILES=api/src/modules/tools/definitions/SystemTools.ts
+IMPLEMENTATION=contained delete (safePath; recursive:true for dirs; honest not_found/is_directory); {} -> 'needs a path' at execute level
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163; required:[] declared; permissions ['write']
+PLANNER_VISIBLE=YES (in PRIORITY/toolCatalog lists; targeted survey pending)
+SELECTABLE=UNKNOWN (no targeted probe yet)
+EXECUTOR_REACHABLE=YES (gated)
+EXECUTOR_EVIDENCE=LIVE (sweep2.json): {} -> ok:false approval_required output={risk} via canonical path, rerun-stable. The firewall pre-empts execute(): ToolService.ts:778-784 classifyToolRisk high/critical blocks unless AUTO_APPROVE_ALL/session auto-approve. execute()-level 'needs a path' refusal NOT reached in-probe.
+PERMISSION_REACHABLE=YES (reaches the risk gate; gate verdict is the evidence)
+INPUT_CONTRACT_VALID=YES (missing path refused at both layers, different messages)
+OUTPUT_CONTRACT_VALID=UNKNOWN (no live deletion performed by design)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (reachable + gated; risk-table row unsurveyed; live deletion never fixture-proven)
+RECOMMENDED_ACTION=survey classifyToolRisk table (1 live point only); fixture-based delete/no-op test before any behavior claim
+
+---
+
+CAPABILITY_ID=TOOL-deploy_pages
+NAME=deploy_pages (DeployPagesTool.ts:73+)
+CATEGORY=tool/deploy
+SOURCE_FILES=api/src/modules/tools/definitions/DeployPagesTool.ts
+IMPLEMENTATION=cwd defaults to workspace root; resolveRepoAndToken falls back session workspace -> user workspaces -> getAllWorkspacesForLookup() (:60-70); success path builds + pushes gh-pages
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163; no required inputs; permissions ['execute','internet']
+PLANNER_VISIBLE=UNKNOWN
+SELECTABLE=UNKNOWN
+EXECUTOR_REACHABLE=NOT_PROBED (embargoed: permanent external mutation)
+EXECUTOR_EVIDENCE=static only: no input validation gate; cross-workspace token fallback means a {} call in a context with ANY connected workspace could build+push. Fixture-only future probe (fake token store).
+PERMISSION_REACHABLE=UNKNOWN
+INPUT_CONTRACT_VALID=NO — defaults + fallback chain substitute for validation
+OUTPUT_CONTRACT_VALID=UNKNOWN
+CANONICAL_PATH_CONNECTED=UNKNOWN (unprobed by rule)
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=UNKNOWN_REQUIRES_INVESTIGATION (static risk identified; live path embargoed)
+BLOCKER=cross-workspace token fallback scope undecided
+SECURITY_RISK=HIGH if fallback reaches foreign workspaces — token-scope review required before any live probe
+RECOMMENDED_ACTION=WIRING-P1-003: token-scope review + fixture-only probe design; no live {} call
+
+---
+
+CAPABILITY_ID=TOOL-dead_code_detector
+NAME=dead_code_detector (DeadCodeTool.ts:20-135)
+CATEGORY=tool/analysis
+SOURCE_FILES=api/src/modules/tools/definitions/DeadCodeTool.ts
+IMPLEMENTATION=workDir = getWorkspaceRoot() (Joe's own repo) unless explicit projectPath — context IGNORED (:46-52); runs `npx knip --reporter json`; honest parse-failure handling (:95-114); autoFix input DECLARED but never read
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163; no required inputs; permissions ['read','execute']
+EXECUTOR_REACHABLE=NOT_PROBED (fixture-only: npx network fetch possible + long repo-wide runtime + uncontained root)
+INPUT_CONTRACT_VALID=NO — autoFix is dead input (planner can pass autoFix:true; nothing autofixes)
+OUTPUT_CONTRACT_VALID=UNKNOWN
+CANONICAL_PATH_CONNECTED=UNKNOWN (unprobed by rule)
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (registered; execution root uncontained; dead input in contract)
+SECURITY_RISK=medium: executes in Joe's own repo root regardless of session workspace
+RECOMMENDED_ACTION=WIRING-P2-006: contain root to session context (or document internal-only) + drop-or-implement autoFix
+
+---
+
+CAPABILITY_ID=TOOL-dependency_audit
+NAME=dependency_audit (QualityTools.ts:73-104)
+CATEGORY=tool/security
+SOURCE_FILES=api/src/modules/tools/definitions/QualityTools.ts
+IMPLEMENTATION=runs `npm audit --json` (5-min budget) in getWorkspaceRoot() when no path given — context IGNORED (:89-96); registry network call
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163; no required inputs; permissions ['execute','internet']
+EXECUTOR_REACHABLE=NOT_PROBED (fixture-only: uncontained root + external network on {})
+INPUT_CONTRACT_VALID=PARTIAL (path optional by design, but default root is Joe itself, not the session project)
+OUTPUT_CONTRACT_VALID=UNKNOWN
+CANONICAL_PATH_CONNECTED=UNKNOWN (unprobed by rule)
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (registered; default execution root uncontained)
+SECURITY_RISK=medium: network + execution scoped to Joe's repo, not the caller's workspace
+RECOMMENDED_ACTION=WIRING-P2-006: contain default root to session context; fixture probe with explicit path
+
+---
+
+CAPABILITY_ID=TOOL-security_scanner
+NAME=security_scanner (SecurityScannerTool.ts:16+)
+CATEGORY=tool/security
+SOURCE_FILES=api/src/modules/tools/definitions/SecurityScannerTool.ts
+IMPLEMENTATION=one-of contract (requiredAny files/projectPath/target/path); guard rejects {} honestly when no files/target resolve
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163; required:[] + requiredAny extension
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (sweep2.json): {} -> ok:false 'requires a non-empty files array or an existing project target containing source files', rerun-stable. Static pre-read WRONGLY predicted a cwd scan; live result stands (method note in 006).
+INPUT_CONTRACT_VALID=YES (one-of enforced at execute, despite empty `required`)
+OUTPUT_CONTRACT_VALID=UNKNOWN (no live scan with files performed)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (honest empty-input; scan path itself unprobed)
+RECOMMENDED_ACTION=none for wiring; use as the positive control for requiredAny enforcement
+
+---
+
+CAPABILITY_ID=TOOL-repo_diff_summary
+NAME=repo_diff_summary (RepoSelfCodingTools.ts:252-280)
+CATEGORY=tool/vcs
+SOURCE_FILES=api/src/modules/tools/definitions/RepoSelfCodingTools.ts
+IMPLEMENTATION=git status --short + git diff --stat on getRepoRoot(); returns ok:false with NO error field when git exits nonzero (:264-279)
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163; genuinely inputless (properties:{})
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (sweep2.json): {} -> ok:false 'Tool reported failure without an error message', output={status,diffStat,stderr}, rerun-stable. Real cause (git stderr) sits in output, never in `error` — wrapper substitutes generic message. 2nd instance after batch-1 rss_fetch.
+PERMISSION_REACHABLE=YES
+INPUT_CONTRACT_VALID=YES (inputless by design)
+OUTPUT_CONTRACT_VALID=NO — ok:false without error loses the cause at the error-field layer
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (executes; error contract lossy)
+NOTE=live trigger here is sandbox-specific (git dubious-ownership exit 128, verified); the WRAPPER BEHAVIOR is the product finding, not the trigger
+RECOMMENDED_ACTION=WIRING-P2-005: tools return error with ok:false (or wrapper surfaces output.stderr)
+
+---
+
+CAPABILITY_ID=TOOL-project_run
+NAME=project_run (ProjectRunTool.ts:1234+)
+CATEGORY=tool/runtime
+SOURCE_FILES=api/src/modules/tools/definitions/ProjectRunTool.ts
+IMPLEMENTATION=session active-project -> explicit cwd -> workspace root default chain; starts live server, binds port, spawns processes
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163; no required inputs; permissions ['execute']
+EXECUTOR_REACHABLE=NOT_PROBED (embargoed: {} starts servers from workspace defaults)
+EXECUTOR_EVIDENCE=static only (default chain read through :1307+)
+INPUT_CONTRACT_VALID=PARTIAL (no validation; defaults ARE the contract)
+CANONICAL_PATH_CONNECTED=UNKNOWN (unprobed by rule)
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=UNKNOWN_REQUIRES_INVESTIGATION (static risk identified; live path embargoed)
+RECOMMENDED_ACTION=fixture-project probe (isolated dir + port) before any {} claim; pairs with project_stop absence-as-success row (covered in 006 text, no separate row)
+
+---
+
+CAPABILITY_ID=TOOL-browser_launch
+NAME=browser_launch (BrowserSmartTools.ts:2064-2125)
+CATEGORY=tool/browser
+SOURCE_FILES=api/src/modules/tools/definitions/BrowserSmartTools.ts
+IMPLEMENTATION={} -> opens a REAL browser to BROWSER_HOME_URL or google.com, streams + screenshots (:2080-2092)
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163; required:[] declared
+EXECUTOR_REACHABLE=NOT_PROBED (embargoed: external navigation + browser side effects on {})
+EXECUTOR_EVIDENCE=static only
+INPUT_CONTRACT_VALID=NO — empty input triggers external navigation by default instead of refusing or asking
+CANONICAL_PATH_CONNECTED=UNKNOWN (unprobed by rule)
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (registered; default behavior externally effective)
+RECOMMENDED_ACTION=fixture probe with explicit local URL only; consider honest no-url behavior as P2 (unfiled — needs cross-review whether default-start-page is intended UX)
+
+---
+
+CAPABILITY_ID=TOOL-analyze_codebase
+NAME=analyze_codebase (AnalysisTools.ts:70-166)
+CATEGORY=tool/analysis
+SOURCE_FILES=api/src/modules/tools/definitions/AnalysisTools.ts
+IMPLEMENTATION=contained structure walk (depth<=3, 60 files, key-file slimming) + routeToModel LLM summary (:150-160); LLM failure -> ok:true with structure-only fallback (:161-164)
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163; no required inputs; permissions ['read','internet']
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (sweep2.json): {} -> ok:false Arabic provider-unavailable message + Ollama/Internet guidance, output={summary}, fast (no 20s timeout consumed), rerun-stable. routeToModel failed honestly under OFFLINE_MODE; no model spend.
+INPUT_CONTRACT_VALID=YES (path defaults to contained '.'; URL input redirects to browser_run, unprobed)
+OUTPUT_CONTRACT_VALID=PARTIAL (offline-fail path honest; summary path unprobed)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (honest offline; online summary path unprobed)
+RECOMMENDED_ACTION=none for wiring; online-summary probe needs a real provider (future, bounded)
+
+---
+
+CAPABILITY_ID=TOOL-project_undo
+NAME=project_undo (ProjectUndoTool.ts:55+)
+CATEGORY=tool/project
+SOURCE_FILES=api/src/modules/tools/definitions/ProjectUndoTool.ts
+IMPLEMENTATION=list mode honest; otherwise defaults to restoring the LATEST snapshot/surgical batch when no versionId (:98-100 preferSurgical); rebuilds after restore
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163; no required inputs; permissions ['write','execute']
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (sweep2.json): {} -> ok:false no_project (empty probe session), rerun-stable. Reached execute (NOT approval-gated, unlike delete_file — risk-tier evidence). Destructive-default restore path NOT taken in-probe: code-indicated only, fixture-unconfirmed.
+INPUT_CONTRACT_VALID=PARTIAL (no confirmation for default-latest restore — code-indicated, unproven live)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (empty-session honest; default-restore semantics need fixture)
+RECOMMENDED_ACTION=WIRING-P2-004 family: fixture with snapshots to confirm/deny default-restore + rebuild behavior; do NOT live-probe against a real project
+
+---
+
+END-OF-MUSE-DRAFT-ROWS=28 (21 individual + 5 group + 2 external-cited)
+COVERAGE-DISCLAIMER=This draft covers ONLY what Muse checkpoints 1-6 evidenced. Full matrix requires: per-trunk path stories (19 trunks PROPOSED in merge.json), services/workers/persistence/deployment rows (NVIDIA scope), bulk per-tool firewall sweep (8 spot + 28 empty-input batch-1+2 done; risk table 1 point; 6 embargo/fixture names unprobed), contract audit per boundary, LEVEL 5-6 proofs, and NVIDIA cross-review (currently BLOCKED).

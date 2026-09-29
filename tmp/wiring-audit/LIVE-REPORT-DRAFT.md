@@ -1,26 +1,27 @@
 # JOE LIVE TEAM REPORT (Muse draft 2026-09-29 — for coordinator to persist to team/LIVE-REPORT.md; Muse sandbox cannot write shared coordination files)
 
-UPDATED=2026-09-29T21:07Z
-OVERALL_STATUS=CRITICAL wiring audit checkpoint 5 done (9/9 selectable rank-1, 15/15 stories closed, 163-row declaration census, 9 empty-input batch-1 with 1 schema gap, 19-trunk merge PROPOSED, 18 matrix rows); CLI routing fix still owned by NVIDIA (worker blocked); no Real Joe PASS yet.
+UPDATED=2026-09-29T21:30Z
+OVERALL_STATUS=CRITICAL wiring audit checkpoint 6 done (25/25 no-required reviewed, 19 live batch-2 rerun-stable, approval gate proven live, 3 new backlog batches, 28 matrix rows); CLI routing fix still owned by NVIDIA (worker blocked); no Real Joe PASS yet.
 
 ## ماذا نعمل الآن؟
-Muse أكمل المرحلة الخامسة من تدقيق الربط: إغلاق قصص الاختيار (json_query مرتبة 1)، وإحصاء إعلانات الأدوات الـ163 (21+2 افتراضيات إقلاع مسماة، 25 بلا مدخلات مطلوبة)، وفحص 9 أدوات بدخل فارغ عبر المسار الأساسي (8 رفوض صادقة + نجاح غير متحقق واحد)، ودمج الوسوم في 19 جذعًا مقترحًا. اكتشاف فقط — لا حذف ولا إعادة هيكلة ولا تسجيل أدوات.
+Muse أكمل المرحلة السادسة من تدقيق الربط: قراءة شيفرة الأدوات الـ25 بلا مدخلات مطلوبة، وفحص 19 منها حيًا بدخل فارغ (مستقرة الإعادة)، أول إثبات حي لبوابة الموافقة، و3 حزم إصلاح مقترحة جديدة. اكتشاف فقط — لا حذف ولا إعادة هيكلة ولا تسجيل أدوات.
 
 ## ماذا اكتشفنا؟
-- json_query مرتبة 1 بالكلمات: قصص الـ15 مغلقة بالكامل (7 حتمية + 7 كلمات + 2 مزدوجة) — لا إصلاح لخريطة الكلمات.
-- الإحصاء: 163/163 لها execute، 0 بلا وصف، 21 إصلاح صلاحيات + 2 حد سرعة عند الإقلاع (مسماة بدقة)، 0 مجهولة، 25 بلا مدخلات مطلوبة (منها delete_file وdeploy_pages — قاعدة: مراجعة ثم تنفيذ).
-- الدخل الفارغ: 8/9 ترفض بصدق برسائل محددة؛ task_lifecycle تنجح ok:true رغم required:['action'] (المخطط شكلي) — WIRING-P2-004.
-- rss_fetch: رسالة الغلاف تبتلع السبب الحقيقي (ملاحظة دقة أدلة ثانوية).
-- الدمج: 19 جذعًا/163 عضوًا بتغطية مؤكدة — مقترح للمراجعة لا قدرات مثبتة (أكبرها browser_ui=33 ثم code_understanding=16).
+- التقسيم الكامل: 25/25 قُرئت — 18 آمنة + 1 مقيدة + 4 محظورة + 2 تحتاج بيئة اختبار (لا استدعاء حي لها).
+- بوابة الموافقة تعمل قبل التنفيذ: delete_file الفارغ يُرفض approval_required بينما أدوات الكتابة النظيرة تصل للتنفيذ — التقييم حسب الخطر لا الصلاحية.
+- deploy_pages بلا بوابة إدخال وتبحث عن التوكن عبر كل مساحات العمل — محظور حيًا (WIRING-P1-003).
+- dead_code_detector: جذر تنفيذ غير محتوى + مدخل autoFix ميت لا يُقرأ؛ dependency_audit بنفس الجذر غير المحتوى (WIRING-P2-006).
+- ابتلاع السبب للمرة الثانية: repo_diff_summary (WIRING-P2-005)؛ تصحيح ذاتي: security_scanner يرفض بصدق خلاف التوقع الأولي.
+- 4 أدوات تُرجع ok:true عند الغياب (رسائل صادقة) — ملاحظة للمدقق لا عيب أدوات.
 
 ## ماذا أنجزنا؟
-- target.mts (موسّع) + sweep1.mts + merge.mts تعمل (exit 0) والأدلة في target.json + sweep1.json + merge.json.
-- MUSE-WIRING-DISCOVERY-005.md + تحديث المسودات الخمس (المصفوفة 18 صفًا، الملخص بالأرقام الجديدة، التراكم P2-004 جديد + P3-001 مغلق اختياريًا، الخريطة المعمارية).
+- sweep2.mts يعمل (exit 0، مستقر الإعادة 19/19) والدليل في sweep2.json.
+- MUSE-WIRING-DISCOVERY-006.md + تحديث المسودات (المصفوفة 28 صفًا، الملخص بالأرقام الجديدة، التراكم P1-003 + P2-005 + P2-006 + توسيع P2-004، الخريطة المعمارية).
 - هذه المسودة محدثة.
 
 ## Muse الآن
-CURRENT_TASK=Wiring audit checkpoint 5 (staged outputs, awaiting coordinator import + push)
-LATEST_RESULT=9/9 rank-1; 15/15 stories; census 163 rows; 8/9 honest empty-input; 19 trunks PROPOSED; 18 matrix rows; guard re-run at commit
+CURRENT_TASK=Wiring audit checkpoint 6 (staged outputs, awaiting coordinator import + push)
+LATEST_RESULT=25/25 reviewed; 19/19 batch-2 live rerun-stable; approval gate proven; 5 contract mismatches; 28 matrix rows; guard re-run at commit
 BLOCKER=None for audit; shared coordination writes denied (fallback report used)
 
 ## NVIDIA الآن
@@ -38,6 +39,10 @@ TARGETED_SELECTION=9/9 SELECTABLE_BY_KEYWORD (best rank 1)
 STORIES_DONE=15/15 catalogue-absent (selection CLOSED)
 CENSUS=163 rows: 21 perm-defaulted + 2 ratelimit-defaulted + 0 unknown; 25 no-required; 0 no-description
 EMPTY_INPUT_BATCH1=8/9 honest ok:false + 1 unvalidated ok:true (task_lifecycle)
+EMPTY_INPUT_BATCH2=19/19 rerun-stable: 8 honest + 7 ok:true reads/absences + 1 approval gate + 1 swallowed-cause + 1 guard rejection + 1 honest offline fail
+NO_REQUIRED_PARTITION=25/25: 18 SAFE + 1 BOUND + 4 EMBARGO + 2 FIXTURE
+CONTRACT_MISMATCHES=5 (web_search corpse; memory divergence; verificationTask cited; dead autoFix; ok:false wrapper)
+MATRIX_ROWS=28 (21 individual + 5 group + 2 external-cited)
 LEVEL4_SPOT=8 case-groups green-or-honest (checkpoint 4, unchanged)
 MERGE_V1=19 trunks / 163 members (PROPOSED, coverage-asserted)
 FULL_SHADOWS=0 | CONDITIONAL_SHADOWS=2 | INLINE_SHADOWS=2 (1 proven live)
@@ -50,9 +55,9 @@ VERIFIED=0 new Real Joe UAT this checkpoint
 REAL_JOE_PROVEN=No PASS; latest runs PARTIAL/FAIL (see TEAM-STATE)
 
 ## آخر نتيجة اختبار
-TEST=target.mts + sweep1.mts + merge.mts probes + guard:architecture
-RESULT=All three probes exit 0 (9/9 rank-1; census + 8/9 honest empty-input rerun-stable; 19 trunks asserted); guard result recorded at commit time
-WHAT_IT_PROVES=Selection + declaration + LEVEL-4/batch-1 execution evidence for spot tools; NOT a Real Joe UI PASS.
+TEST=sweep2.mts probe + guard:architecture
+RESULT=sweep2 exit 0, 19/19 rerun-stable across 2 runs; guard result recorded at commit time
+WHAT_IT_PROVES=Empty-input/batch-2 execution evidence for 19 tools + first live approval-gate point; NOT a Real Joe UI PASS.
 
 ## المشاكل الحالية
 - NVIDIA worker blocked: provider 429/503 failures; no resume yet; cross-review pending.
@@ -61,7 +66,7 @@ WHAT_IT_PROVES=Selection + declaration + LEVEL-4/batch-1 execution evidence for 
 
 ## الخطوة التالية
 1. Coordinator imports Muse consultation responses + follow-ups + 5 staged audit drafts + live report.
-2. Muse checkpoint 6: per-trunk stories (start browser_ui/files) + sweep batch 2 review-then-call (delete_file/deploy_pages/project_run first).
+2. Muse checkpoint 7: classifyToolRisk table survey + per-trunk stories (start browser_ui/files) + fixture designs for the 6 embargo/fixture names.
 3. NVIDIA resumes, cross-reviews, acknowledges CLI-BATCH1 ownership.
 
 ## آخر الإنجازات
@@ -77,3 +82,7 @@ WHAT_IT_PROVES=Selection + declaration + LEVEL-4/batch-1 execution evidence for 
 [2026-09-29] COORDINATION — Reachability FAST_PATH test ACCEPTED (narrow); HTTP-owner RED CONFIRMED with scope correction.
 [2026-09-29] DELIVERABLE — 5 audit-output drafts staged in-workspace for coordinator import (18 matrix rows).
 [2026-09-29] TEST — Architecture guard re-run at checkpoint 5 commit.
+[2026-09-29] DISCOVERY — 25/25 no-required execute() bodies read; partition 18/1/4/2.
+[2026-09-29] DISCOVERY — batch-2 live 19/19 rerun-stable; approval gate proven (risk-tiered).
+[2026-09-29] DISCOVERY — deploy_pages token fallback (P1-003); wrapper 2nd instance (P2-005); dead autoFix + uncontained roots (P2-006).
+[2026-09-29] DELIVERABLE — matrix 28 rows; backlog +3 batches; guard re-run at checkpoint 6 commit.
