@@ -1,12 +1,15 @@
 # JOE CAPABILITY WIRING MATRIX (Muse draft 2026-09-29 — staging for D:\Joe\coordination\team\JOE-CAPABILITY-WIRING-MATRIX.md)
 
-SCOPE=Muse-branch discovery checkpoints 1-3 only (muse/joe-development @ 8ce2616c).
-Rows below are EVIDENCED tool-level entries. HIGH_LEVEL_CAPABILITIES grouping,
-services/workers/internal-infra rows, and NVIDIA-owned registry/ingress/
-persistence areas are UNKNOWN/PENDING and must NOT be treated as covered.
+SCOPE=Muse-branch discovery checkpoints 1-4 only (muse/joe-development @ 389acc31).
+Rows below are EVIDENCED tool-level entries. HIGH_LEVEL_CAPABILITIES grouping
+(75-tag draft scaffolding only; merge pass pending), services/workers/
+internal-infra rows, and NVIDIA-owned registry/ingress/persistence areas are
+UNKNOWN/PENDING and must NOT be treated as covered.
 Evidence files: D:\Joe\muse-worktree\tmp\wiring-audit\{discovery,exposure,
-classification,reachability}.json + {discover,exposure,classify,reach}.mts +
-MUSE-WIRING-DISCOVERY-00{1,2,3}.md. All probes re-runnable, read-only.
+classification,reachability,target,exec}.json + {discover,exposure,classify,
+reach,target,exec}.mts + MUSE-WIRING-DISCOVERY-00{1,2,3,4}.md. All probes
+re-runnable; checkpoint-4 exec probe performs bounded safe LEVEL-4 runs
+(fixtures created + removed by the probe; memorize_codebase embargoed).
 
 FORMAT per row follows CRITICAL-JOE-DEEP-CAPABILITY-WIRING-AUDIT.
 
@@ -171,7 +174,7 @@ REGISTRY_EVIDENCE=in live 163 (via ...MemoryTools spread, registry.ts:262); has 
 PLANNER_VISIBLE=UNKNOWN
 SELECTABLE=UNKNOWN
 EXECUTOR_REACHABLE=YES
-EXECUTOR_EVIDENCE=via ToolService inline handler (wins before registry :675)
+EXECUTOR_EVIDENCE=via ToolService inline handler (wins before registry :675). LIVE PROOF (exec.json): same empty input -> canonical ok:true 'No relevant memory found.' vs registry-direct ok:false 'needs a query'. Inline-wins + validation divergence are behavioral, not just source-order.
 PERMISSION_REACHABLE=NO
 PERMISSION_EVIDENCE=inline path returns before firewall/approval (:722+); declared permissions ['read'] never enforced on canonical path
 INPUT_CONTRACT_VALID=PARTIAL
@@ -230,10 +233,10 @@ REWRITE_BROKEN(1): image_generate->generate_image (target unregistered).
 ABSENT_NO_CANDIDATE(1): fs_glob. ABSENT_STATIC_CANDIDATES(15): check_syntax, generate_tests, generate_docs, db_inspect, command_policy_check, tool_create_shell, shell_status, product_search, deep_research, business_logic, chaos_testing, cost_estimator, self_confidence, terraform_ops, security_scan_repo (stem leads in classification.json; NOT equivalence verdicts).
 REGISTERED=NO (as a group; members unregistered by construction)
 PLANNER_VISIBLE=PARTIAL (model never sees their schema; execution-time rescue differs per member)
-CANONICAL_PATH_CONNECTED=PARTIAL (2 rewrite + 1 alias members execute; rest fail unknown_tool or alias-rescue)
+CANONICAL_PATH_CONNECTED=PARTIAL (2 rewrite + 1 alias members execute; rest fail unknown_tool or alias-rescue). LIVE (exec.json): fs_glob -> honest unknown_tool; image_generate rewrite FIRES then unknown_tool generate_image + closest-name suggestions.
 REAL_JOE_PROVEN=NO
-PRIMARY_STATE=PARTIALLY_WIRED (group) — per-name rows are checkpoint-4 work
-RECOMMENDED_ACTION=P2: single-winner gate per name; fix image_generate + web_search double-mapping; P3: per-name behavioral equivalence review for the 15
+PRIMARY_STATE=PARTIALLY_WIRED (group) — 2 members live-proven honest-fail; 15 static-candidate equivalence reviews still open
+RECOMMENDED_ACTION=P2: single-winner gate per name (preserve closest-name suggestions); fix image_generate + web_search double-mapping; P3: per-name behavioral equivalence review for the 15
 
 ---
 
@@ -241,13 +244,13 @@ CAPABILITY_ID=GROUP-catalogue-absent-15
 NAME=15 registered tools never selected by 20-goal deterministic corpus
 CATEGORY=tool-group/planner-surface
 SOURCE_FILES=api/src/core/orchestrator/toolCatalog.ts (selectToolsFor) + reachability.json
-IMPLEMENTATION=8 DETERMINISTIC_REFS (ask_user clarify fallback + ANSWER_ONLY; ambiguity_resolver/multi_agent_debate/self_confidence_evaluator ANSWER_ONLY; project_planner pipeline refs; kubernetes_ops infra map; json_query executor-known; execute_python comment-level) + 7 KEYWORD_ONLY_UNOBSERVED (cloud_cost_estimator, docker_swarm_ops, llm_cache, rss_fetch, task_lifecycle, template_manager, video_action)
+IMPLEMENTATION=8 DETERMINISTIC_REFS (ask_user clarify fallback + ANSWER_ONLY; ambiguity_resolver/multi_agent_debate/self_confidence_evaluator ANSWER_ONLY; project_planner pipeline refs; kubernetes_ops infra map; json_query executor-known; execute_python comment-level) + 7 KEYWORD_SELECTABLE (cloud_cost_estimator, docker_swarm_ops, llm_cache, rss_fetch, task_lifecycle, template_manager, video_action — targeted ranks 1-2 on 2 self-grounded + 1 blind goal each; corpus absence was coverage, not a gap). execute_python is dual-story (comment ref + rank-1 selectable).
 REGISTERED=YES (15/15, all with execute())
-PLANNER_VISIBLE=PARTIAL (5/15 PRIORITY-listed: ambiguity_resolver, ask_user, execute_python, kubernetes_ops, multi_agent_debate)
-CANONICAL_PATH_CONNECTED=PARTIAL (8 have non-keyword reachability stories; 7 keyword-only unobserved)
+PLANNER_VISIBLE=PARTIAL (14/15 storied strong: 5 PRIORITY-listed + deterministic refs + 7/7 targeted-selectable ranks 1-2; json_query weakest: executor-known only, keyword rank unprobed)
+CANONICAL_PATH_CONNECTED=PARTIAL (reachability storied; per-tool execution/verification sweep pending)
 REAL_JOE_PROVEN=NO
-PRIMARY_STATE=PARTIALLY_WIRED (group) — none proven dead by absence alone
-RECOMMENDED_ACTION=P3: targeted-goal selection probes for the 7; niche-by-design classification or keyword-map repair
+PRIMARY_STATE=PARTIALLY_WIRED (group) — storied, none dead; json_query reached LEVEL 4 (exec.json value=42)
+RECOMMENDED_ACTION=CLOSED for selection stories except one json_query keyword-rank probe (checkpoint-5 micro-task). Remaining: execution/verification sweep per tool (bulk work, not this group).
 
 ---
 
@@ -280,9 +283,9 @@ SOURCE_FILES=api/src/modules/tools/registry.ts + definitions/*.ts (93 files)
 IMPLEMENTATION=163/163 with execute(), 0 duplicate names. 21 boot-defaulted permissions + 2 defaulted rate limits (enforceContract; source declarations missing).
 REGISTERED=YES
 PLANNER_VISIBLE=PARTIAL (132/163 via keyword router after 32 ROUTER_EXCLUDED; 36/57 PRIORITY resolve; deterministic paths uncounted)
-EXECUTOR_REACHABLE=PARTIAL (bulk assumed; per-tool firewall/pass sweep pending)
+EXECUTOR_REACHABLE=PARTIAL (8 LEVEL-4 spot cases green-or-honest: json_query, search_text, grep, recall_memory pair, fs_glob, image_generate; bulk sweep pending)
 PRIMARY_STATE=UNKNOWN_REQUIRES_INVESTIGATION (bulk — per-tool rows pending; do NOT mark wired from registration alone)
-RECOMMENDED_ACTION=checkpoint-4: firewall/approval sweep + LEVEL-4 spot proofs + high-level capability grouping
+RECOMMENDED_ACTION=checkpoint-5: grouping merge pass + wider firewall/approval sweep; checkpoint-4 delivered spot proofs + selection stories + grouping scaffolding (75 tags/47 singletons/0 untagged)
 
 ---
 
@@ -308,5 +311,74 @@ RECOMMENDED_ACTION=P1 backlog: integrate-or-classify review; provider draft need
 
 ---
 
-END-OF-MUSE-DRAFT-ROWS=14 (7 individual + 5 group + 2 external-cited)
-COVERAGE-DISCLAIMER=This draft covers ONLY what Muse checkpoints 1-3 evidenced. Full matrix requires: high-level capability grouping, services/workers/persistence/deployment rows (NVIDIA scope), per-tool firewall sweep, contract audit per boundary, LEVEL 4-6 reachability proofs, and NVIDIA cross-review (currently BLOCKED).
+---
+
+CAPABILITY_ID=TOOL-search_text
+NAME=search_text (SearchTextTool, UtilityTools.ts:140-211)
+CATEGORY=tool/code-search
+SOURCE_FILES=api/src/modules/tools/definitions/UtilityTools.ts
+IMPLEMENTATION=JS file search (query/pattern + path/glob/regex), workspace-contained via resolveToolPath; CORE_TOOLS member
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163; tags [search, grep, read]; permissions [read]
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=CORE_TOOLS (always on the table) + keyword selectable
+SELECTABLE=YES
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (exec.json): in-workspace fixture -> ok:true total=1; out-of-workspace -> honest path_outside_workspace. LEVEL 4 reached.
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=canonical path incl. firewall + containment; no bypass observed
+INPUT_CONTRACT_VALID=YES (for exercised shape {query, path, glob, maxResults})
+OUTPUT_CONTRACT_VALID=PARTIAL ({matches, total} observed; full schema unsurveyed)
+EVIDENCE_PRODUCED=YES (logs carry search_text=<q> scanned=<n> matches=<m>)
+VERIFICATION_COMPATIBLE=UNKNOWN (verification-consumption sweep pending)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (LEVEL 4 proven; verification-compat unsurveyed)
+RECOMMENDED_ACTION=none for wiring; cover in bulk verification-compat sweep
+
+---
+
+CAPABILITY_ID=TOOL-json_query
+NAME=json_query (JsonQueryTool, ContentTools.ts:122-153)
+CATEGORY=tool/data
+SOURCE_FILES=api/src/modules/tools/definitions/ContentTools.ts
+IMPLEMENTATION=pure dot-notation JSON query ({json, path} -> {value})
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163; tags [data, json]; boot-defaulted permission ->read (source declares none)
+PLANNER_VISIBLE=PARTIAL
+PLANNER_EVIDENCE=PhaseExecutor path-mapper known (:256); absent from 20-goal corpus; targeted rank probe NOT yet run for this name (8/8 targeted probes covered the other absent members)
+SELECTABLE=PARTIAL (deterministic refs only; keyword rank unverified)
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (exec.json): {a:{b:42}} path a.b -> ok:true value=42. LEVEL 4 reached.
+PERMISSION_REACHABLE=YES
+INPUT_CONTRACT_VALID=YES (for exercised shape)
+OUTPUT_CONTRACT_VALID=PARTIAL
+EVIDENCE_PRODUCED=UNKNOWN
+VERIFICATION_COMPATIBLE=UNKNOWN
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (LEVEL 4 proven; selection-rank + verification-compat open)
+RECOMMENDED_ACTION=source-fix its empty permission declaration (WIRING-P2-003); cover in verification sweep
+
+---
+
+CAPABILITY_ID=TOOL-grep-rewrite-name
+NAME=grep (unregistered rewrite source -> search_text, ToolService:526)
+CATEGORY=tool-name/rewrite-covered
+SOURCE_FILES=api/src/modules/services/ToolService.ts (:526 PURE_RENAME, deliberate one-hop per comment)
+IMPLEMENTATION=no registry entry; name resolves to search_text before registry lookup
+REGISTERED=NO
+REGISTRY_EVIDENCE=absent from live 163 by design (covered alias surface, one of 40)
+PLANNER_VISIBLE=PARTIAL (model may utter it; rescue at execution, schema never shown)
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (exec.json): in-workspace -> ok:true total=1, log `start search_text (orig=grep)`; out-of-workspace -> same honest containment refusal as search_text. Rewrite executes end-to-end.
+PERMISSION_REACHABLE=YES (inherits search_text's canonical path)
+CANONICAL_PATH_CONNECTED=YES (via rename)
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (executes; contract = search_text's; planner schema story is rescue-not-first-class)
+RECOMMENDED_ACTION=none for wiring; single-winner gate (WIRING-P2-002) must assert this name's winner
+
+---
+
+END-OF-MUSE-DRAFT-ROWS=17 (10 individual + 5 group + 2 external-cited)
+COVERAGE-DISCLAIMER=This draft covers ONLY what Muse checkpoints 1-4 evidenced. Full matrix requires: high-level capability grouping merge (75-tag scaffolding recorded), services/workers/persistence/deployment rows (NVIDIA scope), bulk per-tool firewall sweep (8 spot cases done), contract audit per boundary, LEVEL 5-6 proofs, and NVIDIA cross-review (currently BLOCKED).

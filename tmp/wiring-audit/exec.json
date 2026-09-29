@@ -1,0 +1,109 @@
+{
+  "generatedAt": "2026-09-29T20:52:25.916Z",
+  "cases": {
+    "json_query:canonical": {
+      "ok": true,
+      "error": null,
+      "outputShape": "{value}",
+      "outputHead": null,
+      "outputTotal": null,
+      "outputValue": "42",
+      "logs": [
+        "[2026-09-29T20:52:25.841Z] start json_query (orig=json_query)"
+      ]
+    },
+    "search_text:canonical": {
+      "ok": false,
+      "error": "path_outside_workspace",
+      "outputShape": "null",
+      "outputHead": null,
+      "outputTotal": null,
+      "outputValue": null,
+      "logs": [
+        "[2026-09-29T20:52:25.860Z] start search_text (orig=search_text)"
+      ]
+    },
+    "grep:rewrite-to-search_text": {
+      "ok": false,
+      "error": "path_outside_workspace",
+      "outputShape": "null",
+      "outputHead": null,
+      "outputTotal": null,
+      "outputValue": null,
+      "logs": [
+        "[2026-09-29T20:52:25.864Z] start search_text (orig=grep)"
+      ]
+    },
+    "search_text:in-workspace": {
+      "ok": true,
+      "error": null,
+      "outputShape": "{matches,total,truncated}",
+      "outputHead": null,
+      "outputTotal": 1,
+      "outputValue": null,
+      "logs": [
+        "[2026-09-29T20:52:25.868Z] start search_text (orig=search_text)",
+        "search_text=WIRING_AUDIT_TOKEN_7f3a scanned=1 matches=1"
+      ]
+    },
+    "grep:in-workspace": {
+      "ok": true,
+      "error": null,
+      "outputShape": "{matches,total,truncated}",
+      "outputHead": null,
+      "outputTotal": 1,
+      "outputValue": null,
+      "logs": [
+        "[2026-09-29T20:52:25.904Z] start search_text (orig=grep)",
+        "search_text=WIRING_AUDIT_TOKEN_7f3a scanned=1 matches=1"
+      ]
+    },
+    "recall_memory:canonical-empty-input": {
+      "ok": true,
+      "error": null,
+      "outputShape": "string",
+      "outputHead": "No relevant memory found.",
+      "outputTotal": null,
+      "outputValue": null,
+      "logs": []
+    },
+    "recall_memory:registry-direct-empty-input": {
+      "ok": false,
+      "error": null,
+      "outputShape": "string",
+      "outputHead": "recall_memory needs a query — say what to look for."
+    },
+    "fs_glob:unregistered-negative": {
+      "ok": false,
+      "error": "unknown_tool: \"fs_glob\"",
+      "outputShape": "undefined",
+      "outputHead": null,
+      "outputTotal": null,
+      "outputValue": null,
+      "logs": [
+        "[2026-09-29T20:52:25.913Z] start fs_glob (orig=fs_glob)",
+        "unknown_tool: \"fs_glob\" is not registered"
+      ]
+    },
+    "image_generate:broken-rewrite": {
+      "ok": false,
+      "error": "unknown_tool: \"generate_image\" — did you mean: image_studio, ci_generate_pipeline?",
+      "outputShape": "undefined",
+      "outputHead": null,
+      "outputTotal": null,
+      "outputValue": null,
+      "logs": [
+        "[2026-09-29T20:52:25.914Z] start generate_image (orig=image_generate)",
+        "unknown_tool: \"generate_image\" is not registered (closest: image_studio, ci_generate_pipeline)"
+      ]
+    }
+  },
+  "sessionRoot": "D:\\Joe\\muse-worktree\\data\\projects\\session-audit-sess",
+  "fixtures": {
+    "before": [
+      "spot-a.txt",
+      "spot-b.txt"
+    ],
+    "removed": true
+  }
+}

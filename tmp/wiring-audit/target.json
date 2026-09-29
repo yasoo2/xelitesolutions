@@ -1,0 +1,894 @@
+{
+  "generatedAt": "2026-09-29T20:44:30.245Z",
+  "targetVerdicts": {
+    "cloud_cost_estimator": {
+      "registered": true,
+      "hasExecute": true,
+      "description": "Estimate cloud costs.",
+      "tags": [
+        "cost",
+        "elite"
+      ],
+      "required": [
+        "resources"
+      ],
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "perGoal": [
+        {
+          "kind": "SELF_NAME",
+          "goal": "use cloud cost estimator for this task",
+          "rank30": {
+            "rank": 1,
+            "score": 17.2
+          },
+          "rankFull": {
+            "rank": 1,
+            "score": 17.2
+          },
+          "top3": [
+            "cloud_cost_estimator:17.2",
+            "ask_user:7.1",
+            "user_browser:7.1"
+          ],
+          "selectedCount30": 30
+        },
+        {
+          "kind": "SELF_DESC",
+          "goal": "I need: Estimate cloud costs.",
+          "rank30": {
+            "rank": 1,
+            "score": 7
+          },
+          "rankFull": {
+            "rank": 1,
+            "score": 7
+          },
+          "top3": [
+            "cloud_cost_estimator:7",
+            "terraform_manager:2.6",
+            "ask_user:1"
+          ],
+          "selectedCount30": 15
+        },
+        {
+          "kind": "HAND",
+          "goal": "estimate the monthly cloud hosting cost for deploying this app",
+          "rank30": {
+            "rank": 2,
+            "score": 13.2
+          },
+          "rankFull": {
+            "rank": 2,
+            "score": 13.2
+          },
+          "top3": [
+            "deploy_pages:21.1",
+            "cloud_cost_estimator:13.2",
+            "deploy_project:10.4"
+          ],
+          "selectedCount30": 24
+        }
+      ]
+    },
+    "docker_swarm_ops": {
+      "registered": true,
+      "hasExecute": true,
+      "description": "Manage Docker Swarm services and stacks.",
+      "tags": [
+        "infrastructure",
+        "docker",
+        "swarm"
+      ],
+      "required": [
+        "action"
+      ],
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "perGoal": [
+        {
+          "kind": "SELF_NAME",
+          "goal": "use docker swarm ops for this task",
+          "rank30": {
+            "rank": 1,
+            "score": 20.7
+          },
+          "rankFull": {
+            "rank": 1,
+            "score": 20.7
+          },
+          "top3": [
+            "docker_swarm_ops:20.7",
+            "docker_manager:10.9",
+            "ask_user:7.1"
+          ],
+          "selectedCount30": 30
+        },
+        {
+          "kind": "SELF_DESC",
+          "goal": "I need: Manage Docker Swarm services and stacks.",
+          "rank30": {
+            "rank": 1,
+            "score": 19.3
+          },
+          "rankFull": {
+            "rank": 1,
+            "score": 19.3
+          },
+          "top3": [
+            "docker_swarm_ops:19.3",
+            "docker_manager:12.2",
+            "alert_manager:3.4"
+          ],
+          "selectedCount30": 27
+        },
+        {
+          "kind": "HAND",
+          "goal": "scale the docker swarm service to three replicas",
+          "rank30": {
+            "rank": 1,
+            "score": 17.8
+          },
+          "rankFull": {
+            "rank": 1,
+            "score": 17.8
+          },
+          "top3": [
+            "docker_swarm_ops:17.8",
+            "docker_manager:8.8",
+            "enterprise_platform_foundation:4"
+          ],
+          "selectedCount30": 15
+        }
+      ]
+    },
+    "llm_cache": {
+      "registered": true,
+      "hasExecute": true,
+      "description": "Cache LLM responses to reduce costs and improve speed",
+      "tags": [
+        "cache",
+        "llm",
+        "optimization",
+        "cost-reduction"
+      ],
+      "required": [
+        "action"
+      ],
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "perGoal": [
+        {
+          "kind": "SELF_NAME",
+          "goal": "use llm cache for this task",
+          "rank30": {
+            "rank": 1,
+            "score": 14.3
+          },
+          "rankFull": {
+            "rank": 1,
+            "score": 14.3
+          },
+          "top3": [
+            "llm_cache:14.3",
+            "cache_manager:7.8",
+            "ask_user:7.1"
+          ],
+          "selectedCount30": 30
+        },
+        {
+          "kind": "SELF_DESC",
+          "goal": "I need: Cache LLM responses to reduce costs and improve speed",
+          "rank30": {
+            "rank": 1,
+            "score": 19.1
+          },
+          "rankFull": {
+            "rank": 1,
+            "score": 19.1
+          },
+          "top3": [
+            "llm_cache:19.1",
+            "cache_manager:7.8",
+            "browser_performance:3"
+          ],
+          "selectedCount30": 22
+        },
+        {
+          "kind": "HAND",
+          "goal": "look up the cached llm response for this prompt to save tokens",
+          "rank30": {
+            "rank": 2,
+            "score": 7.6
+          },
+          "rankFull": {
+            "rank": 2,
+            "score": 7.6
+          },
+          "top3": [
+            "browser_design_tokens:8",
+            "llm_cache:7.6",
+            "browser_save_pdf:6"
+          ],
+          "selectedCount30": 27
+        }
+      ]
+    },
+    "rss_fetch": {
+      "registered": true,
+      "hasExecute": true,
+      "description": "Fetch and parse an RSS feed.",
+      "tags": [
+        "network",
+        "rss"
+      ],
+      "required": [
+        "url"
+      ],
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "perGoal": [
+        {
+          "kind": "SELF_NAME",
+          "goal": "use rss fetch for this task",
+          "rank30": {
+            "rank": 1,
+            "score": 14.2
+          },
+          "rankFull": {
+            "rank": 1,
+            "score": 14.2
+          },
+          "top3": [
+            "rss_fetch:14.2",
+            "ask_user:7.1",
+            "user_browser:7.1"
+          ],
+          "selectedCount30": 30
+        },
+        {
+          "kind": "SELF_DESC",
+          "goal": "I need: Fetch and parse an RSS feed.",
+          "rank30": {
+            "rank": 1,
+            "score": 16.2
+          },
+          "rankFull": {
+            "rank": 1,
+            "score": 16.2
+          },
+          "top3": [
+            "rss_fetch:16.2",
+            "http_fetch:5.2",
+            "business_logic_parser:5"
+          ],
+          "selectedCount30": 14
+        },
+        {
+          "kind": "HAND",
+          "goal": "fetch the latest items from the project rss feed",
+          "rank30": {
+            "rank": 1,
+            "score": 15.2
+          },
+          "rankFull": {
+            "rank": 1,
+            "score": 15.2
+          },
+          "top3": [
+            "rss_fetch:15.2",
+            "http_fetch:5.2",
+            "import_project:4.1"
+          ],
+          "selectedCount30": 30
+        }
+      ]
+    },
+    "task_lifecycle": {
+      "registered": true,
+      "hasExecute": true,
+      "description": "Manage the lifecycle of an agent task loop. Use this to update the UI with your current status, summary, and mode.",
+      "tags": [
+        "system",
+        "ui",
+        "lifecycle"
+      ],
+      "required": [
+        "action"
+      ],
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "perGoal": [
+        {
+          "kind": "SELF_NAME",
+          "goal": "use task lifecycle for this task",
+          "rank30": {
+            "rank": 1,
+            "score": 15
+          },
+          "rankFull": {
+            "rank": 1,
+            "score": 15
+          },
+          "top3": [
+            "task_lifecycle:15",
+            "ask_user:7.1",
+            "user_browser:7.1"
+          ],
+          "selectedCount30": 30
+        },
+        {
+          "kind": "SELF_DESC",
+          "goal": "I need: Manage the lifecycle of an agent task loop.",
+          "rank30": {
+            "rank": 1,
+            "score": 16.4
+          },
+          "rankFull": {
+            "rank": 1,
+            "score": 16.4
+          },
+          "top3": [
+            "task_lifecycle:16.4",
+            "todo_write:5.7",
+            "browser_smart_agent:5.5"
+          ],
+          "selectedCount30": 30
+        },
+        {
+          "kind": "HAND",
+          "goal": "advance the task lifecycle state from planned to in progress",
+          "rank30": {
+            "rank": 1,
+            "score": 14.2
+          },
+          "rankFull": {
+            "rank": 1,
+            "score": 14.2
+          },
+          "top3": [
+            "task_lifecycle:14.2",
+            "project_state_manager:11.5",
+            "file_edit_advanced:9"
+          ],
+          "selectedCount30": 19
+        }
+      ]
+    },
+    "template_manager": {
+      "registered": true,
+      "hasExecute": true,
+      "description": "Get pre-built templates for common project types (React, Node, Express, etc.)",
+      "tags": [
+        "templates",
+        "scaffold",
+        "boilerplate"
+      ],
+      "required": [
+        "templateType"
+      ],
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "perGoal": [
+        {
+          "kind": "SELF_NAME",
+          "goal": "use template manager for this task",
+          "rank30": {
+            "rank": 1,
+            "score": 11.8
+          },
+          "rankFull": {
+            "rank": 1,
+            "score": 11.8
+          },
+          "top3": [
+            "template_manager:11.8",
+            "ask_user:7.1",
+            "user_browser:7.1"
+          ],
+          "selectedCount30": 30
+        },
+        {
+          "kind": "SELF_DESC",
+          "goal": "I need: Get pre-built templates for common project types (React, Node, Express, etc.)",
+          "rank30": {
+            "rank": 1,
+            "score": 12.5
+          },
+          "rankFull": {
+            "rank": 1,
+            "score": 12.5
+          },
+          "top3": [
+            "template_manager:12.5",
+            "react_project:11.2",
+            "project_run:8.2"
+          ],
+          "selectedCount30": 30
+        },
+        {
+          "kind": "HAND",
+          "goal": "list the available project templates to scaffold from",
+          "rank30": {
+            "rank": 2,
+            "score": 6.6
+          },
+          "rankFull": {
+            "rank": 2,
+            "score": 6.6
+          },
+          "top3": [
+            "scaffold_project:9.3",
+            "template_manager:6.6",
+            "scaffold_full_stack:6.3"
+          ],
+          "selectedCount30": 30
+        }
+      ]
+    },
+    "video_action": {
+      "registered": true,
+      "hasExecute": true,
+      "description": "Edit, convert, and process videos/audio using FFMPEG. Machine must have ffmpeg installed.",
+      "tags": [
+        "media",
+        "video",
+        "audio",
+        "ffmpeg"
+      ],
+      "required": [
+        "action",
+        "inputFile",
+        "outputFile"
+      ],
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "perGoal": [
+        {
+          "kind": "SELF_NAME",
+          "goal": "use video action for this task",
+          "rank30": {
+            "rank": 1,
+            "score": 12.9
+          },
+          "rankFull": {
+            "rank": 1,
+            "score": 12.9
+          },
+          "top3": [
+            "video_action:12.9",
+            "ask_user:9.4",
+            "user_browser:7.8"
+          ],
+          "selectedCount30": 30
+        },
+        {
+          "kind": "SELF_DESC",
+          "goal": "I need: Edit, convert, and process videos/audio using FFMPEG.",
+          "rank30": {
+            "rank": 1,
+            "score": 12.8
+          },
+          "rankFull": {
+            "rank": 1,
+            "score": 12.8
+          },
+          "top3": [
+            "video_action:12.8",
+            "file_edit_advanced:7.1",
+            "project_edit:7.1"
+          ],
+          "selectedCount30": 30
+        },
+        {
+          "kind": "HAND",
+          "goal": "press play on the embedded video and confirm it started",
+          "rank30": {
+            "rank": 1,
+            "score": 9
+          },
+          "rankFull": {
+            "rank": 1,
+            "score": 9
+          },
+          "top3": [
+            "video_action:9",
+            "archive_files:4",
+            "api_project:1"
+          ],
+          "selectedCount30": 15
+        }
+      ]
+    },
+    "execute_python": {
+      "registered": true,
+      "hasExecute": true,
+      "description": "Execute a Python 3 script in an isolated environment. Use this for mathematical calculations, data analysis, file processing, JSON/CSV manipulation, or any computation where precision is critical. The",
+      "tags": [
+        "python",
+        "compute",
+        "math",
+        "data",
+        "analysis",
+        "code-interpreter"
+      ],
+      "required": [
+        "code"
+      ],
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "perGoal": [
+        {
+          "kind": "SELF_NAME",
+          "goal": "use execute python for this task",
+          "rank30": {
+            "rank": 1,
+            "score": 13.7
+          },
+          "rankFull": {
+            "rank": 1,
+            "score": 13.7
+          },
+          "top3": [
+            "execute_python:13.7",
+            "python_builder:7.8",
+            "shell_execute:7.8"
+          ],
+          "selectedCount30": 30
+        },
+        {
+          "kind": "SELF_DESC",
+          "goal": "I need: Execute a Python 3 script in an isolated environment.",
+          "rank30": {
+            "rank": 1,
+            "score": 16
+          },
+          "rankFull": {
+            "rank": 1,
+            "score": 16
+          },
+          "top3": [
+            "execute_python:16",
+            "python_builder:7.8",
+            "shell_execute:7.8"
+          ],
+          "selectedCount30": 25
+        },
+        {
+          "kind": "HAND",
+          "goal": "run this python snippet and show me its output",
+          "rank30": {
+            "rank": 1,
+            "score": 7.8
+          },
+          "rankFull": {
+            "rank": 1,
+            "score": 7.8
+          },
+          "top3": [
+            "execute_python:7.8",
+            "python_builder:7.8",
+            "project_run:7.2"
+          ],
+          "selectedCount30": 30
+        }
+      ]
+    }
+  },
+  "groupingDraft": {
+    "method": "primary-tag (tags[0]) clustering over 163 registered tools",
+    "distinctPrimaryTags": 75,
+    "untaggedCount": 0,
+    "untagged": [],
+    "clusterSizes": [
+      {
+        "tag": "browser",
+        "count": 33
+      },
+      {
+        "tag": "analysis",
+        "count": 10
+      },
+      {
+        "tag": "fs",
+        "count": 8
+      },
+      {
+        "tag": "repo",
+        "count": 5
+      },
+      {
+        "tag": "testing",
+        "count": 4
+      },
+      {
+        "tag": "api",
+        "count": 4
+      },
+      {
+        "tag": "network",
+        "count": 4
+      },
+      {
+        "tag": "security",
+        "count": 3
+      },
+      {
+        "tag": "shell",
+        "count": 3
+      },
+      {
+        "tag": "database",
+        "count": 3
+      },
+      {
+        "tag": "infrastructure",
+        "count": 3
+      },
+      {
+        "tag": "github",
+        "count": 3
+      },
+      {
+        "tag": "project",
+        "count": 2
+      },
+      {
+        "tag": "memory",
+        "count": 2
+      },
+      {
+        "tag": "planning",
+        "count": 2
+      },
+      {
+        "tag": "execution",
+        "count": 2
+      },
+      {
+        "tag": "run",
+        "count": 2
+      },
+      {
+        "tag": "deploy",
+        "count": 2
+      },
+      {
+        "tag": "build",
+        "count": 2
+      },
+      {
+        "tag": "performance",
+        "count": 2
+      },
+      {
+        "tag": "scaffold",
+        "count": 2
+      },
+      {
+        "tag": "git",
+        "count": 2
+      },
+      {
+        "tag": "code",
+        "count": 2
+      },
+      {
+        "tag": "data",
+        "count": 2
+      },
+      {
+        "tag": "search",
+        "count": 2
+      },
+      {
+        "tag": "cache",
+        "count": 2
+      },
+      {
+        "tag": "python",
+        "count": 2
+      },
+      {
+        "tag": "quality",
+        "count": 2
+      },
+      {
+        "tag": "knowledge",
+        "count": 2
+      },
+      {
+        "tag": "google",
+        "count": 1
+      },
+      {
+        "tag": "generation",
+        "count": 1
+      },
+      {
+        "tag": "codegen",
+        "count": 1
+      },
+      {
+        "tag": "audit",
+        "count": 1
+      },
+      {
+        "tag": "cost",
+        "count": 1
+      },
+      {
+        "tag": "decision",
+        "count": 1
+      },
+      {
+        "tag": "engineering",
+        "count": 1
+      },
+      {
+        "tag": "capability",
+        "count": 1
+      },
+      {
+        "tag": "enterprise",
+        "count": 1
+      },
+      {
+        "tag": "orion",
+        "count": 1
+      },
+      {
+        "tag": "qa",
+        "count": 1
+      },
+      {
+        "tag": "web",
+        "count": 1
+      },
+      {
+        "tag": "edit",
+        "count": 1
+      },
+      {
+        "tag": "forms",
+        "count": 1
+      },
+      {
+        "tag": "import",
+        "count": 1
+      },
+      {
+        "tag": "images",
+        "count": 1
+      },
+      {
+        "tag": "orders",
+        "count": 1
+      },
+      {
+        "tag": "profile",
+        "count": 1
+      },
+      {
+        "tag": "review",
+        "count": 1
+      },
+      {
+        "tag": "error",
+        "count": 1
+      },
+      {
+        "tag": "joe",
+        "count": 1
+      },
+      {
+        "tag": "utility",
+        "count": 1
+      },
+      {
+        "tag": "npm",
+        "count": 1
+      },
+      {
+        "tag": "user",
+        "count": 1
+      },
+      {
+        "tag": "auth",
+        "count": 1
+      },
+      {
+        "tag": "mobile",
+        "count": 1
+      },
+      {
+        "tag": "i18n",
+        "count": 1
+      },
+      {
+        "tag": "pipeline",
+        "count": 1
+      },
+      {
+        "tag": "dev",
+        "count": 1
+      },
+      {
+        "tag": "media",
+        "count": 1
+      },
+      {
+        "tag": "docker",
+        "count": 1
+      },
+      {
+        "tag": "alerts",
+        "count": 1
+      },
+      {
+        "tag": "go",
+        "count": 1
+      },
+      {
+        "tag": "java",
+        "count": 1
+      },
+      {
+        "tag": "logging",
+        "count": 1
+      },
+      {
+        "tag": "monitoring",
+        "count": 1
+      },
+      {
+        "tag": "state",
+        "count": 1
+      },
+      {
+        "tag": "templates",
+        "count": 1
+      },
+      {
+        "tag": "files",
+        "count": 1
+      },
+      {
+        "tag": "ci",
+        "count": 1
+      },
+      {
+        "tag": "refactor",
+        "count": 1
+      },
+      {
+        "tag": "documentation",
+        "count": 1
+      },
+      {
+        "tag": "system",
+        "count": 1
+      },
+      {
+        "tag": "communication",
+        "count": 1
+      },
+      {
+        "tag": "payments",
+        "count": 1
+      },
+      {
+        "tag": "task",
+        "count": 1
+      }
+    ]
+  }
+}
