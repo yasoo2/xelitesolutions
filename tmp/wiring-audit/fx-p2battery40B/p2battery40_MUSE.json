@@ -1,0 +1,1882 @@
+{
+ "probe": "p2battery40",
+ "tree": "muse",
+ "registrySize": 163,
+ "coreTools": [
+  "central_answer",
+  "read_file",
+  "write_file",
+  "file_edit",
+  "delete_file",
+  "inspect_directory",
+  "search_files",
+  "search_text",
+  "shell_execute"
+ ],
+ "batteryHand": 46,
+ "batteryDesc": 53,
+ "missingFromRegistry": [],
+ "summary": {
+  "watched": 53,
+  "retrievable": 53,
+  "neverRetrieved": 0,
+  "neverRetrievedNames": [],
+  "handOnly": [],
+  "descOnly": [],
+  "both": [
+   "api_tester",
+   "architect_plan",
+   "auto_refactor",
+   "business_logic_parser",
+   "cache_manager",
+   "chaos_test_plan",
+   "cloud_cost_estimator",
+   "dead_code_detector",
+   "dev_server_start",
+   "docker_swarm_ops",
+   "enterprise_platform_foundation",
+   "error_recovery",
+   "image_studio",
+   "inspect_symbol",
+   "large_data_seeder",
+   "llm_cache",
+   "load_tester",
+   "logger",
+   "memorize_codebase",
+   "orion_business_foundation",
+   "performance_analyzer",
+   "performance_profile",
+   "project_state_manager",
+   "query_optimizer",
+   "recall_memory",
+   "repo_diff_summary",
+   "repo_run_command",
+   "rss_fetch",
+   "secrets_scan_repo",
+   "shell_check_status",
+   "task_lifecycle",
+   "video_action",
+   "visual_compare",
+   "archive_files",
+   "browser_action",
+   "browser_vision",
+   "codebase_outline",
+   "compliance_validator",
+   "dependency_graph",
+   "execute_python",
+   "go_builder",
+   "html_extract",
+   "http_fetch",
+   "java_builder",
+   "knowledge_search",
+   "notify_user",
+   "progressive_generator",
+   "python_builder",
+   "query_datasource",
+   "search_api",
+   "sonar_analysis",
+   "todo_write",
+   "website_full_pipeline"
+  ]
+ },
+ "perName": {
+  "api_tester": {
+   "name": "api_tester",
+   "inRegistry": true,
+   "handHits": [
+    {
+     "goal": "hand:load",
+     "rank": 3,
+     "score": 10.7
+    },
+    {
+     "goal": "hand:seed",
+     "rank": 3,
+     "score": 5.6
+    },
+    {
+     "goal": "hand:docs",
+     "rank": 6,
+     "score": 5.1
+    },
+    {
+     "goal": "hand:search-api",
+     "rank": 6,
+     "score": 5.1
+    },
+    {
+     "goal": "hand:errors",
+     "rank": 7,
+     "score": 5.6
+    },
+    {
+     "goal": "hand:browser-act",
+     "rank": 16,
+     "score": 1
+    }
+   ],
+   "descRank": 1,
+   "descScore": 17.7,
+   "bestHandRank": 3,
+   "bestHandScore": 10.7,
+   "retrievable": true
+  },
+  "architect_plan": {
+   "name": "architect_plan",
+   "inRegistry": true,
+   "handHits": [
+    {
+     "goal": "hand:design",
+     "rank": 12,
+     "score": 2.4
+    },
+    {
+     "goal": "hand:docs",
+     "rank": 18,
+     "score": 0.8
+    },
+    {
+     "goal": "hand:rss",
+     "rank": 21,
+     "score": 0.5
+    }
+   ],
+   "descRank": 1,
+   "descScore": 20.5,
+   "bestHandRank": 12,
+   "bestHandScore": 2.4,
+   "retrievable": true
+  },
+  "auto_refactor": {
+   "name": "auto_refactor",
+   "inRegistry": true,
+   "handHits": [
+    {
+     "goal": "hand:review",
+     "rank": 1,
+     "score": 11.4
+    },
+    {
+     "goal": "hand:refactor-dead",
+     "rank": 1,
+     "score": 17.5
+    },
+    {
+     "goal": "hand:ci",
+     "rank": 11,
+     "score": 2.9
+    },
+    {
+     "goal": "hand:sonar",
+     "rank": 11,
+     "score": 4
+    },
+    {
+     "goal": "hand:memory-recall",
+     "rank": 19,
+     "score": 2.1
+    },
+    {
+     "goal": "hand:packages",
+     "rank": 21,
+     "score": 2.1
+    },
+    {
+     "goal": "hand:knowledge",
+     "rank": 22,
+     "score": 0.7
+    }
+   ],
+   "descRank": 1,
+   "descScore": 21.4,
+   "bestHandRank": 1,
+   "bestHandScore": 11.4,
+   "retrievable": true
+  },
+  "business_logic_parser": {
+   "name": "business_logic_parser",
+   "inRegistry": true,
+   "handHits": [
+    {
+     "goal": "hand:files",
+     "rank": 3,
+     "score": 8
+    },
+    {
+     "goal": "hand:video",
+     "rank": 15,
+     "score": 0.7
+    },
+    {
+     "goal": "hand:readability",
+     "rank": 22,
+     "score": 0.7
+    }
+   ],
+   "descRank": 1,
+   "descScore": 20.4,
+   "bestHandRank": 3,
+   "bestHandScore": 8,
+   "retrievable": true
+  },
+  "cache_manager": {
+   "name": "cache_manager",
+   "inRegistry": true,
+   "handHits": [
+    {
+     "goal": "hand:cache",
+     "rank": 3,
+     "score": 7.8
+    },
+    {
+     "goal": "hand:memory-ar",
+     "rank": 7,
+     "score": 0.8
+    },
+    {
+     "goal": "hand:payment",
+     "rank": 12,
+     "score": 1.9
+    },
+    {
+     "goal": "hand:perf",
+     "rank": 15,
+     "score": 1.9
+    }
+   ],
+   "descRank": 1,
+   "descScore": 17.8,
+   "bestHandRank": 3,
+   "bestHandScore": 7.8,
+   "retrievable": true
+  },
+  "chaos_test_plan": {
+   "name": "chaos_test_plan",
+   "inRegistry": true,
+   "handHits": [
+    {
+     "goal": "hand:seed",
+     "rank": 8,
+     "score": 4.9
+    },
+    {
+     "goal": "hand:errors",
+     "rank": 10,
+     "score": 4.9
+    },
+    {
+     "goal": "hand:load",
+     "rank": 11,
+     "score": 4.9
+    },
+    {
+     "goal": "hand:docs",
+     "rank": 20,
+     "score": 0.8
+    }
+   ],
+   "descRank": 1,
+   "descScore": 20.3,
+   "bestHandRank": 8,
+   "bestHandScore": 4.9,
+   "retrievable": true
+  },
+  "cloud_cost_estimator": {
+   "name": "cloud_cost_estimator",
+   "inRegistry": true,
+   "handHits": [
+    {
+     "goal": "hand:cloud",
+     "rank": 2,
+     "score": 13.2
+    }
+   ],
+   "descRank": 1,
+   "descScore": 19,
+   "bestHandRank": 2,
+   "bestHandScore": 13.2,
+   "retrievable": true
+  },
+  "dead_code_detector": {
+   "name": "dead_code_detector",
+   "inRegistry": true,
+   "handHits": [
+    {
+     "goal": "hand:refactor-dead",
+     "rank": 2,
+     "score": 16.2
+    },
+    {
+     "goal": "hand:pdf",
+     "rank": 4,
+     "score": 1
+    },
+    {
+     "goal": "hand:review",
+     "rank": 5,
+     "score": 5.3
+    },
+    {
+     "goal": "hand:symbols",
+     "rank": 5,
+     "score": 0.9
+    },
+    {
+     "goal": "hand:sonar",
+     "rank": 5,
+     "score": 6.7
+    },
+    {
+     "goal": "hand:files",
+     "rank": 8,
+     "score": 3.6
+    },
+    {
+     "goal": "hand:report",
+     "rank": 11,
+     "score": 0.7
+    },
+    {
+     "goal": "hand:design",
+     "rank": 15,
+     "score": 1
+    },
+    {
+     "goal": "hand:seed",
+     "rank": 16,
+     "score": 3
+    },
+    {
+     "goal": "hand:perf",
+     "rank": 19,
+     "score": 0.7
+    },
+    {
+     "goal": "hand:links",
+     "rank": 19,
+     "score": 0.9
+    }
+   ],
+   "descRank": 1,
+   "descScore": 27.9,
+   "bestHandRank": 2,
+   "bestHandScore": 16.2,
+   "retrievable": true
+  },
+  "dev_server_start": {
+   "name": "dev_server_start",
+   "inRegistry": true,
+   "handHits": [
+    {
+     "goal": "hand:recover",
+     "rank": 1,
+     "score": 15.6
+    },
+    {
+     "goal": "hand:review",
+     "rank": 17,
+     "score": 2.4
+    },
+    {
+     "goal": "hand:refactor-dead",
+     "rank": 21,
+     "score": 2.4
+    }
+   ],
+   "descRank": 1,
+   "descScore": 23,
+   "bestHandRank": 1,
+   "bestHandScore": 15.6,
+   "retrievable": true
+  },
+  "docker_swarm_ops": {
+   "name": "docker_swarm_ops",
+   "inRegistry": true,
+   "handHits": [
+    {
+     "goal": "hand:cache",
+     "rank": 1,
+     "score": 9
+    },
+    {
+     "goal": "hand:docker",
+     "rank": 2,
+     "score": 10
+    },
+    {
+     "goal": "hand:cloud",
+     "rank": 5,
+     "score": 2.4
+    }
+   ],
+   "descRank": 1,
+   "descScore": 23.3,
+   "bestHandRank": 1,
+   "bestHandScore": 9,
+   "retrievable": true
+  },
+  "enterprise_platform_foundation": {
+   "name": "enterprise_platform_foundation",
+   "inRegistry": true,
+   "handHits": [
+    {
+     "goal": "hand:notify",
+     "rank": 4,
+     "score": 1.7
+    },
+    {
+     "goal": "hand:docker",
+     "rank": 5,
+     "score": 4
+    },
+    {
+     "goal": "hand:deploy",
+     "rank": 7,
+     "score": 0.9
+    },
+    {
+     "goal": "hand:payment",
+     "rank": 9,
+     "score": 3.9
+    },
+    {
+     "goal": "hand:search-api",
+     "rank": 13,
+     "score": 4.6
+    },
+    {
+     "goal": "hand:sonar",
+     "rank": 13,
+     "score": 4
+    },
+    {
+     "goal": "hand:ci",
+     "rank": 18,
+     "score": 1.7
+    }
+   ],
+   "descRank": 1,
+   "descScore": 40.8,
+   "bestHandRank": 4,
+   "bestHandScore": 1.7,
+   "retrievable": true
+  },
+  "error_recovery": {
+   "name": "error_recovery",
+   "inRegistry": true,
+   "handHits": [
+    {
+     "goal": "hand:errors",
+     "rank": 1,
+     "score": 15.8
+    },
+    {
+     "goal": "hand:terminal",
+     "rank": 2,
+     "score": 7.8
+    },
+    {
+     "goal": "hand:recover",
+     "rank": 2,
+     "score": 8
+    },
+    {
+     "goal": "hand:report",
+     "rank": 13,
+     "score": 0.7
+    },
+    {
+     "goal": "hand:perf",
+     "rank": 21,
+     "score": 0.7
+    }
+   ],
+   "descRank": 1,
+   "descScore": 35.4,
+   "bestHandRank": 1,
+   "bestHandScore": 15.8,
+   "retrievable": true
+  },
+  "image_studio": {
+   "name": "image_studio",
+   "inRegistry": true,
+   "handHits": [
+    {
+     "goal": "hand:email",
+     "rank": 4,
+     "score": 1
+    },
+    {
+     "goal": "hand:notify",
+     "rank": 6,
+     "score": 1
+    },
+    {
+     "goal": "hand:recover",
+     "rank": 7,
+     "score": 0.7
+    },
+    {
+     "goal": "hand:design",
+     "rank": 10,
+     "score": 3.1
+    },
+    {
+     "goal": "hand:files",
+     "rank": 15,
+     "score": 1
+    },
+    {
+     "goal": "hand:python",
+     "rank": 19,
+     "score": 1.7
+    },
+    {
+     "goal": "hand:testing",
+     "rank": 20,
+     "score": 0.7
+    }
+   ],
+   "descRank": 1,
+   "descScore": 29.4,
+   "bestHandRank": 4,
+   "bestHandScore": 1,
+   "retrievable": true
+  },
+  "inspect_symbol": {
+   "name": "inspect_symbol",
+   "inRegistry": true,
+   "handHits": [
+    {
+     "goal": "hand:symbols",
+     "rank": 2,
+     "score": 5
+    },
+    {
+     "goal": "hand:docs",
+     "rank": 3,
+     "score": 7.1
+    },
+    {
+     "goal": "hand:review",
+     "rank": 11,
+     "score": 3.4
+    },
+    {
+     "goal": "hand:refactor-dead",
+     "rank": 13,
+     "score": 3.4
+    },
+    {
+     "goal": "hand:video",
+     "rank": 17,
+     "score": 0.7
+    },
+    {
+     "goal": "hand:sonar",
+     "rank": 17,
+     "score": 2.4
+    },
+    {
+     "goal": "hand:readability",
+     "rank": 24,
+     "score": 0.7
+    }
+   ],
+   "descRank": 1,
+   "descScore": 20.1,
+   "bestHandRank": 2,
+   "bestHandScore": 5,
+   "retrievable": true
+  },
+  "large_data_seeder": {
+   "name": "large_data_seeder",
+   "inRegistry": true,
+   "handHits": [
+    {
+     "goal": "hand:seed",
+     "rank": 1,
+     "score": 9.3
+    },
+    {
+     "goal": "hand:database",
+     "rank": 4,
+     "score": 6.9
+    },
+    {
+     "goal": "hand:python",
+     "rank": 5,
+     "score": 5.6
+    },
+    {
+     "goal": "hand:browser-vision",
+     "rank": 6,
+     "score": 5
+    },
+    {
+     "goal": "hand:compliance",
+     "rank": 6,
+     "score": 5.6
+    },
+    {
+     "goal": "hand:load",
+     "rank": 14,
+     "score": 2.5
+    },
+    {
+     "goal": "hand:knowledge",
+     "rank": 18,
+     "score": 2.1
+    }
+   ],
+   "descRank": 1,
+   "descScore": 22.8,
+   "bestHandRank": 1,
+   "bestHandScore": 9.3,
+   "retrievable": true
+  },
+  "llm_cache": {
+   "name": "llm_cache",
+   "inRegistry": true,
+   "handHits": [
+    {
+     "goal": "hand:cloud",
+     "rank": 3,
+     "score": 3.1
+    },
+    {
+     "goal": "hand:cache",
+     "rank": 5,
+     "score": 7.8
+    }
+   ],
+   "descRank": 1,
+   "descScore": 19.1,
+   "bestHandRank": 3,
+   "bestHandScore": 3.1,
+   "retrievable": true
+  },
+  "load_tester": {
+   "name": "load_tester",
+   "inRegistry": true,
+   "handHits": [
+    {
+     "goal": "hand:load",
+     "rank": 2,
+     "score": 13.6
+    },
+    {
+     "goal": "hand:errors",
+     "rank": 5,
+     "score": 6.2
+    },
+    {
+     "goal": "hand:seed",
+     "rank": 5,
+     "score": 5.6
+    },
+    {
+     "goal": "hand:payment",
+     "rank": 10,
+     "score": 2.6
+    },
+    {
+     "goal": "hand:testing",
+     "rank": 12,
+     "score": 1.4
+    },
+    {
+     "goal": "hand:perf",
+     "rank": 13,
+     "score": 2.6
+    },
+    {
+     "goal": "hand:files",
+     "rank": 17,
+     "score": 1
+    }
+   ],
+   "descRank": 1,
+   "descScore": 19.4,
+   "bestHandRank": 2,
+   "bestHandScore": 13.6,
+   "retrievable": true
+  },
+  "logger": {
+   "name": "logger",
+   "inRegistry": true,
+   "handHits": [
+    {
+     "goal": "hand:files",
+     "rank": 2,
+     "score": 9
+    },
+    {
+     "goal": "hand:errors",
+     "rank": 20,
+     "score": 3
+    }
+   ],
+   "descRank": 1,
+   "descScore": 22.6,
+   "bestHandRank": 2,
+   "bestHandScore": 9,
+   "retrievable": true
+  },
+  "memorize_codebase": {
+   "name": "memorize_codebase",
+   "inRegistry": true,
+   "handHits": [
+    {
+     "goal": "hand:memory-ar",
+     "rank": 4,
+     "score": 3.1
+    },
+    {
+     "goal": "hand:knowledge",
+     "rank": 9,
+     "score": 4.1
+    },
+    {
+     "goal": "hand:sonar",
+     "rank": 9,
+     "score": 4.2
+    },
+    {
+     "goal": "hand:review",
+     "rank": 10,
+     "score": 3.6
+    },
+    {
+     "goal": "hand:refactor-dead",
+     "rank": 11,
+     "score": 3.6
+    },
+    {
+     "goal": "hand:security",
+     "rank": 18,
+     "score": 0.9
+    },
+    {
+     "goal": "hand:testing",
+     "rank": 21,
+     "score": 0.7
+    }
+   ],
+   "descRank": 1,
+   "descScore": 21.3,
+   "bestHandRank": 4,
+   "bestHandScore": 3.1,
+   "retrievable": true
+  },
+  "orion_business_foundation": {
+   "name": "orion_business_foundation",
+   "inRegistry": true,
+   "handHits": [
+    {
+     "goal": "hand:cloud",
+     "rank": 8,
+     "score": 0.8
+    },
+    {
+     "goal": "hand:seed",
+     "rank": 9,
+     "score": 4.6
+    },
+    {
+     "goal": "hand:testing",
+     "rank": 23,
+     "score": 0.7
+    }
+   ],
+   "descRank": 1,
+   "descScore": 40.4,
+   "bestHandRank": 8,
+   "bestHandScore": 0.8,
+   "retrievable": true
+  },
+  "performance_analyzer": {
+   "name": "performance_analyzer",
+   "inRegistry": true,
+   "handHits": [
+    {
+     "goal": "hand:perf",
+     "rank": 2,
+     "score": 10.2
+    },
+    {
+     "goal": "hand:report",
+     "rank": 4,
+     "score": 4.4
+    },
+    {
+     "goal": "hand:payment",
+     "rank": 6,
+     "score": 5.8
+    },
+    {
+     "goal": "hand:review",
+     "rank": 21,
+     "score": 1.6
+    }
+   ],
+   "descRank": 1,
+   "descScore": 16.2,
+   "bestHandRank": 2,
+   "bestHandScore": 10.2,
+   "retrievable": true
+  },
+  "performance_profile": {
+   "name": "performance_profile",
+   "inRegistry": true,
+   "handHits": [
+    {
+     "goal": "hand:perf",
+     "rank": 1,
+     "score": 10.5
+    },
+    {
+     "goal": "hand:payment",
+     "rank": 7,
+     "score": 5.8
+    }
+   ],
+   "descRank": 1,
+   "descScore": 12.1,
+   "bestHandRank": 1,
+   "bestHandScore": 10.5,
+   "retrievable": true
+  },
+  "project_state_manager": {
+   "name": "project_state_manager",
+   "inRegistry": true,
+   "handHits": [
+    {
+     "goal": "hand:state",
+     "rank": 1,
+     "score": 11.7
+    },
+    {
+     "goal": "hand:mobile",
+     "rank": 6,
+     "score": 3.1
+    },
+    {
+     "goal": "hand:docker",
+     "rank": 8,
+     "score": 3.1
+    },
+    {
+     "goal": "hand:video",
+     "rank": 11,
+     "score": 1
+    },
+    {
+     "goal": "hand:database",
+     "rank": 11,
+     "score": 3.1
+    },
+    {
+     "goal": "hand:a11y",
+     "rank": 12,
+     "score": 3.1
+    },
+    {
+     "goal": "hand:rss",
+     "rank": 14,
+     "score": 2.7
+    },
+    {
+     "goal": "hand:compliance",
+     "rank": 14,
+     "score": 3.1
+    },
+    {
+     "goal": "hand:readability",
+     "rank": 17,
+     "score": 1
+    }
+   ],
+   "descRank": 1,
+   "descScore": 23.8,
+   "bestHandRank": 1,
+   "bestHandScore": 11.7,
+   "retrievable": true
+  },
+  "query_optimizer": {
+   "name": "query_optimizer",
+   "inRegistry": true,
+   "handHits": [
+    {
+     "goal": "hand:perf",
+     "rank": 3,
+     "score": 8.2
+    },
+    {
+     "goal": "hand:database",
+     "rank": 3,
+     "score": 11.8
+    },
+    {
+     "goal": "hand:payment",
+     "rank": 11,
+     "score": 2.6
+    },
+    {
+     "goal": "hand:report",
+     "rank": 16,
+     "score": 0.7
+    },
+    {
+     "goal": "hand:python",
+     "rank": 18,
+     "score": 1.9
+    },
+    {
+     "goal": "hand:knowledge",
+     "rank": 19,
+     "score": 2.1
+    }
+   ],
+   "descRank": 1,
+   "descScore": 19,
+   "bestHandRank": 3,
+   "bestHandScore": 8.2,
+   "retrievable": true
+  },
+  "recall_memory": {
+   "name": "recall_memory",
+   "inRegistry": true,
+   "handHits": [
+    {
+     "goal": "hand:memory-ar",
+     "rank": 1,
+     "score": 12.9
+    },
+    {
+     "goal": "hand:email",
+     "rank": 6,
+     "score": 1
+    },
+    {
+     "goal": "hand:notify",
+     "rank": 7,
+     "score": 1
+    },
+    {
+     "goal": "hand:memory-recall",
+     "rank": 10,
+     "score": 6
+    },
+    {
+     "goal": "hand:knowledge",
+     "rank": 10,
+     "score": 3.8
+    },
+    {
+     "goal": "hand:files",
+     "rank": 18,
+     "score": 1
+    },
+    {
+     "goal": "hand:search-api",
+     "rank": 20,
+     "score": 2.3
+    }
+   ],
+   "descRank": 1,
+   "descScore": 21.6,
+   "bestHandRank": 1,
+   "bestHandScore": 12.9,
+   "retrievable": true
+  },
+  "repo_diff_summary": {
+   "name": "repo_diff_summary",
+   "inRegistry": true,
+   "handHits": [
+    {
+     "goal": "hand:git-diff",
+     "rank": 1,
+     "score": 13.6
+    },
+    {
+     "goal": "hand:database",
+     "rank": 17,
+     "score": 1
+    },
+    {
+     "goal": "hand:docker",
+     "rank": 18,
+     "score": 1
+    }
+   ],
+   "descRank": 1,
+   "descScore": 22.9,
+   "bestHandRank": 1,
+   "bestHandScore": 13.6,
+   "retrievable": true
+  },
+  "repo_run_command": {
+   "name": "repo_run_command",
+   "inRegistry": true,
+   "handHits": [
+    {
+     "goal": "hand:errors",
+     "rank": 4,
+     "score": 6.3
+    },
+    {
+     "goal": "hand:testing",
+     "rank": 5,
+     "score": 4.1
+    },
+    {
+     "goal": "hand:git-diff",
+     "rank": 6,
+     "score": 5.6
+    },
+    {
+     "goal": "hand:compliance",
+     "rank": 7,
+     "score": 4.9
+    },
+    {
+     "goal": "hand:python",
+     "rank": 9,
+     "score": 4.1
+    },
+    {
+     "goal": "hand:sonar",
+     "rank": 10,
+     "score": 4.1
+    },
+    {
+     "goal": "hand:docker",
+     "rank": 11,
+     "score": 1.8
+    },
+    {
+     "goal": "hand:database",
+     "rank": 14,
+     "score": 1.8
+    },
+    {
+     "goal": "hand:mobile",
+     "rank": 18,
+     "score": 0.8
+    }
+   ],
+   "descRank": 1,
+   "descScore": 25.5,
+   "bestHandRank": 4,
+   "bestHandScore": 6.3,
+   "retrievable": true
+  },
+  "rss_fetch": {
+   "name": "rss_fetch",
+   "inRegistry": true,
+   "handHits": [
+    {
+     "goal": "hand:rss",
+     "rank": 1,
+     "score": 15.2
+    }
+   ],
+   "descRank": 1,
+   "descScore": 16.2,
+   "bestHandRank": 1,
+   "bestHandScore": 15.2,
+   "retrievable": true
+  },
+  "secrets_scan_repo": {
+   "name": "secrets_scan_repo",
+   "inRegistry": true,
+   "handHits": [
+    {
+     "goal": "hand:security",
+     "rank": 1,
+     "score": 16.4
+    },
+    {
+     "goal": "hand:state",
+     "rank": 2,
+     "score": 7.8
+    },
+    {
+     "goal": "hand:git-diff",
+     "rank": 8,
+     "score": 3.7
+    }
+   ],
+   "descRank": 1,
+   "descScore": 31.1,
+   "bestHandRank": 1,
+   "bestHandScore": 16.4,
+   "retrievable": true
+  },
+  "shell_check_status": {
+   "name": "shell_check_status",
+   "inRegistry": true,
+   "handHits": [
+    {
+     "goal": "hand:docker",
+     "rank": 1,
+     "score": 13.7
+    },
+    {
+     "goal": "hand:database",
+     "rank": 1,
+     "score": 13.7
+    },
+    {
+     "goal": "hand:mobile",
+     "rank": 5,
+     "score": 4.7
+    },
+    {
+     "goal": "hand:a11y",
+     "rank": 7,
+     "score": 4.7
+    },
+    {
+     "goal": "hand:compliance",
+     "rank": 10,
+     "score": 4.7
+    }
+   ],
+   "descRank": 1,
+   "descScore": 21.8,
+   "bestHandRank": 1,
+   "bestHandScore": 13.7,
+   "retrievable": true
+  },
+  "task_lifecycle": {
+   "name": "task_lifecycle",
+   "inRegistry": true,
+   "handHits": [
+    {
+     "goal": "hand:todo",
+     "rank": 1,
+     "score": 14.2
+    },
+    {
+     "goal": "hand:state",
+     "rank": 4,
+     "score": 6.2
+    },
+    {
+     "goal": "hand:git-diff",
+     "rank": 15,
+     "score": 1
+    },
+    {
+     "goal": "hand:database",
+     "rank": 18,
+     "score": 1
+    },
+    {
+     "goal": "hand:docker",
+     "rank": 19,
+     "score": 1
+    }
+   ],
+   "descRank": 1,
+   "descScore": 16.4,
+   "bestHandRank": 1,
+   "bestHandScore": 14.2,
+   "retrievable": true
+  },
+  "video_action": {
+   "name": "video_action",
+   "inRegistry": true,
+   "handHits": [
+    {
+     "goal": "hand:video",
+     "rank": 1,
+     "score": 13
+    }
+   ],
+   "descRank": 1,
+   "descScore": 25.7,
+   "bestHandRank": 1,
+   "bestHandScore": 13,
+   "retrievable": true
+  },
+  "visual_compare": {
+   "name": "visual_compare",
+   "inRegistry": true,
+   "handHits": [
+    {
+     "goal": "hand:load",
+     "rank": 16,
+     "score": 2.5
+    }
+   ],
+   "descRank": 1,
+   "descScore": 15,
+   "bestHandRank": 16,
+   "bestHandScore": 2.5,
+   "retrievable": true
+  },
+  "archive_files": {
+   "name": "archive_files",
+   "inRegistry": true,
+   "handHits": [
+    {
+     "goal": "hand:files",
+     "rank": 1,
+     "score": 14.6
+    },
+    {
+     "goal": "hand:readability",
+     "rank": 6,
+     "score": 1.7
+    },
+    {
+     "goal": "hand:todo",
+     "rank": 7,
+     "score": 1.9
+    },
+    {
+     "goal": "hand:video",
+     "rank": 12,
+     "score": 0.7
+    }
+   ],
+   "descRank": 1,
+   "descScore": 30.7,
+   "bestHandRank": 1,
+   "bestHandScore": 14.6,
+   "retrievable": true
+  },
+  "browser_action": {
+   "name": "browser_action",
+   "inRegistry": true,
+   "handHits": [
+    {
+     "goal": "hand:payment",
+     "rank": 14,
+     "score": 0.6
+    },
+    {
+     "goal": "hand:seed",
+     "rank": 18,
+     "score": 2.8
+    },
+    {
+     "goal": "hand:browser-act",
+     "rank": 19,
+     "score": 1
+    }
+   ],
+   "descRank": 1,
+   "descScore": 22.1,
+   "bestHandRank": 14,
+   "bestHandScore": 0.6,
+   "retrievable": true
+  },
+  "browser_vision": {
+   "name": "browser_vision",
+   "inRegistry": true,
+   "handHits": [
+    {
+     "goal": "hand:browser-act",
+     "rank": 4,
+     "score": 4.1
+    },
+    {
+     "goal": "hand:browser-vision",
+     "rank": 7,
+     "score": 4
+    },
+    {
+     "goal": "hand:a11y",
+     "rank": 11,
+     "score": 3.1
+    }
+   ],
+   "descRank": 1,
+   "descScore": 24.8,
+   "bestHandRank": 4,
+   "bestHandScore": 4.1,
+   "retrievable": true
+  },
+  "codebase_outline": {
+   "name": "codebase_outline",
+   "inRegistry": true,
+   "handHits": [
+    {
+     "goal": "hand:review",
+     "rank": 4,
+     "score": 5.7
+    },
+    {
+     "goal": "hand:sonar",
+     "rank": 6,
+     "score": 6.1
+    },
+    {
+     "goal": "hand:refactor-dead",
+     "rank": 7,
+     "score": 5.7
+    },
+    {
+     "goal": "hand:knowledge",
+     "rank": 11,
+     "score": 3.4
+    },
+    {
+     "goal": "hand:video",
+     "rank": 16,
+     "score": 0.7
+    },
+    {
+     "goal": "hand:security",
+     "rank": 17,
+     "score": 0.9
+    },
+    {
+     "goal": "hand:todo",
+     "rank": 21,
+     "score": 1
+    },
+    {
+     "goal": "hand:readability",
+     "rank": 23,
+     "score": 0.7
+    }
+   ],
+   "descRank": 1,
+   "descScore": 23,
+   "bestHandRank": 4,
+   "bestHandScore": 5.7,
+   "retrievable": true
+  },
+  "compliance_validator": {
+   "name": "compliance_validator",
+   "inRegistry": true,
+   "handHits": [
+    {
+     "goal": "hand:compliance",
+     "rank": 2,
+     "score": 9.8
+    },
+    {
+     "goal": "hand:mobile",
+     "rank": 13,
+     "score": 0.8
+    },
+    {
+     "goal": "hand:seo",
+     "rank": 16,
+     "score": 1.6
+    },
+    {
+     "goal": "hand:security",
+     "rank": 16,
+     "score": 1.6
+    },
+    {
+     "goal": "hand:a11y",
+     "rank": 19,
+     "score": 0.8
+    }
+   ],
+   "descRank": 1,
+   "descScore": 14.8,
+   "bestHandRank": 2,
+   "bestHandScore": 9.8,
+   "retrievable": true
+  },
+  "dependency_graph": {
+   "name": "dependency_graph",
+   "inRegistry": true,
+   "handHits": [
+    {
+     "goal": "hand:report",
+     "rank": 12,
+     "score": 0.7
+    },
+    {
+     "goal": "hand:packages",
+     "rank": 12,
+     "score": 6
+    },
+    {
+     "goal": "hand:testing",
+     "rank": 15,
+     "score": 1
+    },
+    {
+     "goal": "hand:seo",
+     "rank": 19,
+     "score": 1
+    },
+    {
+     "goal": "hand:perf",
+     "rank": 20,
+     "score": 0.7
+    }
+   ],
+   "descRank": 1,
+   "descScore": 18.7,
+   "bestHandRank": 12,
+   "bestHandScore": 0.7,
+   "retrievable": true
+  },
+  "execute_python": {
+   "name": "execute_python",
+   "inRegistry": true,
+   "handHits": [
+    {
+     "goal": "hand:python",
+     "rank": 1,
+     "score": 11.2
+    },
+    {
+     "goal": "hand:symbols",
+     "rank": 4,
+     "score": 1
+    },
+    {
+     "goal": "hand:sonar",
+     "rank": 14,
+     "score": 3.6
+    },
+    {
+     "goal": "hand:review",
+     "rank": 19,
+     "score": 1.8
+    },
+    {
+     "goal": "hand:compliance",
+     "rank": 19,
+     "score": 2.5
+    }
+   ],
+   "descRank": 1,
+   "descScore": 16,
+   "bestHandRank": 1,
+   "bestHandScore": 11.2,
+   "retrievable": true
+  },
+  "go_builder": {
+   "name": "go_builder",
+   "inRegistry": true,
+   "handHits": [
+    {
+     "goal": "hand:errors",
+     "rank": 14,
+     "score": 3.6
+    }
+   ],
+   "descRank": 1,
+   "descScore": 15.9,
+   "bestHandRank": 14,
+   "bestHandScore": 3.6,
+   "retrievable": true
+  },
+  "html_extract": {
+   "name": "html_extract",
+   "inRegistry": true,
+   "handHits": [
+    {
+     "goal": "hand:readability",
+     "rank": 3,
+     "score": 7.6
+    },
+    {
+     "goal": "hand:video",
+     "rank": 5,
+     "score": 6.6
+    },
+    {
+     "goal": "hand:design",
+     "rank": 6,
+     "score": 6.6
+    }
+   ],
+   "descRank": 2,
+   "descScore": 19.7,
+   "bestHandRank": 3,
+   "bestHandScore": 7.6,
+   "retrievable": true
+  },
+  "http_fetch": {
+   "name": "http_fetch",
+   "inRegistry": true,
+   "handHits": [
+    {
+     "goal": "hand:rss",
+     "rank": 2,
+     "score": 5.2
+    },
+    {
+     "goal": "hand:readability",
+     "rank": 13,
+     "score": 1
+    }
+   ],
+   "descRank": 1,
+   "descScore": 17,
+   "bestHandRank": 2,
+   "bestHandScore": 5.2,
+   "retrievable": true
+  },
+  "java_builder": {
+   "name": "java_builder",
+   "inRegistry": true,
+   "handHits": [
+    {
+     "goal": "hand:errors",
+     "rank": 15,
+     "score": 3.6
+    }
+   ],
+   "descRank": 1,
+   "descScore": 33,
+   "bestHandRank": 15,
+   "bestHandScore": 3.6,
+   "retrievable": true
+  },
+  "knowledge_search": {
+   "name": "knowledge_search",
+   "inRegistry": true,
+   "handHits": [
+    {
+     "goal": "hand:knowledge",
+     "rank": 1,
+     "score": 13.6
+    },
+    {
+     "goal": "hand:memory-ar",
+     "rank": 3,
+     "score": 7.8
+    },
+    {
+     "goal": "hand:search-api",
+     "rank": 8,
+     "score": 5.1
+    }
+   ],
+   "descRank": 1,
+   "descScore": 16.6,
+   "bestHandRank": 1,
+   "bestHandScore": 13.6,
+   "retrievable": true
+  },
+  "notify_user": {
+   "name": "notify_user",
+   "inRegistry": true,
+   "handHits": [
+    {
+     "goal": "hand:notify",
+     "rank": 3,
+     "score": 5
+    },
+    {
+     "goal": "hand:email",
+     "rank": 5,
+     "score": 1
+    },
+    {
+     "goal": "hand:cache",
+     "rank": 12,
+     "score": 1
+    },
+    {
+     "goal": "hand:testing",
+     "rank": 13,
+     "score": 1.4
+    },
+    {
+     "goal": "hand:packages",
+     "rank": 19,
+     "score": 2.7
+    },
+    {
+     "goal": "hand:ci",
+     "rank": 20,
+     "score": 1.5
+    },
+    {
+     "goal": "hand:seo",
+     "rank": 21,
+     "score": 1
+    },
+    {
+     "goal": "hand:payment",
+     "rank": 22,
+     "score": 0.6
+    }
+   ],
+   "descRank": 1,
+   "descScore": 18.2,
+   "bestHandRank": 3,
+   "bestHandScore": 5,
+   "retrievable": true
+  },
+  "progressive_generator": {
+   "name": "progressive_generator",
+   "inRegistry": true,
+   "handHits": [
+    {
+     "goal": "hand:docker",
+     "rank": 6,
+     "score": 4
+    },
+    {
+     "goal": "hand:video",
+     "rank": 10,
+     "score": 1
+    },
+    {
+     "goal": "hand:review",
+     "rank": 16,
+     "score": 2.6
+    },
+    {
+     "goal": "hand:refactor-dead",
+     "rank": 19,
+     "score": 2.6
+    }
+   ],
+   "descRank": 1,
+   "descScore": 33,
+   "bestHandRank": 6,
+   "bestHandScore": 4,
+   "retrievable": true
+  },
+  "python_builder": {
+   "name": "python_builder",
+   "inRegistry": true,
+   "handHits": [
+    {
+     "goal": "hand:python",
+     "rank": 2,
+     "score": 7.8
+    },
+    {
+     "goal": "hand:docs",
+     "rank": 15,
+     "score": 2.3
+    },
+    {
+     "goal": "hand:errors",
+     "rank": 16,
+     "score": 3.6
+    },
+    {
+     "goal": "hand:load",
+     "rank": 19,
+     "score": 2.3
+    },
+    {
+     "goal": "hand:search-api",
+     "rank": 19,
+     "score": 2.3
+    }
+   ],
+   "descRank": 1,
+   "descScore": 25,
+   "bestHandRank": 2,
+   "bestHandScore": 7.8,
+   "retrievable": true
+  },
+  "query_datasource": {
+   "name": "query_datasource",
+   "inRegistry": true,
+   "handHits": [
+    {
+     "goal": "hand:compliance",
+     "rank": 1,
+     "score": 14.6
+    },
+    {
+     "goal": "hand:seo",
+     "rank": 3,
+     "score": 9
+    },
+    {
+     "goal": "hand:python",
+     "rank": 6,
+     "score": 5.6
+    },
+    {
+     "goal": "hand:perf",
+     "rank": 8,
+     "score": 4.7
+    },
+    {
+     "goal": "hand:database",
+     "rank": 8,
+     "score": 4.7
+    },
+    {
+     "goal": "hand:docs",
+     "rank": 16,
+     "score": 1.7
+    },
+    {
+     "goal": "hand:rss",
+     "rank": 19,
+     "score": 0.9
+    },
+    {
+     "goal": "hand:load",
+     "rank": 21,
+     "score": 1.7
+    },
+    {
+     "goal": "hand:search-api",
+     "rank": 22,
+     "score": 1.7
+    }
+   ],
+   "descRank": 1,
+   "descScore": 20.2,
+   "bestHandRank": 1,
+   "bestHandScore": 14.6,
+   "retrievable": true
+  },
+  "search_api": {
+   "name": "search_api",
+   "inRegistry": true,
+   "handHits": [
+    {
+     "goal": "hand:search-api",
+     "rank": 1,
+     "score": 9.3
+    },
+    {
+     "goal": "hand:knowledge",
+     "rank": 5,
+     "score": 5.1
+    },
+    {
+     "goal": "hand:load",
+     "rank": 12,
+     "score": 2.8
+    },
+    {
+     "goal": "hand:docs",
+     "rank": 12,
+     "score": 2.8
+    }
+   ],
+   "descRank": 2,
+   "descScore": 13.1,
+   "bestHandRank": 1,
+   "bestHandScore": 9.3,
+   "retrievable": true
+  },
+  "sonar_analysis": {
+   "name": "sonar_analysis",
+   "inRegistry": true,
+   "handHits": [
+    {
+     "goal": "hand:sonar",
+     "rank": 1,
+     "score": 11
+    },
+    {
+     "goal": "hand:security",
+     "rank": 19,
+     "score": 0.9
+    }
+   ],
+   "descRank": 1,
+   "descScore": 19.2,
+   "bestHandRank": 1,
+   "bestHandScore": 11,
+   "retrievable": true
+  },
+  "todo_write": {
+   "name": "todo_write",
+   "inRegistry": true,
+   "handHits": [
+    {
+     "goal": "hand:todo",
+     "rank": 2,
+     "score": 6.3
+    },
+    {
+     "goal": "hand:video",
+     "rank": 6,
+     "score": 4
+    },
+    {
+     "goal": "hand:testing",
+     "rank": 7,
+     "score": 3.2
+    },
+    {
+     "goal": "hand:state",
+     "rank": 8,
+     "score": 4.5
+    }
+   ],
+   "descRank": 1,
+   "descScore": 20.5,
+   "bestHandRank": 2,
+   "bestHandScore": 6.3,
+   "retrievable": true
+  },
+  "website_full_pipeline": {
+   "name": "website_full_pipeline",
+   "inRegistry": true,
+   "handHits": [
+    {
+     "goal": "hand:deploy",
+     "rank": 3,
+     "score": 6
+    },
+    {
+     "goal": "hand:links",
+     "rank": 3,
+     "score": 6
+    },
+    {
+     "goal": "hand:memory-recall",
+     "rank": 8,
+     "score": 6.3
+    },
+    {
+     "goal": "hand:ci",
+     "rank": 8,
+     "score": 6.3
+    },
+    {
+     "goal": "hand:files",
+     "rank": 9,
+     "score": 2.9
+    },
+    {
+     "goal": "hand:errors",
+     "rank": 11,
+     "score": 4.8
+    },
+    {
+     "goal": "hand:packages",
+     "rank": 11,
+     "score": 6.3
+    },
+    {
+     "goal": "hand:load",
+     "rank": 17,
+     "score": 2.5
+    },
+    {
+     "goal": "hand:search-api",
+     "rank": 17,
+     "score": 3.1
+    }
+   ],
+   "descRank": 1,
+   "descScore": 23.5,
+   "bestHandRank": 3,
+   "bestHandScore": 6,
+   "retrievable": true
+  }
+ }
+}
