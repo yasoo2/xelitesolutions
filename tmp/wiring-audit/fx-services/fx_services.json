@@ -1,0 +1,689 @@
+﻿[
+    {
+        "service":  "AgentLoopService.ts",
+        "bytes":  86904,
+        "lines":  1510,
+        "exports":  [
+                        "BUILD_DISCIPLINE",
+                        "compactPhaseReceipt",
+                        "PhaseCompletionVoice",
+                        "PhaseVerificationProvenance",
+                        "phaseVerificationProvenance",
+                        "describePhaseCompletion",
+                        "phaseCompletionMessage",
+                        "carriedVerificationCheckIds",
+                        "extractRunReceiptEvidence",
+                        "AcceptanceFailureDisposition",
+                        "acceptanceFailureDisposition",
+                        "AcceptanceFidelityLabel",
+                        "AcceptanceFidelityVerdict",
+                        "acceptanceFidelityVerdict",
+                        "surfaceAcceptanceFidelity",
+                        "AgentLoopService"
+                    ],
+        "namedExports":  [
+
+                         ],
+        "importerCount":  49,
+        "nonTestCount":  3,
+        "canonicalHits":  [
+
+                          ],
+        "apiRouteHits":  [
+                             "api\\controllers\\sessionController.ts",
+                             "api\\routes\\run.ts"
+                         ],
+        "importers":  [
+                          "__tests__\\api-selection-cross-phase.test.ts",
+                          "__tests__\\change-aware-phase-verification.test.ts",
+                          "__tests__\\deadline.test.ts",
+                          "__tests__\\delivery-details.test.ts",
+                          "__tests__\\orchestrator-rigor.test.ts",
+                          "__tests__\\phase-completion-voice.test.ts",
+                          "__tests__\\prose-verification-final-gate.test.ts",
+                          "__tests__\\run-evidence.test.ts",
+                          "__tests__\\schema-from-blueprint.test.ts",
+                          "__tests__\\self-repair.test.ts",
+                          "__tests__\\wiring-policy.test.ts",
+                          "api\\controllers\\sessionController.ts",
+                          "api\\routes\\run.ts",
+                          "modules\\tools\\definitions\\ProjectPipelineTool.ts",
+                          "tests\\architecture\\guard_architecture.ts",
+                          "tests\\manual\\eval_001_unfamiliar_project.ts",
+                          "tests\\manual\\eval_002_unfamiliar_repository.ts",
+                          "tests\\manual\\eval_008_interrupted_run.ts",
+                          "tests\\manual\\test_prompt.ts",
+                          "tests\\manual\\verify_attachment_display.ts",
+                          "tests\\manual\\verify_attachment_memory.ts",
+                          "tests\\manual\\verify_attachments.ts",
+                          "tests\\manual\\verify_bidi.ts",
+                          "tests\\manual\\verify_chat_image_e2e.ts",
+                          "tests\\manual\\verify_checkpoint_resumption.ts",
+                          "tests\\manual\\verify_field_failures.ts",
+                          "tests\\manual\\verify_field_hygiene.ts",
+                          "tests\\manual\\verify_final_answer.ts",
+                          "tests\\manual\\verify_goal_purity.ts",
+                          "tests\\manual\\verify_joe_full_engineer_flow.ts",
+                          "tests\\manual\\verify_open_uploads.ts",
+                          "tests\\manual\\verify_orchestrator_rigor.ts",
+                          "tests\\manual\\verify_quality_phase.ts",
+                          "tests\\manual\\verify_self_fix_typescript_argument_coercion.ts",
+                          "tests\\manual\\verify_self_fix_typescript_boolean_argument_coercion.ts",
+                          "tests\\manual\\verify_self_fix_typescript_boolean_to_number.ts",
+                          "tests\\manual\\verify_self_fix_typescript_boolean_to_string.ts",
+                          "tests\\manual\\verify_self_fix_typescript_missing_name.ts",
+                          "tests\\manual\\verify_self_fix_typescript_number_boolean_argument_coercion.ts",
+                          "tests\\manual\\verify_self_fix_typescript_number_to_boolean.ts",
+                          "tests\\manual\\verify_self_fix_typescript_number_to_string.ts",
+                          "tests\\manual\\verify_self_fix_typescript_repair.ts",
+                          "tests\\manual\\verify_self_fix_typescript_string_to_boolean.ts",
+                          "tests\\manual\\verify_self_healing_loop.ts",
+                          "tests\\manual\\verify_self_healing_success_loop.ts",
+                          "tests\\manual\\verify_send_button_accents.ts",
+                          "tests\\manual\\verify_system.ts",
+                          "tests\\manual\\verify_three_features.ts",
+                          "tests\\manual\\verify_vision.ts"
+                      ]
+    },
+    {
+        "service":  "AlertService.ts",
+        "bytes":  3477,
+        "lines":  93,
+        "exports":  [
+                        "AlertService",
+                        "alertService"
+                    ],
+        "namedExports":  [
+
+                         ],
+        "importerCount":  1,
+        "nonTestCount":  1,
+        "canonicalHits":  [
+
+                          ],
+        "apiRouteHits":  [
+
+                         ],
+        "importers":  [
+                          "modules\\services\\DeployManager.ts"
+                      ]
+    },
+    {
+        "service":  "BinaryService.ts",
+        "bytes":  3858,
+        "lines":  99,
+        "exports":  [
+                        "BinaryCheckResult",
+                        "BinaryService"
+                    ],
+        "namedExports":  [
+
+                         ],
+        "importerCount":  3,
+        "nonTestCount":  3,
+        "canonicalHits":  [
+                              "modules\\services\\ToolService.ts"
+                          ],
+        "apiRouteHits":  [
+
+                         ],
+        "importers":  [
+                          "modules\\browser\\manager.ts",
+                          "modules\\services\\ToolService.ts",
+                          "modules\\tools\\definitions\\WebDevelopmentTools.ts"
+                      ]
+    },
+    {
+        "service":  "CortexState.ts",
+        "bytes":  3005,
+        "lines":  113,
+        "exports":  [
+                        "TaskState",
+                        "FinancialState",
+                        "CortexState"
+                    ],
+        "namedExports":  [
+
+                         ],
+        "importerCount":  0,
+        "nonTestCount":  0,
+        "canonicalHits":  [
+
+                          ],
+        "apiRouteHits":  [
+
+                         ],
+        "importers":  [
+
+                      ]
+    },
+    {
+        "service":  "DeployManager.ts",
+        "bytes":  20105,
+        "lines":  435,
+        "exports":  [
+                        "DeployManager",
+                        "deployManager"
+                    ],
+        "namedExports":  [
+
+                         ],
+        "importerCount":  3,
+        "nonTestCount":  3,
+        "canonicalHits":  [
+                              "api\\app.ts"
+                          ],
+        "apiRouteHits":  [
+                             "api\\app.ts",
+                             "api\\routes\\admin.ts",
+                             "api\\routes\\webhooks.ts"
+                         ],
+        "importers":  [
+                          "api\\app.ts",
+                          "api\\routes\\admin.ts",
+                          "api\\routes\\webhooks.ts"
+                      ]
+    },
+    {
+        "service":  "knowledge.ts",
+        "bytes":  4597,
+        "lines":  132,
+        "exports":  [
+                        "Document",
+                        "KnowledgeService"
+                    ],
+        "namedExports":  [
+
+                         ],
+        "importerCount":  3,
+        "nonTestCount":  3,
+        "canonicalHits":  [
+
+                          ],
+        "apiRouteHits":  [
+                             "api\\routes\\knowledge.ts"
+                         ],
+        "importers":  [
+                          "api\\routes\\knowledge.ts",
+                          "modules\\tools\\definitions\\ErrorRecoveryTool.ts",
+                          "modules\\tools\\definitions\\KnowledgeTools.ts"
+                      ]
+    },
+    {
+        "service":  "RepairTicketService.ts",
+        "bytes":  10031,
+        "lines":  227,
+        "exports":  [
+                        "RepairTicketSeverity",
+                        "RepairTicketInput",
+                        "RepairTicket",
+                        "RepairTicketService"
+                    ],
+        "namedExports":  [
+
+                         ],
+        "importerCount":  11,
+        "nonTestCount":  3,
+        "canonicalHits":  [
+                              "modules\\services\\AgentLoopService.ts"
+                          ],
+        "apiRouteHits":  [
+
+                         ],
+        "importers":  [
+                          "__tests__\\file-edit-recovery.test.ts",
+                          "__tests__\\self-fix-launcher.test.ts",
+                          "__tests__\\self-fix-quoted-module.test.ts",
+                          "__tests__\\self-fix-test-harness-mismatch.test.ts",
+                          "__tests__\\self-fix-vacuous-test-recovery.test.ts",
+                          "__tests__\\self-repair.test.ts",
+                          "modules\\services\\AgentLoopService.ts",
+                          "modules\\services\\SelfFixExecutionService.ts",
+                          "modules\\services\\SelfFixService.ts",
+                          "tests\\architecture\\guard_architecture.ts",
+                          "tests\\manual\\verify_project_pipeline.ts"
+                      ]
+    },
+    {
+        "service":  "secrets.ts",
+        "bytes":  10273,
+        "lines":  315,
+        "exports":  [
+                        "setUserSecretEncrypted",
+                        "getUserSecret",
+                        "deleteUserSecret",
+                        "setSessionSecret",
+                        "getSessionSecret",
+                        "clearSessionSecrets",
+                        "setSessionSecretEncrypted",
+                        "setPendingTool",
+                        "popPendingTool",
+                        "setSessionRunConfig",
+                        "getSessionRunConfig"
+                    ],
+        "namedExports":  [
+
+                         ],
+        "importerCount":  17,
+        "nonTestCount":  13,
+        "canonicalHits":  [
+                              "modules\\services\\ToolService.ts"
+                          ],
+        "apiRouteHits":  [
+                             "api\\controllers\\sessionController.ts",
+                             "api\\routes\\browserAgent.ts",
+                             "api\\routes\\github.ts"
+                         ],
+        "importers":  [
+                          "__tests__\\local-project-routing.test.ts",
+                          "__tests__\\one-reader-for-one-security-question.test.ts",
+                          "api\\controllers\\sessionController.ts",
+                          "api\\routes\\browserAgent.ts",
+                          "api\\routes\\github.ts",
+                          "modules\\browser\\executor.ts",
+                          "modules\\browser\\runner.ts",
+                          "modules\\browser\\secrets.ts",
+                          "modules\\services\\ToolService.ts",
+                          "modules\\services\\WorkspaceService.ts",
+                          "modules\\tools\\definitions\\BrowserRunTool.ts",
+                          "modules\\tools\\definitions\\DeployPagesTool.ts",
+                          "modules\\tools\\definitions\\GitHubPRTool.ts",
+                          "modules\\tools\\definitions\\GitHubRepoManagerTool.ts",
+                          "modules\\tools\\definitions\\GitTools.ts",
+                          "tests\\manual\\verify_deploy_pages.ts",
+                          "tests\\manual\\verify_token_revoked.ts"
+                      ]
+    },
+    {
+        "service":  "SelfFixExecutionService.ts",
+        "bytes":  26716,
+        "lines":  595,
+        "exports":  [
+                        "phaseAfterRepair",
+                        "SelfFixExecutionInput",
+                        "SelfFixExecutionResult",
+                        "SelfFixExecutionService"
+                    ],
+        "namedExports":  [
+
+                         ],
+        "importerCount":  7,
+        "nonTestCount":  1,
+        "canonicalHits":  [
+                              "modules\\services\\AgentLoopService.ts"
+                          ],
+        "apiRouteHits":  [
+
+                         ],
+        "importers":  [
+                          "__tests__\\file-edit-recovery.test.ts",
+                          "__tests__\\self-fix-execution.test.ts",
+                          "__tests__\\self-fix-windows-path.test.ts",
+                          "__tests__\\self-repair.test.ts",
+                          "__tests__\\the-second-attempt-was-a-blind-re-roll.test.ts",
+                          "modules\\services\\AgentLoopService.ts",
+                          "tests\\manual\\verify_self_fix_execution_safety.ts"
+                      ]
+    },
+    {
+        "service":  "SelfFixService.ts",
+        "bytes":  91017,
+        "lines":  1877,
+        "exports":  [
+                        "SelfFixPlan",
+                        "SelfFixService"
+                    ],
+        "namedExports":  [
+
+                         ],
+        "importerCount":  16,
+        "nonTestCount":  2,
+        "canonicalHits":  [
+                              "modules\\services\\AgentLoopService.ts"
+                          ],
+        "apiRouteHits":  [
+
+                         ],
+        "importers":  [
+                          "__tests__\\file-edit-recovery.test.ts",
+                          "__tests__\\self-fix-execution.test.ts",
+                          "__tests__\\self-fix-launcher.test.ts",
+                          "__tests__\\self-fix-local-import.test.ts",
+                          "__tests__\\selffix-memory.test.ts",
+                          "__tests__\\self-fix-quoted-module.test.ts",
+                          "__tests__\\self-fix-test-harness-mismatch.test.ts",
+                          "__tests__\\self-fix-vacuous-test-recovery.test.ts",
+                          "__tests__\\self-fix-windows-path.test.ts",
+                          "__tests__\\self-repair.test.ts",
+                          "__tests__\\the-second-attempt-was-a-blind-re-roll.test.ts",
+                          "modules\\services\\AgentLoopService.ts",
+                          "modules\\services\\SelfFixExecutionService.ts",
+                          "tests\\architecture\\guard_architecture.ts",
+                          "tests\\manual\\verify_project_pipeline.ts",
+                          "tests\\manual\\verify_self_fix_build_context.ts"
+                      ]
+    },
+    {
+        "service":  "session-identity.ts",
+        "bytes":  1847,
+        "lines":  45,
+        "exports":  [
+                        "SessionIdentity",
+                        "normalizeId",
+                        "resolveSessionIdentity"
+                    ],
+        "namedExports":  [
+
+                         ],
+        "importerCount":  2,
+        "nonTestCount":  1,
+        "canonicalHits":  [
+                              "modules\\services\\ToolService.ts"
+                          ],
+        "apiRouteHits":  [
+
+                         ],
+        "importers":  [
+                          "__tests__\\auth-gate.test.ts",
+                          "modules\\services\\ToolService.ts"
+                      ]
+    },
+    {
+        "service":  "ToolService.ts",
+        "bytes":  52104,
+        "lines":  985,
+        "exports":  [
+                        "formatToolError",
+                        "ToolContext",
+                        "TOOL_ALIASES",
+                        "executeTool"
+                    ],
+        "namedExports":  [
+
+                         ],
+        "importerCount":  111,
+        "nonTestCount":  17,
+        "canonicalHits":  [
+                              "modules\\services\\AgentLoopService.ts",
+                              "modules\\tools\\definitions\\PhaseExecutorTool.ts"
+                          ],
+        "apiRouteHits":  [
+                             "api\\index.ts",
+                             "api\\routes\\approvals.ts",
+                             "api\\routes\\github.ts",
+                             "api\\routes\\tools.ts"
+                         ],
+        "importers":  [
+                          "__tests__\\api-selection-cross-phase.test.ts",
+                          "__tests__\\auth-gate.test.ts",
+                          "__tests__\\auto-tester-contract.test.ts",
+                          "__tests__\\auto-tester-vacuous.test.ts",
+                          "__tests__\\browser-session-wiring.test.ts",
+                          "__tests__\\capability-decision-planner-execution.test.ts",
+                          "__tests__\\change-aware-phase-verification.test.ts",
+                          "__tests__\\deadline.test.ts",
+                          "__tests__\\local-backend-tool-gateway.test.ts",
+                          "__tests__\\orchestrator-run-identity.test.ts",
+                          "__tests__\\orchestrator-terminal-provider.test.ts",
+                          "__tests__\\phase-api-selection-handoff.test.ts",
+                          "__tests__\\phase-capability-decision-handoff.test.ts",
+                          "__tests__\\phase-executor-delivery.test.ts",
+                          "__tests__\\phase-executor-diagnostic-test.test.ts",
+                          "__tests__\\phase-executor-observability.test.ts",
+                          "__tests__\\phase-executor-recoverable.test.ts",
+                          "__tests__\\phase-executor-skip-guard.test.ts",
+                          "__tests__\\phase-verification-output-observation.test.ts",
+                          "__tests__\\pipeline-quality.test.ts",
+                          "__tests__\\project-run-verification.test.ts",
+                          "__tests__\\prose-verification-contract.test.ts",
+                          "__tests__\\prose-verification-final-gate.test.ts",
+                          "__tests__\\rejected-command-redaction.test.ts",
+                          "__tests__\\self-fix-execution.test.ts",
+                          "__tests__\\self-fix-windows-path.test.ts",
+                          "__tests__\\shell-quote.test.ts",
+                          "__tests__\\terminal-paint.test.ts",
+                          "__tests__\\tool-service-ai-write-file-root-contract.test.ts",
+                          "__tests__\\tool-service-sandbox.test.ts",
+                          "__tests__\\wiring-policy.test.ts",
+                          "__tests__\\workspace-current-checkout-output.test.ts",
+                          "api\\index.ts",
+                          "api\\routes\\approvals.ts",
+                          "api\\routes\\github.ts",
+                          "api\\routes\\tools.ts",
+                          "core\\orchestrator\\PlanningEngine.ts",
+                          "core\\orchestrator\\plan-tools.ts",
+                          "modules\\services\\AgentLoopService.ts",
+                          "modules\\services\\SelfFixExecutionService.ts",
+                          "modules\\tools\\definitions\\ApiProjectTool.ts",
+                          "modules\\tools\\definitions\\AutoTesterTool.ts",
+                          "modules\\tools\\definitions\\DeployPagesTool.ts",
+                          "modules\\tools\\definitions\\PhaseExecutorTool.ts",
+                          "modules\\tools\\definitions\\ProjectPipelineTool.ts",
+                          "modules\\tools\\definitions\\WebDevelopmentTools.ts",
+                          "orchestration\\AgentOrchestrator.ts",
+                          "orchestration\\agents\\SecurityAgent.ts",
+                          "system\\scripts\\verify_tools.ts",
+                          "tests\\manual\\_pair2.ts",
+                          "tests\\manual\\eval_001_unfamiliar_project.ts",
+                          "tests\\manual\\eval_002_unfamiliar_repository.ts",
+                          "tests\\manual\\eval_008_interrupted_run.ts",
+                          "tests\\manual\\verify_a_correct_answer_is_not_a_failure.ts",
+                          "tests\\manual\\verify_admin_screens.ts",
+                          "tests\\manual\\verify_ai_schema.ts",
+                          "tests\\manual\\verify_app_auth.ts",
+                          "tests\\manual\\verify_audit_measures_the_system.ts",
+                          "tests\\manual\\verify_authenticated_mode.ts",
+                          "tests\\manual\\verify_browser_terminal_wiring.ts",
+                          "tests\\manual\\verify_browser_tools_live.ts",
+                          "tests\\manual\\verify_build_not_chat.ts",
+                          "tests\\manual\\verify_build_without_a_brain.ts",
+                          "tests\\manual\\verify_chain_end_to_end.ts",
+                          "tests\\manual\\verify_deploy_pages.ts",
+                          "tests\\manual\\verify_domain_ready.ts",
+                          "tests\\manual\\verify_every_loop.ts",
+                          "tests\\manual\\verify_firewall.ts",
+                          "tests\\manual\\verify_fresh_database.ts",
+                          "tests\\manual\\verify_full_system.ts",
+                          "tests\\manual\\verify_git_push.ts",
+                          "tests\\manual\\verify_github_connect.ts",
+                          "tests\\manual\\verify_he_named_the_tables.ts",
+                          "tests\\manual\\verify_his_social_build.ts",
+                          "tests\\manual\\verify_honest_results.ts",
+                          "tests\\manual\\verify_human_check.ts",
+                          "tests\\manual\\verify_integration_sweep.ts",
+                          "tests\\manual\\verify_it_builds_big.ts",
+                          "tests\\manual\\verify_it_still_builds.ts",
+                          "tests\\manual\\verify_joe_full_engineer_flow.ts",
+                          "tests\\manual\\verify_multi_entity.ts",
+                          "tests\\manual\\verify_one_language_per_run.ts",
+                          "tests\\manual\\verify_page_fix.ts",
+                          "tests\\manual\\verify_pictures_are_fetched.ts",
+                          "tests\\manual\\verify_pipeline_quality.ts",
+                          "tests\\manual\\verify_plan_binding.ts",
+                          "tests\\manual\\verify_project_pipeline.ts",
+                          "tests\\manual\\verify_project_run.ts",
+                          "tests\\manual\\verify_project_undo.ts",
+                          "tests\\manual\\verify_push_conflict.ts",
+                          "tests\\manual\\verify_qa_reported.ts",
+                          "tests\\manual\\verify_quality_phase.ts",
+                          "tests\\manual\\verify_relations.ts",
+                          "tests\\manual\\verify_relations_ui.ts",
+                          "tests\\manual\\verify_repair_remaining.ts",
+                          "tests\\manual\\verify_schema_roundtrip.ts",
+                          "tests\\manual\\verify_scope_is_honest.ts",
+                          "tests\\manual\\verify_self_repair.ts",
+                          "tests\\manual\\verify_shop_system.ts",
+                          "tests\\manual\\verify_terminal_brain.ts",
+                          "tests\\manual\\verify_the_app_is_the_system.ts",
+                          "tests\\manual\\verify_the_long_loop.ts",
+                          "tests\\manual\\verify_the_run_opens_the_system.ts",
+                          "tests\\manual\\verify_the_team_can_use_it.ts",
+                          "tests\\manual\\verify_the_whole_chain.ts",
+                          "tests\\manual\\verify_token_revoked.ts",
+                          "tests\\manual\\verify_tool_reach.ts",
+                          "tests\\manual\\verify_tool_registry_audit.ts",
+                          "tests\\manual\\verify_tool_wiring.ts",
+                          "tests\\manual\\verify_ui_fix.ts",
+                          "tests\\manual\\verify_write_tools_audit.ts"
+                      ]
+    },
+    {
+        "service":  "TraceManager.ts",
+        "bytes":  3779,
+        "lines":  113,
+        "exports":  [
+                        "TraceEventKind",
+                        "TraceEvent",
+                        "Trace",
+                        "TraceManager",
+                        "traceManager"
+                    ],
+        "namedExports":  [
+
+                         ],
+        "importerCount":  5,
+        "nonTestCount":  4,
+        "canonicalHits":  [
+                              "modules\\services\\ToolService.ts"
+                          ],
+        "apiRouteHits":  [
+                             "api\\routes\\run.ts"
+                         ],
+        "importers":  [
+                          "__tests__\\execution-memory-bounds.test.ts",
+                          "api\\routes\\run.ts",
+                          "kernel\\ExecutionEngine.ts",
+                          "modules\\services\\ToolService.ts",
+                          "orchestration\\AgentOrchestrator.ts"
+                      ]
+    },
+    {
+        "service":  "vectorDb.ts",
+        "bytes":  4739,
+        "lines":  139,
+        "exports":  [
+                        "VectorDbService",
+                        "vectorDb"
+                    ],
+        "namedExports":  [
+
+                         ],
+        "importerCount":  2,
+        "nonTestCount":  2,
+        "canonicalHits":  [
+                              "modules\\services\\ToolService.ts"
+                          ],
+        "apiRouteHits":  [
+
+                         ],
+        "importers":  [
+                          "modules\\services\\ToolService.ts",
+                          "modules\\tools\\definitions\\MemoryTool.ts"
+                      ]
+    },
+    {
+        "service":  "WorkspaceService.ts",
+        "bytes":  29203,
+        "lines":  667,
+        "exports":  [
+                        "WorkspaceService",
+                        "workspaceService"
+                    ],
+        "namedExports":  [
+
+                         ],
+        "importerCount":  78,
+        "nonTestCount":  36,
+        "canonicalHits":  [
+                              "modules\\services\\ToolService.ts",
+                              "modules\\tools\\definitions\\PhaseExecutorTool.ts"
+                          ],
+        "apiRouteHits":  [
+                             "api\\controllers\\sessionController.ts",
+                             "api\\routes\\github.ts",
+                             "api\\routes\\project.ts",
+                             "api\\routes\\run.ts",
+                             "api\\routes\\workspaces.ts"
+                         ],
+        "importers":  [
+                          "__tests__\\advanced-tools-workspace.test.ts",
+                          "__tests__\\ai-write-file.test.ts",
+                          "__tests__\\analysis-tools-sandbox.test.ts",
+                          "__tests__\\api-project.test.ts",
+                          "__tests__\\api-selection-cross-phase.test.ts",
+                          "__tests__\\auto-tester-contract.test.ts",
+                          "__tests__\\auto-tester-vacuous.test.ts",
+                          "__tests__\\change-aware-phase-verification.test.ts",
+                          "__tests__\\checkpoint-consumer.test.ts",
+                          "__tests__\\code-reviewer-workspace.test.ts",
+                          "__tests__\\context-pack.test.ts",
+                          "__tests__\\db-schema-migrator-sqlite.test.ts",
+                          "__tests__\\deploy-port-guard.test.ts",
+                          "__tests__\\deploy-project-workspace.test.ts",
+                          "__tests__\\explicit-file-append-contract.test.ts",
+                          "__tests__\\file-edit-recovery.test.ts",
+                          "__tests__\\local-backend-tool-gateway.test.ts",
+                          "__tests__\\phase-executor-launcher.test.ts",
+                          "__tests__\\phase-executor-observability.test.ts",
+                          "__tests__\\project-run.test.ts",
+                          "__tests__\\react-project.test.ts",
+                          "__tests__\\read-file-workspace-context.test.ts",
+                          "__tests__\\security-scanner-workspace.test.ts",
+                          "__tests__\\shell-quote.test.ts",
+                          "__tests__\\system-tools-sandbox.test.ts",
+                          "__tests__\\tool-service-ai-write-file-root-contract.test.ts",
+                          "__tests__\\tool-service-sandbox.test.ts",
+                          "__tests__\\workspace-current-checkout-output.test.ts",
+                          "__tests__\\workspace-evidence-planning.test.ts",
+                          "__tests__\\workspace-location.test.ts",
+                          "__tests__\\workspace-root-consistency.test.ts",
+                          "__tests__\\write-tools-contract.test.ts",
+                          "api\\controllers\\sessionController.ts",
+                          "api\\routes\\github.ts",
+                          "api\\routes\\project.ts",
+                          "api\\routes\\run.ts",
+                          "api\\routes\\workspaces.ts",
+                          "core\\orchestrator\\PlanningEngine.ts",
+                          "core\\orchestrator\\workspace-evidence.ts",
+                          "kernel\\ExecutionEngine.ts",
+                          "modules\\services\\SelfFixExecutionService.ts",
+                          "modules\\services\\ToolService.ts",
+                          "modules\\tools\\definitions\\AIGeneratorTool.ts",
+                          "modules\\tools\\definitions\\ApiProjectTool.ts",
+                          "modules\\tools\\definitions\\CodeReviewerTool.ts",
+                          "modules\\tools\\definitions\\DeadCodeTool.ts",
+                          "modules\\tools\\definitions\\DeployPagesTool.ts",
+                          "modules\\tools\\definitions\\EnterprisePlatformFoundationTool.ts",
+                          "modules\\tools\\definitions\\ErrorRecoveryTool.ts",
+                          "modules\\tools\\definitions\\GitHubRepoManagerTool.ts",
+                          "modules\\tools\\definitions\\GitTools.ts",
+                          "modules\\tools\\definitions\\I18nTranslatorTool.ts",
+                          "modules\\tools\\definitions\\ImportProjectTool.ts",
+                          "modules\\tools\\definitions\\InfrastructureTools.ts",
+                          "modules\\tools\\definitions\\MemoryTool.ts",
+                          "modules\\tools\\definitions\\OrionBusinessFoundationTool.ts",
+                          "modules\\tools\\definitions\\PhaseExecutorTool.ts",
+                          "modules\\tools\\definitions\\ProjectPipelineTool.ts",
+                          "modules\\tools\\definitions\\ProjectRunTool.ts",
+                          "modules\\tools\\definitions\\ReactProjectTool.ts",
+                          "modules\\tools\\definitions\\SecurityScannerTool.ts",
+                          "modules\\tools\\definitions\\SystemTools.ts",
+                          "modules\\tools\\definitions\\TaskInteractionTools.ts",
+                          "modules\\tools\\definitions\\UtilityTools.ts",
+                          "modules\\tools\\definitions\\WebDevelopmentTools.ts",
+                          "modules\\tools\\definitions\\WebPageBuilderTool.ts",
+                          "modules\\tools\\utils.ts",
+                          "system\\scripts\\verify_tools.ts",
+                          "tests\\manual\\verify_build_without_a_brain.ts",
+                          "tests\\manual\\verify_final_answer.ts",
+                          "tests\\manual\\verify_honest_results.ts",
+                          "tests\\manual\\verify_large_repo.ts",
+                          "tests\\manual\\verify_parallel_execution.ts",
+                          "tests\\manual\\verify_plan_dataflow.ts",
+                          "tests\\manual\\verify_terminal_brain.ts",
+                          "tests\\manual\\verify_tool_wiring.ts",
+                          "tests\\manual\\verify_workspace_location.ts",
+                          "tests\\manual\\verify_write_tools_audit.ts"
+                      ]
+    }
+]

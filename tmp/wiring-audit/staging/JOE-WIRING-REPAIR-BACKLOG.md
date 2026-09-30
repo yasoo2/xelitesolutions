@@ -852,6 +852,32 @@ DEPENDENCIES=WIRING-P2-018 (scopeRoot containment is the read_file-gate reuse bl
 
 ---
 
+BATCH_ID=WIRING-P2-049
+CAPABILITIES=CortexState orphan service disposition (task+financial ledger, God-Mode era)
+ROOT_CAUSE=zero references in Muse api+web src and main api/src; committed stale api/cortex.json (status 'running'); latent DB_PATH=process.cwd()/cortex.json write one import away from activation (029/F213). Inherited, not Muse-introduced.
+FILES=api/src/modules/services/CortexState.ts + tracked api/cortex.json (decision: retire both, or wire with containment)
+IMPLEMENTATION_OWNER=UNASSIGNED
+REVIEW_OWNER=UNASSIGNED
+TESTS=if retired: reference-absence gate (symbol scan in CI) + store removal; if wired: containment test (store under session root, never cwd) + ownership/tenant tests; AGENTS gates
+REAL_JOE_UAT=none (no user-reachable behavior either way unless wired)
+ROLLBACK=revert retire/wire diff
+DEPENDENCIES=none (no live callers, so no behavior change risk)
+
+---
+
+BATCH_ID=WIRING-P2-050
+CAPABILITIES=AlertService import-only notifier disposition (Telegram/webhook/email)
+ROOT_CAUSE=imported once at DeployManager.ts:9 (both trees) but never invoked; dormant external-notify surface holding Telegram-token + arbitrary-webhook POST capability (029/F214). Deploy pipeline currently notifies nowhere.
+FILES=AlertService.ts + DeployManager.ts import (decision: wire with secret-surface review, or remove dead import and record the notifier gap)
+IMPLEMENTATION_OWNER=UNASSIGNED
+REVIEW_OWNER=UNASSIGNED
+TESTS=if wired: secret-redaction tests (token never in logs/evidence) + webhook-allowlist or explicit-URL-only test + opt-in/off-by-default test; if removed: import-absence gate; AGENTS gates
+REAL_JOE_UAT=wired case only: deploy-via-UI on throwaway target, notification observed, no secret in evidence
+ROLLBACK=revert wire/remove diff
+DEPENDENCIES=none
+
+---
+
 BATCH_ID=WIRING-P3-001
 CAPABILITIES=15 dormant/absent-static-candidate names (behavioral review). Selection stories FULLY CLOSED: 9/9 targeted rank-1 (target.json) + catalogue-absent 15/15 storied strong — no keyword-map repair needed.
 ROOT_CAUSE=unknown whether name similarity/dormancy equals missing capability

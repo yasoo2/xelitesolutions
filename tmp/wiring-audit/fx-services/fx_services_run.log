@@ -1,0 +1,74 @@
+# fx-services run log — checkpoint 29 (read-only static survey, no runtime/network)
+METHOD=survey_services.ps1 over D:\Joe\muse-worktree\api\src (1193 .ts/.tsx files):
+  per-service exports regex (^export [async] decl) + importer scan for
+  'services/<base>' OR './<base>' (covers cross-dir + same-dir imports).
+  No services/index.ts barrel exists (verified absent).
+  Non-test filter: __tests__|tests/|test.|spec. (excludes verify_*.ts harnesses too)
+DETERMINISM=fx_services.json SHA256 runA=runB=
+  6DD3690ACC62300A416BF54369E4FCAE30D0E47B261D1496F5DB305E0EFFF438 (identical=True)
+METHOD_NOTE=A first script revision silently matched ZERO importers for all
+  15 services: PowerShell parses @('services/'+$base,'./'+$base) as ONE
+  concatenated string because comma binds tighter than +. Fixed with
+  interpolated strings @("services/$base","./$base"); the zero-result run
+  is DISCARDED (evidence of the pitfall, not of the wiring). A literal-mode
+  `A|B` grep also falsely returned empty once; all symbol checks below were
+  re-run as single-pattern searches.
+
+## Survey table (runB)
+AgentLoopService.ts importers=49 nontest=3 canon=[] routes=2
+AlertService.ts importers=1 nontest=1 canon=[] routes=0
+BinaryService.ts importers=3 nontest=3 canon=[ToolService] routes=0
+CortexState.ts importers=0 nontest=0 canon=[] routes=0
+DeployManager.ts importers=3 nontest=3 canon=[app.ts] routes=3
+knowledge.ts importers=3 nontest=3 canon=[] routes=1
+RepairTicketService.ts importers=11 nontest=3 canon=[AgentLoopService] routes=0
+secrets.ts importers=17 nontest=13 canon=[ToolService] routes=3
+SelfFixExecutionService.ts importers=7 nontest=1 canon=[AgentLoopService] routes=0
+SelfFixService.ts importers=16 nontest=2 canon=[AgentLoopService] routes=0
+session-identity.ts importers=2 nontest=1 canon=[ToolService] routes=0
+ToolService.ts importers=111 nontest=17 canon=[AgentLoopService,PhaseExecutorTool] routes=4
+TraceManager.ts importers=5 nontest=4 canon=[ToolService] routes=1
+vectorDb.ts importers=2 nontest=2 canon=[ToolService] routes=0
+WorkspaceService.ts importers=78 nontest=36 canon=[ToolService,PhaseExecutorTool] routes=5
+
+## Non-test importer lists (abridged; full lists in fx_services.json)
+AgentLoopService <- api/controllers/sessionController.ts, api/routes/run.ts,
+  modules/tools/definitions/ProjectPipelineTool.ts
+AlertService <- modules/services/DeployManager.ts (IMPORT ONLY, see F214)
+CortexState <- NONE (see F213)
+DeployManager <- api/app.ts, api/routes/admin.ts, api/routes/webhooks.ts
+knowledge <- api/routes/knowledge.ts, ErrorRecoveryTool.ts, KnowledgeTools.ts
+RepairTicketService <- AgentLoopService.ts, SelfFixExecutionService.ts, SelfFixService.ts
+secrets <- sessionController, routes/browserAgent, routes/github, browser/executor,
+  browser/runner, browser/secrets, ToolService, WorkspaceService, BrowserRunTool,
+  DeployPagesTool, GitHubPRTool, GitHubRepoManagerTool, GitTools (13)
+SelfFixService <- AgentLoopService.ts, SelfFixExecutionService.ts
+SelfFixExecutionService <- AgentLoopService.ts
+BinaryService <- browser/manager.ts, ToolService.ts, WebDevelopmentTools.ts
+vectorDb <- ToolService.ts, MemoryTool.ts
+session-identity <- ToolService.ts
+TraceManager <- api/routes/run.ts, kernel/ExecutionEngine.ts, ToolService.ts,
+  orchestration/AgentOrchestrator.ts
+ToolService <- AgentLoopService + PhaseExecutorTool + 4 routes + 11 tools/services
+WorkspaceService <- ToolService + PhaseExecutorTool + 5 routes + 29 tools/services
+
+## Follow-up checks
+F213 CortexState: symbol 'CortexState' occurs ONLY in its own file across
+  Muse api/src + web/src; main api/src likewise zero outside its own file.
+  api/cortex.json is TRACKED (commit ca13493d 'God Mode'), 10808 bytes, head
+  shows a stale task ledger (status:running, tool:architect_plan). No live
+  writer exists in current source: DB_PATH=process.cwd()/cortex.json write is
+  LATENT (fires only if the module is ever imported). Git: 7073dd35 'System
+  Awakening (Persistence, God Mode, Financials)' -> eb18da8c -> 3c34c248.
+  Ledger tool name architect_plan still exists as ArchitectTool.ts (no gap).
+F214 alertService symbol occurs ONLY at AlertService.ts:92 (export) and
+  DeployManager.ts:9 (import) in Muse api/src; main DeployManager.ts:9 is
+  likewise the sole main-tree occurrence (import-only there too). AlertService
+  reads TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID/ALERT_WEBHOOK_URL + SystemConfig
+  notification_settings and POSTs to api.telegram.org / webhookUrl — external
+  notify surface, currently DORMANT (no invocation).
+F215 AgentOrchestrator (orchestration/ dir, outside services/) is NOT a hidden
+  alternate path: AgentLoopService.ts:746,1011 instantiate it; run.ts delegates
+  to it; guard_architecture.ts pins it. Engine-under-AgentLoop, WIRED.
+MAIN_VS_MUSE=services/ file lists IDENTICAL (15=15, same names). Both findings
+  inherited, not Muse-introduced. No main/Muse source modified by this survey.

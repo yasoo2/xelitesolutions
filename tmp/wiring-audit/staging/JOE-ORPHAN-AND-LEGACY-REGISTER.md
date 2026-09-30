@@ -1,8 +1,8 @@
 # JOE ORPHAN AND LEGACY REGISTER (Muse draft 2026-09-29 — staging for D:\Joe\coordination\team\JOE-ORPHAN-AND-LEGACY-REGISTER.md)
 
-SCOPE=Muse-branch checkpoints 1-3. AUDIT-FIRST: no deletions performed or
-authorized by this register. Deletion/refactoring requires a later reviewed
-decision with an implementation owner + reviewer.
+SCOPE=Muse-branch checkpoints 1-3 + 29 (services survey). AUDIT-FIRST: no
+deletions performed or authorized by this register. Deletion/refactoring
+requires a later reviewed decision with an implementation owner + reviewer.
 
 ---
 
@@ -106,8 +106,52 @@ RECOMMENDATION=P1: integrate-or-classify review; provider draft needs ownership 
 
 ---
 
+---
+
+PATH=api/src/modules/services/CortexState.ts (+ tracked api/cortex.json)
+CAPABILITY=CortexState task+financial ledger (service)
+WHY_SUSPECTED=zero references repo-wide outside its own file; committed stale
+store (api/cortex.json: status 'running' ledger from the God-Mode era)
+CALLER_SEARCH=symbol 'CortexState' occurs ONLY in its own file across Muse
+api/src + web/src; main api/src likewise zero outside its own file. Module-path
+scan (services/CortexState, ./CortexState): 0 importers both trees.
+DYNAMIC_USAGE_CHECK=symbol search covers string/dynamic-import spellings in
+api/src + web/src — none found. scripts/docs not surveyed (cannot create a
+runtime import).
+CONFIG_USAGE_CHECK=none found (no config key references the module)
+TEST_USAGE=none found
+GIT_CONTEXT=introduced 7073dd35 'System Awakening (Persistence, God Mode,
+Financials)'; store committed ca13493d 'God Mode'; services/ file lists
+identical main-vs-Muse (inherited, not Muse-introduced) @ b004bdc8
+CONFIDENCE=CONFIRMED_ORPHAN (service) with legacy-era provenance
+RECOMMENDATION=P2: wire-or-retire decision (P2-049); latent process.cwd() write
+(api/cortex.json) must be contained or removed with the decision — do NOT
+leave a cwd-anchored financial ledger one import away from activation
+
+---
+
+PATH=api/src/modules/services/AlertService.ts
+CAPABILITY=AlertService deploy notifier (Telegram/webhook/email)
+WHY_SUSPECTED=single import, zero invocations: imported at
+DeployManager.ts:9 (both Muse and main trees) but never called; symbol
+'alertService' occurs only at the export (AlertService.ts:92) + that import
+CALLER_SEARCH=module-path scan: 1 importer (DeployManager), import-only
+DYNAMIC_USAGE_CHECK=symbol search across Muse api/src — no other mentions
+CONFIG_USAGE_CHECK=reads SystemConfig notification_settings + TELEGRAM_BOT_TOKEN
+/TELEGRAM_CHAT_ID/ALERT_WEBHOOK_URL at call time (dormant: no caller)
+TEST_USAGE=none found
+GIT_CONTEXT=present both trees @ b004bdc8 (inherited)
+CONFIDENCE=CONFIRMED_PARTIALLY_WIRED (import-only; no invocation path)
+RECOMMENDATION=P2: wire-or-remove decision (P2-050); if wired, secret-surface
+review first (Telegram token + arbitrary webhook POST); if removed, drop the
+dead import + classify the notifier capability gap
+
+---
+
 LEGACY_OR_DEAD=none proven. No code is labeled LEGACY_OR_DEAD in this draft:
 static absence of callers is NOT enough (dynamic registration/config paths
-remain to be surveyed for services/workers). Suspects for later classification:
-old/alternate execution paths (deterministic bypasses), duplicate memory
-implementations (see matrix DUPLICATE rows — those are live duplicates, not dead).
+remain to be surveyed for workers). CortexState has legacy-era provenance but
+is classified ORPHANED (a runtime path could theoretically exist outside the
+surveyed roots). Suspects for later classification: old/alternate execution
+paths (deterministic bypasses), duplicate memory implementations (see matrix
+DUPLICATE rows — those are live duplicates, not dead).
