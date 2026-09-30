@@ -4523,5 +4523,57 @@ RECOMMENDED_ACTION=owner live-checks with loopback catalog (search/inspect/valid
 
 ---
 
-END-OF-MUSE-DRAFT-ROWS=174 (164 individual + 8 group + 2 external-cited)
-COVERAGE-DISCLAIMER=This draft covers ONLY what Muse checkpoints 1-25 evidenced. Full matrix requires: per-trunk path stories (19 trunks PROPOSED in merge.json, 16 STORIED: files 10/10 + browser_ui 33/33 LEVEL-4 + testing_qa 6/6 LEVEL-4 + security 3/3 LEVEL-4 + code_understanding 16/16 LEVEL-4 + vcs_repo 11/11 LEVEL-4 + build_generate 13/13 LEVEL-4 + runtime_services 5/5 LEVEL-4 + shell_terminal 4/4 LEVEL-4 + database_data 6/6 LEVEL-4 + observability 5/5 LEVEL-4 + interaction 8/8 LEVEL-4 + infra_ops 6/6 + documentation 2/2 LEVEL-4 + language_runtimes 4/4 LEVEL-4 + network_api 12/12 LEVEL-4), services/workers/persistence/deployment rows (NVIDIA scope), bulk per-tool firewall sweep (8 spot + 28 empty-input batch-1+2 + 19 risk-tier live + 16 trunk-files + 3 arch-backend + 26 browser live1/live2 + 30 browser live3 + 19 trunk-testing + 13 trunk-security + 36 trunk-code + 43 trunk-vcs + 45 trunk-build + 4 prog-batch3 + 23 trunk-runtime + 4 pages-approved + 25 trunk-shell + 5 shell-cwd + 28 trunk-db + 45 trunk-obs + 37 trunk-ixn + 40 trunk-infradoc + 32 trunk-lang + 43 trunk-net done; traversal live legs + 120s timeout leg + python-present legs + ALL live network legs (fetch/search/catalog/Stripe/Google) + SSRF live payloads beyond sync-reject shapes + credentialed legs + outside-write live legs embargoed; 25/25 no-required reviewed: 18 SAFE + 1 BOUND + 4 EMBARGO with static fixture designs + 2 FIXTURE probed contained; browser_launch embargo partially lifted for contained-http; sonar/dep_audit/dead_code positives embargoed; code_reviewer non-quick + ALL github-network/git-network-push/import-clone/npm-qa legs embargoed; pipeline-named/setActiveRoot + mobile-default-cwd + full-stack-{} + react/api-full + ent/ori-default-root + page-model-present legs embargoed; risk table SURVEYED), contract audit per boundary (19 mismatches + schema/execute family), LEVEL 5-6 proofs (L5 done files+browser_ui + project_run live-gate receipt; testing_qa + security + code_understanding static-only, 5 checkers pending; vcs_repo + build_generate static-only with 0 checkers each; observability + interaction + infra_ops + documentation + language_runtimes + network_api static-only with 0 checkers each), and NVIDIA cross-review (pending — worker on CLI-BATCH1 + audit slice).
+CAPABILITY_ID=TOOL-image_studio
+NAME=image_studio (ImageStudioTool, ImageStudioTool.ts:102)
+CATEGORY=tool/media_images-trunk (in-repo ladder: photo search -> generated image -> designed card, through the project's own entities module)
+SOURCE_FILES=api/src/modules/tools/definitions/ImageStudioTool.ts + api/src/core/design/row-image.ts (ladder + Shrinker)
+IMPLEMENTATION=Fills picture columns of a built system: reads (global).joeProjects[sessionId].dir, requires entities.js, spawns node .mjs scripts under the project dir for table read (readTables :34-68, 25s race) and picture write (writePictures :71-100, 40s race); IMAGE_COL filter /(^|_)(image|photo|picture|img)$/; limit clamped 1..40; picturesFor ladder per unfilled row; Shrinker lazy (browser only on shrink(), row-image.ts:89-115); bilingual receipts. readTables catch->[] hides ALL spawn/ESM/timeout faults (:63); writePictures catch->wrote:0 hides write faults (:94)
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1 (both goals; self-name score 14)
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES (guard + filter + allfilled paths; picturesFor ladder path UNPROVEN live by embargo)
+EXECUTOR_EVIDENCE=LIVE (trunk_media_runA/B.json 2x verdict-identical): noproject/nopicture(any) honest bilingual sentences; allfilled fixture (plain path) -> ok:true filled:0 tables:['plants'] with imageNotes=0 (picturesFor never reached, zero network/browser). Pilot: prefixed-cwd fixture returned the no-picture sentence for a CRASHED read (F204); diag_media_read isolates: plain cwd exit 0 + tables, \\?\ cwd exit 1 EISDIR (F205)
+PERMISSION_REACHABLE=YES (internet+write declared, honest; rate 6/min explicit)
+PERMISSION_EVIDENCE=executed without approval under default autoSafe (guard/filter/allfilled legs)
+INPUT_CONTRACT_VALID=PARTIAL (table/context/limit/redo accepted; no spawn-fault diagnosis; prefixed entry.dir crashes the read)
+OUTPUT_CONTRACT_VALID=PARTIAL (honest receipts when the read succeeds; silent []/0 on faults; filled:0 inside ok:true)
+EVIDENCE_PRODUCED=YES (message/filled/tables in output + image: notes when the ladder runs; allfilled leg has no ladder notes by design)
+VERIFICATION_COMPATIBLE=PARTIAL (never a checker -- static VERIFY26; filled:0-shape => passed in table -- rides #13 batch, F207)
+CANONICAL_PATH_CONNECTED=YES (for the probed surface; ladder path unprobed)
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (F204 silent-failure receipts P2-046 + F205 prefixed-cwd crash, P1-010 evidence)
+RECOMMENDED_ACTION=WIRING-P2-046 (diagnostic errors for spawn/read/write faults) + P1-010 prefix decision -- proposed, unactioned
+
+---
+
+CAPABILITY_ID=TOOL-video_action
+NAME=video_action (VideoActionTool, VideoActionTool.ts:5)
+CATEGORY=tool/media_images-trunk (shells out to external ffmpeg binary -- opposite substrate from image_studio, same purpose-merge)
+SOURCE_FILES=api/src/modules/tools/definitions/VideoActionTool.ts
+IMPLEMENTATION=ffmpeg extract_audio/trim/convert/extract_frame/custom via interpolated shell string `ffmpeg -y ...` through executionEngine.run() (shell:true). NO input validation (required decorative); options interpolated RAW (:45,:51,:54); inputFile/outputFile uncontained (no resolveToolPath); savedPath echoed unverified; ok trusts engine result.ok which drops exit status
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1 (both goals; self-name score 12.9)
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES (reached; success verdict UNTRUSTWORTHY -- see F202)
+EXECUTOR_EVIDENCE=LIVE (trunk_media_runA/B.json 2x verdict-identical): {} + unknown action -> 'Unknown action' (required decorative, F203a); convert/trim on missing input with ffmpeg ABSENT -> ok:true success:true + `FFMPEG Success:` log + savedPath->nonexistent file (outExists=false probe-checked, F202 -- 2nd live instance of P1-012); trim-without-options interpolates literal 'undefined' into the command (F203b); ffmpegLogs show cmd.exe UNC-fallback on the \\?\ cwd (F205, P1-010 evidence). No custom-action/media legs per embargo
+PERMISSION_REACHABLE=YES (execute+read+write declared with matching sideEffects, honest; rate 5/min explicit)
+PERMISSION_EVIDENCE=executed without approval under default autoSafe
+INPUT_CONTRACT_VALID=NO (required unenforced; options unvalidated; paths uncontained)
+OUTPUT_CONTRACT_VALID=NO (success:true + savedPath fabricated on failed exec; ffmpegLogs preserve stderr but ok lies)
+EVIDENCE_PRODUCED=PARTIAL (success/savedPath/ffmpegLogs shape present; success bit TRUE on failure; command echoed in logs)
+VERIFICATION_COMPATIBLE=PARTIAL (never a checker -- static VERIFY26; ok-shape => passed -- correct GIVEN ok:true; the lie is upstream in tool/engine, F202)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (F202 false success extends P1-012 + F203 contract/containment P2-045)
+RECOMMENDED_ACTION=WIRING-P2-045 (validation + containment + runArgv + savedPath stat) after/parallel P1-012 engine repair -- proposed, unactioned
+
+---
+
+END-OF-MUSE-DRAFT-ROWS=176 (166 individual + 8 group + 2 external-cited)
+COVERAGE-DISCLAIMER=This draft covers ONLY what Muse checkpoints 1-26 evidenced. Full matrix requires: per-trunk path stories (19 trunks PROPOSED in merge.json, 17 STORIED: files 10/10 + browser_ui 33/33 LEVEL-4 + testing_qa 6/6 LEVEL-4 + security 3/3 LEVEL-4 + code_understanding 16/16 LEVEL-4 + vcs_repo 11/11 LEVEL-4 + build_generate 13/13 LEVEL-4 + runtime_services 5/5 LEVEL-4 + shell_terminal 4/4 LEVEL-4 + database_data 6/6 LEVEL-4 + observability 5/5 LEVEL-4 + interaction 8/8 LEVEL-4 + infra_ops 6/6 + documentation 2/2 LEVEL-4 + language_runtimes 4/4 LEVEL-4 + network_api 12/12 LEVEL-4 + media_images 2/2 LEVEL-4), services/workers/persistence/deployment rows (NVIDIA scope), bulk per-tool firewall sweep (8 spot + 28 empty-input batch-1+2 + 19 risk-tier live + 16 trunk-files + 3 arch-backend + 26 browser live1/live2 + 30 browser live3 + 19 trunk-testing + 13 trunk-security + 36 trunk-code + 43 trunk-vcs + 45 trunk-build + 4 prog-batch3 + 23 trunk-runtime + 4 pages-approved + 25 trunk-shell + 5 shell-cwd + 28 trunk-db + 45 trunk-obs + 37 trunk-ixn + 40 trunk-infradoc + 32 trunk-lang + 43 trunk-net + 10 trunk-media done; traversal live legs + 120s timeout leg + python-present legs + ALL live network legs (fetch/search/catalog/Stripe/Google) + SSRF live payloads beyond sync-reject shapes + credentialed legs + outside-write live legs embargoed; 25/25 no-required reviewed: 18 SAFE + 1 BOUND + 4 EMBARGO with static fixture designs + 2 FIXTURE probed contained; browser_launch embargo partially lifted for contained-http; sonar/dep_audit/dead_code positives embargoed; code_reviewer non-quick + ALL github-network/git-network-push/import-clone/npm-qa legs embargoed; pipeline-named/setActiveRoot + mobile-default-cwd + full-stack-{} + react/api-full + ent/ori-default-root + page-model-present legs embargoed; risk table SURVEYED), contract audit per boundary (20 mismatches + schema/execute family; 026 adds no new number, F207 rides #13), LEVEL 5-6 proofs (L5 done files+browser_ui + project_run live-gate receipt; testing_qa + security + code_understanding static-only, 5 checkers pending; vcs_repo + build_generate static-only with 0 checkers each; observability + interaction + infra_ops + documentation + language_runtimes + network_api + media_images static-only with 0 checkers each), and NVIDIA cross-review (pending — worker on CLI-BATCH1 + audit slice).

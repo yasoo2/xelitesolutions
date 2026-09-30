@@ -1,0 +1,222 @@
+{
+  "trunk": "media_images",
+  "registered": 163,
+  "decl": {
+    "image_studio": {
+      "descriptionHead": "Fill the pictures of a built system: a real licensed photograph searched by each row's own name, a generated image when no archive matches it, and a designed ca",
+      "tags": [
+        "images",
+        "photos",
+        "system",
+        "design"
+      ],
+      "required": [],
+      "properties": [
+        "table",
+        "context",
+        "limit",
+        "redo"
+      ],
+      "permissions": [
+        "internet",
+        "write"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 6,
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "image_studio:14",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "video_action": {
+      "descriptionHead": "Edit, convert, and process videos/audio using FFMPEG. Machine must have ffmpeg installed.",
+      "tags": [
+        "media",
+        "video",
+        "audio",
+        "ffmpeg"
+      ],
+      "required": [
+        "action",
+        "inputFile",
+        "outputFile"
+      ],
+      "properties": [
+        "action",
+        "inputFile",
+        "outputFile",
+        "options"
+      ],
+      "permissions": [
+        "execute",
+        "read",
+        "write"
+      ],
+      "sideEffects": [
+        "execute",
+        "write"
+      ],
+      "rateLimitPerMinute": 5,
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "video_action:12.9",
+        "ask_user:9.4",
+        "user_browser:7.8"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    }
+  },
+  "verdictTable": {
+    "va unknown": "failed",
+    "va ffmpeg-fail": "failed",
+    "va ok-shape": "passed",
+    "is noproject": "failed",
+    "is nopicture": "failed",
+    "is allfilled-shape": "passed",
+    "is filled-shape": "passed"
+  },
+  "live": {
+    "va.empty": {
+      "input": "{}",
+      "ok": false,
+      "error": "Unknown action",
+      "outputShape": "null",
+      "outputPreview": "null",
+      "hasDataField": null,
+      "log0": "[2026-09-30T15:28:49.791Z] start video_action (orig=video_action)",
+      "logLast": "[2026-09-30T15:28:49.791Z] start video_action (orig=video_action)",
+      "logN": 1
+    },
+    "va.unknown": {
+      "input": "{\"action\":\"explode\",\"inputFile\":\"a.mp4\",\"outputFile\":\"b.mp4\"}",
+      "ok": false,
+      "error": "Unknown action",
+      "outputShape": "null",
+      "outputPreview": "null",
+      "hasDataField": null,
+      "log0": "[2026-09-30T15:28:49.824Z] start video_action (orig=video_action)",
+      "logLast": "[2026-09-30T15:28:49.824Z] start video_action (orig=video_action)",
+      "logN": 1
+    },
+    "va.convert-missing": {
+      "input": "{\"action\":\"convert\",\"inputFile\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-media-fx\\\\missing.mp4\",\"outputFile\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-a",
+      "ok": true,
+      "error": null,
+      "outputShape": "{success,savedPath,ffmpegLogs}",
+      "outputPreview": "{\"success\":true,\"savedPath\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-media-fx\\\\out.mp4\",\"ffmpegLogs\":\"'\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree'\\r\\nCMD.EXE was started with the above path as the current directory.\\r\\nUNC paths are not supported.  Defaulting to Windows directory.\\r\\n'ffmpeg' is not recognized as an internal or external command,\\r\\noperable program or batch file.\\r\\n\"}",
+      "hasDataField": null,
+      "log0": "[2026-09-30T15:28:49.828Z] start video_action (orig=video_action)",
+      "logLast": "FFMPEG Success: ffmpeg -y -i \"\\\\?\\D:\\Joe\\muse-worktree\\data\\projects\\session-audit-sess\\wiring-media-fx\\missing.mp4\" \"\\\\?\\D:\\Joe\\muse-worktree\\data\\projects\\session-audit-sess\\wiring-media-fx\\out.mp4\"",
+      "logN": 2
+    },
+    "va.trim-nooptions": {
+      "input": "{\"action\":\"trim\",\"inputFile\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-media-fx\\\\missing.mp4\",\"outputFile\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audi",
+      "ok": true,
+      "error": null,
+      "outputShape": "{success,savedPath,ffmpegLogs}",
+      "outputPreview": "{\"success\":true,\"savedPath\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-media-fx\\\\out2.mp4\",\"ffmpegLogs\":\"'\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree'\\r\\nCMD.EXE was started with the above path as the current directory.\\r\\nUNC paths are not supported.  Defaulting to Windows directory.\\r\\n'ffmpeg' is not recognized as an internal or external command,\\r\\noperable program or batch file.\\r\\n\"}",
+      "hasDataField": null,
+      "log0": "[2026-09-30T15:28:49.953Z] start video_action (orig=video_action)",
+      "logLast": "FFMPEG Success: ffmpeg -y -i \"\\\\?\\D:\\Joe\\muse-worktree\\data\\projects\\session-audit-sess\\wiring-media-fx\\missing.mp4\" undefined -c copy \"\\\\?\\D:\\Joe\\muse-worktree\\data\\projects\\session-audit-sess\\wiring-media-fx\\out2.mp4\"",
+      "logN": 2
+    },
+    "va.compare": {
+      "emptyOk": false,
+      "emptyError": "Unknown action",
+      "unknownOk": false,
+      "unknownError": "Unknown action",
+      "convertMissingOk": true,
+      "convertMissingErrorPrefix": null,
+      "convertMissingOutShape": "{success,savedPath,ffmpegLogs}",
+      "convertMissingLogLast": "FFMPEG Success: ffmpeg -y -i \"\\\\?\\D:\\Joe\\muse-worktree\\data\\projects\\session-audit-sess\\wiring-media-fx\\missing.mp4\" \"\\\\?\\D:\\Joe\\muse-worktree\\data\\projects\\session-audit-sess\\wiring-media-fx\\out.mp4\"",
+      "trimNooptionsOk": true,
+      "trimNooptionsErrorPrefix": null,
+      "trimLogHasUndefined": true,
+      "out1ExistsAfterSuccess": false,
+      "out2ExistsAfterSuccess": false
+    },
+    "is.noproject": {
+      "input": "{}",
+      "ok": false,
+      "error": "This session has no system with tables — build one first, then ask for the pictures.",
+      "outputShape": "null",
+      "outputPreview": "null",
+      "hasDataField": null,
+      "log0": "[2026-09-30T15:28:50.073Z] start image_studio (orig=image_studio)",
+      "logLast": "[2026-09-30T15:28:50.073Z] start image_studio (orig=image_studio)",
+      "logN": 1
+    },
+    "is.nopicture": {
+      "input": "{\"table\":\"invoices\"}",
+      "ok": false,
+      "error": "No table here has a picture column — pictures belong to things, not to invoices and people.",
+      "outputShape": "null",
+      "outputPreview": "null",
+      "hasDataField": null,
+      "log0": "[2026-09-30T15:28:50.078Z] start image_studio (orig=image_studio)",
+      "logLast": "[2026-09-30T15:28:50.078Z] start image_studio (orig=image_studio)",
+      "logN": 1
+    },
+    "is.nopicture-any": {
+      "input": "{}",
+      "ok": false,
+      "error": "No table here has a picture column — pictures belong to things, not to invoices and people.",
+      "outputShape": "null",
+      "outputPreview": "null",
+      "hasDataField": null,
+      "log0": "[2026-09-30T15:28:50.306Z] start image_studio (orig=image_studio)",
+      "logLast": "[2026-09-30T15:28:50.306Z] start image_studio (orig=image_studio)",
+      "logN": 1
+    },
+    "is.allfilled": {
+      "input": "{}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{message,filled,tables}",
+      "outputPreview": "{\"message\":\"🖼️ System pictures — 0 row(s):\\n• plants: every row already has one\",\"filled\":0,\"tables\":[\"plants\"]}",
+      "hasDataField": null,
+      "log0": "[2026-09-30T15:28:50.526Z] start image_studio (orig=image_studio)",
+      "logLast": "[2026-09-30T15:28:50.526Z] start image_studio (orig=image_studio)",
+      "logN": 1
+    },
+    "is.compare": {
+      "hadPrevEntry": false,
+      "noprojectOk": false,
+      "noprojectError": "This session has no system with tables — build one first, then ask for the pictu",
+      "nopictureOk": false,
+      "nopictureError": "No table here has a picture column — pictures belong to things, not to invoices ",
+      "nopictureAnyOk": false,
+      "nopictureAnyError": "No table here has a picture column — pictures belong to things, not to invoices ",
+      "allfilledOk": true,
+      "allfilledFilled": 0,
+      "allfilledTables": [
+        "plants"
+      ],
+      "allfilledMsgHasRowWord": true,
+      "allfilledLogN": 1,
+      "allfilledImageNotes": 0
+    }
+  },
+  "cleanup": "ok",
+  "sessionRoot": "\\\\?\\D:\\Joe\\muse-worktree\\data\\projects\\session-audit-sess",
+  "defaultRoot": "D:\\Joe\\muse-worktree\\data\\projects\\my-workspace",
+  "apiCwd": "\\\\?\\D:\\Joe\\muse-worktree",
+  "at": "2026-09-30T15:28:50.758Z"
+}

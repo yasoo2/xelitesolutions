@@ -1,60 +1,59 @@
 # LIVE-REPORT — Muse + NVIDIA (human live view)
-UPDATED=2026-09-30T~18:00+03:00 | AUTHOR=MUSE (HEAD 70ca099d + checkpoint-25 work, uncommitted at write time) | SHARED_WRITE=POLICY_BLOCKED (fallback: tmp/LIVE-REPORT.md; retested this cycle via write probe: Access denied)
+UPDATED=2026-09-30T~18:45+03:00 | AUTHOR=MUSE (HEAD 93a53785 + checkpoint-26 work, uncommitted at write time) | SHARED_WRITE=POLICY_BLOCKED (fallback: tmp/LIVE-REPORT.md; retested this cycle via write probe: absolute path is outside the workspace)
 
 ## 1. ماذا نعمل الآن؟
-- Muse: أنجز تدقيق trunk الشبكة network_api (12/12 أداة، 43 اختبارًا حيًا مزدوجًا متطابقًا) + أعاد التحقق من سريان مراجعة LOCAL-PROVIDER (التأكيد الثاني). بلا تعديل لأي مصدر.
-- NVIDIA: مالك تنفيذ CLI batch-1 — ما زال dirty بلا commit مسلَّم للمراجعة (main = e8fd9589).
-- الفريق: بانتظار مراجعة NVIDIA الدقيقة للـ ack + تحديث الـ runtime المعزول + إعادة تشغيل نفس طلب القهوة.
+- Muse: finished media_images trunk (2/2, 10 legs A/B identical) + filed LOCAL-PROVIDER review confirmation-3. No source edits.
+- NVIDIA: CLI batch-1 still dirty, no committed diff for review (main = e8fd9589).
+- Blocker watch: NVIDIA pipeline-ack fix awaiting decision; Codex still absent.
 
-## 2. ماذا اكتشفنا؟ (دورة Muse هذه)
-- أدوات الجلب (http_fetch/html_extract/rss_fetch) بلا أي سياسة روابط: رابط file: وصل إلى fetch ولم يرفضه إلا undici نفسه — سطح SSRF مؤكد الشيفرة (P1-016 جديد).
-- فشل rss_fetch يفقد السبب: الـ Parser يقذف AggregateError برسالة فارغة فيستبدلها النظام برسالة عامة (مثبت حيًا مرتين + إثبات مباشر).
-- نجاح http الحقيقي ({status:200}) يُقرأ خطأً كـ incomplete في سجل التحقق — عيب مستهلك جديد MISMATCH #20.
-- swagger_docs يكتب في مسارات غير محتواة + يضع العنوان خامًا في HTML + خطأ TypeError خام (P1-015 وP2-043 جديدان).
-- gmail_send يحقن الترويسات (CRLF) شيفرةً + المدفوعات بلا تحقق من المبلغ (P2-044) — كلها بلا أرجل حية (محظور).
-- إيجابي: search_text دقيق ومحتوى ومتجذر بالجلسة (مثبت حيًا)؛ بوابات api_tester/Google/Stripe كلها صادقة.
+## 2. ماذا اكتشفنا؟ (audit Muse only)
+- video_action reports SUCCESS for failed work (missing input + no ffmpeg): ok:true + savedPath to a nonexistent file — 2nd live instance of engine exit-blindness (extends P1-012).
+- video_action: required unenforced, literal `undefined` in command, raw options to shell, uncontained paths (new P2-045).
+- image_studio: crashed table reads render as a confident wrong sentence; silent zero inside ok:true (new P2-046).
+- Extended-prefix root breaks shell cwd AND subprocess cwd (2 live proofs, extends P1-010).
+- filled:0 receipt maps to passed (rides #13, no new number). Positive: image guards + allfilled work with zero network.
 
 ## 3. ماذا أنجزنا فعليًا؟
-- ملف الاكتشاف 025 + مسبار trunk_net (يعمل مرتين متطابقتين) + 12 صفًا في المصفوفة + 5 دفعات إصلاح جديدة (P1-015/016، P2-042/043/044) + توسيع P2-004/P2-005.
-- تأكيد ثانٍ لسريان مراجعة LOCAL-PROVIDER (الفشل 404 ما زال حيًا، لا commit تنفيذ بعد، ملفا التشاور بلا تغيير).
-- الحارسان guard:architecture وguard:package-scripts خضراوان (exit 0).
+- Discovery 026 + probe + cwd-crash diagnostic + 2 matrix rows + backlog/summary staging (146 tools, 17/19 trunks).
+- LOCAL-PROVIDER confirm-3 (404 still live, no implementation yet, verdict unchanged).
+- Guards green: guard:architecture + guard:package-scripts (exit 0).
 
 ## 4. ماذا يعمل Muse الآن؟
-اكتمل trunk الشبكة. التالي: media_images=2 (آخر trunk متاح قبل حدود التنسيق) ما لم يصل diff الـ CLI من NVIDIA (مراجعته تتقدم على كل شيء).
+Storyable trunk set COMPLETE (17/19; 2 blocked for NVIDIA coordination). Standby: CLI-diff review when NVIDIA commits + cross-review.
 
 ## 5. ماذا يعمل NVIDIA الآن؟
-(من الحالة المشتركة + فحص القراءة فقط) تنفيذ CLI batch-1 ما زال dirty بلا تسليم. لا أرقام أو تسليمات جديدة منه هذه الدورة.
+(From shared state + read-only git) CLI batch-1 implementation, dirty/uncommitted. No new shared evidence this cycle.
 
 ## 6. هل تم التواصل أو المراجعة بين Muse وNVIDIA؟
-لا مراجعة متبادلة جديدة هذه الدورة: لا diff مسلَّم من NVIDIA. مراجعات Muse (ack + local-provider + تأكيد-2) جاهزة محليًا للاستيراد الحرفي من Codex.
+No new direct exchange this cycle: no NVIDIA diff to review. Muse reviews (ack + local-provider + confirm-3) filed as fallbacks for Codex import.
 
 ## 7. أين اتفقا وأين اختلفا؟
-- اتفاق: ملكية NVIDIA للـ CLI ومراجعة Muse (مؤكد من الطرفين). 246 = تهجئات أسماء لا أدوات.
-- مفتوح: مراجعة NVIDIA الدقيقة للـ ack + بيان تداخل pipeline/main؛ تعيين مالك/مراجع لـ P1-010..P1-016/P2-025..044؛ قرار تنفيذ LOCAL-PROVIDER بعد مراجعة NVIDIA.
+- Agreement: NVIDIA owns CLI, Muse reviews (unchanged). 246 = spellings not tools.
+- Open: repair-batch ownership (P1-010/P1-012/P2-045/P2-046…), pipeline-ack decision, NVIDIA local-provider response pending.
 
-## 8. الأرقام المؤكدة (فرع Muse @ 70ca099d + checkpoint 25؛ كلها مثبتة بالأدلة)
+## 8. الأرقام المؤكدة (Muse branch @ 93a53785 + checkpoint 26)
 REPORTED_BY_MUSE:
-DISCOVERED_TOOLS=163 REGISTERED_TOOLS=163 EXECUTABLE_TOOLS=144 (LEVEL-4 مثبت؛ الباقي UNKNOWN)
+DISCOVERED_TOOLS=163 REGISTERED_TOOLS=163 EXECUTABLE_TOOLS=146 (LEVEL-4 storied; rest UNKNOWN)
 FULLY_WIRED=UNKNOWN (bulk) PARTIALLY_WIRED=UNKNOWN (bulk) ORPHANED=5 DUPLICATE=2
-UNKNOWN=3/19 trunks غير مروية (media_images=2 متاح؛ planning/memory مملوكان لـ NVIDIA)
-REPAIRED=1 slice (P1-009 port-guard، غير مدمج) VERIFIED=16 trunk مروي + اهتزاز-صفر مزدوج
-REAL_JOE_PROVEN=NO (لا UAT جديد) CONTRACT_MISMATCHES=20 (جديد #20: اصطدام مفردات الحالة)
-REPORTED_BY_NVIDIA: لا أرقام جديدة (شغله غير مسلَّم).
-VERIFIED (مشترك): لا Real Joe PASS جديد. CRITICAL-REAL-JOE-UI-001 ما زال NOT_PASS.
+UNKNOWN=2/19 trunks coordination-blocked (planning=10, memory=7, NVIDIA-owned)
+REPAIRED=1 slice (P1-009 port-guard, unchanged) VERIFIED=17 trunks storied + guards green
+REAL_JOE_PROVEN=NO (no UAT this cycle) CONTRACT_MISMATCHES=20 (026 adds none)
+REPORTED_BY_NVIDIA: no new counts (no shared evidence).
+VERIFIED (independent): no Real Joe PASS exists. CRITICAL-REAL-JOE-UI-001 still NOT_PASS.
 
 ## 9. ما آخر اختبار ونتيجته؟
-- مسبار trunk_net مرتان: 43/43 legs متطابقة الأحكام (verdictDiffs=0) + decl وverdict-table بايت-مستقران + cleanup=ok. exit 0.
-- guard:architecture: 11 ✅ exit 0. guard:package-scripts: exit 0 بلا ❌.
-- فحص حي للقراءة فقط: :5000/api/health=200 و/health/local=404 (فشل LOCAL-PROVIDER ما زال يتكرر).
-- Real Joe UI: لم يُشغَّل عمدًا (الخطة تمنع إعادة UAT مكلفة قبل دمج مُراجَع + تحديث runtime).
+- trunk_media A/B: 10/10 legs verdict-identical (verdictDiffs=0) + decl/verdict-table byte-stable + cleanup=ok. exit 0.
+- diag_media_read: plain cwd exit 0 + tables; prefixed cwd exit 1 + EISDIR. exit 0.
+- guard:architecture + guard:package-scripts: exit 0 each.
+- Live probe: :5000/api/health=200, /health/local=404 (LOCAL-PROVIDER failure still reproduces).
+- Real Joe UI: no run this cycle (audit probes + review only; runtime untouched).
 
 ## 10. ما المشاكل أو العوائق الحالية؟
-- كتابة الملفات المشتركة محظورة سياساتيًا (أُعيد إثباتها بمسبار كتابة هذه الدورة؛ الردود محلية بانتظار الاستيراد).
-- الـ runtime المعزول :5215 ما زال يعمل بالحزمة قبل الإصلاح — التحديث بيد مالك الدمج بعد المراجعات.
-- لا diff مسلَّم من NVIDIA بعد. Codex غائب مؤقتًا (حسب أمر التدقيق).
-- ترسخت حدود التدقيق: planning/memory يحتاجان تنسيق NVIDIA قبل التروية.
+- Shared coordination writes from this sandbox are policy-blocked (write probe this cycle: denied; fallback used).
+- No NVIDIA committed diff yet; Codex absent (reassignment rule noted in local-provider C7).
+- Audit: planning/memory trunks need NVIDIA coordination before storying.
 
 ## 11. ما الخطوة التالية؟
-- مالك الدمج: T2 (معالجة سلوكية للـ literals) + T3 (تأكيد القاعدة) + تحديث runtime معزول + إعادة نفس طلب القهوة (موجب + ضابط سالب).
-- NVIDIA: تسليم diff الـ CLI المحدود + مراجعة ack الدقيقة + بيان التداخل.
-- Muse: media_images=2 (آخر trunk متاح) أو مراجعة CLI فور وصولها.
+- Muse: cross-review standby + CLI-diff review the moment NVIDIA commits.
+- NVIDIA: commit CLI diff for review + ack/pipeline decision + audit slice.
+- Team: assign one owner per repair batch (P1-012 engine blindness first — it corrupts success receipts tool-wide).
