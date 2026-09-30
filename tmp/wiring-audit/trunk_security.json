@@ -1,0 +1,258 @@
+{
+  "generatedAt": "2026-09-30T01:42:40.700Z",
+  "trunk": "security",
+  "declarations": {
+    "dependency_audit": {
+      "descriptionHead": "Check project dependencies for known security vulnerabilities.",
+      "tags": [
+        "security",
+        "dependencies",
+        "audit"
+      ],
+      "required": null,
+      "requiredAny": null,
+      "permissions": [
+        "execute",
+        "internet"
+      ],
+      "sideEffects": [
+        "execute"
+      ],
+      "rateLimitPerMinute": 60,
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "dependency_audit:8.6",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ],
+      "checkerTaskLevel": true,
+      "checkerGateExistence": true,
+      "checkerGateLive": true
+    },
+    "secrets_scan_repo": {
+      "descriptionHead": "Scan a repository for common secret patterns.",
+      "tags": [
+        "security",
+        "secrets",
+        "scanner"
+      ],
+      "required": [
+        "path"
+      ],
+      "requiredAny": null,
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "secrets_scan_repo:19.5",
+        "security_scanner:7.8",
+        "ask_user:7.1"
+      ],
+      "checkerTaskLevel": true,
+      "checkerGateExistence": true,
+      "checkerGateLive": true
+    },
+    "security_scanner": {
+      "descriptionHead": "Scan code for security vulnerabilities and best practices",
+      "tags": [
+        "security",
+        "scanner",
+        "vulnerabilities"
+      ],
+      "required": [],
+      "requiredAny": [
+        [
+          "files",
+          "projectPath",
+          "target",
+          "path"
+        ]
+      ],
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "security_scanner:13.1",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    }
+  },
+  "verdictTable": {
+    "dep_audit pass": "passed",
+    "dep_audit enolock-mislabeled": "failed",
+    "secrets clean": "passed",
+    "secrets findings": "failed",
+    "scanner clean": "passed",
+    "scanner findings-present": "passed",
+    "scanner missing-files": "failed"
+  },
+  "emptyPathMapsTo": "D:\\Joe\\muse-worktree\\data\\projects\\my-workspace",
+  "emptyPathThrew": null,
+  "live": {
+    "scan.seeded-files": {
+      "input": "{\"files\":[\"clean.js\",\"vuln.js\"],\"projectPath\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-sec-scan\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{vulnerabilities,riskScore,filesRequested,filesScanned,scannedFiles,missingFiles,summary}",
+      "outputPreview": "{\"vulnerabilities\":[{\"file\":\"vuln.js\",\"severity\":\"critical\",\"type\":\"SQL Injection\",\"message\":\"Potential SQL injection vulnerability. Use parameterized queries.\",\"cwe\":\"CWE-89\"},{\"file\":\"vuln.js\",\"severity\":\"high\",\"type\":\"XSS\",\"message\":\"Potential XSS vulnerability. Sanitize user input before rendering.\",\"cwe\":\"CWE-79\"},{\"file\":\"vuln.js\",\"severity\":\"critical\",\"type\":\"Hardcoded Secret\",\"message\":\"Hardcoded credentials detected. Use environment variables.\",\"cwe\":\"CWE-798\"},{\"file\":\"vuln.js\",\"severity\":\"high\",\"type\":\"Code Injection\",\"message\":\"eval() is dangerous and should be avoided.\",\"cwe\":\"CWE-95\"},{\"file\":\"vuln.js\",\"severity\":\"low\",\"type\":\"Missing Validation\",\"message\":\"Consider adding input validation.\",\"cwe\":\"CWE-20\"}],\"riskScore\":83,\"filesRequested\":2,\"filesScanned\":2,\"scannedFiles\":[\"clean.js\",\"vuln.js\"],\"missingFiles\":[],\"summary\":{\"critical\":2,\"high\":2,\"medium\":0,\"low\":1}}",
+      "log0": "[2026-09-30T01:42:25.904Z] start security_scanner (orig=security_scanner)"
+    },
+    "scan.discover": {
+      "input": "{\"projectPath\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-sec-scan\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{vulnerabilities,riskScore,filesRequested,filesScanned,scannedFiles,missingFiles,summary}",
+      "outputPreview": "{\"vulnerabilities\":[{\"file\":\"vuln.js\",\"severity\":\"critical\",\"type\":\"SQL Injection\",\"message\":\"Potential SQL injection vulnerability. Use parameterized queries.\",\"cwe\":\"CWE-89\"},{\"file\":\"vuln.js\",\"severity\":\"high\",\"type\":\"XSS\",\"message\":\"Potential XSS vulnerability. Sanitize user input before rendering.\",\"cwe\":\"CWE-79\"},{\"file\":\"vuln.js\",\"severity\":\"critical\",\"type\":\"Hardcoded Secret\",\"message\":\"Hardcoded credentials detected. Use environment variables.\",\"cwe\":\"CWE-798\"},{\"file\":\"vuln.js\",\"severity\":\"high\",\"type\":\"Code Injection\",\"message\":\"eval() is dangerous and should be avoided.\",\"cwe\":\"CWE-95\"},{\"file\":\"vuln.js\",\"severity\":\"low\",\"type\":\"Missing Validation\",\"message\":\"Consider adding input validation.\",\"cwe\":\"CWE-20\"}],\"riskScore\":83,\"filesRequested\":2,\"filesScanned\":2,\"scannedFiles\":[\"clean.js\",\"vuln.js\"],\"missingFiles\":[],\"summary\":{\"critical\":2,\"high\":2,\"medium\":0,\"low\":1}}",
+      "log0": "[2026-09-30T01:42:26.061Z] start security_scanner (orig=security_scanner)"
+    },
+    "scan.explicit-env": {
+      "input": "{\"files\":[\".env\"],\"projectPath\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-sec-scan\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{vulnerabilities,riskScore,filesRequested,filesScanned,scannedFiles,missingFiles,summary}",
+      "outputPreview": "{\"vulnerabilities\":[{\"file\":\".env\",\"severity\":\"critical\",\"type\":\"Hardcoded Secret\",\"message\":\"Hardcoded credentials detected. Use environment variables.\",\"cwe\":\"CWE-798\"}],\"riskScore\":25,\"filesRequested\":1,\"filesScanned\":1,\"scannedFiles\":[\".env\"],\"missingFiles\":[],\"summary\":{\"critical\":1,\"high\":0,\"medium\":0,\"low\":0}}",
+      "log0": "[2026-09-30T01:42:26.100Z] start security_scanner (orig=security_scanner)"
+    },
+    "scan.missing": {
+      "input": "{\"files\":[\"nope.js\"],\"projectPath\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-sec-scan\"}",
+      "ok": false,
+      "error": "security_scanner could not scan 1 requested file(s): nope.js",
+      "outputShape": "{vulnerabilities,riskScore,filesRequested,filesScanned,scannedFiles,missingFiles,summary}",
+      "outputPreview": "{\"vulnerabilities\":[],\"riskScore\":0,\"filesRequested\":1,\"filesScanned\":0,\"scannedFiles\":[],\"missingFiles\":[\"nope.js\"],\"summary\":{\"critical\":0,\"high\":0,\"medium\":0,\"low\":0}}",
+      "log0": "[2026-09-30T01:42:26.132Z] start security_scanner (orig=security_scanner)"
+    },
+    "scan.empty-dir": {
+      "input": "{\"projectPath\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-sec-empty\"}",
+      "ok": false,
+      "error": "security_scanner requires a non-empty files array or an existing project target containing source files",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T01:42:26.164Z] start security_scanner (orig=security_scanner)"
+    },
+    "scan.outside-nonexistent": {
+      "input": "{\"projectPath\":\"D:\\\\Joe\\\\muse-worktree\\\\tmp\\\\wiring-audit\\\\fx-security\\\\tmp\\\\wiring-sec-nope-14x\"}",
+      "ok": false,
+      "error": "security_scanner projectPath must stay within the active workspace",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T01:42:26.187Z] start security_scanner (orig=security_scanner)"
+    },
+    "scan.file-target": {
+      "input": "{\"projectPath\":\"wiring-sec-scan\\\\vuln.js\"}",
+      "ok": false,
+      "error": "security_scanner could not scan 1 requested file(s): vuln.js",
+      "outputShape": "{vulnerabilities,riskScore,filesRequested,filesScanned,scannedFiles,missingFiles,summary}",
+      "outputPreview": "{\"vulnerabilities\":[],\"riskScore\":0,\"filesRequested\":1,\"filesScanned\":0,\"scannedFiles\":[],\"missingFiles\":[\"vuln.js\"],\"summary\":{\"critical\":0,\"high\":0,\"medium\":0,\"low\":0}}",
+      "log0": "[2026-09-30T01:42:26.210Z] start security_scanner (orig=security_scanner)"
+    },
+    "secrets.seeded": {
+      "input": "{\"path\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-sec-secrets\"}",
+      "ok": false,
+      "error": "Found 4 potential secrets in codebase.",
+      "outputShape": "{findings,scannedFiles}",
+      "outputPreview": "{\"findings\":[{\"type\":\"generic_secret_assignment\",\"file\":\".env\",\"line\":1},{\"type\":\"openai_key\",\"file\":\"secrets.js\",\"line\":2},{\"type\":\"generic_secret_assignment\",\"file\":\"secrets.js\",\"line\":2},{\"type\":\"generic_secret_assignment\",\"file\":\"secrets.js\",\"line\":3}],\"scannedFiles\":3}",
+      "log0": "[2026-09-30T01:42:26.241Z] start secrets_scan_repo (orig=secrets_scan_repo)"
+    },
+    "secrets.clean": {
+      "input": "{\"path\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-sec-empty\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{findings,scannedFiles}",
+      "outputPreview": "{\"findings\":[],\"scannedFiles\":0}",
+      "log0": "[2026-09-30T01:42:26.283Z] start secrets_scan_repo (orig=secrets_scan_repo)"
+    },
+    "secrets.missing": {
+      "input": "{\"path\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-sec-nope-14x\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{findings,scannedFiles}",
+      "outputPreview": "{\"findings\":[],\"scannedFiles\":0}",
+      "log0": "[2026-09-30T01:42:26.311Z] start secrets_scan_repo (orig=secrets_scan_repo)"
+    },
+    "secrets.cap": {
+      "input": "{\"path\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-sec-secrets\",\"maxFindings\":1}",
+      "ok": false,
+      "error": "Found 1 potential secrets in codebase.",
+      "outputShape": "{findings,scannedFiles}",
+      "outputPreview": "{\"findings\":[{\"type\":\"generic_secret_assignment\",\"file\":\".env\",\"line\":1}],\"scannedFiles\":1}",
+      "log0": "[2026-09-30T01:42:26.342Z] start secrets_scan_repo (orig=secrets_scan_repo)"
+    },
+    "audit.enolock": {
+      "input": "{\"path\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-sec-nolock\"}",
+      "ok": false,
+      "error": "Audit found security vulnerabilities.",
+      "outputShape": "{report}",
+      "outputPreview": "{\"report\":\"npm error code ENOLOCK\\nnpm error audit This command requires an existing lockfile.\\nnpm error audit Try creating one first with: npm i --package-lock-only\\nnpm error audit Original error: loadVirtual requires existing shrinkwrap file\\nnpm error Log files were not written due to an error writing to the directory: C:\\\\Users\\\\home\\\\AppData\\\\Local\\\\npm-cache\\\\_logs\\nnpm error You can rerun the command with `--loglevel=verbose` to see the logs in your terminal\"}",
+      "log0": "[2026-09-30T01:42:26.368Z] start dependency_audit (orig=dependency_audit)"
+    },
+    "audit.empty-dir": {
+      "input": "{\"path\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-sec-empty\"}",
+      "ok": false,
+      "error": "Audit found security vulnerabilities.",
+      "outputShape": "{report}",
+      "outputPreview": "{\"report\":\"{\\n  \\\"auditReportVersion\\\": 2,\\n  \\\"vulnerabilities\\\": {\\n    \\\"multer\\\": {\\n      \\\"name\\\": \\\"multer\\\",\\n      \\\"severity\\\": \\\"high\\\",\\n      \\\"isDirect\\\": true,\\n      \\\"via\\\": [\\n        {\\n          \\\"source\\\": 1113635,\\n          \\\"name\\\": \\\"multer\\\",\\n          \\\"dependency\\\": \\\"multer\\\",\\n          \\\"title\\\": \\\"Multer vulnerable to Denial of Service via incomplete cleanup\\\",\\n          \\\"url\\\": \\\"https://github.com/advisories/GHSA-xf7r-hgr6-v32p\\\",\\n          \\\"severity\\\": \\\"high\\\",\\n          \\\"cwe\\\": [\\n            \\\"CWE-459\\\"\\n          ],\\n          \\\"cvss\\\": {\\n            \\\"score\\\": 0,\\n            \\\"vectorString\\\": null\\n          },\\n          \\\"range\\\": \\\"<2.1.0\\\"\\n        },\\n        {\\n          \\\"source\\\": 1113636,\\n          \\\"name\\\": \\\"multer\\\",\\n          \\\"dependency\\\": \\\"multer\\\",\\n          \\\"title\\\": \\\"Multer vulnerable to Denial of Service via resou",
+      "log0": "[2026-09-30T01:42:33.219Z] start dependency_audit (orig=dependency_audit)"
+    }
+  },
+  "sessionRoot": "D:\\Joe\\muse-worktree\\data\\projects\\session-audit-sess",
+  "fixtures": {
+    "before": {
+      "scan": [
+        ".env",
+        "clean.js",
+        "vuln.js"
+      ],
+      "sec": [
+        ".env",
+        "clean.txt",
+        "node_modules",
+        "secrets.js"
+      ],
+      "nolock": [
+        "package.json"
+      ],
+      "empty": []
+    },
+    "after": {
+      "scan": [
+        ".env",
+        "clean.js",
+        "vuln.js"
+      ],
+      "sec": [
+        ".env",
+        "clean.txt",
+        "node_modules",
+        "secrets.js"
+      ],
+      "nolock": [
+        "package.json"
+      ],
+      "empty": []
+    },
+    "untouched": true,
+    "removed": true
+  }
+}

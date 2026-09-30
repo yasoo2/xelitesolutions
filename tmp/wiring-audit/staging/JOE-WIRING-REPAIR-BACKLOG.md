@@ -113,12 +113,12 @@ DEPENDENCIES=none
 ---
 
 BATCH_ID=WIRING-P2-004
-CAPABILITIES=schema/execute consistency (task_lifecycle required-vs-default gap) + empty-input honesty sweep continuation (25/25 reviewed, 19 probed live in sweep2.json; risk-tier 19 in sweep3.json; files-trunk 16 live in trunk_files.json; testing_qa 19 live in trunk_testing.json)
-ROOT_CAUSE=task_lifecycle declares required:['action'] but execute() defaults action='update' and returns ok:true on {} (sweep1.json, rerun-stable); no central schema gate — validation is per-tool; 25 no-required tools PARTITIONED 18 SAFE + 1 BOUND + 4 EMBARGO (static fixture designs in 008) + 2 FIXTURE (probed contained in 008). Absence-as-success shape: project_stop/orders_read/form_inbox/browser_consent return ok:true for absence (honest messages; ok-only verifiers would misread) + read_file {} returns ok:true EMPTY directory auto-list (sweep3.json, rerun-stable — 5th instance) + project_edit no-project returns ok:true 'No active project' message (trunk_files.json, live — 6th instance) + test_generator .ts-under-node-runner returns ok:true + generated:false/skipped:true (trunk_testing.json, live 2x — 7th instance, 013/F80). project_undo default-latest-restore code-indicated (ProjectUndoTool.ts:98-100), fixture-unconfirmed.
-FILES=TaskLifecycleTool.ts (enforce required OR drop it from schema) + absence-as-success verifier note — EVIDENCED 012/F69: verdict mapping is ok/error-only and content-blind for all 43 swept tools (passed = check executed, never = requested behavior observed; hollow-pass shapes: 6 absence-instances + extract-swallow + empty-search-answer, all mapping in the safe direction) + EXTENDED 013/F75: quality_run all-skipped maps to failed, not incomplete (verdict is skip-blind too — a gate with nothing to check is indistinguishable from a gate that failed) + project_undo snapshot fixture
+CAPABILITIES=schema/execute consistency (task_lifecycle required-vs-default gap) + empty-input honesty sweep continuation (25/25 reviewed, 19 probed live in sweep2.json; risk-tier 19 in sweep3.json; files-trunk 16 live in trunk_files.json; testing_qa 19 live in trunk_testing.json; security-trunk 13 live in trunk_security.json)
+ROOT_CAUSE=task_lifecycle declares required:['action'] but execute() defaults action='update' and returns ok:true on {} (sweep1.json, rerun-stable); no central schema gate — validation is per-tool; 25 no-required tools PARTITIONED 18 SAFE + 1 BOUND + 4 EMBARGO (static fixture designs in 008) + 2 FIXTURE (probed contained in 008). Absence-as-success shape: project_stop/orders_read/form_inbox/browser_consent return ok:true for absence (honest messages; ok-only verifiers would misread) + read_file {} returns ok:true EMPTY directory auto-list (sweep3.json, rerun-stable — 5th instance) + project_edit no-project returns ok:true 'No active project' message (trunk_files.json, live — 6th instance) + test_generator .ts-under-node-runner returns ok:true + generated:false/skipped:true (trunk_testing.json, live 2x — 7th instance, 013/F80) + secrets_scan_repo nonexistent-path returns ok:true findings:[] scannedFiles:0, byte-identical to clean (trunk_security.json, live 2x — 8th instance, 014/F85). Decorative-required instances: task_lifecycle (above) + secrets_scan_repo required:['path'] never enforced — missing path maps to default-workspace scan (pure mapping proof, 014/F86; session escape). project_undo default-latest-restore code-indicated (ProjectUndoTool.ts:98-100), fixture-unconfirmed.
+FILES=TaskLifecycleTool.ts (enforce required OR drop it from schema) + SecretsScanRepoTool (QualityTools.ts:284-285: enforce required path; honest nonexistent-path error like SecurityScannerTool.ts:100-104) + absence-as-success verifier note — EVIDENCED 012/F69: verdict mapping is ok/error-only and content-blind for all 43 swept tools (passed = check executed, never = requested behavior observed; hollow-pass shapes: 6 absence-instances + extract-swallow + empty-search-answer, all mapping in the safe direction) + EXTENDED 013/F75: quality_run all-skipped maps to failed, not incomplete (verdict is skip-blind too — a gate with nothing to check is indistinguishable from a gate that failed) + EXTENDED 014/F85: secrets missing-path-as-clean (8th absence instance) + 014/F86 decorative-required with session escape + project_undo snapshot fixture
 IMPLEMENTATION_OWNER=UNASSIGNED
 REVIEW_OWNER=UNASSIGNED
-TESTS=schema/execute consistency gate for task_lifecycle ({} -> honest error OR schema without required); verifier MUST read message/flags, not ok alone, for the 5 absence tools; project_undo fixture (snapshots present) to confirm/deny default-restore; AGENTS gates if ToolService touched (it is not — tool-local fix + verifier note)
+TESTS=schema/execute consistency gate for task_lifecycle ({} -> honest error OR schema without required); secrets required-path negative (missing path -> honest error, RED->GREEN via mapping-level test — never scan a default workspace live) + nonexistent-path negative (clean-shaped ok:true must become honest error, RED->GREEN); verifier MUST read message/flags, not ok alone, for the absence tools; project_undo fixture (snapshots present) to confirm/deny default-restore; AGENTS gates if ToolService touched (it is not — tool-local fix + verifier note)
 REAL_JOE_UAT=none (contract nits; UI behavior unchanged either way)
 ROLLBACK=revert schema/execute one-liner
 DEPENDENCIES=none
@@ -127,11 +127,11 @@ DEPENDENCIES=none
 
 BATCH_ID=WIRING-P2-005
 CAPABILITIES=ok:false-without-error wrapper (cause-swallowing) + nested-error cause-substitution
-ROOT_CAUSE=tools returning {ok:false} with no `error` field get generic 'Tool reported failure without an error message'; real cause sits in output (e.g. output.stderr) and never surfaces (2 instances: batch-1 rss_fetch, batch-2 repo_diff_summary in sweep1/2.json). EXTENDED 013/F76 (3rd instance, cause-SUBSTITUTION not absence): same nested npm exit-1 surfaced run-varying text across 2 runs — run 1 auto.unit.fail error was npm self-update NOTICE stdout noise (exit cause nowhere in the message), run 2 same leg was generic 'command_failed'; run 2 quality.test.fail per-task error was '' (empty string). Origin is below the tools (nested shell_execute/handleShellCommand error mapping).
-FILES=ToolService/firewall wrapper (surface output.stderr/cause) + the 2 tool sites (return error with ok:false) + shell_execute/handleShellCommand error mapping (prefer exit cause over stdout noise; never empty error on exit-nonzero) + auto_tester/quality_run passthrough
+ROOT_CAUSE=tools returning {ok:false} with no `error` field get generic 'Tool reported failure without an error message'; real cause sits in output (e.g. output.stderr) and never surfaces (2 instances: batch-1 rss_fetch, batch-2 repo_diff_summary in sweep1/2.json). EXTENDED 013/F76 (3rd instance, cause-SUBSTITUTION not absence): same nested npm exit-1 surfaced run-varying text across 2 runs — run 1 auto.unit.fail error was npm self-update NOTICE stdout noise (exit cause nowhere in the message), run 2 same leg was generic 'command_failed'; run 2 quality.test.fail per-task error was '' (empty string). Origin is below the tools (nested shell_execute/handleShellCommand error mapping). EXTENDED 014/F83 (4th instance, cause-substitution + CONTENT variance): same audit.empty-dir leg run 1 report = pure npm self-update NOTICE (cause nowhere), run 2 report = ancestor audit JSON (multer/high) — verdict-stable ok:false, report content entirely different.
+FILES=ToolService/firewall wrapper (surface output.stderr/cause) + the 2 tool sites (return error with ok:false) + shell_execute/handleShellCommand error mapping (prefer exit cause over stdout noise; never empty error on exit-nonzero) + auto_tester/quality_run passthrough + DependencyAuditTool report sourcing (pin audit target so the report describes the requested path — see P2-006 ext)
 IMPLEMENTATION_OWNER=UNASSIGNED
 REVIEW_OWNER=UNASSIGNED
-TESTS=contract test: no ok:false result without a specific error (or wrapper carries output cause); RED->GREEN on both instances; nested-npm-failure error-text stability test (same failing fixture 2x -> same cause-bearing message, RED->GREEN); empty-error negative (no '' error on real failure); AGENTS gates
+TESTS=contract test: no ok:false result without a specific error (or wrapper carries output cause); RED->GREEN on both instances; nested-npm-failure error-text stability test (same failing fixture 2x -> same cause-bearing message, RED->GREEN); empty-error negative (no '' error on real failure); audit-target stability test (same packageless fixture 2x -> same cause-bearing report about THAT path, RED->GREEN — currently notice-noise vs ancestor JSON); AGENTS gates
 REAL_JOE_UAT=none (error-text quality; behavior unchanged)
 ROLLBACK=revert wrapper/tool one-liners
 DEPENDENCIES=none
@@ -140,11 +140,11 @@ DEPENDENCIES=none
 
 BATCH_ID=WIRING-P2-006
 CAPABILITIES=uncontained execution roots + dead autoFix input (dead_code_detector, dependency_audit)
-ROOT_CAUSE=both default to getWorkspaceRoot() (Joe's own repo) ignoring session context (DeadCodeTool.ts:46-52, QualityTools.ts:89-96); then run npx knip / npm audit (network + long runtime). autoFix:boolean declared on dead_code_detector but never read — planner-facing dead input (checkpoint 6 static; fixture-only, never {})
-FILES=DeadCodeTool.ts + QualityTools.ts (contain default root to session context or document internal-only; drop-or-implement autoFix)
+ROOT_CAUSE=both default to getWorkspaceRoot() (Joe's own repo) ignoring session context (DeadCodeTool.ts:46-52, QualityTools.ts:89-96); then run npx knip / npm audit (network + long runtime). autoFix:boolean declared on dead_code_detector but never read — planner-facing dead input (checkpoint 6 static; fixture-only, never {}). EXTENDED 014/F83 (npm UPWARD escape): even an EXPLICIT contained path escapes when the dir lacks package.json — npm prefix resolution walks up and audits the ancestor package (live 2x: empty session fixture audited Joe's own root over the network, multer/high report). Explicit-path usage is therefore uncontained too, not only the default root.
+FILES=DeadCodeTool.ts + QualityTools.ts DependencyAuditTool (contain default root to session context or document internal-only; drop-or-implement autoFix; dep_audit: pre-check package.json/lockfile presence in-tool + pin --prefix so npm cannot walk up; honest packageless-path error)
 IMPLEMENTATION_OWNER=UNASSIGNED
 REVIEW_OWNER=UNASSIGNED
-TESTS=root-containment test (default root == session workspace, never Joe repo); dead-input gate (every declared input is read); fixture probes with explicit paths; AGENTS gates
+TESTS=root-containment test (default root == session workspace, never Joe repo); dead-input gate (every declared input is read); upward-escape negative (explicit packageless dir -> honest error, never ancestor audit — 014/F83 leg as RED->GREEN contract); fixture probes with explicit paths; AGENTS gates
 REAL_JOE_UAT=none (scope correction; behavior on explicit paths unchanged)
 ROLLBACK=revert root/input change
 DEPENDENCIES=none
@@ -192,11 +192,11 @@ DEPENDENCIES=none
 
 BATCH_ID=WIRING-P2-010
 CAPABILITIES=dependency_audit misleading error text (setup failure labeled as vulnerabilities)
-ROOT_CAUSE=any non-ok npm audit result returns error 'Audit found security vulnerabilities.' (QualityTools.ts:102) even when the cause is environmental (proven: ENOLOCK missing-lockfile in contained fixture, trunk_files.json). output.report DOES carry the real stderr, so cause is recoverable — but ok/error-only consumers (planner/verifier) misread a setup failure as a security finding.
+ROOT_CAUSE=any non-ok npm audit result returns error 'Audit found security vulnerabilities.' (QualityTools.ts:102) even when the cause is environmental (proven: ENOLOCK missing-lockfile in contained fixture, trunk_files.json). output.report DOES carry the real stderr, so cause is recoverable — but ok/error-only consumers (planner/verifier) misread a setup failure as a security finding. EXTENDED 014/F83 (empty-dir variant, trunk_security.json live 2x): same mislabel on a packageless path; report run-varying (notice-noise vs ancestor JSON) — sometimes the report does not even contain the cause.
 FILES=QualityTools.ts DependencyAuditTool (classify cause: vulnerabilities vs setup/environment failure; error text must reflect the class) + error-text contract test
 IMPLEMENTATION_OWNER=UNASSIGNED
 REVIEW_OWNER=UNASSIGNED
-TESTS=ENOLOCK/setup RED->GREEN (honest setup-failure error); true-vulnerability case keeps current text; AGENTS gates
+TESTS=ENOLOCK/setup RED->GREEN (honest setup-failure error); empty-dir variant RED->GREEN (honest packageless error + cause-bearing report — shares the P2-006 upward-escape fix); true-vulnerability case keeps current text; AGENTS gates
 REAL_JOE_UAT=none (error-text honesty)
 ROLLBACK=revert one-liner
 DEPENDENCIES=none
@@ -295,12 +295,12 @@ DEPENDENCIES=none
 ---
 
 BATCH_ID=WIRING-P2-018
-CAPABILITIES=verification scopeRoot resolution for path-arg checkers (read_file existence gates never reuse)
-ROOT_CAUSE=phase-gate scopeRoot prefers verificationArgs.cwd/projectPath/path over the workspace root (PhaseExecutorTool.ts:2372-2378; same preference at task level :1570-1578), so a read_file gate with a workspace-relative path resolves scopeRoot against process.cwd() (the api/ server dir) — outside the workspace. fingerprintVerification takes the uncontained branch (nonce fingerprint, cacheable:false, 'trusted workspace containment is unavailable'). Proven live: V1 receipt scopeRoot `...\api\proof.txt` fp 89c4e353, V6 same checkId/args/files fp 50d47d6a + invalidated (012/F67, MISMATCH #10). Resume/reuse dead for this checker shape; receipt provenance misleading; no file bytes fingerprinted. Fail-safe direction (never wrongly reuses).
+CAPABILITIES=verification scopeRoot resolution for path-arg checkers (read_file existence gates never reuse; 4 more checkers code-indicated)
+ROOT_CAUSE=phase-gate scopeRoot prefers verificationArgs.cwd/projectPath/path over the workspace root (PhaseExecutorTool.ts:2372-2378; same preference at task level :1570-1578), so a read_file gate with a workspace-relative path resolves scopeRoot against process.cwd() (the api/ server dir) — outside the workspace. fingerprintVerification takes the uncontained branch (nonce fingerprint, cacheable:false, 'trusted workspace containment is unavailable'). Proven live: V1 receipt scopeRoot `...\api\proof.txt` fp 89c4e353, V6 same checkId/args/files fp 50d47d6a + invalidated (012/F67, MISMATCH #10). Resume/reuse dead for this checker shape; receipt provenance misleading; no file bytes fingerprinted. Fail-safe direction (never wrongly reuses). EXTENDED 013/F77 + 014/F87 (code-indicated, same arg positions): quality_run (path) + auto_tester (projectPath) + dependency_audit (path) + secrets_scan_repo (path) — 4 more checkers take a preferred path arg.
 FILES=PhaseExecutorTool.ts gate + task-level scopeRoot resolution (resolve the checker's path arg inside the trusted workspace root, or fall back to the workspace root; receipt scopeRoot must never point at process.cwd()) + scope-resolution contract test
 IMPLEMENTATION_OWNER=UNASSIGNED (PhaseExecutor shared — coordinate; NVIDIA owns adjacent planning work)
 REVIEW_OWNER=UNASSIGNED
-TESTS=scope-containment test: read_file gate on workspace-relative path -> receipt scopeRoot inside workspace (RED->GREEN); reuse test: carried ledger + unchanged files -> verification reused (RED->GREEN, V6 shape as contract); nonce-path regression (genuinely uncontained scope still fails safe to run-always); AGENTS gates
+TESTS=scope-containment test: read_file gate on workspace-relative path -> receipt scopeRoot inside workspace (RED->GREEN); reuse test: carried ledger + unchanged files -> verification reused (RED->GREEN, V6 shape as contract); per-checker legs for quality_run/auto_tester/dep_audit/secrets (same contract per arg position); nonce-path regression (genuinely uncontained scope still fails safe to run-always); AGENTS gates
 REAL_JOE_UAT=none (ledger mechanics; pass/fail behavior unchanged, only reuse + provenance)
 ROLLBACK=revert scope-resolution change (back to always-run safe default)
 DEPENDENCIES=none
@@ -308,12 +308,12 @@ DEPENDENCIES=none
 ---
 
 BATCH_ID=WIRING-P2-019
-CAPABILITIES=test-run checker receipt evidence (quality_run/auto_tester receipts point nowhere)
-ROOT_CAUSE=receipt evidenceLocation is read ONLY from output.evidenceLocation/reportPath/url (PhaseExecutorTool.ts:2068), but quality_run emits {results,status,error} and auto_tester emits {passed,errors,summary} — neither key present (static both sides, 013/F77). 3rd/4th evidence-hollow receipt shapes after browser_run (P2-012) and read_file gate. Unlike URL checkers, a test run has no page to point at — the batch must DECIDE what evidence means here (run/output digest? report artifact path? explicit hollow-by-design) rather than blindly add a url field. MISMATCH #10 scope fix (P2-018) covers these checkers' reuse once decided.
-FILES=QualityTools.ts (QualityRunTool) + AutoTesterTool.ts output shapes (emit evidence key OR document hollow) + receipt-evidence contract test
+CAPABILITIES=non-URL checker receipt evidence (quality_run/auto_tester/dependency_audit/secrets_scan_repo receipts point nowhere)
+ROOT_CAUSE=receipt evidenceLocation is read ONLY from output.evidenceLocation/reportPath/url (PhaseExecutorTool.ts:2068), but quality_run emits {results,status,error} and auto_tester emits {passed,errors,summary} — neither key present (static both sides, 013/F77). 3rd/4th evidence-hollow receipt shapes after browser_run (P2-012) and read_file gate. Unlike URL checkers, a test run has no page to point at — the batch must DECIDE what evidence means here (run/output digest? report artifact path? explicit hollow-by-design) rather than blindly add a url field. MISMATCH #10 scope fix (P2-018) covers these checkers' reuse once decided. EXTENDED 014/F87: dependency_audit ({report}) + secrets_scan_repo ({findings,scannedFiles}) are the 5th/6th hollow shapes — same decision needed (audit report digest? finding count/scope? explicit hollow-by-design).
+FILES=QualityTools.ts (QualityRunTool + DependencyAuditTool + SecretsScanRepoTool) + AutoTesterTool.ts output shapes (emit evidence key OR document hollow) + receipt-evidence contract test
 IMPLEMENTATION_OWNER=UNASSIGNED
 REVIEW_OWNER=UNASSIGNED
-TESTS=receipt-evidence test per decided contract (RED->GREEN); L5 live gate legs for both checkers (quality_run pass + auto_tester pass through real phase_executor with carried ledger — also proves/denies the #10 nonce extension live); AGENTS gates
+TESTS=receipt-evidence test per decided contract (RED->GREEN) for all 4 non-URL checkers; L5 live gate legs for all 4 (pass through real phase_executor with carried ledger — also proves/denies the #10 nonce extension live); AGENTS gates
 REAL_JOE_UAT=none (receipt mechanics; pass/fail behavior unchanged)
 ROLLBACK=revert output change
 DEPENDENCIES=P2-018 (shared scopeRoot fix lands with or before this)
@@ -330,6 +330,19 @@ TESTS=declaration review (mutating tools declare honestly); contract test pinnin
 REAL_JOE_UAT=none (declaration honesty; behavior unchanged)
 ROLLBACK=revert declaration change
 DEPENDENCIES=none (coordinate gate shape with P2-011 owner)
+
+---
+
+BATCH_ID=WIRING-P2-021
+CAPABILITIES=security_scanner file-target handling + discovery/explicit vocabulary split
+ROOT_CAUSE=(a) file-as-projectPath always misses: discoverSourceFiles returns [basename] for a file target (SecurityScannerTool.ts:202) but the executor resolves it against the FILE path (:124-127), so .../vuln.js/vuln.js never exists -> missingFiles -> ok:false (live 2x, 014/F84). A planner passing a file target always fails. (b) Undocumented coverage split: discovery scans only sourceExtensions (.env and friends excluded — live: exactly [clean.js, vuln.js]) while explicit `files` accepts any readable file (live: .env -> 1 critical) (014/F90).
+FILES=SecurityScannerTool.ts (resolve basenames against dirname when projectPath is a file, OR reject file-targets honestly upfront; align-or-document discovery vs explicit vocabulary — either extend sourceExtensions deliberately or document the split in the tool description) + vocabulary/file-target contract tests
+IMPLEMENTATION_OWNER=UNASSIGNED
+REVIEW_OWNER=UNASSIGNED
+TESTS=file-target contract test (existing file as projectPath -> scans that file OR honest file-target-unsupported error, RED->GREEN per decided contract — 014/F84 leg as fixture); vocabulary matrix test (discovery set vs explicit set per decided contract, .env case as fixture, RED->GREEN); seeded-scan regression (014 5-vuln/risk-83 case as contract); AGENTS gates
+REAL_JOE_UAT=none (tool-local contract; planner-visible behavior improves only for file targets)
+ROLLBACK=revert resolver/vocabulary change
+DEPENDENCIES=none
 
 ---
 

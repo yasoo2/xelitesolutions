@@ -1,26 +1,28 @@
 # JOE CAPABILITY WIRING MATRIX (Muse draft 2026-09-29 — staging for D:\Joe\coordination\team\JOE-CAPABILITY-WIRING-MATRIX.md)
 
-SCOPE=Muse-branch discovery checkpoints 1-13 only (muse/joe-development @ 4ec9fd16).
+SCOPE=Muse-branch discovery checkpoints 1-14 only (muse/joe-development @ 876e197d).
 Rows below are EVIDENCED tool-level entries. HIGH_LEVEL_CAPABILITIES grouping
-(merge v1: 19 trunks PROPOSED, 3 STORIED: files 10/10 in checkpoint 8;
+(merge v1: 19 trunks PROPOSED, 4 STORIED: files 10/10 in checkpoint 8;
 browser_ui 33/33 LEVEL-4 complete — checkpoint 11; both trunks
 verification-swept LEVEL-5 — checkpoint 12, see §VERIFY12; testing_qa
-6/6 LEVEL-4 + static verification-compat — checkpoint 13, see §VERIFY13),
+6/6 LEVEL-4 + static verification-compat — checkpoint 13, see §VERIFY13;
+security 3/3 LEVEL-4 + static verification-compat — checkpoint 14,
+see §VERIFY14),
 services/workers/internal-infra rows, and NVIDIA-owned
 registry/ingress/persistence areas are UNKNOWN/PENDING and must NOT be
 treated as covered.
 Evidence files: D:\Joe\muse-worktree\tmp\wiring-audit\{discovery,exposure,
 classification,reachability,target,exec,sweep1,sweep2,merge,sweep3,trunk_files,
 arch2,trunk_browser1,trunk_browser_live1,trunk_browser_live2,
-trunk_browser_live3,verify_sweep12,trunk_testing}.json +
+trunk_browser_live3,verify_sweep12,trunk_testing,trunk_security}.json +
 {discover,exposure,classify,reach,target,exec,
 sweep1,sweep2,merge,sweep3,trunk_files,arch2,trunk_browser1,
 trunk_browser_live1,trunk_browser_live2,trunk_browser_live3,
-verify_sweep12,trunk_testing,chaos_call_probe}.mts +
+verify_sweep12,trunk_testing,chaos_call_probe,trunk_security}.mts +
 MUSE-WIRING-DISCOVERY-00{1,2,3,4,5,6,7}.md + MUSE-WIRING-DISCOVERY-008.md +
 MUSE-WIRING-DISCOVERY-009.md + MUSE-WIRING-DISCOVERY-010.md +
 MUSE-WIRING-DISCOVERY-011.md + MUSE-WIRING-DISCOVERY-012.md +
-MUSE-WIRING-DISCOVERY-013.md. All probes
+MUSE-WIRING-DISCOVERY-013.md + MUSE-WIRING-DISCOVERY-014.md. All probes
 re-runnable; exec/sweep/trunk probes perform bounded safe runs only
 (fixtures created + removed by the probe; 4 EMBARGO names never executed
 except browser_launch contained-http partial lift in 010 — static fixture
@@ -79,6 +81,25 @@ cwd/projectPath/path; quality_run takes path, auto_tester
 takes projectPath — code-indicated). ALLOWLIST_DRIFT=
 visual_qa is ORPHANED yet allowlisted (F81, P1-001 ext).
 Evidence: trunk_testing.json + chaos_call_probe.log.
+
+§VERIFY14 — VERIFICATION-COMPAT STATIC (checkpoint 14, security 3/3).
+Same consumer/allowlist/verdict-fn as §VERIFY12; L5 live gate proof
+PENDING for this trunk (scopeRoot-nonce extension code-indicated only).
+CHECKER_PARTITION=task-level checkers among the 3: dependency_audit,
+secrets_scan_repo (2); gate opt-ins change nothing; security_scanner
+never receipted (static 3/3). Checker set now closed except
+code_reviewer (13/14 allowlisted shapes partitioned). VERDICT_MAP=
+7-shape pure-function table, all safe-direction for checkers
+(pass=pass, setup-failure=failed, clean=passed, findings=failed);
+security_scanner findings-present maps passed (presence-as-success,
+F88 — safe ONLY because non-checker; documented constraint).
+RECEIPT_EVIDENCE=both trunk checkers emit no url/reportPath/
+evidenceLocation (dep_audit {report}; secrets {findings,
+scannedFiles}) -> evidence-hollow receipts (5th/6th hollow
+shapes; P2-019 broadens to ALL non-URL checkers). REUSE=
+MISMATCH #10 scope preference covers both (both take `path`;
+task-level :1570-1578 + gate :2372-2378 — code-indicated;
+P2-018 now covers 4 checkers). Evidence: trunk_security.json.
 
 ---
 
@@ -531,37 +552,81 @@ RECOMMENDED_ACTION=WIRING-P2-006: contain root to session context (or document i
 
 CAPABILITY_ID=TOOL-dependency_audit
 NAME=dependency_audit (QualityTools.ts:73-104)
-CATEGORY=tool/security
+CATEGORY=tool/security-trunk
 SOURCE_FILES=api/src/modules/tools/definitions/QualityTools.ts
-IMPLEMENTATION=runs `npm audit --json` (5-min budget) in getWorkspaceRoot() when no path given — context IGNORED (:89-96); registry network call
+IMPLEMENTATION=runs `npm audit --json` (5-min budget) in explicit path or getWorkspaceRoot() when no path given — session context IGNORED (:89-96); registry network call; pm auto-detect (yarn/pnpm lockfiles)
 REGISTERED=YES
-REGISTRY_EVIDENCE=in live 163; no required inputs; permissions ['execute','internet']
-EXECUTOR_REACHABLE=NOT_PROBED (fixture-only: uncontained root + external network on {})
-INPUT_CONTRACT_VALID=PARTIAL (path optional by design, but default root is Joe itself, not the session project)
-OUTPUT_CONTRACT_VALID=UNKNOWN
-CANONICAL_PATH_CONNECTED=UNKNOWN (unprobed by rule)
+REGISTRY_EVIDENCE=in live 163; required:null; permissions ['execute','internet']; sideEffects ['execute'] honest
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1 (8.6); not router-excluded; not priority-listed
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1 (trunk_security.json)
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_security.json, canonical, 2 fast-fail legs 2x verdict-identical): enolock ok:false + report carries ENOLOCK cause; empty-dir ok:false + report run-varying (notice-noise vs ANCESTOR audit JSON — npm walks up to Joe's own root package.json, F83). {} never executed (P2-006 default-root); positive leg embargoed (network).
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=risk medium (execute+internet) -> passes default autoSafe; no gate fired
+INPUT_CONTRACT_VALID=PARTIAL (explicit path accepted, but packageless dir escapes upward to ancestor package — F83/P2-006 ext; default root is Joe itself)
+OUTPUT_CONTRACT_VALID=NO (any non-ok result mislabeled 'Audit found security vulnerabilities.' even for ENOLOCK/setup — P2-010; report sometimes pure noise — P2-005 4th instance)
+EVIDENCE_PRODUCED=YES (report carries cause except noise-variant)
+VERIFICATION_COMPATIBLE=PARTIAL (task-level checker, static §VERIFY14; pass/fail map correctly; receipts evidence-hollow — no url keys, P2-019; scopeRoot reuse gap code-indicated, P2-018; L5 live gate proof pending)
+CANONICAL_PATH_CONNECTED=YES
 REAL_JOE_PROVEN=NO
-PRIMARY_STATE=PARTIALLY_WIRED (registered; default execution root uncontained)
-SECURITY_RISK=medium: network + execution scoped to Joe's repo, not the caller's workspace
-RECOMMENDED_ACTION=WIRING-P2-006: contain default root to session context; fixture probe with explicit path
+PRIMARY_STATE=PARTIALLY_WIRED (checker evidence + scopeRoot reuse gap code-indicated; upward-escape containment gap live-proven)
+SECURITY_RISK=medium: explicit packageless path audits ancestor (Joe's own repo) over network; default root is Joe's repo
+RECOMMENDED_ACTION=WIRING-P2-006 extension (pre-check package.json/lockfile + pin --prefix) + WIRING-P2-010 + WIRING-P2-019 + P2-005 instance
 
 ---
 
 CAPABILITY_ID=TOOL-security_scanner
 NAME=security_scanner (SecurityScannerTool.ts:16+)
-CATEGORY=tool/security
+CATEGORY=tool/security-trunk
 SOURCE_FILES=api/src/modules/tools/definitions/SecurityScannerTool.ts
-IMPLEMENTATION=one-of contract (requiredAny files/projectPath/target/path); guard rejects {} honestly when no files/target resolve
+IMPLEMENTATION=one-of contract (requiredAny files/projectPath/target/path); session-bound via ctx.workspaceId (:84-98); regex scan (SQLi/XSS/secrets/random/eval/http/validation); riskScore min(100,weighted); discovery max100 files/6 depth, .env excluded
 REGISTERED=YES
-REGISTRY_EVIDENCE=in live 163; required:[] + requiredAny extension
+REGISTRY_EVIDENCE=in live 163; required:[] + requiredAny extension; permissions ['read']; sideEffects [] honest (read-only, fixtures untouched 2x)
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1 (13.1); not router-excluded; not priority-listed
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1 (trunk_security.json)
 EXECUTOR_REACHABLE=YES
-EXECUTOR_EVIDENCE=LIVE (sweep2.json): {} -> ok:false 'requires a non-empty files array or an existing project target containing source files', rerun-stable. Static pre-read WRONGLY predicted a cwd scan; live result stands (method note in 006).
-INPUT_CONTRACT_VALID=YES (one-of enforced at execute, despite empty `required`)
-OUTPUT_CONTRACT_VALID=UNKNOWN (no live scan with files performed)
+EXECUTOR_EVIDENCE=LIVE (trunk_security.json, canonical, 7 legs 2x verdict-identical): seeded 5 vulns/risk 83/summary exact; discover exactly [clean.js,vuln.js]; explicit .env 1 critical; missing/empty honest; outside-path containment-proven; file-target always-misses (F84). sweep2 {} honest rejection stands as the empty-input leg (session-state-dependent, 014 correction).
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=session containment enforced live (outside-nonexistent -> must-stay-within-workspace); risk low/medium -> no gate fired
+INPUT_CONTRACT_VALID=PARTIAL (one-of enforced; file-as-projectPath always misses — F84/P2-021; discovery/ext vocabulary split — F90)
+OUTPUT_CONTRACT_VALID=YES (vulnerabilities/riskScore/summary exact on seeded fixture; findings do NOT affect ok — presence-as-success shape, F88)
+EVIDENCE_PRODUCED=YES (structured vulns + logs)
+VERIFICATION_COMPATIBLE=N/A (never a checker — static §VERIFY14; findings-present maps passed content-blind; must not join allowlist without mapping inversion — documented constraint)
 CANONICAL_PATH_CONNECTED=YES
 REAL_JOE_PROVEN=NO
-PRIMARY_STATE=PARTIALLY_WIRED (honest empty-input; scan path itself unprobed)
-RECOMMENDED_ACTION=none for wiring; use as the positive control for requiredAny enforcement
+PRIMARY_STATE=PARTIALLY_WIRED (file-target + vocabulary gaps; else fully evidenced)
+RECOMMENDED_ACTION=WIRING-P2-021 (file-target handling + align-or-document vocabulary); keep as requiredAny positive control
+
+---
+
+CAPABILITY_ID=TOOL-secrets_scan_repo
+NAME=secrets_scan_repo (QualityTools.ts:247-350)
+CATEGORY=tool/security-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/QualityTools.ts
+IMPLEMENTATION=regex walk (openai/github/aws/private-key/generic-assignment) over text files; skips node_modules/.git/dist/build/coverage/.next/.turbo/.cache + files >1MB; maxFindings default 200; ok = findings==0; resolveToolPath WITHOUT workspaceId (projectRoot-bounded, not session-bounded)
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163; required:['path']; permissions ['read']; sideEffects [] honest (read-only, fixtures untouched 2x)
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1 (19.5); not router-excluded; not priority-listed
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1 (trunk_security.json)
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_security.json, canonical, 4 legs 2x verdict-identical): seeded exactly 4 findings (openai_key 1 + generic 3)/scannedFiles 3/node_modules plant absent; clean ok:true; missing-path ok:true CLEAN-SHAPED (F85 absence-as-success); cap honored (maxFindings:1 -> 1). {} never executed (maps to default workspace — F86).
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=risk medium (read) -> passes default autoSafe; no gate fired; NOTE projectRoot-bounded, not session-bounded (no workspaceId passed)
+INPUT_CONTRACT_VALID=NO (required:['path'] decorative — missing path maps to default-root scan, F86/P2-004; nonexistent path scans clean, F85)
+OUTPUT_CONTRACT_VALID=PARTIAL ({findings,scannedFiles} exact on seeded fixture; missing-path shape indistinguishable from clean)
+EVIDENCE_PRODUCED=YES (typed findings with file+line)
+VERIFICATION_COMPATIBLE=PARTIAL (task-level checker, static §VERIFY14; clean->passed/findings->failed map correctly; receipts evidence-hollow — no url keys, P2-019; scopeRoot reuse gap code-indicated, P2-018; L5 live gate proof pending)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (checker evidence + scopeRoot reuse gap code-indicated; input-contract gaps live-proven)
+SECURITY_RISK=low-medium: missing path silently scans default workspace (session escape); nonexistent path reports clean
+RECOMMENDED_ACTION=WIRING-P2-004 extensions (enforce required path; honest nonexistent-path error) + WIRING-P2-019
 
 ---
 
