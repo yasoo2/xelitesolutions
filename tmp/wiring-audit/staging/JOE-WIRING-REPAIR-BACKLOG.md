@@ -125,6 +125,32 @@ ROLLBACK=revert guard
 DEPENDENCIES=none
 ---
 
+BATCH_ID=WIRING-P1-010
+CAPABILITIES=shell_execute cwd handling + containment comparison under extended (`\\?\`) path roots
+ROOT_CAUSE=no extended-prefix normalization at the path boundary: (a) a `\\?\` session root passes containment but cmd.exe cannot start in it, so EVERY local shell_execute runs in C:\Windows while the receipt claims the session cwd (pwd.node stdout=C:\Windows vs receipt cwd=session dir, live 2x+2x, 019/F135); (b) the identical directory spelled as plain D:\... is REJECTED as path_outside_workspace (live 2x, 019/F137) -- path.resolve preserves the prefix and isWithinRoot compares prefix-blind (utils.ts:82-101). No working cwd spelling exists under a `\\?\` root. Observed trigger is environment-shaped (sandbox `\\?\` CWD); defects are environment-independent.
+FILES=WorkspaceService.ts (getActiveRoot/externalRoot normalization) + utils.ts (prefix-aware isWithinRoot beside the case-insensitivity logic) + SystemTools.ts shell_execute/handleShellCommand (normalize spawn cwd; never assert an unhonored cwd in the receipt) + contract tests
+IMPLEMENTATION_OWNER=UNASSIGNED
+REVIEW_OWNER=UNASSIGNED
+TESTS=`\\?\`-root RED->GREEN (spawn lands in the honored dir; plain spelling accepted; outside still rejected); receipt-cwd honesty assertion; plain-host regression; AGENTS gates
+REAL_JOE_UAT=local shell build/test legs on both `\\?\` and plain roots (harmless commands only)
+ROLLBACK=revert normalization
+DEPENDENCIES=none
+
+---
+
+BATCH_ID=WIRING-P2-024
+CAPABILITIES=shell_execute exit-code fidelity
+ROOT_CAUSE=exitCode built as r.ok ? 0 : 1 at the tool layer (SystemTools.ts) -- real codes (3/134/137/...) destroyed; verifiers/self-fix cannot distinguish failure modes. Source-proven + live shape-confirmed (exitCode always in {0,1}); clean live isolation impossible while F135 stands (019/F136). Sibling of F102 (repo_run_command exit=undefined) in the opposite direction.
+FILES=SystemTools.ts shell_execute (+ audit sibling collapses) + evidence-shape tests
+IMPLEMENTATION_OWNER=UNASSIGNED
+REVIEW_OWNER=UNASSIGNED
+TESTS=non-zero-exit RED->GREEN (real code preserved end-to-end); no-behavior-change for ok paths; AGENTS gates
+REAL_JOE_UAT=none (evidence fidelity; covered by harness)
+ROLLBACK=revert shape change
+DEPENDENCIES=WIRING-P1-010 (clean isolation needs honored cwd)
+
+---
+
 BATCH_ID=WIRING-P2-023
 CAPABILITIES=deploy package zip-path shell interpolation (sibling of P1-009)
 ROOT_CAUSE=`zip -r ${zipPath} . ...` with shell:true (DeployProjectTool.ts package branch); zipPath derives from the workspace-contained projectPath, so traversal is contained but metacharacters in a directory name (e.g. `ws/evil;cmd/`) would break out of the command. Found during the P1-009 slice; not yet RED-proven.
@@ -256,7 +282,7 @@ DEPENDENCIES=none
 
 BATCH_ID=WIRING-P2-009
 CAPABILITIES=archive_files zip backend portability + swallowed failure cause
-ROOT_CAUSE=zip create shells `zip -r ... 2>/dev/null || true` (ArchiveFilesTool.ts:92): no `zip` binary on Windows, `|| true` swallows the failure, then statSync on the never-created archive throws ENOENT surfaced as 'Archive operation failed: ENOENT ... stat b.zip' — 'tool missing' misreported as 'archive missing'. Proven live: zip create 0/2, tar.gz create+list ok:true on the same fixture (trunk_files.json + arch2.json). Secondary: tar.gz list shows absolute-source path stored in archive (extraction-path review). 3rd instance: deploy_project package on Windows returns raw stat ENOENT with no zip created (trunk_runtime.json, live 2x, 018/F127).
+ROOT_CAUSE=zip create shells `zip -r ... 2>/dev/null || true` (ArchiveFilesTool.ts:92): no `zip` binary on Windows, `|| true` swallows the failure, then statSync on the never-created archive throws ENOENT surfaced as 'Archive operation failed: ENOENT ... stat b.zip' — 'tool missing' misreported as 'archive missing'. Proven live: zip create 0/2, tar.gz create+list ok:true on the same fixture (trunk_files.json + arch2.json). Secondary: tar.gz list shows absolute-source path stored in archive (extraction-path review). 3rd instance: deploy_project package on Windows returns raw stat ENOENT with no zip created (trunk_runtime.json, live 2x, 018/F127). 4th instance: shell_execute missing cwd yields `spawn C:\WINDOWS\system32\cmd.exe ENOENT` (missing directory misreported as missing binary; no pre-spawn cwd check; trunk_shell.json, live 2x, 019/F138).
 FILES=ArchiveFilesTool.ts (zip backend: bundled dep / documented prereq / tar fallback; remove `|| true`; honest binary-missing error; review absolute-source storage) + backend contract test
 IMPLEMENTATION_OWNER=UNASSIGNED
 REVIEW_OWNER=UNASSIGNED

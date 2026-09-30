@@ -1,0 +1,48 @@
+{
+  "live": {
+    "cd.backslash-q": {
+      "ok": false,
+      "error": "approval_required",
+      "stdout": null,
+      "stderr": null,
+      "exitCode": null,
+      "cwd": null
+    },
+    "cd.plain": {
+      "ok": false,
+      "error": "approval_required",
+      "stdout": null,
+      "stderr": null,
+      "exitCode": null,
+      "cwd": null
+    },
+    "pwd.node": {
+      "ok": true,
+      "error": null,
+      "stdout": "C:\\Windows\n",
+      "stderr": null,
+      "exitCode": 0,
+      "cwd": "\\\\?\\D:\\Joe\\muse-worktree\\data\\projects\\session-audit-sess\\wiring-shell-fx2\\pkg"
+    },
+    "exit3.plain": {
+      "ok": false,
+      "error": "path_outside_workspace: D:\\Joe\\muse-worktree\\data\\projects\\session-audit-sess\\wiring-shell-fx2\\pkg (Root: \\\\?\\D:\\Joe\\muse-worktree\\data\\projects\\session-audit-sess)",
+      "stdout": null,
+      "stderr": null,
+      "exitCode": null,
+      "cwd": null
+    },
+    "exit3.nocwd": {
+      "ok": false,
+      "error": "'\\\\?\\D:\\Joe\\muse-worktree\\data\\projects\\session-audit-sess'\r\nCMD.EXE was started with the above path as the current directory.\r\nUNC paths are not supported.  Defaulting to Windows directory.\r\n",
+      "stdout": null,
+      "stderr": "'\\\\?\\D:\\Joe\\muse-worktree\\data\\projects\\session-audit-sess'\r\nCMD.EXE was started with the above path as the current directory.\r\nUNC paths are not supported.  Defaulting to Windows directory.\r\n",
+      "exitCode": 1,
+      "cwd": "\\\\?\\D:\\Joe\\muse-worktree\\data\\projects\\session-audit-sess"
+    }
+  },
+  "cleanup": "ok",
+  "sessionRoot": "\\\\?\\D:\\Joe\\muse-worktree\\data\\projects\\session-audit-sess",
+  "plainPkg": "D:\\Joe\\muse-worktree\\data\\projects\\session-audit-sess\\wiring-shell-fx2\\pkg",
+  "at": "2026-09-30T11:33:41.759Z"
+}

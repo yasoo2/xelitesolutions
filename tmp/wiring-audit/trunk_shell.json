@@ -1,0 +1,420 @@
+{
+  "trunk": "shell_terminal",
+  "registered": 163,
+  "decl": {
+    "npm_manager": {
+      "descriptionHead": "Manage npm dependencies and run scripts.",
+      "tags": [
+        "npm",
+        "package",
+        "install"
+      ],
+      "required": [
+        "command"
+      ],
+      "properties": [
+        "command",
+        "packages",
+        "dev",
+        "cwd",
+        "projectPath"
+      ],
+      "permissions": [
+        "execute",
+        "write",
+        "internet"
+      ],
+      "sideEffects": [
+        "execute",
+        "write",
+        "internet"
+      ],
+      "rateLimitPerMinute": 30,
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "npm_manager:17.8",
+        "dependency_audit:8.6",
+        "user_browser:8.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "shell_check_status": {
+      "descriptionHead": "Check the status of a background command.",
+      "tags": [
+        "shell",
+        "status"
+      ],
+      "required": [
+        "id"
+      ],
+      "properties": [
+        "id"
+      ],
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "shell_check_status:20",
+        "user_browser:8.1",
+        "ask_user:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "shell_execute": {
+      "descriptionHead": "Execute shell commands with persistent CWD state.",
+      "tags": [
+        "shell",
+        "execute",
+        "terminal"
+      ],
+      "required": [
+        "command"
+      ],
+      "properties": [
+        "command",
+        "cwd",
+        "serverId",
+        "timeout",
+        "background",
+        "dryRun"
+      ],
+      "permissions": [
+        "execute"
+      ],
+      "sideEffects": [
+        "execute"
+      ],
+      "rateLimitPerMinute": 60,
+      "routerExcluded": true,
+      "priorityListed": true,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "shell_execute:14.8",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "terminal_manager": {
+      "descriptionHead": "Open a terminal, run a command in it, and READ its output — the live terminal panel, its history, and the last error it printed. Use for \"read the terminal\", \"w",
+      "tags": [
+        "shell",
+        "terminal",
+        "console",
+        "command",
+        "output",
+        "history",
+        "error",
+        "persistent",
+        "interactive"
+      ],
+      "required": [
+        "action"
+      ],
+      "properties": [
+        "action",
+        "id",
+        "command",
+        "cols",
+        "rows",
+        "shell"
+      ],
+      "permissions": [
+        "execute"
+      ],
+      "sideEffects": [
+        "execute"
+      ],
+      "rateLimitPerMinute": 60,
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "terminal_manager:11.4",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    }
+  },
+  "verdictTable": {
+    "shell success": "passed",
+    "shell failed-exit": "failed",
+    "shell blocked": "failed",
+    "shell dryrun": "passed",
+    "shell background": "incomplete",
+    "shell already-running": "incomplete",
+    "status running": "passed",
+    "status gone": "failed",
+    "npm missing": "failed",
+    "npm refused": "failed",
+    "term created": "passed",
+    "term killed": "passed"
+  },
+  "live": {
+    "shell.nocmd": {
+      "input": "{}",
+      "ok": false,
+      "error": "approval_required",
+      "outputShape": "{risk}",
+      "outputPreview": "{\"risk\":\"high\"}",
+      "log0": "[2026-09-30T11:36:50.290Z] start shell_execute (orig=shell_execute)",
+      "logLast": "blocked=1 reason=approval_required risk=high",
+      "logN": 2
+    },
+    "shell.dryrun": {
+      "input": "{\"command\":\"echo SHOULD_NOT_RUN\",\"dryRun\":true}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{dryRun,status,command,stdout,exitCode}",
+      "outputPreview": "{\"dryRun\":true,\"status\":\"success\",\"command\":\"echo SHOULD_NOT_RUN\",\"stdout\":\"[dry run] echo SHOULD_NOT_RUN\",\"exitCode\":0}",
+      "log0": "[2026-09-30T11:36:50.322Z] start shell_execute (orig=shell_execute)",
+      "logLast": "dryRun: echo SHOULD_NOT_RUN",
+      "logN": 2
+    },
+    "shell.echo": {
+      "input": "{\"command\":\"echo WIRING_SHELL_TOKEN_7a1c\",\"cwd\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-shell-fx\\\\pkgdir\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{status,stdout,stderr,exitCode,cwd,durationMs,executedOn}",
+      "outputPreview": "{\"status\":\"success\",\"stdout\":\"WIRING_SHELL_TOKEN_7a1c\\r\\n\",\"stderr\":\"\",\"exitCode\":0,\"cwd\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-shell-fx\\\\pkgdir\",\"durationMs\":132,\"executedOn\":\"local\"}",
+      "log0": "[2026-09-30T11:36:50.341Z] start shell_execute (orig=shell_execute)",
+      "logLast": "exec=echo WIRING_SHELL_TOKEN_7a1c server=local exit=0",
+      "logN": 3
+    },
+    "shell.exit3": {
+      "input": "{\"command\":\"node -e \\\"process.exit(3)\\\"\",\"cwd\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-shell-fx\\\\pkgdir\"}",
+      "ok": false,
+      "error": "'\\\\?\\D:\\Joe\\muse-worktree\\data\\projects\\session-audit-sess\\wiring-shell-fx\\pkgdir'\r\nCMD.EXE was started with the above path as the current directory.\r\nUNC paths are not supported.  Defaulting to Windows directory.\r\n",
+      "outputShape": "{status,stdout,stderr,exitCode,cwd,durationMs,executedOn}",
+      "outputPreview": "{\"status\":\"failed\",\"stdout\":\"\",\"stderr\":\"'\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-shell-fx\\\\pkgdir'\\r\\nCMD.EXE was started with the above path as the current directory.\\r\\nUNC paths are not supported.  Defaulting to Windows directory.\\r\\n\",\"exitCode\":1,\"cwd\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-shell-fx\\\\pkgdir\",\"durationMs\":245,\"executedOn\":\"local\"}",
+      "log0": "[2026-09-30T11:36:50.481Z] start shell_execute (orig=shell_execute)",
+      "logLast": "exec=node -e \"process.exit(3)\" server=local exit=1",
+      "logN": 3
+    },
+    "shell.missingbin": {
+      "input": "{\"command\":\"joe-definitely-no-such-binary-xyz --version\",\"cwd\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-shell-fx\\\\pkgdir\"}",
+      "ok": false,
+      "error": "approval_required",
+      "outputShape": "{risk}",
+      "outputPreview": "{\"risk\":\"high\"}",
+      "log0": "[2026-09-30T11:36:50.733Z] start shell_execute (orig=shell_execute)",
+      "logLast": "blocked=1 reason=approval_required risk=high",
+      "logN": 2
+    },
+    "shell.blocked-sudo": {
+      "input": "{\"command\":\"sudo echo hi\",\"cwd\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-shell-fx\\\\pkgdir\"}",
+      "ok": false,
+      "error": "approval_required",
+      "outputShape": "{risk}",
+      "outputPreview": "{\"risk\":\"critical\"}",
+      "log0": "[2026-09-30T11:36:50.738Z] start shell_execute (orig=shell_execute)",
+      "logLast": "blocked=1 reason=approval_required risk=critical",
+      "logN": 2
+    },
+    "shell.overblock": {
+      "input": "{\"command\":\"echo sudo\",\"cwd\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-shell-fx\\\\pkgdir\"}",
+      "ok": false,
+      "error": "approval_required",
+      "outputShape": "{risk}",
+      "outputPreview": "{\"risk\":\"critical\"}",
+      "log0": "[2026-09-30T11:36:50.743Z] start shell_execute (orig=shell_execute)",
+      "logLast": "blocked=1 reason=approval_required risk=critical",
+      "logN": 2
+    },
+    "shell.cwd-escape": {
+      "input": "{\"command\":\"echo hi\",\"cwd\":\"C:\\\\Windows\"}",
+      "ok": false,
+      "error": "path_outside_workspace: C:\\Windows (Root: \\\\?\\D:\\Joe\\muse-worktree\\data\\projects\\session-audit-sess)",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T11:36:50.748Z] start shell_execute (orig=shell_execute)",
+      "logLast": "[2026-09-30T11:36:50.748Z] start shell_execute (orig=shell_execute)",
+      "logN": 1
+    },
+    "shell.cwd-missing": {
+      "input": "{\"command\":\"echo hi\",\"cwd\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-shell-fx\\\\no-such-dir\"}",
+      "ok": false,
+      "error": "spawn C:\\WINDOWS\\system32\\cmd.exe ENOENT",
+      "outputShape": "{status,stdout,stderr,exitCode,cwd,durationMs,executedOn}",
+      "outputPreview": "{\"status\":\"failed\",\"stdout\":\"\",\"stderr\":\"spawn C:\\\\WINDOWS\\\\system32\\\\cmd.exe ENOENT\",\"exitCode\":1,\"cwd\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-shell-fx\\\\no-such-dir\",\"durationMs\":9,\"executedOn\":\"local\"}",
+      "log0": "[2026-09-30T11:36:50.768Z] start shell_execute (orig=shell_execute)",
+      "logLast": "exec=echo hi server=local exit=1",
+      "logN": 3
+    },
+    "shell.bg1": {
+      "input": "{\"command\":\"node -e \\\"setTimeout(()=>{},10000)\\\"\",\"cwd\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-shell-fx\\\\pkgdir\",\"background\":true}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{status,id,pid,message}",
+      "outputPreview": "{\"status\":\"background\",\"id\":\"bg_1790768210795_842\",\"pid\":15604,\"message\":\"Command started in background.\"}",
+      "log0": "[2026-09-30T11:36:50.785Z] start shell_execute (orig=shell_execute)",
+      "logLast": "exec_bg=node -e \"setTimeout(()=>{},10000)\" id=bg_1790768210795_842 pid=15604",
+      "logN": 2
+    },
+    "shell.bg2-reuse": {
+      "input": "{\"command\":\"node -e \\\"setTimeout(()=>{},10000)\\\"\",\"cwd\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-shell-fx\\\\pkgdir\",\"background\":true}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{status,id,pid,cwd,message}",
+      "outputPreview": "{\"status\":\"already_running\",\"id\":\"bg_1790768210795_842\",\"pid\":15604,\"cwd\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-shell-fx\\\\pkgdir\",\"message\":\"The exact command is already running in this workspace; reused the live process.\"}",
+      "log0": "[2026-09-30T11:36:50.936Z] start shell_execute (orig=shell_execute)",
+      "logLast": "exec_bg_reused=node -e \"setTimeout(()=>{},10000)\" id=bg_1790768210795_842 pid=15604",
+      "logN": 2
+    },
+    "status.running": {
+      "input": "{\"id\":\"bg_1790768210795_842\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{running,pid,command,uptime}",
+      "outputPreview": "{\"running\":true,\"pid\":15604,\"command\":\"node -e \\\"setTimeout(()=>{},10000)\\\"\",\"uptime\":20}",
+      "log0": "[2026-09-30T11:36:50.948Z] start shell_check_status (orig=shell_check_status)",
+      "logLast": "[2026-09-30T11:36:50.948Z] start shell_check_status (orig=shell_check_status)",
+      "logN": 1
+    },
+    "status.unknown": {
+      "input": "{\"id\":\"bg_no_such_id_zzz\"}",
+      "ok": false,
+      "error": "Process not found",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T11:36:50.954Z] start shell_check_status (orig=shell_check_status)",
+      "logLast": "[2026-09-30T11:36:50.954Z] start shell_check_status (orig=shell_check_status)",
+      "logN": 1
+    },
+    "status.after": {
+      "input": "{\"id\":\"bg_1790768210795_842\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{running,pid,command,uptime}",
+      "outputPreview": "{\"running\":false,\"pid\":15604,\"command\":\"node -e \\\"setTimeout(()=>{},10000)\\\"\",\"uptime\":12035}",
+      "log0": "[2026-09-30T11:37:02.965Z] start shell_check_status (orig=shell_check_status)",
+      "logLast": "[2026-09-30T11:37:02.965Z] start shell_check_status (orig=shell_check_status)",
+      "logN": 1
+    },
+    "bg.meta": {
+      "bgId": "bg_1790768210795_842",
+      "bgPid": 15604
+    },
+    "npm.missing": {
+      "input": "{\"command\":\"\"}",
+      "ok": false,
+      "error": "missing_command",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T11:37:02.969Z] start npm_manager (orig=npm_manager)",
+      "logLast": "[2026-09-30T11:37:02.969Z] start npm_manager (orig=npm_manager)",
+      "logN": 1
+    },
+    "npm.refused": {
+      "input": "{\"command\":\"install left-pad-xyz\",\"cwd\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-shell-fx\\\\emptydir\"}",
+      "ok": false,
+      "error": "npm_install_target_is_not_a_package",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T11:37:02.973Z] start npm_manager (orig=npm_manager)",
+      "logLast": "npm.refused=no_package_json_at_target",
+      "logN": 4
+    },
+    "npm.version": {
+      "input": "{\"command\":\"--version\",\"cwd\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-shell-fx\\\\pkgdir\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{output}",
+      "outputPreview": "{\"output\":\"11.16.0\\n\"}",
+      "log0": "[2026-09-30T11:37:02.979Z] start npm_manager (orig=npm_manager)",
+      "logLast": "exec: npm --version (cwd=\\\\?\\D:\\Joe\\muse-worktree\\data\\projects\\session-audit-sess\\wiring-shell-fx\\pkgdir)",
+      "logN": 4
+    },
+    "term.create": {
+      "input": "{\"action\":\"create\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{id,pid,message,fallback}",
+      "outputPreview": "{\"id\":\"terminal:audit-sess\",\"pid\":3680,\"message\":\"Terminal created.\"}",
+      "log0": "[2026-09-30T11:37:03.833Z] start terminal_manager (orig=terminal_manager)",
+      "logLast": "term_create=terminal:audit-sess",
+      "logN": 2
+    },
+    "term.list": {
+      "input": "{\"action\":\"list\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{terminals}",
+      "outputPreview": "{\"terminals\":[\"terminal:audit-sess\"]}",
+      "log0": "[2026-09-30T11:37:04.228Z] start terminal_manager (orig=terminal_manager)",
+      "logLast": "[2026-09-30T11:37:04.228Z] start terminal_manager (orig=terminal_manager)",
+      "logN": 1
+    },
+    "term.write": {
+      "input": "{\"action\":\"write\",\"command\":\"echo WIRING_SHELL_TOKEN_7a1c\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{message}",
+      "outputPreview": "{\"message\":\"Input sent via kernel\"}",
+      "log0": "[2026-09-30T11:37:04.235Z] start terminal_manager (orig=terminal_manager)",
+      "logLast": "term_write=terminal:audit-sess",
+      "logN": 2
+    },
+    "term.read": {
+      "input": "{\"action\":\"read\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{history}",
+      "outputPreview": "{\"history\":\"\\u001b[?9001h\\u001b[?1004h\\u001b[?25l\\u001b[2J\\u001b[m\\u001b[H\\u001b]0;C:\\\\WINDOWS\\\\System32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe\\u0007\\u001b[?25hPS Microsoft.PowerShell.Core\\\\FileSystem::\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess> \\u001b[?25l\\u001b[93me\\u001b[?25h\\u001b[m\\u001b[93m\\becho \\u001b[37mWIRING_SHELL_\\u001b[?25l\\u001b[m\\u001b[93m\\u001b[2;21Hecho \\u001b[37mWIRING_SHELL_TOKEN_7a\\u001b[?25h\\u001b[?25l\\u001b[m\\u001b[93m\\u001b[2;21Hecho \\u001b[37mWIRING_SHELL_TOKEN_7a1c\\u001b[?25h\"}",
+      "log0": "[2026-09-30T11:37:06.747Z] start terminal_manager (orig=terminal_manager)",
+      "logLast": "[2026-09-30T11:37:06.747Z] start terminal_manager (orig=terminal_manager)",
+      "logN": 1
+    },
+    "term.tokenSeen": {
+      "tokenInHistory": true,
+      "historyTail": "\u001b[?9001h\u001b[?1004h\u001b[?25l\u001b[2J\u001b[m\u001b[H\u001b]0;C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe\u0007\u001b[?25hPS Microsoft.PowerShell.Core\\FileSystem::\\\\?\\D:\\Joe\\muse-worktree\\data\\projects\\session-audit-sess> \u001b[?25l\u001b[93me\u001b[?25h\u001b[m\u001b[93m\becho \u001b[37mWIRING_SHELL_\u001b[?25l\u001b[m\u001b[93m\u001b[2;21Hecho \u001b[37mWIRING_SHELL_TOKEN_7a\u001b[?25h\u001b[?25l\u001b[m\u001b[93m\u001b[2;21Hecho \u001b[37mWIRING_SHELL_TOKEN_7a1c\u001b[?25h"
+    },
+    "term.kill": {
+      "input": "{\"action\":\"kill\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{message}",
+      "outputPreview": "{\"message\":\"Terminal killed via kernel\"}",
+      "log0": "[2026-09-30T11:37:06.755Z] start terminal_manager (orig=terminal_manager)",
+      "logLast": "[2026-09-30T11:37:06.755Z] start terminal_manager (orig=terminal_manager)",
+      "logN": 1
+    },
+    "term.read-after-kill": {
+      "input": "{\"action\":\"read\"}",
+      "ok": false,
+      "error": "Terminal not found",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T11:37:06.789Z] start terminal_manager (orig=terminal_manager)",
+      "logLast": "[2026-09-30T11:37:06.789Z] start terminal_manager (orig=terminal_manager)",
+      "logN": 1
+    }
+  },
+  "cleanup": "ok",
+  "sessionRoot": "\\\\?\\D:\\Joe\\muse-worktree\\data\\projects\\session-audit-sess",
+  "at": "2026-09-30T11:37:06.801Z"
+}

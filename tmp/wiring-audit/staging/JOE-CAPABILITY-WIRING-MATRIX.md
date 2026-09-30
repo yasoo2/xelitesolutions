@@ -1,8 +1,8 @@
 # JOE CAPABILITY WIRING MATRIX (Muse draft 2026-09-29 — staging for D:\Joe\coordination\team\JOE-CAPABILITY-WIRING-MATRIX.md)
 
-SCOPE=Muse-branch discovery checkpoints 1-18 only (muse/joe-development @ 25ad8378).
+SCOPE=Muse-branch discovery checkpoints 1-19 only (muse/joe-development @ 19692487).
 Rows below are EVIDENCED tool-level entries. HIGH_LEVEL_CAPABILITIES grouping
-(merge v1: 19 trunks PROPOSED, 8 STORIED: files 10/10 in checkpoint 8;
+(merge v1: 19 trunks PROPOSED, 9 STORIED: files 10/10 in checkpoint 8;
 browser_ui 33/33 LEVEL-4 complete — checkpoint 11; both trunks
 verification-swept LEVEL-5 — checkpoint 12, see §VERIFY12; testing_qa
 6/6 LEVEL-4 + static verification-compat — checkpoint 13, see §VERIFY13;
@@ -11,18 +11,18 @@ see §VERIFY14; code_understanding 16/16 LEVEL-4 + static
 verification-compat — checkpoint 15, see §VERIFY15; vcs_repo 11/11
 LEVEL-4 + static verification-compat — checkpoint 16, see §VERIFY16;
 build_generate 13/13 LEVEL-4 + static verification-compat —
-checkpoint 17, see §VERIFY17); runtime_services 5/5 LEVEL-4 + static verification-compat + checker-set correction [checkpoint 18, see VERIFY18]),
+checkpoint 17, see §VERIFY17); runtime_services 5/5 LEVEL-4 + static verification-compat + checker-set correction [checkpoint 18, see VERIFY18]; shell_terminal 4/4 LEVEL-4 + static verification-compat [checkpoint 19, see VERIFY19]),
 services/workers/internal-infra rows, and NVIDIA-owned
 registry/ingress/persistence areas are UNKNOWN/PENDING and must NOT be
 treated as covered.
 Evidence files: D:\Joe\muse-worktree\tmp\wiring-audit\{discovery,exposure,
 classification,reachability,target,exec,sweep1,sweep2,merge,sweep3,trunk_files,
 arch2,trunk_browser1,trunk_browser_live1,trunk_browser_live2,
-trunk_browser_live3,verify_sweep12,trunk_testing,trunk_security,trunk_code,trunk_vcs,trunk_build,trunk_runtime}.json +
+trunk_browser_live3,verify_sweep12,trunk_testing,trunk_security,trunk_code,trunk_vcs,trunk_build,trunk_runtime,trunk_shell,shell_cwd}.json +
 {discover,exposure,classify,reach,target,exec,
 sweep1,sweep2,merge,sweep3,trunk_files,arch2,trunk_browser1,
 trunk_browser_live1,trunk_browser_live2,trunk_browser_live3,
-verify_sweep12,trunk_testing,chaos_call_probe,trunk_security,trunk_code,trunk_vcs,trunk_build,prog_batch3,trunk_runtime,pages_approved,stop_mech}.mts +
+verify_sweep12,trunk_testing,chaos_call_probe,trunk_security,trunk_code,trunk_vcs,trunk_build,prog_batch3,trunk_runtime,pages_approved,stop_mech,trunk_shell,shell_cwd}.mts +
 MUSE-WIRING-DISCOVERY-00{1,2,3,4,5,6,7}.md + MUSE-WIRING-DISCOVERY-008.md +
 MUSE-WIRING-DISCOVERY-009.md + MUSE-WIRING-DISCOVERY-010.md +
 MUSE-WIRING-DISCOVERY-011.md + MUSE-WIRING-DISCOVERY-012.md +
@@ -3294,5 +3294,109 @@ RECOMMENDED_ACTION=P1-008 (check kill result + verify death before stopped:true 
 
 ---
 
-END-OF-MUSE-DRAFT-ROWS=127 (117 individual + 8 group + 2 external-cited)
-COVERAGE-DISCLAIMER=This draft covers ONLY what Muse checkpoints 1-17 evidenced. Full matrix requires: per-trunk path stories (19 trunks PROPOSED in merge.json, 8 STORIED: files 10/10 + browser_ui 33/33 LEVEL-4 + testing_qa 6/6 LEVEL-4 + security 3/3 LEVEL-4 + code_understanding 16/16 LEVEL-4 + vcs_repo 11/11 LEVEL-4 + build_generate 13/13 LEVEL-4 + runtime_services 5/5 LEVEL-4), services/workers/persistence/deployment rows (NVIDIA scope), bulk per-tool firewall sweep (8 spot + 28 empty-input batch-1+2 + 19 risk-tier live + 16 trunk-files + 3 arch-backend + 26 browser live1/live2 + 30 browser live3 + 19 trunk-testing + 13 trunk-security + 36 trunk-code + 43 trunk-vcs + 45 trunk-build + 4 prog-batch3 + 23 trunk-runtime + 4 pages-approved done; 25/25 no-required reviewed: 18 SAFE + 1 BOUND + 4 EMBARGO with static fixture designs + 2 FIXTURE probed contained; browser_launch embargo partially lifted for contained-http; sonar/dep_audit/dead_code positives embargoed; code_reviewer non-quick + ALL github-network/git-network-push/import-clone/npm-qa legs embargoed; pipeline-named/setActiveRoot + mobile-default-cwd + full-stack-{} + react/api-full + ent/ori-default-root + page-model-present legs embargoed; risk table SURVEYED), contract audit per boundary (13 mismatches + schema/execute family), LEVEL 5-6 proofs (L5 done files+browser_ui + project_run live-gate receipt; testing_qa + security + code_understanding static-only, 5 checkers pending; vcs_repo + build_generate static-only with 0 checkers each), and NVIDIA cross-review (pending — worker on CLI-BATCH1 + audit slice).
+CAPABILITY_ID=TOOL-shell_execute
+NAME=shell_execute (ShellExecuteTool, SystemTools.ts:1481)
+CATEGORY=tool/shell-terminal-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/SystemTools.ts
+IMPLEMENTATION=local shell via handleShellCommand (cmd.exe, shell:true) + persistent CWD state file + background detached launches + visible-terminal paint + redactCmd; required:['command']; serverId remote path exists (commandRouter)
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_shell.json runA/B 25/25 identical + shell_cwd.json 5/5 2x, canonical): echo ok (token in stdout); bg create/reuse/status/reap full lifecycle; BUT every local execution ran in C:\Windows while the receipt claims the session cwd (pwd.node stdout=C:\Windows vs receipt cwd=session dir; cmd.exe 'UNC paths are not supported. Defaulting to Windows directory' on the \\?\ cwd) (F135). Plain-D:\ cwd spelling is REJECTED as outside-workspace under a \\?\ root (F137) -- no working cwd spelling exists. Firewall preempts nocmd/unknown-binary (high) and sudo-bearing commands incl. `echo sudo` (critical) before tool code runs (F140)
+PERMISSION_REACHABLE=YES (execute tier; medium default; high/critical inputs gated)
+PERMISSION_EVIDENCE=firewall approval_required legs (nocmd/missingbin high; sudo critical; bare cd high)
+INPUT_CONTRACT_VALID=PARTIAL (cwd accepted-but-unhonored under \\?\ root; missing cwd yields spawn-ENOENT blaming cmd.exe, F138)
+OUTPUT_CONTRACT_VALID=NO (exitCode normalized to 0/1 at SystemTools.ts -- real codes destroyed, F136; cwd field asserts an unhonored directory, F135)
+EVIDENCE_PRODUCED=PARTIAL (stdout/stderr real; exit code + cwd unreliable)
+VERIFICATION_COMPATIBLE=PARTIAL (never a checker -- static VERIFY19; success/failed shapes map sanely; dryRun ok:true maps PASSED -- MISMATCH #14, F139)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (executes + gates correctly; cwd + exit-code + dryrun-mapping defects)
+RECOMMENDED_ACTION=P1-010 (extended-prefix normalization at path boundary + spawn cwd) + P2-024 (preserve real exit codes) + MISMATCH #14 batch (dryRun-blind verdict)
+
+---
+
+CAPABILITY_ID=TOOL-shell_check_status
+NAME=shell_check_status (ShellStatusTool, SystemTools.ts:1719)
+CATEGORY=tool/shell-terminal-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/SystemTools.ts
+IMPLEMENTATION=background-process liveness via process.kill(pid,0) over the module-local backgroundProcesses map; deletes entry once dead; required:['id']; declares NO permissions (defaulted to read at boot)
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163 (revived by earlier audit fix -- now verified reachable)
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_shell.json 2x): running:true with pid+uptime for live bg; honest 'Process not found' for unknown id; running:false after natural sleeper exit (reap path works, no leak)
+PERMISSION_REACHABLE=YES (read default)
+PERMISSION_EVIDENCE=permission-defaulted at boot (21-family)
+INPUT_CONTRACT_VALID=YES
+OUTPUT_CONTRACT_VALID=YES ({running,pid,command,uptime} truthful in all legs)
+EVIDENCE_PRODUCED=YES
+VERIFICATION_COMPATIBLE=N/A (never a checker -- static VERIFY19)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=FULLY_WIRED
+RECOMMENDED_ACTION=none (companion: P1-010/P2-024 owner should confirm bg pid/cwd attribution stays valid after cwd normalization)
+
+---
+
+CAPABILITY_ID=TOOL-npm_manager
+NAME=npm_manager (NpmManagerTool, SystemTools.ts:1189)
+CATEGORY=tool/shell-terminal-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/SystemTools.ts
+IMPLEMENTATION=npm argv runner via handleShellCommand with no-package.json refusal gate, manifest reconcile, e-target recovery, legacy-peer-deps fallback; required:['command']; permissions execute+write+internet
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163 (revived by earlier audit fix -- now verified reachable)
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_shell.json 2x, no registry network): missing_command honest; install into non-package dir refused with npm_install_target_is_not_a_package (npm-climbs guard HOLDS); --version executes real npm -> 11.16.0 on Windows. Registry install legs embargoed (network)
+PERMISSION_REACHABLE=YES (medium default)
+PERMISSION_EVIDENCE=executed without approval under default autoSafe for probed inputs
+INPUT_CONTRACT_VALID=YES
+OUTPUT_CONTRACT_VALID=YES for probed shapes ({output}/{logs} + refusal shapes)
+EVIDENCE_PRODUCED=YES
+VERIFICATION_COMPATIBLE=N/A (never a checker -- static VERIFY19)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=FULLY_WIRED for probed surface (registry-install behavior UNKNOWN by embargo)
+RECOMMENDED_ACTION=none now; registry-install + manifest-reconcile paths need a network-allowed follow-up before FULLY_WIRED can cover installs
+
+---
+
+CAPABILITY_ID=TOOL-terminal_manager
+NAME=terminal_manager (TerminalManagerTool, TaskInteractionTools.ts:50)
+CATEGORY=tool/shell-terminal-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/TaskInteractionTools.ts (+ terminalKernel)
+IMPLEMENTATION=session-scoped pty manager (id=terminal:<sessionId>; ONE WORLD cwd=session root; owner registration); actions create/read/write/kill/list/resize; required:['action']
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_shell.json 2x): create real pty (pid, NOT fallback) -> list shows it -> write echo -> read history CONTAINS token (write→read EFFECT proven, real PowerShell pty) -> kill -> read-after-kill honest 'Terminal not found'. Terminal CWD is the session root (ONE WORLD holds)
+PERMISSION_REACHABLE=YES (medium default)
+PERMISSION_EVIDENCE=executed without approval under default autoSafe
+INPUT_CONTRACT_VALID=YES
+OUTPUT_CONTRACT_VALID=YES
+EVIDENCE_PRODUCED=YES (history carries real pty output incl. escape frames)
+VERIFICATION_COMPATIBLE=N/A (never a checker -- static VERIFY19)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=FULLY_WIRED for probed surface (interactive shells beyond echo UNKNOWN)
+RECOMMENDED_ACTION=none now; interactive-use + multi-session isolation need a follow-up before broader claims
+
+---
+
+END-OF-MUSE-DRAFT-ROWS=131 (121 individual + 8 group + 2 external-cited)
+COVERAGE-DISCLAIMER=This draft covers ONLY what Muse checkpoints 1-19 evidenced. Full matrix requires: per-trunk path stories (19 trunks PROPOSED in merge.json, 9 STORIED: files 10/10 + browser_ui 33/33 LEVEL-4 + testing_qa 6/6 LEVEL-4 + security 3/3 LEVEL-4 + code_understanding 16/16 LEVEL-4 + vcs_repo 11/11 LEVEL-4 + build_generate 13/13 LEVEL-4 + runtime_services 5/5 LEVEL-4 + shell_terminal 4/4 LEVEL-4), services/workers/persistence/deployment rows (NVIDIA scope), bulk per-tool firewall sweep (8 spot + 28 empty-input batch-1+2 + 19 risk-tier live + 16 trunk-files + 3 arch-backend + 26 browser live1/live2 + 30 browser live3 + 19 trunk-testing + 13 trunk-security + 36 trunk-code + 43 trunk-vcs + 45 trunk-build + 4 prog-batch3 + 23 trunk-runtime + 4 pages-approved + 25 trunk-shell + 5 shell-cwd done; 25/25 no-required reviewed: 18 SAFE + 1 BOUND + 4 EMBARGO with static fixture designs + 2 FIXTURE probed contained; browser_launch embargo partially lifted for contained-http; sonar/dep_audit/dead_code positives embargoed; code_reviewer non-quick + ALL github-network/git-network-push/import-clone/npm-qa legs embargoed; pipeline-named/setActiveRoot + mobile-default-cwd + full-stack-{} + react/api-full + ent/ori-default-root + page-model-present legs embargoed; risk table SURVEYED), contract audit per boundary (14 mismatches + schema/execute family), LEVEL 5-6 proofs (L5 done files+browser_ui + project_run live-gate receipt; testing_qa + security + code_understanding static-only, 5 checkers pending; vcs_repo + build_generate static-only with 0 checkers each), and NVIDIA cross-review (pending — worker on CLI-BATCH1 + audit slice).
