@@ -1,26 +1,27 @@
 # JOE LIVE TEAM REPORT (Muse draft 2026-09-29 — for coordinator to persist to team/LIVE-REPORT.md; Muse sandbox cannot write shared coordination files)
 
 UPDATED=2026-09-30T04:30Z
-OVERALL_STATUS=CRITICAL wiring audit checkpoint 12 done (LEVEL-5 verification-compat sweep on files 10/10 + browser_ui 33/33 via canonical pipeline dispatch: 21/21 verdict shapes + 43/43 checker partition + 6 live phase legs 2x verdict-identical; scopeRoot nonce mismatch #10 proven (read_file gates never reuse) + P2-018; matrix §VERIFY12; 10 mismatches); CLI routing fix still owned by NVIDIA (worker blocked); no Real Joe PASS yet.
+OVERALL_STATUS=CRITICAL wiring audit checkpoint 13 done (testing_qa trunk 6/6 storied LEVEL-4: 19/19 live legs canonical 2x verdict-identical + static verification-compat §VERIFY13; chaos false-success mismatch #11 + P2-019/P2-020 + 4 backlog extensions; matrix 81 rows; 11 mismatches); CLI routing fix still owned by NVIDIA (worker blocked); no Real Joe PASS yet.
 
 ## ماذا نعمل الآن؟
-Muse أكمل المرحلة الثانية عشرة: فحص توافق التحقق (المستوى 5) للجذعين الموثقين (43 أداة) عبر تنفيذ أطوار حقيقية بالمسار الرسمي. أهم النتائج: بوابة read_file تستخدم مسارًا نسبيًا فيحسب البصمة خارج مساحة العمل فلا تُعاد الاستفادة من الإيصالات أبدًا (تباين رقم 10)؛ وقرارات التحقق تعتمد النجاح/الفشل فقط وهي عمياء عن المحتوى لكن باتجاه آمن. اكتشاف فقط — لا حذف ولا إعادة هيكلة.
+Muse أكمل المرحلة الثالثة عشرة: توثيق جذع الاختبار/الجودة (6 أدوات) بتنفيذ حي كامل بالمسار الرسمي. أهم النتائج: أداة chaos_test_plan تُبلغ نجاحًا فارغًا عند غياب النموذج (تباين رقم 11 — يلتف على فاحص الأمان المركزي)؛ وفاحصا الاختبار إيصالاتهما بلا مؤشر دليل (P2-019)؛ ونص خطأ npm يتغير بين التشغيلات (توسيع P2-005). اكتشاف فقط — لا حذف ولا إعادة هيكلة.
 
 ## ماذا اكتشفنا؟
-- إثبات حي عبر 6 أطوار حقيقية: إيجابي/سلبي/رفض فاحص/فاحص متصفح/مهمة عادية/إعادة استخدام — كلها بالاتجاه الصحيح.
-- نطاق البصمة يفضّل مسار الأداة النسبي على جذر مساحة العمل فيحسب خارجها ببصمة وحيدة دائمًا (تباين رقم 10، P2-018).
-- السجل للفواحص فقط: 7 أدوات متصفح + read_file اختياريًا؛ 35 أداة لا تُنتج إيصالات أبدًا (V5: صفر إيصالات).
-- 6 فواحص سياقية تشير لرابط الدليل؛ browser_run وread_file إيصالاتهما بلا مؤشر (توسيع P2-012).
-- الاستدعاء المباشر للمُنفذ مرفوض جداريًا (فشل مغلق) — المستوى 5 يتطلب الإرسال الرسمي (F72).
+- chaos_test_plan تُرجع ok:true مع {} فارغة عند غياب المزود (مثبت حيًا مرتين + مقطع آلية) — 7 أدوات شقيقة بنفس النمط (تباين رقم 11، توسيع P2-015).
+- فاحصا quality_run وauto_tester لا يُصدران مؤشر دليل (P2-019)؛ ونطاق البصمة يشملهما (توسيع التباين 10، إثبات حي مؤجل).
+- بوابة تخطت كل شيء تُسجل "فاشلة" لا "ناقصة" — القرار أعمى عن التخطي أيضًا (F75).
+- نص خطأ npm: ضجيج stdout مرة و«command_failed» مرة — التشخيص غير مستقر (توسيع P2-005).
+- visual_qa يتيمة لكنها في قائمة الفواحص المسموحة (انحراف قائمة/سجل، توسيع P1-001).
+- sideEffects غير صادقة: auto_tester [] لكنه يشغّل سكربتات وخوادم؛ test_generator يكتب ملفات دون إعلان (P2-020).
 
 ## ماذا أنجزنا؟
-- verify_sweep12.mts (ثابت 21/21 + حي 6/6 عبر الإرسال الرسمي، exit 0، تشغيلان متطابقان) — مساحة معزولة وملفات/جلسات نُظفت.
-- MUSE-WIRING-DISCOVERY-012.md + تحديث المسودات (المصفوفة §VERIFY12، الملخص: 10 عقود متعارضة، التراكم +P2-018 وتوسيع P2-012، الخريطة المعمارية).
+- trunk_testing.mts (إعلان 6/6 + حي 19/19 عبر الإرسال الرسمي، exit 0، تشغيلان متطابقان) + chaos_call_probe.mts (آلية مثبتة) — مساحات معزولة نُظفت.
+- MUSE-WIRING-DISCOVERY-013.md + تحديث المسودات (المصفوفة §VERIFY13 + 6 صفوف، الملخص: 11 تباينًا، التراكم +P2-019/P2-020 و4 توسيعات).
 - هذه المسودة محدثة.
 
 ## Muse الآن
-CURRENT_TASK=Wiring audit checkpoint 12 (staged outputs, awaiting coordinator import + push)
-LATEST_RESULT=LEVEL-5 verification sweep: 21/21 static + 6/6 live legs 2x identical; mismatch #10 + P2-018; guard re-run at commit
+CURRENT_TASK=Wiring audit checkpoint 13 (staged outputs, awaiting coordinator import + push)
+LATEST_RESULT=testing_qa 6/6 LEVEL-4: 19/19 live legs 2x identical + 11-shape verdict table; mismatch #11 + P2-019/P2-020; guard re-run at commit
 BLOCKER=None for audit; shared coordination writes denied (fallback report used)
 
 ## NVIDIA الآن
@@ -43,13 +44,14 @@ CENSUS=163 rows: 21 perm-defaulted + 2 ratelimit-defaulted + 0 unknown; 25 no-re
 EMPTY_INPUT_BATCH1=8/9 honest ok:false + 1 unvalidated ok:true (task_lifecycle)
 EMPTY_INPUT_BATCH2=19/19 rerun-stable: 8 honest + 7 ok:true reads/absences + 1 approval gate + 1 swallowed-cause + 1 guard rejection + 1 honest offline fail
 NO_REQUIRED_PARTITION=25/25: 18 SAFE + 1 BOUND + 4 EMBARGO + 2 FIXTURE
-CONTRACT_MISMATCHES=10 (+ gate/task scopeRoot nonce: read_file gates never reuse)
+CONTRACT_MISMATCHES=11 (+ EliteTools match-or-{} false success: chaos ok:true+{} offline, scan backstop bypassed)
 VERIFY_SWEEP12=static 21/21 + live 6/6 canonical 2x identical (V1 completed/passed, V2 partial/failed, V3 partial/rejected/0 sessions, V4 completed/url receipt, V5 0 receipts, V6 invalidated-nonce)
-ERROR_EVIDENCE_DEFECTS=2 tool-local (zip cause-swallow P2-009; dep_audit mislabel P2-010)
-MATRIX_ROWS=75 (65 individual + 8 group + 2 external-cited)
+TRUNK_TESTING=6/6 SELECTABLE rank-1; 19/19 live legs canonical 2x identical + 11-shape verdict table; sonar positive embargoed
+ERROR_EVIDENCE_DEFECTS=2 tool-local (zip cause-swallow P2-009; dep_audit mislabel P2-010) + P2-005 3rd instance (nested npm error-text run-varying)
+MATRIX_ROWS=81 (71 individual + 8 group + 2 external-cited)
 RISK_TIERS=census 9/151/3/0 on {}; 19/19 live rerun-stable (8 blocks/1 critical + 5 honest + 6 ok:true)
 LEVEL4_SPOT=8 case-groups green-or-honest (checkpoint 4, unchanged)
-MERGE_V1=19 trunks / 163 members (PROPOSED, coverage-asserted; 2/19 STORIED: files + browser_ui)
+MERGE_V1=19 trunks / 163 members (PROPOSED, coverage-asserted; 3/19 STORIED: files + browser_ui + testing_qa)
 FULL_SHADOWS=0 | CONDITIONAL_SHADOWS=2 | INLINE_SHADOWS=2 (1 proven live)
 ORPHANED=5 confirmed + 4 preliminary drafts
 DUPLICATE=2 (memory pair)
@@ -60,9 +62,9 @@ VERIFIED=0 new Real Joe UAT this checkpoint
 REAL_JOE_PROVEN=No PASS; latest runs PARTIAL/FAIL (see TEAM-STATE)
 
 ## آخر نتيجة اختبار
-TEST=verify_sweep12.mts probe + guard:architecture + guard:package-scripts
-RESULT=sweep exit 0 (static 21/21 + 43/43 partition; live 6/6 canonical legs; full sweep 2x verdict-identical on fresh fixtures); guards recorded at commit time
-WHAT_IT_PROVES=files + browser_ui trunks are verification-consumable at LEVEL-5 (verdicts safe-direction, rejections honest, receipts correct); scopeRoot nonce defect (mismatch #10) + evidence-pointer split evidenced; NOT a Real Joe UI PASS.
+TEST=trunk_testing.mts probe (2x) + chaos_call_probe.mts + guard:architecture + guard:package-scripts
+RESULT=trunk exit 0 both runs (6/6 selectable rank-1; 19/19 live legs canonical, verdict-identical; 11/11 verdict table); chaos fragment exit 0 (resolved, no JSON, {} extracted); guards recorded at commit time
+WHAT_IT_PROVES=testing_qa trunk is executor-reachable at LEVEL-4 with honest legs except chaos false-success (mismatch #11, mechanism proven); checker partition + verdict mapping evidenced statically; NOT a Real Joe UI PASS.
 
 ## المشاكل الحالية
 - NVIDIA worker blocked: provider 429/503 failures; no resume yet; cross-review pending.
@@ -71,7 +73,7 @@ WHAT_IT_PROVES=files + browser_ui trunks are verification-consumable at LEVEL-5 
 
 ## الخطوة التالية
 1. Coordinator imports Muse consultation responses + follow-ups + 5 staged audit drafts + live report.
-2. Muse checkpoint 13: next trunk per impact (code_understanding=16 suggested, or testing_qa=6 checkers to complete the verification-consumer picture).
+2. Muse checkpoint 14: next trunk per impact (code_understanding=16 suggested — holds code_reviewer + 4 F74-siblings — or security trunk to close the checker set; or L5 live gate proof for quality_run/auto_tester).
 3. NVIDIA resumes, cross-reviews, acknowledges CLI-BATCH1 ownership.
 
 ## آخر الإنجازات
@@ -106,3 +108,5 @@ WHAT_IT_PROVES=files + browser_ui trunks are verification-consumable at LEVEL-5 
 [2026-09-30] DELIVERABLE — matrix 75 rows; backlog +3 batches; guard re-run at checkpoint 11 commit.
 [2026-09-30] DISCOVERY — LEVEL-5 verification sweep: 21/21 verdict shapes + 43/43 checker partition + 6/6 live legs 2x identical; scopeRoot nonce mismatch #10 (read_file gates never reuse, P2-018); ledger is checker-only (V5: 0 receipts); browser_run receipt hollow (P2-012 ext); direct-executor firewall fail-closed (F72).
 [2026-09-30] DELIVERABLE — matrix §VERIFY12; summary 10 mismatches; backlog +P2-018; guard re-run at checkpoint 12 commit.
+[2026-09-30] DISCOVERY — testing_qa 6/6 LEVEL-4 (19 legs, canonical, rerun-stable); chaos ok:true+{} offline false success + mechanism (mismatch #11, P2-015 ext); all-skipped→failed skip-blind (P2-004 ext); npm error-text run-varying (P2-005 ext); checker receipts hollow (P2-019); sideEffects dishonest (P2-020); visual_qa allowlist drift (P1-001 ext).
+[2026-09-30] DELIVERABLE — matrix 81 rows (§VERIFY13 + 6 trunk rows); summary 11 mismatches; backlog +P2-019/P2-020; guard re-run at checkpoint 13 commit.

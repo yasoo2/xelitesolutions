@@ -1,0 +1,382 @@
+{
+  "generatedAt": "2026-09-30T01:11:21.513Z",
+  "trunk": "testing_qa",
+  "declarations": {
+    "auto_tester": {
+      "descriptionHead": "Automatically test code, check syntax, and verify functionality",
+      "tags": [
+        "testing",
+        "verification",
+        "quality"
+      ],
+      "required": [
+        "testType",
+        "projectPath"
+      ],
+      "permissions": [
+        "execute"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "auto_tester:7.5",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ],
+      "checkerTaskLevel": true,
+      "checkerGateExistence": true,
+      "checkerGateLive": true
+    },
+    "chaos_test_plan": {
+      "descriptionHead": "Generate Chaos Engineering plan.",
+      "tags": [
+        "testing",
+        "chaos",
+        "elite"
+      ],
+      "required": [
+        "architecture"
+      ],
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 5,
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "chaos_test_plan:18.6",
+        "project_planner:7.9",
+        "architect_plan:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "load_tester": {
+      "descriptionHead": "Run performance stress tests (using k6 logic wrapper).",
+      "tags": [
+        "testing",
+        "performance",
+        "load"
+      ],
+      "required": [
+        "url"
+      ],
+      "permissions": [
+        "execute",
+        "internet"
+      ],
+      "sideEffects": [
+        "execute"
+      ],
+      "rateLimitPerMinute": 60,
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "load_tester:11.4",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "quality_run": {
+      "descriptionHead": "Run project quality tasks: lint, typecheck, test, build.",
+      "tags": [
+        "quality",
+        "lint",
+        "typecheck",
+        "test",
+        "build"
+      ],
+      "required": [
+        "path"
+      ],
+      "permissions": [
+        "execute",
+        "read"
+      ],
+      "sideEffects": [
+        "execute"
+      ],
+      "rateLimitPerMinute": 60,
+      "routerExcluded": false,
+      "priorityListed": true,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "quality_run:9.9",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ],
+      "checkerTaskLevel": true,
+      "checkerGateExistence": true,
+      "checkerGateLive": true
+    },
+    "sonar_analysis": {
+      "descriptionHead": "Run Static Code Analysis using SonarScanner (or mock if missing).",
+      "tags": [
+        "quality",
+        "security",
+        "static-analysis"
+      ],
+      "required": [
+        "projectKey"
+      ],
+      "permissions": [
+        "execute",
+        "internet"
+      ],
+      "sideEffects": [
+        "execute"
+      ],
+      "rateLimitPerMinute": 60,
+      "routerExcluded": false,
+      "priorityListed": true,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "sonar_analysis:10.1",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "test_generator": {
+      "descriptionHead": "Generate comprehensive test suites for code",
+      "tags": [
+        "testing",
+        "automation",
+        "quality"
+      ],
+      "required": [
+        "filePath"
+      ],
+      "permissions": [
+        "read",
+        "write"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "test_generator:9.5",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    }
+  },
+  "verdictTable": {
+    "quality_run completed": "passed",
+    "quality_run failed": "failed",
+    "quality_run all-skipped": "failed",
+    "auto_tester pass": "passed",
+    "auto_tester fail": "failed",
+    "test_generator wrote": "passed",
+    "test_generator ts-skip": "passed",
+    "chaos model-empty": "passed",
+    "chaos model-status": "passed",
+    "load_tester summary": "passed",
+    "sonar summary": "passed"
+  },
+  "live": {
+    "auto.syntax.valid": {
+      "input": "{\"testType\":\"syntax\",\"projectPath\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-qa-fx\",\"files\":[\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-qa-fx\\\\valid.",
+      "ok": true,
+      "error": null,
+      "outputShape": "{passed,errors,summary}",
+      "outputPreview": "{\"passed\":true,\"errors\":[],\"summary\":\"All requested syntax checks passed\"}",
+      "log0": "[2026-09-30T01:11:12.575Z] start auto_tester (orig=auto_tester)"
+    },
+    "auto.syntax.broken-json": {
+      "input": "{\"testType\":\"syntax\",\"projectPath\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-qa-fx\",\"files\":[\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-qa-fx\\\\broken",
+      "ok": false,
+      "error": "Invalid JSON in broken.json: Unexpected token 'W', ...\"{\"token\": WIRING_QA_\"... is not valid JSON",
+      "outputShape": "{passed,errors,summary}",
+      "outputPreview": "{\"passed\":false,\"errors\":[{\"type\":\"syntax\",\"message\":\"Invalid JSON in broken.json: Unexpected token 'W', ...\\\"{\\\"token\\\": WIRING_QA_\\\"... is not valid JSON\"}],\"summary\":\"Test failed: Invalid JSON in broken.json: Unexpected token 'W', ...\\\"{\\\"token\\\": WIRING_QA_\\\"... is not valid JSON\"}",
+      "log0": "[2026-09-30T01:11:12.955Z] start auto_tester (orig=auto_tester)"
+    },
+    "auto.syntax.broken-js": {
+      "input": "{\"testType\":\"syntax\",\"projectPath\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-qa-fx\",\"files\":[\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-qa-fx\\\\broken",
+      "ok": false,
+      "error": "D:\\Joe\\muse-worktree\\data\\projects\\session-audit-sess\\wiring-qa-fx\\broken.js:1\r\nmodule.exports = {{{ WIRING_QA_TOKEN_13d7\r\n                  ^\r\n\r\nSyntaxError: Unexpected token '{'\r\n    at wrapSafe (node:internal/modules/",
+      "outputShape": "{passed,errors,summary}",
+      "outputPreview": "{\"passed\":false,\"errors\":[{\"type\":\"syntax\",\"message\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-qa-fx\\\\broken.js:1\\r\\nmodule.exports = {{{ WIRING_QA_TOKEN_13d7\\r\\n                  ^\\r\\n\\r\\nSyntaxError: Unexpected token '{'\\r\\n    at wrapSafe (node:internal/modules/cjs/loader:1804:18)\\r\\n    at checkSyntax (node:internal/main/check_syntax:76:3)\\r\\n\\r\\nNode.js v24.18.0\\r\\n\"",
+      "log0": "[2026-09-30T01:11:12.972Z] start auto_tester (orig=auto_tester)"
+    },
+    "auto.syntax.unsupported": {
+      "input": "{\"testType\":\"syntax\",\"projectPath\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-qa-fx\",\"files\":[\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-qa-fx\\\\notes.",
+      "ok": false,
+      "error": "auto_tester syntax supports JavaScript/TypeScript and JSON only; use a format-specific checker for: notes.py",
+      "outputShape": "{passed,errors,summary}",
+      "outputPreview": "{\"passed\":false,\"errors\":[{\"type\":\"syntax\",\"message\":\"auto_tester syntax supports JavaScript/TypeScript and JSON only; use a format-specific checker for: notes.py\"}],\"summary\":\"Test failed: auto_tester syntax supports JavaScript/TypeScript and JSON only; use a format-specific checker for: notes.py\"}",
+      "log0": "[2026-09-30T01:11:13.306Z] start auto_tester (orig=auto_tester)"
+    },
+    "auto.syntax.no-files": {
+      "input": "{\"testType\":\"syntax\",\"projectPath\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-qa-fx\"}",
+      "ok": false,
+      "error": "Syntax testing requires one or more evidenced source files.",
+      "outputShape": "{passed,errors,summary}",
+      "outputPreview": "{\"passed\":false,\"errors\":[{\"type\":\"syntax\",\"message\":\"Syntax testing requires one or more evidenced source files.\"}],\"summary\":\"Test failed: Syntax testing requires one or more evidenced source files.\"}",
+      "log0": "[2026-09-30T01:11:13.320Z] start auto_tester (orig=auto_tester)"
+    },
+    "auto.bad-type": {
+      "input": "{\"testType\":\"smoke\",\"projectPath\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-qa-fx\"}",
+      "ok": false,
+      "error": "auto_tester requires testType to be one of: syntax, build, unit, integration.",
+      "outputShape": "{passed,errors,summary}",
+      "outputPreview": "{\"passed\":false,\"errors\":[{\"type\":\"test\",\"message\":\"auto_tester requires testType to be one of: syntax, build, unit, integration.\"}],\"summary\":\"Test failed: auto_tester requires testType to be one of: syntax, build, unit, integration.\"}",
+      "log0": "[2026-09-30T01:11:13.331Z] start auto_tester (orig=auto_tester)"
+    },
+    "auto.unit.pass": {
+      "input": "{\"testType\":\"unit\",\"projectPath\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-qa-fx\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{passed,errors,summary}",
+      "outputPreview": "{\"passed\":true,\"errors\":[],\"summary\":\"unit test check passed (test)\"}",
+      "log0": "[2026-09-30T01:11:13.338Z] start auto_tester (orig=auto_tester)"
+    },
+    "auto.unit.fail": {
+      "input": "{\"testType\":\"unit\",\"projectPath\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-qa-fx2\"}",
+      "ok": false,
+      "error": "command_failed",
+      "outputShape": "{passed,errors,summary}",
+      "outputPreview": "{\"passed\":false,\"errors\":[{\"type\":\"unit test\",\"message\":\"command_failed\"}],\"summary\":\"Test failed: command_failed\"}",
+      "log0": "[2026-09-30T01:11:15.205Z] start auto_tester (orig=auto_tester)"
+    },
+    "auto.unit.no-pkg": {
+      "input": "{\"testType\":\"unit\",\"projectPath\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-qa-fx3\"}",
+      "ok": false,
+      "error": "No declared unit-test script is available for this project.",
+      "outputShape": "{passed,errors,summary}",
+      "outputPreview": "{\"passed\":false,\"errors\":[{\"type\":\"unit\",\"message\":\"No declared unit-test script is available for this project.\"}],\"summary\":\"Test failed: No declared unit-test script is available for this project.\"}",
+      "log0": "[2026-09-30T01:11:16.945Z] start auto_tester (orig=auto_tester)"
+    },
+    "quality.test.pass": {
+      "input": "{\"path\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-qa-fx\",\"tasks\":[\"test\"]}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{results,status}",
+      "outputPreview": "{\"results\":[{\"task\":\"test\",\"ok\":true,\"skipped\":false,\"output\":\"\\n> wiring-qa-fx@1.0.0 test\\n> node -e \\\"process.exit(0)\\\"\\n\\n\"}],\"status\":\"completed\"}",
+      "log0": "[2026-09-30T01:11:16.953Z] start quality_run (orig=quality_run)"
+    },
+    "quality.test.all-skipped": {
+      "input": "{\"path\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-qa-fx3\",\"tasks\":[\"test\"]}",
+      "ok": false,
+      "error": "No requested quality checks were available to execute (test)",
+      "outputShape": "{results,status,error}",
+      "outputPreview": "{\"results\":[{\"task\":\"test\",\"ok\":true,\"skipped\":true}],\"status\":\"incomplete\",\"error\":\"No requested quality checks were available to execute (test)\"}",
+      "log0": "[2026-09-30T01:11:18.458Z] start quality_run (orig=quality_run)"
+    },
+    "quality.test.fail": {
+      "input": "{\"path\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-qa-fx2\",\"tasks\":[\"test\"]}",
+      "ok": false,
+      "error": "Quality checks failed: test: command failed",
+      "outputShape": "{results,status,error}",
+      "outputPreview": "{\"results\":[{\"task\":\"test\",\"ok\":false,\"skipped\":false,\"error\":\"\"}],\"status\":\"failed\",\"error\":\"Quality checks failed: test: command failed\"}",
+      "log0": "[2026-09-30T01:11:18.469Z] start quality_run (orig=quality_run)"
+    },
+    "load.no-url": {
+      "input": "{}",
+      "ok": false,
+      "error": "load_tester needs an http(s) url to hit.",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T01:11:20.404Z] start load_tester (orig=load_tester)"
+    },
+    "load.loopback": {
+      "input": "{\"url\":\"http://127.0.0.1:57910/\",\"vus\":1,\"duration\":\"1\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{summary}",
+      "outputPreview": "{\"summary\":\"Load Test Results for http://127.0.0.1:57910/:\\nVUs: 1\\nDuration: 1s\\nTotal Requests: 98\\nRPS: 98.00\\nErrors: 0\"}",
+      "log0": "[2026-09-30T01:11:20.431Z] start load_tester (orig=load_tester)"
+    },
+    "gen.js": {
+      "input": "{\"filePath\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-qa-fx\\\\valid.js\",\"testType\":\"unit\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{testFilePath,runner,importSpecifier,testCount,coverage}",
+      "outputPreview": "{\"testFilePath\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-qa-fx\\\\__tests__\\\\valid.test.js\",\"runner\":\"node\",\"importSpecifier\":\"../valid.js\",\"testCount\":2,\"coverage\":100}",
+      "log0": "[2026-09-30T01:11:21.451Z] start test_generator (orig=test_generator)"
+    },
+    "gen.ts-skip": {
+      "input": "{\"filePath\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-qa-fx\\\\tiny.ts\",\"testType\":\"unit\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{generated,skipped,runner,sourceExt,reason,remediation}",
+      "outputPreview": "{\"generated\":false,\"skipped\":true,\"runner\":\"node\",\"sourceExt\":\".ts\",\"reason\":\"test_runner_unsupported: node --test cannot execute TypeScript/TSX without a project-declared transpiling runner\",\"remediation\":\"Declare a TypeScript-capable test runner (for example vitest, jest, or tsx) before generating an executable test for this source file.\"}",
+      "log0": "[2026-09-30T01:11:21.463Z] start test_generator (orig=test_generator)"
+    },
+    "gen.missing": {
+      "input": "{\"filePath\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-qa-fx\\\\nope.js\"}",
+      "ok": false,
+      "error": "File not found: D:\\Joe\\muse-worktree\\data\\projects\\session-audit-sess\\wiring-qa-fx\\nope.js",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T01:11:21.473Z] start test_generator (orig=test_generator)"
+    },
+    "sonar.no-key": {
+      "input": "{}",
+      "ok": false,
+      "error": "sonar_analysis needs a projectKey.",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T01:11:21.483Z] start sonar_analysis (orig=sonar_analysis)"
+    },
+    "chaos.offline": {
+      "input": "{\"architecture\":\"two-tier web app WIRING_QA_TOKEN_13d7\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{}",
+      "outputPreview": "{}",
+      "log0": "[2026-09-30T01:11:21.488Z] start chaos_test_plan (orig=chaos_test_plan)"
+    }
+  },
+  "sessionRoot": "D:\\Joe\\muse-worktree\\data\\projects\\session-audit-sess",
+  "loadLoopbackHits": 98,
+  "genJsFileCreated": true,
+  "fixtures": {
+    "before": {
+      "fx": [
+        "__tests__",
+        "broken.js",
+        "broken.json",
+        "notes.py",
+        "package.json",
+        "tiny.ts",
+        "valid.js",
+        "valid.json"
+      ],
+      "fx2": [
+        "package.json"
+      ],
+      "fx3": []
+    },
+    "removed": true
+  }
+}

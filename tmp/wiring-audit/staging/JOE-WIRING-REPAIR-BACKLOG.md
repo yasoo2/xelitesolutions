@@ -23,11 +23,11 @@ DEPENDENCIES=none
 
 BATCH_ID=WIRING-P1-001
 CAPABILITIES=5 orphaned tool implementations (bulk_file_generator, codebase_navigator, generate_image, visual_qa, grep_search)
-ROOT_CAUSE=defined/imported but never constructed (grep_search: never imported); no owner ever decided wire-vs-retire
-FILES=registry.ts + 5 definition sites + ROUTER_EXCLUDED/PRIORITY lists
+ROOT_CAUSE=defined/imported but never constructed (grep_search: never imported); no owner ever decided wire-vs-retire. EXTENDED 013/F81: visual_qa sits in the isVerificationTool allowlist (verification-ledger.ts:735-739) though unregistered — the wire-vs-retire decision must include allowlist cleanup, and the P2-002 single-winner gate should cover the checker allowlist, not just resolve names.
+FILES=registry.ts + 5 definition sites + ROUTER_EXCLUDED/PRIORITY lists + verification-ledger.ts allowlist
 IMPLEMENTATION_OWNER=UNASSIGNED
 REVIEW_OWNER=UNASSIGNED
-TESTS=per-tool registration + selection + safe-execution + containment tests; bulk_file_generator needs path-containment hardening test first
+TESTS=per-tool registration + selection + safe-execution + containment tests; bulk_file_generator needs path-containment hardening test first; allowlist/registry consistency gate (every allowlisted checker resolves OR is explicitly gate-opt-in-only)
 REAL_JOE_UAT=one safe tool per orphan through real Joe UI (generate_image only under free-first creative contract)
 ROLLBACK=unregister / revert
 DEPENDENCIES=WIRING-P2-002 (single-winner gate should land first or with this)
@@ -113,9 +113,9 @@ DEPENDENCIES=none
 ---
 
 BATCH_ID=WIRING-P2-004
-CAPABILITIES=schema/execute consistency (task_lifecycle required-vs-default gap) + empty-input honesty sweep continuation (25/25 reviewed, 19 probed live in sweep2.json; risk-tier 19 in sweep3.json; files-trunk 16 live in trunk_files.json)
-ROOT_CAUSE=task_lifecycle declares required:['action'] but execute() defaults action='update' and returns ok:true on {} (sweep1.json, rerun-stable); no central schema gate — validation is per-tool; 25 no-required tools PARTITIONED 18 SAFE + 1 BOUND + 4 EMBARGO (static fixture designs in 008) + 2 FIXTURE (probed contained in 008). Absence-as-success shape: project_stop/orders_read/form_inbox/browser_consent return ok:true for absence (honest messages; ok-only verifiers would misread) + read_file {} returns ok:true EMPTY directory auto-list (sweep3.json, rerun-stable — 5th instance) + project_edit no-project returns ok:true 'No active project' message (trunk_files.json, live — 6th instance). project_undo default-latest-restore code-indicated (ProjectUndoTool.ts:98-100), fixture-unconfirmed.
-FILES=TaskLifecycleTool.ts (enforce required OR drop it from schema) + absence-as-success verifier note — EVIDENCED 012/F69: verdict mapping is ok/error-only and content-blind for all 43 swept tools (passed = check executed, never = requested behavior observed; hollow-pass shapes: 6 absence-instances + extract-swallow + empty-search-answer, all mapping in the safe direction) + project_undo snapshot fixture
+CAPABILITIES=schema/execute consistency (task_lifecycle required-vs-default gap) + empty-input honesty sweep continuation (25/25 reviewed, 19 probed live in sweep2.json; risk-tier 19 in sweep3.json; files-trunk 16 live in trunk_files.json; testing_qa 19 live in trunk_testing.json)
+ROOT_CAUSE=task_lifecycle declares required:['action'] but execute() defaults action='update' and returns ok:true on {} (sweep1.json, rerun-stable); no central schema gate — validation is per-tool; 25 no-required tools PARTITIONED 18 SAFE + 1 BOUND + 4 EMBARGO (static fixture designs in 008) + 2 FIXTURE (probed contained in 008). Absence-as-success shape: project_stop/orders_read/form_inbox/browser_consent return ok:true for absence (honest messages; ok-only verifiers would misread) + read_file {} returns ok:true EMPTY directory auto-list (sweep3.json, rerun-stable — 5th instance) + project_edit no-project returns ok:true 'No active project' message (trunk_files.json, live — 6th instance) + test_generator .ts-under-node-runner returns ok:true + generated:false/skipped:true (trunk_testing.json, live 2x — 7th instance, 013/F80). project_undo default-latest-restore code-indicated (ProjectUndoTool.ts:98-100), fixture-unconfirmed.
+FILES=TaskLifecycleTool.ts (enforce required OR drop it from schema) + absence-as-success verifier note — EVIDENCED 012/F69: verdict mapping is ok/error-only and content-blind for all 43 swept tools (passed = check executed, never = requested behavior observed; hollow-pass shapes: 6 absence-instances + extract-swallow + empty-search-answer, all mapping in the safe direction) + EXTENDED 013/F75: quality_run all-skipped maps to failed, not incomplete (verdict is skip-blind too — a gate with nothing to check is indistinguishable from a gate that failed) + project_undo snapshot fixture
 IMPLEMENTATION_OWNER=UNASSIGNED
 REVIEW_OWNER=UNASSIGNED
 TESTS=schema/execute consistency gate for task_lifecycle ({} -> honest error OR schema without required); verifier MUST read message/flags, not ok alone, for the 5 absence tools; project_undo fixture (snapshots present) to confirm/deny default-restore; AGENTS gates if ToolService touched (it is not — tool-local fix + verifier note)
@@ -126,12 +126,12 @@ DEPENDENCIES=none
 ---
 
 BATCH_ID=WIRING-P2-005
-CAPABILITIES=ok:false-without-error wrapper (cause-swallowing)
-ROOT_CAUSE=tools returning {ok:false} with no `error` field get generic 'Tool reported failure without an error message'; real cause sits in output (e.g. output.stderr) and never surfaces (2 instances: batch-1 rss_fetch, batch-2 repo_diff_summary in sweep1/2.json)
-FILES=ToolService/firewall wrapper (surface output.stderr/cause) + the 2 tool sites (return error with ok:false)
+CAPABILITIES=ok:false-without-error wrapper (cause-swallowing) + nested-error cause-substitution
+ROOT_CAUSE=tools returning {ok:false} with no `error` field get generic 'Tool reported failure without an error message'; real cause sits in output (e.g. output.stderr) and never surfaces (2 instances: batch-1 rss_fetch, batch-2 repo_diff_summary in sweep1/2.json). EXTENDED 013/F76 (3rd instance, cause-SUBSTITUTION not absence): same nested npm exit-1 surfaced run-varying text across 2 runs — run 1 auto.unit.fail error was npm self-update NOTICE stdout noise (exit cause nowhere in the message), run 2 same leg was generic 'command_failed'; run 2 quality.test.fail per-task error was '' (empty string). Origin is below the tools (nested shell_execute/handleShellCommand error mapping).
+FILES=ToolService/firewall wrapper (surface output.stderr/cause) + the 2 tool sites (return error with ok:false) + shell_execute/handleShellCommand error mapping (prefer exit cause over stdout noise; never empty error on exit-nonzero) + auto_tester/quality_run passthrough
 IMPLEMENTATION_OWNER=UNASSIGNED
 REVIEW_OWNER=UNASSIGNED
-TESTS=contract test: no ok:false result without a specific error (or wrapper carries output cause); RED->GREEN on both instances; AGENTS gates
+TESTS=contract test: no ok:false result without a specific error (or wrapper carries output cause); RED->GREEN on both instances; nested-npm-failure error-text stability test (same failing fixture 2x -> same cause-bearing message, RED->GREEN); empty-error negative (no '' error on real failure); AGENTS gates
 REAL_JOE_UAT=none (error-text quality; behavior unchanged)
 ROLLBACK=revert wrapper/tool one-liners
 DEPENDENCIES=none
@@ -256,12 +256,12 @@ DEPENDENCIES=none
 ---
 
 BATCH_ID=WIRING-P2-015
-CAPABILITIES=model-fallback contract for browser model-touching tools (summarize/translate/smart_agent + search variance)
-ROOT_CAUSE=routeToModel no-provider path RESOLVES failure prose (intelligent-router.ts:2201/2778/2789/2794, all `return`) instead of throwing — so tool try/catch + empty/short-text fallbacks (summarize :885-888, translate :1203-1205, smart_agent :1714) never fire on this path. Honesty currently depends entirely on ToolService's central apology text scan (ToolService.ts:940-944 + honestResult.ts isApologyOnly: prefix + no artifact keys) — proven live: trio ok:false WITH full output (sumLen 252 + shot; target + 7 blocks; scores 75/54/70 + 8 findings). Consequences: (a) smart_agent's computed lenses are discarded though real (none are ARTIFACT_KEYS); (b) a future failure shape the scan misses would flow as false-success data; (c) search uses a DIFFERENT routeToModel call shape ({messages} object, no context, :2032) and reads .content off the resolved string -> '' so it escapes the flip with ok:true + empty answer (coherent today since results are the deliverable, but the two shapes are uncontracted).
-FILES=intelligent-router.ts (resolve-vs-throw contract: throw typed no-provider OR document resolve-prose + provide isProviderFailure()) + 3 tool sites (detect prefix / use helper instead of empty-check) + honestResult.ts (keep as backstop; consider partial-output preservation rule) + search call-shape alignment + contract tests
+CAPABILITIES=model-fallback contract for browser model-touching tools (summarize/translate/smart_agent + search variance) + EliteTools JSON-extract variant
+ROOT_CAUSE=routeToModel no-provider path RESOLVES failure prose (intelligent-router.ts:2201/2778/2789/2794, all `return`) instead of throwing — so tool try/catch + empty/short-text fallbacks (summarize :885-888, translate :1203-1205, smart_agent :1714) never fire on this path. Honesty currently depends entirely on ToolService's central apology text scan (ToolService.ts:940-944 + honestResult.ts isApologyOnly: prefix + no artifact keys) — proven live: trio ok:false WITH full output (sumLen 252 + shot; target + 7 blocks; scores 75/54/70 + 8 findings). Consequences: (a) smart_agent's computed lenses are discarded though real (none are ARTIFACT_KEYS); (b) a future failure shape the scan misses would flow as false-success data; (c) search uses a DIFFERENT routeToModel call shape ({messages} object, no context, :2032) and reads .content off the resolved string -> '' so it escapes the flip with ok:true + empty answer (coherent today since results are the deliverable, but the two shapes are uncontracted). EXTENDED 013/F74 (MISMATCH #11, EliteTools variant): all 8 EliteTools use match-or-'{}' (EliteTools.ts:66,99,129,165,199,225,255,284); chaos_test_plan proven live 2x returning ok:true + {} offline (mechanism proven by chaos_call_probe: callLLM resolves Arabic failure prose, regex drops it). The scan backstop NEVER sees the dropped prose — so fixing resolve-vs-throw alone is insufficient; the tools must ALSO fail on empty-extract. chaos_test_plan additionally lacks a missing-architecture input guard.
+FILES=intelligent-router.ts (resolve-vs-throw contract: throw typed no-provider OR document resolve-prose + provide isProviderFailure()) + 3 tool sites (detect prefix / use helper instead of empty-check) + honestResult.ts (keep as backstop; consider partial-output preservation rule) + search call-shape alignment + 8 EliteTools sites (fail on empty JSON extract + isProviderFailure check on the raw response BEFORE extraction + chaos input guard) + contract tests
 IMPLEMENTATION_OWNER=UNASSIGNED (router + ToolService shared — coordinate; NVIDIA owns provider-adjacent planning? verify before assigning)
 REVIEW_OWNER=UNASSIGNED
-TESTS=resolve-vs-throw contract test (no-provider call shape asserted); trio RED->GREEN (honest failure WITH partials preserved or documentedly dropped); search empty-answer regression (results intact, ok:true stands); scan-miss negative (novel failure prose cannot pass as data); AGENTS gates
+TESTS=resolve-vs-throw contract test (no-provider call shape asserted); trio RED->GREEN (honest failure WITH partials preserved or documentedly dropped); search empty-answer regression (results intact, ok:true stands); scan-miss negative (novel failure prose cannot pass as data); EliteTools empty-extract RED->GREEN (chaos offline leg as contract: ok:false + cause-bearing error; 7 siblings same shape); chaos missing-input negative; AGENTS gates
 REAL_JOE_UAT=none (offline-honesty mechanics; behavior on live providers unchanged)
 ROLLBACK=revert contract change (scan backstop stays regardless)
 DEPENDENCIES=none
@@ -304,6 +304,32 @@ TESTS=scope-containment test: read_file gate on workspace-relative path -> recei
 REAL_JOE_UAT=none (ledger mechanics; pass/fail behavior unchanged, only reuse + provenance)
 ROLLBACK=revert scope-resolution change (back to always-run safe default)
 DEPENDENCIES=none
+
+---
+
+BATCH_ID=WIRING-P2-019
+CAPABILITIES=test-run checker receipt evidence (quality_run/auto_tester receipts point nowhere)
+ROOT_CAUSE=receipt evidenceLocation is read ONLY from output.evidenceLocation/reportPath/url (PhaseExecutorTool.ts:2068), but quality_run emits {results,status,error} and auto_tester emits {passed,errors,summary} — neither key present (static both sides, 013/F77). 3rd/4th evidence-hollow receipt shapes after browser_run (P2-012) and read_file gate. Unlike URL checkers, a test run has no page to point at — the batch must DECIDE what evidence means here (run/output digest? report artifact path? explicit hollow-by-design) rather than blindly add a url field. MISMATCH #10 scope fix (P2-018) covers these checkers' reuse once decided.
+FILES=QualityTools.ts (QualityRunTool) + AutoTesterTool.ts output shapes (emit evidence key OR document hollow) + receipt-evidence contract test
+IMPLEMENTATION_OWNER=UNASSIGNED
+REVIEW_OWNER=UNASSIGNED
+TESTS=receipt-evidence test per decided contract (RED->GREEN); L5 live gate legs for both checkers (quality_run pass + auto_tester pass through real phase_executor with carried ledger — also proves/denies the #10 nonce extension live); AGENTS gates
+REAL_JOE_UAT=none (receipt mechanics; pass/fail behavior unchanged)
+ROLLBACK=revert output change
+DEPENDENCIES=P2-018 (shared scopeRoot fix lands with or before this)
+
+---
+
+BATCH_ID=WIRING-P2-020
+CAPABILITIES=testing_qa sideEffects declaration honesty (2/6 dishonest)
+ROOT_CAUSE=auto_tester declares sideEffects:[] (AutoTesterTool.ts:58) but executes arbitrary declared npm scripts via nested shell_execute and can start project servers (liveTestPort -> project_run, :382-393); test_generator declares NO sideEffects field yet writes a test file (AdvancedTools.ts:459, byte-proven live). Same defect class as P2-011 (browser trunk 25/33 empty), now proven in a second trunk — a planner trusting sideEffects mispredicts both (013/F78).
+FILES=AutoTesterTool.ts + TestGeneratorTool (AdvancedTools.ts) declarations + sideEffects-honesty contract test (shared with P2-011's gate)
+IMPLEMENTATION_OWNER=UNASSIGNED
+REVIEW_OWNER=UNASSIGNED
+TESTS=declaration review (mutating tools declare honestly); contract test pinning the reviewed declarations (extend P2-011's gate to this trunk rather than a second gate); AGENTS gates
+REAL_JOE_UAT=none (declaration honesty; behavior unchanged)
+ROLLBACK=revert declaration change
+DEPENDENCIES=none (coordinate gate shape with P2-011 owner)
 
 ---
 

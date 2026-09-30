@@ -1,24 +1,26 @@
 # JOE CAPABILITY WIRING MATRIX (Muse draft 2026-09-29 — staging for D:\Joe\coordination\team\JOE-CAPABILITY-WIRING-MATRIX.md)
 
-SCOPE=Muse-branch discovery checkpoints 1-12 only (muse/joe-development @ 6aa6b8c4).
+SCOPE=Muse-branch discovery checkpoints 1-13 only (muse/joe-development @ 4ec9fd16).
 Rows below are EVIDENCED tool-level entries. HIGH_LEVEL_CAPABILITIES grouping
-(merge v1: 19 trunks PROPOSED, 2 STORIED: files 10/10 in checkpoint 8;
+(merge v1: 19 trunks PROPOSED, 3 STORIED: files 10/10 in checkpoint 8;
 browser_ui 33/33 LEVEL-4 complete — checkpoint 11; both trunks
-verification-swept LEVEL-5 — checkpoint 12, see §VERIFY12),
+verification-swept LEVEL-5 — checkpoint 12, see §VERIFY12; testing_qa
+6/6 LEVEL-4 + static verification-compat — checkpoint 13, see §VERIFY13),
 services/workers/internal-infra rows, and NVIDIA-owned
 registry/ingress/persistence areas are UNKNOWN/PENDING and must NOT be
 treated as covered.
 Evidence files: D:\Joe\muse-worktree\tmp\wiring-audit\{discovery,exposure,
 classification,reachability,target,exec,sweep1,sweep2,merge,sweep3,trunk_files,
 arch2,trunk_browser1,trunk_browser_live1,trunk_browser_live2,
-trunk_browser_live3,verify_sweep12}.json +
+trunk_browser_live3,verify_sweep12,trunk_testing}.json +
 {discover,exposure,classify,reach,target,exec,
 sweep1,sweep2,merge,sweep3,trunk_files,arch2,trunk_browser1,
 trunk_browser_live1,trunk_browser_live2,trunk_browser_live3,
-verify_sweep12}.mts +
+verify_sweep12,trunk_testing,chaos_call_probe}.mts +
 MUSE-WIRING-DISCOVERY-00{1,2,3,4,5,6,7}.md + MUSE-WIRING-DISCOVERY-008.md +
 MUSE-WIRING-DISCOVERY-009.md + MUSE-WIRING-DISCOVERY-010.md +
-MUSE-WIRING-DISCOVERY-011.md + MUSE-WIRING-DISCOVERY-012.md. All probes
+MUSE-WIRING-DISCOVERY-011.md + MUSE-WIRING-DISCOVERY-012.md +
+MUSE-WIRING-DISCOVERY-013.md. All probes
 re-runnable; exec/sweep/trunk probes perform bounded safe runs only
 (fixtures created + removed by the probe; 4 EMBARGO names never executed
 except browser_launch contained-http partial lift in 010 — static fixture
@@ -56,6 +58,27 @@ GATE_NEGATIVES=V2 missing-path -> partial + failed receipt; V3 non-checker
 gate -> verification_unavailable pre-execution, 0 browser sessions, partial.
 METHOD=direct executor invocation is firewall-rejected fail-closed (F72);
 LEVEL-5 must dispatch via ToolService inside runInContext.
+
+§VERIFY13 — VERIFICATION-COMPAT STATIC (checkpoint 13, testing_qa 6/6).
+Same consumer/allowlist/verdict-fn as §VERIFY12; L5 live gate proof
+PENDING for this trunk (scopeRoot-nonce extension code-indicated only).
+CHECKER_PARTITION=task-level checkers among the 6: auto_tester,
+quality_run (2); gate opt-ins change nothing; other 4 never
+receipted (static 6/6). VERDICT_MAP=quality_run emits
+output.status (completed/failed/incomplete — first storied tool
+to do so): completed->passed, failed->failed, all-skipped->
+failed (skip-blind, F75); all other trunk shapes ok/error-only;
+11-shape pure-function table (passed = check executed except
+F74's tool-level false success, which is a non-checker).
+RECEIPT_EVIDENCE=both trunk checkers emit no url/reportPath/
+evidenceLocation (quality_run {results,status,error};
+auto_tester {passed,errors,summary}) -> evidence-hollow
+receipts (3rd/4th hollow shapes, P2-019). REUSE=MISMATCH #10
+scope preference covers both (task-level prefers
+cwd/projectPath/path; quality_run takes path, auto_tester
+takes projectPath — code-indicated). ALLOWLIST_DRIFT=
+visual_qa is ORPHANED yet allowlisted (F81, P1-001 ext).
+Evidence: trunk_testing.json + chaos_call_probe.log.
 
 ---
 
@@ -1795,5 +1818,160 @@ RECOMMENDED_ACTION=none (routeToModel {messages}-shape vs positional-shape varia
 
 ---
 
-END-OF-MUSE-DRAFT-ROWS=75 (65 individual + 8 group + 2 external-cited)
-COVERAGE-DISCLAIMER=This draft covers ONLY what Muse checkpoints 1-11 evidenced. Full matrix requires: per-trunk path stories (19 trunks PROPOSED in merge.json, 2 STORIED: files 10/10 + browser_ui 33/33 LEVEL-4), services/workers/persistence/deployment rows (NVIDIA scope), bulk per-tool firewall sweep (8 spot + 28 empty-input batch-1+2 + 19 risk-tier live + 16 trunk-files + 3 arch-backend + 26 browser live1/live2 + 30 browser live3 done; 25/25 no-required reviewed: 18 SAFE + 1 BOUND + 4 EMBARGO with static fixture designs + 2 FIXTURE probed contained; browser_launch embargo partially lifted for contained-http; risk table SURVEYED), contract audit per boundary (9 mismatches), LEVEL 5-6 proofs, and NVIDIA cross-review (currently BLOCKED).
+CAPABILITY_ID=TOOL-auto_tester
+NAME=auto_tester (AutoTesterTool, AutoTesterTool.ts:18)
+CATEGORY=tool/testing-qa-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/AutoTesterTool.ts
+IMPLEMENTATION=acceptance observer: syntax (JSON in-process, JS via nested node --check, JSX/TS via esbuild) + build/unit/integration via declared npm scripts through nested shell_execute (+ live project_run when a local test endpoint is detected); vacuous/zero-test exit-0 refused; required:['testType','projectPath']
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1 (trunk_testing.json); not router-excluded
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_testing.json, canonical, 9 legs 2x identical): syntax valid/broken-json/broken-js/unsupported/no-files all honest; bad-type honest; unit pass/fail/no-pkg honest incl. nested npm runs
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=risk medium (execute) -> passes default autoSafe; no gate fired
+INPUT_CONTRACT_VALID=YES (testType enum + projectPath enforced with specific errors)
+OUTPUT_CONTRACT_VALID=YES ({passed,errors,summary}; nested-failure message text run-varying, F76)
+EVIDENCE_PRODUCED=YES (structured output + logs)
+VERIFICATION_COMPATIBLE=PARTIAL (task-level checker, static §VERIFY13; verdicts passed/failed map correctly; receipts evidence-hollow — no url keys, P2-019; L5 live gate proof pending)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (checker evidence + scopeRoot reuse gap code-indicated; sideEffects [] dishonest — runs scripts/servers, P2-020)
+RECOMMENDED_ACTION=WIRING-P2-019 + WIRING-P2-020 + P2-005 error-text instance
+
+---
+
+CAPABILITY_ID=TOOL-quality_run
+NAME=quality_run (QualityRunTool, QualityTools.ts:106)
+CATEGORY=tool/testing-qa-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/QualityTools.ts
+IMPLEMENTATION=lint/typecheck/test/build over declared package scripts (+ npx tsc fallback, static-records artifact accept); per-task {ok,skipped} results; output.status completed/failed/incomplete; required:['path']
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1; priority-listed; not router-excluded
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_testing.json, canonical, 3 legs 2x identical): test pass ok:true/completed; all-skipped ok:false/incomplete; fail ok:false/failed
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=risk medium (execute) -> passes default autoSafe; no gate fired
+INPUT_CONTRACT_VALID=YES (path required)
+OUTPUT_CONTRACT_VALID=PARTIAL ({results,status,error}; per-task error '' on npm exit-1, F75; top message run-varying, F76)
+EVIDENCE_PRODUCED=YES
+VERIFICATION_COMPATIBLE=PARTIAL (task-level checker, static §VERIFY13; all-skipped maps failed not incomplete — skip-blind, F75/P2-004; receipts evidence-hollow, P2-019; L5 live gate proof pending)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (checker evidence + scopeRoot reuse gap code-indicated)
+RECOMMENDED_ACTION=WIRING-P2-019 + P2-004/P2-005 extensions
+
+---
+
+CAPABILITY_ID=TOOL-chaos_test_plan
+NAME=chaos_test_plan (ChaosTestingTool, EliteTools.ts:105)
+CATEGORY=tool/testing-qa-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/EliteTools.ts
+IMPLEMENTATION=model JSON plan via getLLM/callLLM + regex-extract-or-{} (EliteTools.ts:129); required:['architecture'] (NOT enforced — prompt interpolates unchecked); permissions [] boot-defaulted to read
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1; not router-excluded
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_testing.json chaos.offline 2x identical): no-provider -> ok:true + {} FALSE SUCCESS (F74, MISMATCH #11); mechanism proven by chaos_call_probe (callLLM resolves failure prose, regex drops it)
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=risk low (defaulted read) -> passes default autoSafe
+INPUT_CONTRACT_VALID=NO (missing architecture unguarded)
+OUTPUT_CONTRACT_VALID=NO (model-shaped; {} on failure with ok:true)
+EVIDENCE_PRODUCED=PARTIAL ({} carries nothing on the failure path)
+VERIFICATION_COMPATIBLE=N/A (never a checker — static §VERIFY13; would map passed content-blind)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (false-success defect; 7 code-identical EliteTools siblings)
+RECOMMENDED_ACTION=WIRING-P2-015 extension (fail on empty-extract + input guard)
+
+---
+
+CAPABILITY_ID=TOOL-load_tester
+NAME=load_tester (LoadTesterTool, QualityTools.ts:416)
+CATEGORY=tool/testing-qa-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/QualityTools.ts
+IMPLEMENTATION=Node concurrent fetcher (lite k6): vus capped 50, duration 1-300s; empty-url guard (QualityTools.ts:441-443); required:['url']
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1; not router-excluded
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_testing.json, canonical, 2 legs 2x identical): {} honest error; loopback 1VU/1s ok:true, 78/98 hits, 0 errors (F82)
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=execute+internet, medium -> passes default autoSafe; no gate fired (loopback)
+INPUT_CONTRACT_VALID=YES (http(s) url enforced)
+OUTPUT_CONTRACT_VALID=YES ({summary} with VUs/duration/requests/RPS/errors)
+EVIDENCE_PRODUCED=YES
+VERIFICATION_COMPATIBLE=N/A (never a checker — static §VERIFY13)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=FULLY_WIRED (at tool level; external-target path deliberately unprobed)
+RECOMMENDED_ACTION=none
+
+---
+
+CAPABILITY_ID=TOOL-sonar_analysis
+NAME=sonar_analysis (SonarAnalysisTool, QualityTools.ts:32)
+CATEGORY=tool/testing-qa-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/QualityTools.ts
+IMPLEMENTATION=npx sonar-scanner wrapper, 300s timeout, not-found classified; empty-projectKey pre-shell guard; required:['projectKey']
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1; priority-listed; not router-excluded
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=PARTIAL (negative leg only)
+EXECUTOR_EVIDENCE=LIVE (trunk_testing.json sonar.no-key 2x identical): {} honest pre-shell error; positive leg EMBARGOED (npx network + 300s scanner, F82)
+PERMISSION_REACHABLE=YES (negative leg passed default autoSafe)
+INPUT_CONTRACT_VALID=YES (projectKey enforced pre-shell)
+OUTPUT_CONTRACT_VALID=UNKNOWN (positive shape {summary} code-indicated only)
+EVIDENCE_PRODUCED=PARTIAL (negative-leg error only)
+VERIFICATION_COMPATIBLE=N/A (never a checker — static §VERIFY13)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (positive path unproven by embargo)
+RECOMMENDED_ACTION=none until a contained scanner fixture exists; then prove or document mock-only
+
+---
+
+CAPABILITY_ID=TOOL-test_generator
+NAME=test_generator (TestGeneratorTool, AdvancedTools.ts:382)
+CATEGORY=tool/testing-qa-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/AdvancedTools.ts
+IMPLEMENTATION=static export-target test writer: runner detect (vitest/jest/node) from nearest package.json, node/CommonJS-vs-ESM + TS-skip shapes, writes __tests__/<file>.test.* ; required:['filePath']
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1; not router-excluded
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_testing.json, canonical, 3 legs 2x identical): .js wrote real file (testCount 2, coverage 100, byte-verified+cleaned); .ts node-runner ok:true+skipped (F80); missing file honest error
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=read+write, medium -> passes default autoSafe; no gate fired
+INPUT_CONTRACT_VALID=YES (filePath enforced + containment-resolved)
+OUTPUT_CONTRACT_VALID=PARTIAL (write shape honest; ts-skip ok:true+generated:false joins P2-004 absence family)
+EVIDENCE_PRODUCED=YES (test file + structured output)
+VERIFICATION_COMPATIBLE=N/A (never a checker — static §VERIFY13)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (sideEffects undeclared though it writes files, P2-020)
+RECOMMENDED_ACTION=WIRING-P2-020 + P2-004 ts-skip note
+
+---
+
+END-OF-MUSE-DRAFT-ROWS=81 (71 individual + 8 group + 2 external-cited)
+COVERAGE-DISCLAIMER=This draft covers ONLY what Muse checkpoints 1-13 evidenced. Full matrix requires: per-trunk path stories (19 trunks PROPOSED in merge.json, 3 STORIED: files 10/10 + browser_ui 33/33 LEVEL-4 + testing_qa 6/6 LEVEL-4), services/workers/persistence/deployment rows (NVIDIA scope), bulk per-tool firewall sweep (8 spot + 28 empty-input batch-1+2 + 19 risk-tier live + 16 trunk-files + 3 arch-backend + 26 browser live1/live2 + 30 browser live3 + 19 trunk-testing done; 25/25 no-required reviewed: 18 SAFE + 1 BOUND + 4 EMBARGO with static fixture designs + 2 FIXTURE probed contained; browser_launch embargo partially lifted for contained-http; sonar positive embargoed; risk table SURVEYED), contract audit per boundary (11 mismatches), LEVEL 5-6 proofs (L5 done files+browser_ui; testing_qa static-only), and NVIDIA cross-review (currently BLOCKED).
