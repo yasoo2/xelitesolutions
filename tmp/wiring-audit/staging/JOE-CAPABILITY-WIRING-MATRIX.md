@@ -1,8 +1,8 @@
 # JOE CAPABILITY WIRING MATRIX (Muse draft 2026-09-29 — staging for D:\Joe\coordination\team\JOE-CAPABILITY-WIRING-MATRIX.md)
 
-SCOPE=Muse-branch discovery checkpoints 1-19 only (muse/joe-development @ 19692487).
+SCOPE=Muse-branch discovery checkpoints 1-22 only (muse/joe-development @ f48ef78b).
 Rows below are EVIDENCED tool-level entries. HIGH_LEVEL_CAPABILITIES grouping
-(merge v1: 19 trunks PROPOSED, 9 STORIED: files 10/10 in checkpoint 8;
+(merge v1: 19 trunks PROPOSED, 12 STORIED: files 10/10 in checkpoint 8;
 browser_ui 33/33 LEVEL-4 complete — checkpoint 11; both trunks
 verification-swept LEVEL-5 — checkpoint 12, see §VERIFY12; testing_qa
 6/6 LEVEL-4 + static verification-compat — checkpoint 13, see §VERIFY13;
@@ -11,25 +11,30 @@ see §VERIFY14; code_understanding 16/16 LEVEL-4 + static
 verification-compat — checkpoint 15, see §VERIFY15; vcs_repo 11/11
 LEVEL-4 + static verification-compat — checkpoint 16, see §VERIFY16;
 build_generate 13/13 LEVEL-4 + static verification-compat —
-checkpoint 17, see §VERIFY17); runtime_services 5/5 LEVEL-4 + static verification-compat + checker-set correction [checkpoint 18, see VERIFY18]; shell_terminal 4/4 LEVEL-4 + static verification-compat [checkpoint 19, see VERIFY19]),
+checkpoint 17, see §VERIFY17); runtime_services 5/5 LEVEL-4 + static verification-compat + checker-set correction [checkpoint 18, see VERIFY18]; shell_terminal 4/4 LEVEL-4 + static verification-compat [checkpoint 19, see VERIFY19];
+database_data 6/6 LEVEL-4 + static verification-compat [checkpoint 20, see VERIFY20];
+observability 5/5 LEVEL-4 + static verification-compat [checkpoint 21, see VERIFY21];
+interaction 8/8 LEVEL-4 + static verification-compat [checkpoint 22, see VERIFY22]),
 services/workers/internal-infra rows, and NVIDIA-owned
 registry/ingress/persistence areas are UNKNOWN/PENDING and must NOT be
 treated as covered.
 Evidence files: D:\Joe\muse-worktree\tmp\wiring-audit\{discovery,exposure,
 classification,reachability,target,exec,sweep1,sweep2,merge,sweep3,trunk_files,
 arch2,trunk_browser1,trunk_browser_live1,trunk_browser_live2,
-trunk_browser_live3,verify_sweep12,trunk_testing,trunk_security,trunk_code,trunk_vcs,trunk_build,trunk_runtime,trunk_shell,shell_cwd}.json +
+trunk_browser_live3,verify_sweep12,trunk_testing,trunk_security,trunk_code,trunk_vcs,trunk_build,trunk_runtime,trunk_shell,shell_cwd,trunk_obs,trunk_interaction}.json +
 {discover,exposure,classify,reach,target,exec,
 sweep1,sweep2,merge,sweep3,trunk_files,arch2,trunk_browser1,
 trunk_browser_live1,trunk_browser_live2,trunk_browser_live3,
-verify_sweep12,trunk_testing,chaos_call_probe,trunk_security,trunk_code,trunk_vcs,trunk_build,prog_batch3,trunk_runtime,pages_approved,stop_mech,trunk_shell,shell_cwd}.mts +
+verify_sweep12,trunk_testing,chaos_call_probe,trunk_security,trunk_code,trunk_vcs,trunk_build,prog_batch3,trunk_runtime,pages_approved,stop_mech,trunk_shell,shell_cwd,trunk_obs,trunk_interaction}.mts +
 MUSE-WIRING-DISCOVERY-00{1,2,3,4,5,6,7}.md + MUSE-WIRING-DISCOVERY-008.md +
 MUSE-WIRING-DISCOVERY-009.md + MUSE-WIRING-DISCOVERY-010.md +
 MUSE-WIRING-DISCOVERY-011.md + MUSE-WIRING-DISCOVERY-012.md +
 MUSE-WIRING-DISCOVERY-013.md + MUSE-WIRING-DISCOVERY-014.md +
 MUSE-WIRING-DISCOVERY-015.md + MUSE-WIRING-DISCOVERY-016.md +
 MUSE-WIRING-DISCOVERY-017.md +
-MUSE-WIRING-DISCOVERY-018.md. All probes
+MUSE-WIRING-DISCOVERY-018.md +
+MUSE-WIRING-DISCOVERY-019.md + MUSE-WIRING-DISCOVERY-020.md +
+MUSE-WIRING-DISCOVERY-021.md + MUSE-WIRING-DISCOVERY-022.md. All probes
 re-runnable; exec/sweep/trunk probes perform bounded safe runs only
 (fixtures created + removed by the probe; 4 EMBARGO names never executed
 except browser_launch contained-http partial lift in 010 — static fixture
@@ -3554,5 +3559,343 @@ RECOMMENDED_ACTION=WIRING-P2-026 (description correction + missing-sql rejection
 
 ---
 
-END-OF-MUSE-DRAFT-ROWS=137 (127 individual + 8 group + 2 external-cited)
-COVERAGE-DISCLAIMER=This draft covers ONLY what Muse checkpoints 1-19 evidenced. Full matrix requires: per-trunk path stories (19 trunks PROPOSED in merge.json, 10 STORIED: files 10/10 + browser_ui 33/33 LEVEL-4 + testing_qa 6/6 LEVEL-4 + security 3/3 LEVEL-4 + code_understanding 16/16 LEVEL-4 + vcs_repo 11/11 LEVEL-4 + build_generate 13/13 LEVEL-4 + runtime_services 5/5 LEVEL-4 + shell_terminal 4/4 LEVEL-4 + database_data 6/6 LEVEL-4), services/workers/persistence/deployment rows (NVIDIA scope), bulk per-tool firewall sweep (8 spot + 28 empty-input batch-1+2 + 19 risk-tier live + 16 trunk-files + 3 arch-backend + 26 browser live1/live2 + 30 browser live3 + 19 trunk-testing + 13 trunk-security + 36 trunk-code + 43 trunk-vcs + 45 trunk-build + 4 prog-batch3 + 23 trunk-runtime + 4 pages-approved + 25 trunk-shell + 5 shell-cwd + 28 trunk-db done; 25/25 no-required reviewed: 18 SAFE + 1 BOUND + 4 EMBARGO with static fixture designs + 2 FIXTURE probed contained; browser_launch embargo partially lifted for contained-http; sonar/dep_audit/dead_code positives embargoed; code_reviewer non-quick + ALL github-network/git-network-push/import-clone/npm-qa legs embargoed; pipeline-named/setActiveRoot + mobile-default-cwd + full-stack-{} + react/api-full + ent/ori-default-root + page-model-present legs embargoed; risk table SURVEYED), contract audit per boundary (14 mismatches + schema/execute family), LEVEL 5-6 proofs (L5 done files+browser_ui + project_run live-gate receipt; testing_qa + security + code_understanding static-only, 5 checkers pending; vcs_repo + build_generate static-only with 0 checkers each), and NVIDIA cross-review (pending — worker on CLI-BATCH1 + audit slice).
+CAPABILITY_ID=TOOL-alert_manager
+NAME=alert_manager (AlertManagerTool, AlertManagerTool.ts:7)
+CATEGORY=tool/observability-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/AlertManagerTool.ts
+IMPLEMENTATION=in-memory alert store (`private static`, NO sessionId/userId: :72-89); actions create/trigger/resolve/list/history; trigger output aliases the live stored object
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_obs.json 2x): create/trigger/resolve/list/history honest lifecycle (created->triggered->resolved, listTotal 1, historyCount 3); trigger-bad honest not-found; noaction 'Unknown action: undefined' (required unenforced, note); trigger receipt reads mutated status after later resolve (live-object aliasing, serialized receipts fine)
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=executed without approval under default autoSafe (in 21 boot-defaulted family)
+INPUT_CONTRACT_VALID=PARTIAL (required action unenforced; nameless create accepted)
+OUTPUT_CONTRACT_VALID=YES for shape (receipt aliases live object in-process — note)
+EVIDENCE_PRODUCED=YES (lifecycle receipts; process-local only)
+VERIFICATION_COMPATIBLE=N/A (never a checker -- static VERIFY21)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (F157 global session-blind store; F156 aliasing note + guard note)
+RECOMMENDED_ACTION=WIRING-P2-031 (store scoping) -- proposed, unactioned
+
+---
+
+CAPABILITY_ID=TOOL-logger
+NAME=logger (LoggerTool, LoggerTool.ts:7)
+CATEGORY=tool/observability-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/LoggerTool.ts
+IMPLEMENTATION=in-memory log store (`private static`, NO sessionId/userId: :65-71, 10k cap); actions log/query/stats/clear; declares permissions ['write'] but writes memory only
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_obs.json 2x): log/query/stats honest (error filter, limit, token-visible); clear->clearedCount 2->stats zero; bad-action honest
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=executed without approval under default autoSafe
+INPUT_CONTRACT_VALID=YES for probed shapes
+OUTPUT_CONTRACT_VALID=YES for shape
+EVIDENCE_PRODUCED=YES (query/stats; process-local only)
+VERIFICATION_COMPATIBLE=N/A (never a checker -- static VERIFY21)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (F157 global session-blind store; write-permission over-declaration note)
+RECOMMENDED_ACTION=WIRING-P2-031 (store scoping) -- proposed, unactioned
+
+---
+
+CAPABILITY_ID=TOOL-monitoring
+NAME=monitoring (MonitoringTool, MonitoringTool.ts:7)
+CATEGORY=tool/observability-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/MonitoringTool.ts
+IMPLEMENTATION=in-memory metrics store (`private static`, NO sessionId/userId: :51-62); actions reset/track/get_metrics; track switch :94-144 has NO default
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_obs.json 2x): reset/track/get_metrics honest for known events; BUT unknown event -> ok:true + tracked:true while metrics prove it was never counted (F154); reset-again zeroes
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=executed without approval under default autoSafe (in 21 boot-defaulted family)
+INPUT_CONTRACT_VALID=PARTIAL (unknown events silently dropped but receipted as tracked)
+OUTPUT_CONTRACT_VALID=NO (tracked:true is false for unknown events)
+EVIDENCE_PRODUCED=PARTIAL (metrics real; tracked flag untrustworthy)
+VERIFICATION_COMPATIBLE=PARTIAL (never a checker -- static VERIFY21; unknown-event receipt maps passed -- MISMATCH #17)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (F154 false-tracked + F157 global session-blind store)
+RECOMMENDED_ACTION=WIRING-P2-030 (tracked honesty) + WIRING-P2-031 (store scoping) -- proposed, unactioned
+
+---
+
+CAPABILITY_ID=TOOL-performance_analyzer
+NAME=performance_analyzer (PerformanceAnalyzerTool, PerformanceAnalyzerTool.ts:9)
+CATEGORY=tool/observability-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/PerformanceAnalyzerTool.ts
+IMPLEMENTATION=static perf heuristics over files via `path.isAbsolute ? file : path.resolve(projectPath, file)` + bare fs reads, NO resolveToolPath, NO escape check (:64-68); missing files silently skipped (:66); files.length with no guard (:57); declares permissions ['read']
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_obs.json 2x): clean/nasty analyses honest scores; BUT absolute-outside path -> ok:true + score 97 (read outside session root, F152); ../ traversal -> ok:true + outside bottlenecks (F152); missing-file + empty-array -> ok:true + score 100 shape-identical to clean (F153); {} -> raw TypeError (F155)
+PERMISSION_REACHABLE=YES (gateway permits; read side entirely uncontained)
+PERMISSION_EVIDENCE=executed without approval under default autoSafe
+INPUT_CONTRACT_VALID=NO (no containment, no missing-files guard)
+OUTPUT_CONTRACT_VALID=NO (vacuous-ok indistinguishable from clean)
+EVIDENCE_PRODUCED=PARTIAL (real analysis in-session; uncontained + vacuous shapes untrustworthy)
+VERIFICATION_COMPATIBLE=PARTIAL (never a checker -- static VERIFY21; missing/empty receipts map passed -- MISMATCH #16)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (F152 uncontained read P1 + F153 vacuous-ok + F155 guard)
+RECOMMENDED_ACTION=WIRING-P1-011 (resolveToolPath containment, profiler pattern) + WIRING-P2-029 (receipt counts + guard) -- proposed, unactioned
+
+---
+
+CAPABILITY_ID=TOOL-performance_profile
+NAME=performance_profile (PerformanceProfilerTool, AdvancedTools.ts:593; registered callable name performance_profile)
+CATEGORY=tool/observability-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/AdvancedTools.ts
+IMPLEMENTATION=file perf profile (issues + memoryEstimate + complexity) via resolveToolPath with workspace context (:619); declares ['read','execute'] though it only reads+analyzes
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163 (registry label 'performance_profiler' is cosmetic; instance name performance_profile)
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_obs.json 2x): ok/issues honest; missing filePath + nonexistent honest sentences; SAME outside-absolute file the analyzer reads -> REFUSED path_outside_workspace (containment contrast proof)
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=executed without approval under default autoSafe
+INPUT_CONTRACT_VALID=YES for probed shapes (containment enforced)
+OUTPUT_CONTRACT_VALID=YES for shape (not-found error echoes absolute session path -- disclosure note, no batch)
+EVIDENCE_PRODUCED=YES (issues/memory/complexity; in-session only)
+VERIFICATION_COMPATIBLE=N/A (never a checker -- static VERIFY21; execute over-declaration note)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=FULLY_WIRED (contained + honest on all probed legs; in-repo containment pattern for P1-011)
+RECOMMENDED_ACTION=none (reference implementation for WIRING-P1-011)
+
+---
+
+CAPABILITY_ID=TOOL-ask_user
+NAME=ask_user (AskUserTool, TaskInteractionTools.ts:238)
+CATEGORY=tool/interaction-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/TaskInteractionTools.ts
+IMPLEMENTATION=broadcasts user_input_request over WS and returns {status:waiting_for_user_input} immediately -- never blocks despite 'blocking' tag; required:['question'] declared but unenforced; declares NO permissions (defaulted to read at boot)
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1 (PRIORITY-listed)
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_ixn_runA/B.json 2x verdict-identical): ok/options/missing ALL ok:true waiting ({} broadcasts question:undefined -- F164 note)
+PERMISSION_REACHABLE=YES (read default)
+PERMISSION_EVIDENCE=executed without approval under default autoSafe; in 21 boot-defaulted family
+INPUT_CONTRACT_VALID=PARTIAL (required question unenforced)
+OUTPUT_CONTRACT_VALID=YES for shape (waiting receipt honest)
+EVIDENCE_PRODUCED=YES (waiting receipt; no user answer carried)
+VERIFICATION_COMPATIBLE=N/A (never a checker -- static VERIFY22; 'ask waiting'=>incomplete is CORRECT)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (F164 guard note only -- harmless UI-cosmetic)
+RECOMMENDED_ACTION=none (fold into a future input-guard sweep if one forms)
+
+---
+
+CAPABILITY_ID=TOOL-business_profile
+NAME=business_profile (BusinessProfileTool, BusinessProfileTool.ts:13)
+CATEGORY=tool/interaction-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/BusinessProfileTool.ts + api/src/core/profile/business-profile.ts
+IMPLEMENTATION=deterministic parse (no model) of save/show/clear requests; disk store per-session + shared 'default' slot; setProfile writes BOTH slots (:57-72), clearProfile deletes BOTH (:74-79); auditFields=[] (PII out of audit logs)
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1 (ROUTER_EXCLUDED from capabilityRoute fast-path only -- by design, still keyword-carried)
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_ixn_runA/B.json 2x verdict-identical, store redirected): show-empty/save/show/save-nofield/clear/show-cleared ALL honest; store read after save -> slots [own,default] with identical PII (F162); after clear -> slots [] (F162)
+PERMISSION_REACHABLE=YES (read+write declared)
+PERMISSION_EVIDENCE=executed without approval under default autoSafe
+INPUT_CONTRACT_VALID=YES for probed shapes (deterministic parse; no-field save honest)
+OUTPUT_CONTRACT_VALID=YES for shape
+EVIDENCE_PRODUCED=YES (messages + saved profile; disk-persisted)
+VERIFICATION_COMPATIBLE=N/A (never a checker -- static VERIFY22)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (F162 dual-slot write+wipe; cross-session read impact code-cited)
+RECOMMENDED_ACTION=WIRING-P2-033 (slot scope confirmation) -- proposed, unactioned
+
+---
+
+CAPABILITY_ID=TOOL-central_answer
+NAME=central_answer (CentralAnswerTool, CentralAnswerTool.ts:73)
+CATEGORY=tool/interaction-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/CentralAnswerTool.ts
+IMPLEMENTATION=empty-question refusal (:126-132) + instant fast-path for short greetings/identity/thanks (:194-242, NO model call) + routeToModel path with language enforcement + deterministic fallback (:244-302); declares NO permissions (defaulted read) + rateLimitPerMinute=0 (defaulted 30/min)
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1 (PRIORITY-listed; ROUTER_EXCLUDED from capabilityRoute fast-path only -- by design)
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_ixn_runA/B.json 2x verdict-identical): empty/missing -> honest fail with a sentence; hi/thanks/arabic-greeting -> instant fast-path logs, correct language, string output, ZERO model calls (F167). Router/fallback path NEVER executed live (model embargo -- code-cited only)
+PERMISSION_REACHABLE=YES (read default)
+PERMISSION_EVIDENCE=executed without approval under default autoSafe; in 21 boot-defaulted + 2 rate-limit-defaulted families
+INPUT_CONTRACT_VALID=YES for probed shapes (empty refused honestly)
+OUTPUT_CONTRACT_VALID=YES for probed shapes (outputSchema string honored)
+EVIDENCE_PRODUCED=PARTIAL (refusal/fast-path receipts; model-path outputs unprobed)
+VERIFICATION_COMPATIBLE=N/A (never a checker -- static VERIFY22)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (probed paths honest; model path deliberately unprobed -- embargo, not a defect verdict)
+RECOMMENDED_ACTION=none until the model-path embargo lifts with an ownership decision
+
+---
+
+CAPABILITY_ID=TOOL-echo
+NAME=echo (EchoTool, SystemTools.ts:659)
+CATEGORY=tool/interaction-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/SystemTools.ts
+IMPLEMENTATION=returns {text: input.text}; required:['text'] declared but unenforced; declares NO permissions (defaulted to read at boot)
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-3
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 3 (PRIORITY-listed)
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_ixn_runA/B.json 2x verdict-identical): ok leg echoes token; {} -> ok:true out={} (F164 note)
+PERMISSION_REACHABLE=YES (read default)
+PERMISSION_EVIDENCE=executed without approval under default autoSafe; in 21 boot-defaulted family
+INPUT_CONTRACT_VALID=PARTIAL (required text unenforced)
+OUTPUT_CONTRACT_VALID=YES for shape
+EVIDENCE_PRODUCED=YES (echoed text)
+VERIFICATION_COMPATIBLE=N/A (never a checker -- static VERIFY22)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (F164 guard note only -- harmless)
+RECOMMENDED_ACTION=none (fold into a future input-guard sweep if one forms)
+
+---
+
+CAPABILITY_ID=TOOL-form_inbox
+NAME=form_inbox (FormInboxTool, FormInboxTool.ts:14)
+CATEGORY=tool/interaction-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/FormInboxTool.ts + api/src/api/form-inbox.ts
+IMPLEMENTATION=lists session-scoped form submissions (listSubmissions site-filter, newest first); isAr hardwired `|| true` (:26 -- dead language branch); no required inputs; declares NO permissions (defaulted to read at boot)
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1 (ROUTER_EXCLUDED from capabilityRoute fast-path only -- by design)
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_ixn_runA/B.json 2x verdict-identical, store redirected): empty honest; seeded list -> count 2, own seen, other-session NOT leaked (F166); English request -> Arabic message (F163, dead branch confirmed)
+PERMISSION_REACHABLE=YES (read default)
+PERMISSION_EVIDENCE=executed without approval under default autoSafe; in 21 boot-defaulted family
+INPUT_CONTRACT_VALID=YES for probed shapes
+OUTPUT_CONTRACT_VALID=YES for shape (message + count)
+EVIDENCE_PRODUCED=YES (submission list; disk-backed, session-scoped)
+VERIFICATION_COMPATIBLE=N/A (never a checker -- static VERIFY22)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (F163 dead-isAr i18n defect; scoping positive)
+RECOMMENDED_ACTION=WIRING-P2-034 (drop `|| true`) -- proposed, unactioned
+
+---
+
+CAPABILITY_ID=TOOL-notify_user
+NAME=notify_user (NotifyUserTool, NotifyUserTool.ts:13)
+CATEGORY=tool/interaction-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/NotifyUserTool.ts
+IMPLEMENTATION=broadcasts agent_notification over WS (non-blocking by design, unlike echo which terminates the loop); required:['message'] declared but unenforced; level enum accepted, default info
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1 (PRIORITY-listed)
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_ixn_runA/B.json 2x verdict-identical): ok/level/missing ALL ok:true acknowledged ({} broadcasts empty message -- F164 note)
+PERMISSION_REACHABLE=YES (write declared)
+PERMISSION_EVIDENCE=executed without approval under default autoSafe
+INPUT_CONTRACT_VALID=PARTIAL (required message unenforced)
+OUTPUT_CONTRACT_VALID=YES for shape ({acknowledged:true} honored)
+EVIDENCE_PRODUCED=YES (acknowledged receipt; broadcast is fire-and-forget)
+VERIFICATION_COMPATIBLE=N/A (never a checker -- static VERIFY22)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (F164 guard note only -- harmless)
+RECOMMENDED_ACTION=none (fold into a future input-guard sweep if one forms)
+
+---
+
+CAPABILITY_ID=TOOL-task_lifecycle
+NAME=task_lifecycle (TaskLifecycleTool, TaskLifecycleTool.ts:6)
+CATEGORY=tool/interaction-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/TaskLifecycleTool.ts
+IMPLEMENTATION=broadcasts task_update over WS; action defaults to 'update'; required:['action'] + enum declared but unenforced (any action broadcasts as success)
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_ixn_runA/B.json 2x verdict-identical): update/complete/fail/bad/missing ALL ok:true success:true ('explode' broadcasts as success -- F164 note; {} was already recorded as unvalidated-success in EMPTY_INPUT_HONESTY_BATCH1/WIRING-P2-004)
+PERMISSION_REACHABLE=YES (write declared; sideEffects [] despite MUTATES-task-state comment)
+PERMISSION_EVIDENCE=executed without approval under default autoSafe
+INPUT_CONTRACT_VALID=NO (required + enum both unenforced)
+OUTPUT_CONTRACT_VALID=YES for shape ({success:true} honored)
+EVIDENCE_PRODUCED=YES (success receipt; broadcast is fire-and-forget)
+VERIFICATION_COMPATIBLE=N/A (never a checker -- static VERIFY22)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (F164 guard note; pre-filed as WIRING-P2-004 for the {} case)
+RECOMMENDED_ACTION=WIRING-P2-004 (existing batch covers the {} case) -- proposed, unactioned; enum note rides along
+
+---
+
+CAPABILITY_ID=TOOL-todo_write
+NAME=todo_write (TodoWriteTool, TodoWriteTool.ts:4)
+CATEGORY=tool/interaction-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/TodoWriteTool.ts
+IMPLEMENTATION=broadcasts todo_update over WS; returns {ok, data:{acknowledged,count}, logs} -- `data`, NOT `output`; input.todos.length with no guard (:65); required:['merge','todos'] unenforced; declared outputSchema {acknowledged,count}
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1 (PRIORITY-listed)
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_ixn_runA/B.json 2x verdict-identical): replace/merge/nomerge/empty ALL ok:true + output NULL, data dropped (F160); missing-todos -> ok:false raw TypeError (F161)
+PERMISSION_REACHABLE=YES (write declared)
+PERMISSION_EVIDENCE=executed without approval under default autoSafe
+INPUT_CONTRACT_VALID=NO (required unenforced; missing todos throws TypeError)
+OUTPUT_CONTRACT_VALID=NO (output null contradicts declared {acknowledged,count}; count only in logs)
+EVIDENCE_PRODUCED=NO (null output; verdict maps ok+null to passed -- MISMATCH #18)
+VERIFICATION_COMPATIBLE=PARTIAL (never a checker -- static VERIFY22; null-evidence maps passed)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (F160 data-drop receipt + F161 guard)
+RECOMMENDED_ACTION=WIRING-P2-032 (output shape + guard + data-consumer survey) -- proposed, unactioned
+
+---
+
+END-OF-MUSE-DRAFT-ROWS=150 (140 individual + 8 group + 2 external-cited)
+COVERAGE-DISCLAIMER=This draft covers ONLY what Muse checkpoints 1-22 evidenced. Full matrix requires: per-trunk path stories (19 trunks PROPOSED in merge.json, 12 STORIED: files 10/10 + browser_ui 33/33 LEVEL-4 + testing_qa 6/6 LEVEL-4 + security 3/3 LEVEL-4 + code_understanding 16/16 LEVEL-4 + vcs_repo 11/11 LEVEL-4 + build_generate 13/13 LEVEL-4 + runtime_services 5/5 LEVEL-4 + shell_terminal 4/4 LEVEL-4 + database_data 6/6 LEVEL-4 + observability 5/5 LEVEL-4 + interaction 8/8 LEVEL-4), services/workers/persistence/deployment rows (NVIDIA scope), bulk per-tool firewall sweep (8 spot + 28 empty-input batch-1+2 + 19 risk-tier live + 16 trunk-files + 3 arch-backend + 26 browser live1/live2 + 30 browser live3 + 19 trunk-testing + 13 trunk-security + 36 trunk-code + 43 trunk-vcs + 45 trunk-build + 4 prog-batch3 + 23 trunk-runtime + 4 pages-approved + 25 trunk-shell + 5 shell-cwd + 28 trunk-db + 45 trunk-obs + 37 trunk-ixn done; 25/25 no-required reviewed: 18 SAFE + 1 BOUND + 4 EMBARGO with static fixture designs + 2 FIXTURE probed contained; browser_launch embargo partially lifted for contained-http; sonar/dep_audit/dead_code positives embargoed; code_reviewer non-quick + ALL github-network/git-network-push/import-clone/npm-qa legs embargoed; pipeline-named/setActiveRoot + mobile-default-cwd + full-stack-{} + react/api-full + ent/ori-default-root + page-model-present legs embargoed; risk table SURVEYED), contract audit per boundary (18 mismatches + schema/execute family), LEVEL 5-6 proofs (L5 done files+browser_ui + project_run live-gate receipt; testing_qa + security + code_understanding static-only, 5 checkers pending; vcs_repo + build_generate static-only with 0 checkers each; observability + interaction static-only with 0 checkers each), and NVIDIA cross-review (pending — worker on CLI-BATCH1 + audit slice).

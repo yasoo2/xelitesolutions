@@ -138,6 +138,19 @@ DEPENDENCIES=none
 
 ---
 
+BATCH_ID=WIRING-P1-011
+CAPABILITIES=performance_analyzer uncontained file read (absolute-outside + traversal)
+ROOT_CAUSE=file resolution is `path.isAbsolute(file) ? file : path.resolve(projectPath, file)` + bare fs.existsSync/readFileSync with NO resolveToolPath and NO escape check (PerformanceAnalyzerTool.ts:64-68). Proven live 2x (021/F152): absolute path to a worktree-tmp file OUTSIDE the session root -> ok:true + score 97; files:['../nasty.js'] with projectPath <session>/sub -> ok:true + outside-file bottlenecks. The tool declares permissions ['read'], is SELECTABLE rank-1, and the gateway permits the call. Sibling performance_profile REFUSES the same file via resolveToolPath (in-repo containment pattern to reuse).
+FILES=PerformanceAnalyzerTool.ts (route resolution through resolveToolPath with session workspace context; reject escapes with a sentence) + focused negative tests
+IMPLEMENTATION_OWNER=UNASSIGNED
+REVIEW_OWNER=UNASSIGNED
+TESTS=outside-absolute RED->GREEN (refused); traversal RED->GREEN (refused); in-session analysis regression (still scores); AGENTS gates
+REAL_JOE_UAT=none (focused security tests + regression suffice)
+ROLLBACK=revert containment change
+DEPENDENCIES=none
+
+---
+
 BATCH_ID=WIRING-P2-024
 CAPABILITIES=shell_execute exit-code fidelity
 ROOT_CAUSE=exitCode built as r.ok ? 0 : 1 at the tool layer (SystemTools.ts) -- real codes (3/134/137/...) destroyed; verifiers/self-fix cannot distinguish failure modes. Source-proven + live shape-confirmed (exitCode always in {0,1}); clean live isolation impossible while F135 stands (019/F136). Sibling of F102 (repo_run_command exit=undefined) in the opposite direction.
@@ -199,6 +212,84 @@ REVIEW_OWNER=UNASSIGNED
 TESTS=stalled-endpoint RED->GREEN (bounded rejection, no hang); scheme assertion (no http:// data fetch); all-source error-shape preserved; AGENTS gates
 REAL_JOE_UAT=none (transport harness; no real endpoints in tests)
 ROLLBACK=revert transport change
+DEPENDENCIES=none
+
+---
+
+BATCH_ID=WIRING-P2-029
+CAPABILITIES=performance_analyzer receipt honesty + input guard (missing/empty/missing-field)
+ROOT_CAUSE=(a) missing files are silently `continue`d and files:[] short-circuits to the same shape, so nonexistent-path and empty-array legs return ok:true + score 100 shape-identical to a clean analysis (live 2x, 021/F153, MISMATCH #16: caller cannot distinguish "analyzed and clean" from "never analyzed"; verdict maps to passed); (b) {} throws raw TypeError on files.length with no input guard, gateway required:['files'] unenforced (live 2x, 021/F155, same family as F150).
+FILES=PerformanceAnalyzerTool.ts (analyzed/skipped counts in output; reject missing files with a sentence) + verdict-map note for zero-analyzed receipts
+IMPLEMENTATION_OWNER=UNASSIGNED
+REVIEW_OWNER=UNASSIGNED
+TESTS=missing-file leg carries skipped count (not clean-shaped); empty-array rejected or zero-analyzed-marked; {} rejected with a sentence; clean/nasty regression; AGENTS gates
+REAL_JOE_UAT=none (receipt contract tests)
+ROLLBACK=revert receipt change
+DEPENDENCIES=none (sibling of P1-011, same file; may share owner)
+
+---
+
+BATCH_ID=WIRING-P2-030
+CAPABILITIES=monitoring unknown-event tracked honesty
+ROOT_CAUSE=track switch has no default (MonitoringTool.ts:94-144): unknown events are silently dropped while the receipt claims tracked:true (live 2x, 021/F154, MISMATCH #17; metrics confirm the event was never counted). Verdict maps to passed.
+FILES=MonitoringTool.ts (tracked:false + accepted-event list for unknown events, or explicit custom-event support) + focused tests
+IMPLEMENTATION_OWNER=UNASSIGNED
+REVIEW_OWNER=UNASSIGNED
+TESTS=unknown-event RED->GREEN (tracked:false + accepted list); known-event regression; metrics-count consistency; AGENTS gates
+REAL_JOE_UAT=none
+ROLLBACK=revert honesty change
+DEPENDENCIES=none
+
+---
+
+BATCH_ID=WIRING-P2-031
+CAPABILITIES=observability store scoping (alert/logger/monitoring process-global unpersisted session-blind stores)
+ROOT_CAUSE=all three stores are `private static` with NO sessionId/userId field in any method (AlertManagerTool.ts:72-89, LoggerTool.ts:65-71, MonitoringTool.ts:51-62): one session's clear/reset wipes EVERYONE's state, list/query leak across sessions, process restart loses everything. Live behavior (clear->zero, reset->zero) + code-cited; cross-session impact code-cited, NOT live-probed (021/F157). Sub-notes: logger over-declares permissions ['write'] for memory-only writes; alert history unbounded (vs logger 10k / monitor-errors 100); monitoring averageBuildTime divides by successfulRequests.
+FILES=AlertManagerTool.ts + LoggerTool.ts + MonitoringTool.ts (session-scope or persist with owner binding; document process-local dev-only semantics meanwhile)
+IMPLEMENTATION_OWNER=UNASSIGNED
+REVIEW_OWNER=UNASSIGNED
+TESTS=two-context isolation (clear in A preserves B); restart-persistence or documented-dev-only; cap parity for alert history; AGENTS gates
+REAL_JOE_UAT=none (isolation harness; no cross-user probing in prod)
+ROLLBACK=revert scoping change
+DEPENDENCIES=none (cross-session live probing needs ownership decision first)
+
+---
+
+BATCH_ID=WIRING-P2-032
+CAPABILITIES=todo_write receipt shape + input guard (data-drop null output + TypeError)
+ROOT_CAUSE=(a) tool returns {ok, data:{acknowledged,count}, logs} but the canonical path reads res.output only (ToolService.ts:879/963, no data passthrough), so EVERY todo_write receipt is ok:true + output null — contradicting its own declared outputSchema {acknowledged,count} and mapping to verdict passed on null evidence (live 2x, 022/F160, MISMATCH #18; count survives only in a log line); (b) missing todos throws raw TypeError on input.todos.length, required:['merge','todos'] unenforced by tool and gateway (live 2x, 022/F161, same family as F150/F155).
+FILES=TodoWriteTool.ts (return output:{acknowledged,count}; reject missing todos with a sentence) + `data`-field consumer survey before dropping `data`
+IMPLEMENTATION_OWNER=UNASSIGNED
+REVIEW_OWNER=UNASSIGNED
+TESTS=canonical-path output-shape assertion (acknowledged/count present); missing-todos rejection with a sentence; merge/replace/empty regression; AGENTS gates
+REAL_JOE_UAT=none (receipt contract tests)
+ROLLBACK=revert receipt change
+DEPENDENCIES=none
+
+---
+
+BATCH_ID=WIRING-P2-033
+CAPABILITIES=business_profile slot scope (shared-default write + wipe)
+ROOT_CAUSE=setProfile writes BOTH the session slot and the shared 'default' slot; clearProfile deletes BOTH (business-profile.ts:57-79). Proven live 2x via store read (022/F162): after save slots=[own,default] with identical PII; after clear slots=[]. Save-side sharing is documented intent; clear-side wipes every session's profile. Cross-session READ impact code-cited (default fallback :47-53), not live-probed with a second session. Privacy posture auditFields=[] must be preserved.
+FILES=business-profile.ts (scope clear to own slot or make default-wipe explicit; document shared-default semantics) + BusinessProfileTool.ts if copy changes
+IMPLEMENTATION_OWNER=UNASSIGNED
+REVIEW_OWNER=UNASSIGNED
+TESTS=second-context test (save in A visible via default in B OR explicitly scoped; clear in A preserves default unless explicit); no-PII-in-audit regression; AGENTS gates
+REAL_JOE_UAT=none (isolation harness with synthetic fixtures)
+ROLLBACK=revert scope change
+DEPENDENCIES=none (cross-session live probing needs ownership decision first)
+
+---
+
+BATCH_ID=WIRING-P2-034
+CAPABILITIES=form_inbox language branch (dead isAr)
+ROOT_CAUSE=`|| true` at FormInboxTool.ts:26 hardwires isAr: English requests always receive the Arabic message (live 2x, 022/F163). Minor i18n defect, no data impact.
+FILES=FormInboxTool.ts (drop `|| true` or wire real request language)
+IMPLEMENTATION_OWNER=UNASSIGNED
+REVIEW_OWNER=UNASSIGNED
+TESTS=English request -> English message; Arabic default preserved; session scoping regression (022/F166 legs); AGENTS gates
+REAL_JOE_UAT=none
+ROLLBACK=revert one-line change
 DEPENDENCIES=none
 
 ---

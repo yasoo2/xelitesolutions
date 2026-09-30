@@ -1,0 +1,688 @@
+{
+  "trunk": "interaction",
+  "registered": 163,
+  "decl": {
+    "ask_user": {
+      "descriptionHead": "Ask the user a question and wait for a response. Use this if you are blocked or need clarification.",
+      "tags": [
+        "user",
+        "interaction",
+        "blocking"
+      ],
+      "required": [
+        "question"
+      ],
+      "properties": [
+        "question",
+        "options"
+      ],
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "routerExcluded": false,
+      "priorityListed": true,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "ask_user:19.3",
+        "user_browser:14.1",
+        "task_lifecycle:11.2"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "business_profile": {
+      "descriptionHead": "Save, show or clear the user's real business details (brand, phone, email, socials) — injected into every future build.",
+      "tags": [
+        "profile",
+        "memory",
+        "business"
+      ],
+      "required": [
+        "request"
+      ],
+      "properties": [
+        "request"
+      ],
+      "permissions": [
+        "read",
+        "write"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 20,
+      "routerExcluded": true,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "business_profile:12.8",
+        "ask_user:7.1",
+        "orion_business_foundation:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "central_answer": {
+      "descriptionHead": "Answer a general question or provide information directly to the user",
+      "tags": [
+        "qa",
+        "general"
+      ],
+      "required": [
+        "question"
+      ],
+      "properties": [
+        "question"
+      ],
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 30,
+      "routerExcluded": true,
+      "priorityListed": true,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "central_answer:11.8",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "echo": {
+      "descriptionHead": "Return the input text (ping/pong).",
+      "tags": [
+        "utility",
+        "string"
+      ],
+      "required": [
+        "text"
+      ],
+      "properties": [
+        "text"
+      ],
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 120,
+      "routerExcluded": false,
+      "priorityListed": true,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 3,
+      "bestRankFull": 3,
+      "top3SelfName": [
+        "ask_user:7.1",
+        "user_browser:7.1",
+        "task_lifecycle:6"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "form_inbox": {
+      "descriptionHead": "List the form submissions delivered to this session's built site or app.",
+      "tags": [
+        "forms",
+        "inbox",
+        "data"
+      ],
+      "required": null,
+      "properties": [
+        "request"
+      ],
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 30,
+      "routerExcluded": true,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "form_inbox:13.8",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "notify_user": {
+      "descriptionHead": "Send a non-blocking progress update to the user's chat UI. Unlike `echo`, this does NOT stop your autonomous execution loop. Use this to keep the user informed ",
+      "tags": [
+        "communication",
+        "ui",
+        "progress",
+        "agent"
+      ],
+      "required": [
+        "message"
+      ],
+      "properties": [
+        "message",
+        "level"
+      ],
+      "permissions": [
+        "write"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 30,
+      "routerExcluded": false,
+      "priorityListed": true,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "notify_user:14.4",
+        "ask_user:14.1",
+        "user_browser:14.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "task_lifecycle": {
+      "descriptionHead": "Manage the lifecycle of an agent task loop. Use this to update the UI with your current status, summary, and mode.",
+      "tags": [
+        "system",
+        "ui",
+        "lifecycle"
+      ],
+      "required": [
+        "action"
+      ],
+      "properties": [
+        "action",
+        "taskName",
+        "taskStatus",
+        "taskSummary",
+        "mode"
+      ],
+      "permissions": [
+        "write"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "task_lifecycle:15",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "todo_write": {
+      "descriptionHead": "Proactively create and manage a structured task list for your current coding session. This helps track progress, organize complex tasks, and demonstrate thoroug",
+      "tags": [
+        "task",
+        "management",
+        "ui",
+        "productivity"
+      ],
+      "required": [
+        "merge",
+        "todos"
+      ],
+      "properties": [
+        "merge",
+        "todos",
+        "workspaceId"
+      ],
+      "permissions": [
+        "write"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 60,
+      "routerExcluded": false,
+      "priorityListed": true,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "todo_write:12.5",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    }
+  },
+  "verdictTable": {
+    "echo text": "passed",
+    "ask waiting": "incomplete",
+    "notify ack": "passed",
+    "lifecycle success": "passed",
+    "todo ok-null-output": "passed",
+    "todo fail-no-todos": "failed",
+    "profile saved": "passed",
+    "profile shown": "passed",
+    "profile cleared": "passed",
+    "profile no-field": "passed",
+    "inbox empty": "passed",
+    "inbox count": "passed",
+    "central instant": "passed",
+    "central empty-fail": "failed",
+    "central router-shape": "passed"
+  },
+  "live": {
+    "ec.ok": {
+      "input": "{\"text\":\"WIRING_IXN_TOKEN_9d4e ping\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{text}",
+      "outputPreview": "{\"text\":\"WIRING_IXN_TOKEN_9d4e ping\"}",
+      "hasDataField": null,
+      "log0": "[2026-09-30T13:27:02.634Z] start echo (orig=echo)",
+      "logLast": "[2026-09-30T13:27:02.634Z] start echo (orig=echo)",
+      "logN": 1
+    },
+    "ec.missing": {
+      "input": "{}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{text}",
+      "outputPreview": "{}",
+      "hasDataField": null,
+      "log0": "[2026-09-30T13:27:02.670Z] start echo (orig=echo)",
+      "logLast": "[2026-09-30T13:27:02.670Z] start echo (orig=echo)",
+      "logN": 1
+    },
+    "au.ok": {
+      "input": "{\"question\":\"WIRING_IXN_TOKEN_9d4e: proceed?\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{status,message}",
+      "outputPreview": "{\"status\":\"waiting_for_user_input\",\"message\":\"Request sent. Agent loop should now pause.\"}",
+      "hasDataField": null,
+      "log0": "[2026-09-30T13:27:02.673Z] start ask_user (orig=ask_user)",
+      "logLast": "ask=\"WIRING_IXN_TOKEN_9d4e: proceed?\"",
+      "logN": 2
+    },
+    "au.options": {
+      "input": "{\"question\":\"WIRING_IXN_TOKEN_9d4e: pick one\",\"options\":[\"alpha\",\"beta\"]}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{status,message}",
+      "outputPreview": "{\"status\":\"waiting_for_user_input\",\"message\":\"Request sent. Agent loop should now pause.\"}",
+      "hasDataField": null,
+      "log0": "[2026-09-30T13:27:02.677Z] start ask_user (orig=ask_user)",
+      "logLast": "ask=\"WIRING_IXN_TOKEN_9d4e: pick one\"",
+      "logN": 2
+    },
+    "au.missing": {
+      "input": "{}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{status,message}",
+      "outputPreview": "{\"status\":\"waiting_for_user_input\",\"message\":\"Request sent. Agent loop should now pause.\"}",
+      "hasDataField": null,
+      "log0": "[2026-09-30T13:27:02.681Z] start ask_user (orig=ask_user)",
+      "logLast": "ask=\"undefined\"",
+      "logN": 2
+    },
+    "nt.ok": {
+      "input": "{\"message\":\"WIRING_IXN_TOKEN_9d4e installing\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{acknowledged}",
+      "outputPreview": "{\"acknowledged\":true}",
+      "hasDataField": null,
+      "log0": "[2026-09-30T13:27:02.684Z] start notify_user (orig=notify_user)",
+      "logLast": "Notification sent: \"WIRING_IXN_TOKEN_9d4e installing\" (level: info)",
+      "logN": 2
+    },
+    "nt.level": {
+      "input": "{\"message\":\"WIRING_IXN_TOKEN_9d4e done\",\"level\":\"success\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{acknowledged}",
+      "outputPreview": "{\"acknowledged\":true}",
+      "hasDataField": null,
+      "log0": "[2026-09-30T13:27:02.687Z] start notify_user (orig=notify_user)",
+      "logLast": "Notification sent: \"WIRING_IXN_TOKEN_9d4e done\" (level: success)",
+      "logN": 2
+    },
+    "nt.missing": {
+      "input": "{}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{acknowledged}",
+      "outputPreview": "{\"acknowledged\":true}",
+      "hasDataField": null,
+      "log0": "[2026-09-30T13:27:02.690Z] start notify_user (orig=notify_user)",
+      "logLast": "Notification sent: \"\" (level: info)",
+      "logN": 2
+    },
+    "lc.update": {
+      "input": "{\"action\":\"update\",\"taskName\":\"WIRING_IXN_TOKEN_9d4e-task\",\"taskStatus\":\"Scanning files...\",\"mode\":\"EXECUTION\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{success}",
+      "outputPreview": "{\"success\":true}",
+      "hasDataField": null,
+      "log0": "[2026-09-30T13:27:02.692Z] start task_lifecycle (orig=task_lifecycle)",
+      "logLast": "Task update: Scanning files...",
+      "logN": 2
+    },
+    "lc.complete": {
+      "input": "{\"action\":\"complete\",\"taskName\":\"WIRING_IXN_TOKEN_9d4e-task\",\"taskSummary\":\"done\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{success}",
+      "outputPreview": "{\"success\":true}",
+      "hasDataField": null,
+      "log0": "[2026-09-30T13:27:02.696Z] start task_lifecycle (orig=task_lifecycle)",
+      "logLast": "Task complete: undefined",
+      "logN": 2
+    },
+    "lc.fail": {
+      "input": "{\"action\":\"fail\",\"taskName\":\"WIRING_IXN_TOKEN_9d4e-task\",\"taskStatus\":\"broke\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{success}",
+      "outputPreview": "{\"success\":true}",
+      "hasDataField": null,
+      "log0": "[2026-09-30T13:27:02.699Z] start task_lifecycle (orig=task_lifecycle)",
+      "logLast": "Task fail: broke",
+      "logN": 2
+    },
+    "lc.bad": {
+      "input": "{\"action\":\"explode\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{success}",
+      "outputPreview": "{\"success\":true}",
+      "hasDataField": null,
+      "log0": "[2026-09-30T13:27:02.702Z] start task_lifecycle (orig=task_lifecycle)",
+      "logLast": "Task explode: undefined",
+      "logN": 2
+    },
+    "lc.missing": {
+      "input": "{}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{success}",
+      "outputPreview": "{\"success\":true}",
+      "hasDataField": null,
+      "log0": "[2026-09-30T13:27:02.704Z] start task_lifecycle (orig=task_lifecycle)",
+      "logLast": "Task update: undefined",
+      "logN": 2
+    },
+    "td.replace": {
+      "input": "{\"merge\":false,\"todos\":[{\"id\":\"t1\",\"status\":\"completed\",\"content\":\"WIRING_IXN_TOKEN_9d4e first\"},{\"id\":\"t2\",\"status\":\"in_progress\",\"content\":\"WIRING_IXN_TOKEN_9d4e second\"}]}",
+      "ok": true,
+      "error": null,
+      "outputShape": "null",
+      "outputPreview": "null",
+      "hasDataField": null,
+      "log0": "[2026-09-30T13:27:02.707Z] start todo_write (orig=todo_write)",
+      "logLast": "Successfully broadcasted 2 todo items. (merge: false)",
+      "logN": 2
+    },
+    "td.merge": {
+      "input": "{\"merge\":true,\"todos\":[{\"id\":\"t3\",\"status\":\"pending\",\"content\":\"WIRING_IXN_TOKEN_9d4e third\"}]}",
+      "ok": true,
+      "error": null,
+      "outputShape": "null",
+      "outputPreview": "null",
+      "hasDataField": null,
+      "log0": "[2026-09-30T13:27:02.711Z] start todo_write (orig=todo_write)",
+      "logLast": "Successfully broadcasted 1 todo items. (merge: true)",
+      "logN": 2
+    },
+    "td.nomerge": {
+      "input": "{\"todos\":[{\"id\":\"t4\",\"status\":\"pending\",\"content\":\"WIRING_IXN_TOKEN_9d4e fourth\"}]}",
+      "ok": true,
+      "error": null,
+      "outputShape": "null",
+      "outputPreview": "null",
+      "hasDataField": null,
+      "log0": "[2026-09-30T13:27:02.714Z] start todo_write (orig=todo_write)",
+      "logLast": "Successfully broadcasted 1 todo items. (merge: undefined)",
+      "logN": 2
+    },
+    "td.notodos": {
+      "input": "{\"merge\":false}",
+      "ok": false,
+      "error": "Failed to update todos: Cannot read properties of undefined (reading 'length')",
+      "outputShape": "null",
+      "outputPreview": "null",
+      "hasDataField": null,
+      "log0": "[2026-09-30T13:27:02.716Z] start todo_write (orig=todo_write)",
+      "logLast": "Error: Cannot read properties of undefined (reading 'length')",
+      "logN": 2
+    },
+    "td.empty": {
+      "input": "{\"merge\":true,\"todos\":[]}",
+      "ok": true,
+      "error": null,
+      "outputShape": "null",
+      "outputPreview": "null",
+      "hasDataField": null,
+      "log0": "[2026-09-30T13:27:02.719Z] start todo_write (orig=todo_write)",
+      "logLast": "Successfully broadcasted 0 todo items. (merge: true)",
+      "logN": 2
+    },
+    "td.compare": {
+      "replaceOk": true,
+      "replaceOutput": "null",
+      "replaceDataDropped": true,
+      "notodosOk": false,
+      "notodosError": "Failed to update todos: Cannot read properties of undefined (reading 'length')",
+      "emptyCount": null
+    },
+    "bp.show-empty": {
+      "input": "{\"request\":\"show my business profile\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{message,profile}",
+      "outputPreview": "{\"message\":\"📇 لا توجد بيانات عمل محفوظة بعد.\\nقل: «احفظ بيانات عملي: الاسم …، الجوال …، البريد …، انستغرام …»\",\"profile\":null}",
+      "hasDataField": null,
+      "log0": "[2026-09-30T13:27:02.722Z] start business_profile (orig=business_profile)",
+      "logLast": "[2026-09-30T13:27:02.722Z] start business_profile (orig=business_profile)",
+      "logN": 1
+    },
+    "bp.save": {
+      "input": "{\"request\":\"save business profile: brand WIRING_IXN_TOKEN_9d4e Diner, phone 0500000000, email fixture@example.test\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{message,profile}",
+      "outputPreview": "{\"message\":\"✅ حُفظت وستُحقن في كل بناء قادم تلقائياً.\\n\\n📇 بيانات عملك المحفوظة — تُحقن تلقائياً في كل بناء قادم:\\n   • الاسم: WIRING_IXN_TOKEN_9d4e Diner\\n   • الجوال: 0500000000\\n   • البريد: fixture@example.test\\n\\n✏️ للتعديل أعد الحفظ بقيم جديدة · «امسح بيانات عملي» للحذف\",\"profile\":{\"brand\":\"WIRING_IXN_TOKEN_9d4e Diner\",\"phone\":\"0500000000\",\"email\":\"fixture@example.test\",\"updatedAt\":1790774822730}}",
+      "hasDataField": null,
+      "log0": "[2026-09-30T13:27:02.727Z] start business_profile (orig=business_profile)",
+      "logLast": "business profile saved — deterministic parse, no model",
+      "logN": 2
+    },
+    "bp.show": {
+      "input": "{\"request\":\"what is my business profile?\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{message,profile}",
+      "outputPreview": "{\"message\":\"📇 بيانات عملك المحفوظة — تُحقن تلقائياً في كل بناء قادم:\\n   • الاسم: WIRING_IXN_TOKEN_9d4e Diner\\n   • الجوال: 0500000000\\n   • البريد: fixture@example.test\\n\\n✏️ للتعديل أعد الحفظ بقيم جديدة · «امسح بيانات عملي» للحذف\",\"profile\":{\"brand\":\"WIRING_IXN_TOKEN_9d4e Diner\",\"phone\":\"0500000000\",\"email\":\"fixture@example.test\",\"updatedAt\":1790774822730}}",
+      "hasDataField": null,
+      "log0": "[2026-09-30T13:27:02.732Z] start business_profile (orig=business_profile)",
+      "logLast": "[2026-09-30T13:27:02.732Z] start business_profile (orig=business_profile)",
+      "logN": 1
+    },
+    "bp.save-nofield": {
+      "input": "{\"request\":\"save business profile: WIRING_IXN_TOKEN_9d4e zzz-no-labels-here\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{message}",
+      "outputPreview": "{\"message\":\"📇 لم أتعرف على أي حقل. الصيغة: «احفظ بيانات عملي: الاسم مطعم الريف، الجوال 0501234567، البريد hi@reef.sa، انستغرام reef_rest»\"}",
+      "hasDataField": null,
+      "log0": "[2026-09-30T13:27:02.737Z] start business_profile (orig=business_profile)",
+      "logLast": "[2026-09-30T13:27:02.737Z] start business_profile (orig=business_profile)",
+      "logN": 1
+    },
+    "bp.store": {
+      "file": "present",
+      "slots": [
+        "audit-sess",
+        "default"
+      ],
+      "ownBrand": "WIRING_IXN_TOKEN_9d4e Diner",
+      "ownPhone": "0500000000",
+      "defaultBrand": "WIRING_IXN_TOKEN_9d4e Diner"
+    },
+    "bp.clear": {
+      "input": "{\"request\":\"clear my business profile data\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{message}",
+      "outputPreview": "{\"message\":\"🗑️ مُسحت بيانات عملك — الأبنية القادمة تعود للوضع العام بلا بيانات تواصل.\"}",
+      "hasDataField": null,
+      "log0": "[2026-09-30T13:27:02.742Z] start business_profile (orig=business_profile)",
+      "logLast": "[2026-09-30T13:27:02.742Z] start business_profile (orig=business_profile)",
+      "logN": 1
+    },
+    "bp.show-cleared": {
+      "input": "{\"request\":\"show my business profile\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{message,profile}",
+      "outputPreview": "{\"message\":\"📇 لا توجد بيانات عمل محفوظة بعد.\\nقل: «احفظ بيانات عملي: الاسم …، الجوال …، البريد …، انستغرام …»\",\"profile\":null}",
+      "hasDataField": null,
+      "log0": "[2026-09-30T13:27:02.747Z] start business_profile (orig=business_profile)",
+      "logLast": "[2026-09-30T13:27:02.747Z] start business_profile (orig=business_profile)",
+      "logN": 1
+    },
+    "bp.cleared": {
+      "file": "present",
+      "slots": []
+    },
+    "fi.empty": {
+      "input": "{\"request\":\"show inbox\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{message}",
+      "outputPreview": "{\"message\":\"📭 لا توجد رسائل في صندوق النموذج بعد — عندما يملأ زائر نموذج موقعك (في المعاينة) ستصل هنا فوراً.\"}",
+      "hasDataField": null,
+      "log0": "[2026-09-30T13:27:02.750Z] start form_inbox (orig=form_inbox)",
+      "logLast": "[2026-09-30T13:27:02.750Z] start form_inbox (orig=form_inbox)",
+      "logN": 1
+    },
+    "fi.list": {
+      "input": "{\"request\":\"show inbox\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{message,count}",
+      "outputPreview": "{\"message\":\"📬 صندوق رسائل موقعك — 2 رسالة (الأحدث أولاً):\\n\\n   1. 🕐 30‏/9‏/2026، 16:27:02 — WIRING_IXN_TOKEN_9d4e-page\\n      name: WIRING_IXN_TOKEN_9d4e-visitor2\\n      message: WIRING_IXN_TOKEN_9d4e second\\n\\n   2. 🕐 30‏/9‏/2026، 16:27:02 — WIRING_IXN_TOKEN_9d4e-page\\n      name: WIRING_IXN_TOKEN_9d4e-visitor\\n      message: WIRING_IXN_TOKEN_9d4e hello\",\"count\":2}",
+      "hasDataField": null,
+      "log0": "[2026-09-30T13:27:02.759Z] start form_inbox (orig=form_inbox)",
+      "logLast": "[2026-09-30T13:27:02.759Z] start form_inbox (orig=form_inbox)",
+      "logN": 1
+    },
+    "fi.english": {
+      "input": "{\"request\":\"list my form messages please\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{message,count}",
+      "outputPreview": "{\"message\":\"📬 صندوق رسائل موقعك — 2 رسالة (الأحدث أولاً):\\n\\n   1. 🕐 30‏/9‏/2026، 16:27:02 — WIRING_IXN_TOKEN_9d4e-page\\n      name: WIRING_IXN_TOKEN_9d4e-visitor2\\n      message: WIRING_IXN_TOKEN_9d4e second\\n\\n   2. 🕐 30‏/9‏/2026، 16:27:02 — WIRING_IXN_TOKEN_9d4e-page\\n      name: WIRING_IXN_TOKEN_9d4e-visitor\\n      message: WIRING_IXN_TOKEN_9d4e hello\",\"count\":2}",
+      "hasDataField": null,
+      "log0": "[2026-09-30T13:27:02.780Z] start form_inbox (orig=form_inbox)",
+      "logLast": "[2026-09-30T13:27:02.780Z] start form_inbox (orig=form_inbox)",
+      "logN": 1
+    },
+    "fi.scope": {
+      "listCount": 2,
+      "ownSeen": true,
+      "otherLeaked": false,
+      "englishIsArabic": true
+    },
+    "ca.empty": {
+      "input": "{\"question\":\"\"}",
+      "ok": false,
+      "error": "central_answer was called without a question.",
+      "outputShape": "null",
+      "outputPreview": "null",
+      "hasDataField": null,
+      "log0": "[2026-09-30T13:27:02.785Z] start central_answer (orig=central_answer)",
+      "logLast": "central_answer: empty question — refused before any model call",
+      "logN": 2
+    },
+    "ca.missing": {
+      "input": "{}",
+      "ok": false,
+      "error": "central_answer was called without a question.",
+      "outputShape": "null",
+      "outputPreview": "null",
+      "hasDataField": null,
+      "log0": "[2026-09-30T13:27:02.788Z] start central_answer (orig=central_answer)",
+      "logLast": "central_answer: empty question — refused before any model call",
+      "logN": 2
+    },
+    "ca.hi": {
+      "input": "{\"question\":\"hi\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "string",
+      "outputPreview": "Good afternoon! I'm **Joe**, your software engineer. Tell me what you'd like to build.",
+      "hasDataField": null,
+      "log0": "[2026-09-30T13:27:02.790Z] start central_answer (orig=central_answer)",
+      "logLast": "central_answer: instant fast-path (no model call)",
+      "logN": 2
+    },
+    "ca.thanks": {
+      "input": "{\"question\":\"thanks\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "string",
+      "outputPreview": "You're welcome! 🙌 I'm **Joe**, ready for the next task.",
+      "hasDataField": null,
+      "log0": "[2026-09-30T13:27:02.794Z] start central_answer (orig=central_answer)",
+      "logLast": "central_answer: instant fast-path (no model call)",
+      "logN": 2
+    },
+    "ca.ar-greet": {
+      "input": "{\"question\":\"مرحبا\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "string",
+      "outputPreview": "مساء الخير! أنا **جو**، مهندسك البرمجي. أخبرني بما تريد بناءه.",
+      "hasDataField": null,
+      "log0": "[2026-09-30T13:27:02.797Z] start central_answer (orig=central_answer)",
+      "logLast": "central_answer: instant fast-path (no model call)",
+      "logN": 2
+    },
+    "ca.paths": {
+      "emptyOk": false,
+      "missingOk": false,
+      "hiFastPath": true,
+      "hiIsString": true,
+      "thanksFastPath": true,
+      "arFastPath": true,
+      "arIsArabic": true
+    }
+  },
+  "cleanup": "ok",
+  "sessionRoot": "\\\\?\\D:\\Joe\\muse-worktree\\data\\projects\\session-audit-sess",
+  "storeRedirect": "D:\\Joe\\muse-worktree\\tmp\\wiring-audit\\fx-ixn\\store",
+  "at": "2026-09-30T13:27:02.857Z"
+}
