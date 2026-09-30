@@ -1,0 +1,15 @@
+import { detectAppKind, hasExplicitRecordSchema, hasWorkflowApplicationContract, recordedSubject, fieldsFromRequest, requestedFilterFields, blueprintFor } from "D:/Joe/muse-worktree/api/src/core/design/app-blueprints";
+import { subjectAfterContainer } from "D:/Joe/muse-worktree/api/src/core/design/subject-phrase";
+const R = "Create a media review board where users upload an image, add title, tags, and notes, filter items by tag, preview the uploaded image, and delete an item only after confirmation. Use persistent local storage and preserve the original uploaded image.";
+console.log("detectAppKind=", detectAppKind(R));
+console.log("hasWorkflowApplicationContract=", hasWorkflowApplicationContract(R));
+console.log("hasExplicitRecordSchema=", hasExplicitRecordSchema(R));
+console.log("recordedSubject=", JSON.stringify(recordedSubject(R)));
+console.log("subjectAfterContainer=", JSON.stringify(subjectAfterContainer(R)));
+const fields = fieldsFromRequest(R, false);
+console.log("fieldsFromRequest=", JSON.stringify(fields && fields.map(f => [f.key, f.type, f.label])));
+console.log("requestedFilterFields=", JSON.stringify(fields ? requestedFilterFields(R, fields) : null));
+const bp = blueprintFor("media", R, false);
+console.log("bp.title=", JSON.stringify(bp.title));
+console.log("bp.filterFields=", JSON.stringify(bp.filterFields));
+console.log("bp.fields=", JSON.stringify(bp.fields.map(f => [f.key, f.type])));
