@@ -1,4 +1,4 @@
-﻿# JOE WIRING AUDIT SUMMARY (Muse draft 2026-09-29 — staging for D:\Joe\coordination\team\JOE-WIRING-AUDIT-SUMMARY.md)
+# JOE WIRING AUDIT SUMMARY (Muse draft 2026-09-29 — staging for D:\Joe\coordination\team\JOE-WIRING-AUDIT-SUMMARY.md)
 
 BRANCH=muse/joe-development @ b004bdc8. Evidence: tmp/wiring-audit/*.json + *.mts
 (checkpoints 1-29). NVIDIA cross-review PENDING (worker on CLI-BATCH1 + audit slice). No repairs done.
