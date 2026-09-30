@@ -1,6 +1,6 @@
 # JOE CAPABILITY WIRING MATRIX (Muse draft 2026-09-29 — staging for D:\Joe\coordination\team\JOE-CAPABILITY-WIRING-MATRIX.md)
 
-SCOPE=Muse-branch discovery checkpoints 1-22 only (muse/joe-development @ f48ef78b).
+SCOPE=Muse-branch discovery checkpoints 1-23 only (muse/joe-development @ 533aa9e1).
 Rows below are EVIDENCED tool-level entries. HIGH_LEVEL_CAPABILITIES grouping
 (merge v1: 19 trunks PROPOSED, 12 STORIED: files 10/10 in checkpoint 8;
 browser_ui 33/33 LEVEL-4 complete — checkpoint 11; both trunks
@@ -14,18 +14,19 @@ build_generate 13/13 LEVEL-4 + static verification-compat —
 checkpoint 17, see §VERIFY17); runtime_services 5/5 LEVEL-4 + static verification-compat + checker-set correction [checkpoint 18, see VERIFY18]; shell_terminal 4/4 LEVEL-4 + static verification-compat [checkpoint 19, see VERIFY19];
 database_data 6/6 LEVEL-4 + static verification-compat [checkpoint 20, see VERIFY20];
 observability 5/5 LEVEL-4 + static verification-compat [checkpoint 21, see VERIFY21];
-interaction 8/8 LEVEL-4 + static verification-compat [checkpoint 22, see VERIFY22]),
+interaction 8/8 LEVEL-4 + static verification-compat [checkpoint 22, see VERIFY22];
+infra_ops 6/6 + documentation 2/2 LEVEL-4 + static verification-compat [checkpoint 23, see VERIFY23]),
 services/workers/internal-infra rows, and NVIDIA-owned
 registry/ingress/persistence areas are UNKNOWN/PENDING and must NOT be
 treated as covered.
 Evidence files: D:\Joe\muse-worktree\tmp\wiring-audit\{discovery,exposure,
 classification,reachability,target,exec,sweep1,sweep2,merge,sweep3,trunk_files,
 arch2,trunk_browser1,trunk_browser_live1,trunk_browser_live2,
-trunk_browser_live3,verify_sweep12,trunk_testing,trunk_security,trunk_code,trunk_vcs,trunk_build,trunk_runtime,trunk_shell,shell_cwd,trunk_obs,trunk_interaction}.json +
+trunk_browser_live3,verify_sweep12,trunk_testing,trunk_security,trunk_code,trunk_vcs,trunk_build,trunk_runtime,trunk_shell,shell_cwd,trunk_obs,trunk_interaction,trunk_infradoc}.json +
 {discover,exposure,classify,reach,target,exec,
 sweep1,sweep2,merge,sweep3,trunk_files,arch2,trunk_browser1,
 trunk_browser_live1,trunk_browser_live2,trunk_browser_live3,
-verify_sweep12,trunk_testing,chaos_call_probe,trunk_security,trunk_code,trunk_vcs,trunk_build,prog_batch3,trunk_runtime,pages_approved,stop_mech,trunk_shell,shell_cwd,trunk_obs,trunk_interaction}.mts +
+verify_sweep12,trunk_testing,chaos_call_probe,trunk_security,trunk_code,trunk_vcs,trunk_build,prog_batch3,trunk_runtime,pages_approved,stop_mech,trunk_shell,shell_cwd,trunk_obs,trunk_interaction,trunk_infradoc}.mts +
 MUSE-WIRING-DISCOVERY-00{1,2,3,4,5,6,7}.md + MUSE-WIRING-DISCOVERY-008.md +
 MUSE-WIRING-DISCOVERY-009.md + MUSE-WIRING-DISCOVERY-010.md +
 MUSE-WIRING-DISCOVERY-011.md + MUSE-WIRING-DISCOVERY-012.md +
@@ -34,7 +35,8 @@ MUSE-WIRING-DISCOVERY-015.md + MUSE-WIRING-DISCOVERY-016.md +
 MUSE-WIRING-DISCOVERY-017.md +
 MUSE-WIRING-DISCOVERY-018.md +
 MUSE-WIRING-DISCOVERY-019.md + MUSE-WIRING-DISCOVERY-020.md +
-MUSE-WIRING-DISCOVERY-021.md + MUSE-WIRING-DISCOVERY-022.md. All probes
+MUSE-WIRING-DISCOVERY-021.md + MUSE-WIRING-DISCOVERY-022.md +
+MUSE-WIRING-DISCOVERY-023.md. All probes
 re-runnable; exec/sweep/trunk probes perform bounded safe runs only
 (fixtures created + removed by the probe; 4 EMBARGO names never executed
 except browser_launch contained-http partial lift in 010 — static fixture
@@ -3897,5 +3899,213 @@ RECOMMENDED_ACTION=WIRING-P2-032 (output shape + guard + data-consumer survey) -
 
 ---
 
-END-OF-MUSE-DRAFT-ROWS=150 (140 individual + 8 group + 2 external-cited)
-COVERAGE-DISCLAIMER=This draft covers ONLY what Muse checkpoints 1-22 evidenced. Full matrix requires: per-trunk path stories (19 trunks PROPOSED in merge.json, 12 STORIED: files 10/10 + browser_ui 33/33 LEVEL-4 + testing_qa 6/6 LEVEL-4 + security 3/3 LEVEL-4 + code_understanding 16/16 LEVEL-4 + vcs_repo 11/11 LEVEL-4 + build_generate 13/13 LEVEL-4 + runtime_services 5/5 LEVEL-4 + shell_terminal 4/4 LEVEL-4 + database_data 6/6 LEVEL-4 + observability 5/5 LEVEL-4 + interaction 8/8 LEVEL-4), services/workers/persistence/deployment rows (NVIDIA scope), bulk per-tool firewall sweep (8 spot + 28 empty-input batch-1+2 + 19 risk-tier live + 16 trunk-files + 3 arch-backend + 26 browser live1/live2 + 30 browser live3 + 19 trunk-testing + 13 trunk-security + 36 trunk-code + 43 trunk-vcs + 45 trunk-build + 4 prog-batch3 + 23 trunk-runtime + 4 pages-approved + 25 trunk-shell + 5 shell-cwd + 28 trunk-db + 45 trunk-obs + 37 trunk-ixn done; 25/25 no-required reviewed: 18 SAFE + 1 BOUND + 4 EMBARGO with static fixture designs + 2 FIXTURE probed contained; browser_launch embargo partially lifted for contained-http; sonar/dep_audit/dead_code positives embargoed; code_reviewer non-quick + ALL github-network/git-network-push/import-clone/npm-qa legs embargoed; pipeline-named/setActiveRoot + mobile-default-cwd + full-stack-{} + react/api-full + ent/ori-default-root + page-model-present legs embargoed; risk table SURVEYED), contract audit per boundary (18 mismatches + schema/execute family), LEVEL 5-6 proofs (L5 done files+browser_ui + project_run live-gate receipt; testing_qa + security + code_understanding static-only, 5 checkers pending; vcs_repo + build_generate static-only with 0 checkers each; observability + interaction static-only with 0 checkers each), and NVIDIA cross-review (pending — worker on CLI-BATCH1 + audit slice).
+CAPABILITY_ID=TOOL-terraform_manager
+NAME=terraform_manager (TerraformManagerTool, InfrastructureTools.ts:61)
+CATEGORY=tool/infra_ops-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/InfrastructureTools.ts
+IMPLEMENTATION=action-enum + directory guards (:90-95); session-strict local resolveToolPath (:16-31, rejects outside); spawn via ExecutionGateway shell string `terraform -chdir=... <action> -input=false -no-color` (:43-59,122); vars interpolated as `-var k=v` into the shell string (:102-106, F101-class code-cited, no live payload); apply/destroy default WITHOUT -auto-approve (relies on -input=false, :109-119)
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_infradoc_runA/B.json 2x verdict-identical): empty/bad-action -> honest guard sentences (F177); plan-on-fixture -> ok:false with GENERIC 'Tool reported failure without an error message' while stderr holds the real diagnostic (UNC-cwd + 'terraform is not recognized'; F170, binaries absent proven); outside-session dir -> internal_exception path_outside_workspace (thrown outside try at :96; F173 strict side)
+PERMISSION_REACHABLE=YES (execute+read+write declared)
+PERMISSION_EVIDENCE=executed without approval under default autoSafe
+INPUT_CONTRACT_VALID=YES for probed shapes (guards honest; String(undefined) fixed per code comment :87-91)
+OUTPUT_CONTRACT_VALID=NO on the failure leg (no `error` key -- ToolService synthesizes the generic line; F170)
+EVIDENCE_PRODUCED=PARTIAL (output carries the diagnostic; error channel does not)
+VERIFICATION_COMPATIBLE=N/A (never a checker -- static VERIFY23; 'tf guard'/'tf spawn-fail'=>failed is CORRECT)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (F170 swallowed error channel; P1-010 UNC-cwd pollutes the same stderr)
+RECOMMENDED_ACTION=WIRING-P2-035 (exitCode + stderr tail in `error`) + P1-010 (spawn cwd) -- proposed, unactioned
+
+---
+
+CAPABILITY_ID=TOOL-kubernetes_ops
+NAME=kubernetes_ops (KubernetesOpsTool, InfrastructureTools.ts:144)
+CATEGORY=tool/infra_ops-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/InfrastructureTools.ts
+IMPLEMENTATION=empty-command guard (:170); splitCommandLine + strips leading 'kubectl' (:171-175); optional -n namespace prepend (:177-178); spawn via ExecutionGateway shell string (:180); full command string interpolated into shell (F101-class code-cited, no live payload); PRIORITY-listed (least-privilege review input, no claim)
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1 (PRIORITY-listed)
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_infradoc_runA/B.json 2x verdict-identical, read-only `get` only): empty -> honest guard sentence (F177); get-pods + namespaced get-pods -> ok:false with GENERIC error + diagnostic output (UNC-cwd + 'kubectl' absent; F170); log proves '-n audit-ns' passthrough ('executed: kubectl -n audit-ns get pods', F177)
+PERMISSION_REACHABLE=YES (execute declared)
+PERMISSION_EVIDENCE=executed without approval under default autoSafe
+INPUT_CONTRACT_VALID=YES for probed shapes
+OUTPUT_CONTRACT_VALID=NO on the failure leg (no `error` key -- F170)
+EVIDENCE_PRODUCED=PARTIAL (output carries the diagnostic; error channel does not)
+VERIFICATION_COMPATIBLE=N/A (never a checker -- static VERIFY23; 'k8s guard'=>failed is CORRECT)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (F170 swallowed error channel; P1-010 UNC-cwd)
+RECOMMENDED_ACTION=WIRING-P2-035 (error channel) + P1-010 (spawn cwd) -- proposed, unactioned
+
+---
+
+CAPABILITY_ID=TOOL-docker_swarm_ops
+NAME=docker_swarm_ops (DockerSwarmOpsTool, InfrastructureTools.ts:192)
+CATEGORY=tool/infra_ops-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/InfrastructureTools.ts
+IMPLEMENTATION=action-enum guard (:212-214); deploy needs stackName+composeFile (compose contained via strict-local resolve, :219-222); list_services arg-free; service_logs/remove_stack need stackName (:226-232); spawn via ExecutionGateway shell string (:236); stackName interpolated into shell (F101-class code-cited, no live payload)
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_infradoc_runA/B.json 2x verdict-identical; NO deploy/remove legs by embargo): empty/deploy-missing -> honest guard sentences (F177); list_services -> ok:false with GENERIC error + diagnostic output (UNC-cwd + docker absent; F170)
+PERMISSION_REACHABLE=YES (execute declared)
+PERMISSION_EVIDENCE=executed without approval under default autoSafe
+INPUT_CONTRACT_VALID=YES for probed shapes
+OUTPUT_CONTRACT_VALID=NO on the failure leg (no `error` key -- F170)
+EVIDENCE_PRODUCED=PARTIAL (output carries the diagnostic; error channel does not)
+VERIFICATION_COMPATIBLE=N/A (never a checker -- static VERIFY23; 'sw guard'=>failed is CORRECT)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (F170 swallowed error channel; P1-010 UNC-cwd)
+RECOMMENDED_ACTION=WIRING-P2-035 (error channel) + P1-010 (spawn cwd) -- proposed, unactioned
+
+---
+
+CAPABILITY_ID=TOOL-docker_manager
+NAME=docker_manager (DockerManagerTool, DockerManagerTool.ts:5)
+CATEGORY=tool/infra_ops-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/DockerManagerTool.ts + api/src/kernel/ExecutionEngine.ts (run/runCommandInternal/processExecution)
+IMPLEMENTATION=action switch building `docker ...` strings with RAW target/options interpolation (:41-52, F101-class code-cited, no live payload); unknown action -> 'Unknown action'; executes via executionEngine.run() (:55) and maps result.ok straight to {ok, output:{success}} (:57-70) with NO stderr/exit inspection; declares execute+write, rate 15/min, auditFields action+target
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_infradoc_runA/B.json 2x verdict-identical; NO rm/rmi/start/compose/build legs by embargo): ps + stop-nonexistent -> ok:true + {success:true, stdout:'', stderr:'...UNC...docker is not recognized...'} (F169 FALSE SUCCESS, MISMATCH #19); {} -> honest 'Unknown action' (F177). Mechanism pinned 3 layers: runCommandInternal resolves-not-throws (:1033-1043) -> processExecution success:true unless throw (:342-346) -> run() ok:result.success dropping exitCode (:545-551); runArgv is honest (:568). 4 sibling run() consumers surveyed by source only (DeadCode:65, ErrorRecovery:146, RepoSelfCoding:90, VideoAction:62)
+PERMISSION_REACHABLE=YES (execute+write declared)
+PERMISSION_EVIDENCE=executed without approval under default autoSafe
+INPUT_CONTRACT_VALID=PARTIAL (unknown-action guarded; target/options unvalidated by design of a passthrough)
+OUTPUT_CONTRACT_VALID=NO (success:true contradicts 'not recognized' stderr; F169)
+EVIDENCE_PRODUCED=YES but FALSE (success receipt on a never-ran command; verdict maps to passed -- MISMATCH #19)
+VERIFICATION_COMPATIBLE=NO (false-success shape maps passed; FALSE-ARTIFACT direction)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (F169 exit-blindness; engine-level defect, not a dispatch gap)
+RECOMMENDED_ACTION=WIRING-P1-012 (run() honors data.ok/exitCode like runArgv, or harden the 5 consumers; owner surveys each live) -- proposed, unactioned
+
+---
+
+CAPABILITY_ID=TOOL-cloud_cost_estimator
+NAME=cloud_cost_estimator (CostEstimatorTool, EliteTools.ts:171)
+CATEGORY=tool/infra_ops-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/EliteTools.ts
+IMPLEMENTATION=resources-array guard (:191-194); else prompts a model via getLLM (:197-198) and JSON-parses the first {...} with a {} fallback (:199, hollow-success code-cited: non-JSON model output -> ok:true + {}); declares NO permissions (boot-defaulted read) + rate 20/min
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=PARTIAL
+EXECUTOR_EVIDENCE=LIVE guards (trunk_infradoc_runA/B.json 2x verdict-identical): empty + [] resources -> honest guard sentences, fail BEFORE any model call (F177). Valid path NEVER executed live (model embargo -- code-cited only): prompt join, {} fallback, exception->ok:false
+PERMISSION_REACHABLE=YES (read default)
+PERMISSION_EVIDENCE=guard legs executed without approval; in 21 boot-defaulted family (systemic finding #4)
+INPUT_CONTRACT_VALID=YES for probed shapes
+OUTPUT_CONTRACT_VALID=UNKNOWN for the model path (code-cited {} fallback risk, no live proof)
+EVIDENCE_PRODUCED=PARTIAL (guard receipts only)
+VERIFICATION_COMPATIBLE=N/A (never a checker -- static VERIFY23; 'cost guard'=>failed is CORRECT)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (valid path model-gated, unprobed; guard path honest)
+RECOMMENDED_ACTION=none (no defect proven; {} fallback is a code note for the model-path owner, not a batch)
+
+---
+
+CAPABILITY_ID=TOOL-ci_generate_pipeline
+NAME=ci_generate_pipeline (CiGeneratePipelineTool, QualityTools.ts:352)
+CATEGORY=tool/infra_ops-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/QualityTools.ts
+IMPLEMENTATION=resolveToolPath(path) via SHARED util (:370); writes .github/workflows/node-ci.yml (fixed node template :380-409) iff missing, else skipped:true (:374-376); `kind` (enum ['node']) NEVER read by execute() -- schema-only; required:['path'] unenforced by tool AND gateway
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_infradoc_runA/B.json 2x verdict-identical): create-on-fixture -> byte-verified 'name: Node.js CI' + skipped:false; rerun -> skipped:true idempotent (F177 positive); {} -> ok:true + WROTE session-root .github (required unenforced, '' -> active root; F175, probe-restored, cleanup ok); kind:'python' -> node CI anyway (enum ignored; F175)
+PERMISSION_REACHABLE=YES (write+read declared)
+PERMISSION_EVIDENCE=executed without approval under default autoSafe
+INPUT_CONTRACT_VALID=NO (empty path accepted + writes; kind ignored; F175, same family as F164/F161 with a real write effect)
+OUTPUT_CONTRACT_VALID=YES for shape ({workflowPath, skipped} honored)
+EVIDENCE_PRODUCED=YES (file bytes verified on disk)
+VERIFICATION_COMPATIBLE=N/A (never a checker -- static VERIFY23; 'ci created/skipped'=>passed per the ledger's generic rule -- observation)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (F175 input contract)
+RECOMMENDED_ACTION=WIRING-P2-038 (reject empty path; pin kind behavior) -- proposed, unactioned
+
+---
+
+CAPABILITY_ID=TOOL-doc_generator
+NAME=doc_generator (DocumentationGeneratorTool, AdvancedTools.ts:776)
+CATEGORY=tool/documentation-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/AdvancedTools.ts
+IMPLEMENTATION=missing-filePath guard (:796-798); shared resolveToolPath WITH session workspace context (:804, follows the context rule); missing file -> honest fail (:809-811); regex-doc extraction for functions/classes (:836-864); counts by re-regexing literal words (:823-824, WRONG); outputPath by extension replace (:816, no-op for extensionless names -> self-overwrite)
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_infradoc_runA/B.json 2x verdict-identical): fixture 2-functions+1-class -> {functions:0, classes:1} on js/html/noext/outside legs while the .md BODY correctly documents both (F171 lying counts); extensionless fixture -> sourceOverwritten:true + afterIsDocs:true (F172 destructive); missing/empty -> honest fails (F177); outside-session absolute -> ok:true + outer.md WRITTEN outside the session root (F173 shared-util side)
+PERMISSION_REACHABLE=YES (read+write declared)
+PERMISSION_EVIDENCE=executed without approval under default autoSafe
+INPUT_CONTRACT_VALID=YES for probed shapes (guards honest)
+OUTPUT_CONTRACT_VALID=NO (counts contradict content; F171)
+EVIDENCE_PRODUCED=YES (file bytes verified) but the receipt counts LIE
+VERIFICATION_COMPATIBLE=PARTIAL (never a checker -- static VERIFY23; 'doc counts'=>passed on WRONG counts -- consumer-side note)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (F171 counts + F172 overwrite + F173 containment-permissive)
+RECOMMENDED_ACTION=WIRING-P2-036 (count emitted headers; refuse-or-suffix extensionless) + WIRING-P2-037 (containment rule) -- proposed, unactioned
+
+---
+
+CAPABILITY_ID=TOOL-i18n_translator
+NAME=i18n_translator (I18nTranslatorTool, I18nTranslatorTool.ts:5)
+CATEGORY=tool/documentation-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/I18nTranslatorTool.ts (requires api/src/core/llm.ts, MISSPELLED as ../../llm)
+IMPLEMENTATION=require('../../llm') at :38 targets api/src/modules/llm which does NOT exist (modules/ has no llm entry; callLLM lives in core/llm.ts); the require runs BEFORE the source-file guard, so ALL paths throw; valid path would call the model per language (:67) and write ${lang}.json beside the source (:79); declares read+write, rate 5/min
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=NO
+EXECUTOR_EVIDENCE=LIVE (trunk_infradoc_runA/B.json 2x verdict-identical): missing-source, invalid-json and empty legs ALL fail with the IDENTICAL "Cannot find module '../../llm'" + require stack (F174) -- input validation unreachable, ZERO executable paths. Broken-require spelling unique to this tool (source survey, 1 match)
+PERMISSION_REACHABLE=N/A (throws before permission-relevant work)
+PERMISSION_EVIDENCE=dispatch reaches execute(); failure is inside execute()
+INPUT_CONTRACT_VALID=NO (no input shape can pass; required unenforceable while the require throws)
+OUTPUT_CONTRACT_VALID=NO (no output shape producible)
+EVIDENCE_PRODUCED=NO (only the module error)
+VERIFICATION_COMPATIBLE=N/A (never a checker -- static VERIFY23; guard shapes would map failed once the require is fixed)
+CANONICAL_PATH_CONNECTED=YES (dispatch works; the defect is inside execute)
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (F174 dead require -- implementation exists, import chain broken; closest repairable state, one-line class)
+RECOMMENDED_ACTION=WIRING-P1-013 (fix require path; no-model + model-or-stub tests; disposition traversal + per-character notes) -- proposed, unactioned
+
+---
+
+END-OF-MUSE-DRAFT-ROWS=158 (148 individual + 8 group + 2 external-cited)
+COVERAGE-DISCLAIMER=This draft covers ONLY what Muse checkpoints 1-23 evidenced. Full matrix requires: per-trunk path stories (19 trunks PROPOSED in merge.json, 13 STORIED: files 10/10 + browser_ui 33/33 LEVEL-4 + testing_qa 6/6 LEVEL-4 + security 3/3 LEVEL-4 + code_understanding 16/16 LEVEL-4 + vcs_repo 11/11 LEVEL-4 + build_generate 13/13 LEVEL-4 + runtime_services 5/5 LEVEL-4 + shell_terminal 4/4 LEVEL-4 + database_data 6/6 LEVEL-4 + observability 5/5 LEVEL-4 + interaction 8/8 LEVEL-4 + infra_ops 6/6 + documentation 2/2 LEVEL-4), services/workers/persistence/deployment rows (NVIDIA scope), bulk per-tool firewall sweep (8 spot + 28 empty-input batch-1+2 + 19 risk-tier live + 16 trunk-files + 3 arch-backend + 26 browser live1/live2 + 30 browser live3 + 19 trunk-testing + 13 trunk-security + 36 trunk-code + 43 trunk-vcs + 45 trunk-build + 4 prog-batch3 + 23 trunk-runtime + 4 pages-approved + 25 trunk-shell + 5 shell-cwd + 28 trunk-db + 45 trunk-obs + 37 trunk-ixn + 40 trunk-infradoc done; 25/25 no-required reviewed: 18 SAFE + 1 BOUND + 4 EMBARGO with static fixture designs + 2 FIXTURE probed contained; browser_launch embargo partially lifted for contained-http; sonar/dep_audit/dead_code positives embargoed; code_reviewer non-quick + ALL github-network/git-network-push/import-clone/npm-qa legs embargoed; pipeline-named/setActiveRoot + mobile-default-cwd + full-stack-{} + react/api-full + ent/ori-default-root + page-model-present legs embargoed; risk table SURVEYED), contract audit per boundary (19 mismatches + schema/execute family), LEVEL 5-6 proofs (L5 done files+browser_ui + project_run live-gate receipt; testing_qa + security + code_understanding static-only, 5 checkers pending; vcs_repo + build_generate static-only with 0 checkers each; observability + interaction + infra_ops + documentation static-only with 0 checkers each), and NVIDIA cross-review (pending — worker on CLI-BATCH1 + audit slice).

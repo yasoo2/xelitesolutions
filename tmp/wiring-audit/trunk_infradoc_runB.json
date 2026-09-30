@@ -1,0 +1,700 @@
+{
+  "trunk": "infra_ops+documentation",
+  "registered": 163,
+  "decl": {
+    "ci_generate_pipeline": {
+      "descriptionHead": "Generate a basic CI workflow for a project if missing.",
+      "tags": [
+        "ci",
+        "github",
+        "actions"
+      ],
+      "required": [
+        "path"
+      ],
+      "properties": [
+        "path",
+        "kind"
+      ],
+      "permissions": [
+        "write",
+        "read"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 60,
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "ci_generate_pipeline:19.8",
+        "github_actions:13",
+        "deploy_pages:8.6"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "cloud_cost_estimator": {
+      "descriptionHead": "Estimate cloud costs.",
+      "tags": [
+        "cost",
+        "elite"
+      ],
+      "required": [
+        "resources"
+      ],
+      "properties": [
+        "resources",
+        "traffic"
+      ],
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "cloud_cost_estimator:17.2",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "docker_manager": {
+      "descriptionHead": "Manage Docker containers, images, and volumes. Use this to start/stop services, build images, or check logs.",
+      "tags": [
+        "docker",
+        "devops",
+        "containers",
+        "system"
+      ],
+      "required": [
+        "action"
+      ],
+      "properties": [
+        "action",
+        "target",
+        "options"
+      ],
+      "permissions": [
+        "execute",
+        "write"
+      ],
+      "sideEffects": [
+        "execute",
+        "write"
+      ],
+      "rateLimitPerMinute": 15,
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "docker_manager:11.4",
+        "docker_swarm_ops:7.8",
+        "ask_user:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "docker_swarm_ops": {
+      "descriptionHead": "Manage Docker Swarm services and stacks.",
+      "tags": [
+        "infrastructure",
+        "docker",
+        "swarm"
+      ],
+      "required": [
+        "action"
+      ],
+      "properties": [
+        "action",
+        "stackName",
+        "composeFile"
+      ],
+      "permissions": [
+        "execute"
+      ],
+      "sideEffects": [
+        "execute"
+      ],
+      "rateLimitPerMinute": 60,
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "docker_swarm_ops:20.7",
+        "docker_manager:10.9",
+        "ask_user:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "kubernetes_ops": {
+      "descriptionHead": "Manage Kubernetes clusters via kubectl.",
+      "tags": [
+        "infrastructure",
+        "kubernetes",
+        "k8s"
+      ],
+      "required": [
+        "command"
+      ],
+      "properties": [
+        "command",
+        "namespace"
+      ],
+      "permissions": [
+        "execute"
+      ],
+      "sideEffects": [
+        "execute"
+      ],
+      "rateLimitPerMinute": 60,
+      "routerExcluded": false,
+      "priorityListed": true,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "kubernetes_ops:12.9",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "terraform_manager": {
+      "descriptionHead": "Manage Infrastructure as Code using Terraform (init, plan, apply, destroy).",
+      "tags": [
+        "infrastructure",
+        "terraform",
+        "cloud"
+      ],
+      "required": [
+        "action",
+        "directory"
+      ],
+      "properties": [
+        "action",
+        "directory",
+        "vars",
+        "autoApprove"
+      ],
+      "permissions": [
+        "execute",
+        "read",
+        "write"
+      ],
+      "sideEffects": [
+        "execute"
+      ],
+      "rateLimitPerMinute": 60,
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "terraform_manager:10.6",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "doc_generator": {
+      "descriptionHead": "Generate comprehensive documentation from code",
+      "tags": [
+        "documentation",
+        "automation"
+      ],
+      "required": [
+        "filePath"
+      ],
+      "properties": [
+        "filePath",
+        "outputFormat"
+      ],
+      "permissions": [
+        "read",
+        "write"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "doc_generator:11.7",
+        "docker_manager:8.6",
+        "docker_swarm_ops:7.8"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "i18n_translator": {
+      "descriptionHead": "Translate a JSON language file to multiple target languages automatically using AI. Preserves keys and structure.",
+      "tags": [
+        "i18n",
+        "language",
+        "translation",
+        "localization"
+      ],
+      "required": [
+        "sourceFile",
+        "targetLanguages"
+      ],
+      "properties": [
+        "sourceFile",
+        "targetLanguages"
+      ],
+      "permissions": [
+        "read",
+        "write"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 5,
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "i18n_translator:11.9",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    }
+  },
+  "verdictTable": {
+    "tf guard": "failed",
+    "tf spawn-fail": "failed",
+    "k8s guard": "failed",
+    "sw guard": "failed",
+    "docker unknown": "failed",
+    "cost guard": "failed",
+    "ci created": "passed",
+    "ci skipped": "passed",
+    "doc counts": "passed",
+    "doc missing": "failed",
+    "i18n missing": "failed",
+    "i18n badjson": "failed"
+  },
+  "live": {
+    "tf.empty": {
+      "input": "{}",
+      "ok": false,
+      "error": "terraform_manager needs an action: init | plan | apply | destroy | validate.",
+      "outputShape": "null",
+      "outputPreview": "null",
+      "hasDataField": null,
+      "log0": "[2026-09-30T13:50:00.956Z] start terraform_manager (orig=terraform_manager)",
+      "logLast": "[2026-09-30T13:50:00.956Z] start terraform_manager (orig=terraform_manager)",
+      "logN": 1
+    },
+    "tf.bad": {
+      "input": "{\"action\":\"explode\",\"directory\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-infradoc-fx\\\\tfproj\"}",
+      "ok": false,
+      "error": "terraform_manager needs an action: init | plan | apply | destroy | validate.",
+      "outputShape": "null",
+      "outputPreview": "null",
+      "hasDataField": null,
+      "log0": "[2026-09-30T13:50:00.977Z] start terraform_manager (orig=terraform_manager)",
+      "logLast": "[2026-09-30T13:50:00.977Z] start terraform_manager (orig=terraform_manager)",
+      "logN": 1
+    },
+    "tf.plan": {
+      "input": "{\"action\":\"plan\",\"directory\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-infradoc-fx\\\\tfproj\"}",
+      "ok": false,
+      "error": "Tool reported failure without an error message",
+      "outputShape": "{output,planSummary}",
+      "outputPreview": "{\"output\":\"\\n'\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess'\\r\\nCMD.EXE was started with the above path as the current directory.\\r\\nUNC paths are not supported.  Defaulting to Windows directory.\\r\\n'terraform' is not recognized as an internal or external command,\\r\\noperable program or batch file.\\r\\n\",\"planSummary\":\"No summary found\"}",
+      "hasDataField": null,
+      "log0": "[2026-09-30T13:50:00.980Z] start terraform_manager (orig=terraform_manager)",
+      "logLast": "terraform plan executed in \\\\?\\D:\\Joe\\muse-worktree\\data\\projects\\session-audit-sess\\wiring-infradoc-fx\\tfproj",
+      "logN": 2
+    },
+    "tf.outside": {
+      "input": "{\"action\":\"plan\",\"directory\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\wiring-outside-WIRING_INFRA_TOKEN_23e7\"}",
+      "ok": false,
+      "error": "internal_exception: Error: path_outside_workspace\n    at resolveToolPath (D:\\Joe\\muse-worktree\\api\\src\\modules\\tools\\definitions\\InfrastructureTools.ts:29:24)\n    at TerraformManagerTool.execute (D:\\Joe\\muse-worktree\\api\\src\\modules\\tools\\definitions\\Infrastru",
+      "outputShape": "undefined",
+      "outputPreview": "undefined",
+      "hasDataField": null,
+      "log0": "[2026-09-30T13:50:01.061Z] start terraform_manager (orig=terraform_manager)",
+      "logLast": "exception=Error: path_outside_workspace\n    at resolveToolPath (D:\\Joe\\muse-worktree\\api\\src\\modules\\tools\\definitions\\InfrastructureTools.ts:29:24)\n    at TerraformManagerTool.execute (D:\\Joe\\muse-worktree\\api\\src\\modules\\tools\\definitions\\InfrastructureTools.ts:96:21)\n    at run (D:\\Joe\\muse-workt",
+      "logN": 2
+    },
+    "tf.compare": {
+      "emptyOk": false,
+      "badOk": false,
+      "planOk": false,
+      "planErrorPrefix": "Tool reported failure without an error message",
+      "planOutputShape": "{output,planSummary}",
+      "outsideOk": false,
+      "outsideError": "internal_exception: Error: path_outside_workspace\n    at resolveToolPath (D:\\Joe\\muse-worktree\\api\\src\\modules\\tools\\def"
+    },
+    "k8s.empty": {
+      "input": "{}",
+      "ok": false,
+      "error": "kubernetes_ops needs a kubectl command (e.g. \"get pods\").",
+      "outputShape": "null",
+      "outputPreview": "null",
+      "hasDataField": null,
+      "log0": "[2026-09-30T13:50:01.074Z] start kubernetes_ops (orig=kubernetes_ops)",
+      "logLast": "[2026-09-30T13:50:01.074Z] start kubernetes_ops (orig=kubernetes_ops)",
+      "logN": 1
+    },
+    "k8s.get": {
+      "input": "{\"command\":\"get pods\"}",
+      "ok": false,
+      "error": "Tool reported failure without an error message",
+      "outputShape": "{output}",
+      "outputPreview": "{\"output\":\"'\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess'\\r\\nCMD.EXE was started with the above path as the current directory.\\r\\nUNC paths are not supported.  Defaulting to Windows directory.\\r\\n'kubectl' is not recognized as an internal or external command,\\r\\noperable program or batch file.\\r\\n\"}",
+      "hasDataField": null,
+      "log0": "[2026-09-30T13:50:01.077Z] start kubernetes_ops (orig=kubernetes_ops)",
+      "logLast": "executed: kubectl get pods",
+      "logN": 2
+    },
+    "k8s.ns": {
+      "input": "{\"command\":\"get pods\",\"namespace\":\"audit-ns\"}",
+      "ok": false,
+      "error": "Tool reported failure without an error message",
+      "outputShape": "{output}",
+      "outputPreview": "{\"output\":\"'\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess'\\r\\nCMD.EXE was started with the above path as the current directory.\\r\\nUNC paths are not supported.  Defaulting to Windows directory.\\r\\n'kubectl' is not recognized as an internal or external command,\\r\\noperable program or batch file.\\r\\n\"}",
+      "hasDataField": null,
+      "log0": "[2026-09-30T13:50:01.145Z] start kubernetes_ops (orig=kubernetes_ops)",
+      "logLast": "executed: kubectl -n audit-ns get pods",
+      "logN": 2
+    },
+    "k8s.compare": {
+      "emptyOk": false,
+      "getOk": false,
+      "getErrorPrefix": "Tool reported failure without an error message",
+      "nsOk": false,
+      "nsLog": "[2026-09-30T13:50:01.145Z] start kubernetes_ops (orig=kubernetes_ops)"
+    },
+    "sw.empty": {
+      "input": "{}",
+      "ok": false,
+      "error": "docker_swarm_ops needs an action: deploy_stack | list_services | service_logs | remove_stack.",
+      "outputShape": "null",
+      "outputPreview": "null",
+      "hasDataField": null,
+      "log0": "[2026-09-30T13:50:01.211Z] start docker_swarm_ops (orig=docker_swarm_ops)",
+      "logLast": "[2026-09-30T13:50:01.211Z] start docker_swarm_ops (orig=docker_swarm_ops)",
+      "logN": 1
+    },
+    "sw.list": {
+      "input": "{\"action\":\"list_services\"}",
+      "ok": false,
+      "error": "Tool reported failure without an error message",
+      "outputShape": "{output}",
+      "outputPreview": "{\"output\":\"'\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess'\\r\\nCMD.EXE was started with the above path as the current directory.\\r\\nUNC paths are not supported.  Defaulting to Windows directory.\\r\\n'docker' is not recognized as an internal or external command,\\r\\noperable program or batch file.\\r\\n\"}",
+      "hasDataField": null,
+      "log0": "[2026-09-30T13:50:01.214Z] start docker_swarm_ops (orig=docker_swarm_ops)",
+      "logLast": "swarm action list_services executed",
+      "logN": 2
+    },
+    "sw.deploy-missing": {
+      "input": "{\"action\":\"deploy_stack\",\"stackName\":\"WIRING_INFRA_TOKEN_23e7-stack\"}",
+      "ok": false,
+      "error": "stackName and composeFile required",
+      "outputShape": "null",
+      "outputPreview": "null",
+      "hasDataField": null,
+      "log0": "[2026-09-30T13:50:01.283Z] start docker_swarm_ops (orig=docker_swarm_ops)",
+      "logLast": "[2026-09-30T13:50:01.283Z] start docker_swarm_ops (orig=docker_swarm_ops)",
+      "logN": 1
+    },
+    "sw.compare": {
+      "emptyOk": false,
+      "listOk": false,
+      "listErrorPrefix": "Tool reported failure without an error message",
+      "deployMissingOk": false
+    },
+    "dk.ps": {
+      "input": "{\"action\":\"ps\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{success,stdout,stderr}",
+      "outputPreview": "{\"success\":true,\"stdout\":\"\",\"stderr\":\"'\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree'\\r\\nCMD.EXE was started with the above path as the current directory.\\r\\nUNC paths are not supported.  Defaulting to Windows directory.\\r\\n'docker' is not recognized as an internal or external command,\\r\\noperable program or batch file.\\r\\n\"}",
+      "hasDataField": null,
+      "log0": "[2026-09-30T13:50:01.286Z] start docker_manager (orig=docker_manager)",
+      "logLast": "Executed: docker ps -a ",
+      "logN": 2
+    },
+    "dk.empty": {
+      "input": "{}",
+      "ok": false,
+      "error": "Unknown action",
+      "outputShape": "null",
+      "outputPreview": "null",
+      "hasDataField": null,
+      "log0": "[2026-09-30T13:50:01.361Z] start docker_manager (orig=docker_manager)",
+      "logLast": "[2026-09-30T13:50:01.361Z] start docker_manager (orig=docker_manager)",
+      "logN": 1
+    },
+    "dk.stop-nonexistent": {
+      "input": "{\"action\":\"stop\",\"target\":\"wiring-fx-nonexistent-23e7\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{success,stdout,stderr}",
+      "outputPreview": "{\"success\":true,\"stdout\":\"\",\"stderr\":\"'\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree'\\r\\nCMD.EXE was started with the above path as the current directory.\\r\\nUNC paths are not supported.  Defaulting to Windows directory.\\r\\n'docker' is not recognized as an internal or external command,\\r\\noperable program or batch file.\\r\\n\"}",
+      "hasDataField": null,
+      "log0": "[2026-09-30T13:50:01.363Z] start docker_manager (orig=docker_manager)",
+      "logLast": "Executed: docker stop wiring-fx-nonexistent-23e7",
+      "logN": 2
+    },
+    "dk.compare": {
+      "psOk": true,
+      "psErrorPrefix": null,
+      "emptyOk": false,
+      "emptyError": "Unknown action",
+      "stopOk": true
+    },
+    "cc.empty": {
+      "input": "{}",
+      "ok": false,
+      "error": "cloud_cost_estimator needs a resources list (e.g. [\"EC2 t3.small\", \"RDS\"]).",
+      "outputShape": "null",
+      "outputPreview": "null",
+      "hasDataField": null,
+      "log0": "[2026-09-30T13:50:01.439Z] start cloud_cost_estimator (orig=cloud_cost_estimator)",
+      "logLast": "[2026-09-30T13:50:01.439Z] start cloud_cost_estimator (orig=cloud_cost_estimator)",
+      "logN": 1
+    },
+    "cc.nores": {
+      "input": "{\"resources\":[]}",
+      "ok": false,
+      "error": "cloud_cost_estimator needs a resources list (e.g. [\"EC2 t3.small\", \"RDS\"]).",
+      "outputShape": "null",
+      "outputPreview": "null",
+      "hasDataField": null,
+      "log0": "[2026-09-30T13:50:01.441Z] start cloud_cost_estimator (orig=cloud_cost_estimator)",
+      "logLast": "[2026-09-30T13:50:01.441Z] start cloud_cost_estimator (orig=cloud_cost_estimator)",
+      "logN": 1
+    },
+    "cc.compare": {
+      "emptyOk": false,
+      "noresOk": false
+    },
+    "ci.create": {
+      "input": "{\"path\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-infradoc-fx\\\\ciproj\",\"kind\":\"node\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{workflowPath,skipped}",
+      "outputPreview": "{\"workflowPath\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-infradoc-fx\\\\ciproj\\\\.github\\\\workflows\\\\node-ci.yml\",\"skipped\":false}",
+      "hasDataField": null,
+      "log0": "[2026-09-30T13:50:01.443Z] start ci_generate_pipeline (orig=ci_generate_pipeline)",
+      "logLast": "ci_generate_pipeline created",
+      "logN": 2
+    },
+    "ci.created": {
+      "fileExists": true,
+      "hasCIName": true,
+      "skipped": false
+    },
+    "ci.rerun": {
+      "input": "{\"path\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-infradoc-fx\\\\ciproj\",\"kind\":\"node\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{workflowPath,skipped}",
+      "outputPreview": "{\"workflowPath\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-infradoc-fx\\\\ciproj\\\\.github\\\\workflows\\\\node-ci.yml\",\"skipped\":true}",
+      "hasDataField": null,
+      "log0": "[2026-09-30T13:50:01.449Z] start ci_generate_pipeline (orig=ci_generate_pipeline)",
+      "logLast": "ci_generate_pipeline skipped (exists)",
+      "logN": 2
+    },
+    "ci.empty": {
+      "input": "{}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{workflowPath,skipped}",
+      "outputPreview": "{\"workflowPath\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\.github\\\\workflows\\\\node-ci.yml\",\"skipped\":false}",
+      "hasDataField": null,
+      "log0": "[2026-09-30T13:50:01.452Z] start ci_generate_pipeline (orig=ci_generate_pipeline)",
+      "logLast": "ci_generate_pipeline created",
+      "logN": 2
+    },
+    "ci.kind-python": {
+      "input": "{\"path\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-infradoc-fx\\\\ciproj-py\",\"kind\":\"python\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{workflowPath,skipped}",
+      "outputPreview": "{\"workflowPath\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-infradoc-fx\\\\ciproj-py\\\\.github\\\\workflows\\\\node-ci.yml\",\"skipped\":false}",
+      "hasDataField": null,
+      "log0": "[2026-09-30T13:50:01.457Z] start ci_generate_pipeline (orig=ci_generate_pipeline)",
+      "logLast": "ci_generate_pipeline created",
+      "logN": 2
+    },
+    "ci.compare": {
+      "createOk": true,
+      "rerunSkipped": true,
+      "rerunOk": true,
+      "emptyOk": true,
+      "emptyCreatedSessionWorkflow": true,
+      "kindPythonOk": true,
+      "kindPythonWroteNodeCI": true
+    },
+    "dg.js": {
+      "input": "{\"filePath\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-infradoc-fx\\\\shapes.js\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{outputPath,functions,classes}",
+      "outputPreview": "{\"outputPath\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-infradoc-fx\\\\shapes.md\",\"functions\":0,\"classes\":1}",
+      "hasDataField": null,
+      "log0": "[2026-09-30T13:50:01.460Z] start doc_generator (orig=doc_generator)",
+      "logLast": "[2026-09-30T13:50:01.460Z] start doc_generator (orig=doc_generator)",
+      "logN": 1
+    },
+    "dg.counts": {
+      "fileExists": true,
+      "functions": 0,
+      "classes": 1,
+      "mdMentionsAlpha": true,
+      "mdMentionsGamma": true
+    },
+    "dg.missing": {
+      "input": "{\"filePath\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-infradoc-fx\\\\nope.js\"}",
+      "ok": false,
+      "error": "File not found: \\\\?\\D:\\Joe\\muse-worktree\\data\\projects\\session-audit-sess\\wiring-infradoc-fx\\nope.js",
+      "outputShape": "null",
+      "outputPreview": "null",
+      "hasDataField": null,
+      "log0": "[2026-09-30T13:50:01.468Z] start doc_generator (orig=doc_generator)",
+      "logLast": "[2026-09-30T13:50:01.468Z] start doc_generator (orig=doc_generator)",
+      "logN": 1
+    },
+    "dg.empty": {
+      "input": "{}",
+      "ok": false,
+      "error": "File not found: missing filePath",
+      "outputShape": "null",
+      "outputPreview": "null",
+      "hasDataField": null,
+      "log0": "[2026-09-30T13:50:01.471Z] start doc_generator (orig=doc_generator)",
+      "logLast": "[2026-09-30T13:50:01.471Z] start doc_generator (orig=doc_generator)",
+      "logN": 1
+    },
+    "dg.noext": {
+      "input": "{\"filePath\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-infradoc-fx\\\\README_FIXTURE\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{outputPath,functions,classes}",
+      "outputPreview": "{\"outputPath\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-infradoc-fx\\\\README_FIXTURE\",\"functions\":0,\"classes\":1}",
+      "hasDataField": null,
+      "log0": "[2026-09-30T13:50:01.475Z] start doc_generator (orig=doc_generator)",
+      "logLast": "[2026-09-30T13:50:01.475Z] start doc_generator (orig=doc_generator)",
+      "logN": 1
+    },
+    "dg.noext-compare": {
+      "ok": true,
+      "sourceOverwritten": true,
+      "afterIsDocs": true
+    },
+    "dg.html": {
+      "input": "{\"filePath\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-infradoc-fx\\\\shapes2.js\",\"outputFormat\":\"html\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{outputPath,functions,classes}",
+      "outputPreview": "{\"outputPath\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-infradoc-fx\\\\shapes2.html\",\"functions\":0,\"classes\":1}",
+      "hasDataField": null,
+      "log0": "[2026-09-30T13:50:01.481Z] start doc_generator (orig=doc_generator)",
+      "logLast": "[2026-09-30T13:50:01.481Z] start doc_generator (orig=doc_generator)",
+      "logN": 1
+    },
+    "dg.html-compare": {
+      "ok": true,
+      "htmlExists": true
+    },
+    "dg.outside": {
+      "input": "{\"filePath\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\wiring-outside-WIRING_INFRA_TOKEN_23e7\\\\outer.js\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{outputPath,functions,classes}",
+      "outputPreview": "{\"outputPath\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\wiring-outside-WIRING_INFRA_TOKEN_23e7\\\\outer.md\",\"functions\":0,\"classes\":1}",
+      "hasDataField": null,
+      "log0": "[2026-09-30T13:50:01.484Z] start doc_generator (orig=doc_generator)",
+      "logLast": "[2026-09-30T13:50:01.484Z] start doc_generator (orig=doc_generator)",
+      "logN": 1
+    },
+    "dg.compare": {
+      "jsOk": true,
+      "missingOk": false,
+      "emptyOk": false,
+      "outsideOk": true,
+      "outsideError": null
+    },
+    "i18n.missing": {
+      "input": "{\"sourceFile\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-infradoc-fx\\\\nope.json\",\"targetLanguages\":[\"ar\"]}",
+      "ok": false,
+      "error": "Cannot find module '../../llm'\nRequire stack:\n- D:\\Joe\\muse-worktree\\api\\src\\modules\\tools\\definitions\\I18nTranslatorTool.ts\n- D:\\Joe\\muse-worktree\\api\\src\\modules\\tools\\registry.ts",
+      "outputShape": "null",
+      "outputPreview": "null",
+      "hasDataField": null,
+      "log0": "[2026-09-30T13:50:01.487Z] start i18n_translator (orig=i18n_translator)",
+      "logLast": "Execution error: Cannot find module '../../llm'\nRequire stack:\n- D:\\Joe\\muse-worktree\\api\\src\\modules\\tools\\definitions\\I18nTranslatorTool.ts\n- D:\\Joe\\muse-worktree\\api\\src\\modules\\tools\\registry.ts",
+      "logN": 2
+    },
+    "i18n.badjson": {
+      "input": "{\"sourceFile\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-infradoc-fx\\\\bad.json\",\"targetLanguages\":[\"ar\"]}",
+      "ok": false,
+      "error": "Cannot find module '../../llm'\nRequire stack:\n- D:\\Joe\\muse-worktree\\api\\src\\modules\\tools\\definitions\\I18nTranslatorTool.ts\n- D:\\Joe\\muse-worktree\\api\\src\\modules\\tools\\registry.ts",
+      "outputShape": "null",
+      "outputPreview": "null",
+      "hasDataField": null,
+      "log0": "[2026-09-30T13:50:01.491Z] start i18n_translator (orig=i18n_translator)",
+      "logLast": "Execution error: Cannot find module '../../llm'\nRequire stack:\n- D:\\Joe\\muse-worktree\\api\\src\\modules\\tools\\definitions\\I18nTranslatorTool.ts\n- D:\\Joe\\muse-worktree\\api\\src\\modules\\tools\\registry.ts",
+      "logN": 2
+    },
+    "i18n.empty": {
+      "input": "{}",
+      "ok": false,
+      "error": "Cannot find module '../../llm'\nRequire stack:\n- D:\\Joe\\muse-worktree\\api\\src\\modules\\tools\\definitions\\I18nTranslatorTool.ts\n- D:\\Joe\\muse-worktree\\api\\src\\modules\\tools\\registry.ts",
+      "outputShape": "null",
+      "outputPreview": "null",
+      "hasDataField": null,
+      "log0": "[2026-09-30T13:50:01.495Z] start i18n_translator (orig=i18n_translator)",
+      "logLast": "Execution error: Cannot find module '../../llm'\nRequire stack:\n- D:\\Joe\\muse-worktree\\api\\src\\modules\\tools\\definitions\\I18nTranslatorTool.ts\n- D:\\Joe\\muse-worktree\\api\\src\\modules\\tools\\registry.ts",
+      "logN": 2
+    },
+    "i18n.compare": {
+      "missingOk": false,
+      "badjsonOk": false,
+      "badjsonLog0": "[2026-09-30T13:50:01.491Z] start i18n_translator (orig=i18n_translator)",
+      "emptyOk": false,
+      "emptyError": "Cannot find module '../../llm'\nRequire stack:\n- D:\\Joe\\muse-worktree\\api\\src\\modules\\tools\\definitions\\I18nTranslatorToo",
+      "noModelLegs": true
+    }
+  },
+  "cleanup": "ok",
+  "sessionRoot": "\\\\?\\D:\\Joe\\muse-worktree\\data\\projects\\session-audit-sess",
+  "at": "2026-09-30T13:50:01.502Z"
+}

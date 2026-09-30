@@ -151,6 +151,32 @@ DEPENDENCIES=none
 
 ---
 
+BATCH_ID=WIRING-P1-012
+CAPABILITIES=ExecutionEngine.run() exit-blindness -> docker_manager false success (+ 4 surveyed sibling consumers)
+ROOT_CAUSE=runCommandInternal resolves {ok:code===0,...,exitCode} without throwing (ExecutionEngine.ts:1033-1043); processExecution returns success:true whenever nothing throws (:342-346), IGNORING data.ok/exitCode; run() returns ok:result.success (:545-551), dropping exitCode entirely. docker_manager maps result.ok straight to {ok:true,output:{success:true}} with no stderr/exit inspection (DockerManagerTool.ts:57-62). Proven live 2x (023/F169): `docker ps` with docker ABSENT ('docker is not recognized' in stderr, empty stdout) -> ok:true + success:true, verdict passed (MISMATCH #19, FALSE-ARTIFACT direction). Contrast: runArgv checks result.data?.ok !== false (:568) -- the argv path is honest, the string path is blind. 4 sibling run() consumers surveyed by source only (DeadCodeTool.ts:65, ErrorRecoveryTool.ts:146, RepoSelfCodingTools.ts:90, VideoActionTool.ts:62) -- each needs a live check; consumers that inspect stderr/output content may still behave honestly. Mirror of F136/F102 (exit-collapse) in the false-success direction.
+FILES=ExecutionEngine.ts run() (honor data.ok/exitCode like runArgv) OR the 5 consumers (inspect stderr/exit) -- owner decides central-vs-local with reviewer sign-off; shell_execute path checked for the same mapping
+IMPLEMENTATION_OWNER=UNASSIGNED
+REVIEW_OWNER=UNASSIGNED
+TESTS=missing-binary RED->GREEN per consumer (ok:false + 'not recognized' in error); exit-nonzero RED (failing command -> ok:false); positives regression (echo/true still ok:true); AGENTS gates
+REAL_JOE_UAT=infra-intent prompt through real Joe asserting honest failure (no success claim on missing binary)
+ROLLBACK=revert engine/consumer change
+DEPENDENCIES=P1-010 (spawn-cwd fix; UNC cwd pollutes the same stderr today but does not cause the blindness)
+
+---
+
+BATCH_ID=WIRING-P1-013
+CAPABILITIES=i18n_translator dead require (registered + selectable, zero executable paths)
+ROOT_CAUSE=require('../../llm') (I18nTranslatorTool.ts:38) targets api/src/modules/llm, which does NOT exist (modules/ = browser, extension, integrations, sentinel, services, terminal, tools); callLLM actually lives in api/src/core/llm.ts. The require runs BEFORE the source-file guard, so even input validation is unreachable. Proven live 2x (023/F174): missing-source, invalid-json and empty legs ALL fail with the identical "Cannot find module '../../llm'" + require stack. Broken-require spelling is unique to this tool (source survey, 1 match). Valid path additionally needs a model (embargoed in the audit).
+FILES=I18nTranslatorTool.ts (fix require path to core/llm) + focused tests
+IMPLEMENTATION_OWNER=UNASSIGNED
+REVIEW_OWNER=UNASSIGNED
+TESTS=no-model RED->GREEN (missing-source/invalid-json/empty fail with validation sentences, not module errors); valid-path test with model-or-stub (keys preserved, files written); AGENTS gates
+REAL_JOE_UAT=none (focused tests + valid-path stub suffice)
+ROLLBACK=revert require change
+DEPENDENCIES=none (owner also dispositions two code-cited notes WITHOUT live-exploiting: (a) absolute sourceFile unchecked + ${lang}.json join allows traversal-shaped langs; (b) non-array targetLanguages iterates per-character)
+
+---
+
 BATCH_ID=WIRING-P2-024
 CAPABILITIES=shell_execute exit-code fidelity
 ROOT_CAUSE=exitCode built as r.ok ? 0 : 1 at the tool layer (SystemTools.ts) -- real codes (3/134/137/...) destroyed; verifiers/self-fix cannot distinguish failure modes. Source-proven + live shape-confirmed (exitCode always in {0,1}); clean live isolation impossible while F135 stands (019/F136). Sibling of F102 (repo_run_command exit=undefined) in the opposite direction.
@@ -290,6 +316,58 @@ REVIEW_OWNER=UNASSIGNED
 TESTS=English request -> English message; Arabic default preserved; session scoping regression (022/F166 legs); AGENTS gates
 REAL_JOE_UAT=none
 ROLLBACK=revert one-line change
+DEPENDENCIES=none
+
+---
+
+BATCH_ID=WIRING-P2-035
+CAPABILITIES=infra trio spawn-failure error channel (terraform/k8s/swarm omit `error`)
+ROOT_CAUSE=TerraformManagerTool (:124-131), KubernetesOpsTool (:181-185) and DockerSwarmOpsTool (:237) return {ok:r.code===0, output:{...}, logs} with NO error key on the failure leg; ToolService synthesizes 'Tool reported failure without an error message'. Proven live 2x (023/F170): plan/get/list legs all carry that generic error while the REAL diagnostic (UNC-cwd warning + 'X is not recognized') sits in output only. Impact is debuggability: Joe cannot distinguish binary-missing from bad-args from wrong-cwd and cannot self-repair. spawnWithTimeout itself is honest-direction (reads data.exitCode, InfrastructureTools.ts:55).
+FILES=InfrastructureTools.ts (include exitCode + stderr tail in `error` on the 3 failure legs) + tests
+IMPLEMENTATION_OWNER=UNASSIGNED
+REVIEW_OWNER=UNASSIGNED
+TESTS=spawn-failure RED->GREEN (error names the cause: binary/exit/stderr tail); guard-legs regression (sentences intact); AGENTS gates
+REAL_JOE_UAT=none (error-channel contract tests)
+ROLLBACK=revert error-channel change
+DEPENDENCIES=none (do NOT change ToolService's generic synthesis without a broader review -- it affects every tool)
+
+---
+
+BATCH_ID=WIRING-P2-036
+CAPABILITIES=doc_generator counts + extensionless overwrite (lying receipt + destructive write)
+ROOT_CAUSE=(a) functions counted by /###\s+Function/g but headers are emitted as `### ${funcName}` (AdvancedTools.ts:844 vs 823) -- matches only a function literally named Function*; classes counted by /##\s+Class/g which matches the always-emitted `## Classes` header (:856 vs 824) -- exactly 1 regardless of content. Proven live 2x (023/F171): 2 real functions + 1 real class -> {functions:0, classes:1} on js/html/noext/outside legs (the .md BODY is correct -- only the machine-readable counts lie). (b) sourcePath.replace(/\.\w+$/, ...) is a no-op for extensionless names, so outputPath === sourcePath and writeFileSync clobbers the input (:816-817). Proven live 2x (023/F172): sourceOverwritten:true + afterIsDocs:true on a fixture-owned file. Destructive on real extensionless files (README, LICENSE, Makefile).
+FILES=AdvancedTools.ts DocumentationGeneratorTool (count emitted headers/matches; refuse-or-suffix when the extension replace is a no-op) + tests
+IMPLEMENTATION_OWNER=UNASSIGNED
+REVIEW_OWNER=UNASSIGNED
+TESTS=counts RED->GREEN (2 functions + 1 class -> {2,1}; 0-class file -> classes:0); extensionless RED->GREEN (source bytes survive, docs land beside or refused with a sentence); missing/empty/outside regression; AGENTS gates
+REAL_JOE_UAT=none
+ROLLBACK=revert count/write change
+DEPENDENCIES=WIRING-P2-037 for the outside-write half (containment rule decision)
+
+---
+
+BATCH_ID=WIRING-P2-037
+CAPABILITIES=containment-rule split (strict-local vs worktree-wide resolveToolPath)
+ROOT_CAUSE=two resolveToolPath implementations with different rules: InfrastructureTools-local (strict -- inside session root only, :16-31) vs shared utils.ts (allows activeRoot OR buildsDir OR projectRoot (the WHOLE worktree) OR externalRoot, utils.ts:101-106). Proven live 2x (023/F173): the SAME outside-session dir -> tf.outside REFUSED (internal_exception path_outside_workspace, thrown outside try at :96) while dg.outside WROTE outer.md ok:true. The worktree-wide allowance is deliberate per code comments (Wakil 6.8), so this is a documented-but-weak boundary + an inconsistency: cross-session project read/write inside the worktree is permitted by the shared util today. Same-path-different-verdict is the crisp defect.
+FILES=InfrastructureTools.ts + utils.ts + containment contract tests (ONE documented rule; decide session-scoped vs worktree-scoped with the Codex owner-binding + shared-default work in view)
+IMPLEMENTATION_OWNER=UNASSIGNED
+REVIEW_OWNER=UNASSIGNED
+TESTS=same-path cross-tool RED->GREEN (one outside-session path, every file tool, one verdict); legitimate worktree paths pinned (no false refusal); session isolation pinned per the decided rule; AGENTS gates
+REAL_JOE_UAT=none (containment contract tests)
+ROLLBACK=revert rule change
+DEPENDENCIES=decision input from the tool-owner security scope (35bf42dd line) + shared-default semantics (P2-033)
+
+---
+
+BATCH_ID=WIRING-P2-038
+CAPABILITIES=ci_generate_pipeline input contract (empty path writes + kind ignored)
+ROOT_CAUSE=(a) required:['path'] unenforced by tool AND gateway; '' resolves to the active root (QualityTools.ts:370 via shared resolveToolPath) and the tool writes .github/workflows/node-ci.yml there. Proven live 2x (023/F175): ci.empty ok:true + session-root workflow created (probe-restored, cleanup ok). (b) `kind` (enum ['node']) is never read by execute() -- schema-only; kind:'python' still writes node CI (live 2x). Same input-guard family as F164/F161 but with a real write effect (stray CI file in whatever the active root is).
+FILES=QualityTools.ts CiGeneratePipelineTool (reject empty path with a sentence; enforce kind or drop it from the schema) + tests
+IMPLEMENTATION_OWNER=UNASSIGNED
+REVIEW_OWNER=UNASSIGNED
+TESTS=empty-path RED->GREEN (refused, nothing written -- assert session root clean); kind pinned (python rejected-or-honored per decision, node regression); create+skip roundtrip regression (byte-verified content); AGENTS gates
+REAL_JOE_UAT=none
+ROLLBACK=revert guard change
 DEPENDENCIES=none
 
 ---
