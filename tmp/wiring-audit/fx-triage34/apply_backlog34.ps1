@@ -1,0 +1,24 @@
+# Checkpoint 34: staging backlog updates (ASCII-only; preserves CRLF).
+$p = 'D:\Joe\muse-worktree\tmp\wiring-audit\staging\JOE-WIRING-REPAIR-BACKLOG.md'
+$t = Get-Content $p -Raw
+$NL = "`r`n"
+function Rep([string]$old, [string]$new) {
+  $script:t = $script:t.Replace($old, $new)
+  if (-not $script:t.Contains($new)) { throw "REPLACE FAILED: $old" }
+}
+# P3-001 readiness (unique: followed by P2-051 header)
+Rep ("ROLLBACK=N/A (review batch)" + $NL + "DEPENDENCIES=none" + $NL + $NL + "---" + $NL + $NL + "BATCH_ID=WIRING-P2-051") `
+    ("ROLLBACK=N/A (review batch)" + $NL + "DEPENDENCIES=none" + $NL + "READINESS=READY_FOR_PROPOSAL (checkpoint 34)" + $NL + "READINESS_EVIDENCE=15/15 static verdicts filed (fx-triage34, A/B identical): 6 priority-only GAP_OR_DEAD_ENTRY + shell_status with registered lead; 2 UI-display-only (check_syntax, deep_research); 6 with registered stem candidate needing equivalence probe; silent-drop F221 + doc conflict F222 both trees" + $NL + $NL + "---" + $NL + $NL + "BATCH_ID=WIRING-P2-051")
+# P3-002 readiness (unique dependencies line)
+Rep ("DEPENDENCIES=NVIDIA cross-review for bypass classification (CANONICAL vs FALLBACK vs LEGACY)") `
+    ("DEPENDENCIES=NVIDIA cross-review for bypass classification (CANONICAL vs FALLBACK vs LEGACY)" + $NL + "READINESS=READY_FOR_PROPOSAL (checkpoint 34)" + $NL + "READINESS_EVIDENCE=scaffold 7-case winner matrix deterministic both trees (F224, incl AR-frontend redirect + api-substring clean control); github push gap filed as P2-054 (F223); 5 bypass anchors re-pinned both trees (veto Muse-only as expected); classification proposal still needs NVIDIA cross-review")
+# P4-001 readiness + new P2 batches (file tail)
+$newTail = "DEPENDENCIES=full matrix (know what the files contain before touching them)" + $NL + "READINESS=READY_FOR_PROPOSAL (checkpoint 34)" + $NL + "READINESS_EVIDENCE=top-10 giant set identical both trees (F226); size leaders ReactProjectTool 563KB/8928L/99exp, templates 363KB/5801L/92exp; main-side PlanningEngine/ProjectPipeline deltas include uncommitted NVIDIA work; export-cluster responsibility pass is next, no split proposed" + $NL + $NL + "---" + $NL + $NL + `
+"BATCH_ID=WIRING-P2-053" + $NL + "CAPABILITIES=priority-list integrity (PRIORITY_TOOL_NAMES vs registered/alias/rewrite)" + $NL + "ROOT_CAUSE=selectToolDefsForProvider silently drops unregistered priority names (tool-picker.ts:44-51 no-else); 57 entries include 15+ dormant names; no test pins priority fulfillability (F221, checkpoint 34). Inherited (main identical)." + $NL + "FILES=api/src/core/llm/tool-picker.ts + api/src/__tests__/tool-registry-integrity.test.ts (assert priority names resolve via registered OR alias OR rewrite OR documented-intentional list; startup warn on drop) + production_sync.md decision (F222: keep-implement-alias vs correct-doc)" + $NL + "IMPLEMENTATION_OWNER=UNASSIGNED" + $NL + "REVIEW_OWNER=UNASSIGNED" + $NL + "TESTS=priority-subset gate (RED now: 15 dormant fail) + startup-warn pin + AGENTS gates; no runtime behavior change except observability" + $NL + "REAL_JOE_UAT=none (gate + warn only)" + $NL + "ROLLBACK=revert gate/warn diff" + $NL + "DEPENDENCIES=none (shared-surface but additive; owner decision still required)" + $NL + "READINESS=READY_FOR_PROPOSAL (checkpoint 34)" + $NL + "READINESS_EVIDENCE=mechanism + 57-entry parse + dormant verdicts filed in fx-triage34" + $NL + $NL + "---" + $NL + $NL + `
+"BATCH_ID=WIRING-P2-054" + $NL + "CAPABILITIES=github_repo_manager action=push contract" + $NL + "ROOT_CAUSE=schema enum promises push (GitHubRepoManagerTool.ts:86) but switch has no push case (:175-190) -> 'Unknown action: push' (F223, checkpoint 34). Inherited (main identical)." + $NL + "FILES=api/src/modules/tools/definitions/GitHubRepoManagerTool.ts (decision: remove push from enum + docstring, OR implement with approval/firewall review - pushing code is a privileged write)" + $NL + "IMPLEMENTATION_OWNER=UNASSIGNED" + $NL + "REVIEW_OWNER=UNASSIGNED" + $NL + "TESTS=per-action contract matrix (5 actions x schema/implemented/auth) incl push RED->GREEN either way; AGENTS gates" + $NL + "REAL_JOE_UAT=none (fixture-level; never live-push in tests)" + $NL + "ROLLBACK=revert enum-or-impl diff" + $NL + "DEPENDENCIES=approval-policy decision if push is implemented (privileged write)" + $NL + "READINESS=READY_FOR_PROPOSAL (checkpoint 34)" + $NL + "READINESS_EVIDENCE=enum-vs-case matrix both trees filed in fx-triage34"
+Rep "DEPENDENCIES=full matrix (know what the files contain before touching them)" $newTail
+$raw = [System.IO.File]::ReadAllBytes($p)
+$enc = New-Object System.Text.UTF8Encoding($false)
+if ($raw.Length -ge 3 -and $raw[0] -eq 0xEF -and $raw[1] -eq 0xBB -and $raw[2] -eq 0xBF) { $enc = New-Object System.Text.UTF8Encoding($true) }
+[System.IO.File]::WriteAllText($p, $t, $enc)
+"backlog updated OK"
