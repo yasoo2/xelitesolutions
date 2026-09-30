@@ -1,52 +1,57 @@
-# Joe — Live Report (Muse cycle, 2026-09-30)
-SOURCE=Muse worker; HEAD=990cf029 (local-only, push blocked: no GitHub credentials in sandbox).
-Shared-write BLOCKED by policy (absolute path outside workspace) → this is the fallback copy at D:\Joe\muse-worktree\tmp\LIVE-REPORT.md. Shared D:\Joe\coordination\team\LIVE-REPORT.md could not be written.
+# LIVE-REPORT — Muse + NVIDIA (human live view)
+UPDATED=2026-09-30T14:30+03:00 | AUTHOR=MUSE (HEAD f9e68e76) | SHARED_WRITE=POLICY_BLOCKED (fallback: tmp/LIVE-REPORT.md)
 
 ## 1. ماذا نعمل الآن؟
-- Muse: فحص وإصلاح شريحة الأمان WIRING-P1-009 (حارس المنفذ في deploy_project) + مراجعة استشارة المحرك الإبداعي. تم الإنجاز والتوثيق في هذا الدور.
-- NVIDIA (حسب الحالة المشتركة): يملك تنفيذ حزمة CLI batch1 (الأولوية CRITICAL) — العمل جارٍ.
+- Muse: تدقيق التوصيل العميق (CRITICAL wiring audit) — trunk رقم 9/19 مكتمل، مع الاحتفاظ بمهمة مراجعة CLI.
+- NVIDIA: مالك تنفيذ CLI batch-1 (مؤكد) — العمل ما زال غير مُسلَّم (dirty, بلا commit للمراجعة).
 
-## 2. ماذا اكتشفنا؟
-- سطر OVERLAP_EVIDENCE في استشارة المحرك الإبداعي أصبح قديمًا: ملف image-semantic-qa.ts الآن مُتتبَّع ومربوط في app-audit (ليس مسودة غير مربوطة).
-- مراجعة NVIDIA الأولى للمرشح 19deb48c تصف مرشحًا قديمًا (c8524f01) وتعاكس مصدر المرشح الدقيق — سجلها Codex كـ INVALID_FOR_THIS_CANDIDATE. يلزم مراجعة جديدة على الـ diff الدقيق.
-- عيب P1-009 مؤكد: منفذ غير رقمي كان يصل إلى `lt --port ...` تحت shell:true (أُثبت على HEAD بدون الحارس).
+## 2. ماذا اكتشفنا؟ (دورة Muse هذه)
+- F135: كل أوامر shell_execute تعمل فعليًا في C:\Windows بينما الإيصال يدّعي مجلد الجلسة (سبب: مسار `\\?\`).
+- F137: نفس المجلد بصيغة D:\ عادية يُرفض كخارج مساحة العمل — لا توجد صيغة cwd تعمل.
+- F136: رموز الخروج الحقيقية تُدمَّر (كل شيء يصبح 0/1).
+- F139: إيصالات dry-run تُقرأ PASS من المدقق دون تنفيذ فعلي (MISMATCH #14).
+- إيجابيات: دورة background/status كاملة تعمل، npm يرفض التثبيت خارج الحزم، طرفية pty حقيقية تنقل الأوامر والقراءة تأثيرًا حقيقيًا.
 
 ## 3. ماذا أنجزنا فعليًا؟
-- Muse commit 990cf029 (محلي فقط): حارس resolvePort مغلق-بالفشل + اختبار deploy-port-guard + تحديث سجل الإصلاح + تحديث مراجعة المحرك الإبداعي (APPROVE_WITH_CHANGES).
-- لم يُنفَّذ أي كود إبداعي (بانتظار قرار الملكية). لم يُدمج شيء في main.
+- Checkpoint 19 مُسلَّم: shell_terminal 4/4 بمستوى LEVEL-4 (25/25 leg ثلاث مرات، 5/5 متابعة مرتين، نتائج متطابقة).
+- P1-010 + P2-024 + MISMATCH #14 مقترحة في backlog (غير منفذة — تحتاج مالكًا ومراجعًا).
+- مراجعة lease-fence: أُعيد التحقق مستقلًا — الموقف السابق (APPROVE_WITH_CHANGES) مؤكد، الملف الأصلي محفوظ حرفيًا.
+- قبول مسار الاكتشاف المخصص مع الاحتفاظ بمراجعة CLI (رد جديد مُسلَّم).
+- Guards: architecture + package-scripts خضراء.
 
 ## 4. ماذا يعمل Muse الآن؟
-- أنهى هذه الدورة عند نقطة تحقق. التالي المقترح: جذع تدقيق توصيل جديد أو مراجعة مستقلة لحزمة CLI عند تسليم NVIDIA للـ diff.
+تدقيق التوصيل المستمر (discovery lane) + جاهزية مراجعة CLI فور وصول diff مسلَّم من NVIDIA. لا يلمس ملفات NVIDIA.
 
 ## 5. ماذا يعمل NVIDIA الآن؟
-- حسب TEAM-STATE/ACTIVE-PLAN: تنفيذ حزمة CLI batch1 + تدقيق توصيل مستقل. لم أراجع شجرته تعديلًا (قراءة فقط).
+(من الحالة المشتركة، ليس استنتاجًا) تنفيذ CLI batch-1 + مراجعة متقاطعة للتدقيق. آخر نبضة مسجلة قديمة (EVAL-006)؛ حالته الحية تُرى في سجلات NVIDIA فقط.
 
 ## 6. هل تم التواصل أو المراجعة بين Muse وNVIDIA؟
-- نعم، عبر ملفات الاستشارة: كلا المراجعتين الإبداعيتين مسجلتان (NVIDIA: REVIEWED؛ Muse: رد محدّث في tmp/team-consultation بانتظار الاستيراد).
+لا مراجعة متبادلة جديدة هذه الدورة: لا يوجد diff مسلَّم من NVIDIA ليراجعه Muse، ولا تكامل جديد. المراسلات عبر ملفات التشاور فقط.
 
 ## 7. أين اتفقا وأين اختلفا؟
-- اتفقا: APPROVE_WITH_CHANGES للمحرك الإبداعي، اشتراك مدفوع صريح، عدم تسجيل ImageGenerationTool كما هو، تعارض row-image البعيد، أولوية CLI.
-- اختلفا/دقة: NVIDIA قالت "لا تكامل QA بصري" — Muse صحح: visual-audit.ts موجود و image-semantic-qa مربوط مع اختبارات؛ الناقص هو التوسعة الإبداعية فقط.
+- اتفاق: ملكية NVIDIA للـ CLI ومراجعة Muse (مؤكد من الطرفين). 246 = تهجئات أسماء لا أدوات (NVIDIA نبّه، Muse يطبّق التقسيم).
+- مفتوح: قبول NVIDIA لموقف bulk_file_generator، ومراجعة NVIDIA لمرشحات Muse الأمنية — كلها PENDING.
 
-## 8. الأرقام المؤكدة (مع المصدر — لا تخترع)
-- DISCOVERED_TOOL_SPELLINGS=246 (REPORTED_BY_CODEX audit: 164 registered + 65 compat-resolved + 16 dormant-priority-only + 1 broken image_generate alias)
-- REGISTERED_TOOLS=164 main / 163 muse-snapshot (REPORTED_BY_CODEX; re-measurement at current HEADs: UNKNOWN)
-- EXECUTABLE_TOOLS=UNKNOWN (registration ≠ proven execution)
-- FULLY_WIRED/PARTIALLY_WIRED/ORPHANED/DUPLICATE/UNKNOWN=per-trunk drafts in Muse staging (tmp/wiring-audit/staging/); shared-matrix acceptance: REWORK_BEFORE_SHARED_TRUTH (Codex review)
-- REPAIRED(this cycle)=1 slice: WIRING-P1-009 port guard (UNIT_VERIFIED, independent review pending)
-- VERIFIED=34/34 focused+adjacent + tsc + 2 guards (this cycle). REAL_JOE_PROVEN for repaired slice: NO (tunnel must not open in UAT — by design, negative-shape only)
-- REAL_JOE_UI overall: NOT_PASS (latest runs FAILED/PARTIAL per TEAM-STATE)
+## 8. الأرقام المؤكدة (فرع Muse @ f9e68e76)
+REPORTED_BY_MUSE (مثبت بالأدلة):
+DISCOVERED_TOOLS=163 REGISTERED_TOOLS=163 EXECUTABLE_TOOLS=101 (LEVEL-4 مثبت؛ الباقي UNKNOWN)
+FULLY_WIRED=UNKNOWN (لم يُحصَّ بعد) PARTIALLY_WIRED=UNKNOWN ORPHANED=5 DUPLICATE=2
+UNKNOWN=10/19 trunks غير مروية بعد REPAIRED=1 slice (P1-009 port-guard، غير مدمج)
+VERIFIED=guards 2/2 + legs 25/25 و5/5 مكررة متطابقة REAL_JOE_PROVEN=NO (لا UAT جديد)
+VERIFIED (مشترك): لا Real Joe PASS جديد. CRITICAL-REAL-JOE-UI-001 ما زال NOT_PASS.
 
 ## 9. ما آخر اختبار ونتيجته؟
-- deploy-port-guard 12/12 GREEN + deploy-pages + deploy-project-workspace 22/22 = 34/34؛ tsc exit 0؛ guard:architecture + guard:package-scripts PASS.
-- فحص RED آمن على كود HEAD بدون الحارس: ok=true مع `lt --port 3000; touch pwned` يصل للأمر (يثبت العيب؛ بدون أي تنفيذ حقيقي).
+- trunk_shell: 25/25 legs متطابقة A/B + shell_cwd 5/5 متطابقة (focused, ليس UI).
+- guard:architecture PASS + guard:package-scripts PASS.
+- Real Joe UI: لم يُشغَّل هذه الدورة (محفوظ بعد إصلاح مُراجَع).
 
 ## 10. ما المشاكل أو العوائق الحالية؟
-- الدفع إلى GitHub محظور (لا بيانات اعتماد في sandbox) — commit 990cf029 محلي فقط.
-- الكتابة المشتركة (consultations/LIVE-REPORT/claims) محظورة بسياسة المسار — تُستخدم ملفات fallback ويستوردها Codex.
-- Real Joe UI لم ينجح بعد (CLI misroute مملوك لـ NVIDIA؛ seed/authoring/QA بعده).
+- كتابة الملفات المشتركة محظورة سياساتيًا (الردود محلية بانتظار الاستيراد).
+- الدفع إلى GitHub محظور (لا credentials في sandbox) — الشغل مسلَّم محليًا فقط.
+- لا diff مسلَّم من NVIDIA بعد للمراجعة.
+- Codex غائب مؤقتًا — الاستيراد والتدقيق المشترك معلّق.
 
 ## 11. ما الخطوة التالية؟
-- استيراد رد Muse الإبداعي المحدّث إلى الاستشارة المشتركة (Codex).
-- مراجعة مستقلة لشريحة P1-009 (NVIDIA أو Codex) ثم انتظار NVIDIA لتسليم diff حزمة CLI للمراجعة المستقلة قبل أي UAT مكلف جديد.
-- عدم تشغيل UAT مكلف ضد مسار فاشل معروف (حسب ACTIVE-PLAN).
+- Muse: trunk تالٍ (network_api=12 أو database_data=6) ما لم يصل diff الـ CLI.
+- NVIDIA: تسليم diff الـ CLI المحدود + إضافة ضابط CSV-import الموجب.
+- الفريق: تعيين مالك/مراجع لـ P1-010 بعد التشاور، ثم UAT حقيقي جديد.
