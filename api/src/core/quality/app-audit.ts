@@ -27,6 +27,9 @@ import { inspectUi, applyViewportSize } from './ui-inspection';
 import { isWithinRoot } from '../../modules/tools/path-containment';
 import { WEATHER_API_ROUTE_PATTERN } from './weather-qa-route';
 import { isMediaReviewRequest, runMediaReviewQa } from './media-review-qa';
+import { isShopQaRequest, runShopQa } from './shop-qa';
+import { isLiveDataQaRequest, runLiveDataQa } from './live-data-qa';
+import { isImageSemanticQaRequest, runImageSemanticQa } from './image-semantic-qa';
 import { handleMaintainedPreviewApiRequest } from '../api-discovery/preview-proxy';
 
 export interface AppAuditFinding {
@@ -1674,6 +1677,52 @@ export async function auditBuiltApp(
             if (!mediaFindings.some(f => /persistence|scenario/i.test(f.id))) {
                 behaviourMetrics.formsPersisted += behaviourMetrics.formsPersistenceUnproven || 0;
                 behaviourMetrics.formsPersistenceUnproven = 0;
+            }
+        }
+
+        if (isShopQaRequest(weatherRequest)) {
+            const shopQa = await runShopQa({
+                page,
+                url,
+                request: weatherRequest,
+                timeoutMs,
+                onProgress: opts?.onProgress,
+            });
+            domainFindings.push(...shopQa.findings);
+            for (const key of ['pressed', 'formsFilled', 'fieldsFilled', 'formsPersisted', 'semanticFieldsTested', 'statesVisited', 'exploratoryActions', 'controlsDiscovered']) {
+                behaviourMetrics[key] += (shopQa.metrics as any)[key] || 0;
+            }
+            if (!shopQa.findings.some(f => /persistence|scenario/i.test(f.id))) {
+                behaviourMetrics.formsPersisted += behaviourMetrics.formsPersistenceUnproven || 0;
+                behaviourMetrics.formsPersistenceUnproven = 0;
+            }
+        }
+
+        if (isLiveDataQaRequest(weatherRequest)) {
+            const liveDataQa = await runLiveDataQa({
+                page,
+                url,
+                request: weatherRequest,
+                timeoutMs,
+                onProgress: opts?.onProgress,
+            });
+            domainFindings.push(...liveDataQa.findings);
+            for (const key of ['statesVisited']) {
+                behaviourMetrics[key] += (liveDataQa.metrics as any)[key] || 0;
+            }
+        }
+
+        if (isImageSemanticQaRequest(weatherRequest)) {
+            const imageSemanticQa = await runImageSemanticQa({
+                page,
+                url,
+                request: weatherRequest,
+                timeoutMs,
+                onProgress: opts?.onProgress,
+            });
+            domainFindings.push(...imageSemanticQa.findings);
+            for (const key of ['statesVisited', 'exploratoryActions']) {
+                behaviourMetrics[key] += (imageSemanticQa.metrics as any)[key] || 0;
             }
         }
 
