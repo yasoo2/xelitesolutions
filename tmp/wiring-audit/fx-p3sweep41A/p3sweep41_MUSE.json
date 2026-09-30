@@ -1,0 +1,1833 @@
+{
+ "probe": "p3sweep41",
+ "tree": "muse",
+ "registrySize": 163,
+ "premise": {
+  "actVerbBlocksIdentical": true,
+  "actAlternations": 53,
+  "routerExcludedIdentical": true,
+  "routerExcludedCount": 32
+ },
+ "summary": {
+  "targetRouted": "5/14",
+  "targetRoutedCtx": "7/14",
+  "pairRouted": "0/5",
+  "pairRoutedCtx": "0/5",
+  "handRouted": "0/46",
+  "handRoutedCtx": "9/46",
+  "watch53RoutedCount": 1,
+  "watch53Routed": [
+   "dead_code_detector"
+  ],
+  "exclViolations": [],
+  "exclLoadbearing": 24,
+  "exclMoot": 8
+ },
+ "unfillProbe": {
+  "candidate": "alert_manager",
+  "required": [
+   "action"
+  ],
+  "goal": "review and inspect the alert manager output and check the result",
+  "sweep": {
+   "id": "unfill:alert_manager",
+   "route": null,
+   "routeCtx": null,
+   "stage": {
+    "lenOk": true,
+    "actVerb": true,
+    "bestUnfiltered": {
+     "name": "alert_manager",
+     "score": 11.8
+    },
+    "bestUnfilteredExcluded": false,
+    "bestAllowed": {
+     "name": "alert_manager",
+     "score": 11.8
+    },
+    "scoreGatePass": true,
+    "proxyNameHitOnBestAllowed": true,
+    "inputFillableOnBestAllowed": false,
+    "inputFillableCtxOnBestAllowed": false
+   }
+  }
+ },
+ "exclRuns": [
+  {
+   "name": "react_project",
+   "goal": "review and inspect the react project behavior and check its output",
+   "wouldWin": true,
+   "wouldWinScore": 11.2,
+   "routedTo": null,
+   "verdict": "DEFLECTED_LOADBEARING"
+  },
+  {
+   "name": "web_page_builder",
+   "goal": "review and inspect the web page builder behavior and check its output",
+   "wouldWin": true,
+   "wouldWinScore": 14.4,
+   "routedTo": null,
+   "verdict": "DEFLECTED_LOADBEARING"
+  },
+  {
+   "name": "api_project",
+   "goal": "review and inspect the api project behavior and check its output",
+   "wouldWin": false,
+   "wouldWinScore": null,
+   "routedTo": null,
+   "verdict": "DEFLECTED_MOOT"
+  },
+  {
+   "name": "project_pipeline",
+   "goal": "review and inspect the project pipeline behavior and check its output",
+   "wouldWin": false,
+   "wouldWinScore": null,
+   "routedTo": null,
+   "verdict": "DEFLECTED_MOOT"
+  },
+  {
+   "name": "project_edit",
+   "goal": "review and inspect the project edit behavior and check its output",
+   "wouldWin": true,
+   "wouldWinScore": 11.2,
+   "routedTo": null,
+   "verdict": "DEFLECTED_LOADBEARING"
+  },
+  {
+   "name": "project_run",
+   "goal": "review and inspect the project run behavior and check its output",
+   "wouldWin": true,
+   "wouldWinScore": 13,
+   "routedTo": null,
+   "verdict": "DEFLECTED_LOADBEARING"
+  },
+  {
+   "name": "project_stop",
+   "goal": "review and inspect the project stop behavior and check its output",
+   "wouldWin": true,
+   "wouldWinScore": 11.7,
+   "routedTo": null,
+   "verdict": "DEFLECTED_LOADBEARING"
+  },
+  {
+   "name": "deploy_pages",
+   "goal": "review and inspect the deploy pages behavior and check its output",
+   "wouldWin": true,
+   "wouldWinScore": 21.1,
+   "routedTo": null,
+   "verdict": "DEFLECTED_LOADBEARING"
+  },
+  {
+   "name": "deploy_project",
+   "goal": "review and inspect the deploy project behavior and check its output",
+   "wouldWin": false,
+   "wouldWinScore": null,
+   "routedTo": null,
+   "verdict": "DEFLECTED_MOOT"
+  },
+  {
+   "name": "import_project",
+   "goal": "review and inspect the import project behavior and check its output",
+   "wouldWin": true,
+   "wouldWinScore": 13.9,
+   "routedTo": null,
+   "verdict": "DEFLECTED_LOADBEARING"
+  },
+  {
+   "name": "central_answer",
+   "goal": "review and inspect the central answer behavior and check its output",
+   "wouldWin": true,
+   "wouldWinScore": 11,
+   "routedTo": null,
+   "verdict": "DEFLECTED_LOADBEARING"
+  },
+  {
+   "name": "business_profile",
+   "goal": "review and inspect the business profile behavior and check its output",
+   "wouldWin": true,
+   "wouldWinScore": 12,
+   "routedTo": null,
+   "verdict": "DEFLECTED_LOADBEARING"
+  },
+  {
+   "name": "orders_read",
+   "goal": "review and inspect the orders read behavior and check its output",
+   "wouldWin": true,
+   "wouldWinScore": 14.8,
+   "routedTo": null,
+   "verdict": "DEFLECTED_LOADBEARING"
+  },
+  {
+   "name": "form_inbox",
+   "goal": "review and inspect the form inbox behavior and check its output",
+   "wouldWin": true,
+   "wouldWinScore": 13.8,
+   "routedTo": null,
+   "verdict": "DEFLECTED_LOADBEARING"
+  },
+  {
+   "name": "website_full_pipeline",
+   "goal": "review and inspect the website full pipeline behavior and check its output",
+   "wouldWin": false,
+   "wouldWinScore": null,
+   "routedTo": null,
+   "verdict": "DEFLECTED_MOOT"
+  },
+  {
+   "name": "shell_execute",
+   "goal": "review and inspect the shell execute behavior and check its output",
+   "wouldWin": true,
+   "wouldWinScore": 14.8,
+   "routedTo": null,
+   "verdict": "DEFLECTED_LOADBEARING"
+  },
+  {
+   "name": "write_file",
+   "goal": "review and inspect the write file behavior and check its output",
+   "wouldWin": false,
+   "wouldWinScore": null,
+   "routedTo": null,
+   "verdict": "DEFLECTED_MOOT"
+  },
+  {
+   "name": "read_file",
+   "goal": "review and inspect the read file behavior and check its output",
+   "wouldWin": true,
+   "wouldWinScore": 10.5,
+   "routedTo": null,
+   "verdict": "DEFLECTED_LOADBEARING"
+  },
+  {
+   "name": "file_edit",
+   "goal": "review and inspect the file edit behavior and check its output",
+   "wouldWin": false,
+   "wouldWinScore": null,
+   "routedTo": null,
+   "verdict": "DEFLECTED_MOOT"
+  },
+  {
+   "name": "delete_file",
+   "goal": "review and inspect the delete file behavior and check its output",
+   "wouldWin": true,
+   "wouldWinScore": 12.7,
+   "routedTo": null,
+   "verdict": "DEFLECTED_LOADBEARING"
+  },
+  {
+   "name": "inspect_directory",
+   "goal": "review and inspect the inspect directory behavior and check its output",
+   "wouldWin": true,
+   "wouldWinScore": 12.3,
+   "routedTo": null,
+   "verdict": "DEFLECTED_LOADBEARING"
+  },
+  {
+   "name": "mobile_builder",
+   "goal": "review and inspect the mobile builder behavior and check its output",
+   "wouldWin": true,
+   "wouldWinScore": 10.7,
+   "routedTo": null,
+   "verdict": "DEFLECTED_LOADBEARING"
+  },
+  {
+   "name": "go_builder",
+   "goal": "review and inspect the go builder behavior and check its output",
+   "wouldWin": false,
+   "wouldWinScore": null,
+   "routedTo": null,
+   "verdict": "DEFLECTED_MOOT"
+  },
+  {
+   "name": "java_builder",
+   "goal": "review and inspect the java builder behavior and check its output",
+   "wouldWin": true,
+   "wouldWinScore": 12,
+   "routedTo": null,
+   "verdict": "DEFLECTED_LOADBEARING"
+  },
+  {
+   "name": "python_builder",
+   "goal": "review and inspect the python builder behavior and check its output",
+   "wouldWin": true,
+   "wouldWinScore": 10.7,
+   "routedTo": null,
+   "verdict": "DEFLECTED_LOADBEARING"
+  },
+  {
+   "name": "auth_builder",
+   "goal": "review and inspect the auth builder behavior and check its output",
+   "wouldWin": true,
+   "wouldWinScore": 12,
+   "routedTo": null,
+   "verdict": "DEFLECTED_LOADBEARING"
+  },
+  {
+   "name": "scaffold_project",
+   "goal": "review and inspect the scaffold project behavior and check its output",
+   "wouldWin": true,
+   "wouldWinScore": 9.3,
+   "routedTo": null,
+   "verdict": "DEFLECTED_LOADBEARING"
+  },
+  {
+   "name": "scaffold_full_stack",
+   "goal": "review and inspect the scaffold full stack behavior and check its output",
+   "wouldWin": true,
+   "wouldWinScore": 17,
+   "routedTo": null,
+   "verdict": "DEFLECTED_LOADBEARING"
+  },
+  {
+   "name": "progressive_generator",
+   "goal": "review and inspect the progressive generator behavior and check its output",
+   "wouldWin": true,
+   "wouldWinScore": 11.7,
+   "routedTo": null,
+   "verdict": "DEFLECTED_LOADBEARING"
+  },
+  {
+   "name": "bulk_file_generator",
+   "goal": "review and inspect the bulk file generator behavior and check its output",
+   "wouldWin": false,
+   "wouldWinScore": null,
+   "routedTo": null,
+   "verdict": "DEFLECTED_MOOT"
+  },
+  {
+   "name": "ai_write_file",
+   "goal": "review and inspect the ai write file behavior and check its output",
+   "wouldWin": true,
+   "wouldWinScore": 9.5,
+   "routedTo": null,
+   "verdict": "DEFLECTED_LOADBEARING"
+  },
+  {
+   "name": "phase_executor",
+   "goal": "review and inspect the phase executor behavior and check its output",
+   "wouldWin": true,
+   "wouldWinScore": 14,
+   "routedTo": null,
+   "verdict": "DEFLECTED_LOADBEARING"
+  }
+ ],
+ "targetRuns": [
+  {
+   "id": "target:seo",
+   "route": {
+    "tool": "browser_seo_audit",
+    "score": 16.1,
+    "runnerUp": "browser_extract_meta"
+   },
+   "routeCtx": {
+    "tool": "browser_seo_audit",
+    "score": 16.1,
+    "runnerUp": "browser_extract_meta"
+   },
+   "stage": {
+    "lenOk": true,
+    "actVerb": true,
+    "bestUnfiltered": {
+     "name": "browser_seo_audit",
+     "score": 16.1
+    },
+    "bestUnfilteredExcluded": false,
+    "bestAllowed": {
+     "name": "browser_seo_audit",
+     "score": 16.1
+    },
+    "scoreGatePass": true,
+    "proxyNameHitOnBestAllowed": true,
+    "inputFillableOnBestAllowed": true,
+    "inputFillableCtxOnBestAllowed": true
+   }
+  },
+  {
+   "id": "target:links",
+   "route": {
+    "tool": "browser_check_links",
+    "score": 15.3,
+    "runnerUp": "repo_run_command"
+   },
+   "routeCtx": {
+    "tool": "browser_check_links",
+    "score": 15.3,
+    "runnerUp": "repo_run_command"
+   },
+   "stage": {
+    "lenOk": true,
+    "actVerb": true,
+    "bestUnfiltered": {
+     "name": "browser_check_links",
+     "score": 15.3
+    },
+    "bestUnfilteredExcluded": false,
+    "bestAllowed": {
+     "name": "browser_check_links",
+     "score": 15.3
+    },
+    "scoreGatePass": true,
+    "proxyNameHitOnBestAllowed": true,
+    "inputFillableOnBestAllowed": true,
+    "inputFillableCtxOnBestAllowed": true
+   }
+  },
+  {
+   "id": "target:responsive",
+   "route": {
+    "tool": "browser_responsive_check",
+    "score": 13.1,
+    "runnerUp": "browser_compare"
+   },
+   "routeCtx": {
+    "tool": "browser_responsive_check",
+    "score": 13.1,
+    "runnerUp": "browser_compare"
+   },
+   "stage": {
+    "lenOk": true,
+    "actVerb": true,
+    "bestUnfiltered": {
+     "name": "browser_responsive_check",
+     "score": 13.1
+    },
+    "bestUnfilteredExcluded": false,
+    "bestAllowed": {
+     "name": "browser_responsive_check",
+     "score": 13.1
+    },
+    "scoreGatePass": true,
+    "proxyNameHitOnBestAllowed": true,
+    "inputFillableOnBestAllowed": true,
+    "inputFillableCtxOnBestAllowed": true
+   }
+  },
+  {
+   "id": "target:secrets",
+   "route": null,
+   "routeCtx": null,
+   "stage": {
+    "lenOk": true,
+    "actVerb": true,
+    "bestUnfiltered": {
+     "name": "secrets_scan_repo",
+     "score": 16.4
+    },
+    "bestUnfilteredExcluded": false,
+    "bestAllowed": {
+     "name": "secrets_scan_repo",
+     "score": 16.4
+    },
+    "scoreGatePass": true,
+    "proxyNameHitOnBestAllowed": true,
+    "inputFillableOnBestAllowed": false,
+    "inputFillableCtxOnBestAllowed": false
+   }
+  },
+  {
+   "id": "target:perf",
+   "route": null,
+   "routeCtx": null,
+   "stage": {
+    "lenOk": true,
+    "actVerb": true,
+    "bestUnfiltered": {
+     "name": "performance_profile",
+     "score": 10.5
+    },
+    "bestUnfilteredExcluded": false,
+    "bestAllowed": {
+     "name": "performance_profile",
+     "score": 10.5
+    },
+    "scoreGatePass": true,
+    "proxyNameHitOnBestAllowed": true,
+    "inputFillableOnBestAllowed": false,
+    "inputFillableCtxOnBestAllowed": false
+   }
+  },
+  {
+   "id": "target:api-test",
+   "route": null,
+   "routeCtx": null,
+   "stage": {
+    "lenOk": true,
+    "actVerb": true,
+    "bestUnfiltered": {
+     "name": "payments_create_checkout_session",
+     "score": 18.3
+    },
+    "bestUnfilteredExcluded": false,
+    "bestAllowed": {
+     "name": "payments_create_checkout_session",
+     "score": 18.3
+    },
+    "scoreGatePass": true,
+    "proxyNameHitOnBestAllowed": true,
+    "inputFillableOnBestAllowed": false,
+    "inputFillableCtxOnBestAllowed": false
+   }
+  },
+  {
+   "id": "target:translate",
+   "route": null,
+   "routeCtx": {
+    "tool": "browser_translate",
+    "score": 11.7,
+    "runnerUp": "browser_find_text"
+   },
+   "stage": {
+    "lenOk": true,
+    "actVerb": true,
+    "bestUnfiltered": {
+     "name": "browser_translate",
+     "score": 11.7
+    },
+    "bestUnfilteredExcluded": false,
+    "bestAllowed": {
+     "name": "browser_translate",
+     "score": 11.7
+    },
+    "scoreGatePass": true,
+    "proxyNameHitOnBestAllowed": true,
+    "inputFillableOnBestAllowed": false,
+    "inputFillableCtxOnBestAllowed": true
+   }
+  },
+  {
+   "id": "target:extract",
+   "route": {
+    "tool": "browser_summarize",
+    "score": 9,
+    "runnerUp": "browser_readability"
+   },
+   "routeCtx": {
+    "tool": "browser_summarize",
+    "score": 9,
+    "runnerUp": "browser_readability"
+   },
+   "stage": {
+    "lenOk": true,
+    "actVerb": true,
+    "bestUnfiltered": {
+     "name": "browser_summarize",
+     "score": 9
+    },
+    "bestUnfilteredExcluded": false,
+    "bestAllowed": {
+     "name": "browser_summarize",
+     "score": 9
+    },
+    "scoreGatePass": true,
+    "proxyNameHitOnBestAllowed": true,
+    "inputFillableOnBestAllowed": true,
+    "inputFillableCtxOnBestAllowed": true
+   }
+  },
+  {
+   "id": "target:videosum",
+   "route": null,
+   "routeCtx": null,
+   "stage": {
+    "lenOk": true,
+    "actVerb": true,
+    "bestUnfiltered": {
+     "name": "video_action",
+     "score": 9
+    },
+    "bestUnfilteredExcluded": false,
+    "bestAllowed": {
+     "name": "video_action",
+     "score": 9
+    },
+    "scoreGatePass": true,
+    "proxyNameHitOnBestAllowed": true,
+    "inputFillableOnBestAllowed": false,
+    "inputFillableCtxOnBestAllowed": false
+   }
+  },
+  {
+   "id": "target:a11y",
+   "route": null,
+   "routeCtx": {
+    "tool": "browser_contrast_audit",
+    "score": 14.9,
+    "runnerUp": "browser_a11y_deep"
+   },
+   "stage": {
+    "lenOk": true,
+    "actVerb": true,
+    "bestUnfiltered": {
+     "name": "browser_contrast_audit",
+     "score": 14.9
+    },
+    "bestUnfilteredExcluded": false,
+    "bestAllowed": {
+     "name": "browser_contrast_audit",
+     "score": 14.9
+    },
+    "scoreGatePass": true,
+    "proxyNameHitOnBestAllowed": true,
+    "inputFillableOnBestAllowed": false,
+    "inputFillableCtxOnBestAllowed": true
+   }
+  },
+  {
+   "id": "target:packages",
+   "route": null,
+   "routeCtx": null,
+   "stage": {
+    "lenOk": true,
+    "actVerb": true,
+    "bestUnfiltered": {
+     "name": "npm_manager",
+     "score": 16.7
+    },
+    "bestUnfilteredExcluded": false,
+    "bestAllowed": {
+     "name": "npm_manager",
+     "score": 16.7
+    },
+    "scoreGatePass": true,
+    "proxyNameHitOnBestAllowed": true,
+    "inputFillableOnBestAllowed": false,
+    "inputFillableCtxOnBestAllowed": false
+   }
+  },
+  {
+   "id": "target:symbols",
+   "route": null,
+   "routeCtx": null,
+   "stage": {
+    "lenOk": true,
+    "actVerb": true,
+    "bestUnfiltered": {
+     "name": "inspect_symbol",
+     "score": 11.3
+    },
+    "bestUnfilteredExcluded": false,
+    "bestAllowed": {
+     "name": "inspect_symbol",
+     "score": 11.3
+    },
+    "scoreGatePass": true,
+    "proxyNameHitOnBestAllowed": true,
+    "inputFillableOnBestAllowed": false,
+    "inputFillableCtxOnBestAllowed": false
+   }
+  },
+  {
+   "id": "target:refactor-dead",
+   "route": {
+    "tool": "dead_code_detector",
+    "score": 16.2,
+    "runnerUp": "code_reviewer"
+   },
+   "routeCtx": {
+    "tool": "dead_code_detector",
+    "score": 16.2,
+    "runnerUp": "code_reviewer"
+   },
+   "stage": {
+    "lenOk": true,
+    "actVerb": true,
+    "bestUnfiltered": {
+     "name": "dead_code_detector",
+     "score": 16.2
+    },
+    "bestUnfilteredExcluded": false,
+    "bestAllowed": {
+     "name": "dead_code_detector",
+     "score": 16.2
+    },
+    "scoreGatePass": true,
+    "proxyNameHitOnBestAllowed": true,
+    "inputFillableOnBestAllowed": true,
+    "inputFillableCtxOnBestAllowed": true
+   }
+  },
+  {
+   "id": "target:sonar",
+   "route": null,
+   "routeCtx": null,
+   "stage": {
+    "lenOk": true,
+    "actVerb": true,
+    "bestUnfiltered": {
+     "name": "code_reviewer",
+     "score": 12.8
+    },
+    "bestUnfilteredExcluded": false,
+    "bestAllowed": {
+     "name": "code_reviewer",
+     "score": 12.8
+    },
+    "scoreGatePass": true,
+    "proxyNameHitOnBestAllowed": true,
+    "inputFillableOnBestAllowed": false,
+    "inputFillableCtxOnBestAllowed": false
+   }
+  }
+ ],
+ "pairRuns": [
+  {
+   "id": "pair:noverb",
+   "route": null,
+   "routeCtx": null,
+   "stage": {
+    "lenOk": true,
+    "actVerb": false,
+    "bestUnfiltered": {
+     "name": "browser_seo_audit",
+     "score": 11.4
+    },
+    "bestUnfilteredExcluded": false,
+    "bestAllowed": {
+     "name": "browser_seo_audit",
+     "score": 11.4
+    },
+    "scoreGatePass": true,
+    "proxyNameHitOnBestAllowed": true,
+    "inputFillableOnBestAllowed": true,
+    "inputFillableCtxOnBestAllowed": true
+   }
+  },
+  {
+   "id": "pair:short",
+   "route": null,
+   "routeCtx": null,
+   "stage": {
+    "lenOk": false,
+    "actVerb": true,
+    "bestUnfiltered": {
+     "name": "auto_tester",
+     "score": 5.6
+    },
+    "bestUnfilteredExcluded": false,
+    "bestAllowed": {
+     "name": "auto_tester",
+     "score": 5.6
+    },
+    "scoreGatePass": false,
+    "proxyNameHitOnBestAllowed": true,
+    "inputFillableOnBestAllowed": false,
+    "inputFillableCtxOnBestAllowed": false
+   }
+  },
+  {
+   "id": "pair:vague",
+   "route": null,
+   "routeCtx": null,
+   "stage": {
+    "lenOk": true,
+    "actVerb": true,
+    "bestUnfiltered": {
+     "name": "code_reviewer",
+     "score": 7.1
+    },
+    "bestUnfilteredExcluded": false,
+    "bestAllowed": {
+     "name": "code_reviewer",
+     "score": 7.1
+    },
+    "scoreGatePass": false,
+    "proxyNameHitOnBestAllowed": true,
+    "inputFillableOnBestAllowed": false,
+    "inputFillableCtxOnBestAllowed": false
+   }
+  },
+  {
+   "id": "pair:nobuild",
+   "route": null,
+   "routeCtx": null,
+   "stage": {
+    "lenOk": true,
+    "actVerb": false,
+    "bestUnfiltered": {
+     "name": "repo_apply_patch",
+     "score": 6
+    },
+    "bestUnfilteredExcluded": false,
+    "bestAllowed": {
+     "name": "repo_apply_patch",
+     "score": 6
+    },
+    "scoreGatePass": false,
+    "proxyNameHitOnBestAllowed": true,
+    "inputFillableOnBestAllowed": false,
+    "inputFillableCtxOnBestAllowed": false
+   }
+  },
+  {
+   "id": "pair:ar-inspect",
+   "route": null,
+   "routeCtx": null,
+   "stage": {
+    "lenOk": true,
+    "actVerb": true,
+    "bestUnfiltered": {
+     "name": "repo_run_command",
+     "score": 10.8
+    },
+    "bestUnfilteredExcluded": false,
+    "bestAllowed": {
+     "name": "repo_run_command",
+     "score": 10.8
+    },
+    "scoreGatePass": true,
+    "proxyNameHitOnBestAllowed": true,
+    "inputFillableOnBestAllowed": false,
+    "inputFillableCtxOnBestAllowed": false
+   }
+  }
+ ],
+ "handRuns": [
+  {
+   "id": "hand:memory-recall",
+   "route": null,
+   "routeCtx": null,
+   "stage": {
+    "lenOk": true,
+    "actVerb": true,
+    "bestUnfiltered": {
+     "name": "deploy_pages",
+     "score": 15.6
+    },
+    "bestUnfilteredExcluded": true,
+    "bestAllowed": {
+     "name": "ci_generate_pipeline",
+     "score": 15
+    },
+    "scoreGatePass": true,
+    "proxyNameHitOnBestAllowed": true,
+    "inputFillableOnBestAllowed": false,
+    "inputFillableCtxOnBestAllowed": false
+   }
+  },
+  {
+   "id": "hand:memory-ar",
+   "route": null,
+   "routeCtx": null,
+   "stage": {
+    "lenOk": true,
+    "actVerb": false,
+    "bestUnfiltered": {
+     "name": "recall_memory",
+     "score": 12.9
+    },
+    "bestUnfilteredExcluded": false,
+    "bestAllowed": {
+     "name": "recall_memory",
+     "score": 12.9
+    },
+    "scoreGatePass": true,
+    "proxyNameHitOnBestAllowed": true,
+    "inputFillableOnBestAllowed": true,
+    "inputFillableCtxOnBestAllowed": true
+   }
+  },
+  {
+   "id": "hand:browser-act",
+   "route": null,
+   "routeCtx": {
+    "tool": "browser_click",
+    "score": 11.8,
+    "runnerUp": "screenshot"
+   },
+   "stage": {
+    "lenOk": true,
+    "actVerb": true,
+    "bestUnfiltered": {
+     "name": "browser_click",
+     "score": 11.8
+    },
+    "bestUnfilteredExcluded": false,
+    "bestAllowed": {
+     "name": "browser_click",
+     "score": 11.8
+    },
+    "scoreGatePass": true,
+    "proxyNameHitOnBestAllowed": true,
+    "inputFillableOnBestAllowed": false,
+    "inputFillableCtxOnBestAllowed": true
+   }
+  },
+  {
+   "id": "hand:browser-vision",
+   "route": null,
+   "routeCtx": {
+    "tool": "browser_fullpage_shot",
+    "score": 10.9,
+    "runnerUp": "screenshot"
+   },
+   "stage": {
+    "lenOk": true,
+    "actVerb": true,
+    "bestUnfiltered": {
+     "name": "browser_fullpage_shot",
+     "score": 10.9
+    },
+    "bestUnfilteredExcluded": false,
+    "bestAllowed": {
+     "name": "browser_fullpage_shot",
+     "score": 10.9
+    },
+    "scoreGatePass": true,
+    "proxyNameHitOnBestAllowed": true,
+    "inputFillableOnBestAllowed": false,
+    "inputFillableCtxOnBestAllowed": true
+   }
+  },
+  {
+   "id": "hand:testing",
+   "route": null,
+   "routeCtx": null,
+   "stage": {
+    "lenOk": true,
+    "actVerb": true,
+    "bestUnfiltered": {
+     "name": "project_run",
+     "score": 6.2
+    },
+    "bestUnfilteredExcluded": true,
+    "bestAllowed": {
+     "name": "repo_run_command",
+     "score": 4.1
+    },
+    "scoreGatePass": false,
+    "proxyNameHitOnBestAllowed": true,
+    "inputFillableOnBestAllowed": false,
+    "inputFillableCtxOnBestAllowed": false
+   }
+  },
+  {
+   "id": "hand:load",
+   "route": null,
+   "routeCtx": null,
+   "stage": {
+    "lenOk": true,
+    "actVerb": true,
+    "bestUnfiltered": {
+     "name": "payments_create_checkout_session",
+     "score": 18.3
+    },
+    "bestUnfilteredExcluded": false,
+    "bestAllowed": {
+     "name": "payments_create_checkout_session",
+     "score": 18.3
+    },
+    "scoreGatePass": true,
+    "proxyNameHitOnBestAllowed": true,
+    "inputFillableOnBestAllowed": false,
+    "inputFillableCtxOnBestAllowed": false
+   }
+  },
+  {
+   "id": "hand:deploy",
+   "route": null,
+   "routeCtx": null,
+   "stage": {
+    "lenOk": true,
+    "actVerb": false,
+    "bestUnfiltered": {
+     "name": "deploy_pages",
+     "score": 21.1
+    },
+    "bestUnfilteredExcluded": true,
+    "bestAllowed": {
+     "name": "browser_launch",
+     "score": 1
+    },
+    "scoreGatePass": false,
+    "proxyNameHitOnBestAllowed": false,
+    "inputFillableOnBestAllowed": true,
+    "inputFillableCtxOnBestAllowed": true
+   }
+  },
+  {
+   "id": "hand:git-diff",
+   "route": null,
+   "routeCtx": null,
+   "stage": {
+    "lenOk": true,
+    "actVerb": false,
+    "bestUnfiltered": {
+     "name": "repo_diff_summary",
+     "score": 13.6
+    },
+    "bestUnfilteredExcluded": false,
+    "bestAllowed": {
+     "name": "repo_diff_summary",
+     "score": 13.6
+    },
+    "scoreGatePass": true,
+    "proxyNameHitOnBestAllowed": true,
+    "inputFillableOnBestAllowed": true,
+    "inputFillableCtxOnBestAllowed": true
+   }
+  },
+  {
+   "id": "hand:docker",
+   "route": null,
+   "routeCtx": null,
+   "stage": {
+    "lenOk": true,
+    "actVerb": true,
+    "bestUnfiltered": {
+     "name": "shell_check_status",
+     "score": 13.7
+    },
+    "bestUnfilteredExcluded": false,
+    "bestAllowed": {
+     "name": "shell_check_status",
+     "score": 13.7
+    },
+    "scoreGatePass": true,
+    "proxyNameHitOnBestAllowed": true,
+    "inputFillableOnBestAllowed": false,
+    "inputFillableCtxOnBestAllowed": false
+   }
+  },
+  {
+   "id": "hand:i18n",
+   "route": null,
+   "routeCtx": {
+    "tool": "browser_translate",
+    "score": 10.9,
+    "runnerUp": "browser_fullpage_shot"
+   },
+   "stage": {
+    "lenOk": true,
+    "actVerb": true,
+    "bestUnfiltered": {
+     "name": "browser_translate",
+     "score": 10.9
+    },
+    "bestUnfilteredExcluded": false,
+    "bestAllowed": {
+     "name": "browser_translate",
+     "score": 10.9
+    },
+    "scoreGatePass": true,
+    "proxyNameHitOnBestAllowed": true,
+    "inputFillableOnBestAllowed": false,
+    "inputFillableCtxOnBestAllowed": true
+   }
+  },
+  {
+   "id": "hand:seo",
+   "route": null,
+   "routeCtx": {
+    "tool": "browser_seo_audit",
+    "score": 15.3,
+    "runnerUp": "browser_extract_meta"
+   },
+   "stage": {
+    "lenOk": true,
+    "actVerb": true,
+    "bestUnfiltered": {
+     "name": "browser_seo_audit",
+     "score": 15.3
+    },
+    "bestUnfilteredExcluded": false,
+    "bestAllowed": {
+     "name": "browser_seo_audit",
+     "score": 15.3
+    },
+    "scoreGatePass": true,
+    "proxyNameHitOnBestAllowed": true,
+    "inputFillableOnBestAllowed": false,
+    "inputFillableCtxOnBestAllowed": true
+   }
+  },
+  {
+   "id": "hand:security",
+   "route": null,
+   "routeCtx": null,
+   "stage": {
+    "lenOk": true,
+    "actVerb": true,
+    "bestUnfiltered": {
+     "name": "secrets_scan_repo",
+     "score": 16.4
+    },
+    "bestUnfilteredExcluded": false,
+    "bestAllowed": {
+     "name": "secrets_scan_repo",
+     "score": 16.4
+    },
+    "scoreGatePass": true,
+    "proxyNameHitOnBestAllowed": true,
+    "inputFillableOnBestAllowed": false,
+    "inputFillableCtxOnBestAllowed": false
+   }
+  },
+  {
+   "id": "hand:perf",
+   "route": null,
+   "routeCtx": null,
+   "stage": {
+    "lenOk": true,
+    "actVerb": true,
+    "bestUnfiltered": {
+     "name": "performance_profile",
+     "score": 10.5
+    },
+    "bestUnfilteredExcluded": false,
+    "bestAllowed": {
+     "name": "performance_profile",
+     "score": 10.5
+    },
+    "scoreGatePass": true,
+    "proxyNameHitOnBestAllowed": true,
+    "inputFillableOnBestAllowed": false,
+    "inputFillableCtxOnBestAllowed": false
+   }
+  },
+  {
+   "id": "hand:docs",
+   "route": null,
+   "routeCtx": null,
+   "stage": {
+    "lenOk": true,
+    "actVerb": false,
+    "bestUnfiltered": {
+     "name": "inspect_api",
+     "score": 9.8
+    },
+    "bestUnfilteredExcluded": false,
+    "bestAllowed": {
+     "name": "inspect_api",
+     "score": 9.8
+    },
+    "scoreGatePass": true,
+    "proxyNameHitOnBestAllowed": true,
+    "inputFillableOnBestAllowed": false,
+    "inputFillableCtxOnBestAllowed": false
+   }
+  },
+  {
+   "id": "hand:video",
+   "route": null,
+   "routeCtx": null,
+   "stage": {
+    "lenOk": true,
+    "actVerb": true,
+    "bestUnfiltered": {
+     "name": "video_action",
+     "score": 13
+    },
+    "bestUnfilteredExcluded": false,
+    "bestAllowed": {
+     "name": "video_action",
+     "score": 13
+    },
+    "scoreGatePass": true,
+    "proxyNameHitOnBestAllowed": true,
+    "inputFillableOnBestAllowed": false,
+    "inputFillableCtxOnBestAllowed": false
+   }
+  },
+  {
+   "id": "hand:payment",
+   "route": null,
+   "routeCtx": null,
+   "stage": {
+    "lenOk": true,
+    "actVerb": true,
+    "bestUnfiltered": {
+     "name": "payments_create_checkout_session",
+     "score": 17.7
+    },
+    "bestUnfilteredExcluded": false,
+    "bestAllowed": {
+     "name": "payments_create_checkout_session",
+     "score": 17.7
+    },
+    "scoreGatePass": true,
+    "proxyNameHitOnBestAllowed": true,
+    "inputFillableOnBestAllowed": false,
+    "inputFillableCtxOnBestAllowed": false
+   }
+  },
+  {
+   "id": "hand:mobile",
+   "route": null,
+   "routeCtx": {
+    "tool": "browser_responsive_check",
+    "score": 17.2,
+    "runnerUp": "browser_check_links"
+   },
+   "stage": {
+    "lenOk": true,
+    "actVerb": true,
+    "bestUnfiltered": {
+     "name": "browser_responsive_check",
+     "score": 17.2
+    },
+    "bestUnfilteredExcluded": false,
+    "bestAllowed": {
+     "name": "browser_responsive_check",
+     "score": 17.2
+    },
+    "scoreGatePass": true,
+    "proxyNameHitOnBestAllowed": true,
+    "inputFillableOnBestAllowed": false,
+    "inputFillableCtxOnBestAllowed": true
+   }
+  },
+  {
+   "id": "hand:pdf",
+   "route": null,
+   "routeCtx": null,
+   "stage": {
+    "lenOk": true,
+    "actVerb": false,
+    "bestUnfiltered": {
+     "name": "browser_save_pdf",
+     "score": 12
+    },
+    "bestUnfilteredExcluded": false,
+    "bestAllowed": {
+     "name": "browser_save_pdf",
+     "score": 12
+    },
+    "scoreGatePass": true,
+    "proxyNameHitOnBestAllowed": true,
+    "inputFillableOnBestAllowed": false,
+    "inputFillableCtxOnBestAllowed": true
+   }
+  },
+  {
+   "id": "hand:links",
+   "route": null,
+   "routeCtx": null,
+   "stage": {
+    "lenOk": true,
+    "actVerb": false,
+    "bestUnfiltered": {
+     "name": "browser_check_links",
+     "score": 10.6
+    },
+    "bestUnfilteredExcluded": false,
+    "bestAllowed": {
+     "name": "browser_check_links",
+     "score": 10.6
+    },
+    "scoreGatePass": true,
+    "proxyNameHitOnBestAllowed": true,
+    "inputFillableOnBestAllowed": false,
+    "inputFillableCtxOnBestAllowed": true
+   }
+  },
+  {
+   "id": "hand:readability",
+   "route": null,
+   "routeCtx": {
+    "tool": "browser_summarize",
+    "score": 9,
+    "runnerUp": "browser_readability"
+   },
+   "stage": {
+    "lenOk": true,
+    "actVerb": true,
+    "bestUnfiltered": {
+     "name": "browser_summarize",
+     "score": 9
+    },
+    "bestUnfilteredExcluded": false,
+    "bestAllowed": {
+     "name": "browser_summarize",
+     "score": 9
+    },
+    "scoreGatePass": true,
+    "proxyNameHitOnBestAllowed": true,
+    "inputFillableOnBestAllowed": false,
+    "inputFillableCtxOnBestAllowed": true
+   }
+  },
+  {
+   "id": "hand:email",
+   "route": null,
+   "routeCtx": null,
+   "stage": {
+    "lenOk": true,
+    "actVerb": false,
+    "bestUnfiltered": {
+     "name": "alert_manager",
+     "score": 4
+    },
+    "bestUnfilteredExcluded": false,
+    "bestAllowed": {
+     "name": "alert_manager",
+     "score": 4
+    },
+    "scoreGatePass": false,
+    "proxyNameHitOnBestAllowed": false,
+    "inputFillableOnBestAllowed": false,
+    "inputFillableCtxOnBestAllowed": false
+   }
+  },
+  {
+   "id": "hand:files",
+   "route": null,
+   "routeCtx": null,
+   "stage": {
+    "lenOk": true,
+    "actVerb": false,
+    "bestUnfiltered": {
+     "name": "archive_files",
+     "score": 14.6
+    },
+    "bestUnfilteredExcluded": false,
+    "bestAllowed": {
+     "name": "archive_files",
+     "score": 14.6
+    },
+    "scoreGatePass": true,
+    "proxyNameHitOnBestAllowed": true,
+    "inputFillableOnBestAllowed": false,
+    "inputFillableCtxOnBestAllowed": false
+   }
+  },
+  {
+   "id": "hand:review",
+   "route": null,
+   "routeCtx": null,
+   "stage": {
+    "lenOk": true,
+    "actVerb": true,
+    "bestUnfiltered": {
+     "name": "auto_refactor",
+     "score": 11.4
+    },
+    "bestUnfilteredExcluded": false,
+    "bestAllowed": {
+     "name": "auto_refactor",
+     "score": 11.4
+    },
+    "scoreGatePass": true,
+    "proxyNameHitOnBestAllowed": true,
+    "inputFillableOnBestAllowed": false,
+    "inputFillableCtxOnBestAllowed": false
+   }
+  },
+  {
+   "id": "hand:errors",
+   "route": null,
+   "routeCtx": null,
+   "stage": {
+    "lenOk": true,
+    "actVerb": true,
+    "bestUnfiltered": {
+     "name": "error_recovery",
+     "score": 15.8
+    },
+    "bestUnfilteredExcluded": false,
+    "bestAllowed": {
+     "name": "error_recovery",
+     "score": 15.8
+    },
+    "scoreGatePass": true,
+    "proxyNameHitOnBestAllowed": true,
+    "inputFillableOnBestAllowed": false,
+    "inputFillableCtxOnBestAllowed": false
+   }
+  },
+  {
+   "id": "hand:report",
+   "route": null,
+   "routeCtx": null,
+   "stage": {
+    "lenOk": true,
+    "actVerb": true,
+    "bestUnfiltered": {
+     "name": "joe_engineering_report",
+     "score": 5.6
+    },
+    "bestUnfilteredExcluded": false,
+    "bestAllowed": {
+     "name": "joe_engineering_report",
+     "score": 5.6
+    },
+    "scoreGatePass": false,
+    "proxyNameHitOnBestAllowed": true,
+    "inputFillableOnBestAllowed": true,
+    "inputFillableCtxOnBestAllowed": true
+   }
+  },
+  {
+   "id": "hand:a11y",
+   "route": null,
+   "routeCtx": {
+    "tool": "browser_contrast_audit",
+    "score": 14.9,
+    "runnerUp": "browser_a11y_deep"
+   },
+   "stage": {
+    "lenOk": true,
+    "actVerb": true,
+    "bestUnfiltered": {
+     "name": "browser_contrast_audit",
+     "score": 14.9
+    },
+    "bestUnfilteredExcluded": false,
+    "bestAllowed": {
+     "name": "browser_contrast_audit",
+     "score": 14.9
+    },
+    "scoreGatePass": true,
+    "proxyNameHitOnBestAllowed": true,
+    "inputFillableOnBestAllowed": false,
+    "inputFillableCtxOnBestAllowed": true
+   }
+  },
+  {
+   "id": "hand:design",
+   "route": null,
+   "routeCtx": {
+    "tool": "browser_design_tokens",
+    "score": 19.7,
+    "runnerUp": "browser_fullpage_shot"
+   },
+   "stage": {
+    "lenOk": true,
+    "actVerb": true,
+    "bestUnfiltered": {
+     "name": "browser_design_tokens",
+     "score": 19.7
+    },
+    "bestUnfilteredExcluded": false,
+    "bestAllowed": {
+     "name": "browser_design_tokens",
+     "score": 19.7
+    },
+    "scoreGatePass": true,
+    "proxyNameHitOnBestAllowed": true,
+    "inputFillableOnBestAllowed": false,
+    "inputFillableCtxOnBestAllowed": true
+   }
+  },
+  {
+   "id": "hand:terminal",
+   "route": null,
+   "routeCtx": null,
+   "stage": {
+    "lenOk": true,
+    "actVerb": false,
+    "bestUnfiltered": {
+     "name": "terminal_manager",
+     "score": 18.2
+    },
+    "bestUnfilteredExcluded": false,
+    "bestAllowed": {
+     "name": "terminal_manager",
+     "score": 18.2
+    },
+    "scoreGatePass": true,
+    "proxyNameHitOnBestAllowed": true,
+    "inputFillableOnBestAllowed": false,
+    "inputFillableCtxOnBestAllowed": false
+   }
+  },
+  {
+   "id": "hand:packages",
+   "route": null,
+   "routeCtx": null,
+   "stage": {
+    "lenOk": true,
+    "actVerb": true,
+    "bestUnfiltered": {
+     "name": "npm_manager",
+     "score": 16.7
+    },
+    "bestUnfilteredExcluded": false,
+    "bestAllowed": {
+     "name": "npm_manager",
+     "score": 16.7
+    },
+    "scoreGatePass": true,
+    "proxyNameHitOnBestAllowed": true,
+    "inputFillableOnBestAllowed": false,
+    "inputFillableCtxOnBestAllowed": false
+   }
+  },
+  {
+   "id": "hand:database",
+   "route": null,
+   "routeCtx": null,
+   "stage": {
+    "lenOk": true,
+    "actVerb": true,
+    "bestUnfiltered": {
+     "name": "shell_check_status",
+     "score": 13.7
+    },
+    "bestUnfilteredExcluded": false,
+    "bestAllowed": {
+     "name": "shell_check_status",
+     "score": 13.7
+    },
+    "scoreGatePass": true,
+    "proxyNameHitOnBestAllowed": true,
+    "inputFillableOnBestAllowed": false,
+    "inputFillableCtxOnBestAllowed": false
+   }
+  },
+  {
+   "id": "hand:ci",
+   "route": null,
+   "routeCtx": null,
+   "stage": {
+    "lenOk": true,
+    "actVerb": true,
+    "bestUnfiltered": {
+     "name": "ci_generate_pipeline",
+     "score": 15
+    },
+    "bestUnfilteredExcluded": false,
+    "bestAllowed": {
+     "name": "ci_generate_pipeline",
+     "score": 15
+    },
+    "scoreGatePass": true,
+    "proxyNameHitOnBestAllowed": true,
+    "inputFillableOnBestAllowed": false,
+    "inputFillableCtxOnBestAllowed": false
+   }
+  },
+  {
+   "id": "hand:cloud",
+   "route": null,
+   "routeCtx": null,
+   "stage": {
+    "lenOk": true,
+    "actVerb": false,
+    "bestUnfiltered": {
+     "name": "terraform_manager",
+     "score": 13.5
+    },
+    "bestUnfilteredExcluded": false,
+    "bestAllowed": {
+     "name": "terraform_manager",
+     "score": 13.5
+    },
+    "scoreGatePass": true,
+    "proxyNameHitOnBestAllowed": true,
+    "inputFillableOnBestAllowed": false,
+    "inputFillableCtxOnBestAllowed": false
+   }
+  },
+  {
+   "id": "hand:cache",
+   "route": null,
+   "routeCtx": null,
+   "stage": {
+    "lenOk": true,
+    "actVerb": false,
+    "bestUnfiltered": {
+     "name": "project_stop",
+     "score": 9
+    },
+    "bestUnfilteredExcluded": true,
+    "bestAllowed": {
+     "name": "docker_swarm_ops",
+     "score": 9
+    },
+    "scoreGatePass": true,
+    "proxyNameHitOnBestAllowed": true,
+    "inputFillableOnBestAllowed": false,
+    "inputFillableCtxOnBestAllowed": false
+   }
+  },
+  {
+   "id": "hand:refactor-dead",
+   "route": null,
+   "routeCtx": null,
+   "stage": {
+    "lenOk": true,
+    "actVerb": false,
+    "bestUnfiltered": {
+     "name": "auto_refactor",
+     "score": 17.5
+    },
+    "bestUnfilteredExcluded": false,
+    "bestAllowed": {
+     "name": "auto_refactor",
+     "score": 17.5
+    },
+    "scoreGatePass": true,
+    "proxyNameHitOnBestAllowed": true,
+    "inputFillableOnBestAllowed": false,
+    "inputFillableCtxOnBestAllowed": false
+   }
+  },
+  {
+   "id": "hand:state",
+   "route": null,
+   "routeCtx": null,
+   "stage": {
+    "lenOk": true,
+    "actVerb": false,
+    "bestUnfiltered": {
+     "name": "project_state_manager",
+     "score": 11.7
+    },
+    "bestUnfilteredExcluded": false,
+    "bestAllowed": {
+     "name": "project_state_manager",
+     "score": 11.7
+    },
+    "scoreGatePass": true,
+    "proxyNameHitOnBestAllowed": true,
+    "inputFillableOnBestAllowed": false,
+    "inputFillableCtxOnBestAllowed": false
+   }
+  },
+  {
+   "id": "hand:python",
+   "route": null,
+   "routeCtx": null,
+   "stage": {
+    "lenOk": true,
+    "actVerb": false,
+    "bestUnfiltered": {
+     "name": "execute_python",
+     "score": 11.2
+    },
+    "bestUnfilteredExcluded": false,
+    "bestAllowed": {
+     "name": "execute_python",
+     "score": 11.2
+    },
+    "scoreGatePass": true,
+    "proxyNameHitOnBestAllowed": true,
+    "inputFillableOnBestAllowed": false,
+    "inputFillableCtxOnBestAllowed": false
+   }
+  },
+  {
+   "id": "hand:rss",
+   "route": null,
+   "routeCtx": {
+    "tool": "rss_fetch",
+    "score": 15.2,
+    "runnerUp": "http_fetch"
+   },
+   "stage": {
+    "lenOk": true,
+    "actVerb": true,
+    "bestUnfiltered": {
+     "name": "rss_fetch",
+     "score": 15.2
+    },
+    "bestUnfilteredExcluded": false,
+    "bestAllowed": {
+     "name": "rss_fetch",
+     "score": 15.2
+    },
+    "scoreGatePass": true,
+    "proxyNameHitOnBestAllowed": true,
+    "inputFillableOnBestAllowed": false,
+    "inputFillableCtxOnBestAllowed": true
+   }
+  },
+  {
+   "id": "hand:search-api",
+   "route": null,
+   "routeCtx": null,
+   "stage": {
+    "lenOk": true,
+    "actVerb": false,
+    "bestUnfiltered": {
+     "name": "search_api",
+     "score": 9.3
+    },
+    "bestUnfilteredExcluded": false,
+    "bestAllowed": {
+     "name": "search_api",
+     "score": 9.3
+    },
+    "scoreGatePass": true,
+    "proxyNameHitOnBestAllowed": true,
+    "inputFillableOnBestAllowed": true,
+    "inputFillableCtxOnBestAllowed": true
+   }
+  },
+  {
+   "id": "hand:todo",
+   "route": null,
+   "routeCtx": null,
+   "stage": {
+    "lenOk": true,
+    "actVerb": false,
+    "bestUnfiltered": {
+     "name": "task_lifecycle",
+     "score": 14.2
+    },
+    "bestUnfilteredExcluded": false,
+    "bestAllowed": {
+     "name": "task_lifecycle",
+     "score": 14.2
+    },
+    "scoreGatePass": true,
+    "proxyNameHitOnBestAllowed": true,
+    "inputFillableOnBestAllowed": false,
+    "inputFillableCtxOnBestAllowed": false
+   }
+  },
+  {
+   "id": "hand:knowledge",
+   "route": null,
+   "routeCtx": null,
+   "stage": {
+    "lenOk": true,
+    "actVerb": false,
+    "bestUnfiltered": {
+     "name": "knowledge_search",
+     "score": 13.6
+    },
+    "bestUnfilteredExcluded": false,
+    "bestAllowed": {
+     "name": "knowledge_search",
+     "score": 13.6
+    },
+    "scoreGatePass": true,
+    "proxyNameHitOnBestAllowed": true,
+    "inputFillableOnBestAllowed": true,
+    "inputFillableCtxOnBestAllowed": true
+   }
+  },
+  {
+   "id": "hand:symbols",
+   "route": null,
+   "routeCtx": null,
+   "stage": {
+    "lenOk": true,
+    "actVerb": false,
+    "bestUnfiltered": {
+     "name": "browser_find_text",
+     "score": 7.8
+    },
+    "bestUnfilteredExcluded": false,
+    "bestAllowed": {
+     "name": "browser_find_text",
+     "score": 7.8
+    },
+    "scoreGatePass": false,
+    "proxyNameHitOnBestAllowed": true,
+    "inputFillableOnBestAllowed": false,
+    "inputFillableCtxOnBestAllowed": true
+   }
+  },
+  {
+   "id": "hand:seed",
+   "route": null,
+   "routeCtx": null,
+   "stage": {
+    "lenOk": true,
+    "actVerb": true,
+    "bestUnfiltered": {
+     "name": "large_data_seeder",
+     "score": 9.3
+    },
+    "bestUnfilteredExcluded": false,
+    "bestAllowed": {
+     "name": "large_data_seeder",
+     "score": 9.3
+    },
+    "scoreGatePass": true,
+    "proxyNameHitOnBestAllowed": true,
+    "inputFillableOnBestAllowed": false,
+    "inputFillableCtxOnBestAllowed": false
+   }
+  },
+  {
+   "id": "hand:recover",
+   "route": null,
+   "routeCtx": null,
+   "stage": {
+    "lenOk": true,
+    "actVerb": false,
+    "bestUnfiltered": {
+     "name": "dev_server_start",
+     "score": 15.6
+    },
+    "bestUnfilteredExcluded": false,
+    "bestAllowed": {
+     "name": "dev_server_start",
+     "score": 15.6
+    },
+    "scoreGatePass": true,
+    "proxyNameHitOnBestAllowed": true,
+    "inputFillableOnBestAllowed": false,
+    "inputFillableCtxOnBestAllowed": false
+   }
+  },
+  {
+   "id": "hand:compliance",
+   "route": null,
+   "routeCtx": null,
+   "stage": {
+    "lenOk": true,
+    "actVerb": true,
+    "bestUnfiltered": {
+     "name": "query_datasource",
+     "score": 14.6
+    },
+    "bestUnfilteredExcluded": false,
+    "bestAllowed": {
+     "name": "query_datasource",
+     "score": 14.6
+    },
+    "scoreGatePass": true,
+    "proxyNameHitOnBestAllowed": true,
+    "inputFillableOnBestAllowed": false,
+    "inputFillableCtxOnBestAllowed": false
+   }
+  },
+  {
+   "id": "hand:sonar",
+   "route": null,
+   "routeCtx": null,
+   "stage": {
+    "lenOk": true,
+    "actVerb": false,
+    "bestUnfiltered": {
+     "name": "sonar_analysis",
+     "score": 11
+    },
+    "bestUnfilteredExcluded": false,
+    "bestAllowed": {
+     "name": "sonar_analysis",
+     "score": 11
+    },
+    "scoreGatePass": true,
+    "proxyNameHitOnBestAllowed": true,
+    "inputFillableOnBestAllowed": false,
+    "inputFillableCtxOnBestAllowed": false
+   }
+  },
+  {
+   "id": "hand:notify",
+   "route": null,
+   "routeCtx": null,
+   "stage": {
+    "lenOk": true,
+    "actVerb": false,
+    "bestUnfiltered": {
+     "name": "deploy_pages",
+     "score": 21.1
+    },
+    "bestUnfilteredExcluded": true,
+    "bestAllowed": {
+     "name": "notify_user",
+     "score": 5
+    },
+    "scoreGatePass": false,
+    "proxyNameHitOnBestAllowed": true,
+    "inputFillableOnBestAllowed": false,
+    "inputFillableCtxOnBestAllowed": false
+   }
+  }
+ ]
+}
