@@ -1,0 +1,3659 @@
+﻿{
+    "generatedBy":  "survey_workers.ps1 (checkpoint 30, read-only)",
+    "servicesTree":  [
+                         {
+                             "path":  "services\\joe-browser-worker\\.dockerignore",
+                             "bytes":  186
+                         },
+                         {
+                             "path":  "services\\joe-browser-worker\\Dockerfile",
+                             "bytes":  436
+                         },
+                         {
+                             "path":  "services\\joe-browser-worker\\package.json",
+                             "bytes":  687
+                         },
+                         {
+                             "path":  "services\\joe-browser-worker\\package-lock.json",
+                             "bytes":  54067
+                         },
+                         {
+                             "path":  "services\\joe-browser-worker\\src\\index.ts",
+                             "bytes":  4931
+                         },
+                         {
+                             "path":  "services\\joe-browser-worker\\tsconfig.json",
+                             "bytes":  244
+                         }
+                     ],
+    "extensionTree":  [
+                          {
+                              "path":  "extension\\background.js",
+                              "bytes":  9877
+                          },
+                          {
+                              "path":  "extension\\content.js",
+                              "bytes":  668
+                          },
+                          {
+                              "path":  "extension\\manifest.json",
+                              "bytes":  725
+                          },
+                          {
+                              "path":  "extension\\popup.html",
+                              "bytes":  1320
+                          },
+                          {
+                              "path":  "extension\\popup.js",
+                              "bytes":  703
+                          },
+                          {
+                              "path":  "extension\\README.md",
+                              "bytes":  2485
+                          }
+                      ],
+    "composeServices":  [
+                            {
+                                "file":  "infra\\docker-compose.production.yml",
+                                "services":  [
+                                                 "mongo",
+                                                 "web",
+                                                 "browser-worker",
+                                                 "nginx",
+                                                 "certbot",
+                                                 "ollama",
+                                                 "ollama-pull"
+                                             ]
+                            },
+                            {
+                                "file":  "infra\\docker-compose.server.yml",
+                                "services":  [
+                                                 "mongo",
+                                                 "api",
+                                                 "browser-worker",
+                                                 "web",
+                                                 "nginx",
+                                                 "certbot"
+                                             ]
+                            }
+                        ],
+    "routes":  [
+                   {
+                       "route":  "admin.ts",
+                       "alias":  "adminRoutes",
+                       "mountPath":  "/admin",
+                       "mountedInApp":  true
+                   },
+                   {
+                       "route":  "approvals.ts",
+                       "alias":  "approvalsRoutes",
+                       "mountPath":  "/approvals",
+                       "mountedInApp":  true
+                   },
+                   {
+                       "route":  "assets.ts",
+                       "alias":  "assetsRoutes",
+                       "mountPath":  "/assets",
+                       "mountedInApp":  true
+                   },
+                   {
+                       "route":  "audio.ts",
+                       "alias":  "audioRoutes",
+                       "mountPath":  "/audio",
+                       "mountedInApp":  true
+                   },
+                   {
+                       "route":  "auth.ts",
+                       "alias":  "authRoutes",
+                       "mountPath":  "/auth",
+                       "mountedInApp":  true
+                   },
+                   {
+                       "route":  "browser.ts",
+                       "alias":  "browserRoutes",
+                       "mountPath":  "/browser",
+                       "mountedInApp":  true
+                   },
+                   {
+                       "route":  "browserAgent.ts",
+                       "alias":  "browserAgentRoutes",
+                       "mountPath":  "/browser-agent",
+                       "mountedInApp":  true
+                   },
+                   {
+                       "route":  "extension.ts",
+                       "alias":  "extensionRoutes",
+                       "mountPath":  "/extension",
+                       "mountedInApp":  true
+                   },
+                   {
+                       "route":  "files.ts",
+                       "alias":  "filesRoutes",
+                       "mountPath":  "/files",
+                       "mountedInApp":  true
+                   },
+                   {
+                       "route":  "folders.ts",
+                       "alias":  "foldersRoutes",
+                       "mountPath":  "/folders",
+                       "mountedInApp":  true
+                   },
+                   {
+                       "route":  "formsPublic.ts",
+                       "alias":  "formsPublicRoutes",
+                       "mountPath":  "/public/forms",
+                       "mountedInApp":  true
+                   },
+                   {
+                       "route":  "git.ts",
+                       "alias":  "gitRoutes",
+                       "mountPath":  "/git",
+                       "mountedInApp":  true
+                   },
+                   {
+                       "route":  "github.ts",
+                       "alias":  "githubRoutes",
+                       "mountPath":  "/github",
+                       "mountedInApp":  true
+                   },
+                   {
+                       "route":  "knowledge.ts",
+                       "alias":  "knowledgeRoutes",
+                       "mountPath":  "/knowledge",
+                       "mountedInApp":  true
+                   },
+                   {
+                       "route":  "memory.ts",
+                       "alias":  "memoryRoutes",
+                       "mountPath":  "/memory",
+                       "mountedInApp":  true
+                   },
+                   {
+                       "route":  "oauth.ts",
+                       "alias":  "oauthRoutes",
+                       "mountPath":  "/oauth",
+                       "mountedInApp":  true
+                   },
+                   {
+                       "route":  "packages.ts",
+                       "alias":  "packagesRoutes",
+                       "mountPath":  "/packages",
+                       "mountedInApp":  true
+                   },
+                   {
+                       "route":  "ping-deploy.ts",
+                       "alias":  "pingDeployRoutes",
+                       "mountPath":  "/ping-deploy",
+                       "mountedInApp":  true
+                   },
+                   {
+                       "route":  "project.ts",
+                       "alias":  "projectRoutes",
+                       "mountPath":  "/project",
+                       "mountedInApp":  true
+                   },
+                   {
+                       "route":  "projectPreview.ts",
+                       "alias":  "projectPreviewRoutes",
+                       "mountPath":  "/project-preview",
+                       "mountedInApp":  true
+                   },
+                   {
+                       "route":  "providers.ts",
+                       "alias":  "providersRoutes",
+                       "mountPath":  "/providers",
+                       "mountedInApp":  true
+                   },
+                   {
+                       "route":  "queue.ts",
+                       "alias":  "queueRoutes",
+                       "mountPath":  "/queue",
+                       "mountedInApp":  true
+                   },
+                   {
+                       "route":  "run.ts",
+                       "alias":  "runRoutes",
+                       "mountPath":  "/runs",
+                       "mountedInApp":  true
+                   },
+                   {
+                       "route":  "sentinel.ts",
+                       "alias":  "sentinelRoutes",
+                       "mountPath":  "/admin/sentinel",
+                       "mountedInApp":  true
+                   },
+                   {
+                       "route":  "servers.ts",
+                       "alias":  "serverRoutes",
+                       "mountPath":  "/servers",
+                       "mountedInApp":  true
+                   },
+                   {
+                       "route":  "sessions.ts",
+                       "alias":  "sessionsRoutes",
+                       "mountPath":  "/sessions",
+                       "mountedInApp":  true
+                   },
+                   {
+                       "route":  "status.ts",
+                       "alias":  "statusRoutes",
+                       "mountPath":  "/status",
+                       "mountedInApp":  true
+                   },
+                   {
+                       "route":  "system.ts",
+                       "alias":  "systemRoutes",
+                       "mountPath":  "/system",
+                       "mountedInApp":  true
+                   },
+                   {
+                       "route":  "tools.ts",
+                       "alias":  "toolsRoutes",
+                       "mountPath":  "/tools",
+                       "mountedInApp":  true
+                   },
+                   {
+                       "route":  "webhooks.ts",
+                       "alias":  "webhooksRoutes",
+                       "mountPath":  "/webhooks",
+                       "mountedInApp":  true
+                   },
+                   {
+                       "route":  "workspaces.ts",
+                       "alias":  "workspacesRoutes",
+                       "mountPath":  "/workspaces",
+                       "mountedInApp":  true
+                   }
+               ],
+    "candidates":  [
+                       {
+                           "file":  "api/src/api\\chat-store.ts",
+                           "foundBy":  "marker",
+                           "bytes":  4040,
+                           "markers":  [
+                                           "setTimeoutx1"
+                                       ],
+                           "exports":  [
+                                           "usesLocalChatStore",
+                                           "loadChatStores",
+                                           "persistChatStores",
+                                           "flushChatStores"
+                                       ],
+                           "importerCount":  5,
+                           "nonTestCount":  5,
+                           "canonicalHits":  [
+                                                 "modules\\services\\AgentLoopService.ts",
+                                                 "api\\app.ts"
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/api\\app.ts",
+                                             "api/src/api\\controllers\\sessionController.ts",
+                                             "api/src/api\\routes\\formsPublic.ts",
+                                             "api/src/api\\routes\\run.ts",
+                                             "api/src/modules\\services\\AgentLoopService.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/api\\index.ts",
+                           "foundBy":  "marker",
+                           "bytes":  8129,
+                           "markers":  [
+                                           "setTimeoutx2"
+                                       ],
+                           "exports":  [
+
+                                       ],
+                           "importerCount":  0,
+                           "nonTestCount":  0,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/api\\page-store.ts",
+                           "foundBy":  "marker",
+                           "bytes":  12959,
+                           "markers":  [
+                                           "setTimeoutx2",
+                                           "process_local_statex3"
+                                       ],
+                           "exports":  [
+                                           "loadJoePages",
+                                           "persistJoePages",
+                                           "ProjectStoreLoadResult",
+                                           "ProjectStoreWriteResult",
+                                           "normalizePipelineRunId",
+                                           "samePipelineRun",
+                                           "readJoeProjectForRun",
+                                           "writeJoeProject",
+                                           "loadJoeProjects",
+                                           "persistJoeProjects",
+                                           "flushJoeProjects",
+                                           "flushJoePages"
+                                       ],
+                           "importerCount":  13,
+                           "nonTestCount":  13,
+                           "canonicalHits":  [
+                                                 "modules\\tools\\definitions\\PhaseExecutorTool.ts",
+                                                 "api\\app.ts"
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/api\\app.ts",
+                                             "api/src/api\\controllers\\sessionController.ts",
+                                             "api/src/modules\\tools\\definitions\\ApiProjectTool.ts",
+                                             "api/src/modules\\tools\\definitions\\EngineeringDiscoveryTool.ts",
+                                             "api/src/modules\\tools\\definitions\\ImportProjectTool.ts",
+                                             "api/src/modules\\tools\\definitions\\PhaseExecutorTool.ts",
+                                             "api/src/modules\\tools\\definitions\\ProjectEditTool.ts",
+                                             "api/src/modules\\tools\\definitions\\ProjectPipelineTool.ts",
+                                             "api/src/modules\\tools\\definitions\\ProjectRunTool.ts",
+                                             "api/src/modules\\tools\\definitions\\ProjectUndoTool.ts",
+                                             "api/src/modules\\tools\\definitions\\ReactProjectTool.ts",
+                                             "api/src/modules\\tools\\definitions\\SystemTools.ts",
+                                             "api/src/modules\\tools\\definitions\\WebPageBuilderTool.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/api\\routes\\admin.ts",
+                           "foundBy":  "marker",
+                           "bytes":  24287,
+                           "markers":  [
+                                           "setTimeoutx1"
+                                       ],
+                           "exports":  [
+
+                                       ],
+                           "importerCount":  1,
+                           "nonTestCount":  1,
+                           "canonicalHits":  [
+                                                 "api\\app.ts"
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/api\\app.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/api\\routes\\audio.ts",
+                           "foundBy":  "marker",
+                           "bytes":  6919,
+                           "markers":  [
+                                           "setTimeoutx1"
+                                       ],
+                           "exports":  [
+                                           "pickEngine"
+                                       ],
+                           "importerCount":  1,
+                           "nonTestCount":  1,
+                           "canonicalHits":  [
+                                                 "api\\app.ts"
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/api\\app.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/api\\routes\\browser.ts",
+                           "foundBy":  "marker",
+                           "bytes":  14093,
+                           "markers":  [
+                                           "setTimeoutx1"
+                                       ],
+                           "exports":  [
+                                           "transientNavigationError",
+                                           "navigationNeedsCleanSlate"
+                                       ],
+                           "importerCount":  1,
+                           "nonTestCount":  1,
+                           "canonicalHits":  [
+                                                 "api\\app.ts"
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/api\\app.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/api\\routes\\folders.ts",
+                           "foundBy":  "marker",
+                           "bytes":  1736,
+                           "markers":  [
+                                           "process_local_statex1"
+                                       ],
+                           "exports":  [
+
+                                       ],
+                           "importerCount":  1,
+                           "nonTestCount":  1,
+                           "canonicalHits":  [
+                                                 "api\\app.ts"
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/api\\app.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/api\\routes\\ping-deploy.ts",
+                           "foundBy":  "marker",
+                           "bytes":  5558,
+                           "markers":  [
+                                           "setTimeoutx1"
+                                       ],
+                           "exports":  [
+
+                                       ],
+                           "importerCount":  1,
+                           "nonTestCount":  1,
+                           "canonicalHits":  [
+                                                 "api\\app.ts"
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/api\\app.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/api\\routes\\queue.ts",
+                           "foundBy":  "name",
+                           "bytes":  3583,
+                           "markers":  [
+                                           "process_local_statex4"
+                                       ],
+                           "exports":  [
+
+                                       ],
+                           "importerCount":  1,
+                           "nonTestCount":  1,
+                           "canonicalHits":  [
+                                                 "api\\app.ts"
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/api\\app.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/api\\routes\\status.ts",
+                           "foundBy":  "marker",
+                           "bytes":  6703,
+                           "markers":  [
+                                           "setTimeoutx1"
+                                       ],
+                           "exports":  [
+
+                                       ],
+                           "importerCount":  1,
+                           "nonTestCount":  1,
+                           "canonicalHits":  [
+                                                 "api\\app.ts"
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/api\\app.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/api\\routes\\system.ts",
+                           "foundBy":  "marker",
+                           "bytes":  18400,
+                           "markers":  [
+                                           "setTimeoutx2"
+                                       ],
+                           "exports":  [
+
+                                       ],
+                           "importerCount":  1,
+                           "nonTestCount":  1,
+                           "canonicalHits":  [
+                                                 "api\\app.ts"
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/api\\app.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/api\\ws.ts",
+                           "foundBy":  "marker",
+                           "bytes":  32393,
+                           "markers":  [
+                                           "setIntervalx1"
+                                       ],
+                           "exports":  [
+                                           "localDevelopmentBrowserUser",
+                                           "registerRunOwner",
+                                           "registerSessionOwner",
+                                           "sessionOwnerOf",
+                                           "authorizedLiveSessions",
+                                           "runOwnerOf",
+                                           "registerTerminalOwner",
+                                           "terminalOwnerOf",
+                                           "registerTerminalSessionOwner",
+                                           "terminalSessionOwnerOf",
+                                           "registerRunSession",
+                                           "unregisterRunSession",
+                                           "getActiveRunSessions",
+                                           "addRunEventListener",
+                                           "removeRunEventListener",
+                                           "LiveEventType",
+                                           "LiveEvent",
+                                           "attachWebSocket",
+                                           "liveEventSessionId",
+                                           "eventRequiresSession",
+                                           "canDeliverLiveEventToSession",
+                                           "canUseTerminalForSession",
+                                           "broadcast",
+                                           "broadcastSecretRequired",
+                                           "observeBroadcasts",
+                                           "broadcastTerminalLine",
+                                           "broadcastThinkingPhase",
+                                           "broadcastThinkingDetail",
+                                           "broadcastBrowserNeedsUser"
+                                       ],
+                           "importerCount":  43,
+                           "nonTestCount":  43,
+                           "canonicalHits":  [
+                                                 "modules\\services\\ToolService.ts",
+                                                 "modules\\services\\AgentLoopService.ts",
+                                                 "api\\app.ts"
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/api\\app.ts",
+                                             "api/src/api\\controllers\\sessionController.ts",
+                                             "api/src/api\\index.ts",
+                                             "api/src/api\\routes\\approvals.ts",
+                                             "api/src/api\\routes\\formsPublic.ts",
+                                             "api/src/api\\routes\\github.ts",
+                                             "api/src/api\\routes\\run.ts",
+                                             "api/src/api\\routes\\webhooks.ts",
+                                             "api/src/core\\llm\\intelligent-router.ts",
+                                             "api/src/core\\orchestrator\\phaseAnnounce.ts",
+                                             "api/src/modules\\browser\\executor.ts",
+                                             "api/src/modules\\browser\\reactLoop.ts",
+                                             "api/src/modules\\browser\\wsHub.ts",
+                                             "api/src/modules\\extension\\gateway.ts",
+                                             "api/src/modules\\services\\AgentLoopService.ts",
+                                             "api/src/modules\\services\\DeployManager.ts",
+                                             "api/src/modules\\services\\ToolService.ts",
+                                             "api/src/modules\\terminal\\ssh-manager.ts",
+                                             "api/src/modules\\terminal\\terminal-kernel.ts",
+                                             "api/src/modules\\tools\\definitions\\ApiProjectTool.ts",
+                                             "api/src/modules\\tools\\definitions\\BrowserSmartTools.ts",
+                                             "api/src/modules\\tools\\definitions\\EnterprisePlatformFoundationTool.ts",
+                                             "api/src/modules\\tools\\definitions\\ImportProjectTool.ts",
+                                             "api/src/modules\\tools\\definitions\\NotifyUserTool.ts",
+                                             "api/src/modules\\tools\\definitions\\OrionBusinessFoundationTool.ts",
+                                             "api/src/modules\\tools\\definitions\\PageFixTool.ts",
+                                             "api/src/modules\\tools\\definitions\\ProjectEditTool.ts",
+                                             "api/src/modules\\tools\\definitions\\ProjectPipelineTool.ts",
+                                             "api/src/modules\\tools\\definitions\\ProjectRepairTool.ts",
+                                             "api/src/modules\\tools\\definitions\\ProjectRunTool.ts",
+                                             "api/src/modules\\tools\\definitions\\ProjectUndoTool.ts",
+                                             "api/src/modules\\tools\\definitions\\ReactProjectTool.ts",
+                                             "api/src/modules\\tools\\definitions\\ScreenshotTool.ts",
+                                             "api/src/modules\\tools\\definitions\\SystemTools.ts",
+                                             "api/src/modules\\tools\\definitions\\TaskInteractionTools.ts",
+                                             "api/src/modules\\tools\\definitions\\TaskLifecycleTool.ts",
+                                             "api/src/modules\\tools\\definitions\\TodoWriteTool.ts",
+                                             "api/src/modules\\tools\\definitions\\UiFixTool.ts",
+                                             "api/src/modules\\tools\\definitions\\WebDevelopmentTools.ts",
+                                             "api/src/modules\\tools\\definitions\\WebPageBuilderTool.ts",
+                                             "api/src/orchestration\\AgentOrchestrator.ts",
+                                             "api/src/orchestration\\agents\\BrowserAgent.ts",
+                                             "api/src/orchestration\\departments.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/core\\agents\\narrator.ts",
+                           "foundBy":  "marker",
+                           "bytes":  8764,
+                           "markers":  [
+                                           "setTimeoutx1"
+                                       ],
+                           "exports":  [
+                                           "NarrationContext",
+                                           "narrationPrompt",
+                                           "NarrationReject",
+                                           "extractNarration",
+                                           "narrate",
+                                           "narrationEnabled"
+                                       ],
+                           "importerCount":  1,
+                           "nonTestCount":  1,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/orchestration\\AgentOrchestrator.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/core\\api-discovery\\integration.ts",
+                           "foundBy":  "marker",
+                           "bytes":  20988,
+                           "markers":  [
+                                           "setTimeoutx4"
+                                       ],
+                           "exports":  [
+                                           "ApiIntegrationPlan",
+                                           "capabilityFromRequest",
+                                           "integrationPlanFromSelection",
+                                           "integrationArtifacts",
+                                           "viteConfigWithExternalProxy",
+                                           "externalApi",
+                                           "externalApi",
+                                           "resolveProxyClientUrl",
+                                           "joeExternalApiProxy",
+                                           "joeExternalApiProxy",
+                                           "externalDataAppSource",
+                                           "App"
+                                       ],
+                           "importerCount":  3,
+                           "nonTestCount":  3,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/core\\design\\scaffold-substitution.ts",
+                                             "api/src/core\\orchestrator\\PlanningEngine.ts",
+                                             "api/src/modules\\tools\\definitions\\ReactProjectTool.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/core\\api-discovery\\network-policy.ts",
+                           "foundBy":  "marker",
+                           "bytes":  6099,
+                           "markers":  [
+                                           "setTimeoutx1"
+                                       ],
+                           "exports":  [
+                                           "isPrivateAddress",
+                                           "assertSafePublicUrl",
+                                           "ValidationResult",
+                                           "SafeApiValidator"
+                                       ],
+                           "importerCount":  1,
+                           "nonTestCount":  1,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/core\\api-discovery\\service.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/core\\api-discovery\\preview-proxy.ts",
+                           "foundBy":  "marker",
+                           "bytes":  5423,
+                           "markers":  [
+                                           "setTimeoutx1"
+                                       ],
+                           "exports":  [
+                                           "handleMaintainedPreviewApiRequest"
+                                       ],
+                           "importerCount":  2,
+                           "nonTestCount":  2,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/api\\routes\\projectPreview.ts",
+                                             "api/src/core\\quality\\app-audit.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/core\\design\\chrome.ts",
+                           "foundBy":  "marker",
+                           "bytes":  39612,
+                           "markers":  [
+                                           "setTimeoutx1"
+                                       ],
+                           "exports":  [
+                                           "chromeBrief",
+                                           "chromeCss",
+                                           "chromeRuntime",
+                                           "authCss",
+                                           "authRuntime",
+                                           "ensureHeaderControls",
+                                           "wireAuthControls",
+                                           "repairDeadAnchors"
+                                       ],
+                           "importerCount":  1,
+                           "nonTestCount":  1,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/modules\\tools\\definitions\\WebPageBuilderTool.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/core\\design\\commerce.ts",
+                           "foundBy":  "marker",
+                           "bytes":  14593,
+                           "markers":  [
+                                           "setTimeoutx1"
+                                       ],
+                           "exports":  [
+                                           "cartBrief",
+                                           "cartRuntime",
+                                           "cartCss",
+                                           "needsCart"
+                                       ],
+                           "importerCount":  1,
+                           "nonTestCount":  1,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/modules\\tools\\definitions\\WebPageBuilderTool.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/core\\design\\design-system.ts",
+                           "foundBy":  "marker",
+                           "bytes":  35725,
+                           "markers":  [
+                                           "setTimeoutx1"
+                                       ],
+                           "exports":  [
+                                           "Palette",
+                                           "hslCss",
+                                           "contrastRatio",
+                                           "pickHue",
+                                           "buildPalette",
+                                           "paletteForHue",
+                                           "TypeTokens",
+                                           "paletteCss",
+                                           "darkTokenBlock",
+                                           "lightTokenBlock",
+                                           "darkFirstCss",
+                                           "designBrief",
+                                           "uiKitCss",
+                                           "uiKitScript"
+                                       ],
+                           "importerCount":  4,
+                           "nonTestCount":  4,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/core\\design\\reference.ts",
+                                             "api/src/modules\\tools\\definitions\\ProjectEditTool.ts",
+                                             "api/src/modules\\tools\\definitions\\ReactProjectTool.ts",
+                                             "api/src/modules\\tools\\definitions\\WebPageBuilderTool.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/core\\design\\forms.ts",
+                           "foundBy":  "marker",
+                           "bytes":  13714,
+                           "markers":  [
+                                           "setTimeoutx1"
+                                       ],
+                           "exports":  [
+                                           "formBrief",
+                                           "formRuntime",
+                                           "formCss",
+                                           "wireFormsToInbox"
+                                       ],
+                           "importerCount":  1,
+                           "nonTestCount":  1,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/modules\\tools\\definitions\\WebPageBuilderTool.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/core\\design\\images.ts",
+                           "foundBy":  "marker",
+                           "bytes":  50776,
+                           "markers":  [
+                                           "setTimeoutx2"
+                                       ],
+                           "exports":  [
+                                           "takeRelevanceTally",
+                                           "takeSourceOutcomes",
+                                           "ResolvedImage",
+                                           "relevanceOf",
+                                           "isRelevant",
+                                           "sourceImage",
+                                           "condenseSubject",
+                                           "gradientPlaceholder",
+                                           "IMAGE_MARKER",
+                                           "stripBrokenStyleImages",
+                                           "ImageResolution",
+                                           "hardenImgTags",
+                                           "creditsBlock",
+                                           "resolveImages",
+                                           "groundImageSrcs",
+                                           "imagesToMarkers",
+                                           "isUnservableImageSrc",
+                                           "unquoteSrc",
+                                           "ImageSrcVerdict",
+                                           "safeImageSrc",
+                                           "sanitizeContentImages"
+                                       ],
+                           "importerCount":  3,
+                           "nonTestCount":  3,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/core\\design\\row-image.ts",
+                                             "api/src/modules\\tools\\definitions\\ReactProjectTool.ts",
+                                             "api/src/modules\\tools\\definitions\\WebPageBuilderTool.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/core\\design\\photo-sources.ts",
+                           "foundBy":  "marker",
+                           "bytes":  12914,
+                           "markers":  [
+                                           "setTimeoutx1"
+                                       ],
+                           "exports":  [
+                                           "PhotoCandidate",
+                                           "SourceOutcome",
+                                           "licenceAllows",
+                                           "availableSources",
+                                           "searchAllSources"
+                                       ],
+                           "importerCount":  1,
+                           "nonTestCount":  1,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/core\\design\\images.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/core\\design\\reference.ts",
+                           "foundBy":  "marker",
+                           "bytes":  18770,
+                           "markers":  [
+                                           "browser_serverx1"
+                                       ],
+                           "exports":  [
+                                           "ReferenceTokens",
+                                           "ReferenceResult",
+                                           "findReferenceUrl",
+                                           "extractReference",
+                                           "paletteFromReference",
+                                           "referenceOverridesCss",
+                                           "referenceBrief",
+                                           "referenceSummary"
+                                       ],
+                           "importerCount":  1,
+                           "nonTestCount":  1,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/modules\\tools\\definitions\\WebPageBuilderTool.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/core\\design\\row-image.ts",
+                           "foundBy":  "marker",
+                           "bytes":  14118,
+                           "markers":  [
+                                           "setTimeoutx1",
+                                           "browser_serverx1"
+                                       ],
+                           "exports":  [
+                                           "PictureSource",
+                                           "RowPicture",
+                                           "designedCard",
+                                           "Shrinker",
+                                           "generatorUrl",
+                                           "generatorEnabled",
+                                           "PictureOptions",
+                                           "pictureFor",
+                                           "picturesFor",
+                                           "describePictures"
+                                       ],
+                           "importerCount":  1,
+                           "nonTestCount":  1,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/modules\\tools\\definitions\\ImageStudioTool.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/core\\design\\self-check.ts",
+                           "foundBy":  "marker",
+                           "bytes":  7157,
+                           "markers":  [
+                                           "setTimeoutx2"
+                                       ],
+                           "exports":  [
+                                           "selfCheckScript"
+                                       ],
+                           "importerCount":  1,
+                           "nonTestCount":  1,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/modules\\tools\\definitions\\WebPageBuilderTool.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/core\\design\\theme.ts",
+                           "foundBy":  "marker",
+                           "bytes":  16849,
+                           "markers":  [
+                                           "setIntervalx1"
+                                       ],
+                           "exports":  [
+                                           "themeCss",
+                                           "lightOverrideCss",
+                                           "RevealStyle",
+                                           "REVEAL_STYLES",
+                                           "pickRevealStyle",
+                                           "revealCss",
+                                           "themeToggleHtml",
+                                           "themeRuntime",
+                                           "revealRuntime",
+                                           "ensureThemeToggle",
+                                           "hasToggleElement"
+                                       ],
+                           "importerCount":  2,
+                           "nonTestCount":  2,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/modules\\tools\\definitions\\ReactProjectTool.ts",
+                                             "api/src/modules\\tools\\definitions\\WebPageBuilderTool.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/core\\design\\widgets.ts",
+                           "foundBy":  "marker",
+                           "bytes":  19860,
+                           "markers":  [
+                                           "setIntervalx1",
+                                           "setTimeoutx1"
+                                       ],
+                           "exports":  [
+                                           "widgetBrief",
+                                           "widgetRuntime",
+                                           "widgetCss",
+                                           "usesWidgets"
+                                       ],
+                           "importerCount":  1,
+                           "nonTestCount":  1,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/modules\\tools\\definitions\\WebPageBuilderTool.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/core\\llm\\intelligent-router.ts",
+                           "foundBy":  "marker",
+                           "bytes":  163192,
+                           "markers":  [
+                                           "setTimeoutx10"
+                                       ],
+                           "exports":  [
+                                           "ModelConfig",
+                                           "flattenMultimodalMessages",
+                                           "applyAnswerLanguage",
+                                           "sanitizeMessagesForApi",
+                                           "MODELS",
+                                           "advancedAnalyzeTask",
+                                           "generateActionPlan",
+                                           "TaskAnalysis",
+                                           "analyzeTask",
+                                           "selectBestModel",
+                                           "liveGroqModel",
+                                           "customRouteCooldownUntil",
+                                           "isUsableAnswer",
+                                           "isProviderCoolingDown",
+                                           "markProviderFailed",
+                                           "retryAfterMsFrom",
+                                           "canAttemptAfterDeadBrainLatch",
+                                           "shouldProbeLocalBrain",
+                                           "isLocalBrainOpen",
+                                           "isLocalBrainProbing",
+                                           "localBrainState",
+                                           "noteLocalBrainTimeout",
+                                           "noteLocalDuration",
+                                           "internalLeashMs",
+                                           "noteInternalLeashTimeout",
+                                           "localLeashState",
+                                           "noteLocalBrainOk",
+                                           "resetLocalBrainBreaker",
+                                           "markProviderOk",
+                                           "recentlyHealthyRetryCandidates",
+                                           "eligibleTransientRetryCandidates",
+                                           "orderByCooldown",
+                                           "RATE_LIMIT_RE",
+                                           "effectiveKeylessTimeoutMs",
+                                           "requestedProviderTimeoutMs",
+                                           "rateLimitPatienceMs",
+                                           "PROVIDER_FAILURE_PREFIX",
+                                           "isProviderFailure",
+                                           "providerProbeSucceeded",
+                                           "ProviderAttempt",
+                                           "routeToModel",
+                                           "suggestCorrection",
+                                           "verifyProviderDirect"
+                                       ],
+                           "importerCount":  29,
+                           "nonTestCount":  29,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/api\\routes\\run.ts",
+                                             "api/src/core\\agents\\ArchitectAgent.ts",
+                                             "api/src/core\\agents\\narrator.ts",
+                                             "api/src/core\\intelligence\\intent-classifier.ts",
+                                             "api/src/core\\intelligence\\IntentParser.ts",
+                                             "api/src/core\\llm.ts",
+                                             "api/src/core\\llm\\structured.ts",
+                                             "api/src/core\\orchestrator\\adaptive-dag-planner.ts",
+                                             "api/src/core\\orchestrator\\PlanningEngine.ts",
+                                             "api/src/core\\orchestrator\\tool-rerank.ts",
+                                             "api/src/core\\quality\\model-round.ts",
+                                             "api/src/modules\\tools\\definitions\\AIGeneratorTool.ts",
+                                             "api/src/modules\\tools\\definitions\\AnalysisTools.ts",
+                                             "api/src/modules\\tools\\definitions\\BrowserActionTool.ts",
+                                             "api/src/modules\\tools\\definitions\\BrowserSmartTools.ts",
+                                             "api/src/modules\\tools\\definitions\\CentralAnswerTool.ts",
+                                             "api/src/modules\\tools\\definitions\\EliteTools.ts",
+                                             "api/src/modules\\tools\\definitions\\GitHubRepoManagerTool.ts",
+                                             "api/src/modules\\tools\\definitions\\ProjectEditTool.ts",
+                                             "api/src/modules\\tools\\definitions\\ProjectPipelineTool.ts",
+                                             "api/src/modules\\tools\\definitions\\ProjectPlannerTool.ts",
+                                             "api/src/modules\\tools\\definitions\\ReactProjectTool.ts",
+                                             "api/src/modules\\tools\\definitions\\VisualQATool.ts",
+                                             "api/src/modules\\tools\\definitions\\WebPageBuilderTool.ts",
+                                             "api/src/orchestration\\AgentOrchestrator.ts",
+                                             "api/src/orchestration\\agents\\BrowserAgent.ts",
+                                             "api/src/shared\\utils\\honestResult.ts",
+                                             "api/src/system\\scripts\\verify_core_logic.ts",
+                                             "api/src/system\\scripts\\verify_tools.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/core\\llm\\local-brain.ts",
+                           "foundBy":  "marker",
+                           "bytes":  15662,
+                           "markers":  [
+                                           "setTimeoutx1"
+                                       ],
+                           "exports":  [
+                                           "LocalBrainState",
+                                           "isLocalBrainReady",
+                                           "getLocalBrainState",
+                                           "detectLocalModels",
+                                           "pickLocalModel",
+                                           "localWarmupMs",
+                                           "warmUpLocalBrain",
+                                           "ensureLocalVisionModel",
+                                           "initLocalBrain"
+                                       ],
+                           "importerCount":  3,
+                           "nonTestCount":  3,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/api\\index.ts",
+                                             "api/src/core\\llm\\intelligent-router.ts",
+                                             "api/src/core\\llm\\structured.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/core\\llm\\providers\\anthropic.ts",
+                           "foundBy":  "marker",
+                           "bytes":  5787,
+                           "markers":  [
+                                           "setTimeoutx1"
+                                       ],
+                           "exports":  [
+                                           "AnthropicProvider",
+                                           "anthropicProvider"
+                                       ],
+                           "importerCount":  1,
+                           "nonTestCount":  1,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/core\\llm\\intelligent-router.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/core\\llm\\providers\\llm7.ts",
+                           "foundBy":  "marker",
+                           "bytes":  18062,
+                           "markers":  [
+                                           "setTimeoutx1"
+                                       ],
+                           "exports":  [
+                                           "LLM7Provider",
+                                           "llm7Provider",
+                                           "PREFERRED_MODELS_FOR_TEST"
+                                       ],
+                           "importerCount":  1,
+                           "nonTestCount":  1,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/core\\llm\\providers\\registry.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/core\\llm\\providers\\pollinations.ts",
+                           "foundBy":  "marker",
+                           "bytes":  6990,
+                           "markers":  [
+                                           "setTimeoutx1"
+                                       ],
+                           "exports":  [
+                                           "POLLINATIONS_MODELS",
+                                           "PollinationsRequestOptions",
+                                           "PollinationsProvider"
+                                       ],
+                           "importerCount":  2,
+                           "nonTestCount":  2,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/core\\llm\\providers\\deepseek.ts",
+                                             "api/src/core\\llm\\providers\\registry.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/core\\llm\\structured.ts",
+                           "foundBy":  "marker",
+                           "bytes":  6472,
+                           "markers":  [
+                                           "setTimeoutx1"
+                                       ],
+                           "exports":  [
+                                           "StructuredAsk",
+                                           "askLocalStructured",
+                                           "askCloudStructured",
+                                           "askStructured"
+                                       ],
+                           "importerCount":  1,
+                           "nonTestCount":  1,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/core\\design\\schema-designer.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/core\\orchestrator\\PlanningEngine.ts",
+                           "foundBy":  "marker",
+                           "bytes":  250207,
+                           "markers":  [
+                                           "setTimeoutx2"
+                                       ],
+                           "exports":  [
+                                           "ExecutionStep",
+                                           "isLikelyUrl",
+                                           "extractExactEchoRequest",
+                                           "SITE_INBOX",
+                                           "ExecutionPlan",
+                                           "PlanningEngine"
+                                       ],
+                           "importerCount":  5,
+                           "nonTestCount":  5,
+                           "canonicalHits":  [
+                                                 "modules\\services\\AgentLoopService.ts"
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/core\\orchestrator\\adaptive-dag-planner.ts",
+                                             "api/src/modules\\services\\AgentLoopService.ts",
+                                             "api/src/modules\\tools\\definitions\\EngineeringDiscoveryTool.ts",
+                                             "api/src/modules\\tools\\definitions\\ProjectPipelineTool.ts",
+                                             "api/src/orchestration\\AgentOrchestrator.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/core\\project\\dependency-healer.ts",
+                           "foundBy":  "marker",
+                           "bytes":  4110,
+                           "markers":  [
+                                           "worker_threadsx1",
+                                           "child_processx1"
+                                       ],
+                           "exports":  [
+                                           "packageRoot",
+                                           "isInstallable",
+                                           "missingPackagesFrom"
+                                       ],
+                           "importerCount":  1,
+                           "nonTestCount":  1,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/core\\quality\\log-doctor.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/core\\quality\\app-audit.ts",
+                           "foundBy":  "marker",
+                           "bytes":  129854,
+                           "markers":  [
+                                           "setTimeoutx1",
+                                           "browser_serverx2"
+                                       ],
+                           "exports":  [
+                                           "AppAuditFinding",
+                                           "findingText",
+                                           "CompactQaFinding",
+                                           "compactQaFindings",
+                                           "AppAudit",
+                                           "AppAuditPass",
+                                           "ExternalApiRuntimeExpectation",
+                                           "isExpectedExternalApiRequest",
+                                           "externalApiRuntimeFromBrowserEvidence",
+                                           "scoreOf",
+                                           "browserWalkBudgetMs",
+                                           "CONTROL_PASS_BUDGET_MS",
+                                           "auditBuiltApp",
+                                           "formatAudit"
+                                       ],
+                           "importerCount":  9,
+                           "nonTestCount":  9,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/core\\quality\\image-semantic-qa.ts",
+                                             "api/src/core\\quality\\live-data-qa.ts",
+                                             "api/src/core\\quality\\media-review-qa.ts",
+                                             "api/src/core\\quality\\shop-qa.ts",
+                                             "api/src/modules\\tools\\definitions\\ProjectEditTool.ts",
+                                             "api/src/modules\\tools\\definitions\\ProjectPipelineTool.ts",
+                                             "api/src/modules\\tools\\definitions\\ProjectRepairTool.ts",
+                                             "api/src/modules\\tools\\definitions\\ReactProjectTool.ts",
+                                             "api/src/modules\\tools\\definitions\\UiFixTool.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/core\\quality\\behaviour-audit.ts",
+                           "foundBy":  "marker",
+                           "bytes":  122329,
+                           "markers":  [
+                                           "browser_serverx1"
+                                       ],
+                           "exports":  [
+                                           "BehaviourFinding",
+                                           "BEHAVIOUR_CODES",
+                                           "ControlResult",
+                                           "FormResult",
+                                           "BehaviourAudit",
+                                           "isVisibleFormRefusal",
+                                           "hasNewVisibleFormFeedback",
+                                           "expectsPersistentRecord",
+                                           "auditBehaviour",
+                                           "ProbeOptions",
+                                           "probeControls",
+                                           "valueFor",
+                                           "semanticTypeForField",
+                                           "probeForms",
+                                           "judgeBehaviour",
+                                           "behaviourRepairBrief"
+                                       ],
+                           "importerCount":  4,
+                           "nonTestCount":  4,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/core\\quality\\app-audit.ts",
+                                             "api/src/core\\quality\\model-round.ts",
+                                             "api/src/core\\quality\\ui-inspection.ts",
+                                             "api/src/modules\\tools\\definitions\\WebPageBuilderTool.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/core\\quality\\html-qa.ts",
+                           "foundBy":  "marker",
+                           "bytes":  43545,
+                           "markers":  [
+                                           "setTimeoutx1"
+                                       ],
+                           "exports":  [
+                                           "HtmlReview",
+                                           "maskNonMarkup",
+                                           "reviewHtml",
+                                           "stripFabricatedScripts",
+                                           "dropDeadExternalScripts",
+                                           "SplitProject",
+                                           "splitHtmlProject",
+                                           "BrowserSmoke",
+                                           "browserSmokeTest"
+                                       ],
+                           "importerCount":  1,
+                           "nonTestCount":  1,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/modules\\tools\\definitions\\WebPageBuilderTool.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/core\\quality\\model-round.ts",
+                           "foundBy":  "marker",
+                           "bytes":  25473,
+                           "markers":  [
+                                           "setTimeoutx2"
+                                       ],
+                           "exports":  [
+                                           "cssRepairable",
+                                           "cssRepairPrompt",
+                                           "safeCss",
+                                           "ModelRoundResult",
+                                           "askForCss",
+                                           "handlerRepairable",
+                                           "fileForBehaviour",
+                                           "handlerRepairPrompt",
+                                           "safeComponent",
+                                           "askForHandler"
+                                       ],
+                           "importerCount":  1,
+                           "nonTestCount":  1,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/modules\\tools\\definitions\\ReactProjectTool.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/core\\quality\\terminal-audit.ts",
+                           "foundBy":  "marker",
+                           "bytes":  22775,
+                           "markers":  [
+                                           "setTimeoutx1"
+                                       ],
+                           "exports":  [
+                                           "TerminalCheck",
+                                           "TerminalAudit",
+                                           "TerminalAuditOptions",
+                                           "failingIds",
+                                           "auditInTerminal"
+                                       ],
+                           "importerCount":  1,
+                           "nonTestCount":  1,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/modules\\tools\\definitions\\ReactProjectTool.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/core\\quality\\visual-audit.ts",
+                           "foundBy":  "marker",
+                           "bytes":  55484,
+                           "markers":  [
+                                           "browser_serverx1"
+                                       ],
+                           "exports":  [
+                                           "VisualFinding",
+                                           "VisualAudit",
+                                           "auditVisually",
+                                           "visualRepairBrief"
+                                       ],
+                           "importerCount":  1,
+                           "nonTestCount":  1,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/modules\\tools\\definitions\\WebPageBuilderTool.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/core\\session\\attended-run.ts",
+                           "foundBy":  "marker",
+                           "bytes":  10078,
+                           "markers":  [
+                                           "setTimeoutx1"
+                                       ],
+                           "exports":  [
+                                           "CANCELLED",
+                                           "Cancellable",
+                                           "registerRun",
+                                           "releaseRun",
+                                           "releaseHandle",
+                                           "stopRun",
+                                           "isRunning",
+                                           "_clearRuns",
+                                           "AttendOptions",
+                                           "humanElapsed",
+                                           "attendRun"
+                                       ],
+                           "importerCount":  4,
+                           "nonTestCount":  4,
+                           "canonicalHits":  [
+                                                 "modules\\services\\ToolService.ts",
+                                                 "modules\\services\\AgentLoopService.ts"
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/api\\routes\\run.ts",
+                                             "api/src/modules\\services\\AgentLoopService.ts",
+                                             "api/src/modules\\services\\ToolService.ts",
+                                             "api/src/orchestration\\AgentOrchestrator.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/core\\session\\session-log-store.ts",
+                           "foundBy":  "marker",
+                           "bytes":  5489,
+                           "markers":  [
+                                           "setTimeoutx1"
+                                       ],
+                           "exports":  [
+                                           "MAX_LINES_PER_SESSION",
+                                           "MAX_PERSISTED_SESSIONS",
+                                           "loadSessionLogs",
+                                           "recordSessionEvent",
+                                           "sessionLogLines"
+                                       ],
+                           "importerCount":  2,
+                           "nonTestCount":  2,
+                           "canonicalHits":  [
+                                                 "api\\app.ts"
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/api\\app.ts",
+                                             "api/src/api\\controllers\\sessionController.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/kernel\\ExecutionEnforcer.ts",
+                           "foundBy":  "marker",
+                           "bytes":  6311,
+                           "markers":  [
+                                           "child_processx5"
+                                       ],
+                           "exports":  [
+                                           "ExecutionEnforcer"
+                                       ],
+                           "importerCount":  1,
+                           "nonTestCount":  1,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/api\\index.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/kernel\\ExecutionEngine.ts",
+                           "foundBy":  "marker",
+                           "bytes":  51293,
+                           "markers":  [
+                                           "child_processx6",
+                                           "setIntervalx1",
+                                           "setTimeoutx9"
+                                       ],
+                           "exports":  [
+                                           "ExecutionRequest",
+                                           "ExecutionResult",
+                                           "ExecutionOptions",
+                                           "ExecutionSession",
+                                           "ExecutionEngine",
+                                           "executionEngine"
+                                       ],
+                           "importerCount":  26,
+                           "nonTestCount":  26,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/api\\routes\\system.ts",
+                                             "api/src/core\\quality\\ensure-chromium.ts",
+                                             "api/src/core\\quality\\log-doctor.ts",
+                                             "api/src/core\\quality\\python-runtime.ts",
+                                             "api/src/core\\quality\\terminal-audit.ts",
+                                             "api/src/core\\quality\\terminal-session.ts",
+                                             "api/src/kernel\\ExecutionEnforcer.ts",
+                                             "api/src/kernel\\ExecutionGateway.ts",
+                                             "api/src/kernel\\ExecutionGuard.ts",
+                                             "api/src/modules\\services\\BinaryService.ts",
+                                             "api/src/modules\\services\\DeployManager.ts",
+                                             "api/src/modules\\terminal\\terminal-kernel.ts",
+                                             "api/src/modules\\tools\\definitions\\ApiProjectTool.ts",
+                                             "api/src/modules\\tools\\definitions\\DeadCodeTool.ts",
+                                             "api/src/modules\\tools\\definitions\\DockerManagerTool.ts",
+                                             "api/src/modules\\tools\\definitions\\ErrorRecoveryTool.ts",
+                                             "api/src/modules\\tools\\definitions\\GitLocalWorkflowTool.ts",
+                                             "api/src/modules\\tools\\definitions\\GitTools.ts",
+                                             "api/src/modules\\tools\\definitions\\ImageStudioTool.ts",
+                                             "api/src/modules\\tools\\definitions\\ImportProjectTool.ts",
+                                             "api/src/modules\\tools\\definitions\\ProjectEditTool.ts",
+                                             "api/src/modules\\tools\\definitions\\ProjectRepairTool.ts",
+                                             "api/src/modules\\tools\\definitions\\ReactProjectTool.ts",
+                                             "api/src/modules\\tools\\definitions\\RepoSelfCodingTools.ts",
+                                             "api/src/modules\\tools\\definitions\\SystemTools.ts",
+                                             "api/src/modules\\tools\\definitions\\VideoActionTool.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/kernel\\ExecutionGuard.ts",
+                           "foundBy":  "marker",
+                           "bytes":  4404,
+                           "markers":  [
+                                           "child_processx2"
+                                       ],
+                           "exports":  [
+                                           "ExecutionGuard"
+                                       ],
+                           "importerCount":  1,
+                           "nonTestCount":  1,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/api\\index.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/modules\\browser\\challenge.ts",
+                           "foundBy":  "marker",
+                           "bytes":  7825,
+                           "markers":  [
+                                           "setTimeoutx1"
+                                       ],
+                           "exports":  [
+                                           "ChallengeKind",
+                                           "Challenge",
+                                           "detectChallenge",
+                                           "HandoffResult",
+                                           "waitForHumanToClear",
+                                           "agentSearchUrl"
+                                       ],
+                           "importerCount":  6,
+                           "nonTestCount":  6,
+                           "canonicalHits":  [
+                                                 "modules\\services\\ToolService.ts"
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/modules\\browser\\reactLoop.ts",
+                                             "api/src/modules\\browser\\runner.ts",
+                                             "api/src/modules\\services\\ToolService.ts",
+                                             "api/src/modules\\tools\\definitions\\BrowserRunTool.ts",
+                                             "api/src/modules\\tools\\definitions\\PageFixTool.ts",
+                                             "api/src/orchestration\\agents\\BrowserAgent.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/modules\\browser\\interactions.ts",
+                           "foundBy":  "marker",
+                           "bytes":  13543,
+                           "markers":  [
+                                           "setTimeoutx1"
+                                       ],
+                           "exports":  [
+                                           "Interaction",
+                                           "NaturalMovement",
+                                           "AdvancedInteractionSystem",
+                                           "advancedInteractions"
+                                       ],
+                           "importerCount":  1,
+                           "nonTestCount":  1,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/modules\\browser\\executor.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/modules\\browser\\manager.ts",
+                           "foundBy":  "marker",
+                           "bytes":  65856,
+                           "markers":  [
+                                           "setIntervalx2",
+                                           "setTimeoutx3",
+                                           "browser_worker_consumerx4",
+                                           "browser_serverx10"
+                                       ],
+                           "exports":  [
+                                           "saveBrowserSession",
+                                           "hasSavedBrowserSession",
+                                           "clearBrowserSession",
+                                           "isPersistentBrowserMode",
+                                           "isUserRealProfileMode",
+                                           "getUserRealBrowserProfile",
+                                           "freshBrowserProfileDir",
+                                           "getBrowserProfileDir",
+                                           "cloneRealBrowserProfile",
+                                           "hasBrowserConsent",
+                                           "grantBrowserConsent",
+                                           "revokeBrowserConsent",
+                                           "hasLiveBrowserPage",
+                                           "getBrowserViewport",
+                                           "findChromiumExecutable",
+                                           "getChromiumLaunchOptions",
+                                           "pauseBrowserCaptureForPage",
+                                           "screenshotSessionJpeg",
+                                           "withBrowserConcurrency",
+                                           "touchSession",
+                                           "browserErrorLogPath",
+                                           "noteBrowserFailure",
+                                           "createSession",
+                                           "getBrowserSession",
+                                           "setStreamMask",
+                                           "startStreaming",
+                                           "liveBrowserSessionCount",
+                                           "resumeStreamingIfWatched",
+                                           "warmBrowserSession",
+                                           "setSessionViewport",
+                                           "sessionViewport",
+                                           "stopStreaming",
+                                           "stopSession",
+                                           "healthcheckBrowser"
+                                       ],
+                           "importerCount":  25,
+                           "nonTestCount":  24,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/api\\routes\\browser.ts",
+                                             "api/src/api\\routes\\status.ts",
+                                             "api/src/api\\ws.ts",
+                                             "api/src/core\\design\\reference.ts",
+                                             "api/src/core\\design\\row-image.ts",
+                                             "api/src/core\\orchestrator\\PlanningEngine.ts",
+                                             "api/src/core\\quality\\app-audit.ts",
+                                             "api/src/core\\quality\\behaviour-audit.ts",
+                                             "api/src/core\\quality\\html-qa.ts",
+                                             "api/src/core\\quality\\ui-inspection.ts",
+                                             "api/src/core\\quality\\visual-audit.ts",
+                                             "api/src/modules\\browser\\executor.ts",
+                                             "api/src/modules\\browser\\reactLoop.ts",
+                                             "api/src/modules\\browser\\runner.ts",
+                                             "api/src/modules\\tools\\definitions\\BrowserActionTool.ts",
+                                             "api/src/modules\\tools\\definitions\\BrowserRunTool.ts",
+                                             "api/src/modules\\tools\\definitions\\BrowserSmartTools.ts",
+                                             "api/src/modules\\tools\\definitions\\BrowserVisionTool.ts",
+                                             "api/src/modules\\tools\\definitions\\PageFixTool.ts",
+                                             "api/src/modules\\tools\\definitions\\ProjectPipelineTool.ts",
+                                             "api/src/modules\\tools\\definitions\\ProjectRepairTool.ts",
+                                             "api/src/modules\\tools\\definitions\\ReactProjectTool.ts",
+                                             "api/src/modules\\tools\\definitions\\ScreenshotTool.ts",
+                                             "api/src/modules\\tools\\definitions\\WebPageBuilderTool.ts",
+                                             "api/src/tests\\browser_subsystem_test.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/modules\\browser\\native-capture.ts",
+                           "foundBy":  "marker",
+                           "bytes":  3290,
+                           "markers":  [
+                                           "setTimeoutx1"
+                                       ],
+                           "exports":  [
+                                           "withCaptureSession",
+                                           "captureNativeJpeg"
+                                       ],
+                           "importerCount":  2,
+                           "nonTestCount":  2,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/modules\\browser\\manager.ts",
+                                             "api/src/modules\\browser\\masked-capture.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/modules\\browser\\navigation.ts",
+                           "foundBy":  "marker",
+                           "bytes":  10823,
+                           "markers":  [
+                                           "setTimeoutx1"
+                                       ],
+                           "exports":  [
+                                           "NavigablePage",
+                                           "NavigationOutcomeKind",
+                                           "NavigationAttempt",
+                                           "NavigationReadiness",
+                                           "NavigationResult",
+                                           "NavigationOptions",
+                                           "transientNavigationError",
+                                           "invalidNavigationTarget",
+                                           "probeNavigationReadiness",
+                                           "gotoResilient"
+                                       ],
+                           "importerCount":  2,
+                           "nonTestCount":  2,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/api\\routes\\browser.ts",
+                                             "api/src/modules\\browser\\executor.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/modules\\browser\\navigation-diagnostics.ts",
+                           "foundBy":  "marker",
+                           "bytes":  886,
+                           "markers":  [
+                                           "setTimeoutx1"
+                                       ],
+                           "exports":  [
+                                           "DocumentState",
+                                           "normalizeDocumentState",
+                                           "readDocumentState"
+                                       ],
+                           "importerCount":  1,
+                           "nonTestCount":  1,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/api\\routes\\browser.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/modules\\browser\\secrets.ts",
+                           "foundBy":  "marker",
+                           "bytes":  6184,
+                           "markers":  [
+                                           "browser_worker_consumerx1"
+                                       ],
+                           "exports":  [
+                                           "resolveSecretsInText",
+                                           "rewriteInlineLoginCredentialsToSecrets",
+                                           "redactSecretsFromString"
+                                       ],
+                           "importerCount":  12,
+                           "nonTestCount":  12,
+                           "canonicalHits":  [
+                                                 "modules\\services\\ToolService.ts"
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/api\\controllers\\sessionController.ts",
+                                             "api/src/api\\routes\\browserAgent.ts",
+                                             "api/src/api\\routes\\github.ts",
+                                             "api/src/modules\\browser\\executor.ts",
+                                             "api/src/modules\\browser\\runner.ts",
+                                             "api/src/modules\\services\\ToolService.ts",
+                                             "api/src/modules\\services\\WorkspaceService.ts",
+                                             "api/src/modules\\tools\\definitions\\BrowserRunTool.ts",
+                                             "api/src/modules\\tools\\definitions\\DeployPagesTool.ts",
+                                             "api/src/modules\\tools\\definitions\\GitHubPRTool.ts",
+                                             "api/src/modules\\tools\\definitions\\GitHubRepoManagerTool.ts",
+                                             "api/src/modules\\tools\\definitions\\GitTools.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/modules\\browser\\telemetry.ts",
+                           "foundBy":  "marker",
+                           "bytes":  13276,
+                           "markers":  [
+                                           "setIntervalx1"
+                                       ],
+                           "exports":  [
+                                           "BrowserRuntimeSnapshot",
+                                           "getBrowserTelemetrySnapshot",
+                                           "getBrowserTelemetryErrorCounts",
+                                           "ensureBrowserTelemetry",
+                                           "recordStreamFrame",
+                                           "recordBrowserAction",
+                                           "disposeBrowserTelemetry"
+                                       ],
+                           "importerCount":  3,
+                           "nonTestCount":  3,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/modules\\browser\\executor.ts",
+                                             "api/src/modules\\browser\\manager.ts",
+                                             "api/src/modules\\browser\\reactLoop.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/modules\\browser\\wsHub.ts",
+                           "foundBy":  "marker",
+                           "bytes":  5783,
+                           "markers":  [
+                                           "setTimeoutx1"
+                                       ],
+                           "exports":  [
+                                           "setBrowserActionObserver",
+                                           "canAccessBrowserSession",
+                                           "attachBrowserWss",
+                                           "panelWatcherCount",
+                                           "waitForPanelWatcher",
+                                           "broadcastBrowserEvent"
+                                       ],
+                           "importerCount":  17,
+                           "nonTestCount":  17,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/api\\routes\\browser.ts",
+                                             "api/src/api\\ws.ts",
+                                             "api/src/core\\quality\\app-audit.ts",
+                                             "api/src/core\\quality\\audit-eyes.ts",
+                                             "api/src/modules\\browser\\challenge.ts",
+                                             "api/src/modules\\browser\\executor.ts",
+                                             "api/src/modules\\browser\\manager.ts",
+                                             "api/src/modules\\browser\\reactLoop.ts",
+                                             "api/src/modules\\browser\\runner.ts",
+                                             "api/src/modules\\browser\\telemetry.ts",
+                                             "api/src/modules\\tools\\definitions\\BrowserRunTool.ts",
+                                             "api/src/modules\\tools\\definitions\\BrowserSmartTools.ts",
+                                             "api/src/modules\\tools\\definitions\\ProjectEditTool.ts",
+                                             "api/src/modules\\tools\\definitions\\ProjectPipelineTool.ts",
+                                             "api/src/modules\\tools\\definitions\\ProjectRepairTool.ts",
+                                             "api/src/modules\\tools\\definitions\\ReactProjectTool.ts",
+                                             "api/src/modules\\tools\\definitions\\WebPageBuilderTool.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/modules\\extension\\gateway.ts",
+                           "foundBy":  "marker",
+                           "bytes":  4775,
+                           "markers":  [
+                                           "setTimeoutx1"
+                                       ],
+                           "exports":  [
+                                           "isExtensionConnected",
+                                           "connectedUserCount",
+                                           "sendCommand",
+                                           "attachExtensionWss"
+                                       ],
+                           "importerCount":  4,
+                           "nonTestCount":  4,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/api\\routes\\extension.ts",
+                                             "api/src/api\\routes\\status.ts",
+                                             "api/src/api\\ws.ts",
+                                             "api/src/modules\\tools\\definitions\\UserBrowserTool.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/modules\\services\\DeployManager.ts",
+                           "foundBy":  "marker",
+                           "bytes":  20105,
+                           "markers":  [
+                                           "setIntervalx1",
+                                           "setTimeoutx3"
+                                       ],
+                           "exports":  [
+                                           "DeployManager",
+                                           "deployManager"
+                                       ],
+                           "importerCount":  3,
+                           "nonTestCount":  3,
+                           "canonicalHits":  [
+                                                 "api\\app.ts"
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/api\\app.ts",
+                                             "api/src/api\\routes\\admin.ts",
+                                             "api/src/api\\routes\\webhooks.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/modules\\services\\ToolService.ts",
+                           "foundBy":  "marker",
+                           "bytes":  52104,
+                           "markers":  [
+                                           "setIntervalx1"
+                                       ],
+                           "exports":  [
+                                           "formatToolError",
+                                           "ToolContext",
+                                           "TOOL_ALIASES",
+                                           "executeTool"
+                                       ],
+                           "importerCount":  17,
+                           "nonTestCount":  17,
+                           "canonicalHits":  [
+                                                 "modules\\services\\AgentLoopService.ts",
+                                                 "modules\\tools\\definitions\\PhaseExecutorTool.ts"
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/api\\index.ts",
+                                             "api/src/api\\routes\\approvals.ts",
+                                             "api/src/api\\routes\\github.ts",
+                                             "api/src/api\\routes\\tools.ts",
+                                             "api/src/core\\orchestrator\\PlanningEngine.ts",
+                                             "api/src/core\\orchestrator\\plan-tools.ts",
+                                             "api/src/modules\\services\\AgentLoopService.ts",
+                                             "api/src/modules\\services\\SelfFixExecutionService.ts",
+                                             "api/src/modules\\tools\\definitions\\ApiProjectTool.ts",
+                                             "api/src/modules\\tools\\definitions\\AutoTesterTool.ts",
+                                             "api/src/modules\\tools\\definitions\\DeployPagesTool.ts",
+                                             "api/src/modules\\tools\\definitions\\PhaseExecutorTool.ts",
+                                             "api/src/modules\\tools\\definitions\\ProjectPipelineTool.ts",
+                                             "api/src/modules\\tools\\definitions\\WebDevelopmentTools.ts",
+                                             "api/src/orchestration\\AgentOrchestrator.ts",
+                                             "api/src/orchestration\\agents\\SecurityAgent.ts",
+                                             "api/src/system\\scripts\\verify_tools.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/modules\\tools\\definitions\\AIGeneratorTool.ts",
+                           "foundBy":  "marker",
+                           "bytes":  69539,
+                           "markers":  [
+                                           "worker_threadsx1",
+                                           "child_processx1",
+                                           "setIntervalx1",
+                                           "setTimeoutx2"
+                                       ],
+                           "exports":  [
+                                           "unparenthesizedLogicalTernaryError",
+                                           "LLM_GENERATION_DEADLINE_MS",
+                                           "ENGINEERING_ARTIFACT_PROVIDER_DEADLINE_MS",
+                                           "ENGINEERING_LLM_GENERATION_DEADLINE_MS",
+                                           "AIGeneratorTool"
+                                       ],
+                           "importerCount":  2,
+                           "nonTestCount":  2,
+                           "canonicalHits":  [
+                                                 "modules\\tools\\registry.ts"
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/modules\\tools\\definitions\\ReactProjectTool.ts",
+                                             "api/src/modules\\tools\\registry.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/modules\\tools\\definitions\\ApiProjectTool.ts",
+                           "foundBy":  "marker",
+                           "bytes":  205328,
+                           "markers":  [
+                                           "setTimeoutx1"
+                                       ],
+                           "exports":  [
+                                           "matchingLocalNpmCache",
+                                           "apiResourceForKind",
+                                           "ApiColumn",
+                                           "CATALOGUE_COLUMNS",
+                                           "apiPrimaryColumnsForApp",
+                                           "ApiPrimarySelection",
+                                           "selectApiPrimary",
+                                           "ApiRelation",
+                                           "apiRelationForRequest",
+                                           "apiColumnsForRequest",
+                                           "isFeedResource",
+                                           "entities",
+                                           "entityCounts",
+                                           "mountEntities",
+                                           "normalizeEmail",
+                                           "hashPassword",
+                                           "verifyPassword",
+                                           "signToken",
+                                           "verifyToken",
+                                           "throttleKey",
+                                           "isLocked",
+                                           "noteMiss",
+                                           "clearMisses",
+                                           "requireAuth",
+                                           "optionalAuth",
+                                           "ROLES",
+                                           "canWrite",
+                                           "ownRowsOnly",
+                                           "canManageUsers",
+                                           "isRole",
+                                           "requireRole",
+                                           "requireWrite",
+                                           "scopeOf",
+                                           "mayTouch",
+                                           "seed",
+                                           "seedOwner",
+                                           "ApiProjectTool"
+                                       ],
+                           "importerCount":  2,
+                           "nonTestCount":  2,
+                           "canonicalHits":  [
+                                                 "modules\\tools\\registry.ts"
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/modules\\tools\\definitions\\ReactProjectTool.ts",
+                                             "api/src/modules\\tools\\registry.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/modules\\tools\\definitions\\BrowserSmartTools.ts",
+                           "foundBy":  "marker",
+                           "bytes":  154851,
+                           "markers":  [
+                                           "setIntervalx1",
+                                           "setTimeoutx1"
+                                       ],
+                           "exports":  [
+                                           "PANEL_BROWSER_SID",
+                                           "BrowserExtractDataTool",
+                                           "BrowserCheckLinksTool",
+                                           "BrowserPerformanceTool",
+                                           "BrowserSEOAuditTool",
+                                           "BrowserConsoleScanTool",
+                                           "BrowserSavePdfTool",
+                                           "BrowserReadabilityTool",
+                                           "BrowserContrastAuditTool",
+                                           "BrowserA11yDeepTool",
+                                           "BrowserExtractMetaTool",
+                                           "BrowserCompareTool",
+                                           "BrowserSummarizeTool",
+                                           "BrowserUIAuditTool",
+                                           "BrowserFillFormTool",
+                                           "BrowserTranslateTool",
+                                           "BrowserResponsiveCheckTool",
+                                           "BrowserFindTextTool",
+                                           "BrowserDesignTokensTool",
+                                           "BrowserClickTool",
+                                           "BrowserFullPageShotTool",
+                                           "BrowserSmartAgentTool",
+                                           "BrowserAutofixTool",
+                                           "BrowserConsentTool",
+                                           "BrowserSearchTool",
+                                           "BrowserOpenTool"
+                                       ],
+                           "importerCount":  8,
+                           "nonTestCount":  8,
+                           "canonicalHits":  [
+                                                 "modules\\tools\\registry.ts"
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/modules\\tools\\definitions\\PageFixTool.ts",
+                                             "api/src/modules\\tools\\definitions\\ProjectEditTool.ts",
+                                             "api/src/modules\\tools\\definitions\\ProjectPipelineTool.ts",
+                                             "api/src/modules\\tools\\definitions\\ProjectRepairTool.ts",
+                                             "api/src/modules\\tools\\definitions\\ReactProjectTool.ts",
+                                             "api/src/modules\\tools\\definitions\\UiFixTool.ts",
+                                             "api/src/modules\\tools\\definitions\\WebPageBuilderTool.ts",
+                                             "api/src/modules\\tools\\registry.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/modules\\tools\\definitions\\BrowserVisionTool.ts",
+                           "foundBy":  "marker",
+                           "bytes":  3275,
+                           "markers":  [
+                                           "browser_serverx1"
+                                       ],
+                           "exports":  [
+                                           "BrowserVisionTool"
+                                       ],
+                           "importerCount":  1,
+                           "nonTestCount":  1,
+                           "canonicalHits":  [
+                                                 "modules\\tools\\registry.ts"
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/modules\\tools\\registry.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/modules\\tools\\definitions\\BulkFileGeneratorTool.ts",
+                           "foundBy":  "marker",
+                           "bytes":  3978,
+                           "markers":  [
+                                           "setTimeoutx1"
+                                       ],
+                           "exports":  [
+                                           "BulkFileGeneratorTool"
+                                       ],
+                           "importerCount":  1,
+                           "nonTestCount":  1,
+                           "canonicalHits":  [
+                                                 "modules\\tools\\registry.ts"
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/modules\\tools\\registry.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/modules\\tools\\definitions\\DeployProjectTool.ts",
+                           "foundBy":  "marker",
+                           "bytes":  12168,
+                           "markers":  [
+                                           "setTimeoutx1"
+                                       ],
+                           "exports":  [
+                                           "DeployProjectTool"
+                                       ],
+                           "importerCount":  1,
+                           "nonTestCount":  1,
+                           "canonicalHits":  [
+                                                 "modules\\tools\\registry.ts"
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/modules\\tools\\registry.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/modules\\tools\\definitions\\GitHubRepoManagerTool.ts",
+                           "foundBy":  "marker",
+                           "bytes":  31715,
+                           "markers":  [
+                                           "setTimeoutx2"
+                                       ],
+                           "exports":  [
+                                           "githubReportLanguage",
+                                           "GitHubRepoManagerTool"
+                                       ],
+                           "importerCount":  2,
+                           "nonTestCount":  2,
+                           "canonicalHits":  [
+                                                 "modules\\tools\\registry.ts"
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/api\\routes\\github.ts",
+                                             "api/src/modules\\tools\\registry.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/modules\\tools\\definitions\\GitTools.ts",
+                           "foundBy":  "marker",
+                           "bytes":  13655,
+                           "markers":  [
+                                           "child_processx1"
+                                       ],
+                           "exports":  [
+                                           "GitOpsTool"
+                                       ],
+                           "importerCount":  1,
+                           "nonTestCount":  1,
+                           "canonicalHits":  [
+                                                 "modules\\tools\\registry.ts"
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/modules\\tools\\registry.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/modules\\tools\\definitions\\ImageStudioTool.ts",
+                           "foundBy":  "marker",
+                           "bytes":  10326,
+                           "markers":  [
+                                           "setTimeoutx2"
+                                       ],
+                           "exports":  [
+                                           "ImageStudioTool"
+                                       ],
+                           "importerCount":  1,
+                           "nonTestCount":  1,
+                           "canonicalHits":  [
+                                                 "modules\\tools\\registry.ts"
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/modules\\tools\\registry.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/modules\\tools\\definitions\\ProjectPlannerTool.ts",
+                           "foundBy":  "marker",
+                           "bytes":  131121,
+                           "markers":  [
+                                           "setTimeoutx1"
+                                       ],
+                           "exports":  [
+                                           "ProjectPlannerTool"
+                                       ],
+                           "importerCount":  1,
+                           "nonTestCount":  1,
+                           "canonicalHits":  [
+                                                 "modules\\tools\\registry.ts"
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/modules\\tools\\registry.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/modules\\tools\\definitions\\ProjectRepairTool.ts",
+                           "foundBy":  "marker",
+                           "bytes":  26666,
+                           "markers":  [
+                                           "setTimeoutx1"
+                                       ],
+                           "exports":  [
+                                           "recoverPackagedQaAuth",
+                                           "verifiedRepairServeUrl",
+                                           "ProjectRepairTool"
+                                       ],
+                           "importerCount":  1,
+                           "nonTestCount":  1,
+                           "canonicalHits":  [
+                                                 "modules\\tools\\registry.ts"
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/modules\\tools\\registry.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/modules\\tools\\definitions\\ProjectRunTool.ts",
+                           "foundBy":  "marker",
+                           "bytes":  100681,
+                           "markers":  [
+                                           "child_processx1",
+                                           "setTimeoutx3"
+                                       ],
+                           "exports":  [
+                                           "isLoopbackPortOpen",
+                                           "buildProbeList",
+                                           "dependencyFreeRecordsBundleRoot",
+                                           "canAdoptRecordedLive",
+                                           "liveProjectRecord",
+                                           "detectStart",
+                                           "shouldUseActiveProjectDirectly",
+                                           "resolveRunnableProject",
+                                           "placeholderLifecycleScriptError",
+                                           "launchabilityError",
+                                           "reconcileMissingRuntimeTarget",
+                                           "reconcileMissingRuntimeImports",
+                                           "localFileExistsWithExactCase",
+                                           "missingLocalRuntimeImports",
+                                           "missingRuntimeDependencies",
+                                           "launchPrerequisiteError",
+                                           "declaredLaunchPrerequisitePackages",
+                                           "ProjectRunTool",
+                                           "theServerThisSessionLeftRunning",
+                                           "ProjectStopTool"
+                                       ],
+                           "importerCount":  4,
+                           "nonTestCount":  4,
+                           "canonicalHits":  [
+                                                 "modules\\tools\\registry.ts"
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/modules\\services\\SelfFixService.ts",
+                                             "api/src/modules\\tools\\definitions\\AIGeneratorTool.ts",
+                                             "api/src/modules\\tools\\definitions\\ProjectPipelineTool.ts",
+                                             "api/src/modules\\tools\\registry.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/modules\\tools\\definitions\\react-app-templates.ts",
+                           "foundBy":  "marker",
+                           "bytes":  362751,
+                           "markers":  [
+                                           "setIntervalx2",
+                                           "setTimeoutx5"
+                                       ],
+                           "exports":  [
+                                           "requestedBoardField",
+                                           "guardRequiredInput",
+                                           "AppBuildOptions",
+                                           "fileAppContentJs",
+                                           "content",
+                                           "fileAppShellJsx",
+                                           "App",
+                                           "fileAppMainJsx",
+                                           "fileAppIndexHtml",
+                                           "fileAppStoreJs",
+                                           "createStore",
+                                           "useStore",
+                                           "uid",
+                                           "todayISO",
+                                           "isToday",
+                                           "computeMetric",
+                                           "groupTotals",
+                                           "toCsv",
+                                           "pickImage",
+                                           "cardFor",
+                                           "imageOf",
+                                           "download",
+                                           "getToken",
+                                           "getRole",
+                                           "canWriteNow",
+                                           "isOwnerNow",
+                                           "apiLogin",
+                                           "apiLogout",
+                                           "apiMe",
+                                           "refusalOf",
+                                           "apiUsers",
+                                           "apiAddUser",
+                                           "apiSetRole",
+                                           "apiRemoveUser",
+                                           "apiList",
+                                           "apiCreate",
+                                           "apiPost",
+                                           "apiSibling",
+                                           "apiSiblingLive",
+                                           "apiListOn",
+                                           "apiCreateOn",
+                                           "apiUpdateOn",
+                                           "apiDeleteOn",
+                                           "apiGet",
+                                           "apiUpdate",
+                                           "apiDelete",
+                                           "fileLedgerAppJsx",
+                                           "LedgerApp",
+                                           "fileLedgerCss",
+                                           "fileRecordsControllerJs",
+                                           "blank",
+                                           "useRecordsController",
+                                           "fileRecordsWrapperJsx",
+                                           "RecordsApp",
+                                           "fileRecordsAppJsx",
+                                           "fileRecordsViewJsx",
+                                           "fileMapAppJsx",
+                                           "MapApp",
+                                           "fileChatAppJsx",
+                                           "ChatApp",
+                                           "fileWeatherAppJsx",
+                                           "WeatherApp",
+                                           "fileCalculatorAppJsx",
+                                           "CalculatorApp",
+                                           "fileAppCss",
+                                           "npmPackageNameForTest",
+                                           "fileAppPackageJson",
+                                           "GroundedSchemaExpectation",
+                                           "fileAppSmokeTest",
+                                           "fileTablesAdminJsx",
+                                           "TABLES",
+                                           "TablesAdmin",
+                                           "fileAccountsJsx",
+                                           "Accounts",
+                                           "fileAccountsCss",
+                                           "fileTablesAdminCss",
+                                           "fileCalculatorCss",
+                                           "fileWorkflowAppJsx",
+                                           "CustomApp",
+                                           "fileWorkflowCss",
+                                           "buildAppFiles",
+                                           "fileProductivityAppJsx",
+                                           "ProductivityApp",
+                                           "fileProductivityCss",
+                                           "fileFinanceAppJsx",
+                                           "FinanceApp",
+                                           "fileSocialAppJsx",
+                                           "SocialApp",
+                                           "fileShopAppJsx",
+                                           "ShopApp",
+                                           "fileShopCss"
+                                       ],
+                           "importerCount":  2,
+                           "nonTestCount":  2,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/modules\\tools\\definitions\\ProjectEditTool.ts",
+                                             "api/src/modules\\tools\\definitions\\ReactProjectTool.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/modules\\tools\\definitions\\ReactProjectTool.ts",
+                           "foundBy":  "marker",
+                           "bytes":  563029,
+                           "markers":  [
+                                           "child_processx1",
+                                           "setTimeoutx9"
+                                       ],
+                           "exports":  [
+                                           "REACT_NETWORK_INSTALL_TIMEOUTS",
+                                           "LOCAL_RECORDS_FALLBACK_INSTALL_TIMEOUTS",
+                                           "installTimeoutsForRecordsRecovery",
+                                           "shouldRepairInterruptedNativeBuildTools",
+                                           "isExternalIntegrationArtifact",
+                                           "wantedSeedCountFor",
+                                           "requestDerivedEngineFallbackEligible",
+                                           "ensureReactRuntimeImport",
+                                           "repairRecordsViewBlankImport",
+                                           "repairRecordsViewToggleControl",
+                                           "repairRecordsViewVisualBaseline",
+                                           "requestDerivedRecordsPresentation",
+                                           "canRetireSupersededLiveServer",
+                                           "deliveryErrorForAcceptance",
+                                           "BuildOutcome",
+                                           "deliveryErrorForBuild",
+                                           "buildDeliveryBlocked",
+                                           "canBuildDependencyFreeRecordsApp",
+                                           "sourceRepairAllowedForArtifact",
+                                           "writeDependencyFreeRecordsBundle",
+                                           "deliveryErrorForVisualAudit",
+                                           "measuredAppAbilities",
+                                           "requestSpokenCapabilities",
+                                           "deliveryVoiceOverlap",
+                                           "ReconciledDeliveryVoices",
+                                           "reconcileDeliveryVoices",
+                                           "gapsProvenByAcceptance",
+                                           "previewUrlFromStatus",
+                                           "verifiedPreviewUrl",
+                                           "PROJECT_SLUG_FOR_TEST",
+                                           "projectDirNameForTest",
+                                           "PROJECT_DIR_NAME_MAX_LENGTH",
+                                           "earlyProjectDeclaration",
+                                           "requestFidelityMismatch",
+                                           "requestFidelityEvidenceUnavailable",
+                                           "capabilityEvidenceNotice",
+                                           "RequestFidelityVerdictForTest",
+                                           "deriveRequestFidelity",
+                                           "CapabilityGapRepairResult",
+                                           "repairCapabilityGapsOnce",
+                                           "isReactViteProjectDir",
+                                           "hasUsableReactDependencyTree",
+                                           "withoutViteConfigForBuild",
+                                           "portableViteBuildArgs",
+                                           "applyBundledPhotographyFallback",
+                                           "reuseLocalReactDependencies",
+                                           "scopedNpmCache",
+                                           "cleanReinstallReactDependencies",
+                                           "QuarantinedEsbuildRepairResult",
+                                           "repairQuarantinedEsbuildInstall",
+                                           "NativeBuildTool",
+                                           "NativeBuildToolProbe",
+                                           "nativeBuildToolRepairSpec",
+                                           "interruptedWindowsNativeTools",
+                                           "findBrokenNativeBuildTool",
+                                           "fetchHeroImage",
+                                           "fetchCardImages",
+                                           "mergeCredits",
+                                           "AppPage",
+                                           "pagesForKind",
+                                           "wantsMultiPage",
+                                           "artifactLanguageIsArabic",
+                                           "appPagesFor",
+                                           "heroLayoutFor",
+                                           "sectionsForKind",
+                                           "sectionsForRequest",
+                                           "heroSecondaryDestination",
+                                           "requestDrivenServiceProducts",
+                                           "usePath",
+                                           "Link",
+                                           "pages",
+                                           "App",
+                                           "Navbar",
+                                           "App",
+                                           "content",
+                                           "Navbar",
+                                           "Hero",
+                                           "Gallery",
+                                           "Features",
+                                           "Contact",
+                                           "Menu",
+                                           "Products",
+                                           "OrderButton",
+                                           "Pricing",
+                                           "Testimonials",
+                                           "AdminPanel",
+                                           "ProductView",
+                                           "Story",
+                                           "Steps",
+                                           "Compare",
+                                           "Location",
+                                           "Team",
+                                           "Faq",
+                                           "Stats",
+                                           "Cta",
+                                           "Footer",
+                                           "useReveal",
+                                           "ReactProjectTool"
+                                       ],
+                           "importerCount":  2,
+                           "nonTestCount":  2,
+                           "canonicalHits":  [
+                                                 "modules\\tools\\registry.ts"
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/modules\\tools\\definitions\\ProjectEditTool.ts",
+                                             "api/src/modules\\tools\\registry.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/modules\\tools\\definitions\\ScreenshotTool.ts",
+                           "foundBy":  "marker",
+                           "bytes":  9342,
+                           "markers":  [
+                                           "browser_serverx1"
+                                       ],
+                           "exports":  [
+                                           "ScreenshotTool",
+                                           "VisualComparisonTool"
+                                       ],
+                           "importerCount":  1,
+                           "nonTestCount":  1,
+                           "canonicalHits":  [
+                                                 "modules\\tools\\registry.ts"
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/modules\\tools\\registry.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/modules\\tools\\definitions\\WebDevelopmentTools.ts",
+                           "foundBy":  "marker",
+                           "bytes":  35237,
+                           "markers":  [
+                                           "setTimeoutx2"
+                                       ],
+                           "exports":  [
+                                           "WebPipelineTool",
+                                           "DevServerTool",
+                                           "ScaffoldTool"
+                                       ],
+                           "importerCount":  1,
+                           "nonTestCount":  1,
+                           "canonicalHits":  [
+                                                 "modules\\tools\\registry.ts"
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/modules\\tools\\registry.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/orchestration\\AgentOrchestrator.ts",
+                           "foundBy":  "marker",
+                           "bytes":  67320,
+                           "markers":  [
+                                           "setTimeoutx1"
+                                       ],
+                           "exports":  [
+                                           "AgentGoal",
+                                           "AgentType",
+                                           "ExecutionNode",
+                                           "AgentDAG",
+                                           "providerDroughtRetryWaitMs",
+                                           "isFinalPipelineOutcome",
+                                           "AgentOrchestrator"
+                                       ],
+                           "importerCount":  1,
+                           "nonTestCount":  1,
+                           "canonicalHits":  [
+                                                 "modules\\services\\AgentLoopService.ts"
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/modules\\services\\AgentLoopService.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/shared\\crash-log.ts",
+                           "foundBy":  "marker",
+                           "bytes":  5639,
+                           "markers":  [
+                                           "setTimeoutx1"
+                                       ],
+                           "exports":  [
+                                           "crashLogPath",
+                                           "noteActivity",
+                                           "writeCrashNote",
+                                           "installCrashRecorder"
+                                       ],
+                           "importerCount":  1,
+                           "nonTestCount":  1,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/api\\index.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/shared\\lib\\jsondb.ts",
+                           "foundBy":  "marker",
+                           "bytes":  10651,
+                           "markers":  [
+                                           "setTimeoutx1"
+                                       ],
+                           "exports":  [
+                                           "JsonStore"
+                                       ],
+                           "importerCount":  2,
+                           "nonTestCount":  2,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/shared\\models\\user.ts",
+                                             "api/src/shared\\run-evidence-store.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/shared\\ocr.ts",
+                           "foundBy":  "marker",
+                           "bytes":  8168,
+                           "markers":  [
+                                           "setTimeoutx1"
+                                       ],
+                           "exports":  [
+                                           "OCR_MAX_IMAGE_BYTES",
+                                           "OCR_TEXT_CAP",
+                                           "shutdownOcr",
+                                           "extractImageText"
+                                       ],
+                           "importerCount":  1,
+                           "nonTestCount":  1,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/shared\\vision.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/shared\\startup-notes.ts",
+                           "foundBy":  "marker",
+                           "bytes":  1769,
+                           "markers":  [
+                                           "setTimeoutx1"
+                                       ],
+                           "exports":  [
+                                           "noteMissingKey",
+                                           "pendingMissingKeys"
+                                       ],
+                           "importerCount":  4,
+                           "nonTestCount":  4,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/core\\llm\\providers\\cerebras.ts",
+                                             "api/src/core\\llm\\providers\\gemini.ts",
+                                             "api/src/core\\llm\\providers\\mistral.ts",
+                                             "api/src/core\\llm\\providers\\openai.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/shared\\utils\\deadline.ts",
+                           "foundBy":  "marker",
+                           "bytes":  1945,
+                           "markers":  [
+                                           "setTimeoutx1"
+                                       ],
+                           "exports":  [
+                                           "DeadlineError",
+                                           "withDeadline",
+                                           "NODE_DEADLINE_MS",
+                                           "RUN_DEADLINE_MS"
+                                       ],
+                           "importerCount":  2,
+                           "nonTestCount":  2,
+                           "canonicalHits":  [
+                                                 "modules\\services\\AgentLoopService.ts"
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/modules\\services\\AgentLoopService.ts",
+                                             "api/src/orchestration\\AgentOrchestrator.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/shared\\utils\\network.ts",
+                           "foundBy":  "marker",
+                           "bytes":  1230,
+                           "markers":  [
+                                           "setTimeoutx1"
+                                       ],
+                           "exports":  [
+                                           "isPortOpen",
+                                           "isLocalOrInternalUrl"
+                                       ],
+                           "importerCount":  4,
+                           "nonTestCount":  4,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/modules\\browser\\executor.ts",
+                                             "api/src/modules\\tools\\definitions\\BrowserActionTool.ts",
+                                             "api/src/modules\\tools\\definitions\\ProjectRunTool.ts",
+                                             "api/src/modules\\tools\\definitions\\WebDevelopmentTools.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/shared\\utils\\redaction.ts",
+                           "foundBy":  "marker",
+                           "bytes":  7264,
+                           "markers":  [
+                                           "browser_worker_consumerx1"
+                                       ],
+                           "exports":  [
+                                           "redactSecretsFromString",
+                                           "redactCommandForLog",
+                                           "safeErrorMessage",
+                                           "redactToolInputForStorage"
+                                       ],
+                           "importerCount":  4,
+                           "nonTestCount":  4,
+                           "canonicalHits":  [
+                                                 "modules\\services\\ToolService.ts",
+                                                 "modules\\tools\\definitions\\PhaseExecutorTool.ts"
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/core\\orchestrator\\plan-tools.ts",
+                                             "api/src/core\\quality\\named-requirements.ts",
+                                             "api/src/modules\\services\\ToolService.ts",
+                                             "api/src/modules\\tools\\definitions\\PhaseExecutorTool.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/shared\\vision.ts",
+                           "foundBy":  "marker",
+                           "bytes":  14863,
+                           "markers":  [
+                                           "setTimeoutx3"
+                                       ],
+                           "exports":  [
+                                           "VISION_MAX_IMAGE_BYTES",
+                                           "describeImageAttachments"
+                                       ],
+                           "importerCount":  1,
+                           "nonTestCount":  1,
+                           "canonicalHits":  [
+                                                 "modules\\services\\AgentLoopService.ts"
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "api/src/modules\\services\\AgentLoopService.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/system\\scripts\\scan_imports.ts",
+                           "foundBy":  "marker",
+                           "bytes":  3399,
+                           "markers":  [
+                                           "child_processx1"
+                                       ],
+                           "exports":  [
+
+                                       ],
+                           "importerCount":  0,
+                           "nonTestCount":  0,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/tests\\corpus\\live-runner.ts",
+                           "foundBy":  "marker",
+                           "bytes":  6545,
+                           "markers":  [
+                                           "setTimeoutx1"
+                                       ],
+                           "exports":  [
+
+                                       ],
+                           "importerCount":  0,
+                           "nonTestCount":  0,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+
+                                         ]
+                       },
+                       {
+                           "file":  "api/src/tests\\corpus\\live-sample.ts",
+                           "foundBy":  "marker",
+                           "bytes":  6000,
+                           "markers":  [
+                                           "setTimeoutx1"
+                                       ],
+                           "exports":  [
+
+                                       ],
+                           "importerCount":  0,
+                           "nonTestCount":  0,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+
+                                         ]
+                       },
+                       {
+                           "file":  "web/src/components\\ChatPanel.tsx",
+                           "foundBy":  "marker",
+                           "bytes":  33194,
+                           "markers":  [
+                                           "setTimeoutx1"
+                                       ],
+                           "exports":  [
+                                           "ChatPanel"
+                                       ],
+                           "importerCount":  1,
+                           "nonTestCount":  1,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "web/src/components\\JoeIDELayout.tsx"
+                                         ]
+                       },
+                       {
+                           "file":  "web/src/components\\CommandComposer.tsx",
+                           "foundBy":  "marker",
+                           "bytes":  221559,
+                           "markers":  [
+                                           "setIntervalx1",
+                                           "setTimeoutx9"
+                                       ],
+                           "exports":  [
+                                           "CommandComposer"
+                                       ],
+                           "importerCount":  1,
+                           "nonTestCount":  1,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "web/src/pages\\Joe.tsx"
+                                         ]
+                       },
+                       {
+                           "file":  "web/src/components\\CommandPalette.tsx",
+                           "foundBy":  "marker",
+                           "bytes":  6783,
+                           "markers":  [
+                                           "setTimeoutx2"
+                                       ],
+                           "exports":  [
+                                           "Command",
+                                           "CommandPalette"
+                                       ],
+                           "importerCount":  1,
+                           "nonTestCount":  1,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "web/src/components\\JoeIDELayout.tsx"
+                                         ]
+                       },
+                       {
+                           "file":  "web/src/components\\EliteFileExplorer.tsx",
+                           "foundBy":  "marker",
+                           "bytes":  72532,
+                           "markers":  [
+                                           "setIntervalx1",
+                                           "setTimeoutx4"
+                                       ],
+                           "exports":  [
+                                           "EliteFileExplorerRef"
+                                       ],
+                           "importerCount":  1,
+                           "nonTestCount":  1,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "web/src/components\\FileExplorerPanel.tsx"
+                                         ]
+                       },
+                       {
+                           "file":  "web/src/components\\EmbeddedBrowser.tsx",
+                           "foundBy":  "marker",
+                           "bytes":  18422,
+                           "markers":  [
+                                           "setTimeoutx1"
+                                       ],
+                           "exports":  [
+                                           "EmbeddedBrowser"
+                                       ],
+                           "importerCount":  1,
+                           "nonTestCount":  1,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "web/src/components\\WorkspacePanel.tsx"
+                                         ]
+                       },
+                       {
+                           "file":  "web/src/components\\JoeIDELayout.tsx",
+                           "foundBy":  "marker",
+                           "bytes":  47342,
+                           "markers":  [
+                                           "setTimeoutx2"
+                                       ],
+                           "exports":  [
+                                           "JoeIDELayout"
+                                       ],
+                           "importerCount":  1,
+                           "nonTestCount":  1,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "web/src/pages\\Joe.tsx"
+                                         ]
+                       },
+                       {
+                           "file":  "web/src/components\\ModernBrowserStream.tsx",
+                           "foundBy":  "marker",
+                           "bytes":  42721,
+                           "markers":  [
+                                           "setTimeoutx5"
+                                       ],
+                           "exports":  [
+                                           "fittedFrameRect",
+                                           "ModernBrowserStream"
+                                       ],
+                           "importerCount":  1,
+                           "nonTestCount":  1,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "web/src/components\\EmbeddedBrowser.tsx"
+                                         ]
+                       },
+                       {
+                           "file":  "web/src/components\\NeuralThinkingIndicator.tsx",
+                           "foundBy":  "marker",
+                           "bytes":  9922,
+                           "markers":  [
+                                           "setIntervalx1"
+                                       ],
+                           "exports":  [
+                                           "NeuralThinkingIndicator"
+                                       ],
+                           "importerCount":  2,
+                           "nonTestCount":  2,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "web/src/components\\ChatPanel.tsx",
+                                             "web/src/components\\CommandComposer.tsx"
+                                         ]
+                       },
+                       {
+                           "file":  "web/src/components\\NeuralTraceView.tsx",
+                           "foundBy":  "marker",
+                           "bytes":  22991,
+                           "markers":  [
+                                           "setTimeoutx1"
+                                       ],
+                           "exports":  [
+                                           "PHASE_COLOR",
+                                           "useTraceStyles",
+                                           "useUiDir",
+                                           "TraceTimeline",
+                                           "WorkStageRail",
+                                           "PhaseRibbon",
+                                           "NeuralTraceReceipt"
+                                       ],
+                           "importerCount":  2,
+                           "nonTestCount":  2,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "web/src/components\\ChatPanel.tsx",
+                                             "web/src/components\\NeuralThinkingIndicator.tsx"
+                                         ]
+                       },
+                       {
+                           "file":  "web/src/components\\SettingsDialog.tsx",
+                           "foundBy":  "marker",
+                           "bytes":  25804,
+                           "markers":  [
+                                           "setTimeoutx2"
+                                       ],
+                           "exports":  [
+
+                                       ],
+                           "importerCount":  1,
+                           "nonTestCount":  1,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "web/src/pages\\Joe.tsx"
+                                         ]
+                       },
+                       {
+                           "file":  "web/src/components\\SystemStatusPanel.tsx",
+                           "foundBy":  "marker",
+                           "bytes":  9719,
+                           "markers":  [
+                                           "setIntervalx1"
+                                       ],
+                           "exports":  [
+                                           "SystemStatusPanel"
+                                       ],
+                           "importerCount":  1,
+                           "nonTestCount":  1,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "web/src/components\\SettingsDialog.tsx"
+                                         ]
+                       },
+                       {
+                           "file":  "web/src/components\\TaskTracker.tsx",
+                           "foundBy":  "marker",
+                           "bytes":  6884,
+                           "markers":  [
+                                           "setIntervalx1",
+                                           "setTimeoutx1"
+                                       ],
+                           "exports":  [
+                                           "TrackerTask",
+                                           "TaskTracker"
+                                       ],
+                           "importerCount":  0,
+                           "nonTestCount":  0,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+
+                                         ]
+                       },
+                       {
+                           "file":  "web/src/components\\terminal\\EnterpriseTerminalPanel.tsx",
+                           "foundBy":  "marker",
+                           "bytes":  24862,
+                           "markers":  [
+                                           "setTimeoutx4"
+                                       ],
+                           "exports":  [
+                                           "EnterpriseTerminalPanel"
+                                       ],
+                           "importerCount":  1,
+                           "nonTestCount":  1,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "web/src/components\\WorkspacePanel.tsx"
+                                         ]
+                       },
+                       {
+                           "file":  "web/src/components\\UpdateJoeItem.tsx",
+                           "foundBy":  "marker",
+                           "bytes":  25001,
+                           "markers":  [
+                                           "setIntervalx4",
+                                           "setTimeoutx2"
+                                       ],
+                           "exports":  [
+                                           "UpdatePhase",
+                                           "startSelfUpdate",
+                                           "subscribeSelfUpdate",
+                                           "useUpdateAvailable",
+                                           "useSelfUpdateAllowed",
+                                           "UpdateJoeItem",
+                                           "UpdateAutoPilot",
+                                           "SelfUpdateOverlay"
+                                       ],
+                           "importerCount":  1,
+                           "nonTestCount":  1,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "web/src/components\\JoeHeader.tsx"
+                                         ]
+                       },
+                       {
+                           "file":  "web/src/components\\WorkspacePanel.tsx",
+                           "foundBy":  "marker",
+                           "bytes":  36119,
+                           "markers":  [
+                                           "setTimeoutx2"
+                                       ],
+                           "exports":  [
+                                           "LiveFile",
+                                           "BuildStatusState",
+                                           "WorkspacePanel"
+                                       ],
+                           "importerCount":  1,
+                           "nonTestCount":  1,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "web/src/components\\JoeIDELayout.tsx"
+                                         ]
+                       },
+                       {
+                           "file":  "web/src/pages\\admin\\sentinel\\LiveIncidents.tsx",
+                           "foundBy":  "marker",
+                           "bytes":  11782,
+                           "markers":  [
+                                           "setIntervalx1"
+                                       ],
+                           "exports":  [
+                                           "LiveIncidents"
+                                       ],
+                           "importerCount":  1,
+                           "nonTestCount":  1,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "web/src/pages\\admin\\sentinel\\SentinelDashboard.tsx"
+                                         ]
+                       },
+                       {
+                           "file":  "web/src/pages\\admin\\sentinel\\ServerHealth.tsx",
+                           "foundBy":  "marker",
+                           "bytes":  9278,
+                           "markers":  [
+                                           "setIntervalx1"
+                                       ],
+                           "exports":  [
+                                           "ServerHealth"
+                                       ],
+                           "importerCount":  1,
+                           "nonTestCount":  1,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "web/src/pages\\admin\\sentinel\\SentinelDashboard.tsx"
+                                         ]
+                       },
+                       {
+                           "file":  "web/src/pages\\admin\\SystemManagement.tsx",
+                           "foundBy":  "marker",
+                           "bytes":  102570,
+                           "markers":  [
+                                           "setIntervalx1"
+                                       ],
+                           "exports":  [
+                                           "SystemManagement"
+                                       ],
+                           "importerCount":  1,
+                           "nonTestCount":  1,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "web/src/main.tsx"
+                                         ]
+                       },
+                       {
+                           "file":  "web/src/pages\\Joe.tsx",
+                           "foundBy":  "marker",
+                           "bytes":  59607,
+                           "markers":  [
+                                           "setTimeoutx2"
+                                       ],
+                           "exports":  [
+                                           "Joe"
+                                       ],
+                           "importerCount":  1,
+                           "nonTestCount":  1,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "web/src/main.tsx"
+                                         ]
+                       },
+                       {
+                           "file":  "web/src/pages\\WorkspaceSettings.tsx",
+                           "foundBy":  "marker",
+                           "bytes":  15620,
+                           "markers":  [
+                                           "setTimeoutx1"
+                                       ],
+                           "exports":  [
+                                           "WorkspaceSettings"
+                                       ],
+                           "importerCount":  1,
+                           "nonTestCount":  1,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "web/src/main.tsx"
+                                         ]
+                       },
+                       {
+                           "file":  "web/src/services\\AutoOpenManager.ts",
+                           "foundBy":  "marker",
+                           "bytes":  9596,
+                           "markers":  [
+                                           "setTimeoutx1"
+                                       ],
+                           "exports":  [
+                                           "normalizeAutoOpenToolName",
+                                           "AutoOpenManager",
+                                           "useAutoOpen",
+                                           "useAutoPanels"
+                                       ],
+                           "importerCount":  2,
+                           "nonTestCount":  2,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "web/src/components\\JoeIDELayout.tsx",
+                                             "web/src/services\\socket.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "web/src/services\\runningSessions.ts",
+                           "foundBy":  "marker",
+                           "bytes":  5514,
+                           "markers":  [
+                                           "setIntervalx1"
+                                       ],
+                           "exports":  [
+                                           "startTrackingRuns",
+                                           "isSessionRunning",
+                                           "getRunningSessions",
+                                           "getRunningRunId",
+                                           "subscribeRunningSessions",
+                                           "markRunning"
+                                       ],
+                           "importerCount":  2,
+                           "nonTestCount":  2,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "web/src/components\\CommandComposer.tsx",
+                                             "web/src/pages\\Joe.tsx"
+                                         ]
+                       },
+                       {
+                           "file":  "web/src/services\\socket.ts",
+                           "foundBy":  "marker",
+                           "bytes":  35547,
+                           "markers":  [
+                                           "setTimeoutx8"
+                                       ],
+                           "exports":  [
+                                           "SocketService"
+                                       ],
+                           "importerCount":  11,
+                           "nonTestCount":  11,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "web/src/components\\ChatPanel.tsx",
+                                             "web/src/components\\CommandComposer.tsx",
+                                             "web/src/components\\JoeIDELayout.tsx",
+                                             "web/src/components\\MyBrowserView.tsx",
+                                             "web/src/components\\NeuralThinkingIndicator.tsx",
+                                             "web/src/components\\TaskTracker.tsx",
+                                             "web/src/components\\terminal\\EnterpriseTerminalPanel.tsx",
+                                             "web/src/components\\TodosPanel.tsx",
+                                             "web/src/pages\\admin\\SystemManagement.tsx",
+                                             "web/src/pages\\Joe.tsx",
+                                             "web/src/services\\runningSessions.ts"
+                                         ]
+                       },
+                       {
+                           "file":  "web/src/store\\sessionStore.ts",
+                           "foundBy":  "marker",
+                           "bytes":  10104,
+                           "markers":  [
+                                           "setTimeoutx1"
+                                       ],
+                           "exports":  [
+                                           "Session",
+                                           "Folder",
+                                           "useSessionStore"
+                                       ],
+                           "importerCount":  2,
+                           "nonTestCount":  2,
+                           "canonicalHits":  [
+
+                                             ],
+                           "apiRouteHits":  [
+
+                                            ],
+                           "importers":  [
+                                             "web/src/hooks\\useSessionActions.ts",
+                                             "web/src/pages\\Joe.tsx"
+                                         ]
+                       }
+                   ]
+}

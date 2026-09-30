@@ -891,6 +891,32 @@ DEPENDENCIES=none
 
 ---
 
+BATCH_ID=WIRING-P2-051
+CAPABILITIES=/queue/* route disposition (in-memory per-session queue REST API)
+ROOT_CAUSE=mounted + authenticated but callerless in-repo; header comment names a nonexistent useTaskQueue hook; live queue path is /sessions/:id/queue (030/F216). Inherited (main identical).
+FILES=api/src/api/routes/queue.ts + app.ts mount (decision: retire, wire a real caller, or merge into sessions queue; fix stale comment either way)
+IMPLEMENTATION_OWNER=UNASSIGNED
+REVIEW_OWNER=UNASSIGNED
+TESTS=external-caller rule-out (built bundles + extension + docs sweep); if retired: mount-absence gate + 404-away-from-sessions-queue regression; if wired: caller contract test; AGENTS gates
+REAL_JOE_UAT=none unless wired (then: queue round-trip through real UI)
+ROLLBACK=revert retire/wire diff
+DEPENDENCIES=confirm no out-of-repo caller (sweep built bundles, extension, docs) before unmount
+
+---
+
+BATCH_ID=WIRING-P2-052
+CAPABILITIES=TaskTracker progress-ring UI disposition (session-keyed run display)
+ROOT_CAUSE=default-exported component never imported; sole subscriber of a live todo_update-fed socket channel, so live data flows to zero renderers (030/F217). Inherited (main identical).
+FILES=web/src/components/TaskTracker.tsx + socket.ts compat mapping (decision: retire component+mapping, or render in run view)
+IMPLEMENTATION_OWNER=UNASSIGNED
+REVIEW_OWNER=UNASSIGNED
+TESTS=if retired: import-absence gate + channel still feeds remaining subscribers; if rendered: session-keyed render test + visual check (progress ring belongs to its run); web build
+REAL_JOE_UAT=if rendered: real run shows session-keyed progress ring; none if retired
+ROLLBACK=revert retire/render diff
+DEPENDENCIES=none (no live renderers, so no behavior change risk if retired)
+
+---
+
 BATCH_ID=WIRING-P3-002
 CAPABILITIES=conditional shadows (scaffold_full_stack, github_repo_manager) + deterministic bypass documentation
 ROOT_CAUSE=input-dependent routing invisible in tool contracts; multiple execution architectures undocumented

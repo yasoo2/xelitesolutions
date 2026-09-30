@@ -148,9 +148,55 @@ dead import + classify the notifier capability gap
 
 ---
 
+PATH=web/src/components/TaskTracker.tsx
+CAPABILITY=run progress-ring tracker UI (session-keyed task display)
+WHY_SUSPECTED=default-exported component with zero importers repo-wide
+(api + web/src + extension + services scan): only its own file plus
+socket.ts taskTrackerData state fields and one backward-compat comment
+(socket.ts:517). Sole subscriber of SocketService.subscribeTaskTracker
+(socket.ts:850); channel itself is live (server todo_update from
+ws.ts:525 + TodoWriteTool.ts:53 feeds the mapping at socket.ts:517-524),
+so live data flows to a subscription no rendered component consumes.
+CALLER_SEARCH=import-index (static + dynamic import) + repo-wide symbol
+scan: 0 component importers; main.tsx-style lazy routing ruled in for
+the method (SystemManagement control resolves)
+DYNAMIC_USAGE_CHECK=no string-route/lazy reference found
+CONFIG_USAGE_CHECK=N/A (UI component)
+TEST_USAGE=none found
+GIT_CONTEXT=present on main too (inherited)
+CONFIDENCE=CONFIRMED_ORPHANED_UI (component unrendered; channel live)
+RECOMMENDATION=P2: retire-or-render decision (P2-052); if retired, drop
+the component + the consumerless compat mapping; if rendered, mount it
+in the run view with session key + visual test
+
+---
+
+PATH=api/src/api/routes/queue.ts
+CAPABILITY=in-memory per-session task queue REST API (global.joeQueues)
+WHY_SUSPECTED=mounted at /queue (app.ts:18,281) and authenticated, but
+zero in-repo callers: useTaskQueue hook named in the header comment does
+not exist in web/src; no /queue/* fetch in web/src. Live queue path is
+/sessions/:id/queue (sessions.ts:28-29 -> sessionController.ts:577,589),
+used by CommandComposer (tsx:919,948). Two overlapping per-session queue
+implementations; only the sessions one is called.
+CALLER_SEARCH=repo-wide /queue fetch scan: only the route file itself +
+app.ts mount + sessions-route (different path)
+DYNAMIC_USAGE_CHECK=no dynamic fetch-URL construction found for /queue/*
+CONFIG_USAGE_CHECK=N/A
+TEST_USAGE=none found
+GIT_CONTEXT=present + mounted identically on main (inherited)
+CONFIDENCE=CONFIRMED_DUPLICATE_CALLERLESS (mounted route, no caller)
+RECOMMENDATION=P2: retire-or-wire decision (P2-051); if retired, unmount
++ remove (external callers must be ruled out first); if wired, point a
+real caller at it or merge into the sessions queue; either way fix the
+stale header comment
+
+---
+
 LEGACY_OR_DEAD=none proven. No code is labeled LEGACY_OR_DEAD in this draft:
-static absence of callers is NOT enough (dynamic registration/config paths
-remain to be surveyed for workers). CortexState has legacy-era provenance but
+static absence of callers is NOT enough (dynamic registration/config paths:
+workers surveyed in checkpoint 30 incl. dynamic-import indexing; remaining:
+NVIDIA-owned planning/memory). CortexState has legacy-era provenance but
 is classified ORPHANED (a runtime path could theoretically exist outside the
 surveyed roots). Suspects for later classification: old/alternate execution
 paths (deterministic bypasses), duplicate memory implementations (see matrix
