@@ -115,7 +115,7 @@ DEPENDENCIES=none
 BATCH_ID=WIRING-P2-004
 CAPABILITIES=schema/execute consistency (task_lifecycle required-vs-default gap) + empty-input honesty sweep continuation (25/25 reviewed, 19 probed live in sweep2.json; risk-tier 19 in sweep3.json; files-trunk 16 live in trunk_files.json)
 ROOT_CAUSE=task_lifecycle declares required:['action'] but execute() defaults action='update' and returns ok:true on {} (sweep1.json, rerun-stable); no central schema gate — validation is per-tool; 25 no-required tools PARTITIONED 18 SAFE + 1 BOUND + 4 EMBARGO (static fixture designs in 008) + 2 FIXTURE (probed contained in 008). Absence-as-success shape: project_stop/orders_read/form_inbox/browser_consent return ok:true for absence (honest messages; ok-only verifiers would misread) + read_file {} returns ok:true EMPTY directory auto-list (sweep3.json, rerun-stable — 5th instance) + project_edit no-project returns ok:true 'No active project' message (trunk_files.json, live — 6th instance). project_undo default-latest-restore code-indicated (ProjectUndoTool.ts:98-100), fixture-unconfirmed.
-FILES=TaskLifecycleTool.ts (enforce required OR drop it from schema) + absence-as-success verifier note for LEVEL 5-6 sweep (6 instances) + project_undo snapshot fixture
+FILES=TaskLifecycleTool.ts (enforce required OR drop it from schema) + absence-as-success verifier note — EVIDENCED 012/F69: verdict mapping is ok/error-only and content-blind for all 43 swept tools (passed = check executed, never = requested behavior observed; hollow-pass shapes: 6 absence-instances + extract-swallow + empty-search-answer, all mapping in the safe direction) + project_undo snapshot fixture
 IMPLEMENTATION_OWNER=UNASSIGNED
 REVIEW_OWNER=UNASSIGNED
 TESTS=schema/execute consistency gate for task_lifecycle ({} -> honest error OR schema without required); verifier MUST read message/flags, not ok alone, for the 5 absence tools; project_undo fixture (snapshots present) to confirm/deny default-restore; AGENTS gates if ToolService touched (it is not — tool-local fix + verifier note)
@@ -217,12 +217,12 @@ DEPENDENCIES=none
 ---
 
 BATCH_ID=WIRING-P2-012
-CAPABILITIES=browser_run action-result surfacing (extract_text results discarded)
-ROOT_CAUSE=browser_run output carries only sessionId/pageUrl/title/screenshotHref/summary/missingSecrets with a generic summary; executed action results (e.g. extract_text) never surface (run_extract_raw in trunk_browser_live2.json, rerun-stable; MISMATCH #8). Sibling browser_action returns {success,result} correctly. Planner/verifier cannot consume run extractions.
-FILES=BrowserRunTool.ts (surface per-action results in output, e.g. actionResults[]; keep keys backward-compatible) + output contract test
+CAPABILITIES=browser_run action-result surfacing (extract_text results discarded) + receipt evidence pointer
+ROOT_CAUSE=browser_run output carries only sessionId/pageUrl/title/screenshotHref/summary/missingSecrets with a generic summary; executed action results (e.g. extract_text) never surface (run_extract_raw in trunk_browser_live2.json, rerun-stable; MISMATCH #8). Sibling browser_action returns {success,result} correctly. Planner/verifier cannot consume run extractions. EXTENDED 012/F70: output uses pageUrl, but verificationMetricsFrom reads output.url — so browser_run ledger receipts carry evidenceLocation='' and point nowhere (all 6 (a)-checker siblings emit url and are evidence-pointed; V4 proves the mechanism live for console_scan).
+FILES=BrowserRunTool.ts (surface per-action results in output, e.g. actionResults[]; emit `url` alongside pageUrl for receipt evidence; keep keys backward-compatible) + output contract test
 IMPLEMENTATION_OWNER=UNASSIGNED
 REVIEW_OWNER=UNASSIGNED
-TESTS=extract-result contract test: run [goto loopback, extract_text] output contains the page marker (RED->GREEN); navigation-only regression (pageUrl/title/summary intact); AGENTS gates
+TESTS=extract-result contract test: run [goto loopback, extract_text] output contains the page marker (RED->GREEN); receipt-evidence test: browser_run checker receipt carries evidenceLocation=url (RED->GREEN); navigation-only regression (pageUrl/title/summary intact); AGENTS gates
 REAL_JOE_UAT=extract-via-UI sanity after fix (read a value from a page through real Joe)
 ROLLBACK=revert output change
 DEPENDENCIES=none
@@ -290,6 +290,19 @@ REVIEW_OWNER=UNASSIGNED
 TESTS=two-session test (same URL baselines independent RED->GREEN per decided contract); single-session refresh regression (live3 3-leg flow as contract); AGENTS gates
 REAL_JOE_UAT=none (state-scoping correctness)
 ROLLBACK=revert store-key change
+DEPENDENCIES=none
+
+---
+
+BATCH_ID=WIRING-P2-018
+CAPABILITIES=verification scopeRoot resolution for path-arg checkers (read_file existence gates never reuse)
+ROOT_CAUSE=phase-gate scopeRoot prefers verificationArgs.cwd/projectPath/path over the workspace root (PhaseExecutorTool.ts:2372-2378; same preference at task level :1570-1578), so a read_file gate with a workspace-relative path resolves scopeRoot against process.cwd() (the api/ server dir) — outside the workspace. fingerprintVerification takes the uncontained branch (nonce fingerprint, cacheable:false, 'trusted workspace containment is unavailable'). Proven live: V1 receipt scopeRoot `...\api\proof.txt` fp 89c4e353, V6 same checkId/args/files fp 50d47d6a + invalidated (012/F67, MISMATCH #10). Resume/reuse dead for this checker shape; receipt provenance misleading; no file bytes fingerprinted. Fail-safe direction (never wrongly reuses).
+FILES=PhaseExecutorTool.ts gate + task-level scopeRoot resolution (resolve the checker's path arg inside the trusted workspace root, or fall back to the workspace root; receipt scopeRoot must never point at process.cwd()) + scope-resolution contract test
+IMPLEMENTATION_OWNER=UNASSIGNED (PhaseExecutor shared — coordinate; NVIDIA owns adjacent planning work)
+REVIEW_OWNER=UNASSIGNED
+TESTS=scope-containment test: read_file gate on workspace-relative path -> receipt scopeRoot inside workspace (RED->GREEN); reuse test: carried ledger + unchanged files -> verification reused (RED->GREEN, V6 shape as contract); nonce-path regression (genuinely uncontained scope still fails safe to run-always); AGENTS gates
+REAL_JOE_UAT=none (ledger mechanics; pass/fail behavior unchanged, only reuse + provenance)
+ROLLBACK=revert scope-resolution change (back to always-run safe default)
 DEPENDENCIES=none
 
 ---

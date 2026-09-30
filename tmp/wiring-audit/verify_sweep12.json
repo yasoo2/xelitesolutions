@@ -1,0 +1,523 @@
+{
+  "generated": "2026-09-30T00:42:17.273Z",
+  "static": {
+    "partition": {
+      "archive_files": {
+        "taskLevel": false
+      },
+      "delete_file": {
+        "taskLevel": false
+      },
+      "file_edit": {
+        "taskLevel": false
+      },
+      "file_edit_advanced": {
+        "taskLevel": false
+      },
+      "inspect_directory": {
+        "taskLevel": false
+      },
+      "ls": {
+        "taskLevel": false
+      },
+      "project_edit": {
+        "taskLevel": false
+      },
+      "read_file": {
+        "taskLevel": false,
+        "phaseGateExistenceOptIn": true
+      },
+      "search_files": {
+        "taskLevel": false
+      },
+      "write_file": {
+        "taskLevel": false
+      },
+      "browser_a11y_deep": {
+        "taskLevel": false
+      },
+      "browser_action": {
+        "taskLevel": false
+      },
+      "browser_autofix": {
+        "taskLevel": false
+      },
+      "browser_check_links": {
+        "taskLevel": true
+      },
+      "browser_click": {
+        "taskLevel": false
+      },
+      "browser_compare": {
+        "taskLevel": false
+      },
+      "browser_consent": {
+        "taskLevel": false
+      },
+      "browser_console_scan": {
+        "taskLevel": true
+      },
+      "browser_contrast_audit": {
+        "taskLevel": true
+      },
+      "browser_design_tokens": {
+        "taskLevel": false
+      },
+      "browser_extract_data": {
+        "taskLevel": false
+      },
+      "browser_extract_meta": {
+        "taskLevel": false
+      },
+      "browser_fill_form": {
+        "taskLevel": false
+      },
+      "browser_find_text": {
+        "taskLevel": false
+      },
+      "browser_fullpage_shot": {
+        "taskLevel": false
+      },
+      "browser_launch": {
+        "taskLevel": false
+      },
+      "browser_page_fix": {
+        "taskLevel": false
+      },
+      "browser_performance": {
+        "taskLevel": true
+      },
+      "browser_readability": {
+        "taskLevel": false
+      },
+      "browser_responsive_check": {
+        "taskLevel": true
+      },
+      "browser_run": {
+        "taskLevel": true
+      },
+      "browser_save_pdf": {
+        "taskLevel": false
+      },
+      "browser_search": {
+        "taskLevel": false
+      },
+      "browser_seo_audit": {
+        "taskLevel": false
+      },
+      "browser_smart_agent": {
+        "taskLevel": false
+      },
+      "browser_summarize": {
+        "taskLevel": false
+      },
+      "browser_translate": {
+        "taskLevel": false
+      },
+      "browser_ui_audit": {
+        "taskLevel": true
+      },
+      "browser_ui_fix": {
+        "taskLevel": false
+      },
+      "browser_vision": {
+        "taskLevel": false
+      },
+      "screenshot": {
+        "taskLevel": false
+      },
+      "user_browser": {
+        "taskLevel": false
+      },
+      "visual_compare": {
+        "taskLevel": false
+      }
+    },
+    "allowlisted": [
+      "browser_check_links",
+      "browser_console_scan",
+      "browser_contrast_audit",
+      "browser_performance",
+      "browser_responsive_check",
+      "browser_run",
+      "browser_ui_audit"
+    ],
+    "verdicts": [
+      {
+        "id": "files/write-ok",
+        "tool": "write_file",
+        "got": "passed",
+        "expect": "passed",
+        "match": true,
+        "ground": "SystemTools write_file success return"
+      },
+      {
+        "id": "files/read-hit",
+        "tool": "read_file",
+        "got": "passed",
+        "expect": "passed",
+        "match": true,
+        "ground": "TaskInteractionTools read_file hit"
+      },
+      {
+        "id": "files/read-missing",
+        "tool": "read_file",
+        "got": "failed",
+        "expect": "failed",
+        "match": true,
+        "ground": "TaskInteractionTools.ts:185"
+      },
+      {
+        "id": "files/read-dir-empty",
+        "tool": "read_file",
+        "got": "passed",
+        "expect": "passed",
+        "match": true,
+        "ground": "008 absence-as-success #5: {} -> ok:true EMPTY dir list"
+      },
+      {
+        "id": "files/archive-zip-nozip",
+        "tool": "archive_files",
+        "got": "failed",
+        "expect": "failed",
+        "match": true,
+        "ground": "008 P2-009: wrong cause text, right direction"
+      },
+      {
+        "id": "files/depaudit-enolock",
+        "tool": "dependency_audit",
+        "got": "failed",
+        "expect": "failed",
+        "match": true,
+        "ground": "008 P2-010: setup failure labeled vulnerabilities"
+      },
+      {
+        "id": "files/edit-no-match",
+        "tool": "file_edit",
+        "got": "failed",
+        "expect": "failed",
+        "match": true,
+        "ground": "SystemTools file_edit no-match return"
+      },
+      {
+        "id": "browser/console-ok",
+        "tool": "browser_console_scan",
+        "got": "passed",
+        "expect": "passed",
+        "match": true,
+        "ground": "011/F61: defects found, scan ran -> passed means executed"
+      },
+      {
+        "id": "browser/uiaudit-empty",
+        "tool": "browser_ui_audit",
+        "got": "failed",
+        "expect": "failed",
+        "match": true,
+        "ground": "011/F61 uiaudit {} fail-closed"
+      },
+      {
+        "id": "browser/trio-offline",
+        "tool": "browser_summarize",
+        "got": "failed",
+        "expect": "failed",
+        "match": true,
+        "ground": "011/F62: ok:false WITH full output; consumer drops partials"
+      },
+      {
+        "id": "browser/search-empty-answer",
+        "tool": "browser_search",
+        "got": "passed",
+        "expect": "passed",
+        "match": true,
+        "ground": "011/F61: answer-blind, results are the deliverable"
+      },
+      {
+        "id": "browser/run-extract-swallow",
+        "tool": "browser_run",
+        "got": "passed",
+        "expect": "passed",
+        "match": true,
+        "ground": "010 MISMATCH #8: action results discarded yet passed"
+      },
+      {
+        "id": "browser/click-notarget",
+        "tool": "browser_click",
+        "got": "failed",
+        "expect": "failed",
+        "match": true,
+        "ground": "011/F61 click no-text"
+      },
+      {
+        "id": "browser/run-injected-forbidden",
+        "tool": "browser_run",
+        "got": "failed",
+        "expect": "failed",
+        "match": true,
+        "ground": "010/F54 P2-008: wrong verdict text, safe direction"
+      },
+      {
+        "id": "ctl/cancel-text",
+        "tool": "shell_execute",
+        "got": "cancelled",
+        "expect": "cancelled",
+        "match": true,
+        "ground": "control: classifier branch"
+      },
+      {
+        "id": "ctl/timeout-text",
+        "tool": "shell_execute",
+        "got": "timed_out",
+        "expect": "timed_out",
+        "match": true,
+        "ground": "control: classifier branch"
+      },
+      {
+        "id": "ctl/arabic-timeout-prose",
+        "tool": "central_answer",
+        "got": "failed",
+        "expect": "failed",
+        "match": true,
+        "ground": "classifier is English-only; Arabic timeout -> failed not timed_out"
+      },
+      {
+        "id": "ctl/ok-false-no-error",
+        "tool": "repo_diff_summary",
+        "got": "failed",
+        "expect": "failed",
+        "match": true,
+        "ground": "P2-005: ToolService guarantees raw.error; control maps failed via stderr"
+      },
+      {
+        "id": "ctl/odd-status",
+        "tool": "probe-only",
+        "got": "incomplete",
+        "expect": "incomplete",
+        "match": true,
+        "ground": "control: branch exists; no storied tool emits it"
+      },
+      {
+        "id": "ctl/ok-status",
+        "tool": "probe-only",
+        "got": "passed",
+        "expect": "passed",
+        "match": true,
+        "ground": "control: accepted vocabulary"
+      },
+      {
+        "id": "ctl/verificationFailed-flag",
+        "tool": "probe-only",
+        "got": "incomplete",
+        "expect": "incomplete",
+        "match": true,
+        "ground": "control: flag with no error text maps to incomplete, not failed; no storied tool emits it"
+      }
+    ],
+    "verdictMismatches": []
+  },
+  "live": {
+    "workspace": {
+      "setOk": true,
+      "activeRoot": "D:\\Joe\\muse-worktree\\tmp\\wiring-audit\\fx-verify12\\ws",
+      "contained": true
+    },
+    "v1": {
+      "ok": true,
+      "status": "completed",
+      "results": [
+        {
+          "tool": "write_file",
+          "ok": true,
+          "execution": "ran"
+        },
+        {
+          "tool": "read_file",
+          "ok": true,
+          "execution": "ran"
+        }
+      ],
+      "phaseVerificationCheck": {
+        "checkId": "v12:existence:proof.txt",
+        "tool": "read_file",
+        "result": "passed",
+        "execution": "ran"
+      },
+      "receipt": {
+        "checkId": "v12:existence:proof.txt",
+        "result": "passed",
+        "tool": "read_file",
+        "evidenceLocation": "",
+        "runtimeTarget": "",
+        "hasRevision": false,
+        "fingerprintHead": "89c4e35362e204f4",
+        "scopeRoot": "D:\\Joe\\muse-worktree\\api\\proof.txt",
+        "decisionReason": "selected: trusted workspace containment is unavailable, so reuse and filesystem fingerprinting are disabled"
+      },
+      "metrics": {
+        "receipts": 1,
+        "passed": 1,
+        "failed": 0,
+        "cancelled": 0,
+        "timedOut": 0,
+        "incomplete": 0,
+        "selected": 1,
+        "invalidated": 0,
+        "reused": 0,
+        "executions": 1,
+        "accountingComplete": true,
+        "executedDurationMs": 14,
+        "fingerprintDurationMs": 1,
+        "estimatedSavedDurationMs": 0
+      },
+      "decisions": [
+        {
+          "checkId": "v12:existence:proof.txt",
+          "action": "selected",
+          "reason": "selected: trusted workspace containment is unavailable, so reuse and filesystem fingerprinting are disabled"
+        }
+      ],
+      "onDisk": true
+    },
+    "v2": {
+      "ok": false,
+      "status": "partial",
+      "verificationFailed": true,
+      "phaseVerificationCheck": {
+        "checkId": "v12:existence:absent.txt",
+        "tool": "read_file",
+        "result": "failed",
+        "execution": "ran"
+      },
+      "receipt": {
+        "checkId": "v12:existence:absent.txt",
+        "result": "failed",
+        "tool": "read_file",
+        "evidenceLocation": "",
+        "runtimeTarget": "",
+        "hasRevision": false,
+        "fingerprintHead": "cc4b9b9ab3e32a14",
+        "scopeRoot": "D:\\Joe\\muse-worktree\\api\\absent.txt",
+        "decisionReason": "selected: trusted workspace containment is unavailable, so reuse and filesystem fingerprinting are disabled"
+      },
+      "decisions": [
+        {
+          "checkId": "v12:existence:absent.txt",
+          "action": "selected",
+          "reason": "selected: trusted workspace containment is unavailable, so reuse and filesystem fingerprinting are disabled"
+        }
+      ]
+    },
+    "v3": {
+      "ok": false,
+      "status": "partial",
+      "unavailableInLogs": true,
+      "unsupportedInLogs": true,
+      "results": [
+        {
+          "tool": "write_file",
+          "ok": true,
+          "execution": "ran",
+          "error": null
+        },
+        {
+          "tool": "browser_click",
+          "ok": false,
+          "execution": "ran",
+          "error": "verification_unavailable: unsupported verification tool contract"
+        }
+      ],
+      "liveSessionsAfter": 0
+    },
+    "v5": {
+      "ok": true,
+      "status": "completed",
+      "receipts": 0,
+      "decisions": 0,
+      "edited": "bye v12"
+    },
+    "v6": {
+      "ok": true,
+      "status": "completed",
+      "reusedInLogs": false,
+      "receipt": {
+        "checkId": "v12:existence:proof.txt",
+        "result": "passed",
+        "tool": "read_file",
+        "evidenceLocation": "",
+        "runtimeTarget": "",
+        "hasRevision": false,
+        "fingerprintHead": "50d47d6a7ba9d59e",
+        "scopeRoot": "D:\\Joe\\muse-worktree\\api\\proof.txt",
+        "decisionReason": "invalidated: relevant content, configuration, arguments, workspace, environment, or toolchain changed"
+      },
+      "metrics": {
+        "receipts": 1,
+        "passed": 1,
+        "failed": 0,
+        "cancelled": 0,
+        "timedOut": 0,
+        "incomplete": 0,
+        "selected": 1,
+        "invalidated": 1,
+        "reused": 0,
+        "executions": 2,
+        "accountingComplete": true,
+        "executedDurationMs": 33,
+        "fingerprintDurationMs": 1,
+        "estimatedSavedDurationMs": 0
+      },
+      "decisions": [
+        {
+          "checkId": "v12:existence:proof.txt",
+          "action": "selected",
+          "reason": "selected: trusted workspace containment is unavailable, so reuse and filesystem fingerprinting are disabled"
+        },
+        {
+          "checkId": "v12:existence:proof.txt",
+          "action": "invalidated",
+          "reason": "invalidated: relevant content, configuration, arguments, workspace, environment, or toolchain changed"
+        }
+      ]
+    },
+    "v4": {
+      "ok": true,
+      "status": "completed",
+      "results": [
+        {
+          "tool": "browser_console_scan",
+          "ok": true,
+          "execution": "ran"
+        }
+      ],
+      "receipt": {
+        "checkId": "v12:console:fx",
+        "result": "passed",
+        "tool": "browser_console_scan",
+        "evidenceLocation": "http://127.0.0.1:61019/",
+        "runtimeTarget": "http://127.0.0.1:61019/",
+        "hasRevision": false,
+        "fingerprintHead": "d13dc1b933dc4f8f",
+        "scopeRoot": "D:\\Joe\\muse-worktree\\tmp\\wiring-audit\\fx-verify12\\ws",
+        "decisionReason": "selected: browser verification has no trusted target revision, so stale visual evidence cannot be reused"
+      },
+      "decisions": [
+        {
+          "checkId": "v12:console:fx",
+          "action": "selected",
+          "reason": "selected: browser verification has no trusted target revision, so stale visual evidence cannot be reused"
+        }
+      ]
+    },
+    "v4sessionClosed": true,
+    "v4serverClosed": true,
+    "containment": {
+      "checkpointsInWs": 12,
+      "rootsFileInFx": true,
+      "wsFiles": [
+        "editme.txt",
+        "other.txt",
+        "proof.txt",
+        "third.txt"
+      ]
+    }
+  }
+}

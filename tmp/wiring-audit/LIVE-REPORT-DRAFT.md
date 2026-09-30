@@ -1,26 +1,26 @@
 # JOE LIVE TEAM REPORT (Muse draft 2026-09-29 — for coordinator to persist to team/LIVE-REPORT.md; Muse sandbox cannot write shared coordination files)
 
-UPDATED=2026-09-30T03:30Z
-OVERALL_STATUS=CRITICAL wiring audit checkpoint 11 done (browser_ui trunk COMPLETE 33/33 LEVEL-4 via canonical path: 30-leg contained live batch rerun-stable, router resolve-vs-throw mismatch #9 + honesty-flip chain traced, 75 matrix rows, 3 new backlog batches + P2-014 extension); CLI routing fix still owned by NVIDIA (worker blocked); no Real Joe PASS yet.
+UPDATED=2026-09-30T04:30Z
+OVERALL_STATUS=CRITICAL wiring audit checkpoint 12 done (LEVEL-5 verification-compat sweep on files 10/10 + browser_ui 33/33 via canonical pipeline dispatch: 21/21 verdict shapes + 43/43 checker partition + 6 live phase legs 2x verdict-identical; scopeRoot nonce mismatch #10 proven (read_file gates never reuse) + P2-018; matrix §VERIFY12; 10 mismatches); CLI routing fix still owned by NVIDIA (worker blocked); no Real Joe PASS yet.
 
 ## ماذا نعمل الآن؟
-Muse أكمل المرحلة الحادية عشرة: جذع المتصفح مكتمل (33/33) — 22 أداة سياقية + vision + إغلاق find_text، كلها عبر المسار الرسمي بخادم محلي معزول. أهم النتائج: الموجّه يُرجع نص الفشل بدل رميه فتبقى بدائل الأدوات ميتة، وفحص الصدق المركزي هو ما يقلب النتيجة لفشل صادق (تباين رقم 9)؛ وvision عضو ثالث في عائلة الإطلاق المستقل. اكتشاف فقط — لا حذف ولا إعادة هيكلة.
+Muse أكمل المرحلة الثانية عشرة: فحص توافق التحقق (المستوى 5) للجذعين الموثقين (43 أداة) عبر تنفيذ أطوار حقيقية بالمسار الرسمي. أهم النتائج: بوابة read_file تستخدم مسارًا نسبيًا فيحسب البصمة خارج مساحة العمل فلا تُعاد الاستفادة من الإيصالات أبدًا (تباين رقم 10)؛ وقرارات التحقق تعتمد النجاح/الفشل فقط وهي عمياء عن المحتوى لكن باتجاه آمن. اكتشاف فقط — لا حذف ولا إعادة هيكلة.
 
 ## ماذا اكتشفنا؟
-- إثبات حي: 19 أداة تدقيق/استخراج/تفاعل خضراء بإشارات مزروعة (درجات متوقعة بدقة + ملفات CSV/PDF/HTML/PNG مُتحقق منها على القرص).
-- الثلاثي النموذجي (تلخيص/ترجمة/وكيل) يعود ok:false مع مخرجات كاملة — الموجّه يُرجع الاعتذار نصًا والفحص المركزي يقلبه (تباين رقم 9، P2-015).
-- browser_vision إطلاق مستقل ثالث يتجاهل السياق ويقبل أي رابط — تصحيح التقسيم (d)=3 (توسيع P2-014).
-- الاستجابة تُسقط علم viewport من المخرجات (P2-016)؛ والمقارنة خطوطها الأساسية عالمية مشتركة (P2-017).
-- البحث المكتوب حيًا يعمل بمحرك محلي (نتائج حقيقية + إجابة فارغة صادقة).
+- إثبات حي عبر 6 أطوار حقيقية: إيجابي/سلبي/رفض فاحص/فاحص متصفح/مهمة عادية/إعادة استخدام — كلها بالاتجاه الصحيح.
+- نطاق البصمة يفضّل مسار الأداة النسبي على جذر مساحة العمل فيحسب خارجها ببصمة وحيدة دائمًا (تباين رقم 10، P2-018).
+- السجل للفواحص فقط: 7 أدوات متصفح + read_file اختياريًا؛ 35 أداة لا تُنتج إيصالات أبدًا (V5: صفر إيصالات).
+- 6 فواحص سياقية تشير لرابط الدليل؛ browser_run وread_file إيصالاتهما بلا مؤشر (توسيع P2-012).
+- الاستدعاء المباشر للمُنفذ مرفوض جداريًا (فشل مغلق) — المستوى 5 يتطلب الإرسال الرسمي (F72).
 
 ## ماذا أنجزنا؟
-- trunk_browser_live3.mts (30 حالة، exit 0، صفر مهلات، 28/28 متطابقة بإعادتين + تشغيل ثالث) — كل الجلسات أُغلقت وكل الملفات (19) نُظفت.
-- MUSE-WIRING-DISCOVERY-011.md + تحديث المسودات (المصفوفة 75 صفًا، الملخص: 9 عقود متعارضة، التراكم +3 دفعات، الخريطة المعمارية).
+- verify_sweep12.mts (ثابت 21/21 + حي 6/6 عبر الإرسال الرسمي، exit 0، تشغيلان متطابقان) — مساحة معزولة وملفات/جلسات نُظفت.
+- MUSE-WIRING-DISCOVERY-012.md + تحديث المسودات (المصفوفة §VERIFY12، الملخص: 10 عقود متعارضة، التراكم +P2-018 وتوسيع P2-012، الخريطة المعمارية).
 - هذه المسودة محدثة.
 
 ## Muse الآن
-CURRENT_TASK=Wiring audit checkpoint 11 (staged outputs, awaiting coordinator import + push)
-LATEST_RESULT=Browser_ui trunk COMPLETE 33/33 LEVEL-4: 30 live legs, exit 0, rerun-stable; 75 matrix rows; guard re-run at commit
+CURRENT_TASK=Wiring audit checkpoint 12 (staged outputs, awaiting coordinator import + push)
+LATEST_RESULT=LEVEL-5 verification sweep: 21/21 static + 6/6 live legs 2x identical; mismatch #10 + P2-018; guard re-run at commit
 BLOCKER=None for audit; shared coordination writes denied (fallback report used)
 
 ## NVIDIA الآن
@@ -43,7 +43,8 @@ CENSUS=163 rows: 21 perm-defaulted + 2 ratelimit-defaulted + 0 unknown; 25 no-re
 EMPTY_INPUT_BATCH1=8/9 honest ok:false + 1 unvalidated ok:true (task_lifecycle)
 EMPTY_INPUT_BATCH2=19/19 rerun-stable: 8 honest + 7 ok:true reads/absences + 1 approval gate + 1 swallowed-cause + 1 guard rejection + 1 honest offline fail
 NO_REQUIRED_PARTITION=25/25: 18 SAFE + 1 BOUND + 4 EMBARGO + 2 FIXTURE
-CONTRACT_MISMATCHES=9 (+ router resolve-vs-throw vs tool empty-fallback; honesty flip load-bearing)
+CONTRACT_MISMATCHES=10 (+ gate/task scopeRoot nonce: read_file gates never reuse)
+VERIFY_SWEEP12=static 21/21 + live 6/6 canonical 2x identical (V1 completed/passed, V2 partial/failed, V3 partial/rejected/0 sessions, V4 completed/url receipt, V5 0 receipts, V6 invalidated-nonce)
 ERROR_EVIDENCE_DEFECTS=2 tool-local (zip cause-swallow P2-009; dep_audit mislabel P2-010)
 MATRIX_ROWS=75 (65 individual + 8 group + 2 external-cited)
 RISK_TIERS=census 9/151/3/0 on {}; 19/19 live rerun-stable (8 blocks/1 critical + 5 honest + 6 ok:true)
@@ -59,9 +60,9 @@ VERIFIED=0 new Real Joe UAT this checkpoint
 REAL_JOE_PROVEN=No PASS; latest runs PARTIAL/FAIL (see TEAM-STATE)
 
 ## آخر نتيجة اختبار
-TEST=trunk_browser_live3.mts probe + guard:architecture
-RESULT=live3 exit 0 (30 legs, 0 timeouts, 0 gates, 0 direct legs; 28/28 verdict-identical + exact scores identical across 2 runs; 3rd run added findtext x2 green); guard result recorded at commit time
-WHAT_IT_PROVES=browser_ui trunk 33/33 LEVEL-4 via canonical path (contained, ephemeral, gate active); router resolve-vs-throw mismatch + honesty-flip chain + vision correction + responsive/compare notes evidenced; NOT a Real Joe UI PASS.
+TEST=verify_sweep12.mts probe + guard:architecture + guard:package-scripts
+RESULT=sweep exit 0 (static 21/21 + 43/43 partition; live 6/6 canonical legs; full sweep 2x verdict-identical on fresh fixtures); guards recorded at commit time
+WHAT_IT_PROVES=files + browser_ui trunks are verification-consumable at LEVEL-5 (verdicts safe-direction, rejections honest, receipts correct); scopeRoot nonce defect (mismatch #10) + evidence-pointer split evidenced; NOT a Real Joe UI PASS.
 
 ## المشاكل الحالية
 - NVIDIA worker blocked: provider 429/503 failures; no resume yet; cross-review pending.
@@ -70,7 +71,7 @@ WHAT_IT_PROVES=browser_ui trunk 33/33 LEVEL-4 via canonical path (contained, eph
 
 ## الخطوة التالية
 1. Coordinator imports Muse consultation responses + follow-ups + 5 staged audit drafts + live report.
-2. Muse checkpoint 12: verification-compat sweep (LEVEL 5-6) on the two storied trunks (files + browser_ui), then next trunk per impact (code_understanding=16 suggested).
+2. Muse checkpoint 13: next trunk per impact (code_understanding=16 suggested, or testing_qa=6 checkers to complete the verification-consumer picture).
 3. NVIDIA resumes, cross-reviews, acknowledges CLI-BATCH1 ownership.
 
 ## آخر الإنجازات
@@ -103,3 +104,5 @@ WHAT_IT_PROVES=browser_ui trunk 33/33 LEVEL-4 via canonical path (contained, eph
 [2026-09-30] DELIVERABLE — matrix 51 rows; backlog +4 batches; guard re-run at checkpoint 10 commit.
 [2026-09-30] DISCOVERY — browser_ui 33/33 LEVEL-4 COMPLETE (30 legs, canonical, rerun-stable); router resolve-vs-throw mismatch #9 + honesty-flip chain (P2-015); responsive flag-drop (P2-016); compare global baselines (P2-017); vision 3rd standalone member (P2-014 ext).
 [2026-09-30] DELIVERABLE — matrix 75 rows; backlog +3 batches; guard re-run at checkpoint 11 commit.
+[2026-09-30] DISCOVERY — LEVEL-5 verification sweep: 21/21 verdict shapes + 43/43 checker partition + 6/6 live legs 2x identical; scopeRoot nonce mismatch #10 (read_file gates never reuse, P2-018); ledger is checker-only (V5: 0 receipts); browser_run receipt hollow (P2-012 ext); direct-executor firewall fail-closed (F72).
+[2026-09-30] DELIVERABLE — matrix §VERIFY12; summary 10 mismatches; backlog +P2-018; guard re-run at checkpoint 12 commit.

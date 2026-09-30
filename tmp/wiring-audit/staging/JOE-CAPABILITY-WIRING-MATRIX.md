@@ -1,22 +1,24 @@
 # JOE CAPABILITY WIRING MATRIX (Muse draft 2026-09-29 — staging for D:\Joe\coordination\team\JOE-CAPABILITY-WIRING-MATRIX.md)
 
-SCOPE=Muse-branch discovery checkpoints 1-11 only (muse/joe-development @ 97be9d43).
+SCOPE=Muse-branch discovery checkpoints 1-12 only (muse/joe-development @ 6aa6b8c4).
 Rows below are EVIDENCED tool-level entries. HIGH_LEVEL_CAPABILITIES grouping
 (merge v1: 19 trunks PROPOSED, 2 STORIED: files 10/10 in checkpoint 8;
-browser_ui 33/33 LEVEL-4 complete — checkpoint 11),
+browser_ui 33/33 LEVEL-4 complete — checkpoint 11; both trunks
+verification-swept LEVEL-5 — checkpoint 12, see §VERIFY12),
 services/workers/internal-infra rows, and NVIDIA-owned
 registry/ingress/persistence areas are UNKNOWN/PENDING and must NOT be
 treated as covered.
 Evidence files: D:\Joe\muse-worktree\tmp\wiring-audit\{discovery,exposure,
 classification,reachability,target,exec,sweep1,sweep2,merge,sweep3,trunk_files,
 arch2,trunk_browser1,trunk_browser_live1,trunk_browser_live2,
-trunk_browser_live3}.json +
+trunk_browser_live3,verify_sweep12}.json +
 {discover,exposure,classify,reach,target,exec,
 sweep1,sweep2,merge,sweep3,trunk_files,arch2,trunk_browser1,
-trunk_browser_live1,trunk_browser_live2,trunk_browser_live3}.mts +
+trunk_browser_live1,trunk_browser_live2,trunk_browser_live3,
+verify_sweep12}.mts +
 MUSE-WIRING-DISCOVERY-00{1,2,3,4,5,6,7}.md + MUSE-WIRING-DISCOVERY-008.md +
 MUSE-WIRING-DISCOVERY-009.md + MUSE-WIRING-DISCOVERY-010.md +
-MUSE-WIRING-DISCOVERY-011.md. All probes
+MUSE-WIRING-DISCOVERY-011.md + MUSE-WIRING-DISCOVERY-012.md. All probes
 re-runnable; exec/sweep/trunk probes perform bounded safe runs only
 (fixtures created + removed by the probe; 4 EMBARGO names never executed
 except browser_launch contained-http partial lift in 010 — static fixture
@@ -25,9 +27,35 @@ sweep3 risk probes control-gated, see 007; delete_file verdict-only with
 target-survival check, see 008; trunk_browser1 is read-only: zero tool
 executions, see 009; live1/live2 launch ephemeral headless only with
 sandbox dirs + active approval gate + loopback/data-URL-only traffic,
-see 010).
+see 010; verify_sweep12 dispatches real phases through ToolService +
+firewall with a probe-owned workspace, see 012).
 
 FORMAT per row follows CRITICAL-JOE-DEEP-CAPABILITY-WIRING-AUDIT.
+
+§VERIFY12 — VERIFICATION-COMPAT (checkpoint 12, files 10/10 + browser_ui 33/33).
+Consumer: PhaseExecutor task-level (:1557-1650) + phase gate (:2302-2449);
+verdict fn verificationResultFromToolResult; allowlist isVerificationTool;
+receipts in verificationLedger. Applies to every TOOL row of the two
+storied trunks; per-row EVIDENCE_PRODUCED/VERIFICATION_COMPATIBLE below
+should be read together with this section until per-row backfill.
+CHECKER_PARTITION=task-level checkers among the 43: browser_console_scan,
+browser_ui_audit, browser_contrast_audit, browser_check_links,
+browser_performance, browser_run, browser_responsive_check (7); read_file
+gate-opt-in only; other 35 never receipted (static 43/43 + V5 live).
+VERDICT_MAP=ok/error-only for all 43 (no output.status/verificationFailed/
+cancelled/timedOut emitted — grep-verified 13 files); static 21/21 shapes
+match; passed = check executed, content-blind (absence x6, extract-swallow,
+empty-answer all map safe-direction). Evidence: verify_sweep12.json.
+RECEIPT_EVIDENCE=6 (a)-checkers emit output.url -> evidenceLocation=url
+(V4 live for console_scan); browser_run pageUrl-only -> '' (extends #8,
+P2-012); read_file gate no-url -> '' (V1/V2 live).
+REUSE=browser checks always run (no trusted revision, V4 live, by design);
+read_file gates always invalidated (nonce scopeRoot, V1/V6 live, MISMATCH
+#10 -> P2-018). Non-checker tasks bypass the ledger (V5: 0 receipts).
+GATE_NEGATIVES=V2 missing-path -> partial + failed receipt; V3 non-checker
+gate -> verification_unavailable pre-execution, 0 browser sessions, partial.
+METHOD=direct executor invocation is firewall-rejected fail-closed (F72);
+LEVEL-5 must dispatch via ToolService inside runInContext.
 
 ---
 
