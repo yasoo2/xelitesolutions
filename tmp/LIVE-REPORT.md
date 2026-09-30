@@ -1,53 +1,56 @@
 # Joe — Live report (Muse cycle, 2026-09-30)
-FALLBACK_COPY: shared D:\Joe\coordination\team\LIVE-REPORT.md is not writable from the Muse sandbox (workspace-only write policy; edit attempt this cycle: "absolute path is outside the workspace"). This workspace copy is authoritative for import.
-MUSE_HEAD=f254b7d9 (branch muse/joe-development) + this cycle (DUCKAI reaffirm-20260930b, wiring checkpoint 37, live report — uncommitted at report time)
-MAIN_HEAD=e8fd9589 (NVIDIA worktree, read-only; 12 dirty tracked files, zero provider/router paths, preserved, untouched)
+FALLBACK_COPY: shared D:\Joe\coordination\team\LIVE-REPORT.md is not writable from the Muse sandbox (workspace-only write policy; shared consultation write probe this cycle: "Access to the path is denied"). This workspace copy is authoritative for import.
+MUSE_HEAD=ffaeb342 (branch muse/joe-development) + this cycle (PROVIDER-SETUP review, wiring checkpoint 38, live report — uncommitted at report time)
+MAIN_HEAD=e8fd9589 (NVIDIA worktree, read-only; dirty files preserved, untouched)
 
 ## 1. ماذا نعمل الآن؟
-استشارة DUCKAI المطلوبة أُعيد التحقق منها وسُلمت (موقف Muse ثابت). خطوة التدقيق E3 اكتملت: عدّ أدوات مُرشّح بـAST بدل regex. يعمل Muse الآن على التسليم (تقرير + commit).
+مراجعة استشارية جديدة (توحيد إعداد المزود) سُلمت بموقف مستقل. نقطة تدقيق 38 اكتملت: كل اسم معلن تم فحص تسجيله/رؤيته/وصوله استاتيكيًا. Muse الآن في التسليم (تقرير + commit).
 
 ## 2. ماذا اكتشفنا؟
-- العدد الدقيق للأدوات المعلنة: 168 (Muse) / 169 (main) — الفرق أداة واحدة قذرة لـNVIDIA (‏specification_verification‏).
-- 6 أدوات معلنة ككائنات ‏export const‏ (منها ‏bulk_file_generator‏) — أي فحص للأصناف فقط يُسقطها.
-- 3 أدوات (‏search/inspect/validate_api‏) ترث من صنف أساسي مجرد — أي فحص heritage مباشر يُسقطها.
-- حدّ regex القديم (192) تم تفسيره بالكامل: حساسية حالة PowerShell + 5 قيم متداخلة + عينة نصية واحدة.
-- لا أسماء مكررة. لا أشكال إعلان خامسة عند مستوى الاسم الحرفي.
+- العدد الاستاتيكي المسجل يطابق التشغيلي تمامًا: 164/169 (main) و163/168 (Muse) — لا فجوة عدّ.
+- المرشحون الخمسة أُسندوا جميعًا: 4 غير مسجلة فعلًا (‏bulk_file_generator‏، ‏codebase_navigator‏، ‏generate_image‏، ‏visual_qa‏ — استيراد فقط) + ‏grep_search‏ مقصودة بالتصميم (مغطاة باسم مستعار).
+- ‏bulk_file_generator‏ تؤكد اكتشاف Codex التشغيلي + تحذير الاحتواء — يُمنع مجرد تسجيلها.
+- قائمة المزود أصلًا موحدة في المرشح — التوحيد المطلوب = بطاقة الإعداد + السطر الفرعي فقط، لا دمج قوائم.
+- الموافقة على NVIDIA جلسة-فقط (‏useState‏) تُفقد عند التحديث — لكن السلوك fail-closed صحيح في مساري التشغيل والتحقق.
 
 ## 3. ماذا أنجزنا فعليًا؟
-- مراجعة DUCKAI: موقف ‏REVIEWED_BY_MUSE / APPROVE_WITH_CHANGES‏ ثابت — أُعيد التحقق من كل المثبتات على HEAD الحالي (ملف ‏tmp/team-consultation/DUCKAI-CANCEL-ORDER-9633139C-MUSE.reaffirm-20260930b.md‏). الكتابة المشتركة محظورة — للاستيراد اللفظي.
-- تدقيق التوصيل، نقطة 37: مسبار ‏astdecl37.mts‏ + نتائج A/B ‏(SHA256‏ متطابق) + مذكرة ‏MUSE-WIRING-DISCOVERY-037.md‏. قراءة فقط — صفر تعديل مصدري.
-- خلاف حقيقي محفوظ مع NVIDIA حول ساعة quota (بدء-الطلب مقابل جيل-التوكن) — يُحسم باختبارات سلوكية لا بالتصويت.
+- مراجعة ‏PROVIDER-SETUP-CONSISTENCY-001‏: موقف ‏REVIEWED_BY_MUSE / APPROVE_WITH_CHANGES‏ مستقل بأدلة سطرية (ملف ‏tmp/team-consultation/PROVIDER-SETUP-CONSISTENCY-001-MUSE.response.md‏). للاستيراد اللفظي.
+- تدقيق التوصيل، نقطة 38: مسبار ‏regcheck38.mjs‏ + نتائج A/B ‏(SHA256‏ متطابق ‏2C42CD52…‏) + مذكرة ‏MUSE-WIRING-DISCOVERY-038.md‏. قراءة فقط — صفر تعديل مصدري.
+- لا عمل متداخل: فرع Muse يحوي صفر سطر ‏nvidia‏ — لا تعارض ملفات مع المرشح.
 
 ## 4. ماذا يعمل Muse الآن؟
-نهاية الدورة عند نقطة تحقق (استشارة + تدقيق مُسلَّمان). التالي: ‏run29‏ على واجهة Joe الحقيقية (:5101 مغلق — يحتاج بناءً وإطلاقًا) ثم نقطة 38 (تسجيل/رؤية/وصول لكل اسم).
+نهاية الدورة عند نقطة تحقق (استشارة + تدقيق مُسلَّمان). التالي: ‏run29‏ على واجهة Joe الحقيقية (:5101 و:5002 غير reachable من sandbox هذه الدورة) ثم نقطة 39 (مسارات رؤية المُخطط البديلة للـ116).
 
 ## 5. ماذا يعمل NVIDIA الآن؟
-(من الحالة المشتركة + قراءة Git فقط): مالك حزمة CLI + عمل EVAL-006/CLI غير مُثبت (12 ملفًا)؛ لا تقدم جديد مؤكد هذه الدورة. لم يُخترع أي نشاط.
+(من الحالة المشتركة + قراءة Git فقط): مالك حزمة CLI + عمل EVAL-006/CLI غير مُثبت؛ لا تقدم جديد مؤكد هذه الدورة. لم يُخترع أي نشاط.
 
 ## 6. هل تم التواصل أو المراجعة بين Muse وNVIDIA؟
-لا مراجعة مباشرة جديدة بين العاملين هذه الدورة. مراجعة NVIDIA لـDUCKAI مسجلة ومقروءة (‏APPROVE_WITH_CHANGES‏) — الخلاف حول الساعة موثق. Muse سلم إعادة تأكيد لـCodex للاستيراد.
+لا مراجعة مباشرة جديدة بين العاملين هذه الدورة. مراجعة NVIDIA لاستشارة المزود ما زالت ‏PENDING_REVIEW‏ — لا اتفاق مُستنتج. Muse سلم مراجعته لـCodex للاستيراد.
 
 ## 7. أين اتفقا وأين اختلفا؟
-اتفاق (Muse↔NVIDIA على DUCKAI): عيب الإلغاء حقيقي، مثال-owner-fence المضاد صحيح، لا دمج قبل حزمة CLI + مراجعة lease، ‏5/5‏ ليست نجاح منتج.
-اختلاف حقيقي: NVIDIA تفضل ترتيب بداية-الطلب؛ Muse يشترط مفتاح جيل-التوكن + تبريد ناعم + ‏401-null‏ بمساواة التوكن. يُحسم باختبارات C1/T4.
+لا موقف NVIDIA بعد على استشارة المزود — لا اتفاق ولا اختلاف مسجل. توصية Muse: إبقاء العقد الخلفي (بيئة المشغّل + إقرار لكل طلب + تثبيت النموذج/النقطة) دون مساس، والتوحيد عبر فتحة موافقة في بيانات ‏PROVIDER_KEY_INFO‏ + تذكر اختياري بطابع زمني وإلغاء.
 
-## 8. الأرقام المؤكدة (REPORTED_BY_MUSE, static/AST only — ليست whole-product)
+## 8. الأرقام المؤكدة (REPORTED_BY_MUSE, static — ليست whole-product)
 DISCOVERED_TOOLS=168 (Muse) / 169 (main) — أسماء معلنة مُرشحة بـAST، A/B متطابق
-REGISTERED_TOOLS=164 (main runtime log, Codex-observed; not re-probed this cycle)
-EXECUTABLE_TOOLS=UNKNOWN (163 claimed in shared summary; not independently re-verified)
-FULLY_WIRED=UNKNOWN PARTIALLY_WIRED=UNKNOWN ORPHANED=UNKNOWN DUPLICATE=0 (declared-name level only) UNKNOWN=5 (declared-minus-registered name candidates, unattributed)
+REGISTERED_TOOLS=164 (main: استاتيكي 164 = تشغيلي 164، تطابق تام) / 163 (Muse استاتيكي)
+EXECUTABLE_TOOLS=164 (مشتق: التوزيع عام عبر ‏tools.find‏ + 28 اسمًا مستعارًا، لا جدول ثانٍ)
+FULLY_WIRED=UNKNOWN PARTIALLY_WIRED=116 (مسجل-لكن-خارج-الكتالوج، يحتاج فحص مسارات بديلة) ORPHANED=4 (مؤكد استاتيكيًا) DUPLICATE=0 (مستوى الاسم) UNKNOWN=116 (رؤية المُخطط البديلة)
 REPAIRED=0 VERIFIED=0 REAL_JOE_PROVEN=0 (this cycle: review + read-only discovery, no repairs, no UI run)
-VERIFIED (shared, prior): calculator NOT_PASS; run28 PARTIAL; expanded-20 pre-existing (attributed).
+VERIFIED (shared, prior): calculator NOT_PASS; expanded-20 pre-existing (attributed).
 
 ## 9. ما آخر اختبار ونتيجته؟
-- مسبار ‏astdecl37‏ تشغيل A/B: خروج 0، ‏SHA256‏ متطابق ‏67F532B1…‏ — حتمية مثبتة. مطابقة regex↔AST دقيقة (174=168+5+1). STATIC/FOCUSED فقط.
-- لا UAT واجهة هذه الدورة (:5101 مغلق؛ :5002 مفتوح لكن التحديث ينتظر تأكيد المستخدم).
+- مسبار ‏regcheck38‏ تشغيل A/B: خروج 0، ‏SHA256‏ متطابق ‏2C42CD52…‏ — حتمية مثبتة. STATIC/FOCUSED فقط.
+- لا UAT واجهة هذه الدورة (:5101 و:5002 غير reachable من sandbox؛ تحديث :5002 ينتظر تأكيد المستخدم).
 
 ## 10. ما المشاكل أو العوائق الحالية؟
 - تحديث runtime ‏:5002 ما زال بانتظار تأكيد المستخدم (لا UAT حاسبة).
-- :5101 (Muse) مغلق؛ ‏run29‏ يحتاج بناءً وإطلاقًا + جلسة مراقبة 40 دقيقة.
+- ‏run29‏ جاهز (prompt + خطة) لكن لا runtime متاح من sandbox.
 - الكتابة المشتركة محظورة من sandbox — التسليم عبر ملفات مساحة العمل للاستيراد.
-- فرق اسم واحد (168 مقابل 167 في الملخص المشترك) — يحتاج إسنادًا بإعادة التشغيل على مرجع الملخص.
+- فرق dirty في مرشح المزود (‏CommandComposer 19+/49-‏) بنفس ملف الاقتراح — يتطلب التسلسل لا التوازي.
 
 ## 11. ما الخطوة التالية؟
-1. استيراد إعادة تأكيد DUCKAI + مراجعة MEDIA-002 وتعيين مالك التنفيذ. 2. بناء :5101 وتشغيل ‏run29‏ (سقف 40 دقيقة، مراقَب). 3. نقطة تدقيق 38: registered/planner-visible/executor-reachable لكل اسم من الـ169. 4. بعد سماح التحديث: U1/U2/U3 حاسبة.
+1. استيراد مراجعة المزود + انتظار موقف NVIDIA الحقيقي ثم تعيين مالك التنفيذ. 2. عند توفر runtime: ‏run29‏ (سقف 40 دقيقة، مراقَب). 3. نقطة تدقيق 39: رؤية المُخطط عبر القوائم الحتمية/المسارات البديلة للـ116. 4. بعد سماح تحديث :5002: U1/U2/U3 حاسبة.
+
+## آخر الإنجازات
+[23:59] COORDINATION — مراجعة مزود مستقلة APPROVE_WITH_CHANGES سُلمت للاستيراد
+[00:3x] DISCOVERY — نقطة 38: 164=164 تطابق استاتيكي/تشغيلي + إسناد الخمسة (A/B 2C42CD52)
