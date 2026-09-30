@@ -1,0 +1,5 @@
+tag=runB
+sha256=024e4df827058803c3492f6e9422870180f240cdf8be7bcd9af013ff66d5dd95
+MUSE_queue=115 byClass={"LITERAL_IN_SCOPE":80,"RETRIEVAL_ONLY_CANDIDATE":33,"CORE_ALWAYS_OFFERED":2} missing=none
+MAIN_queue=116 byClass={"LITERAL_IN_SCOPE":81,"RETRIEVAL_ONLY_CANDIDATE":33,"CORE_ALWAYS_OFFERED":2} missing=S11_tool-rerank
+A/B byte-identical (sha 024e4df8...d5dd95). S11_tool-rerank absent in MAIN is EXPECTED (Muse-only file).
