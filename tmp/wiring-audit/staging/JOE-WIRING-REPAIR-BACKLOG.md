@@ -116,11 +116,24 @@ BATCH_ID=WIRING-P1-009
 CAPABILITIES=deploy expose_port shell-interpolation guard (+ trunk interpolation audit)
 ROOT_CAUSE=`lt --port ${port}` with shell:true (DeployProjectTool.ts:192-204) where port = input.port || 3000 with NO numeric validation in execute(); ToolService performs NO inputSchema validation (zero references), so type:number is decorative. Static + gateway-shape verified (018/F126); live-unprobed (public-tunnel embargo). Gated today by high-risk approval (expose_port -> high), but approval authorizes tunneling, not shell.
 FILES=DeployProjectTool.ts (numeric port guard; quote/validate all interpolations; `which lt` portability + no silent global install) + audit every interpolation into shell:true in runtime_services + ToolService inputSchema enforcement as the systemic fix (separate decision) + contract tests
-IMPLEMENTATION_OWNER=UNASSIGNED
-REVIEW_OWNER=UNASSIGNED
+IMPLEMENTATION_OWNER=MUSE (port-guard slice only; 2026-09-30)
+REVIEW_OWNER=UNASSIGNED (independent review requested: NVIDIA or Codex)
+STATUS=PORT_GUARD_IMPLEMENTED (resolvePort fail-closed in start_server + expose_port; schema description tightened; verified 2026-09-30: safe mocked-gateway RED on HEAD ok=true with `lt --port 3000; touch pwned` reaching the shell command; deploy-port-guard 12/12 GREEN; adjacent deploy-pages + deploy-project-workspace 22/22; tsc exit 0; guard:architecture + guard:package-scripts PASS). REMAINING: `which lt` POSIX-only + silent global install; systemic ToolService inputSchema enforcement; package-zipPath sibling (see P2-023).
 TESTS=non-numeric-port RED->GREEN (rejected before spawn, no-process-start assertion); expose_port positives only with loopback-safe doubles (no public tunnel in tests); AGENTS gates
 REAL_JOE_UAT=none for the tunnel itself (must not open public URLs in UAT); negative-shape verification via local harness only
 ROLLBACK=revert guard
+DEPENDENCIES=none
+---
+
+BATCH_ID=WIRING-P2-023
+CAPABILITIES=deploy package zip-path shell interpolation (sibling of P1-009)
+ROOT_CAUSE=`zip -r ${zipPath} . ...` with shell:true (DeployProjectTool.ts package branch); zipPath derives from the workspace-contained projectPath, so traversal is contained but metacharacters in a directory name (e.g. `ws/evil;cmd/`) would break out of the command. Found during the P1-009 slice; not yet RED-proven.
+FILES=DeployProjectTool.ts (quote/argv-harden the zip invocation or reject metacharacter names) + contract test
+IMPLEMENTATION_OWNER=UNASSIGNED
+REVIEW_OWNER=UNASSIGNED
+TESTS=metacharacter-dirname RED->GREEN (no breakout; honest error or correct packaging); zip positives with spaces in path; AGENTS gates
+REAL_JOE_UAT=none required (local harness)
+ROLLBACK=revert quoting change
 DEPENDENCIES=none
 ---
 

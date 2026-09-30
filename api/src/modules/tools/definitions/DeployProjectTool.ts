@@ -4,6 +4,28 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { resolveToolPath } from '../utils';
 
+const DEFAULT_PORT = 3000;
+
+/**
+ * WIRING-P1-009: ToolService performs no inputSchema enforcement, so a
+ * declared `type:number` port can arrive as an arbitrary string and reach
+ * `lt --port ${port}` under shell:true. Validate at the tool boundary and
+ * fail closed before any execution. Absent port keeps the historical 3000
+ * default; anything present must be an integer 1-65535.
+ */
+function resolvePort(raw: unknown): { ok: true; port: number } | { ok: false; error: string } {
+    if (raw === undefined || raw === null || raw === '') return { ok: true, port: DEFAULT_PORT };
+    const text = String(raw).trim();
+    if (!/^\d+$/.test(text)) {
+        return { ok: false, error: `Invalid port: expected an integer 1-65535, received ${JSON.stringify(text.slice(0, 64))}.` };
+    }
+    const port = Number.parseInt(text, 10);
+    if (port < 1 || port > 65535) {
+        return { ok: false, error: `Invalid port: expected an integer 1-65535, received ${port}.` };
+    }
+    return { ok: true, port };
+}
+
 /**
  * DeployProjectTool — Project deployment and port exposure.
  */
@@ -43,7 +65,7 @@ export class DeployProjectTool implements ToolDefinition {
             },
             port: {
                 type: 'number',
-                description: 'Port number (for expose_port or start_server).',
+                description: 'Port number (for expose_port or start_server). Must be an integer 1-65535.',
             },
             buildCommand: {
                 type: 'string',
@@ -130,7 +152,9 @@ export class DeployProjectTool implements ToolDefinition {
 
                 case 'start_server': {
                     const startCmd = input.startCommand || 'npm run dev';
-                    const port = input.port || 3000;
+                    const guardedPort = resolvePort(input.port);
+                    if (!guardedPort.ok) return { ok: false, error: guardedPort.error, logs };
+                    const port = guardedPort.port;
                     logs.push(`Starting server: ${startCmd} on port ${port}`);
 
                     const pidFile = path.join(projectPath, '.joe_server.pid');
@@ -167,7 +191,9 @@ export class DeployProjectTool implements ToolDefinition {
                 }
 
                 case 'expose_port': {
-                    const port = input.port || 3000;
+                    const guardedPort = resolvePort(input.port);
+                    if (!guardedPort.ok) return { ok: false, error: guardedPort.error, logs };
+                    const port = guardedPort.port;
                     logs.push(`Exposing port ${port} via localtunnel...`);
 
                     const checkRes = await ExecutionGateway.execute({
@@ -256,3 +282,4 @@ export class DeployProjectTool implements ToolDefinition {
         }
     }
 }
+
