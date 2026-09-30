@@ -1,0 +1,2069 @@
+{
+  "root": "D:\\Joe\\muse-worktree\\api\\src",
+  "filesScanned": 1191,
+  "totalHits": 294,
+  "prodHits": 38,
+  "testHits": 256,
+  "prod": [
+    {
+      "file": "api/controllers/sessionController.ts",
+      "line": 520,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": false,
+      "text": "const { AgentLoopService } = await import('../../modules/services/AgentLoopService');"
+    },
+    {
+      "file": "api/controllers/sessionController.ts",
+      "line": 532,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": false,
+      "text": "Promise.resolve((AgentLoopService as any).handlePendingToolExecution?.(id, authUserId))"
+    },
+    {
+      "file": "api/routes/run.ts",
+      "line": 5,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": false,
+      "text": "import { AgentLoopService } from '../../modules/services/AgentLoopService';"
+    },
+    {
+      "file": "api/routes/run.ts",
+      "line": 346,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": false,
+      "text": "AgentLoopService.execute(executionText, {"
+    },
+    {
+      "file": "api/routes/run.ts",
+      "line": 373,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": false,
+      "text": "// AgentLoopService releases this handle during normal completion;"
+    },
+    {
+      "file": "core/memory/lesson-loop.ts",
+      "line": 18,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": false,
+      "text": "*   - appendLessons(): the one helper AgentLoopService calls to extend its"
+    },
+    {
+      "file": "core/memory/lesson-loop.ts",
+      "line": 104,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": false,
+      "text": "* AgentLoopService calls. Never throws, never returns a dangling header."
+    },
+    {
+      "file": "core/orchestrator/phaseAnnounce.ts",
+      "line": 119,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": false,
+      "text": "*  Two callers announce the same moment — AgentLoopService before it"
+    },
+    {
+      "file": "core/orchestrator/PlanningEngine.ts",
+      "line": 761,
+      "pattern": "GENERATE_PLAN",
+      "test": false,
+      "text": "static async generatePlan(params: { intent: StructuredIntent, memory?: any }, traceId?: string, context?: any): Promise<ExecutionPlan> {"
+    },
+    {
+      "file": "modules/services/AgentLoopService.ts",
+      "line": 465,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": false,
+      "text": "* AgentLoopService - Dynamic Runtime Gateway"
+    },
+    {
+      "file": "modules/services/AgentLoopService.ts",
+      "line": 471,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": false,
+      "text": "export class AgentLoopService {"
+    },
+    {
+      "file": "modules/services/AgentLoopService.ts",
+      "line": 521,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": false,
+      "text": "console.log(`[AgentLoopService] 💬 clarify: merged the user's answers into the original build request`);"
+    },
+    {
+      "file": "modules/services/AgentLoopService.ts",
+      "line": 628,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": false,
+      "text": "if (r.described) console.log(`[AgentLoopService] Vision described ${r.described} image(s), ${r.skipped} skipped`);"
+    },
+    {
+      "file": "modules/services/AgentLoopService.ts",
+      "line": 629,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": false,
+      "text": "} catch (e: any) { console.warn('[AgentLoopService] vision pass failed (continuing):', e?.message || e); }"
+    },
+    {
+      "file": "modules/services/AgentLoopService.ts",
+      "line": 673,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": false,
+      "text": "console.log(`[AgentLoopService] REAL-TIME Execution Request: ${goal} (traceId=${traceId})`);"
+    },
+    {
+      "file": "modules/services/AgentLoopService.ts",
+      "line": 690,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": false,
+      "text": "console.warn('[AgentLoopService] DB Persistence unavailable, using memory runId');"
+    },
+    {
+      "file": "modules/services/AgentLoopService.ts",
+      "line": 746,
+      "pattern": "NEW_ORCHESTRATOR",
+      "test": false,
+      "text": "const orchestrator = new AgentOrchestrator();"
+    },
+    {
+      "file": "modules/services/AgentLoopService.ts",
+      "line": 780,
+      "pattern": "ORCHESTRATOR_EXEC",
+      "test": false,
+      "text": "const orchestration = orchestrator.execute({"
+    },
+    {
+      "file": "modules/services/AgentLoopService.ts",
+      "line": 818,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": false,
+      "text": "const answerText = AgentLoopService.extractAnswer(result, language);"
+    },
+    {
+      "file": "modules/services/AgentLoopService.ts",
+      "line": 825,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": false,
+      "text": ": AgentLoopService.humanizeFailure(answerText, language);"
+    },
+    {
+      "file": "modules/services/AgentLoopService.ts",
+      "line": 894,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": false,
+      "text": "console.error(`[AgentLoopService] Fatal runtime error:`, error);"
+    },
+    {
+      "file": "modules/services/AgentLoopService.ts",
+      "line": 1011,
+      "pattern": "NEW_ORCHESTRATOR",
+      "test": false,
+      "text": "const orchestrator = new AgentOrchestrator();"
+    },
+    {
+      "file": "modules/tools/definitions/JoeEngineeringReportTool.ts",
+      "line": 98,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": false,
+      "text": "'AgentLoopService',"
+    },
+    {
+      "file": "modules/tools/definitions/JoeEngineeringReportTool.ts",
+      "line": 109,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": false,
+      "text": "'AgentLoopService orchestrates planned phases sequentially.',"
+    },
+    {
+      "file": "modules/tools/definitions/ProjectPipelineTool.ts",
+      "line": 420,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": false,
+      "text": "* hand the phases to AgentLoopService.runPlannedPhasesIfPresent, which"
+    },
+    {
+      "file": "modules/tools/definitions/ProjectPipelineTool.ts",
+      "line": 1639,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": false,
+      "text": "// Lazy require: ToolService -> definitions -> AgentLoopService -> ToolService"
+    },
+    {
+      "file": "modules/tools/definitions/ProjectPipelineTool.ts",
+      "line": 1641,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": false,
+      "text": "const { AgentLoopService } = require('../../services/AgentLoopService');"
+    },
+    {
+      "file": "modules/tools/definitions/ProjectPipelineTool.ts",
+      "line": 1642,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": false,
+      "text": "const pipeline = await AgentLoopService.runPlannedPhasesIfPresent({"
+    },
+    {
+      "file": "modules/tools/definitions/ProjectPipelineTool.ts",
+      "line": 1948,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": false,
+      "text": "const scopePipeline = await AgentLoopService.runPlannedPhasesIfPresent({"
+    },
+    {
+      "file": "modules/tools/definitions/ProjectPipelineTool.ts",
+      "line": 2115,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": false,
+      "text": "repairPipeline = await AgentLoopService.runPlannedPhasesIfPresent({"
+    },
+    {
+      "file": "orchestration/AgentOrchestrator.ts",
+      "line": 352,
+      "pattern": "GENERATE_PLAN",
+      "test": false,
+      "text": "const rawPlan = await PlanningEngine.generatePlan({ intent, memory: memory?.getHistory() }, traceId, this.context);"
+    },
+    {
+      "file": "orchestration/AgentOrchestrator.ts",
+      "line": 1174,
+      "pattern": "GENERATE_PLAN",
+      "test": false,
+      "text": "const recoveryPlan = await PlanningEngine.generatePlan({"
+    },
+    {
+      "file": "shared/reply-language.ts",
+      "line": 57,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": false,
+      "text": "* answered in two that disagreed. AgentLoopService let the message decide and"
+    },
+    {
+      "file": "shared/utils/language.ts",
+      "line": 6,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": false,
+      "text": "* Arabic. The UI language now travels with the run (run route -> AgentLoopService"
+    },
+    {
+      "file": "tests/architecture/guard_architecture.ts",
+      "line": 5,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": false,
+      "text": "const agentLoopPath = path.resolve(__dirname, '../../modules/services/AgentLoopService.ts');"
+    },
+    {
+      "file": "tests/architecture/guard_architecture.ts",
+      "line": 42,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": false,
+      "text": "const agentLoop = readRequired(agentLoopPath, 'AgentLoopService');"
+    },
+    {
+      "file": "tests/architecture/guard_architecture.ts",
+      "line": 63,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": false,
+      "text": "fail('AgentLoopService must attach RepairTicketService output when orchestrated phases fail');"
+    },
+    {
+      "file": "tests/architecture/guard_architecture.ts",
+      "line": 87,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": false,
+      "text": "fail('AgentLoopService must attach SelfFixExecutionService for automatic repair execution');"
+    }
+  ],
+  "test": [
+    {
+      "file": "tests/manual/eval_001_unfamiliar_project.ts",
+      "line": 138,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const { AgentLoopService } = await import('../../modules/services/AgentLoopService');"
+    },
+    {
+      "file": "tests/manual/eval_001_unfamiliar_project.ts",
+      "line": 173,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "console.log('🚀 Running AgentLoopService orchestrator...');"
+    },
+    {
+      "file": "tests/manual/eval_001_unfamiliar_project.ts",
+      "line": 175,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "return await (AgentLoopService as any).runPlannedPhasesIfPresent({"
+    },
+    {
+      "file": "tests/manual/eval_002_unfamiliar_repository.ts",
+      "line": 171,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const { AgentLoopService } = await import('../../modules/services/AgentLoopService');"
+    },
+    {
+      "file": "tests/manual/eval_002_unfamiliar_repository.ts",
+      "line": 275,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "console.log('🚀 Running AgentLoopService orchestrator...');"
+    },
+    {
+      "file": "tests/manual/eval_002_unfamiliar_repository.ts",
+      "line": 277,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "return await (AgentLoopService as any).runPlannedPhasesIfPresent({"
+    },
+    {
+      "file": "tests/manual/eval_008_interrupted_run.ts",
+      "line": 168,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const { AgentLoopService } = await import('../../modules/services/AgentLoopService');"
+    },
+    {
+      "file": "tests/manual/eval_008_interrupted_run.ts",
+      "line": 228,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "return await (AgentLoopService as any).runPlannedPhasesIfPresent({"
+    },
+    {
+      "file": "tests/manual/eval_008_interrupted_run.ts",
+      "line": 273,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "return await (AgentLoopService as any).runPlannedPhasesIfPresent({"
+    },
+    {
+      "file": "tests/manual/test_prompt.ts",
+      "line": 4,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "import { AgentLoopService } from '../../modules/services/AgentLoopService';"
+    },
+    {
+      "file": "tests/manual/test_prompt.ts",
+      "line": 18,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const result = await AgentLoopService.execute(prompt, {"
+    },
+    {
+      "file": "tests/manual/verify_app_edit.ts",
+      "line": 72,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const p = await PlanningEngine.generatePlan("
+    },
+    {
+      "file": "tests/manual/verify_arabic_requests.ts",
+      "line": 80,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const p = await PlanningEngine.generatePlan({ intent: { goal, complexity: 'medium', riskLevel: 'low', rawIntent: {} } });"
+    },
+    {
+      "file": "tests/manual/verify_arabic_requests.ts",
+      "line": 88,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const p = await PlanningEngine.generatePlan({ intent: { goal, complexity: 'low', riskLevel: 'low', rawIntent: {} } });"
+    },
+    {
+      "file": "tests/manual/verify_attachments.ts",
+      "line": 31,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const { AgentLoopService } = await import('../../modules/services/AgentLoopService');"
+    },
+    {
+      "file": "tests/manual/verify_attachments.ts",
+      "line": 37,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const realExecute = AgentLoopService.execute;"
+    },
+    {
+      "file": "tests/manual/verify_attachments.ts",
+      "line": 38,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "(AgentLoopService as any).execute = async (goal: string, options: any) => {"
+    },
+    {
+      "file": "tests/manual/verify_attachments.ts",
+      "line": 82,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "(AgentLoopService as any).execute = realExecute;"
+    },
+    {
+      "file": "tests/manual/verify_attachment_display.ts",
+      "line": 26,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const { AgentLoopService } = await import('../../modules/services/AgentLoopService');"
+    },
+    {
+      "file": "tests/manual/verify_attachment_display.ts",
+      "line": 27,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const realExecute = AgentLoopService.execute;"
+    },
+    {
+      "file": "tests/manual/verify_attachment_display.ts",
+      "line": 28,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "(AgentLoopService as any).execute = async () => ({ ok: true });"
+    },
+    {
+      "file": "tests/manual/verify_attachment_display.ts",
+      "line": 61,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "(AgentLoopService as any).execute = realExecute;"
+    },
+    {
+      "file": "tests/manual/verify_attachment_memory.ts",
+      "line": 51,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const { AgentLoopService } = await import('../../modules/services/AgentLoopService');"
+    },
+    {
+      "file": "tests/manual/verify_attachment_memory.ts",
+      "line": 53,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const realExecute = AgentLoopService.execute.bind(AgentLoopService);"
+    },
+    {
+      "file": "tests/manual/verify_attachment_memory.ts",
+      "line": 54,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "(AgentLoopService as any).execute = async (goal: string, options: any) => {"
+    },
+    {
+      "file": "tests/manual/verify_attachment_memory.ts",
+      "line": 107,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const plan = await PlanningEngine.generatePlan({ intent: { goal: goal2, complexity: 'low', riskLevel: 'low', rawIntent: {} } as any });"
+    },
+    {
+      "file": "tests/manual/verify_background_runs.ts",
+      "line": 8,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "* The run never stopped. `POST /api/runs/start` dispatches AgentLoopService"
+    },
+    {
+      "file": "tests/manual/verify_background_runs.ts",
+      "line": 160,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "check('التشغيل يُطلق بلا await فيستمر مهما فعل المتصفح', /AgentLoopService\\.execute\\([\\s\\S]{0,600}\\}\\)\\.catch\\(err => \\{/.test(route));"
+    },
+    {
+      "file": "tests/manual/verify_bidi.ts",
+      "line": 32,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const { AgentLoopService } = await import('../../modules/services/AgentLoopService');"
+    },
+    {
+      "file": "tests/manual/verify_bidi.ts",
+      "line": 33,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "(AgentLoopService as any).execute = async (_g: string, options: any) => {"
+    },
+    {
+      "file": "tests/manual/verify_build_not_chat.ts",
+      "line": 55,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const plan = await PlanningEngine.generatePlan("
+    },
+    {
+      "file": "tests/manual/verify_build_scope.ts",
+      "line": 74,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const p = await PlanningEngine.generatePlan({ intent: { goal, complexity: 'high', riskLevel: 'low', rawIntent: {} } });"
+    },
+    {
+      "file": "tests/manual/verify_build_scope.ts",
+      "line": 81,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const sys = await PlanningEngine.generatePlan({"
+    },
+    {
+      "file": "tests/manual/verify_build_without_a_brain.ts",
+      "line": 76,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const dag: any = await (PlanningEngine as any).generatePlan({ intent }, 'trace-no-brain', { sessionId: `plan-${Date.now()}` });"
+    },
+    {
+      "file": "tests/manual/verify_chain_end_to_end.ts",
+      "line": 61,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const plan: any = await PlanningEngine.generatePlan("
+    },
+    {
+      "file": "tests/manual/verify_chat_image_e2e.ts",
+      "line": 30,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const { AgentLoopService } = await import('../../modules/services/AgentLoopService');"
+    },
+    {
+      "file": "tests/manual/verify_chat_image_e2e.ts",
+      "line": 31,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const realExecute = AgentLoopService.execute;"
+    },
+    {
+      "file": "tests/manual/verify_chat_image_e2e.ts",
+      "line": 32,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "(AgentLoopService as any).execute = async (_goal: string, options: any) => {"
+    },
+    {
+      "file": "tests/manual/verify_chat_image_e2e.ts",
+      "line": 153,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "(AgentLoopService as any).execute = realExecute;"
+    },
+    {
+      "file": "tests/manual/verify_checkpoint_resumption.ts",
+      "line": 31,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const { AgentLoopService } = await import('../../modules/services/AgentLoopService');"
+    },
+    {
+      "file": "tests/manual/verify_checkpoint_resumption.ts",
+      "line": 98,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const result1: any = await (AgentLoopService as any).runPlannedPhasesIfPresent({"
+    },
+    {
+      "file": "tests/manual/verify_checkpoint_resumption.ts",
+      "line": 143,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const result2: any = await (AgentLoopService as any).runPlannedPhasesIfPresent({"
+    },
+    {
+      "file": "tests/manual/verify_edit_flow.ts",
+      "line": 38,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "PlanningEngine.generatePlan("
+    },
+    {
+      "file": "tests/manual/verify_every_loop.ts",
+      "line": 97,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const plan = await PlanningEngine.generatePlan("
+    },
+    {
+      "file": "tests/manual/verify_field_edit_failure.ts",
+      "line": 122,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const plan = await PlanningEngine.generatePlan({ intent: { goal: withFile, complexity: 'medium', riskLevel: 'low', rawIntent: {} } as any });"
+    },
+    {
+      "file": "tests/manual/verify_field_failures.ts",
+      "line": 77,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const plan = await PlanningEngine.generatePlan({ intent: { goal: FIELD_GOAL, complexity: 'low', riskLevel: 'low', rawIntent: {} } as any });"
+    },
+    {
+      "file": "tests/manual/verify_field_failures.ts",
+      "line": 82,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "console.log('\\n[2] Vision order + [3] language: full AgentLoopService run over a fake Ollama with llava AND moondream');"
+    },
+    {
+      "file": "tests/manual/verify_field_failures.ts",
+      "line": 96,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const { AgentLoopService } = await import('../../modules/services/AgentLoopService');"
+    },
+    {
+      "file": "tests/manual/verify_field_failures.ts",
+      "line": 99,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "await AgentLoopService.execute('حلل هذه الصوره', { sessionId: 's1', attachments: [att as any], language: 'en' });"
+    },
+    {
+      "file": "tests/manual/verify_field_hygiene.ts",
+      "line": 31,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const { AgentLoopService } = await import('../../modules/services/AgentLoopService');"
+    },
+    {
+      "file": "tests/manual/verify_field_hygiene.ts",
+      "line": 32,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "(AgentLoopService as any).execute = async () => ({ ok: true });"
+    },
+    {
+      "file": "tests/manual/verify_final_answer.ts",
+      "line": 15,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "* AgentLoopService uses to build the assistant message, fed by REAL"
+    },
+    {
+      "file": "tests/manual/verify_final_answer.ts",
+      "line": 49,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const { AgentLoopService } = require('../../modules/services/AgentLoopService');"
+    },
+    {
+      "file": "tests/manual/verify_final_answer.ts",
+      "line": 115,
+      "pattern": "NEW_ORCHESTRATOR",
+      "test": true,
+      "text": "const orch = new AgentOrchestrator();"
+    },
+    {
+      "file": "tests/manual/verify_final_answer.ts",
+      "line": 122,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "return { out, text: AgentLoopService.extractAnswer(out, 'ar') as string };"
+    },
+    {
+      "file": "tests/manual/verify_firewall.ts",
+      "line": 24,
+      "pattern": "NEW_ORCHESTRATOR",
+      "test": true,
+      "text": "const orchestrator = new AgentOrchestrator();"
+    },
+    {
+      "file": "tests/manual/verify_firewall.ts",
+      "line": 25,
+      "pattern": "ORCHESTRATOR_EXEC",
+      "test": true,
+      "text": "const result = await orchestrator.execute({"
+    },
+    {
+      "file": "tests/manual/verify_goal_purity.ts",
+      "line": 50,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const { AgentLoopService } = require('../../modules/services/AgentLoopService');"
+    },
+    {
+      "file": "tests/manual/verify_goal_purity.ts",
+      "line": 62,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "await AgentLoopService.execute(FIELD_GOAL, {"
+    },
+    {
+      "file": "tests/manual/verify_goal_purity.ts",
+      "line": 87,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const plan = await PlanningEngine.generatePlan({ intent: { goal: seen.goal, complexity: 'medium', riskLevel: 'low', rawIntent: {} } });"
+    },
+    {
+      "file": "tests/manual/verify_honest_results.ts",
+      "line": 115,
+      "pattern": "NEW_ORCHESTRATOR",
+      "test": true,
+      "text": "const out: any = await new AgentOrchestrator().execute({"
+    },
+    {
+      "file": "tests/manual/verify_joe_build_page.ts",
+      "line": 547,
+      "pattern": "NEW_ORCHESTRATOR",
+      "test": true,
+      "text": "const orchestrator = new AgentOrchestrator();"
+    },
+    {
+      "file": "tests/manual/verify_joe_build_page.ts",
+      "line": 555,
+      "pattern": "ORCHESTRATOR_EXEC",
+      "test": true,
+      "text": "const result = await orchestrator.execute({"
+    },
+    {
+      "file": "tests/manual/verify_joe_full_engineer_flow.ts",
+      "line": 148,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const { AgentLoopService } = await import('../../modules/services/AgentLoopService');"
+    },
+    {
+      "file": "tests/manual/verify_joe_full_engineer_flow.ts",
+      "line": 183,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "console.log('🚀 Running AgentLoopService orchestrator...');"
+    },
+    {
+      "file": "tests/manual/verify_joe_full_engineer_flow.ts",
+      "line": 184,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "return await (AgentLoopService as any).runPlannedPhasesIfPresent({"
+    },
+    {
+      "file": "tests/manual/verify_joe_prompt_benchmark_50.ts",
+      "line": 226,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const plan = await PlanningEngine.generatePlan("
+    },
+    {
+      "file": "tests/manual/verify_open_uploads.ts",
+      "line": 26,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const { AgentLoopService } = await import('../../modules/services/AgentLoopService');"
+    },
+    {
+      "file": "tests/manual/verify_open_uploads.ts",
+      "line": 30,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const realExecute = AgentLoopService.execute;"
+    },
+    {
+      "file": "tests/manual/verify_open_uploads.ts",
+      "line": 31,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "(AgentLoopService as any).execute = async (goal: string, options: any) => {"
+    },
+    {
+      "file": "tests/manual/verify_open_uploads.ts",
+      "line": 91,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "(AgentLoopService as any).execute = realExecute;"
+    },
+    {
+      "file": "tests/manual/verify_orchestrator_rigor.ts",
+      "line": 63,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const { AgentLoopService } = await import('../../modules/services/AgentLoopService');"
+    },
+    {
+      "file": "tests/manual/verify_orchestrator_rigor.ts",
+      "line": 64,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const wrapped = (AgentLoopService as any).humanizeFailure("
+    },
+    {
+      "file": "tests/manual/verify_orchestrator_rigor.ts",
+      "line": 71,
+      "pattern": "NEW_ORCHESTRATOR",
+      "test": true,
+      "text": "const orch: any = new AgentOrchestrator();"
+    },
+    {
+      "file": "tests/manual/verify_parallel_execution.ts",
+      "line": 61,
+      "pattern": "NEW_ORCHESTRATOR",
+      "test": true,
+      "text": "const out = await new AgentOrchestrator().execute({"
+    },
+    {
+      "file": "tests/manual/verify_plan_dataflow.ts",
+      "line": 171,
+      "pattern": "NEW_ORCHESTRATOR",
+      "test": true,
+      "text": "const orch = new AgentOrchestrator();"
+    },
+    {
+      "file": "tests/manual/verify_prd_route.ts",
+      "line": 26,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "PlanningEngine.generatePlan({ intent: { goal, complexity: 'high', riskLevel: 'medium', rawIntent: {} } as any }).then(x => x.steps[0]?.tool).catch(() => 'llm-fallthrough'),"
+    },
+    {
+      "file": "tests/manual/verify_quality_phase.ts",
+      "line": 53,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const { AgentLoopService } = await import('../../modules/services/AgentLoopService');"
+    },
+    {
+      "file": "tests/manual/verify_quality_phase.ts",
+      "line": 89,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "AgentLoopService.runPlannedPhasesIfPresent({"
+    },
+    {
+      "file": "tests/manual/verify_react_project.ts",
+      "line": 34,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "PlanningEngine.generatePlan({ intent: { goal: 'ابن لي مشروع React لمقهى', complexity: 'medium', riskLevel: 'low', rawIntent: {} } as any })"
+    },
+    {
+      "file": "tests/manual/verify_react_project.ts",
+      "line": 40,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "PlanningEngine.generatePlan({ intent: { goal: 'ابن لي موقعاً لمطعم بيتزا مع قائمة طعام', complexity: 'medium', riskLevel: 'low', rawIntent: {} } as any })"
+    },
+    {
+      "file": "tests/manual/verify_recovery.ts",
+      "line": 95,
+      "pattern": "NEW_ORCHESTRATOR",
+      "test": true,
+      "text": "const orchestrator = new AgentOrchestrator();"
+    },
+    {
+      "file": "tests/manual/verify_recovery.ts",
+      "line": 96,
+      "pattern": "ORCHESTRATOR_EXEC",
+      "test": true,
+      "text": "return orchestrator.execute({"
+    },
+    {
+      "file": "tests/manual/verify_repair_remaining.ts",
+      "line": 52,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const plan = await PlanningEngine.generatePlan("
+    },
+    {
+      "file": "tests/manual/verify_required_args.ts",
+      "line": 64,
+      "pattern": "NEW_ORCHESTRATOR",
+      "test": true,
+      "text": "const out: any = await new AgentOrchestrator().execute({"
+    },
+    {
+      "file": "tests/manual/verify_routing_regression.ts",
+      "line": 26,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "PlanningEngine.generatePlan({ intent: { goal, complexity: 'medium', riskLevel: 'low', rawIntent: {} } as any });"
+    },
+    {
+      "file": "tests/manual/verify_search_routing.ts",
+      "line": 48,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const p = await PlanningEngine.generatePlan({ intent: { goal, complexity: 'low', riskLevel: 'low', rawIntent: {} } });"
+    },
+    {
+      "file": "tests/manual/verify_self_fix_typescript_argument_coercion.ts",
+      "line": 27,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const { AgentLoopService } = await import('../../modules/services/AgentLoopService');"
+    },
+    {
+      "file": "tests/manual/verify_self_fix_typescript_argument_coercion.ts",
+      "line": 118,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const result: any = await (AgentLoopService as any).runPlannedPhasesIfPresent({"
+    },
+    {
+      "file": "tests/manual/verify_self_fix_typescript_boolean_argument_coercion.ts",
+      "line": 27,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const { AgentLoopService } = await import('../../modules/services/AgentLoopService');"
+    },
+    {
+      "file": "tests/manual/verify_self_fix_typescript_boolean_argument_coercion.ts",
+      "line": 118,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const result: any = await (AgentLoopService as any).runPlannedPhasesIfPresent({"
+    },
+    {
+      "file": "tests/manual/verify_self_fix_typescript_boolean_to_number.ts",
+      "line": 24,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const { AgentLoopService } = await import('../../modules/services/AgentLoopService');"
+    },
+    {
+      "file": "tests/manual/verify_self_fix_typescript_boolean_to_number.ts",
+      "line": 82,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const result: any = await (AgentLoopService as any).runPlannedPhasesIfPresent({"
+    },
+    {
+      "file": "tests/manual/verify_self_fix_typescript_boolean_to_string.ts",
+      "line": 24,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const { AgentLoopService } = await import('../../modules/services/AgentLoopService');"
+    },
+    {
+      "file": "tests/manual/verify_self_fix_typescript_boolean_to_string.ts",
+      "line": 82,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const result: any = await (AgentLoopService as any).runPlannedPhasesIfPresent({"
+    },
+    {
+      "file": "tests/manual/verify_self_fix_typescript_missing_name.ts",
+      "line": 31,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const { AgentLoopService } = await import('../../modules/services/AgentLoopService');"
+    },
+    {
+      "file": "tests/manual/verify_self_fix_typescript_missing_name.ts",
+      "line": 91,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const result: any = await (AgentLoopService as any).runPlannedPhasesIfPresent({"
+    },
+    {
+      "file": "tests/manual/verify_self_fix_typescript_number_boolean_argument_coercion.ts",
+      "line": 28,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const { AgentLoopService } = await import('../../modules/services/AgentLoopService');"
+    },
+    {
+      "file": "tests/manual/verify_self_fix_typescript_number_boolean_argument_coercion.ts",
+      "line": 119,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const result: any = await (AgentLoopService as any).runPlannedPhasesIfPresent({"
+    },
+    {
+      "file": "tests/manual/verify_self_fix_typescript_number_to_boolean.ts",
+      "line": 27,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const { AgentLoopService } = await import('../../modules/services/AgentLoopService');"
+    },
+    {
+      "file": "tests/manual/verify_self_fix_typescript_number_to_boolean.ts",
+      "line": 118,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const result: any = await (AgentLoopService as any).runPlannedPhasesIfPresent({"
+    },
+    {
+      "file": "tests/manual/verify_self_fix_typescript_number_to_string.ts",
+      "line": 24,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const { AgentLoopService } = await import('../../modules/services/AgentLoopService');"
+    },
+    {
+      "file": "tests/manual/verify_self_fix_typescript_number_to_string.ts",
+      "line": 82,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const result: any = await (AgentLoopService as any).runPlannedPhasesIfPresent({"
+    },
+    {
+      "file": "tests/manual/verify_self_fix_typescript_repair.ts",
+      "line": 31,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const { AgentLoopService } = await import('../../modules/services/AgentLoopService');"
+    },
+    {
+      "file": "tests/manual/verify_self_fix_typescript_repair.ts",
+      "line": 91,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const result: any = await (AgentLoopService as any).runPlannedPhasesIfPresent({"
+    },
+    {
+      "file": "tests/manual/verify_self_fix_typescript_string_to_boolean.ts",
+      "line": 24,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const { AgentLoopService } = await import('../../modules/services/AgentLoopService');"
+    },
+    {
+      "file": "tests/manual/verify_self_fix_typescript_string_to_boolean.ts",
+      "line": 82,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const result: any = await (AgentLoopService as any).runPlannedPhasesIfPresent({"
+    },
+    {
+      "file": "tests/manual/verify_self_healing_loop.ts",
+      "line": 25,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const { AgentLoopService } = await import('../../modules/services/AgentLoopService');"
+    },
+    {
+      "file": "tests/manual/verify_self_healing_loop.ts",
+      "line": 67,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const result: any = await (AgentLoopService as any).runPlannedPhasesIfPresent({"
+    },
+    {
+      "file": "tests/manual/verify_self_healing_success_loop.ts",
+      "line": 25,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const { AgentLoopService } = await import('../../modules/services/AgentLoopService');"
+    },
+    {
+      "file": "tests/manual/verify_self_healing_success_loop.ts",
+      "line": 71,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const result: any = await (AgentLoopService as any).runPlannedPhasesIfPresent({"
+    },
+    {
+      "file": "tests/manual/verify_send_button_accents.ts",
+      "line": 65,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const { AgentLoopService } = await import('../../modules/services/AgentLoopService');"
+    },
+    {
+      "file": "tests/manual/verify_send_button_accents.ts",
+      "line": 66,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "(AgentLoopService as any).execute = async (_goal: string, options: any) => {"
+    },
+    {
+      "file": "tests/manual/verify_session_title.ts",
+      "line": 82,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const svc = fs.readFileSync(path.join(__dirname, '..', '..', 'modules', 'services', 'AgentLoopService.ts'), 'utf-8');"
+    },
+    {
+      "file": "tests/manual/verify_system.ts",
+      "line": 6,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const { AgentLoopService } = await import('../../modules/services/AgentLoopService');"
+    },
+    {
+      "file": "tests/manual/verify_system.ts",
+      "line": 20,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "if (!AgentLoopService) throw new Error('AgentLoopService not undefined');"
+    },
+    {
+      "file": "tests/manual/verify_system.ts",
+      "line": 21,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "console.log('✅ AgentLoopService imported successfully.');"
+    },
+    {
+      "file": "tests/manual/verify_system.ts",
+      "line": 23,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "console.error('❌ Failed to import AgentLoopService', e);"
+    },
+    {
+      "file": "tests/manual/verify_three_features.ts",
+      "line": 4,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "*   1. CLARIFY: AgentLoopService.execute('ابن لي موقع') returns the questions"
+    },
+    {
+      "file": "tests/manual/verify_three_features.ts",
+      "line": 35,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const { AgentLoopService } = await import('../../modules/services/AgentLoopService');"
+    },
+    {
+      "file": "tests/manual/verify_three_features.ts",
+      "line": 39,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const res: any = await AgentLoopService.execute('ابن لي موقع', { sessionId: 'clar-live', language: 'ar' });"
+    },
+    {
+      "file": "tests/manual/verify_tool_reach.ts",
+      "line": 147,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "PE.generatePlan({ intent: { goal, complexity: 'medium', riskLevel: 'low', rawIntent: {} } }),"
+    },
+    {
+      "file": "tests/manual/verify_vision.ts",
+      "line": 54,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const { AgentLoopService } = await import('../../modules/services/AgentLoopService');"
+    },
+    {
+      "file": "tests/manual/verify_vision.ts",
+      "line": 58,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const realExecute = AgentLoopService.execute;"
+    },
+    {
+      "file": "tests/manual/verify_vision.ts",
+      "line": 59,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "(AgentLoopService as any).execute = async (goal: string, options: any) => {"
+    },
+    {
+      "file": "tests/manual/verify_vision.ts",
+      "line": 90,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "(AgentLoopService as any).execute = realExecute;"
+    },
+    {
+      "file": "__tests__/a-column-named-image-is-not-a-question.test.ts",
+      "line": 42,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const plan: any = await PlanningEngine.generatePlan({ intent: { goal } as any });"
+    },
+    {
+      "file": "__tests__/a-correct-answer-is-not-a-failure.test.ts",
+      "line": 27,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const AGENT_LOOP = read('modules', 'services', 'AgentLoopService.ts');"
+    },
+    {
+      "file": "__tests__/a-correct-answer-is-not-a-failure.test.ts",
+      "line": 130,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "it('does not replay a completed phase log from AgentLoopService', () => {"
+    },
+    {
+      "file": "__tests__/a-door-closed-is-not-a-wall.test.ts",
+      "line": 46,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "generatePlan(a: unknown, b: string, c: unknown): Promise<{ steps?: Array<{ tool: string }> }>;"
+    },
+    {
+      "file": "__tests__/a-door-closed-is-not-a-wall.test.ts",
+      "line": 47,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "}).generatePlan("
+    },
+    {
+      "file": "__tests__/a-pattern-written-with-the-article-routes-half.test.ts",
+      "line": 36,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const plan: any = await (PlanningEngine as any).generatePlan("
+    },
+    {
+      "file": "__tests__/a-provider-named-in-three-places-and-built-in-none.test.ts",
+      "line": 14,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "*          ->  AgentLoopService.ts:466 options.modelConfig"
+    },
+    {
+      "file": "__tests__/a-question-is-not-an-order.test.ts",
+      "line": 93,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const plan = await PlanningEngine.generatePlan({ intent: intent! });"
+    },
+    {
+      "file": "__tests__/a-question-is-not-an-order.test.ts",
+      "line": 101,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const plan = await PlanningEngine.generatePlan({ intent: intent! });"
+    },
+    {
+      "file": "__tests__/a-substitution-is-declared-not-silent.test.ts",
+      "line": 65,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const CALL_SITE_PATH = path.join(__dirname, '..', 'modules', 'services', 'AgentLoopService.ts');"
+    },
+    {
+      "file": "__tests__/a-substitution-is-declared-not-silent.test.ts",
+      "line": 224,
+      "pattern": "NEW_ORCHESTRATOR",
+      "test": true,
+      "text": "const runStart = source.indexOf('new AgentOrchestrator', execution);"
+    },
+    {
+      "file": "__tests__/agent-orchestrator-capability-decision.test.ts",
+      "line": 5,
+      "pattern": "NEW_ORCHESTRATOR",
+      "test": true,
+      "text": "const plan = await new AgentOrchestrator().plan("
+    },
+    {
+      "file": "__tests__/api-project.test.ts",
+      "line": 87,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const p = PlanningEngine.generatePlan("
+    },
+    {
+      "file": "__tests__/api-project.test.ts",
+      "line": 94,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const p = PlanningEngine.generatePlan("
+    },
+    {
+      "file": "__tests__/api-selection-cross-phase.test.ts",
+      "line": 8,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "import { AgentLoopService } from '../modules/services/AgentLoopService';"
+    },
+    {
+      "file": "__tests__/api-selection-cross-phase.test.ts",
+      "line": 66,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const result: any = await AgentLoopService.runPlannedPhasesIfPresent({"
+    },
+    {
+      "file": "__tests__/api-selection-cross-phase.test.ts",
+      "line": 122,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "await expect(AgentLoopService.runPlannedPhasesIfPresent({"
+    },
+    {
+      "file": "__tests__/attachments.test.ts",
+      "line": 85,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const src = read('modules', 'services', 'AgentLoopService.ts');"
+    },
+    {
+      "file": "__tests__/browser-explicit-url-routing.test.ts",
+      "line": 8,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "PlanningEngine.generatePlan({"
+    },
+    {
+      "file": "__tests__/browser-explicit-url-routing.test.ts",
+      "line": 112,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const p = await PlanningEngine.generatePlan("
+    },
+    {
+      "file": "__tests__/browser-explicit-url-routing.test.ts",
+      "line": 136,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const p = await PlanningEngine.generatePlan("
+    },
+    {
+      "file": "__tests__/browser-explicit-url-routing.test.ts",
+      "line": 157,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const p = await PlanningEngine.generatePlan("
+    },
+    {
+      "file": "__tests__/browser-explicit-url-routing.test.ts",
+      "line": 171,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const p = await PlanningEngine.generatePlan("
+    },
+    {
+      "file": "__tests__/build-discipline.test.ts",
+      "line": 14,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "path.join(__dirname, '..', 'modules', 'services', 'AgentLoopService.ts'), 'utf-8');"
+    },
+    {
+      "file": "__tests__/build-qa-repair-routing.test.ts",
+      "line": 3,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const plan = (goal: string) => PlanningEngine.generatePlan({"
+    },
+    {
+      "file": "__tests__/build-without-a-brain.test.ts",
+      "line": 87,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "PlanningEngine.generatePlan({ intent: { goal: request, complexity: 'high', riskLevel: 'low', rawIntent: {} } as any }),"
+    },
+    {
+      "file": "__tests__/business-profile.test.ts",
+      "line": 67,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "PlanningEngine.generatePlan({ intent: { goal, complexity: 'medium', riskLevel: 'low', rawIntent: {} } as any })"
+    },
+    {
+      "file": "__tests__/capability-decision-tool.test.ts",
+      "line": 45,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const plan: any = await PlanningEngine.generatePlan({"
+    },
+    {
+      "file": "__tests__/change-aware-phase-verification.test.ts",
+      "line": 13,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "import { AgentLoopService } from '../modules/services/AgentLoopService';"
+    },
+    {
+      "file": "__tests__/change-aware-phase-verification.test.ts",
+      "line": 196,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const result: any = await AgentLoopService.runPlannedPhasesIfPresent({"
+    },
+    {
+      "file": "__tests__/change-aware-phase-verification.test.ts",
+      "line": 300,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const result: any = await AgentLoopService.runPlannedPhasesIfPresent({"
+    },
+    {
+      "file": "__tests__/content-and-intent.test.ts",
+      "line": 110,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const plan = await PlanningEngine.generatePlan({"
+    },
+    {
+      "file": "__tests__/crash-and-repair-loop.test.ts",
+      "line": 114,
+      "pattern": "NEW_ORCHESTRATOR",
+      "test": true,
+      "text": "const orch: any = new AgentOrchestrator();"
+    },
+    {
+      "file": "__tests__/crash-and-repair-loop.test.ts",
+      "line": 124,
+      "pattern": "NEW_ORCHESTRATOR",
+      "test": true,
+      "text": "const orch: any = new AgentOrchestrator();"
+    },
+    {
+      "file": "__tests__/crash-and-repair-loop.test.ts",
+      "line": 134,
+      "pattern": "NEW_ORCHESTRATOR",
+      "test": true,
+      "text": "const orch: any = new AgentOrchestrator();"
+    },
+    {
+      "file": "__tests__/deadline.test.ts",
+      "line": 50,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "test('the whole run is capped in AgentLoopService, with a localized explanation', () => {"
+    },
+    {
+      "file": "__tests__/deadline.test.ts",
+      "line": 51,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const src = read('modules/services/AgentLoopService.ts');"
+    },
+    {
+      "file": "__tests__/deadline.test.ts",
+      "line": 71,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const loop = read('modules/services/AgentLoopService.ts');"
+    },
+    {
+      "file": "__tests__/delivery-details.test.ts",
+      "line": 24,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "import { compactPhaseReceipt } from '../modules/services/AgentLoopService';"
+    },
+    {
+      "file": "__tests__/deploy-pages.test.ts",
+      "line": 16,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "PlanningEngine.generatePlan({ intent: { goal, complexity: 'low', riskLevel: 'low', rawIntent: {} } as any });"
+    },
+    {
+      "file": "__tests__/edit-flow.test.ts",
+      "line": 22,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const p = PlanningEngine.generatePlan("
+    },
+    {
+      "file": "__tests__/event-dashboard-request-contract.test.ts",
+      "line": 65,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const agentLoop = fs.readFileSync(path.join(__dirname, '..', 'modules', 'services', 'AgentLoopService.ts'), 'utf8');"
+    },
+    {
+      "file": "__tests__/every-loop-is-connected.test.ts",
+      "line": 77,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const p = await PlanningEngine.generatePlan("
+    },
+    {
+      "file": "__tests__/explicit-file-append-contract.test.ts",
+      "line": 31,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const plan: any = await PlanningEngine.generatePlan({ intent: { goal, complexity: 'low', riskLevel: 'low', rawIntent: {} } as any });"
+    },
+    {
+      "file": "__tests__/field-hygiene.test.ts",
+      "line": 93,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "[['modules', 'services', 'AgentLoopService.ts'], 1],"
+    },
+    {
+      "file": "__tests__/field-hygiene.test.ts",
+      "line": 106,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const src = read('modules', 'services', 'AgentLoopService.ts');"
+    },
+    {
+      "file": "__tests__/form-inbox.test.ts",
+      "line": 92,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "PlanningEngine.generatePlan({ intent: { goal: 'اعرض رسائل النموذج', complexity: 'low', riskLevel: 'low', rawIntent: {} } as any }, undefined, { sessionId: KEY })"
+    },
+    {
+      "file": "__tests__/import-project.test.ts",
+      "line": 90,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const p = PlanningEngine.generatePlan({ intent: { goal, complexity: 'medium', riskLevel: 'low', rawIntent: {} } as any })"
+    },
+    {
+      "file": "__tests__/import-project.test.ts",
+      "line": 107,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const plan = await PlanningEngine.generatePlan({ intent: { goal: 'حلل https://github.com/yasoo2/xelitesolutions محلياً', complexity: 'medium', riskLevel: 'low', rawIntent: {} } as any });"
+    },
+    {
+      "file": "__tests__/import-project.test.ts",
+      "line": 115,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const plan = await PlanningEngine.generatePlan({ intent: { goal, complexity: 'high', riskLevel: 'medium', rawIntent: {} } as any });"
+    },
+    {
+      "file": "__tests__/import-project.test.ts",
+      "line": 181,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const plan = await PlanningEngine.generatePlan({ intent: { goal: 'حلل بدقة مستودع https://github.com/yasoo2/xelitesolutions وأخبرني بنقاط ضعفه الرئيسية', complexity: 'medium', riskLevel: 'low', rawIntent: {} } as any });"
+    },
+    {
+      "file": "__tests__/integration-audit.test.ts",
+      "line": 294,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const loop = fs.readFileSync(path.join(__dirname, '..', 'modules', 'services', 'AgentLoopService.ts'), 'utf-8');"
+    },
+    {
+      "file": "__tests__/integration-audit.test.ts",
+      "line": 360,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const loop = fs.readFileSync(path.join(__dirname, '..', 'modules', 'services', 'AgentLoopService.ts'), 'utf-8');"
+    },
+    {
+      "file": "__tests__/integration-audit.test.ts",
+      "line": 393,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const loop = fs.readFileSync(path.join(__dirname, '..', 'modules', 'services', 'AgentLoopService.ts'), 'utf-8');"
+    },
+    {
+      "file": "__tests__/joe-speaks-the-interfaces-language.test.ts",
+      "line": 16,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "* AgentLoopService let the MESSAGE decide and the switcher break ties;"
+    },
+    {
+      "file": "__tests__/language-contract.test.ts",
+      "line": 141,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const loop = read('modules', 'services', 'AgentLoopService.ts');"
+    },
+    {
+      "file": "__tests__/language-contract.test.ts",
+      "line": 192,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const loop = read('modules', 'services', 'AgentLoopService.ts');"
+    },
+    {
+      "file": "__tests__/language-contract.test.ts",
+      "line": 224,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const loop = read('modules', 'services', 'AgentLoopService.ts');"
+    },
+    {
+      "file": "__tests__/orchestrator-rigor.test.ts",
+      "line": 81,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const { AgentLoopService } = require('../modules/services/AgentLoopService');"
+    },
+    {
+      "file": "__tests__/orchestrator-rigor.test.ts",
+      "line": 82,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const ar = AgentLoopService.humanizeFailure(\"ENOENT: no such file or directory, scandir 'C:\\\\x\\\\path_to_directory'\", 'ar');"
+    },
+    {
+      "file": "__tests__/orchestrator-rigor.test.ts",
+      "line": 85,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const en = AgentLoopService.humanizeFailure(\"'exiftool' is not recognized as an internal or external command\", 'en');"
+    },
+    {
+      "file": "__tests__/orchestrator-rigor.test.ts",
+      "line": 88,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "expect(AgentLoopService.humanizeFailure('تعذر تنفيذ الخطوة الثالثة', 'ar')).toBe('تعذر تنفيذ الخطوة الثالثة');"
+    },
+    {
+      "file": "__tests__/orchestrator-run-identity.test.ts",
+      "line": 40,
+      "pattern": "NEW_ORCHESTRATOR",
+      "test": true,
+      "text": "const orchestrator: any = new AgentOrchestrator();"
+    },
+    {
+      "file": "__tests__/orchestrator-run-identity.test.ts",
+      "line": 50,
+      "pattern": "ORCHESTRATOR_EXEC",
+      "test": true,
+      "text": "const first = await orchestrator.execute({"
+    },
+    {
+      "file": "__tests__/orchestrator-run-identity.test.ts",
+      "line": 56,
+      "pattern": "ORCHESTRATOR_EXEC",
+      "test": true,
+      "text": "const second = await orchestrator.execute({"
+    },
+    {
+      "file": "__tests__/orchestrator-run-identity.test.ts",
+      "line": 71,
+      "pattern": "ORCHESTRATOR_EXEC",
+      "test": true,
+      "text": "const canonical = await orchestrator.execute({"
+    },
+    {
+      "file": "__tests__/orchestrator-terminal-provider.test.ts",
+      "line": 22,
+      "pattern": "NEW_ORCHESTRATOR",
+      "test": true,
+      "text": "const orchestrator: any = new AgentOrchestrator();"
+    },
+    {
+      "file": "__tests__/orchestrator-terminal-provider.test.ts",
+      "line": 28,
+      "pattern": "ORCHESTRATOR_EXEC",
+      "test": true,
+      "text": "const result = await orchestrator.execute({ id: 'terminal-provider-test', goal: 'Build an application',"
+    },
+    {
+      "file": "__tests__/phase-completion-voice.test.ts",
+      "line": 32,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "} from '../modules/services/AgentLoopService';"
+    },
+    {
+      "file": "__tests__/pipeline-quality.test.ts",
+      "line": 52,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "expect(pipeline).toContain('AgentLoopService.runPlannedPhasesIfPresent');"
+    },
+    {
+      "file": "__tests__/pipeline-quality.test.ts",
+      "line": 88,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const A = fs.readFileSync(path.join(__dirname, '..', 'modules', 'services', 'AgentLoopService.ts'), 'utf-8');"
+    },
+    {
+      "file": "__tests__/pipeline-visibility.test.ts",
+      "line": 15,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "path.join(__dirname, '..', 'modules', 'services', 'AgentLoopService.ts'), 'utf-8');"
+    },
+    {
+      "file": "__tests__/project-edit.test.ts",
+      "line": 513,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const p = PlanningEngine.generatePlan("
+    },
+    {
+      "file": "__tests__/project-pipeline.test.ts",
+      "line": 32,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "PlanningEngine.generatePlan({ intent: { goal, complexity: 'high', riskLevel: 'medium', rawIntent: {} } as any });"
+    },
+    {
+      "file": "__tests__/project-pipeline.test.ts",
+      "line": 53,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const p = await PlanningEngine.generatePlan({"
+    },
+    {
+      "file": "__tests__/project-pipeline.test.ts",
+      "line": 279,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const p = await PlanningEngine.generatePlan({ intent: { goal, complexity: 'low', riskLevel: 'low', rawIntent: {} } as any });"
+    },
+    {
+      "file": "__tests__/project-pipeline.test.ts",
+      "line": 317,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "expect(src).toMatch(/AgentLoopService\\.runPlannedPhasesIfPresent/);"
+    },
+    {
+      "file": "__tests__/project-pipeline.test.ts",
+      "line": 318,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "// Lazy require, or the import cycle ToolService→definitions→AgentLoopService bites."
+    },
+    {
+      "file": "__tests__/project-pipeline.test.ts",
+      "line": 319,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "expect(src).toMatch(/require\\('\\.\\.\\/\\.\\.\\/services\\/AgentLoopService'\\)/);"
+    },
+    {
+      "file": "__tests__/project-pipeline.test.ts",
+      "line": 324,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const plan: any = await PlanningEngine.generatePlan({ intent: { goal, complexity: 'high', riskLevel: 'medium', rawIntent: {} } as any });"
+    },
+    {
+      "file": "__tests__/project-pipeline.test.ts",
+      "line": 430,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "path.join(__dirname, '..', 'modules', 'services', 'AgentLoopService.ts'), 'utf-8');"
+    },
+    {
+      "file": "__tests__/project-run.test.ts",
+      "line": 27,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "PlanningEngine.generatePlan({ intent: { goal, complexity: 'low', riskLevel: 'low', rawIntent: {} } as any });"
+    },
+    {
+      "file": "__tests__/project-text-edit.test.ts",
+      "line": 168,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const plan = await PlanningEngine.generatePlan({ intent: { goal, complexity: 'medium', riskLevel: 'low', rawIntent: {} } as any });"
+    },
+    {
+      "file": "__tests__/prose-verification-final-gate.test.ts",
+      "line": 41,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "import { AgentLoopService } from '../modules/services/AgentLoopService';"
+    },
+    {
+      "file": "__tests__/prose-verification-final-gate.test.ts",
+      "line": 140,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const result: any = await AgentLoopService.runPlannedPhasesIfPresent({"
+    },
+    {
+      "file": "__tests__/react-project.test.ts",
+      "line": 22,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const p = PlanningEngine.generatePlan("
+    },
+    {
+      "file": "__tests__/reading-rows-is-not-building-a-shop.test.ts",
+      "line": 36,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const plan: any = await PlanningEngine.generatePlan({ intent: { goal } as any });"
+    },
+    {
+      "file": "__tests__/routing-immunity.test.ts",
+      "line": 22,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "PlanningEngine.generatePlan({ intent: { goal, complexity: 'medium', riskLevel: 'low', rawIntent: {} } as any });"
+    },
+    {
+      "file": "__tests__/run-evidence.test.ts",
+      "line": 11,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "import { extractRunReceiptEvidence } from '../modules/services/AgentLoopService';"
+    },
+    {
+      "file": "__tests__/schema-from-blueprint.test.ts",
+      "line": 16,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "import { extractRunReceiptEvidence } from '../modules/services/AgentLoopService';"
+    },
+    {
+      "file": "__tests__/self-repair.test.ts",
+      "line": 21,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "import { acceptanceFailureDisposition, acceptanceFidelityVerdict, surfaceAcceptanceFidelity } from '../modules/services/AgentLoopService';"
+    },
+    {
+      "file": "__tests__/shell-visible.test.ts",
+      "line": 24,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const plan = await PlanningEngine.generatePlan({ intent: intent as any });"
+    },
+    {
+      "file": "__tests__/shell-visible.test.ts",
+      "line": 30,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const plan = await PlanningEngine.generatePlan({"
+    },
+    {
+      "file": "__tests__/shell-visible.test.ts",
+      "line": 43,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const plan = await PlanningEngine.generatePlan({"
+    },
+    {
+      "file": "__tests__/shell-visible.test.ts",
+      "line": 70,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const plan: any = await PlanningEngine.generatePlan({ intent: intent as any });"
+    },
+    {
+      "file": "__tests__/shell-visible.test.ts",
+      "line": 80,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const plan = PlanningEngine.generatePlan({"
+    },
+    {
+      "file": "__tests__/shell-visible.test.ts",
+      "line": 108,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const plan = await PlanningEngine.generatePlan({"
+    },
+    {
+      "file": "__tests__/shell-visible.test.ts",
+      "line": 122,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const plan = await PlanningEngine.generatePlan({"
+    },
+    {
+      "file": "__tests__/shell-visible.test.ts",
+      "line": 142,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const plan = await PlanningEngine.generatePlan({"
+    },
+    {
+      "file": "__tests__/shell-visible.test.ts",
+      "line": 160,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const plan = await PlanningEngine.generatePlan({"
+    },
+    {
+      "file": "__tests__/shell-visible.test.ts",
+      "line": 186,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const plan: any = await PlanningEngine.generatePlan({ intent: { goal, complexity: 'low', riskLevel: 'low', rawIntent: {} } as any });"
+    },
+    {
+      "file": "__tests__/shell-visible.test.ts",
+      "line": 209,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const plan: any = await PlanningEngine.generatePlan({ intent: { goal, complexity: 'low', riskLevel: 'low', rawIntent: {} } as any });"
+    },
+    {
+      "file": "__tests__/shell-visible.test.ts",
+      "line": 230,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const plan: any = await PlanningEngine.generatePlan({ intent: { goal, complexity: 'low', riskLevel: 'low', rawIntent: {} } as any });"
+    },
+    {
+      "file": "__tests__/the-planner-asks-the-tools.test.ts",
+      "line": 90,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const plan: any = await PlanningEngine.generatePlan({ intent: { goal, complexity: 'low', riskLevel: 'low', rawIntent: {} } as any });"
+    },
+    {
+      "file": "__tests__/the-planner-asks-the-tools.test.ts",
+      "line": 98,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const plan: any = await PlanningEngine.generatePlan({ intent: { goal, complexity: 'low', riskLevel: 'low', rawIntent: {} } as any });"
+    },
+    {
+      "file": "__tests__/the-planner-asks-the-tools.test.ts",
+      "line": 107,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const plan: any = await PlanningEngine.generatePlan({ intent: { goal, complexity: 'low', riskLevel: 'low', rawIntent: {} } as any });"
+    },
+    {
+      "file": "__tests__/the-planner-asks-the-tools.test.ts",
+      "line": 115,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const plan: any = await PlanningEngine.generatePlan({ intent: { goal, complexity: 'low', riskLevel: 'low', rawIntent: {} } as any });"
+    },
+    {
+      "file": "__tests__/the-planner-asks-the-tools.test.ts",
+      "line": 133,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const plan: any = await PlanningEngine.generatePlan("
+    },
+    {
+      "file": "__tests__/the-planner-asks-the-tools.test.ts",
+      "line": 158,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const plan: any = await PlanningEngine.generatePlan("
+    },
+    {
+      "file": "__tests__/the-planner-asks-the-tools.test.ts",
+      "line": 184,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const plan: any = await PlanningEngine.generatePlan("
+    },
+    {
+      "file": "__tests__/the-run-is-not-the-session.test.ts",
+      "line": 38,
+      "pattern": "NEW_ORCHESTRATOR",
+      "test": true,
+      "text": "const o = new AgentOrchestrator();"
+    },
+    {
+      "file": "__tests__/version-history.test.ts",
+      "line": 18,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const p = PlanningEngine.generatePlan("
+    },
+    {
+      "file": "__tests__/vision.test.ts",
+      "line": 193,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const src = fs.readFileSync(path.join(__dirname, '..', 'modules', 'services', 'AgentLoopService.ts'), 'utf-8');"
+    },
+    {
+      "file": "__tests__/wiring-policy.test.ts",
+      "line": 683,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const { AgentLoopService } = require('../modules/services/AgentLoopService');"
+    },
+    {
+      "file": "__tests__/wiring-policy.test.ts",
+      "line": 697,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "expect(AgentLoopService.extractAnswer({ ok: true, result: {}, steps }, 'ar')).toBe(answer);"
+    },
+    {
+      "file": "__tests__/wiring-policy.test.ts",
+      "line": 699,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "expect(AgentLoopService.extractAnswer({ ok: true, result: { a: { success: true } } }, 'ar')).not.toMatch(/[{}]/);"
+    },
+    {
+      "file": "__tests__/wiring-policy.test.ts",
+      "line": 717,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "expect(SRC('modules', 'services', 'AgentLoopService.ts')).toContain('composeFailure(');"
+    },
+    {
+      "file": "__tests__/wiring-policy.test.ts",
+      "line": 731,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "expect(SRC('modules', 'services', 'AgentLoopService.ts')).toContain('registerRunOwner(runId');"
+    },
+    {
+      "file": "__tests__/wiring-policy.test.ts",
+      "line": 732,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "expect(SRC('modules', 'services', 'AgentLoopService.ts')).toContain('registerSessionOwner(sessionId');"
+    },
+    {
+      "file": "__tests__/wiring-policy.test.ts",
+      "line": 975,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const plan = async (goal: string) => (await PlanningEngine.generatePlan("
+    },
+    {
+      "file": "__tests__/wiring-policy.test.ts",
+      "line": 1015,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const tools = async (goal: string) => (await PlanningEngine.generatePlan("
+    },
+    {
+      "file": "__tests__/wiring-policy.test.ts",
+      "line": 1042,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const sys = await PlanningEngine.generatePlan({"
+    },
+    {
+      "file": "__tests__/wiring-policy.test.ts",
+      "line": 1150,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const p = await PlanningEngine.generatePlan("
+    },
+    {
+      "file": "__tests__/wiring-policy.test.ts",
+      "line": 1222,
+      "pattern": "GENERATE_PLAN",
+      "test": true,
+      "text": "const tools = async (goal: string) => (await PlanningEngine.generatePlan("
+    },
+    {
+      "file": "__tests__/wiring-policy.test.ts",
+      "line": 1706,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const S = SRC('modules', 'services', 'AgentLoopService.ts');"
+    },
+    {
+      "file": "__tests__/wiring-policy.test.ts",
+      "line": 1712,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const S = SRC('modules', 'services', 'AgentLoopService.ts');"
+    },
+    {
+      "file": "__tests__/wiring-policy.test.ts",
+      "line": 1846,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "['AgentLoopService.ts', SRC('modules', 'services', 'AgentLoopService.ts')],"
+    },
+    {
+      "file": "__tests__/wiring-policy.test.ts",
+      "line": 1856,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "const S = SRC('modules', 'services', 'AgentLoopService.ts');"
+    },
+    {
+      "file": "__tests__/wiring-policy.test.ts",
+      "line": 1885,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "for (const file of [SRC('api', 'routes', 'run.ts'), SRC('modules', 'services', 'AgentLoopService.ts')]) {"
+    },
+    {
+      "file": "__tests__/wiring-policy.test.ts",
+      "line": 2201,
+      "pattern": "AGENTLOOP_EXEC",
+      "test": true,
+      "text": "expect(P).toContain('AgentLoopService.runPlannedPhasesIfPresent');"
+    }
+  ]
+}
