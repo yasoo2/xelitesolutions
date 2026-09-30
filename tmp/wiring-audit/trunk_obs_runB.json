@@ -1,0 +1,645 @@
+{
+  "trunk": "observability",
+  "registered": 163,
+  "decl": {
+    "alert_manager": {
+      "descriptionHead": "Manage alerts with conditions, notifications, and history tracking",
+      "tags": [
+        "alerts",
+        "monitoring",
+        "notifications"
+      ],
+      "required": [
+        "action"
+      ],
+      "properties": [
+        "action",
+        "alertId",
+        "name",
+        "condition",
+        "severity",
+        "message",
+        "metadata"
+      ],
+      "permissions": [
+        "write"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 60,
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "alert_manager:11.8",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "logger": {
+      "descriptionHead": "Structured logging system with log levels, rotation, and filtering",
+      "tags": [
+        "logging",
+        "monitoring",
+        "debugging"
+      ],
+      "required": [
+        "action"
+      ],
+      "properties": [
+        "action",
+        "level",
+        "message",
+        "metadata",
+        "filter"
+      ],
+      "permissions": [
+        "write"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 100,
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "ask_user:7.1",
+        "user_browser:7.1",
+        "task_lifecycle:6"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "monitoring": {
+      "descriptionHead": "Monitor system performance, metrics, and health",
+      "tags": [
+        "monitoring",
+        "metrics",
+        "observability"
+      ],
+      "required": [
+        "action"
+      ],
+      "properties": [
+        "action",
+        "event",
+        "value",
+        "metadata"
+      ],
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 200,
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "ask_user:7.1",
+        "user_browser:7.1",
+        "monitoring:6.3"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "performance_analyzer": {
+      "descriptionHead": "Analyze code performance and suggest optimizations",
+      "tags": [
+        "performance",
+        "optimization",
+        "analysis"
+      ],
+      "required": [
+        "files"
+      ],
+      "properties": [
+        "files",
+        "projectPath"
+      ],
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "performance_analyzer:9.5",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "performance_profile": {
+      "descriptionHead": "Profile code performance and identify bottlenecks",
+      "tags": [
+        "performance",
+        "profiling",
+        "optimization"
+      ],
+      "required": [
+        "filePath"
+      ],
+      "properties": [
+        "filePath",
+        "functionName",
+        "iterations"
+      ],
+      "permissions": [
+        "read",
+        "execute"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "performance_profile:9.5",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    }
+  },
+  "verdictTable": {
+    "alert created": "passed",
+    "alert triggered": "passed",
+    "alert not-found": "failed",
+    "alert list": "passed",
+    "logger logged": "passed",
+    "logger stats": "passed",
+    "logger cleared": "passed",
+    "monitor tracked": "passed",
+    "monitor unknown-event": "passed",
+    "monitor metrics": "passed",
+    "analyzer clean": "passed",
+    "analyzer missing-file": "passed",
+    "profiler ok": "passed",
+    "profiler not-found": "failed",
+    "profiler no-filepath": "failed"
+  },
+  "live": {
+    "al.create": {
+      "input": "{\"action\":\"create\",\"name\":\"WIRING_OBS_TOKEN_7b1c-cpu\",\"condition\":{\"metric\":\"cpu\",\"operator\":\">\",\"threshold\":90},\"severity\":\"high\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{success,alertId,alert,message}",
+      "outputPreview": "{\"success\":true,\"alertId\":\"alert_1790773850055_kc23u4c8i\",\"alert\":{\"id\":\"alert_1790773850055_kc23u4c8i\",\"name\":\"WIRING_OBS_TOKEN_7b1c-cpu\",\"condition\":{\"metric\":\"cpu\",\"operator\":\">\",\"threshold\":90},\"severity\":\"high\",\"status\":\"active\",\"createdAt\":\"2026-09-30T13:10:50.055Z\"},\"message\":\"Alert \\\"WIRING_OBS_TOKEN_7b1c-cpu\\\" created successfully\"}",
+      "log0": "[2026-09-30T13:10:50.002Z] start alert_manager (orig=alert_manager)",
+      "logLast": "Alert created: WIRING_OBS_TOKEN_7b1c-cpu (high)",
+      "logN": 3
+    },
+    "al.trigger": {
+      "input": "{\"action\":\"trigger\",\"alertId\":\"alert_1790773850055_kc23u4c8i\",\"message\":\"WIRING_OBS_TOKEN_7b1c fired\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{success,alertId,alert,message,severity}",
+      "outputPreview": "{\"success\":true,\"alertId\":\"alert_1790773850055_kc23u4c8i\",\"alert\":{\"id\":\"alert_1790773850055_kc23u4c8i\",\"name\":\"WIRING_OBS_TOKEN_7b1c-cpu\",\"condition\":{\"metric\":\"cpu\",\"operator\":\">\",\"threshold\":90},\"severity\":\"high\",\"status\":\"triggered\",\"createdAt\":\"2026-09-30T13:10:50.055Z\",\"triggeredAt\":\"2026-09-30T13:10:50.065Z\"},\"message\":\"Alert \\\"WIRING_OBS_TOKEN_7b1c-cpu\\\" triggered\",\"severity\":\"high\"}",
+      "log0": "[2026-09-30T13:10:50.061Z] start alert_manager (orig=alert_manager)",
+      "logLast": "Alert triggered: WIRING_OBS_TOKEN_7b1c-cpu",
+      "logN": 3
+    },
+    "al.resolve": {
+      "input": "{\"action\":\"resolve\",\"alertId\":\"alert_1790773850055_kc23u4c8i\",\"message\":\"WIRING_OBS_TOKEN_7b1c done\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{success,alertId,alert,message}",
+      "outputPreview": "{\"success\":true,\"alertId\":\"alert_1790773850055_kc23u4c8i\",\"alert\":{\"id\":\"alert_1790773850055_kc23u4c8i\",\"name\":\"WIRING_OBS_TOKEN_7b1c-cpu\",\"condition\":{\"metric\":\"cpu\",\"operator\":\">\",\"threshold\":90},\"severity\":\"high\",\"status\":\"resolved\",\"createdAt\":\"2026-09-30T13:10:50.055Z\",\"triggeredAt\":\"2026-09-30T13:10:50.065Z\",\"resolvedAt\":\"2026-09-30T13:10:50.070Z\"},\"message\":\"Alert \\\"WIRING_OBS_TOKEN_7b1c-cpu\\\" resolved\"}",
+      "log0": "[2026-09-30T13:10:50.067Z] start alert_manager (orig=alert_manager)",
+      "logLast": "Alert resolved: WIRING_OBS_TOKEN_7b1c-cpu",
+      "logN": 3
+    },
+    "al.list": {
+      "input": "{\"action\":\"list\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{success,alerts,summary}",
+      "outputPreview": "{\"success\":true,\"alerts\":[{\"id\":\"alert_1790773850055_kc23u4c8i\",\"name\":\"WIRING_OBS_TOKEN_7b1c-cpu\",\"condition\":{\"metric\":\"cpu\",\"operator\":\">\",\"threshold\":90},\"severity\":\"high\",\"status\":\"resolved\",\"createdAt\":\"2026-09-30T13:10:50.055Z\",\"triggeredAt\":\"2026-09-30T13:10:50.065Z\",\"resolvedAt\":\"2026-09-30T13:10:50.070Z\"}],\"summary\":{\"total\":1,\"active\":0,\"triggered\":0,\"resolved\":1}}",
+      "log0": "[2026-09-30T13:10:50.072Z] start alert_manager (orig=alert_manager)",
+      "logLast": "Listed 1 alerts",
+      "logN": 3
+    },
+    "al.history": {
+      "input": "{\"action\":\"history\",\"alertId\":\"alert_1790773850055_kc23u4c8i\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{success,history,count}",
+      "outputPreview": "{\"success\":true,\"history\":[{\"alertId\":\"alert_1790773850055_kc23u4c8i\",\"action\":\"created\",\"timestamp\":\"2026-09-30T13:10:50.055Z\",\"message\":\"Alert \\\"WIRING_OBS_TOKEN_7b1c-cpu\\\" created\",\"metadata\":{\"severity\":\"high\",\"condition\":{\"metric\":\"cpu\",\"operator\":\">\",\"threshold\":90}}},{\"alertId\":\"alert_1790773850055_kc23u4c8i\",\"action\":\"triggered\",\"timestamp\":\"2026-09-30T13:10:50.065Z\",\"message\":\"WIRING_OBS_TOKEN_7b1c fired\",\"metadata\":{}},{\"alertId\":\"alert_1790773850055_kc23u4c8i\",\"action\":\"resolved\",\"timestamp\":\"2026-09-30T13:10:50.070Z\",\"message\":\"WIRING_OBS_TOKEN_7b1c done\",\"metadata\":{}}],\"count\":3}",
+      "log0": "[2026-09-30T13:10:50.077Z] start alert_manager (orig=alert_manager)",
+      "logLast": "Retrieved 3 history entries",
+      "logN": 3
+    },
+    "al.trigger-bad": {
+      "input": "{\"action\":\"trigger\",\"alertId\":\"alert_does_not_exist\",\"message\":\"x\"}",
+      "ok": false,
+      "error": "Alert alert_does_not_exist not found",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T13:10:50.082Z] start alert_manager (orig=alert_manager)",
+      "logLast": "Error: Alert alert_does_not_exist not found",
+      "logN": 3
+    },
+    "al.create-noname": {
+      "input": "{\"action\":\"create\",\"severity\":\"low\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{success,alertId,alert,message}",
+      "outputPreview": "{\"success\":true,\"alertId\":\"alert_1790773850089_rejz1xnid\",\"alert\":{\"id\":\"alert_1790773850089_rejz1xnid\",\"name\":\"\",\"condition\":{},\"severity\":\"low\",\"status\":\"active\",\"createdAt\":\"2026-09-30T13:10:50.089Z\"},\"message\":\"Alert \\\"\\\" created successfully\"}",
+      "log0": "[2026-09-30T13:10:50.086Z] start alert_manager (orig=alert_manager)",
+      "logLast": "Alert created:  (low)",
+      "logN": 3
+    },
+    "al.badaction": {
+      "input": "{\"action\":\"explode\"}",
+      "ok": false,
+      "error": "Unknown action: explode",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T13:10:50.090Z] start alert_manager (orig=alert_manager)",
+      "logLast": "Error: Unknown action: explode",
+      "logN": 3
+    },
+    "al.noaction": {
+      "input": "{}",
+      "ok": false,
+      "error": "Unknown action: undefined",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T13:10:50.095Z] start alert_manager (orig=alert_manager)",
+      "logLast": "Error: Unknown action: undefined",
+      "logN": 3
+    },
+    "al.lifecycle": {
+      "createdId": "alert_1790773850055_kc23u4c8i",
+      "triggerStatus": "resolved",
+      "resolveStatus": "resolved",
+      "listTotal": 1,
+      "historyCount": 3
+    },
+    "lg.info": {
+      "input": "{\"action\":\"log\",\"level\":\"info\",\"message\":\"WIRING_OBS_TOKEN_7b1c hello\",\"metadata\":{\"k\":1}}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{success,logId,level,message,timestamp}",
+      "outputPreview": "{\"success\":true,\"logId\":\"log_1790773850105_rbk87o1q7\",\"level\":\"info\",\"message\":\"WIRING_OBS_TOKEN_7b1c hello\",\"timestamp\":\"2026-09-30T13:10:50.105Z\"}",
+      "log0": "[2026-09-30T13:10:50.100Z] start logger (orig=logger)",
+      "logLast": "Logged [INFO]: WIRING_OBS_TOKEN_7b1c hello",
+      "logN": 3
+    },
+    "lg.error": {
+      "input": "{\"action\":\"log\",\"level\":\"error\",\"message\":\"WIRING_OBS_TOKEN_7b1c boom\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{success,logId,level,message,timestamp}",
+      "outputPreview": "{\"success\":true,\"logId\":\"log_1790773850109_hlrzib2hg\",\"level\":\"error\",\"message\":\"WIRING_OBS_TOKEN_7b1c boom\",\"timestamp\":\"2026-09-30T13:10:50.109Z\"}",
+      "log0": "[2026-09-30T13:10:50.106Z] start logger (orig=logger)",
+      "logLast": "Logged [ERROR]: WIRING_OBS_TOKEN_7b1c boom",
+      "logN": 3
+    },
+    "lg.query-level": {
+      "input": "{\"action\":\"query\",\"filter\":{\"level\":\"error\"}}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{success,logs,count}",
+      "outputPreview": "{\"success\":true,\"logs\":[{\"id\":\"log_1790773850109_hlrzib2hg\",\"level\":\"error\",\"message\":\"WIRING_OBS_TOKEN_7b1c boom\",\"metadata\":{},\"timestamp\":\"2026-09-30T13:10:50.109Z\"}],\"count\":1}",
+      "log0": "[2026-09-30T13:10:50.110Z] start logger (orig=logger)",
+      "logLast": "Query returned 1 logs",
+      "logN": 3
+    },
+    "lg.query-limit": {
+      "input": "{\"action\":\"query\",\"filter\":{\"limit\":1}}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{success,logs,count}",
+      "outputPreview": "{\"success\":true,\"logs\":[{\"id\":\"log_1790773850109_hlrzib2hg\",\"level\":\"error\",\"message\":\"WIRING_OBS_TOKEN_7b1c boom\",\"metadata\":{},\"timestamp\":\"2026-09-30T13:10:50.109Z\"}],\"count\":1}",
+      "log0": "[2026-09-30T13:10:50.114Z] start logger (orig=logger)",
+      "logLast": "Query returned 1 logs",
+      "logN": 3
+    },
+    "lg.query-token": {
+      "input": "{\"action\":\"query\",\"filter\":{}}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{success,logs,count}",
+      "outputPreview": "{\"success\":true,\"logs\":[{\"id\":\"log_1790773850105_rbk87o1q7\",\"level\":\"info\",\"message\":\"WIRING_OBS_TOKEN_7b1c hello\",\"metadata\":{\"k\":1},\"timestamp\":\"2026-09-30T13:10:50.105Z\"},{\"id\":\"log_1790773850109_hlrzib2hg\",\"level\":\"error\",\"message\":\"WIRING_OBS_TOKEN_7b1c boom\",\"metadata\":{},\"timestamp\":\"2026-09-30T13:10:50.109Z\"}],\"count\":2}",
+      "log0": "[2026-09-30T13:10:50.118Z] start logger (orig=logger)",
+      "logLast": "Query returned 2 logs",
+      "logN": 3
+    },
+    "lg.stats": {
+      "input": "{\"action\":\"stats\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{success,stats}",
+      "outputPreview": "{\"success\":true,\"stats\":{\"totalLogs\":2,\"byLevel\":{\"info\":1,\"error\":1},\"oldestLog\":\"2026-09-30T13:10:50.105Z\",\"newestLog\":\"2026-09-30T13:10:50.109Z\"}}",
+      "log0": "[2026-09-30T13:10:50.121Z] start logger (orig=logger)",
+      "logLast": "Stats: 2 total logs",
+      "logN": 3
+    },
+    "lg.badaction": {
+      "input": "{\"action\":\"explode\"}",
+      "ok": false,
+      "error": "Unknown action: explode",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T13:10:50.124Z] start logger (orig=logger)",
+      "logLast": "Error: Unknown action: explode",
+      "logN": 3
+    },
+    "lg.store": {
+      "errorCount": 1,
+      "limitCount": 1,
+      "totalBeforeClear": 2,
+      "tokenSeen": true
+    },
+    "lg.clear": {
+      "input": "{\"action\":\"clear\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{success,clearedCount,message}",
+      "outputPreview": "{\"success\":true,\"clearedCount\":2,\"message\":\"Cleared 2 logs\"}",
+      "log0": "[2026-09-30T13:10:50.127Z] start logger (orig=logger)",
+      "logLast": "Cleared 2 logs",
+      "logN": 3
+    },
+    "lg.stats-zero": {
+      "input": "{\"action\":\"stats\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{success,stats}",
+      "outputPreview": "{\"success\":true,\"stats\":{\"totalLogs\":0,\"byLevel\":{},\"oldestLog\":null,\"newestLog\":null}}",
+      "log0": "[2026-09-30T13:10:50.129Z] start logger (orig=logger)",
+      "logLast": "Stats: 0 total logs",
+      "logN": 3
+    },
+    "mo.reset": {
+      "input": "{\"action\":\"reset\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{success,reset}",
+      "outputPreview": "{\"success\":true,\"reset\":true}",
+      "log0": "[2026-09-30T13:10:50.131Z] start monitoring (orig=monitoring)",
+      "logLast": "Metrics reset",
+      "logN": 2
+    },
+    "mo.track-req": {
+      "input": "{\"action\":\"track\",\"event\":\"request\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{success,event,tracked}",
+      "outputPreview": "{\"success\":true,\"event\":\"request\",\"tracked\":true}",
+      "log0": "[2026-09-30T13:10:50.135Z] start monitoring (orig=monitoring)",
+      "logLast": "Tracked: request",
+      "logN": 2
+    },
+    "mo.track-success": {
+      "input": "{\"action\":\"track\",\"event\":\"success\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{success,event,tracked}",
+      "outputPreview": "{\"success\":true,\"event\":\"success\",\"tracked\":true}",
+      "log0": "[2026-09-30T13:10:50.140Z] start monitoring (orig=monitoring)",
+      "logLast": "Tracked: success",
+      "logN": 2
+    },
+    "mo.track-llm": {
+      "input": "{\"action\":\"track\",\"event\":\"llm_call\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{success,event,tracked}",
+      "outputPreview": "{\"success\":true,\"event\":\"llm_call\",\"tracked\":true}",
+      "log0": "[2026-09-30T13:10:50.143Z] start monitoring (orig=monitoring)",
+      "logLast": "Tracked: llm_call",
+      "logN": 2
+    },
+    "mo.track-tool": {
+      "input": "{\"action\":\"track\",\"event\":\"tool_usage\",\"metadata\":{\"tool\":\"WIRING_OBS_TOKEN_7b1c-tool\"}}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{success,event,tracked}",
+      "outputPreview": "{\"success\":true,\"event\":\"tool_usage\",\"tracked\":true}",
+      "log0": "[2026-09-30T13:10:50.147Z] start monitoring (orig=monitoring)",
+      "logLast": "Tracked: tool_usage",
+      "logN": 2
+    },
+    "mo.track-build": {
+      "input": "{\"action\":\"track\",\"event\":\"build_time\",\"value\":120}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{success,event,tracked}",
+      "outputPreview": "{\"success\":true,\"event\":\"build_time\",\"tracked\":true}",
+      "log0": "[2026-09-30T13:10:50.150Z] start monitoring (orig=monitoring)",
+      "logLast": "Tracked: build_time = 120",
+      "logN": 2
+    },
+    "mo.track-unknown": {
+      "input": "{\"action\":\"track\",\"event\":\"definitely_not_an_event\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{success,event,tracked}",
+      "outputPreview": "{\"success\":true,\"event\":\"definitely_not_an_event\",\"tracked\":true}",
+      "log0": "[2026-09-30T13:10:50.153Z] start monitoring (orig=monitoring)",
+      "logLast": "Tracked: definitely_not_an_event",
+      "logN": 2
+    },
+    "mo.metrics": {
+      "input": "{\"action\":\"get_metrics\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{success,metrics}",
+      "outputPreview": "{\"success\":true,\"metrics\":{\"totalRequests\":1,\"successfulRequests\":1,\"failedRequests\":0,\"totalBuildTime\":120,\"averageBuildTime\":120,\"llmCalls\":1,\"cacheHits\":0,\"cacheMisses\":0,\"toolUsage\":{\"WIRING_OBS_TOKEN_7b1c-tool\":1},\"errors\":[],\"successRate\":\"100.00%\",\"cacheHitRate\":\"0.00%\",\"recentErrors\":[]}}",
+      "log0": "[2026-09-30T13:10:50.157Z] start monitoring (orig=monitoring)",
+      "logLast": "Metrics retrieved: 100.00% success rate",
+      "logN": 2
+    },
+    "mo.badaction": {
+      "input": "{\"action\":\"explode\"}",
+      "ok": false,
+      "error": "Unknown action: explode",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T13:10:50.160Z] start monitoring (orig=monitoring)",
+      "logLast": "Error: Unknown action: explode",
+      "logN": 2
+    },
+    "mo.store": {
+      "totalRequests": 1,
+      "successRate": "100.00%",
+      "avgBuild": 120,
+      "unknownCounted": 1
+    },
+    "mo.reset2": {
+      "input": "{\"action\":\"reset\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{success,reset}",
+      "outputPreview": "{\"success\":true,\"reset\":true}",
+      "log0": "[2026-09-30T13:10:50.164Z] start monitoring (orig=monitoring)",
+      "logLast": "Metrics reset",
+      "logN": 2
+    },
+    "mo.metrics-zero": {
+      "input": "{\"action\":\"get_metrics\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{success,metrics}",
+      "outputPreview": "{\"success\":true,\"metrics\":{\"totalRequests\":0,\"successfulRequests\":0,\"failedRequests\":0,\"totalBuildTime\":0,\"averageBuildTime\":0,\"llmCalls\":0,\"cacheHits\":0,\"cacheMisses\":0,\"toolUsage\":{},\"errors\":[],\"successRate\":\"0.00%\",\"cacheHitRate\":\"0.00%\",\"recentErrors\":[]}}",
+      "log0": "[2026-09-30T13:10:50.168Z] start monitoring (orig=monitoring)",
+      "logLast": "Metrics retrieved: 0.00% success rate",
+      "logN": 2
+    },
+    "pa.clean": {
+      "input": "{\"files\":[\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-obs-fx\\\\clean.js\"]}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{performanceScore,avgComplexity,bottlenecks,optimizations,summary}",
+      "outputPreview": "{\"performanceScore\":99,\"avgComplexity\":1,\"bottlenecks\":[],\"optimizations\":[],\"summary\":{\"highComplexity\":0,\"mediumComplexity\":0}}",
+      "log0": "[2026-09-30T13:10:50.171Z] start performance_analyzer (orig=performance_analyzer)",
+      "logLast": "Analysis complete. Performance score: 99/100",
+      "logN": 3
+    },
+    "pa.nasty": {
+      "input": "{\"files\":[\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-obs-fx\\\\nasty.js\"]}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{performanceScore,avgComplexity,bottlenecks,optimizations,summary}",
+      "outputPreview": "{\"performanceScore\":84,\"avgComplexity\":6,\"bottlenecks\":[{\"file\":\"nasty.js\",\"severity\":\"medium\",\"type\":\"Nested Loops\",\"message\":\"Found 1 nested loop(s). Consider optimization.\"},{\"file\":\"nasty.js\",\"severity\":\"medium\",\"type\":\"Blocking I/O\",\"message\":\"Synchronous file operations block the event loop.\"}],\"optimizations\":[{\"category\":\"algorithm\",\"message\":\"Consider using more efficient data structures or algorithms\"},{\"category\":\"async\",\"message\":\"Use async file operations (fs.promises or fs.readFile with callbacks)\"},{\"category\":\"caching\",\"message\":\"Consider memoization for expensive function calls\"}],\"summary\":{\"highComplexity\":0,\"mediumComplexity\":2}}",
+      "log0": "[2026-09-30T13:10:50.177Z] start performance_analyzer (orig=performance_analyzer)",
+      "logLast": "Analysis complete. Performance score: 84/100",
+      "logN": 3
+    },
+    "pa.missing": {
+      "input": "{\"files\":[\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-obs-fx\\\\no-such-file.js\"]}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{performanceScore,avgComplexity,bottlenecks,optimizations,summary}",
+      "outputPreview": "{\"performanceScore\":100,\"avgComplexity\":0,\"bottlenecks\":[],\"optimizations\":[],\"summary\":{\"highComplexity\":0,\"mediumComplexity\":0}}",
+      "log0": "[2026-09-30T13:10:50.183Z] start performance_analyzer (orig=performance_analyzer)",
+      "logLast": "Analysis complete. Performance score: 100/100",
+      "logN": 3
+    },
+    "pa.abs-outside": {
+      "input": "{\"files\":[\"D:\\\\Joe\\\\muse-worktree\\\\tmp\\\\wiring-audit\\\\fx-obs-outside\\\\outside.js\"]}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{performanceScore,avgComplexity,bottlenecks,optimizations,summary}",
+      "outputPreview": "{\"performanceScore\":97,\"avgComplexity\":3,\"bottlenecks\":[],\"optimizations\":[],\"summary\":{\"highComplexity\":0,\"mediumComplexity\":0}}",
+      "log0": "[2026-09-30T13:10:50.186Z] start performance_analyzer (orig=performance_analyzer)",
+      "logLast": "Analysis complete. Performance score: 97/100",
+      "logN": 3
+    },
+    "pa.traversal": {
+      "input": "{\"files\":[\"../nasty.js\"],\"projectPath\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-obs-fx\\\\sub\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{performanceScore,avgComplexity,bottlenecks,optimizations,summary}",
+      "outputPreview": "{\"performanceScore\":84,\"avgComplexity\":6,\"bottlenecks\":[{\"file\":\"nasty.js\",\"severity\":\"medium\",\"type\":\"Nested Loops\",\"message\":\"Found 1 nested loop(s). Consider optimization.\"},{\"file\":\"nasty.js\",\"severity\":\"medium\",\"type\":\"Blocking I/O\",\"message\":\"Synchronous file operations block the event loop.\"}],\"optimizations\":[{\"category\":\"algorithm\",\"message\":\"Consider using more efficient data structures or algorithms\"},{\"category\":\"async\",\"message\":\"Use async file operations (fs.promises or fs.readFile with callbacks)\"},{\"category\":\"caching\",\"message\":\"Consider memoization for expensive function calls\"}],\"summary\":{\"highComplexity\":0,\"mediumComplexity\":2}}",
+      "log0": "[2026-09-30T13:10:50.190Z] start performance_analyzer (orig=performance_analyzer)",
+      "logLast": "Analysis complete. Performance score: 84/100",
+      "logN": 3
+    },
+    "pa.empty": {
+      "input": "{\"files\":[]}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{performanceScore,avgComplexity,bottlenecks,optimizations,summary}",
+      "outputPreview": "{\"performanceScore\":100,\"avgComplexity\":0,\"bottlenecks\":[],\"optimizations\":[],\"summary\":{\"highComplexity\":0,\"mediumComplexity\":0}}",
+      "log0": "[2026-09-30T13:10:50.194Z] start performance_analyzer (orig=performance_analyzer)",
+      "logLast": "Analysis complete. Performance score: 100/100",
+      "logN": 3
+    },
+    "pa.nofiles": {
+      "input": "{}",
+      "ok": false,
+      "error": "Cannot read properties of undefined (reading 'length')",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T13:10:50.199Z] start performance_analyzer (orig=performance_analyzer)",
+      "logLast": "Error: Cannot read properties of undefined (reading 'length')",
+      "logN": 2
+    },
+    "pa.compare": {
+      "cleanScore": 99,
+      "nastyScore": 84,
+      "nastyBottlenecks": 2,
+      "missingScore": 100,
+      "missingBottlenecks": 0,
+      "outsideOk": true,
+      "outsideScore": 97,
+      "traversalOk": true,
+      "traversalScore": 84,
+      "emptyScore": 100
+    },
+    "pp.ok": {
+      "input": "{\"filePath\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-obs-fx\\\\clean.js\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{issues,memoryEstimate,complexity,recommendations}",
+      "outputPreview": "{\"issues\":[],\"memoryEstimate\":{\"estimatedMB\":10,\"warnings\":[]},\"complexity\":{\"time\":\"O(1)\",\"space\":\"O(1)\",\"score\":100},\"recommendations\":[]}",
+      "log0": "[2026-09-30T13:10:50.203Z] start performance_profile (orig=performance_profile)",
+      "logLast": "[2026-09-30T13:10:50.203Z] start performance_profile (orig=performance_profile)",
+      "logN": 1
+    },
+    "pp.nofield": {
+      "input": "{}",
+      "ok": false,
+      "error": "filePath is required",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T13:10:50.212Z] start performance_profile (orig=performance_profile)",
+      "logLast": "[2026-09-30T13:10:50.212Z] start performance_profile (orig=performance_profile)",
+      "logN": 1
+    },
+    "pp.nonexistent": {
+      "input": "{\"filePath\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-obs-fx\\\\no-such-file.js\"}",
+      "ok": false,
+      "error": "File not found: \\\\?\\D:\\Joe\\muse-worktree\\data\\projects\\session-audit-sess\\wiring-obs-fx\\no-such-file.js",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T13:10:50.215Z] start performance_profile (orig=performance_profile)",
+      "logLast": "[2026-09-30T13:10:50.215Z] start performance_profile (orig=performance_profile)",
+      "logN": 1
+    },
+    "pp.abs-outside": {
+      "input": "{\"filePath\":\"D:\\\\Joe\\\\muse-worktree\\\\tmp\\\\wiring-audit\\\\fx-obs-outside\\\\outside.js\"}",
+      "ok": false,
+      "error": "path_outside_workspace: D:\\Joe\\muse-worktree\\tmp\\wiring-audit\\fx-obs-outside\\outside.js (Root: \\\\?\\D:\\Joe\\muse-worktree\\data\\projects\\session-audit-sess)",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T13:10:50.219Z] start performance_profile (orig=performance_profile)",
+      "logLast": "[2026-09-30T13:10:50.219Z] start performance_profile (orig=performance_profile)",
+      "logN": 1
+    },
+    "pp.compare": {
+      "okIssues": 0,
+      "outsideOk": false,
+      "outsideError": "path_outside_workspace: D:\\Joe\\muse-worktree\\tmp\\wiring-audit\\fx-obs-outside\\outside.js (Root: \\\\?\\D:\\Joe\\muse-worktree\\data\\projects\\session-audit-sess)"
+    }
+  },
+  "cleanup": "ok",
+  "sessionRoot": "\\\\?\\D:\\Joe\\muse-worktree\\data\\projects\\session-audit-sess",
+  "at": "2026-09-30T13:10:50.228Z"
+}
