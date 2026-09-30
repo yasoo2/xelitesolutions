@@ -1,31 +1,34 @@
 # JOE CAPABILITY WIRING MATRIX (Muse draft 2026-09-29 — staging for D:\Joe\coordination\team\JOE-CAPABILITY-WIRING-MATRIX.md)
 
-SCOPE=Muse-branch discovery checkpoints 1-16 only (muse/joe-development @ 23718f74).
+SCOPE=Muse-branch discovery checkpoints 1-17 only (muse/joe-development @ 09ee15dc).
 Rows below are EVIDENCED tool-level entries. HIGH_LEVEL_CAPABILITIES grouping
-(merge v1: 19 trunks PROPOSED, 6 STORIED: files 10/10 in checkpoint 8;
+(merge v1: 19 trunks PROPOSED, 7 STORIED: files 10/10 in checkpoint 8;
 browser_ui 33/33 LEVEL-4 complete — checkpoint 11; both trunks
 verification-swept LEVEL-5 — checkpoint 12, see §VERIFY12; testing_qa
 6/6 LEVEL-4 + static verification-compat — checkpoint 13, see §VERIFY13;
 security 3/3 LEVEL-4 + static verification-compat — checkpoint 14,
 see §VERIFY14; code_understanding 16/16 LEVEL-4 + static
 verification-compat — checkpoint 15, see §VERIFY15; vcs_repo 11/11
-LEVEL-4 + static verification-compat — checkpoint 16, see §VERIFY16),
+LEVEL-4 + static verification-compat — checkpoint 16, see §VERIFY16;
+build_generate 13/13 LEVEL-4 + static verification-compat —
+checkpoint 17, see §VERIFY17),
 services/workers/internal-infra rows, and NVIDIA-owned
 registry/ingress/persistence areas are UNKNOWN/PENDING and must NOT be
 treated as covered.
 Evidence files: D:\Joe\muse-worktree\tmp\wiring-audit\{discovery,exposure,
 classification,reachability,target,exec,sweep1,sweep2,merge,sweep3,trunk_files,
 arch2,trunk_browser1,trunk_browser_live1,trunk_browser_live2,
-trunk_browser_live3,verify_sweep12,trunk_testing,trunk_security,trunk_code,trunk_vcs}.json +
+trunk_browser_live3,verify_sweep12,trunk_testing,trunk_security,trunk_code,trunk_vcs,trunk_build}.json +
 {discover,exposure,classify,reach,target,exec,
 sweep1,sweep2,merge,sweep3,trunk_files,arch2,trunk_browser1,
 trunk_browser_live1,trunk_browser_live2,trunk_browser_live3,
-verify_sweep12,trunk_testing,chaos_call_probe,trunk_security,trunk_code,trunk_vcs}.mts +
+verify_sweep12,trunk_testing,chaos_call_probe,trunk_security,trunk_code,trunk_vcs,trunk_build,prog_batch3}.mts +
 MUSE-WIRING-DISCOVERY-00{1,2,3,4,5,6,7}.md + MUSE-WIRING-DISCOVERY-008.md +
 MUSE-WIRING-DISCOVERY-009.md + MUSE-WIRING-DISCOVERY-010.md +
 MUSE-WIRING-DISCOVERY-011.md + MUSE-WIRING-DISCOVERY-012.md +
 MUSE-WIRING-DISCOVERY-013.md + MUSE-WIRING-DISCOVERY-014.md +
-MUSE-WIRING-DISCOVERY-015.md + MUSE-WIRING-DISCOVERY-016.md. All probes
+MUSE-WIRING-DISCOVERY-015.md + MUSE-WIRING-DISCOVERY-016.md +
+MUSE-WIRING-DISCOVERY-017.md. All probes
 re-runnable; exec/sweep/trunk probes perform bounded safe runs only
 (fixtures created + removed by the probe; 4 EMBARGO names never executed
 except browser_launch contained-http partial lift in 010 — static fixture
@@ -63,6 +66,16 @@ GATE_NEGATIVES=V2 missing-path -> partial + failed receipt; V3 non-checker
 gate -> verification_unavailable pre-execution, 0 browser sessions, partial.
 METHOD=direct executor invocation is firewall-rejected fail-closed (F72);
 LEVEL-5 must dispatch via ToolService inside runInContext.
+AMBIENT_WORKSPACE (checkpoint 17, F121): ToolService resolves
+sessionId->workspaceId via resolveSessionIdentity
+(ToolService.ts:744-762) and wraps execution in
+runWithWorkspace (:863-865), so no-arg getActiveRoot()
+inside tools lands in the SESSION root. This mechanism
+explains all no-arg session landings in this audit.
+CORRECTION: 016/F107 (git default-cwd "NOT the session")
+is UNPROVEN — session/default roots are both 3 below the
+repo root, so ../../../ status output cannot distinguish
+them; decisive marker re-probe outstanding.
 
 §VERIFY13 — VERIFICATION-COMPAT STATIC (checkpoint 13, testing_qa 6/6).
 Same consumer/allowlist/verdict-fn as §VERIFY12; L5 live gate proof
@@ -136,6 +149,27 @@ runcmd/diff legs are ALWAYS ok:false via MISMATCH #12 (exitCode
 dropped), so their live verdict is failed-with-output — noisy
 fail-closed, opposite direction from the hollow passes. Evidence:
 trunk_vcs.json.
+
+§VERIFY17 — VERIFICATION-COMPAT STATIC (checkpoint 17, build_generate 13/13).
+Same consumer/allowlist/verdict-fn as §VERIFY12; no checker on this
+trunk so no L5 live gate proof is owed for it (5-checker backlog
+unchanged). CHECKER_PARTITION=task-level checkers among the 13:
+NONE (0); gate opt-ins change nothing (static 13/13). Checker set
+stays 14/14 CLOSED. VERDICT_MAP=13-shape pure-function table, all
+ok:true shapes map passed/incomplete as non-checker constraints
+(F88 class — safe today, must gate any allowlist change):
+scaffold-created passed, scaffold-partial failed, template-ready
+passed, template-missing failed, auth-refused failed,
+mobile-unknown-action failed, mobile-build-commands passed,
+progressive-batch incomplete (ok:true + status generating),
+pipeline-empty failed, ai-needs-both failed, page-no-request
+failed, enterprise-verified passed, enterprise-failed failed.
+RECEIPT_EVIDENCE=N/A (no trunk checker). REUSE=N/A. NOTE: live
+api/react legs are ok:true WITH honest unproven flags
+(proven:false/accepted:false — the honest direction, F118);
+live progressive batch-3 is ok:true with provider-failure
+prose PERSISTED AS SOURCE (false-artifact direction, F116,
+MISMATCH #9 5th instance). Evidence: trunk_build.json.
 
 ---
 
@@ -2526,7 +2560,7 @@ PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-4 (behind github_pr/github_repo
 SELECTABLE=YES
 SELECTION_EVIDENCE=self-grounded rank 4 (only non-rank-1 trunk member)
 EXECUTOR_REACHABLE=YES
-EXECUTOR_EVIDENCE=LIVE (trunk_vcs.json, canonical, 7 legs 2x identical): seeded status exact; invalid-op + missing-cwd + clone-noargs honest (clone fails pre-network); outside-cwd honored raw (UNCONTAINED PROVEN); default-cwd runs in local default workspace (../../../ paths), NOT the session (F107); push -> approval_required/high pre-execution, zero side effects (F106)
+EXECUTOR_EVIDENCE=LIVE (trunk_vcs.json, canonical, 7 legs 2x identical): seeded status exact; invalid-op + missing-cwd + clone-noargs honest (clone fails pre-network); outside-cwd honored raw (UNCONTAINED PROVEN); default-cwd attribution CORRECTED 017/F121 to UNPROVEN (depth-3 ambiguity: ../../../ cannot distinguish session from default root; ambient mechanism predicts session root; marker re-probe outstanding); push -> approval_required/high pre-execution, zero side effects (F106)
 PERMISSION_REACHABLE=YES
 PERMISSION_EVIDENCE=medium at status (autoSafe pass); high at push/commit (AUTO_APPROVE_ALL gate, proven pre-execution)
 INPUT_CONTRACT_VALID=YES (operation regex-validated; args sanitized)
@@ -2535,8 +2569,8 @@ EVIDENCE_PRODUCED=YES
 VERIFICATION_COMPATIBLE=N/A (never a checker — static §VERIFY16)
 CANONICAL_PATH_CONNECTED=YES
 REAL_JOE_PROVEN=NO
-PRIMARY_STATE=PARTIALLY_WIRED (default-cwd + explicit-cwd uncontained)
-RECOMMENDED_ACTION=WIRING-P2-006 extension (session-bind cwd; reject outside)
+PRIMARY_STATE=PARTIALLY_WIRED (explicit-cwd uncontained; default-cwd attribution UNPROVEN per 017/F121 correction)
+RECOMMENDED_ACTION=WIRING-P2-006 extension (reject outside cwd; decisive default-cwd marker re-probe outstanding)
 
 ---
 
@@ -2774,5 +2808,343 @@ RECOMMENDED_ACTION=none (clean story)
 
 ---
 
-END-OF-MUSE-DRAFT-ROWS=109 (99 individual + 8 group + 2 external-cited)
-COVERAGE-DISCLAIMER=This draft covers ONLY what Muse checkpoints 1-16 evidenced. Full matrix requires: per-trunk path stories (19 trunks PROPOSED in merge.json, 6 STORIED: files 10/10 + browser_ui 33/33 LEVEL-4 + testing_qa 6/6 LEVEL-4 + security 3/3 LEVEL-4 + code_understanding 16/16 LEVEL-4 + vcs_repo 11/11 LEVEL-4), services/workers/persistence/deployment rows (NVIDIA scope), bulk per-tool firewall sweep (8 spot + 28 empty-input batch-1+2 + 19 risk-tier live + 16 trunk-files + 3 arch-backend + 26 browser live1/live2 + 30 browser live3 + 19 trunk-testing + 13 trunk-security + 36 trunk-code + 43 trunk-vcs done; 25/25 no-required reviewed: 18 SAFE + 1 BOUND + 4 EMBARGO with static fixture designs + 2 FIXTURE probed contained; browser_launch embargo partially lifted for contained-http; sonar/dep_audit/dead_code positives embargoed; code_reviewer non-quick + ALL github-network/git-network-push/import-clone/npm-qa legs embargoed; risk table SURVEYED), contract audit per boundary (12 mismatches + schema/execute family), LEVEL 5-6 proofs (L5 done files+browser_ui; testing_qa + security + code_understanding static-only, 5 checkers pending; vcs_repo static-only with 0 checkers), and NVIDIA cross-review (pending — worker on CLI-BATCH1 + audit slice).
+CAPABILITY_ID=TOOL-ai_write_file
+NAME=ai_write_file (AIGeneratorTool, AIGeneratorTool.ts:632)
+CATEGORY=tool/build-generate-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/AIGeneratorTool.ts
+IMPLEMENTATION=model-authored single-file writer (repo context pack, runtime/import/artifact contracts, esbuild syntax gate); path+description both required with honest no-model-called error; traversal reaches the MODEL (normalization is a no-op without projectRoot context; containment only downstream at write); required:['path','description']; permissions write
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1 BUT router-excluded (flag/catalog split: exclusion is fast-path/rerank-pool only)
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1 (catalog; router-side enforcement unprobed)
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_build.json, canonical, 4 legs 2x identical): {} + path-only -> honest no-model-called (model never touched); full offline -> honest no-provider error; '../../evil' traversal -> MODEL error not path error (model attempted; write-time containment never reached) (F119)
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=write tier, medium (auto-approved); model legs fail on provider, not gate
+INPUT_CONTRACT_VALID=PARTIAL (presence enforced; SHAPE not validated pre-model)
+OUTPUT_CONTRACT_VALID=YES ({path,bytes,summary} on success; honest errors)
+EVIDENCE_PRODUCED=YES
+VERIFICATION_COMPATIBLE=N/A (never a checker — static §VERIFY17; needs-both maps failed)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (model-before-containment ordering)
+RECOMMENDED_ACTION=WIRING-P2-006 extension (validate path shape before the model call) + live write-time containment probe (needs model-present/mocked generation)
+
+---
+
+CAPABILITY_ID=TOOL-api_project
+NAME=api_project (ApiProjectTool, ApiProjectTool.ts:2417)
+CATEGORY=tool/build-generate-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/ApiProjectTool.ts
+IMPLEMENTATION=Express + zero-dep DB scaffolder with live boot proof (skipInstall disables npm+boot); brand/resource/column readers + catalogue seeds; project root = input.root RAW or session root (NO resolve/contain); skip path carries honest proven:false/installed:false/authProven:false; required:['request']; permissions execute/write
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1 BUT router-excluded (flag/catalog split)
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1 (catalog; router-side enforcement unprobed)
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_build.json, canonical, 3 legs 2x identical): {} -> no_request honest; skipInstall positive -> full 7-file scaffold in SESSION root, ok:true with proven:false (honest unproven); root=OUTSIDE fixture -> full scaffold OUTSIDE the session (UNCONTAINED INPUT.ROOT PROVEN, fixture removed) (F117/F118)
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=execute+write, medium (auto-approved); no approval hit on scaffold legs
+INPUT_CONTRACT_VALID=PARTIAL (request enforced; root uncontained)
+OUTPUT_CONTRACT_VALID=YES (message/path/dir/resource/flags; fixture credentials scrubbed in evidence)
+EVIDENCE_PRODUCED=YES
+VERIFICATION_COMPATIBLE=N/A (never a checker — static §VERIFY17; ok-with-unproven-flags = F88 constraint)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (uncontained input.root; full install+boot legs embargoed)
+RECOMMENDED_ACTION=WIRING-P1-007 (session-bind input.root; re-audit projectRoot allow-rule)
+
+---
+
+CAPABILITY_ID=TOOL-auth_builder
+NAME=auth_builder (AuthBuilderTool, AuthBuilderTool.ts:17)
+CATEGORY=tool/build-generate-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/AuthBuilderTool.ts
+IMPLEMENTATION=template auth-module generator (jwt/oauth/session/full branches + optional RBAC + config/index); outputDir required with honest error (post-audit fix); schema type enum NEVER validated (out-of-enum silently degrades); relatives resolve to data/builds/workspace-default (sandbox-forced, session-agnostic), in-project absolutes honored, true outsiders refused; required:['type','outputDir']; permissions write
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1 BUT router-excluded (flag/catalog split)
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1 (catalog; router-side enforcement unprobed)
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_build.json, canonical, 5 legs 2x identical): {} -> honest outputDir error; 'saml' -> ok:true "generated" with 2-file stub (SILENT DEGRADED SUCCESS, P2-004 14th); in-project absolute -> 4 files written (ACCEPTED); system-temp absolute -> honest refusal, nothing written (THROW PATH PROVEN); jwt positive -> 3 files in builds dir (F113/F114)
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=write tier, medium (auto-approved)
+INPUT_CONTRACT_VALID=NO (enum decorative; root session-agnostic)
+OUTPUT_CONTRACT_VALID=PARTIAL ({files,instructions} correct; success overstated for unknown types)
+EVIDENCE_PRODUCED=YES
+VERIFICATION_COMPATIBLE=N/A (never a checker — static §VERIFY17; refused maps failed)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (silent enum acceptance + session-agnostic root)
+RECOMMENDED_ACTION=WIRING-P2-004 extension (validate type enum) + WIRING-P2-006 extension (session-bind output root)
+
+---
+
+CAPABILITY_ID=TOOL-enterprise_platform_foundation
+NAME=enterprise_platform_foundation (EnterprisePlatformFoundationTool, EnterprisePlatformFoundationTool.ts:25)
+CATEGORY=tool/build-generate-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/EnterprisePlatformFoundationTool.ts
+IMPLEMENTATION=deterministic enterprise-foundation writer (34 template files: arch/contracts/services/CI/infra) + bounded local python verification (compileall + unittest + JSON schema via runPython helper); root = context.workspaceRoot or EXPLORER root (session-agnostic default); required:['request']; permissions read/write/execute
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1; not router-excluded
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_build.json, canonical, 2 legs 2x identical): {} -> honest request-required; workspaceRoot-pinned positive -> 34 files + python verified:true acceptanceRan:true in the FIXTURE (context root honored end-to-end) (F123)
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=read/write/execute, medium (auto-approved); python verify runs in-process bounded
+INPUT_CONTRACT_VALID=YES (request enforced)
+OUTPUT_CONTRACT_VALID=YES ({projectPath,writtenFiles,verified,verification,acceptanceRan,verificationFailed,deliveryScope})
+EVIDENCE_PRODUCED=YES
+VERIFICATION_COMPATIBLE=N/A (never a checker — static §VERIFY17; verified/failed map passed/failed)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=FULLY_WIRED (within probed scope; default explorer-root landing is code-cited, live-unprobed by design)
+RECOMMENDED_ACTION=none (clean story; default-root landing noted as live-unprobed)
+
+---
+
+CAPABILITY_ID=TOOL-mobile_builder
+NAME=mobile_builder (MobileBuilderTool, MobileBuilderTool.ts:17)
+CATEGORY=tool/build-generate-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/MobileBuilderTool.ts
+IMPLEMENTATION=Expo template writer (init/add-screen/add-navigation/add-state write files; build/run return command STRINGS only, never exec); init outputDir defaults to process.cwd() (NEVER probed live — code-cited hazard); NO context param; required:['action']; permissions write/execute (execute overstates: no exec path found)
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1 BUT router-excluded (flag/catalog split)
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1 (catalog; router-side enforcement unprobed)
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_build.json, canonical, 5 legs 2x identical): {} + bogus action -> honest Unknown action; contained init -> package.json/App.tsx/screens (verified + removed); build/run -> commands-only outputs, zero side effects (F123)
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=write+execute, medium (auto-approved)
+INPUT_CONTRACT_VALID=PARTIAL (action dispatch honest; outputDir default unsafe)
+OUTPUT_CONTRACT_VALID=YES ({success,projectPath/files/commands})
+EVIDENCE_PRODUCED=YES
+VERIFICATION_COMPATIBLE=N/A (never a checker — static §VERIFY17; unknown-action maps failed, build-commands maps passed)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (default-cwd hazard unprobed-by-design; permission overstates)
+RECOMMENDED_ACTION=WIRING-P2-006 extension (require outputDir or session-bind the default) + demand-side review of the execute permission
+
+---
+
+CAPABILITY_ID=TOOL-orion_business_foundation
+NAME=orion_business_foundation (OrionBusinessFoundationTool, OrionBusinessFoundationTool.ts:24)
+CATEGORY=tool/build-generate-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/OrionBusinessFoundationTool.ts
+IMPLEMENTATION=deterministic ORION phase-one writer (21 template files: tenant core/governance/contracts/UI/infra) + bounded local python acceptance (unittest + event-schema via runPython helper); root = context.workspaceRoot or EXPLORER root (session-agnostic default); required:['request']; permissions read/write/execute
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1; not router-excluded
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_build.json, canonical, 2 legs 2x identical): {} -> honest request-required; workspaceRoot-pinned positive -> 21 files + python verified:true acceptanceRan:true in the FIXTURE (context root honored end-to-end) (F123)
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=read/write/execute, medium (auto-approved); python verify runs in-process bounded
+INPUT_CONTRACT_VALID=YES (request enforced)
+OUTPUT_CONTRACT_VALID=YES ({projectPath,writtenFiles,verified,verification,deliveryScope})
+EVIDENCE_PRODUCED=YES
+VERIFICATION_COMPATIBLE=N/A (never a checker — static §VERIFY17; verified/failed map passed/failed)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=FULLY_WIRED (within probed scope; default explorer-root landing is code-cited, live-unprobed by design)
+RECOMMENDED_ACTION=none (clean story; default-root landing noted as live-unprobed)
+
+---
+
+CAPABILITY_ID=TOOL-progressive_generator
+NAME=progressive_generator (ProgressiveGeneratorTool, ProgressiveGeneratorTool.ts:36)
+CATEGORY=tool/build-generate-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/ProgressiveGeneratorTool.ts
+IMPLEMENTATION=in-memory-manifest batched generator (init/status pure; generateBatch writes static files + PROMPT: files via callLLM); PROMPT: failure path writes the RESOLVED FAILURE PROSE as source with ok:true (try/catch dead because routeToModel resolves instead of throwing — MISMATCH #9); batch baseDir raw or cwd+name; required:['action']; permissions read/write
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1 BUT router-excluded (flag/catalog split)
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1 (catalog; router-side enforcement unprobed)
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_build.json + prog_batch3 logs, canonical, 8+4 legs 2x identical): empties/init-gating/batch-lookup all honest; batches 1-2 static green (4+3 files); batch-3 (5 PROMPT: files) -> ok:true with provider-failure prose PERSISTED AS Component1.tsx, byte-identical both runs (FALSE ARTIFACT PROVEN, #9 5th instance) (F116)
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=read/write, medium (auto-approved)
+INPUT_CONTRACT_VALID=YES (action/config/batch/project lookups all honest)
+OUTPUT_CONTRACT_VALID=NO (ok:true while content is failure prose)
+EVIDENCE_PRODUCED=PARTIAL (progress/message correct; file content false)
+VERIFICATION_COMPATIBLE=N/A (never a checker — static §VERIFY17; progressive-batch maps incomplete)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (persistent false-artifact defect)
+RECOMMENDED_ACTION=MISMATCH #9 5th instance (detect provider-failure prose via isProviderFailure before writing; fail the batch honestly) + P2-006 note (baseDir raw)
+
+---
+
+CAPABILITY_ID=TOOL-react_project
+NAME=react_project (ReactProjectTool, ReactProjectTool.ts:4271)
+CATEGORY=tool/build-generate-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/ReactProjectTool.ts
+IMPLEMENTATION=Vite+React scaffolder with install+build proof (skipInstall disables); root = input.root RAW or session root (NO resolve/contain — twin of api_project, live-unprobed to bound cost); explicit scaffoldDir/resumeExisting handoff; skip path carries honest acceptance.accepted:false; required:['request']; permissions execute/write
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1 BUT router-excluded (flag/catalog split)
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1 (catalog; router-side enforcement unprobed)
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_build.json, canonical, 2 legs 2x identical): {} -> no_request honest; skipInstall positive -> full 21-file scaffold in SESSION root, ok:true with acceptance.accepted:false + unprovable-criterion note (honest unproven, F118)
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=execute+write, medium (auto-approved)
+INPUT_CONTRACT_VALID=PARTIAL (request enforced; root/scaffoldDir uncontained per code)
+OUTPUT_CONTRACT_VALID=YES (message/acceptance/path/delivery/verificationFailed; honest flags)
+EVIDENCE_PRODUCED=YES
+VERIFICATION_COMPATIBLE=N/A (never a checker — static §VERIFY17; ok-with-accepted:false = F88 constraint)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (uncontained input.root code-cited; full install+build legs embargoed)
+RECOMMENDED_ACTION=WIRING-P1-007 (session-bind input.root/scaffoldDir — shared with api_project)
+
+---
+
+CAPABILITY_ID=TOOL-scaffold_full_stack
+NAME=scaffold_full_stack (ScaffoldFullStackTool, WebDevelopmentTools.ts:626)
+CATEGORY=tool/build-generate-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/WebDevelopmentTools.ts + api/src/system/Builder.ts
+IMPLEMENTATION=3-tier template scaffolder via Builder.scaffold (file writes only, no exec); NO context param (6th no-context instance); name silently defaults to my-app; type enum never validated; Builder DELETES colliding targets by default (overwrite !== false -> rm -rf) and defaults baseDir to repo data/projects; required:['name']; permissions write
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1 BUT router-excluded (flag/catalog split); priority-listed
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1 (catalog; router-side enforcement unprobed)
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_build.json, canonical, 3 legs 2x identical, all contained): saas positive green; {baseDir}-only built 'my-app' (SILENT NAME DEFAULT); 'cobol' type produced identical output modulo path (ENUM DECORATIVE) (F115)
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=write tier, medium (auto-approved)
+INPUT_CONTRACT_VALID=NO (required name defaulted; enum unvalidated)
+OUTPUT_CONTRACT_VALID=YES ({path,features,aestheticMode,language,port,overwrite})
+EVIDENCE_PRODUCED=YES
+VERIFICATION_COMPATIBLE=N/A (never a checker — static §VERIFY17)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (silent defaults + default-destructive overwrite + session-agnostic default base)
+RECOMMENDED_ACTION=WIRING-P2-004 extension (enforce name/type) + WIRING-P2-006 extension (flip overwrite default to false; session-bind default base) + thread context
+
+---
+
+CAPABILITY_ID=TOOL-scaffold_project
+NAME=scaffold_project (ScaffoldProjectTool, SystemTools.ts:1361)
+CATEGORY=tool/build-generate-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/SystemTools.ts
+IMPLEMENTATION=structure-object file writer (per-key safePath + react-normalize + greenfield-reset + joeProjects registration); per-key check enforces only the 4-root rule, NOT base containment; baseDir '../../..' reaches the REPO ROOT; required:['structure']; permissions write
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1 BUT router-excluded (flag/catalog split); priority-listed
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1 (catalog; router-side enforcement unprobed)
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_build.json, canonical, 4 legs 2x identical): positive green (files+dir verified); '../../evil' key -> ok:true with BOTH keys "created", file in SESSION ROOT while projectDir names scaf2 (BASE ESCAPE + RECEIPT LIE); baseDir '../../..' -> a.js WRITTEN AT REPO ROOT ok:true (probe-removed); {} -> ok:true no-op (F111/F112)
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=write tier, medium (auto-approved)
+INPUT_CONTRACT_VALID=NO (base + keys escape the declared scope)
+OUTPUT_CONTRACT_VALID=NO (created[]/projectDir misreport the escape)
+EVIDENCE_PRODUCED=PARTIAL (positive receipts correct; escape receipts false)
+VERIFICATION_COMPATIBLE=N/A (never a checker — static §VERIFY17; created maps passed, partial maps failed; empty no-op = F88 constraint)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (base-escape + repo-root write defects)
+RECOMMENDED_ACTION=WIRING-P1-007 (session-bind baseDir + per-key base containment; receipt must report resolved paths)
+
+---
+
+CAPABILITY_ID=TOOL-template_manager
+NAME=template_manager (TemplateManagerTool, TemplateManagerTool.ts:8)
+CATEGORY=tool/build-generate-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/TemplateManagerTool.ts
+IMPLEMENTATION=pure template renderer (list + 5 template types, projectName-substituted file maps; no writes, no model); source declares permissions []/sideEffects [] but registers ['write']/[] (registry defaulting); required:['templateType']; registered permissions write
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1; not router-excluded
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_build.json, canonical, 4 legs 2x identical): list green; react-app byte-rendered with substituted name; bogus + {} -> honest 'not found' errors (F123)
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=write tier (registry-defaulted), medium (auto-approved)
+INPUT_CONTRACT_VALID=YES (unknown types honestly rejected)
+OUTPUT_CONTRACT_VALID=YES ({name,type,files} / {templates})
+EVIDENCE_PRODUCED=YES
+VERIFICATION_COMPATIBLE=N/A (never a checker — static §VERIFY17; ready maps passed, missing maps failed)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=FULLY_WIRED (clean story; registry/source perm skew is known defaulting)
+RECOMMENDED_ACTION=none (clean story)
+
+---
+
+CAPABILITY_ID=TOOL-web_page_builder
+NAME=web_page_builder (WebPageBuilderTool, WebPageBuilderTool.ts:179)
+CATEGORY=tool/build-generate-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/WebPageBuilderTool.ts
+IMPLEMENTATION=model-driven standalone-page builder (section writers + audits + preview via ARTIFACT_DIR; heavy routeToModel use); input.filename DEAD (never read — output always joe-<sessionKey>.html); source declares permissions []/sideEffects []/rate 0 (registers write/[]/30 via defaulting); required:['request']
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1 BUT router-excluded (flag/catalog split)
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1 (catalog; router-side enforcement unprobed)
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_build.json, canonical, 2 legs 2x identical): {} -> no_request honest; offline positive -> honest no-provider error with ZERO artifact writes (FAIL-CLOSED PROVEN); filename-dead is STATIC (no input.filename read anywhere; model-present build unprobed) (F120)
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=write tier (registry-defaulted), medium (auto-approved)
+INPUT_CONTRACT_VALID=NO (filename promised but dead)
+OUTPUT_CONTRACT_VALID=YES ({message,url,previewUrl,path} on success; honest errors)
+EVIDENCE_PRODUCED=YES
+VERIFICATION_COMPATIBLE=N/A (never a checker — static §VERIFY17; no-request maps failed)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (dead filename input; model-present path unprobed)
+RECOMMENDED_ACTION=MISMATCH #4 4th instance (implement filename or drop from schema; rides P2-002) + sideEffects skew note (writes with [])
+
+---
+
+CAPABILITY_ID=TOOL-website_full_pipeline
+NAME=website_full_pipeline (WebsiteFullPipelineTool, WebDevelopmentTools.ts:35)
+CATEGORY=tool/build-generate-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/WebDevelopmentTools.ts
+IMPLEMENTATION=nested-execution mega-pipeline (nested scaffold + project_detect + npm install tiers + quality/security/browser phases); MUTATES the workspace root via setActiveRoot(projectPath) (:193); name honestly required ({} refuses before any work); required:['name']; permissions write/execute
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-2 (only non-rank-1 trunk member) BUT router-excluded (flag/catalog split); priority-listed
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 2 (catalog; router-side enforcement unprobed)
+EXECUTOR_REACHABLE=PARTIAL (empty leg live; named legs embargoed by design)
+EXECUTOR_EVIDENCE=LIVE (trunk_build.json, canonical, 1 leg 2x identical): {} -> honest needs-a-name error, nothing built. Named behavior + setActiveRoot mutation UNPROBED (embargo: nested ToolService execution + npm + workspace mutation); type defaults ecommerce unvalidated (code-cited)
+PERMISSION_REACHABLE=YES (empty leg passes medium auto-approved)
+PERMISSION_EVIDENCE=write+execute, medium at {} (input-tiered higher on real builds per sweep3 pattern)
+INPUT_CONTRACT_VALID=PARTIAL (name enforced; type defaulted; pipeline args unprobed)
+OUTPUT_CONTRACT_VALID=UNKNOWN (no named leg executed)
+EVIDENCE_PRODUCED=PARTIAL (honest refusal only)
+VERIFICATION_COMPATIBLE=N/A (never a checker — static §VERIFY17; honest-empty maps failed)
+CANONICAL_PATH_CONNECTED=YES (refusal path proven; full path unprobed)
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (named pipeline + workspace mutation unprobed)
+RECOMMENDED_ACTION=dedicated safety probe (bounded named run + setActiveRoot scoping review) before any pipeline wiring claim
+
+---
+
+END-OF-MUSE-DRAFT-ROWS=122 (112 individual + 8 group + 2 external-cited)
+COVERAGE-DISCLAIMER=This draft covers ONLY what Muse checkpoints 1-17 evidenced. Full matrix requires: per-trunk path stories (19 trunks PROPOSED in merge.json, 7 STORIED: files 10/10 + browser_ui 33/33 LEVEL-4 + testing_qa 6/6 LEVEL-4 + security 3/3 LEVEL-4 + code_understanding 16/16 LEVEL-4 + vcs_repo 11/11 LEVEL-4 + build_generate 13/13 LEVEL-4), services/workers/persistence/deployment rows (NVIDIA scope), bulk per-tool firewall sweep (8 spot + 28 empty-input batch-1+2 + 19 risk-tier live + 16 trunk-files + 3 arch-backend + 26 browser live1/live2 + 30 browser live3 + 19 trunk-testing + 13 trunk-security + 36 trunk-code + 43 trunk-vcs + 45 trunk-build + 4 prog-batch3 done; 25/25 no-required reviewed: 18 SAFE + 1 BOUND + 4 EMBARGO with static fixture designs + 2 FIXTURE probed contained; browser_launch embargo partially lifted for contained-http; sonar/dep_audit/dead_code positives embargoed; code_reviewer non-quick + ALL github-network/git-network-push/import-clone/npm-qa legs embargoed; pipeline-named/setActiveRoot + mobile-default-cwd + full-stack-{} + react/api-full + ent/ori-default-root + page-model-present legs embargoed; risk table SURVEYED), contract audit per boundary (12 mismatches + schema/execute family), LEVEL 5-6 proofs (L5 done files+browser_ui; testing_qa + security + code_understanding static-only, 5 checkers pending; vcs_repo + build_generate static-only with 0 checkers each), and NVIDIA cross-review (pending — worker on CLI-BATCH1 + audit slice).

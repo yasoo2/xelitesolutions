@@ -1,0 +1,1019 @@
+{
+  "generatedAt": "2026-09-30T04:58:31.127Z",
+  "trunk": "build_generate",
+  "declarations": {
+    "ai_write_file": {
+      "descriptionHead": "Generate and write high-quality, professional file content using AI based on a description.",
+      "tags": [
+        "generation",
+        "ai",
+        "write",
+        "elite",
+        "code"
+      ],
+      "required": [
+        "path",
+        "description"
+      ],
+      "properties": [
+        "path",
+        "description",
+        "aestheticMode",
+        "language",
+        "context",
+        "contextPack"
+      ],
+      "permissions": [
+        "write"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 60,
+      "routerExcluded": true,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "ai_write_file:9.5",
+        "write_file:9.5",
+        "todo_write:7.5"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "api_project": {
+      "descriptionHead": "Scaffold a complete runnable Express API with a real zero-dependency database (node:sqlite or JSON fallback), then boot it and prove a real HTTP write/read roun",
+      "tags": [
+        "build",
+        "api",
+        "backend",
+        "database"
+      ],
+      "required": [
+        "request"
+      ],
+      "properties": [
+        "request",
+        "projectName",
+        "skipInstall"
+      ],
+      "permissions": [
+        "execute",
+        "write"
+      ],
+      "sideEffects": [
+        "execute",
+        "write"
+      ],
+      "rateLimitPerMinute": 6,
+      "routerExcluded": true,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "api_project:7.4",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "auth_builder": {
+      "descriptionHead": "Generate complete authentication systems with OAuth, JWT, sessions, and RBAC.",
+      "tags": [
+        "auth",
+        "oauth",
+        "jwt",
+        "security",
+        "god-mode"
+      ],
+      "required": [
+        "type",
+        "outputDir"
+      ],
+      "properties": [
+        "type",
+        "providers",
+        "outputDir",
+        "framework",
+        "includeRBAC"
+      ],
+      "permissions": [
+        "write"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 60,
+      "routerExcluded": true,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "auth_builder:12",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "enterprise_platform_foundation": {
+      "descriptionHead": "Create and locally verify an enterprise multi-agent platform foundation: architecture, API contracts, service skeletons, CI, observability, security policy, and",
+      "tags": [
+        "enterprise",
+        "microservices",
+        "multi-agent",
+        "architecture",
+        "foundation"
+      ],
+      "required": [
+        "request"
+      ],
+      "properties": [
+        "request"
+      ],
+      "permissions": [
+        "read",
+        "write",
+        "execute"
+      ],
+      "sideEffects": [
+        "write",
+        "execute"
+      ],
+      "rateLimitPerMinute": 2,
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "enterprise_platform_foundation:20",
+        "orion_business_foundation:10.1",
+        "ask_user:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "mobile_builder": {
+      "descriptionHead": "Generate React Native / Expo mobile applications with navigation, state management, and native integrations.",
+      "tags": [
+        "mobile",
+        "react-native",
+        "expo",
+        "ios",
+        "android",
+        "god-mode"
+      ],
+      "required": [
+        "action"
+      ],
+      "properties": [
+        "action",
+        "projectName",
+        "outputDir",
+        "template",
+        "platform",
+        "screenName",
+        "stateManager"
+      ],
+      "permissions": [
+        "write",
+        "execute"
+      ],
+      "sideEffects": [
+        "write",
+        "execute"
+      ],
+      "rateLimitPerMinute": 60,
+      "routerExcluded": true,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "mobile_builder:10.7",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "orion_business_foundation": {
+      "descriptionHead": "Create and locally verify the ORION Business Operating System phase-one foundation: multi-tenant business core, governance, contracts, UI starter, infrastructur",
+      "tags": [
+        "orion",
+        "business-os",
+        "enterprise",
+        "multi-tenant",
+        "rbac",
+        "accounting",
+        "foundation"
+      ],
+      "required": [
+        "request"
+      ],
+      "properties": [
+        "request"
+      ],
+      "permissions": [
+        "read",
+        "write",
+        "execute"
+      ],
+      "sideEffects": [
+        "write",
+        "execute"
+      ],
+      "rateLimitPerMinute": 2,
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "orion_business_foundation:23.8",
+        "business_profile:7.8",
+        "enterprise_platform_foundation:7.8"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "progressive_generator": {
+      "descriptionHead": "Generate large-scale projects progressively with batching, progress tracking, and resume capability",
+      "tags": [
+        "codegen",
+        "large-scale",
+        "progressive",
+        "enterprise"
+      ],
+      "required": [
+        "action"
+      ],
+      "properties": [
+        "action",
+        "projectId",
+        "config",
+        "batchId",
+        "batchSize",
+        "baseDir"
+      ],
+      "permissions": [
+        "read",
+        "write"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 60,
+      "routerExcluded": true,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "progressive_generator:11.7",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "react_project": {
+      "descriptionHead": "Scaffold a complete runnable Vite + React project (RTL-aware, Joe design tokens), then install and build it to prove it compiles.",
+      "tags": [
+        "build",
+        "react",
+        "vite",
+        "project"
+      ],
+      "required": [
+        "request"
+      ],
+      "properties": [
+        "request",
+        "projectName",
+        "skipInstall",
+        "resumeExisting",
+        "scaffoldDir",
+        "apiSelection"
+      ],
+      "permissions": [
+        "execute",
+        "write"
+      ],
+      "sideEffects": [
+        "execute",
+        "write"
+      ],
+      "rateLimitPerMinute": 6,
+      "routerExcluded": true,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "react_project:11.2",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "scaffold_full_stack": {
+      "descriptionHead": "Generate a new full-stack project using 3-Tier architecture and best practices.",
+      "tags": [
+        "scaffold",
+        "generate",
+        "architect"
+      ],
+      "required": [
+        "name"
+      ],
+      "properties": [
+        "name",
+        "type",
+        "features",
+        "baseDir",
+        "aestheticMode",
+        "language",
+        "port",
+        "skipDev",
+        "autoFix",
+        "overwrite"
+      ],
+      "permissions": [
+        "write"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 30,
+      "routerExcluded": true,
+      "priorityListed": true,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "scaffold_full_stack:17",
+        "website_full_pipeline:9.1",
+        "browser_fullpage_shot:7.8"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "scaffold_project": {
+      "descriptionHead": "Scaffold a project structure from a definition object.",
+      "tags": [
+        "scaffold",
+        "fs",
+        "generate"
+      ],
+      "required": [
+        "structure"
+      ],
+      "properties": [
+        "structure",
+        "baseDir"
+      ],
+      "permissions": [
+        "write"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 60,
+      "routerExcluded": true,
+      "priorityListed": true,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "scaffold_project:9.3",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "template_manager": {
+      "descriptionHead": "Get pre-built templates for common project types (React, Node, Express, etc.)",
+      "tags": [
+        "templates",
+        "scaffold",
+        "boilerplate"
+      ],
+      "required": [
+        "templateType"
+      ],
+      "properties": [
+        "templateType",
+        "projectName"
+      ],
+      "permissions": [
+        "write"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 30,
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "template_manager:11.8",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "web_page_builder": {
+      "descriptionHead": "Generate a complete standalone web page (HTML/CSS/JS), write it to a file, and open it in the live preview.",
+      "tags": [
+        "web",
+        "build",
+        "preview"
+      ],
+      "required": [
+        "request"
+      ],
+      "properties": [
+        "request",
+        "filename"
+      ],
+      "permissions": [
+        "write"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 30,
+      "routerExcluded": true,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "web_page_builder:11.3",
+        "browser_fullpage_shot:8.8",
+        "deploy_pages:8.6"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "website_full_pipeline": {
+      "descriptionHead": "Scaffold, build, test, and preview a full-stack website project.",
+      "tags": [
+        "pipeline",
+        "web",
+        "scaffold",
+        "build",
+        "test"
+      ],
+      "required": [
+        "name"
+      ],
+      "properties": [
+        "name",
+        "type",
+        "features",
+        "baseDir",
+        "skipDev",
+        "qualityTasks",
+        "securityChecks",
+        "autoFix",
+        "aestheticMode",
+        "language"
+      ],
+      "permissions": [
+        "write",
+        "execute"
+      ],
+      "sideEffects": [
+        "write",
+        "execute"
+      ],
+      "rateLimitPerMinute": 10,
+      "routerExcluded": true,
+      "priorityListed": true,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 2,
+      "bestRankFull": 2,
+      "top3SelfName": [
+        "ci_generate_pipeline:15",
+        "website_full_pipeline:13.5",
+        "github_actions:12.2"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    }
+  },
+  "verdictTable": {
+    "scaffold created": "passed",
+    "scaffold partial": "failed",
+    "template ready": "passed",
+    "template missing": "failed",
+    "auth refused": "failed",
+    "mobile unknown-action": "failed",
+    "mobile build-commands": "passed",
+    "progressive placeholder-batch": "incomplete",
+    "pipeline honest-empty": "failed",
+    "ai needs-both": "failed",
+    "page no-request": "failed",
+    "enterprise verified": "passed",
+    "enterprise failed": "failed"
+  },
+  "live": {
+    "scaf.positive": {
+      "input": "{\"baseDir\":\"wiring-build-fx/scaf1\",\"structure\":{\"package.json\":\"{\\\"private\\\":true}\",\"src/index.js\":\"// WIRING_BUILD_TOKEN_7a1c\\nmodule.exports=1;\\n\",\"notes\":null}}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{created,errors,projectDir}",
+      "outputPreview": "{\"created\":[\"package.json\",\"src/index.js\",\"notes/\"],\"errors\":[],\"projectDir\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-build-fx\\\\scaf1\"}",
+      "log0": "[2026-09-30T04:58:10.318Z] start scaffold_project (orig=scaffold_project)",
+      "logN": 2
+    },
+    "scaf.traversal-key": {
+      "input": "{\"baseDir\":\"wiring-build-fx/scaf2\",\"structure\":{\"../../wiring-build-evil17.txt\":\"evil\",\"ok.js\":\"1\"}}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{created,errors,projectDir}",
+      "outputPreview": "{\"created\":[\"../../wiring-build-evil17.txt\",\"ok.js\"],\"errors\":[],\"projectDir\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-build-fx\\\\scaf2\"}",
+      "log0": "[2026-09-30T04:58:10.472Z] start scaffold_project (orig=scaffold_project)",
+      "logN": 2
+    },
+    "scaf.empty": {
+      "input": "{}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{created,errors,projectDir}",
+      "outputPreview": "{\"created\":[],\"errors\":[],\"projectDir\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\"}",
+      "log0": "[2026-09-30T04:58:10.526Z] start scaffold_project (orig=scaffold_project)",
+      "logN": 1
+    },
+    "scaf.base-traversal": {
+      "input": "{\"baseDir\":\"../../..\",\"structure\":{\"a.js\":\"1\"}}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{created,errors,projectDir}",
+      "outputPreview": "{\"created\":[\"a.js\"],\"errors\":[],\"projectDir\":\"D:\\\\Joe\\\\muse-worktree\"}",
+      "log0": "[2026-09-30T04:58:10.538Z] start scaffold_project (orig=scaffold_project)",
+      "logN": 2
+    },
+    "tmpl.list": {
+      "input": "{\"templateType\":\"list\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{templates}",
+      "outputPreview": "{\"templates\":[{\"name\":\"react-app\",\"description\":\"React application with TypeScript\",\"files\":15},{\"name\":\"node-api\",\"description\":\"Node.js REST API with Express\",\"files\":12},{\"name\":\"express-api\",\"description\":\"Express API with MongoDB\",\"files\":14},{\"name\":\"fullstack\",\"description\":\"React + Node.js fullstack\",\"files\":25},{\"name\":\"static-site\",\"description\":\"Static HTML/CSS/JS website\",\"files\":8}]}",
+      "log0": "[2026-09-30T04:58:10.594Z] start template_manager (orig=template_manager)",
+      "logN": 2
+    },
+    "tmpl.react-app": {
+      "input": "{\"templateType\":\"react-app\",\"projectName\":\"fx-tmpl-17\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{name,type,files}",
+      "outputPreview": "{\"name\":\"fx-tmpl-17\",\"type\":\"react-app\",\"files\":[{\"path\":\"package.json\",\"content\":\"{\\n  \\\"name\\\": \\\"fx-tmpl-17\\\",\\n  \\\"version\\\": \\\"1.0.0\\\",\\n  \\\"scripts\\\": {\\n    \\\"dev\\\": \\\"vite\\\",\\n    \\\"build\\\": \\\"vite build\\\",\\n    \\\"preview\\\": \\\"vite preview\\\"\\n  },\\n  \\\"dependencies\\\": {\\n    \\\"react\\\": \\\"^18.2.0\\\",\\n    \\\"react-dom\\\": \\\"^18.2.0\\\"\\n  },\\n  \\\"devDependencies\\\": {\\n    \\\"@types/react\\\": \\\"^18.2.0\\\",\\n    \\\"@types/react-dom\\\": \\\"^18.2.0\\\",\\n    \\\"@vitejs/plugin-react\\\": \\\"^4.0.0\\\",\\n    \\\"typescript\\\": \\\"^5.0.0\\\",\\n    \\\"vite\\\": \\\"^4.0.0\\\"\\n  }\\n}\"},{\"path\":\"index.html\",\"content\":\"<!DOCTYPE html>\\n<html lang=\\\"en\\\">\\n  <head>\\n    <meta charset=\\\"UTF-8\\\" />\\n    <meta name=\\\"viewport\\\" content=\\\"width=device-width, initial-scale=1.0\\\" />\\n    <title>fx-tmpl-17</title>\\n  </head>\\n  <body>\\n    <div id=\\\"root\\\"></div>\\n    <script type=\\\"module\\\" src=\\\"/src/main.tsx\\\"></script>\\n  </body>\\n</html>\"},{\"path\":\"src/main.tsx\",\"content\":\"import React from 'react';\\nimport ReactDOM from 'react-dom/client';\\nimport App from './App';\\nimport './index.css';\\n\\nReactDOM.createRoot(document.getElementById('root')!).render(\\n  <React.StrictMode>\\n    <App />\\n  </React.StrictMode>\\n);\"},{\"path\":\"src/App.tsx\",\"content\":\"import React from 'react';\\n\\nfunction App() {\\n  return (\\n    <div className=\\\"App\\\">\\n      <h1>Welcome to fx-tmpl-17</h1>\\n      <p>Start building your React app!</p>",
+      "log0": "[2026-09-30T04:58:10.607Z] start template_manager (orig=template_manager)",
+      "logN": 3
+    },
+    "tmpl.bogus": {
+      "input": "{\"templateType\":\"cobol-app\"}",
+      "ok": false,
+      "error": "Template 'cobol-app' not found",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T04:58:10.630Z] start template_manager (orig=template_manager)",
+      "logN": 3
+    },
+    "tmpl.empty": {
+      "input": "{}",
+      "ok": false,
+      "error": "Template 'undefined' not found",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T04:58:10.645Z] start template_manager (orig=template_manager)",
+      "logN": 3
+    },
+    "auth.empty": {
+      "input": "{}",
+      "ok": false,
+      "error": "auth_builder needs an outputDir (e.g. \"src/auth\") — nothing was generated.",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T04:58:10.662Z] start auth_builder (orig=auth_builder)",
+      "logN": 1
+    },
+    "auth.bogus-type": {
+      "input": "{\"type\":\"saml\",\"outputDir\":\"wiring-build-fx/auth-bogus\",\"framework\":\"express\",\"includeRBAC\":false}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{files,instructions}",
+      "outputPreview": "{\"files\":[\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\builds\\\\workspace-default\\\\wiring-build-fx\\\\auth-bogus\\\\config.ts\",\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\builds\\\\workspace-default\\\\wiring-build-fx\\\\auth-bogus\\\\index.ts\"],\"instructions\":\"Auth system generated! Next steps:\\n1. Install dependencies: npm install jsonwebtoken bcryptjs passport passport-google-oauth20 express-session\\n2. Set environment variables: JWT_SECRET, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET\\n3. Import from 'wiring-build-fx/auth-bogus' in your main app\"}",
+      "log0": "[2026-09-30T04:58:10.687Z] start auth_builder (orig=auth_builder)",
+      "logN": 2
+    },
+    "auth.outside": {
+      "input": "{\"type\":\"jwt\",\"outputDir\":\"D:\\\\Joe\\\\muse-worktree\\\\tmp\\\\wiring-audit\\\\fx-build\\\\tmp\\\\wiring-build-outside-WIRING_BUILD_TOKEN_7a1c\\\\auth-out\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{files,instructions}",
+      "outputPreview": "{\"files\":[\"D:\\\\Joe\\\\muse-worktree\\\\tmp\\\\wiring-audit\\\\fx-build\\\\tmp\\\\wiring-build-outside-WIRING_BUILD_TOKEN_7a1c\\\\auth-out\\\\jwt.ts\",\"D:\\\\Joe\\\\muse-worktree\\\\tmp\\\\wiring-audit\\\\fx-build\\\\tmp\\\\wiring-build-outside-WIRING_BUILD_TOKEN_7a1c\\\\auth-out\\\\rbac.ts\",\"D:\\\\Joe\\\\muse-worktree\\\\tmp\\\\wiring-audit\\\\fx-build\\\\tmp\\\\wiring-build-outside-WIRING_BUILD_TOKEN_7a1c\\\\auth-out\\\\config.ts\",\"D:\\\\Joe\\\\muse-worktree\\\\tmp\\\\wiring-audit\\\\fx-build\\\\tmp\\\\wiring-build-outside-WIRING_BUILD_TOKEN_7a1c\\\\auth-out\\\\index.ts\"],\"instructions\":\"Auth system generated! Next steps:\\n1. Install dependencies: npm install jsonwebtoken bcryptjs passport passport-google-oauth20 express-session\\n2. Set environment variables: JWT_SECRET, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET\\n3. Import from 'D:\\\\Joe\\\\muse-worktree\\\\tmp\\\\wiring-audit\\\\fx-build\\\\tmp\\\\wiring-build-outside-WIRING_BUILD_TOKEN_7a1c\\\\auth-out' in your main app\"}",
+      "log0": "[2026-09-30T04:58:10.713Z] start auth_builder (orig=auth_builder)",
+      "logN": 4
+    },
+    "auth.true-outside": {
+      "input": "{\"type\":\"jwt\",\"outputDir\":\"C:\\\\Users\\\\home\\\\AppData\\\\Local\\\\Temp\\\\wiring-build-trueout-WIRING_BUILD_TOKEN_7a1c\\\\auth-out\"}",
+      "ok": false,
+      "error": "refused: C:\\Users\\home\\AppData\\Local\\Temp\\wiring-build-trueout-WIRING_BUILD_TOKEN_7a1c\\auth-out is outside the workspace — nothing was generated.",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T04:58:10.784Z] start auth_builder (orig=auth_builder)",
+      "logN": 2
+    },
+    "auth.positive": {
+      "input": "{\"type\":\"jwt\",\"outputDir\":\"wiring-build-fx/auth1\",\"framework\":\"express\",\"includeRBAC\":false}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{files,instructions}",
+      "outputPreview": "{\"files\":[\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\builds\\\\workspace-default\\\\wiring-build-fx\\\\auth1\\\\jwt.ts\",\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\builds\\\\workspace-default\\\\wiring-build-fx\\\\auth1\\\\config.ts\",\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\builds\\\\workspace-default\\\\wiring-build-fx\\\\auth1\\\\index.ts\"],\"instructions\":\"Auth system generated! Next steps:\\n1. Install dependencies: npm install jsonwebtoken bcryptjs passport passport-google-oauth20 express-session\\n2. Set environment variables: JWT_SECRET, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET\\n3. Import from 'wiring-build-fx/auth1' in your main app\"}",
+      "log0": "[2026-09-30T04:58:10.845Z] start auth_builder (orig=auth_builder)",
+      "logN": 3
+    },
+    "mob.empty": {
+      "input": "{}",
+      "ok": false,
+      "error": "Unknown action: undefined",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T04:58:10.882Z] start mobile_builder (orig=mobile_builder)",
+      "logN": 1
+    },
+    "mob.bogus-action": {
+      "input": "{\"action\":\"teleport\"}",
+      "ok": false,
+      "error": "Unknown action: teleport",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T04:58:10.895Z] start mobile_builder (orig=mobile_builder)",
+      "logN": 1
+    },
+    "mob.init-contained": {
+      "input": "{\"action\":\"init\",\"projectName\":\"fxmob17\",\"outputDir\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-build-fx\",\"template\":\"blank\",\"platform\":\"expo\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{success,projectPath,files,commands}",
+      "outputPreview": "{\"success\":true,\"projectPath\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-build-fx\\\\fxmob17\",\"files\":[\"package.json\",\"App.tsx\",\"tsconfig.json\",\"app.json\",\"screens/HomeScreen.tsx\",\"screens/DetailsScreen.tsx\"],\"commands\":[\"cd fxmob17\",\"npm install\",\"npx expo start\"]}",
+      "log0": "[2026-09-30T04:58:10.910Z] start mobile_builder (orig=mobile_builder)",
+      "logN": 4
+    },
+    "mob.build": {
+      "input": "{\"action\":\"build\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{commands}",
+      "outputPreview": "{\"commands\":[\"npx eas build --platform android\",\"npx eas build --platform ios\"]}",
+      "log0": "[2026-09-30T04:58:10.938Z] start mobile_builder (orig=mobile_builder)",
+      "logN": 2
+    },
+    "mob.add-screen": {
+      "input": "{\"action\":\"add-screen\",\"screenName\":\"Fx\",\"outputDir\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-build-fx\\\\mobscr\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{success,files}",
+      "outputPreview": "{\"success\":true,\"files\":[\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-build-fx\\\\mobscr\\\\FxScreen.tsx\"]}",
+      "log0": "[2026-09-30T04:58:10.950Z] start mobile_builder (orig=mobile_builder)",
+      "logN": 2
+    },
+    "prog.empty": {
+      "input": "{}",
+      "ok": false,
+      "error": "Unknown action: undefined",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T04:58:10.963Z] start progressive_generator (orig=progressive_generator)",
+      "logN": 1
+    },
+    "prog.init-no-config": {
+      "input": "{\"action\":\"init\",\"projectId\":\"fx-prog-17\"}",
+      "ok": false,
+      "error": "config is required for init action",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T04:58:10.973Z] start progressive_generator (orig=progressive_generator)",
+      "logN": 1
+    },
+    "prog.init-small": {
+      "input": "{\"action\":\"init\",\"projectId\":\"fx-prog-17\",\"config\":{\"name\":\"fxprog\",\"type\":\"web\",\"scale\":\"small\"},\"baseDir\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-build-fx\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{success,projectId,status,progress,batchCount,nextBatch,message}",
+      "outputPreview": "{\"success\":true,\"projectId\":\"fx-prog-17\",\"status\":\"planning\",\"progress\":{\"totalFiles\":14,\"generatedFiles\":0,\"percentage\":0},\"batchCount\":4,\"nextBatch\":\"batch_001_infrastructure\",\"message\":\"Project initialized with 4 batches\"}",
+      "log0": "[2026-09-30T04:58:10.989Z] start progressive_generator (orig=progressive_generator)",
+      "logN": 4
+    },
+    "prog.status": {
+      "input": "{\"action\":\"get_status\",\"projectId\":\"fx-prog-17\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{success,projectId,status,progress,batchesTotal,batchesPending,nextBatch}",
+      "outputPreview": "{\"success\":true,\"projectId\":\"fx-prog-17\",\"status\":\"planning\",\"progress\":{\"totalFiles\":14,\"generatedFiles\":0,\"percentage\":0},\"batchesTotal\":4,\"batchesPending\":4,\"nextBatch\":\"batch_001_infrastructure\"}",
+      "log0": "[2026-09-30T04:58:11.010Z] start progressive_generator (orig=progressive_generator)",
+      "logN": 2
+    },
+    "prog.batch-offline": {
+      "input": "{\"action\":\"generate_batch\",\"projectId\":\"fx-prog-17\",\"batchId\":\"batch_001_infrastructure\",\"baseDir\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-build-fx\\\\prog\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{success,projectId,status,progress,nextBatch,message}",
+      "outputPreview": "{\"success\":true,\"projectId\":\"fx-prog-17\",\"status\":\"generating\",\"progress\":{\"totalFiles\":14,\"generatedFiles\":4,\"percentage\":29},\"nextBatch\":\"batch_002_frontend_core\",\"message\":\"Batch batch_001_infrastructure completed (4 files)\"}",
+      "log0": "[2026-09-30T04:58:11.031Z] start progressive_generator (orig=progressive_generator)",
+      "logN": 5
+    },
+    "prog.batch2-offline": {
+      "input": "{\"action\":\"generate_batch\",\"projectId\":\"fx-prog-17\",\"batchId\":\"batch_002_frontend_core\",\"baseDir\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-build-fx\\\\prog\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{success,projectId,status,progress,nextBatch,message}",
+      "outputPreview": "{\"success\":true,\"projectId\":\"fx-prog-17\",\"status\":\"generating\",\"progress\":{\"totalFiles\":14,\"generatedFiles\":7,\"percentage\":50},\"nextBatch\":\"batch_components_001\",\"message\":\"Batch batch_002_frontend_core completed (3 files)\"}",
+      "log0": "[2026-09-30T04:58:11.059Z] start progressive_generator (orig=progressive_generator)",
+      "logN": 5
+    },
+    "prog.batch-not-found": {
+      "input": "{\"action\":\"generate_batch\",\"projectId\":\"fx-prog-17\",\"batchId\":\"nope-batch\",\"baseDir\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-build-fx\"}",
+      "ok": false,
+      "error": "Batch nope-batch not found",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T04:58:11.077Z] start progressive_generator (orig=progressive_generator)",
+      "logN": 1
+    },
+    "prog.unknown-project": {
+      "input": "{\"action\":\"get_status\",\"projectId\":\"nope-proj-17\"}",
+      "ok": false,
+      "error": "Project nope-proj-17 not found",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T04:58:11.099Z] start progressive_generator (orig=progressive_generator)",
+      "logN": 1
+    },
+    "full.contained": {
+      "input": "{\"name\":\"fxfull17\",\"type\":\"saas\",\"baseDir\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-build-fx\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{path,features,aestheticMode,language,port,overwrite}",
+      "outputPreview": "{\"path\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-build-fx\\\\fxfull17\",\"features\":[],\"aestheticMode\":\"corporate\",\"language\":\"en\",\"port\":5180,\"overwrite\":true}",
+      "log0": "[2026-09-30T04:58:11.120Z] start scaffold_full_stack (orig=scaffold_full_stack)",
+      "logN": 2
+    },
+    "full.name-default": {
+      "input": "{\"baseDir\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-build-fx\\\\fulldef\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{path,features,aestheticMode,language,port,overwrite}",
+      "outputPreview": "{\"path\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-build-fx\\\\fulldef\\\\my-app\",\"features\":[],\"aestheticMode\":\"corporate\",\"language\":\"en\",\"port\":5180,\"overwrite\":true}",
+      "log0": "[2026-09-30T04:58:11.264Z] start scaffold_full_stack (orig=scaffold_full_stack)",
+      "logN": 2
+    },
+    "full.bogus-type": {
+      "input": "{\"name\":\"fxfullbogus17\",\"type\":\"cobol\",\"baseDir\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-build-fx\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{path,features,aestheticMode,language,port,overwrite}",
+      "outputPreview": "{\"path\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-build-fx\\\\fxfullbogus17\",\"features\":[],\"aestheticMode\":\"corporate\",\"language\":\"en\",\"port\":5180,\"overwrite\":true}",
+      "log0": "[2026-09-30T04:58:11.380Z] start scaffold_full_stack (orig=scaffold_full_stack)",
+      "logN": 2
+    },
+    "pipe.empty": {
+      "input": "{}",
+      "ok": false,
+      "error": "website_full_pipeline needs a project name — nothing was built.",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T04:58:11.433Z] start website_full_pipeline (orig=website_full_pipeline)",
+      "logN": 1
+    },
+    "ai.empty": {
+      "input": "{}",
+      "ok": false,
+      "error": "ai_write_file needs both a path and a description of what the file should contain — no model was called.",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T04:58:11.455Z] start ai_write_file (orig=ai_write_file)",
+      "logN": 1
+    },
+    "ai.path-only": {
+      "input": "{\"path\":\"wiring-build-fx/ai0.txt\"}",
+      "ok": false,
+      "error": "ai_write_file needs both a path and a description of what the file should contain — no model was called.",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T04:58:11.473Z] start ai_write_file (orig=ai_write_file)",
+      "logN": 1
+    },
+    "ai.traversal": {
+      "input": "{\"path\":\"../../wiring-build-evil17.txt\",\"description\":\"harmless note\"}",
+      "ok": false,
+      "error": "⚠️ تعذّر الوصول إلى محرّك الذكاء (لم يستجب أي مزوّد). لم أستطع تنفيذ الطلب. الحل: شغّل Ollama محلياً (افتح تطبيق Ollama أو نفّذ: ollama serve) ثم أعد المحاولة، أو تحقّق من اتصال الإنترنت لاستخدام الذكاء المجّاني. (لن أدّعي أنني نفّذت شيئاً لم يُنفَّذ.)",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T04:58:11.483Z] start ai_write_file (orig=ai_write_file)",
+      "logN": 4
+    },
+    "ai.offline-full": {
+      "input": "{\"path\":\"wiring-build-fx/ai1.txt\",\"description\":\"Write a one-line text note containing WIRING_BUILD_TOKEN_7a1c.\",\"contextPack\":false}",
+      "ok": false,
+      "error": "⚠️ تعذّر الوصول إلى محرّك الذكاء (لم يستجب أي مزوّد قبل لحظات). لم أستطع تنفيذ الطلب. الحل: شغّل Ollama محلياً (افتح تطبيق Ollama أو نفّذ: ollama serve) ثم أعد المحاولة، أو تحقّق من اتصال الإنترنت. (لن أدّعي أنني نفّذت شيئاً لم يُنفَّذ.)",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T04:58:11.534Z] start ai_write_file (orig=ai_write_file)",
+      "logN": 4
+    },
+    "api.empty": {
+      "input": "{}",
+      "ok": false,
+      "error": "no_request",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T04:58:11.550Z] start api_project (orig=api_project)",
+      "logN": 1
+    },
+    "api.skip-positive": {
+      "input": "{\"request\":\"A tiny task-notes API with two fields\",\"projectName\":\"fxapi17\",\"skipInstall\":true}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{message,status,path,dir,resource,installed,proven,authProven,backend,ownerEmail,relation,relationProven,files}",
+      "outputPreview": "{\"message\":\"🗄️ A full backend scaffolded — \\\"fxapi17\\\".\\n\\n📂 Path: D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\api-fxapi17\\n  • package.json\\n  • server.js\\n  • db.js\\n  • auth.js\\n  • seed.js\\n  • README.md\\n  • .gitignore\\n\\nOwner account (shown once):[REDACTED]\\nPublic: GET /api/items · POST /api/orders · GET /api/health\\nProtected (Bearer [REDACTED] from POST /api/auth/login): catalogue writes · GET /api/orders\\n\\nTeam — three roles, accounts made from inside the system:\\n• **Owner** — Everything: every row, plus accounts and roles.\\n• **Staff** — Adds, edits and deletes only his own rows — never anyone else’s.\\n• **Viewer** — Sees everything, changes nothing — for an accountant or auditor.\\n   POST /api/auth/users {email, role} — the password is generated and shown ONCE.\\n   GET · PUT · DELETE /api/auth/users — owner only (403 for anybody else).\",\"status\":\"completed\",\"path\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\api-fxapi17\",\"dir\":\"api-fxapi17\",\"resource\":\"items\",\"installed\":false,\"proven\":false,\"authProven\":false,\"backend\":\"\",\"ownerEmail\":\"owner@fxapi17.local\",\"relation\":null,\"relationProven\":false,\"files\":[\"package.json\",\"server.js\",\"db.js\",\"auth.js\",\"seed.js\",\"README.md\",\".gitignore\"]}",
+      "log0": "[2026-09-30T04:58:11.578Z] start api_project (orig=api_project)",
+      "logN": 4
+    },
+    "api.root-outside": {
+      "input": "{\"request\":\"A tiny task-notes API with two fields\",\"projectName\":\"fxapiout17\",\"root\":\"D:\\\\Joe\\\\muse-worktree\\\\tmp\\\\wiring-audit\\\\fx-build\\\\tmp\\\\wiring-build-outside-WIRING_BUILD_TOKEN_7a1c\",\"skipInsta",
+      "ok": true,
+      "error": null,
+      "outputShape": "{message,status,path,dir,resource,installed,proven,authProven,backend,ownerEmail,relation,relationProven,files}",
+      "outputPreview": "{\"message\":\"🗄️ A full backend scaffolded — \\\"fxapiout17\\\".\\n\\n📂 Path: D:\\\\Joe\\\\muse-worktree\\\\tmp\\\\wiring-audit\\\\fx-build\\\\tmp\\\\wiring-build-outside-WIRING_BUILD_TOKEN_7a1c\\\\api-fxapiout17\\n  • package.json\\n  • server.js\\n  • db.js\\n  • auth.js\\n  • seed.js\\n  • README.md\\n  • .gitignore\\n\\nOwner account (shown once):[REDACTED]\\nPublic: GET /api/items · POST /api/orders · GET /api/health\\nProtected (Bearer [REDACTED] from POST /api/auth/login): catalogue writes · GET /api/orders\\n\\nTeam — three roles, accounts made from inside the system:\\n• **Owner** — Everything: every row, plus accounts and roles.\\n• **Staff** — Adds, edits and deletes only his own rows — never anyone else’s.\\n• **Viewer** — Sees everything, changes nothing — for an accountant or auditor.\\n   POST /api/auth/users {email, role} — the password is generated and shown ONCE.\\n   GET · PUT · DELETE /api/auth/users — owner only (403 for anybody else).\",\"status\":\"completed\",\"path\":\"D:\\\\Joe\\\\muse-worktree\\\\tmp\\\\wiring-audit\\\\fx-build\\\\tmp\\\\wiring-build-outside-WIRING_BUILD_TOKEN_7a1c\\\\api-fxapiout17\",\"dir\":\"api-fxapiout17\",\"resource\":\"items\",\"installed\":false,\"proven\":false,\"authProven\":false,\"backend\":\"\",\"ownerEmail\":\"owner@fxapiout17.local\",\"relation\":null,\"relationProven\":false,\"files\":[\"package.json\",\"server.js\",\"db.js\",\"auth.js\",\"seed.js\",\"README.md\",\".gitignore\"]}",
+      "log0": "[2026-09-30T04:58:12.044Z] start api_project (orig=api_project)",
+      "logN": 4
+    },
+    "react.empty": {
+      "input": "{}",
+      "ok": false,
+      "error": "no_request",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T04:58:12.347Z] start react_project (orig=react_project)",
+      "logN": 1
+    },
+    "react.skip-positive": {
+      "input": "{\"request\":\"A tiny two-item showcase page\",\"projectName\":\"fxreact17\",\"skipInstall\":true}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{message,acceptance,acceptanceTrace,path,dir,authorMode,installed,artifactMode,presentation,built,audit,verificationFailed,delivery,files}",
+      "outputPreview": "{\"message\":\"⚛️ A full React project scaffolded — \\\"fxreact17\\\".\\n\\n\\nProven quality matrix: Functional: not applicable · Integration: not applicable · System: not applicable · Acceptance and UAT: not applicable · Security: not applicable · Non-functional: not applicable · Regression: not applicable\\n⚠️ I could not derive a checkable criterion from your request, so I did not issue an acceptance judgment.\\n📂 Path: D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\react-fxreact17\\n  • package.json\\n  • vite.config.js\\n  • index.html\\n  • .gitignore\\n  • src/main.jsx\\n  • src/App.jsx\\n  • src/content.js\\n  • src/reveal.js\\n  • src/styles/tokens.css\\n  • src/styles/base.css\\n  • src/components/Navbar.jsx\\n  • src/components/Hero.jsx\\n  • src/components/Features.jsx\\n  • src/components/Gallery.jsx\\n  • src/components/Story.jsx\\n  • src/components/Team.jsx\\n  • src/components/Stats.jsx\\n  • src/components/Cta.jsx\\n  • src/components/Contact.jsx\\n  • src/components/Footer.jsx\\n  • src/components/AdminPanel.jsx\\n\\n\",\"acceptance\":{\"criteria\":[],\"met\":0,\"unmet\":0,\"unprovable\":0,\"accepted\":false},\"acceptanceTrace\":{\"omitted\":0,\"criteria\":[]},\"path\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\react-fxreact17\",\"dir\":\"react-fxreact17\",\"authorMode\":\"none\",\"installed\":false,\"artifactMode\":null,\"built\":false,\"audit\":null,\"verificationFailed\":false,\"delivery\":{\"accepte",
+      "log0": "[2026-09-30T04:58:12.394Z] start react_project (orig=react_project)",
+      "logN": 23
+    },
+    "page.empty": {
+      "input": "{}",
+      "ok": false,
+      "error": "no_request",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T04:58:13.363Z] start web_page_builder (orig=web_page_builder)",
+      "logN": 1
+    },
+    "page.offline-positive": {
+      "input": "{\"request\":\" brand-new landing page for a fictional acorn shop WIRING_BUILD_TOKEN_7a1c\",\"filename\":\"custom17.html\"}",
+      "ok": false,
+      "error": "⚠️ تعذّر الوصول إلى محرّك الذكاء (لم يستجب أي مزوّد قبل لحظات). لم أستطع تنفيذ الطلب. الحل: شغّل Ollama محلياً (افتح تطبيق Ollama أو نفّذ: ollama serve) ثم أعد المحاولة، أو تحقّق من اتصال الإنترنت. (لن أدّعي أنني نفّذت شيئاً لم يُنفَّذ.)",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T04:58:13.412Z] start web_page_builder (orig=web_page_builder)",
+      "logN": 23
+    },
+    "ent.empty": {
+      "input": "{}",
+      "ok": false,
+      "error": "request is required",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T04:58:13.605Z] start enterprise_platform_foundation (orig=enterprise_platform_foundation)",
+      "logN": 1
+    },
+    "ent.contained": {
+      "input": "{\"request\":\"Phase-one platform sketch WIRING_BUILD_TOKEN_7a1c\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{projectPath,writtenFiles,verified,verification,acceptanceRan,acceptanceCommand,verificationFailed,deliveryScope}",
+      "outputPreview": "{\"projectPath\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-build-fx\\\\autonomous-engineering-platform\",\"writtenFiles\":34,\"verified\":true,\"verification\":\"Python control-plane syntax, governed workflow-domain tests, control-plane API contract tests, and JSON event contract verified locally\",\"acceptanceRan\":true,\"acceptanceCommand\":\"python -m unittest discover -s tests -v\",\"verificationFailed\":false,\"deliveryScope\":\"reviewable foundation; no external deployment or production-scale claim\"}",
+      "log0": "[2026-09-30T04:58:13.627Z] start enterprise_platform_foundation (orig=enterprise_platform_foundation)",
+      "logN": 8
+    },
+    "ori.empty": {
+      "input": "{}",
+      "ok": false,
+      "error": "request is required",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T04:58:24.565Z] start orion_business_foundation (orig=orion_business_foundation)",
+      "logN": 1
+    },
+    "ori.contained": {
+      "input": "{\"request\":\"Phase-one business sketch WIRING_BUILD_TOKEN_7a1c\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{projectPath,writtenFiles,verified,verification,acceptanceRan,acceptanceCommand,verificationFailed,deliveryScope}",
+      "outputPreview": "{\"projectPath\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-build-fx\\\\orion-business-operating-system\",\"writtenFiles\":21,\"verified\":true,\"verification\":\"ORION business-core syntax, executable acceptance tests, and versioned payment event schema verified locally\",\"acceptanceRan\":true,\"acceptanceCommand\":\"python -m unittest discover -s tests -v\",\"verificationFailed\":false,\"deliveryScope\":\"phase-one reviewable foundation; no payment, cloud, deployment, or other external effect was attempted\"}",
+      "log0": "[2026-09-30T04:58:24.611Z] start orion_business_foundation (orig=orion_business_foundation)",
+      "logN": 7
+    }
+  },
+  "roots": {
+    "sessionRoot": "D:\\Joe\\muse-worktree\\data\\projects\\session-audit-sess",
+    "defaultRoot": "D:\\Joe\\muse-worktree\\data\\projects\\my-workspace",
+    "explorerRoot": "D:\\Joe\\muse-worktree\\data\\projects\\my-workspace"
+  },
+  "evidence": {
+    "scaf1.files": true,
+    "evil.absent": true,
+    "auth1.files": [
+      "config.ts",
+      "index.ts",
+      "jwt.ts"
+    ],
+    "authbogus.dir": [
+      "config.ts",
+      "index.ts"
+    ],
+    "mob.pkg": true,
+    "prog.files": [
+      ".env.example",
+      ".gitignore",
+      "README.md",
+      "apps",
+      "package.json"
+    ],
+    "full.dir": true,
+    "fulldef.dir": [
+      "my-app"
+    ],
+    "fullbogus.dir": true,
+    "api.dir": "D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\api-fxapi17",
+    "api.dirExists": true,
+    "api.outside": [
+      "api-fxapiout17",
+      "auth-out"
+    ],
+    "react.dir": "D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\react-fxreact17",
+    "react.dirExists": true,
+    "prog.placeholder": [],
+    "evil.session": true,
+    "repoRootAjs": true,
+    "buildsLeftovers": [
+      "auth-bogus",
+      "auth1"
+    ],
+    "trueOutRefused": true,
+    "ent.dir": true,
+    "ori.dir": true,
+    "artifacts": "MISSING",
+    "storeIsolated": true,
+    "ajsRemoved": true,
+    "buildsRemoved": true
+  },
+  "strays": {
+    "session": [
+      "api-fxapi17",
+      "react-fxreact17",
+      "wiring-build-evil17.txt"
+    ],
+    "default": [],
+    "explorer": []
+  },
+  "removedStrays": [
+    "session/api-fxapi17",
+    "session/react-fxreact17",
+    "session/wiring-build-evil17.txt"
+  ],
+  "fixtures": {
+    "removed": true
+  }
+}
