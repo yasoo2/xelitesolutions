@@ -1,0 +1,10 @@
+﻿f61fe8aa4ef27d26b3f425b8a7a0c62a95b8c98d
+
+ .../__tests__/a-capability-is-not-a-column.test.ts |  15 +-
+ .../__tests__/applied-stylesheet-evidence.test.ts  |  67 ++
+ api/src/__tests__/calculator-engine.test.ts        | 968 ++++++++++++++++++++-
+ api/src/__tests__/presentation-context.test.ts     |  44 +
+ api/src/core/design/app-blueprints.ts              | 484 ++++++++++-
+ api/src/core/quality/presentation-context.ts       | 131 ++-
+ .../modules/tools/definitions/ReactProjectTool.ts  |  24 +-
+ 7 files changed, 1707 insertions(+), 26 deletions(-)

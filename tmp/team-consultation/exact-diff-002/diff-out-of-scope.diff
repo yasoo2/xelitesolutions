@@ -1,0 +1,145 @@
+﻿diff --git a/api/src/core/design/row-image.ts b/api/src/core/design/row-image.ts
+index c4b6fd1d..0196cefe 100644
+--- a/api/src/core/design/row-image.ts
++++ b/api/src/core/design/row-image.ts
+@@ -10,8 +10,8 @@
+  *                REFUSES an irrelevant result, which is why a wrong picture
+  *                is rarer here than a missing one.
+  *   3. DESIGN  ظ¤ an image generator over HTTP, for a name no archive can
+- *                match: a made-up product, a coined brand. Keyless by
+- *                default; the address is one environment variable.
++ *                match: a made-up product, a coined brand. Explicitly configured by
++ *                the operator; there is no default external endpoint.
+  *   4. CARD    ظ¤ the row's own letter on a gradient derived from its name.
+  *                Local, instant, and never the WRONG picture.
+  *
+@@ -150,7 +150,7 @@ export class Shrinker {
+ /* ------------------------------------------------------------- rung three -- */
+ 
+ /**
+- * The generator's address. Keyless by default and overridable in one variable,
++ * The generator's address. Explicitly configured; there is no implicit external endpoint,
+  * because the right generator today is not the right one in a year ظ¤ and
+  * because a user with a Cloudflare or Together key should be able to point at
+  * it without a code change.
+@@ -158,17 +158,16 @@ export class Shrinker {
+  * `{prompt}` is replaced with the URL-encoded subject.
+  */
+ export function generatorUrl(): string {
+-    return String(process.env.JOE_IMAGE_GEN
+-        || 'https://image.pollinations.ai/prompt/{prompt}?width=640&height=480&nologo=true');
++    return String(process.env.JOE_IMAGE_GEN || '').trim();
+ }
+ 
+ /**
+- * Is the generator switched on? ON by default ظ¤ a picture is what he asked for,
+- * and every failure below it falls to the designed card rather than to nothing.
+- * `JOE_IMAGE_GEN_ON=0` turns it off for a machine that must not reach out.
++ * Generation is disabled unless the operator explicitly sets both the switch and endpoint.
++ * When disabled or unavailable, the existing photo/card ladder remains truthful.
++ * `JOE_IMAGE_GEN_ON=1` plus a nonblank `JOE_IMAGE_GEN` enables the configured rung.
+  */
+ export function generatorEnabled(): boolean {
+-    return String(process.env.JOE_IMAGE_GEN_ON || '1') !== '0';
++    return process.env.JOE_IMAGE_GEN_ON === '1' && generatorUrl().length > 0;
+ }
+ 
+ async function fetchBytes(url: string, timeoutMs: number): Promise<{ buf: Buffer; mime: string } | null> {
+@@ -258,7 +257,7 @@ export async function pictureFor(name: string, opts?: PictureOptions): Promise<R
+             }
+             note = `${note}${note ? '; ' : ''}the generator did not answer`;
+         } else {
+-            note = `${note}${note ? '; ' : ''}generator off (JOE_IMAGE_GEN_ON=0)`;
++            note = `${note}${note ? '; ' : ''}generator disabled (requires JOE_IMAGE_GEN_ON=1 and explicit JOE_IMAGE_GEN)`;
+         }
+ 
+         /* ظ¤ rung four: the floor ظ¤ */
+diff --git a/api/src/modules/tools/definitions/ImageGenerationTool.ts b/api/src/modules/tools/definitions/ImageGenerationTool.ts
+index f3db378d..a79833a4 100644
+--- a/api/src/modules/tools/definitions/ImageGenerationTool.ts
++++ b/api/src/modules/tools/definitions/ImageGenerationTool.ts
+@@ -1,11 +1,11 @@
+ 
+-import OpenAI from 'openai';
++// Legacy definition retained for compatibility; intentionally not registered.
+ 
+ export const ImageGenerationTool = {
+     name: 'generate_image',
+     version: '1.0.0',
+-    tags: ['image', 'creative', 'design', 'dall-e'],
+-    description: 'Generate an image based on a text prompt.',
++    tags: ['image', 'creative', 'design'],
++    description: 'Disabled legacy image-generation definition. Use the project asset pipeline with an explicitly configured provider; this definition never invokes a provider.',
+     inputSchema: {
+         type: 'object',
+         properties: {
+@@ -30,35 +30,13 @@ export const ImageGenerationTool = {
+         const prompt = String(input.prompt || '').trim();
+         if (!prompt) return { ok: false, error: 'prompt is required', logs: [] };
+ 
+-        const size = String(input.size || '1024x1024');
+-        const [wRaw, hRaw] = size.split('x');
+-        const width = Math.max(64, Number.parseInt(wRaw || '1024', 10) || 1024);
+-        const height = Math.max(64, Number.parseInt(hRaw || '1024', 10) || 1024);
+-
+-        const openAiKey = String(process.env.OPENAI_API_KEY || '').trim();
+-
+-        console.log(`≡اذ Generating image for: "${prompt}"`);
+-
+-        if (openAiKey) {
+-            try {
+-                const openai = new OpenAI({ apiKey: openAiKey, baseURL: process.env.OPENAI_BASE_URL });
+-                const response = await openai.images.generate({
+-                    model: "dall-e-3",
+-                    prompt,
+-                    n: 1,
+-                    size: `${width}x${height}` as any,
+-                    response_format: "url"
+-                });
+-
+-                const url = response.data?.[0]?.url;
+-                return { ok: true, output: { url }, logs: ['Generated via OpenAI'] };
+-            } catch (e: any) {
+-                console.error('Image Gen failed:', e);
+-            }
+-        }
+-
+-        const seed = Math.floor(Date.now() % 1000000);
+-        const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=${width}&height=${height}&seed=${seed}&nologo=true`;
+-        return { ok: true, output: { url }, logs: ['Generated via Pollinations'] };
++        // A key is a credential, not spending authorization. This legacy path
++        // has no trusted consent, provider policy or project-local asset receipt.
++        // Do not call a paid provider or return an unverified remote URL as success.
++        return {
++            ok: false,
++            error: 'creative_provider_not_configured: legacy generation is disabled; use the project asset pipeline with an explicitly configured provider.',
++            logs: [],
++        };
+     }
+ };
+diff --git a/api/src/tests/manual/verify_pictures_are_fetched.ts b/api/src/tests/manual/verify_pictures_are_fetched.ts
+index 95bad982..d00d72d2 100644
+--- a/api/src/tests/manual/verify_pictures_are_fetched.ts
++++ b/api/src/tests/manual/verify_pictures_are_fetched.ts
+@@ -28,6 +28,8 @@ import path from 'path';
+ 
+ process.env.JWT_SECRET = process.env.JWT_SECRET || 'x';
+ process.env.OFFLINE_MODE = 'true';
++// This fixture intentionally exercises only its loopback generator.
++process.env.JOE_IMAGE_GEN_ON = '1';
+ process.env.AUTO_APPROVE_ALL = '1';
+ 
+ let pass = 0, fail = 0;
+diff --git a/web/src/components/CommandComposer.tsx b/web/src/components/CommandComposer.tsx
+index 703b5bdf..906d8351 100644
+--- a/web/src/components/CommandComposer.tsx
++++ b/web/src/components/CommandComposer.tsx
+@@ -4670,7 +4670,7 @@ export default function CommandComposer({
+                           <Key
+                             size={10}
+                             className={`provider-key${need === 'optional' ? ' is-optional' : ''}${hasKey ? ' has-key' : ''}`}
+-                            aria-label={need === 'optional' ? t('provKeyOptional', 'a key is optional') : t('provKeyNeeded', 'needs an API key')}
++                            aria-label={hasKey ? t('provKeyConfigured', 'API key configured') : need === 'optional' ? t('provKeyOptional', 'a key is optional') : t('provKeyNeeded', 'needs an API key')}
+                           />
+                         );
+                       })()}
