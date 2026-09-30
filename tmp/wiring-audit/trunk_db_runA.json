@@ -1,0 +1,522 @@
+{
+  "trunk": "database_data",
+  "registered": 163,
+  "decl": {
+    "db_schema_migrator": {
+      "descriptionHead": "Execute an existing database schema or SQL migration. For .sql files use engine sqlite; for .prisma files use engine prisma. This tool does not design schemas.",
+      "tags": [
+        "database",
+        "migrations"
+      ],
+      "required": [
+        "action"
+      ],
+      "properties": [
+        "engine",
+        "action",
+        "schemaPath",
+        "databasePath",
+        "name"
+      ],
+      "permissions": [
+        "execute",
+        "read"
+      ],
+      "sideEffects": [
+        "execute"
+      ],
+      "rateLimitPerMinute": 60,
+      "routerExcluded": false,
+      "priorityListed": true,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "db_schema_migrator:11.8",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "json_query": {
+      "descriptionHead": "Query a specific value from a JSON object using dot notation path.",
+      "tags": [
+        "data",
+        "json"
+      ],
+      "required": [
+        "json",
+        "path"
+      ],
+      "properties": [
+        "json",
+        "path"
+      ],
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "json_query:13.7",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "large_data_seeder": {
+      "descriptionHead": "Generate massive datasets (CSV/JSON) for stress testing.",
+      "tags": [
+        "database",
+        "testing",
+        "data"
+      ],
+      "required": [
+        "rows",
+        "headers",
+        "outputPath"
+      ],
+      "properties": [
+        "rows",
+        "format",
+        "headers",
+        "outputPath"
+      ],
+      "permissions": [
+        "write"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 60,
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "large_data_seeder:14.9",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "orders_read": {
+      "descriptionHead": "Read visitor orders from the session's API database (disk-direct, works with the server stopped) and list them in the chat.",
+      "tags": [
+        "orders",
+        "api",
+        "read",
+        "database"
+      ],
+      "required": [],
+      "properties": [
+        "request"
+      ],
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "routerExcluded": true,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "orders_read:14.8",
+        "user_browser:7.7",
+        "ask_user:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "query_datasource": {
+      "descriptionHead": "Query authoritative data sources using a unified interface. Supports weather, exchange rates, IP geolocation, random facts, and more. Use this instead of writin",
+      "tags": [
+        "data",
+        "api",
+        "weather",
+        "exchange",
+        "geolocation",
+        "datasource"
+      ],
+      "required": [
+        "source"
+      ],
+      "properties": [
+        "source",
+        "query"
+      ],
+      "permissions": [
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "routerExcluded": false,
+      "priorityListed": true,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "query_datasource:10.4",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "query_optimizer": {
+      "descriptionHead": "Analyze SQL queries for performance bottlenecks using EXPLAIN ANALYZE.",
+      "tags": [
+        "database",
+        "performance"
+      ],
+      "required": [
+        "sql"
+      ],
+      "properties": [
+        "sql",
+        "dbUri"
+      ],
+      "permissions": [
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "query_optimizer:8.9",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    }
+  },
+  "verdictTable": {
+    "json value": "passed",
+    "json missing-value": "passed",
+    "json nodata": "failed",
+    "optimizer suggestions": "passed",
+    "migrator migrated": "passed",
+    "migrator status": "passed",
+    "migrator empty-file": "failed",
+    "migrator missing-file": "failed",
+    "seeder ok": "passed",
+    "seeder refused": "failed",
+    "orders no-entry": "passed",
+    "orders listed": "passed",
+    "datasource unknown": "failed",
+    "datasource ok-shape": "passed"
+  },
+  "live": {
+    "jq.deep": {
+      "input": "{\"json\":{\"a\":{\"b\":{\"c\":42}}},\"path\":\"a.b.c\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{value}",
+      "outputPreview": "{\"value\":42}",
+      "log0": "[2026-09-30T11:59:15.528Z] start json_query (orig=json_query)",
+      "logLast": "[2026-09-30T11:59:15.528Z] start json_query (orig=json_query)",
+      "logN": 1
+    },
+    "jq.missing": {
+      "input": "{\"json\":{\"a\":1},\"path\":\"a.b.c\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{value}",
+      "outputPreview": "{}",
+      "log0": "[2026-09-30T11:59:15.561Z] start json_query (orig=json_query)",
+      "logLast": "[2026-09-30T11:59:15.561Z] start json_query (orig=json_query)",
+      "logN": 1
+    },
+    "jq.array": {
+      "input": "{\"json\":{\"items\":[{\"n\":\"WIRING_DB_TOKEN_9d4e\"}]},\"path\":\"items.0.n\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{value}",
+      "outputPreview": "{\"value\":\"WIRING_DB_TOKEN_9d4e\"}",
+      "log0": "[2026-09-30T11:59:15.564Z] start json_query (orig=json_query)",
+      "logLast": "[2026-09-30T11:59:15.564Z] start json_query (orig=json_query)",
+      "logN": 1
+    },
+    "jq.empty-path": {
+      "input": "{\"json\":{\"a\":1},\"path\":\"\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{value}",
+      "outputPreview": "{\"value\":{\"a\":1}}",
+      "log0": "[2026-09-30T11:59:15.567Z] start json_query (orig=json_query)",
+      "logLast": "[2026-09-30T11:59:15.567Z] start json_query (orig=json_query)",
+      "logN": 1
+    },
+    "jq.nodata": {
+      "input": "{}",
+      "ok": false,
+      "error": "json required",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T11:59:15.569Z] start json_query (orig=json_query)",
+      "logLast": "[2026-09-30T11:59:15.569Z] start json_query (orig=json_query)",
+      "logN": 1
+    },
+    "qo.bad": {
+      "input": "{\"sql\":\"SELECT * FROM wiring_probe\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{analysis,suggestions}",
+      "outputPreview": "{\"analysis\":\"Heuristic Static Analysis (Connect DB for true EXPLAIN)\",\"suggestions\":[\"⚠️ Missing WHERE clause: potential full table scan.\",\"⚠️ Avoid SELECT *: fetch only needed columns.\",\"ℹ️ Consider adding LIMIT to batch operations.\"]}",
+      "log0": "[2026-09-30T11:59:15.572Z] start query_optimizer (orig=query_optimizer)",
+      "logLast": "query optimized static",
+      "logN": 2
+    },
+    "qo.clean": {
+      "input": "{\"sql\":\"SELECT id FROM wiring_probe WHERE id = 1 LIMIT 1\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{analysis,suggestions}",
+      "outputPreview": "{\"analysis\":\"Heuristic Static Analysis (Connect DB for true EXPLAIN)\",\"suggestions\":[]}",
+      "log0": "[2026-09-30T11:59:15.575Z] start query_optimizer (orig=query_optimizer)",
+      "logLast": "query optimized static",
+      "logN": 2
+    },
+    "qo.nosql": {
+      "input": "{}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{analysis,suggestions}",
+      "outputPreview": "{\"analysis\":\"Heuristic Static Analysis (Connect DB for true EXPLAIN)\",\"suggestions\":[\"⚠️ Missing WHERE clause: potential full table scan.\"]}",
+      "log0": "[2026-09-30T11:59:15.578Z] start query_optimizer (orig=query_optimizer)",
+      "logLast": "query optimized static",
+      "logN": 2
+    },
+    "db.migrate": {
+      "input": "{\"engine\":\"sqlite\",\"action\":\"migrate\",\"schemaPath\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-db-fx\\\\schema.sql\",\"databasePath\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\pr",
+      "ok": true,
+      "error": null,
+      "outputShape": "{output,databasePath,schemaPath,engine,action}",
+      "outputPreview": "{\"output\":\"Applied SQL migration \\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-db-fx\\\\schema.sql to \\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-db-fx\\\\probe.db\",\"databasePath\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-db-fx\\\\probe.db\",\"schemaPath\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-db-fx\\\\schema.sql\",\"engine\":\"sqlite\",\"action\":\"migrate\"}",
+      "log0": "[2026-09-30T11:59:15.580Z] start db_schema_migrator (orig=db_schema_migrator)",
+      "logLast": "db_migrator sqlite migrate success database=\\\\?\\D:\\Joe\\muse-worktree\\data\\projects\\session-audit-sess\\wiring-db-fx\\probe.db",
+      "logN": 2
+    },
+    "db.status": {
+      "input": "{\"engine\":\"sqlite\",\"action\":\"status\",\"databasePath\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-db-fx\\\\probe.db\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{output,databasePath,schemaPath,engine,action}",
+      "outputPreview": "{\"output\":\"{\\\"databasePath\\\":\\\"\\\\\\\\\\\\\\\\?\\\\\\\\D:\\\\\\\\Joe\\\\\\\\muse-worktree\\\\\\\\data\\\\\\\\projects\\\\\\\\session-audit-sess\\\\\\\\wiring-db-fx\\\\\\\\probe.db\\\",\\\"tables\\\":[{\\\"name\\\":\\\"wiring_probe\\\"}]}\",\"databasePath\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-db-fx\\\\probe.db\",\"schemaPath\":\"\",\"engine\":\"sqlite\",\"action\":\"status\"}",
+      "log0": "[2026-09-30T11:59:15.611Z] start db_schema_migrator (orig=db_schema_migrator)",
+      "logLast": "db_migrator sqlite status success database=\\\\?\\D:\\Joe\\muse-worktree\\data\\projects\\session-audit-sess\\wiring-db-fx\\probe.db",
+      "logN": 2
+    },
+    "db.migrate2": {
+      "input": "{\"engine\":\"prisma\",\"action\":\"migrate\",\"schemaPath\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-db-fx\\\\schema.sql\",\"databasePath\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\pr",
+      "ok": true,
+      "error": null,
+      "outputShape": "{output,databasePath,schemaPath,engine,action}",
+      "outputPreview": "{\"output\":\"Applied SQL migration \\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-db-fx\\\\schema.sql to \\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-db-fx\\\\probe.db\",\"databasePath\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-db-fx\\\\probe.db\",\"schemaPath\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-db-fx\\\\schema.sql\",\"engine\":\"sqlite\",\"action\":\"migrate\"}",
+      "log0": "[2026-09-30T11:59:15.616Z] start db_schema_migrator (orig=db_schema_migrator)",
+      "logLast": "db_migrator sqlite migrate success database=\\\\?\\D:\\Joe\\muse-worktree\\data\\projects\\session-audit-sess\\wiring-db-fx\\probe.db",
+      "logN": 2
+    },
+    "db.empty": {
+      "input": "{\"engine\":\"sqlite\",\"action\":\"migrate\",\"schemaPath\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-db-fx\\\\empty.sql\",\"databasePath\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\pro",
+      "ok": false,
+      "error": "Migration file is empty: \\\\?\\D:\\Joe\\muse-worktree\\data\\projects\\session-audit-sess\\wiring-db-fx\\empty.sql",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T11:59:15.631Z] start db_schema_migrator (orig=db_schema_migrator)",
+      "logLast": "[2026-09-30T11:59:15.631Z] start db_schema_migrator (orig=db_schema_migrator)",
+      "logN": 1
+    },
+    "db.missing": {
+      "input": "{\"engine\":\"sqlite\",\"action\":\"migrate\",\"schemaPath\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-db-fx\\\\no-such.sql\",\"databasePath\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\p",
+      "ok": false,
+      "error": "SQLite migration file not found: \\\\?\\D:\\Joe\\muse-worktree\\data\\projects\\session-audit-sess\\wiring-db-fx\\no-such.sql",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T11:59:15.635Z] start db_schema_migrator (orig=db_schema_migrator)",
+      "logLast": "[2026-09-30T11:59:15.635Z] start db_schema_migrator (orig=db_schema_migrator)",
+      "logN": 1
+    },
+    "db.badaction": {
+      "input": "{\"engine\":\"sqlite\",\"action\":\"vacuum\",\"schemaPath\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-db-fx\\\\schema.sql\",\"databasePath\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\pro",
+      "ok": false,
+      "error": "Unsupported SQLite action: vacuum",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T11:59:15.638Z] start db_schema_migrator (orig=db_schema_migrator)",
+      "logLast": "[2026-09-30T11:59:15.638Z] start db_schema_migrator (orig=db_schema_migrator)",
+      "logN": 1
+    },
+    "db.rowcheck": {
+      "rowCount": 2,
+      "labels": [
+        "WIRING_DB_TOKEN_9d4e",
+        "WIRING_DB_TOKEN_9d4e"
+      ]
+    },
+    "seed.csv": {
+      "input": "{\"rows\":5,\"format\":\"csv\",\"headers\":[\"id\",\"name\"],\"outputPath\":\"wiring-db-fx-WIRING_DB_TOKEN_9d4e/seed.csv\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{fileSize,path}",
+      "outputPreview": "{\"fileSize\":53,\"path\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\builds\\\\workspace-default\\\\wiring-db-fx-WIRING_DB_TOKEN_9d4e\\\\seed.csv\"}",
+      "log0": "[2026-09-30T11:59:15.644Z] start large_data_seeder (orig=large_data_seeder)",
+      "logLast": "generated 5 rows in \\\\?\\D:\\Joe\\muse-worktree\\data\\builds\\workspace-default\\wiring-db-fx-WIRING_DB_TOKEN_9d4e\\seed.csv",
+      "logN": 2
+    },
+    "seed.json": {
+      "input": "{\"rows\":3,\"format\":\"json\",\"headers\":[\"id\",\"name\"],\"outputPath\":\"wiring-db-fx-WIRING_DB_TOKEN_9d4e/seed.json\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{fileSize,path}",
+      "outputPreview": "{\"fileSize\":131,\"path\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\builds\\\\workspace-default\\\\wiring-db-fx-WIRING_DB_TOKEN_9d4e\\\\seed.json\"}",
+      "log0": "[2026-09-30T11:59:15.647Z] start large_data_seeder (orig=large_data_seeder)",
+      "logLast": "generated 3 rows in \\\\?\\D:\\Joe\\muse-worktree\\data\\builds\\workspace-default\\wiring-db-fx-WIRING_DB_TOKEN_9d4e\\seed.json",
+      "logN": 2
+    },
+    "seed.escape": {
+      "input": "{\"rows\":5,\"format\":\"csv\",\"headers\":[\"id\"],\"outputPath\":\"C:\\\\Windows\\\\Temp\\\\joe-escape-db.txt\"}",
+      "ok": false,
+      "error": "refused: C:\\Windows\\Temp\\joe-escape-db.txt is outside the workspace — nothing was written.",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T11:59:15.650Z] start large_data_seeder (orig=large_data_seeder)",
+      "logLast": "[2026-09-30T11:59:15.650Z] start large_data_seeder (orig=large_data_seeder)",
+      "logN": 1
+    },
+    "seed.nopath": {
+      "input": "{\"rows\":5,\"headers\":[\"id\"]}",
+      "ok": false,
+      "error": "large_data_seeder needs an outputPath (e.g. \"data/seed.csv\") — nothing was written.",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T11:59:15.653Z] start large_data_seeder (orig=large_data_seeder)",
+      "logLast": "[2026-09-30T11:59:15.653Z] start large_data_seeder (orig=large_data_seeder)",
+      "logN": 1
+    },
+    "seed.zero": {
+      "input": "{\"rows\":0,\"format\":\"csv\",\"headers\":[\"id\",\"name\"],\"outputPath\":\"wiring-db-fx-WIRING_DB_TOKEN_9d4e/zero.csv\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{fileSize,path}",
+      "outputPreview": "{\"fileSize\":12788,\"path\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\builds\\\\workspace-default\\\\wiring-db-fx-WIRING_DB_TOKEN_9d4e\\\\zero.csv\"}",
+      "log0": "[2026-09-30T11:59:15.655Z] start large_data_seeder (orig=large_data_seeder)",
+      "logLast": "generated 1000 rows in \\\\?\\D:\\Joe\\muse-worktree\\data\\builds\\workspace-default\\wiring-db-fx-WIRING_DB_TOKEN_9d4e\\zero.csv",
+      "logN": 2
+    },
+    "seed.readback": {
+      "paths": [
+        "\\\\?\\D:\\Joe\\muse-worktree\\data\\builds\\workspace-default\\wiring-db-fx-WIRING_DB_TOKEN_9d4e\\seed.csv",
+        "\\\\?\\D:\\Joe\\muse-worktree\\data\\builds\\workspace-default\\wiring-db-fx-WIRING_DB_TOKEN_9d4e\\seed.json",
+        "\\\\?\\D:\\Joe\\muse-worktree\\data\\builds\\workspace-default\\wiring-db-fx-WIRING_DB_TOKEN_9d4e\\zero.csv"
+      ],
+      "back": {
+        "\\\\?\\D:\\Joe\\muse-worktree\\data\\builds\\workspace-default\\wiring-db-fx-WIRING_DB_TOKEN_9d4e\\seed.csv": {
+          "bytes": 53,
+          "head": "id,name\n0,name_0\n1,name_1\n2,name_2\n3,name_3\n4,name_4\n",
+          "lines": 7
+        },
+        "\\\\?\\D:\\Joe\\muse-worktree\\data\\builds\\workspace-default\\wiring-db-fx-WIRING_DB_TOKEN_9d4e\\seed.json": {
+          "bytes": 131,
+          "head": "[\n  {\n    \"id\": 0,\n    \"name\": \"name_0\"\n  },\n  {\n    \"id\": 1,\n    \"name\": \"name_1\"\n  },\n  {\n    \"id\": 2,\n    \"name\": \"na",
+          "lines": 14
+        },
+        "\\\\?\\D:\\Joe\\muse-worktree\\data\\builds\\workspace-default\\wiring-db-fx-WIRING_DB_TOKEN_9d4e\\zero.csv": {
+          "bytes": 12788,
+          "head": "id,name\n0,name_0\n1,name_1\n2,name_2\n3,name_3\n4,name_4\n5,name_5\n6,name_6\n7,name_7\n8,name_8\n9,name_9\n10,name_10\n11,name_11\n",
+          "lines": 1002
+        }
+      }
+    },
+    "or.noentry": {
+      "input": "{\"request\":\"show orders\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{message}",
+      "outputPreview": "{\"message\":\"لا يوجد مشروع API في هذه الجلسة — ابنِ واحداً أولاً: «ابنِ لي API لمنتجات متجري»، ثم اربط واجهتك به.\"}",
+      "log0": "[2026-09-30T11:59:15.663Z] start orders_read (orig=orders_read)",
+      "logLast": "[2026-09-30T11:59:15.663Z] start orders_read (orig=orders_read)",
+      "logN": 1
+    },
+    "or.nodb": {
+      "input": "{\"request\":\"show orders\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{message}",
+      "outputPreview": "{\"message\":\"🗄️ قاعدة البيانات لم تُنشأ بعد — شغّل الـ API مرة واحدة («شغّل المشروع» أو npm start داخل مجلده) وسيبذر نفسه.\"}",
+      "log0": "[2026-09-30T11:59:15.666Z] start orders_read (orig=orders_read)",
+      "logLast": "[2026-09-30T11:59:15.666Z] start orders_read (orig=orders_read)",
+      "logN": 1
+    },
+    "or.empty": {
+      "input": "{\"request\":\"show orders\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{message,orders}",
+      "outputPreview": "{\"message\":\"📭 لا توجد طلبات بعد — حين يضغط زائر «اطلب الآن» في موقعك سيظهر طلبه هنا فوراً.\",\"orders\":[]}",
+      "log0": "[2026-09-30T11:59:15.669Z] start orders_read (orig=orders_read)",
+      "logLast": "[2026-09-30T11:59:15.669Z] start orders_read (orig=orders_read)",
+      "logN": 1
+    },
+    "or.json": {
+      "input": "{\"request\":\"show orders\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{message,orders,total}",
+      "outputPreview": "{\"message\":\"🧾 طلبات زوار موقعك — 2 طلب:\\n   • #2 — WIRING_DB_TOKEN_9d4e-b ×1 — cust-b — n-b\\n   • #1 — WIRING_DB_TOKEN_9d4e-a ×2 — cust-a (p-a)\\n\\n🗄️ المصدر: قاعدة بيانات مشروعك مباشرة (JSON) — تعمل حتى والخادم متوقف.\",\"orders\":[{\"id\":2,\"item\":\"WIRING_DB_TOKEN_9d4e-b\",\"qty\":1,\"customer\":\"cust-b\",\"phone\":\"\",\"note\":\"n-b\",\"created_at\":\"t2\"},{\"id\":1,\"item\":\"WIRING_DB_TOKEN_9d4e-a\",\"qty\":2,\"customer\":\"cust-a\",\"phone\":\"p-a\",\"note\":\"\",\"created_at\":\"t1\"}],\"total\":2}",
+      "log0": "[2026-09-30T11:59:15.673Z] start orders_read (orig=orders_read)",
+      "logLast": "[2026-09-30T11:59:15.673Z] start orders_read (orig=orders_read)",
+      "logN": 1
+    },
+    "or.sqlite": {
+      "input": "{\"request\":\"show orders\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{message,orders,total}",
+      "outputPreview": "{\"message\":\"🧾 طلبات زوار موقعك — 1 طلب:\\n   • #1 — WIRING_DB_TOKEN_9d4e-s ×3 — cust-s (p-s)\\n\\n🗄️ المصدر: قاعدة بيانات مشروعك مباشرة (SQLite) — تعمل حتى والخادم متوقف.\",\"orders\":[{\"id\":1,\"item\":\"WIRING_DB_TOKEN_9d4e-s\",\"qty\":3,\"customer\":\"cust-s\",\"phone\":\"p-s\",\"note\":\"\",\"created_at\":\"t3\"}],\"total\":1}",
+      "log0": "[2026-09-30T11:59:15.677Z] start orders_read (orig=orders_read)",
+      "logLast": "[2026-09-30T11:59:15.677Z] start orders_read (orig=orders_read)",
+      "logN": 1
+    },
+    "or.tokenSeen": {
+      "json": true,
+      "sqlite": true
+    },
+    "ds.unknown": {
+      "input": "{\"source\":\"nope-not-a-source\",\"query\":{}}",
+      "ok": false,
+      "error": "Unknown datasource: \"nope-not-a-source\". Available: weather, exchange_rate, ip_geolocation, random_fact, country_info, github_user, npm_package, dns_lookup",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T11:59:15.682Z] start query_datasource (orig=query_datasource)",
+      "logLast": "Unknown source: nope-not-a-source",
+      "logN": 2
+    }
+  },
+  "cleanup": "ok",
+  "sessionRoot": "\\\\?\\D:\\Joe\\muse-worktree\\data\\projects\\session-audit-sess",
+  "sqliteReady": true,
+  "at": "2026-09-30T11:59:15.690Z"
+}

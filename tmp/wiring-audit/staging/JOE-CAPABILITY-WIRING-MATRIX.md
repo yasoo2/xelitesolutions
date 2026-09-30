@@ -3398,5 +3398,161 @@ RECOMMENDED_ACTION=none now; interactive-use + multi-session isolation need a fo
 
 ---
 
-END-OF-MUSE-DRAFT-ROWS=131 (121 individual + 8 group + 2 external-cited)
-COVERAGE-DISCLAIMER=This draft covers ONLY what Muse checkpoints 1-19 evidenced. Full matrix requires: per-trunk path stories (19 trunks PROPOSED in merge.json, 9 STORIED: files 10/10 + browser_ui 33/33 LEVEL-4 + testing_qa 6/6 LEVEL-4 + security 3/3 LEVEL-4 + code_understanding 16/16 LEVEL-4 + vcs_repo 11/11 LEVEL-4 + build_generate 13/13 LEVEL-4 + runtime_services 5/5 LEVEL-4 + shell_terminal 4/4 LEVEL-4), services/workers/persistence/deployment rows (NVIDIA scope), bulk per-tool firewall sweep (8 spot + 28 empty-input batch-1+2 + 19 risk-tier live + 16 trunk-files + 3 arch-backend + 26 browser live1/live2 + 30 browser live3 + 19 trunk-testing + 13 trunk-security + 36 trunk-code + 43 trunk-vcs + 45 trunk-build + 4 prog-batch3 + 23 trunk-runtime + 4 pages-approved + 25 trunk-shell + 5 shell-cwd done; 25/25 no-required reviewed: 18 SAFE + 1 BOUND + 4 EMBARGO with static fixture designs + 2 FIXTURE probed contained; browser_launch embargo partially lifted for contained-http; sonar/dep_audit/dead_code positives embargoed; code_reviewer non-quick + ALL github-network/git-network-push/import-clone/npm-qa legs embargoed; pipeline-named/setActiveRoot + mobile-default-cwd + full-stack-{} + react/api-full + ent/ori-default-root + page-model-present legs embargoed; risk table SURVEYED), contract audit per boundary (14 mismatches + schema/execute family), LEVEL 5-6 proofs (L5 done files+browser_ui + project_run live-gate receipt; testing_qa + security + code_understanding static-only, 5 checkers pending; vcs_repo + build_generate static-only with 0 checkers each), and NVIDIA cross-review (pending — worker on CLI-BATCH1 + audit slice).
+CAPABILITY_ID=TOOL-db_schema_migrator
+NAME=db_schema_migrator (DbSchemaMigratorTool, DatabaseEnterpriseTools.ts:106)
+CATEGORY=tool/database-data-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/DatabaseEnterpriseTools.ts
+IMPLEMENTATION=sqlite executor (node:sqlite, explicit schemaPath+databasePath, migrate/push/reset/status) + prisma shell fallback (npx, unprobed); .sql suffix overrides stale prisma default; required:['action']; permissions execute+read
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163; priority-listed
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_db.json 2x, sqlite only): migrate applies schema (rowcheck 2 rows after 2 legs); status lists tables; engine:prisma+.sql correctly routes to sqlite; empty/missing/bad-action all honest errors. Works under \\?\ roots (sqlite immune where cmd.exe is not). reset/discovery/no-path-status/prisma legs embargoed (stray-write + network reasons, code-cited)
+PERMISSION_REACHABLE=YES (medium default)
+PERMISSION_EVIDENCE=executed without approval under default autoSafe for probed inputs
+INPUT_CONTRACT_VALID=YES
+OUTPUT_CONTRACT_VALID=YES for probed shapes (status nests a JSON string inside output.output -- parseable, not hollow)
+EVIDENCE_PRODUCED=YES
+VERIFICATION_COMPATIBLE=N/A (never a checker -- static VERIFY20)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=FULLY_WIRED for probed sqlite surface (prisma/discovery/reset UNKNOWN by embargo)
+RECOMMENDED_ACTION=none now; prisma + discovery + reset need owned follow-ups before broader claims
+
+---
+
+CAPABILITY_ID=TOOL-json_query
+NAME=json_query (JsonQueryTool, ContentTools.ts:122)
+CATEGORY=tool/database-data-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/ContentTools.ts
+IMPLEMENTATION=dot-notation lookup over inline JSON (no filesystem/DB); required:['json','path']; permissions defaulted []->read at boot
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_db.json 2x): deep/array lookups return values; missing json -> 'json required'; BUT missing-path returns ok:true + output:{} (value:undefined vanishes in JSON -- F143, MISMATCH #15); empty path returns the whole doc (observed)
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=executed without approval (boot-defaulted read)
+INPUT_CONTRACT_VALID=PARTIAL (nodata guarded; missing-path shape lossy)
+OUTPUT_CONTRACT_VALID=NO for missing-path (receipt loses the answer; verdict maps PASSED)
+EVIDENCE_PRODUCED=PARTIAL (present-value legs yes; missing-path legs carry no answer)
+VERIFICATION_COMPATIBLE=NO (missing-value-ok maps passed -- MISMATCH #15)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (F143 receipt loss + verdict mapping)
+RECOMMENDED_ACTION=WIRING-P2-025: explicit found flag + check-fails mapping (proposed, unactioned)
+
+---
+
+CAPABILITY_ID=TOOL-large_data_seeder
+NAME=large_data_seeder (LargeDataSeederTool, DatabaseEnterpriseTools.ts:224)
+CATEGORY=tool/database-data-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/DatabaseEnterpriseTools.ts
+IMPLEMENTATION=CSV/JSON row generator (cap 1M) via resolveToolPath sandbox:true WITHOUT workspaceId; required:['rows','headers','outputPath']; permissions write
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_db.json 2x + readback): csv/json small writes verified byte-exact; absolute-outside escape REFUSED (no escape file); missing outputPath earns a sentence; BUT outputs land in session-agnostic data/builds/workspace-default, NOT the session dir (F146, P2-006 6th instance); rows:0 generates 1000 rows (falsy-default quirk, F145)
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=executed without approval under default autoSafe
+INPUT_CONTRACT_VALID=PARTIAL (rows:0 surprise; NaN/negative code-cited)
+OUTPUT_CONTRACT_VALID=YES ({fileSize,path} + refusal shapes)
+EVIDENCE_PRODUCED=YES
+VERIFICATION_COMPATIBLE=N/A (never a checker -- static VERIFY20)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (session-agnostic landing F146 + rows:0 contract F145)
+RECOMMENDED_ACTION=WIRING-P2-027 (rows:0) + P2-006 extension (session context) -- proposed, unactioned
+
+---
+
+CAPABILITY_ID=TOOL-orders_read
+NAME=orders_read (OrdersReadTool, OrdersReadTool.ts:47)
+CATEGORY=tool/database-data-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/OrdersReadTool.ts
+IMPLEMENTATION=disk-direct session-API order reader (node:sqlite read-only data.db, else data.json twin; latest-first, cap 200, shows 10); session via (global).joeProjects[sessionKey]; required:[]; permissions read; ROUTER_EXCLUDED=true
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163 (createTool at registry.ts:307)
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1 (exclusion bites at router, not selection -- F148)
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_db.json 2x, fixture dirs + restored global): no-entry/nodb/empty guidance all honest; JSON lists 2 latest-first with token; SQLite lists 1 with (SQLite) source label + token
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=executed without approval under default autoSafe
+INPUT_CONTRACT_VALID=YES
+OUTPUT_CONTRACT_VALID=YES ({message,orders,total} + guidance shapes)
+EVIDENCE_PRODUCED=YES
+VERIFICATION_COMPATIBLE=N/A (never a checker -- static VERIFY20)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=FULLY_WIRED for probed surface (cross-session isolation unprobed; phone-PII echo by design; session-spoofing overlap with owner-gate noted)
+RECOMMENDED_ACTION=none now
+
+---
+
+CAPABILITY_ID=TOOL-query_datasource
+NAME=query_datasource (DatasourceTool, DatasourceTool.ts:12)
+CATEGORY=tool/database-data-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/DatasourceTool.ts
+IMPLEMENTATION=unified free-API client, 8 sources (weather/exchange/ip_geo/random_fact/country/github_user/npm_package/dns_lookup), raw fetch per source; required:['source']; permissions internet; rateLimit 20
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163; priority-listed
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=PARTIAL
+EXECUTOR_EVIDENCE=LIVE unknown-source leg only (trunk_db.json 2x): honest available-sources error, no fetch; gateway did NOT preempt (tool error, not approval_required). All 8 real sources embargoed (network) -- behavior UNKNOWN
+PERMISSION_REACHABLE=UNKNOWN for real sources (declaration alone did not preempt the probed shape)
+PERMISSION_EVIDENCE=unknown-source leg reached tool code
+INPUT_CONTRACT_VALID=YES for probed shape
+OUTPUT_CONTRACT_VALID=UNKNOWN for real sources (ok-shape code-cited in verdict table)
+EVIDENCE_PRODUCED=UNKNOWN for real sources
+VERIFICATION_COMPATIBLE=N/A (never a checker -- static VERIFY20)
+CANONICAL_PATH_CONNECTED=PARTIAL (reachable; real-source behavior unproven)
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (real sources embargoed + static fetch defects: plaintext http ip-api + zero timeouts, F149)
+RECOMMENDED_ACTION=WIRING-P2-028 (https + fetch bounds) + network-allowed behavior follow-up -- proposed, unactioned
+
+---
+
+CAPABILITY_ID=TOOL-query_optimizer
+NAME=query_optimizer (QueryOptimizerTool, DatabaseEnterpriseTools.ts:181)
+CATEGORY=tool/database-data-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/DatabaseEnterpriseTools.ts
+IMPLEMENTATION=SQL heuristic static analysis (WHERE/SELECT*/LIKE/OR/LIMIT rules); description claims EXPLAIN ANALYZE; required:['sql'] declared but unenforced; permissions internet (overstated -- executes pure-local)
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_db.json 2x): bad query earns 2 warnings; clean query earns []; BUT {} accepted -> nonsense Missing-WHERE suggestion on 'UNDEFINED' (required unenforced, F150); description-vs-behavior gap (F144, output label honest)
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=executed without approval under default autoSafe
+INPUT_CONTRACT_VALID=NO (required sql unenforced at tool + gateway)
+OUTPUT_CONTRACT_VALID=YES for shape ({analysis,suggestions})
+EVIDENCE_PRODUCED=YES (heuristic-grade, honestly labeled in output)
+VERIFICATION_COMPATIBLE=N/A (never a checker -- static VERIFY20)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (F144 description gap + F150 input guard)
+RECOMMENDED_ACTION=WIRING-P2-026 (description correction + missing-sql rejection) -- proposed, unactioned
+
+---
+
+END-OF-MUSE-DRAFT-ROWS=137 (127 individual + 8 group + 2 external-cited)
+COVERAGE-DISCLAIMER=This draft covers ONLY what Muse checkpoints 1-19 evidenced. Full matrix requires: per-trunk path stories (19 trunks PROPOSED in merge.json, 10 STORIED: files 10/10 + browser_ui 33/33 LEVEL-4 + testing_qa 6/6 LEVEL-4 + security 3/3 LEVEL-4 + code_understanding 16/16 LEVEL-4 + vcs_repo 11/11 LEVEL-4 + build_generate 13/13 LEVEL-4 + runtime_services 5/5 LEVEL-4 + shell_terminal 4/4 LEVEL-4 + database_data 6/6 LEVEL-4), services/workers/persistence/deployment rows (NVIDIA scope), bulk per-tool firewall sweep (8 spot + 28 empty-input batch-1+2 + 19 risk-tier live + 16 trunk-files + 3 arch-backend + 26 browser live1/live2 + 30 browser live3 + 19 trunk-testing + 13 trunk-security + 36 trunk-code + 43 trunk-vcs + 45 trunk-build + 4 prog-batch3 + 23 trunk-runtime + 4 pages-approved + 25 trunk-shell + 5 shell-cwd + 28 trunk-db done; 25/25 no-required reviewed: 18 SAFE + 1 BOUND + 4 EMBARGO with static fixture designs + 2 FIXTURE probed contained; browser_launch embargo partially lifted for contained-http; sonar/dep_audit/dead_code positives embargoed; code_reviewer non-quick + ALL github-network/git-network-push/import-clone/npm-qa legs embargoed; pipeline-named/setActiveRoot + mobile-default-cwd + full-stack-{} + react/api-full + ent/ori-default-root + page-model-present legs embargoed; risk table SURVEYED), contract audit per boundary (14 mismatches + schema/execute family), LEVEL 5-6 proofs (L5 done files+browser_ui + project_run live-gate receipt; testing_qa + security + code_understanding static-only, 5 checkers pending; vcs_repo + build_generate static-only with 0 checkers each), and NVIDIA cross-review (pending — worker on CLI-BATCH1 + audit slice).

@@ -151,6 +151,58 @@ DEPENDENCIES=WIRING-P1-010 (clean isolation needs honored cwd)
 
 ---
 
+BATCH_ID=WIRING-P2-025
+CAPABILITIES=json_query missing-path receipt honesty + verdict mapping (MISMATCH #15)
+ROOT_CAUSE=missing-path lookup returns {ok:true, output:{value:undefined}} and JSON serialization drops the key, so the receipt (output:{}) cannot distinguish missing from null from undefined; verdict maps the shape PASSED. Proven live 2x (020/F143): ({a:1}, 'a.b.c') -> ok:true + {}. A behavior check built on json_query would close PASSED on a missing value (sibling of #14 dryRun-blindness, loss one layer earlier).
+FILES=ContentTools.ts JsonQueryTool (explicit found:boolean or equivalent) + verification-ledger verdict mapping (found:false must not close a behavior check) + contract tests
+IMPLEMENTATION_OWNER=UNASSIGNED
+REVIEW_OWNER=UNASSIGNED
+TESTS=missing-path RED->GREEN (found:false in receipt; check fails); present-value/null positives preserved; empty-path behavior pinned; AGENTS gates
+REAL_JOE_UAT=none (contract harness)
+ROLLBACK=revert shape change
+DEPENDENCIES=MISMATCH #14 batch (same verdict-mapping area)
+
+---
+
+BATCH_ID=WIRING-P2-026
+CAPABILITIES=query_optimizer description honesty + missing-sql input guard
+ROOT_CAUSE=(a) description promises 'using EXPLAIN ANALYZE' but the tool runs pure heuristic static analysis (output label is honest; planner-facing description is not) -- proven live 2x (020/F144); (b) required:['sql'] unenforced at tool and gateway: {} yields ok:true + nonsense 'Missing WHERE' suggestion on 'UNDEFINED' (020/F150). Planner/verifier overstate what was measured.
+FILES=DatabaseEnterpriseTools.ts QueryOptimizerTool (description correction or real live-EXPLAIN mode; missing-sql rejection) + contract tests
+IMPLEMENTATION_OWNER=UNASSIGNED
+REVIEW_OWNER=UNASSIGNED
+TESTS=description-accuracy assertion (or live-EXPLAIN flag contract); missing-sql RED->GREEN (sentence rejection); heuristic positives preserved; AGENTS gates
+REAL_JOE_UAT=none (contract harness)
+ROLLBACK=revert description/guard change
+DEPENDENCIES=none
+
+---
+
+BATCH_ID=WIRING-P2-027
+CAPABILITIES=large_data_seeder rows input contract (explicit 0)
+ROOT_CAUSE=`Math.max(1, Math.min(Number(input?.rows) || 1000, 1M))` maps explicit rows:0 to the 1000 default (falsy), so a 'zero rows' request silently writes 1000 rows. Proven live 2x (020/F145): rows:0 -> ok:true + 12788-byte file. NaN -> 1000 by the same mechanism (code-cited).
+FILES=DatabaseEnterpriseTools.ts LargeDataSeederTool (distinguish absent/NaN from explicit 0) + contract tests
+IMPLEMENTATION_OWNER=UNASSIGNED
+REVIEW_OWNER=UNASSIGNED
+TESTS=rows:0 RED->GREEN (reject or honest no-op); absent/NaN default-1000 preserved; negatives pinned; AGENTS gates
+REAL_JOE_UAT=none (contract harness)
+ROLLBACK=revert contract change
+DEPENDENCIES=none
+
+---
+
+BATCH_ID=WIRING-P2-028
+CAPABILITIES=query_datasource fetch transport bounds + scheme
+ROOT_CAUSE=(a) ip_geolocation uses plaintext http://ip-api.com while all 7 siblings use https; (b) none of the 8 fetch calls carries a timeout or AbortSignal, so an unresponsive endpoint hangs the tool call unboundedly. Static both sides (020/F149, DatasourceTool.ts); real-source legs embargoed (network). Reliability sibling of the provider-lease theme; no Real Joe incident claimed.
+FILES=DatasourceTool.ts (https for ip-api; bounded timeout/abort on all 8 fetches) + transport tests with fake timers/stub fetch
+IMPLEMENTATION_OWNER=UNASSIGNED
+REVIEW_OWNER=UNASSIGNED
+TESTS=stalled-endpoint RED->GREEN (bounded rejection, no hang); scheme assertion (no http:// data fetch); all-source error-shape preserved; AGENTS gates
+REAL_JOE_UAT=none (transport harness; no real endpoints in tests)
+ROLLBACK=revert transport change
+DEPENDENCIES=none
+
+---
+
 BATCH_ID=WIRING-P2-023
 CAPABILITIES=deploy package zip-path shell interpolation (sibling of P1-009)
 ROOT_CAUSE=`zip -r ${zipPath} . ...` with shell:true (DeployProjectTool.ts package branch); zipPath derives from the workspace-contained projectPath, so traversal is contained but metacharacters in a directory name (e.g. `ws/evil;cmd/`) would break out of the command. Found during the P1-009 slice; not yet RED-proven.
@@ -243,7 +295,7 @@ DEPENDENCIES=none
 
 BATCH_ID=WIRING-P2-006
 CAPABILITIES=uncontained execution roots + dead autoFix input (dead_code_detector, dependency_audit) + uncontained reads (codebase_outline)
-ROOT_CAUSE=both default to getWorkspaceRoot() (Joe's own repo) ignoring session context (DeadCodeTool.ts:46-52, QualityTools.ts:89-96); then run npx knip / npm audit (network + long runtime). autoFix:boolean declared on dead_code_detector but never read — planner-facing dead input (checkpoint 6 static; fixture-only, never {}). EXTENDED 014/F83 (npm UPWARD escape): even an EXPLICIT contained path escapes when the dir lacks package.json — npm prefix resolution walks up and audits the ancestor package (live 2x: empty session fixture audited Joe's own root over the network, multer/high report). Explicit-path usage is therefore uncontained too, not only the default root. EXTENDED 015/F93 (no-context resolver): codebase_outline takes NO context param and resolves relatives against process.cwd() (api/) + reads absolute paths unrestricted (live 2x: relative read api/package.json, absolute read OS-temp file). EXTENDED 015/F100 (4th no-context instance, static): DeadCodeTool.execute() takes no context and resolves via no-arg getActiveRoot(). EXTENDED 016/F104 (absolute-outside accepted): import_project session-anchors relatives but opens absolute OS-temp paths with full audit + registration (live 2x). EXTENDED 016/F103 (5th no-context instance): github_actions takes NO context and writes projectPath raw, incl. OS-temp outsiders (live 2x; repair rides WIRING-P1-006). EXTENDED 016/F107 (raw explicit cwd; default-cwd attribution CORRECTED 017/F121 to UNPROVEN — depth-3 ambiguity, ambient mechanism predicts session root, marker re-probe outstanding): git_ops explicit OS-temp cwd honored raw (live 2x). EXTENDED 017/F111+F112 (scaffold base-escape + repo-root write): traversal keys escape the base into the session root with ok:true + lying receipt; baseDir '../../..' wrote a.js at the REPO ROOT (live 2x, probe-removed) — repair rides WIRING-P1-007. EXTENDED 017/F114 (auth root split): relatives forced to session-agnostic data/builds/workspace-default; in-project absolutes honored; true outsiders refused (live 2x). EXTENDED 017/F117 (raw input.root): api_project root honored outside the session (live 2x; react twin code-cited) — repair rides WIRING-P1-007. EXTENDED 017/F119 (model-before-containment): ai_write_file traversal reaches the model (live 2x). EXTENDED 017/F115 (code-cited defaults): mobile_builder init outputDir defaults to process.cwd(); scaffold_full_stack Builder defaults baseDir to repo data/projects + overwrite:true default.
+ROOT_CAUSE=both default to getWorkspaceRoot() (Joe's own repo) ignoring session context (DeadCodeTool.ts:46-52, QualityTools.ts:89-96); then run npx knip / npm audit (network + long runtime). autoFix:boolean declared on dead_code_detector but never read — planner-facing dead input (checkpoint 6 static; fixture-only, never {}). EXTENDED 014/F83 (npm UPWARD escape): even an EXPLICIT contained path escapes when the dir lacks package.json — npm prefix resolution walks up and audits the ancestor package (live 2x: empty session fixture audited Joe's own root over the network, multer/high report). Explicit-path usage is therefore uncontained too, not only the default root. EXTENDED 015/F93 (no-context resolver): codebase_outline takes NO context param and resolves relatives against process.cwd() (api/) + reads absolute paths unrestricted (live 2x: relative read api/package.json, absolute read OS-temp file). EXTENDED 015/F100 (4th no-context instance, static): DeadCodeTool.execute() takes no context and resolves via no-arg getActiveRoot(). EXTENDED 016/F104 (absolute-outside accepted): import_project session-anchors relatives but opens absolute OS-temp paths with full audit + registration (live 2x). EXTENDED 016/F103 (5th no-context instance): github_actions takes NO context and writes projectPath raw, incl. OS-temp outsiders (live 2x; repair rides WIRING-P1-006). EXTENDED 016/F107 (raw explicit cwd; default-cwd attribution CORRECTED 017/F121 to UNPROVEN — depth-3 ambiguity, ambient mechanism predicts session root, marker re-probe outstanding): git_ops explicit OS-temp cwd honored raw (live 2x). EXTENDED 017/F111+F112 (scaffold base-escape + repo-root write): traversal keys escape the base into the session root with ok:true + lying receipt; baseDir '../../..' wrote a.js at the REPO ROOT (live 2x, probe-removed) — repair rides WIRING-P1-007. EXTENDED 017/F114 (auth root split): relatives forced to session-agnostic data/builds/workspace-default; in-project absolutes honored; true outsiders refused (live 2x). EXTENDED 017/F117 (raw input.root): api_project root honored outside the session (live 2x; react twin code-cited) — repair rides WIRING-P1-007. EXTENDED 017/F119 (model-before-containment): ai_write_file traversal reaches the model (live 2x). EXTENDED 017/F115 (code-cited defaults): mobile_builder init outputDir defaults to process.cwd(); scaffold_full_stack Builder defaults baseDir to repo data/projects + overwrite:true default. EXTENDED 020/F146 (6th no-context instance, live 2x + readback): large_data_seeder calls resolveToolPath WITHOUT workspaceId, so outputs land in session-agnostic data/builds/workspace-default instead of the session dir (containment holds -- absolute-outside refused; session isolation does not).
 FILES=DeadCodeTool.ts + QualityTools.ts DependencyAuditTool (contain default root to session context or document internal-only; drop-or-implement autoFix; dep_audit: pre-check package.json/lockfile presence in-tool + pin --prefix so npm cannot walk up; honest packageless-path error) + CodebaseOutlineTool.ts (accept context + resolveToolPath + outside-workspace rejection; 015/F93 legs as RED->GREEN contracts) + DeadCodeTool context threading (015/F100) + ImportProjectTool.ts (contain absolute paths to workspace; 016/F104 leg as RED->GREEN contract) + GitTools.ts (session-bind default cwd + reject outside cwd; 016/F107 legs as RED->GREEN contracts)
 IMPLEMENTATION_OWNER=UNASSIGNED
 REVIEW_OWNER=UNASSIGNED
