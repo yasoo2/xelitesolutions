@@ -18,6 +18,8 @@ TESTS=two-identity RED->GREEN + approval RED->GREEN + focused security + AGENTS 
 REAL_JOE_UAT=local UI tool behavior verification after fix
 ROLLBACK=revert route/firewall diff
 DEPENDENCIES=none
+READINESS=COORDINATION_BLOCKED (checkpoint 31)
+READINESS_EVIDENCE=runAsSystem present tools.ts:30 both trees; Codex isolated candidate 6965d584/96d01386/35bf42dd exists, exact reviews pending; no second implementation
 
 ---
 
@@ -31,6 +33,8 @@ TESTS=per-tool registration + selection + safe-execution + containment tests; bu
 REAL_JOE_UAT=one safe tool per orphan through real Joe UI (generate_image only under free-first creative contract)
 ROLLBACK=unregister / revert
 DEPENDENCIES=WIRING-P2-002 (single-winner gate should land first or with this)
+READINESS=COORDINATION_BLOCKED (checkpoint 31)
+READINESS_EVIDENCE=import-but-unconstructed + ledger visual_qa confirmed both trees; registry.ts is NVIDIA-dirty (CLI batch); wire-vs-retire + P2-002 gate + owner decision required
 
 ---
 
@@ -44,6 +48,8 @@ TESTS=focused per-module tests + wiring proof (registry/selection/execution)
 REAL_JOE_UAT=only if a draft becomes user-reachable behavior
 ROLLBACK=keep untracked (status quo)
 DEPENDENCIES=ownership decision for provider draft
+READINESS=SPLIT (checkpoint 31)
+READINESS_EVIDENCE=4 drafts exist Muse-only; 3 QA drafts READY_FOR_OWNER (integrate-or-classify, no overlap); nvidia.ts BLOCKED (Codex/NVIDIA overlap, ownership decision required)
 
 ---
 
@@ -57,6 +63,8 @@ TESTS=two-session test: page_fix on session A never navigates/mutates session B'
 REAL_JOE_UAT=page-fix-via-UI on a throwaway local page only after the fix
 ROLLBACK=revert session binding change
 DEPENDENCIES=WIRING-P2-013 (contained-URL vocabulary for safe testing)
+READINESS=READY_FOR_OWNER (checkpoint 31)
+READINESS_EVIDENCE=PANEL_BROWSER_SID unconditional drive confirmed PageFixTool.ts:127 both trees; needs P2-013 vocabulary first or with; two-session negative test specified
 
 ---
 
@@ -70,6 +78,8 @@ TESTS=chain negative ('&& echo' never executes — RED->GREEN via no-marker asse
 REAL_JOE_UAT=none until fixed; then repo-QA-via-UI on a throwaway checkout only
 ROLLBACK=revert execution-path change
 DEPENDENCIES=MISMATCH #12 (same tools; fix exitCode together so negatives are distinguishable from always-false)
+READINESS=COORDINATION_BLOCKED (checkpoint 31)
+READINESS_EVIDENCE=allowlist + shell:true confirmed both trees; REPO-COMMAND-SHELL-BOUNDARY-001 open (Muse APPROVE_WITH_CHANGES, NVIDIA REWORK); synchronized owner decision required; shared engine/firewall
 
 ---
 
@@ -83,6 +93,8 @@ TESTS=traversal negative ('../' type -> honest error, nothing written outside wo
 REAL_JOE_UAT=none until fixed; then workflow-generation-via-UI on a throwaway project only
 ROLLBACK=revert validation change
 DEPENDENCIES=none
+READINESS=READY_FOR_OWNER (checkpoint 31)
+READINESS_EVIDENCE=saveWorkflow join + node-ci fallback confirmed both trees; tool-local, no overlap, no open consultation; clean traversal/unknown-type/outside negatives specified
 
 ---
 
@@ -96,6 +108,8 @@ TESTS=base-traversal negative (above-workspace baseDir -> honest error, nothing 
 REAL_JOE_UAT=none until fixed; then scaffold-via-UI on a throwaway session with planted traversal inputs (verify refusal + no stray files)
 ROLLBACK=revert validation change
 DEPENDENCIES=none (P2-006 extensions ride here for the planner-reachable writers)
+READINESS=READY_FOR_OWNER (checkpoint 31, reviewer must cover shared resolveToolPath rule)
+READINESS_EVIDENCE=resolveToolPath + raw input.root confirmed both trees; multi-file but tool-local; no NVIDIA-dirty overlap; none of the 5 writer files dirty
 
 ---
 
@@ -109,6 +123,8 @@ TESTS=stop-after-run RED->GREEN (HTTP-200-before/refused-after + record-kept-on-
 REAL_JOE_UAT=run-then-stop through real Joe UI with independent port checks (unsandboxed host for the taskkill half + sandbox for the defense-in-depth half)
 ROLLBACK=revert stop diff
 DEPENDENCIES=none
+READINESS=READY_FOR_OWNER (checkpoint 31)
+READINESS_EVIDENCE=killTree/stopServer fall-through confirmed ProjectRunTool.ts both trees; tool-local; kill-failure-injection test specified; UAT needs both sandboxed + unsandboxed halves
 
 ---
 
@@ -123,6 +139,8 @@ TESTS=non-numeric-port RED->GREEN (rejected before spawn, no-process-start asser
 REAL_JOE_UAT=none for the tunnel itself (must not open public URLs in UAT); negative-shape verification via local harness only
 ROLLBACK=revert guard
 DEPENDENCIES=none
+READINESS=PARTIAL (checkpoint 31)
+READINESS_EVIDENCE=resolvePort Muse-only (990cf029 ancestor of HEAD, Codex ACCEPT_NARROW); `which lt` still both trees; remainder: POSIX-only which + silent global install + systemic inputSchema + P2-023 sibling
 ---
 
 BATCH_ID=WIRING-P1-010
@@ -135,6 +153,8 @@ TESTS=`\\?\`-root RED->GREEN (spawn lands in the honored dir; plain spelling acc
 REAL_JOE_UAT=local shell build/test legs on both `\\?\` and plain roots (harmless commands only)
 ROLLBACK=revert normalization
 DEPENDENCIES=none
+READINESS=COORDINATION_BLOCKED (checkpoint 31)
+READINESS_EVIDENCE=isWithinRoot + getActiveRoot confirmed both trees; WINDOWS-SHELL-CWD-P1-010 open, real reviews pending, owner unassigned; shared WorkspaceService/utils/SystemTools
 
 ---
 
@@ -148,6 +168,8 @@ TESTS=outside-absolute RED->GREEN (refused); traversal RED->GREEN (refused); in-
 REAL_JOE_UAT=none (focused security tests + regression suffice)
 ROLLBACK=revert containment change
 DEPENDENCIES=none
+READINESS=READY_FOR_OWNER (checkpoint 31)
+READINESS_EVIDENCE=raw path.isAbsolute resolution confirmed PerformanceAnalyzerTool.ts:64 both trees; tool-local; sibling performance_profile resolveToolPath pattern in-repo to reuse
 
 ---
 
@@ -161,6 +183,8 @@ TESTS=missing-binary RED->GREEN per consumer (ok:false + 'not recognized' in err
 REAL_JOE_UAT=infra-intent prompt through real Joe asserting honest failure (no success claim on missing binary)
 ROLLBACK=revert engine/consumer change
 DEPENDENCIES=P1-010 (spawn-cwd fix; UNC cwd pollutes the same stderr today but does not cause the blindness)
+READINESS=READY_FOR_PROPOSAL (checkpoint 31; recommended FIRST repair)
+READINESS_EVIDENCE=ok:result.success + docker mapping confirmed both trees; 5/5 consumer survey live 2x (027); shared engine needs consultation + owner decision; P1-010 is stderr-cleanliness only
 
 ---
 
@@ -174,6 +198,8 @@ TESTS=no-model RED->GREEN (missing-source/invalid-json/empty fail with validatio
 REAL_JOE_UAT=none (focused tests + valid-path stub suffice)
 ROLLBACK=revert require change
 DEPENDENCIES=none (owner also dispositions two code-cited notes WITHOUT live-exploiting: (a) absolute sourceFile unchecked + ${lang}.json join allows traversal-shaped langs; (b) non-array targetLanguages iterates per-character)
+READINESS=READY_FOR_OWNER (checkpoint 31; smallest batch, good first-commit candidate)
+READINESS_EVIDENCE=dead require confirmed I18nTranslatorTool.ts:38 both trees; modules/llm absent both trees; tool-local one-line + validation tests
 
 ---
 
@@ -187,6 +213,8 @@ TESTS=scaffold RED->GREEN (lands inside session root with byte-verified content)
 REAL_JOE_UAT=none (tool-local containment)
 ROLLBACK=revert path change
 DEPENDENCIES=WIRING-P2-037 (scaffold anchoring must follow the ONE reconciled containment rule)
+READINESS=READY_FOR_OWNER (checkpoint 31)
+READINESS_EVIDENCE=cwd-anchored scaffold confirmed GoBuilderTool.ts:97 + JavaBuilderTool.ts:107 both trees; tool-local; anchoring must follow reconciled P2-037 rule
 
 ---
 
@@ -200,6 +228,8 @@ TESTS=generate RED->GREEN (lands inside session root with byte-verified spec+HTM
 REAL_JOE_UAT=none (tool-local containment)
 ROLLBACK=revert path change
 DEPENDENCIES=WIRING-P2-037 (anchoring must follow the ONE reconciled containment rule)
+READINESS=READY_FOR_OWNER (checkpoint 31)
+READINESS_EVIDENCE=raw-fs + no resolveToolPath confirmed SwaggerDocsTool.ts both trees; tool-local; anchoring must follow reconciled P2-037 rule
 
 ---
 
@@ -213,6 +243,8 @@ TESTS=file:/internal/private-link-local shapes refused pre-fetch with a sentence
 REAL_JOE_UAT=none (tool-local policy)
 ROLLBACK=revert policy change
 DEPENDENCIES=none (policy precedents already in-repo)
+READINESS=READY_FOR_OWNER (checkpoint 31)
+READINESS_EVIDENCE=unvalidated fetch + api_tester/assertSafePublicUrl precedents confirmed both trees; tool-local; loopback legs only AFTER policy lands, never before
 
 ---
 
@@ -576,6 +608,8 @@ TESTS=token-scope test (foreign workspace token NOT usable); fixture-only probe 
 REAL_JOE_UAT=none until scoped; then deploy-via-UI to a throwaway repo only
 ROLLBACK=revert scope change
 DEPENDENCIES=none
+READINESS=READY_FOR_OWNER (checkpoint 31)
+READINESS_EVIDENCE=getAllWorkspacesForLookup fallback confirmed DeployPagesTool.ts:65 both trees; tool-local; fixture-only probe design, never live gh-pages
 
 ---
 

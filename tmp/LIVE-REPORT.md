@@ -1,60 +1,60 @@
 # LIVE-REPORT — Muse + NVIDIA (human live view)
-UPDATED=2026-09-30 | AUTHOR=MUSE (HEAD d9817281 + checkpoint-30 work, uncommitted at write time) | SHARED_WRITE=POLICY_BLOCKED (tool-layer: absolute path outside workspace; verified this cycle + ReadWrite-open probe on shared consultation threw; fallback: tmp/LIVE-REPORT.md)
+UPDATED=2026-09-30 | AUTHOR=MUSE (HEAD 796bc066 + checkpoint-31 work, uncommitted at write time) | SHARED_WRITE=DENIED (OpenWrite probe: Access denied; fallback: tmp/LIVE-REPORT.md)
 
 ## 1. ماذا نعمل الآن؟
-- Muse: filed LOCAL-PROVIDER confirm6 (rev2 stands, currency re-verified) + completed workers/jobs/queues survey (checkpoint 030). No source edits.
-- NVIDIA: CLI batch-1 still dirty/uncommitted (main = e8fd9589, same 12 tracked dirty files, none in provider files). No diff for review yet.
-- Codex: worktree HEAD still af29be95 (no new isolated reconnect candidate); no new shared evidence consumed.
+- Muse: filed EVAL-006 verdict ADDENDUM (prior 57471649 response preserved byte-exact + new stale-verifier correction, fallback for Codex import) + completed P0/P1 repair-readiness re-verification (checkpoint 031). No source edits.
+- NVIDIA: CLI batch-1 still dirty/uncommitted (main = e8fd9589, same 12 tracked dirty files). No diff for review yet.
+- Codex: no new shared evidence consumed this cycle.
 
 ## 2. ماذا اكتشفنا؟ (Muse this cycle)
-- Workers/jobs/queues SURVEYED (110 candidates, A/B SHA-identical F098D591): no job framework (0 BullMQ/p-queue/cron hits), 0 real worker_threads, background = 21 timer files + child_process core + joe-browser-worker service (FULLY_WIRED deploy-gated: both compose files + manager.ts consumer + key redaction).
-- /queue/* route = DUPLICATE + callerless (F216: mounted+auth, zero in-repo callers, header names a nonexistent hook; live path is /sessions/:id/queue). TaskTracker.tsx = ORPHANED UI (F217: sole tracker subscriber, zero importers, channel live via todo_update). All key items main-identical (inherited).
-- 31/31 API routes mounted (5 alias-mounted incl. /runs, /admin/sentinel, /project-preview). extension/ is a manifest-wired browser companion, external to Joe runtime.
-- LOCAL-PROVIDER currency: live :5000 still /health=200 + /health/local=404; zero source drift since rev2 (ebf2daa0..HEAD diff outside tmp/ empty); no new NVIDIA provider overlap.
+- EVAL-006 review: Codex's core distinction CONFIRMED (2 planner failures exercised; always-true checks + exit(0) never reached; draft hash unchanged 58D753E6; "production-ready" tail quote verified). BUT the verifier-safety premise is STALE: NVIDIA's current draft (0D1026E3, 9/30) already routes npm-test through ToolService with truthful permissions + partial containment. Remaining gaps: getActiveRoot() without workspace context, prefix-check bypass, entry-point gap, dropped context, input-userId memory scoping, keyword-match weakness. SPEC gate needs re-baselining, not the old verdict.
+- Readiness 031: all 17 P0/P1 defects still present at HEAD (A/B SHA-identical 6D50F6CE); 16/16 comparable inherited at identical line numbers. 10 READY_FOR_OWNER, P1-012 recommended FIRST repair proposal, P1-013 smallest quick win, 5 coordination-blocked. Only NVIDIA-dirty overlap: registry.ts (P1-001).
+- Port-guard slice verified in HEAD (990cf029 ancestor); `which lt` remainder still open both trees.
 
 ## 3. ماذا أنجزنا فعليًا؟
-- LOCAL-PROVIDER confirm6 filed (fallback for Codex import).
-- Discovery 030 + survey script/JSON/A-B logs + staging (summary workers line + DUPLICATE_ROUTES, orphan register +2 entries, backlog P2-051/P2-052, architecture workers row).
-- Guards green: architecture + package-scripts, exit 0 each (bare `npm run` worked this cycle).
+- EVAL-006-VERDICT-TRUTH-001-MUSE.response.md addendum filed (85 insertions, 0 deletions; STATUS=REVIEWED_BY_MUSE, APPROVE_WITH_CHANGES + re-baseline requirement).
+- Discovery 031 + ready31.ps1/JSON/A-B logs + staging (17 READINESS lines, summary READINESS_031 + next step).
+- Guards green: architecture + package-scripts, exit 0 each.
 
 ## 4. ماذا يعمل Muse الآن؟
-- Audit lane: storyable tool set complete (17/19) + services 15/15 + workers surveyed (WORKERS closed). Next: repair-readiness cross-review of storied trunks.
-- Standby: CLI-diff review the moment NVIDIA commits + LOCAL-PROVIDER exact-diff review when the isolated candidate appears (C1 identity reconciliation first).
+- Audit lane: P0/P1 readiness COMPLETE. Next: P2-batch readiness sweep (checkpoint 32) or owner assignment for READY batches.
+- Standby: CLI-diff review the moment NVIDIA commits + LOCAL-PROVIDER exact-diff review when the isolated candidate appears.
 
 ## 5. ماذا يعمل NVIDIA الآن؟
-- (From shared claim + read-only git) EVAL-006 long-spec infrastructure + CLI batch-1 implementation, dirty/uncommitted, no new commit. No new shared evidence this cycle.
+- (From read-only git) main e8fd9589, same 12 dirty files, no new commit. No new shared evidence this cycle. EVAL-006 NVIDIA review already REVIEWED (APPROVE_WITH_CHANGES) but describes the OLD verifier draft.
 
 ## 6. هل تم التواصل أو المراجعة بين Muse وNVIDIA؟
-- No new direct exchange this cycle: no NVIDIA diff to review. Muse's confirm6 + checkpoint 030 filed as fallbacks for Codex import.
+- No new direct exchange this cycle: no NVIDIA diff to review. Muse's EVAL-006 review + checkpoint 031 filed as fallbacks for Codex import.
 
 ## 7. أين اتفقا وأين اختلفا؟
-- Agreement: NVIDIA owns CLI, Muse reviews (unchanged). 246 = spellings not tools. LOCAL-PROVIDER: Codex-owner/Muse-reviewer proposed, accepted by Muse.
-- Open: repair-batch ownership (P1-012 engine blindness first), NVIDIA local-provider response pending, queued Muse reviews (budget/style/dashboard/image-primary) not started.
+- Agreement: EVAL-006 diagnosis (planner failure, forced offline, verdict defects, reject "production-ready") — Muse confirms NVIDIA's review on all core points.
+- Muse correction: both Codex's and NVIDIA's verifier-safety descriptions target the superseded draft; current draft needs fresh review (no disagreement on substance, a currency update).
+- Open: repair-batch ownership (P1-012 first), NVIDIA CLI diff + local-provider response pending.
 
-## 8. الأرقام المؤكدة (Muse branch @ d9817281 + checkpoint 30)
+## 8. الأرقام المؤكدة (Muse branch @ 796bc066 + checkpoint 31)
 REPORTED_BY_MUSE:
 DISCOVERED_TOOLS=163 REGISTERED_TOOLS=163 EXECUTABLE_TOOLS=146 (LEVEL-4 storied; rest UNKNOWN)
 FULLY_WIRED=UNKNOWN (bulk) PARTIALLY_WIRED=UNKNOWN (bulk) ORPHANED=5 tools + 1 service (CortexState) + 1 import-only service (AlertService) + 1 UI component (TaskTracker) DUPLICATE=2 tools + 1 route (/queue/*)
-UNKNOWN=2/19 trunks coordination-blocked (planning=10, memory=7, NVIDIA-owned); workers now SURVEYED
-REPAIRED=1 slice (P1-009 port-guard, unchanged) VERIFIED=17 trunks storied + services 15/15 + workers 110 candidates + P1-012 survey 5/5 + L5 checker set 12/12 live + guards green
-REAL_JOE_PROVEN=NO (no UAT this cycle) CONTRACT_MISMATCHES=20 (unchanged; F216-F220 are wiring dispositions, no new mismatch number)
-ROUTES_MOUNTED=31/31 JOB_LIBS=0 WORKER_THREADS_REAL=0
+UNKNOWN=2/19 trunks coordination-blocked (planning=10, memory=7, NVIDIA-owned); workers SURVEYED
+REPAIRED=1 slice (P1-009 port-guard, in HEAD) VERIFIED=17 trunks storied + services 15/15 + workers 110 candidates + P0/P1 17/17 readiness re-verified + guards green
+REAL_JOE_PROVEN=NO (no UAT this cycle) CONTRACT_MISMATCHES=20 (unchanged; 031 is re-verification, no new mismatch)
+READY_BATCHES=10 owner-ready + 1 proposal-ready (P1-012) + 1 partial (P1-009) + 5 blocked
 REPORTED_BY_NVIDIA: no new counts (no shared evidence).
-VERIFIED (independent): no Real Joe PASS exists. CRITICAL-REAL-JOE-UI-001 still NOT_PASS. Live :5000 /health=200, /health/local=404 (reproduced this cycle).
+VERIFIED (independent): no Real Joe PASS exists. CRITICAL-REAL-JOE-UI-001 still NOT_PASS.
 
 ## 9. ما آخر اختبار ونتيجته؟
-- fx-workers survey A/B: JSON SHA256 identical (F098D591…B25E95B4). exit 0 each. (2 pilot runs discarded honestly: PS quote-escape + PS5.1 ternary parse errors; 3rd pilot superseded by alias-aware mount check.)
+- ready31 survey A/B: JSON SHA256 identical (6D50F6CE…D130B7), 34 rows, exit 0 each. (1 pilot revision discarded honestly: corrected 6 file paths + 2 patterns after direct source reads.)
 - guard:architecture: PASS exit 0. guard:package-scripts: PASS exit 0.
-- Consultation evidence (read-only): shared file re-read (unchanged, mtime 12:54Z), ebf2daa0..HEAD source drift empty, live curl 404, NVIDIA dirty scan (no provider files), Codex worktree HEAD still af29be95.
-- Real Joe UI: no run this cycle (audit probes + review only; runtimes untouched, no worker stopped).
+- EVAL-006 evidence (read-only): draft hash match, cycle28 log TIMEOUT + tail quote, router caps 180s/45s, verifier draft hash 0D1026E3 + ToolService routing + containment gaps, NVIDIA review + own 986a41a8 read.
+- Real Joe UI: no run this cycle (audit + review only; runtimes untouched, no worker stopped).
 
 ## 10. ما المشاكل أو العوائق الحالية؟
 - Shared coordination writes from this sandbox are policy-blocked (fallbacks used).
-- No NVIDIA committed diff yet; NVIDIA local-provider response pending; repair ownership unassigned.
-- Audit: planning/memory trunks need NVIDIA coordination before storying.
-- Queued Muse reviews not started this cycle: NVIDIA-REQUEST-BUDGET-001 (HIGH), CALCULATOR-SOURCE-STYLE-EVIDENCE-001 (HIGH), DASHBOARD-EVIDENCE-ATTRIBUTION-001, IMAGE-STUDIO-PRIMARY-DATA-001, CREATIVE-SAFETY-BATCH-001.
+- No NVIDIA committed diff yet; repair ownership unassigned (P1-012 proposal + P1-013 quick win recommended first).
+- SPEC-VERIFICATION gate premises stale vs new verifier draft (re-baseline needed).
+- Queued Muse reviews not started: NVIDIA-REQUEST-BUDGET-001, CALCULATOR-SOURCE-STYLE-EVIDENCE-001, DASHBOARD-EVIDENCE-ATTRIBUTION-001, IMAGE-STUDIO-PRIMARY-DATA-001, CREATIVE-SAFETY-BATCH-001.
 
 ## 11. ما الخطوة التالية؟
-- Muse: repair-readiness cross-review of storied trunks; CLI-diff review the moment NVIDIA commits; LOCAL-PROVIDER exact-diff review when the isolated candidate appears.
-- NVIDIA: commit CLI diff for review + audit slice + local-provider response.
-- Team: assign one owner per repair batch (P1-012 first); schedule queued Muse reviews after the next CRITICAL checkpoint.
+- Muse: P2-batch readiness sweep (checkpoint 32); CLI-diff review the moment NVIDIA commits; LOCAL-PROVIDER exact-diff review when candidate appears.
+- NVIDIA: commit CLI diff for review + audit slice + local-provider response; owner-ack P1-012/P1-013 if offered.
+- Team: assign one owner per READY batch; re-baseline SPEC gate against verifier draft 0D1026E3.

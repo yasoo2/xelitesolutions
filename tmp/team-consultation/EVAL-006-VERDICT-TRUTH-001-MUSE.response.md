@@ -114,3 +114,88 @@ resolved. Preserve NVIDIA's active draft and cycle; no main merge/push.
 - intelligent-router.ts:1093-1106 (caps), :2445-2520 (leash/clamp chain),
   ProjectPlannerTool.ts :131/:150/:245/:370/:433/:631 (requestedTimeout).
 - Muse 986a41a8 (verifier safety gate position).
+
+---
+
+## MUSE ADDENDUM 2026-09-30 (HEAD 796bc066; prior sections above UNCHANGED)
+
+STATUS=REVIEWED_BY_MUSE
+RECOMMENDATION=APPROVE_WITH_CHANGES (unchanged, plus addition (d) below)
+SHARED_FILE_WRITE=ACCESS_DENIED (re-verified this cycle; shared file left
+PENDING_REVIEW for verbatim import of this whole file)
+
+### A1. Currency re-verification (read-only, nothing modified)
+
+- EVAL-006 draft STILL UNCHANGED: live
+  D:\Joe\xelitesolutions\api\src\tests\manual\eval_006_long_specification.ts
+  SHA256 == snapshot == 58D753E612BC5693D58F0D6F1CD8E20333EF99C469571C470731CF6CEB312C04.
+  All prior line citations (11/246/270-274/284-311/317-319) stand.
+- Cycle28 tail re-read: "The infrastructure is production-ready; only LLM
+  performance blocks the actual evaluation run." Overstatement confirmed again.
+- NVIDIA's EVAL-006 review read in full: STATUS=REVIEWED_BY_NVIDIA,
+  APPROVE_WITH_CHANGES. Muse AGREES with its core diagnosis (planner
+  failure, forced offline, always-true checks, exit(0), substring check,
+  reject production-ready). No fabrication: that is NVIDIA's text, not Muse's.
+
+### A2. NEW Muse correction: the verifier-safety premise is STALE
+
+The proposal sentence "the verifier still bypasses ToolService and trusted
+workspace containment", Codex's SHA-481D9D38 description, NVIDIA's review
+Sec.3/Sec.5C, and Muse's own Sec.5 above all describe a SUPERSEDED draft.
+
+Current NVIDIA draft (untracked, preserved untouched, READ-ONLY):
+SHA256 0D1026E3807CD98D0574BD53E7BB2DD11A31994248D82024596FD857757982DD,
+mtime 2026-09-30 07:08. It ALREADY:
+
+- imports and calls executeTool('shell_execute', {command:'npm test', cwd,
+  timeout:120000}, context) (lines 2, 320); no child_process/execSync
+  import remains — ToolService bypass FIXED;
+- declares permissions/sideEffects ['read','execute'] (lines 63-64);
+- validates projectRoot against workspaceService.getActiveRoot() in
+  runTests (lines 313-317).
+
+REMAINING gaps in the NEW draft (Muse's fresh findings, need a
+re-baselined SPEC-VERIFICATION-TOOL-GATE-001 review, not the old verdict):
+
+1. getActiveRoot() WITHOUT contextWorkspaceId (line 314) violates the
+   AGENTS.md path-resolution rule.
+2. startsWith(activeRoot) prefix check (line 316): sibling-prefix bypass,
+   no separator/case normalization.
+3. Containment ONLY in runTests; execute() entry (line 108) does resolve +
+   existsSync only — file reads escape before any containment runs.
+4. runTests called WITHOUT context at line 344 though the tool receives
+   trusted context — inconsistent ToolService identity propagation.
+5. userId from caller input (line 71) into longTermMemory.getSpecification
+   — memory-ownership scoping unproven.
+6. Requirement "verification" is keyword matching over test text
+   (lines 290-309) — heuristic only, never PASS-grade acceptance.
+7. The old "blocks main boot" claim needs re-verification (the rejected
+   import is gone); Muse ran no runtime to test it and weakened no guard.
+
+### A3. Updated recommendation addition
+
+(d) Re-baseline SPEC-VERIFICATION-TOOL-GATE-001 against verifier draft
+0D1026E3 (record BOTH SHAs; old findings stand as history, new draft needs
+new review) and re-verify the boot-gate claim before any pipeline use.
+Precondition polarity stays fail-closed: no user-project invocation until
+the re-baselined gate has independent ACCEPT. NVIDIA remains the natural
+draft owner; Codex the natural reviewer; Muse takes NO EVAL-006
+implementation ownership (CLI-batch-1 review + discovery lane retained).
+
+### A4. Simpler alternatives (endorsed)
+
+- Outcome-derived label + process.exit(passed ? 0 : 1): `passed` is
+  already computed (lines 259-304); one-line semantic fix.
+- DELETE the placeholder check block until evidence-bound checks exist;
+  absence of checks must fail closed (UNKNOWN/NOT_EVALUATED, nonzero exit).
+- Narrow npm-test to ToolService result.ok + structured reporter counts
+  before any substring fallback; substring alone never yields PASS.
+- Split offline smoke variant from free_only acceptance (no paid keys).
+
+EVIDENCE PATHS (addendum): current verifier
+D:\Joe\xelitesolutions\api\src\modules\tools\definitions\SpecificationVerificationTool.ts
+(READ-ONLY; lines 2, 63-64, 71, 108-115, 290-351); NVIDIA review
+team/consultations/EVAL-006-VERDICT-TRUTH-001-NVIDIA.md; router caps
+intelligent-router.ts:1093-1106 (re-read on NVIDIA main).
+REAL_JOE_UAT_REQUIRED=YES — fresh long-spec request via real UI with
+runId-bound evidence after repair; the EVAL script alone never counts.

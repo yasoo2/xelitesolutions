@@ -1,0 +1,352 @@
+{
+    "generated_by":  "ready31.ps1 (checkpoint 31, read-only)",
+    "muse_root":  "D:\\Joe\\muse-worktree",
+    "main_root":  "D:\\Joe\\xelitesolutions",
+    "check_count":  34,
+    "extras":  {
+                   "modules_llm_dir_missing_muse":  true,
+                   "modules_llm_dir_missing_main":  true
+               },
+    "rows":  [
+                 {
+                     "batch":  "P0-001",
+                     "rel":  "api\\src\\api\\routes\\tools.ts",
+                     "muse_found":  true,
+                     "muse_line":  30,
+                     "muse_text":  "const result = await executionFirewall.runAsSystem(async () =\u003e {",
+                     "main_found":  true,
+                     "main_line":  30,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P1-001a",
+                     "rel":  "api\\src\\modules\\tools\\definitions\\BulkFileGeneratorTool.ts",
+                     "muse_found":  true,
+                     "muse_line":  5,
+                     "muse_text":  "export const BulkFileGeneratorTool: ToolDefinition = {",
+                     "main_found":  true,
+                     "main_line":  5,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P1-001b",
+                     "rel":  "api\\src\\modules\\tools\\registry.ts",
+                     "muse_found":  true,
+                     "muse_line":  18,
+                     "muse_text":  "import { BulkFileGeneratorTool } from \u0027./definitions/BulkFileGeneratorTool\u0027;",
+                     "main_found":  true,
+                     "main_line":  18,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P1-001b2",
+                     "rel":  "api\\src\\modules\\tools\\registry.ts",
+                     "muse_found":  false,
+                     "muse_line":  0,
+                     "muse_text":  "PATTERN_ABSENT",
+                     "main_found":  false,
+                     "main_line":  0,
+                     "parity":  "BOTH_ABSENT"
+                 },
+                 {
+                     "batch":  "P1-001c",
+                     "rel":  "api\\src\\core\\quality\\verification-ledger.ts",
+                     "muse_found":  true,
+                     "muse_line":  519,
+                     "muse_text":  "const browserStateNeedsRevision = /^(?:browser_|visual_qa$)/u.test(String(descriptor.tool || \u0027\u0027).trim().toLowerCase())",
+                     "main_found":  true,
+                     "main_line":  519,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P1-002a",
+                     "rel":  "api\\src\\core\\quality\\image-semantic-qa.ts",
+                     "muse_found":  true,
+                     "muse_line":  1,
+                     "muse_text":  "import type { AppAuditFinding } from \u0027./app-audit\u0027;",
+                     "main_found":  false,
+                     "main_line":  0,
+                     "parity":  "MUSE_ONLY"
+                 },
+                 {
+                     "batch":  "P1-002b",
+                     "rel":  "api\\src\\core\\quality\\live-data-qa.ts",
+                     "muse_found":  true,
+                     "muse_line":  1,
+                     "muse_text":  "import type { AppAuditFinding } from \u0027./app-audit\u0027;",
+                     "main_found":  false,
+                     "main_line":  0,
+                     "parity":  "MUSE_ONLY"
+                 },
+                 {
+                     "batch":  "P1-002c",
+                     "rel":  "api\\src\\core\\quality\\shop-qa.ts",
+                     "muse_found":  true,
+                     "muse_line":  1,
+                     "muse_text":  "import type { AppAuditFinding } from \u0027./app-audit\u0027;",
+                     "main_found":  false,
+                     "main_line":  0,
+                     "parity":  "MUSE_ONLY"
+                 },
+                 {
+                     "batch":  "P1-002d",
+                     "rel":  "api\\src\\core\\llm\\providers\\nvidia.ts",
+                     "muse_found":  true,
+                     "muse_line":  1,
+                     "muse_text":  "/**",
+                     "main_found":  false,
+                     "main_line":  0,
+                     "parity":  "MUSE_ONLY"
+                 },
+                 {
+                     "batch":  "P1-003",
+                     "rel":  "api\\src\\modules\\tools\\definitions\\DeployPagesTool.ts",
+                     "muse_found":  true,
+                     "muse_line":  65,
+                     "muse_text":  "if (!repo \u0026\u0026 typeof (workspaceService as any).getAllWorkspacesForLookup === \u0027function\u0027) {",
+                     "main_found":  true,
+                     "main_line":  65,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P1-004",
+                     "rel":  "api\\src\\modules\\tools\\definitions\\PageFixTool.ts",
+                     "muse_found":  true,
+                     "muse_line":  127,
+                     "muse_text":  "const { PANEL_BROWSER_SID } = require(\u0027./BrowserSmartTools\u0027);",
+                     "main_found":  true,
+                     "main_line":  127,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P1-005a",
+                     "rel":  "api\\src\\modules\\tools\\definitions\\RepoSelfCodingTools.ts",
+                     "muse_found":  true,
+                     "muse_line":  70,
+                     "muse_text":  "const blockedFragments = [\u0027rm \u0027, \u0027rm -\u0027, \u0027sudo\u0027, \u0027curl \u0027, \u0027wget \u0027, \u0027| sh\u0027, \u0027| bash\u0027, \u0027chmod \u0027, \u0027chown \u0027, \u0027mkfs\u0027, \u0027dd \u0027, \u0027:(){\u0027, \u0027shutdown\u0027, \u0027reboot\u0027, \u0027docker system prune\u0027];",
+                     "main_found":  true,
+                     "main_line":  70,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P1-005b",
+                     "rel":  "api\\src\\kernel\\ExecutionEngine.ts",
+                     "muse_found":  true,
+                     "muse_line":  629,
+                     "muse_text":  "* It is right: with `shell: true` node concatenates argv with no",
+                     "main_found":  true,
+                     "main_line":  629,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P1-006a",
+                     "rel":  "api\\src\\modules\\tools\\definitions\\GitHubActionsTool.ts",
+                     "muse_found":  true,
+                     "muse_line":  236,
+                     "muse_text":  "const workflowsDir = path.join(projectPath, \u0027.github\u0027, \u0027workflows\u0027);",
+                     "main_found":  true,
+                     "main_line":  236,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P1-006b",
+                     "rel":  "api\\src\\modules\\tools\\definitions\\GitHubActionsTool.ts",
+                     "muse_found":  true,
+                     "muse_line":  20,
+                     "muse_text":  "enum: [\u0027node-ci\u0027, \u0027deploy-vercel\u0027, \u0027docker-build\u0027, \u0027test-and-deploy\u0027],",
+                     "main_found":  true,
+                     "main_line":  20,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P1-007a",
+                     "rel":  "api\\src\\modules\\tools\\utils.ts",
+                     "muse_found":  true,
+                     "muse_line":  19,
+                     "muse_text":  "export function resolveToolPath(p: string, options: ResolvePathOptions = {}) {",
+                     "main_found":  true,
+                     "main_line":  19,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P1-007b",
+                     "rel":  "api\\src\\modules\\tools\\definitions\\ApiProjectTool.ts",
+                     "muse_found":  true,
+                     "muse_line":  2723,
+                     "muse_text":  "const root = String(input?.root || workspaceService.getActiveRoot(contextWorkspaceId || undefined));",
+                     "main_found":  true,
+                     "main_line":  2723,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P1-008a",
+                     "rel":  "api\\src\\modules\\tools\\definitions\\ProjectRunTool.ts",
+                     "muse_found":  true,
+                     "muse_line":  1439,
+                     "muse_text":  "if (fallback.pid) await killTree(Number(fallback.pid)).catch(() =\u003e {});",
+                     "main_found":  true,
+                     "main_line":  1439,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P1-008b",
+                     "rel":  "api\\src\\modules\\tools\\definitions\\ProjectRunTool.ts",
+                     "muse_found":  true,
+                     "muse_line":  1412,
+                     "muse_text":  "await stopServer(key, logs).catch(() =\u003e {});",
+                     "main_found":  true,
+                     "main_line":  1412,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P1-009a",
+                     "rel":  "api\\src\\modules\\tools\\definitions\\DeployProjectTool.ts",
+                     "muse_found":  true,
+                     "muse_line":  16,
+                     "muse_text":  "function resolvePort(raw: unknown): { ok: true; port: number } | { ok: false; error: string } {",
+                     "main_found":  false,
+                     "main_line":  0,
+                     "parity":  "MUSE_ONLY"
+                 },
+                 {
+                     "batch":  "P1-009b",
+                     "rel":  "api\\src\\modules\\tools\\definitions\\DeployProjectTool.ts",
+                     "muse_found":  true,
+                     "muse_line":  202,
+                     "muse_text":  "payload: { command: \u0027which lt\u0027 },",
+                     "main_found":  true,
+                     "main_line":  176,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P1-010a",
+                     "rel":  "api\\src\\modules\\tools\\path-containment.ts",
+                     "muse_found":  true,
+                     "muse_line":  23,
+                     "muse_text":  "export function isWithinRoot(child: string, parent: string): boolean {",
+                     "main_found":  true,
+                     "main_line":  23,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P1-010b",
+                     "rel":  "api\\src\\modules\\services\\WorkspaceService.ts",
+                     "muse_found":  true,
+                     "muse_line":  154,
+                     "muse_text":  "// local mode. Two real bugs lived here: getActiveRoot() ignored currentRoot",
+                     "main_found":  true,
+                     "main_line":  154,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P1-011",
+                     "rel":  "api\\src\\modules\\tools\\definitions\\PerformanceAnalyzerTool.ts",
+                     "muse_found":  true,
+                     "muse_line":  64,
+                     "muse_text":  "const filePath = path.isAbsolute(file) ? file : path.resolve(projectPath, file);",
+                     "main_found":  true,
+                     "main_line":  64,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P1-012a",
+                     "rel":  "api\\src\\kernel\\ExecutionEngine.ts",
+                     "muse_found":  true,
+                     "muse_line":  546,
+                     "muse_text":  "ok: result.success,",
+                     "main_found":  true,
+                     "main_line":  546,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P1-012b",
+                     "rel":  "api\\src\\modules\\tools\\definitions\\DockerManagerTool.ts",
+                     "muse_found":  true,
+                     "muse_line":  60,
+                     "muse_text":  "output: { success: true, stdout: result.output, stderr: result.error },",
+                     "main_found":  true,
+                     "main_line":  60,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P1-013",
+                     "rel":  "api\\src\\modules\\tools\\definitions\\I18nTranslatorTool.ts",
+                     "muse_found":  true,
+                     "muse_line":  38,
+                     "muse_text":  "const mod = require(\u0027../../llm\u0027);",
+                     "main_found":  true,
+                     "main_line":  38,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P1-014a",
+                     "rel":  "api\\src\\modules\\tools\\definitions\\GoBuilderTool.ts",
+                     "muse_found":  true,
+                     "muse_line":  97,
+                     "muse_text":  "const projectPath = path.join(process.cwd(), projectName);",
+                     "main_found":  true,
+                     "main_line":  97,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P1-014b",
+                     "rel":  "api\\src\\modules\\tools\\definitions\\JavaBuilderTool.ts",
+                     "muse_found":  true,
+                     "muse_line":  107,
+                     "muse_text":  "const projectPath = path.join(process.cwd(), projectName);",
+                     "main_found":  true,
+                     "main_line":  107,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P1-015a",
+                     "rel":  "api\\src\\modules\\tools\\definitions\\SwaggerDocsTool.ts",
+                     "muse_found":  true,
+                     "muse_line":  92,
+                     "muse_text":  "const projectPath = input.projectPath || \u0027./src\u0027;",
+                     "main_found":  true,
+                     "main_line":  92,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P1-015b",
+                     "rel":  "api\\src\\modules\\tools\\definitions\\SwaggerDocsTool.ts",
+                     "muse_found":  false,
+                     "muse_line":  0,
+                     "muse_text":  "PATTERN_ABSENT",
+                     "main_found":  false,
+                     "main_line":  0,
+                     "parity":  "BOTH_ABSENT"
+                 },
+                 {
+                     "batch":  "P1-016a",
+                     "rel":  "api\\src\\modules\\tools\\definitions\\ContentTools.ts",
+                     "muse_found":  true,
+                     "muse_line":  28,
+                     "muse_text":  "const r = await fetch(url);",
+                     "main_found":  true,
+                     "main_line":  28,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P1-016b",
+                     "rel":  "api\\src\\modules\\tools\\definitions\\ApiTesterTool.ts",
+                     "muse_found":  true,
+                     "muse_line":  44,
+                     "muse_text":  "if (!/^https?:\\/\\//i.test(url)) {",
+                     "main_found":  true,
+                     "main_line":  44,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P1-016c",
+                     "rel":  "api\\src\\core\\api-discovery\\network-policy.ts",
+                     "muse_found":  true,
+                     "muse_line":  36,
+                     "muse_text":  "export async function assertSafePublicUrl(raw: string): Promise\u003cURL\u003e {",
+                     "main_found":  true,
+                     "main_line":  36,
+                     "parity":  "BOTH_PRESENT"
+                 }
+             ]
+}
