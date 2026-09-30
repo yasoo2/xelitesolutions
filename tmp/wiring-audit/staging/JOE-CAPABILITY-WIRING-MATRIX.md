@@ -1,8 +1,8 @@
 # JOE CAPABILITY WIRING MATRIX (Muse draft 2026-09-29 — staging for D:\Joe\coordination\team\JOE-CAPABILITY-WIRING-MATRIX.md)
 
-SCOPE=Muse-branch discovery checkpoints 1-17 only (muse/joe-development @ 09ee15dc).
+SCOPE=Muse-branch discovery checkpoints 1-18 only (muse/joe-development @ 25ad8378).
 Rows below are EVIDENCED tool-level entries. HIGH_LEVEL_CAPABILITIES grouping
-(merge v1: 19 trunks PROPOSED, 7 STORIED: files 10/10 in checkpoint 8;
+(merge v1: 19 trunks PROPOSED, 8 STORIED: files 10/10 in checkpoint 8;
 browser_ui 33/33 LEVEL-4 complete — checkpoint 11; both trunks
 verification-swept LEVEL-5 — checkpoint 12, see §VERIFY12; testing_qa
 6/6 LEVEL-4 + static verification-compat — checkpoint 13, see §VERIFY13;
@@ -11,24 +11,25 @@ see §VERIFY14; code_understanding 16/16 LEVEL-4 + static
 verification-compat — checkpoint 15, see §VERIFY15; vcs_repo 11/11
 LEVEL-4 + static verification-compat — checkpoint 16, see §VERIFY16;
 build_generate 13/13 LEVEL-4 + static verification-compat —
-checkpoint 17, see §VERIFY17),
+checkpoint 17, see §VERIFY17); runtime_services 5/5 LEVEL-4 + static verification-compat + checker-set correction [checkpoint 18, see VERIFY18]),
 services/workers/internal-infra rows, and NVIDIA-owned
 registry/ingress/persistence areas are UNKNOWN/PENDING and must NOT be
 treated as covered.
 Evidence files: D:\Joe\muse-worktree\tmp\wiring-audit\{discovery,exposure,
 classification,reachability,target,exec,sweep1,sweep2,merge,sweep3,trunk_files,
 arch2,trunk_browser1,trunk_browser_live1,trunk_browser_live2,
-trunk_browser_live3,verify_sweep12,trunk_testing,trunk_security,trunk_code,trunk_vcs,trunk_build}.json +
+trunk_browser_live3,verify_sweep12,trunk_testing,trunk_security,trunk_code,trunk_vcs,trunk_build,trunk_runtime}.json +
 {discover,exposure,classify,reach,target,exec,
 sweep1,sweep2,merge,sweep3,trunk_files,arch2,trunk_browser1,
 trunk_browser_live1,trunk_browser_live2,trunk_browser_live3,
-verify_sweep12,trunk_testing,chaos_call_probe,trunk_security,trunk_code,trunk_vcs,trunk_build,prog_batch3}.mts +
+verify_sweep12,trunk_testing,chaos_call_probe,trunk_security,trunk_code,trunk_vcs,trunk_build,prog_batch3,trunk_runtime,pages_approved,stop_mech}.mts +
 MUSE-WIRING-DISCOVERY-00{1,2,3,4,5,6,7}.md + MUSE-WIRING-DISCOVERY-008.md +
 MUSE-WIRING-DISCOVERY-009.md + MUSE-WIRING-DISCOVERY-010.md +
 MUSE-WIRING-DISCOVERY-011.md + MUSE-WIRING-DISCOVERY-012.md +
 MUSE-WIRING-DISCOVERY-013.md + MUSE-WIRING-DISCOVERY-014.md +
 MUSE-WIRING-DISCOVERY-015.md + MUSE-WIRING-DISCOVERY-016.md +
-MUSE-WIRING-DISCOVERY-017.md. All probes
+MUSE-WIRING-DISCOVERY-017.md +
+MUSE-WIRING-DISCOVERY-018.md. All probes
 re-runnable; exec/sweep/trunk probes perform bounded safe runs only
 (fixtures created + removed by the probe; 4 EMBARGO names never executed
 except browser_launch contained-http partial lift in 010 — static fixture
@@ -170,6 +171,23 @@ api/react legs are ok:true WITH honest unproven flags
 live progressive batch-3 is ok:true with provider-failure
 prose PERSISTED AS SOURCE (false-artifact direction, F116,
 MISMATCH #9 5th instance). Evidence: trunk_build.json.
+
+VERIFY18 -- VERIFICATION-COMPAT STATIC (checkpoint 18, runtime_services 5/5).
+Same consumer/allowlist/verdict-fn as VERIFY12. CHECKER_PARTITION:
+task-level checkers among the 5: NONE (0); existence-gate opt-ins
+change nothing (static 5/5); live-gate opt-in admits project_run
+ONLY (ledger :740-747, documented rationale). Checker set is
+CORRECTED to 14 task-level + project_run live-gate-only (prior
+"14/14 CLOSED" refined, not refuted). VERDICT_MAP=12-shape
+pure-function table: needs-connect/missing/unknown-action/needs-cwd/
+no-project map failed (safe); deployed/live/stop-idle/stop-done map
+passed; built/running/exposed map incomplete (non-checker
+constraints); started-unready (ok:true + serverReady:false) maps
+PASSED = MISMATCH #13 (consumer blind to the explicit flag).
+RECEIPT_EVIDENCE=project_run live URL receipt L5-PROVEN by
+run.detected/run.override (real HTTP 200 + token + ready:true,
+auto + forced ports); lifecycle bounded by F124 (stop defect).
+REUSE=N/A. Evidence: trunk_runtime.json + pages_approved logs.
 
 ---
 
@@ -3146,5 +3164,135 @@ RECOMMENDED_ACTION=dedicated safety probe (bounded named run + setActiveRoot sco
 
 ---
 
-END-OF-MUSE-DRAFT-ROWS=122 (112 individual + 8 group + 2 external-cited)
-COVERAGE-DISCLAIMER=This draft covers ONLY what Muse checkpoints 1-17 evidenced. Full matrix requires: per-trunk path stories (19 trunks PROPOSED in merge.json, 7 STORIED: files 10/10 + browser_ui 33/33 LEVEL-4 + testing_qa 6/6 LEVEL-4 + security 3/3 LEVEL-4 + code_understanding 16/16 LEVEL-4 + vcs_repo 11/11 LEVEL-4 + build_generate 13/13 LEVEL-4), services/workers/persistence/deployment rows (NVIDIA scope), bulk per-tool firewall sweep (8 spot + 28 empty-input batch-1+2 + 19 risk-tier live + 16 trunk-files + 3 arch-backend + 26 browser live1/live2 + 30 browser live3 + 19 trunk-testing + 13 trunk-security + 36 trunk-code + 43 trunk-vcs + 45 trunk-build + 4 prog-batch3 done; 25/25 no-required reviewed: 18 SAFE + 1 BOUND + 4 EMBARGO with static fixture designs + 2 FIXTURE probed contained; browser_launch embargo partially lifted for contained-http; sonar/dep_audit/dead_code positives embargoed; code_reviewer non-quick + ALL github-network/git-network-push/import-clone/npm-qa legs embargoed; pipeline-named/setActiveRoot + mobile-default-cwd + full-stack-{} + react/api-full + ent/ori-default-root + page-model-present legs embargoed; risk table SURVEYED), contract audit per boundary (12 mismatches + schema/execute family), LEVEL 5-6 proofs (L5 done files+browser_ui; testing_qa + security + code_understanding static-only, 5 checkers pending; vcs_repo + build_generate static-only with 0 checkers each), and NVIDIA cross-review (pending — worker on CLI-BATCH1 + audit slice).
+CAPABILITY_ID=TOOL-deploy_pages
+NAME=deploy_pages (DeployPagesTool, DeployPagesTool.ts:73)
+CATEGORY=tool/runtime-services-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/DeployPagesTool.ts
+IMPLEMENTATION=GitHub-Pages publisher (build + gh-pages push + enable; static-only honesty gate for backends); gates in order: cwd-exists, token (needsConnect), repo (needsRepo), backend-detect; required:[] (all optional); permissions execute+internet, 4/min
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1 BUT router-excluded (flag/catalog split)
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1 (catalog; router-side enforcement unprobed)
+EXECUTOR_REACHABLE=PARTIAL (gates live; real deploy embargoed by design)
+EXECUTOR_EVIDENCE=LIVE (trunk_runtime.json 3 legs + pages_approved 4 legs, all 2x identical): default-deny -> approval_required/high (deploy_* tier); approved harness -> missing-cwd path error, empty/backend/explicit-repo all needsConnect (token gate precedes repo precedes backend-honesty) (F131)
+PERMISSION_REACHABLE=YES (high tier; approval-gated by default)
+PERMISSION_EVIDENCE=execute+internet, high (ToolService deploy_* rule); approved harness executes gates
+INPUT_CONTRACT_VALID=YES (cwd/repo/buildCommand honored at gates; buildCommand path unprobed)
+OUTPUT_CONTRACT_VALID=PARTIAL ({needsConnect/needsRepo} honest; {url,deployed} unprobed -- real deploy embargoed)
+EVIDENCE_PRODUCED=YES (gate receipts)
+VERIFICATION_COMPATIBLE=N/A (never a checker -- static VERIFY18; needs-connect maps failed)
+CANONICAL_PATH_CONNECTED=YES (gate path proven; publish path unprobed)
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (gates proven; real publish + backend-honesty outcome unprobed)
+RECOMMENDED_ACTION=none (gates honest); design note: backend-honesty knowledge requires auth (F131)
+
+---
+
+CAPABILITY_ID=TOOL-deploy_project
+NAME=deploy_project (DeployProjectTool, DeployProjectTool.ts:10)
+CATEGORY=tool/runtime-services-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/DeployProjectTool.ts
+IMPLEMENTATION=4-action deployer (build_static/start_server/expose_port/package); projectPath contained via resolveToolPath; actions execute raw shell (buildCommand/startCommand by design); start_server detached + pidfile; expose_port via localtunnel; required:['action','projectPath']; priority-listed
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-2 (behind deploy_pages on self-name) BUT router-excluded (flag/catalog split)
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 2 (catalog; router-side enforcement unprobed)
+EXECUTOR_REACHABLE=PARTIAL (3/4 actions live; expose_port embargoed by design)
+EXECUTOR_EVIDENCE=LIVE (trunk_runtime.json, canonical, 7 legs 2x identical): empty/missing/traversal/bogus-action all honest ok:false (traversal resolves-then-not-found, contained); package -> raw stat ENOENT, no zip on Windows (F127); build_static TRUE positive (marker verified, dist detected); start_server -> ok:true/running + URL for a DEAD port, no health check (F125)
+PERMISSION_REACHABLE=YES (medium for build/start/package auto-approved; high for expose_port)
+PERMISSION_EVIDENCE=execute+write+internet declared; ToolService input-tiered (expose_port high, rest medium)
+INPUT_CONTRACT_VALID=NO (port not validated: `lt --port ${port}` shell shape, F126; action enum enforced only by Unknown-action branch)
+OUTPUT_CONTRACT_VALID=PARTIAL (built/packaged honest; running hollow; exposed unprobed)
+EVIDENCE_PRODUCED=YES
+VERIFICATION_COMPATIBLE=N/A (never a checker -- static VERIFY18; built/running/exposed map incomplete = non-checker constraints)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (hollow running receipt; injection-shaped port; expose_port unprobed)
+RECOMMENDED_ACTION=P1-009 (numeric port guard + shell-interpolation audit) + P2-004 18th (running health check or honest unproven) + P2-009 3rd (package Windows path) + pidfile stop path or honest unsupported-stop
+
+---
+
+CAPABILITY_ID=TOOL-dev_server_start
+NAME=dev_server_start (DevServerTool, WebDevelopmentTools.ts:435)
+CATEGORY=tool/runtime-services-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/WebDevelopmentTools.ts
+IMPLEMENTATION=dev-server launcher (monorepo/nested root detection; vite/serve/npx commands; 0.0.0.0 bind; readiness wait up to 30s; returns ok:true + serverReady flag + URLs regardless); required:['cwd'] (missing-cwd honestly refuses -- fixed earlier bug)
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1; NOT router-excluded (only non-excluded trunk member)
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1 (catalog)
+EXECUTOR_REACHABLE=PARTIAL (refusal legs live; full start embargoed by design)
+EXECUTOR_EVIDENCE=LIVE (trunk_runtime.json, canonical, 2 legs 2x identical): {} -> honest needs-cwd; missing-cwd -> UNCAUGHT writeFileSync throw as internal_exception with stack (F128), landing in data/builds (sandbox-force). Full start code-cited: 0.0.0.0 bind, npx --yes download, vite.config.js side-effect write, ok:true/serverReady:false shape (F129)
+PERMISSION_REACHABLE=YES (medium auto-approved)
+PERMISSION_EVIDENCE=execute tier, medium
+INPUT_CONTRACT_VALID=PARTIAL (cwd required+honored; port coerced via Number() -- safe; command override unprobed)
+OUTPUT_CONTRACT_VALID=PARTIAL (refusals honest; started-unready shape maps passed = MISMATCH #13)
+EVIDENCE_PRODUCED=YES
+VERIFICATION_COMPATIBLE=N/A (never a checker -- static VERIFY18; started-unready maps passed = #13)
+CANONICAL_PATH_CONNECTED=YES (refusal path proven; serve path unprobed)
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (exception shape; full serve unprobed; bind/download/write review open)
+RECOMMENDED_ACTION=P2-022 (guard config write; honest bad-input shape) + MISMATCH #13 (verdict must honor serverReady:false) + bind/download review batch
+
+---
+
+CAPABILITY_ID=TOOL-project_run
+NAME=project_run (ProjectRunTool, ProjectRunTool.ts:1233)
+CATEGORY=tool/runtime-services-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/ProjectRunTool.ts
+IMPLEMENTATION=live preview runner (session/packaged/discovery resolution; no-guess guards; argv launcher without second shell; PORT/HOST env; readiness probe; static-bundle fallbacks; recorded-live adoption with PID/cwd gate; RUNNING map one-server-per-key); required:[]; live-gate-only CHECKER (ledger :740-747)
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1 BUT router-excluded (flag/catalog split)
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1 (catalog; router-side enforcement unprobed)
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_runtime.json, canonical, 6 legs 2x identical): empty/named-miss/missing-cwd/no-marker all honest no-guess ok:false; detected (node-entry auto, port 4300) + override (node server.js, forced 45982) -> ready:true with HTTP-200 token verified (F132). npx-serve/tsx detect branches + adoption/reconcile paths live-unprobed (embargo/read-only)
+PERMISSION_REACHABLE=YES (medium auto-approved)
+PERMISSION_EVIDENCE=execute tier, medium
+INPUT_CONTRACT_VALID=YES (cwd/command/port/projectQuery honored; port coerced; quoted-query assertion enforced)
+OUTPUT_CONTRACT_VALID=YES ({url,previewUrl,port,ready,pid,...} verified live; ready:true only after real HTTP answer)
+EVIDENCE_PRODUCED=YES (live URL receipt)
+VERIFICATION_COMPATIBLE=YES (live-gate-only checker -- static VERIFY18; receipt L5-PROVEN by run.detected/run.override; lifecycle bounded by F124)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=FULLY_WIRED at run-receipt level (adoption/reconcile/npx branches unprobed; stop path defective -- F124)
+RECOMMENDED_ACTION=P1-008 (stop verification -- the run half is proven, the stop half is not) + adoption-path live proof as follow-up
+
+---
+
+CAPABILITY_ID=TOOL-project_stop
+NAME=project_stop (ProjectStopTool, ProjectRunTool.ts:1876)
+CATEGORY=tool/runtime-services-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/ProjectRunTool.ts
+IMPLEMENTATION=live-server stopper (runKey = workspaceId||sessionId; RUNNING map lookup; killTree via taskkill /F /T on Windows; record deleted; stopped:true/false); required:[] (no inputs)
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1 BUT router-excluded (flag/catalog split)
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1 (catalog; router-side enforcement unprobed)
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_runtime.json, canonical, 5 legs 2x identical): idle/twice/final -> stopped:false idempotent (honest); after-static/after-override -> stopped:true on the SUCCESS log branch while the servers answer HTTP 200 (F124). Isolation: gateway taskkill returns {success:true,data:{ok:false,exitCode:1}} ignored by killTree; record deleted so retry is impossible. Observed failure partly sandbox-shaped (direct-taskkill control access-denied); code defects env-independent
+PERMISSION_REACHABLE=YES (medium auto-approved)
+PERMISSION_EVIDENCE=execute tier, medium
+INPUT_CONTRACT_VALID=YES (no inputs; key from context)
+OUTPUT_CONTRACT_VALID=NO (stopped:true does not imply dead -- unchecked kill + delete-on-failure + no liveness verify)
+EVIDENCE_PRODUCED=PARTIAL (receipt claims more than it proves)
+VERIFICATION_COMPATIBLE=N/A (never a checker -- static VERIFY18; stop shapes map passed on ok:true)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (idle path honest; kill path false-receipt)
+RECOMMENDED_ACTION=P1-008 (check kill result + verify death before stopped:true + keep record on failure + binary-independent kill)
+
+---
+
+END-OF-MUSE-DRAFT-ROWS=127 (117 individual + 8 group + 2 external-cited)
+COVERAGE-DISCLAIMER=This draft covers ONLY what Muse checkpoints 1-17 evidenced. Full matrix requires: per-trunk path stories (19 trunks PROPOSED in merge.json, 8 STORIED: files 10/10 + browser_ui 33/33 LEVEL-4 + testing_qa 6/6 LEVEL-4 + security 3/3 LEVEL-4 + code_understanding 16/16 LEVEL-4 + vcs_repo 11/11 LEVEL-4 + build_generate 13/13 LEVEL-4 + runtime_services 5/5 LEVEL-4), services/workers/persistence/deployment rows (NVIDIA scope), bulk per-tool firewall sweep (8 spot + 28 empty-input batch-1+2 + 19 risk-tier live + 16 trunk-files + 3 arch-backend + 26 browser live1/live2 + 30 browser live3 + 19 trunk-testing + 13 trunk-security + 36 trunk-code + 43 trunk-vcs + 45 trunk-build + 4 prog-batch3 + 23 trunk-runtime + 4 pages-approved done; 25/25 no-required reviewed: 18 SAFE + 1 BOUND + 4 EMBARGO with static fixture designs + 2 FIXTURE probed contained; browser_launch embargo partially lifted for contained-http; sonar/dep_audit/dead_code positives embargoed; code_reviewer non-quick + ALL github-network/git-network-push/import-clone/npm-qa legs embargoed; pipeline-named/setActiveRoot + mobile-default-cwd + full-stack-{} + react/api-full + ent/ori-default-root + page-model-present legs embargoed; risk table SURVEYED), contract audit per boundary (13 mismatches + schema/execute family), LEVEL 5-6 proofs (L5 done files+browser_ui + project_run live-gate receipt; testing_qa + security + code_understanding static-only, 5 checkers pending; vcs_repo + build_generate static-only with 0 checkers each), and NVIDIA cross-review (pending — worker on CLI-BATCH1 + audit slice).

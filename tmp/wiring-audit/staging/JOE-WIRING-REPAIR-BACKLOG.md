@@ -99,6 +99,31 @@ DEPENDENCIES=none (P2-006 extensions ride here for the planner-reachable writers
 
 ---
 
+BATCH_ID=WIRING-P1-008
+CAPABILITIES=project_stop kill verification (stopped:true must imply dead) + deploy pidfile stop path
+ROOT_CAUSE=killTree awaits the taskkill gateway call but never checks the result (ProjectRunTool.ts:1767), and stopServer returns true + deletes the RUNNING record even when the kill throws (:1861-1872 fall-through). Proven live 2x (018/F124): stopped:true on the SUCCESS log branch with HTTP-200-after + record deleted (retry impossible). Isolation: gateway returns {success:true,data:{ok:false,exitCode:1}} (taskkill failed silently under stdio:ignore); direct-taskkill control fails access-denied in this sandbox -- observed receipt partly sandbox-shaped, code defects environment-independent. Companion: deploy start_server writes .joe_server.pid never read anywhere (F125 orphan-by-design).
+FILES=ProjectRunTool.ts killTree/stopServer (check result; verify death via port-closed/pid-gone before stopped:true; keep record on failure; binary-independent kill path) + DeployProjectTool pidfile (stop path or honest unsupported-stop) + stop contract tests
+IMPLEMENTATION_OWNER=UNASSIGNED
+REVIEW_OWNER=UNASSIGNED
+TESTS=stop-after-run RED->GREEN (HTTP-200-before/refused-after + record-kept-on-failure + retry-works); kill-failure-injection (forced taskkill failure -> honest stop_failed, record kept); deploy pidfile stop-or-honest; AGENTS gates
+REAL_JOE_UAT=run-then-stop through real Joe UI with independent port checks (unsandboxed host for the taskkill half + sandbox for the defense-in-depth half)
+ROLLBACK=revert stop diff
+DEPENDENCIES=none
+
+---
+
+BATCH_ID=WIRING-P1-009
+CAPABILITIES=deploy expose_port shell-interpolation guard (+ trunk interpolation audit)
+ROOT_CAUSE=`lt --port ${port}` with shell:true (DeployProjectTool.ts:192-204) where port = input.port || 3000 with NO numeric validation in execute(); ToolService performs NO inputSchema validation (zero references), so type:number is decorative. Static + gateway-shape verified (018/F126); live-unprobed (public-tunnel embargo). Gated today by high-risk approval (expose_port -> high), but approval authorizes tunneling, not shell.
+FILES=DeployProjectTool.ts (numeric port guard; quote/validate all interpolations; `which lt` portability + no silent global install) + audit every interpolation into shell:true in runtime_services + ToolService inputSchema enforcement as the systemic fix (separate decision) + contract tests
+IMPLEMENTATION_OWNER=UNASSIGNED
+REVIEW_OWNER=UNASSIGNED
+TESTS=non-numeric-port RED->GREEN (rejected before spawn, no-process-start assertion); expose_port positives only with loopback-safe doubles (no public tunnel in tests); AGENTS gates
+REAL_JOE_UAT=none for the tunnel itself (must not open public URLs in UAT); negative-shape verification via local harness only
+ROLLBACK=revert guard
+DEPENDENCIES=none
+---
+
 BATCH_ID=WIRING-P2-001
 CAPABILITIES=memory-tool dual implementation (recall_memory, memorize_codebase)
 ROOT_CAUSE=registry defs added without removing ToolService inline handlers (or vice versa); inline path bypasses firewall/permissions; implementations already diverge on validation
@@ -153,7 +178,7 @@ DEPENDENCIES=none
 
 BATCH_ID=WIRING-P2-004
 CAPABILITIES=schema/execute consistency (task_lifecycle required-vs-default gap) + empty-input honesty sweep continuation (25/25 reviewed, 19 probed live in sweep2.json; risk-tier 19 in sweep3.json; files-trunk 16 live in trunk_files.json; testing_qa 19 live in trunk_testing.json; security-trunk 13 live in trunk_security.json; code-trunk 36 live in trunk_code.json)
-ROOT_CAUSE=task_lifecycle declares required:['action'] but execute() defaults action='update' and returns ok:true on {} (sweep1.json, rerun-stable); no central schema gate — validation is per-tool; 25 no-required tools PARTITIONED 18 SAFE + 1 BOUND + 4 EMBARGO (static fixture designs in 008) + 2 FIXTURE (probed contained in 008). Absence-as-success shape: project_stop/orders_read/form_inbox/browser_consent return ok:true for absence (honest messages; ok-only verifiers would misread) + read_file {} returns ok:true EMPTY directory auto-list (sweep3.json, rerun-stable — 5th instance) + project_edit no-project returns ok:true 'No active project' message (trunk_files.json, live — 6th instance) + test_generator .ts-under-node-runner returns ok:true + generated:false/skipped:true (trunk_testing.json, live 2x — 7th instance, 013/F80) + secrets_scan_repo nonexistent-path returns ok:true findings:[] scannedFiles:0, byte-identical to clean (trunk_security.json, live 2x — 8th instance, 014/F85) + analyze_project missing-path returns ok:true + {status:'error'} (trunk_code.json, live 2x — 9th instance, 015/F94; both AnalysisTools siblings return honest ok:false) + pattern_recognize no-language returns ok:true + patterns:[] (trunk_code.json, live 2x — 10th instance, 015/F96) + auto_refactor sort-only returns ok:true + changes:[] with zero effect (trunk_code.json, live 2x — 11th instance, no-op success, 015/F97) + github_actions bogus-type returns ok:true with node-ci CONTENT under the bogus name (trunk_vcs.json, live 2x — 12th instance, silent substitution, 016/F103) + import_project no-URL returns ok:true + guidance message with zero effect (trunk_vcs.json, live 2x — 13th instance, guidance-pass, 016/F104) + auth_builder out-of-enum 'saml' returns ok:true "generated" with a 2-file stub missing its type branch (trunk_build.json, live 2x — 14th instance, degraded stub, 017/F113) + scaffold_full_stack name-defaults to my-app + accepts 'cobol' type with identical output (trunk_build.json, live 2x — 15th instance, silent defaults, 017/F115) + scaffold_project traversal-key ok:true with escaped file + base-naming receipt (trunk_build.json, live 2x — 16th instance, receipt/base mismatch, 017/F111) + scaffold_project {} returns ok:true + created:[] with zero effect (trunk_build.json, live 2x — 17th instance, no-op ok, 017). Decorative-required instances: task_lifecycle (above) + secrets_scan_repo required:['path'] never enforced — missing path maps to default-workspace scan (pure mapping proof, 014/F86; session escape) + pattern_recognize required:['code','language'] with language never enforced (live 2x, 015/F96). project_undo default-latest-restore code-indicated (ProjectUndoTool.ts:98-100), fixture-unconfirmed.
+ROOT_CAUSE=task_lifecycle declares required:['action'] but execute() defaults action='update' and returns ok:true on {} (sweep1.json, rerun-stable); no central schema gate — validation is per-tool; 25 no-required tools PARTITIONED 18 SAFE + 1 BOUND + 4 EMBARGO (static fixture designs in 008) + 2 FIXTURE (probed contained in 008). Absence-as-success shape: project_stop/orders_read/form_inbox/browser_consent return ok:true for absence (honest messages; ok-only verifiers would misread) + read_file {} returns ok:true EMPTY directory auto-list (sweep3.json, rerun-stable — 5th instance) + project_edit no-project returns ok:true 'No active project' message (trunk_files.json, live — 6th instance) + test_generator .ts-under-node-runner returns ok:true + generated:false/skipped:true (trunk_testing.json, live 2x — 7th instance, 013/F80) + secrets_scan_repo nonexistent-path returns ok:true findings:[] scannedFiles:0, byte-identical to clean (trunk_security.json, live 2x — 8th instance, 014/F85) + analyze_project missing-path returns ok:true + {status:'error'} (trunk_code.json, live 2x — 9th instance, 015/F94; both AnalysisTools siblings return honest ok:false) + pattern_recognize no-language returns ok:true + patterns:[] (trunk_code.json, live 2x — 10th instance, 015/F96) + auto_refactor sort-only returns ok:true + changes:[] with zero effect (trunk_code.json, live 2x — 11th instance, no-op success, 015/F97) + github_actions bogus-type returns ok:true with node-ci CONTENT under the bogus name (trunk_vcs.json, live 2x — 12th instance, silent substitution, 016/F103) + import_project no-URL returns ok:true + guidance message with zero effect (trunk_vcs.json, live 2x — 13th instance, guidance-pass, 016/F104) + auth_builder out-of-enum 'saml' returns ok:true "generated" with a 2-file stub missing its type branch (trunk_build.json, live 2x — 14th instance, degraded stub, 017/F113) + scaffold_full_stack name-defaults to my-app + accepts 'cobol' type with identical output (trunk_build.json, live 2x — 15th instance, silent defaults, 017/F115) + scaffold_project traversal-key ok:true with escaped file + base-naming receipt (trunk_build.json, live 2x — 16th instance, receipt/base mismatch, 017/F111) + scaffold_project {} returns ok:true + created:[] with zero effect (trunk_build.json, live 2x — 17th instance, no-op ok, 017) + deploy_project start_server returns ok:true/running + localhost URL for a dead port with no health check (trunk_runtime.json, live 2x - 18th instance, hollow running, 018/F125). Decorative-required instances: task_lifecycle (above) + secrets_scan_repo required:['path'] never enforced — missing path maps to default-workspace scan (pure mapping proof, 014/F86; session escape) + pattern_recognize required:['code','language'] with language never enforced (live 2x, 015/F96). project_undo default-latest-restore code-indicated (ProjectUndoTool.ts:98-100), fixture-unconfirmed.
 FILES=TaskLifecycleTool.ts (enforce required OR drop it from schema) + SecretsScanRepoTool (QualityTools.ts:284-285: enforce required path; honest nonexistent-path error like SecurityScannerTool.ts:100-104) + AnalyzeProjectTool (AnalysisTools.ts:61-63: surface Analyst status:error as ok:false like siblings) + PatternRecognitionTool (AdvancedTools.ts:43-55: enforce language OR drop from required) + AutoRefactorTool (AdvancedTools.ts:279-285: report/apply pure sorts OR return honest no-op) + GitHubActionsTool (GitHubActionsTool.ts:97-106: honest error on unknown type OR emit the fallback name truthfully — rides WIRING-P1-006) + absence-as-success verifier note — EVIDENCED 012/F69: verdict mapping is ok/error-only and content-blind for all 43 swept tools (passed = check executed, never = requested behavior observed; hollow-pass shapes: 6 absence-instances + extract-swallow + empty-search-answer, all mapping in the safe direction) + EXTENDED 013/F75: quality_run all-skipped maps to failed, not incomplete (verdict is skip-blind too — a gate with nothing to check is indistinguishable from a gate that failed) + EXTENDED 014/F85: secrets missing-path-as-clean (8th absence instance) + 014/F86 decorative-required with session escape + EXTENDED 015/F94/F96/F97: 9th/10th/11th absence/no-op instances + 3rd decorative-required + project_undo snapshot fixture
 IMPLEMENTATION_OWNER=UNASSIGNED
 REVIEW_OWNER=UNASSIGNED
@@ -218,7 +243,7 @@ DEPENDENCIES=none
 
 BATCH_ID=WIRING-P2-009
 CAPABILITIES=archive_files zip backend portability + swallowed failure cause
-ROOT_CAUSE=zip create shells `zip -r ... 2>/dev/null || true` (ArchiveFilesTool.ts:92): no `zip` binary on Windows, `|| true` swallows the failure, then statSync on the never-created archive throws ENOENT surfaced as 'Archive operation failed: ENOENT ... stat b.zip' — 'tool missing' misreported as 'archive missing'. Proven live: zip create 0/2, tar.gz create+list ok:true on the same fixture (trunk_files.json + arch2.json). Secondary: tar.gz list shows absolute-source path stored in archive (extraction-path review).
+ROOT_CAUSE=zip create shells `zip -r ... 2>/dev/null || true` (ArchiveFilesTool.ts:92): no `zip` binary on Windows, `|| true` swallows the failure, then statSync on the never-created archive throws ENOENT surfaced as 'Archive operation failed: ENOENT ... stat b.zip' — 'tool missing' misreported as 'archive missing'. Proven live: zip create 0/2, tar.gz create+list ok:true on the same fixture (trunk_files.json + arch2.json). Secondary: tar.gz list shows absolute-source path stored in archive (extraction-path review). 3rd instance: deploy_project package on Windows returns raw stat ENOENT with no zip created (trunk_runtime.json, live 2x, 018/F127).
 FILES=ArchiveFilesTool.ts (zip backend: bundled dep / documented prereq / tar fallback; remove `|| true`; honest binary-missing error; review absolute-source storage) + backend contract test
 IMPLEMENTATION_OWNER=UNASSIGNED
 REVIEW_OWNER=UNASSIGNED
@@ -382,6 +407,19 @@ TESTS=file-target contract test (existing file as projectPath -> scans that file
 REAL_JOE_UAT=none (tool-local contract; planner-visible behavior improves only for file targets)
 ROLLBACK=revert resolver/vocabulary change
 DEPENDENCIES=none
+
+---
+
+BATCH_ID=WIRING-P2-022
+CAPABILITIES=dev_server_start missing-path exception shape (unguarded config write)
+ROOT_CAUSE=fallback branch writes vite.config.js into a never-created directory with no guard (WebDevelopmentTools.ts:527-534); the ENOENT throw escapes as internal_exception with a stack for a bad input. Proven live 2x (018/F128). Same leg re-proves the sandbox-force landing (data/builds) from F114/P1-007.
+FILES=WebDevelopmentTools.ts DevServerTool (guard the config write path; honest bad-input error, no stack) + shape test
+IMPLEMENTATION_OWNER=UNASSIGNED
+REVIEW_OWNER=UNASSIGNED
+TESTS=missing-cwd RED->GREEN (honest ok:false, no internal_exception, nothing written); AGENTS gates
+REAL_JOE_UAT=none (tool-local shape)
+ROLLBACK=revert guard
+DEPENDENCIES=none (P1-007 owns the sandbox-force rule itself)
 
 ---
 

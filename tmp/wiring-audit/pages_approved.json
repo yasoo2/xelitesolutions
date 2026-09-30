@@ -1,0 +1,29 @@
+{
+  "live": {
+    "pagesA.empty": {
+      "ok": false,
+      "error": "GitHub غير مربوط. اربط حسابك بتوكن أولاً لينشر جو مشروعك.",
+      "outputShape": "{needsConnect}",
+      "outputPreview": "{\"needsConnect\":true}"
+    },
+    "pagesA.missing-cwd": {
+      "ok": false,
+      "error": "مسار المشروع غير موجود: D:\\Joe\\muse-worktree\\data\\projects\\session-audit-sess\\wiring-pages-fx\\missing",
+      "outputShape": "null",
+      "outputPreview": null
+    },
+    "pagesA.backend-unreached": {
+      "ok": false,
+      "error": "GitHub غير مربوط. اربط حسابك بتوكن أولاً لينشر جو مشروعك.",
+      "outputShape": "{needsConnect}",
+      "outputPreview": "{\"needsConnect\":true}"
+    },
+    "pagesA.explicit-repo-no-token": {
+      "ok": false,
+      "error": "GitHub غير مربوط. اربط حسابك بتوكن أولاً لينشر جو مشروعك.",
+      "outputShape": "{needsConnect}",
+      "outputPreview": "{\"needsConnect\":true}"
+    }
+  },
+  "removed": true
+}

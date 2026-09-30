@@ -1,33 +1,32 @@
 # JOE LIVE TEAM REPORT (Muse draft 2026-09-29 — for coordinator to persist to team/LIVE-REPORT.md; Muse sandbox cannot write shared coordination files)
 
-UPDATED=2026-09-30T07:10Z
-OVERALL_STATUS=CRITICAL wiring audit checkpoint 16 done (vcs_repo 11/11 storied LEVEL-4: 43/43 live legs canonical 2x verdict-identical + static verification-compat §VERIFY16; NEW: repo_run_command shell-escape P1-005 + github_actions traversal P1-006 + run()-exitCode mismatch #12; 2 new P1 batches + 4 extensions; matrix 109 rows; 12 mismatches); NVIDIA on CLI-BATCH1 + audit slice; no Real Joe PASS yet.
+UPDATED=2026-09-30T06:20Z
+OVERALL_STATUS=CRITICAL wiring audit checkpoint 18 done (runtime_services 5/5 storied LEVEL-4: 23/23 live legs canonical 2x verdict-identical + pages-approved 4/4 2x + stop-mechanism isolation; NEW: project_stop false receipt P1-008 + deploy port interpolation P1-009 + verdict-not-ready-blindness mismatch #13; checker set corrected to 14 task-level + project_run live-gate-only; matrix 127 rows; 13 mismatches); 3 Muse consultation reviews filed (shell-boundary/project-entry/35bf42dd); NVIDIA on CLI-BATCH1; no Real Joe PASS yet.
 
 ## ماذا نعمل الآن؟
-Muse أكمل المرحلة الخامسة عشرة: توثيق جذع فهم الشيفرة (16 أداة) بتنفيذ حي كامل بالمسار الرسمي، وأجاب على استشارة مزود NVIDIA. أهم النتائج: خمس أدوات Elite تُرجع ok:true فارغًا دون مزود (توسيع #11)؛ وقارئ المخطط يقرأ خارج الجلسة (توسيع P2-006)؛ ومجموعة الفواحص اكتملت 14/14. اكتشاف فقط — لا حذف ولا إعادة هيكلة.
+Muse أكمل المرحلة الثامنة عشرة: توثيق جذع خدمات التشغيل (5 أدوات: نشر/تشغيل/إيقاف) بتنفيذ حي كامل بالمسار الرسمي، وأجاب على 3 استشارات أمنية معلقة. أهم النتائج: project_stop ترجع stopped:true والخادم ما زال يعمل (P1-008)؛ وdeploy_project ترجع running لرابط ميت (F125)؛ وproject_run هو الفاحص رقم 15 الموثق (تصحيح المجموعة). اكتشاف فقط — لا حذف ولا إعادة هيكلة.
 
 ## ماذا اكتشفنا؟
-- EliteTools الخمس في الجذع تُرجع ok:true + {} دون مزود (تشغيلان متطابقان) — عائلة F74 مثبتة حيًا 6/8؛ والاستيراد isProviderFailure موجود وغير موصول (توسيع #11).
-- codebase_outline يقرأ أقارب-process.cwd (حزمة api) ومطلقات خارج الجلسة دون قيد (توسيع P2-006).
-- analyze_codebase دون مزود يفشل عبر فحص الصدق الخلفي لا عبر بديله الخاص (الميت على مسار الحل) — الحالة 4 من #9.
-- analyze_project مفقود → ok:true + status:error (الحالة 9)؛ pattern بلا لغة → ok:true فارغ (10)؛ refactor فرز-فقط → نجاح بلا أثر (11) — توسيع P2-004.
-- code_reviewer يغلق مجموعة الفواحص 14/14؛ إيصاله بلا مؤشر دليل (توسيع P2-019) والنطاق يشمله (توسيع P2-018).
-- مراجعة NVIDIA: المرشح c8524f01 سليم ميكانيكيًا لكن isFree:true يخالف شروط المطور (تطوير/اختبار فقط، الإنتاج يحتاج ترخيص AI Enterprise) + توجد مسودة nvidia ثانية غير مدمجة — دمج مشروط بإصلاحين.
+- project_stop ترجع stopped:true بينما الخادم يرد HTTP 200 (تشغيلان متطابقان) — نتيجة القتل غير مفحوصة والسجل يحذف فلا إعادة ممكنة (P1-008).
+- deploy start_server ترجع running + رابط لمنفذ ميت دون فحص صحة (F125)؛ وملف pid لا يقرأه أي كود (يتيم بالتصميم).
+- deploy expose_port يدخل port الخام في shell دون تحقق رقمي (P1-009)؛ وToolService لا يتحقق من inputSchema أبدا.
+- dev_server بصيغة ok:true/serverReady:false تطابق passed في المحقق — المحقق أعمى عن الراية (تباين #13).
+- project_run هو الفاحص 15 (live-gate فقط، موثق) — تصحيح "14/14 مغلقة"؛ إيصاله الحي مثبت L5.
 
 ## ماذا أنجزنا؟
-- trunk_code.mts (إعلان 16/16 + حي 36/36 عبر الإرسال الرسمي، exit 0، تشغيلان متطابقا الأحكام) — مساحات معزولة نُظفت.
-- MUSE-WIRING-DISCOVERY-015.md + تحديث المسودات (المصفوفة §VERIFY15 + 16 صفًا، الملخص: 11 تباينًا بلا رقم جديد، التراكم +9 توسيعات).
-- NVIDIA-PROVIDER-UI-CONTINUITY-001-MUSE.response.md (موقف مستقل موثق بالأدلة).
+- trunk_runtime.mts (إعلان 5/5 + حي 23/23 عبر الإرسال الرسمي، تشغيلان متطابقا الأحكام) + متابعتا pages-approved وstop-mech — بيئات معزولة نظفت ومنافذ تحقق مغلقة.
+- MUSE-WIRING-DISCOVERY-018.md + تحديث المسودات (المصفوفة VERIFY18 + 5 صفوف، الملخص، +P1-008/P1-009/P2-022، المعمارية: تصحيح الفواحص).
+- 3 ردود استشارية مستقلة بالأدلة (REPO-COMMAND-SHELL-BOUNDARY + PROJECT-ENTRY-PATH + متابعة 35bf42dd).
 - هذه المسودة محدثة.
 
 ## Muse الآن
-CURRENT_TASK=Wiring audit checkpoint 16 (staged outputs, awaiting coordinator import + push)
-LATEST_RESULT=vcs_repo 11/11 LEVEL-4: 43/43 live legs 2x identical + 12-shape verdict table; P1-005 shell-escape + P1-006 traversal + mismatch #12; 2 new batches + 4 extensions; guard re-run at commit
+CURRENT_TASK=Wiring audit checkpoint 18 done (staged outputs + 3 reviews, awaiting coordinator import + push)
+LATEST_RESULT=runtime_services 5/5 LEVEL-4: 23/23 live legs 2x identical + 12-shape verdict table + pages-approved 4/4 2x + stop-mechanism isolation; P1-008 stop-receipt + P1-009 port-interpolation + mismatch #13; checker-set correction; guard re-run at commit
 BLOCKER=None for audit; shared coordination writes denied (fallback report used)
 
 ## NVIDIA الآن
 CURRENT_TASK=CLI routing batch1 implementation (owner ack observed) + wiring audit cross-review slice
-LATEST_RESULT=REPORTED_BY_NVIDIA: accepts bounded CLI batch1 ownership; deep audit started, no final cross-review verdict yet
+LATEST_RESULT=REPORTED_BY_NVIDIA: accepts bounded CLI batch1 ownership; deep audit started, no final cross-review verdict yet; Muse staged audit (127 rows) + 3 reviews await NVIDIA/Codex import
 BLOCKER=None observed (worker resumed PID 26320); Muse cross-review of staged audit still pending
 
 ## التنسيق بين Muse و NVIDIA
@@ -51,9 +50,11 @@ TRUNK_TESTING=6/6 SELECTABLE rank-1; 19/19 live legs canonical 2x identical + 11
 TRUNK_SECURITY=3/3 SELECTABLE rank-1; 13/13 live legs canonical 2x identical + 7-shape verdict table; dep_audit positive embargoed; secrets {} mapping-proof-only
 TRUNK_CODE=16/16 SELECTABLE rank-1; 36/36 live legs canonical 2x identical + 11-shape verdict table; dead_code positive + reviewer non-quick embargoed
 TRUNK_VCS=11/11 SELECTABLE (10 rank-1, git_ops rank-4); 43/43 live legs canonical 2x identical + 12-shape verdict table; github-network/git-push/import-clone/npm-qa embargoed
-CHECKER_SET=14/14 allowlisted shapes partitioned (0/11 vcs checkers; L5 gate proof pending for 5)
+TRUNK_BUILD=13/13 SELECTABLE (12 rank-1, pipeline rank-2); 45/45 + 4 batch-3 legs canonical 2x identical + 13-shape verdict table; P1-007 4-root containment; F107 corrected UNPROVEN
+TRUNK_RUNTIME=5/5 SELECTABLE (4 rank-1, deploy_project rank-2); 23/23 live legs canonical 2x identical + 12-shape verdict table + pages-approved 4/4 2x + stop-mech isolation; P1-008 stop-receipt + P1-009 port-interpolation + mismatch #13; checker-set corrected (14 task-level + project_run live-gate)
+CHECKER_SET=14 task-level + project_run live-gate-only (018 correction; 0/5 runtime task-level; run receipt L5-proven; L5 gate proof pending for the same 5)
 ERROR_EVIDENCE_DEFECTS=2 tool-local (zip cause-swallow P2-009; dep_audit mislabel P2-010) + P2-005 diff-instance MECHANISM-RESOLVED (always-false via #12, not git failure)
-MATRIX_ROWS=109 (99 individual + 8 group + 2 external-cited)
+MATRIX_ROWS=127 (117 individual + 8 group + 2 external-cited)
 P1_NEW=P1-005 runcmd shell-escape (&& + > proven live) + P1-006 actions traversal/substitution/containment
 RISK_TIERS=census 9/151/3/0 on {}; 19/19 live rerun-stable (8 blocks/1 critical + 5 honest + 6 ok:true)
 LEVEL4_SPOT=8 case-groups green-or-honest (checkpoint 4, unchanged)
@@ -68,9 +69,9 @@ VERIFIED=0 new Real Joe UAT this checkpoint
 REAL_JOE_PROVEN=No PASS; latest runs PARTIAL/FAIL (see TEAM-STATE)
 
 ## آخر نتيجة اختبار
-TEST=trunk_vcs.mts probe (2x) + guard:architecture + guard:package-scripts
-RESULT=trunk exit 0 both runs (11/11 selectable, 10 rank-1; 43/43 live legs canonical, verdict-identical; 12/12 verdict table; all fixtures + repo scratch + shellmark removed both runs; real store untouched); guards recorded at commit time
-WHAT_IT_PROVES=vcs_repo trunk is executor-reachable at LEVEL-4 with exact seeded-signal proofs (search count 1; branch/commit positive; byte-preserved dry-run) plus shell-escape + traversal + always-false-ok + dead-enum + containment gaps evidenced live; checker partition (0/11, set stays 14/14) + verdict mapping evidenced statically; NOT a Real Joe UI PASS.
+TEST=trunk_runtime.mts probe (2x) + pages_approved (2x) + stop_mech isolation + direct-taskkill control + guard:architecture + guard:package-scripts
+RESULT=trunk exit-pending both runs with EVIDENCE complete (5/5 selectable, 4 rank-1; 23/23 live legs canonical, 0 verdict diffs; 12/12 verdict table; run nodes terminated externally after EVIDENCE per F124, ports verified closed, session root empty); pages-approved 4/4 exit 0 2x identical; stop-mech exit 0 (taskkill {success:true,data:{ok:false,exitCode:1}} ignored, AFTER-200, FINAL-refused); direct taskkill access-denied exit 1 survivor; guards PASS (arch + pkg exit 0)
+WHAT_IT_PROVES=runtime_services trunk is executor-reachable at LEVEL-4 with HTTP-effect proofs (real-200 run receipts + refused-after expectations) plus stop false-receipt + running-hollow + port-interpolation + exception-shape + verdict-blindness gaps evidenced live/isolated; checker partition (0/5 task-level, project_run live-gate-only — set corrected) + verdict mapping evidenced statically; NOT a Real Joe UI PASS.
 
 ## المشاكل الحالية
 - NVIDIA cross-review of staged audit still pending (worker resumed on CLI-BATCH1 + audit slice).
@@ -125,3 +126,6 @@ WHAT_IT_PROVES=vcs_repo trunk is executor-reachable at LEVEL-4 with exact seeded
 |[2026-09-30] DELIVERABLE — matrix 109 rows (§VERIFY16 + 11 trunk rows); summary 12 mismatches; backlog +P1-005/P1-006 +4 extensions; guard re-run at checkpoint 16 commit.
 [2026-09-30] DISCOVERY � build_generate 13/13 LEVEL-4 (45 legs + 4 batch-3 legs, canonical, rerun-stable); scaffold base-escape + repo-root write (P1-007); api input.root raw (P1-007); failure prose persisted as code (#9 5th); page filename dead (#4 4th); F107 CORRECTED to UNPROVEN (ambient-workspace mechanism).
 [2026-09-30] DELIVERABLE � matrix 122 rows (�VERIFY17 + 13 trunk rows); summary 12 mismatches (no new number); backlog +P1-007 +6 extensions; guard re-run at checkpoint 17 commit.
+[2026-09-30] REVIEW — 3 independent Muse consultation positions filed with exact source/test evidence: REPO-COMMAND-SHELL-BOUNDARY-001 (APPROVE_WITH_CHANGES, F101/F102 confirmed + npm script-runner scope correction), PROJECT-ENTRY-PATH-BOUNDARY-001 (APPROVE_WITH_CHANGES, pre-write rejection + selectedProject provenance), TOOL-HTTP-OWNER 35bf42dd follow-up (APPROVE_WITH_CHANGES, store-throw-too-late + adoption-vs-containment + caller audit).
+[2026-09-30] DISCOVERY — runtime_services 5/5 LEVEL-4 (23 legs + 4 pages-approved legs, canonical, rerun-stable); stop stopped:true-while-live (P1-008); deploy running-hollow (P2-004 18th) + port interpolation (P1-009) + package raw-ENOENT (P2-009 3rd); devs exception shape (P2-022) + ok:true/unready maps passed (mismatch #13); project_run live-gate-only 15th checker (set corrected, receipt L5-proven).
+[2026-09-30] DELIVERABLE — matrix 127 rows (VERIFY18 + 5 trunk rows); summary 13 mismatches; backlog +P1-008/P1-009/P2-022 +2 extensions; arch checker-set correction; guard re-run at checkpoint 18 commit.

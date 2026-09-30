@@ -1,0 +1,469 @@
+{
+  "decl": {
+    "deploy_pages": {
+      "descriptionHead": "Deploy a static/frontend build permanently and FREE to GitHub Pages (reuses the connected token). Returns a permanent https://<owner>.github.io/<repo>/ URL. Bac",
+      "tags": [
+        "deploy",
+        "publish",
+        "github-pages",
+        "permanent",
+        "hosting"
+      ],
+      "required": null,
+      "properties": [
+        "cwd",
+        "repo",
+        "buildCommand"
+      ],
+      "permissions": [
+        "execute",
+        "internet"
+      ],
+      "sideEffects": [
+        "execute",
+        "internet"
+      ],
+      "rateLimitPerMinute": 4,
+      "routerExcluded": true,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "deploy_pages:21.9",
+        "deploy_project:10.4",
+        "ask_user:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "deploy_project": {
+      "descriptionHead": "Deploy a project or expose a local service for public access. Actions: \"expose_port\" to create a temporary public URL for a local port, \"build_static\" to build ",
+      "tags": [
+        "deploy",
+        "hosting",
+        "port",
+        "server",
+        "production"
+      ],
+      "required": [
+        "action",
+        "projectPath"
+      ],
+      "properties": [
+        "action",
+        "projectPath",
+        "port",
+        "buildCommand",
+        "startCommand",
+        "outputDir"
+      ],
+      "permissions": [
+        "execute",
+        "write",
+        "internet"
+      ],
+      "sideEffects": [
+        "execute",
+        "write"
+      ],
+      "rateLimitPerMinute": 10,
+      "routerExcluded": true,
+      "priorityListed": true,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 2,
+      "bestRankFull": 2,
+      "top3SelfName": [
+        "deploy_pages:21.9",
+        "deploy_project:13.1",
+        "ask_user:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "dev_server_start": {
+      "descriptionHead": "Start a development server for a project.",
+      "tags": [
+        "dev",
+        "server",
+        "preview"
+      ],
+      "required": [
+        "cwd"
+      ],
+      "properties": [
+        "cwd",
+        "command",
+        "port"
+      ],
+      "permissions": [
+        "execute"
+      ],
+      "sideEffects": [
+        "execute"
+      ],
+      "rateLimitPerMinute": 15,
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "dev_server_start:21.6",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "project_run": {
+      "descriptionHead": "Run the built project as a LIVE server (Node/React/full-stack/static), wait until it responds, and open its live preview. Use to actually start and view a syste",
+      "tags": [
+        "run",
+        "server",
+        "preview",
+        "live"
+      ],
+      "required": null,
+      "properties": [
+        "cwd",
+        "command",
+        "port",
+        "projectQuery"
+      ],
+      "permissions": [
+        "execute"
+      ],
+      "sideEffects": [
+        "execute"
+      ],
+      "rateLimitPerMinute": 10,
+      "routerExcluded": true,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "project_run:9.7",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": true
+    },
+    "project_stop": {
+      "descriptionHead": "Stop the live server started by project_run for the current project.",
+      "tags": [
+        "run",
+        "server",
+        "stop"
+      ],
+      "required": null,
+      "properties": [],
+      "permissions": [
+        "execute"
+      ],
+      "sideEffects": [
+        "execute"
+      ],
+      "rateLimitPerMinute": 20,
+      "routerExcluded": true,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "project_stop:11.7",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    }
+  },
+  "verdictTable": {
+    "pages needs-connect": "failed",
+    "pages deployed": "passed",
+    "deploy built": "incomplete",
+    "deploy running": "incomplete",
+    "deploy exposed": "incomplete",
+    "deploy unknown-action": "failed",
+    "devs needs-cwd": "failed",
+    "devs started-unready": "passed",
+    "run live": "passed",
+    "run no-project": "failed",
+    "stop idle": "passed",
+    "stop done": "passed"
+  },
+  "live": {
+    "stop.idle": {
+      "input": "{}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{stopped,message}",
+      "outputPreview": "{\"stopped\":false,\"message\":\"لا يوجد خادم يعمل لهذا المشروع.\"}",
+      "log0": "[2026-09-30T05:59:04.059Z] start project_stop (orig=project_stop)",
+      "logN": 1
+    },
+    "run.empty": {
+      "input": "{}",
+      "ok": false,
+      "error": "لا يوجد مشروع قابل للتشغيل في D:\\Joe\\muse-worktree\\data\\projects\\session-audit-sess — ابنِ مشروعاً أولاً أو مرّر cwd.",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T05:59:04.266Z] start project_run (orig=project_run)",
+      "logN": 1
+    },
+    "pages.empty": {
+      "input": "{}",
+      "ok": false,
+      "error": "approval_required",
+      "outputShape": "{risk}",
+      "outputPreview": "{\"risk\":\"high\"}",
+      "log0": "[2026-09-30T05:59:04.355Z] start deploy_pages (orig=deploy_pages)",
+      "logN": 2
+    },
+    "pages.missing-cwd": {
+      "input": "{\"cwd\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-runtime-fx\\\\missing-pages\"}",
+      "ok": false,
+      "error": "approval_required",
+      "outputShape": "{risk}",
+      "outputPreview": "{\"risk\":\"high\"}",
+      "log0": "[2026-09-30T05:59:04.447Z] start deploy_pages (orig=deploy_pages)",
+      "logN": 2
+    },
+    "pages.backend-unreached": {
+      "input": "{\"cwd\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-runtime-fx\\\\backend1\"}",
+      "ok": false,
+      "error": "approval_required",
+      "outputShape": "{risk}",
+      "outputPreview": "{\"risk\":\"high\"}",
+      "log0": "[2026-09-30T05:59:04.506Z] start deploy_pages (orig=deploy_pages)",
+      "logN": 2
+    },
+    "proj.empty": {
+      "input": "{}",
+      "ok": false,
+      "error": "Project path is required and must be workspace-relative.",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T05:59:04.517Z] start deploy_project (orig=deploy_project)",
+      "logN": 1
+    },
+    "proj.missing": {
+      "input": "{\"action\":\"package\",\"projectPath\":\"wiring-runtime-fx/missing-proj\"}",
+      "ok": false,
+      "error": "Project path not found: wiring-runtime-fx/missing-proj",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T05:59:04.535Z] start deploy_project (orig=deploy_project)",
+      "logN": 1
+    },
+    "proj.traversal": {
+      "input": "{\"action\":\"package\",\"projectPath\":\"../../wiring-runtime-evil18.txt\"}",
+      "ok": false,
+      "error": "Project path not found: ../../wiring-runtime-evil18.txt",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T05:59:04.581Z] start deploy_project (orig=deploy_project)",
+      "logN": 1
+    },
+    "proj.bogus-action": {
+      "input": "{\"action\":\"teleport\",\"projectPath\":\"wiring-runtime-fx/pkg1\"}",
+      "ok": false,
+      "error": "Unknown action: teleport",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T05:59:04.626Z] start deploy_project (orig=deploy_project)",
+      "logN": 1
+    },
+    "proj.package-contained": {
+      "input": "{\"action\":\"package\",\"projectPath\":\"wiring-runtime-fx/pkg1\"}",
+      "ok": false,
+      "error": "Deployment failed: ENOENT: no such file or directory, stat 'D:\\Joe\\muse-worktree\\data\\projects\\session-audit-sess\\wiring-runtime-fx\\pkg1\\pkg1_package.zip'",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T05:59:04.647Z] start deploy_project (orig=deploy_project)",
+      "logN": 2
+    },
+    "proj.build-contained": {
+      "input": "{\"action\":\"build_static\",\"projectPath\":\"wiring-runtime-fx/bld1\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{status,outputDir,buildOutput}",
+      "outputPreview": "{\"status\":\"built\",\"outputDir\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-runtime-fx\\\\bld1\\\\dist\",\"buildOutput\":\"\\n> build\\n> node mkdist.js\\n\\n\"}",
+      "log0": "[2026-09-30T05:59:05.552Z] start deploy_project (orig=deploy_project)",
+      "logN": 3
+    },
+    "proj.start-hollow": {
+      "input": "{\"action\":\"start_server\",\"projectPath\":\"wiring-runtime-fx/empty1\",\"port\":45981}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{status,url,pid,logFile}",
+      "outputPreview": "{\"status\":\"running\",\"url\":\"http://localhost:45981\",\"pid\":22344,\"logFile\":\"/tmp/joe_server.log\"}",
+      "log0": "[2026-09-30T05:59:13.513Z] start deploy_project (orig=deploy_project)",
+      "logN": 3
+    },
+    "run.named-miss": {
+      "input": "{\"projectQuery\":\"\\\"definitely-not-a-project-18\\\"\"}",
+      "ok": false,
+      "error": "No runnable project named “definitely not a project 18” was found in the workspace; I will not guess and start another repository.",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T05:59:13.726Z] start project_run (orig=project_run)",
+      "logN": 1
+    },
+    "run.missing-cwd": {
+      "input": "{\"cwd\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-runtime-fx\\\\missing-run\"}",
+      "ok": false,
+      "error": "مسار المشروع غير موجود: D:\\Joe\\muse-worktree\\data\\projects\\session-audit-sess\\wiring-runtime-fx\\missing-run",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T05:59:13.816Z] start project_run (orig=project_run)",
+      "logN": 1
+    },
+    "run.no-marker": {
+      "input": "{\"cwd\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-runtime-fx\\\\empty1\"}",
+      "ok": false,
+      "error": "لا يوجد مشروع قابل للتشغيل في D:\\Joe\\muse-worktree\\data\\projects\\session-audit-sess\\wiring-runtime-fx\\empty1 — ابنِ مشروعاً أولاً أو مرّر cwd.",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T05:59:13.831Z] start project_run (orig=project_run)",
+      "logN": 1
+    },
+    "run.detected": {
+      "input": "{\"cwd\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-runtime-fx\\\\static1\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{url,previewUrl,port,ready,pid,cwd,command,startedAt,kind}",
+      "outputPreview": "{\"url\":\"http://127.0.0.1:4300/\",\"previewUrl\":\"http://127.0.0.1:4300/\",\"port\":4300,\"ready\":true,\"pid\":4324,\"cwd\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-runtime-fx\\\\static1\",\"command\":\"node server.js\",\"startedAt\":1790747956663,\"kind\":\"node-entry\"}",
+      "log0": "[2026-09-30T05:59:13.852Z] start project_run (orig=project_run)",
+      "logN": 3
+    },
+    "stop.after-static": {
+      "input": "{}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{stopped,message,port}",
+      "outputPreview": "{\"stopped\":true,\"message\":\"تم إيقاف الخادم (المنفذ 4300).\",\"port\":4300}",
+      "log0": "[2026-09-30T05:59:16.699Z] start project_stop (orig=project_stop)",
+      "logN": 2
+    },
+    "run.override": {
+      "input": "{\"cwd\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-runtime-fx\\\\ovr1\",\"command\":\"node server.js\",\"port\":45982}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{url,previewUrl,port,ready,pid,cwd,command,startedAt,kind}",
+      "outputPreview": "{\"url\":\"http://127.0.0.1:45982/\",\"previewUrl\":\"http://127.0.0.1:45982/\",\"port\":45982,\"ready\":true,\"pid\":28304,\"cwd\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-runtime-fx\\\\ovr1\",\"command\":\"node server.js\",\"startedAt\":1790747961213,\"kind\":\"override\"}",
+      "log0": "[2026-09-30T05:59:18.425Z] start project_run (orig=project_run)",
+      "logN": 4
+    },
+    "stop.after-override": {
+      "input": "{}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{stopped,message,port}",
+      "outputPreview": "{\"stopped\":true,\"message\":\"تم إيقاف الخادم (المنفذ 45982).\",\"port\":45982}",
+      "log0": "[2026-09-30T05:59:21.238Z] start project_stop (orig=project_stop)",
+      "logN": 2
+    },
+    "stop.twice": {
+      "input": "{}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{stopped,message}",
+      "outputPreview": "{\"stopped\":false,\"message\":\"لا يوجد خادم يعمل لهذا المشروع.\"}",
+      "log0": "[2026-09-30T05:59:22.522Z] start project_stop (orig=project_stop)",
+      "logN": 1
+    },
+    "devs.empty": {
+      "input": "{}",
+      "ok": false,
+      "error": "dev_server_start needs the project folder (`cwd`) — no server was started.",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T05:59:22.536Z] start dev_server_start (orig=dev_server_start)",
+      "logN": 1
+    },
+    "devs.missing": {
+      "input": "{\"cwd\":\"wiring-runtime-fx/missing-devs\"}",
+      "ok": false,
+      "error": "internal_exception: Error: ENOENT: no such file or directory, open 'D:\\Joe\\muse-worktree\\data\\builds\\workspace-default\\wiring-runtime-fx\\missing-devs\\vite.config.js'\n    at Object.writeFileSync (node:fs:2422:20)\n    at DevServerTool.execute (D:\\Joe\\muse-worktr",
+      "outputShape": "undefined",
+      "outputPreview": null,
+      "log0": "[2026-09-30T05:59:22.559Z] start dev_server_start (orig=dev_server_start)",
+      "logN": 2
+    },
+    "stop.final": {
+      "input": "{}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{stopped,message}",
+      "outputPreview": "{\"stopped\":false,\"message\":\"لا يوجد خادم يعمل لهذا المشروع.\"}",
+      "log0": "[2026-09-30T05:59:22.781Z] start project_stop (orig=project_stop)",
+      "logN": 1
+    }
+  },
+  "evidence": {
+    "hollow.get": {
+      "status": null,
+      "head": "ECONNREFUSED",
+      "refused": true
+    },
+    "hollow.pidfile": true,
+    "pkg.zip": [],
+    "bld.marker": "WIRING_RUNTIME_TOKEN_3f9e",
+    "static.url": "http://127.0.0.1:4300/",
+    "static.port": 4300,
+    "static.get": {
+      "status": 200,
+      "head": "detected WIRING_RUNTIME_TOKEN_3f9e",
+      "refused": false
+    },
+    "static.afterStop": {
+      "status": 200,
+      "head": "detected WIRING_RUNTIME_TOKEN_3f9e",
+      "refused": false
+    },
+    "ovr.url": "http://127.0.0.1:45982/",
+    "ovr.get": {
+      "status": 200,
+      "head": "override WIRING_RUNTIME_TOKEN_3f9e path=/",
+      "refused": false
+    },
+    "ovr.afterStop": {
+      "status": 200,
+      "head": "override WIRING_RUNTIME_TOKEN_3f9e path=/",
+      "refused": false
+    },
+    "builds.strays": []
+  },
+  "rootsBefore": {
+    "session": [],
+    "default": [],
+    "builds": []
+  },
+  "rootsAfter": {
+    "session": [
+      "wiring-runtime-fx"
+    ],
+    "default": [],
+    "builds": []
+  },
+  "newEntries": {
+    "session": [
+      "wiring-runtime-fx"
+    ],
+    "default": [],
+    "builds": []
+  },
+  "removed": {
+    "fx": false,
+    "builds": true
+  }
+}
