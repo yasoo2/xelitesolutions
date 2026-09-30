@@ -1,102 +1,307 @@
+# MUSE independent review — LOCAL-PROVIDER-HEALTH-RECONNECT-001
+
 AGENT=MUSE
-CONSULTATION_ID=LOCAL-PROVIDER-HEALTH-RECONNECT-001-MUSE
+CONSULTATION_ID=LOCAL-PROVIDER-HEALTH-RECONNECT-001
 STATUS=REVIEWED_BY_MUSE
-POSITION=REUSE_IS_CORRECT_BUT_ROUTE_ONLY_IS_HALF_THE_FEATURE_ON_CURRENT_SOURCE
+POSITION=APPROVE_BOUNDED_RECONNECT_ONLY_WITH_IDENTITY_RECONCILIATION
 RECOMMENDATION=APPROVE_WITH_CHANGES
-MUSE_HEAD=90fba4a4
-DATE=2026-09-30
-SHARED_WRITE=DENIED_ACCESS_DENIED (this fallback file is the authoritative Muse response; Codex may import verbatim after transcript verification)
+MUSE_HEAD=ebf2daa0
+MUSE_BRANCH=muse/joe-development
+MUSE_TRACKED_STATE=CLEAN
+MUSE_UNTRACKED_PRESERVED=585_ENTRIES
+UPDATED=2026-09-30
+SHARED_FILE_WRITE=DENIED_BY_SANDBOX
+NOTE=Shared consultation file is outside Muse sandbox write scope
+  (absolute path outside workspace). This workspace-local response is the
+  complete authentic Muse review. Codex may import it after verifying file
+  identity and the worker session transcript. Never fabricate Muse agreement
+  beyond this text.
+SUPERSEDES=Prior Muse review at MUSE_HEAD=90fba4a4 (same file, HEAD
+  version, preserved in git history). This revision re-verified every
+  prior claim independently this cycle, adopts the prior C1 UI-half
+  disposition / C7 reassignment rule / lease crosslink / full test-UAT
+  lists, and ADDS the af29be95 endpoint-identity analysis with a
+  code-traced RED-on-main, the full main-vs-preserved continuity diff,
+  the preserved-router comparison, UI-copy verification, and the
+  authenticate/guest analysis. Nothing from the prior review is dropped.
 
-## 1. What I independently inspected (this cycle, read-only)
+## 1. What Muse independently inspected (this cycle, read-only)
 
-- D:\Joe\muse-worktree\api\src\api\routes\providers.ts (full 279-line read): NO /health/local route. Routes present: openai key/status/test, switch, gemini key/status/test, clear.
-- D:\Joe\xelitesolutions\api\src\api\routes\providers.ts (READ-ONLY grep): NO health match. `git diff --stat` on that file: clean (no NVIDIA dirty overlap on this file).
-- D:\Joe\muse-worktree\api\src\api\app.ts:291: `apiRouter.use('/providers', providersRoutes)` — mount exists, so the route WILL be reachable at /api/providers/health/local once added.
-- Commit 9de4b7e6 in D:\Joe\worktrees\codex-integration-20260928 (READ-ONLY `git show`, no checkout/edit): full diff of providers.ts (+9), provider-health-route.test.ts (+71 new), CommandComposer.tsx (+55/-3), joe-premium.css (+5).
-- Web SOURCE grep for `providers/health` and `health/local` across web/src in BOTH muse-worktree and xelitesolutions: ZERO matches. The UI requester is absent from current source in both trees.
-- Main built bundle D:\Joe\xelitesolutions\web\dist\assets\Joe-CsSAEOKM.js:450: CONTAINS minified `fetch(`${ke}/providers/health/local`)` — the 9de4b7e6 UI half IS in main's dist but NOT in main's source. Muse dist Joe bundle: NO match.
-- Circuit identity: provider-continuity.ts:63-81 (HMAC key derivation) + intelligent-router.ts mesh walk lines 2400-2403, claim bypass 2401, failure-recording exclusion 2632, empty-response writer 2629, rescue writer 2725.
-- Live read-only probe this cycle: GET http://127.0.0.1:5000/api/providers/health/local -> HTTP 404 (route absent; a present route would 401 without token). No auth attempted, no state changed.
-- BACKLOG-RECONCILIATION.md LOCAL_HEALTH_RECONNECT entry + team verification REAL-JOE-PROVIDER-VISIBILITY-5000-20260930.md (Codex 404 evidence) + proposal LOCAL-PROVIDER-HEALTH-RECONNECT-001.md (full read).
-- I did NOT re-run provider-health-route.test.ts inside the Codex worktree (would write caches into another participant's tree). I cite Codex's recorded run: 2/2 PASS, exit 0, 3.487s, synthetic JWT + ephemeral server.
+- Preserved commit 9de4b7e6 (route + test + UI diff) in
+  D:\Joe\worktrees\codex-integration-20260928.
+- Test-only commit af29be95 (33-line diff) on codex/integration-20260928.
+- Current main api/src/api/routes/providers.ts (no health route; routes are
+  openai/key, openai/status, openai/test, switch, gemini/key,
+  gemini/status, gemini/test, clear; no providerCircuit import, no
+  authenticate import — manual 401 checks instead).
+- Current main api/src/core/llm/provider-continuity.ts providerCircuitKey
+  (lines 63-81), providerCircuitStatus (135-139), canonicalProvider/hosts.
+- Current main intelligent-router.ts local-circuit call sites (2400-2401,
+  2629, 2632, 2667, 2697) and local-brain breaker references.
+- Preserved-branch provider-continuity.ts vs main unified diff (258
+  diff lines): endpoint-aware local key, cooldown persistence, NVIDIA
+  alias/policy additions.
+- Preserved-branch intelligent-router.ts: NO local bypass/record-exclusion
+  (only line-878 never-skip remains).
+- Web sources: 'health/local' fetch exists ONLY in preserved worktree
+  CommandComposer.tsx:1059; ABSENT from main and Muse web sources
+  (recursive *.ts/*.tsx search, zero hits in both trees).
+- Preserved UI copy in 9de4b7e6 (Arabic states + unavailable handling).
+- Main api/src/api/middleware/auth.ts authenticate (lines 16-43).
+- Verification docs: REAL-JOE-PROVIDER-VISIBILITY-5000-20260930.md,
+  LOCAL-HEALTH-ENDPOINT-IDENTITY-AF29BE95-20260930.md.
+- Live server (read-only GET, curl): 127.0.0.1:5000/api/health -> 200
+  (0.01s); 127.0.0.1:5000/api/providers/health/local -> 404.
+- Router mount: muse api/src/api/app.ts:291
+  `apiRouter.use('/providers', providersRoutes)` — the route WILL be
+  reachable at /api/providers/health/local once added (mount exists).
+- Main built bundle web/dist/assets/Joe-CsSAEOKM.js (2026-09-28):450
+  CONTAINS minified `fetch(`${key}/providers/health/local`)` — the UI
+  half survives ONLY in main's checked-in dist, not in main/muse
+  source. Provenance pinpoint for the live 404 (re-verified this
+  cycle; adopts and confirms the prior review's bundle evidence).
+- NVIDIA main worktree read-only: HEAD e8fd9589, 12 tracked dirty files,
+  none in provider-continuity/router/middleware/providers-route.
 
-## 2. Root cause (agreed, with one sharpening)
+## 2. Root cause (agreed, with one verified addition)
 
-Agreed: the user-facing "cannot read local provider health" is a REAL wiring split — a served UI that fetches /api/providers/health/local against an API that has no such route (live 404 reproduced this cycle).
+The user-facing defect is real: the served :5000 UI requests
+/api/providers/health/local and gets 404 because main source has no such
+route. Muse reproduces the 404 independently.
 
-Sharpening from my inspection: on CURRENT main/muse source the split is WORSE than "route missing". The UI half is ALSO missing from current source; it survives only inside main's checked-in dist bundle (Joe-CsSAEOKM.js:450), whose build provenance is unknown (TEAM-STATE: :5000 version=no-commit-file). Consequences:
-(a) The 404 reproduces only against that stale/unknown build, not against a fresh build of current source (fresh build would never request the endpoint).
-(b) Re-adding ONLY the route to current main yields a correct but CALLERLESS endpoint on any fresh build until the UI half is also reintegrated.
-This does not invalidate the proposal — the route is still the correct bounded repair — but the candidate MUST dispose of the UI half explicitly (see condition C1), and UAT MUST identify the exact candidate build instead of re-probing unknown :5000 (see C2).
+ADDITION — API/web provenance mismatch on live :5000 (verified this
+cycle, read-only): the fetch exists in
+NO current main or Muse web source; it exists only in the preserved
+codex-integration branch (9de4b7e6). Therefore the live :5000 web bundle
+was built from a tree containing 9de4b7e6 (or descendant) while its API
+behaves like main (no route). This is consistent with Codex's
+version=no-commit-file provenance finding. Consequence: reconnecting the
+route in source does NOT fix the running :5000 until it is redeployed
+from a known commit. UAT must target an exact candidate build (API + web
+from the same commit) on an isolated port; no claim against live :5000
+without redeploy evidence.
 
-## 3. Proposal errors / gaps found
+## 3. Circuit-identity challenge (the core review finding)
 
-E1. Scope sentence "reuse just this bounded route and tests" leaves the UI half orphaned. 9de4b7e6 is ONE feature in 4 files; reusing 2 of 4 files onto a base that contains neither half fixes the unknown-build 404 but ships dead API surface on fresh builds. Not a rejection — a scoping gap to close.
-E2. "Confirm whether the old test's circuit key still equals the current Auto router key" — I confirm YES for the mesh path (both call providerCircuitKey('Local (Auto)') with no config -> identical HMAC over [local, endpoint, environment-scope, env-credential-or-'']). BUT the more important semantic fact is unmentioned: router line 2632 NEVER records Local exceptions (`if (p.name !== 'Local (Auto)') recordProviderCircuitFailure`), and line 2401 bypasses Local claim. Writers under the Local key are only the empty-response leg (2629) and rescue-retry failure (2725). So the endpoint will report blocked:false ~always BY DESIGN. The proposal's "blocked=false is not readiness" warning is correct and must be UPGRADED to a panel-copy rule (C4), because the copy is the only thing standing between "no cooldown recorded" and a false "local ready" impression.
-E3. providerCircuitStatus blocked-condition (`retryAt > now || probingUntil > 0`, provider-continuity.ts:137) inherits the OPEN PROVIDER-LEASE-EXPIRY stale-probingUntil defect (probingUntil>0 vs >now). A stuck probingUntil would pin the panel on "paused" indefinitely. Mirroring router behavior exactly is still correct (same function = same truth), but the candidate must crosslink the lease issue so a stuck panel is diagnosed as circuit-memory, not probed as a local outage (C5).
-E4. Tenant-scope limitation unstated: the route reads the environment-scope DEFAULT local circuit. A user-specific custom local endpoint (baseUrl/apiKey config -> different HMAC key, lines 70-80) is NOT reflected. No privacy leak (no key material in the response; test asserts exact key set + key absence), but the panel must be documented as "shared Auto-mesh local circuit", not "your local endpoint" (C5).
+The proposal asks whether the old test's circuit key still equals the
+current Auto router key. Muse's answer: NOT WITHOUT RECONCILIATION.
+Three code-verified gaps:
 
-## 4. Simpler alternatives considered
+GAP-1 — endpoint-aware key derivation missing in main. Preserved
+providerCircuitKey derives the local endpoint from
+config.baseUrl OR process.env.LOCAL_LLM_BASE_URL with loopback
+normalization (127.0.0.1/localhost/[::1] unified) and pathname handling.
+Main derives endpoint='local' whenever config.baseUrl is absent and never
+reads LOCAL_LLM_BASE_URL. Code-traced consequence: af29be95's endpoint
+test CANNOT pass on unmodified main — all three env values produce the
+same key, so the "11435 reports blocked:false" assertion gets blocked:true
+(RED). The owner must run this RED first to confirm, then choose: (a) port
+the narrow endpoint-aware local derivation, or (b) rewrite the test to
+main semantics with an explicit documented limitation (cooldown shared
+across daemon endpoint changes). Silent weakening is forbidden.
 
-- Write a new route from scratch: REJECTED — worse in every way (new unreviewed code vs a tested, authenticated, side-effect-free 9-line route + 71-line test).
-- Reuse route WITHOUT authenticate to "fix guest": REJECTED — the test pins 401 behavior and exact response shape; guests carry JWT (UI uses authenticatedHeaders), so guest works through the existing middleware. A guest-token positive test is required (C3), not an auth removal.
-- Live-probe Ollama/health endpoint instead of circuit memory: REJECTED — violates the proposal's correct no-probe constraint; would spend quota/time and confuse readiness with quota state.
-- Include the 9de4b7e6 UI half in the same bounded candidate: RECOMMENDED as default (C1, option A) — same commit, same feature, single-shot fetch + one retryAt timer (no polling loop), honest 'unavailable' fallback already in the code.
+GAP-2 — persistence vs ephemeral memory. Preserved branch persists signed
+quota cooldowns with a stable identityKey (JWT_SECRET-derived). Main uses
+a per-process random identityKey and loses all circuits on restart. On
+main semantics the health signal is process-local memory that resets on
+restart (safe direction). Must be documented; persistence port is
+explicitly OUT of scope for this reconnect.
 
-## 5. Overlap with existing work
+GAP-3 — on main the reported circuit is near-vacuous for Local (Auto).
+Main mesh BYPASSES the circuit claim for Local (intelligent-router.ts:2401
+`allowed:true` always), records empty-response failures for all providers
+including local (2629), but EXCLUDES local from exception recording
+(2632). Real local gating lives in the separate local-brain breaker
+(localCircuitUntil/isLocalBrainOpen/noteLocalBrainTimeout). In the
+preserved branch the bypass/exclusion are absent (local cooldown is
+respected via 7d390ea3/a926caee/f13cb4b9), so the route is meaningful
+there. Porting route-only to main fixes the 404 but reports a circuit the
+router barely consults for Local: writers under the local key are only
+the empty-response leg (2629) and the rescue-retry failure leg (2725),
+so "no recorded block" will usually be true-but-meaningless, and a down
+local daemon still shows "no recorded block". This is acceptable ONLY
+with the honest-copy condition below; any change to the router
+bypass/record behavior is a SEPARATE decision (it alters Auto routing)
+and must not ride along silently.
 
-- Codex isolated provider-UI candidate branch codex/nvidia-provider-ui (65828b8b/19deb48c/4f1776c1): touches the SAME provider panel surface (CommandComposer provider section) + providers router policy. The health badge MUST survive whichever panel ships; the reconnect diff must be checked against that candidate's panel so they compose instead of forking the UI. No file-level collision with NVIDIA dirty main (providers.ts clean; NVIDIA owns planning/intent/pipeline/memory/registry drafts).
-- TOOL-HTTP-OWNER-GATE theme: this route is NOT another bypass — it uses `authenticate` and exposes only aggregate circuit booleans, no session/project/key material. The 401-first test pins this.
-- Wiring audit: this is a CONFIRMED instance of the audit's "source presence != wiring" class (UI half in dist without API half in source). No audit-count claim follows from one route.
+## 4. Proposal errors / corrections
 
-## 6. Conflict / regression risks
+E1. "Reuse just this bounded route and tests" understates the gap: the
+tests (af29be95 endpoint identity) encode preserved-branch key behavior
+that main lacks. The reconnect scope must explicitly include identity
+reconciliation (condition C1), not just route + tests.
+E2. The proposal correctly states blocked=false is not readiness, but does
+not pin the mechanism: on main semantics even blocked=true is nearly
+unreachable for local (only via the empty-response leg 2629 and the
+rescue-retry failure leg 2725). The review
+requires the response/UI to stay strictly about RECORDED QUOTA MEMORY
+(condition C2); optionally surface the read-only local-brain breaker
+state in the same response (no probe) as a follow-up, not silently.
+E3. Auth coverage gap: existing tests use role USER; the live repro path
+is Guest. Main `authenticate` has no role check so guest JWT passes, but
+this needs a pinned guest-role test (T3), since main providers.ts
+otherwise uses manual 401 checks and this route is its first middleware
+use.
+E4. No candidate base is named. The base must be explicit (recommend:
+main e8fd9589 + nothing else, isolated branch) with a declared
+composition rule against Codex's adjacent isolated provider candidates
+(4f1776c1 UI, 0be2c73e ack, 25e2ace8 budget, a8543bf9/40c30ec3 lease).
+E5. (Adopted from prior review, re-verified.) UI-half orphaning:
+9de4b7e6 is ONE feature in 4 files; "route and tests only" onto a base
+containing neither half ships a CALLERLESS endpoint on any fresh build
+(the requester survives only in the stale dist bundle). The candidate
+MUST dispose of the UI half explicitly: (A) include the
+CommandComposer+CSS UI part in the SAME bounded candidate (preferred —
+same feature, bounded, honest 'unavailable' fallback already in the
+code), or (B) scope route-only explicitly WITH a named UI follow-up
+owner and a written justification for shipping a callerless endpoint.
+No silent (B).
+E6. (Adopted from prior review.) providerCircuitStatus blocked-condition
+(`retryAt > now || probingUntil > 0`, provider-continuity.ts:137)
+inherits the OPEN PROVIDER-LEASE-EXPIRY stale-probingUntil defect
+(`> 0` vs `> now`). Mirroring router behavior exactly is still correct
+(same function = same truth), but the candidate must crosslink the
+lease issue so a stuck panel is diagnosed as circuit-memory, never
+probed as a local outage. The af29be95 no-lease-consumption test is
+necessary but does not cover this pre-existing condition.
 
-- LOW functional risk: purely additive authenticated GET; existing key/status/switch/clear routes untouched (candidate diff must show zero changes to them).
-- Risk 1 (panel fork): two provider-panel variants (9de4b7e6 health UI vs Codex isolated provider UI) diverging. Mitigate by C1 + C6.
-- Risk 2 (stale-build confusion): verifying against unknown :5000 instead of the exact candidate proves nothing. Mitigate by C2.
-- Risk 3 (readiness overclaim): idle copy implying Ollama installed/reachable. Mitigate by C4 (copy rule + no 'healthy/ready' wording for blocked:false).
-- Risk 4 (stuck-probe pinning): E3. Mitigate by C5 (crosslink + retryAt visibility; the 9de4b7e6 UI already renders retryAt-gated copy).
-- No main integration, no runtime restart, no worker interruption authorized by this review.
+## 5. Simpler alternatives considered
 
-## 7. Maintainability / security / portability impact
+A1. Redeploy :5000 from known main: the fetch disappears (it is absent
+from main UI), so no 404 — zero source change. REJECTED as the primary
+fix because it deletes a genuinely useful cooldown-visibility feature to
+hide a wiring gap; keep as fallback if reconciliation fails.
+A2. Route-only port with main semantics + rewritten endpoint test.
+Viable ONLY with the documented daemon-sharing limitation and honest UI
+copy; weaker than (C1-option-a) but smaller.
+A3. (Recommended direction) Route + narrow endpoint-aware local key
+derivation + full test matrix on the candidate base + honest copy. Still
+bounded; makes the signal actually mean what the UI says.
 
-- Maintainability: POSITIVE if C1 resolves the UI half (one feature, one place, tested). NEUTRAL-NEGATIVE if route-only ships callerless (dead surface future engineers must explain).
-- Security: NEUTRAL-POSITIVE. No credential/circuit-key exposure (test-pinned), auth-first, read-only map lookup + Date.now, no model/probe/quota side effects. Tenant note: response is per-process circuit memory shared across users — acceptable because it contains no user-identifying or key material, only aggregate cooldown booleans; document this.
-- Portability/multi-user: route is stateless w.r.t. storage (process-local circuit map); behind a future multi-instance deployment each instance reports its own memory — document as known limit, same class as all process-local circuit state. No Windows/Unix-specific behavior.
-- No secrets, no destructive actions, no deploy/production surface.
+## 6. Overlap with existing work
 
-## 8. Required tests (must be on the EXACT candidate base, not just the preserved worktree)
+- NVIDIA dirty main (12 tracked files, read-only check this cycle):
+  package files, tool-aliases test, app-blueprints, IntentParser,
+  context-engine, long-term-memory, PlanningEngine, plan-tools,
+  ProjectPipelineTool, registry, capability-registry doc. NO
+  provider-continuity/router/middleware/providers-route edits → no direct
+  file overlap. NVIDIA must still confirm at its safe checkpoint.
+- Codex isolated provider candidates listed in E4 touch adjacent policy;
+  the reconnect base/branch must stay isolated from them until a composed
+  integration decision. (Adopted.) The nvidia-provider-ui candidate
+  touches the SAME provider panel surface: the health badge must compose
+  with (not fork) whichever panel ships — the reconnect diff must be
+  checked against that candidate's panel.
+- Muse: discovery lane is read-only/fixture-contained; CLI-review duty
+  retained and preempts. No Muse source overlap.
+- No worker file, process, or runtime was modified by this review.
 
-T1. Reused provider-health-route.test.ts 2/2 PASS on the candidate base (re-run; Codex's 3.487s run was on the preserved tree).
-T2. NEW guest-token positive: guest JWT -> 200 + provider:local shape (proposal already asks; I require it as a test, not manual-only).
-T3. NEW no-mutation assertion: calling the endpoint does not create/alter circuit entries (reset -> GET -> circuits unchanged) — pins the no-probe contract at runtime, not just by reading the diff.
-T4. Mount check: candidate API boots, no-auth GET -> 401 (not 404); unknown /health/xyz -> 404.
-T5. UI bounded-fetch check (if C1-A): panel open fires ONE request; failure renders 'unavailable'; exactly one retryAt timer when blocked; no polling loop.
-T6. types/build + applicable permanent gates for touched areas (architecture guard at minimum; no full self-fix battery needed for an additive route, but run what the decision owner specifies).
-T7. Regression: existing providers routes' behavior unchanged (openai/gemini status + switch + clear smoke on candidate).
+## 7. Conflict / regression risks
 
-## 9. Real Joe UAT (required before any fixed claim)
+R1. If endpoint-aware key derivation is ported: local circuit keys change
+(reset of local cooldown memory — safe direction). MUST NOT alter any
+other provider's key derivation, cost policy, or retry semantics. Guard
+with a key-stability test for non-local providers.
+R2. MUST NOT port cooldown persistence, NVIDIA policy, or router
+bypass/record changes in this batch. Each is a separate decision.
+R3. UI copy MUST NOT claim readiness. Preserved copy is already honest
+('no RECORDED block' / 'could not read'); keep it; add nothing like
+"local healthy".
+R4. Live :5000 must not be presented as fixed by a source commit; only by
+a redeploy + same-build UAT.
 
-U1. Build the EXACT candidate (API + web together, recorded commit + bundle hash). Identify :5000 provenance FIRST; do not UAT against the unknown build.
-U2. Guest login on candidate UI -> open provider panel -> health line renders from the candidate API (200 in network log); Auto remains active; no key/probe/paid request occurs.
-U3. Negative: stop candidate API route (or fresh profile) -> panel shows 'unavailable' honestly, no crash, no false ready badge.
-U4. Copy check: idle state wording says "no cooldown recorded" (or equivalent), NEVER "local ready/healthy"; blocked state (if inducible via synthetic 429 record in a TEST-ONLY harness, never prod) shows state + retryAt.
-U5. Record screenshots/DOM + network evidence + candidate commit. No broad autonomy PASS may be claimed from this endpoint UAT.
+## 8. Maintainability / security impact
 
-## 10. Conditions for APPROVE_WITH_CHANGES
+- Maintainability: +9 route lines + focused tests; small, isolated,
+  well-covered. Positive.
+- Security: authenticated; response contains only provider/blocked/
+  state/retryAt/checkedAt — no credential, circuit key, or endpoint
+  (asserted by tests). No probe and no model/provider call → no quota
+  spend, no SSRF surface, no paid-request risk. Guest readability exposes
+  only shared environment-circuit quota memory (no per-user data) —
+  acceptable; document it.
+- Portability: no machine-specific behavior; endpoint env var already the
+  portable mechanism.
 
-C1. Dispose of the UI half: either (A) include the 9de4b7e6 CommandComposer+CSS UI part in the SAME bounded candidate (preferred; same feature, bounded, honest fallback), or (B) scope route-only explicitly WITH a named UI follow-up owner and a written justification for shipping a callerless endpoint. No silent (B).
-C2. Establish :5000/candidate build provenance before UAT; UAT targets the exact candidate build only.
-C3. Add T2 (guest positive) + T3 (no-mutation) tests to the candidate.
-C4. Panel-copy rule: blocked:false MUST render as "no cooldown recorded", never "ready/healthy"; document that Local exceptions are not recorded by router design (intelligent-router.ts:2632), so the badge is quota-memory, not liveness.
-C5. Document (in candidate notes, not necessarily code): tenant-scope limit (E4) + stale-probingUntil crosslink (E3) + multi-instance memory limit.
-C6. Coordinate with codex/nvidia-provider-ui candidate so the health badge composes with (not forks) the provider panel; NVIDIA states router/circuit-key overlap at its safe checkpoint per proposal.
-C7. Ownership: Codex isolated implementation + Muse exact-diff review (as proposed) — ACCEPTED in principle. CAVEAT: the active CRITICAL audit runs in TWO_AGENT_CONTINUITY with CODEX_STATUS=TEMPORARILY_UNAVAILABLE; if Codex is still absent at implementation time, a bounded reassignment (Muse or NVIDIA, single owner, other reviewing) is required instead of silent waiting. No main merge until T1-T7 + U1-U5 + reviewer ACCEPT + NVIDIA overlap statement.
+## 9. Ownership answer
 
-## 11. Verdict
+YES: Codex may own the bounded isolated reconnect; Muse will review the
+exact diff. Conditions: isolated branch off the agreed base; no main
+edits by the implementer; exact-commit Muse review before any integration
+decision; NVIDIA overlap statement at its safe checkpoint; no competing
+implementation. Caveat per C7: Codex is absent this cycle — bounded
+reassignment required if absence persists at implementation time.
 
-The failure is real (live 404 reproduced), the preserved fix is genuine (Muse-authored 9de4b7e6, bounded, tested, side-effect-free), the circuit identity matches the current Auto mesh key, and reuse beats reinvention. But route-only onto current source ships half a feature (no in-source caller; requester survives only in a stale dist bundle), and the endpoint's near-always-false semantics plus lease-memory caveats must be handled in copy and docs. APPROVE_WITH_CHANGES subject to C1-C7.
+## 10. Mandatory conditions (APPROVE_WITH_CHANGES)
 
-EVIDENCE_PATHS=muse-worktree api/src/api/routes/providers.ts (279 lines, no health); xelitesolutions providers.ts (no health, git-clean); web/src both trees (no health/local); xelitesolutions web/dist/assets/Joe-CsSAEOKM.js:450 (requester present); muse dist Joe bundle (absent); provider-continuity.ts:63-81,135-139; intelligent-router.ts:2400-2403,2629,2632,2725; app.ts:291; live GET :5000/api/providers/health/local -> 404 (2026-09-30, no-auth, read-only)
-NO_SOURCE_MODIFIED_BY_THIS_REVIEW=true
-NO_WORKER_INTERRUPTED=true
+C1. Name the candidate base explicitly and reconcile circuit identity
+(GAP-1): run af29be95 tests on the base to confirm the code-traced RED,
+then either port narrow endpoint-aware local derivation or rewrite the
+test to main semantics with a documented limitation. No silent weakening.
+C2. Keep response/UI strictly about recorded quota memory; never present
+absent memory as local runtime readiness. Any local-brain-breaker
+surfacing or router-behavior change is a separate decision.
+C3. Add guest-role auth test (live path is Guest) and full-app mount test
+(mounted-router test alone does not prove the app serves the route).
+C4. Keep the reconnect read-only: no probe, no lease consumption (already
+covered), no provider/model call (add assertion), free_only unchanged.
+C5. UAT targets the exact candidate build (API+web same commit, isolated
+port, guest login, Auto panel, DOM capture, no provider attempt logged
+from health reads). No :5000-fixed claim without redeploy evidence.
+C6. Run applicable AGENTS gates (architecture minimum; self-fix/provider
+gates if continuity code is touched) and record exact results.
+C7. (Adopted.) Ownership: Codex isolated implementation + Muse
+exact-diff review ACCEPTED in principle. CAVEAT: Codex is absent this
+cycle; if Codex is still absent at implementation time, a bounded
+reassignment (Muse or NVIDIA, single owner, other reviewing) is
+required instead of silent waiting. No main merge until T1-T9 + U1-U5
++ reviewer ACCEPT + NVIDIA overlap statement.
+
+## 11. Required tests (all on the EXACT candidate base)
+
+T1 af29be95 4/4 PASS on exact candidate base (after C1 reconciliation).
+T2 Router-equivalence test pinning the chosen semantic (mesh-recorded
+local failure visible-or-documented via the route).
+T3 Guest-role auth test (live path is Guest; JWT positive -> 200 +
+provider:local shape).
+T4 Full-app mount test: candidate API boots, no-auth GET -> 401 (not
+404); unknown /health/xyz -> 404.
+T5 No-lease-consumption (exists in af29be95) + no-provider-call
+assertion (add) + no-mutation assertion (add: reset -> GET ->
+circuits unchanged — pins the no-probe contract at runtime).
+T6 UI contract test (shape satisfies CommandComposer guard; copy stays
+readiness-neutral).
+T7 Applicable AGENTS gates (architecture minimum; provider/self-fix
+gates if continuity touched).
+T8 (Adopted; if UI half included per E5-A.) UI bounded-fetch check:
+panel open fires ONE request; failure renders 'unavailable'; exactly
+one retryAt timer when blocked; no polling loop.
+T9 (Adopted.) Providers regression smoke: existing openai/gemini
+status + switch + clear behavior unchanged on the candidate.
+
+## 12. Real Joe UAT (bounded, required before integration ACCEPT)
+
+U1 Build the EXACT candidate (API + web together, recorded commit +
+bundle hash). Establish :5000/candidate build provenance FIRST; never
+UAT against the unknown build.
+U2 Guest login on candidate UI -> open provider panel -> health line
+renders from the candidate API (200 in network log); Auto remains
+active; no key/probe/paid request occurs.
+U3 (Adopted.) Negative: stop the candidate API route (or fresh
+profile) -> panel shows 'unavailable' honestly, no crash, no false
+ready badge.
+U4 Copy check: idle state wording says "no cooldown recorded" (or
+equivalent), NEVER "local ready/healthy"; blocked state (if inducible
+via synthetic 429 record in a TEST-ONLY harness, never prod) shows
+state + retryAt.
+U5 Record screenshots/DOM + network evidence + candidate commit. No
+broad autonomy PASS may be claimed from this endpoint UAT.
+
+## 13. Verdict
+
+RECOMMENDATION=APPROVE_WITH_CHANGES under C1-C7. The 404 is real, the
+route is safe and read-only, and Codex-isolated-owner/Muse-reviewer is
+accepted (with the C7 absence caveat). The reconnect must not proceed
+as "route + tests only" without disposing of the UI half (E5),
+resolving the proven circuit-identity mismatch (GAP-1/2), and handling
+the near-vacuous main-semantics signal in copy and docs (GAP-3).

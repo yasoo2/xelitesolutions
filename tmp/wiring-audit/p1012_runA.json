@@ -1,0 +1,176 @@
+{
+  "probe": "p1012_survey",
+  "decl": {
+    "dead_code_detector": {
+      "descriptionHead": "Analyzes the codebase using Knip to find unused files, dependencies, exports, and types.",
+      "required": null,
+      "properties": [
+        "mode",
+        "autoFix",
+        "projectPath"
+      ],
+      "permissions": [
+        "read",
+        "execute"
+      ],
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1
+    },
+    "error_recovery": {
+      "descriptionHead": "Wolverine-style self-healing: Detects errors, AI-analyzes them, auto-fixes, and retries until success.",
+      "required": [
+        "error"
+      ],
+      "properties": [
+        "error",
+        "context",
+        "sourceCode",
+        "filePath",
+        "attemptFix",
+        "maxRetries"
+      ],
+      "permissions": [
+        "execute",
+        "write",
+        "read"
+      ],
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1
+    },
+    "repo_run_command": {
+      "descriptionHead": "Run a whitelisted repository QA command such as build, test, lint, typecheck, git diff, or git status.",
+      "required": [
+        "command"
+      ],
+      "properties": [
+        "command",
+        "cwd",
+        "timeoutMs"
+      ],
+      "permissions": [
+        "execute"
+      ],
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1
+    },
+    "repo_diff_summary": {
+      "descriptionHead": "Show a git status and diff summary for repository changes.",
+      "required": null,
+      "properties": [],
+      "permissions": [
+        "read",
+        "execute"
+      ],
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1
+    }
+  },
+  "verdictTable": {
+    "dc json-ok-shape": "passed",
+    "dc parsefail-shape": "failed",
+    "er healed-shape": "passed",
+    "er nothealed-shape": "passed",
+    "rr gitok-shape": "passed",
+    "rr cmdfail-shape": "failed"
+  },
+  "live": {
+    "dc.json-ok": {
+      "input": "{\"mode\":\"scan\",\"projectPath\":\"D:\\\\Joe\\\\muse-worktree\\\\tmp\\\\wiring-audit\\\\fx-p1012\\\\knip-ok\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{scanned,scope,issues,summary,recommendations,truncated}",
+      "outputPreview": "{\"scanned\":true,\"scope\":\"scan\",\"issues\":[],\"summary\":{\"unusedFiles\":0,\"unusedDependencies\":0,\"unusedExports\":0,\"unusedTypes\":0,\"totalIssues\":0},\"recommendations\":[\"✅ knip reported no unused files, dependencies or exports.\"],\"truncated\":false}",
+      "logLast": "dead_code.mode=scan",
+      "logN": 2
+    },
+    "dc.bad-output": {
+      "input": "{\"mode\":\"scan\",\"projectPath\":\"D:\\\\Joe\\\\muse-worktree\\\\tmp\\\\wiring-audit\\\\fx-p1012\\\\knip-bad\"}",
+      "ok": false,
+      "error": "knip produced output that is not JSON, so nothing was scanned: fixture-knip: simulated failure",
+      "outputShape": "{scanned,raw,stderr}",
+      "outputPreview": "{\"scanned\":false,\"raw\":\"\",\"stderr\":\"fixture-knip: simulated failure \\r\\n\"}",
+      "logLast": "dead_code.parse_failed=Unexpected end of JSON input",
+      "logN": 3
+    },
+    "er.analyze-only": {
+      "input": "{\"error\":\"Cannot find module 'shim-pkg-abc123'\",\"attemptFix\":false}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{recovered,errorType,suggestion,suggestedArgs,context}",
+      "outputPreview": "{\"recovered\":false,\"errorType\":\"missing_dependency\",\"suggestion\":\"npm install <module>\",\"context\":{}}",
+      "logLast": "Error type: missing_dependency",
+      "logN": 2
+    },
+    "er.autoinstall-shim": {
+      "input": "{\"error\":\"Cannot find module 'shim-pkg-abc123'\",\"attemptFix\":true}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{recovered,errorType,suggestion,suggestedArgs,context}",
+      "outputPreview": "{\"recovered\":true,\"errorType\":\"missing_dependency\",\"suggestion\":\"npm install <module>\",\"context\":{}}",
+      "logLast": "✅ Wolverine successfully healed the error!",
+      "logN": 6
+    },
+    "rr.git-status": {
+      "input": "{\"command\":\"git status --short\",\"cwd\":\"tmp/wiring-audit/fx-p1012/gitfix\"}",
+      "ok": false,
+      "error": "command_failed",
+      "outputShape": "{command,exitCode,stdout,stderr}",
+      "outputPreview": "{\"command\":\"git status --short\",\"stdout\":\"\",\"stderr\":\"'\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\tmp\\\\wiring-audit\\\\fx-p1012\\\\gitfix'\\r\\nCMD.EXE was started with the above path as the current directory.\\r\\nUNC paths are not supported.  Defaulting to Windows directory.\\r\\nfatal: not a git repository (or any of the parent directories): .git\\n\"}",
+      "logLast": "command=git status --short exit=undefined",
+      "logN": 2
+    },
+    "rd.summary": {
+      "input": "{}",
+      "ok": false,
+      "error": "Tool reported failure without an error message",
+      "outputShape": "{status,diffStat,stderr}",
+      "outputPreview": "{\"status\":\"\",\"diffStat\":\"\",\"stderr\":\"'\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree'\\r\\nCMD.EXE was started with the above path as the current directory.\\r\\nUNC paths are not supported.  Defaulting to Windows directory.\\r\\nfatal: not a git repository (or any of the parent directories): .git\\n\\n'\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree'\\r\\nCMD.EXE was started with the above path as the current directory.\\r\\nUNC paths are not supported.  Defaulting to Windows directory.\\r\\nwarning: Not a git repository. Use --no-index to compare two paths outside a working tree\\nusage: git diff --no-index [<options>] <path> <path> [<pathspec>...]\\n\\nDiff output format options\\n    -p, --patch           generate patch\\n    -s, --no-patch        suppress diff output\\n    -u                    generate patch\\n    -U, --unified[=<n>]   generate diffs with <n> lines context\\n    -W, --[no-]function-context\\n                          generate diffs with <n> lines context\\n    --raw                 generate the diff in raw format\\n    --patch-with-raw      synonym for '-p --raw'\\n    --patch-with-stat     synonym for '-p --stat'\\n    --numstat             machine friendly --stat\\n    --shortstat           output only the last line of --stat\\n    -X, --dirstat[=<param1>,<param2>...]\\n                          output the distribution of relative amount of changes for each sub-directory\\n    --cumulative          synonym for --dirst",
+      "logLast": "diff_summary",
+      "logN": 2
+    },
+    "ctrl.git-direct": {
+      "ok": true,
+      "exitCode": 0,
+      "outLen": 12
+    },
+    "compare": {
+      "dcJsonOk": true,
+      "dcJsonErrPrefix": null,
+      "dcJsonHasSummary": true,
+      "dcBadOk": false,
+      "dcBadErrPrefix": "knip produced output that is not JSON, so nothing was scanned: fixture-knip: sim",
+      "dcBadScannedFalse": true,
+      "erCtlOk": true,
+      "erCtlRecovered": false,
+      "erCtlType": "missing_dependency",
+      "erFixRecovered": true,
+      "erFixLogHasHealed": true,
+      "erFixLogLast": "✅ Wolverine successfully healed the error!",
+      "pathRestored": true,
+      "rrOk": false,
+      "rrErrPrefix": "command_failed",
+      "rrExitCode": null,
+      "rdOk": false,
+      "rdHasStatus": true,
+      "ctrlOk": true,
+      "ctrlExit": 0
+    }
+  },
+  "cleanup": "ok",
+  "sessionRoot": "\\\\?\\D:\\Joe\\muse-worktree\\data\\projects\\session-audit-sess",
+  "defaultRoot": "D:\\Joe\\muse-worktree\\data\\projects\\my-workspace",
+  "apiCwd": "\\\\?\\D:\\Joe\\muse-worktree",
+  "at": "2026-09-30T15:58:36.711Z"
+}
