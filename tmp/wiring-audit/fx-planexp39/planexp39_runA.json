@@ -1,0 +1,1986 @@
+{
+ "probe": "planexp39",
+ "trees": {
+  "MUSE": {
+   "queue": 115,
+   "byClass": {
+    "LITERAL_IN_SCOPE": 80,
+    "RETRIEVAL_ONLY_CANDIDATE": 33,
+    "CORE_ALWAYS_OFFERED": 2
+   },
+   "coreTools": [
+    "central_answer",
+    "read_file",
+    "write_file",
+    "file_edit",
+    "delete_file",
+    "inspect_directory",
+    "search_files",
+    "search_text",
+    "shell_execute"
+   ],
+   "routerExcluded": [
+    "react_project",
+    "web_page_builder",
+    "api_project",
+    "project_pipeline",
+    "project_edit",
+    "project_run",
+    "project_stop",
+    "deploy_pages",
+    "deploy_project",
+    "import_project",
+    "central_answer",
+    "business_profile",
+    "orders_read",
+    "form_inbox",
+    "website_full_pipeline",
+    "shell_execute",
+    "write_file",
+    "read_file",
+    "file_edit",
+    "delete_file",
+    "inspect_directory",
+    "mobile_builder",
+    "go_builder",
+    "java_builder",
+    "python_builder",
+    "auth_builder",
+    "scaffold_project",
+    "scaffold_full_stack",
+    "progressive_generator",
+    "bulk_file_generator",
+    "ai_write_file",
+    "phase_executor"
+   ],
+   "scopeMissing": [],
+   "retrievalOnly": [
+    "api_tester",
+    "architect_plan",
+    "auto_refactor",
+    "business_logic_parser",
+    "cache_manager",
+    "chaos_test_plan",
+    "cloud_cost_estimator",
+    "dead_code_detector",
+    "dev_server_start",
+    "docker_swarm_ops",
+    "enterprise_platform_foundation",
+    "error_recovery",
+    "image_studio",
+    "inspect_symbol",
+    "large_data_seeder",
+    "llm_cache",
+    "load_tester",
+    "logger",
+    "memorize_codebase",
+    "orion_business_foundation",
+    "performance_analyzer",
+    "performance_profile",
+    "project_state_manager",
+    "query_optimizer",
+    "recall_memory",
+    "repo_diff_summary",
+    "repo_run_command",
+    "rss_fetch",
+    "secrets_scan_repo",
+    "shell_check_status",
+    "task_lifecycle",
+    "video_action",
+    "visual_compare"
+   ],
+   "coreOffered": [
+    "central_answer",
+    "search_files"
+   ],
+   "rows": [
+    {
+     "name": "alert_manager",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S9_adaptive-dag-planner"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "ambiguity_resolver",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine",
+      "S10_capability-match",
+      "S12_tool-picker"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "analyze_codebase",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S7_PhaseExecutorTool",
+      "S12_tool-picker"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "analyze_project",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S7_PhaseExecutorTool"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "api_tester",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "architect_plan",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "archive_files",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S12_tool-picker"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "ask_user",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine",
+      "S9_adaptive-dag-planner",
+      "S10_capability-match",
+      "S12_tool-picker"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "auto_refactor",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "browser_a11y_deep",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "browser_action",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S12_tool-picker"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "browser_autofix",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "browser_check_links",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "browser_click",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "browser_compare",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "browser_consent",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "browser_console_scan",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "browser_contrast_audit",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "browser_design_tokens",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "browser_extract_data",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "browser_extract_meta",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "browser_fill_form",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "browser_find_text",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "browser_fullpage_shot",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "browser_launch",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "browser_page_fix",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "browser_performance",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "browser_readability",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "browser_responsive_check",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "browser_save_pdf",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "browser_search",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "browser_seo_audit",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "browser_smart_agent",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "browser_summarize",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "browser_translate",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "browser_ui_fix",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "browser_vision",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S12_tool-picker"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "business_logic_parser",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "business_profile",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S2_toolCatalog",
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": true
+    },
+    {
+     "name": "cache_manager",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "central_answer",
+     "class": "CORE_ALWAYS_OFFERED",
+     "scopes": [
+      "S2_toolCatalog",
+      "S3_PlanningEngine",
+      "S9_adaptive-dag-planner",
+      "S10_capability-match",
+      "S12_tool-picker"
+     ],
+     "routerExcluded": true
+    },
+    {
+     "name": "chaos_test_plan",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "cloud_cost_estimator",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "codebase_outline",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S12_tool-picker"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "compliance_validator",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S12_tool-picker"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "dead_code_detector",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "dependency_graph",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S12_tool-picker"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "deploy_pages",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S2_toolCatalog",
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": true
+    },
+    {
+     "name": "dev_server_start",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "docker_swarm_ops",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "echo",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine",
+      "S7_PhaseExecutorTool",
+      "S9_adaptive-dag-planner",
+      "S10_capability-match",
+      "S12_tool-picker"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "engineering_discovery",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S4_ProjectPipelineTool",
+      "S7_PhaseExecutorTool"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "enterprise_platform_foundation",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "error_recovery",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "execute_python",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S12_tool-picker"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "form_inbox",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S2_toolCatalog",
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": true
+    },
+    {
+     "name": "git_local_workflow",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "go_builder",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S2_toolCatalog"
+     ],
+     "routerExcluded": true
+    },
+    {
+     "name": "google_account",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "html_extract",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S12_tool-picker"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "http_fetch",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S12_tool-picker"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "image_studio",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "import_project",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S2_toolCatalog",
+      "S3_PlanningEngine",
+      "S7_PhaseExecutorTool",
+      "S9_adaptive-dag-planner"
+     ],
+     "routerExcluded": true
+    },
+    {
+     "name": "inspect_symbol",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "java_builder",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S2_toolCatalog"
+     ],
+     "routerExcluded": true
+    },
+    {
+     "name": "joe_engineering_report",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S6_AgentLoopService"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "json_query",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S7_PhaseExecutorTool"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "knowledge_add",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S7_PhaseExecutorTool"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "knowledge_search",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S12_tool-picker"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "large_data_seeder",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "llm_cache",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "load_tester",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "logger",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "memorize_codebase",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "monitoring",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S10_capability-match"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "multi_agent_debate",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine",
+      "S10_capability-match",
+      "S12_tool-picker"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "notify_user",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S12_tool-picker"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "orders_read",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S2_toolCatalog",
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": true
+    },
+    {
+     "name": "orion_business_foundation",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "pattern_recognize",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S7_PhaseExecutorTool"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "performance_analyzer",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "performance_profile",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "phase_executor",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S2_toolCatalog",
+      "S6_AgentLoopService",
+      "S7_PhaseExecutorTool",
+      "S8_SelfFixExecutionService"
+     ],
+     "routerExcluded": true
+    },
+    {
+     "name": "progressive_generator",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S2_toolCatalog"
+     ],
+     "routerExcluded": true
+    },
+    {
+     "name": "project_pipeline",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S2_toolCatalog",
+      "S3_PlanningEngine",
+      "S4_ProjectPipelineTool",
+      "S7_PhaseExecutorTool"
+     ],
+     "routerExcluded": true
+    },
+    {
+     "name": "project_planner",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S4_ProjectPipelineTool",
+      "S5_ProjectPlannerTool"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "project_repair",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine",
+      "S4_ProjectPipelineTool"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "project_state_manager",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "project_stop",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S2_toolCatalog",
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": true
+    },
+    {
+     "name": "project_undo",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "python_builder",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S2_toolCatalog"
+     ],
+     "routerExcluded": true
+    },
+    {
+     "name": "query_datasource",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S12_tool-picker"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "query_optimizer",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "recall_memory",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "repo_apply_patch",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S7_PhaseExecutorTool"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "repo_diff_summary",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "repo_read_file",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S7_PhaseExecutorTool"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "repo_run_command",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "repo_search",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S7_PhaseExecutorTool"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "request_analyzer",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine",
+      "S10_capability-match"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "rss_fetch",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "search_api",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S12_tool-picker"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "search_files",
+     "class": "CORE_ALWAYS_OFFERED",
+     "scopes": [
+      "S2_toolCatalog",
+      "S7_PhaseExecutorTool"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "secrets_scan_repo",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "self_confidence_evaluator",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine",
+      "S10_capability-match"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "shell_check_status",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "sonar_analysis",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S12_tool-picker"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "task_lifecycle",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "template_manager",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S9_adaptive-dag-planner"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "terminal_manager",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S7_PhaseExecutorTool"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "todo_write",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S12_tool-picker"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "user_browser",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "video_action",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "visual_compare",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "website_full_pipeline",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S2_toolCatalog",
+      "S12_tool-picker"
+     ],
+     "routerExcluded": true
+    }
+   ]
+  },
+  "MAIN": {
+   "queue": 116,
+   "byClass": {
+    "LITERAL_IN_SCOPE": 81,
+    "RETRIEVAL_ONLY_CANDIDATE": 33,
+    "CORE_ALWAYS_OFFERED": 2
+   },
+   "coreTools": [
+    "central_answer",
+    "read_file",
+    "write_file",
+    "file_edit",
+    "delete_file",
+    "inspect_directory",
+    "search_files",
+    "search_text",
+    "shell_execute"
+   ],
+   "routerExcluded": [
+    "react_project",
+    "web_page_builder",
+    "api_project",
+    "project_pipeline",
+    "project_edit",
+    "project_run",
+    "project_stop",
+    "deploy_pages",
+    "deploy_project",
+    "import_project",
+    "central_answer",
+    "business_profile",
+    "orders_read",
+    "form_inbox",
+    "website_full_pipeline",
+    "shell_execute",
+    "write_file",
+    "read_file",
+    "file_edit",
+    "delete_file",
+    "inspect_directory",
+    "mobile_builder",
+    "go_builder",
+    "java_builder",
+    "python_builder",
+    "auth_builder",
+    "scaffold_project",
+    "scaffold_full_stack",
+    "progressive_generator",
+    "bulk_file_generator",
+    "ai_write_file",
+    "phase_executor"
+   ],
+   "scopeMissing": [
+    "S11_tool-rerank"
+   ],
+   "retrievalOnly": [
+    "api_tester",
+    "architect_plan",
+    "auto_refactor",
+    "business_logic_parser",
+    "cache_manager",
+    "chaos_test_plan",
+    "cloud_cost_estimator",
+    "dead_code_detector",
+    "dev_server_start",
+    "docker_swarm_ops",
+    "enterprise_platform_foundation",
+    "error_recovery",
+    "image_studio",
+    "inspect_symbol",
+    "large_data_seeder",
+    "llm_cache",
+    "load_tester",
+    "logger",
+    "memorize_codebase",
+    "orion_business_foundation",
+    "performance_analyzer",
+    "performance_profile",
+    "project_state_manager",
+    "query_optimizer",
+    "recall_memory",
+    "repo_diff_summary",
+    "repo_run_command",
+    "rss_fetch",
+    "secrets_scan_repo",
+    "shell_check_status",
+    "task_lifecycle",
+    "video_action",
+    "visual_compare"
+   ],
+   "coreOffered": [
+    "central_answer",
+    "search_files"
+   ],
+   "rows": [
+    {
+     "name": "alert_manager",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S9_adaptive-dag-planner"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "ambiguity_resolver",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine",
+      "S10_capability-match",
+      "S12_tool-picker"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "analyze_codebase",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S7_PhaseExecutorTool",
+      "S12_tool-picker"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "analyze_project",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S7_PhaseExecutorTool"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "api_tester",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "architect_plan",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "archive_files",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S12_tool-picker"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "ask_user",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine",
+      "S10_capability-match",
+      "S12_tool-picker"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "auto_refactor",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "browser_a11y_deep",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "browser_action",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S12_tool-picker"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "browser_autofix",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "browser_check_links",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "browser_click",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "browser_compare",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "browser_consent",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "browser_console_scan",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "browser_contrast_audit",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "browser_design_tokens",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "browser_extract_data",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "browser_extract_meta",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "browser_fill_form",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "browser_find_text",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "browser_fullpage_shot",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "browser_launch",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "browser_page_fix",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "browser_performance",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "browser_readability",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "browser_responsive_check",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "browser_save_pdf",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "browser_search",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "browser_seo_audit",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "browser_smart_agent",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "browser_summarize",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "browser_translate",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "browser_ui_fix",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "browser_vision",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S12_tool-picker"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "business_logic_parser",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "business_profile",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S2_toolCatalog",
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": true
+    },
+    {
+     "name": "cache_manager",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "central_answer",
+     "class": "CORE_ALWAYS_OFFERED",
+     "scopes": [
+      "S2_toolCatalog",
+      "S3_PlanningEngine",
+      "S9_adaptive-dag-planner",
+      "S10_capability-match",
+      "S12_tool-picker"
+     ],
+     "routerExcluded": true
+    },
+    {
+     "name": "chaos_test_plan",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "cloud_cost_estimator",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "codebase_outline",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S12_tool-picker"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "compliance_validator",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S12_tool-picker"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "dead_code_detector",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "dependency_graph",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S12_tool-picker"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "deploy_pages",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S2_toolCatalog",
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": true
+    },
+    {
+     "name": "dev_server_start",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "docker_swarm_ops",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "echo",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine",
+      "S7_PhaseExecutorTool",
+      "S9_adaptive-dag-planner",
+      "S10_capability-match",
+      "S12_tool-picker"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "engineering_discovery",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S4_ProjectPipelineTool",
+      "S7_PhaseExecutorTool"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "enterprise_platform_foundation",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "error_recovery",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "execute_python",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S12_tool-picker"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "form_inbox",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S2_toolCatalog",
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": true
+    },
+    {
+     "name": "git_local_workflow",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "go_builder",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S2_toolCatalog"
+     ],
+     "routerExcluded": true
+    },
+    {
+     "name": "google_account",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "html_extract",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S12_tool-picker"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "http_fetch",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S12_tool-picker"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "image_studio",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "import_project",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S2_toolCatalog",
+      "S3_PlanningEngine",
+      "S7_PhaseExecutorTool"
+     ],
+     "routerExcluded": true
+    },
+    {
+     "name": "inspect_symbol",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "java_builder",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S2_toolCatalog"
+     ],
+     "routerExcluded": true
+    },
+    {
+     "name": "joe_engineering_report",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S6_AgentLoopService"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "json_query",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S7_PhaseExecutorTool"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "knowledge_add",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S7_PhaseExecutorTool"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "knowledge_search",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S12_tool-picker"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "large_data_seeder",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "llm_cache",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "load_tester",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "logger",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "memorize_codebase",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "monitoring",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S10_capability-match"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "multi_agent_debate",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine",
+      "S10_capability-match",
+      "S12_tool-picker"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "notify_user",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S12_tool-picker"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "orders_read",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S2_toolCatalog",
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": true
+    },
+    {
+     "name": "orion_business_foundation",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "pattern_recognize",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S7_PhaseExecutorTool"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "performance_analyzer",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "performance_profile",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "phase_executor",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S2_toolCatalog",
+      "S6_AgentLoopService",
+      "S7_PhaseExecutorTool",
+      "S8_SelfFixExecutionService"
+     ],
+     "routerExcluded": true
+    },
+    {
+     "name": "progressive_generator",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S2_toolCatalog"
+     ],
+     "routerExcluded": true
+    },
+    {
+     "name": "project_pipeline",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S2_toolCatalog",
+      "S3_PlanningEngine",
+      "S4_ProjectPipelineTool",
+      "S7_PhaseExecutorTool"
+     ],
+     "routerExcluded": true
+    },
+    {
+     "name": "project_planner",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S4_ProjectPipelineTool",
+      "S5_ProjectPlannerTool"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "project_repair",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine",
+      "S4_ProjectPipelineTool"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "project_state_manager",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "project_stop",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S2_toolCatalog",
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": true
+    },
+    {
+     "name": "project_undo",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "python_builder",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S2_toolCatalog"
+     ],
+     "routerExcluded": true
+    },
+    {
+     "name": "query_datasource",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S12_tool-picker"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "query_optimizer",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "recall_memory",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "repo_apply_patch",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S7_PhaseExecutorTool"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "repo_diff_summary",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "repo_read_file",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S7_PhaseExecutorTool"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "repo_run_command",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "repo_search",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S7_PhaseExecutorTool"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "request_analyzer",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine",
+      "S10_capability-match"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "rss_fetch",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "search_api",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S12_tool-picker"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "search_files",
+     "class": "CORE_ALWAYS_OFFERED",
+     "scopes": [
+      "S2_toolCatalog",
+      "S7_PhaseExecutorTool"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "secrets_scan_repo",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "self_confidence_evaluator",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine",
+      "S10_capability-match"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "shell_check_status",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "sonar_analysis",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S12_tool-picker"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "specification_verification",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine",
+      "S4_ProjectPipelineTool"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "task_lifecycle",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "template_manager",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S9_adaptive-dag-planner"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "terminal_manager",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S7_PhaseExecutorTool"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "todo_write",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S12_tool-picker"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "user_browser",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S3_PlanningEngine"
+     ],
+     "routerExcluded": false
+    },
+    {
+     "name": "video_action",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "visual_compare",
+     "class": "RETRIEVAL_ONLY_CANDIDATE",
+     "scopes": [],
+     "routerExcluded": false
+    },
+    {
+     "name": "website_full_pipeline",
+     "class": "LITERAL_IN_SCOPE",
+     "scopes": [
+      "S2_toolCatalog",
+      "S12_tool-picker"
+     ],
+     "routerExcluded": true
+    }
+   ]
+  }
+ }
+}
