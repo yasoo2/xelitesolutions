@@ -1,0 +1,540 @@
+{
+ "probe": "p4idle42",
+ "at": "2026-09-30T23:07:02.947Z",
+ "trees": {
+  "MUSE": {
+   "filesScanned": 1194,
+   "pickerRefs": [
+    {
+     "file": "modules\\tools\\definitions\\CentralAnswerTool.ts",
+     "line": 122,
+     "cls": "production",
+     "text": "// Called with no question (a tool-picker that emitted empty args), this"
+    },
+    {
+     "file": "orchestration\\AgentOrchestrator.ts",
+     "line": 27,
+     "cls": "production",
+     "text": "*  executed as-is — never re-decided by the weak-model tool-picker inside"
+    },
+    {
+     "file": "orchestration\\AgentOrchestrator.ts",
+     "line": 702,
+     "cls": "production",
+     "text": "// Deterministic build tool — run it directly so the weak-model tool-picker"
+    },
+    {
+     "file": "system\\scripts\\verify_core_logic.ts",
+     "line": 2,
+     "cls": "tooling-or-test",
+     "text": "import { selectToolDefsForProvider } from '../../core/llm/tool-picker';"
+    },
+    {
+     "file": "__tests__\\integration-audit.test.ts",
+     "line": 245,
+     "cls": "tooling-or-test",
+     "text": "describe('one front door for scaffolds — the tool-picker cannot bypass the verified path', () => {"
+    }
+   ],
+   "symbolRefs": [
+    {
+     "file": "core\\orchestrator\\PlanningEngine.ts",
+     "line": 3,
+     "cls": "production",
+     "text": "import { catalogueForAsync, capabilityRouteAsync } from './tool-rerank';"
+    },
+    {
+     "file": "core\\orchestrator\\PlanningEngine.ts",
+     "line": 3244,
+     "cls": "production",
+     "text": "const dynamicCatalogue = await catalogueForAsync(intent.goal).catch(() => catalogueFor(intent.goal));"
+    },
+    {
+     "file": "core\\orchestrator\\PlanningEngine.ts",
+     "line": 3252,
+     "cls": "production",
+     "text": "${dynamicCatalogue}"
+    },
+    {
+     "file": "core\\orchestrator\\tool-rerank.ts",
+     "line": 319,
+     "cls": "production",
+     "text": "export async function catalogueForAsync(goal: string, limit = 30, opts: RerankOptions = {}): Promise<string> {"
+    },
+    {
+     "file": "system\\scripts\\verify_core_logic.ts",
+     "line": 2,
+     "cls": "tooling-or-test",
+     "text": "import { selectToolDefsForProvider } from '../../core/llm/tool-picker';"
+    },
+    {
+     "file": "system\\scripts\\verify_core_logic.ts",
+     "line": 40,
+     "cls": "tooling-or-test",
+     "text": "const geminiTools = selectToolDefsForProvider(tools, 5, []);"
+    },
+    {
+     "file": "__tests__\\tool-selection-rerank.test.ts",
+     "line": 4,
+     "cls": "tooling-or-test",
+     "text": "catalogueForAsync,"
+    },
+    {
+     "file": "__tests__\\tool-selection-rerank.test.ts",
+     "line": 148,
+     "cls": "tooling-or-test",
+     "text": "const block = await catalogueForAsync(HEALTH_GOAL, 5, { llmCall: fake.call });"
+    }
+   ],
+   "reexports": [],
+   "dynRequire": [
+    {
+     "file": "core\\design\\app-blueprints.ts",
+     "line": 666,
+     "cls": "production",
+     "kind": "require(",
+     "text": "const STRICT_POSITIVE_CONSTRAINT = /non[-\\s]?positive|strictly\\s+positive|positive[-\\s]?only|(?:must|should|need(?:s)?|require(?:s)?|validat"
+    },
+    {
+     "file": "core\\orchestrator\\plan-tools.ts",
+     "line": 1714,
+     "cls": "production",
+     "kind": "require(",
+     "text": "'      \"src/index.js\": \"const http = require(\\\\\"http\\\\\");\\\\nconst server = http.createServer((req, res) => { res.end(\\\\\"Hello\\\\\"); });\\\\nser"
+    },
+    {
+     "file": "core\\quality\\scope-audit.ts",
+     "line": 287,
+     "cls": "production",
+     "kind": "require(",
+     "text": "return !/\\b(?:does\\s+not|doesn't|do\\s+not|don't|without|no)\\s+(?:require(?:s|d)?\\s+)?auth(?:entication|orization)?\\b|\\bno[- ]auth\\b/iu.test("
+    },
+    {
+     "file": "modules\\tools\\definitions\\AIGeneratorTool.ts",
+     "line": 50,
+     "cls": "production",
+     "kind": "require(",
+     "text": "? 'The destination is Python. Return valid Python only and do not emit JavaScript/TypeScript imports, require(), module.exports, or JSX.'"
+    },
+    {
+     "file": "modules\\tools\\definitions\\ProjectRepairTool.ts",
+     "line": 35,
+     "cls": "production",
+     "kind": "import(",
+     "text": "const nativeImport = new Function('specifier', 'return import(specifier)');"
+    },
+    {
+     "file": "modules\\tools\\definitions\\ProjectRepairTool.ts",
+     "line": 39,
+     "cls": "production",
+     "kind": "resolve/createRequire",
+     "text": "const resolved = require.resolve(file);"
+    },
+    {
+     "file": "modules\\tools\\definitions\\ProjectRepairTool.ts",
+     "line": 41,
+     "cls": "production",
+     "kind": "require(",
+     "text": "return require(resolved);"
+    },
+    {
+     "file": "modules\\tools\\definitions\\ProjectRunTool.ts",
+     "line": 994,
+     "cls": "production",
+     "kind": "resolve/createRequire",
+     "text": "require.resolve(packageName, { paths: [cwd] });"
+    },
+    {
+     "file": "shared\\ocr.ts",
+     "line": 61,
+     "cls": "production",
+     "kind": "resolve/createRequire",
+     "text": "const pkgDir = path.dirname(require.resolve(`@tesseract.js-data/${lang}/package.json`));"
+    },
+    {
+     "file": "tests\\manual\\eval_002_unfamiliar_repository.ts",
+     "line": 135,
+     "cls": "tooling-or-test",
+     "kind": "require(",
+     "text": "command: 'node -e \"const { power } = require(\\'./calculator\\'); console.log(power(2, 3)); console.log(power(5, 0)); console.log(power(3, 2))"
+    },
+    {
+     "file": "tests\\manual\\eval_002_unfamiliar_repository.ts",
+     "line": 347,
+     "cls": "tooling-or-test",
+     "kind": "require(",
+     "text": "command: 'node -e \"const { power } = require(\\'./calculator\\'); console.log(power(2, 3)); console.log(power(5, 0)); console.log(power(3, 2))"
+    },
+    {
+     "file": "tests\\manual\\eval_008_interrupted_run.ts",
+     "line": 322,
+     "cls": "tooling-or-test",
+     "kind": "require(",
+     "text": "command: 'node -e \"const {power}=require(\\\"./calculator\\\"); console.log(power(2,3), power(5,0), power(3,2));\"'"
+    },
+    {
+     "file": "tests\\manual\\verify_blockers.ts",
+     "line": 77,
+     "cls": "tooling-or-test",
+     "kind": "resolve/createRequire",
+     "text": "delete require.cache[require.resolve('../../core/llm/providers/llm7')];"
+    },
+    {
+     "file": "tests\\manual\\verify_blockers.ts",
+     "line": 85,
+     "cls": "tooling-or-test",
+     "kind": "resolve/createRequire",
+     "text": "delete require.cache[require.resolve('../../core/llm/providers/llm7')];"
+    },
+    {
+     "file": "tests\\manual\\verify_blockers.ts",
+     "line": 94,
+     "cls": "tooling-or-test",
+     "kind": "resolve/createRequire",
+     "text": "delete require.cache[require.resolve('../../core/llm/providers/llm7')];"
+    },
+    {
+     "file": "tests\\manual\\verify_crash_and_repair_loop.ts",
+     "line": 67,
+     "cls": "tooling-or-test",
+     "kind": "require(",
+     "text": "const { installCrashRecorder, noteActivity } = require(${JSON.stringify(RECORDER)});"
+    },
+    {
+     "file": "tests\\manual\\verify_crash_and_repair_loop.ts",
+     "line": 117,
+     "cls": "tooling-or-test",
+     "kind": "require(",
+     "text": "const { installCrashRecorder } = require(${JSON.stringify(RECORDER)});"
+    },
+    {
+     "file": "tests\\manual\\verify_full_system.ts",
+     "line": 192,
+     "cls": "tooling-or-test",
+     "kind": "import(",
+     "text": "scripts: { build: 'node -e \"import(\\'is-odd\\').then(() => console.log(\\'built\\'))\"' },"
+    },
+    {
+     "file": "tests\\manual\\verify_import_project.ts",
+     "line": 62,
+     "cls": "tooling-or-test",
+     "kind": "resolve/createRequire",
+     "text": "delete require.cache[require.resolve('../../modules/tools/definitions/ProjectEditTool')];"
+    },
+    {
+     "file": "tests\\manual\\verify_joe_full_engineer_flow.ts",
+     "line": 60,
+     "cls": "tooling-or-test",
+     "kind": "require(",
+     "text": "command: 'node -e \"const fs = require(\\'fs\\'); if (!fs.existsSync(\\'tasks.ts\\')) fs.writeFileSync(\\'tasks.ts\\', \\'export const taskLimit: nu"
+    },
+    {
+     "file": "tests\\manual\\verify_log_doctor.ts",
+     "line": 69,
+     "cls": "tooling-or-test",
+     "kind": "require(",
+     "text": "scripts: { build: 'node -e \"import(\\'is-odd\\').then(m => { require(\\'fs\\').mkdirSync(\\'dist\\', { recursive: true }); require(\\'fs\\').writeFi"
+    },
+    {
+     "file": "tests\\manual\\verify_log_doctor.ts",
+     "line": 69,
+     "cls": "tooling-or-test",
+     "kind": "import(",
+     "text": "scripts: { build: 'node -e \"import(\\'is-odd\\').then(m => { require(\\'fs\\').mkdirSync(\\'dist\\', { recursive: true }); require(\\'fs\\').writeFi"
+    },
+    {
+     "file": "tests\\manual\\verify_panel_survives_a_bad_machine.ts",
+     "line": 110,
+     "cls": "tooling-or-test",
+     "kind": "require(",
+     "text": "// Break the borrow itself: the audit resolves the manager through require()"
+    },
+    {
+     "file": "tests\\manual\\verify_panel_survives_a_bad_machine.ts",
+     "line": 112,
+     "cls": "tooling-or-test",
+     "kind": "resolve/createRequire",
+     "text": "const id = require.resolve('../../modules/browser/manager');"
+    },
+    {
+     "file": "tests\\manual\\verify_project_edit.ts",
+     "line": 55,
+     "cls": "tooling-or-test",
+     "kind": "resolve/createRequire",
+     "text": "delete require.cache[require.resolve('../../modules/tools/definitions/ProjectEditTool')];"
+    },
+    {
+     "file": "tests\\manual\\verify_project_edit.ts",
+     "line": 71,
+     "cls": "tooling-or-test",
+     "kind": "resolve/createRequire",
+     "text": "delete require.cache[require.resolve('../../modules/tools/definitions/ProjectEditTool')];"
+    },
+    {
+     "file": "tests\\manual\\verify_self_healing_success_loop.ts",
+     "line": 56,
+     "cls": "tooling-or-test",
+     "kind": "require(",
+     "text": "command: 'node -e \"if (!require(\\'fs\\').existsSync(\\'required_file.txt\\')) { console.error(\\\\\\\"MISSING FILE: \\'required_file.txt\\'\\\\\\\"); pro"
+    },
+    {
+     "file": "__tests__\\fixtures\\records-mutation-dom.cjs",
+     "line": 13,
+     "cls": "tooling-or-test",
+     "kind": "resolve/createRequire",
+     "text": "const webRequire = createRequire(path.resolve(__dirname, '../../../../web/package.json'));"
+    }
+   ],
+   "verdict": "CALLER_FOUND"
+  },
+  "MAIN": {
+   "filesScanned": 1128,
+   "pickerRefs": [
+    {
+     "file": "modules\\tools\\definitions\\CentralAnswerTool.ts",
+     "line": 122,
+     "cls": "production",
+     "text": "// Called with no question (a tool-picker that emitted empty args), this"
+    },
+    {
+     "file": "orchestration\\AgentOrchestrator.ts",
+     "line": 27,
+     "cls": "production",
+     "text": "*  executed as-is — never re-decided by the weak-model tool-picker inside"
+    },
+    {
+     "file": "orchestration\\AgentOrchestrator.ts",
+     "line": 702,
+     "cls": "production",
+     "text": "// Deterministic build tool — run it directly so the weak-model tool-picker"
+    },
+    {
+     "file": "system\\scripts\\verify_core_logic.ts",
+     "line": 2,
+     "cls": "tooling-or-test",
+     "text": "import { selectToolDefsForProvider } from '../../core/llm/tool-picker';"
+    },
+    {
+     "file": "__tests__\\integration-audit.test.ts",
+     "line": 245,
+     "cls": "tooling-or-test",
+     "text": "describe('one front door for scaffolds — the tool-picker cannot bypass the verified path', () => {"
+    }
+   ],
+   "symbolRefs": [
+    {
+     "file": "system\\scripts\\verify_core_logic.ts",
+     "line": 2,
+     "cls": "tooling-or-test",
+     "text": "import { selectToolDefsForProvider } from '../../core/llm/tool-picker';"
+    },
+    {
+     "file": "system\\scripts\\verify_core_logic.ts",
+     "line": 40,
+     "cls": "tooling-or-test",
+     "text": "const geminiTools = selectToolDefsForProvider(tools, 5, []);"
+    }
+   ],
+   "reexports": [],
+   "dynRequire": [
+    {
+     "file": "core\\design\\app-blueprints.ts",
+     "line": 650,
+     "cls": "production",
+     "kind": "require(",
+     "text": "const STRICT_POSITIVE_CONSTRAINT = /non[-\\s]?positive|strictly\\s+positive|positive[-\\s]?only|(?:must|should|need(?:s)?|require(?:s)?|validat"
+    },
+    {
+     "file": "core\\orchestrator\\plan-tools.ts",
+     "line": 1596,
+     "cls": "production",
+     "kind": "require(",
+     "text": "'      \"src/index.js\": \"const http = require(\\\\\"http\\\\\");\\\\nconst server = http.createServer((req, res) => { res.end(\\\\\"Hello\\\\\"); });\\\\nser"
+    },
+    {
+     "file": "core\\quality\\scope-audit.ts",
+     "line": 287,
+     "cls": "production",
+     "kind": "require(",
+     "text": "return !/\\b(?:does\\s+not|doesn't|do\\s+not|don't|without|no)\\s+(?:require(?:s|d)?\\s+)?auth(?:entication|orization)?\\b|\\bno[- ]auth\\b/iu.test("
+    },
+    {
+     "file": "modules\\tools\\definitions\\AIGeneratorTool.ts",
+     "line": 49,
+     "cls": "production",
+     "kind": "require(",
+     "text": "? 'The destination is Python. Return valid Python only and do not emit JavaScript/TypeScript imports, require(), module.exports, or JSX.'"
+    },
+    {
+     "file": "modules\\tools\\definitions\\ProjectRepairTool.ts",
+     "line": 35,
+     "cls": "production",
+     "kind": "import(",
+     "text": "const nativeImport = new Function('specifier', 'return import(specifier)');"
+    },
+    {
+     "file": "modules\\tools\\definitions\\ProjectRepairTool.ts",
+     "line": 39,
+     "cls": "production",
+     "kind": "resolve/createRequire",
+     "text": "const resolved = require.resolve(file);"
+    },
+    {
+     "file": "modules\\tools\\definitions\\ProjectRepairTool.ts",
+     "line": 41,
+     "cls": "production",
+     "kind": "require(",
+     "text": "return require(resolved);"
+    },
+    {
+     "file": "modules\\tools\\definitions\\ProjectRunTool.ts",
+     "line": 994,
+     "cls": "production",
+     "kind": "resolve/createRequire",
+     "text": "require.resolve(packageName, { paths: [cwd] });"
+    },
+    {
+     "file": "shared\\ocr.ts",
+     "line": 61,
+     "cls": "production",
+     "kind": "resolve/createRequire",
+     "text": "const pkgDir = path.dirname(require.resolve(`@tesseract.js-data/${lang}/package.json`));"
+    },
+    {
+     "file": "tests\\manual\\eval_002_unfamiliar_repository.ts",
+     "line": 135,
+     "cls": "tooling-or-test",
+     "kind": "require(",
+     "text": "command: 'node -e \"const { power } = require(\\'./calculator\\'); console.log(power(2, 3)); console.log(power(5, 0)); console.log(power(3, 2))"
+    },
+    {
+     "file": "tests\\manual\\eval_002_unfamiliar_repository.ts",
+     "line": 347,
+     "cls": "tooling-or-test",
+     "kind": "require(",
+     "text": "command: 'node -e \"const { power } = require(\\'./calculator\\'); console.log(power(2, 3)); console.log(power(5, 0)); console.log(power(3, 2))"
+    },
+    {
+     "file": "tests\\manual\\eval_008_interrupted_run.ts",
+     "line": 322,
+     "cls": "tooling-or-test",
+     "kind": "require(",
+     "text": "command: 'node -e \"const {power}=require(\\\"./calculator\\\"); console.log(power(2,3), power(5,0), power(3,2));\"'"
+    },
+    {
+     "file": "tests\\manual\\verify_blockers.ts",
+     "line": 77,
+     "cls": "tooling-or-test",
+     "kind": "resolve/createRequire",
+     "text": "delete require.cache[require.resolve('../../core/llm/providers/llm7')];"
+    },
+    {
+     "file": "tests\\manual\\verify_blockers.ts",
+     "line": 85,
+     "cls": "tooling-or-test",
+     "kind": "resolve/createRequire",
+     "text": "delete require.cache[require.resolve('../../core/llm/providers/llm7')];"
+    },
+    {
+     "file": "tests\\manual\\verify_blockers.ts",
+     "line": 94,
+     "cls": "tooling-or-test",
+     "kind": "resolve/createRequire",
+     "text": "delete require.cache[require.resolve('../../core/llm/providers/llm7')];"
+    },
+    {
+     "file": "tests\\manual\\verify_crash_and_repair_loop.ts",
+     "line": 67,
+     "cls": "tooling-or-test",
+     "kind": "require(",
+     "text": "const { installCrashRecorder, noteActivity } = require(${JSON.stringify(RECORDER)});"
+    },
+    {
+     "file": "tests\\manual\\verify_crash_and_repair_loop.ts",
+     "line": 117,
+     "cls": "tooling-or-test",
+     "kind": "require(",
+     "text": "const { installCrashRecorder } = require(${JSON.stringify(RECORDER)});"
+    },
+    {
+     "file": "tests\\manual\\verify_full_system.ts",
+     "line": 192,
+     "cls": "tooling-or-test",
+     "kind": "import(",
+     "text": "scripts: { build: 'node -e \"import(\\'is-odd\\').then(() => console.log(\\'built\\'))\"' },"
+    },
+    {
+     "file": "tests\\manual\\verify_import_project.ts",
+     "line": 62,
+     "cls": "tooling-or-test",
+     "kind": "resolve/createRequire",
+     "text": "delete require.cache[require.resolve('../../modules/tools/definitions/ProjectEditTool')];"
+    },
+    {
+     "file": "tests\\manual\\verify_joe_full_engineer_flow.ts",
+     "line": 60,
+     "cls": "tooling-or-test",
+     "kind": "require(",
+     "text": "command: 'node -e \"const fs = require(\\'fs\\'); if (!fs.existsSync(\\'tasks.ts\\')) fs.writeFileSync(\\'tasks.ts\\', \\'export const taskLimit: nu"
+    },
+    {
+     "file": "tests\\manual\\verify_log_doctor.ts",
+     "line": 69,
+     "cls": "tooling-or-test",
+     "kind": "require(",
+     "text": "scripts: { build: 'node -e \"import(\\'is-odd\\').then(m => { require(\\'fs\\').mkdirSync(\\'dist\\', { recursive: true }); require(\\'fs\\').writeFi"
+    },
+    {
+     "file": "tests\\manual\\verify_log_doctor.ts",
+     "line": 69,
+     "cls": "tooling-or-test",
+     "kind": "import(",
+     "text": "scripts: { build: 'node -e \"import(\\'is-odd\\').then(m => { require(\\'fs\\').mkdirSync(\\'dist\\', { recursive: true }); require(\\'fs\\').writeFi"
+    },
+    {
+     "file": "tests\\manual\\verify_panel_survives_a_bad_machine.ts",
+     "line": 110,
+     "cls": "tooling-or-test",
+     "kind": "require(",
+     "text": "// Break the borrow itself: the audit resolves the manager through require()"
+    },
+    {
+     "file": "tests\\manual\\verify_panel_survives_a_bad_machine.ts",
+     "line": 112,
+     "cls": "tooling-or-test",
+     "kind": "resolve/createRequire",
+     "text": "const id = require.resolve('../../modules/browser/manager');"
+    },
+    {
+     "file": "tests\\manual\\verify_project_edit.ts",
+     "line": 55,
+     "cls": "tooling-or-test",
+     "kind": "resolve/createRequire",
+     "text": "delete require.cache[require.resolve('../../modules/tools/definitions/ProjectEditTool')];"
+    },
+    {
+     "file": "tests\\manual\\verify_project_edit.ts",
+     "line": 71,
+     "cls": "tooling-or-test",
+     "kind": "resolve/createRequire",
+     "text": "delete require.cache[require.resolve('../../modules/tools/definitions/ProjectEditTool')];"
+    },
+    {
+     "file": "tests\\manual\\verify_self_healing_success_loop.ts",
+     "line": 56,
+     "cls": "tooling-or-test",
+     "kind": "require(",
+     "text": "command: 'node -e \"if (!require(\\'fs\\').existsSync(\\'required_file.txt\\')) { console.error(\\\\\\\"MISSING FILE: \\'required_file.txt\\'\\\\\\\"); pro"
+    },
+    {
+     "file": "__tests__\\fixtures\\records-mutation-dom.cjs",
+     "line": 13,
+     "cls": "tooling-or-test",
+     "kind": "resolve/createRequire",
+     "text": "const webRequire = createRequire(path.resolve(__dirname, '../../../../web/package.json'));"
+    }
+   ],
+   "verdict": "CALLER_FOUND"
+  }
+ }
+}
