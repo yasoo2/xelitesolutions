@@ -1,91 +1,51 @@
-# LIVE-REPORT — Muse + NVIDIA (human live view)
-UPDATED=2026-09-30 (Muse cycle, HEAD ea5e5173 + review commit pending)
-ENTRY=http://127.0.0.1:5002/joe
-PRODUCT=CALCULATOR_NOT_PASS (no product PASS anywhere; no false claims)
+# Joe — Live report (Muse cycle, 2026-09-30)
+FALLBACK_COPY: shared D:\Joe\coordination\team\LIVE-REPORT.md is not writable from the Muse sandbox (proven this cycle: absolute-path write refused). This workspace copy is authoritative for import.
+MUSE_HEAD=363e90ad (branch muse/joe-development) + this cycle (audit note 036, consultation addendum, run29 plan — uncommitted at report time)
+MAIN_HEAD=e8fd9589 (NVIDIA worktree, read-only; dirty EVAL-006/CLI work preserved, untouched)
 
 ## 1. ماذا نعمل الآن؟
-- Muse: finished the independent exact-diff review of Codex's calculator
-  source/style repair (commit f61fe8aa). Verdict: APPROVE_WITH_CHANGES
-  (diff accepted; gates + real UI test still required).
-- NVIDIA: original worker unresponsive inside one running tool since 14:48;
-  no fresh progress asserted. A separate bounded review was recorded earlier.
-- Codex: owns the isolated calculator implementation; next is gates +
-  runtime refresh + real UI test.
+مراجعة مستقلة لإصلاح الحاسبة (f61fe8aa) + تحقق من إصلاح عقد التحقق العام + تدقيق توصيل الأدوات (المرحلة 36) + تجهيز اختبار واجهة جديد.
 
 ## 2. ماذا اكتشفنا؟
-- f61fe8aa is the correct bounded repair: symbolic source coverage for
-  calculator (replaces word matching) + real 8KB bounded stylesheet
-  evidence for authoring (replaces filenames). Tests are genuine
-  connected-vs-broken contracts, not labels.
-- 5 failures in nearby column/parser tests are PRE-EXISTING at the parent
-  commit (proven by a base rerun), not caused by the repair. 1 stale test
-  was legitimately corrected by the repair commit.
-- Coverage only understands the hooks idiom (useState); other valid styles
-  stay honestly unresolved. Style checks prove presence, not button size —
-  only the real UI test can prove large buttons.
+- إخفاقات الانحدار الموسعة الـ20 (17 wiring-policy + 3 media) قديمة من الأساس (base) وليست من إصلاح الحاسبة — مثبت بنيويًا (ملفات الاختبار مطابقة + الكود المُمارَس لم يتغير).
+- ادعاء "غياب media عن المرشح" غير دقيق: AppKind/router/blueprint موجودة في الشجرتين (مرشح :40/:258/:1263 مقابل Muse ‏:40/:274/:1279). إخفاقات media سلوكية وتحتاج مالكًا منفصلًا.
+- عدد الأسماء المعلنة الثابت: Muse ‏192 مقابل main ‏193 (الفرق = أداة NVIDIA غير المُثبتة specification_verification). عدد الملفات ≠ عدد الأدوات (26 ملفًا متعدد الأسماء).
 
 ## 3. ماذا أنجزنا فعليًا؟
-- Muse review filed: tmp/team-consultation/
-  CALCULATOR-SOURCE-STYLE-EXACT-DIFF-002-MUSE.response.md
-  (shared consultation write blocked by sandbox; bridge import needed).
-- Independent reruns: focused 87/87 PASS, pipeline 58/58 PASS, typecheck
-  clean, 22-suite battery 181/186 with base attribution.
-- No source edits by Muse; all trees preserved; no competing implementation.
+- إضافة مراجعة Muse الثانية للفرق الدقيق (APPROVE_WITH_CHANGES مشروط، ليس قبولًا نهائيًا ولا موافقة دمج).
+- إعادة تشغيل مستقلة: 87/87 للمرشح + tsc نظيف + 19/19 لعقد التحقق في Muse.
+- مذكرة التدقيق 036 + موجه اختبار run29 جديد وجاهز (wordtally، غير مرئي سابقًا).
 
 ## 4. ماذا يعمل Muse الآن؟
-Review duty complete for this checkpoint. Discovery audit lane resumes
-next cycle (checkpoint 36: pure-6 dormant-name decision probes), unless
-gates/UAT review is requested first.
+انتهاء هذه الدورة عند نقطة تحقق. التالي: تشغيل run29 على واجهة Joe الحقيقية بعد إعادة بناء runtime ‏:5101 (الخطة والموجه جاهزان).
 
 ## 5. ماذا يعمل NVIDIA الآن؟
-UNKNOWN (no new evidence this cycle). Last known: dirty CLI/planning work
-preserved on main; original worker process alive but tool-stalled. No
-activity invented.
+(من الحالة المشتركة فقط، لم يُخترع): مالك حزمة CLI المعتمدة + عمل EVAL-006 غير مُثبت؛ لا تقدم جديد مؤكد هذه الدورة.
 
 ## 6. هل تم التواصل أو المراجعة بين Muse وNVIDIA؟
-No direct Muse-NVIDIA exchange this cycle. Both have recorded positions on
-the calculator evidence proposal (Muse full review + NVIDIA bounded
-staged-source review); both APPROVE_WITH_CHANGES with matching conditions.
+لا مراجعة مباشرة جديدة هذه الدورة. مراجعتا Muse (الحاسبة) وNVIDIA المحدودة (APPROVE_WITH_CHANGES) مسجلتان من دورات سابقة.
 
 ## 7. أين اتفقا وأين اختلفا؟
-Agreement: both defects confirmed; fail-closed gate must stay; 8KB bounded
-projection + truncation marker; every-control contract; label-only negative
-control; minimal weather-pattern seam. No known disagreement. NVIDIA's
-earlier engineer-flow-only-if-PhaseExecutor suggestion was superseded by
-mandatory AGENTS gates (recorded in team state).
+اتفاق: إصلاح الحاسبة صحيح الاتجاه بشروط (fail-closed + أدلة CSS محدودة + إثبات متصفح لكل عنصر). مفتوح: ملكية إخفاقات media/wiring-policy، وتأكيد التحديث (refresh) المحظور بانتظار المستخدم.
 
-## 8. الأرقام المؤكدة (wiring audit, REPORTED_BY_MUSE from staging c35)
-DISCOVERED_TOOLS=246 name spellings (partitioned, not summed)
-REGISTERED_TOOLS=163 (Muse branch) / 164 (main runtime; +1 NVIDIA dirty)
-EXECUTABLE_TOOLS=163 registered + 40 rename-covered aliases + 2 conditional shadows + 1 broken rewrite (report partition, never one sum)
-FULLY_WIRED=UNKNOWN (bulk)
-PARTIALLY_WIRED=UNKNOWN (bulk; 21+ confirmed-partial items listed in staging)
-ORPHANED=5 tools confirmed + 4 preliminary + 1 service + 1 import-only + 1 UI
-DUPLICATE=2 tools + 1 route pair
-UNKNOWN=many (2 trunks coordination-blocked; bulk wiring unsurveyed)
-REPAIRED=0 (audit-first; no repairs performed)
-VERIFIED=145 tools LEVEL-4 storied A/B-verdict-identical (REPORTED_BY_MUSE)
-REAL_JOE_PROVEN=0 this cycle (calculator NOT_PASS; no Real UI run)
-Contract mismatches confirmed: 20. Trunks storied LEVEL-4: 17/19.
+## 8. الأرقام المؤكدة (REPORTED_BY_MUSE, focused/static only)
+DISCOVERED_TOOLS=192 (static name upper bound, Muse HEAD, A/B deterministic)
+REGISTERED_TOOLS=164 (main runtime log, Codex-observed; not re-probed this cycle)
+EXECUTABLE_TOOLS=UNKNOWN (registry boot not run this cycle)
+FULLY_WIRED=UNKNOWN PARTIALLY_WIRED=UNKNOWN ORPHANED=UNKNOWN DUPLICATE=UNKNOWN UNKNOWN=~29 (name-level candidates, upper bound, each needs registration evidence)
+REPAIRED=0 (audit-first; no repairs) VERIFIED=0 REAL_JOE_PROVEN=0 (this cycle: no new UI run)
+VERIFIED (shared, prior): calculator NOT_PASS; run28 PARTIAL; 220-subset readiness SUPERSEDED by expanded run.
 
-## 9. ما آخر اختبار ونتيجته؟ (VERIFIED by Muse rerun, internal/focused)
-- calculator focused 4 suites: 87/87 PASS (internal, NOT Real Joe UI).
-- project-pipeline: 58/58 PASS. tsc --noEmit: clean.
-- 22-suite battery: 181/186; 5 pre-existing failures proven at parent.
-- No REAL_JOE_UI run this cycle (backend pre-fix; rerun would repeat a
-  known failure — forbidden by stop rule).
+## 9. ما آخر اختبار ونتيجته؟
+- Candidate f61fe8aa focused 4 suites: 87/87 PASS (Muse rerun) + tsc exit 0. INTERNAL/FOCUSED only — NOT Real Joe UI.
+- Muse verification-contract 2 suites: 19/19 PASS (smoke 5/5 + prose 14/14). INTERNAL only.
+- Expanded diagnostic JSON re-read: 196 tests, 20 pre-existing fails (17+3), records suite PASS. No Real Joe PASS anywhere.
 
 ## 10. ما المشاكل أو العوائق الحالية؟
-- Backend :5002 still runs pre-fix code; calculator UAT blocked on refresh.
-- 5 pre-existing column/parser failures need a separate owner (not f61fe8aa).
-- NVIDIA original-worker responsiveness unproven; CLI batch implementation
-  has no committed diff yet for Muse review.
-- Sandbox blocks shared-state writes (consultation/LIVE-REPORT/claims);
-  workspace files + bridge import are the path.
+- تحديث runtime ‏:5002 محظور بانتظار تأكيد المستخدم (لا UAT للحاسبة حتى يُسمح).
+- :5101 (Muse) مغلق؛ run29 يحتاج بناءً وإطلاقًا في الدورة التالية.
+- إخفاقات media/wiring-policy بلا مالك؛ E4/E5/L1 متابعة بلا مالك.
+- الكتابة المشتركة (coordination/team) محظورة من sandbox — التسليم عبر ملفات مساحة العمل.
 
 ## 11. ما الخطوة التالية؟
-1. Codex: full AGENTS gates on f61fe8aa, safe runtime refresh, U1/U2/U3.
-2. Muse: review gates/UAT evidence when produced; else audit checkpoint 36.
-3. NVIDIA: safe-checkpoint diagnosis; CLI diff or explicit status.
-4. Integration only after: gates green + UAT evidence + this conditional
-   review + NVIDIA overlap check + Codex audit.
+1. استيراد المراجعة (bridge) وتسجيل ملكية media/wiring-policy. 2. بناء :5101 وتشغيل run29 بإشراف (سقف 40 دقيقة). 3. بعد سماح التحديث: U1/U2/U3 للحاسبة. 4. تدقيق E3 (ترشيح AST للأسماء الـ192).
