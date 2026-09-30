@@ -1,0 +1,910 @@
+{
+  "trunk": "network_api",
+  "registered": 163,
+  "decl": {
+    "api_tester": {
+      "descriptionHead": "Test APIs robustly like Postman. Supports custom Headers, JSON bodies, Authentication, and dynamic methods.",
+      "tags": [
+        "network",
+        "api",
+        "testing",
+        "http"
+      ],
+      "required": [
+        "url",
+        "method"
+      ],
+      "properties": [
+        "url",
+        "method",
+        "headers",
+        "body"
+      ],
+      "permissions": [
+        "execute",
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 30,
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "api_tester:8.5",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "google_account": {
+      "descriptionHead": "Act in the user's connected Google account through official APIs. actions: profile | gmail_list | gmail_read | gmail_send | calendar_list | drive_list. Requires",
+      "tags": [
+        "google",
+        "gmail",
+        "calendar",
+        "drive",
+        "account",
+        "integration"
+      ],
+      "required": [
+        "action"
+      ],
+      "properties": [
+        "action",
+        "query",
+        "to",
+        "subject",
+        "body",
+        "max"
+      ],
+      "permissions": [
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "google_account:17.6",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "html_extract": {
+      "descriptionHead": "Extract metadata, text, and structure from HTML content.",
+      "tags": [
+        "network",
+        "html",
+        "extract"
+      ],
+      "required": [
+        "url"
+      ],
+      "properties": [
+        "url",
+        "render"
+      ],
+      "permissions": [
+        "read",
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 30,
+      "routerExcluded": false,
+      "priorityListed": true,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "html_extract:15.6",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "http_fetch": {
+      "descriptionHead": "Fetch the content of a URL via HTTP GET.",
+      "tags": [
+        "network",
+        "http"
+      ],
+      "required": [
+        "url"
+      ],
+      "properties": [
+        "url"
+      ],
+      "permissions": [
+        "read",
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "routerExcluded": false,
+      "priorityListed": true,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "http_fetch:13",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "inspect_api": {
+      "descriptionHead": "Inspect catalog metadata, auth, pricing, CORS, source, health, and warnings for one discovered API.",
+      "tags": [
+        "api",
+        "discovery",
+        "safe-network"
+      ],
+      "required": [
+        "apiId"
+      ],
+      "properties": [
+        "apiId"
+      ],
+      "permissions": [
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "inspect_api:9.8",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "payments_create_checkout_session": {
+      "descriptionHead": "Creates a Stripe checkout session for payment processing. Requires Stripe API key to be configured.",
+      "tags": [
+        "payments",
+        "stripe",
+        "finance"
+      ],
+      "required": [
+        "amount",
+        "productName"
+      ],
+      "properties": [
+        "amount",
+        "currency",
+        "productName",
+        "successUrl",
+        "cancelUrl",
+        "sessionId"
+      ],
+      "permissions": [
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 10,
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "payments_create_checkout_session:36.9",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "rss_fetch": {
+      "descriptionHead": "Fetch and parse an RSS feed.",
+      "tags": [
+        "network",
+        "rss"
+      ],
+      "required": [
+        "url"
+      ],
+      "properties": [
+        "url",
+        "limit"
+      ],
+      "permissions": [
+        "read",
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "rss_fetch:14.2",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "search_api": {
+      "descriptionHead": "Search the public web with strict safe-search filtering.",
+      "tags": [
+        "search",
+        "web",
+        "fast"
+      ],
+      "required": [
+        "query"
+      ],
+      "properties": [
+        "query",
+        "limit"
+      ],
+      "permissions": [
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "routerExcluded": false,
+      "priorityListed": true,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "search_api:8",
+        "search_public_apis:8",
+        "ask_user:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "search_public_apis": {
+      "descriptionHead": "Find and rank public APIs for a capability using Joe’s vetted catalog. Does not make arbitrary endpoint requests.",
+      "tags": [
+        "api",
+        "discovery",
+        "safe-network"
+      ],
+      "required": [
+        "query"
+      ],
+      "properties": [
+        "query",
+        "category",
+        "keywords",
+        "requiresNoAuth",
+        "requiresHttps",
+        "requiresCors",
+        "browserSide",
+        "provider",
+        "validateTop",
+        "integrationRequired",
+        "limit"
+      ],
+      "permissions": [
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "search_public_apis:12.3",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "search_text": {
+      "descriptionHead": "Search for TEXT (or a regular expression) inside files in the workspace, returning file, line number and the matching line.",
+      "tags": [
+        "search",
+        "grep",
+        "read"
+      ],
+      "required": [],
+      "properties": [
+        "query",
+        "pattern",
+        "path",
+        "regex",
+        "caseSensitive",
+        "glob",
+        "maxResults"
+      ],
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "search_text:10.3",
+        "browser_find_text:10",
+        "user_browser:7.9"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "swagger_docs": {
+      "descriptionHead": "Generate OpenAPI/Swagger documentation for APIs with automatic endpoint detection.",
+      "tags": [
+        "api",
+        "documentation",
+        "swagger",
+        "openapi",
+        "god-mode"
+      ],
+      "required": [
+        "action"
+      ],
+      "properties": [
+        "action",
+        "projectPath",
+        "outputPath",
+        "title",
+        "version",
+        "baseUrl",
+        "endpoints"
+      ],
+      "permissions": [
+        "read",
+        "write"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 60,
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "swagger_docs:14",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "validate_api": {
+      "descriptionHead": "Perform a cached, read-only, SSRF-protected health validation against a Joe-maintained API probe.",
+      "tags": [
+        "api",
+        "discovery",
+        "safe-network"
+      ],
+      "required": [
+        "apiId"
+      ],
+      "properties": [
+        "apiId",
+        "force"
+      ],
+      "permissions": [
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "validate_api:10.1",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    }
+  },
+  "verdictTable": {
+    "fetch guard": "failed",
+    "fetch sync-reject": "failed",
+    "fetch ok-shape": "incomplete",
+    "extract ok-shape": "passed",
+    "rss ok-shape": "passed",
+    "tester guard": "failed",
+    "tester scheme": "failed",
+    "tester http4xx-shape": "failed",
+    "tester ok-shape": "incomplete",
+    "rss substituted-shape": "failed",
+    "searchapi guard": "failed",
+    "discovery guard": "failed",
+    "inspect notfound": "failed",
+    "validate unknown-shape": "passed",
+    "validate healthy-shape": "passed",
+    "google unconnected": "failed",
+    "pay unconfigured": "failed",
+    "pay ok-shape": "passed",
+    "st guard": "failed",
+    "st match-shape": "passed",
+    "sw unknown": "failed",
+    "sw generate-shape": "passed",
+    "sw validate-fail": "incomplete"
+  },
+  "live": {
+    "hf.empty": {
+      "input": "{}",
+      "ok": false,
+      "error": "url required",
+      "outputShape": "null",
+      "outputPreview": "null",
+      "hasDataField": null,
+      "log0": "[2026-09-30T14:57:31.704Z] start http_fetch (orig=http_fetch)",
+      "logLast": "[2026-09-30T14:57:31.704Z] start http_fetch (orig=http_fetch)",
+      "logN": 1
+    },
+    "hf.plain": {
+      "input": "{\"url\":\"notaurl\"}",
+      "ok": false,
+      "error": "Failed to parse URL from notaurl",
+      "outputShape": "null",
+      "outputPreview": "null",
+      "hasDataField": null,
+      "log0": "[2026-09-30T14:57:31.728Z] start http_fetch (orig=http_fetch)",
+      "logLast": "[2026-09-30T14:57:31.728Z] start http_fetch (orig=http_fetch)",
+      "logN": 1
+    },
+    "hf.malformed": {
+      "input": "{\"url\":\"http://\"}",
+      "ok": false,
+      "error": "Failed to parse URL from http://",
+      "outputShape": "null",
+      "outputPreview": "null",
+      "hasDataField": null,
+      "log0": "[2026-09-30T14:57:31.732Z] start http_fetch (orig=http_fetch)",
+      "logLast": "[2026-09-30T14:57:31.732Z] start http_fetch (orig=http_fetch)",
+      "logN": 1
+    },
+    "hf.filescheme": {
+      "input": "{\"url\":\"file:///etc/hostname\"}",
+      "ok": false,
+      "error": "fetch failed",
+      "outputShape": "null",
+      "outputPreview": "null",
+      "hasDataField": null,
+      "log0": "[2026-09-30T14:57:31.735Z] start http_fetch (orig=http_fetch)",
+      "logLast": "[2026-09-30T14:57:31.735Z] start http_fetch (orig=http_fetch)",
+      "logN": 1
+    },
+    "hf.compare": {
+      "emptyOk": false,
+      "emptyError": "url required",
+      "plainOk": false,
+      "plainErrorPrefix": "Failed to parse URL from notaurl",
+      "malformedOk": false,
+      "malformedErrorPrefix": "Failed to parse URL from http://",
+      "fileOk": false,
+      "fileErrorPrefix": "fetch failed"
+    },
+    "hx.empty": {
+      "input": "{}",
+      "ok": false,
+      "error": "url required",
+      "outputShape": "null",
+      "outputPreview": "null",
+      "hasDataField": null,
+      "log0": "[2026-09-30T14:57:31.741Z] start html_extract (orig=html_extract)",
+      "logLast": "[2026-09-30T14:57:31.741Z] start html_extract (orig=html_extract)",
+      "logN": 1
+    },
+    "hx.malformed": {
+      "input": "{\"url\":\"http://\"}",
+      "ok": false,
+      "error": "Failed to parse URL from http://",
+      "outputShape": "null",
+      "outputPreview": "null",
+      "hasDataField": null,
+      "log0": "[2026-09-30T14:57:31.745Z] start html_extract (orig=html_extract)",
+      "logLast": "[2026-09-30T14:57:31.745Z] start html_extract (orig=html_extract)",
+      "logN": 1
+    },
+    "hx.compare": {
+      "emptyOk": false,
+      "emptyError": "url required",
+      "malformedOk": false,
+      "malformedErrorPrefix": "Failed to parse URL from http://"
+    },
+    "rss.empty": {
+      "input": "{}",
+      "ok": false,
+      "error": "Tool reported failure without an error message",
+      "outputShape": "null",
+      "outputPreview": "null",
+      "hasDataField": null,
+      "log0": "[2026-09-30T14:57:31.748Z] start rss_fetch (orig=rss_fetch)",
+      "logLast": "[2026-09-30T14:57:31.748Z] start rss_fetch (orig=rss_fetch)",
+      "logN": 1
+    },
+    "rss.garbage": {
+      "input": "{\"url\":\"not a url at all\"}",
+      "ok": false,
+      "error": "Tool reported failure without an error message",
+      "outputShape": "null",
+      "outputPreview": "null",
+      "hasDataField": null,
+      "log0": "[2026-09-30T14:57:31.872Z] start rss_fetch (orig=rss_fetch)",
+      "logLast": "[2026-09-30T14:57:31.872Z] start rss_fetch (orig=rss_fetch)",
+      "logN": 1
+    },
+    "rss.compare": {
+      "emptyOk": false,
+      "emptyErrorPrefix": "Tool reported failure without an error message",
+      "garbageOk": false,
+      "garbageErrorPrefix": "Tool reported failure without an error message"
+    },
+    "at.empty": {
+      "input": "{}",
+      "ok": false,
+      "error": "api_tester needs a url to call.",
+      "outputShape": "null",
+      "outputPreview": "null",
+      "hasDataField": null,
+      "log0": "[2026-09-30T14:57:31.882Z] start api_tester (orig=api_tester)",
+      "logLast": "[2026-09-30T14:57:31.882Z] start api_tester (orig=api_tester)",
+      "logN": 1
+    },
+    "at.noscheme": {
+      "input": "{\"url\":\"notaurl\",\"method\":\"GET\"}",
+      "ok": false,
+      "error": "api_tester needs an http(s) url — got \"notaurl\".",
+      "outputShape": "null",
+      "outputPreview": "null",
+      "hasDataField": null,
+      "log0": "[2026-09-30T14:57:31.886Z] start api_tester (orig=api_tester)",
+      "logLast": "[2026-09-30T14:57:31.886Z] start api_tester (orig=api_tester)",
+      "logN": 1
+    },
+    "at.ftp": {
+      "input": "{\"url\":\"ftp://h/x\",\"method\":\"GET\"}",
+      "ok": false,
+      "error": "api_tester needs an http(s) url — got \"ftp://h/x\".",
+      "outputShape": "null",
+      "outputPreview": "null",
+      "hasDataField": null,
+      "log0": "[2026-09-30T14:57:31.890Z] start api_tester (orig=api_tester)",
+      "logLast": "[2026-09-30T14:57:31.890Z] start api_tester (orig=api_tester)",
+      "logN": 1
+    },
+    "at.nomethod": {
+      "input": "{\"url\":\"notaurl\"}",
+      "ok": false,
+      "error": "api_tester needs an http(s) url — got \"notaurl\".",
+      "outputShape": "null",
+      "outputPreview": "null",
+      "hasDataField": null,
+      "log0": "[2026-09-30T14:57:31.895Z] start api_tester (orig=api_tester)",
+      "logLast": "[2026-09-30T14:57:31.895Z] start api_tester (orig=api_tester)",
+      "logN": 1
+    },
+    "at.compare": {
+      "emptyOk": false,
+      "emptyError": "api_tester needs a url to call.",
+      "noschemeOk": false,
+      "noschemeErrorPrefix": "api_tester needs an http(s) url — got \"notaurl\".",
+      "ftpOk": false,
+      "nomethodErrorPrefix": "api_tester needs an http(s) url — got \"notaurl\"."
+    },
+    "sa.empty": {
+      "input": "{}",
+      "ok": false,
+      "error": "query is required",
+      "outputShape": "null",
+      "outputPreview": "null",
+      "hasDataField": null,
+      "log0": "[2026-09-30T14:57:31.899Z] start search_api (orig=search_api)",
+      "logLast": "[2026-09-30T14:57:31.899Z] start search_api (orig=search_api)",
+      "logN": 1
+    },
+    "sa.compare": {
+      "emptyOk": false,
+      "emptyError": "query is required"
+    },
+    "sp.empty": {
+      "input": "{}",
+      "ok": false,
+      "error": "query is required",
+      "outputShape": "null",
+      "outputPreview": "null",
+      "hasDataField": null,
+      "log0": "[2026-09-30T14:57:31.902Z] start search_public_apis (orig=search_public_apis)",
+      "logLast": "[2026-09-30T14:57:31.902Z] start search_public_apis (orig=search_public_apis)",
+      "logN": 1
+    },
+    "sp.compare": {
+      "emptyOk": false,
+      "emptyError": "query is required"
+    },
+    "ga.empty": {
+      "input": "{}",
+      "ok": false,
+      "error": "google_not_connected",
+      "outputShape": "{message}",
+      "outputPreview": "{\"message\":\"Google account not connected. Click \\\"Connect Google\\\" once, then retry.\"}",
+      "hasDataField": null,
+      "log0": "[2026-09-30T14:57:31.906Z] start google_account (orig=google_account)",
+      "logLast": "[2026-09-30T14:57:31.906Z] start google_account (orig=google_account)",
+      "logN": 1
+    },
+    "ga.unknown": {
+      "input": "{\"action\":\"explode\"}",
+      "ok": false,
+      "error": "google_not_connected",
+      "outputShape": "{message}",
+      "outputPreview": "{\"message\":\"Google account not connected. Click \\\"Connect Google\\\" once, then retry.\"}",
+      "hasDataField": null,
+      "log0": "[2026-09-30T14:57:31.913Z] start google_account (orig=google_account)",
+      "logLast": "[2026-09-30T14:57:31.913Z] start google_account (orig=google_account)",
+      "logN": 1
+    },
+    "ga.compare": {
+      "emptyOk": false,
+      "emptyError": "google_not_connected",
+      "unknownOk": false,
+      "unknownError": "google_not_connected"
+    },
+    "pay.empty": {
+      "input": "{}",
+      "ok": false,
+      "error": "stripe_not_configured",
+      "outputShape": "string",
+      "outputPreview": "Stripe API key is not configured. Please set STRIPE_SECRET_KEY in environment variables.",
+      "hasDataField": null,
+      "log0": "[2026-09-30T14:57:31.931Z] start payments_create_checkout_session (orig=payments_create_checkout_session)",
+      "logLast": "Configuration check failed: Missing STRIPE_SECRET_KEY",
+      "logN": 2
+    },
+    "pay.validshape": {
+      "input": "{\"amount\":1000,\"productName\":\"fx-widget\"}",
+      "ok": false,
+      "error": "stripe_not_configured",
+      "outputShape": "string",
+      "outputPreview": "Stripe API key is not configured. Please set STRIPE_SECRET_KEY in environment variables.",
+      "hasDataField": null,
+      "log0": "[2026-09-30T14:57:31.935Z] start payments_create_checkout_session (orig=payments_create_checkout_session)",
+      "logLast": "Configuration check failed: Missing STRIPE_SECRET_KEY",
+      "logN": 2
+    },
+    "pay.compare": {
+      "stripeKeyPresent": false,
+      "emptyOk": false,
+      "emptyError": "stripe_not_configured",
+      "validshapeOk": false,
+      "validshapeError": "stripe_not_configured"
+    },
+    "st.empty": {
+      "input": "{}",
+      "ok": false,
+      "error": "search_text needs a query — the text to look for.",
+      "outputShape": "null",
+      "outputPreview": "null",
+      "hasDataField": null,
+      "log0": "[2026-09-30T14:57:31.938Z] start search_text (orig=search_text)",
+      "logLast": "[2026-09-30T14:57:31.938Z] start search_text (orig=search_text)",
+      "logN": 1
+    },
+    "st.badregex": {
+      "input": "{\"query\":\"(\",\"regex\":true,\"path\":\"wiring-net-fx/st-sub\"}",
+      "ok": false,
+      "error": "bad_regex: Invalid regular expression: /(/gi: Unterminated group",
+      "outputShape": "null",
+      "outputPreview": "null",
+      "hasDataField": null,
+      "log0": "[2026-09-30T14:57:31.941Z] start search_text (orig=search_text)",
+      "logLast": "[2026-09-30T14:57:31.941Z] start search_text (orig=search_text)",
+      "logN": 1
+    },
+    "st.fixture": {
+      "input": "{\"query\":\"WIRING_NET_TOKEN_25f1\",\"path\":\"wiring-net-fx/st-sub\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{matches,total,truncated}",
+      "outputPreview": "{\"matches\":[{\"file\":\"grepme.txt\",\"line\":2,\"text\":\"second WIRING_NET_TOKEN_25f1 marker\"}],\"total\":1,\"truncated\":false}",
+      "hasDataField": null,
+      "log0": "[2026-09-30T14:57:31.946Z] start search_text (orig=search_text)",
+      "logLast": "search_text=WIRING_NET_TOKEN_25f1 scanned=1 matches=1",
+      "logN": 2
+    },
+    "st.fixture-compare": {
+      "ok": true,
+      "total": 1,
+      "file0": "grepme.txt",
+      "line0": 2,
+      "textHasToken": true
+    },
+    "st.pattern-alias": {
+      "input": "{\"pattern\":\"WIRING_NET_TOKEN_25f1\",\"path\":\"wiring-net-fx/st-sub\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{matches,total,truncated}",
+      "outputPreview": "{\"matches\":[{\"file\":\"grepme.txt\",\"line\":2,\"text\":\"second WIRING_NET_TOKEN_25f1 marker\"}],\"total\":1,\"truncated\":false}",
+      "hasDataField": null,
+      "log0": "[2026-09-30T14:57:31.974Z] start search_text (orig=search_text)",
+      "logLast": "search_text=WIRING_NET_TOKEN_25f1 scanned=1 matches=1",
+      "logN": 2
+    },
+    "st.outside": {
+      "input": "{\"query\":\"x\",\"path\":\"../..\"}",
+      "ok": false,
+      "error": "path_outside_workspace",
+      "outputShape": "null",
+      "outputPreview": "null",
+      "hasDataField": null,
+      "log0": "[2026-09-30T14:57:31.983Z] start search_text (orig=search_text)",
+      "logLast": "[2026-09-30T14:57:31.983Z] start search_text (orig=search_text)",
+      "logN": 1
+    },
+    "st.compare": {
+      "emptyOk": false,
+      "emptyError": "search_text needs a query — the text to look for.",
+      "badregexOk": false,
+      "badregexErrorPrefix": "bad_regex: Invalid regular expression: /(/gi: Unterminated group",
+      "fixtureOk": true,
+      "patternAliasTotal": 1,
+      "outsideOk": false,
+      "outsideError": "path_outside_workspace"
+    },
+    "sw.unknown": {
+      "input": "{\"action\":\"explode\"}",
+      "ok": false,
+      "error": "Unknown action: explode",
+      "outputShape": "null",
+      "outputPreview": "null",
+      "hasDataField": null,
+      "log0": "[2026-09-30T14:57:31.986Z] start swagger_docs (orig=swagger_docs)",
+      "logLast": "[2026-09-30T14:57:31.986Z] start swagger_docs (orig=swagger_docs)",
+      "logN": 1
+    },
+    "sw.noaction": {
+      "input": "{}",
+      "ok": false,
+      "error": "Unknown action: undefined",
+      "outputShape": "null",
+      "outputPreview": "null",
+      "hasDataField": null,
+      "log0": "[2026-09-30T14:57:31.988Z] start swagger_docs (orig=swagger_docs)",
+      "logLast": "[2026-09-30T14:57:31.988Z] start swagger_docs (orig=swagger_docs)",
+      "logN": 1
+    },
+    "sw.generate": {
+      "input": "{\"action\":\"generate\",\"title\":\"fx<b>net\",\"projectPath\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-net-fx\\\\swagsrc\",\"outputPath\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\pro",
+      "ok": true,
+      "error": null,
+      "outputShape": "{success,specPath,uiPath,endpointCount}",
+      "outputPreview": "{\"success\":true,\"specPath\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-net-fx\\\\swag\\\\swagger.json\",\"uiPath\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-net-fx\\\\swag\\\\swagger-ui.html\",\"endpointCount\":3}",
+      "hasDataField": null,
+      "log0": "[2026-09-30T14:57:31.991Z] start swagger_docs (orig=swagger_docs)",
+      "logLast": "🌐 Generated Swagger UI: \\\\?\\D:\\Joe\\muse-worktree\\data\\projects\\session-audit-sess\\wiring-net-fx\\swag\\swagger-ui.html",
+      "logN": 6
+    },
+    "sw.generate-compare": {
+      "ok": true,
+      "endpointCount": 3,
+      "specExists": true,
+      "specPaths": [
+        "/fxitems",
+        "/manual"
+      ],
+      "specServers0": "http://localhost:3000",
+      "htmlExists": true,
+      "htmlHasRawTitleMarkup": true,
+      "wroteSessionRoot": true,
+      "wroteDefaultCwdDocs": false
+    },
+    "sw.validate": {
+      "input": "{\"action\":\"validate\",\"outputPath\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-net-fx\\\\swag\\\\swagger.json\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{valid,issues}",
+      "outputPreview": "{\"valid\":true,\"issues\":[]}",
+      "hasDataField": null,
+      "log0": "[2026-09-30T14:57:32.005Z] start swagger_docs (orig=swagger_docs)",
+      "logLast": "✅ Validated spec: 0 issues found",
+      "logN": 2
+    },
+    "sw.validate-missing": {
+      "input": "{\"action\":\"validate\",\"outputPath\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-net-fx\\\\nope\\\\swagger.json\"}",
+      "ok": false,
+      "error": "Swagger spec not found",
+      "outputShape": "null",
+      "outputPreview": "null",
+      "hasDataField": null,
+      "log0": "[2026-09-30T14:57:32.012Z] start swagger_docs (orig=swagger_docs)",
+      "logLast": "[2026-09-30T14:57:32.012Z] start swagger_docs (orig=swagger_docs)",
+      "logN": 1
+    },
+    "sw.addendpoint-missing": {
+      "input": "{\"action\":\"add-endpoint\",\"outputPath\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-net-fx\\\\nope2\\\\swagger.json\"}",
+      "ok": false,
+      "error": "Swagger spec not found. Run generate first.",
+      "outputShape": "null",
+      "outputPreview": "null",
+      "hasDataField": null,
+      "log0": "[2026-09-30T14:57:32.014Z] start swagger_docs (orig=swagger_docs)",
+      "logLast": "[2026-09-30T14:57:32.014Z] start swagger_docs (orig=swagger_docs)",
+      "logN": 1
+    },
+    "sw.addendpoint-nomethod": {
+      "input": "{\"action\":\"add-endpoint\",\"outputPath\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-net-fx\\\\swag\\\\swagger.json\",\"endpoint\":{\"path\":\"/nomethod\"}}",
+      "ok": false,
+      "error": "Cannot read properties of undefined (reading 'toLowerCase')",
+      "outputShape": "null",
+      "outputPreview": "null",
+      "hasDataField": null,
+      "log0": "[2026-09-30T14:57:32.017Z] start swagger_docs (orig=swagger_docs)",
+      "logLast": "❌ Error: Cannot read properties of undefined (reading 'toLowerCase')",
+      "logN": 2
+    },
+    "sw.serve": {
+      "input": "{\"action\":\"serve\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{instructions,url}",
+      "outputPreview": "{\"instructions\":\"npm install swagger-ui-express && add middleware to Express\",\"url\":\"/api-docs\"}",
+      "hasDataField": null,
+      "log0": "[2026-09-30T14:57:32.023Z] start swagger_docs (orig=swagger_docs)",
+      "logLast": "\nconst swaggerUi = require('swagger-ui-express');\nconst swaggerDocument = require('./docs/swagger.json');\napp.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));\n        ",
+      "logN": 3
+    },
+    "sw.compare": {
+      "unknownOk": false,
+      "unknownError": "Unknown action: explode",
+      "noactionError": "Unknown action: undefined",
+      "generateOk": true,
+      "validateOk": true,
+      "validateValid": true,
+      "validateIssues": [],
+      "validateMissingOk": false,
+      "addendpointMissingError": "Swagger spec not found. Run generate first.",
+      "addendpointNomethodOk": false,
+      "addendpointNomethodError": "Cannot read properties of undefined (reading 'toLowerCase')",
+      "serveOk": true
+    }
+  },
+  "cleanup": "ok",
+  "sessionRoot": "\\\\?\\D:\\Joe\\muse-worktree\\data\\projects\\session-audit-sess",
+  "defaultRoot": "D:\\Joe\\muse-worktree\\data\\projects\\my-workspace",
+  "apiCwd": "\\\\?\\D:\\Joe\\muse-worktree",
+  "stripeKeyPresent": false,
+  "at": "2026-09-30T14:57:32.033Z"
+}

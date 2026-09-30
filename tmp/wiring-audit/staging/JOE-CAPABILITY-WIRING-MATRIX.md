@@ -4211,5 +4211,317 @@ RECOMMENDED_ACTION=WIRING-P2-040 (materialize-or-declare-generator; reject unkno
 
 ---
 
-END-OF-MUSE-DRAFT-ROWS=162 (152 individual + 8 group + 2 external-cited)
-COVERAGE-DISCLAIMER=This draft covers ONLY what Muse checkpoints 1-23 evidenced. Full matrix requires: per-trunk path stories (19 trunks PROPOSED in merge.json, 14 STORIED: files 10/10 + browser_ui 33/33 LEVEL-4 + testing_qa 6/6 LEVEL-4 + security 3/3 LEVEL-4 + code_understanding 16/16 LEVEL-4 + vcs_repo 11/11 LEVEL-4 + build_generate 13/13 LEVEL-4 + runtime_services 5/5 LEVEL-4 + shell_terminal 4/4 LEVEL-4 + database_data 6/6 LEVEL-4 + observability 5/5 LEVEL-4 + interaction 8/8 LEVEL-4 + infra_ops 6/6 + documentation 2/2 LEVEL-4 + language_runtimes 4/4 LEVEL-4), services/workers/persistence/deployment rows (NVIDIA scope), bulk per-tool firewall sweep (8 spot + 28 empty-input batch-1+2 + 19 risk-tier live + 16 trunk-files + 3 arch-backend + 26 browser live1/live2 + 30 browser live3 + 19 trunk-testing + 13 trunk-security + 36 trunk-code + 43 trunk-vcs + 45 trunk-build + 4 prog-batch3 + 23 trunk-runtime + 4 pages-approved + 25 trunk-shell + 5 shell-cwd + 28 trunk-db + 45 trunk-obs + 37 trunk-ixn + 40 trunk-infradoc + 32 trunk-lang done; traversal live legs + 120s timeout leg + python-present legs embargoed; 25/25 no-required reviewed: 18 SAFE + 1 BOUND + 4 EMBARGO with static fixture designs + 2 FIXTURE probed contained; browser_launch embargo partially lifted for contained-http; sonar/dep_audit/dead_code positives embargoed; code_reviewer non-quick + ALL github-network/git-network-push/import-clone/npm-qa legs embargoed; pipeline-named/setActiveRoot + mobile-default-cwd + full-stack-{} + react/api-full + ent/ori-default-root + page-model-present legs embargoed; risk table SURVEYED), contract audit per boundary (19 mismatches + schema/execute family), LEVEL 5-6 proofs (L5 done files+browser_ui + project_run live-gate receipt; testing_qa + security + code_understanding static-only, 5 checkers pending; vcs_repo + build_generate static-only with 0 checkers each; observability + interaction + infra_ops + documentation + language_runtimes static-only with 0 checkers each), and NVIDIA cross-review (pending — worker on CLI-BATCH1 + audit slice).
+CAPABILITY_ID=TOOL-api_tester
+NAME=api_tester (ApiTesterTool, ApiTesterTool.ts:3)
+CATEGORY=tool/network_api-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/ApiTesterTool.ts
+IMPLEMENTATION=Postman-like HTTP tester: url+method+headers+body; explicit ^https?:// scheme guard (:44-46) + empty-url guard (:43); method schema-required but code-defaults to GET (:47); returns {status,statusText,headers,data,timeMs} with ok=response.ok; network errors caught to ok:false + message
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1 (both goals)
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE guards (trunk_net_runA/B.json 2x verdict-identical): {} -> needs-url sentence; ftp:/schemaless -> scheme rejection quoting the value; missing method reaches the same scheme check (F191 -- method decorative-required, P2-004 instance). Valid-URL path deliberately unprobed (network embargo)
+PERMISSION_REACHABLE=YES (execute+read; rate 30/min)
+PERMISSION_EVIDENCE=executed without approval under default autoSafe
+INPUT_CONTRACT_VALID=PARTIAL (url enforced with sentences; method required-but-defaulted)
+OUTPUT_CONTRACT_VALID=YES (honest HTTP shapes incl. ok:false on transport failure)
+EVIDENCE_PRODUCED=YES (status/headers/data/timeMs in output + request/response logs)
+VERIFICATION_COMPATIBLE=PARTIAL (never a checker -- static VERIFY25; guard shapes => failed; honest ok-shape {status:200} => incomplete via MISMATCH #20 status-vocabulary collision -- consumer-side, rides P2-042)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=FULLY_WIRED (at tool level; method decorative joins P2-004; ok-shape verdict rides P2-042; live-URL path embargoed)
+RECOMMENDED_ACTION=WIRING-P2-004 (drop method from required OR enforce it) + P2-042 (status vocabulary) -- proposed, unactioned
+
+---
+
+CAPABILITY_ID=TOOL-google_account
+NAME=google_account (GoogleAccountTool, GoogleAccountTool.ts:30)
+CATEGORY=tool/network_api-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/GoogleAccountTool.ts
+IMPLEMENTATION=Gmail/Calendar/Drive/profile via official Google APIs; actions profile|gmail_list|gmail_read|gmail_send|calendar_list|drive_list; unconnected -> google_not_connected + bilingual help (:55-59); token via getAccessToken; max clamped 1..25 (:63); gmail_send interpolates RAW to/subject/body into RFC822 headers (:104-106, CRLF injection surface); sideEffects=[] despite send-email
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1 (both goals)
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE guards (trunk_net_runA/B.json 2x verdict-identical): {} and {action:'explode'} BOTH -> google_not_connected (F195 -- guard order: connection checked before action validation; required:['action'] decorative -> P2-004 instance). All post-auth paths UNPROVEN (no OAuth in env; gmail_send must NEVER be live-probed)
+PERMISSION_REACHABLE=YES (internet; rate 20/min)
+PERMISSION_EVIDENCE=executed without approval under default autoSafe
+INPUT_CONTRACT_VALID=NO (to/subject/body unvalidated; CRLF reaches headers by construction)
+OUTPUT_CONTRACT_VALID=YES (message + typed payloads on all actions, code-read)
+EVIDENCE_PRODUCED=YES (message/ids/events/files in output)
+VERIFICATION_COMPATIBLE=PARTIAL (never a checker -- static VERIFY25; unconnected shape => failed)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (F195 header-injection surface + undeclared send side effect + decorative required)
+RECOMMENDED_ACTION=WIRING-P2-044 (address+CRLF validation; sideEffects declaration; keep guard order as anchor) -- proposed, unactioned
+
+---
+
+CAPABILITY_ID=TOOL-html_extract
+NAME=html_extract (HtmlExtractTool, ContentTools.ts:41)
+CATEGORY=tool/network_api-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/ContentTools.ts
+IMPLEMENTATION=fetch URL + JSDOM + Readability: title/meta/headings/links(20)/textSnippet(2000)/rendered:false; empty-url guard (:55); NO scheme/host/credential policy -- any non-empty shape reaches fetch (:58)
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1 (both goals)
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE pre-network shapes (trunk_net_runA/B.json 2x verdict-identical): {} -> 'url required'; 'http://' -> sync 'Failed to parse URL' (F189 family -- no tool-level URL policy; sibling http_fetch file: leg proves non-http shapes reach fetch). Rendered/DOM paths need network (embargoed)
+PERMISSION_REACHABLE=YES (read+internet; rate 30/min; PRIORITY-listed -- least-privilege note)
+PERMISSION_EVIDENCE=executed without approval under default autoSafe
+INPUT_CONTRACT_VALID=NO (no URL policy; SSRF read surface code-certain)
+OUTPUT_CONTRACT_VALID=YES (documented extraction shape, code-read)
+EVIDENCE_PRODUCED=YES (title/headings/links/snippet in output + extracted log)
+VERIFICATION_COMPATIBLE=YES (never a checker -- static VERIFY25; guard => failed; ok-shape => passed)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (F189 missing URL policy)
+RECOMMENDED_ACTION=WIRING-P1-016 (shared URL policy, api_tester/assertSafePublicUrl precedent) -- proposed, unactioned
+
+---
+
+CAPABILITY_ID=TOOL-http_fetch
+NAME=http_fetch (HttpFetchTool, ContentTools.ts:12)
+CATEGORY=tool/network_api-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/ContentTools.ts
+IMPLEMENTATION=HTTP GET returning {status, bodySnippet(1000), contentType}; empty-url guard (:26); NO scheme/host/credential policy -- any non-empty shape reaches fetch (:28)
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1 (both goals)
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE pre-network shapes (trunk_net_runA/B.json 2x verdict-identical): {} -> 'url required'; 'notaurl'/'http://' -> sync parse rejection; 'file:///etc/hostname' -> 'fetch failed' (F189 -- file: reached fetch; only undici rejected it; zero I/O). Success path needs network (embargoed)
+PERMISSION_REACHABLE=YES (read+internet; rate 60/min; PRIORITY-listed -- least-privilege note)
+PERMISSION_EVIDENCE=executed without approval under default autoSafe
+INPUT_CONTRACT_VALID=NO (no URL policy; SSRF read surface code-certain)
+OUTPUT_CONTRACT_VALID=YES (status/snippet/contentType, code-read)
+EVIDENCE_PRODUCED=YES (status + snippet in output + fetch log)
+VERIFICATION_COMPATIBLE=PARTIAL (never a checker -- static VERIFY25; guard/reject => failed; honest ok-shape {status:200} => incomplete via MISMATCH #20 -- consumer-side, rides P2-042)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (F189 missing URL policy)
+RECOMMENDED_ACTION=WIRING-P1-016 (shared URL policy) + P2-042 (status vocabulary) -- proposed, unactioned
+
+---
+
+CAPABILITY_ID=TOOL-inspect_api
+NAME=inspect_api (InspectApiTool, PublicApiDiscoveryTools.ts:78)
+CATEGORY=tool/network_api-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/PublicApiDiscoveryTools.ts + api/src/core/api-discovery/service.ts
+IMPLEMENTATION=catalog-metadata read via apiDiscoveryService().inspect(apiId) -> {api} or api_not_found (:84-87); NO pre-service guard -- every call cold-loads the catalog with a bounded remote refresh on first use (service.ts:19-37)
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1 (both goals)
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=UNKNOWN (ZERO live legs -- any call reaches the network on a cold registry; embargoed. Code-cited: unknown id -> api_not_found AFTER cold refresh, so first-call miss latency depends on network -- F194)
+EXECUTOR_EVIDENCE=none live (code-read only)
+PERMISSION_REACHABLE=UNKNOWN (internet; rate 20/min; no live execution to observe gating)
+PERMISSION_EVIDENCE=none live
+INPUT_CONTRACT_VALID=UNKNOWN (apiId accepted as string; '' behavior code-unprobed)
+OUTPUT_CONTRACT_VALID=UNKNOWN (shape code-read, never observed)
+EVIDENCE_PRODUCED=UNKNOWN (no live output)
+VERIFICATION_COMPATIBLE=PARTIAL (never a checker -- static VERIFY25; notfound shape => failed in table)
+CANONICAL_PATH_CONNECTED=UNKNOWN (registration + selection proven; execution link unprobed)
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=UNKNOWN_REQUIRES_INVESTIGATION (F194 -- needs a loopback-catalog harness for live legs)
+RECOMMENDED_ACTION=owner live-checks with loopback catalog (search/inspect/validate trio); no repair batch (design works as documented)
+
+---
+
+CAPABILITY_ID=TOOL-payments_create_checkout_session
+NAME=payments_create_checkout_session (PaymentsTool, PaymentsTool.ts:7)
+CATEGORY=tool/network_api-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/PaymentsTool.ts
+IMPLEMENTATION=Stripe checkout sessions; no STRIPE_SECRET_KEY -> stripe_not_configured + setup sentence (:63-71); else dynamic stripe import + sessions.create; amount NEVER validated (NaN/negative/zero reach Math.round -> Stripe); success/cancel URLs unvalidated strings; sideEffects=[] for a FINANCIAL tool (self-admitted :54)
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1 (both goals)
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE config gate (trunk_net_runA/B.json 2x verdict-identical, STRIPE_SECRET_KEY verified absent -- interlock held): {} and {amount:1000,productName:'fx-widget'} yield BYTE-IDENTICAL stripe_not_configured errors (F196 -- required:['amount','productName'] decorative -> P2-004 instance). Post-config path UNPROVABLE here (would call real Stripe)
+PERMISSION_REACHABLE=YES (internet; rate 10/min)
+PERMISSION_EVIDENCE=executed without approval under default autoSafe
+INPUT_CONTRACT_VALID=NO (amount/URLs unvalidated; required unenforced)
+OUTPUT_CONTRACT_VALID=YES (JSON checkoutUrl/sessionId shape, code-read)
+EVIDENCE_PRODUCED=YES (config sentence in output + log)
+VERIFICATION_COMPATIBLE=YES (never a checker -- static VERIFY25; unconfigured => failed; ok-shape => passed)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (F196 unvalidated financial inputs + undeclared side effects + decorative required)
+RECOMMENDED_ACTION=WIRING-P2-044 (positive-amount + URL validation; sideEffects declaration) -- proposed, unactioned
+
+---
+
+CAPABILITY_ID=TOOL-rss_fetch
+NAME=rss_fetch (RssFetchTool, ContentTools.ts:91)
+CATEGORY=tool/network_api-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/ContentTools.ts
+IMPLEMENTATION=rss-parser parseURL -> {items:[{title,link,pubDate,description}]} sliced to limit; NO url guard (unlike its two ContentTools siblings -- required:['url'] decorative); catch yields error:e.message which is '' for the parser's empty-message AggregateError -> gateway substitutes generic text (:116-118)
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1 (both goals)
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_net_runA/B.json 2x verdict-identical): {} and 'not a url at all' BOTH -> ok:false + substituted 'Tool reported failure without an error message', output null, zero tool logs (F190). Direct no-network parser proof: parseURL('') throws AggregateError with EMPTY message. No URL policy either (rides P1-016)
+PERMISSION_REACHABLE=YES (read+internet; rate DEFAULT 60/min -- no explicit limit declared)
+PERMISSION_EVIDENCE=executed without approval under default autoSafe
+INPUT_CONTRACT_VALID=NO (no url guard; no URL policy)
+OUTPUT_CONTRACT_VALID=YES (items shape, code-read)
+EVIDENCE_PRODUCED=NO on failure (cause lost to substitution); YES on success (items + count log, code-read)
+VERIFICATION_COMPATIBLE=PARTIAL (never a checker -- static VERIFY25; substituted shape => failed -- direction preserved, cause lost)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (F190 cause-substitution + missing url guard + F189 URL policy)
+RECOMMENDED_ACTION=WIRING-P2-005 (cause-bearing sentence + url guard; 5th instance class) + P1-016 (URL policy) -- proposed, unactioned
+
+---
+
+CAPABILITY_ID=TOOL-search_api
+NAME=search_api (SearchApiTool, SearchApiTool.ts:6)
+CATEGORY=tool/network_api-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/SearchApiTool.ts
+IMPLEMENTATION=duck-duck-scrape web search with STRICT safe-search; empty query -> 'query is required' (:34); results sliced to limit (default 5); failures -> 'Search Failed: ...'
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1 (both goals)
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE guard (trunk_net_runA/B.json 2x verdict-identical): {} -> 'query is required'. Valid-query path deliberately unprobed (live web search -- embargoed); limit edge (negative/huge slice) unprobed for the same reason
+PERMISSION_REACHABLE=YES (internet; rate 20/min; PRIORITY-listed -- least-privilege note)
+PERMISSION_EVIDENCE=executed without approval under default autoSafe
+INPUT_CONTRACT_VALID=YES (query enforced; limit defaulted)
+OUTPUT_CONTRACT_VALID=YES (results[{title,url,description}] + noResults shape, code-read)
+EVIDENCE_PRODUCED=YES (results in output + searched log, code-read)
+VERIFICATION_COMPATIBLE=YES (never a checker -- static VERIFY25; guard => failed)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=FULLY_WIRED for probed surface (guard honest; live-search path deliberately unprobed by embargo)
+RECOMMENDED_ACTION=none (owner live-checks ranking/quality only if a product need arises)
+
+---
+
+CAPABILITY_ID=TOOL-search_public_apis
+NAME=search_public_apis (SearchPublicApisTool, PublicApiDiscoveryTools.ts:43)
+CATEGORY=tool/network_api-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/PublicApiDiscoveryTools.ts + api/src/core/api-discovery/*
+IMPLEMENTATION=vetted-catalog API search (no arbitrary endpoint requests): empty query -> 'query is required' (:50); else catalog search + optional validateTop via selectValidatedCandidate + integrationRequired gating; cold start triggers ONE bounded remote catalog refresh with cache/bootstrap fallback (service.ts:19-37, provider tmp+rename cache)
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1 (both goals)
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE guard (trunk_net_runA/B.json 2x verdict-identical): {} -> 'query is required'. Valid-query path deliberately unprobed (cold catalog refresh touches network -- embargoed, F194)
+PERMISSION_REACHABLE=YES (internet; rate 20/min)
+PERMISSION_EVIDENCE=executed without approval under default autoSafe
+INPUT_CONTRACT_VALID=YES (query enforced; filter/limit schema code-read)
+OUTPUT_CONTRACT_VALID=YES (candidates/selection/validationAttempts shapes, code-read)
+EVIDENCE_PRODUCED=YES (candidates + selection in output + API_SEARCH log, code-read)
+VERIFICATION_COMPATIBLE=YES (never a checker -- static VERIFY25; guard => failed)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=FULLY_WIRED for probed surface (guard honest; catalog behavior deliberately unprobed by embargo; graceful-degradation design code-verified)
+RECOMMENDED_ACTION=none (owner live-checks with loopback catalog if desired)
+
+---
+
+CAPABILITY_ID=TOOL-search_text
+NAME=search_text (SearchTextTool, UtilityTools.ts:139)
+CATEGORY=tool/network_api-trunk (LOCAL grep -- trunk effect asymmetry, cf. F181)
+SOURCE_FILES=api/src/modules/tools/definitions/UtilityTools.ts
+IMPLEMENTATION=workspace text/regex grep: query|pattern via requiredAny (required:[] + planner extension); UtilityTools-local resolveToolPath containment (path_outside_workspace); bad regex -> sentence; glob '**/*' minus node_modules/dist/binaries; 2MB + NUL guards; {matches:[{file,line,text}],total,truncated}
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1 (both goals)
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE full positive (trunk_net_runA/B.json 2x verdict-identical): token fixture -> total:1 {grepme.txt:2, token-bearing text} via BOTH query and pattern keys (F197 -- requiredAny works live); bad-regex + empty + outside-workspace all honest sentences. Session-root attribution proven: default-root pilot scanned 0, session-root copy matched
+PERMISSION_REACHABLE=YES (read; rate DEFAULT 60/min -- no explicit limit declared)
+PERMISSION_EVIDENCE=executed without approval under default autoSafe
+INPUT_CONTRACT_VALID=YES (query/pattern + path + regex + clamp enforced)
+OUTPUT_CONTRACT_VALID=YES (matches/total/truncated exact)
+EVIDENCE_PRODUCED=YES (file/line/text matches + scanned log)
+VERIFICATION_COMPATIBLE=YES (never a checker -- static VERIFY25; guard => failed; match-shape => passed)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=FULLY_WIRED for probed surface (exact, contained, session-rooted; regex/case-positive shapes unprobed -- minor)
+RECOMMENDED_ACTION=none
+
+---
+
+CAPABILITY_ID=TOOL-swagger_docs
+NAME=swagger_docs (SwaggerDocsTool, SwaggerDocsTool.ts:15)
+CATEGORY=tool/network_api-trunk (LOCAL generator -- trunk effect asymmetry, cf. F181)
+SOURCE_FILES=api/src/modules/tools/definitions/SwaggerDocsTool.ts
+IMPLEMENTATION=OpenAPI generate/add-endpoint/validate/serve: route-regex scan of projectPath + manual endpoints -> swagger.json + swagger-ui.html; validate checks openapi/info/paths/responses; NO resolveToolPath anywhere -- raw fs on input paths with cwd-relative defaults (./src, ./docs/swagger.json); title interpolated RAW into HTML (:339-362); addEndpoint calls ep.method.toLowerCase() unguarded (:260); scan unbounded, follows symlinks, includes dist/ .js (:203-244)
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1 (both goals)
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_net_runA/B.json 2x verdict-identical): generate -> endpointCount:3 (2 scanned + 1 manual), spec round-trips through its own validator {valid:true}; missing-spec/unknown-action honest sentences; title 'fx<b>net' byte-verbatim in HTML (F198b); missing-method -> raw TypeError (F198c). Explicit absolute FX path honored with NO containment check (F198a -- outside-write reach code-certain, owner live-checks)
+PERMISSION_REACHABLE=YES (read+write declared; rate DEFAULT 60/min -- no explicit limit declared)
+PERMISSION_EVIDENCE=executed without approval under default autoSafe (write tier, contained only by caller-supplied paths)
+INPUT_CONTRACT_VALID=NO (paths uncontained; method/path unvalidated; title unescaped)
+OUTPUT_CONTRACT_VALID=PARTIAL (spec correct; HTML carries raw title; TypeError on missing method)
+EVIDENCE_PRODUCED=YES (specPath/endpointCount/issues in output + scan/generate logs)
+VERIFICATION_COMPATIBLE=PARTIAL (never a checker -- static VERIFY25; generate-shape => passed; valid:false shape => incomplete -- rides #13 batch, F193)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (F198a uncontained write P1-015 + F198b/c/d correctness P2-043)
+RECOMMENDED_ACTION=WIRING-P1-015 (session-anchor paths) + WIRING-P2-043 (escape title; validate method; bound scan) -- proposed, unactioned
+
+---
+
+CAPABILITY_ID=TOOL-validate_api
+NAME=validate_api (ValidateApiTool, PublicApiDiscoveryTools.ts:90)
+CATEGORY=tool/network_api-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/PublicApiDiscoveryTools.ts + api/src/core/api-discovery/service.ts + network-policy.ts
+IMPLEMENTATION=cached read-only SSRF-protected probe validation: unknown id throws api_not_found AFTER cold load (:54-55); cached health honored; no-probe-profile -> UNKNOWN + no_trusted_probe with NO network (:59-65); missing probe creds -> UNKNOWN + credentials_required_for_probe (:66-72); else SafeApiValidator HEAD with DNS-rebinding guards (network-policy.ts:60-109)
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1 (both goals)
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=UNKNOWN (ZERO live legs -- no pre-service guard; any call cold-refreshes the catalog on first use; embargoed. No-probe UNKNOWN path is the honest no-network shape, code-cited -- F194)
+EXECUTOR_EVIDENCE=none live (code-read only)
+PERMISSION_REACHABLE=UNKNOWN (internet; rate 20/min; no live execution to observe gating)
+PERMISSION_EVIDENCE=none live
+INPUT_CONTRACT_VALID=UNKNOWN (apiId/force accepted; '' behavior code-unprobed)
+OUTPUT_CONTRACT_VALID=UNKNOWN (shape code-read, never observed)
+EVIDENCE_PRODUCED=UNKNOWN (no live output)
+VERIFICATION_COMPATIBLE=NO (never a checker -- static VERIFY25; UNKNOWN-shape => passed in table -- MAPPING-false-pass riding #13, F193)
+CANONICAL_PATH_CONNECTED=UNKNOWN (registration + selection proven; execution link unprobed)
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=UNKNOWN_REQUIRES_INVESTIGATION (F194 -- needs a loopback-catalog harness for live legs; mapping note rides #13)
+RECOMMENDED_ACTION=owner live-checks with loopback catalog (search/inspect/validate trio); mapping fix rides the #13 verdict batch
+
+---
+
+END-OF-MUSE-DRAFT-ROWS=174 (164 individual + 8 group + 2 external-cited)
+COVERAGE-DISCLAIMER=This draft covers ONLY what Muse checkpoints 1-25 evidenced. Full matrix requires: per-trunk path stories (19 trunks PROPOSED in merge.json, 16 STORIED: files 10/10 + browser_ui 33/33 LEVEL-4 + testing_qa 6/6 LEVEL-4 + security 3/3 LEVEL-4 + code_understanding 16/16 LEVEL-4 + vcs_repo 11/11 LEVEL-4 + build_generate 13/13 LEVEL-4 + runtime_services 5/5 LEVEL-4 + shell_terminal 4/4 LEVEL-4 + database_data 6/6 LEVEL-4 + observability 5/5 LEVEL-4 + interaction 8/8 LEVEL-4 + infra_ops 6/6 + documentation 2/2 LEVEL-4 + language_runtimes 4/4 LEVEL-4 + network_api 12/12 LEVEL-4), services/workers/persistence/deployment rows (NVIDIA scope), bulk per-tool firewall sweep (8 spot + 28 empty-input batch-1+2 + 19 risk-tier live + 16 trunk-files + 3 arch-backend + 26 browser live1/live2 + 30 browser live3 + 19 trunk-testing + 13 trunk-security + 36 trunk-code + 43 trunk-vcs + 45 trunk-build + 4 prog-batch3 + 23 trunk-runtime + 4 pages-approved + 25 trunk-shell + 5 shell-cwd + 28 trunk-db + 45 trunk-obs + 37 trunk-ixn + 40 trunk-infradoc + 32 trunk-lang + 43 trunk-net done; traversal live legs + 120s timeout leg + python-present legs + ALL live network legs (fetch/search/catalog/Stripe/Google) + SSRF live payloads beyond sync-reject shapes + credentialed legs + outside-write live legs embargoed; 25/25 no-required reviewed: 18 SAFE + 1 BOUND + 4 EMBARGO with static fixture designs + 2 FIXTURE probed contained; browser_launch embargo partially lifted for contained-http; sonar/dep_audit/dead_code positives embargoed; code_reviewer non-quick + ALL github-network/git-network-push/import-clone/npm-qa legs embargoed; pipeline-named/setActiveRoot + mobile-default-cwd + full-stack-{} + react/api-full + ent/ori-default-root + page-model-present legs embargoed; risk table SURVEYED), contract audit per boundary (19 mismatches + schema/execute family), LEVEL 5-6 proofs (L5 done files+browser_ui + project_run live-gate receipt; testing_qa + security + code_understanding static-only, 5 checkers pending; vcs_repo + build_generate static-only with 0 checkers each; observability + interaction + infra_ops + documentation + language_runtimes + network_api static-only with 0 checkers each), and NVIDIA cross-review (pending — worker on CLI-BATCH1 + audit slice).
