@@ -1,0 +1,273 @@
+{
+  "generated": "2026-09-29T23:59:42.407Z",
+  "live": {
+    "fixture_server": {
+      "host": "127.0.0.1",
+      "port": 55238
+    },
+    "seo": {
+      "ok": true,
+      "error": null,
+      "score": 48,
+      "issues": 7,
+      "hasLang": true,
+      "hasCanonical": true,
+      "hasHttps": true
+    },
+    "a11y": {
+      "ok": true,
+      "error": null,
+      "score": 58,
+      "focusables": 10,
+      "hasDup": true,
+      "hasTabindex": true,
+      "hasAria": true,
+      "hasSkipOrder": true,
+      "hasNav": true
+    },
+    "contrast": {
+      "ok": true,
+      "error": null,
+      "score": 94,
+      "checked": 24,
+      "fails": 1,
+      "hasLowCon": true,
+      "hasShot": true
+    },
+    "console": {
+      "ok": true,
+      "error": null,
+      "errorCount": 3,
+      "hasSeedErr": true,
+      "hasMissing": true,
+      "netFails": 1
+    },
+    "links": {
+      "ok": true,
+      "error": null,
+      "total": 4,
+      "brokenCount": 1,
+      "hasGone": true
+    },
+    "perf": {
+      "ok": true,
+      "error": null,
+      "wallMs": 159,
+      "resourceCount": 3
+    },
+    "readability": {
+      "ok": true,
+      "error": null,
+      "words": 41,
+      "title": "AuditEight Fixture Page"
+    },
+    "meta": {
+      "ok": true,
+      "error": null,
+      "title": "AuditEight Fixture Page",
+      "lang": "",
+      "jsonld": 1,
+      "ogKeys": 1,
+      "outline": 3
+    },
+    "extract": {
+      "ok": true,
+      "error": null,
+      "kind": "table",
+      "count": 2,
+      "firstName": "alpha",
+      "csv": {
+        "href": "/artifacts/extract-1790726337679.csv",
+        "onDisk": true,
+        "size": 28,
+        "containsWant": true,
+        "cleaned": true
+      }
+    },
+    "tokens": {
+      "ok": true,
+      "error": null,
+      "backgrounds": 2,
+      "fonts": 2,
+      "typeScale": 5,
+      "hasShot": true
+    },
+    "responsive": {
+      "ok": true,
+      "error": null,
+      "score": 60,
+      "viewports": 3,
+      "mobileNoViewport": false,
+      "hasViewportIssue": true,
+      "shots": 3
+    },
+    "uiaudit": {
+      "ok": true,
+      "error": null,
+      "score": 10,
+      "issues": 8,
+      "hasViewport": true,
+      "hasConsole": true,
+      "reused": false
+    },
+    "uiaudit_empty": {
+      "ok": false,
+      "error": "no_url: لا مشروع مبنيّ مسجّل لهذه الجلسة (audit-live3) — ابنِ أولاً ثم افحص.",
+      "errLen": 76
+    },
+    "summarize": {
+      "ok": false,
+      "error": "⚠️ تعذّر الوصول إلى محرّك الذكاء (لم يستجب أي مزوّد). لم أستطع تنفيذ الطلب. الحل: شغّل Ollama محلياً (افتح تطبيق Ollama أو نفّذ: ollama serve) ثم أعد المحاولة، أو تحقّق من اتصال الإنترنت لاستخدام الذك",
+      "sumLen": 252,
+      "fallback": false,
+      "hasTitle": false,
+      "hasShot": true
+    },
+    "translate": {
+      "ok": false,
+      "error": "⚠️ تعذّر الوصول إلى محرّك الذكاء (لم يستجب أي مزوّد قبل لحظات). لم أستطع تنفيذ الطلب. الحل: شغّل Ollama محلياً (افتح تطبيق Ollama أو نفّذ: ollama serve) ثم أعد المحاولة، أو تحقّق من اتصال الإنترنت. (ل",
+      "target": "French",
+      "blocks": 7,
+      "fallback": false,
+      "hasTitle": false
+    },
+    "smartagent": {
+      "ok": false,
+      "error": "⚠️ تعذّر الوصول إلى محرّك الذكاء (لم يستجب أي مزوّد قبل لحظات). لم أستطع تنفيذ الطلب. الحل: شغّل Ollama محلياً (افتح تطبيق Ollama أو نفّذ: ollama serve) ثم أعد المحاولة، أو تحقّق من اتصال الإنترنت. (ل",
+      "overall": 75,
+      "ui": 54,
+      "seo": 70,
+      "findings": 8,
+      "hasTitle": false
+    },
+    "compare_pair": {
+      "ok": true,
+      "error": null,
+      "changes": 3,
+      "pctChanged": 0.4,
+      "hasBeta": true,
+      "hasComposite": true
+    },
+    "compare_base1": {
+      "ok": true,
+      "error": null,
+      "baseline": true
+    },
+    "compare_base2": {
+      "ok": true,
+      "error": null,
+      "baseline": false,
+      "pctChanged": 0,
+      "changes": 0
+    },
+    "fill": {
+      "ok": true,
+      "error": null,
+      "filled": [
+        "cityname"
+      ],
+      "missed": [
+        "nosuchfield"
+      ],
+      "submitted": false
+    },
+    "fill_submit": {
+      "ok": true,
+      "error": null,
+      "filled": [
+        "cityname"
+      ],
+      "submitted": true,
+      "url": "http://127.0.0.1:55238/audit?cityname=ZedEight"
+    },
+    "click": {
+      "ok": true,
+      "error": null,
+      "clicked": "FlipMarker",
+      "tag": "button",
+      "urlChanged": false,
+      "contentChanged": true
+    },
+    "click_notarget": {
+      "ok": false,
+      "error": "no_target"
+    },
+    "fullpage": {
+      "ok": true,
+      "error": null,
+      "height": 800,
+      "title": "AuditEight Fixture Page",
+      "hasShot": true
+    },
+    "savepdf": {
+      "ok": true,
+      "error": null,
+      "pdf": {
+        "href": "/artifacts/page-1790726364268.pdf",
+        "onDisk": true,
+        "size": 76554,
+        "containsWant": true,
+        "cleaned": true
+      }
+    },
+    "autofix": {
+      "ok": true,
+      "error": null,
+      "count": 8,
+      "hasLangFix": true,
+      "hasViewportFix": true,
+      "fixed": {
+        "href": "/artifacts/autofix-1790726365506.html",
+        "onDisk": true,
+        "size": 1960,
+        "containsWant": true,
+        "cleaned": true
+      }
+    },
+    "vision": {
+      "ok": true,
+      "error": null,
+      "pathGiven": true,
+      "onDisk": true,
+      "size": 31575,
+      "cleaned": true
+    },
+    "findtext": {
+      "ok": true,
+      "error": null,
+      "count": 1,
+      "snippets": 1,
+      "highlighted": 1,
+      "hasShot": true
+    },
+    "findtext_noquery": {
+      "ok": false,
+      "error": "no_query"
+    },
+    "search": {
+      "ok": true,
+      "error": null,
+      "typedLive": true,
+      "submitted": true,
+      "resultsUrl": "http://127.0.0.1:55238/fx-results?q=seedquery",
+      "results": 2,
+      "hasSeed": true,
+      "answerLen": 0
+    },
+    "closedSession": true,
+    "fixture_server_closed": true,
+    "artifact_sweep": {
+      "created": 20,
+      "sample": [
+        "browser-1790726330805.jpg",
+        "browser-1790726333017.jpg",
+        "browser-1790726338799.jpg",
+        "browser-1790726340437.jpg",
+        "browser-1790726341214.jpg",
+        "browser-1790726341949.jpg",
+        "browser-1790726343308.jpg",
+        "browser-1790726344239.jpg"
+      ]
+    }
+  }
+}

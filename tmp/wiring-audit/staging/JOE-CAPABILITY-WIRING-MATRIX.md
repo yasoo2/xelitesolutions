@@ -1,21 +1,22 @@
 # JOE CAPABILITY WIRING MATRIX (Muse draft 2026-09-29 — staging for D:\Joe\coordination\team\JOE-CAPABILITY-WIRING-MATRIX.md)
 
-SCOPE=Muse-branch discovery checkpoints 1-10 only (muse/joe-development @ 0a0af4b7).
+SCOPE=Muse-branch discovery checkpoints 1-11 only (muse/joe-development @ 97be9d43).
 Rows below are EVIDENCED tool-level entries. HIGH_LEVEL_CAPABILITIES grouping
-(merge v1: 19 trunks PROPOSED, 1 STORIED: files 10/10 in checkpoint 8;
-browser_ui 33 batch-2 PARTIAL: 11/33 with LEVEL-4 points, 22 (a)-tools
-pending via the loopback-fixture pattern — checkpoint 10),
+(merge v1: 19 trunks PROPOSED, 2 STORIED: files 10/10 in checkpoint 8;
+browser_ui 33/33 LEVEL-4 complete — checkpoint 11),
 services/workers/internal-infra rows, and NVIDIA-owned
 registry/ingress/persistence areas are UNKNOWN/PENDING and must NOT be
 treated as covered.
 Evidence files: D:\Joe\muse-worktree\tmp\wiring-audit\{discovery,exposure,
 classification,reachability,target,exec,sweep1,sweep2,merge,sweep3,trunk_files,
-arch2,trunk_browser1,trunk_browser_live1,trunk_browser_live2}.json +
+arch2,trunk_browser1,trunk_browser_live1,trunk_browser_live2,
+trunk_browser_live3}.json +
 {discover,exposure,classify,reach,target,exec,
 sweep1,sweep2,merge,sweep3,trunk_files,arch2,trunk_browser1,
-trunk_browser_live1,trunk_browser_live2}.mts +
+trunk_browser_live1,trunk_browser_live2,trunk_browser_live3}.mts +
 MUSE-WIRING-DISCOVERY-00{1,2,3,4,5,6,7}.md + MUSE-WIRING-DISCOVERY-008.md +
-MUSE-WIRING-DISCOVERY-009.md + MUSE-WIRING-DISCOVERY-010.md. All probes
+MUSE-WIRING-DISCOVERY-009.md + MUSE-WIRING-DISCOVERY-010.md +
+MUSE-WIRING-DISCOVERY-011.md. All probes
 re-runnable; exec/sweep/trunk probes perform bounded safe runs only
 (fixtures created + removed by the probe; 4 EMBARGO names never executed
 except browser_launch contained-http partial lift in 010 — static fixture
@@ -1129,15 +1130,17 @@ REGISTRY_EVIDENCE=in live 163
 PLANNER_VISIBLE=YES
 PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD (batch-1)
 SELECTABLE=YES
-EXECUTOR_REACHABLE=PARTIAL (negative leg live; positive needs loopback pattern)
-EXECUTOR_EVIDENCE=LIVE (live1, canonical): {http://127.0.0.1:9/} -> fast honest find_text_failed (Chrome ERR_UNSAFE_PORT on :9 — fixture note, F56). Zero external traffic. Positive unprobed (representative of 22 (a)-tools awaiting loopback pattern)
-PERMISSION_REACHABLE=YES (negative leg passed gate)
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (live1 negative + live3 positive, canonical): {http://127.0.0.1:9/} -> fast honest find_text_failed (Chrome ERR_UNSAFE_PORT on :9 — fixture note, F56); {loopback /audit, query AuditEight} -> ok:true count=1/snippets=1/highlighted=1 + shot; {url} without query -> no_query (body-enforced :1326-1327, 011/F65). Zero external traffic
+PERMISSION_REACHABLE=YES
 INPUT_CONTRACT_VALID=PARTIAL (requires URL; data:/about: URLs mangled by normalizeUrl — P2-013)
-OUTPUT_CONTRACT_VALID=UNKNOWN (positive unprobed)
+OUTPUT_CONTRACT_VALID=YES (count/snippets/highlighted/url/shot; all verified)
+EVIDENCE_PRODUCED=YES
+VERIFICATION_COMPATIBLE=UNKNOWN (LEVEL 5-6 pending)
 CANONICAL_PATH_CONNECTED=YES
 REAL_JOE_PROVEN=NO
-PRIMARY_STATE=PARTIALLY_WIRED (honest failures; success path unprobed)
-RECOMMENDED_ACTION=loopback-fixture positive in next live batch (pattern ready)
+PRIMARY_STATE=FULLY_WIRED (at tool level)
+RECOMMENDED_ACTION=none (P2-013 vocabulary note rides with the family)
 
 ---
 
@@ -1186,5 +1189,583 @@ RECOMMENDED_ACTION=helper-present probe only with a real test extension + consen
 
 ---
 
-END-OF-MUSE-DRAFT-ROWS=51 (42 individual + 7 group + 2 external-cited)
-COVERAGE-DISCLAIMER=This draft covers ONLY what Muse checkpoints 1-10 evidenced. Full matrix requires: per-trunk path stories (19 trunks PROPOSED in merge.json, 1 STORIED: files 10/10; browser_ui 33 batch-2 PARTIAL: 11/33 LEVEL-4, 22 (a)-tools pending), services/workers/persistence/deployment rows (NVIDIA scope), bulk per-tool firewall sweep (8 spot + 28 empty-input batch-1+2 + 19 risk-tier live + 16 trunk-files + 3 arch-backend + 26 browser live1/live2 done; 25/25 no-required reviewed: 18 SAFE + 1 BOUND + 4 EMBARGO with static fixture designs + 2 FIXTURE probed contained; browser_launch embargo partially lifted for contained-http; risk table SURVEYED), contract audit per boundary (8 mismatches), LEVEL 5-6 proofs, and NVIDIA cross-review (currently BLOCKED).
+CAPABILITY_ID=TRUNK-browser_ui-batch3
+NAME=browser_ui trunk batch-3: remaining 22 (a) tools + vision + find_text close (LEVEL-4 complete 33/33)
+CATEGORY=trunk/browser-ui (group row, checkpoint 11)
+SOURCE_FILES=22 executes in api/src/modules/tools/definitions/BrowserSmartTools.ts (read-before-call, all) + BrowserVisionTool.ts + honesty chain ToolService.ts:940-944 / honestResult.ts / intelligent-router.ts:2201/2778/2789/2794
+IMPLEMENTATION=per-tool contained legs via one loopback fixture server (/audit flawed page + /cmp-a/b + /fx-search/results + png/404 routes), one owned session, ephemeral headless, approval gate active
+REGISTERED=YES (23/23 in live 163)
+REGISTRY_EVIDENCE=probe aborts unless 163 (trunk_browser_live3.mts)
+PLANNER_VISIBLE=YES (33/33 from batch-1, unchanged)
+SELECTABLE=YES
+EXECUTOR_REACHABLE=YES (30/30 legs exit 0, 0 timeouts, 0 gates, 0 direct legs; 28/28 verdict-identical runs 1+2 with exact scores identical; run 3 added findtext x2 green)
+EXECUTOR_EVIDENCE=trunk_browser_live3.json: 19 green-positive (a) + 3 model-trio ok:false-via-honesty-flip + vision green + search green + negatives (no_target/no_query/no_url/ui_audit-{} honest); 19 artifact files created + ALL verified-then-removed by probe. Session-partition correction: (d) standalone-launch = 3 (screenshot, visual_compare, browser_vision) — (a)25/(b)2/(c)2/(d)3/(e)1 now sums to 33 (011/F64)
+PERMISSION_REACHABLE=YES (all legs passed the active gate; input-dependent tiering unchanged)
+INPUT_CONTRACT_VALID=YES (per-tool required enforced in bodies; url vocabulary still http-only for (a) — P2-013)
+OUTPUT_CONTRACT_VALID=MIXED (19 YES + trio flipped-honest + responsive per-viewport flag dropped P2-016 + compare global-baseline note P2-017 + router resolve-vs-throw MISMATCH #9)
+EVIDENCE_PRODUCED=YES (JSON verdicts + disk-verified PNG/PDF/CSV/HTML, all cleaned)
+VERIFICATION_COMPATIBLE=UNKNOWN (LEVEL 5-6 pending)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=TRUNK-COMPLETE-AT-LEVEL-4 (per-tool states in rows below; verification-compat + model-present paths + helper/positive-deliberates remain)
+RECOMMENDED_ACTION=WIRING-P2-015 (model-fallback contract) + P2-016 + P2-017 + P2-014 extension (vision dir); then LEVEL 5-6 sweep on this trunk
+
+---
+
+CAPABILITY_ID=TOOL-browser_seo_audit
+NAME=browser_seo_audit (BrowserSEOAuditTool, BrowserSmartTools.ts:332-379)
+CATEGORY=tool/browser-ui-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/BrowserSmartTools.ts
+IMPLEMENTATION=openPage + DOM evaluate (title/desc/canonical/og/h1/lang/img-alt/https) + 100-crit*25-warn*10-info*4 score; required:['url']
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD (batch-1)
+SELECTABLE=YES
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (live3 seo, canonical, 2/2): score 48, 7 issues, lang+canonical+https flags fire (exact score predicted from code: 4 warn + 3 info)
+PERMISSION_REACHABLE=YES
+INPUT_CONTRACT_VALID=YES
+OUTPUT_CONTRACT_VALID=YES (message/score/issues/title/url)
+EVIDENCE_PRODUCED=YES
+VERIFICATION_COMPATIBLE=UNKNOWN
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=FULLY_WIRED (at tool level)
+RECOMMENDED_ACTION=none
+
+---
+
+CAPABILITY_ID=TOOL-browser_a11y_deep
+NAME=browser_a11y_deep (BrowserA11yDeepTool, BrowserSmartTools.ts:584-641)
+CATEGORY=tool/browser-ui-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/BrowserSmartTools.ts
+IMPLEMENTATION=openPage + DOM evaluate (landmarks/skip-link/dup-ids/bad-links/tabindex/aria-hidden/heading-order/focusables) + score; required:['url']
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD (batch-1)
+SELECTABLE=YES
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (live3 a11y, canonical, 2/2): score 58, focusables 10, all 5 seeded defects detected (dup/tabindex/aria/skip-order/nav)
+PERMISSION_REACHABLE=YES
+INPUT_CONTRACT_VALID=YES
+OUTPUT_CONTRACT_VALID=YES (message/score/issues/focusables/url)
+EVIDENCE_PRODUCED=YES
+VERIFICATION_COMPATIBLE=UNKNOWN
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=FULLY_WIRED (at tool level)
+RECOMMENDED_ACTION=none
+
+---
+
+CAPABILITY_ID=TOOL-browser_contrast_audit
+NAME=browser_contrast_audit (BrowserContrastAuditTool, BrowserSmartTools.ts:518-579)
+CATEGORY=tool/browser-ui-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/BrowserSmartTools.ts
+IMPLEMENTATION=openPage + computed-style contrast evaluate (WCAG AA 4.5:1/3:1, 400-el cap) + screenshot; required:['url']
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD (batch-1)
+SELECTABLE=YES
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (live3 contrast, canonical, 2/2): 24 checked, exactly 1 fail = seeded LowContrastSeed span (#777 on white), score 94 + shot
+PERMISSION_REACHABLE=YES
+INPUT_CONTRACT_VALID=YES
+OUTPUT_CONTRACT_VALID=YES (message/score/checked/fails/url/screenshot)
+EVIDENCE_PRODUCED=YES
+VERIFICATION_COMPATIBLE=UNKNOWN
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=FULLY_WIRED (at tool level)
+RECOMMENDED_ACTION=none
+
+---
+
+CAPABILITY_ID=TOOL-browser_console_scan
+NAME=browser_console_scan (BrowserConsoleScanTool, BrowserSmartTools.ts:384-429)
+CATEGORY=tool/browser-ui-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/BrowserSmartTools.ts
+IMPLEMENTATION=listeners (console/pageerror/requestfailed/response) + goto + 1.8s dwell + screenshot; listeners removed in finally; required:['url']
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD (batch-1)
+SELECTABLE=YES
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (live3 console, canonical, 2/2): errorCount 3 with SeedConsoleErrorEight captured + img-missing in netFails (count-split unrecorded — minor evidence-shape note)
+PERMISSION_REACHABLE=YES
+INPUT_CONTRACT_VALID=YES
+OUTPUT_CONTRACT_VALID=YES (message/errorCount/pageErrors/consoleErrors/netFails/warnings/url/screenshot)
+EVIDENCE_PRODUCED=YES
+VERIFICATION_COMPATIBLE=UNKNOWN
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=FULLY_WIRED (at tool level)
+RECOMMENDED_ACTION=none
+
+---
+
+CAPABILITY_ID=TOOL-browser_check_links
+NAME=browser_check_links (BrowserCheckLinksTool, BrowserSmartTools.ts:234-273)
+CATEGORY=tool/browser-ui-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/BrowserSmartTools.ts
+IMPLEMENTATION=openPage + collect a[href] + node fetch HEAD(->GET on 405/501) per unique link, 8s abort, limit clamp 1-60; required:['url']
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD (batch-1)
+SELECTABLE=YES
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (live3 links, canonical, 2/2): total 4, broken 1 = /gone only (skip + empty-hash resolve 200); all fetches loopback-contained
+PERMISSION_REACHABLE=YES
+INPUT_CONTRACT_VALID=YES
+OUTPUT_CONTRACT_VALID=YES (message/total/brokenCount/broken/url)
+EVIDENCE_PRODUCED=YES
+VERIFICATION_COMPATIBLE=UNKNOWN
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=FULLY_WIRED (at tool level)
+SECURITY_RISK=none observed (fetches only page-listed links; SSRF posture unsurveyed — not claimed)
+RECOMMENDED_ACTION=none
+
+---
+
+CAPABILITY_ID=TOOL-browser_performance
+NAME=browser_performance (BrowserPerformanceTool, BrowserSmartTools.ts:278-327)
+CATEGORY=tool/browser-ui-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/BrowserSmartTools.ts
+IMPLEMENTATION=direct goto (no openPage poison-recovery) + navigation/resource timing evaluate; required:['url']
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD (batch-1)
+SELECTABLE=YES
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (live3 perf, canonical, 2/2): wallMs + resourceCount numeric on loopback fixture
+PERMISSION_REACHABLE=YES
+INPUT_CONTRACT_VALID=YES
+OUTPUT_CONTRACT_VALID=YES (message/wallMs + perf fields/url)
+EVIDENCE_PRODUCED=YES
+VERIFICATION_COMPATIBLE=UNKNOWN
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=FULLY_WIRED (at tool level)
+RECOMMENDED_ACTION=none
+
+---
+
+CAPABILITY_ID=TOOL-browser_readability
+NAME=browser_readability (BrowserReadabilityTool, BrowserSmartTools.ts:469-513)
+CATEGORY=tool/browser-ui-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/BrowserSmartTools.ts
+IMPLEMENTATION=openPage + density-scored candidate extract (article/main/content/body) + word/reading-time; ok = words>0; required:['url']
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD (batch-1)
+SELECTABLE=YES
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (live3 readability, canonical, 2/2): 41 words + title on article fixture
+PERMISSION_REACHABLE=YES
+INPUT_CONTRACT_VALID=YES
+OUTPUT_CONTRACT_VALID=YES (message/title/author/words/readingMinutes/text/url)
+EVIDENCE_PRODUCED=YES
+VERIFICATION_COMPATIBLE=UNKNOWN
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=FULLY_WIRED (at tool level)
+RECOMMENDED_ACTION=none
+
+---
+
+CAPABILITY_ID=TOOL-browser_extract_meta
+NAME=browser_extract_meta (BrowserExtractMetaTool, BrowserSmartTools.ts:646-692)
+CATEGORY=tool/browser-ui-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/BrowserSmartTools.ts
+IMPLEMENTATION=openPage + evaluate (named/og/twitter meta + canonical + favicon + lang + JSON-LD + h1-h3 outline); required:['url']
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD (batch-1)
+SELECTABLE=YES
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (live3 meta, canonical, 2/2): title + lang '' (missing correctly reported) + jsonld 1 + og 1 + outline 3
+PERMISSION_REACHABLE=YES
+INPUT_CONTRACT_VALID=YES
+OUTPUT_CONTRACT_VALID=YES (message + all meta fields + url)
+EVIDENCE_PRODUCED=YES
+VERIFICATION_COMPATIBLE=UNKNOWN
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=FULLY_WIRED (at tool level)
+RECOMMENDED_ACTION=none
+
+---
+
+CAPABILITY_ID=TOOL-browser_extract_data
+NAME=browser_extract_data (BrowserExtractDataTool, BrowserSmartTools.ts:167-229)
+CATEGORY=tool/browser-ui-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/BrowserSmartTools.ts
+IMPLEMENTATION=openPage + evaluate (explicit selector | largest table | largest list) + CSV to ARTIFACT_DIR (BOM); ok = rows>0; required:['url']
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD (batch-1)
+SELECTABLE=YES
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (live3 extract, canonical, 2/2): kind=table count=2 firstName=alpha; CSV verified on disk (28B, contains alpha) then removed by probe
+PERMISSION_REACHABLE=YES
+INPUT_CONTRACT_VALID=YES
+OUTPUT_CONTRACT_VALID=YES (message/kind/count/rows[200]/csv/url)
+EVIDENCE_PRODUCED=YES (JSON rows + CSV file)
+VERIFICATION_COMPATIBLE=UNKNOWN
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=FULLY_WIRED (at tool level; writes contained to ARTIFACT_DIR)
+RECOMMENDED_ACTION=none
+
+---
+
+CAPABILITY_ID=TOOL-browser_design_tokens
+NAME=browser_design_tokens (BrowserDesignTokensTool, BrowserSmartTools.ts:1394-1463)
+CATEGORY=tool/browser-ui-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/BrowserSmartTools.ts
+IMPLEMENTATION=openPage + computed-style tally (bg/text/accent/buttons/fonts/sizes/radii, 4000-el cap) + screenshot; required:['url']
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD (batch-1)
+SELECTABLE=YES
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (live3 tokens, canonical, 2/2): 2 backgrounds / 2 fonts / 5 sizes + shot on styled fixture
+PERMISSION_REACHABLE=YES
+INPUT_CONTRACT_VALID=YES
+OUTPUT_CONTRACT_VALID=YES (message + token lists + url/screenshot)
+EVIDENCE_PRODUCED=YES
+VERIFICATION_COMPATIBLE=UNKNOWN
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=FULLY_WIRED (at tool level)
+RECOMMENDED_ACTION=none
+
+---
+
+CAPABILITY_ID=TOOL-browser_responsive_check
+NAME=browser_responsive_check (BrowserResponsiveCheckTool, BrowserSmartTools.ts:1216-1301)
+CATEGORY=tool/browser-ui-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/BrowserSmartTools.ts
+IMPLEMENTATION=openPage + 3 viewports (390/820/1440) x (overflow/tiny-target/small-font/viewport-meta metrics + shot) + score; required:['url']
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD (batch-1)
+SELECTABLE=YES
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (live3 responsive, canonical, 2/2): score 60, 3/3 viewports + shots, viewport issue fired on the meta-less fixture
+PERMISSION_REACHABLE=YES
+INPUT_CONTRACT_VALID=YES
+OUTPUT_CONTRACT_VALID=PARTIAL (hasViewportMeta evaluated + scored but DROPPED from per-viewport output objects (:1297) — detection surfaces only via score/issues; 011/F63)
+EVIDENCE_PRODUCED=YES
+VERIFICATION_COMPATIBLE=UNKNOWN
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (executes + scores honestly; evaluated flag unreported)
+RECOMMENDED_ACTION=WIRING-P2-016 (report the flag per viewport or document score-only surfacing)
+
+---
+
+CAPABILITY_ID=TOOL-browser_ui_audit
+NAME=browser_ui_audit (BrowserUIAuditTool, BrowserSmartTools.ts:901-1053)
+CATEGORY=tool/browser-ui-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/BrowserSmartTools.ts
+IMPLEMENTATION=openPage + evaluate (lang/viewport/charset/title/imgs/h1/inputs/buttons/targets) + console listeners + overlay boxes + shot + score; no-url falls back to joeProjects fresh-audit reuse or builtPreviewUrl (schema still requires url); required:['url']
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD (batch-1)
+SELECTABLE=YES
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (live3 uiaudit x2, canonical, 2/2): {url} -> score 10, 8 issues, viewport+console flags, reused:false; {} -> honest no_url naming the session (fail-closed, pre-browser). joeProjects-reuse path unprobed (needs fabricated global state)
+PERMISSION_REACHABLE=YES
+INPUT_CONTRACT_VALID=YES (schema-vs-fallback documented in-file :921-961)
+OUTPUT_CONTRACT_VALID=YES (message/score/issues/counts/url/screenshot)
+EVIDENCE_PRODUCED=YES
+VERIFICATION_COMPATIBLE=UNKNOWN
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=FULLY_WIRED (at tool level; reuse-path unprobed)
+RECOMMENDED_ACTION=none
+
+---
+
+CAPABILITY_ID=TOOL-browser_summarize
+NAME=browser_summarize (BrowserSummarizeTool, BrowserSmartTools.ts:836-896)
+CATEGORY=tool/browser-ui-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/BrowserSmartTools.ts
+IMPLEMENTATION=openPage + extract (title/desc/headings/7k text) + shot + routeToModel positional+context (:883) with empty-fallback (:885-888); required:['url']
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD (batch-1)
+SELECTABLE=YES
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (live3 summarize, canonical, 2/2): ok:false with router no-provider prose as error + FULL output (sumLen 252 + shot) — ToolService apology flip (011/F62). Router RESOLVES failure prose (never throws here), so the tool's empty-fallback is dead on this path
+PERMISSION_REACHABLE=YES
+INPUT_CONTRACT_VALID=YES
+OUTPUT_CONTRACT_VALID=YES (honest failure; flip is the documented backstop)
+EVIDENCE_PRODUCED=YES
+VERIFICATION_COMPATIBLE=UNKNOWN
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=FULLY_WIRED (at tool level; model-present path unprobed — no provider in sandbox)
+RECOMMENDED_ACTION=WIRING-P2-015 (resolve-vs-throw contract; rides with trio)
+
+---
+
+CAPABILITY_ID=TOOL-browser_translate
+NAME=browser_translate (BrowserTranslateTool, BrowserSmartTools.ts:1152-1211)
+CATEGORY=tool/browser-ui-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/BrowserSmartTools.ts
+IMPLEMENTATION=openPage + extract (title/120 blocks/8k text) + shot + routeToModel positional+context (:1201) with empty-fallback (:1203-1205); target label map ar/en/fr/es/de/tr; required:['url']
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD (batch-1)
+SELECTABLE=YES
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (live3 translate target=fr, canonical, 2/2): ok:false via apology flip + target French + 7 blocks (same chain as summarize, 011/F62)
+PERMISSION_REACHABLE=YES
+INPUT_CONTRACT_VALID=YES
+OUTPUT_CONTRACT_VALID=YES (honest failure)
+EVIDENCE_PRODUCED=YES
+VERIFICATION_COMPATIBLE=UNKNOWN
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=FULLY_WIRED (at tool level; model-present path unprobed)
+RECOMMENDED_ACTION=WIRING-P2-015 (rides with trio)
+
+---
+
+CAPABILITY_ID=TOOL-browser_smart_agent
+NAME=browser_smart_agent (BrowserSmartAgentTool, BrowserSmartTools.ts:1600-1739)
+CATEGORY=tool/browser-ui-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/BrowserSmartTools.ts
+IMPLEMENTATION=openPage + single-pass gather (content/UI/SEO/design/perf) + fullpage shot + 3-lens scoring + routeToModel brief with fallback (:1713-1714); required:['url']
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD (batch-1)
+SELECTABLE=YES
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (live3 smartagent, canonical, 2/2): ok:false via apology flip + scores 75/54/70 + 8 findings computed-then-discarded (none are ARTIFACT_KEYS, so the flip keeps them from the planner — 011/F62)
+PERMISSION_REACHABLE=YES
+INPUT_CONTRACT_VALID=YES
+OUTPUT_CONTRACT_VALID=YES (honest failure; partial-loss noted)
+EVIDENCE_PRODUCED=YES
+VERIFICATION_COMPATIBLE=UNKNOWN
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=FULLY_WIRED (at tool level; model-present path unprobed)
+RECOMMENDED_ACTION=WIRING-P2-015 (partial-output preservation rides here)
+
+---
+
+CAPABILITY_ID=TOOL-browser_compare
+NAME=browser_compare (BrowserCompareTool, BrowserSmartTools.ts:697-831)
+CATEGORY=tool/browser-ui-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/BrowserSmartTools.ts
+IMPLEMENTATION=before/after capture (sig + PNG) or single-URL baseline in (global).joeCompareBaselines (:726) + structural set-diff + canvas pixel-diff composite + shot; no required inputs but no-url-no-before-after rejected (:721-723)
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD (batch-1)
+SELECTABLE=YES
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (live3 compare x3, canonical, 2/2): pair -> 3 changes + CmpBeta + pct 0.4 + composite; baseline leg1 baseline:true; leg2 pct 0 changes 0 (deterministic re-capture diffs exactly zero)
+PERMISSION_REACHABLE=YES
+INPUT_CONTRACT_VALID=YES
+OUTPUT_CONTRACT_VALID=YES (message/changes/pctChanged/url/composite)
+EVIDENCE_PRODUCED=YES
+VERIFICATION_COMPATIBLE=UNKNOWN
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=FULLY_WIRED (at tool level)
+BLOCKER=baselines are process-global keyed by bare URL (cross-user/session leak: a second user's first call diffs against the first user's baseline) — WIRING-P2-017
+RECOMMENDED_ACTION=WIRING-P2-017 (session-scope or document refresh semantics)
+
+---
+
+CAPABILITY_ID=TOOL-browser_fill_form
+NAME=browser_fill_form (BrowserFillFormTool, BrowserSmartTools.ts:1058-1147)
+CATEGORY=tool/browser-ui-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/BrowserSmartTools.ts
+IMPLEMENTATION=openPage (url optional) + per-field DOM match (name/id/placeholder/aria/label-for) + input/change events + optional submit (button click or form.requestSubmit) + shot; required:['fields'] (NOT url)
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD (batch-1)
+SELECTABLE=YES
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (live3 fill x2, canonical, 2/2): {cityname, nosuchfield} -> filled [cityname] + missed [nosuchfield], submitted:false; submit leg -> submitted:true + loopback navigation (/audit?cityname=...)
+PERMISSION_REACHABLE=YES
+INPUT_CONTRACT_VALID=YES (fields map enforced no_fields; url optional by design)
+OUTPUT_CONTRACT_VALID=YES (message/filled/missed/submitted/url/screenshot)
+EVIDENCE_PRODUCED=YES
+VERIFICATION_COMPATIBLE=UNKNOWN
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=FULLY_WIRED (at tool level; mutates page — sideEffects:[] debt rides P2-011)
+RECOMMENDED_ACTION=none (P2-011 declaration note stands)
+
+---
+
+CAPABILITY_ID=TOOL-browser_click
+NAME=browser_click (BrowserClickTool, BrowserSmartTools.ts:1468-1552)
+CATEGORY=tool/browser-ui-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/BrowserSmartTools.ts
+IMPLEMENTATION=openPage + locate (selector else visible-text exact/contains) + cursor overlay + real page.click + navigation/content-change report + shot; required:['url'] + text-or-selector (no_target)
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD (batch-1)
+SELECTABLE=YES
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (live3 click x2, canonical, 2/2): FlipMarker button -> clicked + tag button + urlChanged:false + contentChanged:true; no-text -> no_target
+PERMISSION_REACHABLE=YES
+INPUT_CONTRACT_VALID=YES
+OUTPUT_CONTRACT_VALID=YES (message/clicked/tag/urlChanged/contentChanged/beforeUrl/afterUrl/navigated/screenshot)
+EVIDENCE_PRODUCED=YES (real effect observed, not bare ok)
+VERIFICATION_COMPATIBLE=UNKNOWN
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=FULLY_WIRED (at tool level; mutates page — sideEffects:[] debt rides P2-011)
+RECOMMENDED_ACTION=none
+
+---
+
+CAPABILITY_ID=TOOL-browser_fullpage_shot
+NAME=browser_fullpage_shot (BrowserFullPageShotTool, BrowserSmartTools.ts:1557-1595)
+CATEGORY=tool/browser-ui-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/BrowserSmartTools.ts
+IMPLEMENTATION=openPage + scroll-to-bottom lazy trigger + fullPage JPEG + meta (title/imgs/links/sections); permissions internet+write; required:['url']
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD (batch-1)
+SELECTABLE=YES
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (live3 fullpage, canonical, 2/2): height + title + shot on fixture
+PERMISSION_REACHABLE=YES
+INPUT_CONTRACT_VALID=YES
+OUTPUT_CONTRACT_VALID=YES (message/height/meta/url/screenshot)
+EVIDENCE_PRODUCED=YES
+VERIFICATION_COMPATIBLE=UNKNOWN
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=FULLY_WIRED (at tool level)
+RECOMMENDED_ACTION=none
+
+---
+
+CAPABILITY_ID=TOOL-browser_save_pdf
+NAME=browser_save_pdf (BrowserSavePdfTool, BrowserSmartTools.ts:434-464)
+CATEGORY=tool/browser-ui-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/BrowserSmartTools.ts
+IMPLEMENTATION=openPage + page.pdf (A4, headless-only) to ARTIFACT_DIR; permissions internet+write; required:['url']
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD (batch-1)
+SELECTABLE=YES
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (live3 savepdf, canonical, 2/2): PDF verified on disk (76KB, %PDF magic) then removed by probe
+PERMISSION_REACHABLE=YES
+INPUT_CONTRACT_VALID=YES
+OUTPUT_CONTRACT_VALID=YES (message/pdf/url)
+EVIDENCE_PRODUCED=YES (PDF file)
+VERIFICATION_COMPATIBLE=UNKNOWN
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=FULLY_WIRED (at tool level; writes contained to ARTIFACT_DIR)
+RECOMMENDED_ACTION=none
+
+---
+
+CAPABILITY_ID=TOOL-browser_autofix
+NAME=browser_autofix (BrowserAutofixTool, BrowserSmartTools.ts:1744-1859)
+CATEGORY=tool/browser-ui-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/BrowserSmartTools.ts
+IMPLEMENTATION=openPage + before-shot + 8 deterministic live-DOM fixes (lang/viewport/charset/alt/aria-label/h1-demote/meta-desc/empty-links) + after-shot + corrected HTML to ARTIFACT_DIR; permissions internet+write; required:['url']
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD (batch-1)
+SELECTABLE=YES
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (live3 autofix, canonical, 2/2): 8 fixes on the flawed fixture (lang/viewport among them); corrected HTML verified on disk (contains lang="en") then removed
+PERMISSION_REACHABLE=YES
+INPUT_CONTRACT_VALID=YES
+OUTPUT_CONTRACT_VALID=YES (message/fixes/count/fixedFile/beforeScreenshot/afterScreenshot/url)
+EVIDENCE_PRODUCED=YES (fix list + before/after shots + HTML file)
+VERIFICATION_COMPATIBLE=UNKNOWN
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=FULLY_WIRED (at tool level; live-DOM mutation is the documented purpose)
+RECOMMENDED_ACTION=none
+
+---
+
+CAPABILITY_ID=TOOL-browser_vision
+NAME=browser_vision (BrowserVisionTool.ts; THIRD standalone-launch member, 011/F64)
+CATEGORY=tool/browser-ui-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/BrowserVisionTool.ts
+IMPLEMENTATION=chromium.launch() directly (ignores context entirely — no browserSid, no session) + raw-URL goto (NO normalizeUrl: data-URLs would work, unlike (a)) + PNG to process.cwd()/screenshots (fixed screenshot_<ts>.png name); required:['url']; PRIORITY-listed
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD (batch-1)
+SELECTABLE=YES
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (live3 vision, canonical, 2/2): PNG verified on disk (31KB) then removed; standalone launch honors BROWSER_EXECUTABLE_PATH. Corrects 009/F43: (d)=3, partition now sums 25+2+2+3+1=33
+PERMISSION_REACHABLE=YES
+INPUT_CONTRACT_VALID=YES (url required + enforced :38-39 — audit-fixed pre-launch validation)
+OUTPUT_CONTRACT_VALID=YES (screenshotPath/message/logs; path verified real)
+EVIDENCE_PRODUCED=YES (PNG file)
+VERIFICATION_COMPATIBLE=UNKNOWN
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=FULLY_WIRED (at tool level)
+PORTABILITY_RISK=cwd-relative screenshots dir (no traversal vector — fixed filename; joins P2-014 review)
+RECOMMENDED_ACTION=WIRING-P2-014 extension (cwd dir review, shared with screenshot)
+
+---
+
+CAPABILITY_ID=TOOL-browser_search
+NAME=browser_search (BrowserSearchTool, BrowserSmartTools.ts:1897-2055)
+CATEGORY=tool/browser-ui-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/BrowserSmartTools.ts
+IMPLEMENTATION=openPage(engine default google.com; consent-dismiss + bing/duckduckgo fallback hop) + live cursor + letter-by-letter typing (85ms) + Enter + results parse (g-blocks else li/article) + shot + routeToModel({messages}) best-effort answer (:2032, DIFFERENT call shape — no context); required:['query']; engine overridable
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD (batch-1)
+SELECTABLE=YES
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (live3 search, canonical, 2/2, contained engine=loopback /fx-search): typedLive:true + submitted:true + resultsUrl contained + 2/2 SeedResult parsed + answerLen 0 (model best-effort empty, ok still true — escapes the apology flip because no apology text lands in output; coherent since results are the deliverable, 011/F62)
+PERMISSION_REACHABLE=YES
+INPUT_CONTRACT_VALID=YES (query enforced no_query; engine URL honored)
+OUTPUT_CONTRACT_VALID=YES (message/query/url/submitted/typedLive/results/answer/screenshot)
+EVIDENCE_PRODUCED=YES
+VERIFICATION_COMPATIBLE=UNKNOWN
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=FULLY_WIRED (at tool level; real-engine path deliberately unprobed — external traffic by design; model-present answer unprobed)
+RECOMMENDED_ACTION=none (routeToModel {messages}-shape vs positional-shape variance noted for P2-015)
+
+---
+
+END-OF-MUSE-DRAFT-ROWS=75 (65 individual + 8 group + 2 external-cited)
+COVERAGE-DISCLAIMER=This draft covers ONLY what Muse checkpoints 1-11 evidenced. Full matrix requires: per-trunk path stories (19 trunks PROPOSED in merge.json, 2 STORIED: files 10/10 + browser_ui 33/33 LEVEL-4), services/workers/persistence/deployment rows (NVIDIA scope), bulk per-tool firewall sweep (8 spot + 28 empty-input batch-1+2 + 19 risk-tier live + 16 trunk-files + 3 arch-backend + 26 browser live1/live2 + 30 browser live3 done; 25/25 no-required reviewed: 18 SAFE + 1 BOUND + 4 EMBARGO with static fixture designs + 2 FIXTURE probed contained; browser_launch embargo partially lifted for contained-http; risk table SURVEYED), contract audit per boundary (9 mismatches), LEVEL 5-6 proofs, and NVIDIA cross-review (currently BLOCKED).

@@ -243,14 +243,53 @@ DEPENDENCIES=none (unblocks audit batch-3 for the 22 (a)-tools either way via lo
 ---
 
 BATCH_ID=WIRING-P2-014
-CAPABILITIES=standalone QA pair fidelity (visual_compare heuristic + screenshot containment)
-ROOT_CAUSE=(a) visual_compare measures BYTE SIZE (|lenA-lenB|/max, ScreenshotTool.ts:244-249), proven live (+64B -> 0.62% diff, still match) — the 'visual differences' description overclaims; a same-size different-pixel pair would 'match' (code-indicated, unstaged). (b) screenshot `filename` joins unsanitized under process.cwd()/screenshots (ScreenshotTool.ts:75-85; traversal-shaped input never sent — review item, not a proven exploit).
-FILES=ScreenshotTool.ts (relabel byte-compare OR implement pixel diff; sanitize filename to basename + contain under workspace-aware dir) + fidelity/containment tests
+CAPABILITIES=standalone QA pair fidelity (visual_compare heuristic + screenshot containment) + vision dir review (011 extension)
+ROOT_CAUSE=(a) visual_compare measures BYTE SIZE (|lenA-lenB|/max, ScreenshotTool.ts:244-249), proven live (+64B -> 0.62% diff, still match) — the 'visual differences' description overclaims; a same-size different-pixel pair would 'match' (code-indicated, unstaged). (b) screenshot `filename` joins unsanitized under process.cwd()/screenshots (ScreenshotTool.ts:75-85; traversal-shaped input never sent — review item, not a proven exploit). (c) browser_vision (third standalone-launch member, 011/F64) writes fixed-name PNGs under the same cwd-relative screenshots dir (no traversal vector — fixed filename; shared portability note).
+FILES=ScreenshotTool.ts (relabel byte-compare OR implement pixel diff; sanitize filename to basename + contain under workspace-aware dir) + BrowserVisionTool.ts (same dir decision) + fidelity/containment tests
 IMPLEMENTATION_OWNER=UNASSIGNED
 REVIEW_OWNER=UNASSIGNED
 TESTS=same-size-different-pixel negative (RED->GREEN per decided contract); filename-traversal negative (../ stays inside screenshots dir); PNG-output regression (F49 case as contract); AGENTS gates
 REAL_JOE_UAT=none (tool-local fidelity)
 ROLLBACK=revert label/sanitize change
+DEPENDENCIES=none
+
+---
+
+BATCH_ID=WIRING-P2-015
+CAPABILITIES=model-fallback contract for browser model-touching tools (summarize/translate/smart_agent + search variance)
+ROOT_CAUSE=routeToModel no-provider path RESOLVES failure prose (intelligent-router.ts:2201/2778/2789/2794, all `return`) instead of throwing — so tool try/catch + empty/short-text fallbacks (summarize :885-888, translate :1203-1205, smart_agent :1714) never fire on this path. Honesty currently depends entirely on ToolService's central apology text scan (ToolService.ts:940-944 + honestResult.ts isApologyOnly: prefix + no artifact keys) — proven live: trio ok:false WITH full output (sumLen 252 + shot; target + 7 blocks; scores 75/54/70 + 8 findings). Consequences: (a) smart_agent's computed lenses are discarded though real (none are ARTIFACT_KEYS); (b) a future failure shape the scan misses would flow as false-success data; (c) search uses a DIFFERENT routeToModel call shape ({messages} object, no context, :2032) and reads .content off the resolved string -> '' so it escapes the flip with ok:true + empty answer (coherent today since results are the deliverable, but the two shapes are uncontracted).
+FILES=intelligent-router.ts (resolve-vs-throw contract: throw typed no-provider OR document resolve-prose + provide isProviderFailure()) + 3 tool sites (detect prefix / use helper instead of empty-check) + honestResult.ts (keep as backstop; consider partial-output preservation rule) + search call-shape alignment + contract tests
+IMPLEMENTATION_OWNER=UNASSIGNED (router + ToolService shared — coordinate; NVIDIA owns provider-adjacent planning? verify before assigning)
+REVIEW_OWNER=UNASSIGNED
+TESTS=resolve-vs-throw contract test (no-provider call shape asserted); trio RED->GREEN (honest failure WITH partials preserved or documentedly dropped); search empty-answer regression (results intact, ok:true stands); scan-miss negative (novel failure prose cannot pass as data); AGENTS gates
+REAL_JOE_UAT=none (offline-honesty mechanics; behavior on live providers unchanged)
+ROLLBACK=revert contract change (scan backstop stays regardless)
+DEPENDENCIES=none
+
+---
+
+BATCH_ID=WIRING-P2-016
+CAPABILITIES=responsive per-viewport hasViewportMeta reporting
+ROOT_CAUSE=BrowserResponsiveCheckTool evaluates hasViewportMeta per viewport and scores on it, but drops the flag when mapping per-viewport output objects (BrowserSmartTools.ts:1297 keeps only name/w/h/overflowX/tiny/smallFonts/wide/screenshot) — detection surfaces only via aggregate score/issues. Proven live: score 60 + viewport issue fired, flag absent from output (011/F63).
+FILES=BrowserSmartTools.ts responsive mapper (:1297, add the flag) + output contract test
+IMPLEMENTATION_OWNER=UNASSIGNED
+REVIEW_OWNER=UNASSIGNED
+TESTS=per-viewport flag test (meta-less fixture -> mobile.hasViewportMeta===false RED->GREEN); score regression (60-case as contract); AGENTS gates
+REAL_JOE_UAT=none (reporting completeness)
+ROLLBACK=revert mapper one-liner
+DEPENDENCIES=none
+
+---
+
+BATCH_ID=WIRING-P2-017
+CAPABILITIES=browser_compare baseline session scoping
+ROOT_CAUSE=baselines kept in (global).joeCompareBaselines keyed by bare URL (BrowserSmartTools.ts:726), shared across users/sessions in one process and refreshed on every diff call. No failure observed (live3: baseline leg then diff-then-refresh behaved; re-capture pct exactly 0), but a second user's first call on the same URL diffs against the first user's baseline instead of capturing its own (011/F66).
+FILES=BrowserSmartTools.ts compare baseline store (scope key by session/user or document refresh semantics) + scoping test
+IMPLEMENTATION_OWNER=UNASSIGNED
+REVIEW_OWNER=UNASSIGNED
+TESTS=two-session test (same URL baselines independent RED->GREEN per decided contract); single-session refresh regression (live3 3-leg flow as contract); AGENTS gates
+REAL_JOE_UAT=none (state-scoping correctness)
+ROLLBACK=revert store-key change
 DEPENDENCIES=none
 
 ---
