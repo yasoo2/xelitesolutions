@@ -1114,3 +1114,33 @@ ROLLBACK=revert enum-or-impl diff
 DEPENDENCIES=approval-policy decision if push is implemented (privileged write)
 READINESS=READY_FOR_PROPOSAL (checkpoint 34)
 READINESS_EVIDENCE=enum-vs-case matrix both trees filed in fx-triage34
+
+---
+
+BATCH_ID=WIRING-P2-055
+CAPABILITIES=dormant->lead alias/wire for 4 STRONG_COVER + 2 SCOPE_NOTE pairs (business_logic, self_confidence, terraform_ops, shell_status, cost_estimator, chaos_testing)
+ROOT_CAUSE=6 dormant PRIORITY_TOOL_NAMES entries have registered leads (checkpoint 35, F227 incl triage34 terraform correction) but no alias/rewrite/registration, so the priority slot silently drops (F221) while the capability exists (E1-E4,E6,E7; F230/F231). Inherited (main identical).
+FILES=alias or rewrite layer + per-pair contract test (decide alias vs rename per pair; ship Elite input guards with E1/E4; record E2 cloud-scope narrowing, E4 plan-vs-activity scope, E7 shell_execute ambiguity)
+IMPLEMENTATION_OWNER=UNASSIGNED
+REVIEW_OWNER=UNASSIGNED
+TESTS=per-pair equivalence pins (dormant name resolves to lead; {} + minimal legs match lead behavior incl guards; did-you-mean expectations); AGENTS gates
+REAL_JOE_UAT=none (registry-level; planner-selection UAT belongs to a later batch)
+ROLLBACK=revert alias/rewrite diff
+DEPENDENCIES=P2-053 gate should land first or with this batch (pins the fix); NVIDIA cross-review (shared registry surface)
+READINESS=READY_FOR_PROPOSAL (checkpoint 35)
+READINESS_EVIDENCE=7-pair/26-leg A/B-identical probe filed in fx-equiv35 (SHA 2ECB1EEB); did-you-mean oracle confirms 5/7; parity BOTH_PRESENT all leads
+
+---
+
+BATCH_ID=WIRING-P2-056
+CAPABILITIES=security_scan_repo intent decision (broad security scan vs secrets-only)
+ROOT_CAUSE=dormant security_scan_repo is doc-demanded (production_sync.md:19) but the stem lead secrets_scan_repo covers secret patterns only (E5 PARTIAL, F228); did-you-mean does not bridge them, so neither alias-as-is (overclaims) nor silent drop (F221) is safe. Inherited (main identical).
+FILES=decision first: (a) implement a broad security_scan_repo composing secrets_scan_repo + scanner findings, or (b) correct the doc/priority demand to secrets_scan_repo; then contract + tests
+IMPLEMENTATION_OWNER=UNASSIGNED
+REVIEW_OWNER=UNASSIGNED
+TESTS=decision-dependent: composition E2E with seeded vuln+secret fixtures, or demand-correction test; AGENTS gates
+REAL_JOE_UAT=none until implemented
+ROLLBACK=revert decision diff
+DEPENDENCIES=NVIDIA cross-review (scanner/contract surface overlaps active planning work conceptually, not by file)
+READINESS=READY_FOR_PROPOSAL (checkpoint 35)
+READINESS_EVIDENCE=E5 PARTIAL verdict + seeded positive control + F228 absence shape filed in fx-equiv35

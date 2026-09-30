@@ -1,0 +1,558 @@
+{
+  "registeredCount": 163,
+  "priorityCount": 57,
+  "dormantStatus": {
+    "business_logic": {
+      "registered": false,
+      "inPriorityList": true
+    },
+    "cost_estimator": {
+      "registered": false,
+      "inPriorityList": true
+    },
+    "self_confidence": {
+      "registered": false,
+      "inPriorityList": true
+    },
+    "chaos_testing": {
+      "registered": false,
+      "inPriorityList": true
+    },
+    "security_scan_repo": {
+      "registered": false,
+      "inPriorityList": true
+    },
+    "terraform_ops": {
+      "registered": false,
+      "inPriorityList": true
+    },
+    "shell_status": {
+      "registered": false,
+      "inPriorityList": true
+    }
+  },
+  "decls": {
+    "business_logic_parser": {
+      "registered": true,
+      "hasExecute": true,
+      "description": "Extract structured business rules.",
+      "required": [
+        "requirements"
+      ],
+      "props": [
+        "requirements"
+      ],
+      "tags": [
+        "analysis",
+        "elite",
+        "logic",
+        "requirements"
+      ]
+    },
+    "cloud_cost_estimator": {
+      "registered": true,
+      "hasExecute": true,
+      "description": "Estimate cloud costs.",
+      "required": [
+        "resources"
+      ],
+      "props": [
+        "resources",
+        "traffic"
+      ],
+      "tags": [
+        "cost",
+        "elite"
+      ]
+    },
+    "self_confidence_evaluator": {
+      "registered": true,
+      "hasExecute": true,
+      "description": "Evaluate confidence.",
+      "required": [
+        "content"
+      ],
+      "props": [
+        "content"
+      ],
+      "tags": [
+        "analysis",
+        "elite"
+      ]
+    },
+    "chaos_test_plan": {
+      "registered": true,
+      "hasExecute": true,
+      "description": "Generate Chaos Engineering plan.",
+      "required": [
+        "architecture"
+      ],
+      "props": [
+        "architecture"
+      ],
+      "tags": [
+        "chaos",
+        "elite",
+        "testing"
+      ]
+    },
+    "secrets_scan_repo": {
+      "registered": true,
+      "hasExecute": true,
+      "description": "Scan a repository for common secret patterns.",
+      "required": [
+        "path"
+      ],
+      "props": [
+        "maxFindings",
+        "path"
+      ],
+      "tags": [
+        "scanner",
+        "secrets",
+        "security"
+      ]
+    },
+    "terraform_manager": {
+      "registered": true,
+      "hasExecute": true,
+      "description": "Manage Infrastructure as Code using Terraform (init, plan, apply, destroy).",
+      "required": [
+        "action",
+        "directory"
+      ],
+      "props": [
+        "action",
+        "autoApprove",
+        "directory",
+        "vars"
+      ],
+      "tags": [
+        "cloud",
+        "infrastructure",
+        "terraform"
+      ]
+    },
+    "docker_swarm_ops": {
+      "registered": true,
+      "hasExecute": true,
+      "description": "Manage Docker Swarm services and stacks.",
+      "required": [
+        "action"
+      ],
+      "props": [
+        "action",
+        "composeFile",
+        "stackName"
+      ],
+      "tags": [
+        "docker",
+        "infrastructure",
+        "swarm"
+      ]
+    },
+    "git_ops": {
+      "registered": true,
+      "hasExecute": true,
+      "description": "Perform git operations (commit, push, pull, etc) with auto-authentication.",
+      "required": [
+        "operation"
+      ],
+      "props": [
+        "args",
+        "cwd",
+        "operation",
+        "sessionId",
+        "userId"
+      ],
+      "tags": [
+        "git",
+        "source-control",
+        "vcs"
+      ]
+    },
+    "kubernetes_ops": {
+      "registered": true,
+      "hasExecute": true,
+      "description": "Manage Kubernetes clusters via kubectl.",
+      "required": [
+        "command"
+      ],
+      "props": [
+        "command",
+        "namespace"
+      ],
+      "tags": [
+        "infrastructure",
+        "k8s",
+        "kubernetes"
+      ]
+    },
+    "shell_check_status": {
+      "registered": true,
+      "hasExecute": true,
+      "description": "Check the status of a background command.",
+      "required": [
+        "id"
+      ],
+      "props": [
+        "id"
+      ],
+      "tags": [
+        "shell",
+        "status"
+      ]
+    }
+  },
+  "parity": {
+    "business_logic_parser": {
+      "file": "EliteTools.ts",
+      "museDeclared": true,
+      "mainDeclared": true,
+      "requiredMatch": true,
+      "museRequired": "'requirements'",
+      "mainRequired": "'requirements'",
+      "mainRegistryMentions": false
+    },
+    "cloud_cost_estimator": {
+      "file": "EliteTools.ts",
+      "museDeclared": true,
+      "mainDeclared": true,
+      "requiredMatch": true,
+      "museRequired": "'resources'",
+      "mainRequired": "'resources'",
+      "mainRegistryMentions": false
+    },
+    "self_confidence_evaluator": {
+      "file": "EliteTools.ts",
+      "museDeclared": true,
+      "mainDeclared": true,
+      "requiredMatch": true,
+      "museRequired": "'content'",
+      "mainRequired": "'content'",
+      "mainRegistryMentions": false
+    },
+    "chaos_test_plan": {
+      "file": "EliteTools.ts",
+      "museDeclared": true,
+      "mainDeclared": true,
+      "requiredMatch": true,
+      "museRequired": "'architecture'",
+      "mainRequired": "'architecture'",
+      "mainRegistryMentions": false
+    },
+    "secrets_scan_repo": {
+      "file": "QualityTools.ts",
+      "museDeclared": true,
+      "mainDeclared": true,
+      "requiredMatch": true,
+      "museRequired": "'path'",
+      "mainRequired": "'path'",
+      "mainRegistryMentions": true
+    },
+    "terraform_manager": {
+      "file": "InfrastructureTools.ts",
+      "museDeclared": true,
+      "mainDeclared": true,
+      "requiredMatch": true,
+      "museRequired": "'action','directory'",
+      "mainRequired": "'action','directory'",
+      "mainRegistryMentions": true
+    },
+    "docker_swarm_ops": {
+      "file": "InfrastructureTools.ts",
+      "museDeclared": true,
+      "mainDeclared": true,
+      "requiredMatch": true,
+      "museRequired": "'action'",
+      "mainRequired": "'action'",
+      "mainRegistryMentions": true
+    },
+    "git_ops": {
+      "file": "GitTools.ts",
+      "museDeclared": true,
+      "mainDeclared": true,
+      "requiredMatch": true,
+      "museRequired": "'operation'",
+      "mainRequired": "'operation'",
+      "mainRegistryMentions": true
+    },
+    "kubernetes_ops": {
+      "file": "InfrastructureTools.ts",
+      "museDeclared": true,
+      "mainDeclared": true,
+      "requiredMatch": true,
+      "museRequired": "'command'",
+      "mainRequired": "'command'",
+      "mainRegistryMentions": true
+    },
+    "shell_check_status": {
+      "file": "SystemTools.ts",
+      "museDeclared": true,
+      "mainDeclared": true,
+      "requiredMatch": true,
+      "museRequired": "'id'",
+      "mainRequired": "'id'",
+      "mainRegistryMentions": true
+    }
+  },
+  "docDemand": {
+    "muse": {
+      "lines1719": [
+        "- **Elite Suite**: `dependency_graph`, `chaos_testing`, `multi_agent_debate`.",
+        "- **Infrastucture**: `terraform_ops`, `kubernetes_ops`.",
+        "- **Quality**: `sonar_analysis`, `security_scan_repo`."
+      ]
+    },
+    "main": {
+      "lines1719": [
+        "- **Elite Suite**: `dependency_graph`, `chaos_testing`, `multi_agent_debate`.",
+        "- **Infrastucture**: `terraform_ops`, `kubernetes_ops`.",
+        "- **Quality**: `sonar_analysis`, `security_scan_repo`."
+      ]
+    }
+  },
+  "cases": {
+    "dormant.business_logic": {
+      "timedOut": false,
+      "ok": false,
+      "errorHead": "unknown_tool: \"business_logic\" — did you mean: business_logic_parser, orion_business_foundation, business_profile?",
+      "outputShape": "undefined",
+      "outputHead": null,
+      "scannedFiles": null,
+      "findings": null
+    },
+    "dormant.cost_estimator": {
+      "timedOut": false,
+      "ok": false,
+      "errorHead": "unknown_tool: \"cost_estimator\" — did you mean: cloud_cost_estimator?",
+      "outputShape": "undefined",
+      "outputHead": null,
+      "scannedFiles": null,
+      "findings": null
+    },
+    "dormant.self_confidence": {
+      "timedOut": false,
+      "ok": false,
+      "errorHead": "unknown_tool: \"self_confidence\" — did you mean: self_confidence_evaluator?",
+      "outputShape": "undefined",
+      "outputHead": null,
+      "scannedFiles": null,
+      "findings": null
+    },
+    "dormant.chaos_testing": {
+      "timedOut": false,
+      "ok": false,
+      "errorHead": "unknown_tool: \"chaos_testing\" — did you mean: chaos_test_plan?",
+      "outputShape": "undefined",
+      "outputHead": null,
+      "scannedFiles": null,
+      "findings": null
+    },
+    "dormant.security_scan_repo": {
+      "timedOut": false,
+      "ok": false,
+      "errorHead": "unknown_tool: \"security_scan_repo\" — did you mean: browser_console_scan, repo_read_file, repo_search, repo_apply_patch, repo_run_command?",
+      "outputShape": "undefined",
+      "outputHead": null,
+      "scannedFiles": null,
+      "findings": null
+    },
+    "dormant.terraform_ops": {
+      "timedOut": false,
+      "ok": false,
+      "errorHead": "unknown_tool: \"terraform_ops\" — did you mean: terraform_manager, kubernetes_ops, docker_swarm_ops, git_ops?",
+      "outputShape": "undefined",
+      "outputHead": null,
+      "scannedFiles": null,
+      "findings": null
+    },
+    "dormant.shell_status": {
+      "timedOut": false,
+      "ok": false,
+      "errorHead": "unknown_tool: \"shell_status\" — did you mean: shell_execute, shell_check_status?",
+      "outputShape": "undefined",
+      "outputHead": null,
+      "scannedFiles": null,
+      "findings": null
+    },
+    "lead.business_logic_parser.empty": {
+      "timedOut": false,
+      "ok": true,
+      "errorHead": null,
+      "outputShape": "{}",
+      "outputHead": null,
+      "scannedFiles": null,
+      "findings": null
+    },
+    "lead.cloud_cost_estimator.empty": {
+      "timedOut": false,
+      "ok": false,
+      "errorHead": "cloud_cost_estimator needs a resources list (e.g. [\"EC2 t3.small\", \"RDS\"]).",
+      "outputShape": "null",
+      "outputHead": null,
+      "scannedFiles": null,
+      "findings": null
+    },
+    "lead.self_confidence_evaluator.empty": {
+      "timedOut": false,
+      "ok": false,
+      "errorHead": "self_confidence_evaluator needs content to judge.",
+      "outputShape": "null",
+      "outputHead": null,
+      "scannedFiles": null,
+      "findings": null
+    },
+    "lead.chaos_test_plan.empty": {
+      "timedOut": false,
+      "ok": true,
+      "errorHead": null,
+      "outputShape": "{}",
+      "outputHead": null,
+      "scannedFiles": null,
+      "findings": null
+    },
+    "lead.secrets_scan_repo.empty": {
+      "timedOut": false,
+      "ok": true,
+      "errorHead": null,
+      "outputShape": "{findings,scannedFiles}",
+      "outputHead": null,
+      "scannedFiles": 0,
+      "findings": 0
+    },
+    "lead.terraform_manager.empty": {
+      "timedOut": false,
+      "ok": false,
+      "errorHead": "terraform_manager needs an action: init | plan | apply | destroy | validate.",
+      "outputShape": "null",
+      "outputHead": null,
+      "scannedFiles": null,
+      "findings": null
+    },
+    "lead.docker_swarm_ops.empty": {
+      "timedOut": false,
+      "ok": false,
+      "errorHead": "docker_swarm_ops needs an action: deploy_stack | list_services | service_logs | remove_stack.",
+      "outputShape": "null",
+      "outputHead": null,
+      "scannedFiles": null,
+      "findings": null
+    },
+    "lead.git_ops.empty": {
+      "timedOut": false,
+      "ok": false,
+      "errorHead": "warning: safe.directory ''*'' not absolute\nwarning: safe.directory ''*'' not absolute\nwarning: safe.directory ''*'' not absolute\ngit: 'undefined' is not a git c",
+      "outputShape": "null",
+      "outputHead": null,
+      "scannedFiles": null,
+      "findings": null
+    },
+    "lead.kubernetes_ops.empty": {
+      "timedOut": false,
+      "ok": false,
+      "errorHead": "kubernetes_ops needs a kubectl command (e.g. \"get pods\").",
+      "outputShape": "null",
+      "outputHead": null,
+      "scannedFiles": null,
+      "findings": null
+    },
+    "lead.shell_check_status.empty": {
+      "timedOut": false,
+      "ok": false,
+      "errorHead": "Process not found",
+      "outputShape": "null",
+      "outputHead": null,
+      "scannedFiles": null,
+      "findings": null
+    },
+    "lead.business_logic_parser.min": {
+      "timedOut": false,
+      "ok": true,
+      "errorHead": null,
+      "outputShape": "{}",
+      "outputHead": null,
+      "scannedFiles": null,
+      "findings": null
+    },
+    "lead.cloud_cost_estimator.min": {
+      "timedOut": false,
+      "ok": true,
+      "errorHead": null,
+      "outputShape": "{}",
+      "outputHead": null,
+      "scannedFiles": null,
+      "findings": null
+    },
+    "lead.self_confidence_evaluator.min": {
+      "timedOut": false,
+      "ok": true,
+      "errorHead": null,
+      "outputShape": "{}",
+      "outputHead": null,
+      "scannedFiles": null,
+      "findings": null
+    },
+    "lead.chaos_test_plan.min": {
+      "timedOut": false,
+      "ok": true,
+      "errorHead": null,
+      "outputShape": "{}",
+      "outputHead": null,
+      "scannedFiles": null,
+      "findings": null
+    },
+    "lead.secrets_scan_repo.min": {
+      "timedOut": false,
+      "ok": false,
+      "errorHead": "Found 1 potential secrets in codebase.",
+      "outputShape": "{findings,scannedFiles}",
+      "outputHead": null,
+      "scannedFiles": 2,
+      "findings": 1
+    },
+    "lead.kubernetes_ops.readonly": {
+      "timedOut": false,
+      "ok": false,
+      "errorHead": "Tool reported failure without an error message",
+      "outputShape": "{output}",
+      "outputHead": null,
+      "scannedFiles": null,
+      "findings": null
+    },
+    "lead.docker_swarm_ops.readonly": {
+      "timedOut": false,
+      "ok": false,
+      "errorHead": "Tool reported failure without an error message",
+      "outputShape": "{output}",
+      "outputHead": null,
+      "scannedFiles": null,
+      "findings": null
+    },
+    "lead.git_ops.version": {
+      "timedOut": false,
+      "ok": true,
+      "errorHead": null,
+      "outputShape": "{output}",
+      "outputHead": null,
+      "scannedFiles": null,
+      "findings": null
+    },
+    "lead.shell_check_status.min": {
+      "timedOut": false,
+      "ok": false,
+      "errorHead": "Process not found",
+      "outputShape": "null",
+      "outputHead": null,
+      "scannedFiles": null,
+      "findings": null
+    }
+  },
+  "fixtures": {
+    "before": [
+      "clean.txt",
+      "seeded.txt"
+    ],
+    "removed": true
+  }
+}

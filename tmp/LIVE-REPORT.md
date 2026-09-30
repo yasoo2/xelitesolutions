@@ -1,51 +1,53 @@
 # LIVE-REPORT — Muse + NVIDIA (fallback copy; shared write blocked)
-UPDATED=2026-09-30 (Muse cycle, HEAD 299fcbc8 -> this commit: wiring audit checkpoint 34)
-NOTE=Shared path D:\Joe\coordination\team\LIVE-REPORT.md is not writable from this sandbox (access denied, re-verified this cycle). This fallback at D:\Joe\muse-worktree\tmp\LIVE-REPORT.md is authoritative for Muse's report until imported.
+UPDATED=2026-09-30 (Muse cycle, HEAD a06f709b -> this commit: wiring audit checkpoint 35 + DUCKAI reaffirm)
+NOTE=Shared path D:\Joe\coordination\team\LIVE-REPORT.md is not writable from this sandbox (write_file/edit_file: "absolute path is outside the workspace", re-verified this cycle on team/LIVE-REPORT.md + consultations/DUCKAI-*-MUSE.md). This fallback at D:\Joe\muse-worktree\tmp\LIVE-REPORT.md is authoritative for Muse's report until imported.
 
 ## 1. ماذا نعمل الآن؟
-- Muse: أنهى نقطة تدقيق wiring رقم 34 (فرز دفعات P3/P4: الأسماء الخاملة + التوجيه المشروط + الملفات العملاقة). الدور الحالي: مراجعة مستقلة + اكتشاف wiring فقط، لا تنفيذ منافس.
-- NVIDIA: حسب آخر حالة مشتركة: EVAL-006 + حزمة CLI (مالك التنفيذ). لا نشاط جديد رصدته Muse هذه الدورة.
+- Muse: أنهى نقطة تدقيق wiring رقم 35 (مسابر تكافؤ لـ7 أزواج خامل/قائد، 26 ساقًا عبر المسار القانوني). الدور الحالي: مراجعة مستقلة + اكتشاف wiring فقط، لا تنفيذ منافس.
+- NVIDIA: حسب آخر حالة مشتركة: EVAL-006 + حزمة CLI (مالك التنفيذ). لا commit جديد على main (ما زال e8fd9589) ولا تنفيذ CLI ظاهر بعد.
 
 ## 2. ماذا اكتشفنا؟
-- كل الأسماء الخاملة الـ15 موجودة في قائمة أولويات المنتقي (PRIORITY_TOOL_NAMES) لكن المنتقي يتجاهل الأسماء غير المسجلة بصمت (بلا تحذير ولا اختبار يغطي ذلك) — F221.
-- وثيقة production_sync.md تطالب بثلاثة أسماء غير مسجلة ضمن الأولويات ("God Mode") وهذا مستحيل التحقق حاليًا — F222.
-- أداة github_repo_manager تعد بوضع push في العقد لكن التنفيذ يرمي "Unknown action: push" — F223 (عيب عقد موروث في الشجرتين).
-- تحويلة scaffold_full_stack (عربي/إنجليزي أمامي -> react_project) حتمية 7/7 في الشجرتين لكنها مخفية عن العقد — F224.
-- أكبر 10 ملفات متطابقة المجموعة في الشجرتين؛ فروق الحجم تشمل عمل NVIDIA غير المحفوظ (PlanningEngine ‏+18KB في main).
+- تصحيح مهم: حكم checkpoint-34 بأن terraform_ops بلا قائد قوي كان خطأ — terraform_manager مسجلة ومحروسة والقائد الصحيح (F227 يُلغي الحكم السابق).
+- 4 أزواج تغطية قوية + 2 بتقييد نطاق + 1 جزئي (security_scan_repo يغطي الأسرار فقط، ليس فحصًا أمنيًا شاملًا).
+- أداتا Elite بلا حارس إدخال (business_logic_parser/chaos_test_plan) تُرجعان ok:true+{} الفارغ على {} — نفس عيب MISMATCH #11 (F230).
+- k8s/swarm عند غياب الثنائية يفشلان بلا رسالة سبب (F229، من صنف P2-035).
+- اقتراحات "did-you-mean" الداخلية تؤكد 5/7 من التعيينات ذاتيًا وترفض الجسر التلقائي لـsecurity_scan_repo.
+- مراجعة NVIDIA لـDuckAI مسجلة الآن (REVIEWED_BY_NVIDIA، APPROVE_WITH_CHANGES) — الخلاف الحقيقي الوحيد: NVIDIA تفضل ترتيب بداية الطلب، وMuse يرى أن ساعة البدء خاطئة للحصص (مثال C1 + عقد soft-cool).
 
 ## 3. ماذا أنجزنا فعليًا؟
-- REPORTED_BY_MUSE: فرز P3-001 (15/15 حكمًا ثابتًا) + P3-002 (مصفوفتا scaffold/github + 5 مراسٍ) + P4-001 (جرد top-10) — دليل fx-triage34 (تشغيلان A/B متطابقا SHA256: 73DDA9A8...).
-- REPORTED_BY_MUSE: دفعتا إصلاح جديدتان P2-053 (بوابة سلامة الأولويات) + P2-054 (عقد push) — بلا مالك، بانتظار القرار.
-- REPORTED_BY_MUSE: رد DuckAI الاستشاري (APPROVE_WITH_CHANGES) ما زال ساريًا بانتظار استيراد Codex؛ لا مراجعة جديدة لازمة (لا دليل VQD جديد منذ الرد).
+- REPORTED_BY_MUSE: تكافؤ 7 أزواج/10 قواد (26 ساقًا) — دليل fx-equiv35 (تشغيلان A/B متطابقا SHA256: 2ECB1EEB...) + وثيقة MUSE-WIRING-DISCOVERY-035.
+- REPORTED_BY_MUSE: دفعتا إصلاح جديدتان P2-055 (ربط 6 أزواج) + P2-056 (قرار نية الفحص الأمني) — بلا مالك، بانتظار القرار.
+- REPORTED_BY_MUSE: إعادة تأكيد مراجعة DuckAI (APPROVE_WITH_CHANGES، بلا تغيير) بعد إعادة التحقق من كل المراسي عند HEAD الحالي — ملف reaffirm جديد للاستيراد الحرفي.
 
 ## 4. ماذا يعمل Muse الآن؟
-- أنهى هذه الدورة عند نقطة تحقق. التالي المقترح: مسابر تكافؤ للمرشحين الستة (checkpoint 35، محصور بلا شبكة) أو مراجعات exact-diff عند الطلب.
+- أنهى هذه الدورة عند نقطة تحقق. التالي المقترح: مسابر قرار للستة النقية (implement-vs-retire) كـcheckpoint 36، أو مراجعات exact-diff عند الطلب.
 
 ## 5. ماذا يعمل NVIDIA الآن؟
-- حسب البيانات المشتركة فقط (لم يُرصد جديد): مالك تنفيذ حزمة CLI-1 + مراجعات معلقة (DuckAI، الحاسبة). شجرته: main e8fd9589 + 12 ملفًا معدلًا محفوظًا + مسودات. لا ندعي تقدمًا غير موثق.
+- حسب البيانات المشتركة فقط: مالك تنفيذ حزمة CLI-1. شجرته: main e8fd9589 + 12 ملفًا معدلًا + مسودات (قراءة فقط، لم تُمس). لا ندعي تقدمًا غير موثق.
 
 ## 6. هل تم التواصل أو المراجعة بين Muse وNVIDIA؟
-- لا مراجعة مباشرة جديدة هذه الدورة. رد NVIDIA على DuckAI ما زال PENDING_REVIEW (غير مستنتج).
+- لا مراجعة مباشرة جديدة هذه الدورة. مراجعتا DuckAI مسجلتان الآن من الطرفين (كلتاهما APPROVE_WITH_CHANGES) — يُحسم الخلاف بالاختبارات السلوكية C1/T4 لا بالتصويت.
 
 ## 7. أين اتفقا وأين اختلفا؟
-- لا اتفاق/اختلاف جديد موثق هذه الدورة. آخر مراجعات Muse المسجلة: DuckAI APPROVE_WITH_CHANGES، الحاسبة APPROVE_WITH_CHANGES.
+- اتفقا (DuckAI): عيب الإلغاء حقيقي، مثال المالك المضاد صحيح، لا دمج قبل CLI-1 + مراجعة lease، و5/5 ليس نجاح منتج.
+- اختلفا (DuckAI): ساعة الترتيب (بداية-الطلب مقابل جيل الرمز + soft-cool) + إصلاح VQD (سياج مالك مقابل مساواة-الرمز + اختبارات سلوكية).
 
 ## 8. الأرقام المؤكدة (VERIFIED مقابل المُبلغ)
-- VERIFIED (Muse، الشجرتان): REGISTERED_TOOLS=163 committed (both)؛ 57 إدخال أولوية؛ مصفوفة scaffold 7/7 حتمية؛ github 4/5 منفذة (push مفقود).
-- REPORTED_BY_MUSE (مسودة مرحلية، بانتظار مراجعة ثانية): ORPHANED=5 أدوات + خدمة + مكون؛ DUPLICATE=2؛ P2 batches=54 (52+2 جديد)؛ REAL_JOE_PROVEN=0 للعناصر الجديدة.
-- DISCOVERED_TOOLS=UNKNOWN (الـ246 تهجئات لا أدوات مستقلة)؛ REPAIRED=0 هذه الدورة (لا إصلاحات، اكتشاف+مراجعة فقط).
+- VERIFIED (Muse، الشجرتان): REGISTERED_TOOLS=163 committed (both)؛ PRIORITY=57؛ التكافؤ 7 أزواج (4 قوية/2 مقيدة/1 جزئية)؛ التوافقية BOTH_PRESENT لكل القواد العشرة.
+- REPORTED_BY_MUSE (مسودة مرحلية، بانتظار مراجعة ثانية): ORPHANED=5 أدوات + خدمة + مكون؛ DUPLICATE=2؛ P2 batches=56 (54+2 جديد)؛ REAL_JOE_PROVEN=0 للعناصر الجديدة.
+- DISCOVERED_TOOLS=UNKNOWN (الـ246 تهجئات لا أدوات مستقلة)؛ REPAIRED=0 هذه الدورة (لا إصلاحات، اكتشاف+مراجعة فقط)؛ FULLY_WIRED=UNKNOWN؛ PARTIALLY_WIRED=UNKNOWN.
 
 ## 9. ما آخر اختبار ونتيجته؟
-- فرز triage34 (داخلي، قراءة فقط): A/B JSON متطابقان SHA256، exit 0. ليس REAL_JOE_UI.
-- guard:architecture PASS + guard:package-scripts PASS (أُعيد التحقق هذه الدورة).
+- مسابر equiv35 (داخلية، مسار قانوني + مثبتات محصورة): 26/26 ساقًا، A/B متطابقان SHA256، exit 0. ليس REAL_JOE_UI.
+- guard:architecture PASS (exit 0) + guard:package-scripts PASS (exit 0) — أُعيد التحقق هذه الدورة.
 - REAL_JOE_UI: لا تشغيل جديد هذه الدورة — الحاسبة NOT_PASS؛ إعادة التشغيل ممنوعة قبل إصلاح المصدر (قرار الخطة).
 
 ## 10. ما المشاكل أو العوائق الحالية؟
-- CRITICAL-REAL-JOE-UI-001 ما زال PENDING: عيبا الحاسبة بلا تنفيذ بعد؛ المنفذ المقترح Codex بانتظار مراجعة NVIDIA الحقيقية.
-- الكتابة المشتركة (consultations/team-state/live-report/claims) ممنوعة من صندوق Muse — كل الردود في tmp بانتظار الاستيراد.
+- CRITICAL-REAL-JOE-UI-001 ما زال PENDING: لا commit تنفيذ CLI من NVIDIA بعد؛ عيبا الحاسبة بلا تنفيذ بعد.
+- الكتابة المشتركة (consultations/team-state/live-report/claims) ممنوعة من صندوق Muse — كل الردود في tmp بانتظار الاستيراد الحرفي.
 - دفع GitHub من الصندوق محظور غالبًا (لا credentials) — الدفع الخارجي مطلوب.
 
 ## 11. ما الخطوة التالية؟
-1. Codex يستورد رد DuckAI حرفيًا؛ NVIDIA تسجل مراجعتها الحقيقية.
-2. مالك واحد معتمد لعيوب الحاسبة + تنفيذ الحد الأدنى العام + بوابات + UAT حاسبة ثم مهمة تحويل جديدة.
-3. مالك/مراجع لدفعات P2 الجاهزة (يُقترح: قاعدة P2-037 الواحدة + بوابة P2-053 + قرار P2-054)؛ مسابر التكافؤ الستة كـcheckpoint 35.
+1. Codex يستورد رد DuckAI + إعادة التأكيد حرفيًا (SHA256 مسجل)؛ يُحسم خلاف الساعة باختبارات C1/T4.
+2. NVIDIA تنفذ حزمة CLI-1 المحدودة (commit واحد) ثم مراجعة Muse المستقلة + تدقيق Codex + UAT سلوكي جديد.
+3. مالك/مراجع لدفعات P2 الجاهزة (يُقترح: بوابة P2-053 + حزمة P2-055 + قاعدة P2-037)؛ مسابر الستة النقية كـcheckpoint 36.
