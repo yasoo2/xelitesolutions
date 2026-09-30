@@ -1,0 +1,3420 @@
+{
+ "probe": "astdecl37",
+ "trees": {
+  "MUSE": {
+   "filesScanned": 93,
+   "filesWithToolDecls": 92,
+   "toolClassCount": 160,
+   "objectToolCount": 8,
+   "distinctDeclaredNames": 168,
+   "dynamicNameClasses": [
+    "PublicApiDiscoveryTools.ts::ApiDiscoveryTool"
+   ],
+   "otherNameFields": 103,
+   "otherNameDistinct": [
+    "Basic",
+    "Brake & gear setup",
+    "Classic edition",
+    "Closure",
+    "Data service and schema",
+    "Decorator",
+    "Deep Nesting",
+    "Deep space",
+    "Dish of the day",
+    "Energy lab",
+    "Enterprise",
+    "Event coverage",
+    "Evidence-bound project edit",
+    "Factory",
+    "Fahad D.",
+    "First sample item",
+    "Flat fix",
+    "Gift set",
+    "God Object",
+    "Initial consultation",
+    "Inside the human body",
+    "Interface on the service",
+    "Layan Q.",
+    "Long Functions",
+    "Magic Numbers",
+    "Mixed grill",
+    "Module Pattern",
+    "Observer",
+    "Omar K.",
+    "Portrait sessions",
+    "Premium edition",
+    "Priority service",
+    "Pro",
+    "Product photography",
+    "Promise Chain",
+    "React browser application",
+    "Reem A.",
+    "Safety tune-up",
+    "Sarah M.",
+    "Screenshot",
+    "Season salad",
+    "Singleton",
+    "Standard service",
+    "Strategy",
+    "X-API-Key",
+    "anonymous-must-be-refused",
+    "desktop",
+    "express-api",
+    "fullstack",
+    "icon-192.png",
+    "icon-512.png",
+    "index.html",
+    "manifest.webmanifest",
+    "mobile",
+    "next",
+    "node-api",
+    "orion-command-center",
+    "react-app",
+    "script.js",
+    "static-site",
+    "styles.css",
+    "sw.js",
+    "tablet",
+    "إصلاح الإطار المثقوب",
+    "استشارة أولية",
+    "الأساسية",
+    "الأكثر مبيعاً",
+    "الإصدار الفاخر",
+    "الإصدار الكلاسيكي",
+    "الاحترافية",
+    "الخدمة الأساسية",
+    "الخدمة المستعجلة",
+    "الفضاء العميق",
+    "المؤسسات",
+    "تصوير المنتجات",
+    "تغطية المناسبات",
+    "جسم الإنسان",
+    "جلسات شخصية",
+    "حلو البيت",
+    "ريم العنزي",
+    "سارة العتيبي",
+    "سلطة الموسم",
+    "ضبط الفرامل والتروس",
+    "طبق اليوم",
+    "طقم الهدية",
+    "عنصر تجريبي أول",
+    "عنصر تجريبي ثانٍ",
+    "فحص وضبط شامل",
+    "فهد الدوسري",
+    "ليان القحطاني",
+    "محمد الشهري",
+    "مختبر الطاقة",
+    "مشاوي مشكلة"
+   ],
+   "duplicateNames": [],
+   "files": [
+    {
+     "file": "AIGeneratorTool.ts",
+     "toolClasses": [
+      {
+       "cls": "AIGeneratorTool",
+       "name": "ai_write_file"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "AdvancedTools.ts",
+     "toolClasses": [
+      {
+       "cls": "AutoRefactorTool",
+       "name": "auto_refactor"
+      },
+      {
+       "cls": "DocumentationGeneratorTool",
+       "name": "doc_generator"
+      },
+      {
+       "cls": "PatternRecognitionTool",
+       "name": "pattern_recognize"
+      },
+      {
+       "cls": "PerformanceProfilerTool",
+       "name": "performance_profile"
+      },
+      {
+       "cls": "TestGeneratorTool",
+       "name": "test_generator"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 12,
+     "otherNameValues": [
+      "Closure",
+      "Decorator",
+      "Deep Nesting",
+      "Factory",
+      "God Object",
+      "Long Functions",
+      "Magic Numbers",
+      "Module Pattern",
+      "Observer",
+      "Promise Chain",
+      "Singleton",
+      "Strategy"
+     ]
+    },
+    {
+     "file": "AlertManagerTool.ts",
+     "toolClasses": [
+      {
+       "cls": "AlertManagerTool",
+       "name": "alert_manager"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "AnalysisTools.ts",
+     "toolClasses": [
+      {
+       "cls": "AnalyzeCodebaseTool",
+       "name": "analyze_codebase"
+      },
+      {
+       "cls": "AnalyzeProjectTool",
+       "name": "analyze_project"
+      },
+      {
+       "cls": "ProjectDetectTool",
+       "name": "project_detect"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "ApiProjectTool.ts",
+     "toolClasses": [
+      {
+       "cls": "ApiProjectTool",
+       "name": "api_project"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 14,
+     "otherNameValues": [
+      "Classic edition",
+      "Dish of the day",
+      "First sample item",
+      "Mixed grill",
+      "Premium edition",
+      "anonymous-must-be-refused",
+      "الإصدار الفاخر",
+      "الإصدار الكلاسيكي",
+      "سلطة الموسم",
+      "طبق اليوم",
+      "طقم الهدية",
+      "عنصر تجريبي أول",
+      "عنصر تجريبي ثانٍ",
+      "مشاوي مشكلة"
+     ]
+    },
+    {
+     "file": "ApiTesterTool.ts",
+     "toolClasses": [
+      {
+       "cls": "ApiTesterTool",
+       "name": "api_tester"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "ArchitectTool.ts",
+     "toolClasses": [],
+     "objectTools": [
+      "architect_plan"
+     ],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "ArchiveFilesTool.ts",
+     "toolClasses": [
+      {
+       "cls": "ArchiveFilesTool",
+       "name": "archive_files"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "AuthBuilderTool.ts",
+     "toolClasses": [
+      {
+       "cls": "AuthBuilderTool",
+       "name": "auth_builder"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "AutoTesterTool.ts",
+     "toolClasses": [
+      {
+       "cls": "AutoTesterTool",
+       "name": "auto_tester"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "BrowserActionTool.ts",
+     "toolClasses": [
+      {
+       "cls": "BrowserActionTool",
+       "name": "browser_action"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "BrowserRunTool.ts",
+     "toolClasses": [
+      {
+       "cls": "BrowserRunTool",
+       "name": "browser_run"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 1,
+     "otherNameValues": [
+      "Screenshot"
+     ]
+    },
+    {
+     "file": "BrowserSmartTools.ts",
+     "toolClasses": [
+      {
+       "cls": "BrowserA11yDeepTool",
+       "name": "browser_a11y_deep"
+      },
+      {
+       "cls": "BrowserAutofixTool",
+       "name": "browser_autofix"
+      },
+      {
+       "cls": "BrowserCheckLinksTool",
+       "name": "browser_check_links"
+      },
+      {
+       "cls": "BrowserClickTool",
+       "name": "browser_click"
+      },
+      {
+       "cls": "BrowserCompareTool",
+       "name": "browser_compare"
+      },
+      {
+       "cls": "BrowserConsentTool",
+       "name": "browser_consent"
+      },
+      {
+       "cls": "BrowserConsoleScanTool",
+       "name": "browser_console_scan"
+      },
+      {
+       "cls": "BrowserContrastAuditTool",
+       "name": "browser_contrast_audit"
+      },
+      {
+       "cls": "BrowserDesignTokensTool",
+       "name": "browser_design_tokens"
+      },
+      {
+       "cls": "BrowserExtractDataTool",
+       "name": "browser_extract_data"
+      },
+      {
+       "cls": "BrowserExtractMetaTool",
+       "name": "browser_extract_meta"
+      },
+      {
+       "cls": "BrowserFillFormTool",
+       "name": "browser_fill_form"
+      },
+      {
+       "cls": "BrowserFindTextTool",
+       "name": "browser_find_text"
+      },
+      {
+       "cls": "BrowserFullPageShotTool",
+       "name": "browser_fullpage_shot"
+      },
+      {
+       "cls": "BrowserOpenTool",
+       "name": "browser_launch"
+      },
+      {
+       "cls": "BrowserPerformanceTool",
+       "name": "browser_performance"
+      },
+      {
+       "cls": "BrowserReadabilityTool",
+       "name": "browser_readability"
+      },
+      {
+       "cls": "BrowserResponsiveCheckTool",
+       "name": "browser_responsive_check"
+      },
+      {
+       "cls": "BrowserSavePdfTool",
+       "name": "browser_save_pdf"
+      },
+      {
+       "cls": "BrowserSearchTool",
+       "name": "browser_search"
+      },
+      {
+       "cls": "BrowserSEOAuditTool",
+       "name": "browser_seo_audit"
+      },
+      {
+       "cls": "BrowserSmartAgentTool",
+       "name": "browser_smart_agent"
+      },
+      {
+       "cls": "BrowserSummarizeTool",
+       "name": "browser_summarize"
+      },
+      {
+       "cls": "BrowserTranslateTool",
+       "name": "browser_translate"
+      },
+      {
+       "cls": "BrowserUIAuditTool",
+       "name": "browser_ui_audit"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 3,
+     "otherNameValues": [
+      "desktop",
+      "mobile",
+      "tablet"
+     ]
+    },
+    {
+     "file": "BrowserVisionTool.ts",
+     "toolClasses": [
+      {
+       "cls": "BrowserVisionTool",
+       "name": "browser_vision"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "BulkFileGeneratorTool.ts",
+     "toolClasses": [],
+     "objectTools": [
+      "bulk_file_generator"
+     ],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "BusinessProfileTool.ts",
+     "toolClasses": [
+      {
+       "cls": "BusinessProfileTool",
+       "name": "business_profile"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "CacheManagerTool.ts",
+     "toolClasses": [
+      {
+       "cls": "CacheManagerTool",
+       "name": "cache_manager"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "CapabilityDecisionTool.ts",
+     "toolClasses": [
+      {
+       "cls": "CapabilityDecisionTool",
+       "name": "decide_capability_route"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "CentralAnswerTool.ts",
+     "toolClasses": [
+      {
+       "cls": "CentralAnswerTool",
+       "name": "central_answer"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "CodeReviewerTool.ts",
+     "toolClasses": [
+      {
+       "cls": "CodeReviewerTool",
+       "name": "code_reviewer"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "CodebaseNavigatorTool.ts",
+     "toolClasses": [],
+     "objectTools": [
+      "codebase_navigator"
+     ],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "CodebaseOutlineTool.ts",
+     "toolClasses": [
+      {
+       "cls": "CodebaseOutlineTool",
+       "name": "codebase_outline"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "ContentTools.ts",
+     "toolClasses": [
+      {
+       "cls": "HtmlExtractTool",
+       "name": "html_extract"
+      },
+      {
+       "cls": "HttpFetchTool",
+       "name": "http_fetch"
+      },
+      {
+       "cls": "JsonQueryTool",
+       "name": "json_query"
+      },
+      {
+       "cls": "RssFetchTool",
+       "name": "rss_fetch"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "DatabaseEnterpriseTools.ts",
+     "toolClasses": [
+      {
+       "cls": "DbSchemaMigratorTool",
+       "name": "db_schema_migrator"
+      },
+      {
+       "cls": "LargeDataSeederTool",
+       "name": "large_data_seeder"
+      },
+      {
+       "cls": "QueryOptimizerTool",
+       "name": "query_optimizer"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "DatasourceTool.ts",
+     "toolClasses": [
+      {
+       "cls": "DatasourceTool",
+       "name": "query_datasource"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "DeadCodeTool.ts",
+     "toolClasses": [
+      {
+       "cls": "DeadCodeTool",
+       "name": "dead_code_detector"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "DeployPagesTool.ts",
+     "toolClasses": [
+      {
+       "cls": "DeployPagesTool",
+       "name": "deploy_pages"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "DeployProjectTool.ts",
+     "toolClasses": [
+      {
+       "cls": "DeployProjectTool",
+       "name": "deploy_project"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "DockerManagerTool.ts",
+     "toolClasses": [
+      {
+       "cls": "DockerManagerTool",
+       "name": "docker_manager"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "EliteTools.ts",
+     "toolClasses": [
+      {
+       "cls": "AmbiguityResolverTool",
+       "name": "ambiguity_resolver"
+      },
+      {
+       "cls": "BusinessLogicTool",
+       "name": "business_logic_parser"
+      },
+      {
+       "cls": "ChaosTestingTool",
+       "name": "chaos_test_plan"
+      },
+      {
+       "cls": "CostEstimatorTool",
+       "name": "cloud_cost_estimator"
+      },
+      {
+       "cls": "ComplianceValidatorTool",
+       "name": "compliance_validator"
+      },
+      {
+       "cls": "DependencyGraphTool",
+       "name": "dependency_graph"
+      },
+      {
+       "cls": "MultiAgentDebateTool",
+       "name": "multi_agent_debate"
+      },
+      {
+       "cls": "SelfConfidenceTool",
+       "name": "self_confidence_evaluator"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "EngineeringDiscoveryTool.ts",
+     "toolClasses": [
+      {
+       "cls": "EngineeringDiscoveryTool",
+       "name": "engineering_discovery"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "EnterprisePlatformFoundationTool.ts",
+     "toolClasses": [
+      {
+       "cls": "EnterprisePlatformFoundationTool",
+       "name": "enterprise_platform_foundation"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "ErrorRecoveryTool.ts",
+     "toolClasses": [
+      {
+       "cls": "ErrorRecoveryTool",
+       "name": "error_recovery"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "FormInboxTool.ts",
+     "toolClasses": [
+      {
+       "cls": "FormInboxTool",
+       "name": "form_inbox"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "GitHubActionsTool.ts",
+     "toolClasses": [
+      {
+       "cls": "GitHubActionsTool",
+       "name": "github_actions"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "GitHubPRTool.ts",
+     "toolClasses": [
+      {
+       "cls": "GitHubPRTool",
+       "name": "github_pr"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "GitHubRepoManagerTool.ts",
+     "toolClasses": [
+      {
+       "cls": "GitHubRepoManagerTool",
+       "name": "github_repo_manager"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "GitLocalWorkflowTool.ts",
+     "toolClasses": [
+      {
+       "cls": "GitLocalWorkflowTool",
+       "name": "git_local_workflow"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "GitTools.ts",
+     "toolClasses": [
+      {
+       "cls": "GitOpsTool",
+       "name": "git_ops"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "GoBuilderTool.ts",
+     "toolClasses": [
+      {
+       "cls": "GoBuilderTool",
+       "name": "go_builder"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "GoogleAccountTool.ts",
+     "toolClasses": [
+      {
+       "cls": "GoogleAccountTool",
+       "name": "google_account"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "I18nTranslatorTool.ts",
+     "toolClasses": [
+      {
+       "cls": "I18nTranslatorTool",
+       "name": "i18n_translator"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "ImageGenerationTool.ts",
+     "toolClasses": [],
+     "objectTools": [
+      "generate_image"
+     ],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "ImageStudioTool.ts",
+     "toolClasses": [
+      {
+       "cls": "ImageStudioTool",
+       "name": "image_studio"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "ImportProjectTool.ts",
+     "toolClasses": [
+      {
+       "cls": "ImportProjectTool",
+       "name": "import_project"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "InfrastructureTools.ts",
+     "toolClasses": [
+      {
+       "cls": "DockerSwarmOpsTool",
+       "name": "docker_swarm_ops"
+      },
+      {
+       "cls": "KubernetesOpsTool",
+       "name": "kubernetes_ops"
+      },
+      {
+       "cls": "TerraformManagerTool",
+       "name": "terraform_manager"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "JavaBuilderTool.ts",
+     "toolClasses": [
+      {
+       "cls": "JavaBuilderTool",
+       "name": "java_builder"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "JoeEngineeringReportTool.ts",
+     "toolClasses": [
+      {
+       "cls": "JoeEngineeringReportTool",
+       "name": "joe_engineering_report"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "KnowledgeTools.ts",
+     "toolClasses": [
+      {
+       "cls": "KnowledgeAddTool",
+       "name": "knowledge_add"
+      },
+      {
+       "cls": "KnowledgeSearchTool",
+       "name": "knowledge_search"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "LLMCacheTool.ts",
+     "toolClasses": [
+      {
+       "cls": "LLMCacheTool",
+       "name": "llm_cache"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "LoggerTool.ts",
+     "toolClasses": [
+      {
+       "cls": "LoggerTool",
+       "name": "logger"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "MemoryTool.ts",
+     "toolClasses": [],
+     "objectTools": [
+      "memorize_codebase",
+      "recall_memory"
+     ],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "MobileBuilderTool.ts",
+     "toolClasses": [
+      {
+       "cls": "MobileBuilderTool",
+       "name": "mobile_builder"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "MonitoringTool.ts",
+     "toolClasses": [
+      {
+       "cls": "MonitoringTool",
+       "name": "monitoring"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "NotifyUserTool.ts",
+     "toolClasses": [
+      {
+       "cls": "NotifyUserTool",
+       "name": "notify_user"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "OrdersReadTool.ts",
+     "toolClasses": [
+      {
+       "cls": "OrdersReadTool",
+       "name": "orders_read"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "OrionBusinessFoundationTool.ts",
+     "toolClasses": [
+      {
+       "cls": "OrionBusinessFoundationTool",
+       "name": "orion_business_foundation"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 2,
+     "otherNameValues": [
+      "next",
+      "orion-command-center"
+     ]
+    },
+    {
+     "file": "PageFixTool.ts",
+     "toolClasses": [
+      {
+       "cls": "PageFixTool",
+       "name": "browser_page_fix"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "PaymentsTool.ts",
+     "toolClasses": [
+      {
+       "cls": "PaymentsTool",
+       "name": "payments_create_checkout_session"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "PerformanceAnalyzerTool.ts",
+     "toolClasses": [
+      {
+       "cls": "PerformanceAnalyzerTool",
+       "name": "performance_analyzer"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "PhaseExecutorTool.ts",
+     "toolClasses": [
+      {
+       "cls": "PhaseExecutorTool",
+       "name": "phase_executor"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "ProgressiveGeneratorTool.ts",
+     "toolClasses": [
+      {
+       "cls": "ProgressiveGeneratorTool",
+       "name": "progressive_generator"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "ProjectEditTool.ts",
+     "toolClasses": [
+      {
+       "cls": "ProjectEditTool",
+       "name": "project_edit"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "ProjectPipelineTool.ts",
+     "toolClasses": [
+      {
+       "cls": "ProjectPipelineTool",
+       "name": "project_pipeline"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 3,
+     "otherNameValues": [
+      "Data service and schema",
+      "Evidence-bound project edit",
+      "Interface on the service"
+     ]
+    },
+    {
+     "file": "ProjectPlannerTool.ts",
+     "toolClasses": [
+      {
+       "cls": "ProjectPlannerTool",
+       "name": "project_planner"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 1,
+     "otherNameValues": [
+      "React browser application"
+     ]
+    },
+    {
+     "file": "ProjectRepairTool.ts",
+     "toolClasses": [
+      {
+       "cls": "ProjectRepairTool",
+       "name": "project_repair"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "ProjectRunTool.ts",
+     "toolClasses": [
+      {
+       "cls": "ProjectRunTool",
+       "name": "project_run"
+      },
+      {
+       "cls": "ProjectStopTool",
+       "name": "project_stop"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "ProjectStateManagerTool.ts",
+     "toolClasses": [
+      {
+       "cls": "ProjectStateManagerTool",
+       "name": "project_state_manager"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "ProjectUndoTool.ts",
+     "toolClasses": [
+      {
+       "cls": "ProjectUndoTool",
+       "name": "project_undo"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "PublicApiDiscoveryTools.ts",
+     "toolClasses": [
+      {
+       "cls": "InspectApiTool",
+       "name": "inspect_api"
+      },
+      {
+       "cls": "SearchPublicApisTool",
+       "name": "search_public_apis"
+      },
+      {
+       "cls": "ValidateApiTool",
+       "name": "validate_api"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [
+      "ApiDiscoveryTool"
+     ],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "PythonBuilderTool.ts",
+     "toolClasses": [
+      {
+       "cls": "PythonBuilderTool",
+       "name": "python_builder"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "PythonExecutionTool.ts",
+     "toolClasses": [
+      {
+       "cls": "PythonExecutionTool",
+       "name": "execute_python"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "QualityTools.ts",
+     "toolClasses": [
+      {
+       "cls": "CiGeneratePipelineTool",
+       "name": "ci_generate_pipeline"
+      },
+      {
+       "cls": "DependencyAuditTool",
+       "name": "dependency_audit"
+      },
+      {
+       "cls": "LoadTesterTool",
+       "name": "load_tester"
+      },
+      {
+       "cls": "QualityRunTool",
+       "name": "quality_run"
+      },
+      {
+       "cls": "SecretsScanRepoTool",
+       "name": "secrets_scan_repo"
+      },
+      {
+       "cls": "SonarAnalysisTool",
+       "name": "sonar_analysis"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "ReactProjectTool.ts",
+     "toolClasses": [
+      {
+       "cls": "ReactProjectTool",
+       "name": "react_project"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 54,
+     "otherNameValues": [
+      "Basic",
+      "Brake & gear setup",
+      "Classic edition",
+      "Deep space",
+      "Dish of the day",
+      "Energy lab",
+      "Enterprise",
+      "Event coverage",
+      "Fahad D.",
+      "Flat fix",
+      "Gift set",
+      "Initial consultation",
+      "Inside the human body",
+      "Layan Q.",
+      "Mixed grill",
+      "Omar K.",
+      "Portrait sessions",
+      "Premium edition",
+      "Priority service",
+      "Pro",
+      "Product photography",
+      "Reem A.",
+      "Safety tune-up",
+      "Sarah M.",
+      "Season salad",
+      "Standard service",
+      "إصلاح الإطار المثقوب",
+      "استشارة أولية",
+      "الأساسية",
+      "الأكثر مبيعاً",
+      "الإصدار الفاخر",
+      "الإصدار الكلاسيكي",
+      "الاحترافية",
+      "الخدمة الأساسية",
+      "الخدمة المستعجلة",
+      "الفضاء العميق",
+      "المؤسسات",
+      "تصوير المنتجات",
+      "تغطية المناسبات",
+      "جسم الإنسان",
+      "جلسات شخصية",
+      "حلو البيت",
+      "ريم العنزي",
+      "سارة العتيبي",
+      "سلطة الموسم",
+      "ضبط الفرامل والتروس",
+      "طبق اليوم",
+      "طقم الهدية",
+      "فحص وضبط شامل",
+      "فهد الدوسري",
+      "ليان القحطاني",
+      "محمد الشهري",
+      "مختبر الطاقة",
+      "مشاوي مشكلة"
+     ]
+    },
+    {
+     "file": "RepoSelfCodingTools.ts",
+     "toolClasses": [
+      {
+       "cls": "RepoApplyPatchTool",
+       "name": "repo_apply_patch"
+      },
+      {
+       "cls": "RepoDiffSummaryTool",
+       "name": "repo_diff_summary"
+      },
+      {
+       "cls": "RepoReadFileTool",
+       "name": "repo_read_file"
+      },
+      {
+       "cls": "RepoRunCommandTool",
+       "name": "repo_run_command"
+      },
+      {
+       "cls": "RepoSearchTool",
+       "name": "repo_search"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "RequestAnalyzerTool.ts",
+     "toolClasses": [
+      {
+       "cls": "RequestAnalyzerTool",
+       "name": "request_analyzer"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "ScreenshotTool.ts",
+     "toolClasses": [
+      {
+       "cls": "ScreenshotTool",
+       "name": "screenshot"
+      },
+      {
+       "cls": "VisualComparisonTool",
+       "name": "visual_compare"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "SearchApiTool.ts",
+     "toolClasses": [
+      {
+       "cls": "SearchApiTool",
+       "name": "search_api"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "SecurityScannerTool.ts",
+     "toolClasses": [
+      {
+       "cls": "SecurityScannerTool",
+       "name": "security_scanner"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "SwaggerDocsTool.ts",
+     "toolClasses": [
+      {
+       "cls": "SwaggerDocsTool",
+       "name": "swagger_docs"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 1,
+     "otherNameValues": [
+      "X-API-Key"
+     ]
+    },
+    {
+     "file": "SystemTools.ts",
+     "toolClasses": [
+      {
+       "cls": "DeleteFileTool",
+       "name": "delete_file"
+      },
+      {
+       "cls": "EchoTool",
+       "name": "echo"
+      },
+      {
+       "cls": "FileEditTool",
+       "name": "file_edit"
+      },
+      {
+       "cls": "GrepSearchTool",
+       "name": "grep_search"
+      },
+      {
+       "cls": "LsTool",
+       "name": "ls"
+      },
+      {
+       "cls": "NpmManagerTool",
+       "name": "npm_manager"
+      },
+      {
+       "cls": "ScaffoldProjectTool",
+       "name": "scaffold_project"
+      },
+      {
+       "cls": "ShellStatusTool",
+       "name": "shell_check_status"
+      },
+      {
+       "cls": "ShellExecuteTool",
+       "name": "shell_execute"
+      },
+      {
+       "cls": "WriteFileTool",
+       "name": "write_file"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "TaskInteractionTools.ts",
+     "toolClasses": [
+      {
+       "cls": "AskUserTool",
+       "name": "ask_user"
+      },
+      {
+       "cls": "SafeReadFileTool",
+       "name": "read_file"
+      },
+      {
+       "cls": "TerminalManagerTool",
+       "name": "terminal_manager"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "TaskLifecycleTool.ts",
+     "toolClasses": [
+      {
+       "cls": "TaskLifecycleTool",
+       "name": "task_lifecycle"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "TemplateManagerTool.ts",
+     "toolClasses": [
+      {
+       "cls": "TemplateManagerTool",
+       "name": "template_manager"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 5,
+     "otherNameValues": [
+      "express-api",
+      "fullstack",
+      "node-api",
+      "react-app",
+      "static-site"
+     ]
+    },
+    {
+     "file": "TodoWriteTool.ts",
+     "toolClasses": [],
+     "objectTools": [
+      "todo_write"
+     ],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "UiFixTool.ts",
+     "toolClasses": [
+      {
+       "cls": "UiFixTool",
+       "name": "browser_ui_fix"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "UserBrowserTool.ts",
+     "toolClasses": [
+      {
+       "cls": "UserBrowserTool",
+       "name": "user_browser"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "UtilityTools.ts",
+     "toolClasses": [
+      {
+       "cls": "AdvancedFileEditTool",
+       "name": "file_edit_advanced"
+      },
+      {
+       "cls": "DirectoryInspectionTool",
+       "name": "inspect_directory"
+      },
+      {
+       "cls": "SymbolInspectorTool",
+       "name": "inspect_symbol"
+      },
+      {
+       "cls": "FileSearchTool",
+       "name": "search_files"
+      },
+      {
+       "cls": "SearchTextTool",
+       "name": "search_text"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "VideoActionTool.ts",
+     "toolClasses": [
+      {
+       "cls": "VideoActionTool",
+       "name": "video_action"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "VisualQATool.ts",
+     "toolClasses": [],
+     "objectTools": [
+      "visual_qa"
+     ],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "WebDevelopmentTools.ts",
+     "toolClasses": [
+      {
+       "cls": "DevServerTool",
+       "name": "dev_server_start"
+      },
+      {
+       "cls": "ScaffoldTool",
+       "name": "scaffold_full_stack"
+      },
+      {
+       "cls": "WebPipelineTool",
+       "name": "website_full_pipeline"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "WebPageBuilderTool.ts",
+     "toolClasses": [
+      {
+       "cls": "WebPageBuilderTool",
+       "name": "web_page_builder"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 7,
+     "otherNameValues": [
+      "icon-192.png",
+      "icon-512.png",
+      "index.html",
+      "manifest.webmanifest",
+      "script.js",
+      "styles.css",
+      "sw.js"
+     ]
+    }
+   ]
+  },
+  "MAIN": {
+   "filesScanned": 94,
+   "filesWithToolDecls": 93,
+   "toolClassCount": 161,
+   "objectToolCount": 8,
+   "distinctDeclaredNames": 169,
+   "dynamicNameClasses": [
+    "PublicApiDiscoveryTools.ts::ApiDiscoveryTool"
+   ],
+   "otherNameFields": 103,
+   "otherNameDistinct": [
+    "Basic",
+    "Brake & gear setup",
+    "Classic edition",
+    "Closure",
+    "Data service and schema",
+    "Decorator",
+    "Deep Nesting",
+    "Deep space",
+    "Dish of the day",
+    "Energy lab",
+    "Enterprise",
+    "Event coverage",
+    "Evidence-bound project edit",
+    "Factory",
+    "Fahad D.",
+    "First sample item",
+    "Flat fix",
+    "Gift set",
+    "God Object",
+    "Initial consultation",
+    "Inside the human body",
+    "Interface on the service",
+    "Layan Q.",
+    "Long Functions",
+    "Magic Numbers",
+    "Mixed grill",
+    "Module Pattern",
+    "Observer",
+    "Omar K.",
+    "Portrait sessions",
+    "Premium edition",
+    "Priority service",
+    "Pro",
+    "Product photography",
+    "Promise Chain",
+    "React browser application",
+    "Reem A.",
+    "Safety tune-up",
+    "Sarah M.",
+    "Screenshot",
+    "Season salad",
+    "Singleton",
+    "Standard service",
+    "Strategy",
+    "X-API-Key",
+    "anonymous-must-be-refused",
+    "desktop",
+    "express-api",
+    "fullstack",
+    "icon-192.png",
+    "icon-512.png",
+    "index.html",
+    "manifest.webmanifest",
+    "mobile",
+    "next",
+    "node-api",
+    "orion-command-center",
+    "react-app",
+    "script.js",
+    "static-site",
+    "styles.css",
+    "sw.js",
+    "tablet",
+    "إصلاح الإطار المثقوب",
+    "استشارة أولية",
+    "الأساسية",
+    "الأكثر مبيعاً",
+    "الإصدار الفاخر",
+    "الإصدار الكلاسيكي",
+    "الاحترافية",
+    "الخدمة الأساسية",
+    "الخدمة المستعجلة",
+    "الفضاء العميق",
+    "المؤسسات",
+    "تصوير المنتجات",
+    "تغطية المناسبات",
+    "جسم الإنسان",
+    "جلسات شخصية",
+    "حلو البيت",
+    "ريم العنزي",
+    "سارة العتيبي",
+    "سلطة الموسم",
+    "ضبط الفرامل والتروس",
+    "طبق اليوم",
+    "طقم الهدية",
+    "عنصر تجريبي أول",
+    "عنصر تجريبي ثانٍ",
+    "فحص وضبط شامل",
+    "فهد الدوسري",
+    "ليان القحطاني",
+    "محمد الشهري",
+    "مختبر الطاقة",
+    "مشاوي مشكلة"
+   ],
+   "duplicateNames": [],
+   "files": [
+    {
+     "file": "AIGeneratorTool.ts",
+     "toolClasses": [
+      {
+       "cls": "AIGeneratorTool",
+       "name": "ai_write_file"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "AdvancedTools.ts",
+     "toolClasses": [
+      {
+       "cls": "AutoRefactorTool",
+       "name": "auto_refactor"
+      },
+      {
+       "cls": "DocumentationGeneratorTool",
+       "name": "doc_generator"
+      },
+      {
+       "cls": "PatternRecognitionTool",
+       "name": "pattern_recognize"
+      },
+      {
+       "cls": "PerformanceProfilerTool",
+       "name": "performance_profile"
+      },
+      {
+       "cls": "TestGeneratorTool",
+       "name": "test_generator"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 12,
+     "otherNameValues": [
+      "Closure",
+      "Decorator",
+      "Deep Nesting",
+      "Factory",
+      "God Object",
+      "Long Functions",
+      "Magic Numbers",
+      "Module Pattern",
+      "Observer",
+      "Promise Chain",
+      "Singleton",
+      "Strategy"
+     ]
+    },
+    {
+     "file": "AlertManagerTool.ts",
+     "toolClasses": [
+      {
+       "cls": "AlertManagerTool",
+       "name": "alert_manager"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "AnalysisTools.ts",
+     "toolClasses": [
+      {
+       "cls": "AnalyzeCodebaseTool",
+       "name": "analyze_codebase"
+      },
+      {
+       "cls": "AnalyzeProjectTool",
+       "name": "analyze_project"
+      },
+      {
+       "cls": "ProjectDetectTool",
+       "name": "project_detect"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "ApiProjectTool.ts",
+     "toolClasses": [
+      {
+       "cls": "ApiProjectTool",
+       "name": "api_project"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 14,
+     "otherNameValues": [
+      "Classic edition",
+      "Dish of the day",
+      "First sample item",
+      "Mixed grill",
+      "Premium edition",
+      "anonymous-must-be-refused",
+      "الإصدار الفاخر",
+      "الإصدار الكلاسيكي",
+      "سلطة الموسم",
+      "طبق اليوم",
+      "طقم الهدية",
+      "عنصر تجريبي أول",
+      "عنصر تجريبي ثانٍ",
+      "مشاوي مشكلة"
+     ]
+    },
+    {
+     "file": "ApiTesterTool.ts",
+     "toolClasses": [
+      {
+       "cls": "ApiTesterTool",
+       "name": "api_tester"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "ArchitectTool.ts",
+     "toolClasses": [],
+     "objectTools": [
+      "architect_plan"
+     ],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "ArchiveFilesTool.ts",
+     "toolClasses": [
+      {
+       "cls": "ArchiveFilesTool",
+       "name": "archive_files"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "AuthBuilderTool.ts",
+     "toolClasses": [
+      {
+       "cls": "AuthBuilderTool",
+       "name": "auth_builder"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "AutoTesterTool.ts",
+     "toolClasses": [
+      {
+       "cls": "AutoTesterTool",
+       "name": "auto_tester"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "BrowserActionTool.ts",
+     "toolClasses": [
+      {
+       "cls": "BrowserActionTool",
+       "name": "browser_action"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "BrowserRunTool.ts",
+     "toolClasses": [
+      {
+       "cls": "BrowserRunTool",
+       "name": "browser_run"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 1,
+     "otherNameValues": [
+      "Screenshot"
+     ]
+    },
+    {
+     "file": "BrowserSmartTools.ts",
+     "toolClasses": [
+      {
+       "cls": "BrowserA11yDeepTool",
+       "name": "browser_a11y_deep"
+      },
+      {
+       "cls": "BrowserAutofixTool",
+       "name": "browser_autofix"
+      },
+      {
+       "cls": "BrowserCheckLinksTool",
+       "name": "browser_check_links"
+      },
+      {
+       "cls": "BrowserClickTool",
+       "name": "browser_click"
+      },
+      {
+       "cls": "BrowserCompareTool",
+       "name": "browser_compare"
+      },
+      {
+       "cls": "BrowserConsentTool",
+       "name": "browser_consent"
+      },
+      {
+       "cls": "BrowserConsoleScanTool",
+       "name": "browser_console_scan"
+      },
+      {
+       "cls": "BrowserContrastAuditTool",
+       "name": "browser_contrast_audit"
+      },
+      {
+       "cls": "BrowserDesignTokensTool",
+       "name": "browser_design_tokens"
+      },
+      {
+       "cls": "BrowserExtractDataTool",
+       "name": "browser_extract_data"
+      },
+      {
+       "cls": "BrowserExtractMetaTool",
+       "name": "browser_extract_meta"
+      },
+      {
+       "cls": "BrowserFillFormTool",
+       "name": "browser_fill_form"
+      },
+      {
+       "cls": "BrowserFindTextTool",
+       "name": "browser_find_text"
+      },
+      {
+       "cls": "BrowserFullPageShotTool",
+       "name": "browser_fullpage_shot"
+      },
+      {
+       "cls": "BrowserOpenTool",
+       "name": "browser_launch"
+      },
+      {
+       "cls": "BrowserPerformanceTool",
+       "name": "browser_performance"
+      },
+      {
+       "cls": "BrowserReadabilityTool",
+       "name": "browser_readability"
+      },
+      {
+       "cls": "BrowserResponsiveCheckTool",
+       "name": "browser_responsive_check"
+      },
+      {
+       "cls": "BrowserSavePdfTool",
+       "name": "browser_save_pdf"
+      },
+      {
+       "cls": "BrowserSearchTool",
+       "name": "browser_search"
+      },
+      {
+       "cls": "BrowserSEOAuditTool",
+       "name": "browser_seo_audit"
+      },
+      {
+       "cls": "BrowserSmartAgentTool",
+       "name": "browser_smart_agent"
+      },
+      {
+       "cls": "BrowserSummarizeTool",
+       "name": "browser_summarize"
+      },
+      {
+       "cls": "BrowserTranslateTool",
+       "name": "browser_translate"
+      },
+      {
+       "cls": "BrowserUIAuditTool",
+       "name": "browser_ui_audit"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 3,
+     "otherNameValues": [
+      "desktop",
+      "mobile",
+      "tablet"
+     ]
+    },
+    {
+     "file": "BrowserVisionTool.ts",
+     "toolClasses": [
+      {
+       "cls": "BrowserVisionTool",
+       "name": "browser_vision"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "BulkFileGeneratorTool.ts",
+     "toolClasses": [],
+     "objectTools": [
+      "bulk_file_generator"
+     ],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "BusinessProfileTool.ts",
+     "toolClasses": [
+      {
+       "cls": "BusinessProfileTool",
+       "name": "business_profile"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "CacheManagerTool.ts",
+     "toolClasses": [
+      {
+       "cls": "CacheManagerTool",
+       "name": "cache_manager"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "CapabilityDecisionTool.ts",
+     "toolClasses": [
+      {
+       "cls": "CapabilityDecisionTool",
+       "name": "decide_capability_route"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "CentralAnswerTool.ts",
+     "toolClasses": [
+      {
+       "cls": "CentralAnswerTool",
+       "name": "central_answer"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "CodeReviewerTool.ts",
+     "toolClasses": [
+      {
+       "cls": "CodeReviewerTool",
+       "name": "code_reviewer"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "CodebaseNavigatorTool.ts",
+     "toolClasses": [],
+     "objectTools": [
+      "codebase_navigator"
+     ],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "CodebaseOutlineTool.ts",
+     "toolClasses": [
+      {
+       "cls": "CodebaseOutlineTool",
+       "name": "codebase_outline"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "ContentTools.ts",
+     "toolClasses": [
+      {
+       "cls": "HtmlExtractTool",
+       "name": "html_extract"
+      },
+      {
+       "cls": "HttpFetchTool",
+       "name": "http_fetch"
+      },
+      {
+       "cls": "JsonQueryTool",
+       "name": "json_query"
+      },
+      {
+       "cls": "RssFetchTool",
+       "name": "rss_fetch"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "DatabaseEnterpriseTools.ts",
+     "toolClasses": [
+      {
+       "cls": "DbSchemaMigratorTool",
+       "name": "db_schema_migrator"
+      },
+      {
+       "cls": "LargeDataSeederTool",
+       "name": "large_data_seeder"
+      },
+      {
+       "cls": "QueryOptimizerTool",
+       "name": "query_optimizer"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "DatasourceTool.ts",
+     "toolClasses": [
+      {
+       "cls": "DatasourceTool",
+       "name": "query_datasource"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "DeadCodeTool.ts",
+     "toolClasses": [
+      {
+       "cls": "DeadCodeTool",
+       "name": "dead_code_detector"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "DeployPagesTool.ts",
+     "toolClasses": [
+      {
+       "cls": "DeployPagesTool",
+       "name": "deploy_pages"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "DeployProjectTool.ts",
+     "toolClasses": [
+      {
+       "cls": "DeployProjectTool",
+       "name": "deploy_project"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "DockerManagerTool.ts",
+     "toolClasses": [
+      {
+       "cls": "DockerManagerTool",
+       "name": "docker_manager"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "EliteTools.ts",
+     "toolClasses": [
+      {
+       "cls": "AmbiguityResolverTool",
+       "name": "ambiguity_resolver"
+      },
+      {
+       "cls": "BusinessLogicTool",
+       "name": "business_logic_parser"
+      },
+      {
+       "cls": "ChaosTestingTool",
+       "name": "chaos_test_plan"
+      },
+      {
+       "cls": "CostEstimatorTool",
+       "name": "cloud_cost_estimator"
+      },
+      {
+       "cls": "ComplianceValidatorTool",
+       "name": "compliance_validator"
+      },
+      {
+       "cls": "DependencyGraphTool",
+       "name": "dependency_graph"
+      },
+      {
+       "cls": "MultiAgentDebateTool",
+       "name": "multi_agent_debate"
+      },
+      {
+       "cls": "SelfConfidenceTool",
+       "name": "self_confidence_evaluator"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "EngineeringDiscoveryTool.ts",
+     "toolClasses": [
+      {
+       "cls": "EngineeringDiscoveryTool",
+       "name": "engineering_discovery"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "EnterprisePlatformFoundationTool.ts",
+     "toolClasses": [
+      {
+       "cls": "EnterprisePlatformFoundationTool",
+       "name": "enterprise_platform_foundation"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "ErrorRecoveryTool.ts",
+     "toolClasses": [
+      {
+       "cls": "ErrorRecoveryTool",
+       "name": "error_recovery"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "FormInboxTool.ts",
+     "toolClasses": [
+      {
+       "cls": "FormInboxTool",
+       "name": "form_inbox"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "GitHubActionsTool.ts",
+     "toolClasses": [
+      {
+       "cls": "GitHubActionsTool",
+       "name": "github_actions"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "GitHubPRTool.ts",
+     "toolClasses": [
+      {
+       "cls": "GitHubPRTool",
+       "name": "github_pr"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "GitHubRepoManagerTool.ts",
+     "toolClasses": [
+      {
+       "cls": "GitHubRepoManagerTool",
+       "name": "github_repo_manager"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "GitLocalWorkflowTool.ts",
+     "toolClasses": [
+      {
+       "cls": "GitLocalWorkflowTool",
+       "name": "git_local_workflow"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "GitTools.ts",
+     "toolClasses": [
+      {
+       "cls": "GitOpsTool",
+       "name": "git_ops"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "GoBuilderTool.ts",
+     "toolClasses": [
+      {
+       "cls": "GoBuilderTool",
+       "name": "go_builder"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "GoogleAccountTool.ts",
+     "toolClasses": [
+      {
+       "cls": "GoogleAccountTool",
+       "name": "google_account"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "I18nTranslatorTool.ts",
+     "toolClasses": [
+      {
+       "cls": "I18nTranslatorTool",
+       "name": "i18n_translator"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "ImageGenerationTool.ts",
+     "toolClasses": [],
+     "objectTools": [
+      "generate_image"
+     ],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "ImageStudioTool.ts",
+     "toolClasses": [
+      {
+       "cls": "ImageStudioTool",
+       "name": "image_studio"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "ImportProjectTool.ts",
+     "toolClasses": [
+      {
+       "cls": "ImportProjectTool",
+       "name": "import_project"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "InfrastructureTools.ts",
+     "toolClasses": [
+      {
+       "cls": "DockerSwarmOpsTool",
+       "name": "docker_swarm_ops"
+      },
+      {
+       "cls": "KubernetesOpsTool",
+       "name": "kubernetes_ops"
+      },
+      {
+       "cls": "TerraformManagerTool",
+       "name": "terraform_manager"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "JavaBuilderTool.ts",
+     "toolClasses": [
+      {
+       "cls": "JavaBuilderTool",
+       "name": "java_builder"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "JoeEngineeringReportTool.ts",
+     "toolClasses": [
+      {
+       "cls": "JoeEngineeringReportTool",
+       "name": "joe_engineering_report"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "KnowledgeTools.ts",
+     "toolClasses": [
+      {
+       "cls": "KnowledgeAddTool",
+       "name": "knowledge_add"
+      },
+      {
+       "cls": "KnowledgeSearchTool",
+       "name": "knowledge_search"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "LLMCacheTool.ts",
+     "toolClasses": [
+      {
+       "cls": "LLMCacheTool",
+       "name": "llm_cache"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "LoggerTool.ts",
+     "toolClasses": [
+      {
+       "cls": "LoggerTool",
+       "name": "logger"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "MemoryTool.ts",
+     "toolClasses": [],
+     "objectTools": [
+      "memorize_codebase",
+      "recall_memory"
+     ],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "MobileBuilderTool.ts",
+     "toolClasses": [
+      {
+       "cls": "MobileBuilderTool",
+       "name": "mobile_builder"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "MonitoringTool.ts",
+     "toolClasses": [
+      {
+       "cls": "MonitoringTool",
+       "name": "monitoring"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "NotifyUserTool.ts",
+     "toolClasses": [
+      {
+       "cls": "NotifyUserTool",
+       "name": "notify_user"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "OrdersReadTool.ts",
+     "toolClasses": [
+      {
+       "cls": "OrdersReadTool",
+       "name": "orders_read"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "OrionBusinessFoundationTool.ts",
+     "toolClasses": [
+      {
+       "cls": "OrionBusinessFoundationTool",
+       "name": "orion_business_foundation"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 2,
+     "otherNameValues": [
+      "next",
+      "orion-command-center"
+     ]
+    },
+    {
+     "file": "PageFixTool.ts",
+     "toolClasses": [
+      {
+       "cls": "PageFixTool",
+       "name": "browser_page_fix"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "PaymentsTool.ts",
+     "toolClasses": [
+      {
+       "cls": "PaymentsTool",
+       "name": "payments_create_checkout_session"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "PerformanceAnalyzerTool.ts",
+     "toolClasses": [
+      {
+       "cls": "PerformanceAnalyzerTool",
+       "name": "performance_analyzer"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "PhaseExecutorTool.ts",
+     "toolClasses": [
+      {
+       "cls": "PhaseExecutorTool",
+       "name": "phase_executor"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "ProgressiveGeneratorTool.ts",
+     "toolClasses": [
+      {
+       "cls": "ProgressiveGeneratorTool",
+       "name": "progressive_generator"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "ProjectEditTool.ts",
+     "toolClasses": [
+      {
+       "cls": "ProjectEditTool",
+       "name": "project_edit"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "ProjectPipelineTool.ts",
+     "toolClasses": [
+      {
+       "cls": "ProjectPipelineTool",
+       "name": "project_pipeline"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 3,
+     "otherNameValues": [
+      "Data service and schema",
+      "Evidence-bound project edit",
+      "Interface on the service"
+     ]
+    },
+    {
+     "file": "ProjectPlannerTool.ts",
+     "toolClasses": [
+      {
+       "cls": "ProjectPlannerTool",
+       "name": "project_planner"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 1,
+     "otherNameValues": [
+      "React browser application"
+     ]
+    },
+    {
+     "file": "ProjectRepairTool.ts",
+     "toolClasses": [
+      {
+       "cls": "ProjectRepairTool",
+       "name": "project_repair"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "ProjectRunTool.ts",
+     "toolClasses": [
+      {
+       "cls": "ProjectRunTool",
+       "name": "project_run"
+      },
+      {
+       "cls": "ProjectStopTool",
+       "name": "project_stop"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "ProjectStateManagerTool.ts",
+     "toolClasses": [
+      {
+       "cls": "ProjectStateManagerTool",
+       "name": "project_state_manager"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "ProjectUndoTool.ts",
+     "toolClasses": [
+      {
+       "cls": "ProjectUndoTool",
+       "name": "project_undo"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "PublicApiDiscoveryTools.ts",
+     "toolClasses": [
+      {
+       "cls": "InspectApiTool",
+       "name": "inspect_api"
+      },
+      {
+       "cls": "SearchPublicApisTool",
+       "name": "search_public_apis"
+      },
+      {
+       "cls": "ValidateApiTool",
+       "name": "validate_api"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [
+      "ApiDiscoveryTool"
+     ],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "PythonBuilderTool.ts",
+     "toolClasses": [
+      {
+       "cls": "PythonBuilderTool",
+       "name": "python_builder"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "PythonExecutionTool.ts",
+     "toolClasses": [
+      {
+       "cls": "PythonExecutionTool",
+       "name": "execute_python"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "QualityTools.ts",
+     "toolClasses": [
+      {
+       "cls": "CiGeneratePipelineTool",
+       "name": "ci_generate_pipeline"
+      },
+      {
+       "cls": "DependencyAuditTool",
+       "name": "dependency_audit"
+      },
+      {
+       "cls": "LoadTesterTool",
+       "name": "load_tester"
+      },
+      {
+       "cls": "QualityRunTool",
+       "name": "quality_run"
+      },
+      {
+       "cls": "SecretsScanRepoTool",
+       "name": "secrets_scan_repo"
+      },
+      {
+       "cls": "SonarAnalysisTool",
+       "name": "sonar_analysis"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "ReactProjectTool.ts",
+     "toolClasses": [
+      {
+       "cls": "ReactProjectTool",
+       "name": "react_project"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 54,
+     "otherNameValues": [
+      "Basic",
+      "Brake & gear setup",
+      "Classic edition",
+      "Deep space",
+      "Dish of the day",
+      "Energy lab",
+      "Enterprise",
+      "Event coverage",
+      "Fahad D.",
+      "Flat fix",
+      "Gift set",
+      "Initial consultation",
+      "Inside the human body",
+      "Layan Q.",
+      "Mixed grill",
+      "Omar K.",
+      "Portrait sessions",
+      "Premium edition",
+      "Priority service",
+      "Pro",
+      "Product photography",
+      "Reem A.",
+      "Safety tune-up",
+      "Sarah M.",
+      "Season salad",
+      "Standard service",
+      "إصلاح الإطار المثقوب",
+      "استشارة أولية",
+      "الأساسية",
+      "الأكثر مبيعاً",
+      "الإصدار الفاخر",
+      "الإصدار الكلاسيكي",
+      "الاحترافية",
+      "الخدمة الأساسية",
+      "الخدمة المستعجلة",
+      "الفضاء العميق",
+      "المؤسسات",
+      "تصوير المنتجات",
+      "تغطية المناسبات",
+      "جسم الإنسان",
+      "جلسات شخصية",
+      "حلو البيت",
+      "ريم العنزي",
+      "سارة العتيبي",
+      "سلطة الموسم",
+      "ضبط الفرامل والتروس",
+      "طبق اليوم",
+      "طقم الهدية",
+      "فحص وضبط شامل",
+      "فهد الدوسري",
+      "ليان القحطاني",
+      "محمد الشهري",
+      "مختبر الطاقة",
+      "مشاوي مشكلة"
+     ]
+    },
+    {
+     "file": "RepoSelfCodingTools.ts",
+     "toolClasses": [
+      {
+       "cls": "RepoApplyPatchTool",
+       "name": "repo_apply_patch"
+      },
+      {
+       "cls": "RepoDiffSummaryTool",
+       "name": "repo_diff_summary"
+      },
+      {
+       "cls": "RepoReadFileTool",
+       "name": "repo_read_file"
+      },
+      {
+       "cls": "RepoRunCommandTool",
+       "name": "repo_run_command"
+      },
+      {
+       "cls": "RepoSearchTool",
+       "name": "repo_search"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "RequestAnalyzerTool.ts",
+     "toolClasses": [
+      {
+       "cls": "RequestAnalyzerTool",
+       "name": "request_analyzer"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "ScreenshotTool.ts",
+     "toolClasses": [
+      {
+       "cls": "ScreenshotTool",
+       "name": "screenshot"
+      },
+      {
+       "cls": "VisualComparisonTool",
+       "name": "visual_compare"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "SearchApiTool.ts",
+     "toolClasses": [
+      {
+       "cls": "SearchApiTool",
+       "name": "search_api"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "SecurityScannerTool.ts",
+     "toolClasses": [
+      {
+       "cls": "SecurityScannerTool",
+       "name": "security_scanner"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "SpecificationVerificationTool.ts",
+     "toolClasses": [
+      {
+       "cls": "SpecificationVerificationTool",
+       "name": "specification_verification"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "SwaggerDocsTool.ts",
+     "toolClasses": [
+      {
+       "cls": "SwaggerDocsTool",
+       "name": "swagger_docs"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 1,
+     "otherNameValues": [
+      "X-API-Key"
+     ]
+    },
+    {
+     "file": "SystemTools.ts",
+     "toolClasses": [
+      {
+       "cls": "DeleteFileTool",
+       "name": "delete_file"
+      },
+      {
+       "cls": "EchoTool",
+       "name": "echo"
+      },
+      {
+       "cls": "FileEditTool",
+       "name": "file_edit"
+      },
+      {
+       "cls": "GrepSearchTool",
+       "name": "grep_search"
+      },
+      {
+       "cls": "LsTool",
+       "name": "ls"
+      },
+      {
+       "cls": "NpmManagerTool",
+       "name": "npm_manager"
+      },
+      {
+       "cls": "ScaffoldProjectTool",
+       "name": "scaffold_project"
+      },
+      {
+       "cls": "ShellStatusTool",
+       "name": "shell_check_status"
+      },
+      {
+       "cls": "ShellExecuteTool",
+       "name": "shell_execute"
+      },
+      {
+       "cls": "WriteFileTool",
+       "name": "write_file"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "TaskInteractionTools.ts",
+     "toolClasses": [
+      {
+       "cls": "AskUserTool",
+       "name": "ask_user"
+      },
+      {
+       "cls": "SafeReadFileTool",
+       "name": "read_file"
+      },
+      {
+       "cls": "TerminalManagerTool",
+       "name": "terminal_manager"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "TaskLifecycleTool.ts",
+     "toolClasses": [
+      {
+       "cls": "TaskLifecycleTool",
+       "name": "task_lifecycle"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "TemplateManagerTool.ts",
+     "toolClasses": [
+      {
+       "cls": "TemplateManagerTool",
+       "name": "template_manager"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 5,
+     "otherNameValues": [
+      "express-api",
+      "fullstack",
+      "node-api",
+      "react-app",
+      "static-site"
+     ]
+    },
+    {
+     "file": "TodoWriteTool.ts",
+     "toolClasses": [],
+     "objectTools": [
+      "todo_write"
+     ],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "UiFixTool.ts",
+     "toolClasses": [
+      {
+       "cls": "UiFixTool",
+       "name": "browser_ui_fix"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "UserBrowserTool.ts",
+     "toolClasses": [
+      {
+       "cls": "UserBrowserTool",
+       "name": "user_browser"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "UtilityTools.ts",
+     "toolClasses": [
+      {
+       "cls": "AdvancedFileEditTool",
+       "name": "file_edit_advanced"
+      },
+      {
+       "cls": "DirectoryInspectionTool",
+       "name": "inspect_directory"
+      },
+      {
+       "cls": "SymbolInspectorTool",
+       "name": "inspect_symbol"
+      },
+      {
+       "cls": "FileSearchTool",
+       "name": "search_files"
+      },
+      {
+       "cls": "SearchTextTool",
+       "name": "search_text"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "VideoActionTool.ts",
+     "toolClasses": [
+      {
+       "cls": "VideoActionTool",
+       "name": "video_action"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "VisualQATool.ts",
+     "toolClasses": [],
+     "objectTools": [
+      "visual_qa"
+     ],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "WebDevelopmentTools.ts",
+     "toolClasses": [
+      {
+       "cls": "DevServerTool",
+       "name": "dev_server_start"
+      },
+      {
+       "cls": "ScaffoldTool",
+       "name": "scaffold_full_stack"
+      },
+      {
+       "cls": "WebPipelineTool",
+       "name": "website_full_pipeline"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 0,
+     "otherNameValues": []
+    },
+    {
+     "file": "WebPageBuilderTool.ts",
+     "toolClasses": [
+      {
+       "cls": "WebPageBuilderTool",
+       "name": "web_page_builder"
+      }
+     ],
+     "objectTools": [],
+     "dynamicNameClasses": [],
+     "otherNameFields": 7,
+     "otherNameValues": [
+      "icon-192.png",
+      "icon-512.png",
+      "index.html",
+      "manifest.webmanifest",
+      "script.js",
+      "styles.css",
+      "sw.js"
+     ]
+    }
+   ]
+  }
+ }
+}
