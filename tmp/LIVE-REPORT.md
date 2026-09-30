@@ -1,48 +1,48 @@
 # LIVE-REPORT — Muse + NVIDIA (human live view)
-UPDATED=2026-09-30T~19:10+03:00 | AUTHOR=MUSE (HEAD ebf2daa0 + checkpoint-27 work, uncommitted at write time) | SHARED_WRITE=POLICY_BLOCKED (fallback: tmp/LIVE-REPORT.md; retested this cycle via edit probe: absolute path is outside the workspace)
+UPDATED=2026-09-30T~19:25+03:00 | AUTHOR=MUSE (HEAD 79fd0953 + checkpoint-28 work, uncommitted at write time) | SHARED_WRITE=POLICY_BLOCKED (fallback: tmp/LIVE-REPORT.md; retested this cycle via edit probe: absolute path is outside the workspace)
 
 ## 1. ماذا نعمل الآن؟
-- Muse: filed the full LOCAL-PROVIDER-HEALTH-RECONNECT review (APPROVE_WITH_CHANGES, C1-C7; supersedes + absorbs the 90fba4a4 review) + completed the P1-012 consumer survey live (checkpoint 027). No source edits.
-- NVIDIA: CLI batch-1 still dirty, no committed diff for review (main = e8fd9589, cli test mtime unchanged 08:51).
+- Muse: reconfirmed the LOCAL-PROVIDER-HEALTH-RECONNECT review (APPROVE_WITH_CHANGES C1-C7, no change) + closed the LEVEL-5 checker gap live (checkpoint 028). No source edits.
+- NVIDIA: CLI batch-1 still dirty, no committed diff for review (main = e8fd9589, same 12 tracked dirty files, none in provider files).
 - Codex: absent this cycle; isolated candidates preserved, no new shared evidence consumed.
 
 ## 2. ماذا اكتشفنا؟ (Muse this cycle)
-- LOCAL-PROVIDER review: the preserved health route is safe, BUT its tests encode branch-only circuit behavior (endpoint-aware keys + persistence) that main lacks — "route + tests only" cannot land as-is. Also the live :5000 web/API builds are mismatched (fetch exists only in the preserved branch; API has no route), so UAT must target one exact candidate build.
-- Audit 027: Wolverine self-healing reports HEALED when its repair exits 3 (3rd live false-success); repo commands report FAILED when git exits 0 (false-failure twin, same root); dead-code detector stays HONEST by checking output content. P1-012 repair now unblocked on evidence (5/5 consumers live-checked).
+- LOCAL-PROVIDER reconfirm: live :5000 still /health=200 + /health/local=404; zero source drift since the review; NVIDIA has no new provider-file overlap. Verdict stands.
+- Audit 028: all 5 remaining checkers (quality_run/auto_tester/dep-audit/secrets/reviewer) gate correctly through the real executor (pass→completed, fail→partial, 10/10 legs ×2 identical). BUT all 5 receipts carry NO evidence pointer (evidenceLocation=''), and gate receipts never reuse across runs (execute-always). Full registered checker set is now LEVEL-5 covered.
 
 ## 3. ماذا أنجزنا فعليًا؟
-- LOCAL-PROVIDER-HEALTH-RECONNECT-001-MUSE full review filed (fallback for Codex import): live 404 reproduced, identity gaps G1-G3 proven by source diff, ownership accepted (Codex implements isolated, Muse reviews exact diff).
-- Discovery 027 + probe (7 legs A/B identical) + backlog/matrix/summary staging.
+- LOCAL-PROVIDER confirm4 filed (fallback for Codex import): currency re-verified, rev2 stands.
+- Discovery 028 + probe (10 legs A/B identical) + P2-047/P2-048 backlog batches + matrix/summary staging (5 checker rows now L5-PROVEN).
 - Guards green: guard:architecture + guard:package-scripts (exit 0).
 
 ## 4. ماذا يعمل Muse الآن؟
-- Audit lane: storyable set complete (17/19; planning/memory need NVIDIA coordination). P1-012 survey closed.
+- Audit lane: storyable set complete (17/19; planning/memory need NVIDIA coordination). LEVEL-5 checker coverage complete.
 - Standby: CLI-diff review the moment NVIDIA commits + LOCAL-PROVIDER exact-diff review when Codex produces the candidate.
 
 ## 5. ماذا يعمل NVIDIA الآن؟
 - (From shared state + read-only git) CLI batch-1 implementation, dirty/uncommitted, no new commit. No new shared evidence this cycle.
 
 ## 6. هل تم التواصل أو المراجعة بين Muse وNVIDIA؟
-- No new direct exchange this cycle: no NVIDIA diff to review. Muse's LOCAL-PROVIDER review + checkpoint 027 filed as fallbacks for Codex import.
+- No new direct exchange this cycle: no NVIDIA diff to review. Muse's confirm4 + checkpoint 028 filed as fallbacks for Codex import.
 
 ## 7. أين اتفقا وأين اختلفا؟
 - Agreement: NVIDIA owns CLI, Muse reviews (unchanged). 246 = spellings not tools. LOCAL-PROVIDER: Codex-owner/Muse-reviewer proposed, accepted by Muse.
-- Open: repair-batch ownership (P1-012 engine blindness first — corrupts success receipts tool-wide), pipeline-ack/budget decisions, NVIDIA local-provider response pending.
+- Open: repair-batch ownership (P1-012 engine blindness first), pipeline-ack/budget/style consultations queued, NVIDIA local-provider response pending.
 
-## 8. الأرقام المؤكدة (Muse branch @ ebf2daa0 + checkpoint 27)
+## 8. الأرقام المؤكدة (Muse branch @ 79fd0953 + checkpoint 28)
 REPORTED_BY_MUSE:
 DISCOVERED_TOOLS=163 REGISTERED_TOOLS=163 EXECUTABLE_TOOLS=146 (LEVEL-4 storied; rest UNKNOWN)
 FULLY_WIRED=UNKNOWN (bulk) PARTIALLY_WIRED=UNKNOWN (bulk) ORPHANED=5 DUPLICATE=2
 UNKNOWN=2/19 trunks coordination-blocked (planning=10, memory=7, NVIDIA-owned)
-REPAIRED=1 slice (P1-009 port-guard, unchanged) VERIFIED=17 trunks storied + P1-012 survey 5/5 + guards green
-REAL_JOE_PROVEN=NO (no UAT this cycle) CONTRACT_MISMATCHES=20 (027 adds none)
+REPAIRED=1 slice (P1-009 port-guard, unchanged) VERIFIED=17 trunks storied + P1-012 survey 5/5 + L5 checker set 12/12 live + guards green
+REAL_JOE_PROVEN=NO (no UAT this cycle) CONTRACT_MISMATCHES=20 (028 adds none; +2 P2 batches: P2-047 evidence pointers, P2-048 reuse semantics)
 REPORTED_BY_NVIDIA: no new counts (no shared evidence).
 VERIFIED (independent): no Real Joe PASS exists. CRITICAL-REAL-JOE-UI-001 still NOT_PASS. Live :5000 /health=200, /health/local=404 (reproduced this cycle).
 
 ## 9. ما آخر اختبار ونتيجته؟
-- p1012 A/B: 7/7 legs verdict-identical (verdictDiffs=0) + decl/verdict-table byte-stable + cleanup=ok. exit 0. (1 honest pilot retained: real npx ignores loose fixture .bin, failed registry fetch, nothing installed.)
-- guard:architecture + guard:package-scripts: exit 0 each (after a rerun: first attempt ran npm from the wrong cwd — harness mistake, not a product failure).
-- Consultation evidence (read-only): preserved route/test diffs, af29be95 diff, main-vs-preserved continuity diff (258 lines), router bypass/record sites, web-source fetch search (0 hits main/Muse), live curl 404.
+- verify28 A/B: 10/10 legs verdict-identical (verdictDiffs=0) + static partition/verdicts byte-stable. exit 0 each. (1 honest pilot retained: 2 invalid legs — non-triggering secrets fixture, over-threshold review seed.)
+- guard:architecture + guard:package-scripts: exit 0 each.
+- Consultation evidence (read-only): shared file re-read (unchanged), ebf2daa0..HEAD diff (docs/tmp only), live curl 404, NVIDIA dirty scan (no provider files).
 - Real Joe UI: no run this cycle (audit probes + review only; runtimes untouched, no worker stopped).
 
 ## 10. ما المشاكل أو العوائق الحالية؟

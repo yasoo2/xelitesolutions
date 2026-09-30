@@ -826,6 +826,32 @@ DEPENDENCIES=none (P1-007 owns the sandbox-force rule itself)
 
 ---
 
+BATCH_ID=WIRING-P2-047
+CAPABILITIES=gate-checker evidence pointers (quality_run, auto_tester, dependency_audit, secrets_scan_repo, code_reviewer emit evidenceLocation='')
+ROOT_CAUSE=verificationMetricsFrom reads output.evidenceLocation/reportPath/url; the 5 checkers emit none of these (012/F70 predicted 3, 028/F211 live-confirms all 5 at runtime, 2x). Findings live only inside the tool output blob; no downstream consumer can locate evidence from the receipt.
+FILES=5 checker execute() returns (emit a stable evidence pointer) + verificationMetricsFrom mapping + receipt contract tests
+IMPLEMENTATION_OWNER=UNASSIGNED
+REVIEW_OWNER=UNASSIGNED
+TESTS=per-checker gate leg asserting non-empty evidenceLocation (028 legs as RED->GREEN contracts); browser url-shape stays green; AGENTS gates
+REAL_JOE_UAT=gate-verified run through real Joe UI with receipt inspection
+ROLLBACK=revert evidence-pointer change
+DEPENDENCIES=none (verdicts already correct; pointers only)
+
+---
+
+BATCH_ID=WIRING-P2-048
+CAPABILITIES=task-level checker receipt reuse semantics (currently execute-always)
+ROOT_CAUSE=reuse requires declared verification paths; gates without them get "narrowed reuse is disabled" (028/F212: quality q-reuse reused=0/executions=2, 2x). Third no-reuse data point after browser-by-design + read_file-gate scopeRoot (012). Re-execution is the safe direction, so this is a DECISION batch, not a defect batch.
+FILES=verification-ledger reuse policy + gate path-declaration contract (TBD by owner decision)
+IMPLEMENTATION_OWNER=UNASSIGNED
+REVIEW_OWNER=UNASSIGNED
+TESTS=either declared-path reuse test (carried ledger reuses) OR execute-always pin test (carried ledger re-executes, documented); no silent behavior change; AGENTS gates
+REAL_JOE_UAT=none until the decision lands
+ROLLBACK=revert policy change
+DEPENDENCIES=WIRING-P2-018 (scopeRoot containment is the read_file-gate reuse blocker)
+
+---
+
 BATCH_ID=WIRING-P3-001
 CAPABILITIES=15 dormant/absent-static-candidate names (behavioral review). Selection stories FULLY CLOSED: 9/9 targeted rank-1 (target.json) + catalogue-absent 15/15 storied strong — no keyword-map repair needed.
 ROOT_CAUSE=unknown whether name similarity/dormancy equals missing capability

@@ -1,0 +1,741 @@
+{
+  "generated": "2026-09-30T16:20:24.984Z",
+  "static": {
+    "partition": {
+      "quality_run": {
+        "taskLevel": true
+      },
+      "auto_tester": {
+        "taskLevel": true
+      },
+      "dependency_audit": {
+        "taskLevel": true
+      },
+      "secrets_scan_repo": {
+        "taskLevel": true
+      },
+      "code_reviewer": {
+        "taskLevel": true
+      },
+      "visual_qa": {
+        "taskLevel": true
+      },
+      "read_file": {
+        "taskLevel": false
+      },
+      "write_file": {
+        "taskLevel": false
+      }
+    },
+    "fiveAllowlisted": [
+      "quality_run",
+      "auto_tester",
+      "dependency_audit",
+      "secrets_scan_repo",
+      "code_reviewer"
+    ],
+    "verdicts": [
+      {
+        "id": "quality/completed",
+        "tool": "quality_run",
+        "got": "passed",
+        "expect": "passed",
+        "match": true,
+        "ground": "trunk_testing quality.test.pass 2x"
+      },
+      {
+        "id": "quality/failed",
+        "tool": "quality_run",
+        "got": "failed",
+        "expect": "failed",
+        "match": true,
+        "ground": "trunk_testing quality.test.fail 2x"
+      },
+      {
+        "id": "quality/all-skipped",
+        "tool": "quality_run",
+        "got": "failed",
+        "expect": "failed",
+        "match": true,
+        "ground": "trunk_testing quality.test.all-skipped 2x (F75 skip-blind)"
+      },
+      {
+        "id": "auto/pass",
+        "tool": "auto_tester",
+        "got": "passed",
+        "expect": "passed",
+        "match": true,
+        "ground": "trunk_testing auto.syntax.valid 2x"
+      },
+      {
+        "id": "auto/syntax-fail",
+        "tool": "auto_tester",
+        "got": "failed",
+        "expect": "failed",
+        "match": true,
+        "ground": "trunk_testing auto.syntax.broken-json 2x"
+      },
+      {
+        "id": "dep/enolock",
+        "tool": "dependency_audit",
+        "got": "failed",
+        "expect": "failed",
+        "match": true,
+        "ground": "trunk_security audit.enolock 2x (P2-010 mislabel, fail-closed)"
+      },
+      {
+        "id": "secrets/seeded",
+        "tool": "secrets_scan_repo",
+        "got": "failed",
+        "expect": "failed",
+        "match": true,
+        "ground": "trunk_security secrets.seeded 2x"
+      },
+      {
+        "id": "secrets/clean",
+        "tool": "secrets_scan_repo",
+        "got": "passed",
+        "expect": "passed",
+        "match": true,
+        "ground": "trunk_testing-equivalent clean shape (F85 missing-as-clean class)"
+      },
+      {
+        "id": "review/quick-ok",
+        "tool": "code_reviewer",
+        "got": "passed",
+        "expect": "passed",
+        "match": true,
+        "ground": "trunk_code review.quick-seeded 2x"
+      },
+      {
+        "id": "review/missing",
+        "tool": "code_reviewer",
+        "got": "failed",
+        "expect": "failed",
+        "match": true,
+        "ground": "trunk_code review.missing 2x"
+      },
+      {
+        "id": "review/gate-fail",
+        "tool": "code_reviewer",
+        "got": "failed",
+        "expect": "failed",
+        "match": true,
+        "ground": "trunk_code review.gate-fail 2x"
+      },
+      {
+        "id": "ctl/orphan-shape",
+        "tool": "visual_qa",
+        "got": "passed",
+        "expect": "passed",
+        "match": true,
+        "ground": "control: mapping is shape-only; orphan status is a registry fact, not a verdict fact"
+      }
+    ],
+    "verdictMismatches": []
+  },
+  "live": {
+    "workspace": {
+      "setOk": true,
+      "activeRoot": "D:\\Joe\\muse-worktree\\tmp\\wiring-audit\\fx-verify28\\ws",
+      "contained": true
+    },
+    "q-pass": {
+      "ok": true,
+      "status": "completed",
+      "errorPreview": null,
+      "results": [
+        {
+          "tool": "write_file",
+          "ok": true,
+          "execution": "ran"
+        },
+        {
+          "tool": "quality_run",
+          "ok": true,
+          "execution": "ran"
+        }
+      ],
+      "phaseVerificationCheck": {
+        "checkId": "v28:quality:pass",
+        "tool": "quality_run",
+        "result": "passed",
+        "execution": "ran"
+      },
+      "receipt": {
+        "checkId": "v28:quality:pass",
+        "result": "passed",
+        "tool": "quality_run",
+        "evidenceLocation": "",
+        "runtimeTarget": "",
+        "hasRevision": false,
+        "fingerprintHead": "d1b77da760c16ae8",
+        "scopeRoot": "D:\\Joe\\muse-worktree\\tmp\\wiring-audit\\fx-verify28\\ws\\q-pass",
+        "decisionReason": "selected: declared verification paths were missing or ambiguous, so narrowed reuse is disabled"
+      },
+      "metrics": {
+        "receipts": 1,
+        "passed": 1,
+        "failed": 0,
+        "cancelled": 0,
+        "timedOut": 0,
+        "incomplete": 0,
+        "selected": 1,
+        "invalidated": 0,
+        "reused": 0,
+        "executions": 1,
+        "accountingComplete": true,
+        "executedDurationMs": 1221,
+        "fingerprintDurationMs": 15,
+        "estimatedSavedDurationMs": 0
+      },
+      "decisions": [
+        {
+          "checkId": "v28:quality:pass",
+          "action": "selected",
+          "reason": "selected: declared verification paths were missing or ambiguous, so narrowed reuse is disabled"
+        }
+      ]
+    },
+    "q-fail": {
+      "ok": false,
+      "status": "partial",
+      "errorPreview": "Quality checks failed: test: command failed",
+      "results": [
+        {
+          "tool": "write_file",
+          "ok": true,
+          "execution": "ran"
+        },
+        {
+          "tool": "quality_run",
+          "ok": false,
+          "execution": "ran"
+        }
+      ],
+      "phaseVerificationCheck": {
+        "checkId": "v28:quality:fail",
+        "tool": "quality_run",
+        "result": "failed",
+        "execution": "ran"
+      },
+      "receipt": {
+        "checkId": "v28:quality:fail",
+        "result": "failed",
+        "tool": "quality_run",
+        "evidenceLocation": "",
+        "runtimeTarget": "",
+        "hasRevision": false,
+        "fingerprintHead": "347a33b068ef05a5",
+        "scopeRoot": "D:\\Joe\\muse-worktree\\tmp\\wiring-audit\\fx-verify28\\ws\\q-fail",
+        "decisionReason": "selected: declared verification paths were missing or ambiguous, so narrowed reuse is disabled"
+      },
+      "metrics": {
+        "receipts": 1,
+        "passed": 0,
+        "failed": 1,
+        "cancelled": 0,
+        "timedOut": 0,
+        "incomplete": 0,
+        "selected": 1,
+        "invalidated": 0,
+        "reused": 0,
+        "executions": 1,
+        "accountingComplete": true,
+        "executedDurationMs": 1083,
+        "fingerprintDurationMs": 8,
+        "estimatedSavedDurationMs": 0
+      },
+      "decisions": [
+        {
+          "checkId": "v28:quality:fail",
+          "action": "selected",
+          "reason": "selected: declared verification paths were missing or ambiguous, so narrowed reuse is disabled"
+        }
+      ]
+    },
+    "a-pass": {
+      "ok": true,
+      "status": "completed",
+      "errorPreview": null,
+      "results": [
+        {
+          "tool": "write_file",
+          "ok": true,
+          "execution": "ran"
+        },
+        {
+          "tool": "auto_tester",
+          "ok": true,
+          "execution": "ran"
+        }
+      ],
+      "phaseVerificationCheck": {
+        "checkId": "v28:auto:pass",
+        "tool": "auto_tester",
+        "result": "passed",
+        "execution": "ran"
+      },
+      "receipt": {
+        "checkId": "v28:auto:pass",
+        "result": "passed",
+        "tool": "auto_tester",
+        "evidenceLocation": "",
+        "runtimeTarget": "",
+        "hasRevision": false,
+        "fingerprintHead": "4972c34651e82726",
+        "scopeRoot": "D:\\Joe\\muse-worktree\\tmp\\wiring-audit\\fx-verify28\\ws\\q-pass",
+        "decisionReason": "selected: declared verification paths were missing or ambiguous, so narrowed reuse is disabled"
+      },
+      "metrics": {
+        "receipts": 1,
+        "passed": 1,
+        "failed": 0,
+        "cancelled": 0,
+        "timedOut": 0,
+        "incomplete": 0,
+        "selected": 1,
+        "invalidated": 0,
+        "reused": 0,
+        "executions": 1,
+        "accountingComplete": true,
+        "executedDurationMs": 214,
+        "fingerprintDurationMs": 15,
+        "estimatedSavedDurationMs": 0
+      },
+      "decisions": [
+        {
+          "checkId": "v28:auto:pass",
+          "action": "selected",
+          "reason": "selected: declared verification paths were missing or ambiguous, so narrowed reuse is disabled"
+        }
+      ]
+    },
+    "a-fail": {
+      "ok": false,
+      "status": "partial",
+      "errorPreview": "D:\\Joe\\muse-worktree\\tmp\\wiring-audit\\fx-verify28\\ws\\q-pass\\broken.js:1\r\nmodule.exports = {{{ v28\r\n                  ^\r\n\r\nSyntaxError: Unexpected token '{'\r\n    at wrapSafe (node:internal/modules/cjs/",
+      "results": [
+        {
+          "tool": "write_file",
+          "ok": true,
+          "execution": "ran"
+        },
+        {
+          "tool": "auto_tester",
+          "ok": false,
+          "execution": "ran"
+        }
+      ],
+      "phaseVerificationCheck": {
+        "checkId": "v28:auto:fail",
+        "tool": "auto_tester",
+        "result": "failed",
+        "execution": "ran"
+      },
+      "receipt": {
+        "checkId": "v28:auto:fail",
+        "result": "failed",
+        "tool": "auto_tester",
+        "evidenceLocation": "",
+        "runtimeTarget": "",
+        "hasRevision": false,
+        "fingerprintHead": "e7764ab33a9c4a20",
+        "scopeRoot": "D:\\Joe\\muse-worktree\\tmp\\wiring-audit\\fx-verify28\\ws\\q-pass",
+        "decisionReason": "selected: declared verification paths were missing or ambiguous, so narrowed reuse is disabled"
+      },
+      "metrics": {
+        "receipts": 1,
+        "passed": 0,
+        "failed": 1,
+        "cancelled": 0,
+        "timedOut": 0,
+        "incomplete": 0,
+        "selected": 1,
+        "invalidated": 0,
+        "reused": 0,
+        "executions": 1,
+        "accountingComplete": true,
+        "executedDurationMs": 198,
+        "fingerprintDurationMs": 11,
+        "estimatedSavedDurationMs": 0
+      },
+      "decisions": [
+        {
+          "checkId": "v28:auto:fail",
+          "action": "selected",
+          "reason": "selected: declared verification paths were missing or ambiguous, so narrowed reuse is disabled"
+        }
+      ]
+    },
+    "d-nolock": {
+      "ok": false,
+      "status": "partial",
+      "errorPreview": "Audit found security vulnerabilities.",
+      "results": [
+        {
+          "tool": "write_file",
+          "ok": true,
+          "execution": "ran"
+        },
+        {
+          "tool": "dependency_audit",
+          "ok": false,
+          "execution": "ran"
+        }
+      ],
+      "phaseVerificationCheck": {
+        "checkId": "v28:dep:nolock",
+        "tool": "dependency_audit",
+        "result": "failed",
+        "execution": "ran"
+      },
+      "receipt": {
+        "checkId": "v28:dep:nolock",
+        "result": "failed",
+        "tool": "dependency_audit",
+        "evidenceLocation": "",
+        "runtimeTarget": "",
+        "hasRevision": false,
+        "fingerprintHead": "18d8377c6a9c636d",
+        "scopeRoot": "Joe\\muse-worktree\\tmp\\wiring-audit\\fx-verify28\\ws\\dep-nolock",
+        "decisionReason": "selected: declared verification paths were missing or ambiguous, so narrowed reuse is disabled"
+      },
+      "metrics": {
+        "receipts": 1,
+        "passed": 0,
+        "failed": 1,
+        "cancelled": 0,
+        "timedOut": 0,
+        "incomplete": 0,
+        "selected": 1,
+        "invalidated": 0,
+        "reused": 0,
+        "executions": 1,
+        "accountingComplete": true,
+        "executedDurationMs": 1986,
+        "fingerprintDurationMs": 5,
+        "estimatedSavedDurationMs": 0
+      },
+      "decisions": [
+        {
+          "checkId": "v28:dep:nolock",
+          "action": "selected",
+          "reason": "selected: declared verification paths were missing or ambiguous, so narrowed reuse is disabled"
+        }
+      ]
+    },
+    "s-seeded": {
+      "ok": false,
+      "status": "partial",
+      "errorPreview": "Found 2 potential secrets in codebase.",
+      "results": [
+        {
+          "tool": "write_file",
+          "ok": true,
+          "execution": "ran"
+        },
+        {
+          "tool": "secrets_scan_repo",
+          "ok": false,
+          "execution": "ran"
+        }
+      ],
+      "phaseVerificationCheck": {
+        "checkId": "v28:secrets:seeded",
+        "tool": "secrets_scan_repo",
+        "result": "failed",
+        "execution": "ran"
+      },
+      "receipt": {
+        "checkId": "v28:secrets:seeded",
+        "result": "failed",
+        "tool": "secrets_scan_repo",
+        "evidenceLocation": "",
+        "runtimeTarget": "",
+        "hasRevision": false,
+        "fingerprintHead": "d2d31659cbf833fb",
+        "scopeRoot": "Joe\\muse-worktree\\tmp\\wiring-audit\\fx-verify28\\ws\\sec-seeded",
+        "decisionReason": "selected: declared verification paths were missing or ambiguous, so narrowed reuse is disabled"
+      },
+      "metrics": {
+        "receipts": 1,
+        "passed": 0,
+        "failed": 1,
+        "cancelled": 0,
+        "timedOut": 0,
+        "incomplete": 0,
+        "selected": 1,
+        "invalidated": 0,
+        "reused": 0,
+        "executions": 1,
+        "accountingComplete": true,
+        "executedDurationMs": 11,
+        "fingerprintDurationMs": 10,
+        "estimatedSavedDurationMs": 0
+      },
+      "decisions": [
+        {
+          "checkId": "v28:secrets:seeded",
+          "action": "selected",
+          "reason": "selected: declared verification paths were missing or ambiguous, so narrowed reuse is disabled"
+        }
+      ]
+    },
+    "s-clean": {
+      "ok": true,
+      "status": "completed",
+      "errorPreview": null,
+      "results": [
+        {
+          "tool": "write_file",
+          "ok": true,
+          "execution": "ran"
+        },
+        {
+          "tool": "secrets_scan_repo",
+          "ok": true,
+          "execution": "ran"
+        }
+      ],
+      "phaseVerificationCheck": {
+        "checkId": "v28:secrets:clean",
+        "tool": "secrets_scan_repo",
+        "result": "passed",
+        "execution": "ran"
+      },
+      "receipt": {
+        "checkId": "v28:secrets:clean",
+        "result": "passed",
+        "tool": "secrets_scan_repo",
+        "evidenceLocation": "",
+        "runtimeTarget": "",
+        "hasRevision": false,
+        "fingerprintHead": "ec9b18e82e3f8f60",
+        "scopeRoot": "\\Joe\\muse-worktree\\tmp\\wiring-audit\\fx-verify28\\ws\\sec-empty",
+        "decisionReason": "selected: declared verification paths were missing or ambiguous, so narrowed reuse is disabled"
+      },
+      "metrics": {
+        "receipts": 1,
+        "passed": 1,
+        "failed": 0,
+        "cancelled": 0,
+        "timedOut": 0,
+        "incomplete": 0,
+        "selected": 1,
+        "invalidated": 0,
+        "reused": 0,
+        "executions": 1,
+        "accountingComplete": true,
+        "executedDurationMs": 8,
+        "fingerprintDurationMs": 3,
+        "estimatedSavedDurationMs": 0
+      },
+      "decisions": [
+        {
+          "checkId": "v28:secrets:clean",
+          "action": "selected",
+          "reason": "selected: declared verification paths were missing or ambiguous, so narrowed reuse is disabled"
+        }
+      ]
+    },
+    "r-quick": {
+      "ok": true,
+      "status": "completed",
+      "errorPreview": null,
+      "results": [
+        {
+          "tool": "write_file",
+          "ok": true,
+          "execution": "ran"
+        },
+        {
+          "tool": "code_reviewer",
+          "ok": true,
+          "execution": "ran"
+        }
+      ],
+      "phaseVerificationCheck": {
+        "checkId": "v28:review:quick",
+        "tool": "code_reviewer",
+        "result": "passed",
+        "execution": "ran"
+      },
+      "receipt": {
+        "checkId": "v28:review:quick",
+        "result": "passed",
+        "tool": "code_reviewer",
+        "evidenceLocation": "",
+        "runtimeTarget": "",
+        "hasRevision": false,
+        "fingerprintHead": "90169a79cbc8f951",
+        "scopeRoot": "D:\\Joe\\muse-worktree\\tmp\\wiring-audit\\fx-verify28\\ws\\q-pass",
+        "decisionReason": "selected: declared verification paths were missing or ambiguous, so narrowed reuse is disabled"
+      },
+      "metrics": {
+        "receipts": 1,
+        "passed": 1,
+        "failed": 0,
+        "cancelled": 0,
+        "timedOut": 0,
+        "incomplete": 0,
+        "selected": 1,
+        "invalidated": 0,
+        "reused": 0,
+        "executions": 1,
+        "accountingComplete": true,
+        "executedDurationMs": 12,
+        "fingerprintDurationMs": 10,
+        "estimatedSavedDurationMs": 0
+      },
+      "decisions": [
+        {
+          "checkId": "v28:review:quick",
+          "action": "selected",
+          "reason": "selected: declared verification paths were missing or ambiguous, so narrowed reuse is disabled"
+        }
+      ]
+    },
+    "r-gate": {
+      "ok": false,
+      "status": "partial",
+      "errorPreview": "code_reviewer quality gate failed: overall score 87/100 is below the required 90/100",
+      "results": [
+        {
+          "tool": "write_file",
+          "ok": true,
+          "execution": "ran"
+        },
+        {
+          "tool": "code_reviewer",
+          "ok": false,
+          "execution": "ran"
+        }
+      ],
+      "phaseVerificationCheck": {
+        "checkId": "v28:review:gate",
+        "tool": "code_reviewer",
+        "result": "failed",
+        "execution": "ran"
+      },
+      "receipt": {
+        "checkId": "v28:review:gate",
+        "result": "failed",
+        "tool": "code_reviewer",
+        "evidenceLocation": "",
+        "runtimeTarget": "",
+        "hasRevision": false,
+        "fingerprintHead": "dc044855d6ee2437",
+        "scopeRoot": "D:\\Joe\\muse-worktree\\tmp\\wiring-audit\\fx-verify28\\ws\\q-pass",
+        "decisionReason": "selected: declared verification paths were missing or ambiguous, so narrowed reuse is disabled"
+      },
+      "metrics": {
+        "receipts": 1,
+        "passed": 0,
+        "failed": 1,
+        "cancelled": 0,
+        "timedOut": 0,
+        "incomplete": 0,
+        "selected": 1,
+        "invalidated": 0,
+        "reused": 0,
+        "executions": 1,
+        "accountingComplete": true,
+        "executedDurationMs": 8,
+        "fingerprintDurationMs": 10,
+        "estimatedSavedDurationMs": 0
+      },
+      "decisions": [
+        {
+          "checkId": "v28:review:gate",
+          "action": "selected",
+          "reason": "selected: declared verification paths were missing or ambiguous, so narrowed reuse is disabled"
+        }
+      ]
+    },
+    "q-reuse": {
+      "ok": true,
+      "status": "completed",
+      "errorPreview": null,
+      "results": [
+        {
+          "tool": "write_file",
+          "ok": true,
+          "execution": "ran"
+        },
+        {
+          "tool": "quality_run",
+          "ok": true,
+          "execution": "ran"
+        }
+      ],
+      "phaseVerificationCheck": {
+        "checkId": "v28:quality:pass",
+        "tool": "quality_run",
+        "result": "passed",
+        "execution": "ran"
+      },
+      "receipt": {
+        "checkId": "v28:quality:pass",
+        "result": "passed",
+        "tool": "quality_run",
+        "evidenceLocation": "",
+        "runtimeTarget": "",
+        "hasRevision": false,
+        "fingerprintHead": "d1b77da760c16ae8",
+        "scopeRoot": "D:\\Joe\\muse-worktree\\tmp\\wiring-audit\\fx-verify28\\ws\\q-pass",
+        "decisionReason": "selected: declared verification paths were missing or ambiguous, so narrowed reuse is disabled"
+      },
+      "metrics": {
+        "receipts": 1,
+        "passed": 1,
+        "failed": 0,
+        "cancelled": 0,
+        "timedOut": 0,
+        "incomplete": 0,
+        "selected": 2,
+        "invalidated": 0,
+        "reused": 0,
+        "executions": 2,
+        "accountingComplete": true,
+        "executedDurationMs": 2260,
+        "fingerprintDurationMs": 25,
+        "estimatedSavedDurationMs": 0
+      },
+      "decisions": [
+        {
+          "checkId": "v28:quality:pass",
+          "action": "selected",
+          "reason": "selected: declared verification paths were missing or ambiguous, so narrowed reuse is disabled"
+        },
+        {
+          "checkId": "v28:quality:pass",
+          "action": "selected",
+          "reason": "selected: declared verification paths were missing or ambiguous, so narrowed reuse is disabled"
+        }
+      ],
+      "reusedInLogs": false
+    },
+    "containment": {
+      "checkpointsInWs": 20,
+      "rootsFileInFx": true,
+      "wsTopFiles": [
+        "dep-nolock",
+        "m-afail.txt",
+        "m-apass.txt",
+        "m-dnolock.txt",
+        "m-qfail.txt",
+        "m-qpass.txt",
+        "m-qreuse.txt",
+        "m-rgate.txt",
+        "m-rquick.txt",
+        "m-sclean.txt",
+        "m-sseeded.txt",
+        "q-fail",
+        "q-pass",
+        "sec-empty",
+        "sec-seeded"
+      ]
+    }
+  }
+}
